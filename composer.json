@@ -30,7 +30,9 @@
     }
   },
   "require": {
-    "php": ">=8.2"
+    "php": ">=8.2",
+    "psr/http-server-handler": "^1.0",
+    "psr/http-server-middleware": "^1.0"
   },
   "minimum-stability": "stable",
   "prefer-stable": true,
