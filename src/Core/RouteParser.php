@@ -12,28 +12,31 @@ class RouteParser
 {
     public function parse(string $path): array
     {
-        // Example: "/user/{id:\d+}"
-        // => pattern: /\/user\/(?P<id>\d+)/
-        // => paramNames: ['id']
-        $regex = preg_replace_callback(
-            '/\{([A-Za-z_][A-Za-z0-9_]*)(?::([^}]+))?\}/',
-            function ($matches) {
-                $paramName = $matches[1];
+        // Split on placeholders
+        $split = preg_split('/(\{[A-Za-z_][A-Za-z0-9_]*(?::[^}]+)?\})/', $path, -1, PREG_SPLIT_DELIM_CAPTURE);
+        // $split is an array of alternating literal segments and placeholder segments
+
+        $regex = '';
+        $paramNames = [];
+
+        foreach ($split as $segment) {
+            // If it's a placeholder
+            if (preg_match('/^\{([A-Za-z_][A-Za-z0-9_]*)(?::([^}]+))?\}$/', $segment, $matches)) {
+                $paramName  = $matches[1];
                 $constraint = $matches[2] ?? '[^/]+';
-
-                return '(?P<' . $paramName . '>' . $constraint . ')';
-            },
-            preg_quote($path, '/'),
-        );
-
-        preg_match_all('/\{([A-Za-z_][A-Za-z0-9_]*)(?::[^}]+)?\}/', $path, $paramMatches);
-        $paramNames = $paramMatches[1] ?? [];
+                $regex     .= '(?P<' . $paramName . '>' . $constraint . ')';
+                $paramNames[] = $paramName;
+            } else {
+                // It's a literal part of the path => escape it
+                $regex .= preg_quote($segment, '/');
+            }
+        }
 
         $pattern = '/^' . $regex . '$/';
-
         return [
-            'pattern' => $pattern,
+            'pattern'    => $pattern,
             'paramNames' => $paramNames,
         ];
     }
+
 }

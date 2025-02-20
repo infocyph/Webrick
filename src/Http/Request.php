@@ -22,10 +22,11 @@ class Request implements RequestInterface
         string $method,
         protected UriInterface $uri,
         array $headers = [],
-        protected StreamInterface $body = new Stream(''),
+        protected ?StreamInterface $body = null,
         protected string $protocolVersion = '1.1',
     ) {
         $this->method = strtoupper($method);
+        $this->body ??= new Stream('');
         $this->headers = $this->normalizeHeaders($headers);
         $this->updateHostHeader();
     }

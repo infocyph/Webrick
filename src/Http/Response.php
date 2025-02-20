@@ -20,7 +20,7 @@ class Response implements ResponseInterface
     public function __construct(
         int $statusCode = 200,
         array $headers = [],
-        protected StreamInterface $body = new Stream(''),
+        protected ?StreamInterface $body = null,
         string $reasonPhrase = '',
         protected string $protocolVersion = '1.1',
     ) {
@@ -29,6 +29,7 @@ class Response implements ResponseInterface
         }
         $this->statusCode = $statusCode;
         $this->headers = $this->normalizeHeaders($headers);
+        $this->body ??= new Stream('');
         $this->reasonPhrase = $reasonPhrase ?: $this->getDefaultReasonPhrase($statusCode);
     }
 
