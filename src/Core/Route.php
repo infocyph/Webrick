@@ -8,8 +8,11 @@ use Infocyph\Webrick\Interfaces\RouteInterface;
 
 class Route implements RouteInterface
 {
-    /** @var callable */
     private $handler;
+
+    private ?string $domain = null;
+
+    private ?string $name = null;
 
     public function __construct(private string $method, private string $path, callable $handler)
     {
@@ -50,5 +53,29 @@ class Route implements RouteInterface
     public function getHandler(): callable
     {
         return $this->handler;
+    }
+
+    public function setDomain(?string $domain): self
+    {
+        $this->domain = $domain;
+
+        return $this;
+    }
+
+    public function getDomain(): ?string
+    {
+        return $this->domain;
+    }
+
+    public function setName(string $name): self
+    {
+        $this->name = $name;
+
+        return $this;
+    }
+
+    public function getName(): ?string
+    {
+        return $this->name;
     }
 }

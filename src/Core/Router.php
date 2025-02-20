@@ -4,45 +4,44 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Core;
 
-use Infocyph\Webrick\Interfaces\RouteInterface;
 use Infocyph\Webrick\Interfaces\RouterInterface;
-use Psr\Http\Message\ResponseInterface;
-use Psr\Http\Message\ServerRequestInterface;
+use Infocyph\Webrick\Interfaces\RouteInterface;
 use Psr\Http\Server\RequestHandlerInterface;
+use Psr\Http\Message\ServerRequestInterface;
+use Psr\Http\Message\ResponseInterface;
+use Infocyph\Webrick\Middleware\RouteDispatcher;
 
 /**
- * The Router is itself a PSR-15 RequestHandlerInterface.
- * It determines which route matches, then delegates actual handling
- * to a RouteDispatcher (also a RequestHandlerInterface).
+ * PSR-15 Handler that uses a RouteCollection to match routes, then
+ * delegates to a final dispatcher (RouteDispatcher by default).
  */
 class Router implements RouterInterface
 {
     private ?RequestHandlerInterface $finalRouteDispatcher = null;
 
+    private string $groupPrefix = '';
+    private ?string $groupDomain = null;
+
     public function __construct(private readonly RouteCollection $routes)
     {
     }
 
-    /**
-     * Handle the incoming request (PSR-15).
-     */
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
-        // 1) Match the route
+        // 1) match route
         [$matchedRoute, $params] = $this->routes->match($request);
 
-        // 2) Inject route params into request attributes
-        foreach ($params as $name => $value) {
-            $request = $request->withAttribute($name, $value);
+        // 2) put params in request attributes
+        foreach ($params as $k => $v) {
+            $request = $request->withAttribute($k, $v);
         }
 
-        // 3) Defer actual invocation to the "final" dispatcher
-        //    which calls the route's callable
+        // 3) use final dispatcher
         if ($this->finalRouteDispatcher === null) {
-            // If not set, use the default RouteDispatcher
-            $this->finalRouteDispatcher = new \Infocyph\Webrick\Middleware\RouteDispatcher($matchedRoute);
+            // default
+            $this->finalRouteDispatcher = new RouteDispatcher($matchedRoute);
         } else {
-            // If there's a custom final dispatcher, set the route there
+            // if custom dispatcher supports setRoute
             if (method_exists($this->finalRouteDispatcher, 'setRoute')) {
                 $this->finalRouteDispatcher->setRoute($matchedRoute);
             }
@@ -51,18 +50,43 @@ class Router implements RouterInterface
         return $this->finalRouteDispatcher->handle($request);
     }
 
-    /**
-     * Register a new route (method + path + handler).
-     */
-    public function addRoute(string $method, string $path, callable $handler): RouteInterface
+    public function setFinalRouteDispatcher(RequestHandlerInterface $handler): void
     {
-        $route = new Route($method, $path, $handler);
-        $this->routes->addRoute($route);
-
-        return $route;
+        $this->finalRouteDispatcher = $handler;
     }
 
-    // Common HTTP verbs
+    /**
+     * Group routes under a common prefix/domain
+     */
+    public function group(string $prefix, callable $callback, ?string $domain = null): void
+    {
+        $previousPrefix = $this->groupPrefix;
+        $previousDomain = $this->groupDomain;
+
+        $this->groupPrefix = rtrim($this->groupPrefix, '/') . '/' . ltrim($prefix, '/');
+        if ($domain !== null) {
+            $this->groupDomain = $domain;
+        }
+
+        $callback($this);
+
+        $this->groupPrefix = $previousPrefix;
+        $this->groupDomain = $previousDomain;
+    }
+
+    public function addRoute(string $method, string $path, callable $handler): RouteInterface
+    {
+        // merge with group prefix
+        $fullPath = '/' . ltrim(rtrim($this->groupPrefix, '/') . '/' . ltrim($path, '/'), '/');
+
+        $route = new Route($method, $fullPath, $handler);
+        if ($this->groupDomain !== null) {
+            $route->setDomain($this->groupDomain);
+        }
+
+        $this->routes->addRoute($route);
+        return $route;
+    }
 
     public function get(string $path, callable $handler): RouteInterface
     {
@@ -97,16 +121,5 @@ class Router implements RouterInterface
     public function head(string $path, callable $handler): RouteInterface
     {
         return $this->addRoute('HEAD', $path, $handler);
-    }
-
-    /**
-     * (Optional) Provide a custom final dispatcher that is also a RequestHandlerInterface.
-     *
-     * For example, you might create a dispatcher that integrates
-     * with a PSR-11 container or logs route invocations.
-     */
-    public function setFinalRouteDispatcher(RequestHandlerInterface $dispatcher): void
-    {
-        $this->finalRouteDispatcher = $dispatcher;
     }
 }
