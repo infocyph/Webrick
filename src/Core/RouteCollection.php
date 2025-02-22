@@ -10,127 +10,121 @@ use Infocyph\Webrick\Interfaces\RouteInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
 /**
- * Supports domain-based routing, advanced placeholders,
- * auto HEAD/OPTIONS, named routes, caching, etc.
+ * Enhanced RouteCollection with:
+ * - Hash-based indexing for static routes
+ * - Sorting dynamic routes by specificity
+ * - Existing caching approach (dump to .php)
  */
 class RouteCollection
 {
     /**
-     * @var array<string, array<string, array<string, RouteInterface>>>
-     *  e.g. staticRoutes['']['GET']['/'] => route
-     *  staticRoutes['admin.example.com']['POST']['/users'] => route
+     * For exact, static routes: we store them in a hash of
+     * [domain][method][path] => RouteInterface
      */
     private array $staticRoutes = [];
 
     /**
-     * For dynamic routes with placeholders.
-     * Each item: [
-     *   'domain'     => string,
-     *   'method'     => string,
-     *   'pattern'    => string,
+     * For dynamic routes: an array of:
+     * [
+     *   'domain' => string,
+     *   'method' => string,
+     *   'pattern'=> string,
      *   'paramNames' => string[],
-     *   'route'      => RouteInterface
+     *   'route' => RouteInterface
      * ]
      */
     private array $dynamicRoutes = [];
 
     /**
-     * Named routes for URL generation
-     *  name => RouteInterface
+     * Named routes => route
      */
     private array $namedRoutes = [];
 
     private ?string $cacheFile = null;
-
     private bool $isCached = false;
 
     public function __construct(
         private readonly RouteParser $parser,
-        private readonly bool $autoHead = true,
-        private readonly bool $autoOptions = true,
+        private readonly bool $autoHead    = true,
+        private readonly bool $autoOptions = true
     ) {
     }
 
     public function addRoute(RouteInterface $route): void
     {
         $method = strtoupper($route->getMethod());
-        $path = $route->getPath();
+        $path   = $route->getPath();
         $domain = $route->getDomain() ?? '';
-        $name = $route->getName();
+        $name   = $route->getName();
 
-        // Store named route
+        // Named routes
         if ($name) {
             $this->namedRoutes[$name] = $route;
         }
 
+        // If placeholders exist => dynamic
         if (str_contains($path, '{')) {
-            // dynamic
             $parsed = $this->parser->parse($path);
             $this->dynamicRoutes[] = [
-                'domain' => $domain,
-                'method' => $method,
-                'pattern' => $parsed['pattern'],
+                'domain'     => $domain,
+                'method'     => $method,
+                'pattern'    => $parsed['pattern'],
                 'paramNames' => $parsed['paramNames'],
-                'route' => $route,
+                'route'      => $route,
             ];
+            $this->sortDynamicRoutes();
         } else {
-            // static
+            // static => store in a hash
             $this->staticRoutes[$domain][$method][$path] = $route;
         }
     }
 
-    /**
-     * Attempt to match the request => [RouteInterface, params].
-     *
-     * @throws RouteNotFoundException
-     * @throws MethodNotAllowedException
-     */
     public function match(ServerRequestInterface $request): array
     {
         $reqMethod = strtoupper($request->getMethod());
-        $reqUri = $request->getUri();
-        $path = $reqUri->getPath();
-        $domain = $reqUri->getHost() ?? '';
+        $reqUri    = $request->getUri();
+        $path      = $reqUri->getPath();
+        $domain    = $reqUri->getHost() ?? '';
 
         // auto-HEAD => treat HEAD as GET
         $matchMethod = ($this->autoHead && $reqMethod === 'HEAD') ? 'GET' : $reqMethod;
 
-        // 1) check static
+        // 1) Check static
+        // domain fallback: if domain not found, fallback to ''
         $staticDomain = $this->staticRoutes[$domain] ?? $this->staticRoutes[''] ?? [];
+        // direct hash lookup
         if (isset($staticDomain[$matchMethod][$path])) {
             return [$staticDomain[$matchMethod][$path], []];
         }
 
-        // 2) check dynamic
+        // 2) Check dynamic
         $foundAnyForPath = false;
-        $allowedMethods = [];
+        $allowedMethods  = [];
 
         foreach ($this->dynamicRoutes as $data) {
             if ($data['domain'] !== '' && $data['domain'] !== $domain) {
-                // domain mismatch
+                // mismatch
                 continue;
             }
             if (preg_match($data['pattern'], $path, $matches)) {
                 $foundAnyForPath = true;
                 if ($data['method'] === $matchMethod) {
-                    // success
                     $params = [];
                     foreach ($data['paramNames'] as $p) {
                         $params[$p] = $matches[$p] ?? null;
                     }
-
                     return [$data['route'], $params];
                 }
+                // else track allowed
                 $allowedMethods[$data['method']] = true;
             }
         }
 
-        // If request is OPTIONS and we have auto-options
+        // 3) OPTIONS => list allowed
         if ($this->autoOptions && $reqMethod === 'OPTIONS') {
-            // gather all methods for this path, both static & dynamic
             $allowed = array_merge(
                 $this->findStaticMethodsForPath($domain, $path),
-                array_keys($allowedMethods),
+                array_keys($allowedMethods)
             );
             $allowed = array_unique($allowed);
             sort($allowed);
@@ -145,7 +139,7 @@ class RouteCollection
             throw new MethodNotAllowedException('Allowed Methods: ' . implode(', ', $m));
         }
 
-        // not found => 404
+        // 404
         throw new RouteNotFoundException("No route found for {$reqMethod} {$path} @ {$domain}");
     }
 
@@ -153,47 +147,85 @@ class RouteCollection
     {
         $res = [];
         $staticDomain = $this->staticRoutes[$domain] ?? $this->staticRoutes[''] ?? [];
-        foreach ($staticDomain as $method => $paths) {
+        foreach ($staticDomain as $m => $paths) {
             if (isset($paths[$path])) {
-                $res[] = $method;
+                $res[] = $m;
             }
         }
-
         return $res;
     }
 
-    // route naming => URL generation
+    /**
+     * Sort dynamic routes by specificity:
+     *  - Fewer placeholders => more specific => earlier in the array
+     *  - Tie-breaker => longer pattern => earlier
+     */
+    private function sortDynamicRoutes(): void
+    {
+        usort($this->dynamicRoutes, function ($a, $b) {
+            $aCount = count($a['paramNames']);
+            $bCount = count($b['paramNames']);
+            if ($aCount === $bCount) {
+                return strlen((string) $b['pattern']) <=> strlen((string) $a['pattern']);
+            }
+            return $aCount <=> $bCount;
+        });
+    }
+
+    /**
+     * More robust URL generation:
+     *  - Check that all placeholders are provided
+     *  - If not, throw exception
+     *  - Possibly add query string support
+     */
     public function urlFor(
         string $routeName,
         array $params = [],
         bool $absolute = false,
         string $scheme = 'https',
+        array $query = []
     ): string {
         if (!isset($this->namedRoutes[$routeName])) {
             throw new \RuntimeException("No named route: {$routeName}");
         }
-        $route = $this->namedRoutes[$routeName];
+        $route  = $this->namedRoutes[$routeName];
         $domain = $route->getDomain() ?? '';
-        $path = $route->getPath();
+        $rawPath = $route->getPath();
 
         // Replace placeholders
         $pattern = '/\{([A-Za-z_][A-Za-z0-9_]*)(?::[^}]+)?\}/';
-        $url = preg_replace_callback($pattern, function ($m) use ($params) {
+        $unused  = [];
+        $replacedPath = preg_replace_callback($pattern, function ($m) use (&$params, &$unused) {
             $key = $m[1];
+            if (!isset($params[$key])) {
+                // Missing param => error
+                throw new \RuntimeException("Missing parameter '{$key}' for route");
+            }
+            $val = $params[$key];
+            unset($params[$key]);
+            return $val;
+        }, (string) $rawPath);
 
-            return $params[$key] ?? $m[0];
-        }, (string)$path);
-
-        if ($absolute && $domain !== '') {
-            return $scheme . '://' . $domain . $url;
+        // If any leftover required placeholders => error
+        if (preg_match_all($pattern, (string) $replacedPath, $stillMatches) && !empty($stillMatches[1])) {
+            throw new \RuntimeException("Not all placeholders replaced in routeName={$routeName}");
         }
 
+        // Build final URL
+        $url = $replacedPath;
+        if (!empty($query)) {
+            $qs = http_build_query($query);
+            $url .= '?' . $qs;
+        }
+        if ($absolute && $domain !== '') {
+            $url = $scheme . '://' . $domain . $url;
+        }
         return $url;
     }
 
-    // -------------------------------------------------
-    // caching
-    // -------------------------------------------------
+    // -------------------------------------
+    // Enhanced caching for high traffic
+    // -------------------------------------
     public function enableCache(string $cacheFile): void
     {
         $this->cacheFile = $cacheFile;
@@ -205,10 +237,10 @@ class RouteCollection
         if ($this->cacheFile && file_exists($this->cacheFile)) {
             $data = include $this->cacheFile;
             if (is_array($data)) {
-                $this->staticRoutes = $data['staticRoutes'] ?? [];
+                $this->staticRoutes  = $data['staticRoutes'] ?? [];
                 $this->dynamicRoutes = $data['dynamicRoutes'] ?? [];
-                $this->namedRoutes = $data['namedRoutes'] ?? [];
-                $this->isCached = true;
+                $this->namedRoutes   = $data['namedRoutes'] ?? [];
+                $this->isCached      = true;
             }
         }
     }
@@ -219,9 +251,9 @@ class RouteCollection
             return;
         }
         $export = var_export([
-            'staticRoutes' => $this->staticRoutes,
+            'staticRoutes'  => $this->staticRoutes,
             'dynamicRoutes' => $this->dynamicRoutes,
-            'namedRoutes' => $this->namedRoutes,
+            'namedRoutes'   => $this->namedRoutes,
         ], true);
 
         $php = "<?php\nreturn {$export};\n";

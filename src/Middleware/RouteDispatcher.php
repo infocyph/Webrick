@@ -10,17 +10,18 @@ use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\ResponseInterface;
 use RuntimeException;
 use Psr\Container\ContainerInterface;
+use Psr\Http\Server\MiddlewareInterface;
 
 /**
- * The "final" step that calls the matched route's handler.
- * Optionally uses a PSR-11 container to resolve class-based handlers.
+ * RouteDispatcher is the final request handler that:
+ * 1) Builds a mini pipeline of route-level middleware (if any).
+ * 2) Invokes the route's callable (closure, array, or "Class@method").
+ * 3) Optionally uses Intermix (PSR-11) for class resolution.
  */
 class RouteDispatcher implements RequestHandlerInterface
 {
-    public function __construct(
-        private ?RouteInterface $route = null,
-        private readonly ?ContainerInterface $container = null,
-    ) {
+    public function __construct(private ?RouteInterface $route = null, private readonly ?ContainerInterface $container = null)
+    {
     }
 
     public function setRoute(RouteInterface $route): void
@@ -34,34 +35,102 @@ class RouteDispatcher implements RequestHandlerInterface
             throw new RuntimeException('No route set in RouteDispatcher.');
         }
 
-        $handler = $this->route->getHandler();
+        // Build route-level middleware pipeline
+        $middlewares = $this->resolveMiddlewares($this->route->getMiddlewares());
 
-        // If user used "Controller@method"
-        if (is_string($handler) && str_contains($handler, '@')) {
-            [$class, $method] = explode('@', $handler);
-            $instance = $this->resolveClass($class);
-            $handler = [$instance, $method];
-        } // If array-based
-        elseif (is_array($handler) && isset($handler[0], $handler[1])) {
-            [$class, $method] = $handler;
-            if (is_string($class)) {
-                $classInstance = $this->resolveClass($class);
-                $handler = [$classInstance, $method];
+        // The final "core" handler
+        $coreHandler = new class ($this->route, $this->container) implements RequestHandlerInterface {
+            public function __construct(private readonly RouteInterface $route, private readonly ?ContainerInterface $container)
+            {
             }
+
+            public function handle(ServerRequestInterface $request): ResponseInterface
+            {
+                $handler = $this->route->getHandler();
+
+                // If it's a string like "SomeController@method"
+                if (is_string($handler) && str_contains($handler, '@')) {
+                    [$class, $method] = explode('@', $handler);
+                    $instance = $this->resolveClass($class);
+                    $handler  = [$instance, $method];
+                }
+                // If it's array-based [ClassName::class, 'method']
+                elseif (is_array($handler) && isset($handler[0], $handler[1])) {
+                    [$class, $method] = $handler;
+                    if (is_string($class)) {
+                        $instance = $this->resolveClass($class);
+                        $handler  = [$instance, $method];
+                    }
+                }
+
+                $response = \call_user_func($handler, $request);
+                if (!$response instanceof ResponseInterface) {
+                    throw new RuntimeException('Route handler must return a valid ResponseInterface.');
+                }
+                return $response;
+            }
+
+            private function resolveClass(string $class)
+            {
+                // If using Intermix container to create or retrieve the class instance
+                if ($this->container && $this->container->has($class)) {
+                    return $this->container->get($class);
+                }
+                // fallback: just new it
+                return new $class();
+            }
+        };
+
+        // Wrap them (reverse order) around coreHandler
+        $handler = $coreHandler;
+        for ($i = count($middlewares) - 1; $i >= 0; $i--) {
+            $m = $middlewares[$i];
+            $handler = new class ($m, $handler) implements RequestHandlerInterface {
+                public function __construct(private readonly MiddlewareInterface $middleware, private readonly RequestHandlerInterface $next)
+                {
+                }
+
+                public function handle(ServerRequestInterface $request): ResponseInterface
+                {
+                    return $this->middleware->process($request, $this->next);
+                }
+            };
         }
 
-        $response = \call_user_func($handler, $request);
-        if (!$response instanceof ResponseInterface) {
-            throw new RuntimeException('Route handler did not return a valid ResponseInterface.');
-        }
-        return $response;
+        return $handler->handle($request);
     }
 
-    private function resolveClass(string $class)
+    /**
+     * Convert route-level middleware definitions into objects.
+     * e.g. [AuthMiddleware::class] => [new AuthMiddleware()]
+     */
+    private function resolveMiddlewares(array $defined): array
     {
-        if ($this->container && $this->container->has($class)) {
-            return $this->container->get($class);
+        $resolved = [];
+        foreach ($defined as $mw) {
+            if ($mw instanceof MiddlewareInterface) {
+                // already an object
+                $resolved[] = $mw;
+            } elseif (is_string($mw)) {
+                if ($this->container && $this->container->has($mw)) {
+                    // retrieve from container
+                    $obj = $this->container->get($mw);
+                    if (!$obj instanceof MiddlewareInterface) {
+                        throw new RuntimeException("Resolved $mw but it's not a MiddlewareInterface.");
+                    }
+                    $resolved[] = $obj;
+                } else {
+                    // just new it
+                    $obj = new $mw();
+                    if (!$obj instanceof MiddlewareInterface) {
+                        throw new RuntimeException("Class $mw is not a MiddlewareInterface.");
+                    }
+                    $resolved[] = $obj;
+                }
+            } else {
+                throw new RuntimeException("Invalid route middleware entry: $mw");
+            }
         }
-        return new $class();
+        return $resolved;
     }
 }

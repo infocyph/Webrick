@@ -8,34 +8,53 @@ use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\ResponseInterface;
-use Infocyph\Webrick\Http\Response;
 use Infocyph\Webrick\Exceptions\RouteNotFoundException;
 use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
+use Infocyph\Webrick\Http\Response;
 use Throwable;
 
 /**
- * Catches routing exceptions and returns a standard error response (404, 405, 500).
- * If you want to use your own "ResponseFactory", you could adapt this easily.
+ * ErrorHandlerMiddleware that toggles between dev/prod mode.
+ * In dev mode => show stack trace; in prod => hide details.
  */
 class ErrorHandlerMiddleware implements MiddlewareInterface
 {
+    public function __construct(private readonly bool $devMode = false)
+    {
+    }
+
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
         try {
             return $handler->handle($request);
         } catch (RouteNotFoundException $ex) {
-            $response = new Response(404, [], null, 'Not Found');
-            $response->getBody()->write($ex->getMessage());
-            return $response;
+            return $this->buildResponse(404, 'Not Found', $ex);
         } catch (MethodNotAllowedException $ex) {
-            $response = new Response(405, [], null, 'Method Not Allowed');
-            $response->getBody()->write($ex->getMessage());
-            // Optionally parse "Allowed Methods" from $ex->getMessage()
-            return $response;
+            $resp = $this->buildResponse(405, 'Method Not Allowed', $ex);
+            // Optionally parse "Allowed Methods" from ex->getMessage() to set header
+            return $resp;
         } catch (Throwable $ex) {
-            $response = new Response(500, [], null, 'Internal Server Error');
-            $response->getBody()->write($ex->getMessage());
-            return $response;
+            return $this->buildResponse(500, 'Internal Server Error', $ex);
         }
+    }
+
+    private function buildResponse(int $statusCode, string $reason, Throwable $ex): ResponseInterface
+    {
+        $response = new Response($statusCode, [], null, $reason);
+
+        if ($this->devMode) {
+            // Show debug info
+            $body = "[DEV MODE] Exception: " . $ex->getMessage() . "\n\n" . $ex->getTraceAsString();
+        } else {
+            // Generic message
+            $body = "An error occurred. Please try again later.";
+            if ($statusCode === 404 || $statusCode === 405) {
+                // We can show more specific text for 404/405 if we like
+                $body = $ex->getMessage();
+            }
+        }
+
+        $response->getBody()->write($body);
+        return $response;
     }
 }
