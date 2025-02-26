@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Http;
 
-use Infocyph\ArrayKit\Functional\BucketCollection as Collection;
+use Infocyph\ArrayKit\Collection\Collection;
 use InvalidArgumentException;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\StreamInterface;
@@ -60,7 +60,7 @@ class ServerRequest implements ServerRequestInterface
      * @param string|UriInterface $uri
      * @param array $serverParams
      * @param array $headers
-     * @param StreamInterface|null $body
+     * @param StreamInterface $body
      * @param string $protocolVersion
      * @param mixed|null $parsedBody
      * @param array $uploadedFiles
