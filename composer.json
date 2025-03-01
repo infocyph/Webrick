@@ -34,7 +34,8 @@
     "infocyph/arraykit": "^2.0",
     "infocyph/intermix": "^4.01",
     "psr/http-server-handler": "^1.0",
-    "psr/http-server-middleware": "^1.0"
+    "psr/http-server-middleware": "^1.0",
+    "whichbrowser/parser": "^2.1"
   },
   "minimum-stability": "stable",
   "prefer-stable": true,
