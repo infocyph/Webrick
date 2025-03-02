@@ -1,79 +1,78 @@
 {
-  "name": "infocyph/webrick",
-  "description": "Lightweight Routing library for PHP",
-  "type": "library",
-  "license": "MIT",
-  "keywords": [
-    "router",
-    "routing",
-    "http",
-    "web",
-    "framework"
-  ],
-  "authors": [
-    {
-      "name": "abmmhasan",
-      "email": "abmmhasan@gmail.com"
-    }
-  ],
-  "autoload": {
-    "files": [
-      "src/functions.php"
+    "name": "infocyph/webrick",
+    "description": "Lightweight Routing library for PHP",
+    "type": "library",
+    "license": "MIT",
+    "keywords": [
+        "router",
+        "routing",
+        "http",
+        "web",
+        "framework"
     ],
-    "psr-4": {
-      "Infocyph\\Webrick\\": "src/"
-    }
-  },
-  "autoload-dev": {
-    "psr-4": {
-      "Infocyph\\Webrick\\Tests\\": "tests/"
-    }
-  },
-  "require": {
-    "php": ">=8.2",
-    "infocyph/arraykit": "^2.0",
-    "infocyph/intermix": "^4.01",
-    "psr/http-server-handler": "^1.0",
-    "psr/http-server-middleware": "^1.0",
-    "whichbrowser/parser": "^2.1"
-  },
-  "minimum-stability": "stable",
-  "prefer-stable": true,
-  "config": {
-    "sort-packages": true,
-    "optimize-autoloader": true,
-    "allow-plugins": {
-      "pestphp/pest-plugin": true
-    }
-  },
-  "scripts": {
-    "test:code": "pest --parallel --processes=10",
-    "test:refactor": "rector process --dry-run",
-    "test:lint": "pint --test",
-    "test:hook": [
-      "captainhook hook:post-checkout",
-      "captainhook hook:pre-commit",
-      "captainhook hook:post-commit",
-      "captainhook hook:post-merge",
-      "captainhook hook:post-rewrite",
-      "captainhook hook:pre-push"
+    "authors": [
+        {
+            "name": "abmmhasan",
+            "email": "abmmhasan@gmail.com"
+        }
     ],
-    "tests": [
-      "@test:code",
-      "@test:lint",
-      "@test:refactor"
-    ],
-    "git:hook": "captainhook install --only-enabled -nf",
-    "test": "pest",
-    "refactor": "rector process",
-    "lint": "pint",
-    "post-autoload-dump": "@git:hook"
-  },
-  "require-dev": {
-    "captainhook/captainhook": "^5.24",
-    "laravel/pint": "^1.20",
-    "pestphp/pest": "^3.7",
-    "rector/rector": "^2.0",
-    "symfony/var-dumper": "^7.2"
-  }
+    "autoload": {
+        "files": [
+            "src/functions.php"
+        ],
+        "psr-4": {
+            "Infocyph\\Webrick\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Infocyph\\Webrick\\Tests\\": "tests/"
+        }
+    },
+    "require": {
+        "php": ">=8.2",
+        "infocyph/arraykit": "^2.01",
+        "infocyph/intermix": "^4.01",
+        "psr/http-server-handler": "^1.0",
+        "psr/http-server-middleware": "^1.0"
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true,
+    "config": {
+        "sort-packages": true,
+        "optimize-autoloader": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    },
+    "scripts": {
+        "test:code": "pest --parallel --processes=10",
+        "test:refactor": "rector process --dry-run",
+        "test:lint": "pint --test",
+        "test:hook": [
+            "captainhook hook:post-checkout",
+            "captainhook hook:pre-commit",
+            "captainhook hook:post-commit",
+            "captainhook hook:post-merge",
+            "captainhook hook:post-rewrite",
+            "captainhook hook:pre-push"
+        ],
+        "tests": [
+            "@test:code",
+            "@test:lint",
+            "@test:refactor"
+        ],
+        "git:hook": "captainhook install --only-enabled -nf",
+        "test": "pest",
+        "refactor": "rector process",
+        "lint": "pint",
+        "post-autoload-dump": "@git:hook"
+    },
+    "require-dev": {
+        "captainhook/captainhook": "^5.24",
+        "laravel/pint": "^1.20",
+        "pestphp/pest": "^3.7",
+        "rector/rector": "^2.0",
+        "symfony/var-dumper": "^7.2"
+    }
 }

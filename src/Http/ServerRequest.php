@@ -13,29 +13,11 @@ use Psr\Http\Message\UriInterface;
 use RuntimeException;
 
 /**
- * A PSR-7 ServerRequest *plus* "CommonAsset"-like helpers.
- *
- * It implements all mandatory PSR-7 methods:
- *   - getServerParams(), getCookieParams(), withCookieParams()
- *   - getQueryParams(), withQueryParams()
- *   - getUploadedFiles(), withUploadedFiles()
- *   - getParsedBody(), withParsedBody()
- *   - getAttributes(), getAttribute(), withAttribute(), withoutAttribute()
- * ... and so on.
- *
- * Additionally, it adds convenience methods like:
- *   - query($key)
- *   - post($key)
- *   - parsedJson($key)
- *   - cookie($key)
- *   - raw() // entire body as string
- *   - file($key)
+ * A PSR-7 ServerRequest *plus* "CommonAsset"-like helpers,
+ * plus method override & AJAX detection methods.
  */
 class ServerRequest implements ServerRequestInterface
 {
-    // ---------------------------------
-    // Standard PSR-7 properties
-    // ---------------------------------
     protected string $method;
     protected UriInterface $uri;
     protected array $cookieParams = [];
@@ -43,21 +25,23 @@ class ServerRequest implements ServerRequestInterface
     protected array $attributes = [];
     protected array $headers = [];
 
-    // ---------------------------------
-    // Additional helpers
-    // ---------------------------------
+    // Additional convenience
     private ?Collection $queryCollection  = null;
     private ?Collection $postCollection   = null;
     private ?Collection $cookieCollection = null;
     private ?Collection $serverCollection = null;
-    private ?Collection $jsonCollection   = null; // for parsed JSON
+    private ?Collection $jsonCollection   = null;
     private ?Collection $filesCollection  = null;
-
     private ?string $rawBodyCache = null;
+
+    // The list of recognized HTTP methods (for override checks)
+    private static array $validMethods = [
+        'GET', 'POST', 'PUT', 'DELETE', 'HEAD', 'OPTIONS', 'PATCH'
+    ];
 
     /**
      * @param string $method
-     * @param string|UriInterface $uri
+     * @param UriInterface|string $uri
      * @param array $serverParams
      * @param array $headers
      * @param StreamInterface $body
@@ -78,10 +62,11 @@ class ServerRequest implements ServerRequestInterface
         protected ?string $requestTarget = null
     ) {
         $this->method          = strtoupper($method);
-        $this->uri             = $uri instanceof UriInterface ? $uri : new Uri($uri);
+        $this->uri             = ($uri instanceof UriInterface) ? $uri : new Uri($uri);
         $this->headers         = $this->normalizeHeaders($headers);
 
-        if ($this->hasHeader('Host') === false && $this->uri->getHost() !== '') {
+        // If we have a host in the URI but no Host header, set it.
+        if (!$this->hasHeader('Host') && $this->uri->getHost() !== '') {
             $host = $this->uri->getHost();
             if ($this->uri->getPort()) {
                 $host .= ':' . $this->uri->getPort();
@@ -169,9 +154,23 @@ class ServerRequest implements ServerRequestInterface
     {
         $new = clone $this;
         $new->body = $body;
-        // Invalidate raw body cache
-        $new->rawBodyCache = null;
+        $new->rawBodyCache = null; // reset
         return $new;
+    }
+
+    private function normalizeHeaderName(string $name): string
+    {
+        return ucwords(strtolower($name), '-');
+    }
+
+    private function normalizeHeaders(array $headers): array
+    {
+        $result = [];
+        foreach ($headers as $name => $val) {
+            $normName = $this->normalizeHeaderName($name);
+            $result[$normName] = is_array($val) ? array_values($val) : [(string)$val];
+        }
+        return $result;
     }
 
     // ---------------------------------------------------
@@ -204,6 +203,7 @@ class ServerRequest implements ServerRequestInterface
 
     public function getMethod(): string
     {
+        // The original method
         return $this->method;
     }
 
@@ -223,6 +223,7 @@ class ServerRequest implements ServerRequestInterface
     {
         $new = clone $this;
         $new->uri = $uri;
+
         if (!$preserveHost) {
             if ($uri->getHost() !== '') {
                 $host = $uri->getHost();
@@ -240,6 +241,7 @@ class ServerRequest implements ServerRequestInterface
             }
             $new->headers['Host'] = [$host];
         }
+
         return $new;
     }
 
@@ -251,6 +253,7 @@ class ServerRequest implements ServerRequestInterface
         return $this->serverParams;
     }
 
+    // (We store our cookie params separately from $serverParams)
     public function getCookieParams(): array
     {
         return $this->cookieParams;
@@ -260,7 +263,6 @@ class ServerRequest implements ServerRequestInterface
     {
         $new = clone $this;
         $new->cookieParams = $cookies;
-        // Invalidate the collection
         $new->cookieCollection = null;
         return $new;
     }
@@ -283,15 +285,11 @@ class ServerRequest implements ServerRequestInterface
         return $this->uploadedFiles;
     }
 
-    /**
-     * @param UploadedFileInterface[] $uploadedFiles
-     */
     public function withUploadedFiles(array $uploadedFiles): self
     {
-        // Validate structure if needed
         array_walk_recursive($uploadedFiles, function ($item) {
             if (!$item instanceof UploadedFileInterface) {
-                throw new InvalidArgumentException('Invalid uploaded file');
+                throw new InvalidArgumentException('Invalid uploaded file.');
             }
         });
 
@@ -310,7 +308,6 @@ class ServerRequest implements ServerRequestInterface
     {
         $new = clone $this;
         $new->parsedBody = $data;
-        // Invalidate post and json collection
         $new->postCollection = null;
         $new->jsonCollection = null;
         return $new;
@@ -341,30 +338,71 @@ class ServerRequest implements ServerRequestInterface
     }
 
     // ---------------------------------------------------
-    // Internals
-    // ---------------------------------------------------
-    private function normalizeHeaderName(string $name): string
-    {
-        return ucwords(strtolower($name), '-');
-    }
-
-    private function normalizeHeaders(array $headers): array
-    {
-        $result = [];
-        foreach ($headers as $name => $val) {
-            $normName = $this->normalizeHeaderName($name);
-            $result[$normName] = is_array($val) ? array_values($val) : [(string)$val];
-        }
-        return $result;
-    }
-
-    // ---------------------------------------------------
-    // Additional "CommonAsset"-like convenience methods
+    // Additional PSR-7 style checks
     // ---------------------------------------------------
 
     /**
-     * "Raw" entire request body as string
+     * If the request's method is HEAD, we might treat it as GET internally.
+     * If it's POST, we might check for X-HTTP-Method-Override or _method in body.
+     * Returns the "converted" method or the original if no override applies.
      */
+    public function getEffectiveMethod(): string
+    {
+        $original = $this->method;
+        // validate
+        if (!in_array($original, self::$validMethods)) {
+            // If it's something unusual, let's not forcibly error, just return it unmodified
+            // or you can throw an exception if you want strictness
+            return $original;
+        }
+
+        // HEAD => treat as GET internally
+        $converted = match ($original) {
+            'HEAD' => 'GET',
+            'POST' => $this->checkMethodOverride(),
+            default => $original
+        };
+
+        return strtoupper($converted);
+    }
+
+    /**
+     * Checking for method override if original is POST
+     */
+    private function checkMethodOverride(): string
+    {
+        // We can check headers (X-HTTP-Method-Override or HTTP-Method-Override)
+        $overrideHeader = $this->getHeaderLine('X-HTTP-Method-Override')
+            ?: $this->getHeaderLine('HTTP-Method-Override');
+
+        if (!empty($overrideHeader)) {
+            $candidate = strtoupper($overrideHeader);
+            if (in_array($candidate, self::$validMethods)) {
+                return $candidate;
+            }
+        }
+
+        // Or we can check for _method in post
+        $candidate = strtoupper((string) $this->post('_method'));
+        if ($candidate && in_array($candidate, self::$validMethods)) {
+            return $candidate;
+        }
+
+        // otherwise it's still POST
+        return 'POST';
+    }
+
+    /**
+     * Often frameworks define "isAjax" to check if X-Requested-With == XMLHttpRequest
+     */
+    public function isAjax(): bool
+    {
+        return $this->server('HTTP_X_REQUESTED_WITH') === 'XMLHttpRequest';
+    }
+
+    // ---------------------------------------------------
+    // Additional convenience methods
+    // ---------------------------------------------------
     public function raw(): string
     {
         if ($this->rawBodyCache === null) {
@@ -373,9 +411,6 @@ class ServerRequest implements ServerRequestInterface
         return $this->rawBodyCache;
     }
 
-    /**
-     * A Collection wrapper over the server params
-     */
     public function server(?string $key = null): mixed
     {
         if ($this->serverCollection === null) {
@@ -384,9 +419,6 @@ class ServerRequest implements ServerRequestInterface
         return $this->fetch($this->serverCollection, $key);
     }
 
-    /**
-     * A Collection wrapper over cookie params
-     */
     public function cookie(?string $key = null): mixed
     {
         if ($this->cookieCollection === null) {
@@ -395,9 +427,6 @@ class ServerRequest implements ServerRequestInterface
         return $this->fetch($this->cookieCollection, $key);
     }
 
-    /**
-     * A Collection wrapper over query params
-     */
     public function query(?string $key = null): mixed
     {
         if ($this->queryCollection === null) {
@@ -406,10 +435,6 @@ class ServerRequest implements ServerRequestInterface
         return $this->fetch($this->queryCollection, $key);
     }
 
-    /**
-     * A Collection wrapper for "POST" form data,
-     * but only if getParsedBody() is an array
-     */
     public function post(?string $key = null): mixed
     {
         if ($this->postCollection === null) {
@@ -420,15 +445,9 @@ class ServerRequest implements ServerRequestInterface
         return $this->fetch($this->postCollection, $key);
     }
 
-    /**
-     * Attempt to decode JSON from the raw body if Content-Type is JSON.
-     * If invalid JSON, throw exception.
-     * If not JSON, fallback to post().
-     */
     public function parsedJson(?string $key = null): mixed
     {
         if ($this->jsonCollection === null) {
-            // Check content type
             $contentType = $this->getHeaderLine('Content-Type');
             if (str_contains($contentType, 'application/json')) {
                 $decoded = json_decode($this->raw(), true);
@@ -437,22 +456,15 @@ class ServerRequest implements ServerRequestInterface
                 }
                 $this->jsonCollection = new Collection(is_array($decoded) ? $decoded : []);
             } else {
-                // not JSON => store an empty collection to skip repeatedly checking
                 $this->jsonCollection = new Collection([]);
             }
         }
-        // If we actually decoded something, fetch from it
         if ($this->jsonCollection->isEmpty()) {
-            // fallback to post
             return $this->post($key);
         }
         return $this->fetch($this->jsonCollection, $key);
     }
 
-    /**
-     * Access a single file or entire array of files as a Collection
-     * (Though typically you'd just do getUploadedFiles() for PSR-7 style)
-     */
     public function file(?string $key = null): mixed
     {
         if ($this->filesCollection === null) {
@@ -461,9 +473,6 @@ class ServerRequest implements ServerRequestInterface
         return $this->fetch($this->filesCollection, $key);
     }
 
-    /**
-     * Helper to fetch either a single key or entire array from a Collection
-     */
     private function fetch(Collection $collection, ?string $key): mixed
     {
         if ($key === null) {

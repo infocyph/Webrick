@@ -6,21 +6,12 @@ namespace Infocyph\Webrick\Http;
 
 use Psr\Http\Message\ServerRequestInterface;
 use RuntimeException;
-use WhichBrowser\Parser;
 
-/**
- * A helper class for advanced IP detection and user agent parsing,
- * returning only 'browser', 'version', 'platform', and 'engine'.
- *
- * Feedback changes:
- *  - No $trustProxy in constructor; we have getClientIPNoProxy() & getClientIPProxy() separately.
- *  - parseUserAgent() tries parseUserAgentLibrary() first, else parseUserAgentBasic().
- */
 final class EndUser
 {
     // cache results
     private ?string $clientIpNoProxy = null;
-    private ?string $clientIpProxy   = null;
+    private ?string $clientIpProxy = null;
 
     // For IP check caching
     private array $checkedIps = [];
@@ -34,12 +25,16 @@ final class EndUser
         return new self($request);
     }
 
-    // ====================================
-    //  IP DETECTION
-    // ====================================
 
     /**
-     * Return client IP from REMOTE_ADDR only (no proxy headers).
+     * Get the client IP (no proxy checking).
+     *
+     * If PHP_SAPI is "cli", we return `gethostbyname(gethostname())` as the client IP,
+     * otherwise we return REMOTE_ADDR.
+     *
+     * Results are cached.
+     *
+     * @return string|null
      */
     public function getClientIPNoProxy(): ?string
     {
@@ -61,8 +56,17 @@ final class EndUser
         return $this->clientIpNoProxy = $ip;
     }
 
+
     /**
-     * Return client IP by checking known proxy/CDN headers first, then REMOTE_ADDR.
+     * Get the client IP address (proxy aware).
+     *
+     * This method will go through a list of known proxy headers and return the first
+     * IP address that is found. If no proxy headers are set, it will return the IP
+     * address set in the REMOTE_ADDR server parameter.
+     *
+     * The results are cached.
+     *
+     * @return string|null
      */
     public function getClientIPProxy(): ?string
     {
@@ -79,51 +83,65 @@ final class EndUser
         $server = $this->request->getServerParams();
 
         $ip = match (true) {
-            !empty($server['HTTP_CLIENT_IP'])               => $server['HTTP_CLIENT_IP'],
-            !empty($server['HTTP_X_FORWARDED_FOR'])         => explode(',', (string)$server['HTTP_X_FORWARDED_FOR'])[0],
-            !empty($server['HTTP_CF_CONNECTING_IP'])        => $server['HTTP_CF_CONNECTING_IP'],
-            !empty($server['HTTP_FASTLY_CLIENT_IP'])        => $server['HTTP_FASTLY_CLIENT_IP'],
-            !empty($server['HTTP_TRUE_CLIENT_IP'])          => $server['HTTP_TRUE_CLIENT_IP'],
-            !empty($server['HTTP_AKAMAI_EDGE_CLIENT_IP'])   => $server['HTTP_AKAMAI_EDGE_CLIENT_IP'],
-            !empty($server['HTTP_X_AZURE_CLIENTIP'])        => $server['HTTP_X_AZURE_CLIENTIP'],
-            !empty($server['HTTP_X_APPENGINE_USER_IP'])     => $server['HTTP_X_APPENGINE_USER_IP'],
-            !empty($server['HTTP_X_REAL_IP'])               => $server['HTTP_X_REAL_IP'],
-            !empty($server['HTTP_X_CLUSTER_CLIENT_IP'])     => $server['HTTP_X_CLUSTER_CLIENT_IP'],
-            !empty($server['FLY_CLIENT_IP'])                => $server['FLY_CLIENT_IP'],
-            !empty($server['HTTP_ALI_CLIENT_IP'])           => $server['HTTP_ALI_CLIENT_IP'],
-            !empty($server['HTTP_X_ORACLE_CLIENT_IP'])      => $server['HTTP_X_ORACLE_CLIENT_IP'],
-            !empty($server['HTTP_X_STACKPATH_EDGE_IP'])     => $server['HTTP_X_STACKPATH_EDGE_IP'],
-            !empty($server['REMOTE_ADDR'])                  => $server['REMOTE_ADDR'],
-            default                                         => null,
+            !empty($server['HTTP_CLIENT_IP']) => $server['HTTP_CLIENT_IP'],
+            !empty($server['HTTP_X_FORWARDED_FOR']) => explode(',', (string)$server['HTTP_X_FORWARDED_FOR'])[0],
+            !empty($server['HTTP_CF_CONNECTING_IP']) => $server['HTTP_CF_CONNECTING_IP'],
+            !empty($server['HTTP_FASTLY_CLIENT_IP']) => $server['HTTP_FASTLY_CLIENT_IP'],
+            !empty($server['HTTP_TRUE_CLIENT_IP']) => $server['HTTP_TRUE_CLIENT_IP'],
+            !empty($server['HTTP_AKAMAI_EDGE_CLIENT_IP']) => $server['HTTP_AKAMAI_EDGE_CLIENT_IP'],
+            !empty($server['HTTP_X_AZURE_CLIENTIP']) => $server['HTTP_X_AZURE_CLIENTIP'],
+            !empty($server['HTTP_X_APPENGINE_USER_IP']) => $server['HTTP_X_APPENGINE_USER_IP'],
+            !empty($server['HTTP_X_REAL_IP']) => $server['HTTP_X_REAL_IP'],
+            !empty($server['HTTP_X_CLUSTER_CLIENT_IP']) => $server['HTTP_X_CLUSTER_CLIENT_IP'],
+            !empty($server['FLY_CLIENT_IP']) => $server['FLY_CLIENT_IP'],
+            !empty($server['HTTP_ALI_CLIENT_IP']) => $server['HTTP_ALI_CLIENT_IP'],
+            !empty($server['HTTP_X_ORACLE_CLIENT_IP']) => $server['HTTP_X_ORACLE_CLIENT_IP'],
+            !empty($server['HTTP_X_STACKPATH_EDGE_IP']) => $server['HTTP_X_STACKPATH_EDGE_IP'],
+            !empty($server['REMOTE_ADDR']) => $server['REMOTE_ADDR'],
+            default => null,
         };
 
         $ip = filter_var($ip, FILTER_VALIDATE_IP) ?: null;
         return $this->clientIpProxy = $ip;
     }
 
+
     /**
-     * By default, we do *not* trust proxy. So let's just call getClientIPNoProxy().
-     * If you want proxy logic, call getClientIPProxy() directly.
+     * Gets the client IP. If the client is behind a proxy, this method returns the
+     * IP of the proxy, not the client. If the client is not behind a proxy, this
+     * method returns the IP of the client.
+     *
+     * @return string|null The client IP, or null if no IP was found.
      */
     public function getClientIP(): ?string
     {
         return $this->getClientIPNoProxy();
     }
 
+
     /**
-     * Checks if the given IP (client or override) is in one or more IPs/subnets (v4 or v6).
+     * Checks if the client's IP address matches any in the given list.
+     *
+     * This method supports both IPv4 and IPv6 addresses. The IP address to be checked
+     * can be overridden by providing the $overrideIp parameter. Optionally, the
+     * method can use proxy-aware IP detection if $useProxy is set to true.
+     *
+     * @param array|string $ips The list of IP addresses or CIDR ranges to check against.
+     * @param string|null $overrideIp An optional IP address to override the detected client IP.
+     * @param bool $useProxy Whether to use the proxy-aware IP detection.
+     * @return bool True if the client's IP matches any in the list, false otherwise.
      */
     public function checkIp(array|string $ips, ?string $overrideIp = null, bool $useProxy = false): bool
     {
         $ips = (array)$ips;
-        $ip  = $overrideIp ?? ($useProxy ? $this->getClientIPProxy() : $this->getClientIPNoProxy());
+        $ip = $overrideIp ?? ($useProxy ? $this->getClientIPProxy() : $this->getClientIPNoProxy());
         if (!$ip) {
             return false;
         }
 
         $isV6 = (substr_count($ip, ':') > 1);
         foreach ($ips as $candidate) {
-            $candidate = trim((string) $candidate);
+            $candidate = trim((string)$candidate);
             if ($isV6) {
                 if ($this->checkIp6($ip, $candidate)) {
                     return true;
@@ -137,8 +155,17 @@ final class EndUser
         return false;
     }
 
+
     /**
-     * Anonymize IP: remove last byte for v4, last 8 bytes for v6.
+     * Anonymizes the given IP address by masking parts of it.
+     *
+     * For IPv4 addresses, the last octet is masked, resulting in a /24 subnet.
+     * For IPv6 addresses, the last 64 bits are masked, resulting in a /64 subnet.
+     * If the input is a wrapped IPv6 address (e.g., "[::1]"), the output will
+     * also be wrapped.
+     *
+     * @param string $ip The IP address to anonymize, either IPv4 or IPv6.
+     * @return string The anonymized IP address.
      */
     public function anonymize(string $ip): string
     {
@@ -164,9 +191,14 @@ final class EndUser
         return $anon;
     }
 
-    // ====================================
-    //   IPv4 & IPv6 Checking
-    // ====================================
+
+    /**
+     * Checks if the given IP address is contained within a given IPv4 CIDR block.
+     *
+     * @param string $check The IP address to check.
+     * @param string $cidr The IPv4 CIDR block to check against, e.g. "192.168.1.0/24".
+     * @return bool True if the IP is contained within the given CIDR block, false otherwise.
+     */
     private function checkIp4(string $check, string $cidr): bool
     {
         $cacheKey = "4:$check-$cidr";
@@ -180,16 +212,16 @@ final class EndUser
 
         if (str_contains($cidr, '/')) {
             [$baseIp, $netmask] = explode('/', $cidr, 2);
-            $netmask = (int) $netmask;
+            $netmask = (int)$netmask;
             if ($netmask < 0 || $netmask > 32) {
                 return $this->checkedIps[$cacheKey] = false;
             }
         } else {
-            $baseIp  = $cidr;
+            $baseIp = $cidr;
             $netmask = 32;
         }
 
-        $baseLong  = ip2long($baseIp);
+        $baseLong = ip2long($baseIp);
         $checkLong = ip2long($check);
         if ($baseLong === false || $checkLong === false) {
             return $this->checkedIps[$cacheKey] = false;
@@ -200,6 +232,15 @@ final class EndUser
         return $this->checkedIps[$cacheKey] = $result;
     }
 
+    /**
+     * Checks if the given IP address is contained within a given IPv6 CIDR block.
+     *
+     * @param string $check The IP address to check.
+     * @param string $cidr The IPv6 CIDR block to check against, e.g. "2001:0db8:85a3:0000:0000:8a2e:0370:7334/64".
+     * @return bool True if the IP is contained within the given CIDR block, false otherwise.
+     *
+     * @throws RuntimeException If IPv6 is not supported in this environment.
+     */
     private function checkIp6(string $check, string $cidr): bool
     {
         $cacheKey = "6:$check-$cidr";
@@ -211,30 +252,30 @@ final class EndUser
             throw new RuntimeException('IPv6 not supported in this environment.');
         }
 
+        $baseIp = $cidr;
+        $netmask = 128;
+
         if (str_contains($cidr, '/')) {
             [$baseIp, $netmask] = explode('/', $cidr, 2);
             $netmask = (int)$netmask;
             if ($netmask < 1 || $netmask > 128) {
                 return $this->checkedIps[$cacheKey] = false;
             }
-        } else {
-            $baseIp  = $cidr;
-            $netmask = 128;
         }
 
         $checkPacked = @inet_pton($check);
-        $basePacked  = @inet_pton($baseIp);
+        $basePacked = @inet_pton($baseIp);
         if (!$checkPacked || !$basePacked) {
             return $this->checkedIps[$cacheKey] = false;
         }
 
         $checkWords = unpack('n*', $checkPacked);
-        $baseWords  = unpack('n*', $basePacked);
+        $baseWords = unpack('n*', $basePacked);
         if (!$checkWords || !$baseWords) {
             return $this->checkedIps[$cacheKey] = false;
         }
 
-        $intCount = (int) ceil($netmask / 16);
+        $intCount = (int)ceil($netmask / 16);
         for ($i = 1; $i <= $intCount; $i++) {
             $bits = $netmask - 16 * ($i - 1);
             $bits = ($bits > 16) ? 16 : $bits;
@@ -247,19 +288,32 @@ final class EndUser
         return $this->checkedIps[$cacheKey] = true;
     }
 
-    // ====================================
-    //   User-Agent Parsing
-    // ====================================
+    /**
+     * Retrieves the User-Agent string from the request headers.
+     *
+     * @return string|null The User-Agent string if present, or null if not found.
+     */
     public function userAgent(): ?string
     {
         $ua = $this->request->getHeaderLine('User-Agent');
         return $ua !== '' ? $ua : null;
     }
 
+
     /**
-     * Public method to parse user agent. By default:
-     * 1) tries parseUserAgentLibrary($ua),
-     * 2) if that fails, parseUserAgentBasic($ua).
+     * Parses the User-Agent string to extract information about the client.
+     *
+     * This method first attempts to parse the User-Agent string using an external library.
+     * If successful, it returns detailed information including the browser name, version,
+     * platform, and rendering engine. If the external library is not available, it falls
+     * back to using an internal basic parser.
+     *
+     * @return array An associative array containing:
+     *               - 'raw': The raw User-Agent string.
+     *               - 'browser': The detected browser name or 'Unknown'.
+     *               - 'version': The detected browser version or an empty string.
+     *               - 'platform': The detected platform name or 'Unknown'.
+     *               - 'engine': The detected rendering engine or 'Unknown'.
      */
     public function parseUserAgent(): array
     {
@@ -270,11 +324,11 @@ final class EndUser
         if ($info !== null) {
             // library succeeded
             return [
-                'raw'      => $ua,
-                'browser'  => $info['browser']  ?? 'Unknown',
-                'version'  => $info['version']  ?? '',
+                'raw' => $ua,
+                'browser' => $info['browser'] ?? 'Unknown',
+                'version' => $info['version'] ?? '',
                 'platform' => $info['platform'] ?? 'Unknown',
-                'engine'   => $info['engine']   ?? 'Unknown'
+                'engine' => $info['engine'] ?? 'Unknown',
             ];
         }
 
@@ -282,34 +336,46 @@ final class EndUser
         return $this->parseUserAgentBasic($ua);
     }
 
+
     /**
-     * Attempt to use browscap or any other installed library (like 'whichbrowser') if desired.
-     * If we detect browscap, we do get_browser().
-     * If that fails, return null.
+     * Attempts to parse the User-Agent string using an external library.
+     *
+     * This method uses the WhichBrowser library to analyze the given User-Agent string
+     * and extract detailed information including the browser name, version, platform,
+     * and rendering engine. If the library is not available, it returns null.
+     *
+     * @param string $ua The User-Agent string to be parsed.
+     * @return array|null An associative array containing 'raw', 'browser', 'version', 'platform', and 'engine'
+     *                    if the parsing is successful, or null if the library is not available.
      */
     protected function parseUserAgentLibrary(string $ua): ?array
     {
-        if (class_exists(Parser::class)) {
-            $result = new Parser($ua);
+        if (class_exists('\WhichBrowser\Parser')) {
+            $result = new \WhichBrowser\Parser($ua);
             return [
-                'raw'      => $ua,
-                'browser'  => $result->browser->name,
-                'version'  => $result->browser->version->value,
+                'raw' => $ua,
+                'browser' => $result->browser->name,
+                'version' => $result->browser->version->value,
                 'platform' => $result->os->name,
-                'engine'   => $result->engine->name
+                'engine' => $result->engine->name,
             ];
         }
         return null;
     }
 
+
     /**
-     * Minimal fallback using local UAParser
+     * A fallback parser in case no external library is available.
+     *
+     * It uses our own minimal User-Agent parser.
+     *
+     * @param string $ua The User-Agent string to parse
+     * @return array A flattened array with keys 'raw', 'browser', 'version', 'platform', 'engine'
      */
     protected function parseUserAgentBasic(string $ua): array
     {
         $parser = new UAParser($ua);
         $parsed = $parser->parse();
-        // We add 'raw' field for completeness
         return array_merge(['raw' => $ua], $parsed);
     }
 }
