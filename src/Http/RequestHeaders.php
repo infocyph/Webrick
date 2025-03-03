@@ -43,11 +43,11 @@ final class RequestHeaders
      * Optionally store extra fields like "PHP_AUTH_USER" if we want to emulate
      * the old logic.
      */
-    public function all(?string $key = null): mixed
+    public function all(): ?Collection
     {
         // If we've already built headers, just fetch the requested key.
         if ($this->headers !== null) {
-            return $key === null ? $this->headers->all() : $this->headers->get($key);
+            return $this->headers;
         }
 
         // Step 1: load server params from the PSR-7 request
@@ -59,11 +59,8 @@ final class RequestHeaders
         // Step 3: integrate possible auth fields (PHP_AUTH_USER, HTTP_AUTHORIZATION, etc.)
         $this->applyAuthorization($headerVar, $server);
 
-        // Step 4: create the final Collection
-        $this->headers = new Collection($headerVar);
-
-        // Step 5: fetch & return
-        return $key === null ? $this->headers->all() : $this->headers->get($key);
+        // Step 4: fetch & return
+        return $this->headers = new Collection($headerVar);
     }
 
     /**
@@ -162,7 +159,6 @@ final class RequestHeaders
      */
     private function applyBasic(string $authHeader, array &$headerVar): void
     {
-        // e.g. "Basic QWxhZGRpbjpvcGVuc2VzYW1l"
         $decoded = base64_decode(substr($authHeader, 6));
         if ($decoded !== false) {
             $exploded = explode(':', $decoded, 2);
@@ -202,65 +198,67 @@ final class RequestHeaders
      * Return a parsed version of the Accept headers (Accept, Accept-Charset, etc.).
      * Old code used parseAcceptHeader. We'll replicate that here in a simpler approach.
      */
-    public function accept(?string $key = null): mixed
+    public function accept(?string $key = null): ?Collection
     {
         if ($this->accept === null) {
-            $this->all(); // ensure $this->headers is built
             $parsed = [];
 
             foreach (['Accept', 'Accept-Charset', 'Accept-Encoding', 'Accept-Language'] as $acceptName) {
-                if ($this->headers->has($acceptName)) {
-                    $raw = (string) $this->headers->get($acceptName);
-                    $parsed[$acceptName] = $this->parseAcceptHeader($raw);
+                $rawLine = $this->request->getHeaderLine($acceptName);
+                if ($rawLine !== '') {
+                    $parsed[$acceptName] = $this->parseAcceptHeader($rawLine);
                 }
             }
             $this->accept = new Collection($parsed);
         }
 
         if ($key === null) {
-            return $this->accept->all();
+            return $this->accept;
         }
-        return $this->accept->get($key);
+        return isset($this->accept[$key]) ? new Collection($this->accept[$key]) : null;
     }
 
     /**
      * Parse content headers (Content-Type, Content-Length, etc.).
      */
-    public function content(?string $key = null): mixed
+    public function content(): Collection
     {
-        if ($this->content === null) {
-            $this->all(); // ensure $this->headers is built
-            $contentType = strtolower((string) ($this->headers->get('Content-Type') ?? ''));
-            // e.g. "application/json; charset=utf-8"
-            $parts   = explode(';', $contentType);
-            $type    = array_shift($parts); // e.g. "application/json"
-            $charset = null;
+        if ($this->content !== null) {
+            return $this->content;
+        }
 
-            // parse for "charset=..."
-            foreach ($parts as $p) {
-                $p = trim($p);
-                if (str_starts_with($p, 'charset=')) {
-                    $charset = substr($p, 8);
-                    break;
-                }
+        // 1) Get Content-Type header
+        $rawContentType = $this->request->getHeaderLine('Content-Type');
+        $lowerCT  = strtolower($rawContentType);
+        $parts    = explode(';', $lowerCT);
+        $type     = array_shift($parts) ?? null;
+        $charset  = null;
+
+        foreach ($parts as $p) {
+            $p = trim($p);
+            if (str_starts_with($p, 'charset=')) {
+                $charset = substr($p, 8);
+                break;
             }
-
-            $length = (int) ($this->headers->get('Content-Length') ?? 0);
-            $md5    = strtolower((string) ($this->headers->get('Content-Md5') ?? ''));
-
-            $this->content = new Collection([
-                'parts'   => $parts,
-                'type'    => $type === '' ? null : $type,
-                'charset' => $charset,
-                'length'  => $length,
-                'md5'     => $md5
-            ]);
         }
 
-        if ($key === null) {
-            return $this->content->all();
-        }
-        return $this->content->get($key);
+        // 2) Content-Length (as integer), defaulting to 0 if missing
+        $rawLength = $this->request->getHeaderLine('Content-Length');
+        $length    = is_numeric($rawLength) ? (int) $rawLength : 0;
+
+        // 3) Content-Md5
+        $rawMd5 = $this->request->getHeaderLine('Content-Md5');
+        $md5    = $rawMd5 !== '' ? strtolower($rawMd5) : '';
+
+        $this->content = new Collection([
+            'parts'   => $parts,
+            'type'    => $type ?: null,
+            'charset' => $charset,
+            'length'  => $length,
+            'md5'     => $md5
+        ]);
+
+        return $this->content;
     }
 
     /**
@@ -270,14 +268,13 @@ final class RequestHeaders
     public function dependency(?string $key = null): mixed
     {
         if ($this->dependency === null) {
-            $this->all(); // ensure $this->headers is built
+            $this->all();
             $asset = [
                 'if_match' => $this->splitComma($this->headers->get('If-Match') ?? ''),
                 'if_none_match' => $this->splitComma($this->headers->get('If-None-Match') ?? ''),
                 'if_modified_since' => $this->parseHttpDate($this->headers->get('If-Modified-Since')),
                 'if_unmodified_since' => $this->parseHttpDate($this->headers->get('If-Unmodified-Since')),
                 'range' => null,
-                // we can check "Prefer: safe" if we want
                 'prefer_safe' => (strtolower((string) $this->headers->get('Prefer')) === 'safe')
                     && ($this->request->getUri()->getScheme() === 'https'),
             ];
@@ -285,12 +282,11 @@ final class RequestHeaders
             // If we have "Range" header => parse "bytes=0-1023" or similar
             if ($this->headers->has('Range')) {
                 $rawRange = str_replace(' ', '', (string)$this->headers->get('Range'));
-                // e.g. "bytes=0-1024"
                 $parts = explode('=', $rawRange, 2);
                 if (count($parts) === 2) {
                     $asset['range'] = [
                         'unit' => $parts[0],
-                        'span' => explode(',', $parts[1]) // possibly multiple
+                        'span' => explode(',', $parts[1])
                     ];
                 }
             }
@@ -310,49 +306,36 @@ final class RequestHeaders
     // ---------------------------------------------------------
     private function parseAcceptHeader(string $content): array
     {
-        $items = explode(',', $content);
-        $parsed = [];
-
-        foreach ($items as $index => $part) {
-            $part = trim($part);
-            if ($part === '') {
+        $prepared = [];
+        $parts = explode(',', $content);
+        $count = count($parts);
+        foreach ($parts as $index => $part) {
+            if (empty($part)) {
                 continue;
             }
-            $sub = explode(';', $part);
-            $token = array_shift($sub);
-            $token = trim($token);
-
-            // default q=1
-            $q = 1.0;
-            foreach ($sub as $param) {
-                $param = trim($param);
-                if (str_starts_with($param, 'q=')) {
-                    $maybeQ = (float)substr($param, 2);
-                    if ($maybeQ > 0 && $maybeQ <= 1) {
-                        $q = $maybeQ;
-                    }
-                }
-            }
-            $parsed[] = [
-                'value' => $token,
-                'q'     => $q,
-                // we can store index so we can stable sort
-                '_index' => $index
+            $params = explode(';', $part);
+            $asset = trim(current($params));
+            $prepared[$index] = [
+                'sort' => $count - $index,
+                'accept' => $asset,
+                'wild' => $this->compareWildcard(explode('/', $asset)),
+                'q' => 1.0
             ];
-        }
-
-        // sort desc by q, then asc by index
-        usort($parsed, function ($a, $b) {
-            // higher q => earlier
-            if ($b['q'] <=> $a['q']) {
-                return $b['q'] <=> $a['q'];
+            while (next($params)) {
+                [$name, $value] = explode('=', current($params));
+                $prepared[$index][trim($name)] = trim($value);
             }
-            // tie => earlier index
-            return $a['_index'] <=> $b['_index'];
-        });
+        }
+        usort(
+            $prepared,
+            fn ($a, $b) => [$b['q'], $b['wild'], $b['sort']] <=> [$a['q'], $a['wild'], $a['sort']]
+        );
+        return array_column($prepared, 'accept');
+    }
 
-        // we can just return an array of values or the full structure
-        return array_map(fn ($row) => $row['value'], $parsed);
+    private function compareWildcard($types): bool|int
+    {
+        return count($types) === 1 ? 0 : ($types[0] === '*') - ($types[1] === '*');
     }
 
     /**
@@ -363,7 +346,7 @@ final class RequestHeaders
         if (trim($val) === '') {
             return [];
         }
-        return preg_split('/\s*,\s*/', $val);
+        return preg_split('/\s*,\s*/', $val, 0, PREG_SPLIT_NO_EMPTY);
     }
 
     /**
@@ -374,8 +357,7 @@ final class RequestHeaders
         if (empty($val)) {
             return null;
         }
-        $ts = strtotime($val);
-        return ($ts === false) ? null : $ts;
+        return strtotime($val) ?: null;
     }
 
 }
