@@ -392,7 +392,7 @@ class Uri implements UriInterface
      *
      * @return static A new instance with the specified user information.
      */
-    public function withUserInfo(string $user, string $password = null): UriInterface
+    public function withUserInfo(string $user, ?string $password = null): UriInterface
     {
         $info = $user;
         if ($password) {

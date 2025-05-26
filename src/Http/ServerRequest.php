@@ -13,71 +13,139 @@ use Psr\Http\Message\UriInterface;
 use RuntimeException;
 
 /**
- * A PSR-7 ServerRequest *plus* "CommonAsset"-like helpers,
- * plus method override & AJAX detection methods.
+ * PSR-7 ServerRequest with Webrick helpers:
+ *  • createFromGlobals()
+ *  • method-override / AJAX / JSON helpers
+ *  • magic __get() (EGPCS resolution order)
+ *  • RequestHeaders integration
  */
 class ServerRequest implements ServerRequestInterface
 {
-    protected string $method;
+    /* -----------------------------------------------------------------
+       Static factory
+       ----------------------------------------------------------------- */
+
+    public static function createFromGlobals(): static
+    {
+        $srv   = $_SERVER;
+        $uri   = Uri::fromServerParams($srv);
+        $meth  = $srv['REQUEST_METHOD'] ?? 'GET';
+        $body  = new Stream(fopen('php://input', 'rb'));
+        $proto = str_starts_with(($srv['SERVER_PROTOCOL'] ?? ''), 'HTTP/')
+            ? substr($srv['SERVER_PROTOCOL'], 5)
+            : '1.1';
+
+        /* 1. bootstrap with empty headers; we'll inject later */
+        $req = new static(
+            $meth,
+            $uri,
+            $srv,
+            [],              // headers
+            $body,
+            $proto,
+            $_POST,          // parsedBody for normal POST
+            $_FILES
+        );
+
+        /* 2. gather env headers through RequestHeaders */
+        $hdrBag = new RequestHeaders($req)->all()->toArray();
+        foreach ($hdrBag as $name => $val) {
+            $req = $req->withHeader($name, is_array($val) ? $val : [(string)$val]);
+        }
+
+        /* 3. parse urlencoded body for PUT/PATCH/DELETE */
+        if (
+            \in_array($req->method, ['PUT', 'PATCH', 'DELETE'], true) &&
+            str_contains(strtolower($req->getHeaderLine('Content-Type')), 'application/x-www-form-urlencoded')
+        ) {
+            parse_str((string)$body, $form);
+            $req = $req->withParsedBody($form);
+        }
+
+        /* 4. populate query & cookie params */
+        parse_str($uri->getQuery(), $q);
+        $req = $req
+            ->withQueryParams($q)
+            ->withCookieParams($_COOKIE);
+
+        return $req;
+    }
+
+    /* -----------------------------------------------------------------
+       Internal state
+       ----------------------------------------------------------------- */
+
+    protected string       $method;
     protected UriInterface $uri;
-    protected array $cookieParams = [];
-    protected array $queryParams  = [];
-    protected array $attributes = [];
-    protected array $headers = [];
+    protected array        $cookieParams = [];
+    protected array        $queryParams  = [];
+    protected array        $attributes   = [];
+    protected array        $headers      = [];
 
-    // Additional convenience
-    private ?Collection $queryCollection  = null;
-    private ?Collection $postCollection   = null;
-    private ?Collection $cookieCollection = null;
-    private ?Collection $serverCollection = null;
-    private ?Collection $jsonCollection   = null;
-    private ?Collection $filesCollection  = null;
-    private ?string $rawBodyCache = null;
+    /* convenience caches */
+    private ?Collection $queryCol  = null;
+    private ?Collection $postCol   = null;
+    private ?Collection $cookieCol = null;
+    private ?Collection $serverCol = null;
+    private ?Collection $jsonCol   = null;
+    private ?Collection $filesCol  = null;
+    private ?RequestHeaders $hdrHelper = null;
+    private ?string $rawBodyCache  = null;
+    private ?string $effectiveMethodCache = null;
+    private array $varMap = [];
+    private bool $checkEnv = false;
 
-    // The list of recognized HTTP methods (for override checks)
+    /* recognised HTTP verbs */
     private static array $validMethods = [
-        'GET', 'POST', 'PUT', 'DELETE', 'HEAD', 'OPTIONS', 'PATCH'
+        'GET','POST','PUT','DELETE','PATCH','HEAD','OPTIONS','CONNECT','TRACE'
     ];
 
-    /**
-     * @param string $method
-     * @param UriInterface|string $uri
-     * @param array $serverParams
-     * @param array $headers
-     * @param StreamInterface $body
-     * @param string $protocolVersion
-     * @param mixed|null $parsedBody
-     * @param array $uploadedFiles
-     * @param string|null $requestTarget
-     */
-    public function __construct(
-        string $method,
-        UriInterface|string $uri,
-        protected array $serverParams = [],
-        array $headers = [],
-        protected StreamInterface $body = new Stream(''),
-        protected string $protocolVersion = '1.1',
-        protected mixed $parsedBody = null,
-        protected array $uploadedFiles = [],
-        protected ?string $requestTarget = null
-    ) {
-        $this->method          = strtoupper($method);
-        $this->uri             = ($uri instanceof UriInterface) ? $uri : new Uri($uri);
-        $this->headers         = $this->normalizeHeaders($headers);
+    /* -----------------------------------------------------------------
+       Constructor (unchanged except for Host optimisation)
+       ----------------------------------------------------------------- */
 
-        // If we have a host in the URI but no Host header, set it.
+    public function __construct(
+        string                   $method,
+        UriInterface|string      $uri,
+        protected array          $serverParams = [],
+        array                    $headers = [],
+        protected StreamInterface $body = new Stream(''),
+        protected string         $protocolVersion = '1.1',
+        protected mixed          $parsedBody = null,
+        protected array          $uploadedFiles = [],
+        protected ?string        $requestTarget = null
+    ) {
+        $this->method  = strtoupper($method);
+        $this->uri     = $uri instanceof UriInterface ? $uri : new Uri($uri);
+        $this->headers = $this->normalizeHeaders($headers);
+
         if (!$this->hasHeader('Host') && $this->uri->getHost() !== '') {
-            $host = $this->uri->getHost();
+            $h = $this->uri->getHost();
             if ($this->uri->getPort()) {
-                $host .= ':' . $this->uri->getPort();
+                $h .= ':' . $this->uri->getPort();
             }
-            $this->headers['Host'] = [$host];
+            $this->headers['Host'] = [$h];
         }
     }
 
-    // ---------------------------------------------------
-    // PSR-7: MessageInterface
-    // ---------------------------------------------------
+    private function getVariableOrder(){
+        $vo = strtoupper(preg_replace('/[^EGPCS]/', '', ini_get('variables_order') ?: 'EGPCS'));
+        $ro = strtoupper(preg_replace('/[^GPC]/',   '', ini_get('request_order')   ?: ''));
+        $order = str_split($vo);
+        if ($ro !== '') {
+            $order = array_values(array_diff($order, ['G','P','C']));
+            $insertPos = array_search('E', $order, true);
+            $insertPos = $insertPos === false ? 0 : $insertPos + 1;
+            foreach (array_reverse(str_split($ro)) as $ch) {
+                array_splice($order, $insertPos, 0, $ch);
+            }
+        }
+    }
+
+    /* -----------------------------------------------------------------
+       MessageInterface
+       ----------------------------------------------------------------- */
+
     public function getProtocolVersion(): string
     {
         return $this->protocolVersion;
@@ -85,9 +153,9 @@ class ServerRequest implements ServerRequestInterface
 
     public function withProtocolVersion($version): self
     {
-        $new = clone $this;
-        $new->protocolVersion = $version;
-        return $new;
+        $clone = clone $this;
+        $clone->protocolVersion = $version;
+        return $clone;
     }
 
     public function getHeaders(): array
@@ -97,14 +165,12 @@ class ServerRequest implements ServerRequestInterface
 
     public function hasHeader($name): bool
     {
-        $name = $this->normalizeHeaderName($name);
-        return isset($this->headers[$name]);
+        return isset($this->headers[$this->normalizeHeaderName($name)]);
     }
 
     public function getHeader($name): array
     {
-        $name = $this->normalizeHeaderName($name);
-        return $this->headers[$name] ?? [];
+        return $this->headers[$this->normalizeHeaderName($name)] ?? [];
     }
 
     public function getHeaderLine($name): string
@@ -114,35 +180,33 @@ class ServerRequest implements ServerRequestInterface
 
     public function withHeader($name, $value): self
     {
-        $new = clone $this;
-        $normalized = $this->normalizeHeaderName($name);
-        $new->headers[$normalized] = is_array($value) ? array_values($value) : [(string)$value];
-        return $new;
+        $norm = $this->normalizeHeaderName($name);
+        $val  = is_array($value) ? array_values($value) : [(string)$value];
+        if (($this->headers[$norm] ?? null) === $val) {
+            return $this;
+        }   // no-op
+        $clone              = clone $this;
+        $clone->headers[$norm] = $val;
+        return $clone;
     }
 
     public function withAddedHeader($name, $value): self
     {
-        $new = clone $this;
-        $normalized = $this->normalizeHeaderName($name);
-        if (!isset($new->headers[$normalized])) {
-            $new->headers[$normalized] = [];
+        $norm = $this->normalizeHeaderName($name);
+        $val  = is_array($value) ? $value : [(string)$value];
+        if (!$this->hasHeader($norm)) {
+            return $this->withHeader($norm, $val);
         }
-        if (is_array($value)) {
-            foreach ($value as $val) {
-                $new->headers[$normalized][] = $val;
-            }
-        } else {
-            $new->headers[$normalized][] = $value;
-        }
-        return $new;
+        $clone = clone $this;
+        $clone->headers[$norm] = array_merge($this->headers[$norm], $val);
+        return $clone;
     }
 
     public function withoutHeader($name): self
     {
-        $new = clone $this;
-        $normalized = $this->normalizeHeaderName($name);
-        unset($new->headers[$normalized]);
-        return $new;
+        $clone = clone $this;
+        unset($clone->headers[$this->normalizeHeaderName($name)]);
+        return $clone;
     }
 
     public function getBody(): StreamInterface
@@ -152,66 +216,49 @@ class ServerRequest implements ServerRequestInterface
 
     public function withBody(StreamInterface $body): self
     {
-        $new = clone $this;
-        $new->body = $body;
-        $new->rawBodyCache = null; // reset
-        return $new;
+        $clone = clone $this;
+        $clone->body = $body;
+        $clone->rawBodyCache = null;
+        return $clone;
     }
 
-    private function normalizeHeaderName(string $name): string
-    {
-        return ucwords(strtolower($name), '-');
-    }
+    /* -----------------------------------------------------------------
+       RequestInterface
+       ----------------------------------------------------------------- */
 
-    private function normalizeHeaders(array $headers): array
-    {
-        $result = [];
-        foreach ($headers as $name => $val) {
-            $normName = $this->normalizeHeaderName($name);
-            $result[$normName] = is_array($val) ? array_values($val) : [(string)$val];
-        }
-        return $result;
-    }
-
-    // ---------------------------------------------------
-    // PSR-7: RequestInterface
-    // ---------------------------------------------------
     public function getRequestTarget(): string
     {
-        if ($this->requestTarget !== null) {
+        if ($this->requestTarget) {
             return $this->requestTarget;
         }
-        $target = $this->uri->getPath();
-        if ($target === '') {
-            $target = '/';
+        $t = $this->uri->getPath() ?: '/';
+        if ($q = $this->uri->getQuery()) {
+            $t .= '?' . $q;
         }
-        if ($this->uri->getQuery() !== '') {
-            $target .= '?' . $this->uri->getQuery();
-        }
-        return $target;
+        return $t;
     }
 
-    public function withRequestTarget($requestTarget): self
+    public function withRequestTarget($rt): self
     {
-        if (preg_match('#\s#', $requestTarget)) {
-            throw new InvalidArgumentException('Invalid request target (contains whitespace).');
+        if (preg_match('#\s#', $rt)) {
+            throw new InvalidArgumentException('Whitespace in requestTarget');
         }
-        $new = clone $this;
-        $new->requestTarget = $requestTarget;
-        return $new;
+        $c = clone $this;
+        $c->requestTarget = $rt;
+        return $c;
     }
 
     public function getMethod(): string
     {
-        // The original method
         return $this->method;
     }
 
-    public function withMethod($method): self
+    public function withMethod($m): self
     {
-        $new = clone $this;
-        $new->method = strtoupper($method);
-        return $new;
+        $c = clone $this;
+        $c->method = strtoupper($m);
+        $c->effectiveMethodCache = null;
+        return $c;
     }
 
     public function getUri(): UriInterface
@@ -221,39 +268,25 @@ class ServerRequest implements ServerRequestInterface
 
     public function withUri(UriInterface $uri, $preserveHost = false): self
     {
-        $new = clone $this;
-        $new->uri = $uri;
-
+        $c = clone $this;
+        $c->uri = $uri;
         if (!$preserveHost) {
-            if ($uri->getHost() !== '') {
-                $host = $uri->getHost();
-                if ($uri->getPort()) {
-                    $host .= ':' . $uri->getPort();
-                }
-                $new->headers['Host'] = [$host];
-            } else {
-                unset($new->headers['Host']);
-            }
-        } elseif ($uri->getHost() !== '' && !$new->hasHeader('Host')) {
-            $host = $uri->getHost();
-            if ($uri->getPort()) {
-                $host .= ':' . $uri->getPort();
-            }
-            $new->headers['Host'] = [$host];
+            $c->headers['Host'] = $uri->getHost() ? [$uri->getHost() . ($uri->getPort() ? ':' . $uri->getPort() : '')] : [];
+        } elseif ($uri->getHost() && !$c->hasHeader('Host')) {
+            $c->headers['Host'] = [$uri->getHost()];
         }
-
-        return $new;
+        return $c;
     }
 
-    // ---------------------------------------------------
-    // PSR-7: ServerRequestInterface
-    // ---------------------------------------------------
+    /* -----------------------------------------------------------------
+       ServerRequestInterface – simple setters
+       ----------------------------------------------------------------- */
+
     public function getServerParams(): array
     {
         return $this->serverParams;
     }
 
-    // (We store our cookie params separately from $serverParams)
     public function getCookieParams(): array
     {
         return $this->cookieParams;
@@ -261,10 +294,10 @@ class ServerRequest implements ServerRequestInterface
 
     public function withCookieParams(array $cookies): self
     {
-        $new = clone $this;
-        $new->cookieParams = $cookies;
-        $new->cookieCollection = null;
-        return $new;
+        $x = clone $this;
+        $x->cookieParams = $cookies;
+        $x->cookieCol = null;
+        return $x;
     }
 
     public function getQueryParams(): array
@@ -272,12 +305,12 @@ class ServerRequest implements ServerRequestInterface
         return $this->queryParams;
     }
 
-    public function withQueryParams(array $query): self
+    public function withQueryParams(array $q): self
     {
-        $new = clone $this;
-        $new->queryParams = $query;
-        $new->queryCollection = null;
-        return $new;
+        $x = clone $this;
+        $x->queryParams = $q;
+        $x->queryCol = null;
+        return $x;
     }
 
     public function getUploadedFiles(): array
@@ -285,18 +318,14 @@ class ServerRequest implements ServerRequestInterface
         return $this->uploadedFiles;
     }
 
-    public function withUploadedFiles(array $uploadedFiles): self
+    public function withUploadedFiles(array $u): self
     {
-        array_walk_recursive($uploadedFiles, function ($item) {
-            if (!$item instanceof UploadedFileInterface) {
-                throw new InvalidArgumentException('Invalid uploaded file.');
-            }
-        });
-
-        $new = clone $this;
-        $new->uploadedFiles = $uploadedFiles;
-        $new->filesCollection = null;
-        return $new;
+        array_walk_recursive($u, fn ($i) => $i instanceof UploadedFileInterface
+            ?: throw new InvalidArgumentException('Invalid uploaded file'));
+        $x = clone $this;
+        $x->uploadedFiles = $u;
+        $x->filesCol = null;
+        return $x;
     }
 
     public function getParsedBody(): mixed
@@ -304,13 +333,16 @@ class ServerRequest implements ServerRequestInterface
         return $this->parsedBody;
     }
 
-    public function withParsedBody($data): self
+    public function withParsedBody($d): self
     {
-        $new = clone $this;
-        $new->parsedBody = $data;
-        $new->postCollection = null;
-        $new->jsonCollection = null;
-        return $new;
+        /* PSR-7 mandate */
+        if ($d !== null && !\is_array($d) && !\is_object($d)) {
+            throw new InvalidArgumentException('Parsed body must be array|object|null');
+        }
+        $x = clone $this;
+        $x->parsedBody = $d;
+        $x->postCol = $x->jsonCol = null;
+        return $x;
     }
 
     public function getAttributes(): array
@@ -318,166 +350,179 @@ class ServerRequest implements ServerRequestInterface
         return $this->attributes;
     }
 
-    public function getAttribute($name, $default = null): mixed
+    public function getAttribute($n, $def = null): mixed
     {
-        return $this->attributes[$name] ?? $default;
+        return $this->attributes[$n] ?? $def;
     }
 
-    public function withAttribute($name, $value): self
+    public function withAttribute($n, $v): self
     {
-        $new = clone $this;
-        $new->attributes[$name] = $value;
-        return $new;
+        $x = clone $this;
+        $x->attributes[$n] = $v;
+        return $x;
     }
 
-    public function withoutAttribute($name): self
+    public function withoutAttribute($n): self
     {
-        $new = clone $this;
-        unset($new->attributes[$name]);
-        return $new;
+        $x = clone $this;
+        unset($x->attributes[$n]);
+        return $x;
     }
 
-    // ---------------------------------------------------
-    // Additional PSR-7 style checks
-    // ---------------------------------------------------
+    /* -----------------------------------------------------------------
+       Helpers – effective method, AJAX, headers()
+       ----------------------------------------------------------------- */
 
-    /**
-     * If the request's method is HEAD, we might treat it as GET internally.
-     * If it's POST, we might check for X-HTTP-Method-Override or _method in body.
-     * Returns the "converted" method or the original if no override applies.
-     */
     public function getEffectiveMethod(): string
     {
-        $original = $this->method;
-        // validate
-        if (!in_array($original, self::$validMethods)) {
-            // If it's something unusual, let's not forcibly error, just return it unmodified
-            // or you can throw an exception if you want strictness
-            return $original;
+        if ($this->effectiveMethodCache !== null) {
+            return $this->effectiveMethodCache;
         }
 
-        // HEAD => treat as GET internally
-        $converted = match ($original) {
-            'HEAD' => 'GET',
-            'POST' => $this->checkMethodOverride(),
-            default => $original
+        $orig = strtoupper($this->method);
+        if (!\in_array($orig, self::$validMethods, true)) {
+            return $this->effectiveMethodCache = $orig;
+        }
+
+        return $this->effectiveMethodCache = match ($orig) {
+            'HEAD'  => 'GET',
+            'POST'  => $this->methodOverride() ?? 'POST',
+            default => $orig
         };
-
-        return strtoupper($converted);
     }
 
-    /**
-     * Checking for method override if original is POST
-     */
-    private function checkMethodOverride(): string
+    private function methodOverride(): ?string
     {
-        // We can check headers (X-HTTP-Method-Override or HTTP-Method-Override)
-        $overrideHeader = $this->getHeaderLine('X-HTTP-Method-Override')
+        $hdr = $this->getHeaderLine('X-HTTP-Method-Override')
             ?: $this->getHeaderLine('HTTP-Method-Override');
+        $cand = strtoupper($hdr ?: (string)$this->post('_method'));
 
-        if (!empty($overrideHeader)) {
-            $candidate = strtoupper($overrideHeader);
-            if (in_array($candidate, self::$validMethods)) {
-                return $candidate;
-            }
-        }
-
-        // Or we can check for _method in post
-        $candidate = strtoupper((string) $this->post('_method'));
-        if ($candidate && in_array($candidate, self::$validMethods)) {
-            return $candidate;
-        }
-
-        // otherwise it's still POST
-        return 'POST';
+        return \in_array($cand, self::$validMethods, true) ? $cand : null;
     }
 
-    /**
-     * Often frameworks define "isAjax" to check if X-Requested-With == XMLHttpRequest
-     */
     public function isAjax(): bool
     {
-        return $this->server('HTTP_X_REQUESTED_WITH') === 'XMLHttpRequest';
+        $hdr = $this->server('HTTP_X_REQUESTED_WITH');
+        return $hdr !== null && strcasecmp($hdr, 'xmlhttprequest') === 0;
     }
 
-    // ---------------------------------------------------
-    // Additional convenience methods
-    // ---------------------------------------------------
+    /* expose RequestHeaders helper */
+    public function headers(): RequestHeaders
+    {
+        return $this->hdrHelper ??= new RequestHeaders($this);
+    }
+
+    /* -----------------------------------------------------------------
+       Convenience data accessors
+       ----------------------------------------------------------------- */
+
     public function raw(): string
     {
-        if ($this->rawBodyCache === null) {
-            $this->rawBodyCache = (string) $this->body;
-        }
-        return $this->rawBodyCache;
+        return $this->rawBodyCache ??= (string)$this->body;
     }
 
-    public function server(?string $key = null): mixed
+    public function server(?string $k = null): mixed
     {
-        if ($this->serverCollection === null) {
-            $this->serverCollection = new Collection($this->serverParams);
-        }
-        return $this->fetch($this->serverCollection, $key);
+        return $this->fetch($this->serverCol ??= new Collection($this->serverParams), $k);
     }
 
-    public function cookie(?string $key = null): mixed
+    public function cookie(?string $k = null): mixed
     {
-        if ($this->cookieCollection === null) {
-            $this->cookieCollection = new Collection($this->cookieParams);
-        }
-        return $this->fetch($this->cookieCollection, $key);
+        return $this->fetch($this->cookieCol ??= new Collection($this->cookieParams), $k);
     }
 
-    public function query(?string $key = null): mixed
+    public function query(?string $k = null): mixed
     {
-        if ($this->queryCollection === null) {
-            $this->queryCollection = new Collection($this->queryParams);
-        }
-        return $this->fetch($this->queryCollection, $key);
+        return $this->fetch($this->queryCol ??= new Collection($this->queryParams), $k);
     }
 
-    public function post(?string $key = null): mixed
+    public function post(?string $k = null): mixed
     {
-        if ($this->postCollection === null) {
-            $parsed = $this->parsedBody;
-            $arr = is_array($parsed) ? $parsed : [];
-            $this->postCollection = new Collection($arr);
+        if (!$this->postCol) {
+            $arr = \is_array($this->parsedBody) ? $this->parsedBody : [];
+            $this->postCol = new Collection($arr);
         }
-        return $this->fetch($this->postCollection, $key);
+        return $this->fetch($this->postCol, $k);
     }
 
-    public function parsedJson(?string $key = null): mixed
+    public function parsedJson(?string $k = null): mixed
     {
-        if ($this->jsonCollection === null) {
-            $contentType = $this->getHeaderLine('Content-Type');
-            if (str_contains($contentType, 'application/json')) {
-                $decoded = json_decode($this->raw(), true);
-                if ($decoded === null && json_last_error() !== JSON_ERROR_NONE) {
-                    throw new RuntimeException('Invalid JSON data in request body');
+        if (!$this->jsonCol) {
+            $ct = $this->getHeaderLine('Content-Type');
+            if (preg_match('#application/(.+\+)?json#i', $ct)) {
+                $data = json_decode($this->raw(), true);
+                if ($data === null && json_last_error() !== JSON_ERROR_NONE) {
+                    throw new RuntimeException('Invalid JSON body');
                 }
-                $this->jsonCollection = new Collection(is_array($decoded) ? $decoded : []);
+                $this->jsonCol = new Collection((array)$data);
             } else {
-                $this->jsonCollection = new Collection([]);
+                $this->jsonCol = new Collection([]);
             }
         }
-        if ($this->jsonCollection->isEmpty()) {
-            return $this->post($key);
-        }
-        return $this->fetch($this->jsonCollection, $key);
+        return $this->jsonCol->isEmpty() ? $this->post($k) : $this->fetch($this->jsonCol, $k);
     }
 
-    public function file(?string $key = null): mixed
+    public function file(?string $k = null): mixed
     {
-        if ($this->filesCollection === null) {
-            $this->filesCollection = new Collection($this->uploadedFiles);
-        }
-        return $this->fetch($this->filesCollection, $key);
+        return $this->fetch($this->filesCol ??= new Collection($this->uploadedFiles), $k);
     }
 
-    private function fetch(Collection $collection, ?string $key): mixed
+    private function fetch(Collection $c, ?string $k): mixed
     {
-        if ($key === null) {
-            return $collection;
+        return $k === null ? $c : ($c->$k ?? null);
+    }
+
+    /* -----------------------------------------------------------------
+       Magic EGPCS getter
+       ----------------------------------------------------------------- */
+
+    public function __get(string $key): mixed
+    {
+        // E (env) – opt-in: getenv() is slow; skip unless needed
+        if (($v = getenv($key)) !== false) {
+            return $v;
         }
-        return $collection->$key;
+        if (($v = $this->query($key))   !== null) {
+            return $v;
+        } // G
+        if (($v = $this->post($key))    !== null) {
+            return $v;
+        } // P
+        if (($v = $this->cookie($key))  !== null) {
+            return $v;
+        } // C
+        return $this->server($key);                                     // S (may be null)
+    }
+
+    public function __get(string $key): mixed
+    {
+        if (array_key_exists($key, $this->varMap)) {
+            return $this->varMap[$key];
+        }
+        if ($this->checkEnv) {
+            $env = getenv($key);
+            if ($env !== false) {
+                return $this->varMap[$key] = $env;
+            }
+        }
+        return null;
+    }
+
+    /* -----------------------------------------------------------------
+       Internal helpers
+       ----------------------------------------------------------------- */
+
+    private function normalizeHeaderName(string $n): string
+    {
+        return ucwords(strtolower($n), '-');
+    }
+
+    private function normalizeHeaders(array $h): array
+    {
+        $r = [];
+        foreach ($h as $n => $v) {
+            $r[$this->normalizeHeaderName($n)] = \is_array($v) ? array_values($v) : [(string)$v];
+        }
+        return $r;
     }
 }
