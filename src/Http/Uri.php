@@ -61,7 +61,7 @@ class Uri implements UriInterface
      */
     public static function fromServerParams(array $server): self
     {
-        $scheme     = self::detectScheme($server);
+        $scheme     = self::detectScheme($server). '://';
         [$host, $port] = self::detectHostPort($server);
         $requestUri = self::detectRequestUri($server);
         $fullUrl    = self::buildFullUrl($scheme, $host, $port, $requestUri);
@@ -89,19 +89,15 @@ class Uri implements UriInterface
      */
     private static function detectScheme(array $server): string
     {
-        $isHttps = false;
-
-        if (
-            (!empty($server['HTTPS']) && strtolower((string) $server['HTTPS']) === 'on')
+        $https = !empty($server['HTTPS']) && strtolower((string)$server['HTTPS']) === 'on'
             || (!empty($server['REQUEST_SCHEME']) && $server['REQUEST_SCHEME'] === 'https')
-            || (!empty($server['HTTP_X_FORWARDED_PROTO']) && strtolower((string) $server['HTTP_X_FORWARDED_PROTO']) === 'https')
-            || (!empty($server['HTTP_FRONT_END_HTTPS']) && strtolower((string) $server['HTTP_FRONT_END_HTTPS']) === 'on')
-            || (!empty($server['SERVER_PORT']) && (int)$server['SERVER_PORT'] === 443)
-        ) {
-            $isHttps = true;
-        }
+            || (!empty($server['HTTP_X_FORWARDED_PROTO']) &&
+                strtolower((string)$server['HTTP_X_FORWARDED_PROTO']) === 'https')
+            || (!empty($server['HTTP_FRONT_END_HTTPS']) &&
+                strtolower((string)$server['HTTP_FRONT_END_HTTPS']) === 'on')
+            || (!empty($server['SERVER_PORT']) && (int)$server['SERVER_PORT'] === 443);
 
-        return $isHttps ? 'https://' : 'http://';
+        return $https ? 'https' : 'http';
     }
 
 
@@ -463,8 +459,9 @@ class Uri implements UriInterface
      */
     public function withPath(string $path): UriInterface
     {
-        $new = clone $this;
-        $new->path = $path;
+        $new        = clone $this;
+        $encoded    = rawurlencode($path);
+        $new->path  = '/' . ltrim($encoded, '/');
         return $new;
     }
 

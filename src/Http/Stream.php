@@ -41,16 +41,21 @@ class Stream implements StreamInterface
 
     public function __toString(): string
     {
-        try {
-            if (!$this->resource) {
-                return '';
-            }
-            $this->rewind();
-
-            return (string)stream_get_contents($this->resource);
-        } catch (\Throwable) {
+        if (!$this->resource) {
             return '';
         }
+
+        // cache current position, read, then restore
+        $pos = $this->seekable ? ftell($this->resource) : null;
+        $this->seekable && rewind($this->resource);
+
+        $data = stream_get_contents($this->resource) ?: '';
+
+        if ($this->seekable && $pos !== false && $pos !== null) {
+            fseek($this->resource, $pos);
+        }
+
+        return $data;
     }
 
     public function close(): void
@@ -63,8 +68,11 @@ class Stream implements StreamInterface
 
     public function detach()
     {
-        $res = $this->resource;
+        $res            = $this->resource;
         $this->resource = null;
+
+        // flag no-longer usable
+        $this->readable = $this->writable = $this->seekable = false;
 
         return $res;
     }
