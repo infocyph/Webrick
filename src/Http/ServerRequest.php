@@ -72,6 +72,7 @@ class ServerRequest implements ServerRequestInterface
     private ?Collection $cookieCol = null;
     private ?Collection $serverCol = null;
     private ?Collection $jsonCol   = null;
+    private ?Collection $xmlCol   = null;
     private ?Collection $filesCol  = null;
     private ?RequestHeaders $hdrHelper = null;
     private ?string $rawBodyCache  = null;
@@ -231,7 +232,7 @@ class ServerRequest implements ServerRequestInterface
         $c = clone $this;
         $c->body         = $body;
         $c->rawBodyCache = null;
-        $c->jsonCol      = null;   // reset JSON cache
+        $c->jsonCol      = $c->xmlCol = null;   // reset both parsers
         return $c;
     }
 
@@ -400,10 +401,11 @@ class ServerRequest implements ServerRequestInterface
 
     private function methodOverride(): ?string
     {
-        $hdr = $this->getHeaderLine('X-HTTP-Method-Override')
+        $hdr  = $this->getHeaderLine('X-HTTP-Method-Override')
             ?: $this->getHeaderLine('HTTP-Method-Override');
-        $caned = strtoupper($hdr ?: (string) $this->post('_method'));
-        return \in_array($caned, self::$validMethods, true) ? $caned : null;
+        $cand = strtoupper($hdr ?: (string) $this->post('_method'));
+
+        return \in_array($cand, self::$validMethods, true) ? $cand : null;
     }
 
     public function isAjax(): bool
@@ -463,6 +465,23 @@ class ServerRequest implements ServerRequestInterface
         }
         return $this->jsonCol->isEmpty() ? $this->post($k) : $this->fetch($this->jsonCol, $k);
     }
+
+    /* place near parsedJson() */
+    public function parsedXml(?string $key = null): mixed
+    {
+        if (!isset($this->xmlCol)) {
+            $ct = $this->getHeaderLine('Content-Type');
+            if (preg_match('#(application|text)/xml#i', $ct)) {
+                $xml = @simplexml_load_string($this->raw(), 'SimpleXMLElement', LIBXML_NOERROR);
+                $arr = $xml ? json_decode(json_encode($xml), true) : [];
+                $this->xmlCol = new Collection((array) $arr);
+            } else {
+                $this->xmlCol = new Collection([]);
+            }
+        }
+        return $this->xmlCol->isEmpty() ? $this->post($key) : $this->fetch($this->xmlCol, $key);
+    }
+
 
     public function file(?string $k = null): mixed
     {
