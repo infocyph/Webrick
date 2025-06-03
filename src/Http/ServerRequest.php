@@ -13,17 +13,15 @@ use Psr\Http\Message\UriInterface;
 use RuntimeException;
 
 /**
- * PSR-7 ServerRequest with Webrick helpers:
+ * PSR-7 ServerRequest + Webrick helpers
  *  • createFromGlobals()
  *  • method-override / AJAX / JSON helpers
- *  • magic __get() (EGPCS resolution order)
+ *  • magic __get() / __isset() honouring variables_order + request_order
  *  • RequestHeaders integration
  */
 class ServerRequest implements ServerRequestInterface
 {
-    /* -----------------------------------------------------------------
-       Static factory
-       ----------------------------------------------------------------- */
+    /* ----------  static factory  ---------------------------------- */
 
     public static function createFromGlobals(): static
     {
@@ -35,45 +33,31 @@ class ServerRequest implements ServerRequestInterface
             ? substr($srv['SERVER_PROTOCOL'], 5)
             : '1.1';
 
-        /* 1. bootstrap with empty headers; we'll inject later */
+        /* bootstrap w/ empty headers */
         $req = new static(
-            $meth,
-            $uri,
-            $srv,
-            [],              // headers
-            $body,
-            $proto,
-            $_POST,          // parsedBody for normal POST
-            $_FILES
+            $meth, $uri, $srv, [], $body, $proto, $_POST, $_FILES
         );
 
-        /* 2. gather env headers through RequestHeaders */
-        $hdrBag = new RequestHeaders($req)->all()->toArray();
-        foreach ($hdrBag as $name => $val) {
-            $req = $req->withHeader($name, is_array($val) ? $val : [(string)$val]);
+        /* populate headers via RequestHeaders */
+        foreach ((new RequestHeaders($req))->all()->toArray() as $name => $val) {
+            $req = $req->withHeader($name, is_array($val) ? $val : [(string) $val]);
         }
 
-        /* 3. parse urlencoded body for PUT/PATCH/DELETE */
+        /* parse url-encoded body for PUT/PATCH/DELETE */
         if (
             \in_array($req->method, ['PUT', 'PATCH', 'DELETE'], true) &&
             str_contains(strtolower($req->getHeaderLine('Content-Type')), 'application/x-www-form-urlencoded')
         ) {
-            parse_str((string)$body, $form);
+            parse_str((string) $body, $form);
             $req = $req->withParsedBody($form);
         }
 
-        /* 4. populate query & cookie params */
+        /* query & cookie params */
         parse_str($uri->getQuery(), $q);
-        $req = $req
-            ->withQueryParams($q)
-            ->withCookieParams($_COOKIE);
-
-        return $req;
+        return $req->withQueryParams($q)->withCookieParams($_COOKIE);
     }
 
-    /* -----------------------------------------------------------------
-       Internal state
-       ----------------------------------------------------------------- */
+    /* ----------  state  ------------------------------------------- */
 
     protected string       $method;
     protected UriInterface $uri;
@@ -82,7 +66,7 @@ class ServerRequest implements ServerRequestInterface
     protected array        $attributes   = [];
     protected array        $headers      = [];
 
-    /* convenience caches */
+    /* caches & helpers */
     private ?Collection $queryCol  = null;
     private ?Collection $postCol   = null;
     private ?Collection $cookieCol = null;
@@ -92,17 +76,17 @@ class ServerRequest implements ServerRequestInterface
     private ?RequestHeaders $hdrHelper = null;
     private ?string $rawBodyCache  = null;
     private ?string $effectiveMethodCache = null;
-    private array $varMap = [];
-    private bool $checkEnv = false;
 
-    /* recognised HTTP verbs */
+    /* variable-order map */
+    private array $varMap  = [];
+    private bool  $checkEnv = false;
+
+    /* valid HTTP verbs */
     private static array $validMethods = [
         'GET','POST','PUT','DELETE','PATCH','HEAD','OPTIONS','CONNECT','TRACE'
     ];
 
-    /* -----------------------------------------------------------------
-       Constructor (unchanged except for Host optimisation)
-       ----------------------------------------------------------------- */
+    /* ----------  constructor  ------------------------------------- */
 
     public function __construct(
         string                   $method,
@@ -120,34 +104,21 @@ class ServerRequest implements ServerRequestInterface
         $this->headers = $this->normalizeHeaders($headers);
 
         if (!$this->hasHeader('Host') && $this->uri->getHost() !== '') {
-            $h = $this->uri->getHost();
-            if ($this->uri->getPort()) {
-                $h .= ':' . $this->uri->getPort();
-            }
+            $h = $this->uri->getHost() . ($this->uri->getPort() ? ':' . $this->uri->getPort() : '');
             $this->headers['Host'] = [$h];
         }
 
-        $this->initVariableMap();
-    }
-
-    /* -----------------------------------------------------------
- * Boot-strap EGPCS / request_order precedence  (called once)
- * ----------------------------------------------------------- */
-    private function initVariableMap(): void
-    {
-        $order = $this->determineVariableOrder();
-        $this->composeVariableMap($order);
+        $this->buildVariableMap();           // build $varMap / $checkEnv
     }
 
     private function determineVariableOrder(): array
     {
         $vars = strtoupper(preg_replace('/[^EGPCS]/', '', ini_get('variables_order') ?: 'EGPCS'));
-        $req  = strtoupper(preg_replace('/[^GPC]/',   '', ini_get('request_order')   ?: ''));
+        $req  = strtoupper(preg_replace('/[^GPC]/', '', ini_get('request_order') ?: ''));
 
-        $seq = str_split($vars);
-
+        $seq = str_split($vars);            // base order
         if ($req !== '') {
-            $seq = array_values(array_diff($seq, ['G', 'P', 'C']));
+            $seq = array_values(array_diff($seq, ['G','P','C']));
             $anchor = array_search('E', $seq, true);
             $insert = $anchor === false ? 0 : $anchor + 1;
             foreach (array_reverse(str_split($req)) as $ch) {
@@ -157,10 +128,9 @@ class ServerRequest implements ServerRequestInterface
         return $seq;
     }
 
-    /* -----  Compose once from the chosen sources  ------------------ */
     private function composeVariableMap(array $order): void
     {
-        $sources = [
+        $src = [
             'G' => $this->queryParams,
             'P' => (\is_array($this->parsedBody) ? $this->parsedBody : []),
             'C' => $this->cookieParams,
@@ -169,17 +139,21 @@ class ServerRequest implements ServerRequestInterface
 
         $map = [];
         foreach ($order as $ch) {
-            if (isset($sources[$ch])) {
-                $map += $sources[$ch];
+            if (isset($src[$ch])) {
+                $map += $src[$ch];
             }
         }
         $this->varMap   = $map;
         $this->checkEnv = \in_array('E', $order, true);
     }
 
-    /* -----------------------------------------------------------------
-       MessageInterface
-       ----------------------------------------------------------------- */
+    /** rebuild variable map after any mutator that changes G/P/C/S */
+    private function buildVariableMap(): void
+    {
+        $this->composeVariableMap($this->determineVariableOrder());
+    }
+
+    /* ----------  MessageInterface  -------------------------------- */
 
     public function getProtocolVersion(): string
     {
@@ -188,9 +162,9 @@ class ServerRequest implements ServerRequestInterface
 
     public function withProtocolVersion($version): self
     {
-        $clone = clone $this;
-        $clone->protocolVersion = $version;
-        return $clone;
+        $c = clone $this;
+        $c->protocolVersion = $version;
+        return $c;
     }
 
     public function getHeaders(): array
@@ -216,32 +190,35 @@ class ServerRequest implements ServerRequestInterface
     public function withHeader($name, $value): self
     {
         $norm = $this->normalizeHeaderName($name);
-        $val  = is_array($value) ? array_values($value) : [(string)$value];
+        $val  = is_array($value) ? array_values($value) : [(string) $value];
         if (($this->headers[$norm] ?? null) === $val) {
             return $this;
-        }   // no-op
-        $clone              = clone $this;
-        $clone->headers[$norm] = $val;
-        return $clone;
+        }
+        $c = clone $this;
+        $c->headers[$norm] = $val;
+        return $c;
     }
 
     public function withAddedHeader($name, $value): self
     {
         $norm = $this->normalizeHeaderName($name);
-        $val  = is_array($value) ? $value : [(string)$value];
+        $val  = is_array($value) ? $value : [(string) $value];
         if (!$this->hasHeader($norm)) {
             return $this->withHeader($norm, $val);
         }
-        $clone = clone $this;
-        $clone->headers[$norm] = array_merge($this->headers[$norm], $val);
-        return $clone;
+        if ($val === array_intersect($val, $this->headers[$norm])) {
+            return $this;
+        } // already present
+        $c = clone $this;
+        $c->headers[$norm] = array_merge($this->headers[$norm], $val);
+        return $c;
     }
 
     public function withoutHeader($name): self
     {
-        $clone = clone $this;
-        unset($clone->headers[$this->normalizeHeaderName($name)]);
-        return $clone;
+        $c = clone $this;
+        unset($c->headers[$this->normalizeHeaderName($name)]);
+        return $c;
     }
 
     public function getBody(): StreamInterface
@@ -251,15 +228,14 @@ class ServerRequest implements ServerRequestInterface
 
     public function withBody(StreamInterface $body): self
     {
-        $clone = clone $this;
-        $clone->body = $body;
-        $clone->rawBodyCache = null;
-        return $clone;
+        $c = clone $this;
+        $c->body         = $body;
+        $c->rawBodyCache = null;
+        $c->jsonCol      = null;   // reset JSON cache
+        return $c;
     }
 
-    /* -----------------------------------------------------------------
-       RequestInterface
-       ----------------------------------------------------------------- */
+    /* ----------  RequestInterface  -------------------------------- */
 
     public function getRequestTarget(): string
     {
@@ -273,13 +249,13 @@ class ServerRequest implements ServerRequestInterface
         return $t;
     }
 
-    public function withRequestTarget($rt): self
+    public function withRequestTarget($requestTarget): self
     {
-        if (preg_match('#\s#', $rt)) {
+        if (preg_match('#\s#', $requestTarget)) {
             throw new InvalidArgumentException('Whitespace in requestTarget');
         }
         $c = clone $this;
-        $c->requestTarget = $rt;
+        $c->requestTarget = $requestTarget;
         return $c;
     }
 
@@ -288,10 +264,10 @@ class ServerRequest implements ServerRequestInterface
         return $this->method;
     }
 
-    public function withMethod($m): self
+    public function withMethod($method): self
     {
         $c = clone $this;
-        $c->method = strtoupper($m);
+        $c->method = strtoupper($method);
         $c->effectiveMethodCache = null;
         return $c;
     }
@@ -313,9 +289,7 @@ class ServerRequest implements ServerRequestInterface
         return $c;
     }
 
-    /* -----------------------------------------------------------------
-       ServerRequestInterface – simple setters
-       ----------------------------------------------------------------- */
+    /* ----------  ServerRequestInterface  -------------------------- */
 
     public function getServerParams(): array
     {
@@ -332,6 +306,7 @@ class ServerRequest implements ServerRequestInterface
         $x = clone $this;
         $x->cookieParams = $cookies;
         $x->cookieCol = null;
+        $x->buildVariableMap();
         return $x;
     }
 
@@ -340,11 +315,12 @@ class ServerRequest implements ServerRequestInterface
         return $this->queryParams;
     }
 
-    public function withQueryParams(array $q): self
+    public function withQueryParams(array $query): self
     {
         $x = clone $this;
-        $x->queryParams = $q;
+        $x->queryParams = $query;
         $x->queryCol = null;
+        $x->buildVariableMap();
         return $x;
     }
 
@@ -353,12 +329,12 @@ class ServerRequest implements ServerRequestInterface
         return $this->uploadedFiles;
     }
 
-    public function withUploadedFiles(array $u): self
+    public function withUploadedFiles(array $uploadedFiles): self
     {
-        array_walk_recursive($u, fn ($i) => $i instanceof UploadedFileInterface
+        array_walk_recursive($uploadedFiles, fn ($i) => $i instanceof UploadedFileInterface
             ?: throw new InvalidArgumentException('Invalid uploaded file'));
         $x = clone $this;
-        $x->uploadedFiles = $u;
+        $x->uploadedFiles = $uploadedFiles;
         $x->filesCol = null;
         return $x;
     }
@@ -368,15 +344,15 @@ class ServerRequest implements ServerRequestInterface
         return $this->parsedBody;
     }
 
-    public function withParsedBody($d): self
+    public function withParsedBody($data): self
     {
-        /* PSR-7 mandate */
-        if ($d !== null && !\is_array($d) && !\is_object($d)) {
+        if ($data !== null && !\is_array($data) && !\is_object($data)) {
             throw new InvalidArgumentException('Parsed body must be array|object|null');
         }
         $x = clone $this;
-        $x->parsedBody = $d;
+        $x->parsedBody = $data;
         $x->postCol = $x->jsonCol = null;
+        $x->buildVariableMap();
         return $x;
     }
 
@@ -385,43 +361,39 @@ class ServerRequest implements ServerRequestInterface
         return $this->attributes;
     }
 
-    public function getAttribute($n, $def = null): mixed
+    public function getAttribute($name, $default = null): mixed
     {
-        return $this->attributes[$n] ?? $def;
+        return $this->attributes[$name] ?? $default;
     }
 
-    public function withAttribute($n, $v): self
+    public function withAttribute($name, $value): self
     {
         $x = clone $this;
-        $x->attributes[$n] = $v;
+        $x->attributes[$name] = $value;
         return $x;
     }
 
-    public function withoutAttribute($n): self
+    public function withoutAttribute($name): self
     {
         $x = clone $this;
-        unset($x->attributes[$n]);
+        unset($x->attributes[$name]);
         return $x;
     }
 
-    /* -----------------------------------------------------------------
-       Helpers – effective method, AJAX, headers()
-       ----------------------------------------------------------------- */
+    /* ----------  helpers  ----------------------------------------- */
 
     public function getEffectiveMethod(): string
     {
         if ($this->effectiveMethodCache !== null) {
             return $this->effectiveMethodCache;
         }
-
         $orig = strtoupper($this->method);
         if (!\in_array($orig, self::$validMethods, true)) {
             return $this->effectiveMethodCache = $orig;
         }
-
         return $this->effectiveMethodCache = match ($orig) {
-            'HEAD'  => 'GET',
-            'POST'  => $this->methodOverride() ?? 'POST',
+            'HEAD' => 'GET',
+            'POST' => $this->methodOverride() ?? 'POST',
             default => $orig
         };
     }
@@ -430,9 +402,8 @@ class ServerRequest implements ServerRequestInterface
     {
         $hdr = $this->getHeaderLine('X-HTTP-Method-Override')
             ?: $this->getHeaderLine('HTTP-Method-Override');
-        $cand = strtoupper($hdr ?: (string)$this->post('_method'));
-
-        return \in_array($cand, self::$validMethods, true) ? $cand : null;
+        $caned = strtoupper($hdr ?: (string) $this->post('_method'));
+        return \in_array($caned, self::$validMethods, true) ? $caned : null;
     }
 
     public function isAjax(): bool
@@ -441,19 +412,16 @@ class ServerRequest implements ServerRequestInterface
         return $hdr !== null && strcasecmp($hdr, 'xmlhttprequest') === 0;
     }
 
-    /* expose RequestHeaders helper */
     public function headers(): RequestHeaders
     {
         return $this->hdrHelper ??= new RequestHeaders($this);
     }
 
-    /* -----------------------------------------------------------------
-       Convenience data accessors
-       ----------------------------------------------------------------- */
+    /* ----------  convenience  ------------------------------------- */
 
     public function raw(): string
     {
-        return $this->rawBodyCache ??= (string)$this->body;
+        return $this->rawBodyCache ??= (string) $this->body;
     }
 
     public function server(?string $k = null): mixed
@@ -474,8 +442,7 @@ class ServerRequest implements ServerRequestInterface
     public function post(?string $k = null): mixed
     {
         if (!$this->postCol) {
-            $arr = \is_array($this->parsedBody) ? $this->parsedBody : [];
-            $this->postCol = new Collection($arr);
+            $this->postCol = new Collection(\is_array($this->parsedBody) ? $this->parsedBody : []);
         }
         return $this->fetch($this->postCol, $k);
     }
@@ -489,7 +456,7 @@ class ServerRequest implements ServerRequestInterface
                 if ($data === null && json_last_error() !== JSON_ERROR_NONE) {
                     throw new RuntimeException('Invalid JSON body');
                 }
-                $this->jsonCol = new Collection((array)$data);
+                $this->jsonCol = new Collection((array) $data);
             } else {
                 $this->jsonCol = new Collection([]);
             }
@@ -507,9 +474,11 @@ class ServerRequest implements ServerRequestInterface
         return $k === null ? $c : ($c->$k ?? null);
     }
 
+    /* ----------  magic getters  ----------------------------------- */
+
     public function __get(string $key): mixed
     {
-        if (array_key_exists($key, $this->varMap)) {
+        if (\array_key_exists($key, $this->varMap)) {
             return $this->varMap[$key];
         }
         if ($this->checkEnv) {
@@ -521,9 +490,12 @@ class ServerRequest implements ServerRequestInterface
         return null;
     }
 
-    /* -----------------------------------------------------------------
-       Internal helpers
-       ----------------------------------------------------------------- */
+    public function __isset(string $key): bool
+    {
+        return $this->__get($key) !== null;
+    }
+
+    /* ----------  internal helpers --------------------------------- */
 
     private function normalizeHeaderName(string $n): string
     {
@@ -534,7 +506,7 @@ class ServerRequest implements ServerRequestInterface
     {
         $r = [];
         foreach ($h as $n => $v) {
-            $r[$this->normalizeHeaderName($n)] = \is_array($v) ? array_values($v) : [(string)$v];
+            $r[$this->normalizeHeaderName($n)] = \is_array($v) ? array_values($v) : [(string) $v];
         }
         return $r;
     }
