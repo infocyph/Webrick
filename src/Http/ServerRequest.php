@@ -126,20 +126,55 @@ class ServerRequest implements ServerRequestInterface
             }
             $this->headers['Host'] = [$h];
         }
+
+        $this->initVariableMap();
     }
 
-    private function getVariableOrder(){
-        $vo = strtoupper(preg_replace('/[^EGPCS]/', '', ini_get('variables_order') ?: 'EGPCS'));
-        $ro = strtoupper(preg_replace('/[^GPC]/',   '', ini_get('request_order')   ?: ''));
-        $order = str_split($vo);
-        if ($ro !== '') {
-            $order = array_values(array_diff($order, ['G','P','C']));
-            $insertPos = array_search('E', $order, true);
-            $insertPos = $insertPos === false ? 0 : $insertPos + 1;
-            foreach (array_reverse(str_split($ro)) as $ch) {
-                array_splice($order, $insertPos, 0, $ch);
+    /* -----------------------------------------------------------
+ * Boot-strap EGPCS / request_order precedence  (called once)
+ * ----------------------------------------------------------- */
+    private function initVariableMap(): void
+    {
+        $order = $this->determineVariableOrder();
+        $this->composeVariableMap($order);
+    }
+
+    private function determineVariableOrder(): array
+    {
+        $vars = strtoupper(preg_replace('/[^EGPCS]/', '', ini_get('variables_order') ?: 'EGPCS'));
+        $req  = strtoupper(preg_replace('/[^GPC]/',   '', ini_get('request_order')   ?: ''));
+
+        $seq = str_split($vars);
+
+        if ($req !== '') {
+            $seq = array_values(array_diff($seq, ['G', 'P', 'C']));
+            $anchor = array_search('E', $seq, true);
+            $insert = $anchor === false ? 0 : $anchor + 1;
+            foreach (array_reverse(str_split($req)) as $ch) {
+                array_splice($seq, $insert, 0, $ch);
             }
         }
+        return $seq;
+    }
+
+    /* -----  Compose once from the chosen sources  ------------------ */
+    private function composeVariableMap(array $order): void
+    {
+        $sources = [
+            'G' => $this->queryParams,
+            'P' => (\is_array($this->parsedBody) ? $this->parsedBody : []),
+            'C' => $this->cookieParams,
+            'S' => $this->serverParams,
+        ];
+
+        $map = [];
+        foreach ($order as $ch) {
+            if (isset($sources[$ch])) {
+                $map += $sources[$ch];
+            }
+        }
+        $this->varMap   = $map;
+        $this->checkEnv = \in_array('E', $order, true);
     }
 
     /* -----------------------------------------------------------------
@@ -470,28 +505,6 @@ class ServerRequest implements ServerRequestInterface
     private function fetch(Collection $c, ?string $k): mixed
     {
         return $k === null ? $c : ($c->$k ?? null);
-    }
-
-    /* -----------------------------------------------------------------
-       Magic EGPCS getter
-       ----------------------------------------------------------------- */
-
-    public function __get(string $key): mixed
-    {
-        // E (env) – opt-in: getenv() is slow; skip unless needed
-        if (($v = getenv($key)) !== false) {
-            return $v;
-        }
-        if (($v = $this->query($key))   !== null) {
-            return $v;
-        } // G
-        if (($v = $this->post($key))    !== null) {
-            return $v;
-        } // P
-        if (($v = $this->cookie($key))  !== null) {
-            return $v;
-        } // C
-        return $this->server($key);                                     // S (may be null)
     }
 
     public function __get(string $key): mixed
