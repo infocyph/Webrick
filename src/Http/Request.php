@@ -4,243 +4,383 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Http;
 
-use Psr\Http\Message\StreamInterface;
-use Psr\Http\Message\UriInterface;
+use ArrayAccess;
+use Infocyph\InterMix\Remix\MacroMix;
+use JsonSerializable;
 use InvalidArgumentException;
+use Psr\Http\Message\UploadedFileInterface;
 
 /**
- * A custom Request that extends your PSR-7 ServerRequest,
- * adding "magic" methods for post, query, file, header, etc.,
- * plus an automatic JSON/XML parser, and a __get() that respects variables_order.
+ * A fluent, Laravel-like façade on top of our PSR-7 ServerRequest.
+ *
+ * Immutable – every mutator returns a cloned instance.
  */
-class Request extends ServerRequest
+final class Request extends ServerRequest implements ArrayAccess, JsonSerializable
 {
-    /**
-     * Store arrays for parsed GET, POST, FILES, HEADERS, etc.
-     */
-    protected ?array $parsedPost   = null;
-    protected ?array $parsedQuery  = null;
-    protected ?array $parsedFiles  = null;
-    protected ?array $parsedCookies = null;
-    protected ?array $parsedJson   = null;   // if content-type is JSON
-    protected ?array $parsedXml    = null;   // if content-type is XML (optional)
+    use MacroMix;
+    /* -------------------------------------------------------------
+     | 1. Shortcuts that already exist in parent
+     | ------------------------------------------------------------*/
+    public function all(): array
+    {
+        // JSON overrides form data – mimics Laravel
+        return $this->parsedJson()?->all()
+            ?: ($this->post()?->all() + $this->query()?->all());
+    }
 
-    /**
-     * Construct the request, optionally parse the body if needed.
-     */
-    public function __construct(
-        string $method,
-        UriInterface $uri,
-        array $headers = [],
-        ?StreamInterface $body = null,
-        string $protocolVersion = '1.1',
-        array $serverParams = []
-    ) {
-        parent::__construct($method, $uri, $serverParams, [], $headers, $protocolVersion, null, $body);
-        // If you want to parse body or do other init, you can do so here or lazily in the methods.
+    public function input(string $key, mixed $default = null): mixed
+    {
+        return $this->__get($key) ?? $default;
+    }
+
+    public function boolean(string $key, bool $default = false): bool
+    {
+        return filter_var($this->input($key, $default), FILTER_VALIDATE_BOOL);
+    }
+
+    public function int(string $key, int $default = 0): int
+    {
+        return (int) $this->input($key, $default);
+    }
+
+    public function segment(int $index, $default = null): ?string
+    {
+        $parts = $this->segments();
+        return $parts[$index - 1] ?? $default;
+    }
+
+    public function segments(): array
+    {
+        return array_values(array_filter(
+            explode('/', $this->getUri()->getPath()),
+            static fn ($s) => $s !== ''
+        ));
+    }
+
+    public function isMethod(string|array $verbs): bool
+    {
+        $verbs = (array) $verbs;
+        return in_array($this->getEffectiveMethod(), array_map('strtoupper', $verbs), true);
+    }
+
+    public function isSecure(): bool
+    {
+        return $this->getUri()->getScheme() === 'https';
     }
 
     /**
-     * Magic caller:
-     *   - post('key') => get POST field
-     *   - query('key') => get query param
-     *   - file('key') => get file from $this->getUploadedFiles()
-     *   - header('Name') => get a single header line
-     *   - cookie('key') => get a single cookie
+     * Compare a submitted CSRF token against the one stored in the
+     * session/cookie header.  Uses constant-time comparison and supports
+     * both masked-token patterns (Laravel style) and plain strings.
      */
-    public function __call(string $method, array $arguments): mixed
+    public function matchesCsrfToken(?string $token = null): bool
     {
-        $arg = $arguments[0] ?? null;
+        // token sent by the client: header, post field or query
+        $sent = $token
+            ?? $this->header('X-CSRF-TOKEN')
+            ?? $this->post('_token')
+            ?? $this->query('_token');
 
-        return match ($method) {
-            'post'   => $this->getPostValue($arg),
-            'query'  => $this->getQueryValue($arg),
-            'file'   => $this->getFileValue($arg),
-            'header' => $this->getHeaderValue($arg),
-            'cookie' => $this->getCookieValue($arg),
-            default  => throw new InvalidArgumentException("Unknown method {$method} called on Request"),
-        };
+        if (!$sent) {
+            return false;                     // nothing to compare
+        }
+
+        // token kept server-side (session, cookie, …)
+        $stored = $_SESSION['_token']          // PSR-15 middleware could inject
+            ?? $this->cookie('XSRF-TOKEN')
+            ?? null;
+
+        if (!$stored) {
+            return false;
+        }
+
+        // **masked tokens** (first 40 chars = mask, last 40 = hashed token)
+        if (strlen($sent) === 80 && strlen($stored) === 40) {
+            $mask   = substr($sent, 0, 40);
+            $hashed = substr($sent, 40);
+
+            // XOR-unmask and compare against stored hash
+            $unmasked = hash_hmac('sha1', $mask, $stored);
+            return hash_equals($unmasked, $hashed);
+        }
+
+        // plain token comparison
+        return hash_equals($stored, $sent);
     }
 
-    /**
-     * Magic getter for $request->key
-     * We'll follow something like "variables_order" = "EGPCS" or similar:
-     * E = Environment
-     * G = GET
-     * P = POST
-     * C = Cookie
-     * S = Server
-     * (You can adapt to your needs!)
-     */
-    public function __get(string $key): mixed
+
+
+    /* -------------------------------------------------------------
+     | 2. Data helpers
+     | ------------------------------------------------------------*/
+    public function only(array $keys): array
     {
-        // Here we just do a naive approach:
-        // 1) check environment? (Your call if you want to store environment)
-        // 2) check GET
-        $fromQuery = $this->getQueryValue($key);
-        if ($fromQuery !== null) {
-            return $fromQuery;
-        }
-
-        // 3) check POST
-        $fromPost = $this->getPostValue($key);
-        if ($fromPost !== null) {
-            return $fromPost;
-        }
-
-        // 4) check Cookie
-        $cookieVal = $this->getCookieValue($key);
-        if ($cookieVal !== null) {
-            return $cookieVal;
-        }
-
-        // 5) check Server
-        $serverParams = $this->getServerParams();
-        if (array_key_exists($key, $serverParams)) {
-            return $serverParams[$key];
-        }
-
-        // If not found, null
-        return null;
+        return array_intersect_key($this->all(), array_flip($keys));
     }
 
-    /**
-     * Lazy parse the POST body if not done, checking for JSON / XML or standard form.
-     * Then return $parsedPost[$key] or entire array if $key is null.
-     */
-    protected function getPostValue(?string $key = null): mixed
+    public function except(array $keys): array
     {
-        if ($this->parsedPost === null) {
-            $this->parsedPost = $this->computePostData();
-        }
-        if ($key === null) {
-            return $this->parsedPost;
-        }
-        return $this->parsedPost[$key] ?? null;
+        return array_diff_key($this->all(), array_flip($keys));
     }
 
-    /**
-     * If content-type is JSON => parse -> stored in $this->parsedJson
-     * If content-type is XML => parse -> stored in $this->parsedXml
-     * Otherwise, if "application/x-www-form-urlencoded" => parse.
-     * Adjust as needed for "multipart/form-data".
-     */
-    private function computePostData(): array
+    public function has(string|array $keys): bool
     {
-        $contentType = strtolower($this->getHeaderLine('Content-Type'));
-        $rawBody     = (string)$this->getBody();
-
-        // 1) JSON check
-        if (str_contains($contentType, 'application/json')) {
-            if ($this->parsedJson === null) {
-                $decoded = json_decode($rawBody, true);
-                $this->parsedJson = is_array($decoded) ? $decoded : [];
-            }
-            return $this->parsedJson;
-        }
-
-        // 2) XML check (optional)
-        if (str_contains($contentType, 'application/xml') || str_contains($contentType, 'text/xml')) {
-            if ($this->parsedXml === null) {
-                // naive parse. For real code, you'd do a robust parse or simplexml_load_string
-                $xml = @simplexml_load_string($rawBody);
-                $this->parsedXml = $xml ? json_decode(json_encode($xml), true) : [];
-            }
-            return $this->parsedXml;
-        }
-
-        // 3) standard form
-        if (str_contains($contentType, 'application/x-www-form-urlencoded')) {
-            $arr = [];
-            parse_str($rawBody, $arr);
-            return $arr;
-        }
-
-        // else no recognized form => empty
-        return [];
-    }
-
-    /**
-     * Lazy parse the query string from the URI.
-     */
-    protected function getQueryValue(?string $key = null): mixed
-    {
-        if ($this->parsedQuery === null) {
-            $this->parsedQuery = [];
-            parse_str($this->getUri()->getQuery(), $this->parsedQuery);
-        }
-        if ($key === null) {
-            return $this->parsedQuery;
-        }
-        return $this->parsedQuery[$key] ?? null;
-    }
-
-    /**
-     * If you want to handle file uploads, typically you do $this->getUploadedFiles().
-     * We'll unify them as an array for "file($key)" usage.
-     */
-    protected function getFileValue(?string $key = null): mixed
-    {
-        if ($this->parsedFiles === null) {
-            // getUploadedFiles() returns an array of UploadedFileInterface or arrays
-            // e.g. ["field1" => UploadedFileInterface, ...]
-            // We might transform them into a nested array or keep them as is.
-            // Let's keep them as is.
-            $this->parsedFiles = $this->getUploadedFiles();
-        }
-        if ($key === null) {
-            return $this->parsedFiles;
-        }
-        return $this->parsedFiles[$key] ?? null;
-    }
-
-    /**
-     * Grab single header or array from $this->getHeaders().
-     * But in your magic method, we want just one line => getHeaderLine($key).
-     */
-    protected function getHeaderValue(?string $headerName = null): mixed
-    {
-        if ($headerName === null) {
-            // if no key provided, return the entire headers array?
-            return $this->getHeaders();
-        }
-        return $this->getHeaderLine($headerName);
-    }
-
-    /**
-     * Cookies. In a full "ServerRequest", you typically have getCookieParams().
-     * We'll do a naive approach reading from $this->getHeaderLine('Cookie').
-     */
-    protected function getCookieValue(?string $key = null): mixed
-    {
-        if ($this->parsedCookies === null) {
-            $this->parsedCookies = $this->computeCookies();
-        }
-        if ($key === null) {
-            return $this->parsedCookies;
-        }
-        return $this->parsedCookies[$key] ?? null;
-    }
-
-    /**
-     * Parse "Cookie: name=value; name2=value2" if you want a naive approach.
-     */
-    private function computeCookies(): array
-    {
-        $cookieLine = $this->getHeaderLine('Cookie');
-        if ($cookieLine === '') {
-            return [];
-        }
-        // naive parse
-        $cookies = [];
-        $pairs = explode(';', $cookieLine);
-        foreach ($pairs as $pair) {
-            $pair = trim($pair);
-            $split = explode('=', $pair, 2);
-            if (count($split) === 2) {
-                $cookies[trim($split[0])] = trim($split[1]);
+        foreach ((array)$keys as $k) {
+            if ($this->__get($k) === null) {
+                return false;
             }
         }
-        return $cookies;
+        return true;
     }
+
+    public function filled(string|array $keys): bool
+    {
+        foreach ((array)$keys as $k) {
+            $v = $this->__get($k);
+            if ($v === null || $v === '') {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public function missing(string|array $keys): bool
+    {
+        return !$this->has($keys);
+    }
+
+    public function string(string $key, string $default = ''): string
+    {
+        return (string) ($this->__get($key) ?? $default);
+    }
+
+    public function prefers(array $mimeTypes): ?string
+    {
+        $accept = $this->headers()->accept()->toArray();
+        return array_find($mimeTypes, fn ($m) => in_array($m, $accept, true));
+    }
+
+    /* -----------------------------------------------------------------
+  |  Content-negotiation helpers
+  | ----------------------------------------------------------------*/
+
+    /**
+     * Did the client ask us to return JSON?
+     *
+     * - Looks at Accept / X-Requested-With headers (AJAX)
+     * - Accepts any “application/json” *or* custom
+     *   media-type + “+json” (RFC 6839, e.g. application/hal+json).
+     */
+    public function expectsJson(): bool
+    {
+        return $this->prefers(['application/json', 'text/json', '+json']) !== null
+            || $this->isAjax();
+    }
+
+    /**
+     * Is the **current request body** JSON?
+     */
+    public function isJson(): bool
+    {
+        return (bool) preg_match(
+            '#(?:application|text)/(?:[^\s;]+\+)?json#i',
+            $this->getHeaderLine('Content-Type')
+        );
+    }
+
+    /* ────────────────────────────────────────────────────────────────
+     |  XML equivalents (mirrors the JSON helpers)
+     | ────────────────────────────────────────────────────────────────*/
+
+    /**
+     * Did the client ask us to return XML?
+     */
+    public function expectsXml(): bool
+    {
+        return $this->prefers(['application/xml', 'text/xml', '+xml']) !== null
+            || $this->isAjax();
+    }
+
+    /**
+     * Is the **current request body** XML?
+     */
+    public function isXml(): bool
+    {
+        return (bool) preg_match(
+            '#(?:application|text)/(?:[^\s;]+\+)?xml#i',
+            $this->getHeaderLine('Content-Type')
+        );
+    }
+
+
+    /* -------------------------------------------------------------
+     | 3. File & header access sugar
+     | ------------------------------------------------------------*/
+    public function file(?string $key = null): UploadedFileInterface|array|null
+    {
+        $files = $this->getUploadedFiles();
+
+        return $key === null
+            ? $files                    // full map
+            : ($files[$key] ?? null);   // single file or null
+    }
+
+    public function header(string $name, ?string $default = null): ?string
+    {
+        $line = $this->getHeaderLine($name);
+        return $line !== '' ? $line : $default;
+    }
+
+    /* -------------------------------------------------------------
+     | 4. Client helpers (via EndUser & UAParser)
+     | ------------------------------------------------------------*/
+    public function ip(bool $proxyAware = false): ?string
+    {
+        $eu = EndUser::from($this);
+        return $proxyAware ? $eu->getClientIPProxy() : $eu->getClientIPNoProxy();
+    }
+
+    public function ua(): array
+    {
+        return EndUser::from($this)->parseUserAgent();
+    }
+
+    /* -------------------------------------------------------------
+     | 5. Simple validator stub (plug real lib later)
+     | ------------------------------------------------------------*/
+    public function validate(array $rules): array
+    {
+        // Minimal placeholder; replace with real validation lib later.
+        foreach ($rules as $field => $rule) {
+            if (str_contains($rule, 'required') && !$this->filled($field)) {
+                throw new InvalidArgumentException("Field '{$field}' is required");
+            }
+        }
+        return $this->only(array_keys($rules));
+    }
+
+    /* -------------------------------------------------------------
+     | 6. PSR-7 immutability helpers (merge, replace, etc.)
+     | ------------------------------------------------------------*/
+    public function merge(array $data): self
+    {
+        return $this->withParsedBody(array_merge($this->post()?->all(), $data));
+    }
+
+    public function replace(array $data): self
+    {
+        return $this->withParsedBody($data);
+    }
+
+    /* -------------------------------------------------------------
+     | 7. ArrayAccess + JsonSerializable
+     | ------------------------------------------------------------*/
+    public function offsetExists(mixed $offset): bool
+    {
+        return $this->__isset((string)$offset);
+    }
+
+    public function offsetGet(mixed $offset): mixed
+    {
+        return $this->__get((string)$offset);
+    }
+
+    public function offsetSet(mixed $offset, mixed $value): void
+    {
+        throw new InvalidArgumentException('Request is immutable');
+    }
+
+    public function offsetUnset(mixed $offset): void
+    {
+        throw new InvalidArgumentException('Request is immutable');
+    }
+
+    public function jsonSerialize(): mixed
+    {
+        return $this->all();
+    }
+
+    public function __toString(): string
+    {
+        return json_encode($this->all(), JSON_UNESCAPED_UNICODE);
+    }
+
+    public function data(string $dot, $default = null): mixed
+    {
+        $segments = explode('.', $dot);
+        $value    = $this->__get(array_shift($segments));
+
+        foreach ($segments as $seg) {
+            if (!is_array($value) || !array_key_exists($seg, $value)) {
+                return $default;
+            }
+            $value = $value[$seg];
+        }
+        return $value;
+    }
+
+    // -----------------------------------------------------------------
+    // Cached locale (NULL = not calculated yet)
+    // -----------------------------------------------------------------
+    private ?string $cachedLocale = null;
+
+    /**
+     * Pick the best-matching locale from the Accept-Language header.
+     *
+     * @param array|null $supported  e.g. ['en', 'fr', 'de']  – if NULL we just
+     *                               return the first language sent by the browser.
+     * @param string     $fallback   returned when nothing matches (default 'en').
+     */
+    public function locale(?array $supported = null, string $fallback = 'en'): string
+    {
+        /* Fast-path: return the cached value when the caller does not ask
+           for a custom $supported list. */
+        if ($supported === null && $this->cachedLocale !== null) {
+            return $this->cachedLocale;
+        }
+
+        /* -----------------------------------------------------------------
+           1) Grab the already-parsed Accept-Language header from
+              RequestHeaders → it’s already quality-sorted.
+              (Request->headers() returns the helper.)
+        -----------------------------------------------------------------*/
+        $langs = $this->headers()
+            ->accept('Accept-Language')
+            ->items();           // ['en-US','en;q=0.9','fr;q=0.8', …]
+
+        if ($langs === []) {
+            return $fallback;            // client sent nothing
+        }
+
+        /* -----------------------------------------------------------------
+           2) If no whitelist supplied, take the *first* language string
+        -----------------------------------------------------------------*/
+        if ($supported === null) {
+            return $this->cachedLocale = strtolower(substr($langs[0], 0, 5));
+        }
+
+        /* Clean the whitelist to lowercase ISO-codes like 'en', 'fr-CA' */
+        $supported = array_map(static fn ($l) => strtolower(str_replace('_', '-', $l)), $supported);
+
+        /* -----------------------------------------------------------------
+           3) Iterate through what the browser sent – the list is quality-sorted
+              already – pick the first thing that matches the whitelist
+        -----------------------------------------------------------------*/
+        foreach ($langs as $lang) {
+            $lang  = strtolower(str_replace('_', '-', $lang)); // e.g. en-us
+            $short = substr($lang, 0, 2);                     // fallback match
+
+            if (in_array($lang, $supported, true)) {
+                return $this->cachedLocale = $lang;
+            }
+            if (in_array($short, $supported, true)) {
+                return $this->cachedLocale = $short;
+            }
+        }
+
+        /* Nothing matched */
+        return $fallback;
+    }
+
+
 }

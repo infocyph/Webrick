@@ -109,7 +109,7 @@ class ServerRequest implements ServerRequestInterface
             $this->headers['Host'] = [$h];
         }
 
-        $this->buildVariableMap();           // build $varMap / $checkEnv
+        $this->buildVariableMap();
     }
 
     private function determineVariableOrder(): array

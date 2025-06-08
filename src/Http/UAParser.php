@@ -4,183 +4,212 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Http;
 
-/**
- * A user-agent parser focusing on minimal if statements.
- * We detect:
- *   - browser
- *   - version
- *   - platform (with version if possible)
- *   - engine
- */
-class UAParser
-{
-    protected string $userAgent;
-    protected string $lowerUA;
+use Psr\Http\Message\ServerRequestInterface;
 
-    public function __construct(?string $userAgent = null)
-    {
-        $ua = $userAgent ?? ($_SERVER['HTTP_USER_AGENT'] ?? 'Unknown');
-        $this->userAgent = $ua;
-        $this->lowerUA   = strtolower((string) $ua);
+/**
+ * Ultra-light UA / Client-Hint parser.
+ *
+ * 1.  If a PSR-7 request is passed we first look at
+ *     ▸ Sec-CH-UA, Sec-CH-UA-Version
+ *     ▸ Sec-CH-UA-Platform, -Platform-Version, -Mobile
+ * 2.  Otherwise (or as fallback) we fall back to the frozen
+ *     User-Agent header and a big ordered lookup table.
+ *
+ * No external dependencies, no gigantic regex soup.
+ * Ideal for logging and coarse feature-flags, not for
+ * fine-grained capability detection.
+ */
+final class UAParser
+{
+    private string $ua;       // full raw UA header
+    private string $uaLower;  // lowercase ua (for speed)
+    private array  $hintBag;  // parsed client-hints (if any)
+
+    /* -------------------------------------------------------- */
+
+    public function __construct(
+        ServerRequestInterface|string|null $source = null
+    ) {
+        if ($source instanceof ServerRequestInterface) {
+            $this->ua = $source->getHeaderLine('User-Agent');
+            $this->hintBag = $this->parseSecCh($source);
+        } else {
+            $this->ua      = (string) ($source ?? ($_SERVER['HTTP_USER_AGENT'] ?? ''));
+            $this->hintBag = [];                       // no Client-Hints
+        }
+        $this->uaLower = strtolower($this->ua);
     }
 
-    /**
-     * Return an array with:
-     * [
-     *   'browser'  => string,
-     *   'version'  => string,
-     *   'platform' => string,
-     *   'engine'   => string
-     * ]
-     */
+    /* -------------------------------------------------------- */
+
+    /** Return the four canonical fields. */
     public function parse(): array
     {
-        return [
-            'browser'  => $this->detectBrowser(),
-            'version'  => $this->detectBrowserVersion(),
-            'platform' => $this->detectPlatformVersion(),
-            'engine'   => $this->detectEngine(),
-        ];
+        // --- browser + version ------------------------------------
+        [$browser, $version] = $this->browserAndVersion();
+
+        // --- platform ---------------------------------------------
+        $platform = $this->platform();
+
+        // --- engine -----------------------------------------------
+        $engine = $this->engine($browser);
+
+        return compact('browser', 'version', 'platform', 'engine');
     }
 
-    // -----------------------------------------------------------
-    // 1) Detect Browser Name
-    // -----------------------------------------------------------
-    protected function detectBrowser(): string
+    /* ============================================================
+       1)  Client-Hints parsing helper
+       ============================================================ */
+    private function parseSecCh(ServerRequestInterface $req): array
     {
-        // We store patterns => names in an array:
-        $browsers = [
-            'edg'        => 'Edge',              // includes "edge" or "edg"
-            'msie'       => 'Internet Explorer',
-            'trident/7'  => 'Internet Explorer 11',
-            'firefox'    => 'Firefox',
-            'chrome'     => 'Chrome',
-            'safari'     => 'Safari',
-            'opera'      => 'Opera',
-            'opr'        => 'Opera'              // Opera often uses "OPR"
+        $bag = [];
+
+        $uaHint = $req->getHeaderLine('Sec-CH-UA');
+        if ($uaHint !== '') {
+            // example:  "Chromium";v="117", "Not(A:Brand";v="24", "Brave";v="117"
+            preg_match_all('/"([^"]+?)";v="([^"]+)"/', $uaHint, $m, PREG_SET_ORDER);
+            foreach ($m as [, $brand, $ver]) {
+                $bag['brands'][$brand] = $ver; // Brave => 117
+            }
+        }
+
+        $bag['mobile']   = $req->getHeaderLine('Sec-CH-UA-Mobile') === '?1';
+        $bag['platform'] = $req->getHeaderLine('Sec-CH-UA-Platform');
+        $bag['platformVersion'] = $req->getHeaderLine('Sec-CH-UA-Platform-Version');
+        $bag['fullVersion']     = $req->getHeaderLine('Sec-CH-UA-Full-Version');
+        return $bag;
+    }
+
+    /* ============================================================
+       2)  Browser  +  Version
+       ============================================================ */
+    private function browserAndVersion(): array
+    {
+        /* ---------- 2-a) BEST CASE – Chromium-style Client-Hints ---- */
+        if (!empty($this->hintBag['brands'])) {
+            // Brands are sorted by weight in Chromium, but
+            // the real browser is the *last* non-"Chromium"/"Not?Brand"
+            $preferred = array_reverse($this->hintBag['brands'], true);
+            foreach ($preferred as $brand => $ver) {
+                if (!preg_match('/^(?:Chromium|Not\s?)?A?Brand$/i', $brand)) {
+                    return [$brand, $this->hintBag['fullVersion'] ?: $ver];
+                }
+            }
+            // Fallback: pick Chromium
+            if (isset($this->hintBag['brands']['Chromium'])) {
+                return ['Chromium', $this->hintBag['brands']['Chromium']];
+            }
+        }
+
+        /* ---------- 2-b) NORMAL UA sniff --------------------------- */
+        // ordered longest-match-first to avoid Chrome matching before Edge etc.
+        $table = [
+            'edg'            => 'Edge',
+            'opr'            => 'Opera',
+            'vivaldi'        => 'Vivaldi',
+            'brave'          => 'Brave',
+            'samsungbrowser' => 'Samsung Internet',
+            'yabrowser'      => 'Yandex Browser',
+            'firefox'        => 'Firefox',
+            'chrome'         => 'Chrome',
+            'safari'         => 'Safari',
+            'msie'           => 'Internet Explorer',
+            'trident/7'      => 'Internet Explorer'
         ];
 
-        // We loop once, no large if chain
-        foreach ($browsers as $key => $name) {
-            if (str_contains($this->lowerUA, $key)) {
-                return $name;
+        foreach ($table as $needle => $label) {
+            if (str_contains($this->uaLower, $needle)) {
+                $ver = $this->extractVersion($needle);
+                return [$label, $ver];
+            }
+        }
+        return ['Unknown', ''];
+    }
+
+    private function extractVersion(string $token): string
+    {
+        $patternMap = [
+            'edg'            => '/edg[e|a]?[ /]([\d.]+)/i',
+            'opr'            => '/(?:opr|opera)[ /]([\d.]+)/i',
+            'vivaldi'        => '/vivaldi[ /]([\d.]+)/i',
+            'brave'          => '/brave\/([\d.]+)/i',
+            'samsungbrowser' => '/samsungbrowser\/([\d.]+)/i',
+            'yabrowser'      => '/yabrowser\/([\d.]+)/i',
+            'firefox'        => '/firefox\/([\d.]+)/i',
+            'chrome'         => '/chrome\/([\d.]+)/i',
+            'safari'         => '/version\/([\d.]+)/i',
+            'msie'           => '/msie ([\d.]+)/i',
+            'trident/7'      => '/rv:([\d.]+)/i'
+        ];
+
+        if (isset($patternMap[$token]) && preg_match($patternMap[$token], $this->ua, $m)) {
+            return $m[1];
+        }
+        return '';
+    }
+
+    /* ============================================================
+       3)  Platform  (with version when easy)
+       ============================================================ */
+    private function platform(): string
+    {
+        /* --- Client-Hints preferred --- */
+        if ($this->hintBag) {
+            $plat   = $this->hintBag['platform'] ?: 'Unknown';
+            $pv     = $this->hintBag['platformVersion'];
+            if ($pv !== '') {
+                $plat .= ' ' . $pv;
+            }
+            if ($this->hintBag['mobile'] && !str_contains(strtolower($plat), 'android')) {
+                $plat .= ' Mobile';
+            }
+            return trim($plat);
+        }
+
+        /* --- fallback UA sniff ----------------------------------- */
+        $rx = [
+            '/Windows NT 10\.0/i'    => 'Windows 10',
+            '/Windows NT 11\./i'     => 'Windows 11',
+            '/Windows NT 6\.3/i'     => 'Windows 8.1',
+            '/Windows NT 6\.2/i'     => 'Windows 8',
+            '/Windows NT 6\.1/i'     => 'Windows 7',
+            '/Mac OS X ([\d_]+)/i'   => fn ($v) => 'macOS ' . str_replace('_', '.', $v),
+            '/Android ([\d.]+)/i'    => fn ($v) => 'Android ' . $v,
+            '/iPhone OS ([\d_]+)/i'  => fn ($v) => 'iOS ' . str_replace('_', '.', $v),
+            '/iPad; CPU OS ([\d_]+)/i' => fn ($v) => 'iPadOS ' . str_replace('_', '.', $v),
+            '/Linux/i'               => 'Linux'
+        ];
+
+        foreach ($rx as $pat => $label) {
+            if (preg_match($pat, $this->ua, $m)) {
+                return \is_callable($label) ? $label($m[1]) : $label;
             }
         }
         return 'Unknown';
     }
 
-    // -----------------------------------------------------------
-    // 2) Detect Browser Version
-    // -----------------------------------------------------------
-    protected function detectBrowserVersion(): string
+    /* ============================================================
+       4)  Rendering / JS engine
+       ============================================================ */
+    private function engine(string $browser): string
     {
-        $browser = $this->detectBrowser();
-
-        // We'll hold patterns for each known browser:
-        $patterns = [
-            'Edge'                => '/(edge|edg)\/([\d.]+)/i',
-            'Internet Explorer'   => '/msie\s([\d.]+)/i',
-            'Internet Explorer 11' => '/rv:([\d.]+)/i',
-            'Firefox'             => '/firefox\/([\d.]+)/i',
-            'Chrome'              => '/chrome\/([\d.]+)/i',
-            'Safari'              => '/version\/([\d.]+)/i',
-            'Opera'               => '/(?:opera|opr)\/([\d.]+)/i'
-        ];
-
-        if (isset($patterns[$browser])) {
-            if (preg_match($patterns[$browser], $this->userAgent, $match)) {
-                // some patterns capture in group 2, others in group 1
-                return $match[2] ?? $match[1] ?? '';
-            }
+        // If we already know it's a Chromium-family browser, it’s Blink
+        if (\in_array($browser, ['Chrome','Edge','Brave','Vivaldi','Yandex Browser','Samsung Internet'], true)) {
+            return 'Blink';
         }
 
-        return '';
-    }
-
-    // -----------------------------------------------------------
-    // 3) Detect Platform + (Version)
-    // -----------------------------------------------------------
-    protected function detectPlatformVersion(): string
-    {
-        $ua = $this->userAgent;
-
-        // Instead of multiple ifs, we have an ordered array of [regex, callback].
-        // The first match wins.
-        $regexes = [
-            // Windows: "Windows NT X.Y"
-            [
-                'pattern' => '/Windows NT\s?([\d.]+)/i',
-                'replace' => fn ($v) => "Windows $v"
-            ],
-            // iPhone OS e.g. "iPhone OS 14_5"
-            [
-                'pattern' => '/iPhone\sOS\s([0-9_]+)/i',
-                'replace' => fn ($v) => "iPhone iOS " . str_replace('_', '.', $v)
-            ],
-            // iPad OS e.g. "iPad OS 15_0"
-            [
-                'pattern' => '/iPad\sOS\s([0-9_]+)/i',
-                'replace' => fn ($v) => "iPad iOS " . str_replace('_', '.', $v)
-            ],
-            // CPU OS e.g. "CPU OS 14_2 like Mac OS X"
-            [
-                'pattern' => '/CPU\sOS\s([0-9_]+)\slike\sMac\sOS\sX/i',
-                'replace' => fn ($v) => "iOS " . str_replace('_', '.', $v)
-            ],
-            // Mac OS X e.g. "Mac OS X 10_15_7"
-            [
-                'pattern' => '/Mac\sOS\sX\s([0-9_]+)/i',
-                'replace' => fn ($v) => "macOS " . str_replace('_', '.', $v)
-            ],
-            // Android e.g. "Android 12"
-            [
-                'pattern' => '/Android\s?([\d.]+)/i',
-                'replace' => fn ($v) => "Android {$v}"
-            ]
-        ];
-
-        foreach ($regexes as $entry) {
-            if (preg_match($entry['pattern'], $ua, $m)) {
-                // If matched, call the callback on group 1
-                return $entry['replace']($m[1]);
-            }
-        }
-
-        // If we get here, no matches => fallback checks
-        $lowUA = strtolower($ua);
-        // We can do a "match" approach for smaller checks:
         return match (true) {
-            str_contains($lowUA, 'linux')           => 'Linux',
-            str_contains($lowUA, 'iphone')          => 'iPhone (iOS)',
-            str_contains($lowUA, 'ipad')            => 'iPad (iOS)',
-            str_contains($lowUA, 'macintosh')       => 'macOS',
-            str_contains($lowUA, 'mac os x')        => 'macOS',
-            str_contains($lowUA, 'windows phone')   => 'Windows Phone',
-            default                                 => 'Unknown'
+            str_contains($this->uaLower, 'trident')                => 'Trident',
+            str_contains($this->uaLower, 'gecko') && str_contains($this->uaLower, 'firefox') => 'Gecko',
+            str_contains($this->uaLower, 'applewebkit')            => 'WebKit',
+            str_contains($this->uaLower, 'presto')                 => 'Presto',
+            default                                                => 'Unknown'
         };
     }
 
-    // -----------------------------------------------------------
-    // 4) Detect Engine
-    // -----------------------------------------------------------
-    protected function detectEngine(): string
-    {
-        $ua = $this->lowerUA;
-
-        // We'll do a quick approach: if "trident", it's IE, if "gecko + firefox" => Gecko, etc.
-        // Then fallback to see if it's Chrome-based => Blink or old WebKit => WebKit.
-        return match (true) {
-            str_contains($ua, 'trident')                            => 'Trident',
-            (str_contains($ua, 'gecko') && str_contains($ua, 'firefox')) => 'Gecko',
-            (str_contains($ua, 'chrome') || str_contains($ua, 'edg') || str_contains($ua, 'chromium')) => 'Blink',
-            str_contains($ua, 'applewebkit') || str_contains($ua, 'safari') => 'WebKit',
-            str_contains($ua, 'presto')                             => 'Presto',
-            default                                                 => 'Unknown'
-        };
-    }
-
+    /* Debug helper */
     public function getUserAgent(): string
     {
-        return $this->userAgent;
+        return $this->ua;
     }
 }
