@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Infocyph\Webrick\Middleware;
+namespace Infocyph\Webrick\Middleware_OLD;
 
 use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
@@ -47,11 +47,11 @@ class ErrorHandlerMiddleware implements MiddlewareInterface
             $body = "[DEV MODE] Exception: " . $ex->getMessage() . "\n\n" . $ex->getTraceAsString();
         } else {
             // Generic message
-            $body = "An error occurred. Please try again later.";
-            if ($statusCode === 404 || $statusCode === 405) {
+//            $body = "An error occurred. Please try again later.";
+//            if ($statusCode === 404 || $statusCode === 405) {
                 // We can show more specific text for 404/405 if we like
                 $body = $ex->getMessage();
-            }
+//            }
         }
 
         $response->getBody()->write($body);

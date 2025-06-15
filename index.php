@@ -3,19 +3,18 @@
 declare(strict_types=1);
 require __DIR__.'/vendor/autoload.php';
 
-use Infocyph\Webrick\Core\RouteCollection;
-use Infocyph\Webrick\Core\RouteParser;
-use Infocyph\Webrick\Core\Router;
+use Infocyph\Webrick\Core_OLD\RouteCollection;
+use Infocyph\Webrick\Core_OLD\RouteParser;
+use Infocyph\Webrick\Core_OLD\Router;
 use Infocyph\Webrick\Http\Response;
 use Infocyph\Webrick\Http\ServerRequest;
 use Infocyph\Webrick\Http\Stream;
-use Infocyph\Webrick\Http\Uri;
-use Infocyph\Webrick\Middleware\ErrorHandlerMiddleware;
-use Infocyph\Webrick\Middleware\HttpsEnforceMiddleware;
-use Infocyph\Webrick\Middleware\MethodOverrideMiddleware;
-use Infocyph\Webrick\Middleware\MiddlewareStack;
-use Infocyph\Webrick\Middleware\RouteDispatcher;
-use Infocyph\Webrick\Middleware\TrailingSlashRedirectMiddleware;
+use Infocyph\Webrick\Middleware_OLD\ErrorHandlerMiddleware;
+use Infocyph\Webrick\Middleware_OLD\HttpsEnforceMiddleware;
+use Infocyph\Webrick\Middleware_OLD\MethodOverrideMiddleware;
+use Infocyph\Webrick\Middleware_OLD\MiddlewareStack;
+use Infocyph\Webrick\Middleware_OLD\RouteDispatcher;
+use Infocyph\Webrick\Middleware_OLD\TrailingSlashRedirectMiddleware;
 use Psr\Http\Message\ServerRequestInterface;
 
 $container = container();
@@ -23,23 +22,6 @@ $container = container();
 // ----------------------------------------------------------------------------
 // 3) Build the PSR-7 Request from Superglobals
 // ----------------------------------------------------------------------------
-$method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
-$scheme = (($_SERVER['HTTPS'] ?? 'off') === 'on') ? 'https://' : 'http://';
-$host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-$uriStr = $scheme.$host.($_SERVER['REQUEST_URI'] ?? '/');
-
-$uri = new Uri($uriStr);
-
-// Minimal approach to capturing headers
-$headers = [];
-foreach ($_SERVER as $key => $value) {
-    if (str_starts_with($key, 'HTTP_')) {
-        $name = str_replace('_', '-', substr($key, 5));
-        $headers[$name] = $value;
-    }
-}
-
-// Build a ServerRequest
 $request = ServerRequest::createFromGlobals();
 
 // ----------------------------------------------------------------------------

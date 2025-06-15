@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Infocyph\Webrick\Core;
+namespace Infocyph\Webrick\Core_OLD;
 
 use Infocyph\Webrick\Interfaces\RouteInterface;
 

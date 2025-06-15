@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace Infocyph\Webrick\Core;
+namespace Infocyph\Webrick\Core_OLD;
 
 use Infocyph\Webrick\Interfaces\RouterInterface;
 use Infocyph\Webrick\Interfaces\RouteInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\ResponseInterface;
-use Infocyph\Webrick\Middleware\RouteDispatcher;
+use Infocyph\Webrick\Middleware_OLD\RouteDispatcher;
 
 class Router implements RouterInterface
 {
