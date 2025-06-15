@@ -30,7 +30,7 @@ class ServerRequest implements ServerRequestInterface
         $meth  = $srv['REQUEST_METHOD'] ?? 'GET';
         $body  = new Stream(fopen('php://input', 'rb'));
         $proto = str_starts_with(($srv['SERVER_PROTOCOL'] ?? ''), 'HTTP/')
-            ? substr($srv['SERVER_PROTOCOL'], 5)
+            ? substr((string) $srv['SERVER_PROTOCOL'], 5)
             : '1.1';
 
         /* bootstrap w/ empty headers */
@@ -39,7 +39,7 @@ class ServerRequest implements ServerRequestInterface
         );
 
         /* populate headers via RequestHeaders */
-        foreach ((new RequestHeaders($req))->all()->toArray() as $name => $val) {
+        foreach (new RequestHeaders($req)->all()->toArray() as $name => $val) {
             $req = $req->withHeader($name, is_array($val) ? $val : [(string) $val]);
         }
 
@@ -114,8 +114,8 @@ class ServerRequest implements ServerRequestInterface
 
     private function determineVariableOrder(): array
     {
-        $vars = strtoupper(preg_replace('/[^EGPCS]/', '', ini_get('variables_order') ?: 'EGPCS'));
-        $req  = strtoupper(preg_replace('/[^GPC]/', '', ini_get('request_order') ?: ''));
+        $vars = strtoupper((string) preg_replace('/[^EGPCS]/', '', ini_get('variables_order') ?: 'EGPCS'));
+        $req  = strtoupper((string) preg_replace('/[^GPC]/', '', ini_get('request_order') ?: ''));
 
         $seq = str_split($vars);            // base order
         if ($req !== '') {
@@ -411,7 +411,7 @@ class ServerRequest implements ServerRequestInterface
     public function isAjax(): bool
     {
         $hdr = $this->server('HTTP_X_REQUESTED_WITH');
-        return $hdr !== null && strcasecmp($hdr, 'xmlhttprequest') === 0;
+        return $hdr !== null && strcasecmp((string) $hdr, 'xmlhttprequest') === 0;
     }
 
     public function headers(): RequestHeaders

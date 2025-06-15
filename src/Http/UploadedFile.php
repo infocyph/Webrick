@@ -18,11 +18,8 @@ use RuntimeException;
 class UploadedFile implements UploadedFileInterface
 {
     /** @var string|StreamInterface */
-    private $source;            // either tmp-file path OR already-open stream
-    private readonly ?string $clientFilename;
-    private readonly ?string $clientMediaType;
+    private $source;
     private readonly int     $error;
-    private ?int             $size;
     private bool             $moved = false;
 
     /* --------------------------------------------------------------
@@ -35,10 +32,10 @@ class UploadedFile implements UploadedFileInterface
      */
     public function __construct(
         $source,
-        ?int   $size = null,
+        private readonly ?int   $size = null,
         int    $error = UPLOAD_ERR_OK,
-        ?string $clientFilename = null,
-        ?string $clientMediaType = null
+        private readonly ?string $clientFilename = null,
+        private readonly ?string $clientMediaType = null
     ) {
         if (!is_string($source) && ! $source instanceof StreamInterface) {
             throw new InvalidArgumentException('Source must be filepath or StreamInterface');
@@ -47,10 +44,7 @@ class UploadedFile implements UploadedFileInterface
             throw new InvalidArgumentException('Invalid upload error code');
         }
         $this->source          = $source;
-        $this->size            = $size;
         $this->error           = $error;
-        $this->clientFilename  = $clientFilename;
-        $this->clientMediaType = $clientMediaType;
     }
 
     /** Build directly from `$_FILES[...]` spec */

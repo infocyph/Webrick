@@ -26,7 +26,7 @@ class TrailingSlashRedirectMiddleware implements MiddlewareInterface
             $newUri  = $request->getUri()->withPath($newPath);
 
             // Return a 301 redirect
-            return (new Response(301))
+            return new Response(301)
                 ->withHeader('Location', (string) $newUri);
         }
 

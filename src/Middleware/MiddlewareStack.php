@@ -27,10 +27,10 @@ class MiddlewareStack implements RequestHandlerInterface
         $handler = $this->finalHandler;
         for ($i = count($this->middlewares) - 1; $i >= 0; $i--) {
             $middleware = $this->middlewares[$i];
-            $handler = new class ($middleware, $handler) implements RequestHandlerInterface {
+            $handler = new readonly class ($middleware, $handler) implements RequestHandlerInterface {
                 public function __construct(
-                    private readonly MiddlewareInterface $middleware,
-                    private readonly RequestHandlerInterface $next,
+                    private MiddlewareInterface $middleware,
+                    private RequestHandlerInterface $next,
                 ) {
                 }
 

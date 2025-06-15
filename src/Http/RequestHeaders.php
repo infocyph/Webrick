@@ -107,8 +107,8 @@ final class RequestHeaders
         foreach ($segments as $seg) {
             // split “mimetype ; q=0.8”
             [$mime, $q] = array_pad(array_map('trim', explode(';', $seg, 2)), 2, '');
-            $qVal = (float)(preg_match('/q=([\d.]+)/', $q, $m) ? $m[1] : 1);
-            $wild = substr_count($mime, '*');
+            $qVal = (float)(preg_match('/q=([\d.]+)/', (string) $q, $m) ? $m[1] : 1);
+            $wild = substr_count((string) $mime, '*');
             $parsed[] = ['mime' => $mime, 'q' => $qVal, 'wild' => $wild];
         }
 
@@ -164,7 +164,7 @@ final class RequestHeaders
 
             if ($range = $h['Range'] ?? '') {
                 [$unit, $span] = array_pad(explode('=', str_replace(' ', '', $range), 2), 2, '');
-                $dep['range'] = $unit ? ['unit' => $unit, 'span' => explode(',', $span)] : null;
+                $dep['range'] = $unit ? ['unit' => $unit, 'span' => explode(',', (string) $span)] : null;
             }
 
             $this->dependency = new Collection($dep);

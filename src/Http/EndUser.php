@@ -23,17 +23,15 @@ final class EndUser
         'HTTP_ALI_CLIENT_IP',            // AliCloud
         'HTTP_X_ORACLE_CLIENT_IP',       // Oracle
         'HTTP_X_STACKPATH_EDGE_IP',      // StackPath
-    ];
-
-    private array $extraTrusted = [];          // <— renamed
+    ];          // <— renamed
     /* --------------------------------------------------------------
        Construction
        -------------------------------------------------------------- */
     public function __construct(
         private readonly ServerRequestInterface $req,
-        array $trustedProxies = []             // now called $trustedProxies
+        private readonly array $extraTrusted = []             // now called $trustedProxies
     ) {
-        $this->extraTrusted = $trustedProxies; // store locally
+        // store locally
     }
 
     public static function from(ServerRequestInterface $r, array $trusted = []): self
@@ -155,7 +153,7 @@ final class EndUser
     private function isTrustedProxy(string $ip): bool
     {
         return array_any(array_merge(self::$trusted, $this->extraTrusted), fn ($cidr)
-            => str_contains($cidr, ':')
+            => str_contains((string) $cidr, ':')
             ? $this->ipv6Match($ip, $cidr)
             : $this->ipv4Match($ip, $cidr));
     }
@@ -200,8 +198,8 @@ final class EndUser
 
             // X-Forwarded-For can be a comma-separated list
             return $hdr === 'HTTP_X_FORWARDED_FOR'
-                ? array_map('trim', explode(',', $srv[$hdr]))
-                : [trim($srv[$hdr])];
+                ? array_map('trim', explode(',', (string) $srv[$hdr]))
+                : [trim((string) $srv[$hdr])];
         }
         return [];
     }
@@ -277,7 +275,7 @@ final class EndUser
         }
 
         return array_any((array)$list, fn ($cidr)
-            => str_contains($cidr, ':')
+            => str_contains((string) $cidr, ':')
             ? $this->ipv6Match($ip, $cidr)
             : $this->ipv4Match($ip, $cidr));
     }

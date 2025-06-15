@@ -22,7 +22,7 @@ use Psr\Http\Message\ServerRequestInterface;
 final class UAParser
 {
     private string $ua;       // full raw UA header
-    private string $uaLower;  // lowercase ua (for speed)
+    private readonly string $uaLower;  // lowercase ua (for speed)
     private array  $hintBag;  // parsed client-hints (if any)
 
     /* -------------------------------------------------------- */
@@ -160,10 +160,10 @@ final class UAParser
             if ($pv !== '') {
                 $plat .= ' ' . $pv;
             }
-            if ($this->hintBag['mobile'] && !str_contains(strtolower($plat), 'android')) {
+            if ($this->hintBag['mobile'] && !str_contains(strtolower((string) $plat), 'android')) {
                 $plat .= ' Mobile';
             }
-            return trim($plat);
+            return trim((string) $plat);
         }
 
         /* --- fallback UA sniff ----------------------------------- */

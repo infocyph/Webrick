@@ -15,7 +15,7 @@ use Psr\Http\Message\UploadedFileInterface;
  *
  * Immutable – every mutator returns a cloned instance.
  */
-final class Request extends ServerRequest implements ArrayAccess, JsonSerializable
+final class Request extends ServerRequest implements ArrayAccess, JsonSerializable, \Stringable
 {
     use MacroMix;
     /* -------------------------------------------------------------
@@ -95,12 +95,12 @@ final class Request extends ServerRequest implements ArrayAccess, JsonSerializab
         }
 
         // **masked tokens** (first 40 chars = mask, last 40 = hashed token)
-        if (strlen($sent) === 80 && strlen($stored) === 40) {
-            $mask   = substr($sent, 0, 40);
-            $hashed = substr($sent, 40);
+        if (strlen((string) $sent) === 80 && strlen((string) $stored) === 40) {
+            $mask   = substr((string) $sent, 0, 40);
+            $hashed = substr((string) $sent, 40);
 
             // XOR-unmask and compare against stored hash
-            $unmasked = hash_hmac('sha1', $mask, $stored);
+            $unmasked = hash_hmac('sha1', $mask, (string) $stored);
             return hash_equals($unmasked, $hashed);
         }
 
@@ -216,6 +216,7 @@ final class Request extends ServerRequest implements ArrayAccess, JsonSerializab
     /* -------------------------------------------------------------
      | 3. File & header access sugar
      | ------------------------------------------------------------*/
+    #[\Override]
     public function file(?string $key = null): UploadedFileInterface|array|null
     {
         $files = $this->getUploadedFiles();
@@ -252,7 +253,7 @@ final class Request extends ServerRequest implements ArrayAccess, JsonSerializab
     {
         // Minimal placeholder; replace with real validation lib later.
         foreach ($rules as $field => $rule) {
-            if (str_contains($rule, 'required') && !$this->filled($field)) {
+            if (str_contains((string) $rule, 'required') && !$this->filled($field)) {
                 throw new InvalidArgumentException("Field '{$field}' is required");
             }
         }
@@ -302,7 +303,7 @@ final class Request extends ServerRequest implements ArrayAccess, JsonSerializab
 
     public function __toString(): string
     {
-        return json_encode($this->all(), JSON_UNESCAPED_UNICODE);
+        return (string) json_encode($this->all(), JSON_UNESCAPED_UNICODE);
     }
 
     public function data(string $dot, $default = null): mixed
@@ -356,7 +357,7 @@ final class Request extends ServerRequest implements ArrayAccess, JsonSerializab
            2) If no whitelist supplied, take the *first* language string
         -----------------------------------------------------------------*/
         if ($supported === null) {
-            return $this->cachedLocale = strtolower(substr($langs[0], 0, 5));
+            return $this->cachedLocale = strtolower(substr((string) $langs[0], 0, 5));
         }
 
         /* Clean the whitelist to lowercase ISO-codes like 'en', 'fr-CA' */

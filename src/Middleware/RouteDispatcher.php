@@ -39,8 +39,8 @@ class RouteDispatcher implements RequestHandlerInterface
         $middlewares = $this->resolveMiddlewares($this->route->getMiddlewares());
 
         // The final "core" handler
-        $coreHandler = new class ($this->route, $this->container) implements RequestHandlerInterface {
-            public function __construct(private readonly RouteInterface $route, private readonly ?ContainerInterface $container)
+        $coreHandler = new readonly class ($this->route, $this->container) implements RequestHandlerInterface {
+            public function __construct(private RouteInterface $route, private ?ContainerInterface $container)
             {
             }
 
@@ -85,8 +85,8 @@ class RouteDispatcher implements RequestHandlerInterface
         $handler = $coreHandler;
         for ($i = count($middlewares) - 1; $i >= 0; $i--) {
             $m = $middlewares[$i];
-            $handler = new class ($m, $handler) implements RequestHandlerInterface {
-                public function __construct(private readonly MiddlewareInterface $middleware, private readonly RequestHandlerInterface $next)
+            $handler = new readonly class ($m, $handler) implements RequestHandlerInterface {
+                public function __construct(private MiddlewareInterface $middleware, private RequestHandlerInterface $next)
                 {
                 }
 
