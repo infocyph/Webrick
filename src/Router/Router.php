@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router;
@@ -35,7 +36,9 @@ final class Router implements RouterInterface
 
     /* ----------------------------------------------------------------- */
 
-    public function __construct(private RouteCollection $routes) {}
+    public function __construct(private RouteCollection $routes)
+    {
+    }
 
     /* ======== request handling (PSR-15) ============================ */
     public function handle(ServerRequestInterface $request): ResponseInterface
@@ -46,23 +49,27 @@ final class Router implements RouterInterface
         }
 
         /* Build mini pipeline of route-specific middleware */
-        $core = new class($route) implements RequestHandlerInterface {
-            public function __construct(private RouteInterface $route) {}
+        $core = new class ($route) implements RequestHandlerInterface {
+            public function __construct(private RouteInterface $route)
+            {
+            }
             public function handle(ServerRequestInterface $r): ResponseInterface
             {
                 $handler = $this->route->getHandler();
-                return ($handler)( $r );
+                return ($handler)($r);
             }
         };
 
         $handler = array_reduce(
             array_reverse($route->getMiddlewares()),
             /** @return RequestHandlerInterface */
-            fn (RequestHandlerInterface $next, $mw) => new class($mw, $next) implements RequestHandlerInterface {
-                public function __construct(private $mw, private RequestHandlerInterface $next) {}
+            fn (RequestHandlerInterface $next, $mw) => new class ($mw, $next) implements RequestHandlerInterface {
+                public function __construct(private $mw, private RequestHandlerInterface $next)
+                {
+                }
                 public function handle(ServerRequestInterface $r): ResponseInterface
                 {
-                    $m = is_string($this->mw) ? new $this->mw : $this->mw;
+                    $m = is_string($this->mw) ? new $this->mw() : $this->mw;
                     return $m->process($r, $this->next);
                 }
             },
@@ -81,13 +88,34 @@ final class Router implements RouterInterface
     }
 
     /* verb shortcuts */
-    public function get(string $p, callable $h): RouteInterface { return $this->addRoute('GET',    $p, $h); }
-    public function post(string $p, callable $h): RouteInterface{ return $this->addRoute('POST',   $p, $h); }
-    public function put(string $p, callable $h): RouteInterface { return $this->addRoute('PUT',    $p, $h); }
-    public function patch(string $p, callable $h): RouteInterface{ return $this->addRoute('PATCH', $p, $h); }
-    public function delete(string $p, callable $h): RouteInterface{ return $this->addRoute('DELETE',$p, $h); }
-    public function head(string $p, callable $h): RouteInterface { return $this->addRoute('HEAD',  $p, $h); }
-    public function options(string $p, callable $h): RouteInterface{ return $this->addRoute('OPTIONS',$p,$h); }
+    public function get(string $p, callable $h): RouteInterface
+    {
+        return $this->addRoute('GET', $p, $h);
+    }
+    public function post(string $p, callable $h): RouteInterface
+    {
+        return $this->addRoute('POST', $p, $h);
+    }
+    public function put(string $p, callable $h): RouteInterface
+    {
+        return $this->addRoute('PUT', $p, $h);
+    }
+    public function patch(string $p, callable $h): RouteInterface
+    {
+        return $this->addRoute('PATCH', $p, $h);
+    }
+    public function delete(string $p, callable $h): RouteInterface
+    {
+        return $this->addRoute('DELETE', $p, $h);
+    }
+    public function head(string $p, callable $h): RouteInterface
+    {
+        return $this->addRoute('HEAD', $p, $h);
+    }
+    public function options(string $p, callable $h): RouteInterface
+    {
+        return $this->addRoute('OPTIONS', $p, $h);
+    }
 
     /* ======== helpers =========================================== */
     public function urlFor(string $name, array $params = [], bool $absolute = false): string

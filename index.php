@@ -1,136 +1,113 @@
 <?php
-
 declare(strict_types=1);
-require __DIR__.'/vendor/autoload.php';
 
-use Infocyph\Webrick\Core_OLD\RouteCollection;
-use Infocyph\Webrick\Core_OLD\RouteParser;
-use Infocyph\Webrick\Core_OLD\Router;
+require __DIR__ . '/vendor/autoload.php';
+
 use Infocyph\Webrick\Http\Response;
 use Infocyph\Webrick\Http\ServerRequest;
 use Infocyph\Webrick\Http\Stream;
-use Infocyph\Webrick\Middleware_OLD\ErrorHandlerMiddleware;
-use Infocyph\Webrick\Middleware_OLD\HttpsEnforceMiddleware;
-use Infocyph\Webrick\Middleware_OLD\MethodOverrideMiddleware;
-use Infocyph\Webrick\Middleware_OLD\MiddlewareStack;
-use Infocyph\Webrick\Middleware_OLD\RouteDispatcher;
-use Infocyph\Webrick\Middleware_OLD\TrailingSlashRedirectMiddleware;
-use Psr\Http\Message\ServerRequestInterface;
+use Infocyph\Webrick\Router\RouteCollection;
+use Infocyph\Webrick\Router\Router;
+use Infocyph\Webrick\Router\Middleware\{
+    ErrorHandlerMiddleware,
+    TrailingSlashRedirectMiddleware
+};
+use Psr\Http\Message\{ResponseInterface, ServerRequestInterface};
+use Psr\Http\Server\{MiddlewareInterface, RequestHandlerInterface};
 
-$container = container();
-
-// ----------------------------------------------------------------------------
-// 3) Build the PSR-7 Request from Superglobals
-// ----------------------------------------------------------------------------
+/* -----------------------------------------------------------------
+   1) Build PSR-7 request from super-globals
+   ----------------------------------------------------------------- */
 $request = ServerRequest::createFromGlobals();
 
-// ----------------------------------------------------------------------------
-// 4) Create RouteCollection, enable caching if desired
-// ----------------------------------------------------------------------------
-$routeParser = new RouteParser();
-$routeCollection = new RouteCollection($routeParser);
+/* -----------------------------------------------------------------
+   2) Create routing engine
+   ----------------------------------------------------------------- */
+$routes  = new RouteCollection();
+$router  = new Router($routes);          // no cache warm-up here
 
-// If you want to load or store routes in a cache file:
-// $routeCollection->enableCache(__DIR__ . '/../routeCache.php');
-
-// ----------------------------------------------------------------------------
-// 5) Create the Router
-// ----------------------------------------------------------------------------
-$router = new Router($routeCollection);
-
-// ----------------------------------------------------------------------------
-// 6) Define Routes
-// ----------------------------------------------------------------------------
-
-// A simple route at root "/"
-$router->get('/', function (ServerRequestInterface $req) {
-    $body = new Stream('Hello, World from the updated Webrick!');
-
-    return new Response(200, ['Content-Type' => 'text/plain'], $body);
+/* -----------------------------------------------------------------
+   3) Define routes (immutable style)
+   ----------------------------------------------------------------- */
+$router->get('/', function (ServerRequestInterface $req): ResponseInterface {
+    return new Response(
+        200,
+        ['Content-Type' => 'text/plain'],
+        new Stream('Hello, World from Webrick!')
+    );
 });
 
-// A route with placeholders
-$router->get('/user/{id:\d+}', function (ServerRequestInterface $req) {
+$router->get('/user/{id:int}', function (ServerRequestInterface $req): ResponseInterface {
     $id = $req->getAttribute('id');
-    $body = new Stream("User ID is {$id}");
+    return new Response(
+        200,
+        ['Content-Type' => 'text/plain'],
+        new Stream("User ID is {$id}")
+    );
+});
 
-    return new Response(200, ['Content-Type' => 'text/plain'], $body);
-})->setName('user.show');
-// Example route-level middleware:
-//   ->middleware([AuthMiddleware::class]);
+$router->get('/admin/dashboard', function (): ResponseInterface {
+    return new Response(
+        200,
+        ['Content-Type' => 'text/plain'],
+        new Stream('Welcome to the Admin Dashboard')
+    );
+});
 
-// A group with prefix '/admin'
-$router->group('/admin', function (Router $r) {
-    $r->get('/dashboard', function (ServerRequestInterface $req) {
-        dd($req);
-        $body = new Stream('Welcome to the Admin Dashboard');
+/* -----------------------------------------------------------------
+   4) Global (application-wide) middleware stack
+   ----------------------------------------------------------------- */
 
-        return new Response(200, ['Content-Type' => 'text/plain'], $body);
-    })->setName('admin.dashboard');
-    // more admin routes...
-})->middleware([
-    // e.g., AdminAuthMiddleware::class
-]);
-
-// (Optional) store the updated route definitions to cache
-// $routeCollection->storeCache();
-
-// ----------------------------------------------------------------------------
-// 7) Create the Final Dispatcher (RouteDispatcher) with container (optional)
-// ----------------------------------------------------------------------------
-$finalDispatcher = new RouteDispatcher(null, $container); // or (null, null) if no DI
-$router->setFinalRouteDispatcher($finalDispatcher);
-
-// ----------------------------------------------------------------------------
-// 8) Build the Global Middleware Stack
-// ----------------------------------------------------------------------------
-// You can add or remove any middlewares here:
-$errorHandler = new ErrorHandlerMiddleware(devMode: false);  // 'false' => production mode
-$httpsEnforcer = new HttpsEnforceMiddleware(productionMode: false); // set true if you want to force https
-$slashRedirect = new TrailingSlashRedirectMiddleware();
-$methodOverride = new MethodOverrideMiddleware('X-HTTP-Method-Override'); // override if needed
-
-$globalMiddlewares = [
-    // Enforce HTTPS in production (set productionMode => true)
-    // $httpsEnforcer,
-
-    // Avoid trailing slash duplicates
-    $slashRedirect,
-
-    // Let clients override method via header
-    $methodOverride,
-
-    // Catch 404 / 405 / 500 errors
-    $errorHandler,
+/** @var list<MiddlewareInterface> $global */
+$global = [
+    new TrailingSlashRedirectMiddleware(),
+    new ErrorHandlerMiddleware(devMode: false),
 ];
 
-$stack = new MiddlewareStack($globalMiddlewares, $router);
+/**
+ * Simple PSR-15 middleware stack wrapper.
+ * (Avoids pulling the older MiddlewareStack helper into the new tree.)
+ */
+final class Stack implements RequestHandlerInterface
+{
+    /** @param list<MiddlewareInterface> $mws */
+    public function __construct(private array $mws, private RequestHandlerInterface $core) {}
 
-// ----------------------------------------------------------------------------
-// 9) Dispatch the Request
-// ----------------------------------------------------------------------------
-$response = $stack->handle($request);
+    public function handle(ServerRequestInterface $r): ResponseInterface
+    {
+        $handler = array_reduce(
+            array_reverse($this->mws),
+            /** @return RequestHandlerInterface */
+            static fn (RequestHandlerInterface $next, MiddlewareInterface $mw)
+                => new class ($mw, $next) implements RequestHandlerInterface {
+                public function __construct(
+                    private MiddlewareInterface   $mw,
+                    private RequestHandlerInterface $next
+                ) {}
+                public function handle(ServerRequestInterface $r): ResponseInterface
+                {
+                    return $this->mw->process($r, $this->next);
+                }
+            },
+            $this->core
+        );
 
-// ----------------------------------------------------------------------------
-// 10) Emit the PSR-7 Response
-// ----------------------------------------------------------------------------
-http_response_code($response->getStatusCode());
-foreach ($response->getHeaders() as $name => $values) {
-    foreach ($values as $value) {
-        header("{$name}: {$value}", false);
+        return $handler->handle($r);
     }
 }
 
-echo (string) $response->getBody();
+/* -----------------------------------------------------------------
+   5) Dispatch
+   ----------------------------------------------------------------- */
+$response = (new Stack($global, $router))->handle($request);
 
-/**
- * Done!
- *
- * Examples:
- *  - http://localhost:8080/          => "Hello, World from the updated Webrick!"
- *  - http://localhost:8080/user/42   => "User ID is 42"
- *  - http://localhost:8080/admin/dashboard => "Welcome to the Admin Dashboard"
- *
- * With trailing slash middleware, requests to e.g. /user/42/ automatically 301-redirect to /user/42
- * If HttpsEnforceMiddleware is enabled in production, any http:// request 302-redirects to https://
- */
+/* -----------------------------------------------------------------
+   6) Emit response
+   ----------------------------------------------------------------- */
+http_response_code($response->getStatusCode());
+foreach ($response->getHeaders() as $name => $values) {
+    foreach ($values as $v) {
+        header("{$name}: {$v}", false);
+    }
+}
+echo (string) $response->getBody();

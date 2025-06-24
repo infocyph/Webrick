@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Infocyph\Webrick\Middleware_OLD;
+namespace Infocyph\Webrick\Router\Middleware;
 
+use Infocyph\Webrick\Http\Response;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
-use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Message\ResponseInterface;
-use Infocyph\Webrick\Http\Response;
 
 /**
  * Automatically redirects any trailing slash to its slash-less equivalent,

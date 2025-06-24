@@ -20,21 +20,20 @@ final class RouteParser
 
         $parts = preg_split('/(\{[^}]+\})/', $path, -1, PREG_SPLIT_DELIM_CAPTURE);
         foreach ($parts as $seg) {
-            if ($seg === '')          { continue; }
+            if ($seg === '') { continue; }
 
-            if ($seg[0] === '{') { // placeholder
+            if ($seg[0] === '{') {               // placeholder
                 if (!preg_match('/^\{([A-Za-z_][A-Za-z0-9_]*)(?::([^}]+))?\}$/', $seg, $m)) {
                     throw new \RuntimeException("Malformed placeholder in path '{$path}'");
                 }
-                [$ , $name, $type] = $m + [null, null, null];
+                [, $name, $type] = $m + [null, null, null];           // <<< fixed unpack
                 $pattern = $type
                     ? (ConstraintRegistry::has($type)
                         ? ConstraintRegistry::get($type)->pattern()
-                        : $type                          // raw regex
-                    )
+                        : $type)
                     : '[^/]+';
 
-                $regex      .= '(?P<' . $name . '>' . $pattern . ')';
+                $regex       .= '(?P<' . $name . '>' . $pattern . ')';
                 $paramNames[] = $name;
             } else {
                 $regex .= preg_quote($seg, '/');

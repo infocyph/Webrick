@@ -10,16 +10,21 @@ use Infocyph\Webrick\Interfaces\RouteInterface;
  */
 final class Route implements RouteInterface
 {
+    /** @var callable */
+    private $handler;
+
     /** @var array<int,string|object>  middleware class names | instances */
     private array $middlewares = [];
 
     public function __construct(
-        private string   $method,
-        private string   $path,
-        private callable $handler,
-        private ?string  $domain = null,
-        private ?string  $name   = null,
-    ) {}
+        private string  $method,
+        private string  $path,
+        callable        $handler,
+        private ?string $domain = null,
+        private ?string $name   = null,
+    ) {
+        $this->handler = $handler;
+    }
 
     /* -------- getters -------- */
     public function getMethod(): string        { return $this->method; }
@@ -34,18 +39,23 @@ final class Route implements RouteInterface
     {
         $c = clone $this; $c->domain = $domain; return $c;
     }
+
     public function withName(string $name): self
     {
         $c = clone $this; $c->name = $name; return $c;
     }
-    public function withMiddleware(array $mw): self
+
+    /**
+     * @param array<int,string|object> $middlewares
+     */
+    public function withMiddleware(array $middlewares): self
     {
         $c = clone $this;
-        $c->middlewares = array_merge($c->middlewares, $mw);
+        $c->middlewares = array_merge($c->middlewares, $middlewares);
         return $c;
     }
 
-    /* -------- legacy mutator stubs (for BC) -------- */
+    /* -------- legacy mutator stubs (no-ops for BC) -------- */
     public function setMethod(string $m): self { return $this; }
     public function setPath(string $p): self   { return $this; }
     public function setHandler(callable $h): self { return $this; }
