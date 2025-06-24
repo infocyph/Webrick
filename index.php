@@ -61,7 +61,7 @@ $router->get('/admin/dashboard', function (): ResponseInterface {
 /** @var list<MiddlewareInterface> $global */
 $global = [
     new TrailingSlashRedirectMiddleware(),
-    new ErrorHandlerMiddleware(devMode: false),
+    new ErrorHandlerMiddleware(),
 ];
 
 /**
