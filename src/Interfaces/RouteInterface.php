@@ -1,32 +1,34 @@
 <?php
-
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Interfaces;
 
 /**
- * Represents a single route definition with optional domain and route name
- * for advanced use-cases (subdomain routing, URL generation).
+ * Immutable representation of a single route.
+ * Every mutator returns a *new* instance.
  */
 interface RouteInterface
 {
-    public function setMethod(string $method): self;
+    /* ---------- core accessors ---------- */
+    public function getMethod(): string;            // "GET", "POST", …
+    public function getPath(): string;              // "/users/{id:int}"
+    public function getHandler(): callable;         // controller callable
 
-    public function getMethod(): string;
+    /* ---------- optional extras ---------- */
+    public function getDomain(): ?string;           // "api.example.com" or null
+    public function getName(): ?string;             // "users.show" or null
 
-    public function setPath(string $path): self;
+    /** @return array<int,string|object>  PSR-15 middleware classes|objects */
+    public function getMiddlewares(): array;
 
-    public function getPath(): string;
+    /* ---------- immutable modifiers ----- */
+    public function withDomain(?string $domain): self;
+    public function withName(string $name): self;
 
-    public function setHandler(callable $handler): self;
-
-    public function getHandler(): callable;
-
-    public function setDomain(?string $domain): self;
-
-    public function getDomain(): ?string;
-
-    public function setName(string $name): self;
-
-    public function getName(): ?string;
+    /**
+     * Returns a copy with additional route-specific middleware appended.
+     *
+     * @param array<int,string|object> $middlewares
+     */
+    public function withMiddleware(array $middlewares): self;
 }

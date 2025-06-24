@@ -32,7 +32,7 @@
     "require": {
         "php": ">=8.4",
         "infocyph/arraykit": "^2.02",
-        "infocyph/intermix": "^5.0",
+        "infocyph/intermix": "^5.3",
         "psr/http-server-handler": "^1.0",
         "psr/http-server-middleware": "^1.0"
     },
