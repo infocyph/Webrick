@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router\Compiler;
@@ -22,7 +23,8 @@ final class RouteDumper
 
     public function __construct(
         private readonly Cache $cache = new Cache()   // filesystem pool by default
-    ) {}
+    ) {
+    }
 
     /* -----------------------------------------------------------------
        Load from cache or warm-compile from source

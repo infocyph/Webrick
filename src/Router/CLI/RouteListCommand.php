@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router\CLI;
@@ -60,7 +61,8 @@ final class RouteListCommand
     /* ----- option parsing -------------------------------------- */
     private static function parseOptions(array $args): array
     {
-        $method = null; $domain = null;
+        $method = null;
+        $domain = null;
         foreach ($args as $a) {
             if (str_starts_with($a, '--method=')) {
                 $method = strtoupper(substr($a, 9));
@@ -89,7 +91,9 @@ final class RouteListCommand
         echo str_repeat('-', array_sum($w) + 6) . "\n";
 
         foreach ($rows as [$m, $p, $d, $n]) {
-            $mColour = match ($m) { 'GET' => $g.$m.$r, 'POST' => $y.$m.$r, default => $m };
+            $mColour = match ($m) {
+                'GET' => $g.$m.$r, 'POST' => $y.$m.$r, default => $m
+            };
             printf("%-{$w[0]}s  %-{$w[1]}s  %-{$w[2]}s  %-{$w[3]}s\n", $mColour, $p, $d, $n);
         }
 

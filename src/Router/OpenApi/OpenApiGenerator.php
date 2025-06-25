@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router\OpenApi;
@@ -15,7 +16,9 @@ use stdClass;
  */
 final class OpenApiGenerator
 {
-    public function __construct(private RouterInterface $router) {}
+    public function __construct(private RouterInterface $router)
+    {
+    }
 
     /**
      * Writes the spec to disk (JSON or YAML, inferred from extension).
@@ -28,7 +31,7 @@ final class OpenApiGenerator
             $yaml = yaml_emit(json_decode(json_encode($doc), true), YAML_UTF8_ENCODING);
             file_put_contents($file, $yaml);
         } else {
-            file_put_contents($file, json_encode($doc, JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES));
+            file_put_contents($file, json_encode($doc, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         }
     }
 
@@ -131,8 +134,7 @@ final class OpenApiGenerator
                 $doc->components->schemas->{$name} ??= $sb->build($dto);
                 $successRef = "#/components/schemas/{$name}";
             }
-            /* implicit via return-type */
-            elseif ($rt = $rm->getReturnType()) {
+            /* implicit via return-type */ elseif ($rt = $rm->getReturnType()) {
                 if ($rt instanceof \ReflectionNamedType && !$rt->isBuiltin()) {
                     $dto  = $rt->getName();
                     $name = (new \ReflectionClass($dto))->getShortName();

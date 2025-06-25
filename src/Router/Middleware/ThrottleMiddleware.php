@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router\Middleware;
@@ -35,8 +36,11 @@ final class ThrottleMiddleware implements MiddlewareInterface
         $it  = $this->cache->getItem($key);
 
         $hits = (int) ($it->get() ?? 0) + 1;
-        if ($hits === 1) { $it->expiresAfter($this->seconds); }
-        $it->set($hits); $this->cache->save($it);
+        if ($hits === 1) {
+            $it->expiresAfter($this->seconds);
+        }
+        $it->set($hits);
+        $this->cache->save($it);
 
         if ($hits > $this->limit) {
             throw new RuntimeException('Too Many Requests', 429);

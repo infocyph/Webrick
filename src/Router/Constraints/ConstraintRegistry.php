@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router\Constraints;
@@ -18,7 +19,9 @@ final class ConstraintRegistry
     /** Initialise the built-ins only once */
     private static function init(): void
     {
-        if (isset(self::$map)) { return; }
+        if (isset(self::$map)) {
+            return;
+        }
         self::$map = [
             'int'  => new IntConstraint(),
             'uuid' => new UuidConstraint(),

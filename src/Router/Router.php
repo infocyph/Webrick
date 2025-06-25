@@ -26,7 +26,7 @@ final class Router implements RouterInterface
 
         /* load from cache or let RouteDumper warm it later */
         if ($useCache) {
-            (new RouteDumper())->load($collection, static function () {
+            new RouteDumper()->load($collection, static function () {
                 /* When cache miss, user route files should be included here.
                    For example:  require base_path('routes/web.php'); */
             });

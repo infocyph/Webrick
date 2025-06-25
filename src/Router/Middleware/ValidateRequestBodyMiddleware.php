@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router\Middleware;
@@ -13,7 +14,9 @@ use ReflectionMethod;
 
 final class ValidateRequestBodyMiddleware implements MiddlewareInterface
 {
-    public function __construct(private string $controller, private string $method) {}
+    public function __construct(private string $controller, private string $method)
+    {
+    }
 
     public function process(ServerRequestInterface $r, RequestHandlerInterface $h): ResponseInterface
     {

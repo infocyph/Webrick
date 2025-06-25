@@ -27,5 +27,6 @@ final class Security
     public function __construct(
         public readonly string $scheme,
         public readonly array  $scopes = []
-    ) {}
+    ) {
+    }
 }

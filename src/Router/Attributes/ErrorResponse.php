@@ -22,5 +22,6 @@ final class ErrorResponse
     public function __construct(
         public readonly int    $code,
         public readonly string $dto,
-    ) {}
+    ) {
+    }
 }

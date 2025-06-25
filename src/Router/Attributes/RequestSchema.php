@@ -21,5 +21,7 @@ use Attribute;
 #[Attribute(Attribute::TARGET_METHOD)]
 final class RequestSchema
 {
-    public function __construct(public readonly string $class) {}
+    public function __construct(public readonly string $class)
+    {
+    }
 }

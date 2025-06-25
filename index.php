@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 require __DIR__ . '/vendor/autoload.php';
@@ -8,12 +9,9 @@ use Infocyph\Webrick\Http\ServerRequest;
 use Infocyph\Webrick\Http\Stream;
 use Infocyph\Webrick\Router\RouteCollection;
 use Infocyph\Webrick\Router\Router;
-use Infocyph\Webrick\Router\Middleware\{
-    ErrorHandlerMiddleware,
-    TrailingSlashRedirectMiddleware
-};
+use Infocyph\Webrick\Router\Middleware\{Dispatcher, ErrorHandlerMiddleware, TrailingSlashRedirectMiddleware};
 use Psr\Http\Message\{ResponseInterface, ServerRequestInterface};
-use Psr\Http\Server\{MiddlewareInterface, RequestHandlerInterface};
+use Psr\Http\Server\{MiddlewareInterface};
 
 /* -----------------------------------------------------------------
    1) Build PSR-7 request from super-globals
@@ -68,38 +66,12 @@ $global = [
  * Simple PSR-15 middleware stack wrapper.
  * (Avoids pulling the older MiddlewareStack helper into the new tree.)
  */
-final class Stack implements RequestHandlerInterface
-{
-    /** @param list<MiddlewareInterface> $mws */
-    public function __construct(private array $mws, private RequestHandlerInterface $core) {}
 
-    public function handle(ServerRequestInterface $r): ResponseInterface
-    {
-        $handler = array_reduce(
-            array_reverse($this->mws),
-            /** @return RequestHandlerInterface */
-            static fn (RequestHandlerInterface $next, MiddlewareInterface $mw)
-                => new class ($mw, $next) implements RequestHandlerInterface {
-                public function __construct(
-                    private MiddlewareInterface   $mw,
-                    private RequestHandlerInterface $next
-                ) {}
-                public function handle(ServerRequestInterface $r): ResponseInterface
-                {
-                    return $this->mw->process($r, $this->next);
-                }
-            },
-            $this->core
-        );
-
-        return $handler->handle($r);
-    }
-}
 
 /* -----------------------------------------------------------------
    5) Dispatch
    ----------------------------------------------------------------- */
-$response = (new Stack($global, $router))->handle($request);
+$response = new Dispatcher($global, $router)->handle($request);
 
 /* -----------------------------------------------------------------
    6) Emit response

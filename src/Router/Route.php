@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router;
@@ -27,22 +28,44 @@ final class Route implements RouteInterface
     }
 
     /* -------- getters -------- */
-    public function getMethod(): string        { return $this->method; }
-    public function getPath(): string          { return $this->path; }
-    public function getHandler(): callable     { return $this->handler; }
-    public function getDomain(): ?string       { return $this->domain; }
-    public function getName(): ?string         { return $this->name; }
-    public function getMiddlewares(): array    { return $this->middlewares; }
+    public function getMethod(): string
+    {
+        return $this->method;
+    }
+    public function getPath(): string
+    {
+        return $this->path;
+    }
+    public function getHandler(): callable
+    {
+        return $this->handler;
+    }
+    public function getDomain(): ?string
+    {
+        return $this->domain;
+    }
+    public function getName(): ?string
+    {
+        return $this->name;
+    }
+    public function getMiddlewares(): array
+    {
+        return $this->middlewares;
+    }
 
     /* -------- immutable modifiers -------- */
     public function withDomain(?string $domain): self
     {
-        $c = clone $this; $c->domain = $domain; return $c;
+        $c = clone $this;
+        $c->domain = $domain;
+        return $c;
     }
 
     public function withName(string $name): self
     {
-        $c = clone $this; $c->name = $name; return $c;
+        $c = clone $this;
+        $c->name = $name;
+        return $c;
     }
 
     /**
@@ -56,9 +79,24 @@ final class Route implements RouteInterface
     }
 
     /* -------- legacy mutator stubs (no-ops for BC) -------- */
-    public function setMethod(string $m): self { return $this; }
-    public function setPath(string $p): self   { return $this; }
-    public function setHandler(callable $h): self { return $this; }
-    public function setDomain(?string $d): self { return $this->withDomain($d); }
-    public function setName(string $n): self   { return $this->withName($n); }
+    public function setMethod(string $m): self
+    {
+        return $this;
+    }
+    public function setPath(string $p): self
+    {
+        return $this;
+    }
+    public function setHandler(callable $h): self
+    {
+        return $this;
+    }
+    public function setDomain(?string $d): self
+    {
+        return $this->withDomain($d);
+    }
+    public function setName(string $n): self
+    {
+        return $this->withName($n);
+    }
 }

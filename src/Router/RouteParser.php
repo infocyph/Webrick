@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router;
@@ -20,7 +21,9 @@ final class RouteParser
 
         $parts = preg_split('/(\{[^}]+\})/', $path, -1, PREG_SPLIT_DELIM_CAPTURE);
         foreach ($parts as $seg) {
-            if ($seg === '') { continue; }
+            if ($seg === '') {
+                continue;
+            }
 
             if ($seg[0] === '{') {               // placeholder
                 if (!preg_match('/^\{([A-Za-z_][A-Za-z0-9_]*)(?::([^}]+))?\}$/', $seg, $m)) {

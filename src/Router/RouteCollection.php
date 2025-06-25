@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router;
@@ -77,7 +78,9 @@ final class RouteCollection
                 continue;
             }
             $params = [];
-            foreach ($d['paramNames'] as $n) { $params[$n] = $m[$n]; }
+            foreach ($d['paramNames'] as $n) {
+                $params[$n] = $m[$n];
+            }
             return [$d['route'], $params];
         }
 
@@ -117,9 +120,18 @@ final class RouteCollection
     /* -----------------------------------------------------------------
        Compiler support
        ----------------------------------------------------------------- */
-    public function exportStatic(): array   { return $this->staticRoutes;  }
-    public function exportDynamic(): array  { return $this->dynamicRoutes; }
-    public function exportNamed(): array    { return $this->named;         }
+    public function exportStatic(): array
+    {
+        return $this->staticRoutes;
+    }
+    public function exportDynamic(): array
+    {
+        return $this->dynamicRoutes;
+    }
+    public function exportNamed(): array
+    {
+        return $this->named;
+    }
 
     public function hydrate(array $static, array $dynamic, array $named): void
     {
@@ -129,5 +141,8 @@ final class RouteCollection
     }
 
     /* For CLI diagnostics */
-    public function named(): array { return $this->named; }
+    public function named(): array
+    {
+        return $this->named;
+    }
 }

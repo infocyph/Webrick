@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router\Middleware;
@@ -24,7 +25,8 @@ final class OAuth2ScopeMiddleware implements MiddlewareInterface
         private string $algo      = 'RS256',
         private string $publicKey = '',
         private string $secret    = ''
-    ) {}
+    ) {
+    }
 
     public function process(ServerRequestInterface $r, RequestHandlerInterface $h): ResponseInterface
     {

@@ -31,5 +31,6 @@ final class Throttle
         public readonly int    $seconds,
         public readonly string $key  = 'ip',
         public readonly string $algo = 'fixed',   // 'fixed' | 'token'
-    ) {}
+    ) {
+    }
 }

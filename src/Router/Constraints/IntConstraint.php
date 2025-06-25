@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router\Constraints;
@@ -20,7 +21,7 @@ final class IntConstraint implements ConstraintInterface
         // {m,n}  or  {m,}
         $range = $this->maxDigits !== null
             ? sprintf('{%d,%d}', $this->minDigits, $this->maxDigits)
-            : sprintf('{%d,}',  $this->minDigits);
+            : sprintf('{%d,}', $this->minDigits);
 
         return '-?[0-9]' . $range;
     }
