@@ -1,23 +1,23 @@
 #!/usr/bin/env php
 <?php
+
+declare(strict_types=1);
+
+/*
+ |------------------------------------------------------------------
+ |  Webrick CLI entry point
+ |------------------------------------------------------------------
+ |  Usage examples:
+ |     php webrick route:cache   # compile & cache routes
+ |     php webrick route:clear   # remove cache
+ |     php webrick route:list    # pretty table of routes
+ |
+ |  Add more sub-commands in src/router/cli/ as needed.
+ |------------------------------------------------------------------
+*/
+
 require __DIR__ . '/vendor/autoload.php';
 
-$argv[1] ??= '';
-match ($argv[1]) {
-    'route:list'   => \Infocyph\Webrick\Router\CLI\RouteListCommand::run($argv),
-    'route:openapi'=> \Infocyph\Webrick\Router\CLI\RouteOpenApiCommand::run($argv),
-    default        => fwrite(STDERR, "Unknown command {$argv[1]}\n"),
-};
+use Infocyph\Webrick\Router\CLI\RouteCacheCommand;
 
-sample saving
-
-$watcher = class_exists(\Infocyph\Webrick\Router\Dev\InotifyWatcher::class)
-    ? \Infocyph\Webrick\Router\Dev\InotifyWatcher::class
-    : \Infocyph\Webrick\Router\Dev\RouteCacheWatcher::class;
-
-$watcher::run(
-    paths: ['routes/*.php', 'app/Http/Controllers'],
-    compiler: static function (\Infocyph\Webrick\Router\RouteCollection $r) {
-        require __DIR__ . '/routes/web.php';  // your route definitions
-    }
-);
+RouteCacheCommand::main($argv);

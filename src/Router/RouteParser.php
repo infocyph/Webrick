@@ -47,12 +47,12 @@ final class RouteParser
                 }
                 $regexParts[] = $pattern;
             } else {
-                $regexParts[] = preg_quote($piece, '/');
+                $regexParts[] =  preg_quote($piece, '#');
             }
         }
 
         return [
-            'regex'      => '/^' . implode('', $regexParts) . '$/D',
+            'regex'      => '#^' . implode('', $regexParts) . '$#D',
             'paramNames' => $names,
             'validators' => $validators,
         ];

@@ -16,16 +16,20 @@ use Psr\Cache\CacheItemPoolInterface;
 final class RouteDumper
 {
     private const KEY = 'webrick.routes.bin';
+    private readonly CacheItemPoolInterface $pool;
 
     public function __construct(
-        private readonly CacheItemPoolInterface $pool = new Cache(),
         private readonly ValueSerializer $codec = new ValueSerializer(),
-    ) {}
+    ) {
+        $this->pool = Cache::file('route', sys_get_temp_dir().DIRECTORY_SEPARATOR.'webrick');
+    }
 
     public function load(): ?RouteCollection
     {
         $item = $this->pool->getItem(self::KEY);
-        if (!$item->isHit()) { return null; }
+        if (!$item->isHit()) {
+            return null;
+        }
 
         /** @var RouteCollection */
         return $this->codec->decode($item->get());
