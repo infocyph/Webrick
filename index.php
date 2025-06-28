@@ -1,85 +1,79 @@
 <?php
-
 declare(strict_types=1);
+
+/*
+|--------------------------------------------------------------------------
+| WEBRICK QUICK-BOOT
+| • Intermix DI container
+| • Response macros (json(), redirect(), attachment())
+| • Router (dev mode)
+| • Automatic emitter: SAPI vs. CLI
+|--------------------------------------------------------------------------
+*/
 
 require __DIR__ . '/vendor/autoload.php';
 
 use Infocyph\InterMix\DI\Container;
-use Infocyph\Webrick\Http\Request;
-use Infocyph\Webrick\Http\ServerRequest;
-use Infocyph\Webrick\Http\Response;
-use Infocyph\Webrick\Http\Stream;
+use Infocyph\InterMix\DI\Invoker;
+use Infocyph\Webrick\Response\Contracts\ResponseFactoryInterface;
+use Infocyph\Webrick\Response\Factory\ResponseFactory;
+use Infocyph\Webrick\Response\Factory\StreamFactory;
+use Infocyph\Webrick\Response\Factory\UploadedFileFactory;
+use Infocyph\Webrick\Response\Emitter\SapiEmitter;
+use Infocyph\Webrick\Response\Emitter\CliEmitter;
+use Infocyph\Webrick\Response\Macros\ResponseMacros;
 use Infocyph\Webrick\Router\Router;
+use Infocyph\Webrick\Http\ServerRequest;
+use Infocyph\Webrick\Response\Response;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\StreamFactoryInterface;
+use Psr\Http\Message\UploadedFileFactoryInterface;
 
-/*
- |------------------------------------------------------------------
- | 1. Build (or retrieve) the DI container
- |------------------------------------------------------------------
- |  Register services, configs, etc. here.  For this demo we leave it
- |  empty – the container can still resolve classes via auto-wiring.
- */
-$container = new Container();
+/* ----------------------------------------------------------
+ * 1)  DI container + factories
+ * -------------------------------------------------------- */
+$container = Container::instance('intermix');
 
-/*
- |------------------------------------------------------------------
- | 2. Boot the router
- |------------------------------------------------------------------
- |  • bootDev($container)  – rebuilds route table when missing (dev)
- |  • bootFast($container) – requires pre-cached table      (prod)
- */
+$container->definitions()
+    ->bind(ResponseFactoryInterface::class, new ResponseFactory())
+    ->bind(StreamFactoryInterface::class, new StreamFactory())
+    ->bind(UploadedFileFactoryInterface::class, new UploadedFileFactory());
+
+/* expose Invoker singleton as a service too */
+$container->definitions()->bind(Invoker::class, Invoker::with($container));
+
+/* ----------------------------------------------------------
+ * 2)  Enable convenient Response macros  (json(), redirect() …)
+ * -------------------------------------------------------- */
+ResponseMacros::boot();
+
+/* ----------------------------------------------------------
+ * 3)  Boot the router in *dev* mode (auto-compiles route table)
+ *     Pass the Intermix container so RouteRunner uses it.
+ * -------------------------------------------------------- */
 $router = Router::bootDev($container);
 
-/*
- |------------------------------------------------------------------
- | 3. Register demo routes
- |------------------------------------------------------------------
-*/
-$router->get('/ping', static fn () => new Response(200, [], new Stream('pong')))
-    ->withName('ping');
+/* sample routes -------------------------------------------------- */
+$router->get('/ping', fn () => Response::json(['pong' => true]));
 
-$router->get('/user/{id:int}', function (Request $request) {
-    return new Response(200, [], new Stream(
-        'User ID #' . $request->getAttribute('id')
-    ));
-});
+$router->get('/hello/{name}', function (ServerRequest $req): ResponseInterface {
+    $name = $req->getAttribute('name');
+    return Response::json(['hello' => $name]);
+})->withName('hello');
 
+/* group example */
 $router->group('/api', function (Router $r) {
-    $r->get('/status', static fn () => new Response(200, [], new Stream('OK')))
-        ->withName('api.status');
+    $r->get('/status', fn () => Response::json(['status' => 'ok']));
 });
 
-/*
- |------------------------------------------------------------------
- | 4. Convert globals → PSR-7 request
- |------------------------------------------------------------------
-*/
+/* ----------------------------------------------------------
+ * 4)  Turn globals → PSR-7 request and dispatch
+ * -------------------------------------------------------- */
 $request  = ServerRequest::createFromGlobals();
-
-/*
- |------------------------------------------------------------------
- | 5. Dispatch and obtain a PSR-7 response
- |------------------------------------------------------------------
-*/
 $response = $router->handle($request);
 
-/*
- |------------------------------------------------------------------
- | 6. Emit response
- |------------------------------------------------------------------
-*/
-http_response_code($response->getStatusCode());
-
-foreach ($response->getHeaders() as $name => $values) {
-    foreach ($values as $value) {
-        header("{$name}: {$value}", false);
-    }
-}
-
-echo (string) $response->getBody();
-
-/*
- |------------------------------------------------------------------
- | 7. (Optional) quick debug
- |------------------------------------------------------------------
-*/
-// echo $router->urlFor('user.show', ['id' => 42]); // → /user/42
+/* ----------------------------------------------------------
+ * 5)  Emit (CLI or web SAPI)
+ * -------------------------------------------------------- */
+$emitter = PHP_SAPI === 'cli' ? new CliEmitter() : new SapiEmitter();
+$emitter->emit($response);
