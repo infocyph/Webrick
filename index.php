@@ -23,7 +23,7 @@ use Infocyph\Webrick\Response\Emitter\SapiEmitter;
 use Infocyph\Webrick\Response\Emitter\CliEmitter;
 use Infocyph\Webrick\Response\Macros\ResponseMacros;
 use Infocyph\Webrick\Router\Router;
-use Infocyph\Webrick\Http\ServerRequest;
+use Infocyph\Webrick\Http_OLD\ServerRequest;
 use Infocyph\Webrick\Response\Response;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\StreamFactoryInterface;

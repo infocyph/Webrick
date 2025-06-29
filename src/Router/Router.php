@@ -6,9 +6,12 @@ namespace Infocyph\Webrick\Router;
 
 use Infocyph\InterMix\DI\Container;
 use Infocyph\InterMix\DI\Invoker;
-use Infocyph\Webrick\Http\Response;
-use Infocyph\Webrick\Http\Stream;
-use Infocyph\Webrick\Http\Request as HttpRequest;
+use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
+use Infocyph\Webrick\Exceptions\RouteNotFoundException;
+use Infocyph\Webrick\Request\Request as HttpRequest;
+use Infocyph\Webrick\Request\ServerRequest;
+use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Response\Stream;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
@@ -142,37 +145,46 @@ final class Router
      * ----------------------------------------------------------------- */
     public function handle(ServerRequestInterface $req): ResponseInterface
     {
-        /** Ensure we pass the richer facade when possible */
-        if (!$req instanceof HttpRequest && $req instanceof \Infocyph\Webrick\Http\ServerRequest) {
-            $req = new HttpRequest(
-                $req->getMethod(),
-                $req->getUri(),
-                $req->getServerParams(),
-                $req->getHeaders(),
-                $req->getBody(),
-                $req->getProtocolVersion(),
-                $req->getParsedBody() ?? [],
-                $req->getUploadedFiles(),
-                $req->getRequestTarget()
-            );
+        try {
+            /* ---- promote to rich facade (see block above) ---- */
+            if (! $req instanceof HttpRequest && $req instanceof ServerRequest) {
+                $req = new HttpRequest(
+                    $req->getMethod(),
+                    $req->getUri(),
+                    $req->getServerParams(),
+                    $req->getHeaders(),
+                    $req->getBody(),
+                    $req->getProtocolVersion(),
+                    $req->getParsedBody() ?? [],
+                    $req->getUploadedFiles(),
+                    $req->getRequestTarget()
+                );
+            }
+
+            [$route, $params] = $this->routes->match($req);
+            foreach ($params as $k => $v) {
+                $req = $req->withAttribute($k, $v);
+            }
+
+            /* bind live request into container */
+            $this->container->definitions()
+                ->bind(ServerRequestInterface::class, $req)
+                ->bind(HttpRequest::class, $req);
+
+            $core = fn (ServerRequestInterface $r): ResponseInterface =>
+            $this->expectResponse($this->invoker->invoke($route->getHandler()));
+
+            $pipeline = $this->wrapMiddleware($core, $route->getMiddlewares());
+
+            return $pipeline($req);
+
+        } catch (RouteNotFoundException) {
+            return new Response(404, new Stream('404 Not Found'));
+
+        } catch (MethodNotAllowedException $e) {
+            return new Response(405, new Stream('405 Method Not Allowed'))
+                ->withHeader('Allow', $e->getMessage());   // list of verbs comes from exception
         }
-
-        [$route, $params] = $this->routes->match($req);
-        foreach ($params as $k => $v) {
-            $req = $req->withAttribute($k, $v);
-        }
-
-        /* Bind the live request into the container */
-        $this->container->definitions()
-            ->bind(ServerRequestInterface::class, $req)
-            ->bind(HttpRequest::class, $req);
-
-        $core = fn (ServerRequestInterface $r): ResponseInterface =>
-        $this->expectResponse($this->invoker->invoke($route->getHandler()));
-
-        $pipeline = $this->wrapMiddleware($core, $route->getMiddlewares());
-
-        return $pipeline($req);
     }
 
     /** turn mixed into ResponseInterface or throw */

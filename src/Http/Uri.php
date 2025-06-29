@@ -50,6 +50,11 @@ class Uri implements UriInterface
         }
     }
 
+    public static function from(string $rawUri): self
+    {
+        return new self($rawUri);
+    }
+
     /**
      * A helper that tries to build a Uri from server params
      *
@@ -459,9 +464,13 @@ class Uri implements UriInterface
      */
     public function withPath(string $path): UriInterface
     {
-        $new        = clone $this;
-        $encoded    = rawurlencode($path);
-        $new->path  = '/' . ltrim($encoded, '/');
+        $new = clone $this;
+
+        // For opaque URIs such as "mailto:foo@bar", an empty
+        // path is legal and must be preserved. Otherwise, use "/".
+        $keepEmpty = $new->scheme !== '' && $new->host === '';
+        $new->path = ($path === '' && !$keepEmpty) ? '/' : $path;
+
         return $new;
     }
 

@@ -2,46 +2,47 @@
 
 declare(strict_types=1);
 
-namespace Infocyph\Webrick\Http;
+namespace Infocyph\Webrick\Request;
 
 use ArrayAccess;
 use Infocyph\InterMix\Remix\MacroMix;
+use Infocyph\Webrick\Http\EndUser;
+use Infocyph\Webrick\Http\Uri;
 use InvalidArgumentException;
 use JsonSerializable;
 use Psr\Http\Message\UploadedFileInterface;
+use Stringable;
 
 /**
- * Fluent, Laravel-inspired façade around our PSR-7 ServerRequest.
+ * Fluent, Laravel-inspired façade around our PSR-7 `ServerRequest`.
  *
- * Immutable - all mutators return a cloned instance.
+ * Immutable – every mutator returns a cloned instance.
  */
-final class Request extends ServerRequest implements ArrayAccess, JsonSerializable, \Stringable
+final class Request extends ServerRequest implements ArrayAccess, JsonSerializable, Stringable
 {
     use MacroMix;
 
-    /* ─────────────────────────────────────────
-     |  Cached composites
-     ───────────────────────────────────────── */
+    /* ────────────────────────── caches ────────────────────────── */
     private ?array  $cachedAll      = null;
     private ?array  $cachedSegments = null;
     private ?string $cachedLocale   = null;
 
     /* ============================================================
-     |  0.  Factory helpers (for unit tests, etc.)
+     | 0.  Factory helpers (for tests, etc.)
      ============================================================*/
     public static function fake(
-        array $query   = [],
-        array $post    = [],
-        array $headers = [],
-        string $method = 'GET',
-        string $uri    = '/'
+        array  $query   = [],
+        array  $post    = [],
+        array  $headers = [],
+        string $method  = 'GET',
+        string $uri     = '/'
     ): self {
-        return new self(
+        return (new self(
             $method,
-            new Uri($uri),
+            Uri::from($uri),
             $_SERVER,
             $headers,
-        )
+        ))
             ->withQueryParams($query)
             ->withParsedBody($post);
     }
@@ -60,7 +61,7 @@ final class Request extends ServerRequest implements ArrayAccess, JsonSerializab
             return $this->cachedAll;
         }
 
-        // JSON overrides form-data (Laravel semantics)
+        // JSON wins over form-data (Laravel semantics)
         $data = $this->parsedJson()?->all()
             ?: ($this->post()?->all() + $this->query()?->all());
 
@@ -97,13 +98,14 @@ final class Request extends ServerRequest implements ArrayAccess, JsonSerializab
         if ($this->cachedSegments === null) {
             $this->cachedSegments = array_values(array_filter(
                 explode('/', $this->getUri()->getPath()),
-                static fn ($s) => $s !== ''
+                static fn(string $s) => $s !== ''
             ));
         }
+
         return $this->cachedSegments;
     }
 
-    public function segment(int $index, $default = null): ?string
+    public function segment(int $index, mixed $default = null): ?string
     {
         return $this->segments()[$index - 1] ?? $default;
     }
@@ -112,18 +114,20 @@ final class Request extends ServerRequest implements ArrayAccess, JsonSerializab
     {
         $target = $this->getRequestTarget();
 
-        foreach ((array) $patterns as $p) {
+        foreach ((array)$patterns as $p) {
             $regex = '#^' . str_replace('\*', '.*', preg_quote($p, '#')) . '$#';
             if (preg_match($regex, $target)) {
                 return true;
             }
         }
+
         return false;
     }
 
     public function isMethod(string|array $verbs): bool
     {
-        return in_array($this->getEffectiveMethod(), array_map('strtoupper', (array) $verbs), true);
+        $verbs = array_map('strtoupper', (array)$verbs);
+        return in_array($this->getEffectiveMethod(), $verbs, true);
     }
 
     public function isSecure(): bool
@@ -132,7 +136,7 @@ final class Request extends ServerRequest implements ArrayAccess, JsonSerializab
     }
 
     /* ============================================================
-     | 3.  CSRF
+     | 3.  CSRF helpers
      ============================================================*/
     public function matchesCsrfToken(?string $token = null): bool
     {
@@ -141,17 +145,17 @@ final class Request extends ServerRequest implements ArrayAccess, JsonSerializab
             ?? $this->post('_token')
             ?? $this->query('_token');
 
-        $stored = $_SESSION['_token']           // could come from middleware
+        $stored = $_SESSION['_token']          // e.g. added by middleware
             ?? $this->cookie('XSRF-TOKEN');
 
         if (!$sent || !$stored) {
             return false;
         }
 
-        // masked Laravel-style token
-        if (\strlen($sent) === 80 && \strlen($stored) === 40) {
+        // Masked Laravel-style token
+        if (strlen($sent) === 80 && strlen($stored) === 40) {
             $mask   = substr($sent, 0, 40);
-            $hashed = substr($sent, 40);                // SHA-1(state+mask)
+            $hashed = substr($sent, 40);       // SHA-1(state + mask)
             return hash_equals($hashed, sha1($mask . $stored));
         }
 
@@ -173,20 +177,24 @@ final class Request extends ServerRequest implements ArrayAccess, JsonSerializab
 
     public function has(string|array $keys): bool
     {
-        if (array_any((array)$keys, fn($k) => $this->data($k) === null)) {
-            return false;
+        foreach ((array)$keys as $k) {
+            if ($this->data($k) === null) {
+                return false;
+            }
         }
+
         return true;
     }
 
     public function filled(string|array $keys): bool
     {
-        foreach ((array) $keys as $k) {
+        foreach ((array)$keys as $k) {
             $v = $this->data($k);
             if ($v === null || $v === '') {
                 return false;
             }
         }
+
         return true;
     }
 
@@ -197,7 +205,7 @@ final class Request extends ServerRequest implements ArrayAccess, JsonSerializab
 
     public function string(string $key, string $default = ''): string
     {
-        return (string) ($this->data($key) ?? $default);
+        return (string)($this->data($key) ?? $default);
     }
 
     /* ============================================================
@@ -205,9 +213,11 @@ final class Request extends ServerRequest implements ArrayAccess, JsonSerializab
      ============================================================*/
     public function prefers(array $mimeTypes): ?string
     {
-        $accept = $this->headers()->accept()->toArray();   // already quality-sorted
+        // Already quality-sorted
+        $accept = $this->headers()->accept()->toArray();
+
         foreach ($mimeTypes as $m) {
-            if (str_starts_with($m, '+')) {                // “+json” wildcard
+            if (str_starts_with($m, '+')) {        // “+json” wildcard
                 foreach ($accept as $a) {
                     if (str_ends_with($a, $m)) {
                         return $a;
@@ -217,34 +227,35 @@ final class Request extends ServerRequest implements ArrayAccess, JsonSerializab
                 return $m;
             }
         }
+
         return null;
     }
 
-    /* ---------- JSON / XML helpers --------- */
+    /* ----- JSON / XML helpers ----- */
     public function expectsJson(): bool
     {
-        return $this->prefers(['application/json', 'text/json', '+json']) !== null
-            || $this->isAjax();
+        return parent::expectsJson()
+            || $this->prefers(['application/json', 'text/json', '+json']) !== null;
     }
 
     public function isJson(): bool
     {
-        return (bool) preg_match('#(?:application|text)/(?:[^\s;]+\+)?json#i', $this->getHeaderLine('Content-Type'));
+        return (bool)preg_match('#(?:application|text)/(?:[^\s;]+\+)?json#i', $this->getHeaderLine('Content-Type'));
     }
 
     public function expectsXml(): bool
     {
-        return $this->prefers(['application/xml', 'text/xml', '+xml']) !== null
-            || $this->isAjax();
+        return parent::expectsXml()
+            || $this->prefers(['application/xml', 'text/xml', '+xml']) !== null;
     }
 
     public function isXml(): bool
     {
-        return (bool) preg_match('#(?:application|text)/(?:[^\s;]+\+)?xml#i', $this->getHeaderLine('Content-Type'));
+        return (bool)preg_match('#(?:application|text)/(?:[^\s;]+\+)?xml#i', $this->getHeaderLine('Content-Type'));
     }
 
     /* ============================================================
-     | 6.  Files / Headers
+     | 6.  Files & Headers
      ============================================================*/
     #[\Override]
     public function file(?string $key = null): UploadedFileInterface|array|null
@@ -284,16 +295,19 @@ final class Request extends ServerRequest implements ArrayAccess, JsonSerializab
     public function validate(array $rules): array
     {
         foreach ($rules as $field => $rule) {
-            if (str_contains((string) $rule, 'required') && !$this->filled($field)) {
+            if (str_contains((string)$rule, 'required') && !$this->filled($field)) {
                 throw new InvalidArgumentException("Field '{$field}' is required");
             }
         }
+
         return $this->only(array_keys($rules));
     }
 
     public function merge(array $data): self
     {
-        return $this->withParsedBody(array_merge($this->post()?->all(), $data));
+        return $this->withParsedBody(
+            array_merge($this->post()?->all(), $data)
+        );
     }
 
     public function replace(array $data): self
@@ -306,12 +320,12 @@ final class Request extends ServerRequest implements ArrayAccess, JsonSerializab
      ============================================================*/
     public function offsetExists(mixed $offset): bool
     {
-        return $this->data((string) $offset) !== null;
+        return $this->data((string)$offset) !== null;
     }
 
     public function offsetGet(mixed $offset): mixed
     {
-        return $this->data((string) $offset);
+        return $this->data((string)$offset);
     }
 
     public function offsetSet(mixed $offset, mixed $value): void
@@ -331,13 +345,13 @@ final class Request extends ServerRequest implements ArrayAccess, JsonSerializab
 
     public function __toString(): string
     {
-        return (string) json_encode($this->all(), JSON_UNESCAPED_UNICODE);
+        return json_encode($this->all(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     }
 
     /* ============================================================
      | 10.  Dot-notation accessor
      ============================================================*/
-    public function data(string $dot, $default = null): mixed
+    public function data(string $dot, mixed $default = null): mixed
     {
         $segments = explode('.', $dot);
         $value    = parent::__get(array_shift($segments));
@@ -348,14 +362,18 @@ final class Request extends ServerRequest implements ArrayAccess, JsonSerializab
             }
             $value = $value[$seg];
         }
+
         return $value ?? $default;
     }
 
     /* ============================================================
-     | 11.  Locale helper   (optional cache toggle)
+     | 11.  Locale helper
      ============================================================*/
-    public function locale(?array $supported = null, string $fallback = 'en', bool $cache = true): string
-    {
+    public function locale(
+        ?array $supported = null,
+        string $fallback  = 'en',
+        bool   $cache     = true
+    ): string {
         if ($cache && $supported === null && $this->cachedLocale !== null) {
             return $this->cachedLocale;
         }
@@ -366,13 +384,16 @@ final class Request extends ServerRequest implements ArrayAccess, JsonSerializab
         }
 
         if ($supported === null) {
-            return $this->cachedLocale = strtolower(substr((string) $langs[0], 0, 5));
+            return $this->cachedLocale = strtolower(substr((string)$langs[0], 0, 5));
         }
 
-        $supported = array_map(static fn ($l) => strtolower(str_replace('_', '-', $l)), $supported);
+        $supported = array_map(
+            static fn(string $l) => strtolower(str_replace('_', '-', $l)),
+            $supported
+        );
 
         foreach ($langs as $lang) {
-            $lang = strtolower(str_replace('_', '-', $lang));
+            $lang  = strtolower(str_replace('_', '-', $lang));
             $short = substr($lang, 0, 2);
 
             if (in_array($lang, $supported, true)) {
@@ -387,7 +408,7 @@ final class Request extends ServerRequest implements ArrayAccess, JsonSerializab
     }
 
     /* ============================================================
-     | 12.  Convenience alias macros (Laravel-style)
+     | 12.  Convenience aliases
      ============================================================*/
     public function wantsJson(): bool
     {

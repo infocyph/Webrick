@@ -59,7 +59,7 @@ final class RangeResponder
      * The caller is responsible for closing the resource.
      */
     public static function fromSeekable(
-        resource|StreamInterface  $source,
+        mixed  $source,
         int                       $totalLength,
         ?SimpleRange              $range,
         string                    $mediaType   = 'application/octet-stream',

@@ -1,19 +1,23 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Interfaces;
 
-use Psr\Http\Message\ResponseInterface;
-use Psr\Http\Message\StreamInterface;
+use Psr\Http\Message\ResponseFactoryInterface as PsrResponseFactory;
+use Psr\Http\Message\StreamFactoryInterface as PsrStreamFactory;
 
 /**
- * Tiny (PSR-17–compatible) factory abstraction so
- * middleware and unit tests can create responses/streams
- * without coupling to concrete classes.
+ * Convenience umbrella: build *both* responses and streams
+ * without juggling two separate factories.
+ *
+ * Implementations may simply delegate to any PSR-17 factories.
  */
-interface ResponseFactoryInterface
+interface ResponseFactoryInterface extends PsrResponseFactory, PsrStreamFactory
 {
-    public function createResponse(int $code = 200, string $reasonPhrase = ''): ResponseInterface;
-
-    public function createStream(string $content = ''): StreamInterface;
+    // no extra members – the merge provides:
+    // • createResponse(int $code = 200, string $reasonPhrase = '')
+    // • createStream(string $contents = '')
+    // • createStreamFromFile(string $filename, string $mode = 'r')
+    // • createStreamFromResource(mixed $resource)  ← still allowed by PSR; implementations will narrow.
 }

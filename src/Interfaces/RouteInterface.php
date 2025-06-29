@@ -1,34 +1,30 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Interfaces;
 
 /**
- * Immutable representation of a single route.
- * Every mutator returns a *new* instance.
+ * Read-only DTO representing a single compiled route.
+ * Every mutator MUST return a **new** instance.
+ *
+ * Placeholders are validated via named constraints (see Router docs).
  */
 interface RouteInterface
 {
-    /* ---------- core accessors ---------- */
-    public function getMethod(): string;            // "GET", "POST", …
-    public function getPath(): string;              // "/users/{id:int}"
-    public function getHandler(): callable;         // controller callable
+    /* ---------- core ---------- */
+    public function method(): string;     // "GET", "POST", …
+    public function path(): string;     // "/users/{id:int}"
+    public function handler(): callable;   // invokable controller
 
-    /* ---------- optional extras ---------- */
-    public function getDomain(): ?string;           // "api.example.com" or null
-    public function getName(): ?string;             // "users.show" or null
+    /* ---------- meta ---------- */
+    public function domain(): ?string;    // "api.example.com" or null
+    public function name(): ?string;    // "users.show"      or null
+    public function middleware(): array;     // list<class-string|object>
 
-    /** @return array<int,string|object>  PSR-15 middleware classes|objects */
-    public function getMiddlewares(): array;
-
-    /* ---------- immutable modifiers ----- */
+    /* ---------- immutators ---- */
     public function withDomain(?string $domain): self;
     public function withName(string $name): self;
-
-    /**
-     * Returns a copy with additional route-specific middleware appended.
-     *
-     * @param array<int,string|object> $middlewares
-     */
-    public function withMiddleware(array $middlewares): self;
+    /** @param array<class-string|object> $extra */
+    public function withMiddleware(array $extra): self;
 }

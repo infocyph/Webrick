@@ -169,7 +169,7 @@ final class UAParser
         /* --- fallback UA sniff ----------------------------------- */
         $rx = [
             '/Windows NT 10\.0/i'    => 'Windows 10',
-            '/Windows NT 11\./i'     => 'Windows 11',
+            '/Windows NT 10\.0.*Windows[/\s]?11/i' => 'Windows 11',
             '/Windows NT 6\.3/i'     => 'Windows 8.1',
             '/Windows NT 6\.2/i'     => 'Windows 8',
             '/Windows NT 6\.1/i'     => 'Windows 7',

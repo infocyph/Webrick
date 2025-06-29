@@ -44,7 +44,7 @@ final class RequestHeaders
         $added = false;
 
         // ---- Basic / Digest via PHP_AUTH_* --------------------------------
-        if (!empty($srv['PHP_AUTH_USER'])) {
+        if (!empty($srv['PHP_AUTH_USER']) && !isset($hdr['Authorization'])) {
             $user = $srv['PHP_AUTH_USER'];
             $pw = $srv['PHP_AUTH_PW'] ?? '';
             $hdr['Authorization'] = 'Basic ' . base64_encode("$user:$pw");
@@ -65,7 +65,9 @@ final class RequestHeaders
                 if ($prefix === 'basic') {
                     $hdr += $this->decodeBasic($line);
                 }
-                $hdr['Authorization'] = $line;   // bearer / digest / whatever
+                if (!isset($hdr['Authorization'])) {
+                    $hdr['Authorization'] = $line;
+                }
             }
         }
     }
@@ -157,7 +159,7 @@ final class RequestHeaders
                 'if_none_match' => $this->csv($h['If-None-Match'] ?? ''),
                 'if_modified_since' => $this->httpDate($h['If-Modified-Since'] ?? ''),
                 'if_unmodified_since' => $this->httpDate($h['If-Unmodified-Since'] ?? ''),
-                'prefer_safe' => strtolower($h['Prefer'] ?? '') === 'safe'
+                'prefer_safe' => strcasecmp($h['Prefer'] ?? '', 'safe') === 0
                     && $this->request->getUri()->getScheme() === 'https',
                 'range' => null,
             ];

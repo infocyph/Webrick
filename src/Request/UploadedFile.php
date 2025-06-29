@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Infocyph\Webrick\Http;
+namespace Infocyph\Webrick\Request;
 
 use InvalidArgumentException;
 use Psr\Http\Message\StreamInterface;

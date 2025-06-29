@@ -118,19 +118,25 @@ final class EndUser
         $wrap = $ip[0] === '[' && $ip[-1] === ']';
         $ip   = $wrap ? substr($ip, 1, -1) : $ip;
 
-        $bin  = \inet_pton($ip);
+        $bin = \inet_pton($ip);
         if ($bin === false) {
-            return $ip;                           // bad literal – return untouched
+            return $ip;
         }
 
         $mask = strlen($bin) === 4
-            ? \inet_pton('255.255.255.0')         // /24
-            : \inet_pton('ffff:ffff:ffff:ffff:0:0:0:0'); // /64
+            ? \inet_pton('255.255.255.0')                 // /24
+            : \inet_pton('ffff:ffff:ffff:ffff:0:0:0:0');  // /64
 
-        $masked = \inet_ntop($bin & $mask) ?: $ip;
+        /* byte-wise AND (string & string is deprecated) */
+        $maskedBytes = '';
+        for ($i = 0, $len = strlen($bin); $i < $len; $i++) {
+            $maskedBytes .= $bin[$i] & $mask[$i];
+        }
+        $masked = \inet_ntop($maskedBytes) ?: $ip;
 
-        return $wrap ? '['.$masked.']' : $masked;
+        return $wrap ? '[' . $masked . ']' : $masked;
     }
+
 
     /* ───────────  UA helpers  ─────────── */
 
@@ -222,6 +228,10 @@ final class EndUser
     /* CIDR helpers (cached) */
     private function cidrV4(string $ip, string $cidr): bool
     {
+        if (str_contains($ip, ':') || str_contains($cidr, ':')) {
+            return false;
+        }
+
         $key = "4:$ip|$cidr";
         if (isset($this->ipCheckCache[$key])) {
             return $this->ipCheckCache[$key];
