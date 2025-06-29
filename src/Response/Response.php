@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Response;
 
+use Infocyph\Webrick\Response\Constants\Status;
 use Infocyph\Webrick\Response\Internal\HeaderBag;
 use Infocyph\InterMix\Remix\MacroMix;
 use Psr\Http\Message\ResponseInterface;
@@ -21,8 +22,8 @@ class Response implements ResponseInterface
 {
     use MacroMix;
 
-    private readonly HeaderBag     $headers;
-    private readonly StreamInterface $body;
+    private HeaderBag     $headers;
+    private StreamInterface $body;
 
     public function __construct(
         private int    $statusCode      = 200,
@@ -130,7 +131,7 @@ class Response implements ResponseInterface
 
     private static function statusText(int $code): string
     {
-        return self::$map[$code] ?? '';
+        return Status::text($code) ?? '';
     }
 
     /** Fast clone-with helper (named-args for clarity). */
@@ -149,22 +150,4 @@ class Response implements ResponseInterface
         $x->body               = $body            ?? $this->body;
         return $x;
     }
-
-    /* HTTP/1.1 reason-phrases (short list sufficient for APIs) */
-    private static array $map = [
-        // 2xx
-        200 => 'OK',                    201 => 'Created',
-        202 => 'Accepted',              204 => 'No Content',
-        // 3xx
-        301 => 'Moved Permanently',     302 => 'Found',
-        304 => 'Not Modified',
-        // 4xx
-        400 => 'Bad Request',           401 => 'Unauthorized',
-        403 => 'Forbidden',             404 => 'Not Found',
-        405 => 'Method Not Allowed',    412 => 'Precondition Failed',
-        416 => 'Range Not Satisfiable', 429 => 'Too Many Requests',
-        // 5xx
-        500 => 'Internal Server Error', 501 => 'Not Implemented',
-        503 => 'Service Unavailable',
-    ];
 }
