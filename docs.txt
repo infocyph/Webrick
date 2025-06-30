@@ -1,0 +1,977 @@
+=====src/Router/Attributes/Delete.php=====
+<?php
+
+declare(strict_types=1);
+
+namespace Infocyph\Webrick\Router\Attributes;
+
+use Attribute;
+
+/** #[Delete('/uri')] */
+#[Attribute(Attribute::TARGET_METHOD | Attribute::TARGET_FUNCTION)]
+final class Delete
+{
+    public function __construct(public string $path) {}
+}
+
+rel_path=src/Router/Attributes/Delete.php
+=====src/Router/Attributes/Get.php=====
+<?php
+
+declare(strict_types=1);
+
+namespace Infocyph\Webrick\Router\Attributes;
+
+use Attribute;
+
+/** #[Get('/uri')] */
+#[Attribute(Attribute::TARGET_METHOD | Attribute::TARGET_FUNCTION)]
+final class Get
+{
+    public function __construct(public string $path) {}
+}
+
+rel_path=src/Router/Attributes/Get.php
+=====src/Router/Attributes/Head.php=====
+<?php
+
+declare(strict_types=1);
+
+namespace Infocyph\Webrick\Router\Attributes;
+
+use Attribute;
+
+/** #[Head('/uri')] */
+#[Attribute(Attribute::TARGET_METHOD | Attribute::TARGET_FUNCTION)]
+final class Head
+{
+    public function __construct(public string $path) {}
+}
+
+rel_path=src/Router/Attributes/Head.php
+=====src/Router/Attributes/Middleware.php=====
+<?php
+
+declare(strict_types=1);
+
+namespace Infocyph\Webrick\Router\Attributes;
+
+use Attribute;
+
+/**
+ * Attach PSR-15 middleware by class-id or tag:
+ *   #[Middleware(AuthMiddleware::class)]
+ *   #[Middleware(['auth', 'throttle'])]
+ */
+#[Attribute(Attribute::TARGET_METHOD | Attribute::TARGET_FUNCTION)]
+final class Middleware
+{
+    /** @param string|string[] $ids */
+    public function __construct(public string|array $ids) {}
+}
+
+rel_path=src/Router/Attributes/Middleware.php
+=====src/Router/Attributes/Name.php=====
+<?php
+
+declare(strict_types=1);
+
+namespace Infocyph\Webrick\Router\Attributes;
+
+use Attribute;
+
+/** #[Name('users.show')] */
+#[Attribute(Attribute::TARGET_METHOD | Attribute::TARGET_FUNCTION)]
+final class Name
+{
+    public function __construct(public string $value) {}
+}
+
+rel_path=src/Router/Attributes/Name.php
+=====src/Router/Attributes/Options.php=====
+<?php
+
+declare(strict_types=1);
+
+namespace Infocyph\Webrick\Router\Attributes;
+
+use Attribute;
+
+/** #[Options('/uri')] */
+#[Attribute(Attribute::TARGET_METHOD | Attribute::TARGET_FUNCTION)]
+final class Options
+{
+    public function __construct(public string $path) {}
+}
+
+rel_path=src/Router/Attributes/Options.php
+=====src/Router/Attributes/Patch.php=====
+<?php
+
+declare(strict_types=1);
+
+namespace Infocyph\Webrick\Router\Attributes;
+
+use Attribute;
+
+/** #[Patch('/uri')] */
+#[Attribute(Attribute::TARGET_METHOD | Attribute::TARGET_FUNCTION)]
+final class Patch
+{
+    public function __construct(public string $path) {}
+}
+
+rel_path=src/Router/Attributes/Patch.php
+=====src/Router/Attributes/Post.php=====
+<?php
+
+declare(strict_types=1);
+
+namespace Infocyph\Webrick\Router\Attributes;
+
+use Attribute;
+
+/** #[Post('/uri')] */
+#[Attribute(Attribute::TARGET_METHOD | Attribute::TARGET_FUNCTION)]
+final class Post
+{
+    public function __construct(public string $path) {}
+}
+
+rel_path=src/Router/Attributes/Post.php
+=====src/Router/Attributes/Put.php=====
+<?php
+
+declare(strict_types=1);
+
+namespace Infocyph\Webrick\Router\Attributes;
+
+use Attribute;
+
+/** #[Put('/uri')] */
+#[Attribute(Attribute::TARGET_METHOD | Attribute::TARGET_FUNCTION)]
+final class Put
+{
+    public function __construct(public string $path) {}
+}
+
+rel_path=src/Router/Attributes/Put.php
+=====src/Router/Attributes/Where.php=====
+<?php
+
+declare(strict_types=1);
+
+namespace Infocyph\Webrick\Router\Attributes;
+
+use Attribute;
+
+/**
+ * Constrain a placeholder:
+ *   #[Where('id', '\d+')]
+ */
+#[Attribute(Attribute::TARGET_METHOD | Attribute::TARGET_FUNCTION)]
+final class Where
+{
+    public function __construct(
+        public string $param,
+        public string $regex
+    ) {}
+}
+
+rel_path=src/Router/Attributes/Where.php
+=====src/Router/CLI/RouteCacheCommand.php=====
+<?php
+
+declare(strict_types=1);
+
+namespace Infocyph\Webrick\Router\CLI;
+
+use Infocyph\Webrick\Router\Compiler\RouteDumper;
+use Infocyph\Webrick\Router\Router;
+
+final class RouteCacheCommand
+{
+    public static function main(array $argv): void
+    {
+        $cmd = $argv[1] ?? 'help';
+        $d   = new RouteDumper();
+
+        match ($cmd) {
+            'route:cache' => self::cache($d),
+            'route:clear' => self::clear($d),
+            'route:list'  => self::listing(),
+            default       => self::usage(),
+        };
+    }
+
+    private static function cache(RouteDumper $d): void
+    {
+        if ($d->load()) { echo "✔ Routes already cached.\n"; return; }
+        $router = Router::bootDev(); // build fresh, warm on destruct
+        unset($router);
+        echo "✔ Route cache generated.\n";
+    }
+
+    private static function clear(RouteDumper $d): void
+    {
+        $d->clear();
+        echo "✔ Route cache cleared.\n";
+    }
+
+    private static function listing(): void
+    {
+        $router = Router::bootFast();
+        printf("%-8s %-40s %-20s\n", 'METHOD', 'PATH', 'NAME');
+        echo str_repeat('-', 70) . "\n";
+        foreach ($router->urlFor('dummy', [], false) && false as $_) {} // keeps static analyser quiet
+        foreach ((new \ReflectionProperty($router, 'routes'))->getValue($router)->named() as $n => $r) {
+            printf(
+                "%-8s %-40s %-20s\n",
+                $r->getMethod(),
+                $r->getPath(),
+                $n
+            );
+        }
+    }
+
+    private static function usage(): void
+    {
+        echo "Usage: php webrick <route:cache|route:clear|route:list>\n";
+    }
+}
+
+rel_path=src/Router/CLI/RouteCacheCommand.php
+=====src/Router/Compiler/RouteDumper.php=====
+<?php
+
+declare(strict_types=1);
+
+namespace Infocyph\Webrick\Router\Compiler;
+
+use Infocyph\Webrick\Router\RouteCollection;
+use Infocyph\InterMix\Cache\Cache;
+use Infocyph\InterMix\Serializer\ValueSerializer;
+use Psr\Cache\CacheItemPoolInterface;
+
+/**
+ * Stores and loads the compiled RouteCollection using
+ * InterMix Cache::file('webrick') backend.
+ */
+final class RouteDumper
+{
+    private const KEY = 'webrick.routes.bin';
+    private readonly CacheItemPoolInterface $pool;
+
+    public function __construct(
+        private readonly ValueSerializer $codec = new ValueSerializer(),
+    ) {
+        $this->pool = Cache::file('route', sys_get_temp_dir().DIRECTORY_SEPARATOR.'webrick');
+    }
+
+    public function load(): ?RouteCollection
+    {
+        $item = $this->pool->getItem(self::KEY);
+        if (!$item->isHit()) {
+            return null;
+        }
+
+        /** @var RouteCollection */
+        return $this->codec->decode($item->get());
+    }
+
+    public function warm(RouteCollection $routes): void
+    {
+        $item = $this->pool->getItem(self::KEY);
+        $item->set($this->codec->encode($routes));
+        $this->pool->save($item);
+    }
+
+    public function clear(): void
+    {
+        $this->pool->deleteItem(self::KEY);
+    }
+}
+
+rel_path=src/Router/Compiler/RouteDumper.php
+=====src/Router/Constraints/ParamConstraint.php=====
+<?php
+
+declare(strict_types=1);
+
+namespace Infocyph\Webrick\Router\Constraints;
+
+/**
+ * Static, allocation-free parameter validators.
+ * Add new rules by adding public static methods.
+ */
+final class ParamConstraint
+{
+    public static function int(string $v): bool
+    {
+        return $v !== '' && ctype_digit($v);
+    }
+
+    public static function uuid(string $v): bool
+    {
+        return (bool) preg_match(
+            '/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/Di',
+            $v
+        );
+    }
+}
+
+rel_path=src/Router/Constraints/ParamConstraint.php
+=====src/Router/RouteCollection.php=====
+<?php
+declare(strict_types=1);
+
+namespace Infocyph\Webrick\Router;
+
+use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
+use Infocyph\Webrick\Exceptions\RouteNotFoundException;
+use Infocyph\Webrick\Router\Constraints\ParamConstraint;
+use Psr\Http\Message\ServerRequestInterface;
+
+/**
+ * Static-hash + ordered-dynamic matcher.
+ *
+ * Hot path is split into helpers (matchStatic / matchDynamic / throw…)
+ * so complexity stays readable.
+ */
+final class RouteCollection
+{
+    /* ---------------------------------------------------------------------
+     |  Storage
+     |---------------------------------------------------------------------*/
+    /** [domain][verb][path] => Route */
+    private array $static  = [];
+
+    /** dynamic route descriptors */
+    private array $dynamic = [];
+
+    /** name => Route */
+    private array $named   = [];
+
+    /** has anything been added since instantiation? */
+    private bool  $dirty   = false;               //  << NEW
+
+    public function __construct(
+        private readonly RouteParser $parser      = new RouteParser(),
+        private readonly bool        $autoHead    = true,
+        private readonly bool        $autoOptions = true,
+    ) {
+    }
+
+    /* ---------------------------------------------------------------------
+     |  Registration
+     |---------------------------------------------------------------------*/
+    public function add(Route $route): void
+    {
+        $verb = strtoupper($route->getMethod());
+        $dom  = $route->getDomain() ?? '';
+        $path = rtrim($route->getPath(), '/') ?: '/';
+
+        if ($route->getName()) {
+            $this->named[$route->getName()] = $route;
+        }
+
+        /* fast-path for static URIs */
+        if (!str_contains($path, '{')) {
+            $this->static[$dom][$verb][$path] = $route;
+            $this->dirty = true;                  //  << mark dirty
+            return;
+        }
+
+        /* dynamic = store descriptor */
+        $p = $this->parser->parse($path);
+        $this->dynamic[] = [
+            'domain'     => $dom,
+            'method'     => $verb,
+            'regex'      => $p['regex'],
+            'paramNames' => $p['paramNames'],
+            'validators' => $p['validators'],
+            'route'      => $route,
+        ];
+        $this->sortDynamic();
+        $this->dirty = true;                      //  << mark dirty
+    }
+
+    /** Exposed so the dumper knows whether warming is necessary. */
+    public function isDirty(): bool               //  << NEW
+    {
+        return $this->dirty;
+    }
+
+    /** @return array{Route,array<string,string>} */
+    public function match(ServerRequestInterface $request): array
+    {
+        /* ------------------------------------------------------------
+         * 1.  Normalise request bits
+         * ---------------------------------------------------------- */
+        $verb = strtoupper($request->getMethod());
+        if ($this->autoHead && $verb === 'HEAD') {
+            $verb = 'GET';
+        }
+        $domain = $request->getUri()->getHost() ?? '';
+        $path   = rtrim($request->getUri()->getPath(), '/') ?: '/';
+
+        /* ------------------------------------------------------------
+         * 2.  Exact-path lookup
+         * ---------------------------------------------------------- */
+        if ($hit = $this->matchStatic($domain, $verb, $path)) {
+            return $hit;
+        }
+
+        /* ------------------------------------------------------------
+         * 3.  Dynamic pattern matching
+         * ---------------------------------------------------------- */
+        [$route, $params, $allowed, $seen] = $this->matchDynamic($domain, $verb, $path);
+        if ($route) {
+            return [$route, $params];
+        }
+
+        /* ------------------------------------------------------------
+         * 4.  Fallback errors (405 / 404)
+         * ---------------------------------------------------------- */
+        $this->throwForVerbOrPath($verb, $path, $allowed, $seen);
+    }
+
+    /* ---------------------------------------------------------------------
+     |  Public helpers
+     |---------------------------------------------------------------------*/
+    /** @return array<string,Route> */
+    public function named(): array
+    {
+        return $this->named;
+    }
+
+    /* =====================================================================
+     |  Internal helpers – unchanged
+     |=====================================================================*/
+    private function matchStatic(string $domain, string $verb, string $path): ?array
+    {
+        $bucket = $this->static[$domain] ?? $this->static[''] ?? [];
+        return $bucket[$verb][$path] ?? null ? [$bucket[$verb][$path], []] : null;
+    }
+
+    private function matchDynamic(string $domain, string $verb, string $path): array
+    {
+        $allowed  = [];
+        $seenPath = false;
+
+        foreach ($this->dynamic as $d) {
+            if ($d['domain'] !== '' && $d['domain'] !== $domain) {
+                continue;
+            }
+            if (!preg_match($d['regex'], $path, $m)) {
+                continue;
+            }
+
+            $seenPath = true;
+
+            foreach ($d['validators'] as $name => $fn) {
+                if (!ParamConstraint::$fn($m[$name])) {
+                    continue 2;
+                }
+            }
+
+            if ($d['method'] !== $verb) {
+                $allowed[$d['method']] = true;
+                continue;
+            }
+
+            $params = array_intersect_key($m, array_flip($d['paramNames']));
+            return [$d['route'], $params, [], true];
+        }
+
+        return [null, [], array_keys($allowed), $seenPath];
+    }
+
+    private function throwForVerbOrPath(string $verb, string $path, array $allowed, bool $seenPath): never
+    {
+        if ($this->autoOptions && $verb === 'OPTIONS') {
+            $allowed = array_merge($allowed, $this->findStaticVerbsForPath($path));
+            sort($allowed);
+            throw new MethodNotAllowedException($verb, $path, $allowed);
+        }
+
+        if ($seenPath) {
+            $allowed = array_merge($allowed, $this->findStaticVerbsForPath($path));
+            sort($allowed);
+            throw new MethodNotAllowedException($verb, $path, $allowed);
+        }
+
+        throw new RouteNotFoundException($verb, $path);
+    }
+
+    private function findStaticVerbsForPath(string $path): array
+    {
+        $verbs = [];
+        foreach ($this->static as $byVerb) {
+            foreach ($byVerb as $v => $paths) {
+                if (isset($paths[$path])) {
+                    $verbs[] = $v;
+                }
+            }
+        }
+        return $verbs;
+    }
+
+    private function sortDynamic(): void
+    {
+        usort(
+            $this->dynamic,
+            fn ($a, $b) =>
+            ($c = count($a['paramNames']) <=> count($b['paramNames']))
+                ?: strlen($b['regex']) <=> strlen($a['regex'])
+        );
+    }
+}
+
+rel_path=src/Router/RouteCollection.php
+=====src/Router/RouteParser.php=====
+<?php
+
+declare(strict_types=1);
+
+namespace Infocyph\Webrick\Router;
+
+final class RouteParser
+{
+    /** @var array<string,string> alias ⇒ validator-method */
+    private static array $aliases = [
+        'int'  => 'int',
+        'uuid' => 'uuid',
+    ];
+
+    public static function extend(string $alias, string $method): void
+    {
+        self::$aliases[$alias] = $method;
+    }
+
+    /**
+     * @return array{regex:string,paramNames:string[],validators:array<string,string>}
+     */
+    public function parse(string $path): array
+    {
+        $pieces      = preg_split('/(\{[A-Za-z_][A-Za-z0-9_]*(?::[^}]+)?\})/', $path, -1, PREG_SPLIT_DELIM_CAPTURE);
+        $regexParts  = [];
+        $names       = [];
+        $validators  = [];
+
+        foreach ($pieces as $piece) {
+            if (preg_match('/^\{([A-Za-z_][A-Za-z0-9_]*)(?::([^}]+))?\}$/', $piece, $m)) {
+                [$all, $name, $constraint] = $m + ['', '', ''];
+                $names[] = $name;
+
+                $validator = null;
+                if ($constraint !== '') {
+                    $validator = self::$aliases[$constraint] ?? null;
+                    $pattern   = $validator
+                        ? '(?P<' . $name . '>[^/]+)'         // regex kept generic, validator refines
+                        : '(?P<' . $name . '>' . $constraint . ')';
+                } else {
+                    $pattern = '(?P<' . $name . '>[^/]+)';
+                }
+
+                if ($validator) {
+                    $validators[$name] = $validator;
+                }
+                $regexParts[] = $pattern;
+            } else {
+                $regexParts[] =  preg_quote($piece, '#');
+            }
+        }
+
+        return [
+            'regex'      => '#^' . implode('', $regexParts) . '$#D',
+            'paramNames' => $names,
+            'validators' => $validators,
+        ];
+    }
+}
+
+rel_path=src/Router/RouteParser.php
+=====src/Router/Route.php=====
+<?php
+
+declare(strict_types=1);
+
+namespace Infocyph\Webrick\Router;
+
+use Infocyph\Webrick\Interfaces\RouteInterface;
+use Psr\Http\Server\MiddlewareInterface;
+
+/**
+ * Immutable description of a single HTTP route.
+ *
+ * Every “mutator” returns a cloned instance.
+ */
+final class Route implements RouteInterface
+{
+    private $handler;
+
+    /** @param array<string|MiddlewareInterface> $middlewares */
+    public function __construct(
+        private readonly string $method,
+        private readonly string $path,
+        callable $handler,
+        private readonly ?string $domain = null,
+        private readonly ?string $name = null,
+        private readonly array $middlewares = [],
+    ) {
+        $this->handler = $handler;
+    }
+
+    /* -------------------------------- getters ------------------------------- */
+
+    public function getMethod(): string
+    {
+        return $this->method;
+    }
+
+    public function getPath(): string
+    {
+        return $this->path;
+    }
+
+    public function getHandler(): callable
+    {
+        return $this->handler;
+    }
+
+    public function getDomain(): ?string
+    {
+        return $this->domain;
+    }
+
+    public function getName(): ?string
+    {
+        return $this->name;
+    }
+
+    public function getMiddlewares(): array
+    {
+        return $this->middlewares;
+    }
+
+    /* ------------------------------ immutators ------------------------------ */
+
+    public function withName(string $name): self
+    {
+        return new self($this->method, $this->path, $this->handler, $this->domain, $name, $this->middlewares);
+    }
+
+    public function withDomain(string|null $domain): self
+    {
+        return new self($this->method, $this->path, $this->handler, $domain, $this->name, $this->middlewares);
+    }
+
+    /** @param array<string|MiddlewareInterface> $middlewares */
+    public function withMiddleware(array $middlewares): self
+    {
+        return new self(
+            $this->method,
+            $this->path,
+            $this->handler,
+            $this->domain,
+            $this->name,
+            array_merge($this->middlewares, $middlewares),
+        );
+    }
+}
+
+rel_path=src/Router/Route.php
+=====src/Router/Router.php=====
+<?php
+
+declare(strict_types=1);
+
+namespace Infocyph\Webrick\Router;
+
+use Infocyph\InterMix\DI\Container;
+use Infocyph\InterMix\DI\Invoker;
+use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
+use Infocyph\Webrick\Exceptions\RouteNotFoundException;
+use Infocyph\Webrick\Request\Request as HttpRequest;
+use Infocyph\Webrick\Request\ServerRequest;
+use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Response\Stream;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
+
+/**
+ * Lean, container-native router.
+ *
+ *  • static-hash + ordered-dynamic matcher
+ *  • middleware at 3 layers: global ▸ scope ▸ route
+ *  • alias registry for “route middleware” strings (Laravel-style)
+ *  • zero PSR-15 friction – everything is a bare callable resolved by Intermix
+ *
+ * ───────────────────────────────────────────────────────────────────────────
+ * Not addressed (yet)
+ * ───────────────────────────────────────────────────────────────────────────
+ *  1. Wild-card sub-domain routing
+ *  2. “After”/terminable middleware (post-response hooks)
+ *  3. CLI command routing kernel
+ *  4. Attribute-based controller discovery
+ *
+ * ───────────────────────────────────────────────────────────────────────────
+ * Possible improvements / ideas
+ * ───────────────────────────────────────────────────────────────────────────
+ *  • Cache resolved middleware instances to cut container look-ups.
+ *  • Auto-normalise non-Response returns (arrays/strings ⇒ JSON/text).
+ *  • Persist compiled regex list as an op-cached PHP array for prod boots.
+ *  • Provide OpenAPI export from the typed-route metadata.
+ *  • Add request decorators (e.g. validated DTO injection) via Invoker hooks.
+ */
+final class Router
+{
+    private array $middlewareAliases = [];   // <— NEW
+
+    /* -------------------------------------------------
+     * register aliases once during boot
+     * --------------------------------------------- */
+    public function aliasMiddleware(array $map): self
+    {
+        $this->middlewareAliases = $map + $this->middlewareAliases;
+        return $this;
+    }
+
+    /* -------------------------------------------------
+     * the resolver now understands aliases
+     * --------------------------------------------- */
+    private function resolve(string|callable|object $def): callable
+    {
+        /* 1 )  translate string alias → FQCN --------------------- */
+        if (\is_string($def) && isset($this->middlewareAliases[$def])) {
+            $def = $this->middlewareAliases[$def];
+        }
+
+        /* 2 )  already-callable (closure, fn-string, invokable obj) */
+        if (\is_callable($def)) {
+            return $def;
+        }
+
+        /* 3 )  container singletons/services -------------------- */
+        if ($this->container->has($def)) {
+            return $this->container->get($def);
+        }
+
+        /* 4 )  construct fresh class instances ------------------ */
+        if (\class_exists($def)) {
+            return $this->container->make($def);
+        }
+
+        /* 5 )  still nothing? → hard-fail ------------------------ */
+        throw new \RuntimeException("Cannot resolve middleware {$def}");
+    }
+    /* ───── boot helpers ───── */
+    public static function bootDev(?Container $c = null): self
+    {
+        return new self(new RouteCollection(), true, $c ?? Container::instance());
+    }
+    public static function bootFast(RouteCollection $prebuilt, ?Container $c = null): self
+    {
+        return new self($prebuilt, false, $c ?? Container::instance());
+    }
+
+    /* ───── state ───── */
+    private Invoker   $inv;
+    private array     $ctx = [['prefix' => '', 'domain' => null, 'mw' => []]];
+    private array     $globalMw = [];
+    private array     $routeAliases = [];
+
+    private function __construct(
+        private readonly RouteCollection $routes,
+        private readonly bool            $writeCache,
+        private readonly Container       $container,
+    ) {
+        $this->inv = Invoker::with($this->container);
+    }
+
+    public function __destruct()
+    {
+        if ($this->writeCache && $this->routes->isDirty()) {
+            (new Compiler\RouteDumper())->warm($this->routes);
+        }
+    }
+
+    /* ───── middleware helpers ───── */
+    public function globalMiddleware(callable|string|object ...$stack): self
+    {
+        $this->globalMw = [...$this->globalMw, ...$stack];
+        return $this;
+    }
+
+    /** Register route-middleware aliases:  ->alias(['auth' => AuthMw::class]) */
+    public function alias(array $map): self
+    {
+        $this->routeAliases += $map;
+        return $this;
+    }
+
+    /* ───── registration ───── */
+    public function addRoute(string $verb, string $path, callable|string|array $h): Route
+    {
+        $c  = end($this->ctx);
+        $fp = '/' . ltrim(rtrim($c['prefix'], '/') . '/' . ltrim($path, '/'), '/');
+
+        // array-style shortcut with ‘uses’ + ‘middleware’
+        $mw = $c['mw'];
+        if (is_array($h) && isset($h['uses'])) {
+            $mw = [...$mw, ...$this->expandAliases($h['middleware'] ?? [])];
+            $h  = $h['uses'];
+        }
+
+        $route = new Route($verb, $fp, $h);
+        $route->withDomain($c['domain'] ?? '')
+            ->withMiddleware($mw);
+
+        $this->routes->add($route);
+        return $route;
+    }
+
+    /* verb helpers */
+    public function get(string $p, callable|string|array $h): Route
+    {
+        return $this->addRoute('GET', $p, $h);
+    }
+    public function post(string $p, callable|string|array $h): Route
+    {
+        return $this->addRoute('POST', $p, $h);
+    }
+    public function put(string $p, callable|string|array $h): Route
+    {
+        return $this->addRoute('PUT', $p, $h);
+    }
+    public function patch(string $p, callable|string|array $h): Route
+    {
+        return $this->addRoute('PATCH', $p, $h);
+    }
+    public function delete(string $p, callable|string|array $h): Route
+    {
+        return $this->addRoute('DELETE', $p, $h);
+    }
+    public function options(string $p, callable|string|array $h): Route
+    {
+        return $this->addRoute('OPTIONS', $p, $h);
+    }
+    public function head(string $p, callable|string|array $h): Route
+    {
+        return $this->addRoute('HEAD', $p, $h);
+    }
+
+    /* grouping */
+    public function group(string $prefix, callable $fn, ?string $domain = null, array $mw = []): self
+    {
+        $c = end($this->ctx);
+        $this->ctx[] = [
+            'prefix' => '/' . ltrim(rtrim($c['prefix'], '/') . '/' . ltrim($prefix, '/'), '/'),
+            'domain' => $domain ?? $c['domain'],
+            'mw'     => array_merge($c['mw'], $this->expandAliases($mw)),
+        ];
+        $fn($this);
+        array_pop($this->ctx);
+        return $this;
+    }
+
+    /* scope – returns a new “view” with merged ctx               */
+    public function scope(string $prefix = '', ?string $domain = null, array $mw = []): self
+    {
+        $clone        = clone $this;
+        $base         = end($this->ctx);
+        $clone->ctx   = [$base, [
+            'prefix' => '/' . ltrim(rtrim($base['prefix'], '/') . '/' . ltrim($prefix, '/'), '/'),
+            'domain' => $domain ?? $base['domain'],
+            'mw'     => array_merge($base['mw'], $this->expandAliases($mw)),
+        ]];
+        return $clone;
+    }
+
+    /* ───── dispatch ───── */
+    public function handle(ServerRequestInterface $req): ResponseInterface
+    {
+        if (!$req instanceof HttpRequest) {
+            // keep query-string, parsed-body & files exactly as they arrived
+            $req = new HttpRequest(
+                $req->getMethod(),
+                $req->getUri(),
+                $req->getServerParams(),
+                $req->getHeaders(),
+                $req->getBody(),
+                $req->getProtocolVersion(),
+                $req->getParsedBody() ?? [],
+                $req->getUploadedFiles(),
+                $req->getRequestTarget()
+            );
+        }
+
+        $this->container->definitions()
+            ->bind(ServerRequestInterface::class, $req)
+            ->bind(HttpRequest::class, $req);
+
+        try {
+            [$route, $params] = $this->routes->match($req);
+            foreach ($params as $k => $v) {
+                $req = $req->withAttribute($k, $v);
+            }
+
+            $core = fn (ServerRequestInterface $r)
+                => $this->ensureResponse($this->inv->invoke($route->getHandler(), [$r]));
+
+            $pipeline = $this->wrapMiddleware(
+                $core,
+                [...$this->globalMw, ...$route->getMiddlewares()]
+            );
+
+            return $pipeline($req);
+
+        } catch (RouteNotFoundException) {
+            return new Response(404, new Stream('404 Not Found'));
+        } catch (MethodNotAllowedException $e) {
+            return (new Response(405, new Stream('405 Method Not Allowed')))
+                ->withHeader('Allow', $e->getMessage());
+        }
+    }
+
+    /* ───── helpers ───── */
+    private function ensureResponse(mixed $out): ResponseInterface
+    {
+        return $out instanceof ResponseInterface
+            ? $out
+            : (new Response())->withBody(new Stream(is_scalar($out) ? (string)$out : json_encode($out)));
+    }
+
+    private function wrapMiddleware(callable $core, array $stack): callable
+    {
+        foreach (array_reverse($stack) as $def) {
+            $mw  = $this->resolve($def);
+            $inv = $this->inv;
+
+            $core = static fn (ServerRequestInterface $r)
+                => $inv->invoke($mw, [$r, $core]);
+        }
+        return $core;
+    }
+
+//    private function resolve(string|callable|object $def): callable
+//    {
+//        if (is_callable($def)) {
+//            return $def;
+//        }
+//        if ($this->container->has($def)) {
+//            return $this->container->get($def);
+//        }
+//        if (class_exists($def)) {
+//            return $this->container->make($def);
+//        }
+//        throw new \RuntimeException("Cannot resolve middleware {$def}");
+//    }
+
+    private function expandAliases(array $list): array
+    {
+        return array_map(fn ($k) => $this->routeAliases[$k] ?? $k, $list);
+    }
+}
+
