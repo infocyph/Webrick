@@ -6,7 +6,7 @@ namespace Infocyph\Webrick\Middleware;
 
 use Closure;
 use Infocyph\Webrick\Response\Response;
-use Psr\Http\Message\ServerRequestInterface;
+use Infocyph\Webrick\Request\Request;
 
 /**
  * Recursively `trim()`s *all* string inputs (query + body + uploaded names).
@@ -16,7 +16,7 @@ use Psr\Http\Message\ServerRequestInterface;
  */
 final readonly class TrimStringsMiddleware
 {
-    public function __invoke(ServerRequestInterface $req, Closure $next): Response
+    public function __invoke(Request $req, Closure $next): Response
     {
         $body = $req->getParsedBody();
         if (\is_array($body)) {

@@ -8,7 +8,7 @@ use Closure;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Response\Stream;
-use Psr\Http\Message\ServerRequestInterface;
+use Infocyph\Webrick\Request\Request;
 
 /**
  * Verifies the CSRF token on **state-changing** verbs.
@@ -21,7 +21,7 @@ final readonly class CsrfMiddleware
     /** Attribute name used by downstream code to disable check on a route. */
     public const BYPASS_ATTR = '_csrf_bypass';
 
-    public function __invoke(ServerRequestInterface $req, Closure $next): Response
+    public function __invoke(Request $req, Closure $next): Response
     {
         if ($req->getAttribute(self::BYPASS_ATTR, false) === true) {
             return $next($req);

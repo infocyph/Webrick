@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Middleware;
 
 use Closure;
+use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Response\Stream;
-use Psr\Http\Message\ServerRequestInterface;
 
 /**
  * Gzip-encodes the body if the client accepts it
@@ -17,7 +17,7 @@ final readonly class CompressionMiddleware
 {
     private const MIN_SIZE = 1024;  // don’t bother for tiny payloads
 
-    public function __invoke(ServerRequestInterface $req, Closure $next): Response
+    public function __invoke(Request $req, Closure $next): Response
     {
         $accept = $req->getHeaderLine('Accept-Encoding');
         $supportsGzip = str_contains($accept, 'gzip');

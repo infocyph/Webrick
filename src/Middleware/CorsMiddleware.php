@@ -7,7 +7,7 @@ namespace Infocyph\Webrick\Middleware;
 use Closure;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Response\Stream;
-use Psr\Http\Message\ServerRequestInterface;
+use Infocyph\Webrick\Request\Request;
 
 /**
  * Very small CORS layer (sufficient for most APIs).
@@ -26,7 +26,7 @@ final readonly class CorsMiddleware
         private bool    $allowCredentials = true,
     ) {}
 
-    public function __invoke(ServerRequestInterface $req, Closure $next): Response
+    public function __invoke(Request $req, Closure $next): Response
     {
         $origin = $req->getHeaderLine('Origin');
         $allowed = $this->isAllowedOrigin($origin) ? $origin : null;

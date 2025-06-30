@@ -7,14 +7,14 @@ namespace Infocyph\Webrick\Middleware;
 use Closure;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Response\Internal\Utils;
-use Psr\Http\Message\ServerRequestInterface;
+use Infocyph\Webrick\Request\Request;
 
 /**
  * Adds a strong ETag (sha-1/16) when missing and body is seekable.
  */
 final readonly class ETagMiddleware
 {
-    public function __invoke(ServerRequestInterface $req, Closure $next): Response
+    public function __invoke(Request $req, Closure $next): Response
     {
         $resp = $next($req);
         if ($resp->hasHeader('ETag')

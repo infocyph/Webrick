@@ -6,14 +6,14 @@ namespace Infocyph\Webrick\Middleware;
 
 use Closure;
 use Infocyph\Webrick\Response\Response;
-use Psr\Http\Message\ServerRequestInterface;
+use Infocyph\Webrick\Request\Request;
 
 /**
  * Measures end-to-end latency and surfaces it to the client.
  */
 final readonly class ResponseTimeMiddleware
 {
-    public function __invoke(ServerRequestInterface $req, Closure $next): Response
+    public function __invoke(Request $req, Closure $next): Response
     {
         $start = hrtime(true);   // nanoseconds
         $resp  = $next($req);

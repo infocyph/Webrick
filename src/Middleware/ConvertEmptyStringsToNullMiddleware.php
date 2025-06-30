@@ -6,7 +6,7 @@ namespace Infocyph\Webrick\Middleware;
 
 use Closure;
 use Infocyph\Webrick\Response\Response;
-use Psr\Http\Message\ServerRequestInterface;
+use Infocyph\Webrick\Request\Request;
 
 /**
  * Mirrors Laravel’s behaviour: converts `''` → `null` in request data.
@@ -15,7 +15,7 @@ use Psr\Http\Message\ServerRequestInterface;
  */
 final readonly class ConvertEmptyStringsToNullMiddleware
 {
-    public function __invoke(ServerRequestInterface $req, Closure $next): Response
+    public function __invoke(Request $req, Closure $next): Response
     {
         $body = $req->getParsedBody();
         if (\is_array($body)) {

@@ -8,7 +8,7 @@ use Closure;
 use Infocyph\Webrick\Request\EndUser;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Response\Stream;
-use Psr\Http\Message\ServerRequestInterface;
+use Infocyph\Webrick\Request\Request;
 
 /**
  * ① Whitelists *trusted* proxy CIDRs (like the old version)
@@ -33,7 +33,7 @@ final readonly class TrustProxiesMiddleware
         private array $deny  = []
     ) {}
 
-    public function __invoke(ServerRequestInterface $req, Closure $next): Response
+    public function __invoke(Request $req, Closure $next): Response
     {
         /* ---------- 1. register trusted proxies for EndUser --------- */
         if ($this->allow) {

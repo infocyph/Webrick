@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Middleware;
 
 use Closure;
-use Psr\Http\Message\ServerRequestInterface;
+use Infocyph\Webrick\Request\Request;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 use Infocyph\Webrick\Response\Response;
@@ -17,7 +17,7 @@ final readonly class RequestLoggingMiddleware
 {
     public function __construct(private LoggerInterface $log = new NullLogger()) {}
 
-    public function __invoke(ServerRequestInterface $req, Closure $next): Response
+    public function __invoke(Request $req, Closure $next): Response
     {
         $start = microtime(true);
         $resp  = $next($req);

@@ -7,7 +7,7 @@ namespace Infocyph\Webrick\Middleware;
 use Closure;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Response\Stream;
-use Psr\Http\Message\ServerRequestInterface;
+use Infocyph\Webrick\Request\Request;
 
 /**
  * Aborts the request with **413 Payload Too Large** when the incoming
@@ -17,7 +17,7 @@ final readonly class ValidatePostSizeMiddleware
 {
     public function __construct(private ?int $bytes = null) {}
 
-    public function __invoke(ServerRequestInterface $req, Closure $next): Response
+    public function __invoke(Request $req, Closure $next): Response
     {
         $limit  = $this->bytes ?? self::phpIniBytes(ini_get('post_max_size'));
         $length = (int) $req->getHeaderLine('Content-Length');

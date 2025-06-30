@@ -7,7 +7,7 @@ namespace Infocyph\Webrick\Middleware;
 use Closure;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Response\Stream;
-use Psr\Http\Message\ServerRequestInterface;
+use Infocyph\Webrick\Request\Request;
 
 /**
  * Returns **503 Service Unavailable** when the "down file" exists.
@@ -25,7 +25,7 @@ final readonly class MaintenanceModeMiddleware
         private string $file = __DIR__ . '/../../storage/framework/down'
     ) {}
 
-    public function __invoke(ServerRequestInterface $req, Closure $next): Response
+    public function __invoke(Request $req, Closure $next): Response
     {
         if (! \file_exists($this->file)) {
             return $next($req);

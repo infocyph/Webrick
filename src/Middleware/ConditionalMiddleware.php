@@ -8,7 +8,7 @@ use Closure;
 use Infocyph\Webrick\Response\Conditional\ConditionalValidator;
 use Infocyph\Webrick\Response\Conditional\Outcome;
 use Infocyph\Webrick\Response\Response;
-use Psr\Http\Message\ServerRequestInterface;
+use Infocyph\Webrick\Request\Request;
 
 /**
  * Pre-flight validator for ETag / Last-Modified / Range handling.
@@ -19,11 +19,11 @@ use Psr\Http\Message\ServerRequestInterface;
 final readonly class ConditionalMiddleware
 {
     /**
-     * @param Closure(ServerRequestInterface): array{string|null,int|null} $meta
+     * @param Closure(Request): array{string|null,int|null} $meta
      */
     public function __construct(private Closure $meta) {}
 
-    public function __invoke(ServerRequestInterface $req, Closure $next): Response
+    public function __invoke(Request $req, Closure $next): Response
     {
         /* ---------- entity metadata ----------------------------------- */
         [$etag, $lm] = ($this->meta)($req);

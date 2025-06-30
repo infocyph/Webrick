@@ -9,14 +9,14 @@ use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
 use Infocyph\Webrick\Exceptions\RouteNotFoundException;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Response\Stream;
-use Psr\Http\Message\ServerRequestInterface;
+use Infocyph\Webrick\Request\Request;
 use Throwable;
 
 /**
  * Converts uncaught exceptions into HTTP responses.
  *
  * Works with Webrick’s routing pipeline signature:
- *   (ServerRequestInterface $request, Closure $next): Response
+ *   (Request $request, Closure $next): Response
  */
 final readonly class ErrorHandlerMiddleware
 {
@@ -24,7 +24,7 @@ final readonly class ErrorHandlerMiddleware
     {
     }
 
-    public function __invoke(ServerRequestInterface $request, Closure $next): Response
+    public function __invoke(Request $request, Closure $next): Response
     {
         try {
             return $next($request);

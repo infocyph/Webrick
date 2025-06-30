@@ -6,7 +6,7 @@ namespace Infocyph\Webrick\Middleware;
 
 use Closure;
 use Infocyph\Webrick\Response\Headers\Language;
-use Psr\Http\Message\ServerRequestInterface;
+use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 
 /**
@@ -23,7 +23,7 @@ final readonly class LocaleNegotiationMiddleware
         private string $fallback = 'en'
     ) {}
 
-    public function __invoke(ServerRequestInterface $req, Closure $next): Response
+    public function __invoke(Request $req, Closure $next): Response
     {
         $accept = $req->getHeaderLine('Accept-Language');
         $chosen = Language::negotiate($this->supported, $accept);

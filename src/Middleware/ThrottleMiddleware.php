@@ -9,7 +9,7 @@ use Infocyph\InterMix\Cache\Cache;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Response\Stream;
 use Psr\Cache\CacheItemPoolInterface;
-use Psr\Http\Message\ServerRequestInterface;
+use Infocyph\Webrick\Request\Request;
 
 /**
  * Per-IP throttling.  Default: **60 requests / 60 s** (1 req / s)
@@ -34,7 +34,7 @@ final readonly class ThrottleMiddleware
         $this->pool = $pool ?? Cache::file('throttle');
     }
 
-    public function __invoke(ServerRequestInterface $req, Closure $next): Response
+    public function __invoke(Request $req, Closure $next): Response
     {
         /* 1. key = client IP (already behind TrustProxiesMiddleware) */
         $ip   = $req->getAttribute('client_ip')
