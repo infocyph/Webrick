@@ -9,7 +9,7 @@ namespace Infocyph\Webrick\Response\Internal;
 final class Utils
 {
     /** RFC-7231 HTTP-date. */
-    public static function httpDate(int $epoch = null): string
+    public static function httpDate(?int $epoch = null): string
     {
         return gmdate('D, d M Y H:i:s', $epoch ?? time()) . ' GMT';
     }

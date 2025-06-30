@@ -13,14 +13,14 @@ namespace Infocyph\Webrick\Interfaces;
 interface RouteInterface
 {
     /* ---------- core ---------- */
-    public function method(): string;     // "GET", "POST", …
-    public function path(): string;     // "/users/{id:int}"
-    public function handler(): callable;   // invokable controller
+    public function getMethod(): string;          // "GET", "POST", …
+    public function getPath(): string;            // "/users/{id:int}"
+    public function getHandler(): callable;       // controller / closure
 
     /* ---------- meta ---------- */
-    public function domain(): ?string;    // "api.example.com" or null
-    public function name(): ?string;    // "users.show"      or null
-    public function middleware(): array;     // list<class-string|object>
+    public function getDomain(): ?string;         // "api.example.com" or null
+    public function getName(): ?string;           // "users.show"      or null
+    public function getMiddlewares(): array;      // list<class-string|object>
 
     /* ---------- immutators ---- */
     public function withDomain(?string $domain): self;
@@ -28,3 +28,4 @@ interface RouteInterface
     /** @param array<class-string|object> $extra */
     public function withMiddleware(array $extra): self;
 }
+

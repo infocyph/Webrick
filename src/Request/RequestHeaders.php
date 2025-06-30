@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Infocyph\Webrick\Http;
+namespace Infocyph\Webrick\Request;
 
 use Infocyph\ArrayKit\Collection\Collection;
 use Psr\Http\Message\ServerRequestInterface;

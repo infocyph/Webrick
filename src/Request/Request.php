@@ -6,8 +6,6 @@ namespace Infocyph\Webrick\Request;
 
 use ArrayAccess;
 use Infocyph\InterMix\Remix\MacroMix;
-use Infocyph\Webrick\Http\EndUser;
-use Infocyph\Webrick\Http\Uri;
 use InvalidArgumentException;
 use JsonSerializable;
 use Psr\Http\Message\UploadedFileInterface;

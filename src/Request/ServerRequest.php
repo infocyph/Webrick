@@ -5,8 +5,6 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Request;
 
 use Infocyph\ArrayKit\Collection\Collection;
-use Infocyph\Webrick\Http\RequestHeaders;
-use Infocyph\Webrick\Http\Uri;
 use InvalidArgumentException;
 use Psr\Http\Message\{ServerRequestInterface, StreamInterface, UploadedFileInterface, UriInterface};
 use RuntimeException;

@@ -1,0 +1,45 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Infocyph\Webrick\Middleware;
+
+use Closure;
+use Infocyph\Webrick\Response\Response;
+use Psr\Http\Message\ServerRequestInterface;
+
+/**
+ * Mirrors Laravel’s behaviour: converts `''` → `null` in request data.
+ *
+ * Should run *after* `TrimStringsMiddleware`.
+ */
+final readonly class ConvertEmptyStringsToNullMiddleware
+{
+    public function __invoke(ServerRequestInterface $req, Closure $next): Response
+    {
+        $body = $req->getParsedBody();
+        if (\is_array($body)) {
+            $body = self::nullify($body);
+            $req  = $req->withParsedBody($body);
+        }
+
+        $query = $req->getQueryParams();
+        if ($query) {
+            $req = $req->withQueryParams(self::nullify($query));
+        }
+
+        return $next($req);
+    }
+
+    private static function nullify(array $data): array
+    {
+        foreach ($data as $k => $v) {
+            if ($v === '') {
+                $data[$k] = null;
+            } elseif (\is_array($v)) {
+                $data[$k] = self::nullify($v);
+            }
+        }
+        return $data;
+    }
+}
