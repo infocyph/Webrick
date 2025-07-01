@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Infocyph\Webrick\Router;
+namespace Infocyph\Webrick\Router_OLD;
 
 use Infocyph\Webrick\Interfaces\RouteInterface;
 use Psr\Http\Server\MiddlewareInterface;

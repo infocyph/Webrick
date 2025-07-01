@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Infocyph\Webrick\Router\Compiler;
+namespace Infocyph\Webrick\Router_OLD\Compiler;
 
-use Infocyph\Webrick\Router\RouteCollection;
+use Infocyph\Webrick\Router_OLD\RouteCollection;
 use Infocyph\InterMix\Cache\Cache;
 use Infocyph\InterMix\Serializer\ValueSerializer;
 use Psr\Cache\CacheItemPoolInterface;

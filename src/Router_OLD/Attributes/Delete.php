@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Infocyph\Webrick\Router\Attributes;
+namespace Infocyph\Webrick\Router_OLD\Attributes;
 
 use Attribute;
 
-/** #[Get('/uri')] */
+/** #[Delete('/uri')] */
 #[Attribute(Attribute::TARGET_METHOD | Attribute::TARGET_FUNCTION)]
-final class Get
+final class Delete
 {
     public function __construct(public string $path) {}
 }

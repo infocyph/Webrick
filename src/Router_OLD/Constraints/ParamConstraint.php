@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Infocyph\Webrick\Router\Constraints;
+namespace Infocyph\Webrick\Router_OLD\Constraints;
 
 /**
  * Static, allocation-free parameter validators.

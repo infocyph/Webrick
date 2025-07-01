@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Infocyph\Webrick\Router\CLI;
+namespace Infocyph\Webrick\Router_OLD\CLI;
 
-use Infocyph\Webrick\Router\Compiler\RouteDumper;
-use Infocyph\Webrick\Router\Router;
+use Infocyph\Webrick\Router_OLD\Compiler\RouteDumper;
+use Infocyph\Webrick\Router_OLD\Router;
 
 final class RouteCacheCommand
 {

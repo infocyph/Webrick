@@ -18,6 +18,6 @@ declare(strict_types=1);
 
 require __DIR__ . '/vendor/autoload.php';
 
-use Infocyph\Webrick\Router\CLI\RouteCacheCommand;
+use Infocyph\Webrick\Router_OLD\CLI\RouteCacheCommand;
 
 RouteCacheCommand::main($argv);

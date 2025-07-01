@@ -8,25 +8,29 @@ use Infocyph\Webrick\Response\Response;
 /**
  * Static helpers to attach common security headers quickly.
  *
- * ```php
- * $resp = SecurityHeaders::tight($resp);
- * ```
+ * Example:
+ *     $resp = SecurityHeaders::tight($resp, hsts: true);
  */
 final class SecurityHeaders
 {
     private function __construct() {}
 
-    /** Opinionated secure defaults (can be interposed via withHeader). */
-    public static function tight(Response $r): Response
-    {
-        return $r
+    /** Opinionated secure defaults. Optionally adds HSTS. */
+    public static function tight(
+        Response $r,
+        bool     $hsts        = true,
+        bool     $includeSubs = true
+    ): Response {
+        $r = $r
             ->withHeader('X-Content-Type-Options', 'nosniff')
-            ->withHeader('X-Frame-Options', 'SAMEORIGIN')
-            ->withHeader('Referrer-Policy', 'no-referrer-when-downgrade')
-            ->withHeader('X-XSS-Protection', '0');
+            ->withHeader('X-Frame-Options',        'SAMEORIGIN')
+            ->withHeader('Referrer-Policy',        'no-referrer-when-downgrade')
+            ->withHeader('X-XSS-Protection',       '0');
+
+        return $hsts ? self::hsts($r, $includeSubs) : $r;
     }
 
-    /** Apply basic HSTS (1 year). */
+    /** Apply Strict-Transport-Security (defaults to 1 year). */
     public static function hsts(Response $r, bool $includeSub = true): Response
     {
         $val = 'max-age=31536000' . ($includeSub ? '; includeSubDomains' : '');

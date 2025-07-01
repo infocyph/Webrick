@@ -21,7 +21,7 @@ use Infocyph\Webrick\Response\Emitter\{CliEmitter, SapiEmitter};
 use Infocyph\Webrick\Response\Factory\{ResponseFactory, StreamFactory, UploadedFileFactory};
 use Infocyph\Webrick\Response\Macros\ResponseMacros;
 use Infocyph\Webrick\Response\Response;
-use Infocyph\Webrick\Router\Router;
+use Infocyph\Webrick\Router_OLD\Router;
 use Infocyph\Webrick\Middleware\{
     CompressionMiddleware,
     ConditionalMiddleware,

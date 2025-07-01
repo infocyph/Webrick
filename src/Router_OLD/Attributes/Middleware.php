@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Infocyph\Webrick\Router\Attributes;
+namespace Infocyph\Webrick\Router_OLD\Attributes;
 
 use Attribute;
 

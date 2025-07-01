@@ -6,21 +6,21 @@ namespace Infocyph\Webrick\Response\Range;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Response\Stream;
 use Infocyph\Webrick\Response\Headers\Range as SimpleRange;
+use Infocyph\Webrick\Response\Internal\Utils;
 use Psr\Http\Message\StreamInterface;
 
 /**
- * Build a **206 Partial Content** (or 200 / 416) response for seekable sources.
+ * Builds **206 Partial Content** (or 200 / 416) responses for seekable sources.
  *
- * *Optimised for static files but works with any seekable StreamInterface.*
- *
- * ```php
- * $resp = RangeResponder::forFile($req, '/tmp/video.mp4', 'video/mp4');
- * ```
+ * ▸ Automatically attaches **ETag**, **Last-Modified**, sensible
+ *   `Cache-Control: public, max-age=31536000, immutable`, and
+ *   `Accept-Ranges: bytes` for static files.
+ * ▸ Plays nicely with ConditionalMiddleware (supports validators).
  */
 final class RangeResponder
 {
     /* --------------------------------------------------------------
-     |  Public factory helpers
+     |  Public factory
      |-------------------------------------------------------------- */
 
     public static function forFile(
@@ -30,70 +30,65 @@ final class RangeResponder
         array                                    $headers   = []
     ): Response {
         if (!is_file($absolutePath) || !is_readable($absolutePath)) {
-            return new Response(404);                        // or throw
+            return new Response(404);
         }
 
-        $len   = (int) filesize($absolutePath);
-        $range = RangeParser::parse($req->getHeaderLine('Range'), $len);
+        $stat   = stat($absolutePath);
+        $len    = (int) $stat['size'];
+        $mtime  = (int) $stat['mtime'];
+        $etag   = '"' . dechex($len) . '-' . dechex($mtime) . '"';
 
-        $fp = fopen($absolutePath, 'rb');
-        if ($fp === false) {
+        /* ---- default caching headers ---------------------------- */
+        $defaults = [
+            'Accept-Ranges' => 'bytes',
+            'ETag'          => $etag,
+            'Last-Modified' => Utils::httpDate($mtime),
+            'Cache-Control' => 'public, max-age=31536000, immutable',
+        ];
+        $headers += $defaults;             // caller can override per key
+
+        /* ---- Range parsing -------------------------------------- */
+        $range = RangeParser::parse($req->getHeaderLine('Range'), $len);
+        $fp    = fopen($absolutePath, 'rb') ?: null;
+        if (!$fp) {
             return new Response(500);
         }
-        return self::fromSeekable(
-            $fp,
-            $len,
-            $range,
-            $mediaType,
-            $headers + ['Accept-Ranges' => 'bytes']
-        );
+
+        return self::fromSeekable($fp, $len, $range, $mediaType, $headers);
     }
 
     /**
      * Generic helper for any **seekable** stream/resource.
-     *
-     * `$source` may be:
-     *  • a resource (from `fopen()` or similar) **or**
-     *  • a PSR-7 StreamInterface that is `isSeekable() === true`.
-     *
-     * The caller is responsible for closing the resource.
      */
     public static function fromSeekable(
-        mixed  $source,
-        int                       $totalLength,
-        ?SimpleRange              $range,
-        string                    $mediaType   = 'application/octet-stream',
-        array                     $headers     = []
+        mixed         $source,
+        int           $totalLength,
+        ?SimpleRange  $range,
+        string        $mediaType = 'application/octet-stream',
+        array         $headers   = []
     ): Response {
-
-        /* -----------------------------------------------------------------
-         | No Range header OR unsatisfiable → fall back to full 200
-         * ---------------------------------------------------------------- */
+        /* ---------------------------------------------------------
+         | No valid Range → full 200
+         * -------------------------------------------------------- */
         if ($range === null) {
-            if ($headers) {                           // ensure clean keys
-                $headers = array_change_key_case($headers, CASE_TITLE);
-            }
             $headers += [
                 'Content-Type'   => $mediaType,
                 'Content-Length' => (string) $totalLength,
             ];
-            $body   = self::wrapSeekable($source);
-            return new Response(200, $body, $headers);
+            return new Response(200, self::wrapSeekable($source), $headers);
         }
 
-        /* -----------------------------------------------------------------
-         | Valid single range → 206 Partial Content
-         * ---------------------------------------------------------------- */
+        /* ---------------------------------------------------------
+         | Valid single range → 206
+         * -------------------------------------------------------- */
         $length = $range->length();
 
-        // Move pointer
+        // seek to start
         if ($source instanceof StreamInterface) {
             $source->seek($range->start);
         } else {
             fseek($source, $range->start);
         }
-
-        $body = self::wrapSeekable($source, $length);
 
         $headers += [
             'Content-Range'  => $range->contentRange(),
@@ -101,35 +96,31 @@ final class RangeResponder
             'Content-Type'   => $mediaType,
         ];
 
-        return new Response(206, $body, $headers);
+        return new Response(206, self::wrapSeekable($source, $length), $headers);
     }
 
     /* --------------------------------------------------------------
      |  Internal utils
      |-------------------------------------------------------------- */
 
-    /**
-     * Wrap a seekable resource/stream into Webrick’s Stream,
-     * optionally limiting the readable window.
-     */
+    /** Wrap resource/stream into Webrick’s Stream with optional window-limit. */
     private static function wrapSeekable(
         resource|StreamInterface $src,
         ?int                     $limit = null
     ): StreamInterface {
-        // If the underlying Stream is already ours & has correct bounds use it.
         if ($src instanceof StreamInterface && $limit === null) {
             return $src;
         }
 
-        // Build temp stream that proxies reads up to `$limit` bytes.
-        $pipe = fopen('php://temp', 'r+');
+        /* Build temp proxy stream — keeps memory predictable. */
+        $tmp = fopen('php://temp', 'r+');
         if ($src instanceof StreamInterface) {
             $src->rewind();
-            stream_copy_to_stream($src->detach(), $pipe, $limit ?? -1);
+            stream_copy_to_stream($src->detach(), $tmp, $limit ?? -1);
         } else {
-            stream_copy_to_stream($src, $pipe, $limit ?? -1);
+            stream_copy_to_stream($src, $tmp, $limit ?? -1);
         }
-        rewind($pipe);
-        return new Stream($pipe);
+        rewind($tmp);
+        return new Stream($tmp);
     }
 }

@@ -1,11 +1,11 @@
 <?php
 declare(strict_types=1);
 
-namespace Infocyph\Webrick\Router;
+namespace Infocyph\Webrick\Router_OLD;
 
 use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
 use Infocyph\Webrick\Exceptions\RouteNotFoundException;
-use Infocyph\Webrick\Router\Constraints\ParamConstraint;
+use Infocyph\Webrick\Router_OLD\Constraints\ParamConstraint;
 use Psr\Http\Message\ServerRequestInterface;
 
 /**
