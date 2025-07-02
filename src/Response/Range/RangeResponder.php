@@ -105,7 +105,7 @@ final class RangeResponder
 
     /** Wrap resource/stream into Webrick’s Stream with optional window-limit. */
     private static function wrapSeekable(
-        resource|StreamInterface $src,
+        mixed $src,
         ?int                     $limit = null
     ): StreamInterface {
         if ($src instanceof StreamInterface && $limit === null) {

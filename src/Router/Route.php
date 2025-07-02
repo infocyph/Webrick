@@ -21,8 +21,8 @@ final class Route implements RouteInterface
     /* -------------------------------------------------------------
        Core (always present)
        ------------------------------------------------------------ */
-    private readonly string   $method;   // GET / POST / PATCH …
-    private readonly string   $path;     // canonicalised pattern
+    private readonly string $method;   // GET / POST / PATCH …
+    private readonly string $path;     // canonicalised pattern
     private $handler;  // controller / closure
 
     /* -------------------------------------------------------------
@@ -31,7 +31,7 @@ final class Route implements RouteInterface
     private readonly ?string $domain;
     private readonly ?string $name;
     /** @var array<class-string|object> */
-    private readonly array   $middlewares;
+    private readonly array $middlewares;
 
     /* -------------------------------------------------------------
        Construction
@@ -40,18 +40,18 @@ final class Route implements RouteInterface
      * @param array<class-string|object> $middlewares
      */
     public function __construct(
-        string   $method,
-        string   $path,
+        string $method,
+        string $path,
         callable $handler,
-        ?string  $domain      = null,
-        ?string  $name        = null,
-        array    $middlewares = [],
+        ?string $domain = null,
+        ?string $name = null,
+        array $middlewares = [],
     ) {
-        $this->method      = strtoupper($method);
-        $this->path        = $path;
-        $this->handler     = $handler;
-        $this->domain      = $domain;
-        $this->name        = $name;
+        $this->method = strtoupper($method);
+        $this->path = $path;
+        $this->handler = $handler;
+        $this->domain = $domain;
+        $this->name = $name;
         $this->middlewares = $middlewares;
     }
 
@@ -63,13 +63,26 @@ final class Route implements RouteInterface
     {
         return $this->method;
     }
+
     public function getPath(): string
     {
         return $this->path;
     }
+
     public function getHandler(): callable
     {
         return $this->handler;
+    }
+
+    public function name(string $name): self
+    {
+        return $this->withName($name);
+    }
+
+    /** @param string|string[] $mw */
+    public function middleware(string|array $mw): self
+    {
+        return $this->withMiddleware((array)$mw);
     }
 
     /* -------------------------------------------------------------
@@ -80,10 +93,12 @@ final class Route implements RouteInterface
     {
         return $this->domain;
     }
+
     public function getName(): ?string
     {
         return $this->name;
     }
+
     public function getMiddlewares(): array
     {
         return $this->middlewares;

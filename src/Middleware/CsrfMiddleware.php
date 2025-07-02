@@ -8,7 +8,6 @@ use Closure;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Response\Stream;
-use Infocyph\Webrick\Request\Request;
 
 /**
  * Verifies the CSRF token on **state-changing** verbs.

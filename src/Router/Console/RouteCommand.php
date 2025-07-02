@@ -5,91 +5,121 @@ namespace Infocyph\Webrick\Router\Console;
 
 use Infocyph\Webrick\Router\Cache\RouteCache;
 use Infocyph\Webrick\Router\Router;
-use Symfony\Component\Console\Attribute\AsCommand;
-use Symfony\Component\Console\Command\Command;
-use Symfony\Component\Console\Helper\Table;
-use Symfony\Component\Console\Input\InputArgument;
-use Symfony\Component\Console\Input\InputInterface;
-use Symfony\Component\Console\Output\OutputInterface;
+use Infocyph\Webrick\Router\Compiled\CompiledRoute;
 
-#[AsCommand(
-    name       : 'route',
-    description: 'List, cache or clear the compiled routes (list|cache|clear).'
-)]
-final class RouteCommand extends Command
+/**
+ * Native, dependency-free CLI handler for route introspection / cache ops.
+ *
+ *   • `php webrick route:list`
+ *   • `php webrick route:cache`
+ *   • `php webrick route:clear`
+ */
+final class RouteCommand
 {
+    private RouteCache $cache;
+    private Router     $router;
+
     public function __construct(
-        private readonly RouteCache $cache,
-        private readonly Router     $router
+        ?RouteCache $cache = null,
+        ?Router     $router = null,
     ) {
-        parent::__construct();
+        $this->cache  = $cache  ?? new RouteCache();
+        $this->router = $router ?? new Router();
     }
 
-    protected function configure(): void
+    /* ---------------------------------------------------------------------
+       Entry point – invoked from bin/webrick
+       --------------------------------------------------------------------*/
+    /**
+     * @param array<int,string> $argv raw CLI args
+     */
+    public static function run(array $argv): int
     {
-        $this
-            ->addArgument(
-                'action',
-                InputArgument::OPTIONAL,
-                'Operation to perform: list, cache, or clear',
-                'list'
-            );
+        // pattern:  webrick  route[:action]
+        $verb = $argv[1] ?? 'route:list';
+
+        [$cmd, $action] = array_pad(explode(':', $verb, 2), 2, 'list');
+
+        if ($cmd !== 'route') {
+            self::out("Unknown command '{$cmd}'.\n", true);
+            return 1;
+        }
+
+        return (new self())->dispatch($action);
     }
 
-    protected function execute(InputInterface $in, OutputInterface $out): int
+    /* ---------------------------------------------------------------------
+       Dispatcher
+       --------------------------------------------------------------------*/
+    private function dispatch(string $action): int
     {
-        return match (strtolower((string) $in->getArgument('action'))) {
-            'cache' => $this->warm($out),
-            'clear' => $this->clear($out),
-            'list', '' => $this->dump($out),
-            default => $this->invalid($out),
+        return match (strtolower($action)) {
+            'cache' => $this->warm(),
+            'clear' => $this->clear(),
+            'list', '' => $this->dump(),
+            default => $this->invalid($action),
         };
     }
 
-    private function dump(OutputInterface $out): int
+    /* ---------------------------------------------------------------------
+       Actions
+       --------------------------------------------------------------------*/
+    private function dump(): int
     {
-        $routes = $this->cache->load()
-            ?? $this->router->routes();
+        $routes = $this->cache->load() ?? $this->router->routes();
 
-        $table = new Table($out);
-        $table->setHeaders(['Method', 'URI', 'Name', 'Middleware']);
+        // simple text table (no libs)
+        self::out(str_pad('METHOD', 10)
+            . str_pad('URI', 35)
+            . str_pad('NAME', 28)
+            . "MIDDLEWARE\n");
+        self::out(str_repeat('-', 100) . "\n");
 
+        /** @var CompiledRoute $r */
         foreach ($routes as $r) {
-            $table->addRow([
-                implode(',', $r->verbs),
-                $r->path,
-                $r->name ?? '—',
-                $r->middleware ? implode(',', $r->middleware) : '—',
-            ]);
+            self::out(
+                str_pad(implode(',', $r->verbs), 10)
+                . str_pad($r->path, 35)
+                . str_pad($r->name ?? '—', 28)
+                . ($r->middleware ? implode(',', $r->middleware) : '—')
+                . "\n"
+            );
         }
-
-        $table->render();
-        return Command::SUCCESS;
+        return 0;
     }
 
-    private function warm(OutputInterface $out): int
+    private function warm(): int
     {
-        $out->writeln('<info>• Compiling routes …</info>');
+        self::out("Compiling routes …\n");
         $routes = $this->router->routes();
 
-        $out->writeln('<info>• Writing cache …</info>');
+        self::out("Writing cache …\n");
         $this->cache->store($routes);
 
-        $out->writeln('<comment>✓ Route cache warmed.</comment>');
-        return Command::SUCCESS;
+        self::out("✓ Route cache warmed.\n");
+        return 0;
     }
 
-    private function clear(OutputInterface $out): int
+    private function clear(): int
     {
-        $out->writeln('<info>• Clearing route cache …</info>');
+        self::out("Clearing route cache …\n");
         $this->cache->clear();
-        $out->writeln('<comment>✓ Cache cleared.</comment>');
-        return Command::SUCCESS;
+        self::out("✓ Cache cleared.\n");
+        return 0;
     }
 
-    private function invalid(OutputInterface $out): int
+    private function invalid(string $action): int
     {
-        $out->writeln('<error>Unknown action. Use list|cache|clear.</error>');
-        return Command::INVALID;
+        self::out("Unknown action '{$action}'. Use route:list, route:cache or route:clear.\n", true);
+        return 1;
+    }
+
+    /* ---------------------------------------------------------------------
+       Helpers
+       --------------------------------------------------------------------*/
+    private static function out(string $msg, bool $err = false): void
+    {
+        $stream = $err ? STDERR : STDOUT;
+        fwrite($stream, $msg);
     }
 }

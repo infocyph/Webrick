@@ -1,23 +1,9 @@
 #!/usr/bin/env php
 <?php
+/** Minimal CLI front controller for Webrick tool-belt. */
 
-declare(strict_types=1);
+use Infocyph\Webrick\Router\Console\RouteCommand;
 
-/*
- |------------------------------------------------------------------
- |  Webrick CLI entry point
- |------------------------------------------------------------------
- |  Usage examples:
- |     php webrick route:cache   # compile & cache routes
- |     php webrick route:clear   # remove cache
- |     php webrick route:list    # pretty table of routes
- |
- |  Add more sub-commands in src/router/cli/ as needed.
- |------------------------------------------------------------------
-*/
+require_once __DIR__ . '/vendor/autoload.php';
 
-require __DIR__ . '/vendor/autoload.php';
-
-use Infocyph\Webrick\Router_OLD\CLI\RouteCacheCommand;
-
-RouteCacheCommand::main($argv);
+exit(RouteCommand::run($argv));

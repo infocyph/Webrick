@@ -3,17 +3,33 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router\Compiled;
 
+use ArrayIterator;
+use IteratorAggregate;
 use JsonSerializable;
 
 /**
- * A serialisable *snapshot* of all routes – used by
- * `php webrick route:list` and possible static analysis.
+ * Serialisable, iterable snapshot of all routes.
+ *
+ * @implements IteratorAggregate<int,CompiledRoute>
  */
-final class CompiledRoutes implements JsonSerializable
+final class CompiledRoutes implements JsonSerializable, IteratorAggregate
 {
     /** @param list<CompiledRoute> $routes */
-    public function __construct(public array $routes) {}
+    public function __construct(private array $routes) {}
 
+    /** @return list<CompiledRoute> */
+    public function all(): array
+    {
+        return $this->routes;
+    }
+
+    /* IteratorAggregate */
+    public function getIterator(): \Traversable
+    {
+        return new ArrayIterator($this->routes);
+    }
+
+    /* JsonSerializable */
     public function jsonSerialize(): array
     {
         return $this->routes;

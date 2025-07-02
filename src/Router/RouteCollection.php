@@ -50,17 +50,20 @@ final class RouteCollection
 
     /* --------------------------------------------------------- */
 
-    public function routeFor(string $method, string $path): Route
+    public function routeFor(string $method, string $host, string $path): Route
     {
         /* 1️⃣  Fast static lookup */
-        $static = $this->static[$method][$path] ?? null;
-        if ($static) { return $static; }
+        foreach ($this->static[$method][$path] ?? [] as $cand) {
+            if (!$cand->getDomain() || $cand->getDomain() === $host) {
+                return $cand;
+            }
+        }
 
-        /* 2️⃣  Dynamic regex list */
-        foreach ($this->dynamic[$method] ?? [] as $entry) {
-            if (preg_match($entry['regex'], $path, $m)) {
-                // populate attributes into request elsewhere – here we just return the Route
-                return $entry['route'];
+        /* 2️⃣ dynamic */
+        foreach ($this->dynamic[$method] ?? [] as $e) {
+            if (preg_match($e['regex'], $path) &&
+                (!$e['route']->getDomain() || $e['route']->getDomain() === $host)) {
+                return $e['route'];
             }
         }
 
