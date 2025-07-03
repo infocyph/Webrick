@@ -1,10 +1,9 @@
 <?php
-
 declare(strict_types=1);
 
-namespace Infocyph\Webrick\Request\Factory;
+namespace Infocyph\Webrick\Request\Psr7\Factory;
 
-use Infocyph\Webrick\Request\Uri;
+use Infocyph\Webrick\Request\Core\Uri;
 use Psr\Http\Message\{UriFactoryInterface, UriInterface};
 
 final class UriFactory implements UriFactoryInterface

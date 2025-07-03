@@ -17,7 +17,7 @@ declare(strict_types=1);
 require_once __DIR__.'/vendor/autoload.php';
 
 use Infocyph\InterMix\DI\Container;
-use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Request_OLD\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Router;
 use Infocyph\Webrick\Router\Registrar;

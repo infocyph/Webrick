@@ -6,7 +6,7 @@ namespace Infocyph\Webrick\Router;
 
 use Infocyph\Webrick\Interfaces\RouteInterface;
 use Infocyph\Webrick\Interfaces\RouterInterface;
-use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Request_OLD\Request;
 use Infocyph\Webrick\Response\Stream;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\InterMix\DI\Container;
