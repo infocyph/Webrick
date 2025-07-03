@@ -58,7 +58,7 @@ it('picks best mime according to q-values', function () {
     $req = RequestFactory::make(
         headers:['Accept' => 'text/html; q=0.2, application/json, */*;q=0.1']
     );
-    $mime = (new ContentNegotiator($req->headers()))
+    $mime = new ContentNegotiator($req->headers())
         ->preferred(['application/json','text/html']);
     expect($mime)->toBe('application/json');
 });
@@ -110,6 +110,6 @@ it('accepts masked CSRF token', function () {
    6. Content negotiation helper on Request facade
    ------------------------------------------------------------------ */
 it('Request::expectsJson() honours Ajax header fallback', function () {
-    $req = RequestFactory::make(server:['HTTP_X_REQUESTED_WITH'=>'XMLHttpRequest']);
+    $req = RequestFactory::make(server:['HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest']);
     expect($req->expectsJson())->toBeTrue();
 });

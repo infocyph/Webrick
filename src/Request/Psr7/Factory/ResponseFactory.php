@@ -4,7 +4,7 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Request\Psr7\Factory;
 
 use Infocyph\Webrick\Request\Core\Stream;
-use Infocyph\Webrick\Request\Psr7\Response;
+use Infocyph\Webrick\Response\Response;
 use Psr\Http\Message\{ResponseInterface, ResponseFactoryInterface};
 
 final class ResponseFactory implements ResponseFactoryInterface

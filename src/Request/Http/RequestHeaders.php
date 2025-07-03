@@ -112,6 +112,9 @@ final class RequestHeaders
         foreach ($segments as $seg) {
             [$mime, $q] = array_pad(array_map('trim', explode(';', $seg, 2)), 2, '');
             $qVal = (float)(preg_match('/q=([\d.]+)/', $q, $m) ? $m[1] : 1);
+            if ($qVal == 0.0) {                // RFC 9110: not acceptable
+                continue;                       // ← cheap hard-skip, keeps array small
+            }
             $wild = substr_count($mime, '*');
             $parsed[] = ['mime' => $mime,'q' => $qVal,'wild' => $wild];
         }

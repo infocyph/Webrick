@@ -17,20 +17,23 @@ use Infocyph\Webrick\Response\Response;
  */
 final readonly class LocaleNegotiationMiddleware
 {
-    /** @param string[] $supported ordered preference list */
+    /** @param string[] $supported Ordered by server-side preference */
     public function __construct(
-        private array $supported,
-        private string $fallback = 'en'
-    ) {}
+        private array  $supported,
+        private string $fallback = 'en',
+    ) {
+    }
 
     public function __invoke(Request $req, Closure $next): Response
     {
-        $accept = $req->getHeaderLine('Accept-Language');
-        $chosen = Language::negotiate($this->supported, $accept);
+        $chosen = Language::negotiate(
+            $this->supported ?: [$this->fallback],          // ensure non-empty
+            $req->getHeaderLine('Accept-Language'),
+        ) ?: $this->fallback;                               // extra guard
 
-        $req = $req->withAttribute('locale', $chosen);
-
+        $req  = $req->withAttribute('locale', $chosen);
         $resp = $next($req);
+
         return $resp
             ->withHeader('Content-Language', $chosen)
             ->withHeader('Vary', 'Accept-Language');
