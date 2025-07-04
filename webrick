@@ -1,9 +1,22 @@
 #!/usr/bin/env php
 <?php
-/** Minimal CLI front controller for Webrick tool-belt. */
+declare(strict_types=1);
 
-use Infocyph\Webrick\Router\Console\RouteCommand;
+/**
+ * Webrick CLI entry-point – run like:
+ *
+ *   php webrick route:list
+ *   php webrick route:cache
+ *   php webrick route:clear
+ *
+ * Requirements
+ * ------------
+ *  • `vendor/autoload.php` must exist (Composer).
+ *  • Make this file executable on *nix:  chmod +x webrick
+ */
 
 require_once __DIR__ . '/vendor/autoload.php';
+
+use Infocyph\Webrick\Router\Console\RouteCommand;
 
 exit(RouteCommand::run($argv));

@@ -6,82 +6,65 @@ namespace Infocyph\Webrick\Router\Runtime;
 use RuntimeException;
 
 /**
- * Central registry for *path-parameter* constraints.
+ * Central registry for path-parameter constraints.
  *
- * ──────────────────────────────────────────────────────────────
- *  • Each type has (a) a regex fragment   and   (b) a PHP guard.
- *  • Built-ins live in {@see DEFAULTS}; users may {@see register()} extras.
- *  • Zero allocations or lambdas on the hot path.
- * ──────────────────────────────────────────────────────────────
+ *  • Provides both a PCRE fragment (compile-time) **and**
+ *    an ultra-fast runtime validator (match-expression).
  */
 final class ParamConstraint
 {
-    /** @var array<string,string>  map<alias,regex-fragment> */
-    private const array DEFAULTS = [
+    private const DEFAULTS = [
         'int'  => '[0-9]+',
         'uuid' => '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}',
         'slug' => '[a-z0-9\\-]+',
         'any'  => '[^/]+',
     ];
 
-    /** @var array<string,string> dynamically-extendable map */
+    /** @var array<string,string> */
     private static array $map = self::DEFAULTS;
 
-    /* ──────────────────────────────────────────────────────────
-       1. Registration API (boot-time only)
-       ───────────────────────────────────────────────────────── */
-    public static function register(string $alias, string $regex): void
+    /* ------------------------------------------------------------------ */
+    /* Registration                                                       */
+    /* ------------------------------------------------------------------ */
+    public static function register(string $name, string $regex): void
     {
-        $alias = trim($alias);
-        if ($alias === '') {
-            throw new RuntimeException('Constraint alias must be non-empty');
+        if ($name === '') {
+            throw new RuntimeException('Constraint name must be non-empty');
         }
-        self::$map[$alias] = trim($regex, '/');
+        self::$map[$name] = trim($regex, '/');
     }
 
-    public static function has(string $alias): bool
+    public static function has(string $name): bool
     {
-        return isset(self::$map[$alias]);
+        return isset(self::$map[$name]);
     }
 
-    /**
-     * Return PCRE fragment for compiler.
-     * Falls back to <any> if alias unknown.
-     */
-    public static function regex(string $alias): string
+    public static function regex(string $name): string
     {
-        return self::$map[$alias] ?? self::$map['any'];
+        return self::$map[$name] ?? self::$map['any'];
     }
 
-    /* ──────────────────────────────────────────────────────────
-       2. Runtime validation
-       ───────────────────────────────────────────────────────── */
-    public static function validate(string $alias, string $value): bool
+    /* ------------------------------------------------------------------ */
+    /* Runtime validation (fast match-expression)                         */
+    /* ------------------------------------------------------------------ */
+    public static function validate(string $type, string $value): bool
     {
-        return match ($alias) {
+        return match ($type) {
             'int'  => $value !== '' && ctype_digit($value),
 
-            /* canonical UUID v1–5 */
-            'uuid' => (bool) preg_match(
-                '/^' . self::regex('uuid') . '$/Di',
+            'uuid', 'slug', 'any' => (bool) preg_match(
+                '/^' . self::regex($type) . '$/u',
                 $value
             ),
 
-            /* ‘slug’ and ‘any’ and any custom alias */
-            default => self::has($alias)
-                && (bool) preg_match('/^' . self::regex($alias) . '$/u', $value),
+            default => self::has($type)
+                && (bool) preg_match('/^' . self::regex($type) . '$/u', $value),
         };
     }
 
-    /* BC alias used by older code-paths */
-    public static function check(string $alias, string $value): bool
+    /** Back-compat alias */
+    public static function check(string $type, string $value): bool
     {
-        return self::validate($alias, $value);
+        return self::validate($type, $value);
     }
-
-    /**
-     * Prevent instantiation.
-     * @codeCoverageIgnore
-     */
-    private function __construct() {}
 }
