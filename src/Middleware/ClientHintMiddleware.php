@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Middleware;
@@ -20,7 +21,9 @@ final readonly class ClientHintMiddleware
     public function __construct(private array $hints = [
         'Sec-CH-UA', 'Sec-CH-UA-Mobile', 'Sec-CH-UA-Platform',
         'Sec-CH-UA-Arch', 'Sec-CH-UA-Model', 'Sec-CH-UA-Full-Version',
-    ]) {}
+    ])
+    {
+    }
 
     public function __invoke(Request $req, Closure $next): Response
     {

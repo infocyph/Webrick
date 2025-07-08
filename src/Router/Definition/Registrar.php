@@ -8,24 +8,24 @@ use Closure;
 use Infocyph\Webrick\Router\Contracts\RouteInterface;
 use Infocyph\Webrick\Router\Route\Collection;
 use Infocyph\Webrick\Router\Route\Route;
+use InvalidArgumentException;
 
 /**
- * Fluent, immutable builder that **declares** routes and groups.
+ * Fluent, immutable builder that declares routes and groups.
  *
- * Nothing is dispatched here – we only create Route DTOs and push them
- * into the in-memory Collection.
+ * All mutators return a new GroupScope; the original is never modified.
+ * Routes are instantiated as Route DTOs and pushed into the provided Collection.
  */
-final class Registrar
+final readonly class Registrar
 {
-    /** @internal only Router should create a Registrar */
     public function __construct(
-        private readonly Collection $routes,
-        private readonly GroupScope $scope = new GroupScope(),
+        private Collection $routes,
+        private GroupScope $scope = new GroupScope(),
     ) {
     }
 
     /* -----------------------------------------------------------------
-     *  Public – HTTP verb helpers
+     *  HTTP verb helpers
      * ----------------------------------------------------------------*/
 
     public function get(string $path, callable $handler): RouteInterface
@@ -64,19 +64,23 @@ final class Registrar
     }
 
     /* -----------------------------------------------------------------
-     *  Public – grouping
+     *  Grouping
      * ----------------------------------------------------------------*/
+
     /**
-     * Declare a nested group.
+     * Declare a nested group of routes.
      *
-     * • **Laravel   style**:  $r->group(['prefix' => 'v1', 'middleware' => …], fn ($r) => …);
-     * • **Named args style**: $r->group(prefix: 'v1', middleware: [...], callback: fn ($r) => …);
+     * Supports both “Laravel-style” options array:
+     *   ->group(['prefix'=>'v1','middleware'=>[...]], fn($r)=>{})
      *
-     * @param array|string|null         $prefix     Either the options‐array *or* the URI prefix
-     * @param string|array|Closure|null $domain     Domain *or* middleware *or* the callback
-     * @param array|Closure             $middleware Middleware list *or* the callback
-     * @param string|Closure|null       $namePrefix Name prefix *or* the callback
-     * @param Closure|null              $callback   Group body
+     * and positional arguments:
+     *   ->group('v1', 'api.example.com', [...], 'api.', fn($r)=>{})
+     *
+     * @param array|string|null $prefix URI prefix or options array
+     * @param string|array|Closure|null $domain Domain, middleware list, or callback
+     * @param array|Closure $middleware Middleware list or callback
+     * @param string|Closure|null $namePrefix Name prefix or callback
+     * @param Closure|null $callback Group callback
      */
     public function group(
         array|string|null $prefix = null,
@@ -85,58 +89,45 @@ final class Registrar
         string|Closure|null $namePrefix = null,
         ?Closure $callback = null,
     ): void {
-        /* -----------------------------------------------------------------
-         *  1) Laravel-style options array?
-         * ----------------------------------------------------------------*/
-        if (\is_array($prefix)) {
-            $opts     = $prefix;
+        // 1) Laravel-style options array?
+        if (is_array($prefix)) {
+            $opts = $prefix;
             $callback = $domain instanceof Closure ? $domain : $callback;
-
-            $prefix     = $opts['prefix']     ?? null;
-            $domain     = $opts['domain']     ?? null;
+            $prefix = $opts['prefix'] ?? null;
+            $domain = $opts['domain'] ?? null;
             $middleware = $opts['middleware'] ?? [];
-            $namePrefix = $opts['name']       // Laravel key
-                ?? $opts['as']         // some projects use 'as'
-                ?? null;
+            $namePrefix = $opts['name'] ?? $opts['as'] ?? null;
         }
 
-        /* -----------------------------------------------------------------
-         *  2) Shift arguments when positional call omitted $domain
-         *     e.g. group('v1', fn($r)=>…)  instead of  group('v1', null, [], null, fn)
-         * ----------------------------------------------------------------*/
+        // 2) Positional shifting when callback is passed early
         if ($domain instanceof Closure && $callback === null) {
             $callback = $domain;
-            $domain   = null;
+            $domain = null;
         }
         if ($middleware instanceof Closure && $callback === null) {
-            $callback   = $middleware;
+            $callback = $middleware;
             $middleware = [];
         }
         if ($namePrefix instanceof Closure && $callback === null) {
-            $callback    = $namePrefix;
-            $namePrefix  = null;
+            $callback = $namePrefix;
+            $namePrefix = null;
         }
 
-        /* ---- runtime guard --------------------------------------------------- */
         if (!$callback instanceof Closure) {
-            throw new \InvalidArgumentException('Missing group callback Closure.');
+            throw new InvalidArgumentException('A group callback Closure is required.');
         }
 
-        /* -----------------------------------------------------------------
-         *  3) Build the derived scope & delegate
-         * ----------------------------------------------------------------*/
-        $child = new self(
-            $this->routes,
-            $this->scope
-                ->withPrefix($prefix ?? '')
-                ->withDomain($domain)
-                ->withMiddleware($middleware)
-                ->withNamePrefix($namePrefix ?? ''),
-        );
+        // 3) Build child scope
+        $childScope = $this->scope
+            ->withPrefix((string)$prefix)
+            ->withDomain(is_string($domain) ? $domain : null)
+            ->withMiddleware(is_array($middleware) ? $middleware : [])
+            ->withNamePrefix(is_string($namePrefix) ? $namePrefix : '');
 
+        // 4) Delegate into nested Registrar
+        $child = new self($this->routes, $childScope);
         $callback($child);
     }
-
 
     /* -----------------------------------------------------------------
      *  Internal helper
@@ -144,20 +135,28 @@ final class Registrar
 
     private function add(string $verb, string $path, callable $handler): RouteInterface
     {
-        $fullPath = '/' . ltrim($this->scope->prefix() . '/' . ltrim($path, '/'), '/');
+        // 1) Compute full path with scope prefix
+        $fullPrefix = ltrim($this->scope->getPrefix(), '/');
+        $fullPath = '/' . ltrim($fullPrefix . '/' . ltrim($path, '/'), '/');
+
+        // 2) Instantiate the Route DTO
         $route = new Route($verb, $fullPath, $handler);
 
-        // apply group decorations
-        if ($domain = $this->scope->domain()) {
+        // 3) Apply scope decorations
+        if ($domain = $this->scope->getDomain()) {
             $route = $route->withDomain($domain);
         }
-        if ($mw = $this->scope->middleware()) {
-            $route = $route->withMiddleware($mw);
-        }
-        if ($this->scope->namePrefix() !== '') {
-            $route = $route->withName($this->scope->namePrefix() . ($route->getName() ?? ''));
+
+        if ($middlewares = $this->scope->getMiddleware()) {
+            $route = $route->withMiddleware($middlewares);
         }
 
+        if ($namePrefix = $this->scope->getNamePrefix()) {
+            $baseName = $route->getName() ?? '';
+            $route = $route->withName($namePrefix . $baseName);
+        }
+
+        // 4) Register in collection
         $this->routes->add($route);
 
         return $route;

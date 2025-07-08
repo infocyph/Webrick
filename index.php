@@ -1,117 +1,166 @@
 <?php
+
 declare(strict_types=1);
 
+use Infocyph\Webrick\Router\Contracts\RouteInterface;
+use Infocyph\Webrick\Router\Route\Collection;
+use Infocyph\Webrick\Router\Url\UrlGenerator;
+
+require __DIR__ . '/vendor/autoload.php';
+
 /**
- * public/index.php
- *
- * Run with:
- *   php -S localhost:8000 public/index.php
- *
- * End-points to try:
- *   GET /hello
- *   GET /user/42
- *   GET /post/super-fast-router
- *   GET /api/v1/ping
+ * Minimal RouteInterface stub that ONLY returns real PHP callables.
  */
-
-require_once __DIR__.'/vendor/autoload.php';
-
-use Infocyph\InterMix\DI\Container;
-use Infocyph\Webrick\Request_OLD\Request;
-use Infocyph\Webrick\Response\Response;
-use Infocyph\Webrick\Router\Router;
-use Infocyph\Webrick\Router\Registrar;
-use Infocyph\Webrick\Router\Attributes\Route   as RouteAttr;
-use Infocyph\Webrick\Router\Attributes\Middleware as MwAttr;
-
-/* ---------------------------------------------------------------------
-   1.   Container & common services
-   --------------------------------------------------------------------*/
-$container = Container::instance('intermix');
-$container->definitions()->bind(
-    DateTimeImmutable::class,
-    static fn () => new DateTimeImmutable('now', new DateTimeZone('UTC')),
-);
-
-/* ---------------------------------------------------------------------
-   2.   Boot the (singleton) router
-   --------------------------------------------------------------------*/
-$router = Router::instance($container);
-
-/* ---------------------------------------------------------------------
-   3.   Example middleware alias + global attach
-   --------------------------------------------------------------------*/
-class AuthMiddleware implements Psr\Http\Server\MiddlewareInterface
+final class DummyRoute implements RouteInterface
 {
-    public function process(
-        Psr\Http\Message\ServerRequestInterface $request,
-        Psr\Http\Server\RequestHandlerInterface $handler
-    ): Psr\Http\Message\ResponseInterface {
-        // (dummy - just continue)
-        return $handler->handle($request);
+    private ?string $name;
+    private string $path;
+    private string $method;
+    private ?string $domain;
+    /** @var array<int,callable|string> */
+    private array $middlewares;
+    private \Closure $handler;
+
+    public function __construct(
+        string $name,
+        string $path,
+        \Closure $handler,
+        string $method = 'GET',
+        ?string $domain = null,
+        array $middlewares = []
+    ) {
+        $this->name = $name;
+        $this->path = $path;
+        $this->handler = $handler;
+        $this->method = $method;
+        $this->domain = $domain;
+        $this->middlewares = $middlewares;
     }
-}
 
-$router->middlewareAlias('auth', AuthMiddleware::class)
-    ->globalMiddleware(before: ['auth']);
-
-/* ---------------------------------------------------------------------
-   4.   Attribute-based controllers
-   --------------------------------------------------------------------*/
-#[MwAttr('auth')]        // class-level middleware
-class UserController
-{
-    #[RouteAttr('GET', '/user/{id:int}', name: 'user.show')]
-    public function show(DateTimeImmutable $now, int $id): string
+    public function getName(): ?string
     {
-        return "User #{$id} @ ".$now->format(DateTimeInterface::ATOM);
+        return $this->name;
+    }
+
+    public function getPath(): string
+    {
+        return $this->path;
+    }
+
+    public function getHandler(): callable
+    {
+        // We know it's a \Closure, which is a callable
+        return $this->handler;
+    }
+
+    public function getMethod(): string
+    {
+        return $this->method;
+    }
+
+    public function getDomain(): ?string
+    {
+        return $this->domain;
+    }
+
+    public function getMiddlewares(): array
+    {
+        return $this->middlewares;
+    }
+
+    public function withName(string $name): RouteInterface
+    {
+        $clone = clone $this;
+        $clone->name = $name;
+        return $clone;
+    }
+
+    public function withDomain(string|null $domain): RouteInterface
+    {
+        $clone = clone $this;
+        $clone->domain = $domain;
+        return $clone;
+    }
+
+    public function withMiddleware(callable|string|array $middleware): RouteInterface
+    {
+        $clone = clone $this;
+        $clone->middlewares[] = $middleware;
+        return $clone;
     }
 }
 
-class ApiController
-{
-    #[RouteAttr(['GET','HEAD'], '/api/v1/ping', name: 'api.ping')]
-    public function ping(): string { return 'pong'; }
+
+// 1. Create your routes collection
+$routes = new Collection();
+
+// 2. Add a route with a closure handler
+$showUser = fn(array $params=[]) => null;  // dummy
+$routes->add(new DummyRoute(
+    name:    'user.show',
+    path:    '/users/{id}',
+    handler: $showUser
+));
+
+// 3. Add another route
+$previewPost = fn(array $params=[]) => null;
+$routes->add(new DummyRoute(
+    name:    'post.preview',
+    path:    '/posts/{slug:slug}',
+    handler: $previewPost
+));
+
+// 4. Instantiate UrlGenerator
+$gen = new UrlGenerator('https://api.example.com', $routes);
+
+// ————————————————————————————————————————————————————————————————
+// A) urlFor()
+echo $gen->urlFor('user.show', ['id' => 42], ['utm' => 'test']);
+// → https://api.example.com/users/42?utm=test
+
+echo "\n";
+
+// relative
+echo $gen->urlFor('user.show', ['id'=>99], [], false);
+// → /users/99
+
+echo "\n\n";
+
+// ————————————————————————————————————————————————————————————————
+// B) to()
+echo $gen->to('/health');
+// → https://api.example.com/health
+
+echo "\n";
+
+echo $gen->to('search', ['q'=>'php 8.4','page'=>2]);
+// → https://api.example.com/search?q=php%208.4&page=2
+
+echo "\n\n";
+
+// ————————————————————————————————————————————————————————————————
+// C) action()
+echo $gen->action($showUser, ['id'=>7]);
+// → https://api.example.com/users/7
+
+echo "\n\n";
+
+// D) missing param
+try {
+    echo $gen->urlFor('post.preview', []);
+} catch (InvalidArgumentException $e) {
+    echo "Error: " . $e->getMessage();
+// → Error: Missing parameter 'slug' for URL template '/posts/{slug:slug}'.
 }
 
-/* --- Register attribute routes ------------------------------------ */
-Infocyph\Webrick\Router\AttributeScanner::scan($router, [__DIR__]);
+echo "\n\n";
 
-/* ---------------------------------------------------------------------
-   5.   Fluent / “Laravel-style” routes
-   --------------------------------------------------------------------*/
-$root = $router->scope();                         // Registrar shortcut
-
-// simple named route --------------------------------------------------
-$root->get('/hello', fn () => 'Hello world!')
-    ->withName('hello');
-
-// group with prefix + slug constraint --------------------------------
-$root->group(['prefix' => 'post'], function (Registrar $r) {
-    $r->get('/{slug:slug}', function (string $slug) {
-        return "Post slug = {$slug}";
-    });
-});
-
-/* nested group + DI injection --------------------------------------- */
-$root->group(['prefix' => 'tools'], function (Registrar $tools) {
-    $tools->group(['prefix' => 'strings'], function (Registrar $str) {
-        $str->post('/upper', function (Request $req) {
-            $txt = (string) ($req->getParsedBody()['txt'] ?? '');
-            return strtoupper($txt);
-        });
-    });
-});
-
-/* ---------------------------------------------------------------------
-   6.   Dispatch current request
-   --------------------------------------------------------------------*/
-$request  = Request::fromGlobals();       // your concrete PSR-7 Request
-$response = $router->handle($request);
-
-/* Emit (dependency-free) ------------------------------------------- */
-http_response_code($response->getStatusCode());
-foreach ($response->getHeaders() as $name => $values) {
-    foreach ($values as $v) { header("$name: $v", false); }
+// E) unknown route
+try {
+    echo $gen->urlFor('no.such');
+} catch (InvalidArgumentException $e) {
+    echo "Error: " . $e->getMessage();
+// → Error: Route 'no.such' not found.
 }
-echo (string) $response->getBody();
+
+echo "\n";

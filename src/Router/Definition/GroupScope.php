@@ -5,77 +5,98 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Router\Definition;
 
 /**
- * Immutable “context stack” that accumulates route-building hints while
- * descending through nested groups.
+ * Immutable context for nested route groups:
+ *  - URI prefix (normalized to "/foo/bar")
+ *  - Optional domain (e.g. "api.example.com")
+ *  - Middleware list (class-strings or objects)
+ *  - Name prefix (e.g. "api.")
  *
- * A scope carries:
- *   • URI prefix         (e.g. "/v1/api")
- *   • host / sub-domain  (e.g. "admin.example.com")
- *   • middleware list    (class-strings | objects)
- *   • name-prefix        (e.g. "api.")
+ * All mutators return a new instance; original stays unchanged.
  *
- * Every mutator returns **a new instance** – never mutates in-place.
+ * @psalm-type MiddlewareList = list<class-string|object>
  */
 final class GroupScope
 {
-    /** @param list<class-string|object> $middleware */
     public function __construct(
-        private readonly string $prefix       = '',
-        private readonly ?string $domain      = null,
-        private readonly array $middleware    = [],
-        private readonly string $namePrefix   = '',
-    ) {
-    }
+        private readonly string  $prefix     = '',      // always normalized
+        private readonly ?string $domain     = null,
+        /** @var MiddlewareList */
+        private readonly array   $middleware = [],
+        private readonly string  $namePrefix = '',
+    ) {}
 
     /* -----------------------------------------------------------------
      *  Fluent (immutable) setters
      * ----------------------------------------------------------------*/
 
-    public function withPrefix(string $prefix): self
+    public function withPrefix(string $more): self
     {
-        $p = rtrim($this->prefix, '/') . '/' . ltrim($prefix, '/');
-        return new self($p, $this->domain, $this->middleware, $this->namePrefix);
+        $combined = trim($this->prefix, '/') . '/' . trim($more, '/');
+        // normalize: ensure leading slash, no trailing slash, collapse '//'
+        $normalized = '/' . trim(preg_replace('#/+#', '/', $combined), '/');
+
+        return new self(
+            $normalized,
+            $this->domain,
+            $this->middleware,
+            $this->namePrefix
+        );
     }
 
     public function withDomain(?string $domain): self
     {
-        return new self($this->prefix, $domain, $this->middleware, $this->namePrefix);
+        return new self(
+            $this->prefix,
+            $domain,
+            $this->middleware,
+            $this->namePrefix
+        );
     }
 
-    /** @param list<class-string|object> $extra */
+    /**
+     * @param MiddlewareList $extra
+     */
     public function withMiddleware(array $extra): self
     {
         return new self(
             $this->prefix,
             $this->domain,
-            array_merge($this->middleware, $extra),
-            $this->namePrefix,
+            [...$this->middleware, ...$extra],  // preserves order
+            $this->namePrefix
         );
     }
 
-    public function withNamePrefix(string $n): self
+    public function withNamePrefix(string $namePrefix): self
     {
-        return new self($this->prefix, $this->domain, $this->middleware, $this->namePrefix . $n);
+        return new self(
+            $this->prefix,
+            $this->domain,
+            $this->middleware,
+            $this->namePrefix . $namePrefix
+        );
     }
 
     /* -----------------------------------------------------------------
-     *  Accessors used by Registrar / Compiler
+     *  Accessors
      * ----------------------------------------------------------------*/
 
-    public function prefix(): string
+    public function getPrefix(): string
     {
         return $this->prefix;
     }
-    public function domain(): ?string
+
+    public function getDomain(): ?string
     {
         return $this->domain;
     }
-    /** @return list<class-string|object> */
-    public function middleware(): array
+
+    /** @return MiddlewareList */
+    public function getMiddleware(): array
     {
         return $this->middleware;
     }
-    public function namePrefix(): string
+
+    public function getNamePrefix(): string
     {
         return $this->namePrefix;
     }

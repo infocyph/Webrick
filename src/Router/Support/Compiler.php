@@ -66,7 +66,7 @@ final class Compiler
                 continue;
             }
 
-            if (preg_match('/^\{([A-Za-z_][A-Za-z0-9_]*)(?::([^}]+))?\}$/', $segment, $m)) {
+            if (preg_match('/^\{([A-Za-z_][A-Za-z0-9_]*)(?::([^}]+))?}$/', $segment, $m)) {
                 // Placeholder
                 $varName   = $m[1];
                 $constraintKey = $m[2] ?? null;
