@@ -9,13 +9,14 @@ use InvalidArgumentException;
 
 class UrlGenerator
 {
-    private string $baseUri;     // e.g. "https://api.example.com"
+    private string $baseUri;
     private Collection $routes;
 
     public function __construct(string $baseUri, Collection $routes)
     {
+        // Strip any trailing slash so we can always do "$baseUri . '/' . ltrim(path)"
         $this->baseUri = rtrim($baseUri, '/');
-        $this->routes  = $routes;
+        $this->routes = $routes;
     }
 
     /* -----------------------------------------------------------------
@@ -25,15 +26,16 @@ class UrlGenerator
     /**
      * Build a URL for a **named route**.
      *
-     * @param non-empty-string      $name
-     * @param array<string,mixed>   $params  Placeholder values
-     * @param array<string,mixed>   $query   Extra query parameters
+     * @param non-empty-string $name
+     * @param array<string,mixed> $params Placeholder values
+     * @param array<string,mixed> $query Query parameters
+     * @param bool $absolute Prepend baseUri?
      */
     public function urlFor(
         string $name,
-        array  $params = [],
-        array  $query = [],
-        bool   $absolute = true,
+        array $params = [],
+        array $query = [],
+        bool $absolute = true,
     ): string {
         $route = $this->routes->findByName($name);
 
@@ -49,31 +51,32 @@ class UrlGenerator
     /**
      * Build a URL to an **arbitrary path**.
      *
-     * @param non-empty-string                 $path   "/foo/bar"
-     * @param array<string,scalar|array|null>  $query
+     * @param non-empty-string $path Leading slash optional
+     * @param array<string,scalar|array|null> $query
+     * @param bool $absolute
+     * @return string
      */
     public function to(
         string $path,
-        array  $query = [],
-        bool   $absolute = true,
+        array $query = [],
+        bool $absolute = true,
     ): string {
         return $this->build($path, $query, $absolute);
     }
 
     /**
-     * Build a URL by **handler reference** (class name or callable string).
+     * Build a URL by **handler reference**.
      *
-     * @param callable|string $handler
+     * @param callable|string $handler Class::method or callable name
      * @param array<string,mixed> $params
-     * @param array $query
+     * @param array<string,mixed> $query
      * @param bool $absolute
-     * @return string
      */
     public function action(
         callable|string $handler,
         array $params = [],
         array $query = [],
-        bool  $absolute = true,
+        bool $absolute = true,
     ): string {
         $route = $this->routes->findByHandler($handler);
 
@@ -90,30 +93,72 @@ class UrlGenerator
      *  Internals
      * ----------------------------------------------------------------*/
 
-    /** Replace `{var}` in path template with URL-encoded values. */
+    /**
+     * Replace `{name}` or `{name:type}` in the template with URL-encoded scalars.
+     *
+     * @param string $template
+     * @param array<string,mixed> $params
+     * @return string
+     * @throws InvalidArgumentException
+     */
     private function substitute(string $template, array $params): string
     {
-        return (string) preg_replace_callback(
-            '/\{([A-Za-z_][A-Za-z0-9_]*)\}/',
+        // Fast path: no placeholders?
+        if (!str_contains($template, '{')) {
+            return $template;
+        }
+
+        $result = (string)preg_replace_callback(
+            '/\{([A-Za-z_]\w*)(?::[^}]+)?}/',
             function (array $m) use ($template, $params): string {
                 $key = $m[1];
+
                 if (!array_key_exists($key, $params)) {
                     throw new InvalidArgumentException(
-                        "Missing parameter '{$key}' for URL template '{$template}'."
+                        "Missing parameter '{$key}' for URL template '{$template}'.",
                     );
                 }
-                return rawurlencode((string) $params[$key]);
+
+                $val = $params[$key];
+                if (!is_scalar($val) && $val !== null) {
+                    throw new InvalidArgumentException(
+                        "Parameter '{$key}' must be scalar or null; got " . gettype($val),
+                    );
+                }
+
+                // Treat null as empty string
+                return rawurlencode((string)$val);
             },
-            $template
+            $template,
         );
+
+        // If anything like "{foo}" remains, we weren't given a param
+        if (preg_match('/\{[A-Za-z_]\w*(?::[^}]+)?}/', $result)) {
+            throw new InvalidArgumentException(
+                "Unable to resolve all placeholders in '{$template}'.",
+            );
+        }
+
+        return $result;
     }
 
-    /** Join path + query and add base URI when absolute=true. */
+    /**
+     * Join path + query and optionally prepend baseUri.
+     *
+     * @param string $path
+     * @param array<string,mixed> $query
+     * @param bool $absolute
+     */
     private function build(string $path, array $query, bool $absolute): string
     {
-        $uri  = ($absolute ? $this->baseUri : '') . '/' . ltrim($path, '/');
-        $qs   = $query ? http_build_query($query, '', '&', PHP_QUERY_RFC3986) : '';
+        $prefix = $absolute ? $this->baseUri : '';
+        $uri = $prefix . '/' . ltrim($path, '/');
 
-        return $qs === '' ? $uri : $uri . '?' . $qs;
+        if ($query === []) {
+            return $uri;
+        }
+
+        // RFC3986 encoding:
+        return $uri . '?' . http_build_query($query, '', '&', PHP_QUERY_RFC3986);
     }
 }

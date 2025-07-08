@@ -4,17 +4,16 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router\Url;
 
-use DateTimeImmutable;
 use Infocyph\Webrick\Router\Route\Collection;
 use InvalidArgumentException;
 
 class SignedUrlGenerator extends UrlGenerator
 {
-    public const SIG_PARAM      = '_sig';
-    public const EXPIRES_PARAM  = '_exp';
+    public const string SIG_PARAM = '_sig';
+    public const string EXPIRES_PARAM = '_exp';
 
     public function __construct(
-        string      $baseUri,
+        string $baseUri,
         Collection $routes,
         private readonly string $secret,
     ) {
@@ -22,44 +21,56 @@ class SignedUrlGenerator extends UrlGenerator
     }
 
     /**
-     * Build a **signed** URL (optionally expiring).
+     * Build a signed URL, optionally expiring after $ttl seconds.
      *
      * @param non-empty-string $name Route name
-     * @param array<string,mixed> $params Path params
-     * @param array $query
-     * @param int|null $ttl Seconds from now; null = no expiry
-     * @param bool $absolute
+     * @param array<string,mixed> $params Path parameters
+     * @param array<string,mixed> $query Extra query parameters
+     * @param int|null $ttl TTL in seconds, null = no expiry
+     * @param bool $absolute Prepend baseUri?
+     *
      * @return string
-     * @throws \DateMalformedStringException
      */
     public function signed(
         string $name,
-        array  $params = [],
-        array  $query  = [],
-        ?int   $ttl    = null,
-        bool   $absolute = true,
+        array $params = [],
+        array $query = [],
+        ?int $ttl = null,
+        bool $absolute = true,
     ): string {
-        if (isset($query[self::SIG_PARAM], $query[self::EXPIRES_PARAM])) {
-            throw new InvalidArgumentException('Reserved signature params present in $query.');
+        // 1) Disallow any pre-existing reserved params
+        if (
+            array_key_exists(self::SIG_PARAM, $query)
+            || array_key_exists(self::EXPIRES_PARAM, $query)
+        ) {
+            throw new InvalidArgumentException(
+                "Query may not contain reserved parameters '"
+                . self::SIG_PARAM . "' or '" . self::EXPIRES_PARAM . "'.",
+            );
         }
 
-        if ($ttl !== null && $ttl < 1) {
-            throw new InvalidArgumentException('TTL must be positive integer seconds.');
-        }
-
+        // 2) Validate and set expiry
         if ($ttl !== null) {
-            $expires           = (new DateTimeImmutable())->modify("+{$ttl} seconds")->getTimestamp();
-            $query[self::EXPIRES_PARAM] = $expires;
+            if ($ttl < 1) {
+                throw new InvalidArgumentException('TTL must be a positive integer.');
+            }
+            $query[self::EXPIRES_PARAM] = time() + $ttl;
         }
 
-        // Build *unsigned* URL first (relative, to keep scheme/host out of sig)
-        $unsigned = parent::urlFor($name, $params, $query, false);
+        // 3) Sort for deterministic signature
+        ksort($query);
 
-        // Signature: HMAC of path+qs (no baseUri) + secret
-        $sig = hash_hmac('sha256', $unsigned, $this->secret);
-        $query[self::SIG_PARAM] = $sig;
+        // 4) Build the *relative* path (no query)
+        $relativePath = parent::urlFor($name, $params, [], false);
 
-        // Re-build including signature
-        return parent::urlFor($name, $params, $query, $absolute);
+        // 5) Compute HMAC and append it
+        $query[self::SIG_PARAM] = hash_hmac(
+            'sha256',
+            parent::to($relativePath, $query, false),
+            $this->secret,
+        );
+
+        // 6) Build and return the final URL (absolute or relative)
+        return parent::to($relativePath, $query, $absolute);
     }
 }

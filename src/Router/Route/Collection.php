@@ -12,14 +12,10 @@ use Traversable;
 /**
  * In-memory container for Route DTOs.
  *
- *  • `add()`   – append a (possibly mutated) Route
- *  • `all()`   – materialise as plain array
- *  • Iterator  – `foreach ($collection as $r) { … }`
- *  • Dirty-flag so compilers / caches know when to re-run
- *
- * Extra sugar:
- *  • `findByName()`     – constant-time lookup by route-name
- *  • `findByHandler()`  – constant-time lookup by callable / class
+ * • add(), remove(), clear() – mutate collection and indices
+ * • all(), findByName(), findByHandler(), findAllByHandler() – O(1) lookups
+ * • IteratorAggregate for foreach
+ * • dirty-flag so compilers/caches know when to re-run
  */
 final class Collection implements IteratorAggregate
 {
@@ -28,14 +24,14 @@ final class Collection implements IteratorAggregate
 
     private bool $dirty = false;
 
-    /** @var array<string,RouteInterface> name ⇒ route */
+    /** @var array<string,RouteInterface> */
     private array $byName = [];
 
-    /** @var array<string,RouteInterface[]> handler-key ⇒ [routes] */
+    /** @var array<string,RouteInterface[]> */
     private array $byHandler = [];
 
     /* -----------------------------------------------------------------
-     *  Core mutator
+     *  Core mutators
      * ----------------------------------------------------------------*/
 
     public function add(RouteInterface $route): void
@@ -43,13 +39,37 @@ final class Collection implements IteratorAggregate
         $this->routes[] = $route;
         $this->dirty    = true;
 
-        // ---- build / update indices ---------------------------------
-        if (($name = $route->getName()) !== null && $name !== '') {
+        $name = $route->getName();
+        if ($name !== null && $name !== '') {
             $this->byName[$name] = $route;
         }
 
         $handlerKey = self::normaliseHandler($route->getHandler());
         $this->byHandler[$handlerKey][] = $route;
+    }
+
+    /**
+     * Remove a route instance from collection.
+     */
+    public function remove(RouteInterface $route): void
+    {
+        $this->routes = array_filter(
+            $this->routes,
+            fn (RouteInterface $r) => $r !== $route
+        );
+        $this->rebuildIndices();
+        $this->dirty = true;
+    }
+
+    /**
+     * Remove all routes.
+     */
+    public function clear(): void
+    {
+        $this->routes     = [];
+        $this->byName     = [];
+        $this->byHandler  = [];
+        $this->dirty      = true;
     }
 
     /* -----------------------------------------------------------------
@@ -73,7 +93,7 @@ final class Collection implements IteratorAggregate
     }
 
     /* -----------------------------------------------------------------
-     *  Constant-time look-ups for Url-building helpers
+     *  Constant-time look-ups
      * ----------------------------------------------------------------*/
 
     public function findByName(string $name): ?RouteInterface
@@ -84,9 +104,14 @@ final class Collection implements IteratorAggregate
     public function findByHandler(callable|string $handler): ?RouteInterface
     {
         $key = self::normaliseHandler($handler);
-
-        // If multiple routes share the same handler, return the *first* one
         return $this->byHandler[$key][0] ?? null;
+    }
+
+    /** @return RouteInterface[] */
+    public function findAllByHandler(callable|string $handler): array
+    {
+        $key = self::normaliseHandler($handler);
+        return $this->byHandler[$key] ?? [];
     }
 
     /* -----------------------------------------------------------------
@@ -104,32 +129,49 @@ final class Collection implements IteratorAggregate
      * ----------------------------------------------------------------*/
 
     /**
-     * Turn *any* callable spec into a stable scalar key:
+     * Rebuild both byName and byHandler indices from scratch.
+     */
+    private function rebuildIndices(): void
+    {
+        $this->byName    = [];
+        $this->byHandler = [];
+
+        foreach ($this->routes as $route) {
+            $name = $route->getName();
+            if ($name !== null && $name !== '') {
+                $this->byName[$name] = $route;
+            }
+            $handlerKey = self::normaliseHandler($route->getHandler());
+            $this->byHandler[$handlerKey][] = $route;
+        }
+    }
+
+    /**
+     * Turn any callable spec into a stable scalar key:
      *  • "Class@method" strings stay as-is
      *  • ["Class", "method"]  →  "Class::method"
      *  • [$obj, "method"]     →  "Class::method"
      *  • invokable object     →  "Class::__invoke"
      *  • Closure              →  "closure@<id>"
+     *
+     * @param callable|string $h
+     * @return string
      */
     private static function normaliseHandler(callable|string $h): string
     {
-        // string callables ("MyController@action" or "globalFunc")
         if (is_string($h)) {
             return $h;
         }
 
-        // ["Class", "method"]  OR  [$obj, "method"]
         if (is_array($h) && isset($h[0], $h[1])) {
             $class = is_object($h[0]) ? $h[0]::class : $h[0];
             return $class . '::' . $h[1];
         }
 
-        // invokable object
-        if (is_object($h) && !($h instanceof \Closure)) {
+        if (is_object($h) && ! ($h instanceof \Closure)) {
             return $h::class . '::__invoke';
         }
 
-        // Closure – falls back to unique object id
         return 'closure@' . spl_object_id($h);
     }
 }
