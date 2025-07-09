@@ -7,76 +7,104 @@ namespace Infocyph\Webrick\Router\Route;
 use ArrayIterator;
 use Infocyph\Webrick\Router\Contracts\RouteInterface;
 use IteratorAggregate;
+use LogicException;
 use Traversable;
 
 /**
  * In-memory container for Route DTOs.
  *
- * • add(), remove(), clear() – mutate collection and indices
- * • all(), findByName(), findByHandler(), findAllByHandler() – O(1) lookups
- * • IteratorAggregate for foreach
- * • dirty-flag so compilers/caches know when to re-run
+ * • **Build phase** – add(), remove(), clear() – mutate indices
+ * • **Freeze phase** – compile() → CompiledCollection – locks further mutation
+ * • Constant-time look-ups by name / handler
+ * • IteratorAggregate for `foreach`
  */
 final class Collection implements IteratorAggregate
 {
-    /** @var RouteInterface[] */
+    /** @var list<RouteInterface> */
     private array $routes = [];
 
-    private bool $dirty = false;
+    /** Indices for O(1) look-ups */
+    private array $byName    = [];   // name   ⇒ RouteInterface
+    private array $byHandler = [];   // key    ⇒ list<RouteInterface>
 
-    /** @var array<string,RouteInterface> */
-    private array $byName = [];
+    /** State flags */
+    private bool $dirty  = false;    // builder changed since last compile
+    private bool $frozen = false;    // no further mutation allowed
 
-    /** @var array<string,RouteInterface[]> */
-    private array $byHandler = [];
+    private ?CompiledCollection $compiled = null;
 
-    /* -----------------------------------------------------------------
-     *  Core mutators
-     * ----------------------------------------------------------------*/
+    /* ---------------------------------------------------------------------
+     *  Core mutators  (disabled after ->compile())
+     * ------------------------------------------------------------------ */
 
     public function add(RouteInterface $route): void
     {
+        $this->assertMutable();
+
         $this->routes[] = $route;
         $this->dirty    = true;
 
-        $name = $route->getName();
-        if ($name !== null && $name !== '') {
+        // ---- indices ----------------------------------------------------
+        if (($name = $route->getName()) !== null && $name !== '') {
             $this->byName[$name] = $route;
         }
 
-        $handlerKey = self::normaliseHandler($route->getHandler());
-        $this->byHandler[$handlerKey][] = $route;
+        $key = self::normaliseHandler($route->getHandler());
+        $this->byHandler[$key][] = $route;
     }
 
-    /**
-     * Remove a route instance from collection.
-     */
     public function remove(RouteInterface $route): void
     {
-        $this->routes = array_filter(
-            $this->routes,
-            fn (RouteInterface $r) => $r !== $route
+        $this->assertMutable();
+
+        $this->routes = array_values(
+            array_filter($this->routes, static fn ($r) => $r !== $route),
         );
+
         $this->rebuildIndices();
         $this->dirty = true;
     }
 
-    /**
-     * Remove all routes.
-     */
     public function clear(): void
     {
+        $this->assertMutable();
+
         $this->routes     = [];
         $this->byName     = [];
         $this->byHandler  = [];
         $this->dirty      = true;
     }
 
-    /* -----------------------------------------------------------------
-     *  Hot-path accessors
-     * ----------------------------------------------------------------*/
+    /* ---------------------------------------------------------------------
+     *  Freeze & compile
+     * ------------------------------------------------------------------ */
 
-    /** @return RouteInterface[] */
+    /**
+     * Transform every Route into its hot-path CompiledRoute representation
+     * and lock the collection against further writes.
+     */
+    public function compile(): CompiledCollection
+    {
+        if ($this->compiled !== null && !$this->dirty) {
+            return $this->compiled;          // idempotent, no rebuild needed
+        }
+
+        $compiledRoutes = array_map(
+            static fn (RouteInterface $r): CompiledRoute => CompiledRoute::fromRoute($r),
+            $this->routes,
+        );
+
+        $this->compiled = new CompiledCollection($compiledRoutes);
+        $this->dirty    = false;
+
+        return $this->compiled;
+    }
+
+    /* ---------------------------------------------------------------------
+     *  Hot-path accessors
+     * ------------------------------------------------------------------ */
+
+    /** @return list<RouteInterface> */
     public function all(): array
     {
         return $this->routes;
@@ -87,14 +115,11 @@ final class Collection implements IteratorAggregate
         return $this->dirty;
     }
 
-    public function markClean(): void
+    /** True once ->compile() has been called. */
+    public function frozen(): bool
     {
-        $this->dirty = false;
+        return $this->frozen;
     }
-
-    /* -----------------------------------------------------------------
-     *  Constant-time look-ups
-     * ----------------------------------------------------------------*/
 
     public function findByName(string $name): ?RouteInterface
     {
@@ -107,55 +132,49 @@ final class Collection implements IteratorAggregate
         return $this->byHandler[$key][0] ?? null;
     }
 
-    /** @return RouteInterface[] */
+    /** @return list<RouteInterface> */
     public function findAllByHandler(callable|string $handler): array
     {
         $key = self::normaliseHandler($handler);
         return $this->byHandler[$key] ?? [];
     }
 
-    /* -----------------------------------------------------------------
+    /* ---------------------------------------------------------------------
      *  IteratorAggregate
-     * ----------------------------------------------------------------*/
+     * ------------------------------------------------------------------ */
 
-    /** @return Traversable<int,RouteInterface> */
     public function getIterator(): Traversable
     {
         return new ArrayIterator($this->routes);
     }
 
-    /* -----------------------------------------------------------------
+    /* ---------------------------------------------------------------------
      *  Internals
-     * ----------------------------------------------------------------*/
+     * ------------------------------------------------------------------ */
 
-    /**
-     * Rebuild both byName and byHandler indices from scratch.
-     */
     private function rebuildIndices(): void
     {
         $this->byName    = [];
         $this->byHandler = [];
 
         foreach ($this->routes as $route) {
-            $name = $route->getName();
-            if ($name !== null && $name !== '') {
+            if (($name = $route->getName()) !== null && $name !== '') {
                 $this->byName[$name] = $route;
             }
-            $handlerKey = self::normaliseHandler($route->getHandler());
-            $this->byHandler[$handlerKey][] = $route;
+            $key = self::normaliseHandler($route->getHandler());
+            $this->byHandler[$key][] = $route;
+        }
+    }
+
+    private function assertMutable(): void
+    {
+        if ($this->frozen) {
+            throw new LogicException('Route collection already compiled – further mutation prohibited.');
         }
     }
 
     /**
-     * Turn any callable spec into a stable scalar key:
-     *  • "Class@method" strings stay as-is
-     *  • ["Class", "method"]  →  "Class::method"
-     *  • [$obj, "method"]     →  "Class::method"
-     *  • invokable object     →  "Class::__invoke"
-     *  • Closure              →  "closure@<id>"
-     *
-     * @param callable|string $h
-     * @return string
+     * Turn any callable spec into a stable scalar key.
      */
     private static function normaliseHandler(callable|string $h): string
     {
@@ -163,12 +182,13 @@ final class Collection implements IteratorAggregate
             return $h;
         }
 
-        if (is_array($h) && isset($h[0], $h[1])) {
-            $class = is_object($h[0]) ? $h[0]::class : $h[0];
+        if (is_array($h)) {
+            /** @var array{0:mixed,1:string} $h */
+            $class = is_object($h[0]) ? $h[0]::class : (string) $h[0];
             return $class . '::' . $h[1];
         }
 
-        if (is_object($h) && ! ($h instanceof \Closure)) {
+        if (is_object($h) && !($h instanceof \Closure)) {
             return $h::class . '::__invoke';
         }
 

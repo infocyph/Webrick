@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Response\Emitter;
@@ -11,14 +12,18 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class StreamedEmitter implements EmitterInterface
 {
-    public function __construct(private int $chunk = 8192) {}
+    public function __construct(private int $chunk = 8192)
+    {
+    }
 
     public function emit(ResponseInterface $resp): void
     {
-        (new SapiEmitter())->emit($resp); // headers + basic guards
+        new SapiEmitter()->emit($resp);
 
         $body = $resp->getBody();
-        if ($body->isSeekable()) { $body->rewind(); }
+        if ($body->isSeekable()) {
+            $body->rewind();
+        }
 
         while (!$body->eof()) {
             echo $body->read($this->chunk);

@@ -7,6 +7,7 @@ namespace Infocyph\Webrick\Router\Definition;
 use Closure;
 use Infocyph\Webrick\Router\Contracts\RouteInterface;
 use Infocyph\Webrick\Router\Route\Collection;
+use Infocyph\Webrick\Router\Route\CompiledCollection;
 use Infocyph\Webrick\Router\Route\Route;
 use InvalidArgumentException;
 
@@ -127,6 +128,11 @@ final readonly class Registrar
         // 4) Delegate into nested Registrar
         $child = new self($this->routes, $childScope);
         $callback($child);
+    }
+
+    public function compile(): CompiledCollection
+    {
+        return $this->routes->compile();
     }
 
     /* -----------------------------------------------------------------
