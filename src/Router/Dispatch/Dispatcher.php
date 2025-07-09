@@ -1,5 +1,6 @@
 <?php
 
+// src/Router/Dispatch/Dispatcher.php
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router\Dispatch;
@@ -16,43 +17,64 @@ final readonly class Dispatcher
     {
     }
 
-    /**
-     * @param array<string,string> $vars URI parameters from the matcher
-     */
     public function dispatch(
         CompiledRoute $route,
         Request       $request,
-        array         $vars = []
+        array         $vars
     ): Response {
-        /* 1️⃣  stash params on the request (cheap clone) */
         $request = $request->withAttribute('route_params', $vars);
 
-        /* 2️⃣  final endpoint – delegate to Invoker */
-        $final = function (Request $req) use ($route, $vars) {
-            return $this->invoker->invoke(
-                $route->getHandler(),
-                ['request' => $req, ...$vars]        // <- makes vars injectable
-            );
+        /* ---------------------------------------------------------
+         * 1. Final handler (unchanged)
+         * --------------------------------------------------------*/
+        $final = function (Request $req) use ($route): Response {
+            $result = $this->invoker->invoke($route->getHandler(), ['request' => $req]);
+
+            return $result instanceof Response
+                ? $result
+                : Response::json($result);
         };
 
-        /* 3️⃣  hydrate middleware stack (DI-friendly) */
-        $stack = \array_map(function ($mw) {
-            if (\is_string($mw)) {           // class-string → make()
-                return $this->invoker->make($mw);
-            }
-            if (!\is_callable($mw)) {
-                $type = \is_object($mw) ? $mw::class : \gettype($mw);
-                throw new InvalidArgumentException("Middleware '{$type}' is not callable.");
-            }
-            return $mw;
-        }, $route->getMiddlewares());
+        /* ---------------------------------------------------------
+         * 2. Build *lazy* middleware chain
+         * --------------------------------------------------------*/
+        $stack = [];
 
-        /* 4️⃣  run pipeline */
-        $response = new MiddlewarePipeline($stack, $final)->handle($request);
+        foreach ($route->getMiddlewares() as $mw) {
+            // ── Case A: already a callable object/closure ──────────────────────
+            if (is_object($mw)) {
+                if (!is_callable($mw)) {
+                    throw new InvalidArgumentException(
+                        sprintf("Middleware object of class %s is not callable", $mw::class)
+                    );
+                }
+                $stack[] = $mw;
+                continue;
+            }
 
-        /* 5️⃣  JSON-encode scalars/arrays for convenience */
-        return $response instanceof Response
-            ? $response
-            : Response::json($response);
+            if (is_string($mw)) {
+                // ─ class-string: instantiate on first use, then cache ─
+                if (!class_exists($mw)) {
+                    throw new InvalidArgumentException("Middleware class '{$mw}' not found.");
+                }
+
+                /** @var class-string $mw */
+                $stack[] = function (Request $req, callable $next) use ($mw): Response {
+                    static $instance = null;                 // ← cache between requests
+                    $instance ??= $this->invoker->make($mw); // constructor-DI via Invoker
+                    return $instance($req, $next);
+                };
+                continue;
+            }
+
+            throw new InvalidArgumentException(
+                sprintf("Middleware of type %s is not supported", gettype($mw))
+            );
+        }
+
+        /* ---------------------------------------------------------
+         * 3. Fire the pipeline
+         * --------------------------------------------------------*/
+        return new MiddlewarePipeline($stack, $final)->handle($request);
     }
 }

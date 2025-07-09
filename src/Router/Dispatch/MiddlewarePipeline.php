@@ -7,6 +7,9 @@ namespace Infocyph\Webrick\Router\Dispatch;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use InvalidArgumentException;
+use Psr\Http\Message\ServerRequestInterface;
+use Psr\Http\Server\MiddlewareInterface;
+use Psr\Http\Server\RequestHandlerInterface;
 use UnexpectedValueException;
 use Closure;
 
@@ -80,18 +83,27 @@ final class MiddlewarePipeline
             return self::assertResponse($res, 'Final handler');
         };
     }
-
-    /**
-     * @param Middleware              $mw
-     * @param Closure(Request):Response $next
-     */
     private function wrap(callable $mw, Closure $next): Closure
     {
-        return function (Request $req) use ($mw, $next): Response {
-            /** @var mixed $res */
-            $res = $mw($req, $next);
-            return self::assertResponse($res, self::describe($mw));
-        };
+        // recognise PSR-15 objects
+        if ($mw instanceof MiddlewareInterface) {
+            return fn (Request $req): Response => self::assertResponse($mw->process(
+                $req,
+                new class ($next) implements RequestHandlerInterface {
+                    public function __construct(private $next)
+                    {
+                    }
+                    public function handle(ServerRequestInterface $request): Response
+                    {
+                        /** @var callable $n */ $n = $this->next;
+                        return $n($request);
+                    }
+                }
+            ), $mw::class);
+        }
+
+        // default closure/callable path
+        return fn (Request $req): Response => self::assertResponse($mw($req, $next), self::describe($mw));
     }
 
     /* -------------------------------------------------------------------------

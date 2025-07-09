@@ -53,7 +53,8 @@ final class Compiler
     {
         // Fast path – completely static URI
         if (str_contains($path, '{') === false) {
-            return ['#^' . preg_quote($path, '#') . '$#D', [], false];
+//            return ['#^' . preg_quote($path, '#') . '$#D', [], false];
+            return ['#\A' . preg_quote($path, '#') . '\z#D', [], false];
         }
 
         $segments   = explode('/', Utils::trimSlashes($path));
@@ -62,7 +63,6 @@ final class Compiler
 
         foreach ($segments as $segment) {
             if ($segment === '') {
-                // Leading / trailing slash, already handled by trimSlashes()
                 continue;
             }
 
@@ -84,7 +84,8 @@ final class Compiler
             $patternBuf[] = preg_quote($segment, '#');
         }
 
-        $regex = '#^/' . implode('/', $patternBuf) . '$#D';
+//        $regex = '#^/' . implode('/', $patternBuf) . '$#D';
+        $regex = '#\A/' . implode('/', $patternBuf) . '\z#D';
 
         return [$regex, $variables, true];
     }

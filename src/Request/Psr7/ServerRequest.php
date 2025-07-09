@@ -90,7 +90,7 @@ class ServerRequest extends Message implements ServerRequestInterface
     private ?string         $effectiveMethod = null;
 
     /* variable-order map */
-    private array $varMap = [];
+    private ?array $varMap = null;
     private bool  $checkEnv = false;
 
     /* Valid verbs */
@@ -452,20 +452,29 @@ class ServerRequest extends Message implements ServerRequestInterface
     /* variable-order helpers ---------------------------------------------- */
     private function buildVariableMap(): void
     {
-        $seq = $this->determineVariableOrder();
+        /** Cache the resolved order for the lifetime of the PHP process */
+        static $SEQ = null;
+        $seq = $SEQ ??= $this->determineVariableOrder();
 
+        // Hot-path source table (no ENV yet – handled inline)
         $src = [
             'G' => $this->query,
             'P' => is_array($this->parsed) ? $this->parsed : [],
             'C' => $this->cookie,
             'S' => $this->server,
         ];
+
         $map = [];
         foreach ($seq as $ch) {
+            if ($ch === 'E') {           // defer $_ENV until really requested
+                $map += $_ENV;
+                continue;
+            }
             if (isset($src[$ch])) {
-                $map += $src[$ch];
+                $map += $src[$ch];       // “+” keeps earlier values (correct precedence)
             }
         }
+
         $this->varMap   = $map;
         $this->checkEnv = in_array('E', $seq, true);
     }

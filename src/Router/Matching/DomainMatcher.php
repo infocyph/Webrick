@@ -8,10 +8,10 @@ use Infocyph\Webrick\Exceptions\{MethodNotAllowedException, RouteNotFoundExcepti
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 
 /**
- * High-level multiplexer that delegates to the most efficient matcher:
+ * High-level multiplexer that dispatches to the most efficient matcher:
  *
  *   1. StaticMatcher  → O(1) literal hits
- *   2. RadixMatcher   → optional huge static sets (threshold-based)
+ *   2. RadixMatcher   → huge static sets once route-count > $promoteAfter
  *   3. DynamicMatcher → parameterised fall-back
  *
  * Order matters: cheapest check first.
@@ -22,15 +22,22 @@ final class DomainMatcher implements MatcherInterface
     private DynamicMatcher $dynamic;
     private ?RadixMatcher  $radix;
 
-    /** Minimum segments for a route to be stored in the radix tree. */
-    private int $radixThreshold;
+    /** Number of static routes seen so far. */
+    private int $staticCount = 0;
 
-    public function __construct(bool $useRadix = false, int $radixThreshold = 2)
+    /** Promote to radix once this many static routes have been registered. */
+    private int $promoteAfter;
+
+    /**
+     * @param bool $useRadix       enable/disable radix layer entirely
+     * @param int  $promoteAfter   route-count cut-off (bench-driven, default = 2048)
+     */
+    public function __construct(bool $useRadix = false, int $promoteAfter = 2048)
     {
-        $this->static         = new StaticMatcher();
-        $this->dynamic        = new DynamicMatcher();
-        $this->radix          = $useRadix ? new RadixMatcher() : null;
-        $this->radixThreshold = max(1, $radixThreshold);
+        $this->static        = new StaticMatcher();
+        $this->dynamic       = new DynamicMatcher();
+        $this->radix         = $useRadix ? new RadixMatcher() : null;
+        $this->promoteAfter  = max(1, $promoteAfter);
     }
 
     /* ---------------------------------------------------------------------
@@ -44,7 +51,11 @@ final class DomainMatcher implements MatcherInterface
             return;
         }
 
-        if ($this->radix !== null && $route->getPathLength() >= $this->radixThreshold) {
+        /* ---- static set --------------------------------------------------- */
+        $this->staticCount++;
+
+        if ($this->radix !== null && $this->staticCount > $this->promoteAfter) {
+            // From now on, static routes go straight into the radix tree
             $this->radix->add($route);
             return;
         }
@@ -58,7 +69,6 @@ final class DomainMatcher implements MatcherInterface
 
     public function match(string $method, string $host, string $path): array
     {
-        // Collect verbs that matched the path but not the method
         $allowedVerbs = [];
 
         /* ---- static ------------------------------------------------------ */
@@ -67,30 +77,28 @@ final class DomainMatcher implements MatcherInterface
         } catch (MethodNotAllowedException $e) {
             $allowedVerbs = array_merge($allowedVerbs, $e->allowed());
         } catch (RouteNotFoundException) {
-            /* ignore – escalate */
+            /* escalate */
         }
 
-        /* ---- radix (optional) -------------------------------------------- */
-        if ($this->radix !== null) {
+        /* ---- radix ------------------------------------------------------- */
+        if ($this->radix !== null && $this->staticCount > $this->promoteAfter) {
             try {
                 return $this->radix->match($method, $host, $path);
             } catch (MethodNotAllowedException $e) {
                 $allowedVerbs = array_merge($allowedVerbs, $e->allowed());
             } catch (RouteNotFoundException) {
-                /* ignore – fall back to dynamic */
+                /* fall-back to dynamic */
             }
         }
 
-        /* ---- dynamic (final) --------------------------------------------- */
+        /* ---- dynamic ----------------------------------------------------- */
         try {
             return $this->dynamic->match($method, $host, $path);
         } catch (MethodNotAllowedException $e) {
             $allowedVerbs = array_merge($allowedVerbs, $e->allowed());
-        } catch (RouteNotFoundException) {
-            // nothing – handled below
         }
 
-        /* ---- nothing matched: decide 405 vs 404 -------------------------- */
+        /* ---- nothing matched: 405 vs 404 -------------------------------- */
         if ($allowedVerbs !== []) {
             throw new MethodNotAllowedException(
                 $method,
