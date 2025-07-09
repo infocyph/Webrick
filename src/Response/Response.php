@@ -10,6 +10,7 @@ use Infocyph\InterMix\Remix\MacroMix;
 use Infocyph\Webrick\Response\Constants\Mime;
 use Infocyph\Webrick\Response\Constants\Status;
 use Infocyph\Webrick\Response\Internal\HeaderBag;
+use Infocyph\Webrick\Request\Core\Stream;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\StreamInterface;
 use RuntimeException;
@@ -270,7 +271,7 @@ class Response implements ResponseInterface
 
     /* 2. sendFile / streamDownload (Laravel’s alias of download()) ---- */
     public static function streamDownload(
-        string|\Psr\Http\Message\StreamInterface $file,
+        string|StreamInterface $file,
         ?string                                  $name    = null,
         string                                   $mime    = 'application/octet-stream',
         array                                    $headers = [],

@@ -4,8 +4,8 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Response\Factory;
 
 use Infocyph\Webrick\Interfaces\ResponseFactoryInterface;   // ← the new umbrella
+use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Response\Response;
-use Infocyph\Webrick\Response\Stream;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\StreamInterface;
 use RuntimeException;

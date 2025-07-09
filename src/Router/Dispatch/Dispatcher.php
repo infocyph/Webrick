@@ -10,62 +10,49 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
 use Infocyph\InterMix\DI\Invoker;
 use InvalidArgumentException;
 
-final class Dispatcher
+final readonly class Dispatcher
 {
-    public function __construct(private readonly Invoker $invoker)
+    public function __construct(private Invoker $invoker)
     {
     }
 
     /**
-     * Dispatch a compiled route: apply middleware, then invoke the handler.
-     *
-     * @param CompiledRoute       $route   Matched route
-     * @param Request             $request PSR-7–style request
-     * @param array<string,mixed> $vars    Extracted URI parameters
+     * @param array<string,string> $vars URI parameters from the matcher
      */
-    public function __invoke(
+    public function dispatch(
         CompiledRoute $route,
         Request       $request,
-        array         $vars
+        array         $vars = []
     ): Response {
-        // 1) Attach route params
+        /* 1️⃣  stash params on the request (cheap clone) */
         $request = $request->withAttribute('route_params', $vars);
 
-        // 2) Final handler: invoke controller, wrap non-Response as JSON
-        $finalHandler = function (Request $req) use ($route): Response {
-            $result = $this->invoker->invoke(
+        /* 2️⃣  final endpoint – delegate to Invoker */
+        $final = function (Request $req) use ($route, $vars) {
+            return $this->invoker->invoke(
                 $route->getHandler(),
-                ['request' => $req]
+                ['request' => $req, ...$vars]        // <- makes vars injectable
             );
-            return $result instanceof Response
-                ? $result
-                : Response::json($result);
         };
 
-        // 3) Resolve and validate middleware stack
-        $stack = [];
-        foreach ($route->getMiddlewares() as $mw) {
-            // If class-string, instantiate it
-            if (is_string($mw)) {
-                if (!class_exists($mw)) {
-                    throw new InvalidArgumentException(
-                        "Middleware class '{$mw}' not found."
-                    );
-                }
-                $mw = new $mw();
+        /* 3️⃣  hydrate middleware stack (DI-friendly) */
+        $stack = \array_map(function ($mw) {
+            if (\is_string($mw)) {           // class-string → make()
+                return $this->invoker->make($mw);
             }
-
-            if (!is_callable($mw)) {
-                $type = is_object($mw) ? get_class($mw) : gettype($mw);
-                throw new InvalidArgumentException(
-                    "Middleware of type '{$type}' is not callable."
-                );
+            if (!\is_callable($mw)) {
+                $type = \is_object($mw) ? $mw::class : \gettype($mw);
+                throw new InvalidArgumentException("Middleware '{$type}' is not callable.");
             }
+            return $mw;
+        }, $route->getMiddlewares());
 
-            $stack[] = $mw;
-        }
+        /* 4️⃣  run pipeline */
+        $response = new MiddlewarePipeline($stack, $final)->handle($request);
 
-        // 4) Build and run the pipeline
-        return new MiddlewarePipeline($stack, $finalHandler)->handle($request);
+        /* 5️⃣  JSON-encode scalars/arrays for convenience */
+        return $response instanceof Response
+            ? $response
+            : Response::json($response);
     }
 }

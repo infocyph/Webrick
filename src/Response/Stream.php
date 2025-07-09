@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Response;
@@ -23,12 +24,10 @@ final class Stream implements StreamInterface
         if ($body instanceof StreamInterface) {
             $this->resource = $body->detach();   // reuse its handle
         }
-        /* 2. Raw PHP resource? (fopen, tmpfile, etc.) -------------- */
-        elseif (is_resource($body)) {
+        /* 2. Raw PHP resource? (fopen, tmpfile, etc.) -------------- */ elseif (is_resource($body)) {
             $this->resource = $body;
         }
-        /* 3. Anything else → treat as string payload ---------------- */
-        else {
+        /* 3. Anything else → treat as string payload ---------------- */ else {
             $this->resource = fopen('php://temp', 'r+');
             if ($body !== '') {
                 fwrite($this->resource, (string)$body);
@@ -43,20 +42,27 @@ final class Stream implements StreamInterface
         $this->writable  = strpbrk($mode, 'waxc+') !== false;
     }
 
-    public function __destruct() { $this->close(); }
+    public function __destruct()
+    {
+        $this->close();
+    }
 
     /* ------------------------------------------------ StreamInterface */
 
     public function __toString(): string
     {
-        if (!$this->resource) { return ''; }
+        if (!$this->resource) {
+            return '';
+        }
         $this->seekable && rewind($this->resource);
         return stream_get_contents($this->resource) ?: '';
     }
 
     public function close(): void
     {
-        if ($this->resource) { fclose($this->resource); }
+        if ($this->resource) {
+            fclose($this->resource);
+        }
         $this->resource = null;
     }
 
@@ -76,12 +82,20 @@ final class Stream implements StreamInterface
     {
         $this->ensure();
         $pos = ftell($this->resource);
-        if ($pos === false) { throw new RuntimeException('tell failed'); }
+        if ($pos === false) {
+            throw new RuntimeException('tell failed');
+        }
         return $pos;
     }
 
-    public function eof(): bool   { return !$this->resource || feof($this->resource); }
-    public function isSeekable(): bool { return $this->seekable; }
+    public function eof(): bool
+    {
+        return !$this->resource || feof($this->resource);
+    }
+    public function isSeekable(): bool
+    {
+        return $this->seekable;
+    }
     public function seek($offset, $whence = SEEK_SET): void
     {
         $this->ensure();
@@ -89,25 +103,42 @@ final class Stream implements StreamInterface
             throw new RuntimeException('seek failed');
         }
     }
-    public function rewind(): void { $this->seek(0); }
+    public function rewind(): void
+    {
+        $this->seek(0);
+    }
 
-    public function isWritable(): bool { return $this->writable; }
+    public function isWritable(): bool
+    {
+        return $this->writable;
+    }
     public function write($string): int
     {
         $this->ensure();
-        if (!$this->writable) { throw new RuntimeException('not writable'); }
+        if (!$this->writable) {
+            throw new RuntimeException('not writable');
+        }
         $bytes = fwrite($this->resource, $string);
-        if ($bytes === false) { throw new RuntimeException('write failed'); }
+        if ($bytes === false) {
+            throw new RuntimeException('write failed');
+        }
         return $bytes;
     }
 
-    public function isReadable(): bool { return $this->readable; }
+    public function isReadable(): bool
+    {
+        return $this->readable;
+    }
     public function read($length): string
     {
         $this->ensure();
-        if (!$this->readable) { throw new RuntimeException('not readable'); }
+        if (!$this->readable) {
+            throw new RuntimeException('not readable');
+        }
         $data = fread($this->resource, $length);
-        if ($data === false) { throw new RuntimeException('read failed'); }
+        if ($data === false) {
+            throw new RuntimeException('read failed');
+        }
         return $data;
     }
 
@@ -115,13 +146,17 @@ final class Stream implements StreamInterface
     {
         $this->ensure();
         $data = stream_get_contents($this->resource);
-        if ($data === false) { throw new RuntimeException('getContents failed'); }
+        if ($data === false) {
+            throw new RuntimeException('getContents failed');
+        }
         return $data;
     }
 
     public function getMetadata($key = null)
     {
-        if (!$this->resource) { return $key ? null : []; }
+        if (!$this->resource) {
+            return $key ? null : [];
+        }
         $meta = stream_get_meta_data($this->resource);
         return $key === null ? $meta : ($meta[$key] ?? null);
     }
@@ -129,6 +164,8 @@ final class Stream implements StreamInterface
     /* -------------------------------------------------------------- */
     private function ensure(): void
     {
-        if (!$this->resource) { throw new RuntimeException('stream detached'); }
+        if (!$this->resource) {
+            throw new RuntimeException('stream detached');
+        }
     }
 }

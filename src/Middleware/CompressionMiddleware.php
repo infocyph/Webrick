@@ -4,9 +4,9 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Middleware;
 
 use Closure;
+use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
-use Infocyph\Webrick\Response\Stream;
 
 /**
  * Content-encoding negotiation that supports **gzip**, **br** (Brotli)

@@ -3,9 +3,9 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Response\Factory;
 
+use Infocyph\Webrick\Request\Core\Stream;
 use Psr\Http\Message\StreamFactoryInterface;
 use Psr\Http\Message\StreamInterface;
-use Infocyph\Webrick\Response\Stream;
 
 final class StreamFactory implements StreamFactoryInterface
 {

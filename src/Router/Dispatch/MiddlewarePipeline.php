@@ -8,123 +8,114 @@ use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use InvalidArgumentException;
 use UnexpectedValueException;
+use Closure;
 
 /**
  * Executes a stack of middleware around a final handler.
  *
- * @phpstan-param array<callable(Request,callable):Response> $stack
- * @phpstan-param callable(Request):mixed $last
+ * @phpstan-type Middleware callable(Request, callable(Request):Response):Response
+ * @phpstan-type FinalHandler callable(Request):mixed
+ *
+ * @psalm-immutable
  */
 final class MiddlewarePipeline
 {
-    /** @var array<callable(Request,callable):Response> */
+    /** @var list<Middleware> */
     private array $stack;
 
-    /** @var callable(Request):mixed */
+    /** @var FinalHandler */
     private $lastHandler;
 
-    /** @var callable(Request):Response */
-    private $pipeline;
+    /** @var Closure(Request):Response */
+    private Closure $pipeline;
 
     /**
-     * @param array<callable(Request,callable):Response> $stack
-     * @param callable(Request):mixed $last
+     * @param list<Middleware>   $stack
+     * @param FinalHandler       $last
      *
-     * @throws InvalidArgumentException if any item in $stack is not callable
+     * @throws InvalidArgumentException
      */
     public function __construct(array $stack, callable $last)
     {
         foreach ($stack as $mw) {
-            if (!is_callable($mw)) {
+            if (!\is_callable($mw)) {
                 throw new InvalidArgumentException(
-                    sprintf('Middleware [%s] is not callable', $this->describe($mw)),
+                    sprintf('Middleware [%s] is not callable', self::describe($mw))
                 );
             }
         }
 
-        $this->stack = $stack;
+        $this->stack       = $stack;
         $this->lastHandler = $last;
-        $this->pipeline = $this->compose();
+        $this->pipeline    = $this->compose();
     }
 
-    /**
-     * Compose and return a single callable(Request):Response
-     * by nesting each middleware around the final handler.
-     */
-    private function compose(): callable
+    /** Run the composed pipeline. */
+    public function handle(Request $req): Response
     {
-        // start with the final handler wrapped to enforce a Response return
-        $next = $this->wrapFinalHandler($this->lastHandler);
+        return ($this->pipeline)($req);
+    }
 
-        // wrap each middleware in reversed order
-        foreach (array_reverse($this->stack) as $mw) {
-            $next = $this->wrapMiddleware($mw, $next);
+    /* -------------------------------------------------------------------------
+     * Internals
+     * ---------------------------------------------------------------------- */
+
+    /** Build the Closure only once (ctor) – zero allocations per request. */
+    private function compose(): Closure
+    {
+        $next = $this->wrapFinal($this->lastHandler);
+
+        foreach (\array_reverse($this->stack) as $mw) {
+            $next = $this->wrap($mw, $next);
         }
 
+        /** @var Closure(Request):Response $next */
         return $next;
     }
 
-    /**
-     * Wrap the final handler so it always returns a Response or throws.
-     */
-    private function wrapFinalHandler(callable $handler): callable
+    private function wrapFinal(callable $handler): Closure
     {
         return function (Request $req) use ($handler): Response {
             $res = $handler($req);
-            return $this->assertResponse($res, 'Final handler');
+            return self::assertResponse($res, 'Final handler');
         };
     }
 
     /**
-     * Wrap a single middleware around the next layer.
-     *
-     * @param callable(Request,callable):Response $mw
-     * @param callable(Request):Response $next
+     * @param Middleware              $mw
+     * @param Closure(Request):Response $next
      */
-    private function wrapMiddleware(callable $mw, callable $next): callable
+    private function wrap(callable $mw, Closure $next): Closure
     {
         return function (Request $req) use ($mw, $next): Response {
+            /** @var mixed $res */
             $res = $mw($req, $next);
-            return $this->assertResponse($res, $this->describe($mw));
+            return self::assertResponse($res, self::describe($mw));
         };
     }
 
+    /* -------------------------------------------------------------------------
+     * Helpers
+     * ---------------------------------------------------------------------- */
+
     /**
-     * Ensure the result is a Response, or throw if not.
-     *
-     * @param mixed $res
-     * @param string $source Label for error messaging
-     * @return Response
-     *
+     * @param mixed  $res
      * @throws UnexpectedValueException
      */
-    private function assertResponse(mixed $res, string $source): Response
+    private static function assertResponse(mixed $res, string $source): Response
     {
         if (!$res instanceof Response) {
-            $type = is_object($res) ? get_class($res) : gettype($res);
+            $type = \is_object($res) ? $res::class : \gettype($res);
             throw new UnexpectedValueException(
-                sprintf('%s returned %s; expected %s', $source, $type, Response::class),
+                sprintf('%s returned %s; expected %s', $source, $type, Response::class)
             );
         }
         return $res;
     }
 
-    /**
-     * Human-readable description of a middleware callable.
-     */
-    private function describe(mixed $mw): string
+    private static function describe(mixed $mw): string
     {
-        if (is_object($mw)) {
-            return $mw::class;
-        }
-        return gettype($mw);
-    }
-
-    /**
-     * Run the composed pipeline and return a Response.
-     */
-    public function handle(Request $req): Response
-    {
-        return ($this->pipeline)($req);
+        return \is_object($mw) ? $mw::class
+            : (\is_array($mw) ? 'callable[]' : (string) \gettype($mw));
     }
 }

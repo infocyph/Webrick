@@ -147,5 +147,7 @@ final class Registry
      *
      * This class is a static utility; no instances are allowed.
      */
-    private function __construct() {}
+    private function __construct()
+    {
+    }
 }

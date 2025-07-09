@@ -6,8 +6,8 @@ namespace Infocyph\Webrick\Middleware;
 
 use Closure;
 use Infocyph\InterMix\Cache\Cache;
+use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Response\Response;
-use Infocyph\Webrick\Response\Stream;
 use Psr\Cache\CacheItemPoolInterface;
 use Infocyph\Webrick\Request\Request;
 

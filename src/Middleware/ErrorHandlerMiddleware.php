@@ -7,8 +7,8 @@ namespace Infocyph\Webrick\Middleware;
 use Closure;
 use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
 use Infocyph\Webrick\Exceptions\RouteNotFoundException;
+use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Response\Response;
-use Infocyph\Webrick\Response\Stream;
 use Infocyph\Webrick\Request\Request;
 use Throwable;
 

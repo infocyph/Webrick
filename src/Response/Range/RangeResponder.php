@@ -3,8 +3,8 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Response\Range;
 
+use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Response\Response;
-use Infocyph\Webrick\Response\Stream;
 use Infocyph\Webrick\Response\Headers\Range as SimpleRange;
 use Infocyph\Webrick\Response\Internal\Utils;
 use Psr\Http\Message\StreamInterface;

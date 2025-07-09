@@ -3,8 +3,8 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Response\Payloads;
 
+use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Response\Response;
-use Infocyph\Webrick\Response\Stream;
 
 final class RedirectResponse extends Response
 {

@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Request\Core;
@@ -104,12 +105,27 @@ final class Stream implements StreamInterface
         return $pos;
     }
 
-    public function eof(): bool                     { return !$this->h || feof($this->h); }
-    public function isSeekable(): bool              { return true; }
-    public function seek($o, $w = SEEK_SET): void   { $this->doSeek($o, $w); }
-    public function rewind(): void                  { $this->doSeek(0); }
+    public function eof(): bool
+    {
+        return !$this->h || feof($this->h);
+    }
+    public function isSeekable(): bool
+    {
+        return true;
+    }
+    public function seek($o, $w = SEEK_SET): void
+    {
+        $this->doSeek($o, $w);
+    }
+    public function rewind(): void
+    {
+        $this->doSeek(0);
+    }
 
-    public function isWritable(): bool              { return $this->writable; }
+    public function isWritable(): bool
+    {
+        return $this->writable;
+    }
     public function write($s): int
     {
         $bytes = fwrite($this->need(), $s);
@@ -119,7 +135,10 @@ final class Stream implements StreamInterface
         return $bytes;
     }
 
-    public function isReadable(): bool              { return $this->readable; }
+    public function isReadable(): bool
+    {
+        return $this->readable;
+    }
     public function read($l): string
     {
         $data = fread($this->need(), $l);
