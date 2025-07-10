@@ -20,7 +20,7 @@ use Stringable;
  *  • Keeps 100 % of the public API from your legacy Request class
  *  • Adds no overhead – simply subclasses the new ServerRequest
  */
-final class Request extends ServerRequest implements ArrayAccess, JsonSerializable, Stringable, ServerRequestInterface
+class Request extends ServerRequest implements ArrayAccess, JsonSerializable, Stringable, ServerRequestInterface
 {
     use MacroMix;
 
