@@ -19,73 +19,98 @@ use Psr\Http\Message\ServerRequestInterface;
  */
 final class Csrf
 {
+    /**
+     * Size of the raw random string (in **bytes**).
+     * 32 bytes → 64-hex-char plain token, 128-char masked token.
+     */
+    private const TOKEN_BYTES = 32;
+
     /* -----------------------------------------------------------------
        1)  Stored token helpers  (session-backed)
-       ----------------------------------------------------------------- */
+       ---------------------------------------------------------------- */
 
-    /** Return plain 40-char token, create if absent. */
+    /** Return the plain token (hex-encoded), create if absent. */
     public static function token(): string
     {
-        return $_SESSION['_token'] ??= bin2hex(random_bytes(20)); // 40 hex chars
+        return $_SESSION['_token'] ??= bin2hex(random_bytes(self::TOKEN_BYTES));
     }
 
-    /** Generate / return masked 80-char token (mask + sha1(mask·token)). */
+    /**
+     * Return a masked token:
+     *   mask (64 hex) + hash_hmac('sha256', mask·token, '')
+     * Length = 64 + 64 = 128 chars.
+     */
     public static function maskedToken(): string
     {
-        $mask = bin2hex(random_bytes(20));                        // 40
-        return $mask . sha1($mask . self::token());               // 40 + 40
+        $mask = bin2hex(random_bytes(self::TOKEN_BYTES));
+
+        // Empty key ⇒ pure SHA-256, but `hash_hmac` is constant-time.
+        return $mask . hash_hmac('sha256', $mask . self::token(), '');
     }
 
     /* -----------------------------------------------------------------
        2)  Matching helper
-       ----------------------------------------------------------------- */
+       ---------------------------------------------------------------- */
 
     public static function matches(ServerRequestInterface $req): bool
     {
-        $sent = self::extractFromRequest($req);
+        $sent   = self::extractFromRequest($req);
         $stored = $_SESSION['_token'] ?? null;
 
         if (!$sent || !$stored) {
             return false;
         }
 
-        // Masked (80) → unmask against stored (40)
-        if (strlen($sent) === 80 && strlen($stored) === 40) {
-            $mask   = substr($sent, 0, 40);
-            $hashed = substr($sent, 40);                    // SHA-1(mask·token)
-            return hash_equals($hashed, sha1($mask . $stored));
+        $hexLen = self::TOKEN_BYTES * 2; // 64
+        $maskedLen = $hexLen * 2;        // 128
+
+        // Masked token → unmask
+        if (\strlen($sent) === $maskedLen && \strlen($stored) === $hexLen) {
+            $mask   = \substr($sent, 0, $hexLen);
+            $hashed = \substr($sent, $hexLen);
+
+            return \hash_equals(
+                $hashed,
+                \hash_hmac('sha256', $mask . $stored, '')
+            );
         }
 
-        // Plain comparison
-        return hash_equals($stored, $sent);
+        // Plain comparison (fallback – should be rare)
+        return \hash_equals($stored, $sent);
     }
 
     /* -----------------------------------------------------------------
        3)  Internals
-       ----------------------------------------------------------------- */
+       ---------------------------------------------------------------- */
 
-    /** Look for token in header, body, query, cookie (Laravel priority). */
+    /**
+     * Look for token in header, body, query, cookie
+     * (Laravel priority order).
+     */
     private static function extractFromRequest(ServerRequestInterface $req): ?string
     {
-        // 1. Explicit header
-        $hdr = $req->getHeaderLine('X-CSRF-TOKEN') ?: $req->getHeaderLine('X-XSRF-TOKEN');
+        // 1) Explicit header
+        $hdr = $req->getHeaderLine('X-CSRF-TOKEN')
+            ?: $req->getHeaderLine('X-XSRF-TOKEN');
         if ($hdr !== '') {
             return $hdr;
         }
 
-        // 2. Form field (_token) wins over query param
+        // 2) Form field wins over query param
         $body = $req->getParsedBody();
-        if (is_array($body) && isset($body['_token']) && $body['_token'] !== '') {
+        if (\is_array($body) && ($body['_token'] ?? '') !== '') {
             return (string) $body['_token'];
         }
-        parse_str($req->getUri()->getQuery(), $q);
+
+        \parse_str($req->getUri()->getQuery(), $q);
         if (($q['_token'] ?? '') !== '') {
             return (string) $q['_token'];
         }
 
-        // 3. Cookie
+        // 3) Cookie
         $cookie = $req->getCookieParams()['XSRF-TOKEN'] ?? null;
-        return $cookie !== '' ? (string)$cookie : null;
+
+        return $cookie !== '' ? (string) $cookie : null;
     }
 
     /** Library is static-only. */

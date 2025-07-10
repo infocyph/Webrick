@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Request;
@@ -28,11 +29,11 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
 
     /** Fake request for unit tests */
     public static function fake(
-        array  $query   = [],
-        array  $post    = [],
-        array  $headers = [],
-        string $method  = 'GET',
-        string $uri     = '/'
+        array $query = [],
+        array $post = [],
+        array $headers = [],
+        string $method = 'GET',
+        string $uri = '/',
     ): self {
         return new self($method, Uri::from($uri), $_SERVER, $headers)
             ->withQueryParams($query)
@@ -47,9 +48,9 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
 
     /* ========== 1.  Basic accessors  ================================= */
 
-    private ?array $cachedAll      = null;
+    private ?array $cachedAll = null;
     private ?array $cachedSegments = null;
-    private ?string $cachedLocale  = null;
+    private ?string $cachedLocale = null;
 
     public function all(): array
     {
@@ -64,12 +65,17 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
         return $this->cachedAll = $data;
     }
 
-    public function input(string $key, mixed $default = null): mixed { return $this->data($key, $default); }
+    public function input(string $key, mixed $default = null): mixed
+    {
+        return $this->data($key, $default);
+    }
+
     public function boolean(string $key, bool $default = false): bool
     {
         $val = filter_var($this->data($key), FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE);
         return $val ?? $default;
     }
+
     public function int(string $key, int $default = 0): int
     {
         $v = filter_var($this->data($key), FILTER_VALIDATE_INT);
@@ -80,14 +86,19 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
 
     public function segments(): array
     {
-        return $this->cachedSegments ??= array_values(array_filter(
-            explode('/', $this->getUri()->getPath()), static fn(string $s) => $s !== ''
-        ));
+        return $this->cachedSegments ??= array_values(
+            array_filter(
+                explode('/', $this->getUri()->getPath()),
+                static fn(string $s) => $s !== '',
+            ),
+        );
     }
+
     public function segment(int $index, mixed $default = null): ?string
     {
         return $this->segments()[$index - 1] ?? $default;
     }
+
     public function routeIs(string|array $patterns): bool
     {
         $target = $this->getRequestTarget();
@@ -99,11 +110,16 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
         }
         return false;
     }
+
     public function isMethod(string|array $verbs): bool
     {
         return in_array($this->getEffectiveMethod(), array_map('strtoupper', (array)$verbs), true);
     }
-    public function isSecure(): bool                      { return $this->getUri()->getScheme() === 'https'; }
+
+    public function isSecure(): bool
+    {
+        return $this->getUri()->getScheme() === 'https';
+    }
 
     /* ========== 3.  CSRF helper ===================================== */
 
@@ -114,22 +130,42 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
 
     /* ========== 4.  Data helpers ==================================== */
 
-    public function only(array $keys): array               { return array_intersect_key($this->all(), array_flip($keys)); }
-    public function except(array $keys): array             { return array_diff_key($this->all(), array_flip($keys)); }
+    public function only(array $keys): array
+    {
+        return array_intersect_key($this->all(), array_flip($keys));
+    }
+
+    public function except(array $keys): array
+    {
+        return array_diff_key($this->all(), array_flip($keys));
+    }
+
     public function has(string|array $keys): bool
     {
-        foreach ((array)$keys as $k) { if ($this->data($k) === null) { return false; } }
+        foreach ((array)$keys as $k) {
+            if ($this->data($k) === null) {
+                return false;
+            }
+        }
         return true;
     }
+
     public function filled(string|array $keys): bool
     {
         foreach ((array)$keys as $k) {
             $v = $this->data($k);
-            if ($v === null || $v === '') { return false; }
+            if ($v === null || $v === '') {
+                return false;
+            }
         }
         return true;
     }
-    public function missing(string|array $keys): bool      { return !$this->has($keys); }
+
+    public function missing(string|array $keys): bool
+    {
+        return !$this->has($keys);
+    }
+
     public function string(string $key, string $default = ''): string
     {
         return (string)($this->data($key) ?? $default);
@@ -141,13 +177,29 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
     {
         // The helper already returns the first matching MIME type (or null)
         return new ContentNegotiator(
-            $this->headers()
+            $this->headers(),
         )->preferred($mimeTypes);
     }
-    public function expectsJson(): bool { return parent::expectsJson(); }
-    public function expectsXml(): bool  { return parent::expectsXml(); }
-    public function isJson(): bool      { return (bool)preg_match('#(?:application|text)/(?:[^\s;]+\+)?json#i', $this->getHeaderLine('Content-Type')); }
-    public function isXml(): bool       { return (bool)preg_match('#(?:application|text)/(?:[^\s;]+\+)?xml#i',  $this->getHeaderLine('Content-Type')); }
+
+    public function expectsJson(): bool
+    {
+        return parent::expectsJson();
+    }
+
+    public function expectsXml(): bool
+    {
+        return parent::expectsXml();
+    }
+
+    public function isJson(): bool
+    {
+        return (bool)preg_match('#(?:application|text)/(?:[^\s;]+\+)?json#i', $this->getHeaderLine('Content-Type'));
+    }
+
+    public function isXml(): bool
+    {
+        return (bool)preg_match('#(?:application|text)/(?:[^\s;]+\+)?xml#i', $this->getHeaderLine('Content-Type'));
+    }
 
     /* ========== 6.  Files & Headers ================================= */
 
@@ -156,7 +208,12 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
         $files = $this->getUploadedFiles();
         return $key === null ? $files : ($files[$key] ?? null);
     }
-    public function hasFile(string $key): bool             { return $this->file($key) !== null; }
+
+    public function hasFile(string $key): bool
+    {
+        return $this->file($key) !== null;
+    }
+
     public function header(string $name, ?string $default = null): ?string
     {
         $line = $this->getHeaderLine($name);
@@ -170,7 +227,11 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
         $eu = EndUser::from($this);
         return $proxyAware ? $eu->ipViaProxy() : $eu->ipNoProxy();
     }
-    public function ua(): array { return EndUser::from($this)->parseUserAgent(); }
+
+    public function ua(): array
+    {
+        return EndUser::from($this)->parseUserAgent();
+    }
 
     /* ========== 8.  Validation stub ================================= */
 
@@ -185,25 +246,54 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
     }
 
     /* quick mutators (clone) */
-    public function merge(array $data): self   { return $this->withParsedBody(array_merge($this->post()?->all(), $data)); }
-    public function replace(array $data): self { return $this->withParsedBody($data); }
+    public function merge(array $data): self
+    {
+        return $this->withParsedBody(array_merge($this->post()?->all(), $data));
+    }
+
+    public function replace(array $data): self
+    {
+        return $this->withParsedBody($data);
+    }
 
     /* ========== 9.  ArrayAccess & JsonSerializable ================== */
 
-    public function offsetExists(mixed $o): bool { return $this->data((string)$o) !== null; }
-    public function offsetGet(mixed $o): mixed   { return $this->data((string)$o); }
-    public function offsetSet(mixed $o,mixed $v): void { throw new InvalidArgumentException('Request is immutable'); }
-    public function offsetUnset(mixed $o): void         { throw new InvalidArgumentException('Request is immutable'); }
+    public function offsetExists(mixed $o): bool
+    {
+        return $this->data((string)$o) !== null;
+    }
 
-    public function jsonSerialize(): mixed      { return $this->all(); }
-    public function __toString(): string        { return json_encode($this->all(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR); }
+    public function offsetGet(mixed $o): mixed
+    {
+        return $this->data((string)$o);
+    }
+
+    public function offsetSet(mixed $o, mixed $v): void
+    {
+        throw new InvalidArgumentException('Request is immutable');
+    }
+
+    public function offsetUnset(mixed $o): void
+    {
+        throw new InvalidArgumentException('Request is immutable');
+    }
+
+    public function jsonSerialize(): mixed
+    {
+        return $this->all();
+    }
+
+    public function __toString(): string
+    {
+        return json_encode($this->all(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    }
 
     /* ========== 10.  Dot-notation accessor =========================== */
 
     public function data(string $dot, mixed $default = null): mixed
     {
         $segments = explode('.', $dot);
-        $value    = parent::__get(array_shift($segments));
+        $value = parent::__get(array_shift($segments));
 
         foreach ($segments as $seg) {
             if (!is_array($value) || !array_key_exists($seg, $value)) {
@@ -218,33 +308,46 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
 
     public function locale(
         ?array $supported = null,
-        string $fallback  = 'en',
-        bool   $cache     = true
+        string $fallback = 'en',
+        bool $cache = true,
     ): string {
         if ($cache && $supported === null && $this->cachedLocale !== null) {
             return $this->cachedLocale;
         }
 
         $langs = $this->headers()->accept('Accept-Language');
-        if ($langs === []) { return $fallback; }
+        if ($langs === []) {
+            return $fallback;
+        }
 
         if ($supported === null) {
             return $this->cachedLocale = strtolower(substr((string)$langs[0], 0, 5));
         }
 
-        $supported = array_map(static fn(string $l) => strtolower(str_replace('_','-',$l)), $supported);
+        $supported = array_map(static fn(string $l) => strtolower(str_replace('_', '-', $l)), $supported);
 
         foreach ($langs as $lang) {
-            $lang  = strtolower(str_replace('_','-',$lang));
+            $lang = strtolower(str_replace('_', '-', $lang));
             $short = substr($lang, 0, 2);
-            if (in_array($lang, $supported, true))  { return $this->cachedLocale = $lang; }
-            if (in_array($short, $supported, true)) { return $this->cachedLocale = $short; }
+            if (in_array($lang, $supported, true)) {
+                return $this->cachedLocale = $lang;
+            }
+            if (in_array($short, $supported, true)) {
+                return $this->cachedLocale = $short;
+            }
         }
         return $fallback;
     }
 
     /* ========== 12.  Convenience aliases ============================ */
 
-    public function wantsJson(): bool { return $this->expectsJson(); }
-    public function wantsXml(): bool  { return $this->expectsXml(); }
+    public function wantsJson(): bool
+    {
+        return $this->expectsJson();
+    }
+
+    public function wantsXml(): bool
+    {
+        return $this->expectsXml();
+    }
 }

@@ -111,8 +111,9 @@ final class Stream implements StreamInterface
     }
     public function isSeekable(): bool
     {
-        return true;
+        return $this->h ? (stream_get_meta_data($this->h)['seekable'] ?? false) : false;
     }
+
     public function seek($o, $w = SEEK_SET): void
     {
         $this->doSeek($o, $w);

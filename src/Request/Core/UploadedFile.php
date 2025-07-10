@@ -103,7 +103,7 @@ final class UploadedFile implements UploadedFileInterface
             }
             $this->src->rewind();
             // copy the whole payload (no length arg)
-            stream_copy_to_stream($this->src->detach(), $out);
+            stream_copy_to_stream($this->src->detach(), $out, $this->getSize() ?? -1);
             fclose($out);
         }
         $this->moved = true;

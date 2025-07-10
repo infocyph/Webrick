@@ -93,6 +93,9 @@ class ServerRequest extends Message implements ServerRequestInterface
     private ?array $varMap = null;
     private bool  $checkEnv = false;
 
+    /** @var array<string,mixed> */
+    private array $attributes = [];
+
     /* Valid verbs */
     private const array VALID = ['GET','POST','PUT','DELETE','PATCH','HEAD','OPTIONS','CONNECT','TRACE'];
 

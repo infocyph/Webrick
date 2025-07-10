@@ -138,7 +138,7 @@ final class EndUser
 
     public function parseUserAgent(): array
     {
-        return (new UAParser($this->req))->parse()
+        return new UAParser($this->req)->parse()
             + ['raw' => $this->userAgent() ?? ''];        // keep raw for logs
     }
 
