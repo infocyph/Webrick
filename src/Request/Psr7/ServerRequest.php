@@ -452,6 +452,10 @@ class ServerRequest extends Message implements ServerRequestInterface
     /* variable-order helpers ---------------------------------------------- */
     private function buildVariableMap(): void
     {
+        if ($this->varMap !== null) {
+            return;           // hot-path: one pointer read
+        }
+
         /** Cache the resolved order for the lifetime of the PHP process */
         static $SEQ = null;
         $seq = $SEQ ??= $this->determineVariableOrder();

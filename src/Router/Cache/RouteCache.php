@@ -23,8 +23,9 @@ final class RouteCache
 
     /** @param Psr6Pool|Psr16Cache $store */
     public function __construct(
-        private readonly Psr6Pool|Psr16Cache $store,
-        private readonly string $key = self::DEFAULT_KEY,
+        private Psr6Pool|Psr16Cache $store,
+        private int|DateInterval|DateTimeInterface|null $ttl = null,
+        private string $key = self::DEFAULT_KEY,
     ) {
     }
 
@@ -32,7 +33,7 @@ final class RouteCache
      * Public API
      * ----------------------------------------------------------------*/
 
-    /** @return RouteList|null */
+    /** Fetch cached routes or **null** when absent / stale. */
     public function load(): ?array
     {
         if ($this->store instanceof Psr6Pool) {
@@ -46,12 +47,15 @@ final class RouteCache
     }
 
     /**
-     * @param RouteList                                   $routes
-     * @param int|DateInterval|DateTimeInterface|null $ttl PSR-16 TTL semantics
+     * Persist a compiled table.
+     *
+     * @param RouteList $routes
+     * @param int|DateInterval|DateTimeInterface|null $ttl Optional TTL override
      */
     public function save(array $routes, int|DateInterval|DateTimeInterface|null $ttl = null): void
     {
         $payload = $this->encode($routes);
+        $ttl = $ttl ?? $this->ttl;           // fallback to default
 
         if ($this->store instanceof Psr6Pool) {
             $item = $this->store->getItem($this->key);
@@ -60,23 +64,45 @@ final class RouteCache
             if ($ttl !== null) {
                 $item->expiresAfter($ttl);
             }
-
             $this->store->save($item);
             return;
         }
 
-        // PSR-16 path
+        /* PSR-16 path ------------------------------------------------------ */
         $this->store->set($this->key, $payload, $ttl);
     }
 
+    /** Remove the cached table. */
     public function clear(): void
     {
         if ($this->store instanceof Psr6Pool) {
             $this->store->deleteItem($this->key);
-            return;
+        } else {
+            $this->store->delete($this->key);
+        }
+    }
+
+    /**
+     * Load routes or build them on the fly.
+     *
+     * ```php
+     * $routes = $routeCache->remember(fn() => $compiler->compile($collection));
+     * ```
+     *
+     * @param callable():RouteList $builder
+     * @return RouteList
+     */
+    public function remember(callable $builder): array
+    {
+        $cached = $this->load();
+        if ($cached !== null) {
+            return $cached;
         }
 
-        $this->store->delete($this->key);
+        $routes = $builder();
+        $this->save($routes);
+
+        return $routes;
     }
 
     /* -----------------------------------------------------------------
@@ -86,7 +112,7 @@ final class RouteCache
     /** @param RouteList $routes */
     private function encode(array $routes): string
     {
-        // ValueSerializer is faster and safer than PHP’s native serialize()
+        // `ValueSerializer` is faster and safer than PHP’s native serialize()
         return ValueSerializer::serialize($routes);
     }
 
