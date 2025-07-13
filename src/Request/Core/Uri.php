@@ -7,7 +7,7 @@ namespace Infocyph\Webrick\Request\Core;
 use InvalidArgumentException;
 use Psr\Http\Message\UriInterface;
 
-final readonly class Uri implements UriInterface
+final class Uri implements UriInterface
 {
     private string $scheme;
     private string $user;
@@ -17,6 +17,7 @@ final readonly class Uri implements UriInterface
     private string $path;
     private string $query;
     private string $fragment;
+    private static array $asciiCache = [];
 
     public function __construct(string $uri = '')
     {
@@ -297,11 +298,14 @@ final readonly class Uri implements UriInterface
 
     private function asciiHost(string $host): string
     {
-        if ($host[0] === '[') {                 // IPv6 + zone ID
-            return strtolower($host);
+        if (isset(self::$asciiCache[$host])) {
+            return self::$asciiCache[$host];            // cache-hit
         }
 
-        // Punycode via intl, graceful fallback otherwise
+        if ($host[0] === '[') {                         // IPv6 + zone
+            return self::$asciiCache[$host] = strtolower($host);
+        }
+
         if (\function_exists('idn_to_ascii')) {
             $ascii = idn_to_ascii(
                 $host,
@@ -311,9 +315,10 @@ final readonly class Uri implements UriInterface
             if ($ascii === false) {
                 throw new InvalidArgumentException("Invalid host: {$host}");
             }
-            return strtolower($ascii);
+            return self::$asciiCache[$host] = strtolower($ascii);
         }
-        return strtolower($host);               // intl not loaded
+
+        return self::$asciiCache[$host] = strtolower($host); // intl not loaded
     }
 
     private function filterPath(string $path): string
@@ -321,9 +326,9 @@ final readonly class Uri implements UriInterface
         // RFC 3986 §5.2.4 dot-segment removal
         do {
             $old  = $path;
-            $path = preg_replace('#(/\.?/)#', '/',  $path);        // "/./" or "//"
+            $path = preg_replace('#(/\.?/)#', '/', $path);        // "/./" or "//"
             $path = preg_replace('#/(?!\.\.)[^/]+/\.\./#', '/', $path); // "x/../"
-            $path = preg_replace('#^/\.\.(?=/|$)#', '/',  $path);  // leading "/../"
+            $path = preg_replace('#^/\.\.(?=/|$)#', '/', $path);  // leading "/../"
         } while ($path !== $old);
 
         return $path === '' ? '/' : $path;

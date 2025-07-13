@@ -13,18 +13,20 @@ use Psr\Http\Message\StreamInterface;
  *
  *  • Emits headers once (guarded by headers_sent())
  *  • Never outputs a body for HEAD, 204 or 304 responses
- *  • Streams in 8 KiB chunks – **now with a fast-path for tiny payloads**
+ *  • Streams in 8 KiB chunks – with a fast-path for tiny payloads
+ *  • **fastcgi_finish_request()** is now called exactly once, _after_ the loop
+ *    to avoid an extra function-call per chunk while still flushing promptly.
  */
 final class SapiEmitter implements EmitterInterface
 {
-    private const CHUNK_SIZE = 8_192;   // 8 KiB = 1 TCP segment on most stacks
+    private const CHUNK_SIZE = 8_192; // 8 KiB ≈ one TCP segment
 
     public function emit(
         ResponseInterface       $response,
         ?ServerRequestInterface $request = null,
     ): void {
         $body = $response->getBody();
-        $size = $body->getSize();       // may be null (unknown/stream)
+        $size = $body->getSize(); // may be null (unknown stream)
 
         /* 1) headers ---------------------------------------------------- */
         $this->sendHeaders($response, $size);
@@ -39,7 +41,7 @@ final class SapiEmitter implements EmitterInterface
             if ($body->isSeekable()) {
                 $body->rewind();
             }
-            echo $body->getContents();          // one shot, no loop/flush
+            echo $body->getContents(); // one shot, no loop/flush
             return;
         }
 
@@ -61,12 +63,12 @@ final class SapiEmitter implements EmitterInterface
 
         foreach ($response->getHeaders() as $name => $values) {
             foreach ($values as $value) {
-                // second arg=false → allow multiple Set-Cookie headers
+                // second arg = false → allow multiple Set-Cookie headers
                 header("{$name}: {$value}", false);
             }
         }
 
-        // If body size is known and caller did not set Content-Length, add it.
+        // Auto-add Content-Length when size known and not set by caller.
         if ($size !== null && !$response->hasHeader('Content-Length')) {
             header("Content-Length: {$size}", false);
         }
@@ -76,7 +78,7 @@ final class SapiEmitter implements EmitterInterface
         ResponseInterface       $response,
         ?ServerRequestInterface $request = null,
     ): bool {
-        // No body for 204/304 by spec
+        // Spec: no body for 204 / 304
         if (in_array($response->getStatusCode(), [204, 304], true)) {
             return false;
         }
@@ -92,15 +94,20 @@ final class SapiEmitter implements EmitterInterface
             $body->rewind();
         }
 
+        $isFastCgi = \function_exists('fastcgi_finish_request');
+
         while (!$body->eof()) {
             echo $body->read(self::CHUNK_SIZE);
 
-            // FPM / nginx-unit optimisation: flush FastCGI buffer early
-            if (function_exists('fastcgi_finish_request')) {
-                @fastcgi_finish_request();
-            } else {
+            // For non-FPM SAPIs flush output after each chunk.
+            if (!$isFastCgi) {
                 flush();
             }
+        }
+
+        // One single FastCGI flush at the end (avoids per-chunk overhead).
+        if ($isFastCgi) {
+            @fastcgi_finish_request();
         }
     }
 }

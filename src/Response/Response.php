@@ -9,8 +9,10 @@ use Infocyph\InterMix\Remix\MacroMix;
 // keep for user-land extensions
 use Infocyph\Webrick\Response\Constants\Mime;
 use Infocyph\Webrick\Response\Constants\Status;
-use Infocyph\Webrick\Response\Internal\HeaderBag;
+use Infocyph\Webrick\Request\Support\HeaderBag;
 use Infocyph\Webrick\Request\Core\Stream;
+use Infocyph\Webrick\Response\Internal\LazyJsonStream;
+use JsonSerializable;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\StreamInterface;
 use RuntimeException;
@@ -53,19 +55,26 @@ class Response implements ResponseInterface
 
     /** JSON payload helper (`return Response::json($data, 201)` ) */
     public static function json(
-        mixed $data,
-        int $status = 200,
+        callable|array|object $data,
+        int $status  = 200,
         array $headers = [],
         int $flags = JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE,
         int $depth = 512,
     ): self {
-        $json = json_encode($data, $flags, $depth);
-        if ($json === false) {
-            throw new RuntimeException('JSON encode error: ' . json_last_error_msg());
+        $headers += ['Content-Type' => 'application/json; charset=utf-8'];
+
+        // 1. Fast eager path for plain arrays/std-objects
+        if (!\is_callable($data) && !$data instanceof JsonSerializable) {
+            $json = \json_encode($data, $flags, $depth);
+            if ($json === false) {
+                throw new RuntimeException('JSON encode error: ' . \json_last_error_msg());
+            }
+            return new self($status, new Stream($json), $headers);
         }
 
-        $headers += ['Content-Type' => 'application/json; charset=utf-8'];
-        return new self($status, new Stream($json), $headers);
+        // 2. Lazy path: postpone encoding until body is read
+        $stream = new LazyJsonStream($data, $flags, $depth);
+        return new self($status, $stream, $headers);
     }
 
     /** Redirect helper (`return Response::redirect('/login')`) */
@@ -100,7 +109,7 @@ class Response implements ResponseInterface
             $len = $stream->getSize();
         }
 
-        $safeName = addcslashes($name, '"\\');
+        $safeName = addcslashes($name, "\"\r\n\\");
         $headers += [
             'Content-Type' => $mime,
             'Content-Disposition' => "attachment; filename=\"{$safeName}\"; filename*=UTF-8''" . rawurlencode($name),
@@ -247,6 +256,7 @@ class Response implements ResponseInterface
         array $headers = [],
         ?string $mime = null,
     ): self {
+        $name = $name ? addcslashes($name, "\"\r\n\\") : $name;
         if ($name === null && \is_string($file)) {
             $name = basename($file);
         }

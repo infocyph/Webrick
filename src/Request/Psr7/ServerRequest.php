@@ -447,11 +447,6 @@ class ServerRequest extends Message implements ServerRequestInterface
         return $out;
     }
 
-    private function norm(string $n): string
-    {
-        return ucwords(strtolower($n), '-');
-    }
-
     /* variable-order helpers ---------------------------------------------- */
     private function buildVariableMap(): void
     {

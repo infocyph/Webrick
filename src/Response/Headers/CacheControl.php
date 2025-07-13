@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Response\Headers;
 
-use Infocyph\Webrick\Response\Internal\HeaderBag;
+use Infocyph\Webrick\Request\Support\HeaderBag;
 
 /**
  * Immutable builder for the Cache-Control header.

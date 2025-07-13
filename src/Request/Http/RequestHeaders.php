@@ -20,10 +20,10 @@ final class RequestHeaders
     /* -----------------------------------------------------------------
        State (all lazy)
        ----------------------------------------------------------------- */
-    private ?HeaderBag $all      = null;   // raw + auth fallbacks
-    private ?array     $accept   = null;   // parsed Accept*
-    private ?array     $content  = null;   // Content-Type/Length/MD5
-    private ?array     $dep      = null;   // If-*, Range, Prefer
+    private ?HeaderBag $all = null;   // raw + auth fallbacks
+    private ?array $accept = null;   // parsed Accept*
+    private ?array $content = null;   // Content-Type/Length/MD5
+    private ?array $dep = null;   // If-*, Range, Prefer
 
     public function __construct(private readonly ServerRequestInterface $req)
     {
@@ -50,12 +50,12 @@ final class RequestHeaders
     /** Add Authorization header when PHP_AUTH_* populated. */
     private function injectAuthorisation(array &$hdr): void
     {
-        $srv   = $this->req->getServerParams();
+        $srv = $this->req->getServerParams();
         $added = false;
 
         // Basic / Digest via PHP_AUTH_*
         if (!empty($srv['PHP_AUTH_USER']) && !isset($hdr['Authorization'])) {
-            $pw  = $srv['PHP_AUTH_PW'] ?? '';
+            $pw = $srv['PHP_AUTH_PW'] ?? '';
             $hdr['Authorization'] = ['Basic ' . base64_encode($srv['PHP_AUTH_USER'] . ':' . $pw)];
             $added = true;
         } elseif (!empty($srv['PHP_AUTH_DIGEST'])) {
@@ -78,7 +78,7 @@ final class RequestHeaders
                     if ($cred !== false && str_contains($cred, ':')) {
                         [$u, $p] = explode(':', $cred, 2);
                         $hdr['PHP_AUTH_USER'] = [$u];
-                        $hdr['PHP_AUTH_PW']   = [$p];
+                        $hdr['PHP_AUTH_PW'] = [$p];
                     }
                 }
             }
@@ -92,7 +92,7 @@ final class RequestHeaders
     {
         if ($this->accept === null) {
             $map = [];
-            foreach (['Accept','Accept-Charset','Accept-Encoding','Accept-Language'] as $h) {
+            foreach (['Accept', 'Accept-Charset', 'Accept-Encoding', 'Accept-Language'] as $h) {
                 if ($raw = $this->req->getHeaderLine($h)) {
                     $map[$h] = $this->parseAccept($raw);
                 }
@@ -105,21 +105,24 @@ final class RequestHeaders
     /** RFC 9110 §12 quality weighting + wildcard handling. */
     private function parseAccept(string $raw): array
     {
-        static $split = '/\s*,\s*/';        // compiled once – micro-win
-        $segments = preg_split($split, $raw);
-        $parsed   = [];
+        $segments = explode(',', $raw);      // faster than preg_split
+        $parsed = [];
 
         foreach ($segments as $seg) {
+            $seg = trim($seg);
+            if ($seg === '') {
+                continue;
+            }
             [$mime, $q] = array_pad(array_map('trim', explode(';', $seg, 2)), 2, '');
             $qVal = (float)(preg_match('/q=([\d.]+)/', $q, $m) ? $m[1] : 1);
             if ($qVal == 0.0) {                // RFC 9110: not acceptable
                 continue;                       // ← cheap hard-skip, keeps array small
             }
             $wild = substr_count($mime, '*');
-            $parsed[] = ['mime' => $mime,'q' => $qVal,'wild' => $wild];
+            $parsed[] = ['mime' => $mime, 'q' => $qVal, 'wild' => $wild];
         }
 
-        usort($parsed, fn ($a, $b) => [$b['q'],$a['wild']] <=> [$a['q'],$b['wild']]);
+        usort($parsed, fn ($a, $b) => [$b['q'], $a['wild']] <=> [$a['q'], $b['wild']]);
         return array_column($parsed, 'mime');
     }
 
@@ -140,10 +143,10 @@ final class RequestHeaders
         }
 
         return $this->content = [
-            'type'    => $type ?: null,
+            'type' => $type ?: null,
             'charset' => $charset,
-            'length'  => (int)$this->req->getHeaderLine('Content-Length'),
-            'md5'     => strtolower($this->req->getHeaderLine('Content-Md5')),
+            'length' => (int)$this->req->getHeaderLine('Content-Length'),
+            'md5' => strtolower($this->req->getHeaderLine('Content-Md5')),
         ];
     }
 
@@ -159,18 +162,18 @@ final class RequestHeaders
         $h = $this->all();     // ensures Authorisation injected
 
         $dep = [
-            'if_match'           => $this->csv($h['If-Match']          ?? ''),
-            'if_none_match'      => $this->csv($h['If-None-Match']     ?? ''),
-            'if_modified_since'  => $this->httpDate($h['If-Modified-Since'] ?? ''),
+            'if_match' => $this->csv($h['If-Match'] ?? ''),
+            'if_none_match' => $this->csv($h['If-None-Match'] ?? ''),
+            'if_modified_since' => $this->httpDate($h['If-Modified-Since'] ?? ''),
             'if_unmodified_since' => $this->httpDate($h['If-Unmodified-Since'] ?? ''),
-            'prefer_safe'        => strcasecmp($h['Prefer'] ?? '', 'safe') === 0
+            'prefer_safe' => strcasecmp($h['Prefer'] ?? '', 'safe') === 0
                 && $this->req->getUri()->getScheme() === 'https',
-            'range'              => null,
+            'range' => null,
         ];
 
         if ($range = $h['Range'] ?? '') {
-            [$unit,$span] = array_pad(explode('=', str_replace(' ', '', $range), 2), 2, '');
-            $dep['range'] = $unit ? ['unit' => $unit,'span' => explode(',', $span)] : null;
+            [$unit, $span] = array_pad(explode('=', str_replace(' ', '', $range), 2), 2, '');
+            $dep['range'] = $unit ? ['unit' => $unit, 'span' => explode(',', $span)] : null;
         }
 
         $this->dep = $dep;
@@ -184,6 +187,7 @@ final class RequestHeaders
     {
         return $v === '' ? [] : preg_split('/\s*,\s*/', $v);
     }
+
     private function httpDate(string $v): ?int
     {
         return $v === '' ? null : (strtotime($v) ?: null);

@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Response\Headers;
@@ -13,7 +14,9 @@ use Infocyph\Webrick\Response\Response;
  */
 final class SecurityHeaders
 {
-    private function __construct() {}
+    private function __construct()
+    {
+    }
 
     /** Opinionated secure defaults. Optionally adds HSTS. */
     public static function tight(
@@ -23,9 +26,9 @@ final class SecurityHeaders
     ): Response {
         $r = $r
             ->withHeader('X-Content-Type-Options', 'nosniff')
-            ->withHeader('X-Frame-Options',        'SAMEORIGIN')
-            ->withHeader('Referrer-Policy',        'no-referrer-when-downgrade')
-            ->withHeader('X-XSS-Protection',       '0');
+            ->withHeader('X-Frame-Options', 'SAMEORIGIN')
+            ->withHeader('Referrer-Policy', 'no-referrer-when-downgrade')
+            ->withHeader('X-XSS-Protection', '0');
 
         return $hsts ? self::hsts($r, $includeSubs) : $r;
     }

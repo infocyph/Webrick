@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Response\Cookies;
@@ -23,7 +24,8 @@ final class Cookie implements \Stringable
         private bool    $secure  = false,
         private bool    $httpOnly = true,
         private string  $sameSite = 'Lax',      // Lax|Strict|None
-    ) {}
+    ) {
+    }
 
     /* ---------- factory helpers ---------------------------------- */
     public static function make(string $name, string $value = ''): self
@@ -49,29 +51,62 @@ final class Cookie implements \Stringable
         return $x;
     }
 
-    public function path(string $p): self      { $y = clone $this; $y->path = $p; return $y; }
-    public function domain(string $d): self    { $y = clone $this; $y->domain = $d; return $y; }
-    public function secure(bool $on = true): self  { $y = clone $this; $y->secure = $on; return $y; }
-    public function httpOnly(bool $on = true): self{ $y = clone $this; $y->httpOnly = $on; return $y; }
+    public function path(string $p): self
+    {
+        $y = clone $this;
+        $y->path = $p;
+        return $y;
+    }
+    public function domain(string $d): self
+    {
+        $y = clone $this;
+        $y->domain = $d;
+        return $y;
+    }
+    public function secure(bool $on = true): self
+    {
+        $y = clone $this;
+        $y->secure = $on;
+        return $y;
+    }
+    public function httpOnly(bool $on = true): self
+    {
+        $y = clone $this;
+        $y->httpOnly = $on;
+        return $y;
+    }
     public function sameSite(string $mode): self
     {
         $mode = ucfirst(strtolower($mode));
         if (!in_array($mode, ['Lax','Strict','None'], true)) {
             throw new \InvalidArgumentException('SameSite must be Lax|Strict|None');
         }
-        $y = clone $this; $y->sameSite = $mode; return $y;
+        $y = clone $this;
+        $y->sameSite = $mode;
+        return $y;
     }
 
     /* ---------- output ------------------------------------------- */
     public function __toString(): string
     {
-        $parts   = ["{$this->name}=" . rawurlencode($this->value)];
+        $parts   = ["$this->name=" . rawurlencode($this->value)];
         $parts[] = 'Path=' . $this->path;
 
-        if ($this->domain)  { $parts[] = 'Domain=' . $this->domain; }
-        if ($this->expires) { $parts[] = 'Expires=' . gmdate('D, d M Y H:i:s', $this->expires) . ' GMT'; }
-        if ($this->secure)  { $parts[] = 'Secure';  }
-        if ($this->httpOnly){ $parts[] = 'HttpOnly';}
+        if ($this->domain) {
+            $parts[] = 'Domain=' . $this->domain;
+        }
+        if ($this->expires) {
+            $parts[] = 'Expires=' . gmdate('D, d M Y H:i:s', $this->expires) . ' GMT';
+        }
+        if ($this->secure) {
+            $parts[] = 'Secure';
+        }
+        if ($this->sameSite === 'None' && !$this->secure) {
+            $parts[] = 'Secure';
+        }
+        if ($this->httpOnly) {
+            $parts[] = 'HttpOnly';
+        }
         $parts[] = 'SameSite=' . $this->sameSite;
 
         return implode('; ', $parts);

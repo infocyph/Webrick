@@ -26,6 +26,20 @@ final class UAParser
     /* ---- parsed Sec-CH bag (if any) ---- */
     private array $hint = [];
 
+    private static array $tokenMap = [          // longest tokens first
+        'edg'             => 'Edge',
+        'opr'             => 'Opera',
+        'vivaldi'         => 'Vivaldi',
+        'brave'           => 'Brave',
+        'samsungbrowser'  => 'Samsung Internet',
+        'yabrowser'       => 'Yandex Browser',
+        'firefox'         => 'Firefox',
+        'chrome'          => 'Chrome',
+        'safari'          => 'Safari',
+        'msie'            => 'Internet Explorer',
+        'trident/7'       => 'Internet Explorer',
+    ];
+
     /* --------------------------------------------------------------------- */
 
     public function __construct(ServerRequestInterface|string|null $source = null)
@@ -89,23 +103,7 @@ final class UAParser
                 return ['Chromium', $brands['Chromium']];
             }
         }
-
-        /* ----- Fallback: UA sniff ---------------------------------------------- */
-        static $table = [                                   // longest tokens first
-            'edg' => 'Edge',
-            'opr' => 'Opera',
-            'vivaldi' => 'Vivaldi',
-            'brave' => 'Brave',
-            'samsungbrowser' => 'Samsung Internet',
-            'yabrowser' => 'Yandex Browser',
-            'firefox' => 'Firefox',
-            'chrome' => 'Chrome',
-            'safari' => 'Safari',
-            'msie' => 'Internet Explorer',
-            'trident/7' => 'Internet Explorer',
-        ];
-
-        foreach ($table as $token => $label) {
+        foreach (self::$tokenMap as $token => $label) {
             if (str_contains($this->uaLower, $token)) {
                 return [$label, $this->extractVersion($token)];
             }
