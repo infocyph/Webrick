@@ -5,7 +5,8 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Router\Definition;
 
 use Closure;
-use Infocyph\Webrick\Router\Contracts\RouteInterface;
+use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Interfaces\RouteInterface;
 use Infocyph\Webrick\Router\Route\Collection;
 use Infocyph\Webrick\Router\Route\CompiledCollection;
 use Infocyph\Webrick\Router\Route\Route;
@@ -22,6 +23,7 @@ final readonly class Registrar
     public function __construct(
         private Collection $routes,
         private GroupScope $scope = new GroupScope(),
+        private bool $autoSlashRedirect = false
     ) {
     }
 
@@ -164,6 +166,20 @@ final readonly class Registrar
 
         // 4) Register in collection
         $this->routes->add($route);
+
+        if ($this->autoSlashRedirect && $verb === 'GET') {
+            $alt = str_ends_with($fullPath, '/')
+                ? rtrim($fullPath, '/')
+                : $fullPath . '/';
+
+            $this->routes->add(
+                new Route(
+                    'GET',
+                    $alt,
+                    static fn () => Response::redirect($fullPath, 308)
+                )
+            );
+        }
 
         return $route;
     }

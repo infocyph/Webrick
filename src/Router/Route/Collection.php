@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Router\Route;
 
 use ArrayIterator;
-use Infocyph\Webrick\Router\Contracts\RouteInterface;
+use Infocyph\Webrick\Interfaces\RouteInterface;
 use IteratorAggregate;
 use LogicException;
 use Traversable;
@@ -24,11 +24,11 @@ final class Collection implements IteratorAggregate
     private array $routes = [];
 
     /** Indices for O(1) look-ups */
-    private array $byName    = [];   // name   ⇒ RouteInterface
+    private array $byName = [];   // name   ⇒ RouteInterface
     private array $byHandler = [];   // key    ⇒ list<RouteInterface>
 
     /** State flags */
-    private bool $dirty  = false;    // builder changed since last compile
+    private bool $dirty = false;    // builder changed since last compile
     private bool $frozen = false;    // no further mutation allowed
 
     private ?CompiledCollection $compiled = null;
@@ -42,15 +42,14 @@ final class Collection implements IteratorAggregate
         $this->assertMutable();
 
         $this->routes[] = $route;
-        $this->dirty    = true;
+        $this->dirty = true;
 
         // ---- indices ----------------------------------------------------
         if (($name = $route->getName()) !== null && $name !== '') {
             $this->byName[$name] = $route;
         }
 
-        $key = self::normaliseHandler($route->getHandler());
-        $this->byHandler[$key][] = $route;
+        $this->byHandler[$route->getHandlerId()][] = $route;
     }
 
     public function remove(RouteInterface $route): void
@@ -69,10 +68,10 @@ final class Collection implements IteratorAggregate
     {
         $this->assertMutable();
 
-        $this->routes     = [];
-        $this->byName     = [];
-        $this->byHandler  = [];
-        $this->dirty      = true;
+        $this->routes = [];
+        $this->byName = [];
+        $this->byHandler = [];
+        $this->dirty = true;
     }
 
     /* ---------------------------------------------------------------------
@@ -95,7 +94,7 @@ final class Collection implements IteratorAggregate
         );
 
         $this->compiled = new CompiledCollection($compiledRoutes);
-        $this->dirty    = false;
+        $this->dirty = false;
 
         return $this->compiled;
     }
@@ -128,15 +127,14 @@ final class Collection implements IteratorAggregate
 
     public function findByHandler(callable|string $handler): ?RouteInterface
     {
-        $key = self::normaliseHandler($handler);
-        return $this->byHandler[$key][0] ?? null;
+        $id = Route::fingerprint($handler);      // static helper lives in Route
+        return $this->byHandler[$id][0] ?? null;
     }
 
-    /** @return list<RouteInterface> */
     public function findAllByHandler(callable|string $handler): array
     {
-        $key = self::normaliseHandler($handler);
-        return $this->byHandler[$key] ?? [];
+        $id = Route::fingerprint($handler);
+        return $this->byHandler[$id] ?? [];
     }
 
     /* ---------------------------------------------------------------------
@@ -161,8 +159,7 @@ final class Collection implements IteratorAggregate
             if (($name = $route->getName()) !== null && $name !== '') {
                 $this->byName[$name] = $route;
             }
-            $key = self::normaliseHandler($route->getHandler());
-            $this->byHandler[$key][] = $route;
+            $this->byHandler[$route->getHandlerId()][] = $route;
         }
     }
 
@@ -184,7 +181,7 @@ final class Collection implements IteratorAggregate
 
         if (is_array($h)) {
             /** @var array{0:mixed,1:string} $h */
-            $class = is_object($h[0]) ? $h[0]::class : (string) $h[0];
+            $class = is_object($h[0]) ? $h[0]::class : (string)$h[0];
             return $class . '::' . $h[1];
         }
 

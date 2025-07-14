@@ -7,6 +7,7 @@ namespace Infocyph\Webrick\Router\Kernel;
 use Closure;
 use Infocyph\InterMix\DI\Invoker;
 use Infocyph\Webrick\Router\Compile\FastRegexCompiler;
+use Infocyph\Webrick\Router\Support\Utils;
 use Infocyph\Webrick\Exceptions\{
     MethodNotAllowedException,
     RouteNotFoundException
@@ -80,8 +81,7 @@ final class RouterKernel
     {
         $method = strtoupper($request->getMethod());
         $uri = $request->getUri();
-
-        $host = strtolower($uri->getHost());
+        $host = Utils::normaliseHost($uri->getHost());
         $path = $uri->getPath() ?: '/';
 
         try {

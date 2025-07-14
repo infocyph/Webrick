@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router\Facade;
 
-use Infocyph\Webrick\Router\Contracts\RouterInterface;
+use Infocyph\Webrick\Interfaces\RouterInterface;
 use RuntimeException;
 
 /**

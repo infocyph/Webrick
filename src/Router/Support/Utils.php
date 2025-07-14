@@ -33,10 +33,37 @@ final class Utils
     public static function buildUri(string|int|float ...$segments): string
     {
         $clean = array_map(
-            static fn ($s) => self::trimSlashes((string) $s),
+            static fn ($s) => trim($s, '/'),
             $segments
         );
 
         return '/' . implode('/', array_filter($clean, static fn ($v) => $v !== ''));
+    }
+
+    public static function normaliseHost(string $raw): string
+    {
+        // ① basic sanity
+        if ($raw === '' || \preg_match('/[\x00-\x20]/', $raw)) {
+            throw new \InvalidArgumentException('Illegal Host header.');
+        }
+
+        // ② trim trailing dot & lowercase
+        $host = \rtrim(\strtolower($raw), '.');
+
+        // ③ IDN → ASCII
+        if (\function_exists('idn_to_ascii') && !\str_contains($host, 'xn--')) {
+            $ascii = @\idn_to_ascii($host, \IDNA_DEFAULT, \INTL_IDNA_VARIANT_UTS46);
+            if ($ascii === false) {
+                throw new \InvalidArgumentException('Invalid IDN host name.');
+            }
+            $host = $ascii;
+        }
+
+        // ④ ASCII-only guard if intl is missing
+        if (!\preg_match('/^[\x21-\x7E]+$/', $host)) {
+            throw new \InvalidArgumentException('Host contains non-ASCII bytes.');
+        }
+
+        return $host;
     }
 }

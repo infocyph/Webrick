@@ -9,42 +9,38 @@ use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 
-/**
- * Verifies the CSRF token on **state-changing** verbs.
- *
- * – GET|HEAD|OPTIONS are skipped (idempotent).
- * – Uses Request::matchesCsrfToken() helper you already have.
- */
 final readonly class CsrfMiddleware
 {
-    /** Attribute name used by downstream code to disable check on a route. */
-    public const BYPASS_ATTR = '_csrf_bypass';
+    /** Public flag (can appear in a request) */
+    public const BYPASS_ATTR   = '_csrf_bypass';
+    /** Private sentinel – never comes from the network */
+    private const TRUST_MARKER = '__csrf_internal__';
+
+    /**
+     * Mark a Request object as **trusted** (e.g. in tests, job replay, etc.).
+     * Down-stream code can now attach BYPASS_ATTR safely.
+     */
+    public static function markTrusted(Request $r): Request
+    {
+        return $r->withAttribute(self::TRUST_MARKER, true);
+    }
 
     public function __invoke(Request $req, Closure $next): Response
     {
-        if ($req->getAttribute(self::BYPASS_ATTR, false) === true) {
-            return $next($req);
+        /*────── secure bypass ──────────────────────────────────────────*/
+        if (
+            $req->getAttribute(self::TRUST_MARKER, false) === true &&
+            $req->getAttribute(self::BYPASS_ATTR, false) === true
+        ) {
+            return $next($req);                       // ✅ internal bypass
         }
 
-        if (!in_array($req->getMethod(), ['POST','PUT','PATCH','DELETE'], true)) {
-            return $next($req);
+        /*────── normal flow ───────────────────────────────────────────*/
+        if (!\in_array($req->getMethod(), ['POST','PUT','PATCH','DELETE'], true)) {
+            return $next($req);                      // safe verbs
         }
 
-        $facade = $req instanceof Request ? $req : Request::fake()->withParsedBody([]);
-        // If we had to fake, copy headers/body/cookies onto facade
-        if (!$req instanceof Request) {
-            $facade = new Request(
-                $req->getMethod(),
-                $req->getUri(),
-                $req->getServerParams(),
-                $req->getHeaders(),
-            )
-                ->withCookieParams($req->getCookieParams())
-                ->withParsedBody($req->getParsedBody() ?? [])
-                ->withBody($req->getBody());
-        }
-
-        if (!$facade->matchesCsrfToken()) {
+        if (!$req->matchesCsrfToken()) {
             return new Response(
                 status  : 419,
                 headers : ['Content-Type' => 'text/plain; charset=utf-8'],

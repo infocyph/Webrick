@@ -7,6 +7,12 @@ namespace Infocyph\Webrick\Router\Url;
 use Infocyph\Webrick\Router\Route\Collection;
 use InvalidArgumentException;
 
+/**
+ * verify signed URLs
+ * if (!Signature::check($urlWithoutSig, $_GET['_sig'] ?? '', $secret)) {
+ * throw new \RuntimeException('URL signature mismatch.');
+ * }
+ */
 class SignedUrlGenerator extends UrlGenerator
 {
     public const string SIG_PARAM = '_sig';
@@ -64,11 +70,7 @@ class SignedUrlGenerator extends UrlGenerator
         $relativePath = parent::urlFor($name, $params, [], false);
 
         // 5) Compute HMAC and append it
-        $query[self::SIG_PARAM] = hash_hmac(
-            'sha256',
-            parent::to($relativePath, $query, false),
-            $this->secret,
-        );
+        $query[self::SIG_PARAM] = Signature::make(parent::to($relativePath, $query, false), $this->secret);
 
         // 6) Build and return the final URL (absolute or relative)
         return parent::to($relativePath, $query, $absolute);

@@ -6,8 +6,7 @@ namespace Infocyph\Webrick\Router\Route;
 
 use Closure;
 use Infocyph\Webrick\Router\Constraint\Registry;
-use Infocyph\Webrick\Router\Contracts\RouteInterface;
-use Infocyph\Webrick\Router\Support\Utils;
+use Infocyph\Webrick\Interfaces\RouteInterface;
 
 /**
  * Hot-path DTO consumed by matchers.
@@ -195,7 +194,7 @@ final class CompiledRoute implements RouteInterface
             return ['#^' . preg_quote($path, '#') . '$#D', [], false];
         }
 
-        $segments   = explode('/', Utils::trimSlashes($path));
+        $segments   = explode('/', trim($path, '/'));
         $vars       = [];
         $patternBuf = [];
 

@@ -57,7 +57,7 @@ final class Compiler
             return ['#\A' . preg_quote($path, '#') . '\z#D', [], false];
         }
 
-        $segments   = explode('/', Utils::trimSlashes($path));
+        $segments   = explode('/', trim($path, '/'));
         $variables  = [];
         $patternBuf = [];
 

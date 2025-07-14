@@ -5,70 +5,91 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router\Dispatch;
 
+use Infocyph\InterMix\DI\Invoker;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
-use Infocyph\InterMix\DI\Invoker;
 use InvalidArgumentException;
 
-final readonly class Dispatcher
+/**
+ * Dispatches a CompiledRoute:
+ *   • builds the MiddlewarePipeline the first time a route is hit
+ *   • caches it in $this->pipelines for all subsequent requests
+ */
+final class Dispatcher
 {
-    public function __construct(private Invoker $invoker)
+    /** @var array<int,MiddlewarePipeline> route-id ⇒ compiled pipeline */
+    private array $pipelines = [];
+
+    public function __construct(private readonly Invoker $invoker)
     {
     }
 
     public function dispatch(
         CompiledRoute $route,
-        Request       $request,
-        array         $vars
+        Request $request,
+        array $vars,
     ): Response {
+        // expose path params to downstream code
         $request = $request->withAttribute('route_params', $vars);
 
-        /* ---------------------------------------------------------
-         * 1. Final handler (unchanged)
-         * --------------------------------------------------------*/
-        $final = function (Request $req) use ($route): Response {
-            $result = $this->invoker->invoke($route->getHandler(), ['request' => $req]);
+        $routeId = \method_exists($route, 'getIndex')
+            ? $route->getIndex()          // deterministic small int
+            : \spl_object_id($route);     // fallback
 
-            return $result instanceof Response
-                ? $result
-                : Response::json($result);
+        // build + memoise the pipeline once
+        $this->pipelines[$routeId] ??= $this->compilePipeline($route);
+
+        return $this->pipelines[$routeId]->handle($request);
+    }
+
+    /* ---------------------------------------------------------------------
+     * Internals
+     * ------------------------------------------------------------------ */
+
+    private function compilePipeline(CompiledRoute $route): MiddlewarePipeline
+    {
+        /* -- terminal handler ------------------------------------------- */
+        $invoker = $this->invoker;
+        $final = static function () use ($route, $invoker): Response {
+            $result = $invoker->invoke($route->getHandler());
+            return $result instanceof Response ? $result : Response::json($result);
         };
 
-        /* ---------------------------------------------------------
-         * 2. Build *lazy* middleware chain
-         * --------------------------------------------------------*/
+        /* -- middleware stack ------------------------------------------- */
         $stack = [];
 
         foreach ($route->getMiddlewares() as $mw) {
-            // ── Case A: already a callable object/closure ──────────────────────
-            if (is_object($mw)) {
-                if (!is_callable($mw)) {
+            // callable object / closure
+            if (\is_object($mw)) {
+                if (!\is_callable($mw)) {
                     throw new InvalidArgumentException(
-                        sprintf("Middleware object of class %s is not callable", $mw::class)
+                        sprintf('Middleware object %s is not callable', $mw::class),
                     );
                 }
                 $stack[] = $mw;
                 continue;
             }
 
-            if (is_string($mw)) {
-                if (!class_exists($mw)) {
+            // class-string
+            if (\is_string($mw)) {
+                if (!\class_exists($mw)) {
                     throw new InvalidArgumentException("Middleware class '{$mw}' not found.");
                 }
-                $fn = $this->invoker->callableFor($mw);
-                $stack[] = static fn (Request $req, callable $next): Response => $fn($req, $next);
+
+                $stack[] = static function (Request $req, callable $next) use ($mw, $invoker): Response {
+                    static $instance = null;              // one per worker process
+                    $instance ??= $invoker->make($mw);    // constructor DI once
+                    return $instance($req, $next);
+                };
                 continue;
             }
 
             throw new InvalidArgumentException(
-                sprintf("Middleware of type %s is not supported", gettype($mw))
+                sprintf('Unsupported middleware of type %s', \gettype($mw)),
             );
         }
 
-        /* ---------------------------------------------------------
-         * 3. Fire the pipeline
-         * --------------------------------------------------------*/
-        return new MiddlewarePipeline($stack, $final)->handle($request);
+        return new MiddlewarePipeline($stack, $final);
     }
 }

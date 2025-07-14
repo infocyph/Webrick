@@ -14,7 +14,7 @@ use RuntimeException;
 /**
  * Builds **206 Partial Content** (or 200 / 416) responses for seek-able sources.
  */
-final class RangeResponder
+final readonly class RangeResponder
 {
     /* ───────────────────────── public factories ───────────────────────── */
 
