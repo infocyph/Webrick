@@ -53,17 +53,11 @@ final readonly class Dispatcher
             }
 
             if (is_string($mw)) {
-                // ─ class-string: instantiate on first use, then cache ─
                 if (!class_exists($mw)) {
                     throw new InvalidArgumentException("Middleware class '{$mw}' not found.");
                 }
-
-                /** @var class-string $mw */
-                $stack[] = function (Request $req, callable $next) use ($mw): Response {
-                    static $instance = null;                 // ← cache between requests
-                    $instance ??= $this->invoker->make($mw); // constructor-DI via Invoker
-                    return $instance($req, $next);
-                };
+                $fn = $this->invoker->callableFor($mw);
+                $stack[] = static fn (Request $req, callable $next): Response => $fn($req, $next);
                 continue;
             }
 

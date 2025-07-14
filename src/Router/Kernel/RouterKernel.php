@@ -6,6 +6,7 @@ namespace Infocyph\Webrick\Router\Kernel;
 
 use Closure;
 use Infocyph\InterMix\DI\Invoker;
+use Infocyph\Webrick\Router\Compile\FastRegexCompiler;
 use Infocyph\Webrick\Exceptions\{
     MethodNotAllowedException,
     RouteNotFoundException
@@ -14,7 +15,7 @@ use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Cache\RouteCache;
 use Infocyph\Webrick\Router\Dispatch\Dispatcher;
-use Infocyph\Webrick\Router\Matching\{DomainMatcher, MatcherInterface};
+use Infocyph\Webrick\Router\Matching\{DomainMatcher, FastRegexMatcher, MatcherInterface};
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 use Psr\Cache\CacheItemPoolInterface as Psr6Pool;
 use Psr\Log\LoggerInterface;
@@ -50,12 +51,17 @@ final class RouterKernel
         Psr6Pool $cachePool,
         Closure $compiler,
         MatcherInterface|null $matcher = null,
+        ?string $regexDump = null,
         /* DomainMatcher tuning (ignored if custom matcher supplied) */
         bool $useRadix = true,
-        int $promoteAfter = 2_048,
+        int $promoteAfter = 1_024,
         /* cache */
         int $cacheTtl = 86_400,  // 24 h
     ): self {
+        if ($matcher === null && $regexDump && \is_file($regexDump)) {
+            $matcher = new FastRegexMatcher($regexDump);
+        }
+
         // 1️⃣ matcher
         $matcher ??= new DomainMatcher($useRadix, $promoteAfter);
 
@@ -94,28 +100,60 @@ final class RouterKernel
 
     /* ─────────────────────── boot-time warm-up ────────────────────────── */
 
+    /**
+     * Load (or compile) the route-table, wire it into the matcher and—when
+     * appropriate—emit a Fast-Regex dump for future, ultra-fast boots.
+     *
+     * @throws \RuntimeException When the compiler returns an empty set.
+     */
     private function warm(): void
     {
-        // 1. fetch from cache or (re)compile
-        $routes = $this->cache?->remember($this->compiler)
-            ?? ($this->compiler)();                 // cache disabled
+        /* --------------------------------------------------------------
+         * 1. fetch from cache -or- build fresh
+         * ------------------------------------------------------------ */
+        $routes = $this->cache?->remember($this->compiler)      // PSR-6/16 path
+            ?? ($this->compiler)();                             // cache disabled / miss
 
         if ($routes === []) {
-            throw new RuntimeException('Route compiler produced an empty table.');
+            throw new \RuntimeException('Route compiler produced an empty table.');
         }
 
-        // 2. load routes into the matcher (noop for FastRegexMatcher)
-        foreach ($routes as $route) {
-            $this->matcher->add($route);
+        /* --------------------------------------------------------------
+         * 2. prime the in-memory matcher
+         *    (FastRegexMatcher is read-only → skip)
+         * ------------------------------------------------------------ */
+        if (!$this->matcher instanceof FastRegexMatcher) {
+            foreach ($routes as $route) {
+                $this->matcher->add($route);
+            }
         }
 
+        /* --------------------------------------------------------------
+         * 3. on-disk dump for next boots
+         *    – only when DomainMatcher is in use
+         *    – only when a dump path was supplied
+         *    – never overwrite an existing, non-empty dump
+         * ------------------------------------------------------------ */
+        if (
+            $this->matcher instanceof \Infocyph\Webrick\Router\Matching\DomainMatcher
+            && isset($this->regexDump) && $this->regexDump !== ''
+            && (!\is_file($this->regexDump) || \filesize($this->regexDump) === 0)
+        ) {
+            FastRegexCompiler::dump($routes, $this->regexDump);
+            $this->log->info('[router] fast-regex table dumped', ['file' => $this->regexDump]);
+        }
+
+        /* --------------------------------------------------------------
+         * 4. telemetry
+         * ------------------------------------------------------------ */
         $this->log->info(
             '[router] table loaded',
             [
-                'count' => \count($routes),
-                'cached' => $this->cache !== null,
+                'count'   => \count($routes),
+                'cached'  => $this->cache !== null,
                 'matcher' => $this->matcher::class,
             ],
         );
     }
+
 }

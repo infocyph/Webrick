@@ -32,7 +32,7 @@ final class DomainMatcher implements MatcherInterface
      * @param bool $useRadix       enable/disable radix layer entirely
      * @param int  $promoteAfter   route-count cut-off (bench-driven, default = 2048)
      */
-    public function __construct(bool $useRadix = false, int $promoteAfter = 2048)
+    public function __construct(bool $useRadix = false, int $promoteAfter = 1024)
     {
         $this->static        = new StaticMatcher();
         $this->dynamic       = new DynamicMatcher();
