@@ -20,7 +20,6 @@ use Infocyph\Webrick\Router\Matching\{DomainMatcher, FastRegexMatcher, MatcherIn
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 use Psr\Cache\CacheItemPoolInterface as Psr6Pool;
 use Psr\Log\LoggerInterface;
-use RuntimeException;
 
 final class RouterKernel
 {
@@ -33,6 +32,7 @@ final class RouterKernel
         private readonly ?RouteCache $cache,
         Closure $compiler,
         private readonly LoggerInterface $log,
+        private readonly ?string $regexDump = null
     ) {
         $this->compiler = $compiler;
         $this->warm();
@@ -53,26 +53,19 @@ final class RouterKernel
         Closure $compiler,
         MatcherInterface|null $matcher = null,
         ?string $regexDump = null,
-        /* DomainMatcher tuning (ignored if custom matcher supplied) */
         bool $useRadix = true,
         int $promoteAfter = 1_024,
-        /* cache */
         int $cacheTtl = 86_400,  // 24 h
     ): self {
         if ($matcher === null && $regexDump && \is_file($regexDump)) {
             $matcher = new FastRegexMatcher($regexDump);
         }
 
-        // 1️⃣ matcher
         $matcher ??= new DomainMatcher($useRadix, $promoteAfter);
-
-        // 2️⃣ dispatcher (shared Invoker ⟶ global single-instance)
         $dispatcher = new Dispatcher(Invoker::shared());
-
-        // 3️⃣ route-cache (optional, but cheap)
         $cache = new RouteCache($cachePool, ttl: $cacheTtl);
 
-        return new self($matcher, $dispatcher, $cache, $compiler, $log);
+        return new self($matcher, $dispatcher, $cache, $compiler, $log, $regexDump);
     }
 
     /* ─────────────────────────── request entry ────────────────────────── */
@@ -136,7 +129,7 @@ final class RouterKernel
          * ------------------------------------------------------------ */
         if (
             $this->matcher instanceof \Infocyph\Webrick\Router\Matching\DomainMatcher
-            && isset($this->regexDump) && $this->regexDump !== ''
+            && $this->regexDump !== ''
             && (!\is_file($this->regexDump) || \filesize($this->regexDump) === 0)
         ) {
             FastRegexCompiler::dump($routes, $this->regexDump);
@@ -149,8 +142,8 @@ final class RouterKernel
         $this->log->info(
             '[router] table loaded',
             [
-                'count'   => \count($routes),
-                'cached'  => $this->cache !== null,
+                'count' => \count($routes),
+                'cached' => $this->cache !== null,
                 'matcher' => $this->matcher::class,
             ],
         );

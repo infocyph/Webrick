@@ -31,15 +31,14 @@ final readonly class TrustProxiesMiddleware
     public function __construct(
         private array $allow = [],
         private array $deny  = []
-    ) {}
+    ) {
+        if ($this->allow) {
+            EndUser::setTrustedProxies($this->allow);   // ← one-time
+        }
+    }
 
     public function __invoke(Request $req, Closure $next): Response
     {
-        /* ---------- 1. register trusted proxies for EndUser --------- */
-        if ($this->allow) {
-            EndUser::setTrustedProxies($this->allow);
-        }
-
         /* ---------- 2. resolve final client IP ---------------------- */
         $ip = EndUser::from($req)->ip();   // honours allow-list
 

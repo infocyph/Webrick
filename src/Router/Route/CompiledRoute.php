@@ -15,8 +15,14 @@ use Infocyph\Webrick\Interfaces\RouteInterface;
  */
 final class CompiledRoute implements RouteInterface
 {
+    /** Auto-incrementing ordinal used by FastRegexCompiler for stable capture-indices. */
+    private static int $autoIdx = 0;
+
     /** @var callable|class-string */
     private $handler;
+
+    /** Deterministic declaration order (starts at 0) */
+    private readonly int $index;
 
     /**
      * Create a fully-compiled instance from a **mutable** {@see RouteInterface}.
@@ -28,9 +34,11 @@ final class CompiledRoute implements RouteInterface
         [$regex, $vars, $dyn] = self::compilePattern($route->getPath());
 
         // NB: `getMiddleware()` vs `getMiddlewares()` – keep BC.
-        $mw = method_exists($route, 'getMiddlewares')
+        $mw = \method_exists($route, 'getMiddlewares')
             ? $route->getMiddlewares()
             : $route->getMiddleware();
+
+        $idx = self::$autoIdx++;
 
         return new self(
             $route->getMethod(),
@@ -42,6 +50,7 @@ final class CompiledRoute implements RouteInterface
             $dyn,
             $regex,
             $vars,
+            $idx,
         );
     }
 
@@ -61,8 +70,10 @@ final class CompiledRoute implements RouteInterface
         private readonly bool     $dynamic,
         private readonly string   $regex,
         private readonly array    $variables,
+        int                        $index
     ) {
         $this->handler = $handler;
+        $this->index   = $index;
     }
 
     /* -----------------------------------------------------------------
@@ -102,10 +113,6 @@ final class CompiledRoute implements RouteInterface
         return $this->middleware;
     }
 
-    /* -----------------------------------------------------------------
-     *  Matcher helpers
-     * ----------------------------------------------------------------*/
-
     public function isDynamic(): bool
     {
         return $this->dynamic;
@@ -128,6 +135,12 @@ final class CompiledRoute implements RouteInterface
             : substr_count(trim($this->path, '/'), '/') + 1;
     }
 
+    /** Declaration order — used by FastRegexCompiler */
+    public function getIndex(): int
+    {
+        return $this->index;
+    }
+
     /* -----------------------------------------------------------------
      *  Functional mutators – return **NEW** instance
      * ----------------------------------------------------------------*/
@@ -144,6 +157,7 @@ final class CompiledRoute implements RouteInterface
             $this->dynamic,
             $this->regex,
             $this->variables,
+            $this->index
         );
     }
 
@@ -160,6 +174,7 @@ final class CompiledRoute implements RouteInterface
             $this->dynamic,
             $this->regex,
             $this->variables,
+            $this->index
         );
     }
 
@@ -175,6 +190,7 @@ final class CompiledRoute implements RouteInterface
             $this->dynamic,
             $this->regex,
             $this->variables,
+            $this->index
         );
     }
 
@@ -190,8 +206,7 @@ final class CompiledRoute implements RouteInterface
     private static function compilePattern(string $path): array
     {
         if (!str_contains($path, '{')) {
-            // Fast-path for 100 % static URIs
-            return ['#^' . preg_quote($path, '#') . '$#D', [], false];
+            return ['#\A' . preg_quote($path, '#') . '\z#D', [], false];
         }
 
         $segments   = explode('/', trim($path, '/'));
@@ -199,7 +214,7 @@ final class CompiledRoute implements RouteInterface
         $patternBuf = [];
 
         foreach ($segments as $segment) {
-            if ($segment === '') {            // leading / trailing /
+            if ($segment === '') {      // leading / trailing /
                 continue;
             }
 
@@ -210,7 +225,7 @@ final class CompiledRoute implements RouteInterface
                     $m
                 )
             ) {
-                [$raw, $name, $constraint] = $m + [null, null, null];
+                [, $name, $constraint] = $m + [null, null, null];
                 $regexPart = $constraint
                     ? Registry::buildPattern($constraint)
                     : '[^/]+';
@@ -224,6 +239,6 @@ final class CompiledRoute implements RouteInterface
             $patternBuf[] = preg_quote($segment, '#');
         }
 
-        return ['#^/' . implode('/', $patternBuf) . '$#D', $vars, true];
+        return ['#\A/' . implode('/', $patternBuf) . '\z#D', $vars, true];
     }
 }

@@ -95,6 +95,7 @@ final class Collection implements IteratorAggregate
 
         $this->compiled = new CompiledCollection($compiledRoutes);
         $this->dirty = false;
+        $this->frozen   = true;
 
         return $this->compiled;
     }
@@ -168,27 +169,5 @@ final class Collection implements IteratorAggregate
         if ($this->frozen) {
             throw new LogicException('Route collection already compiled – further mutation prohibited.');
         }
-    }
-
-    /**
-     * Turn any callable spec into a stable scalar key.
-     */
-    private static function normaliseHandler(callable|string $h): string
-    {
-        if (is_string($h)) {
-            return $h;
-        }
-
-        if (is_array($h)) {
-            /** @var array{0:mixed,1:string} $h */
-            $class = is_object($h[0]) ? $h[0]::class : (string)$h[0];
-            return $class . '::' . $h[1];
-        }
-
-        if (is_object($h) && !($h instanceof \Closure)) {
-            return $h::class . '::__invoke';
-        }
-
-        return 'closure@' . spl_object_id($h);
     }
 }

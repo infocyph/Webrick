@@ -33,13 +33,14 @@ final readonly class ConvertEmptyStringsToNullMiddleware
 
     private static function nullify(array $data): array
     {
-        foreach ($data as $k => $v) {
-            if ($v === '') {
-                $data[$k] = null;
-            } elseif (\is_array($v)) {
-                $data[$k] = self::nullify($v);
+        array_walk_recursive(
+            $data,
+            static function (&$v): void {
+                if ($v === '') {
+                    $v = null;
+                }
             }
-        }
+        );
         return $data;
     }
 }

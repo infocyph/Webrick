@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Middleware;
@@ -16,7 +17,9 @@ use RuntimeException;
  */
 final readonly class ResponseLinterMiddleware
 {
-    public function __construct(private bool $enabled = true) {}
+    public function __construct(private bool $enabled = true)
+    {
+    }
 
     public function __invoke(Request $req, Closure $next): Response
     {
@@ -27,7 +30,15 @@ final readonly class ResponseLinterMiddleware
         }
 
         $code = $resp->getStatusCode();
-        $bodyLen = $resp->getBody()->getSize() ?? strlen((string)$resp->getBody());
+        $body = $resp->getBody();
+        $bodyLen = $body->getSize();
+        if ($bodyLen === null && $body->isSeekable()) {
+            $pos = $body->tell();
+            $bodyLen = $body->getSize() ?? strlen($body->getContents());
+            $body->seek($pos);                      // rewind to original position
+        } elseif ($bodyLen === null) {
+            $bodyLen = 0;                           // non-seekable & unknown
+        }
 
         /* Content-Type required */
         if ($bodyLen > 0 && $resp->getHeaderLine('Content-Type') === '') {

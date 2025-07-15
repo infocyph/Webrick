@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Middleware;
@@ -64,16 +65,26 @@ final readonly class CookieEncryptionMiddleware
         return base64_encode($iv . $tag . $ct);
     }
 
-    private function decrypt(string $cipher): string
+    private function decrypt(string $cipher): ?string
     {
-        $raw = base64_decode($cipher, true) ?: '';
-        if (strlen($raw) < 28) { return ''; }
+        $raw = base64_decode($cipher, true);
+        if ($raw === false || strlen($raw) < 28) {                    // too short → clearly invalid
+            return null;
+        }
 
         $iv  = substr($raw, 0, 12);
         $tag = substr($raw, 12, 16);
         $ct  = substr($raw, 28);
 
-        $pt = openssl_decrypt($ct, 'aes-256-gcm', $this->key, OPENSSL_RAW_DATA, $iv, $tag);
-        return $pt === false ? '' : $pt;
+        $pt = openssl_decrypt(
+            $ct,
+            'aes-256-gcm',
+            $this->key,
+            OPENSSL_RAW_DATA,
+            $iv,
+            $tag
+        );
+
+        return $pt === false ? null : $pt;
     }
 }

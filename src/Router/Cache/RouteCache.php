@@ -120,7 +120,7 @@ final class RouteCache
     private function decode(mixed $payload): array
     {
         if (!\is_string($payload) || $payload === '') {
-            return [];
+            throw new RuntimeException('Route-cache payload missing or non-string.');
         }
 
         $data = ValueSerializer::unserialize($payload);

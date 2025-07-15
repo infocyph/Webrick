@@ -63,25 +63,29 @@ final class Registry
     {
         $key = strtolower($name);
 
-        if (isset(self::$regexValidators[$key]) || isset(self::$callableValidators[$key])) {
+        if (isset(self::$regexValidators[$key], self::$callableValidators[$key])) {
             throw new InvalidArgumentException("Constraint '$name' already exists.");
         }
 
+        /* ── regex rule ─────────────────────────────────────────────────── */
         if (self::isRegex($rule)) {
-            @preg_match($rule, '');
-            if (preg_last_error() !== PREG_NO_ERROR) {
+            if (@preg_match($rule, '') === false) {          // invalid PCRE
                 throw new InvalidArgumentException("Invalid PCRE for constraint '$name'.");
             }
             self::$regexValidators[$key] = $rule;
-        } elseif (is_callable($rule)) {
-            self::$callableValidators[$key] = $rule;
-        } else {
-            throw new InvalidArgumentException(
-                "Rule for '$name' must be a PCRE-delimited regex or an existing callable name.",
-            );
+            return;
         }
-    }
 
+        /* ── callable rule ──────────────────────────────────────────────── */
+        if (\is_callable($rule)) {
+            self::$callableValidators[$key] = $rule;
+            return;
+        }
+
+        throw new InvalidArgumentException(
+            "Rule for '$name' must be a PCRE-delimited regex or an existing callable name."
+        );
+    }
 
     /**
      * Check if a given value matches a named constraint.
@@ -131,15 +135,10 @@ final class Registry
         return $body === '' ? '[^/]+' : $body;
     }
 
-
-    /**
-     * @param string $rule
-     * @return bool
-     * @internal
-     */
     private static function isRegex(string $rule): bool
     {
-        return preg_match('/^(.)((?:\\\1|[^\1])*)\1[imsxuADSUXJ]*$/', $rule) === 1;
+        // silence E_WARNING on malformed patterns and avoid touching preg_last_error()
+        return @preg_match('/^(.)((?:\\\1|[^\1])*)\1[imsxuADSUXJ]*$/', $rule) === 1;
     }
 
     /**

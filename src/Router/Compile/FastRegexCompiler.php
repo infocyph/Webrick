@@ -83,7 +83,7 @@ final class FastRegexCompiler
             // ---- already-built param regex, strip delimiters (^ … $)
             $body = substr($route->getRegex(), 3, -3);          // remove "#^" … "#D"
             // offset capturing indexes
-            $captureCount = preg_match_all('~\([^?]~', $body);  // naive but fine
+            $captureCount = preg_match_all('/\((?!\?:|\?P<|\?\')/', $body);
             $parts[] = '(?:' . $body . ')';
             $map[$i] = $route;
             $i += $captureCount + 1;

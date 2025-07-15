@@ -35,13 +35,14 @@ final readonly class TrimStringsMiddleware
 
     private static function trimRecursive(array $data): array
     {
-        foreach ($data as $k => $v) {
-            if (\is_string($v)) {
-                $data[$k] = trim($v);
-            } elseif (\is_array($v)) {
-                $data[$k] = self::trimRecursive($v);
+        array_walk_recursive(
+            $data,
+            static function (&$v): void {
+                if (is_string($v)) {
+                    $v = trim($v);
+                }
             }
-        }
+        );
         return $data;
     }
 }
