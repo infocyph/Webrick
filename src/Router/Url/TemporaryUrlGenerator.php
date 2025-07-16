@@ -27,9 +27,18 @@ final class TemporaryUrlGenerator extends SignedUrlGenerator
         Collection $routes,
         string $secret,
         int $defaultTtl = 900, // 15 minutes
-    )
-    {
-        parent::__construct($baseUri, $routes, $secret);
+    ) {
+        // ── sanity: forbid query / fragment on the base URI ─────────────
+        $parts = \parse_url($baseUri);
+        if ($parts === false || isset($parts['query'], $parts['fragment'])) {
+            throw new InvalidArgumentException(
+                'baseUri must not contain query or fragment components'
+            );
+        }
+
+        // strip trailing “/” so UrlGenerator always does `$baseUri . '/' . …`
+        $clean = \rtrim($baseUri, '/');
+        parent::__construct($clean, $routes, $secret);
 
         if ($defaultTtl < 1) {
             throw new InvalidArgumentException('defaultTtl must be a positive integer.');
