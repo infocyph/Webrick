@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Middleware;
@@ -21,12 +22,20 @@ final readonly class CompressionMiddleware
     private const MIN_SIZE = 1024;
 
     /** Content-types we NEVER compress. */
-    private const NO_COMPRESS_RX =
-        '#^(?:image/|video/|audio/|application/(?:zip|gzip|octet-stream))#i';
+    private const NO_COMPRESS_RX = '#^(?:image/|video/|audio/|application/(?:zip|gzip|octet-stream))#i';
+
+    private const NO_COMPRESS = [
+        'image/' => true,
+        'video/' => true,
+        'audio/' => true,
+        'application/zip' => true,
+        'application/gzip' => true,
+        'application/octet-stream' => true,
+    ];
 
     /** Map enc => callable */
     private const ALGO = [
-        'br'   => 'brotli_compress',
+        'br' => 'brotli_compress',
         'zstd' => 'zstd_compress',
         'gzip' => 'gzencode',
     ];
@@ -44,8 +53,10 @@ final readonly class CompressionMiddleware
         ) {
             return $resp;
         }
-        if (preg_match(self::NO_COMPRESS_RX, $resp->getHeaderLine('Content-Type'))) {
-            return $resp;                                    // already compressed
+
+        $type = strtolower(strtok($resp->getHeaderLine('Content-Type'), ';') ?: '');
+        if (array_any(self::NO_COMPRESS, fn ($p) => str_starts_with($type, $p))) {
+            return $resp;
         }
 
         /* --- negotiation --------------------------------------------------- */
@@ -54,7 +65,7 @@ final readonly class CompressionMiddleware
             return $resp;                                    // client accepts none
         }
 
-        $raw = (string) $resp->getBody();
+        $raw = (string)$resp->getBody();
         $enc = ($alg === 'gzip')
             ? gzencode($raw, 6, ZLIB_ENCODING_GZIP)
             : \call_user_func(self::ALGO[$alg], $raw);
@@ -66,7 +77,7 @@ final readonly class CompressionMiddleware
         return $resp
             ->withBody(new Stream($enc))
             ->withHeader('Content-Encoding', $alg)
-            ->withHeader('Content-Length', (string) strlen($enc))
+            ->withHeader('Content-Length', (string) ($resp->getBody()->getSize() ?? strlen($enc)))
             ->withHeader('Vary', 'Accept-Encoding');
     }
 
@@ -75,19 +86,21 @@ final readonly class CompressionMiddleware
         /* Parse “br;q=1.0, gzip;q=0.8” → [['br',1.0], ['gzip',0.8]] */
         $cands = [];
         foreach (explode(',', $accept) as $seg) {
-            if ($seg === '') { continue; }
+            if ($seg === '') {
+                continue;
+            }
             [$token, $q] = array_map('trim', explode(';', $seg, 2) + [1 => 'q=1']);
-            $q = (float) (preg_match('/q=([\d.]+)/', $q, $m) ? $m[1] : 1);
+            $q = (float)(preg_match('/q=([\d.]+)/', $q, $m) ? $m[1] : 1);
             $cands[] = [strtolower($token), $q];
         }
-        usort($cands, fn($a, $b) => $b[1] <=> $a[1]);
+        usort($cands, fn ($a, $b) => $b[1] <=> $a[1]);
 
         foreach ($cands as [$enc]) {
             if (isset(self::ALGO[$enc]) && \function_exists(self::ALGO[$enc])) {
                 return $enc;
             }
-            if ($enc === '*' ) {            // wildcard, pick best available
-                foreach (['br','zstd','gzip'] as $fallback) {
+            if ($enc === '*') {            // wildcard, pick best available
+                foreach (['br', 'zstd', 'gzip'] as $fallback) {
                     if (isset(self::ALGO[$fallback]) && \function_exists(self::ALGO[$fallback])) {
                         return $fallback;
                     }

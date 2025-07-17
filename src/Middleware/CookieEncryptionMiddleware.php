@@ -13,10 +13,11 @@ use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 
 /**
- * AES-256-GCM cookie encryption with
- *   • optional **Zstd / Brotli / Gzip** compression (best-size pick)
- *   • automatic **chunking** (`.p2` …) under browser limits
- *   • PSR-6 **server-side fallback** when still too large
+ * AES-256-GCM cookie encryption with optional compression and smart chunking.
+ *
+ * Perf tweaks:
+ *   • compression-availability resolved **once per worker process**
+ *   • no more repeated `function_exists()` inside hot paths
  */
 final readonly class CookieEncryptionMiddleware
 {
@@ -30,6 +31,9 @@ final readonly class CookieEncryptionMiddleware
     private const MODE_STORE  = 'S:';
     private const CACHE_PREFIX = 'enc_cookie.';
 
+    /** map algo-key → isAvailable (resolved in ctor) */
+    private array $hasAlgo;
+
     public function __construct(
         private string                  $key,          // 32-byte raw key
         private string                  $cookiePrefix = 'enc_',
@@ -37,12 +41,19 @@ final readonly class CookieEncryptionMiddleware
         private ?CacheItemPoolInterface $store        = null,
         private int                     $storeTtl     = 86_400,
     ) {
-        if (strlen($this->key) !== 32) {
+        if (\strlen($this->key) !== 32) {
             throw new \InvalidArgumentException('Key must be 32 bytes (AES-256).');
         }
-        if ($this->maxBytes < 256 || $this->maxBytes > 4096) {
+        if ($this->maxBytes < 256 || $this->maxBytes > 4_096) {
             throw new \InvalidArgumentException('maxBytes must be 256–4096.');
         }
+
+        /* ── resolve compression support once ───────────────────────── */
+        $this->hasAlgo = [
+            'zstd'   => \function_exists('zstd_compress')   && \function_exists('zstd_uncompress'),
+            'brotli' => \function_exists('brotli_compress') && \function_exists('brotli_uncompress'),
+            'gzip'   => \function_exists('gzdeflate'),      // inflate always present with zlib
+        ];
     }
 
     /* ───────────── middleware entry ───────────── */
@@ -58,11 +69,11 @@ final readonly class CookieEncryptionMiddleware
 
     private function decryptAll(array $cookies): array
     {
-        $rx  = '/^(' . preg_quote($this->cookiePrefix, '/') . '[^\.]+)(?:\.p(\d+))?$/';
+        $rx  = '/^(' . \preg_quote($this->cookiePrefix, '/') . '[^\.]+)(?:\.p(\d+))?$/';
         $out = $assemblies = [];
 
         foreach ($cookies as $name => $val) {
-            if (!preg_match($rx, $name, $m)) {               // not encrypted
+            if (!\preg_match($rx, $name, $m)) {        // not encrypted
                 $out[$name] = $val;
                 continue;
             }
@@ -72,8 +83,8 @@ final readonly class CookieEncryptionMiddleware
         }
 
         foreach ($assemblies as $base => $parts) {
-            ksort($parts);
-            $cipher          = implode('', $parts);
+            \ksort($parts);
+            $cipher     = \implode('', $parts);
             $out[$base] = $this->decrypt($cipher);
         }
         return $out;
@@ -81,28 +92,28 @@ final readonly class CookieEncryptionMiddleware
 
     private function decrypt(string $cipher): mixed
     {
-        /* server-side cached? ------------------------------------ */
-        if (str_starts_with($cipher, self::MODE_STORE)) {
+        /* server-side cached? --------------------------------------- */
+        if (\str_starts_with($cipher, self::MODE_STORE)) {
             if ($this->store === null) {
                 return null;
             }
-            $id   = substr($cipher, 2);
+            $id   = \substr($cipher, 2);
             $item = $this->store->getItem(self::CACHE_PREFIX . $id);
             return $item->isHit() ? $item->get() : null;
         }
 
-        /* AES-GCM ------------------------------------------------- */
-        $raw = base64_decode($cipher, true);
-        if ($raw === false || strlen($raw) < 29) {
+        /* AES-GCM ---------------------------------------------------- */
+        $raw = \base64_decode($cipher, true);
+        if ($raw === false || \strlen($raw) < 29) {
             return null;
         }
 
         $mode = $raw[0];
-        $iv   = substr($raw, 1, 12);
-        $tag  = substr($raw, 13, 16);
-        $ct   = substr($raw, 29);
+        $iv   = \substr($raw, 1, 12);
+        $tag  = \substr($raw, 13, 16);
+        $ct   = \substr($raw, 29);
 
-        $pt = openssl_decrypt(
+        $pt = \openssl_decrypt(
             $ct,
             'aes-256-gcm',
             $this->key,
@@ -115,11 +126,9 @@ final readonly class CookieEncryptionMiddleware
         }
 
         return match ($mode) {
-            self::MODE_ZSTD   => \function_exists('zstd_uncompress')
-                ? zstd_uncompress($pt) : null,
-            self::MODE_BROTLI => \function_exists('brotli_uncompress')
-                ? brotli_uncompress($pt) : null,
-            self::MODE_GZIP   => gzinflate($pt),
+            self::MODE_ZSTD   => $this->hasAlgo['zstd'] ? \zstd_uncompress($pt) : null,
+            self::MODE_BROTLI => $this->hasAlgo['brotli'] ? \brotli_uncompress($pt) : null,
+            self::MODE_GZIP   => \gzinflate($pt),
             default           => $pt,
         };
     }
@@ -131,12 +140,12 @@ final readonly class CookieEncryptionMiddleware
         $jar = new CookieJar();
 
         foreach ($resp->getHeader('Set-Cookie') as $line) {
-            [$name, $payload] = explode('=', $line, 2);
-            if (!str_starts_with($name, $this->cookiePrefix)) {
+            [$name, $payload] = \explode('=', $line, 2);
+            if (!\str_starts_with($name, $this->cookiePrefix)) {
                 continue;
             }
 
-            foreach ($this->encryptSegments(rawurldecode($payload)) as $i => $seg) {
+            foreach ($this->encryptSegments(\rawurldecode($payload)) as $i => $seg) {
                 $cname = $i === 1 ? $name : "{$name}.p{$i}";
                 $jar   = $jar->add(
                     Cookie::make($cname, $seg)->httpOnly()->secure()
@@ -147,7 +156,7 @@ final readonly class CookieEncryptionMiddleware
     }
 
     /**
-     * @return array<int,string> 1-based segment list
+     * @return array<int,string>  1-based segment list
      * @throws LengthException
      */
     private function encryptSegments(string $plaintext): array
@@ -155,19 +164,19 @@ final readonly class CookieEncryptionMiddleware
         $cipher = $this->encryptBlob($plaintext);
 
         /* fits in one? */
-        if (strlen($cipher) <= $this->maxBytes) {
+        if (\strlen($cipher) <= $this->maxBytes) {
             return [1 => $cipher];
         }
 
         /* chunk into ≤10 parts */
-        $parts = str_split($cipher, $this->maxBytes);
+        $parts = \str_split($cipher, $this->maxBytes);
         if (\count($parts) <= 10) {
-            return array_combine(range(1, \count($parts)), $parts);
+            return \array_combine(\range(1, \count($parts)), $parts);
         }
 
         /* cache fallback */
         if ($this->store !== null) {
-            $id   = bin2hex(random_bytes(16));
+            $id   = \bin2hex(\random_bytes(16));
             $item = $this->store->getItem(self::CACHE_PREFIX . $id);
             $item->set($plaintext)->expiresAfter($this->storeTtl);
             $this->store->save($item);
@@ -189,36 +198,36 @@ final readonly class CookieEncryptionMiddleware
         $bestMode = self::MODE_NONE;
 
         /* Zstd (fast, good ratio) */
-        if (\function_exists('zstd_compress')) {
-            $c = zstd_compress($pt, 3);
-            if ($c !== false && strlen($c) + 1 < strlen($best)) {
+        if ($this->hasAlgo['zstd']) {
+            $c = \zstd_compress($pt, 3);
+            if ($c !== false && \strlen($c) + 1 < \strlen($best)) {
                 $best = $c;
                 $bestMode = self::MODE_ZSTD;
             }
         }
 
         /* Brotli (excellent ratio, slower) */
-        if (\function_exists('brotli_compress')) {
-            $c = brotli_compress($pt, 4);              // quality 4 ≈ gzip-level-4
-            if ($c !== false && strlen($c) + 1 < strlen($best)) {
+        if ($this->hasAlgo['brotli']) {
+            $c = \brotli_compress($pt, 4);          // quality 4 ≈ gzip-lvl-4
+            if ($c !== false && \strlen($c) + 1 < \strlen($best)) {
                 $best = $c;
                 $bestMode = self::MODE_BROTLI;
             }
         }
 
         /* Gzip deflate */
-        if (\function_exists('gzdeflate')) {
-            $c = gzdeflate($pt, 4);
-            if ($c !== false && strlen($c) + 1 < strlen($best)) {
+        if ($this->hasAlgo['gzip']) {
+            $c = \gzdeflate($pt, 4);
+            if ($c !== false && \strlen($c) + 1 < \strlen($best)) {
                 $best = $c;
                 $bestMode = self::MODE_GZIP;
             }
         }
 
         /* AES-256-GCM */
-        $iv  = random_bytes(12);
+        $iv  = \random_bytes(12);
         $tag = '';
-        $ct  = openssl_encrypt(
+        $ct  = \openssl_encrypt(
             $best,
             'aes-256-gcm',
             $this->key,
@@ -227,6 +236,6 @@ final readonly class CookieEncryptionMiddleware
             $tag
         );
 
-        return base64_encode($bestMode . $iv . $tag . $ct);
+        return \base64_encode($bestMode . $iv . $tag . $ct);
     }
 }

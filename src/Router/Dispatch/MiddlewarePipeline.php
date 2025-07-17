@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router\Dispatch;
 
+use Closure;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use InvalidArgumentException;
@@ -11,12 +12,11 @@ use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 use UnexpectedValueException;
-use Closure;
 
 /**
  * Executes a stack of middleware around a final handler.
  *
- * @phpstan-type Middleware callable(Request, callable(Request):Response):Response
+ * @phpstan-type Middleware   callable(Request, callable(Request):Response):Response
  * @phpstan-type FinalHandler callable(Request):mixed
  *
  * @psalm-immutable
@@ -33,8 +33,8 @@ final class MiddlewarePipeline
     private Closure $pipeline;
 
     /**
-     * @param list<Middleware>   $stack
-     * @param FinalHandler       $last
+     * @param list<Middleware> $stack
+     * @param FinalHandler     $last
      *
      * @throws InvalidArgumentException
      */
@@ -78,32 +78,42 @@ final class MiddlewarePipeline
 
     private function wrapFinal(callable $handler): Closure
     {
-        return function (Request $req) use ($handler): Response {
+        // $tag is a simple literal – no per-request allocation
+        $tag = 'Final handler';
+
+        return static function (Request $req) use ($handler, $tag): Response {
             $res = $handler($req);
-            return self::assertResponse($res, 'Final handler');
+            return self::assertResponse($res, $tag);
         };
     }
+
     private function wrap(callable $mw, Closure $next): Closure
     {
-        // recognise PSR-15 objects
+        /* ---- PSR-15 object path --------------------------------------- */
         if ($mw instanceof MiddlewareInterface) {
-            return fn (Request $req): Response => self::assertResponse($mw->process(
-                $req,
-                new class ($next) implements RequestHandlerInterface {
-                    public function __construct(private $next)
-                    {
+            $tag = $mw::class;                 // computed once
+            return static fn (Request $req): Response => self::assertResponse(
+                $mw->process(
+                    $req,
+                    new class ($next) implements RequestHandlerInterface {
+                        public function __construct(private Closure $next) {}
+                        public function handle(ServerRequestInterface $request): Response
+                        {
+                            $n = $this->next;
+                            return $n($request);
+                        }
                     }
-                    public function handle(ServerRequestInterface $request): Response
-                    {
-                        /** @var callable $n */ $n = $this->next;
-                        return $n($request);
-                    }
-                }
-            ), $mw::class);
+                ),
+                $tag
+            );
         }
 
-        // default closure/callable path
-        return fn (Request $req): Response => self::assertResponse($mw($req, $next), self::describe($mw));
+        /* ---- Closure / callable[] / "Class::method" ------------------- */
+        $tag = self::describe($mw);            // heavy reflection cached
+        return static fn (Request $req): Response => self::assertResponse(
+            $mw($req, $next),
+            $tag
+        );
     }
 
     /* -------------------------------------------------------------------------
@@ -111,7 +121,7 @@ final class MiddlewarePipeline
      * ---------------------------------------------------------------------- */
 
     /**
-     * @param mixed  $res
+     * @param mixed $res
      * @throws UnexpectedValueException
      */
     private static function assertResponse(mixed $res, string $source): Response

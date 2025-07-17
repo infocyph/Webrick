@@ -17,7 +17,7 @@ use RuntimeException;
  */
 final readonly class ResponseLinterMiddleware
 {
-    public function __construct(private bool $enabled = true)
+    public function __construct(private bool $enabled = false)
     {
     }
 

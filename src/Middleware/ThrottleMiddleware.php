@@ -22,7 +22,9 @@ final readonly class ThrottleMiddleware
         ?CacheItemPoolInterface $pool = null,
         private bool $retryAsDate = false,   // “Wed, 17 Jul … GMT” vs “120”
     ) {
-        $this->pool = $pool ?? Cache::file('throttle');
+        $this->pool = $pool ?? (extension_loaded('apcu')
+            ? Cache::apcu('throttle')
+            : Cache::file('throttle'));
     }
 
     public function __invoke(Request $req, Closure $next): Response

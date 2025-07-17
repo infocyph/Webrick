@@ -10,8 +10,8 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
 final class DynamicMatcher implements MatcherInterface
 {
     /**
-     * @var array<string, array<string, CompiledRoute[]>>
-     *        $indexed[hostKey]['GET'][] = CompiledRoute
+     * $indexed[host][verb][segments] = list<CompiledRoute>
+     * e.g. "api.example.com" → "GET" → 3 → [...]
      */
     private array $indexed = [];
 
@@ -19,6 +19,7 @@ final class DynamicMatcher implements MatcherInterface
     {
         $host = strtolower($route->getDomain() ?? '*');
         $verb = $route->getMethod();
+        $arity  = $route->getPathLength();
 
         // ── optional duplicate guard ──────────────────────────────────
         foreach ($this->indexed[$host][$verb] ?? [] as $r) {
@@ -27,7 +28,7 @@ final class DynamicMatcher implements MatcherInterface
             }
         }
 
-        $this->indexed[$host][$verb][] = $route;
+        $this->indexed[$host][$verb][$arity][] = $route;
     }
 
     public function match(string $method, string $host, string $path): array
@@ -45,12 +46,13 @@ final class DynamicMatcher implements MatcherInterface
             $verbs = array_keys($this->indexed[$host] ?? []);
         }
 
+        $arity = substr_count(trim($path, '/'), '/') + ($path !== '/' ? 1 : 0);
         $candidates = [];
         foreach ([$host, '*'] as $hKey) {
             foreach ($verbs as $vKey) {
                 $candidates = array_merge(
                     $candidates,
-                    $this->indexed[$hKey][$vKey] ?? []
+                    $this->indexed[$hKey][$vKey][$arity] ?? []
                 );
             }
         }
@@ -92,7 +94,7 @@ final class DynamicMatcher implements MatcherInterface
      */
     private function paramsFrom(CompiledRoute $route, array $matches): array
     {
-        $map   = [];
+        $map = [];
         $names = $route->getVariables();               // 0-based list
         foreach ($names as $i => $name) {
             if (isset($matches[$i + 1])) {
