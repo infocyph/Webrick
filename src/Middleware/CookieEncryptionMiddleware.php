@@ -11,6 +11,8 @@ use Infocyph\Webrick\Response\Cookies\Cookie;
 use Infocyph\Webrick\Response\Cookies\CookieJar;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
+use Psr\Cache\InvalidArgumentException;
+use Random\RandomException;
 
 /**
  * AES-256-GCM cookie encryption with optional compression and smart chunking.
@@ -156,8 +158,10 @@ final readonly class CookieEncryptionMiddleware
     }
 
     /**
+     * @param string $plaintext
      * @return array<int,string>  1-based segment list
-     * @throws LengthException
+     * @throws InvalidArgumentException
+     * @throws RandomException
      */
     private function encryptSegments(string $plaintext): array
     {

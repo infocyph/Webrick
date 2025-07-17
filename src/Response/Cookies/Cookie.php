@@ -21,7 +21,7 @@ final class Cookie implements \Stringable
         private ?int    $expires = null,       // unix epoch
         private string  $path    = '/',
         private ?string $domain  = null,
-        private bool    $secure  = false,
+        private bool    $secure  = true,
         private bool    $httpOnly = true,
         private string  $sameSite = 'Lax',      // Lax|Strict|None
     ) {
