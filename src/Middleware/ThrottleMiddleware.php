@@ -12,6 +12,18 @@ use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Request\Request;
 use Psr\Cache\CacheItemPoolInterface;
 
+/**
+ * $middleware = new ThrottleMiddleware(
+ *      max: 100,
+ *      window: 60,
+ *      identifierResolver: function (Request $request) {
+ *          // Return the user ID if it exists, otherwise fall back to the IP
+ *          return $request->getAttribute('user_id') ?? $request->ip();
+ *          // or we could use etc.
+ *          return $request->header('X-Api-Key');
+ *      }
+ * );
+ */
 final readonly class ThrottleMiddleware
 {
     private CacheItemPoolInterface $pool;
@@ -21,6 +33,7 @@ final readonly class ThrottleMiddleware
         private int  $window      = 60,      // seconds
         ?CacheItemPoolInterface $pool = null,
         private bool $retryAsDate = false,   // “Wed, 17 Jul … GMT” vs “120”
+        private ?Closure $identifierResolver = null,
     ) {
         $this->pool = $pool ?? (extension_loaded('apcu')
             ? Cache::apcu('throttle')
@@ -30,11 +43,15 @@ final readonly class ThrottleMiddleware
     public function __invoke(Request $req, Closure $next): Response
     {
         /* 1. derive cache-key ------------------------------------------------*/
-        $ip  = $req->getAttribute('client_ip')
-            ?? $req->getServerParams()['REMOTE_ADDR']
-            ?? 'unknown';
+        if ($this->identifierResolver) {
+            $identifier = ($this->identifierResolver)($req);
+        } else {
+            $identifier = $req->getAttribute('client_ip')
+                ?? $req->getServerParams()['REMOTE_ADDR']
+                ?? 'unknown';
+        }
 
-        $key  = 't:' . sha1($ip);
+        $key  = 't:' . sha1($identifier);
         $item = $this->pool->getItem($key);
 
         /* 2. unpack payload --------------------------------------------------*/

@@ -7,6 +7,7 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Router\Route;
 
 use Infocyph\Webrick\Interfaces\RouteInterface;
+use Infocyph\Webrick\Router\Definition\Attribute\Cors;
 
 /**
  * Declarative route definition produced by the Registrar.
@@ -23,6 +24,9 @@ final class Route implements RouteInterface
 
     /** one-time, stringable fingerprint for fast look-ups */
     private readonly string $handlerId;
+
+    /** @var Cors|null The route-specific CORS policy. */
+    private ?Cors $corsPolicy = null;
 
     public function __construct(
         private readonly string  $method,
@@ -72,6 +76,11 @@ final class Route implements RouteInterface
         return $this->handlerId;
     }
 
+    public function getCorsPolicy(): ?Cors
+    {
+        return $this->corsPolicy;
+    }
+
     public function isDynamic(): bool
     {
         return str_contains($this->path, '{');
@@ -101,6 +110,13 @@ final class Route implements RouteInterface
     {
         $clone       = clone $this;
         $clone->name = $name;
+        return $clone;
+    }
+
+    public function withCorsPolicy(Cors $policy): self
+    {
+        $clone = clone $this;
+        $clone->corsPolicy = $policy;
         return $clone;
     }
 

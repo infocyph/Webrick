@@ -7,6 +7,7 @@ namespace Infocyph\Webrick\Router\Route;
 use Closure;
 use Infocyph\Webrick\Router\Constraint\Registry;
 use Infocyph\Webrick\Interfaces\RouteInterface;
+use Infocyph\Webrick\Router\Definition\Attribute\Cors;
 
 /**
  * Hot-path DTO consumed by matchers.
@@ -38,6 +39,8 @@ final class CompiledRoute implements RouteInterface
             ? $route->getMiddlewares()
             : $route->getMiddleware();
 
+        $corsPolicy = \method_exists($route, 'getCorsPolicy') ? $route->getCorsPolicy() : null;
+
         $idx = self::$autoIdx++;
 
         return new self(
@@ -51,6 +54,7 @@ final class CompiledRoute implements RouteInterface
             $regex,
             $vars,
             $idx,
+            $corsPolicy
         );
     }
 
@@ -70,7 +74,8 @@ final class CompiledRoute implements RouteInterface
         private readonly bool     $dynamic,
         private readonly string   $regex,
         private readonly array    $variables,
-        int                        $index
+        int                        $index,
+        private readonly ?Cors    $corsPolicy = null,
     ) {
         $this->handler = $handler;
         $this->index   = $index;
@@ -111,6 +116,11 @@ final class CompiledRoute implements RouteInterface
     public function getMiddleware(): array
     {
         return $this->middleware;
+    }
+
+    public function getCorsPolicy(): ?Cors
+    {
+        return $this->corsPolicy;
     }
 
     public function isDynamic(): bool
@@ -157,7 +167,8 @@ final class CompiledRoute implements RouteInterface
             $this->dynamic,
             $this->regex,
             $this->variables,
-            $this->index
+            $this->index,
+            $this->corsPolicy
         );
     }
 
@@ -174,7 +185,8 @@ final class CompiledRoute implements RouteInterface
             $this->dynamic,
             $this->regex,
             $this->variables,
-            $this->index
+            $this->index,
+            $this->corsPolicy
         );
     }
 
@@ -190,7 +202,8 @@ final class CompiledRoute implements RouteInterface
             $this->dynamic,
             $this->regex,
             $this->variables,
-            $this->index
+            $this->index,
+            $this->corsPolicy
         );
     }
 

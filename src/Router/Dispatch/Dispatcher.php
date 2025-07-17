@@ -33,6 +33,10 @@ final class Dispatcher
         // expose path params to downstream code
         $request = $request->withAttribute('route_params', $vars);
 
+        if (method_exists($route, 'getCorsPolicy') && $corsPolicy = $route->getCorsPolicy()) {
+            $request = $request->withAttribute('cors_policy', $corsPolicy);
+        }
+
         $routeId = \method_exists($route, 'getIndex')
             ? $route->getIndex()          // deterministic small int
             : \spl_object_id($route);     // fallback
