@@ -5,85 +5,88 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Router\Route;
 
 use Closure;
-use Infocyph\Webrick\Router\Constraint\Registry;
 use Infocyph\Webrick\Interfaces\RouteInterface;
+use Infocyph\Webrick\Router\Constraint\Registry as ConstraintRegistry;
 use Infocyph\Webrick\Router\Definition\Attribute\Cors;
 
 /**
  * Hot-path DTO consumed by matchers.
  *
+ *  – does all heavy work (placeholder parsing, PCRE building) exactly **once**
+ *  – now also carries an immutable <segment-spec> array for the new matcher
+ *
+ * SegmentSpec shape
+ * -----------------
+ *  • literal : ['type' => 'lit'  , 'val'  => string]
+ *  • param   : ['type' => 'param', 'name' => string, 'regex' => string]
+ *
+ * @psalm-type SegmentSpec = array{type:'lit',val:string}|array{type:'param',name:string,regex:string}
  * @psalm-type MiddlewareList = list<class-string|object>
  */
 final class CompiledRoute implements RouteInterface
 {
-    /** Auto-incrementing ordinal used by FastRegexCompiler for stable capture-indices. */
+    /** auto-incrementing ordinal (declaration order) */
     private static int $autoIdx = 0;
 
     /** @var callable|class-string */
     private $handler;
 
-    /** Deterministic declaration order (starts at 0) */
-    private readonly int $index;
+    /** @var list<SegmentSpec> */
+    private array $segments;
+
+    /** immutable constructor – only `fromRoute()` should call this */
+    public function __construct(
+        private readonly string       $method,
+        private readonly string       $path,
+        callable|Closure|string       $handler,
+        private readonly ?string      $domain,
+        private readonly array        $middleware,
+        private readonly ?string      $name,
+        private readonly bool         $dynamic,
+        private readonly string       $regex,
+        private readonly array        $variables,   // ordered capture names
+        private readonly int          $index,
+        private readonly ?Cors        $corsPolicy,
+        array                         $segments,    // <── new
+    ) {
+        $this->handler  = $handler;
+        $this->segments = $segments;
+    }
+
+    /* ─────────────── factory ─────────────── */
 
     /**
-     * Create a fully-compiled instance from a **mutable** {@see RouteInterface}.
-     * All heavy work (regex building, param extraction, …) is done once here,
-     * not on every match.
+     * Compile *once* from the declarative Route into an immutable DTO.
      */
     public static function fromRoute(RouteInterface $route): self
     {
-        [$regex, $vars, $dyn] = self::compilePattern($route->getPath());
+        [ $segments, $vars, $regex, $dynamic ] =
+            self::parsePath($route->getPath());
 
-        // NB: `getMiddleware()` vs `getMiddlewares()` – keep BC.
         $mw = \method_exists($route, 'getMiddlewares')
             ? $route->getMiddlewares()
             : $route->getMiddleware();
 
-        $corsPolicy = \method_exists($route, 'getCorsPolicy') ? $route->getCorsPolicy() : null;
-
-        $idx = self::$autoIdx++;
+        $cors = \method_exists($route, 'getCorsPolicy')
+            ? $route->getCorsPolicy() : null;
 
         return new self(
-            $route->getMethod(),
-            $route->getPath(),
-            $route->getHandler(),
-            $route->getDomain(),
-            $mw,
-            $route->getName(),
-            $dyn,
-            $regex,
-            $vars,
-            $idx,
-            $corsPolicy
+            method     : $route->getMethod(),
+            path       : $route->getPath(),
+            handler    : $route->getHandler(),
+            domain     : $route->getDomain(),
+            middleware : $mw,
+            name       : $route->getName(),
+            dynamic    : $dynamic,
+            regex      : $regex,
+            variables  : $vars,
+            index      : self::$autoIdx++,
+            corsPolicy : $cors,
+            segments   : $segments,
         );
     }
 
-    /**
-     * @internal Instantiation happens only via {@see fromRoute()}.
-     *
-     * @param MiddlewareList         $middleware
-     * @param list<non-empty-string> $variables
-     */
-    public function __construct(
-        private readonly string   $method,
-        private readonly string   $path,
-        callable|Closure|string   $handler,
-        private readonly ?string  $domain,
-        private readonly array    $middleware,
-        private readonly ?string  $name,
-        private readonly bool     $dynamic,
-        private readonly string   $regex,
-        private readonly array    $variables,
-        int                        $index,
-        private readonly ?Cors    $corsPolicy = null,
-    ) {
-        $this->handler = $handler;
-        $this->index   = $index;
-    }
-
-    /* -----------------------------------------------------------------
-     *  Interface – accessors
-     * ----------------------------------------------------------------*/
+    /* ─────────────── accessors ─────────────── */
 
     public function getMethod(): string
     {
@@ -105,24 +108,18 @@ final class CompiledRoute implements RouteInterface
     {
         return $this->name;
     }
-
-    /** @return MiddlewareList */
     public function getMiddlewares(): array
     {
         return $this->middleware;
     }
-
-    /** Legacy alias kept for BC */
     public function getMiddleware(): array
     {
         return $this->middleware;
-    }
-
+    } // BC alias
     public function getCorsPolicy(): ?Cors
     {
         return $this->corsPolicy;
     }
-
     public function isDynamic(): bool
     {
         return $this->dynamic;
@@ -131,127 +128,83 @@ final class CompiledRoute implements RouteInterface
     {
         return $this->regex;
     }
-
     /** @return list<non-empty-string> */
     public function getVariables(): array
     {
         return $this->variables;
     }
-
+    /** @return list<SegmentSpec> */
+    public function getSegments(): array
+    {
+        return $this->segments;
+    }
     public function getPathLength(): int
     {
-        return $this->path === '/'
-            ? 0
-            : substr_count(trim($this->path, '/'), '/') + 1;
+        return $this->path === '/' ? 0 :
+            substr_count(trim($this->path, '/'), '/') + 1;
     }
-
-    /** Declaration order — used by FastRegexCompiler */
     public function getIndex(): int
     {
         return $this->index;
     }
 
-    /* -----------------------------------------------------------------
-     *  Functional mutators – return **NEW** instance
-     * ----------------------------------------------------------------*/
-
-    public function withDomain(?string $domain): self
-    {
-        return new self(
-            $this->method,
-            $this->path,
-            $this->handler,
-            $domain,
-            $this->middleware,
-            $this->name,
-            $this->dynamic,
-            $this->regex,
-            $this->variables,
-            $this->index,
-            $this->corsPolicy
-        );
-    }
-
-    /** @param MiddlewareList $middleware */
-    public function withMiddleware(array $middleware): self
-    {
-        return new self(
-            $this->method,
-            $this->path,
-            $this->handler,
-            $this->domain,
-            [...$this->middleware, ...$middleware],
-            $this->name,
-            $this->dynamic,
-            $this->regex,
-            $this->variables,
-            $this->index,
-            $this->corsPolicy
-        );
-    }
-
-    public function withName(string $name): self
-    {
-        return new self(
-            $this->method,
-            $this->path,
-            $this->handler,
-            $this->domain,
-            $this->middleware,
-            $name,
-            $this->dynamic,
-            $this->regex,
-            $this->variables,
-            $this->index,
-            $this->corsPolicy
-        );
-    }
-
-    /* -----------------------------------------------------------------
-     *  Internal helpers
-     * ----------------------------------------------------------------*/
+    /* ─────────────── internal helper ─────────────── */
 
     /**
-     * Compile `{param:constraint}` placeholders into a PCRE and capture list.
+     * Parse the URI **once**:
+     *   – build segment table
+     *   – build capture-ordered variable list
+     *   – build full PCRE (still needed by FastRegexCompiler)
      *
-     * @return array{0:string,1:list<string>,2:bool}  [regex, vars, isDynamic]
+     * @return array{0:list<SegmentSpec>,1:list<string>,2:string,3:bool}
      */
-    private static function compilePattern(string $path): array
+    private static function parsePath(string $path): array
     {
+        // completely static?
         if (!str_contains($path, '{')) {
-            return ['#\A' . preg_quote($path, '#') . '\z#D', [], false];
+            return [
+                /* segments */ [['type' => 'lit', 'val' => $path === '/' ? '' : ltrim($path, '/')]],
+                /* vars     */ [],
+                /* regex    */ '#\A' . preg_quote($path, '#') . '\z#D',
+                /* dynamic  */ false,
+            ];
         }
 
-        $segments   = explode('/', trim($path, '/'));
+        $segments   = [];
         $vars       = [];
         $patternBuf = [];
 
-        foreach ($segments as $segment) {
-            if ($segment === '') {      // leading / trailing /
+        foreach (explode('/', trim($path, '/')) as $raw) {
+            if ($raw === '') {
                 continue;
             }
 
             if (
-                preg_match(
-                    '/^\{([A-Za-z_][A-Za-z0-9_]*)(?::([^}]+))?}$/',
-                    $segment,
-                    $m
-                )
+                \preg_match('/^\{([A-Za-z_]\w*)(?::([^}]+))?}$/', $raw, $m)
             ) {
-                [, $name, $constraint] = $m + [null, null, null];
-                $regexPart = $constraint
-                    ? Registry::buildPattern($constraint)
+                [ , $name, $constraint ] = $m + [null, null, null];
+
+                $body = $constraint
+                    ? ConstraintRegistry::buildPattern($constraint)
                     : '[^/]+';
 
-                $patternBuf[] = '(' . $regexPart . ')';
-                $vars[]       = $name;
+                $segments[] = [
+                    'type'  => 'param',
+                    'name'  => $name,
+                    'regex' => '#\A' . $body . '\z#D',
+                ];
+                $vars[]        = $name;
+                $patternBuf[]  = '(' . $body . ')';
                 continue;
             }
 
-            // literal piece
-            $patternBuf[] = preg_quote($segment, '#');
+            // literal
+            $segments[] = ['type' => 'lit', 'val' => $raw];
+            $patternBuf[] = \preg_quote($raw, '#');
         }
 
-        return ['#\A/' . implode('/', $patternBuf) . '\z#D', $vars, true];
+        $regex = '#\A/' . \implode('/', $patternBuf) . '\z#D';
+
+        return [$segments, $vars, $regex, /*dynamic*/ true];
     }
 }
