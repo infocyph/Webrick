@@ -29,14 +29,14 @@ final class Stream implements StreamInterface
     public function __construct(mixed $source = '')
     {
         $this->h = match (true) {
-            is_string($source)                 => self::openMemory($source),
-            $source instanceof SplFileObject   => self::openFileObject($source),
+            is_string($source) => self::openMemory($source),
+            $source instanceof SplFileObject => self::openFileObject($source),
             $source instanceof StreamInterface => $source->detach(),
-            is_resource($source)               => $source,
-            default                            => throw new RuntimeException('Invalid stream source'),
+            is_resource($source) => $source,
+            default => throw new RuntimeException('Invalid stream source'),
         };
 
-        $mode         = stream_get_meta_data($this->h)['mode'];
+        $mode = stream_get_meta_data($this->h)['mode'];
         $this->readable = strpbrk($mode, 'r+') !== false;
         $this->writable = strpbrk($mode, 'waxc+') !== false;
     }
@@ -72,8 +72,11 @@ final class Stream implements StreamInterface
         if (!$this->h) {
             return '';
         }
+        $pos = $this->tell();         // save cursor
         $this->rewind();
-        return stream_get_contents($this->h) ?: '';
+        $data = stream_get_contents($this->h) ?: '';
+        $this->seek($pos);            // restore cursor
+        return $data;
     }
 
     public function close(): void
@@ -109,6 +112,7 @@ final class Stream implements StreamInterface
     {
         return !$this->h || feof($this->h);
     }
+
     public function isSeekable(): bool
     {
         return $this->h ? (stream_get_meta_data($this->h)['seekable'] ?? false) : false;
@@ -118,6 +122,7 @@ final class Stream implements StreamInterface
     {
         $this->doSeek($o, $w);
     }
+
     public function rewind(): void
     {
         $this->doSeek(0);
@@ -127,6 +132,7 @@ final class Stream implements StreamInterface
     {
         return $this->writable;
     }
+
     public function write($s): int
     {
         $bytes = fwrite($this->need(), $s);
@@ -140,6 +146,7 @@ final class Stream implements StreamInterface
     {
         return $this->readable;
     }
+
     public function read($l): string
     {
         $data = fread($this->need(), $l);

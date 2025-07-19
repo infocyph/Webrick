@@ -25,16 +25,16 @@ class ServerRequest extends Message implements ServerRequestInterface
 
     public static function createFromGlobals(): self
     {
-        $srv  = $_SERVER;
-        $uri  = Uri::fromServerParams($srv);
+        $srv = $_SERVER;
+        $uri = Uri::fromServerParams($srv);
 
-        $in   = fopen('php://input', 'rb') ?: fopen('php://temp', 'rb');
+        $in = fopen('php://input', 'rb') ?: fopen('php://temp', 'rb');
         $body = new Stream($in);
         $httpVer = str_starts_with(($srv['SERVER_PROTOCOL'] ?? ''), 'HTTP/')
             ? substr((string)$srv['SERVER_PROTOCOL'], 5)
             : '1.1';
 
-        /* bootstrap with empty headers, we import later */
+        /* build request (headers filled later in one go) */
         $req = new self(
             $srv['REQUEST_METHOD'] ?? 'GET',
             $uri,
@@ -43,17 +43,16 @@ class ServerRequest extends Message implements ServerRequestInterface
             $body,
             $httpVer,
             $_POST,
-            self::normaliseFiles($_FILES)
+            self::normaliseFiles($_FILES),
         );
 
-        /* 1) Import headers via RequestHeaders façade (includes auth fallbacks) */
-        foreach (new RequestHeaders($req)->all() as $name => $val) {
-            $req = $req->withHeader($name, $val);
-        }
+        /* 1) Import headers **once** (RequestHeaders also adds auth fall-backs) */
+        $bag = new RequestHeaders($req)->all();
+        $req->headers = $bag->all();
 
         /* 2) x-www-form-urlencoded body for verbs ≠ POST */
         if (
-            in_array($req->method, ['PUT','PATCH','DELETE'], true) &&
+            in_array($req->method, ['PUT', 'PATCH', 'DELETE'], true) &&
             str_contains(strtolower($req->getHeaderLine('Content-Type')), 'application/x-www-form-urlencoded')
         ) {
             parse_str((string)$body, $form);
@@ -69,66 +68,68 @@ class ServerRequest extends Message implements ServerRequestInterface
 
     /* ======== 2.  Non-PSR state  ======================================= */
 
-    private string     $method;
+    private string $method;
     private UriInterface $uri;
 
-    private array      $server  = [];
-    private array      $cookie  = [];
-    private array      $query   = [];
-    private array      $files   = [];
+    private array $server = [];
+    private array $cookie = [];
+    private array $query = [];
+    private array $files = [];
 
     /** @var null|array|object */
     private null|array|object $parsed;
 
-    private ?string    $requestTarget = null;
+    private ?string $requestTarget = null;
 
     /* runtime caches */
     private ?RequestHeaders $hdrFacade = null;
-    private ?Collection     $jsonCol = null;
-    private ?Collection     $xmlCol  = null;
-    private ?string         $rawBody = null;
-    private ?string         $effectiveMethod = null;
+    private ?Collection $jsonCol = null;
+    private ?Collection $xmlCol = null;
+    private ?string $rawBody = null;
+    private ?string $effectiveMethod = null;
 
     /* variable-order map */
     private ?array $varMap = null;
-    private bool  $checkEnv = false;
+    private bool $checkEnv = false;
 
     /** @var array<string,mixed> */
     private array $attributes = [];
 
     /* Valid verbs */
-    private const array VALID = ['GET','POST','PUT','DELETE','PATCH','HEAD','OPTIONS','CONNECT','TRACE'];
+    private const array VALID = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS', 'CONNECT', 'TRACE'];
 
     /* ======== 3.  Constructor (private, use factory) ==================== */
 
     public function __construct(
-        string                  $method,
-        UriInterface|string     $uri,
-        array                   $server  = [],
-        array                   $headers = [],
-        StreamInterface         $body    = new Stream(),
-        string                  $httpVer = '1.1',
-        null|array|object       $parsed  = null,
-        array                   $files   = [],
-        ?string                 $requestTarget = null
+        string $method,
+        UriInterface|string $uri,
+        array $server = [],
+        array $headers = [],
+        StreamInterface $body = new Stream(),
+        string $httpVer = '1.1',
+        null|array|object $parsed = null,
+        array $files = [],
+        ?string $requestTarget = null,
     ) {
         parent::__construct($headers, $body, $httpVer);
 
-        $this->method  = strtoupper($method);
-        $this->uri     = $uri instanceof UriInterface ? $uri : new Uri($uri);
-        $this->server  = $server;
-        $this->parsed  = $parsed;
-        $this->files   = $files;
+        $this->method = strtoupper($method);
+        $this->uri = $uri instanceof UriInterface ? $uri : new Uri($uri);
+        $this->server = $server;
+        $this->parsed = $parsed;
+        $this->files = $files;
         $this->requestTarget = $requestTarget;
 
         /* copies of super-globals */
         $this->cookie = $_COOKIE;
-        $this->query  = $_GET;
+        $this->query = $_GET;
 
         /* Host header fallback */
         if (!$this->hasHeader('Host') && $this->uri->getHost() !== '') {
-            $this->headers['Host'] = [$this->uri->getHost()
-                . ($this->uri->getPort() ? ':' . $this->uri->getPort() : '')];
+            $this->headers['Host'] = [
+                $this->uri->getHost()
+                . ($this->uri->getPort() ? ':' . $this->uri->getPort() : ''),
+            ];
         }
 
         $this->buildVariableMap();
@@ -147,6 +148,7 @@ class ServerRequest extends Message implements ServerRequestInterface
         }
         return $t;
     }
+
     public function withRequestTarget($t): static
     {
         if (preg_match('#\s#', $t)) {
@@ -161,6 +163,7 @@ class ServerRequest extends Message implements ServerRequestInterface
     {
         return $this->method;
     }
+
     public function withMethod($m): static
     {
         $c = clone $this;
@@ -173,6 +176,7 @@ class ServerRequest extends Message implements ServerRequestInterface
     {
         return $this->uri;
     }
+
     public function withUri(UriInterface $u, $preserveHost = false): static
     {
         $c = clone $this;
@@ -198,6 +202,7 @@ class ServerRequest extends Message implements ServerRequestInterface
     {
         return $this->cookie;
     }
+
     public function withCookieParams(array $c): static
     {
         $cl = clone $this;
@@ -210,6 +215,7 @@ class ServerRequest extends Message implements ServerRequestInterface
     {
         return $this->query;
     }
+
     public function withQueryParams(array $q): static
     {
         $cl = clone $this;
@@ -222,12 +228,14 @@ class ServerRequest extends Message implements ServerRequestInterface
     {
         return $this->files;
     }
+
     public function withUploadedFiles(array $files): static
     {
         array_walk_recursive(
             $files,
-            static fn ($f) => $f instanceof UploadedFileInterface
-                ?: throw new InvalidArgumentException('Invalid uploaded file')
+            static fn($f)
+                => $f instanceof UploadedFileInterface
+                ?: throw new InvalidArgumentException('Invalid uploaded file'),
         );
         $cl = clone $this;
         $cl->files = $files;
@@ -238,6 +246,7 @@ class ServerRequest extends Message implements ServerRequestInterface
     {
         return $this->parsed;
     }
+
     public function withParsedBody($d): static
     {
         if ($d !== null && !is_array($d) && !is_object($d)) {
@@ -253,16 +262,19 @@ class ServerRequest extends Message implements ServerRequestInterface
     {
         return $this->attributes;
     }
+
     public function getAttribute($n, $def = null): mixed
     {
         return $this->attributes[$n] ?? $def;
     }
+
     public function withAttribute($n, $v): static
     {
         $cl = clone $this;
         $cl->attributes[$n] = $v;
         return $cl;
     }
+
     public function withoutAttribute($n): static
     {
         $cl = clone $this;
@@ -302,10 +314,10 @@ class ServerRequest extends Message implements ServerRequestInterface
         if (!$this->xmlCol) {
             $ct = $this->getHeaderLine('Content-Type');
             if (preg_match('#(application|text)/xml#i', $ct)) {
-                $xml  = simplexml_load_string(
+                $xml = simplexml_load_string(
                     $this->raw(),
                     'SimpleXMLElement',
-                    LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING
+                    LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING,
                 ) ?: null;
                 $arr = $xml ? json_decode(json_encode($xml), true) : [];
                 $this->xmlCol = new Collection((array)$arr);
@@ -326,7 +338,7 @@ class ServerRequest extends Message implements ServerRequestInterface
         if (!in_array($verb, self::VALID, true)) {
             return $this->effectiveMethod = $verb;          // REPORT / SEARCH …
         }
-        return $this->effectiveMethod = match($verb) {
+        return $this->effectiveMethod = match ($verb) {
             'HEAD' => 'GET',
             'POST' => $this->methodOverride() ?? 'POST',
             default => $verb
@@ -353,6 +365,7 @@ class ServerRequest extends Message implements ServerRequestInterface
     {
         return str_contains($this->getHeaderLine('Accept'), 'json') || $this->isAjax();
     }
+
     public function expectsXml(): bool
     {
         return str_contains($this->getHeaderLine('Accept'), 'xml');
@@ -363,19 +376,23 @@ class ServerRequest extends Message implements ServerRequestInterface
     {
         return $this->fetch(new Collection($this->server), $k);
     }
+
     public function cookie(?string $k = null): mixed
     {
         return $this->fetch(new Collection($this->cookie), $k);
     }
+
     public function query(?string $k = null): mixed
     {
         return $this->fetch(new Collection($this->query), $k);
     }
+
     public function post(?string $k = null): mixed
     {
         $col = new Collection(is_array($this->parsed) ? $this->parsed : []);
         return $this->fetch($col, $k);
     }
+
     public function file(?string $k = null): mixed
     {
         return $this->fetch(new Collection($this->files), $k);
@@ -397,6 +414,7 @@ class ServerRequest extends Message implements ServerRequestInterface
         }
         return null;
     }
+
     public function __isset(string $key): bool
     {
         return $this->__get($key) !== null;
@@ -424,21 +442,22 @@ class ServerRequest extends Message implements ServerRequestInterface
                 $part['size'] ?? null,
                 $part['error'] ?? 0,
                 $part['name'] ?? null,
-                $part['type'] ?? null
+                $part['type'] ?? null,
             );
         }
         return $out;
     }
+
     private static function unwindNestedFiles(array $bag): array
     {
         $out = [];
         foreach ($bag['tmp_name'] as $idx => $_) {
             $spec = [
                 'tmp_name' => $bag['tmp_name'][$idx],
-                'size'     => $bag['size'][$idx],
-                'error'    => $bag['error'][$idx],
-                'name'     => $bag['name'][$idx],
-                'type'     => $bag['type'][$idx],
+                'size' => $bag['size'][$idx],
+                'error' => $bag['error'][$idx],
+                'name' => $bag['name'][$idx],
+                'type' => $bag['type'][$idx],
             ];
             $out[$idx] = is_array($spec['tmp_name'])
                 ? self::unwindNestedFiles($spec)               // deeper level
@@ -477,18 +496,18 @@ class ServerRequest extends Message implements ServerRequestInterface
             }
         }
 
-        $this->varMap   = $map;
+        $this->varMap = $map;
         $this->checkEnv = in_array('E', $seq, true);
     }
 
     private function determineVariableOrder(): array
     {
         $vars = strtoupper(preg_replace('/[^EGPCS]/', '', ini_get('variables_order') ?: 'EGPCS'));
-        $req  = strtoupper(preg_replace('/[^GPC]/', '', ini_get('request_order') ?: ''));
+        $req = strtoupper(preg_replace('/[^GPC]/', '', ini_get('request_order') ?: ''));
 
-        $seq  = str_split($vars);
+        $seq = str_split($vars);
         if ($req !== '') {
-            $seq = array_values(array_diff($seq, ['G','P','C']));
+            $seq = array_values(array_diff($seq, ['G', 'P', 'C']));
             $anchor = array_search('E', $seq, true);
             $insert = $anchor === false ? 0 : $anchor + 1;
             foreach (array_reverse(str_split($req)) as $ch) {

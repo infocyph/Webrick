@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Response\Cookies;
@@ -15,7 +16,9 @@ final class CookieJar
 
     public function add(Cookie $c): self
     {
-        $x = clone $this; $x->cookies[$c->name] = $c; return $x;
+        $x = clone $this;
+        $x->cookies[$c->name] = $c;
+        return $x;
     }
 
     public function remove(string $name): self

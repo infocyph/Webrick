@@ -123,7 +123,8 @@ abstract class Message implements MessageInterface
     /* ---------------- internals ---------------- */
     private function norm(string $n): string
     {
-        return ucwords(strtolower($n), '-');
+        static $cache = [];
+        return $cache[$n] ??= ucwords(strtolower($n), '-');
     }
 
     private function normalise(array $h): array
@@ -136,5 +137,7 @@ abstract class Message implements MessageInterface
     }
 
     /* guard: subclasses only */
-    protected function __clone(): void {}
+    protected function __clone(): void
+    {
+    }
 }
