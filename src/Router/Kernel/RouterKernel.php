@@ -7,7 +7,6 @@ namespace Infocyph\Webrick\Router\Kernel;
 use Closure;
 use Infocyph\InterMix\DI\Invoker;
 use Infocyph\Webrick\Router\Compile\FastRegexCompiler;
-use Infocyph\Webrick\Router\Support\Utils;
 use Infocyph\Webrick\Exceptions\{
     MethodNotAllowedException,
     RouteNotFoundException
@@ -16,7 +15,11 @@ use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Cache\RouteCache;
 use Infocyph\Webrick\Router\Dispatch\Dispatcher;
-use Infocyph\Webrick\Router\Matching\{DomainMatcher, FastRegexMatcher, MatcherInterface};
+use Infocyph\Webrick\Router\Matching\{
+    MergedMatcher,
+    FastRegexMatcher,
+    MatcherInterface
+};
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 use Psr\Cache\CacheItemPoolInterface as Psr6Pool;
 use Psr\Log\LoggerInterface;
@@ -32,7 +35,7 @@ final class RouterKernel
         private readonly ?RouteCache $cache,
         Closure $compiler,
         private readonly LoggerInterface $log,
-        private readonly ?string $regexDump = null
+        private readonly ?string $regexDump = null,
     ) {
         $this->compiler = $compiler;
         $this->warm();
@@ -53,15 +56,17 @@ final class RouterKernel
         Closure $compiler,
         MatcherInterface|null $matcher = null,
         ?string $regexDump = null,
-        bool $useRadix = true,
-        int $promoteAfter = 1_024,
-        int $cacheTtl = 86_400,  // 24 h
-    ): self {
+        int $cacheTtl = 86_400,   // 24 h
+    ): self
+    {
+        /* ① prefer a pre-generated fast-regex table when provided */
         if ($matcher === null && $regexDump && \is_file($regexDump)) {
             $matcher = new FastRegexMatcher($regexDump);
         }
 
-        $matcher ??= new DomainMatcher($useRadix, $promoteAfter);
+        /* ② fallback to the new merged matcher */
+        $matcher ??= new MergedMatcher();
+
         $dispatcher = new Dispatcher(Invoker::shared());
         $cache = new RouteCache($cachePool, ttl: $cacheTtl);
 
@@ -74,7 +79,7 @@ final class RouterKernel
     {
         $method = strtoupper($request->getMethod());
         $uri = $request->getUri();
-        $host = Utils::normaliseHost($uri->getHost());
+        $host = self::normaliseHost($uri->getHost());
         $path = $uri->getPath() ?: '/';
 
         try {
@@ -101,9 +106,7 @@ final class RouterKernel
      */
     private function warm(): void
     {
-        /* --------------------------------------------------------------
-         * 1. fetch from cache -or- build fresh
-         * ------------------------------------------------------------ */
+        /* 1) fetch from cache or build fresh -------------------------------- */
         $routes = $this->cache?->remember($this->compiler)      // PSR-6/16 path
             ?? ($this->compiler)();                             // cache disabled / miss
 
@@ -111,24 +114,16 @@ final class RouterKernel
             throw new \RuntimeException('Route compiler produced an empty table.');
         }
 
-        /* --------------------------------------------------------------
-         * 2. prime the in-memory matcher
-         *    (FastRegexMatcher is read-only → skip)
-         * ------------------------------------------------------------ */
+        /* 2) prime the in-memory matcher (fast-regex is read-only) ---------- */
         if (!$this->matcher instanceof FastRegexMatcher) {
             foreach ($routes as $route) {
                 $this->matcher->add($route);
             }
         }
 
-        /* --------------------------------------------------------------
-         * 3. on-disk dump for next boots
-         *    – only when DomainMatcher is in use
-         *    – only when a dump path was supplied
-         *    – never overwrite an existing, non-empty dump
-         * ------------------------------------------------------------ */
+        /* 3) emit fast-regex dump for future boots (first-run only) --------- */
         if (
-            $this->matcher instanceof \Infocyph\Webrick\Router\Matching\DomainMatcher
+            $this->matcher instanceof MergedMatcher
             && $this->regexDump !== ''
             && (!\is_file($this->regexDump) || \filesize($this->regexDump) === 0)
         ) {
@@ -136,9 +131,7 @@ final class RouterKernel
             $this->log->info('[router] fast-regex table dumped', ['file' => $this->regexDump]);
         }
 
-        /* --------------------------------------------------------------
-         * 4. telemetry
-         * ------------------------------------------------------------ */
+        /* 4) telemetry ------------------------------------------------------ */
         $this->log->info(
             '[router] table loaded',
             [
@@ -149,4 +142,36 @@ final class RouterKernel
         );
     }
 
+    /* ─────────────────────────── helpers ──────────────────────────────── */
+
+    /**
+     * Minimal copy of the previous `Utils::normaliseHost()` so we keep the
+     * exact same sanity checks without a hard dependency on Utils.
+     */
+    private static function normaliseHost(string $raw): string
+    {
+        // ① basic sanity
+        if ($raw === '' || \preg_match('/[\x00-\x20]/', $raw)) {
+            throw new \InvalidArgumentException('Illegal Host header.');
+        }
+
+        // ② trim trailing “.” and lowercase
+        $host = \rtrim(\strtolower($raw), '.');
+
+        // ③ IDN → ASCII if intl ext. available
+        if (\function_exists('idn_to_ascii') && !\str_contains($host, 'xn--')) {
+            $ascii = @\idn_to_ascii($host, \IDNA_DEFAULT, \INTL_IDNA_VARIANT_UTS46);
+            if ($ascii === false) {
+                throw new \InvalidArgumentException('Invalid IDN host name.');
+            }
+            $host = $ascii;
+        }
+
+        // ④ final ASCII-only guard
+        if (!\preg_match('/^[\x21-\x7E]+$/', $host)) {
+            throw new \InvalidArgumentException('Host contains non-ASCII bytes.');
+        }
+
+        return $host;
+    }
 }

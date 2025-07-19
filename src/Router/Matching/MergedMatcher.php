@@ -4,31 +4,34 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router\Matching;
 
-use Infocyph\Webrick\Router\Constraint\Registry as ConstraintRegistry;
+use Infocyph\Webrick\Exceptions\{MethodNotAllowedException, RouteNotFoundException};
 use Infocyph\Webrick\Router\Route\CompiledRoute;
-use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
-use Infocyph\Webrick\Exceptions\RouteNotFoundException;
 
 /**
- * One-pass matcher: static hash-table + radix-like trie for placeholders.
+ * One-pass matcher:
+ *   • O(1) hash-tables for static paths
+ *   • compact radix-like trie for dynamic placeholders
+ *
+ *   — now consumes the <segment-spec> that CompiledRoute already prepared —
  */
 final class MergedMatcher implements MatcherInterface
 {
-    /** [$host][static|trie] */
+    /** [$host][ 'static' => [verb][path] = Route , 'trie' => node ] */
     private array $hosts = [];
 
-    /* ─────────────── public API ─────────────── */
+    /* ────────────────────── public API ────────────────────── */
 
     public function add(CompiledRoute $route): void
     {
-        $host   = $this->normaliseHost($route->getDomain());
-        $method = strtoupper($route->getMethod());
+        $host   = $this->canonicalHost($route->getDomain());
+        $verb   = strtoupper($route->getMethod());
 
-        $this->ensureHostBucket($host);
+        $this->hosts[$host] ??= ['static' => [], 'trie' => $this->newNode()];
 
+        /* static vs dynamic decided **by CompiledRoute** */
         $route->isDynamic()
-            ? $this->addDynamic($host, $method, $route)
-            : $this->addStatic($host, $method, $route);
+            ? $this->insertDynamic($host, $verb, $route)
+            : $this->insertStatic($host, $verb, $route);
     }
 
     /** @inheritDoc */
@@ -38,45 +41,39 @@ final class MergedMatcher implements MatcherInterface
         $host    = strtolower($host);
         $allowed = [];
 
-        /* ① static O(1) -------------------------------------------------- */
+        /* ① hash-table -------------------------------------------------- */
         if ($hit = $this->matchStatic($host, $verb, $path, $allowed)) {
             return $hit;
         }
 
-        /* ② trie walk ---------------------------------------------------- */
+        /* ② trie descent ----------------------------------------------- */
         if ($hit = $this->matchTrie($host, $verb, $path, $allowed)) {
             return $hit;
         }
 
-        /* ③ verdict ------------------------------------------------------ */
-        if ($allowed) {
+        /* ③ verdict ----------------------------------------------------- */
+        if ($allowed !== []) {
             throw new MethodNotAllowedException($verb, $path, array_values(array_unique($allowed)));
         }
         throw new RouteNotFoundException($verb, $path);
     }
 
-    /* ─────────────── registration helpers ─────────────── */
+    /* ────────────────────── registration ────────────────────── */
 
-    private function normaliseHost(?string $h): string
+    private function canonicalHost(?string $h): string
     {
         if ($h === null) {
             return '*';
         }
-        // basic ASCII / control-char guard (keep in sync with Utils::normaliseHost)
-        if ($h === '' || \preg_match('/[\x00-\x20]/', $h)) {
+        if ($h === '' || preg_match('/[\x00-\x20]/', $h)) {
             throw new \InvalidArgumentException('Illegal host name.');
         }
         return strtolower(rtrim($h, '.'));
     }
 
-    private function ensureHostBucket(string $host): void
-    {
-        $this->hosts[$host] ??= ['static' => [], 'trie' => $this->newNode()];
-    }
+    /* ---------- static ---------- */
 
-    /* ---------- static ----------- */
-
-    private function addStatic(string $host, string $verb, CompiledRoute $r): void
+    private function insertStatic(string $host, string $verb, CompiledRoute $r): void
     {
         $path = $r->getPath();
 
@@ -86,17 +83,20 @@ final class MergedMatcher implements MatcherInterface
         $this->hosts[$host]['static'][$verb][$path] = $r;
     }
 
-    /* ---------- dynamic / trie --- */
+    /* ---------- dynamic ---------- */
 
-    private function addDynamic(string $host, string $verb, CompiledRoute $r): void
+    private function insertDynamic(string $host, string $verb, CompiledRoute $r): void
     {
-        $segments = $this->splitPath($r->getPath());
-        $node     = &$this->hosts[$host]['trie'];
+        $node = &$this->hosts[$host]['trie'];
 
-        foreach ($segments as $seg) {
-            $node = $this->isPlaceholder($seg)
-                ? $this->paramChild($node, $seg)
-                : $this->staticChild($node, $seg);
+        foreach ($r->getSegments() as $seg) {
+            if ($seg['type'] === 'lit') {
+                $node = &$this->literalChild($node, $seg['val']);
+                continue;
+            }
+
+            // param-segment
+            $node = &$this->paramChild($node, $seg);      // $seg is the spec array
         }
 
         if (isset($node['routes'][$verb])) {
@@ -105,44 +105,54 @@ final class MergedMatcher implements MatcherInterface
         $node['routes'][$verb] = $r;
     }
 
-    /** node template */
+    /**
+     * Node layout:
+     *   children : literal-segment ⇒ node
+     *   param    : ?array{name,regex,node}
+     *   routes   : verb ⇒ CompiledRoute
+     */
     private function newNode(): array
     {
         return ['children' => [], 'param' => null, 'routes' => []];
     }
-    private function &staticChild(array &$node, string $seg): array
+    private function &literalChild(array &$node, string $seg): array
     {
         $node['children'][$seg] ??= $this->newNode();
         return $node['children'][$seg];
     }
-    private function &paramChild(array &$node, string $segment): array
+    private function &paramChild(array &$node, array $spec): array
     {
-        [$nameRaw, $constraint] = explode(':', trim($segment, '{}'), 2) + [1 => null];
-        $regex = '#\A' . ($constraint
-                ? ConstraintRegistry::buildPattern($constraint)
-                : '[^/]+') . '\z#D';
-
-        /* first placeholder at this depth wins – later mismatches are illegal */
         if ($node['param'] !== null) {
-            if ($node['param']['name'] !== $nameRaw || $node['param']['regex'] !== $regex) {
+            // ensure identical placeholder at same depth
+            if (
+                $node['param']['name']  !== $spec['name'] ||
+                $node['param']['regex'] !== $spec['regex']
+            ) {
                 throw new \LogicException(
-                    "Conflicting placeholders at same depth: {{$node['param']['name']}} vs {{$nameRaw}}"
+                    "Conflicting placeholders at same depth: "
+                    . "{${node['param']['name']}} vs {${spec['name']}}"
                 );
             }
             return $node['param']['node'];
         }
 
-        $node['param'] = ['name' => $nameRaw, 'regex' => $regex, 'node' => $this->newNode()];
+        $node['param'] = [
+            'name'  => $spec['name'],
+            'regex' => $spec['regex'],
+            'node'  => $this->newNode(),
+        ];
         return $node['param']['node'];
     }
 
-    /* ─────────────── matching helpers ─────────────── */
+    /* ────────────────────── matching helpers ────────────────────── */
 
+    /**
+     * Static L1-lookup with HEAD→GET & 405 aggregation.
+     */
     private function matchStatic(string $host, string $verb, string $path, array &$allowed): ?array
     {
-        /* fast bail-out: host bucket absent & no wildcard  */
         if (!isset($this->hosts[$host]) && !isset($this->hosts['*'])) {
-            return null;
+            return null;                                // host bucket absent
         }
 
         foreach ([$host, '*'] as $h) {
@@ -150,8 +160,8 @@ final class MergedMatcher implements MatcherInterface
                 continue;
             }
 
-            /* OPTIONS → return first matching route (CORS-friendly) */
-            if ($verb === 'OPTIONS' && isset($this->hosts[$h]['static'])) {
+            /* OPTIONS → first path wins */
+            if ($verb === 'OPTIONS') {
                 foreach ($this->hosts[$h]['static'] as $m => $paths) {
                     if (isset($paths[$path])) {
                         return [$paths[$path], []];
@@ -159,12 +169,14 @@ final class MergedMatcher implements MatcherInterface
                 }
             }
 
-            $v = ($verb === 'HEAD' && !isset($this->hosts[$h]['static']['HEAD'][$path])) ? 'GET' : $verb;
+            $v = ($verb === 'HEAD' && !isset($this->hosts[$h]['static']['HEAD'][$path]))
+                ? 'GET' : $verb;
+
             if (isset($this->hosts[$h]['static'][$v][$path])) {
                 return [$this->hosts[$h]['static'][$v][$path], []];
             }
 
-            /* collect verbs for 405 */
+            /* gather verbs for 405 */
             foreach ($this->hosts[$h]['static'] as $m => $paths) {
                 if (isset($paths[$path])) {
                     $allowed[] = $m;
@@ -174,37 +186,39 @@ final class MergedMatcher implements MatcherInterface
         return null;
     }
 
+    /* ---------- trie descent ---------- */
+
     private function matchTrie(string $host, string $verb, string $path, array &$allowed): ?array
     {
         $root = $this->hosts[$host]['trie'] ?? ($this->hosts['*']['trie'] ?? null);
-        return $root ? $this->descend($root, $this->splitPath($path), 0, $verb, [], $allowed) : null;
+        return $root ? $this->walk($root, $this->explodePath($path), 0, $verb, [], $allowed) : null;
     }
 
-    private function descend(
+    private function walk(
         array $node,
         array $seg,
-        int $i,
+        int   $i,
         string $verb,
         array $params,
-        array &$allowed
+        array &$allowed,
     ): ?array {
-        if ($i === \count($seg)) {
-            return $this->selectRoute($node, $verb, $params, $allowed);
+        if ($i === \count($seg)) {                    // leaf
+            return $this->pickRoute($node, $verb, $params, $allowed);
         }
 
         $piece = $seg[$i];
 
-        /* literal child first */
+        /* 1) literal child */
         if (isset($node['children'][$piece])) {
-            if ($hit = $this->descend($node['children'][$piece], $seg, $i + 1, $verb, $params, $allowed)) {
+            if ($hit = $this->walk($node['children'][$piece], $seg, $i + 1, $verb, $params, $allowed)) {
                 return $hit;
             }
         }
 
-        /* placeholder child */
+        /* 2) param child */
         $p = $node['param'];
-        if ($p !== null && \preg_match($p['regex'], $piece)) {
-            $hit = $this->descend(
+        if ($p !== null && preg_match($p['regex'], $piece) === 1) {
+            $hit = $this->walk(
                 $p['node'],
                 $seg,
                 $i + 1,
@@ -216,36 +230,32 @@ final class MergedMatcher implements MatcherInterface
                 return $hit;
             }
         }
+
         return null;
     }
 
-    private function selectRoute(array $node, string $verb, array $params, array &$allowed): ?array
+    private function pickRoute(array $node, string $verb, array $params, array &$allowed): ?array
     {
-        if ($verb === 'OPTIONS' && $node['routes']) {
-            return [\reset($node['routes']), $params];
+        if ($verb === 'OPTIONS' && $node['routes']) {           // any will do
+            return [reset($node['routes']), $params];
         }
-        if (isset($node['routes'][$verb])) {
+        if (isset($node['routes'][$verb])) {                    // exact
             return [$node['routes'][$verb], $params];
         }
         if ($verb === 'HEAD' && isset($node['routes']['GET'])) {
             return [$node['routes']['GET'], $params];
         }
-        if ($node['routes']) {
-            $allowed = \array_merge($allowed, \array_keys($node['routes']));
+        if ($node['routes']) {                                  // gather 405
+            $allowed = array_merge($allowed, array_keys($node['routes']));
         }
         return null;
     }
 
-    /* ─────────────── util ─────────────── */
+    /* ────────────────────── utils ────────────────────── */
 
-    private function splitPath(string $p): array
+    private function explodePath(string $p): array
     {
-        $t = \trim($p, '/');
-        return $t === '' ? [] : \explode('/', $t);
-    }
-
-    private function isPlaceholder(string $seg): bool
-    {
-        return $seg !== '' && $seg[0] === '{' && $seg[-1] === '}';
+        $t = trim($p, '/');
+        return $t === '' ? [] : explode('/', $t);
     }
 }

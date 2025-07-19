@@ -1,0 +1,62 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+require __DIR__ . '/../vendor/autoload.php';
+
+use Infocyph\Webrick\Router\CLI\CommandKernel;
+use Infocyph\Webrick\Router\Kernel\RouterKernel;
+
+/**
+ * -------------------------------------------------------------
+ * Minimal bootstrap
+ * -------------------------------------------------------------
+ * You probably already have a DI container / bootstrap script
+ * that wires up RouterKernel.  Simply include it and pull the
+ * instance from the container.  Below we assume a standard
+ * `bootstrap/app.php` that returns the container.
+ *
+ *     $container = require dirname(__DIR__) . '/bootstrap/app.php';
+ *     $kernel    = $container->get(RouterKernel::class);
+ *
+ * If you do *not* have such a bootstrap, just build the kernel
+ * manually here (omitted for brevity).
+ */
+$container = require dirname(__DIR__) . '/bootstrap/app.php';
+
+/** @var RouterKernel $routerKernel */
+$routerKernel = $container->get(RouterKernel::class);
+
+/**
+ * -------------------------------------------------------------
+ * CLI kernel: only a “warm” command (plus help fallback)
+ * -------------------------------------------------------------
+ */
+$cli = new CommandKernel([
+    'warm' => static function () use ($routerKernel): int {
+        $t0 = microtime(true);
+
+        // Touching the instance is enough — its constructor already ran
+        // the warm-up logic, so nothing else is necessary here.  We just
+        // print a small timing note for visual feedback.
+        printf(
+            "✔ Route-cache warmed in %.1f ms\n",
+            (microtime(true) - $t0) * 1000
+        );
+        return 0;
+    },
+
+    'help' => static function (): int {
+        echo <<<TXT
+Usage: bin/route-cache warm
+
+  warm    Compile all routes, populate the PSR-6/16 cache and, if enabled,
+          generate the FastRegex dump for next boots.
+
+TXT;
+        return 0;
+    },
+]);
+
+exit($cli->handle($_SERVER['argv']));
