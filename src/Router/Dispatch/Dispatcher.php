@@ -37,9 +37,15 @@ final class Dispatcher
             $request = $request->withAttribute('cors_policy', $corsPolicy);
         }
 
-        $routeId = \method_exists($route, 'getIndex')
-            ? $route->getIndex()          // deterministic small int
-            : \spl_object_id($route);     // fallback
+        // ① Index is perfect (numeric, monotonic) – use it when present
+        if (\method_exists($route, 'getIndex')) {
+            $routeId = $route->getIndex();
+        } // ② Otherwise prefer a *logical* identifier so it survives hot-reloads
+        elseif (($name = $route->getName()) !== null && $name !== '') {
+            $routeId = $name;                           // “users.show”
+        } else {
+            $routeId = $route->getPath();               // “/users/{id}”
+        }
 
         // build + memoise the pipeline once
         $this->pipelines[$routeId] ??= $this->compilePipeline($route);

@@ -21,6 +21,7 @@ use Psr\Http\Message\{ServerRequestInterface, StreamInterface, UploadedFileInter
  */
 class ServerRequest extends Message implements ServerRequestInterface
 {
+
     /* ======== 1.  Static factory  ====================================== */
 
     public static function createFromGlobals(): self
@@ -94,6 +95,8 @@ class ServerRequest extends Message implements ServerRequestInterface
 
     /** @var array<string,mixed> */
     private array $attributes = [];
+    private array $filesSpec = [];
+    private ?array $filesHydrated = null;
 
     /* Valid verbs */
     private const array VALID = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS', 'CONNECT', 'TRACE'];
@@ -118,6 +121,7 @@ class ServerRequest extends Message implements ServerRequestInterface
         $this->server = $server;
         $this->parsed = $parsed;
         $this->files = $files;
+        $this->filesSpec = $files ?: $_FILES;
         $this->requestTarget = $requestTarget;
 
         /* copies of super-globals */
@@ -226,19 +230,28 @@ class ServerRequest extends Message implements ServerRequestInterface
 
     public function getUploadedFiles(): array
     {
-        return $this->files;
+        return $this->filesHydrated ??= self::normaliseFiles($this->filesSpec);
     }
 
     public function withUploadedFiles(array $files): static
     {
+        $containsObjects = false;
         array_walk_recursive(
             $files,
-            static fn($f)
-                => $f instanceof UploadedFileInterface
-                ?: throw new InvalidArgumentException('Invalid uploaded file'),
+            static function ($f) use (&$containsObjects): void {
+                if ($f instanceof UploadedFileInterface) {
+                    $containsObjects = true;
+                }
+            },
         );
         $cl = clone $this;
-        $cl->files = $files;
+        if ($containsObjects) {
+            $cl->filesHydrated = $files;
+            $cl->filesSpec = [];          // no longer needed
+        } else {
+            $cl->filesSpec = $files;
+            $cl->filesHydrated = null;        // will hydrate later
+        }
         return $cl;
     }
 
