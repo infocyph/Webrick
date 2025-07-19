@@ -24,6 +24,7 @@ final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
 {
     /** @var array<string,string[]> */
     private array $map = [];
+    private static array $normCache = [];
 
     /**
      * @param array<string,HeaderValues> $seed header-name ➜ string OR string[]
@@ -162,12 +163,11 @@ final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
     {
         $this->map[$this->norm($name)] = is_array($value)
             ? array_values($value)
-            : [(string)$value];
+            : [$value];
     }
 
     private function norm(string $name): string
     {
-        // ucwords() is measurably faster than preg_replace for this
-        return ucwords(strtolower($name), '-');
+        return self::$normCache[$name] ??= ucwords(strtolower($name), '-');
     }
 }

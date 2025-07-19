@@ -233,7 +233,7 @@ final class CompiledRoute implements RouteInterface
 
             if (
                 preg_match(
-                    '/^\{([A-Za-z_][A-Za-z0-9_]*)(?::([^}]+))?\}$/',
+                    '/^\{([A-Za-z_][A-Za-z0-9_]*)(?::([^}]+))?}$/',
                     $segment,
                     $m
                 )
