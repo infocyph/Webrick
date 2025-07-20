@@ -26,6 +26,7 @@ final class Collection implements IteratorAggregate
     /** Indices for O(1) look-ups */
     private array $byName = [];   // name   ⇒ RouteInterface
     private array $byHandler = [];   // key    ⇒ list<RouteInterface>
+    private array $byPath    = []; // path    ⇒ RouteInterface
 
     /** State flags */
     private bool $dirty = false;    // builder changed since last compile
@@ -48,6 +49,8 @@ final class Collection implements IteratorAggregate
         if (($name = $route->getName()) !== null && $name !== '') {
             $this->byName[$name] = $route;
         }
+
+        $this->byPath[$route->getPath()] = $route;
 
         $this->byHandler[$route->getHandlerId()][] = $route;
     }
@@ -155,13 +158,20 @@ final class Collection implements IteratorAggregate
     {
         $this->byName    = [];
         $this->byHandler = [];
+        $this->byPath    = [];
 
         foreach ($this->routes as $route) {
             if (($name = $route->getName()) !== null && $name !== '') {
                 $this->byName[$name] = $route;
             }
             $this->byHandler[$route->getHandlerId()][] = $route;
+            $this->byPath[$route->getPath()] = $route;
         }
+    }
+
+    public function hasPath(string $path): bool
+    {
+        return isset($this->byPath[$path]);
     }
 
     private function assertMutable(): void

@@ -15,23 +15,35 @@ use Infocyph\Webrick\Response\Response;
  */
 final readonly class RequestLoggingMiddleware
 {
-    public function __construct(private LoggerInterface $log = new NullLogger()) {}
+    public function __construct(private LoggerInterface $log = new NullLogger())
+    {
+    }
 
     public function __invoke(Request $req, Closure $next): Response
     {
         $start = microtime(true);
-        $resp  = $next($req);
-        $time  = (int) ((microtime(true) - $start) * 1000);
+        $resp = $next($req);
+        $time = (int)((microtime(true) - $start) * 1000);
 
-        $ip     = $req->getAttribute('client_ip')
+        $ip = $req->getAttribute('client_ip')
             ?? $req->getServerParams()['REMOTE_ADDR'] ?? '-';
+        $fromProxy = $req->getAttribute('is_trusted_proxy') ? 'proxy' : 'direct';
         $method = $req->getMethod();
-        $uri    = $req->getUri()->getPath();
-        $code   = $resp->getStatusCode();
-        $len    = $resp->getBody()->getSize() ?? '-';
+        $uri = $req->getUri()->getPath();
+        $code = $resp->getStatusCode();
+        $len = $resp->getBody()->getSize() ?? '-';
 
         $this->log->info(
-            sprintf('%s - - "%s %s" %d %s %dms', $ip, $method, $uri, $code, $len, $time)
+            sprintf(
+                '%s (%s) "%s %s" %d %s %dms',
+                $ip,
+                $fromProxy,
+                $method,
+                $uri,
+                $code,
+                $len,
+                $time,
+            ),
         );
 
         return $resp;

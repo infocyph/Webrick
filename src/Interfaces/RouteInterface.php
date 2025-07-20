@@ -28,4 +28,3 @@ interface RouteInterface
     /** @param array<class-string|object> $extra */
     public function withMiddleware(array $extra): self;
 }
-

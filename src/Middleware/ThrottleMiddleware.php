@@ -84,7 +84,7 @@ final readonly class ThrottleMiddleware
                     'X-RateLimit-Reset'  => (string) $reset,
                 ],
                 body    : new Stream('Too Many Requests')
-            );
+            )->withHeader('Server-Timing', 'throttle;dur=0');
         }
 
         /* 4. increment & persist -------------------------------------------*/

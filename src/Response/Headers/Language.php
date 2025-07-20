@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Response\Headers;
@@ -25,10 +26,12 @@ final class Language
         foreach (explode(',', $accept) as $seg) {
             [$tag, $params] = array_map('trim', explode(';', $seg, 2) + [1 => '']);
             $q = (float) (preg_match('/q=([\d.]+)/', $params, $m) ? $m[1] : 1);
-            if ($q == 0.0) { continue; }            // “not acceptable” shortcut
+            if ($q == 0.0) {
+                continue;
+            }            // “not acceptable” shortcut
             $parts[] = [strtolower($tag), $q];
         }
-        usort($parts, fn($a, $b) => $b[1] <=> $a[1]); // highest-q first
+        usort($parts, fn ($a, $b) => $b[1] <=> $a[1]); // highest-q first
 
         /* --- 2. best-match against supported list ------------------------------ */
         foreach ($parts as [$pref]) {

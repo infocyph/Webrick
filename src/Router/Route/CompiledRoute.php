@@ -48,8 +48,7 @@ final class CompiledRoute implements RouteInterface
         private readonly int $index,
         private readonly ?Cors $corsPolicy,
         array $segments,    // <── new
-    )
-    {
+    ) {
         $this->handler = $handler;
         $this->segments = $segments;
     }

@@ -21,6 +21,6 @@ final readonly class ResponseTimeMiddleware
 
         return $resp
             ->withHeader('X-Response-Time', sprintf('%.1fms', $durMs))
-            ->withHeader('Server-Timing',    sprintf('app;dur=%.1f', $durMs));
+            ->withHeader('Server-Timing', sprintf('app;dur=%.1f', $durMs));
     }
 }

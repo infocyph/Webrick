@@ -23,7 +23,8 @@ final class ConditionalValidator
     public function __construct(
         private readonly ?string $etag = null,
         private readonly ?int $lastModified = null,
-    ) {}
+    ) {
+    }
 
     public function evaluate(ServerRequestInterface $req): Outcome
     {

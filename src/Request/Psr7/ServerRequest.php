@@ -21,7 +21,6 @@ use Psr\Http\Message\{ServerRequestInterface, StreamInterface, UploadedFileInter
  */
 class ServerRequest extends Message implements ServerRequestInterface
 {
-
     /* ======== 1.  Static factory  ====================================== */
 
     public static function createFromGlobals(): self

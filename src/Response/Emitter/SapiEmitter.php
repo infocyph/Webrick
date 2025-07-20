@@ -36,12 +36,21 @@ final class SapiEmitter implements EmitterInterface
             return;
         }
 
-        /* 3) fast-path for small known-size bodies (< 8 KiB) ------------ */
+        /* 3) fast-path: small in-memory streams ------------------------- */
         if ($size !== null && $size < self::CHUNK_SIZE) {
+            $meta = $body->getMetadata();
+            $isTemp = isset($meta['uri']) && str_starts_with($meta['uri'], 'php://temp');
+
+            if ($isTemp && $body->isSeekable()) {
+                $body->rewind();
+                echo (string) $body;    // to-string → single fread
+                return;
+            }
+
             if ($body->isSeekable()) {
                 $body->rewind();
             }
-            echo $body->getContents(); // one shot, no loop/flush
+            echo $body->getContents();
             return;
         }
 
@@ -55,7 +64,8 @@ final class SapiEmitter implements EmitterInterface
 
     private function sendHeaders(ResponseInterface $response, ?int $size = null): void
     {
-        if (headers_sent()) {
+        static $sent = false;
+        if ($sent || headers_sent()) {
             return;
         }
 
@@ -72,6 +82,7 @@ final class SapiEmitter implements EmitterInterface
         if ($size !== null && !$response->hasHeader('Content-Length')) {
             header("Content-Length: {$size}", false);
         }
+        $sent = true;
     }
 
     private function shouldEmitBody(

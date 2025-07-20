@@ -8,8 +8,8 @@ use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Response\Headers\Range as SimpleRange;
 use Infocyph\Webrick\Response\Internal\Utils;
+use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\StreamInterface;
-use RuntimeException;
 
 /**
  * Builds **206 Partial Content** (or 200 / 416) responses for seek-able sources.
@@ -19,7 +19,7 @@ final readonly class RangeResponder
     /* ───────────────────────── public factories ───────────────────────── */
 
     public static function forFile(
-        \Psr\Http\Message\ServerRequestInterface $req,
+        ServerRequestInterface $req,
         string $absolutePath,
         string $mediaType = 'application/octet-stream',
         array $headers = [],
@@ -43,7 +43,7 @@ final readonly class RangeResponder
         $range = RangeParser::parse($req->getHeaderLine('Range'), $len);
         $fp = fopen($absolutePath, 'rb');                    // can’t fail here
 
-        return self::fromSeekable($fp, $len, $range, $mediaType, $headers);
+        return self::fromSeekable($fp, $len, $range, $mediaType, $headers, $req);
     }
 
     public static function fromSeekable(
@@ -52,6 +52,7 @@ final readonly class RangeResponder
         ?SimpleRange $range,
         string $mediaType = 'application/octet-stream',
         array $headers = [],
+        ?ServerRequestInterface $req = null,
     ): Response {
         /* full-body 200 -------------------------------------------------- */
         if ($range === null) {
@@ -59,6 +60,10 @@ final readonly class RangeResponder
                 'Content-Type' => $mediaType,
                 'Content-Length' => (string)$totalLength,
             ];
+            // Was an invalid Range silently stripped by ConditionalMiddleware?
+            if ($req?->getAttribute('range_dropped')) {
+                $headers['X-Range-Dropped'] = '1';
+            }
             return new Response(200, self::wrapSeekable($source), $headers);
         }
 

@@ -21,14 +21,16 @@ final readonly class ConditionalMiddleware
     /**
      * @param Closure(Request): array{string|null,int|null} $meta
      */
-    public function __construct(private Closure $meta) {}
+    public function __construct(private Closure $meta)
+    {
+    }
 
     public function __invoke(Request $req, Closure $next): Response
     {
         /* ---------- entity metadata ----------------------------------- */
         [$etag, $lm] = ($this->meta)($req);
-        $validator   = new ConditionalValidator($etag, $lm);
-        $result      = $validator->evaluate($req);
+        $validator = new ConditionalValidator($etag, $lm);
+        $result = $validator->evaluate($req);
 
         /* ---------- 304 / 412 short-circuit --------------------------- */
         if ($result->state !== Outcome::PASS) {
@@ -36,8 +38,10 @@ final readonly class ConditionalMiddleware
         }
 
         /* ---------- stale Range? strip so downstream sends 200 -------- */
-        if ($req->hasHeader('Range') && ! $validator->isRangeFresh($req)) {
-            $req = $req->withoutHeader('Range');
+        if ($req->hasHeader('Range') && !$validator->isRangeFresh($req)) {
+            $req = $req
+                ->withoutHeader('Range')
+                ->withAttribute('range_dropped', true);
         }
 
         /* ---------- downstream --------------------------------------- */
@@ -45,7 +49,7 @@ final readonly class ConditionalMiddleware
 
         /* ---------- add ETag / Last-Modified if controller forgot ----- */
         foreach ($result->headers as $h => $v) {
-            if (! $resp->hasHeader($h)) {
+            if (!$resp->hasHeader($h)) {
                 $resp = $resp->withHeader($h, $v);
             }
         }

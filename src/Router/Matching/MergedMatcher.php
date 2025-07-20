@@ -23,8 +23,8 @@ final class MergedMatcher implements MatcherInterface
 
     public function add(CompiledRoute $route): void
     {
-        $host   = $this->canonicalHost($route->getDomain());
-        $verb   = strtoupper($route->getMethod());
+        $host = $this->canonicalHost($route->getDomain());
+        $verb = strtoupper($route->getMethod());
 
         $this->hosts[$host] ??= ['static' => [], 'trie' => $this->newNode()];
 
@@ -37,9 +37,11 @@ final class MergedMatcher implements MatcherInterface
     /** @inheritDoc */
     public function match(string $method, string $host, string $path): array
     {
-        $verb    = strtoupper($method);
-        $host    = strtolower($host);
-        $allowed = [];
+        $verb = strtoupper($method);
+        $host = strtolower($host);
+        static $verbsCache = [];
+        $cacheKey = $host . '|' . $path;
+        $allowed = $verbsCache[$cacheKey] ?? [];
 
         /* ① hash-table -------------------------------------------------- */
         if ($hit = $this->matchStatic($host, $verb, $path, $allowed)) {
@@ -77,6 +79,11 @@ final class MergedMatcher implements MatcherInterface
     {
         $path = $r->getPath();
 
+        if (substr_count($path, '/') === 1) {
+            $this->hosts[$host]['single'][$path][$verb] = $r;
+            return;
+        }
+
         if (isset($this->hosts[$host]['static'][$verb][$path])) {
             throw new \LogicException("Duplicate route {$verb} {$host}{$path}");
         }
@@ -113,33 +120,35 @@ final class MergedMatcher implements MatcherInterface
      */
     private function newNode(): array
     {
-        return ['children' => [], 'param' => null, 'routes' => []];
+        return ['children' => [], 'param' => null, 'routes' => [], 'single' => []];
     }
+
     private function &literalChild(array &$node, string $seg): array
     {
         $node['children'][$seg] ??= $this->newNode();
         return $node['children'][$seg];
     }
+
     private function &paramChild(array &$node, array $spec): array
     {
         if ($node['param'] !== null) {
             // ensure identical placeholder at same depth
             if (
-                $node['param']['name']  !== $spec['name'] ||
+                $node['param']['name'] !== $spec['name'] ||
                 $node['param']['regex'] !== $spec['regex']
             ) {
                 throw new \LogicException(
                     "Conflicting placeholders at same depth: "
-                    . "{${node['param']['name']}} vs {${spec['name']}}"
+                    . "{${node['param']['name']}} vs {${spec['name']}}",
                 );
             }
             return $node['param']['node'];
         }
 
         $node['param'] = [
-            'name'  => $spec['name'],
+            'name' => $spec['name'],
             'regex' => $spec['regex'],
-            'node'  => $this->newNode(),
+            'node' => $this->newNode(),
         ];
         return $node['param']['node'];
     }
@@ -152,7 +161,13 @@ final class MergedMatcher implements MatcherInterface
     private function matchStatic(string $host, string $verb, string $path, array &$allowed): ?array
     {
         if (!isset($this->hosts[$host]) && !isset($this->hosts['*'])) {
-            return null;                                // host bucket absent
+            return null;
+        }
+
+        foreach ([$host, '*'] as $h) {
+            if (isset($this->hosts[$h]['single'][$path][$verb])) {
+                return [$this->hosts[$h]['single'][$path][$verb], []];
+            }
         }
 
         foreach ([$host, '*'] as $h) {
@@ -197,7 +212,7 @@ final class MergedMatcher implements MatcherInterface
     private function walk(
         array $node,
         array $seg,
-        int   $i,
+        int $i,
         string $verb,
         array $params,
         array &$allowed,
@@ -224,7 +239,7 @@ final class MergedMatcher implements MatcherInterface
                 $i + 1,
                 $verb,
                 $params + [$p['name'] => $piece],
-                $allowed
+                $allowed,
             );
             if ($hit !== null) {
                 return $hit;

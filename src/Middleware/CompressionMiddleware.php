@@ -72,9 +72,9 @@ final readonly class CompressionMiddleware
 
         return $resp
             ->withBody(new Stream($enc))
-            ->withHeader('Content-Encoding', $alg)
-            ->withHeader('Content-Length', (string) \strlen($enc))
-            ->withHeader('Vary', 'Accept-Encoding');         // caching safety
+            ->withSmartHeader('Content-Encoding', $alg)
+            ->withSmartHeader('Vary', 'Accept-Encoding')         // caching safety
+            ->withSmartHeader('Content-Length', (string) \strlen($enc));
     }
 
     /* ───────────────────────── helpers ──────────────────────────── */

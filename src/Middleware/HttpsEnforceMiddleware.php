@@ -13,7 +13,9 @@ use Infocyph\Webrick\Request\Request;
  */
 final readonly class HttpsEnforceMiddleware
 {
-    public function __construct(private bool $productionMode = true) {}
+    public function __construct(private bool $productionMode = true)
+    {
+    }
 
     public function __invoke(Request $request, Closure $next): Response
     {

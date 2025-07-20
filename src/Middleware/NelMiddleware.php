@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Middleware;
@@ -21,7 +22,8 @@ final readonly class NelMiddleware
         private int    $ttlSeconds   = 86400,     // max-age
         private bool   $includeSub   = true,
         private bool   $successFrac  = false,     // collect successes?
-    ) {}
+    ) {
+    }
 
     public function __invoke(Request $req, Closure $next): Response
     {

@@ -23,7 +23,8 @@ final class GroupScope
         /** @var MiddlewareList */
         private readonly array   $middleware = [],
         private readonly string  $namePrefix = '',
-    ) {}
+    ) {
+    }
 
     /* -----------------------------------------------------------------
      *  Fluent (immutable) setters

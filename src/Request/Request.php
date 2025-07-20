@@ -89,7 +89,7 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
         return $this->cachedSegments ??= array_values(
             array_filter(
                 explode('/', $this->getUri()->getPath()),
-                static fn(string $s) => $s !== '',
+                static fn (string $s) => $s !== '',
             ),
         );
     }
@@ -324,7 +324,7 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
             return $this->cachedLocale = strtolower(substr((string)$langs[0], 0, 5));
         }
 
-        $supported = array_map(static fn(string $l) => strtolower(str_replace('_', '-', $l)), $supported);
+        $supported = array_map(static fn (string $l) => strtolower(str_replace('_', '-', $l)), $supported);
 
         foreach ($langs as $lang) {
             $lang = strtolower(str_replace('_', '-', $lang));

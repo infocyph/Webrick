@@ -23,6 +23,7 @@ use Infocyph\Webrick\Router\Matching\{
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 use Psr\Cache\CacheItemPoolInterface as Psr6Pool;
 use Psr\Log\LoggerInterface;
+use UnexpectedValueException;
 
 final class RouterKernel
 {
@@ -30,7 +31,7 @@ final class RouterKernel
     private Closure $compiler;
 
     public function __construct(
-        private readonly MatcherInterface $matcher,
+        private MatcherInterface $matcher,
         private readonly Dispatcher $dispatcher,
         private readonly ?RouteCache $cache,
         Closure $compiler,
@@ -38,7 +39,7 @@ final class RouterKernel
         private readonly ?string $regexDump = null,
     ) {
         $this->compiler = $compiler;
-        $this->warm();
+        $this->doWarm();
     }
 
     /* ───────────────────────── bootstrap helper ───────────────────────── */
@@ -57,11 +58,19 @@ final class RouterKernel
         MatcherInterface|null $matcher = null,
         ?string $regexDump = null,
         int $cacheTtl = 86_400,   // 24 h
-    ): self
-    {
+    ): self {
         /* ① prefer a pre-generated fast-regex table when provided */
         if ($matcher === null && $regexDump && \is_file($regexDump)) {
-            $matcher = new FastRegexMatcher($regexDump);
+            try {
+                $matcher = new FastRegexMatcher($regexDump);
+            } catch (UnexpectedValueException $e) {
+                // CRC mismatch → fall back gracefully; warm() will re-dump
+                $log->warning('[router] Stale fast-regex dump – using merged matcher', [
+                    'file' => $regexDump,
+                    'error' => $e->getMessage(),
+                ]);
+                $matcher = null;                       // continue to fallback below
+            }
         }
 
         /* ② fallback to the new merged matcher */
@@ -85,6 +94,22 @@ final class RouterKernel
         try {
             [$route, $vars] = $this->matcher->match($method, $host, $path);
             return $this->dispatcher->dispatch($route, $request, $vars);
+        } catch (UnexpectedValueException $e) {                     // CRC mismatch at runtime
+            $this->log->warning('[router] Stale fast-regex dump detected – regenerating', [
+                    'error' => $e->getMessage(),
+                ]);
+
+            // purge the bad dump so warm() can recreate it
+            if ($this->regexDump && \is_file($this->regexDump)) {
+                @unlink($this->regexDump);
+            }
+
+            // swap matcher → re-warm → try once more
+            $this->matcher = new MergedMatcher();
+            $this->doWarm();
+
+            [$route, $vars] = $this->matcher->match($method, $host, $path);
+            return $this->dispatcher->dispatch($route, $request, $vars);
         } catch (MethodNotAllowedException $e) {
             return Response::json(
                 ['error' => 'Method Not Allowed'],
@@ -104,7 +129,7 @@ final class RouterKernel
      *
      * @throws \RuntimeException When the compiler returns an empty set.
      */
-    private function warm(): void
+    private function doWarm(): void
     {
         /* 1) fetch from cache or build fresh -------------------------------- */
         $routes = $this->cache?->remember($this->compiler)      // PSR-6/16 path
@@ -140,6 +165,15 @@ final class RouterKernel
                 'matcher' => $this->matcher::class,
             ],
         );
+    }
+
+    public function getRegexDumpPath(): ?string
+    {
+        return $this->regexDump;
+    }
+    public function warm(): void
+    {
+        $this->doWarm();
     }
 
     /* ─────────────────────────── helpers ──────────────────────────────── */

@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router\Url;
@@ -15,5 +16,7 @@ final class Signature
         return \hash_equals(self::make($payload, $key), $sig);
     }
 
-    private function __construct() {}
+    private function __construct()
+    {
+    }
 }

@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Response\View;
@@ -13,7 +14,9 @@ use Illuminate\View\Factory as LaravelFactory;
  */
 final class BladeViewFactory implements ViewFactoryInterface
 {
-    public function __construct(private LaravelFactory $blade) {}
+    public function __construct(private LaravelFactory $blade)
+    {
+    }
 
     public function render(string $name, array $data = []): string
     {

@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Response;
 
 use Infocyph\InterMix\Remix\MacroMix;
-
 // keep for user-land extensions
 use Infocyph\Webrick\Response\Constants\Mime;
 use Infocyph\Webrick\Response\Constants\Status;
@@ -54,25 +53,34 @@ class Response implements ResponseInterface
        ------------------------------------------------------------------- */
 
     /** JSON payload helper (`return Response::json($data, 201)` ) */
+    /* =========================================================
+ * Response::json()
+ * =======================================================*/
     public static function json(
         callable|array|object $data,
-        int $status  = 200,
+        int $status = 200,
         array $headers = [],
         int $flags = JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE,
         int $depth = 512,
     ): self {
         $headers += ['Content-Type' => 'application/json; charset=utf-8'];
 
-        // 1. Fast eager path for plain arrays/std-objects
+        /* 1️⃣  Fast-path for small, plain payloads
+         *     – encode once and inline when the final blob ≤ 32 KiB           */
         if (!\is_callable($data) && !$data instanceof JsonSerializable) {
             $json = \json_encode($data, $flags, $depth);
             if ($json === false) {
                 throw new RuntimeException('JSON encode error: ' . \json_last_error_msg());
             }
-            return new self($status, new Stream($json), $headers);
+
+            if (\strlen($json) <= 32 * 1024) {          // ≤ 32 KiB  → eager
+                return new self($status, new Stream($json), $headers);
+            }
+            /* >32 KiB – fall through to the lazy path (will re-encode once).
+             * Keeping the streaming behaviour avoids an in-memory copy. */
         }
 
-        // 2. Lazy path: postpone encoding until body is read
+        /* 2️⃣  Lazy path – postpone encoding until the body is actually read */
         $stream = new LazyJsonStream($data, $flags, $depth);
         return new self($status, $stream, $headers);
     }
@@ -101,9 +109,13 @@ class Response implements ResponseInterface
         string $mime = 'application/octet-stream',
         array $headers = [],
     ): self {
-        if (is_string($file)) {
-            $stream = new Stream(fopen($file, 'rb'));
-            $len = filesize($file) ?: null;
+        if (\is_string($file)) {
+            $stream = new Stream(\fopen($file, 'rb'));
+
+            // Skip stat() when the length is already supplied
+            $len = array_key_exists('Content-Length', $headers)
+                ? null
+                : (\filesize($file) ?: null);
         } else {
             $stream = $file;
             $len = $stream->getSize();
@@ -112,7 +124,7 @@ class Response implements ResponseInterface
         $safeName = addcslashes($name, "\"\r\n\\");
         $headers += [
             'Content-Type' => $mime,
-            'Content-Disposition' => "attachment; filename=\"{$safeName}\"; filename*=UTF-8''" . rawurlencode($name),
+            'Content-Disposition' => "attachment; filename=\"$safeName\"; filename*=UTF-8''" . rawurlencode($name),
         ];
         if ($len !== null) {
             $headers['Content-Length'] = (string)$len;
@@ -152,6 +164,13 @@ class Response implements ResponseInterface
     public function getHeaderLine($n): string
     {
         return $this->headers->line($n);
+    }
+
+    public function withSmartHeader(string $name, string $value): self
+    {
+        return $this->copy(
+            headers: $this->headers->withSmart($name, $value)
+        );
     }
 
     public function withHeader($n, $v): self
@@ -210,7 +229,7 @@ class Response implements ResponseInterface
         // start with an explicit zero-length body
         $resp = new self($code, new Stream(''), [
             'Content-Length' => '0',
-            'Content-Type'   => '',
+            'Content-Type' => '',
         ]);
 
         // merge any caller-supplied headers (ETag, Last-Modified, …)
@@ -260,11 +279,11 @@ class Response implements ResponseInterface
         if ($name === null && \is_string($file)) {
             $name = basename($file);
         }
-        $mime ??= Mime::fromExtension(
-            pathinfo((string)$name, \PATHINFO_EXTENSION),
-        );
+        $mime ??= Mime::fromExtension(pathinfo((string)$name, \PATHINFO_EXTENSION));
+
         return self::attachment($file, $name ?? 'download', $mime, $headers);
     }
+
 
     /* -----------------------------------------------------------------
  * Extra convenience helpers  – zero-cost unless you call them
@@ -273,8 +292,8 @@ class Response implements ResponseInterface
     /* 1. Symfony-style factory  --------------------------------------- */
     public static function create(
         string $content = '',
-        int    $status  = 200,
-        array  $headers = []
+        int $status = 200,
+        array $headers = [],
     ): self {
         return new self($status, $content, $headers);
     }
@@ -282,28 +301,28 @@ class Response implements ResponseInterface
     /* 2. sendFile / streamDownload (Laravel’s alias of download()) ---- */
     public static function streamDownload(
         string|StreamInterface $file,
-        ?string                                  $name    = null,
-        string                                   $mime    = 'application/octet-stream',
-        array                                    $headers = [],
+        ?string $name = null,
+        string $mime = 'application/octet-stream',
+        array $headers = [],
     ): self {
         if (\is_string($file)) {
             $stream = new Stream(\fopen($file, 'rb'));
-            $len    = \filesize($file) ?: null;
+            $len = \filesize($file) ?: null;
             $name ??= \basename($file);
         } else {
             $stream = $file;
-            $len    = $stream->getSize();
+            $len = $stream->getSize();
             $name ??= 'download';
         }
 
         $safe = \addcslashes($name, '"\\');
         $headers += [
-            'Content-Type'        => $mime,
+            'Content-Type' => $mime,
             'Content-Disposition' => "attachment; filename=\"{$safe}\"; filename*=UTF-8''" .
                 \rawurlencode($name),
         ];
         if ($len !== null) {
-            $headers['Content-Length'] = (string) $len;
+            $headers['Content-Length'] = (string)$len;
         }
 
         // same semantics as attachment() but streams are already given
@@ -332,7 +351,7 @@ class Response implements ResponseInterface
     public function withCache(\Closure $edit): self
     {
         $cc = $edit($this->cache());
-        return $this->withHeader('Cache-Control', (string) $cc);
+        return $this->withHeader('Cache-Control', (string)$cc);
     }
 
 }

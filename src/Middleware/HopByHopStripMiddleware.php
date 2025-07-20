@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Middleware;
@@ -23,7 +24,9 @@ final readonly class HopByHopStripMiddleware
     {
         /* ---- strip from request --------------------------------- */
         foreach (self::HOP_BY_HOP as $h) {
-            if ($req->hasHeader($h)) { $req = $req->withoutHeader($h); }
+            if ($req->hasHeader($h)) {
+                $req = $req->withoutHeader($h);
+            }
         }
 
         /* ---- downstream call ------------------------------------ */
@@ -31,7 +34,9 @@ final readonly class HopByHopStripMiddleware
 
         /* ---- strip from response -------------------------------- */
         foreach (self::HOP_BY_HOP as $h) {
-            if ($resp->hasHeader($h)) { $resp = $resp->withoutHeader($h); }
+            if ($resp->hasHeader($h)) {
+                $resp = $resp->withoutHeader($h);
+            }
         }
         return $resp;
     }

@@ -18,7 +18,9 @@ use Infocyph\Webrick\Request\Request;
  */
 final readonly class MethodOverrideMiddleware
 {
-    public function __construct(private string $header = 'X-HTTP-Method-Override') {}
+    public function __construct(private string $header = 'X-HTTP-Method-Override')
+    {
+    }
 
     public function __invoke(Request $request, Closure $next): Response
     {

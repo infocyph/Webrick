@@ -38,14 +38,9 @@ final class Dispatcher
         }
 
         // ① Index is perfect (numeric, monotonic) – use it when present
-        if (\method_exists($route, 'getIndex')) {
-            $routeId = $route->getIndex();
-        } // ② Otherwise prefer a *logical* identifier so it survives hot-reloads
-        elseif (($name = $route->getName()) !== null && $name !== '') {
-            $routeId = $name;                           // “users.show”
-        } else {
-            $routeId = $route->getPath();               // “/users/{id}”
-        }
+        $routeId = $route->getName() !== null
+            ? $route->getName()
+            : $route->getPath();
 
         // build + memoise the pipeline once
         $this->pipelines[$routeId] ??= $this->compilePipeline($route);

@@ -1,9 +1,11 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Request\Support;
 
 use Countable;
+use Infocyph\Webrick\Response\Headers\HeaderPolicy;
 use IteratorAggregate;
 use ArrayAccess;
 use Traversable;
@@ -18,7 +20,7 @@ use ArrayIterator;
  *  • Extra helpers: first()   – first header value or null
  *                    value()  – collapse-to-string when exactly one value (legacy)
  *
- *  @psalm-type HeaderValues = string|string[]
+ * @psalm-type HeaderValues = string|string[]
  */
 final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
 {
@@ -82,6 +84,11 @@ final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
         return ($vals = $this->get($name)) ? implode(',', $vals) : null;
     }
 
+    public function getHeaderLine(string $name): string
+    {
+        return ($vals = $this->get($name)) ? implode(',', $vals) : '';
+    }
+
     /* -----------------------------------------------------------------
      *  Immutable write helpers – used by Response side
      * ---------------------------------------------------------------- */
@@ -97,8 +104,8 @@ final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
     /** Append header value(s) (cloned). */
     public function withAdded(string $name, string|array $value): self
     {
-        $norm        = $this->norm($name);
-        $x           = clone $this;
+        $norm = $this->norm($name);
+        $x = clone $this;
         $x->map[$norm] = array_merge(
             $x->map[$norm] ?? [],
             is_array($value) ? array_values($value) : [(string)$value],
@@ -112,6 +119,36 @@ final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
         $x = clone $this;
         unset($x->map[$this->norm($name)]);
         return $x;
+    }
+
+    public function withSmart(string $name, string $value): self
+    {
+        $policy = HeaderPolicy::for($name);
+        $lower = strtolower($name);
+
+        return match ($policy) {
+            HeaderPolicy::SINGLE => $this->with($name, $value),
+            HeaderPolicy::MULTI_LINE => $this->withAdded($name, $value),
+            HeaderPolicy::MERGE_TOKENS => $this->with(
+                $name,
+                $this->mergeCsv($this->getHeaderLine($lower), $value),
+            ),
+        };
+    }
+
+    private function mergeCsv(string $existing, string $add): string
+    {
+        if ($existing === '') {
+            return $add;
+        }
+        $set = array_fill_keys(
+            array_map('trim', explode(',', $existing)),
+            true,
+        ) + array_fill_keys(
+            array_map('trim', explode(',', $add)),
+            true,
+        );
+        return implode(', ', array_keys($set));
     }
 
     /* -----------------------------------------------------------------

@@ -23,7 +23,8 @@ final readonly class MaintenanceModeMiddleware
 {
     public function __construct(
         private string $file = __DIR__ . '/../../storage/framework/down'
-    ) {}
+    ) {
+    }
 
     public function __invoke(Request $req, Closure $next): Response
     {

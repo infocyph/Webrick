@@ -8,51 +8,52 @@ require __DIR__ . '/../vendor/autoload.php';
 use Infocyph\Webrick\Router\CLI\CommandKernel;
 use Infocyph\Webrick\Router\Kernel\RouterKernel;
 
-/**
- * -------------------------------------------------------------
+/* -------------------------------------------------------------
  * Minimal bootstrap
- * -------------------------------------------------------------
- * You probably already have a DI container / bootstrap script
- * that wires up RouterKernel.  Simply include it and pull the
- * instance from the container.  Below we assume a standard
- * `bootstrap/app.php` that returns the container.
- *
- *     $container = require dirname(__DIR__) . '/bootstrap/app.php';
- *     $kernel    = $container->get(RouterKernel::class);
- *
- * If you do *not* have such a bootstrap, just build the kernel
- * manually here (omitted for brevity).
- */
+ * ----------------------------------------------------------- */
 $container = require dirname(__DIR__) . '/bootstrap/app.php';
 
 /** @var RouterKernel $routerKernel */
 $routerKernel = $container->get(RouterKernel::class);
 
-/**
- * -------------------------------------------------------------
- * CLI kernel: only a “warm” command (plus help fallback)
- * -------------------------------------------------------------
- */
+/* -------------------------------------------------------------
+ * CLI kernel
+ * ----------------------------------------------------------- */
 $cli = new CommandKernel([
-    'warm' => static function () use ($routerKernel): int {
-        $t0 = microtime(true);
+    // ----------------------------------------------------- warm
+    // Usage:  bin/route-cache warm [--regenerate-regex]
+    'warm' => static function (array $args) use ($routerKernel): int {
+        $force = \in_array('--regenerate-regex', $args, true);
 
-        // Touching the instance is enough — its constructor already ran
-        // the warm-up logic, so nothing else is necessary here.  We just
-        // print a small timing note for visual feedback.
-        printf(
-            "✔ Route-cache warmed in %.1f ms\n",
-            (microtime(true) - $t0) * 1000
-        );
+        /* optional fast-regex re-dump ----------------------------- */
+        if ($force && \method_exists($routerKernel, 'getRegexDumpPath')) {
+            $dump = $routerKernel->getRegexDumpPath();
+            if ($dump && \is_file($dump)) {
+                @\unlink($dump);
+                printf("🗑  Deleted previous fast-regex dump (%s)\n", $dump);
+            }
+        }
+
+        $t0 = \microtime(true);
+
+        // re-prime router (public warm() accessor added in patch)
+        if (\method_exists($routerKernel, 'warm')) {
+            $routerKernel->warm();
+        }
+
+        printf("✔ Route-cache warmed in %.1f ms\n", (\microtime(true) - $t0) * 1000);
         return 0;
     },
 
+    // ----------------------------------------------------- help
     'help' => static function (): int {
         echo <<<TXT
-Usage: bin/route-cache warm
+Usage: bin/route-cache <command> [options]
 
-  warm    Compile all routes, populate the PSR-6/16 cache and, if enabled,
-          generate the FastRegex dump for next boots.
+  warm               Compile all routes, populate the PSR-6/16 cache and,
+                     if enabled, generate the FastRegex dump for next boots.
+
+    --regenerate-regex   Force a fresh FastRegex dump even when one exists.
 
 TXT;
         return 0;

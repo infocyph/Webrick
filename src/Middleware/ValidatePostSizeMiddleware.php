@@ -15,7 +15,9 @@ use Infocyph\Webrick\Request\Request;
  */
 final readonly class ValidatePostSizeMiddleware
 {
-    public function __construct(private ?int $bytes = null) {}
+    public function __construct(private ?int $bytes = null)
+    {
+    }
 
     public function __invoke(Request $req, Closure $next): Response
     {

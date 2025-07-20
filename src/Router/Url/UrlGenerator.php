@@ -151,8 +151,14 @@ class UrlGenerator
      */
     private function build(string $path, array $query, bool $absolute): string
     {
-        $prefix = $absolute ? $this->baseUri : '';
-        $uri = $prefix . '/' . ltrim($path, '/');
+        // ★ If the path exists verbatim in the route table, trust it
+        if ($this->routes->hasPath($path)) {
+            $uri = $absolute
+                    ? $this->baseUri . $path                      // baseUri already sans trailing “/”
+                    : $path;
+        } else {
+            $uri = ($absolute ? $this->baseUri : '') . '/' . ltrim($path, '/');
+        }
 
         if ($query === []) {
             return $uri;

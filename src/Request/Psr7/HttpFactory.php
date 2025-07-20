@@ -71,4 +71,3 @@ final class HttpFactory implements
         return new Uri($uri);
     }
 }
-

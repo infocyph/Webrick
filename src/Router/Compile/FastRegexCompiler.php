@@ -50,7 +50,15 @@ final class FastRegexCompiler
         }
 
         // emit pretty-printed PHP for opcode cache
-        $code = '<?php return ' . var_export($out, true) . ';';
+        $crc  = hash('crc32b', json_encode($out, JSON_THROW_ON_ERROR));
+        $code = <<<PHP
+        <?php
+        return [
+            '_crc'   => '$crc',
+            '_table' => %s,
+        ];
+        PHP;
+        $code = sprintf($code, var_export($out, true));
         file_put_contents($targetFile, $code);
         // Preload into OPcache if available
         if (\function_exists('opcache_compile_file')) {
