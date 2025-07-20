@@ -23,7 +23,7 @@ class ServerRequest extends Message implements ServerRequestInterface
 {
     /* ======== 1.  Static factory  ====================================== */
 
-    public static function createFromGlobals(): self
+    public static function createFromGlobals(): static
     {
         $srv = $_SERVER;
         $uri = Uri::fromServerParams($srv);
@@ -35,7 +35,7 @@ class ServerRequest extends Message implements ServerRequestInterface
             : '1.1';
 
         /* build request (headers filled later in one go) */
-        $req = new self(
+        $req = new static(
             $srv['REQUEST_METHOD'] ?? 'GET',
             $uri,
             $srv,

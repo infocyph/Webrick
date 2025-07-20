@@ -40,6 +40,11 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
             ->withParsedBody($post);
     }
 
+    public static function fromGlobals(): static
+    {
+        return static::createFromGlobals();
+    }
+
     /** Forward trusted-proxy list to EndUser helper */
     public static function setTrustedProxies(array $cidrs): void
     {
