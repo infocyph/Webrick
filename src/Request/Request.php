@@ -273,17 +273,17 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
         return $this->data((string)$o);
     }
 
-    public function offsetSet(mixed $o, mixed $v): void
+    public function offsetSet(mixed $offset, mixed $v): void
     {
         throw new InvalidArgumentException('Request is immutable');
     }
 
-    public function offsetUnset(mixed $o): void
+    public function offsetUnset(mixed $offset): void
     {
         throw new InvalidArgumentException('Request is immutable');
     }
 
-    public function jsonSerialize(): mixed
+    public function jsonSerialize(): array
     {
         return $this->all();
     }

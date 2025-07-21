@@ -56,11 +56,11 @@ final class UploadedFileCollection implements ArrayAccess, Countable, IteratorAg
     {
         return $this->bag[$o] ?? null;
     }
-    public function offsetSet(mixed $o, mixed $v): void
+    public function offsetSet(mixed $offset, mixed $v): void
     {
         throw new \LogicException('Immutable');
     }
-    public function offsetUnset(mixed $o): void
+    public function offsetUnset(mixed $offset): void
     {
         throw new \LogicException('Immutable');
     }

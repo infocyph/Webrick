@@ -80,7 +80,7 @@ $compiled = $registrar->compile();
  * ----------------------------------------------------------------------- */
 $kernel = RouterKernel::boot(
     log      : new NullLogger(),
-    cachePool: Cache::file('webrick', 'router'),            // throw-away PSR-6 cache
+    cachePool: Cache::file('webrick'),            // throw-away PSR-6 cache
     compiler : fn () => $compiled->all(),     // returns list<CompiledRoute>
     matcher  : new MergedMatcher(),           // fast in-memory matcher
     regexDump: ''
