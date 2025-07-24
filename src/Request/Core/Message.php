@@ -4,9 +4,6 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Request\Core;
 
-use Psr\Http\Message\MessageInterface;
-use Psr\Http\Message\StreamInterface;
-
 /**
  * Lean PSR-7 message base-class:
  *  • Immutable  (`with*()` clones)
@@ -15,15 +12,15 @@ use Psr\Http\Message\StreamInterface;
  *
  *  NOTE: kept internal-final – only ServerRequest / Response extend it.
  */
-abstract class Message implements MessageInterface
+abstract class Message
 {
     /* ---------------- state ---------------- */
     protected string $protocol = '1.1';
     protected array $headers = [];   // ["Host" => ["example.com"]]
-    protected StreamInterface $body;
+    protected Stream $body;
 
     /* ---------------- ctor ----------------- */
-    protected function __construct(array $hdr = [], ?StreamInterface $body = null, string $proto = '1.1')
+    protected function __construct(array $hdr = [], ?Stream $body = null, string $proto = '1.1')
     {
         $this->headers = $this->normalise($hdr);
         $this->body = $body ?? new Stream();
@@ -105,12 +102,12 @@ abstract class Message implements MessageInterface
     }
 
     /* ===== PSR-7: body ===== */
-    public function getBody(): StreamInterface
+    public function getBody(): Stream
     {
         return $this->body;
     }
 
-    public function withBody(StreamInterface $b): static
+    public function withBody(Stream $b): static
     {
         if ($b === $this->body) {
             return $this;

@@ -6,13 +6,12 @@ namespace Infocyph\Webrick\Request;
 
 use ArrayAccess;
 use Infocyph\InterMix\Remix\MacroMix;
+use Infocyph\Webrick\Request\Core\UploadedFile;
 use Infocyph\Webrick\Request\Core\Uri;
 use Infocyph\Webrick\Request\Http\{ContentNegotiator, Csrf, EndUser};
 use Infocyph\Webrick\Request\Psr7\ServerRequest;
 use InvalidArgumentException;
 use JsonSerializable;
-use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Message\UploadedFileInterface;
 use Stringable;
 
 /**
@@ -21,7 +20,7 @@ use Stringable;
  *  • Keeps 100 % of the public API from your legacy Request class
  *  • Adds no overhead – simply subclasses the new ServerRequest
  */
-class Request extends ServerRequest implements ArrayAccess, JsonSerializable, Stringable, ServerRequestInterface
+class Request extends ServerRequest implements ArrayAccess, JsonSerializable, Stringable
 {
     use MacroMix;
 
@@ -203,7 +202,7 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
 
     /* ========== 6.  Files & Headers ================================= */
 
-    public function file(?string $key = null): UploadedFileInterface|array|null
+    public function file(?string $key = null): UploadedFile|array|null
     {
         $files = $this->getUploadedFiles();
         return $key === null ? $files : ($files[$key] ?? null);

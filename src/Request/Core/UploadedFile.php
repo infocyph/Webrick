@@ -5,8 +5,6 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Request\Core;
 
 use InvalidArgumentException;
-use Psr\Http\Message\StreamInterface;
-use Psr\Http\Message\UploadedFileInterface;
 use RuntimeException;
 
 /**
@@ -17,10 +15,10 @@ use RuntimeException;
  *  • Lazily wraps a tmp-path in a Stream *only* when getStream() is called
  *  • Throws RuntimeException on every failure – never returns false
  */
-final class UploadedFile implements UploadedFileInterface
+final class UploadedFile
 {
-    /** @var string|StreamInterface */
-    private string|StreamInterface $src;
+    /** @var string|Stream */
+    private string|Stream $src;
 
     private readonly ?int    $size;
     private readonly int     $err;
@@ -32,18 +30,18 @@ final class UploadedFile implements UploadedFileInterface
     /* ─────────────────────────── ctor ─────────────────────────── */
 
     /**
-     * @param string|StreamInterface $src  tmp filename or stream
+     * @param string|Stream $src  tmp filename or stream
      * @param int|null               $size bytes (0 / null ⇒ auto)
      * @param int                    $err  UPLOAD_ERR_* constant
      */
     public function __construct(
-        string|StreamInterface $src,
+        string|Stream $src,
         ?int   $size          = null,
         int    $err           = UPLOAD_ERR_OK,
         ?string $clientName   = null,
         ?string $clientType   = null,
     ) {
-        if (!is_string($src) && !$src instanceof StreamInterface) {
+        if (!is_string($src) && !$src instanceof Stream) {
             throw new InvalidArgumentException('Source must be filepath or StreamInterface');
         }
         if ($err < 0 || $err > 8) {
@@ -72,7 +70,7 @@ final class UploadedFile implements UploadedFileInterface
 
     /* ────────────────── StreamInterface proxy ──────────────────── */
 
-    public function getStream(): StreamInterface
+    public function getStream(): Stream
     {
         $this->assertOkAndNotMoved();
 
@@ -119,7 +117,7 @@ final class UploadedFile implements UploadedFileInterface
         if (is_string($this->src) && is_file($this->src)) {
             return filesize($this->src) ?: null;
         }
-        return $this->src instanceof StreamInterface
+        return $this->src instanceof Stream
             ? $this->src->getSize()
             : null;
     }

@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Request\Http;
 
+use Infocyph\Webrick\Request\Psr7\ServerRequest;
 use Infocyph\Webrick\Request\Support\HeaderBag;
-use Psr\Http\Message\ServerRequestInterface;
 
 /**
  * Facade around a PSR-7 ServerRequest that
@@ -25,7 +25,7 @@ final class RequestHeaders
     private ?array $content = null;   // Content-Type/Length/MD5
     private ?array $dep = null;   // If-*, Range, Prefer
 
-    public function __construct(private readonly ServerRequestInterface $req)
+    public function __construct(private readonly ServerRequest $req)
     {
     }
 

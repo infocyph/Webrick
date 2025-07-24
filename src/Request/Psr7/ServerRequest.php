@@ -8,7 +8,6 @@ use Infocyph\ArrayKit\Collection\Collection;
 use Infocyph\Webrick\Request\Core\{Message, Stream, UploadedFile, Uri};
 use Infocyph\Webrick\Request\Http\RequestHeaders;
 use InvalidArgumentException;
-use Psr\Http\Message\{ServerRequestInterface, StreamInterface, UploadedFileInterface, UriInterface};
 
 /**
  * PSR-7 ServerRequest + Webrick sugar (2025 edition)
@@ -19,7 +18,7 @@ use Psr\Http\Message\{ServerRequestInterface, StreamInterface, UploadedFileInter
  *  ✔ RequestHeaders façade + ContentNegotiator, EndUser, …
  *  ✔ 100 % immutable         (every with*() clones)
  */
-class ServerRequest extends Message implements ServerRequestInterface
+class ServerRequest extends Message
 {
     /* ======== 1.  Static factory  ====================================== */
 
@@ -69,7 +68,7 @@ class ServerRequest extends Message implements ServerRequestInterface
     /* ======== 2.  Non-PSR state  ======================================= */
 
     private string $method;
-    private UriInterface $uri;
+    private Uri $uri;
 
     private array $server = [];
     private array $cookie = [];
@@ -104,10 +103,10 @@ class ServerRequest extends Message implements ServerRequestInterface
 
     public function __construct(
         string $method,
-        UriInterface|string $uri,
+        Uri|string $uri,
         array $server = [],
         array $headers = [],
-        StreamInterface $body = new Stream(),
+        Stream $body = new Stream(),
         string $httpVer = '1.1',
         null|array|object $parsed = null,
         array $files = [],
@@ -116,7 +115,7 @@ class ServerRequest extends Message implements ServerRequestInterface
         parent::__construct($headers, $body, $httpVer);
 
         $this->method = strtoupper($method);
-        $this->uri = $uri instanceof UriInterface ? $uri : new Uri($uri);
+        $this->uri = $uri instanceof Uri ? $uri : new Uri($uri);
         $this->server = $server;
         $this->parsed = $parsed;
         $this->files = $files;
@@ -175,12 +174,12 @@ class ServerRequest extends Message implements ServerRequestInterface
         return $c;
     }
 
-    public function getUri(): UriInterface
+    public function getUri(): Uri
     {
         return $this->uri;
     }
 
-    public function withUri(UriInterface $uri, $preserveHost = false): static
+    public function withUri(Uri $uri, $preserveHost = false): static
     {
         $c = clone $this;
         $c->uri = $uri;
@@ -238,7 +237,7 @@ class ServerRequest extends Message implements ServerRequestInterface
         array_walk_recursive(
             $uploadedFiles,
             static function ($f) use (&$containsObjects): void {
-                if ($f instanceof UploadedFileInterface) {
+                if ($f instanceof UploadedFile) {
                     $containsObjects = true;
                 }
             },
@@ -441,7 +440,7 @@ class ServerRequest extends Message implements ServerRequestInterface
         }
         $out = [];
         foreach ($spec as $name => $part) {
-            if ($part instanceof UploadedFileInterface) {
+            if ($part instanceof UploadedFile) {
                 $out[$name] = $part;
                 continue;
             }

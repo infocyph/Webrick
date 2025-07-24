@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Request\Http;
 
-use Psr\Http\Message\ServerRequestInterface;
+use Infocyph\Webrick\Request\Psr7\ServerRequest;
 
 /**
  * Csrf – tiny helper that mirrors Laravel 12 semantics
@@ -52,7 +52,7 @@ final class Csrf
        2)  Matching helper
        ---------------------------------------------------------------- */
 
-    public static function matches(ServerRequestInterface $req): bool
+    public static function matches(ServerRequest $req): bool
     {
         $sent   = self::extractFromRequest($req);
         $stored = $_SESSION['_token'] ?? null;
@@ -87,7 +87,7 @@ final class Csrf
      * Look for token in header, body, query, cookie
      * (Laravel priority order).
      */
-    private static function extractFromRequest(ServerRequestInterface $req): ?string
+    private static function extractFromRequest(ServerRequest $req): ?string
     {
         // 1) Explicit header
         $hdr = $req->getHeaderLine('X-CSRF-TOKEN')

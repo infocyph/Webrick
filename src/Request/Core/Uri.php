@@ -5,9 +5,8 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Request\Core;
 
 use InvalidArgumentException;
-use Psr\Http\Message\UriInterface;
 
-final class Uri implements UriInterface
+final class Uri
 {
     private string $scheme;
     private string $user;
@@ -212,7 +211,7 @@ final class Uri implements UriInterface
 
     /* ───────────────────────  PSR-7 immutable setters  ───────────────────── */
 
-    public function withScheme(string $scheme): UriInterface
+    public function withScheme(string $scheme): Uri
     {
         $scheme = strtolower($scheme);
         if ($scheme === $this->scheme) {
@@ -226,7 +225,7 @@ final class Uri implements UriInterface
         return $clone;
     }
 
-    public function withUserInfo(string $user, ?string $password = null): UriInterface
+    public function withUserInfo(string $user, ?string $password = null): Uri
     {
         if ($user === $this->user && ($password ?? '') === $this->pass) {
             return $this;
@@ -237,7 +236,7 @@ final class Uri implements UriInterface
         return $clone;
     }
 
-    public function withHost(string $host): UriInterface
+    public function withHost(string $host): Uri
     {
         $host = $host !== '' ? $this->asciiHost($host) : '';
         if ($host === $this->host) {
@@ -248,7 +247,7 @@ final class Uri implements UriInterface
         return $clone;
     }
 
-    public function withPort(?int $port): UriInterface
+    public function withPort(?int $port): Uri
     {
         if ($port !== null && ($port < 1 || $port > 65535)) {
             throw new InvalidArgumentException("Invalid port: {$port}");
@@ -261,7 +260,7 @@ final class Uri implements UriInterface
         return $clone;
     }
 
-    public function withPath(string $path): UriInterface
+    public function withPath(string $path): Uri
     {
         $path = $this->filterPath($path);
         if ($path === $this->path) {
@@ -272,7 +271,7 @@ final class Uri implements UriInterface
         return $clone;
     }
 
-    public function withQuery(string $query): UriInterface
+    public function withQuery(string $query): Uri
     {
         $query = $this->filterQuery($query);
         if ($query === $this->query) {
@@ -283,7 +282,7 @@ final class Uri implements UriInterface
         return $clone;
     }
 
-    public function withFragment(string $fragment): UriInterface
+    public function withFragment(string $fragment): Uri
     {
         $fragment = $this->filterFragment($fragment);
         if ($fragment === $this->fragment) {
