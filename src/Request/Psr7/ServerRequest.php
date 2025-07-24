@@ -152,13 +152,13 @@ class ServerRequest extends Message implements ServerRequestInterface
         return $t;
     }
 
-    public function withRequestTarget($t): static
+    public function withRequestTarget($requestTarget): static
     {
-        if (preg_match('#\s#', $t)) {
+        if (preg_match('#\s#', $requestTarget)) {
             throw new InvalidArgumentException('Whitespace in request-target');
         }
         $c = clone $this;
-        $c->requestTarget = $t;
+        $c->requestTarget = $requestTarget;
         return $c;
     }
 
@@ -167,10 +167,10 @@ class ServerRequest extends Message implements ServerRequestInterface
         return $this->method;
     }
 
-    public function withMethod($m): static
+    public function withMethod($method): static
     {
         $c = clone $this;
-        $c->method = strtoupper($m);
+        $c->method = strtoupper($method);
         $c->effectiveMethod = null;
         return $c;
     }
@@ -180,16 +180,16 @@ class ServerRequest extends Message implements ServerRequestInterface
         return $this->uri;
     }
 
-    public function withUri(UriInterface $u, $preserveHost = false): static
+    public function withUri(UriInterface $uri, $preserveHost = false): static
     {
         $c = clone $this;
-        $c->uri = $u;
+        $c->uri = $uri;
         if (!$preserveHost) {
-            $c->headers['Host'] = $u->getHost()
-                ? [$u->getHost() . ($u->getPort() ? ':' . $u->getPort() : '')]
+            $c->headers['Host'] = $uri->getHost()
+                ? [$uri->getHost() . ($uri->getPort() ? ':' . $uri->getPort() : '')]
                 : [];
-        } elseif ($u->getHost() && !$c->hasHeader('Host')) {
-            $c->headers['Host'] = [$u->getHost()];
+        } elseif ($uri->getHost() && !$c->hasHeader('Host')) {
+            $c->headers['Host'] = [$uri->getHost()];
         }
         return $c;
     }
@@ -206,10 +206,10 @@ class ServerRequest extends Message implements ServerRequestInterface
         return $this->cookie;
     }
 
-    public function withCookieParams(array $c): static
+    public function withCookieParams(array $cookies): static
     {
         $cl = clone $this;
-        $cl->cookie = $c;
+        $cl->cookie = $cookies;
         $cl->buildVariableMap();
         return $cl;
     }
@@ -219,10 +219,10 @@ class ServerRequest extends Message implements ServerRequestInterface
         return $this->query;
     }
 
-    public function withQueryParams(array $q): static
+    public function withQueryParams(array $query): static
     {
         $cl = clone $this;
-        $cl->query = $q;
+        $cl->query = $query;
         $cl->buildVariableMap();
         return $cl;
     }
@@ -232,11 +232,11 @@ class ServerRequest extends Message implements ServerRequestInterface
         return $this->filesHydrated ??= self::normaliseFiles($this->filesSpec);
     }
 
-    public function withUploadedFiles(array $files): static
+    public function withUploadedFiles(array $uploadedFiles): static
     {
         $containsObjects = false;
         array_walk_recursive(
-            $files,
+            $uploadedFiles,
             static function ($f) use (&$containsObjects): void {
                 if ($f instanceof UploadedFileInterface) {
                     $containsObjects = true;
@@ -245,27 +245,27 @@ class ServerRequest extends Message implements ServerRequestInterface
         );
         $cl = clone $this;
         if ($containsObjects) {
-            $cl->filesHydrated = $files;
+            $cl->filesHydrated = $uploadedFiles;
             $cl->filesSpec = [];          // no longer needed
         } else {
-            $cl->filesSpec = $files;
+            $cl->filesSpec = $uploadedFiles;
             $cl->filesHydrated = null;        // will hydrate later
         }
         return $cl;
     }
 
-    public function getParsedBody(): mixed
+    public function getParsedBody(): array|null|object
     {
         return $this->parsed;
     }
 
-    public function withParsedBody($d): static
+    public function withParsedBody($data): static
     {
-        if ($d !== null && !is_array($d) && !is_object($d)) {
+        if ($data !== null && !is_array($data) && !is_object($data)) {
             throw new InvalidArgumentException('Parsed body must be array|object|null');
         }
         $cl = clone $this;
-        $cl->parsed = $d;
+        $cl->parsed = $data;
         $cl->buildVariableMap();
         return $cl;
     }
@@ -275,22 +275,22 @@ class ServerRequest extends Message implements ServerRequestInterface
         return $this->attributes;
     }
 
-    public function getAttribute($n, $def = null): mixed
+    public function getAttribute($name, $default = null): mixed
     {
-        return $this->attributes[$n] ?? $def;
+        return $this->attributes[$name] ?? $default;
     }
 
-    public function withAttribute($n, $v): static
+    public function withAttribute($name, $value): static
     {
         $cl = clone $this;
-        $cl->attributes[$n] = $v;
+        $cl->attributes[$name] = $value;
         return $cl;
     }
 
-    public function withoutAttribute($n): static
+    public function withoutAttribute($name): static
     {
         $cl = clone $this;
-        unset($cl->attributes[$n]);
+        unset($cl->attributes[$name]);
         return $cl;
     }
 
@@ -405,9 +405,9 @@ class ServerRequest extends Message implements ServerRequestInterface
         return $this->fetch($col, $k);
     }
 
-    public function file(?string $k = null): mixed
+    public function file(?string $key = null): mixed
     {
-        return $this->fetch(new Collection($this->files), $k);
+        return $this->fetch(new Collection($this->files), $key);
     }
 
     private function fetch(Collection $c, ?string $k): mixed

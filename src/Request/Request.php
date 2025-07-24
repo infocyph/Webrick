@@ -147,12 +147,7 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
 
     public function has(string|array $keys): bool
     {
-        foreach ((array)$keys as $k) {
-            if ($this->data($k) === null) {
-                return false;
-            }
-        }
-        return true;
+        return array_all((array)$keys, fn ($k) => $this->data($k) !== null);
     }
 
     public function filled(string|array $keys): bool
@@ -263,17 +258,17 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
 
     /* ========== 9.  ArrayAccess & JsonSerializable ================== */
 
-    public function offsetExists(mixed $o): bool
+    public function offsetExists(mixed $offset): bool
     {
-        return $this->data((string)$o) !== null;
+        return $this->data((string)$offset) !== null;
     }
 
-    public function offsetGet(mixed $o): mixed
+    public function offsetGet(mixed $offset): mixed
     {
-        return $this->data((string)$o);
+        return $this->data((string)$offset);
     }
 
-    public function offsetSet(mixed $offset, mixed $v): void
+    public function offsetSet(mixed $offset, mixed $value): void
     {
         throw new InvalidArgumentException('Request is immutable');
     }
@@ -320,18 +315,18 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
             return $this->cachedLocale;
         }
 
-        $langs = $this->headers()->accept('Accept-Language');
-        if ($langs === []) {
+        $language = $this->headers()->accept('Accept-Language');
+        if ($language === []) {
             return $fallback;
         }
 
         if ($supported === null) {
-            return $this->cachedLocale = strtolower(substr((string)$langs[0], 0, 5));
+            return $this->cachedLocale = strtolower(substr((string)$language[0], 0, 5));
         }
 
         $supported = array_map(static fn (string $l) => strtolower(str_replace('_', '-', $l)), $supported);
 
-        foreach ($langs as $lang) {
+        foreach ($language as $lang) {
             $lang = strtolower(str_replace('_', '-', $lang));
             $short = substr($lang, 0, 2);
             if (in_array($lang, $supported, true)) {

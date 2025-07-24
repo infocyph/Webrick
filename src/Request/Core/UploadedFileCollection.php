@@ -48,15 +48,15 @@ final class UploadedFileCollection implements ArrayAccess, Countable, IteratorAg
     }
 
     /* ---- ArrayAccess (read-only) ---- */
-    public function offsetExists(mixed $o): bool
+    public function offsetExists(mixed $offset): bool
     {
-        return isset($this->bag[$o]);
+        return isset($this->bag[$offset]);
     }
-    public function offsetGet(mixed $o): mixed
+    public function offsetGet(mixed $offset): mixed
     {
-        return $this->bag[$o] ?? null;
+        return $this->bag[$offset] ?? null;
     }
-    public function offsetSet(mixed $offset, mixed $v): void
+    public function offsetSet(mixed $offset, mixed $value): void
     {
         throw new \LogicException('Immutable');
     }

@@ -107,20 +107,21 @@ final class MiddlewarePipeline
                             public function __construct(private Closure $next)
                             {
                             }
+
                             public function handle(ServerRequestInterface $request): Response
                             {
                                 $n = $this->next;
                                 return $n($request);
                             }
-                        }
+                        },
                     ),
-                    $tag
+                    $tag,
                 );
         }
 
         /* ── Closure / "function" / "Class::method" / callable[] ─────── */
         static $memo = [];                                             // per-process cache
-        $invoker     = Invoker::shared();                              // DI resolver (singleton)
+        $invoker = Invoker::shared();                              // DI resolver (singleton)
 
         /**
          * Resolve **once**:
@@ -144,10 +145,10 @@ final class MiddlewarePipeline
          */
         return static function (Request $req) use ($invoker, $mw, $next, $tag): Response {
             $res = $invoker->invoke($mw, [
-                Request::class            => $req,
-                'request'                 => $req,   // common alias
-                Closure::class            => $next,  // for `Closure $next` type-hints
-                'next'                    => $next,  // …and name-based injection
+                Request::class => $req,
+                'request' => $req,   // common alias
+                Closure::class => $next,  // for `Closure $next` type-hints
+                'next' => $next,  // …and name-based injection
             ]);
 
             return self::assertResponse($res, $tag);

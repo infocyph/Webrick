@@ -31,11 +31,8 @@
     },
     "require": {
         "php": ">=8.4",
-        "infocyph/arraykit": "^2.02",
-        "infocyph/intermix": "^5.31",
-        "psr/http-factory": "^1.1",
-        "psr/http-server-handler": "^1.0",
-        "psr/http-server-middleware": "^1.0"
+        "infocyph/arraykit": "^2.03",
+        "infocyph/intermix": "^5.32"
     },
     "minimum-stability": "stable",
     "prefer-stable": true,
@@ -71,7 +68,7 @@
     },
     "require-dev": {
         "captainhook/captainhook": "^5.25",
-        "laravel/pint": "^1.22",
+        "laravel/pint": "^1.24",
         "pestphp/pest": "^3.8",
         "rector/rector": "^2.1",
         "symfony/var-dumper": "^7.3"
