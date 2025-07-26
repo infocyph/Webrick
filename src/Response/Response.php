@@ -5,15 +5,13 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Response;
 
 use Infocyph\InterMix\Remix\MacroMix;
-// keep for user-land extensions
 use Infocyph\Webrick\Response\Constants\Mime;
 use Infocyph\Webrick\Response\Constants\Status;
 use Infocyph\Webrick\Request\Support\HeaderBag;
 use Infocyph\Webrick\Request\Core\Stream;
+use Infocyph\Webrick\Response\Headers\CacheControl;
 use Infocyph\Webrick\Response\Internal\LazyJsonStream;
 use JsonSerializable;
-use Psr\Http\Message\ResponseInterface;
-use Psr\Http\Message\StreamInterface;
 use RuntimeException;
 
 /**
@@ -24,7 +22,7 @@ use RuntimeException;
  * - All operations clone – no accidental mutation.
  * - Helpers allocate only what they absolutely need.
  */
-class Response implements ResponseInterface
+class Response
 {
     use MacroMix;
 
@@ -34,17 +32,17 @@ class Response implements ResponseInterface
        0)  Core state
        ------------------------------------------------------------------- */
     private HeaderBag $headers;
-    private StreamInterface $body;
+    private Stream $body;
 
     public function __construct(
         private int $statusCode = 200,
-        StreamInterface|string|null $body = null,
+        Stream|string|null $body = null,
         array $headers = [],
         private string $protocolVersion = '1.1',
         private ?string $reasonPhrase = null,
     ) {
         $this->headers = new HeaderBag($headers);
-        $this->body = $body instanceof StreamInterface ? $body : new Stream($body ?? '');
+        $this->body = $body instanceof Stream ? $body : new Stream($body ?? '');
         $this->reasonPhrase ??= self::statusText($this->statusCode);
     }
 
@@ -101,10 +99,10 @@ class Response implements ResponseInterface
     /**
      * Attachment / download helper.
      *
-     * @param string|StreamInterface $file local path **or** pre-built stream
+     * @param string|Stream $file local path **or** pre-built stream
      */
     public static function attachment(
-        string|StreamInterface $file,
+        string|Stream $file,
         string $name,
         string $mime = 'application/octet-stream',
         array $headers = [],
@@ -188,12 +186,12 @@ class Response implements ResponseInterface
         return $this->copy(headers: $this->headers->without($n));
     }
 
-    public function getBody(): StreamInterface
+    public function getBody(): Stream
     {
         return $this->body;
     }
 
-    public function withBody(StreamInterface $b): self
+    public function withBody(Stream $b): self
     {
         return $this->copy(body: $b);
     }
@@ -252,7 +250,7 @@ class Response implements ResponseInterface
     private function copy(
         ?int $statusCode = null,
         ?HeaderBag $headers = null,
-        ?StreamInterface $body = null,
+        ?Stream $body = null,
         ?string $protocolVersion = null,
         ?string $reasonPhrase = null,
     ): self {
@@ -270,7 +268,7 @@ class Response implements ResponseInterface
      *   Response::download($path, $name = null, array $headers = [], ?string $mime = null)
      */
     public static function download(
-        string|StreamInterface $file,
+        string|Stream $file,
         ?string $name = null,
         array $headers = [],
         ?string $mime = null,
@@ -300,7 +298,7 @@ class Response implements ResponseInterface
 
     /* 2. sendFile / streamDownload (Laravel’s alias of download()) ---- */
     public static function streamDownload(
-        string|StreamInterface $file,
+        string|Stream $file,
         ?string $name = null,
         string $mime = 'application/octet-stream',
         array $headers = [],
@@ -338,9 +336,9 @@ class Response implements ResponseInterface
     /* 4. Cache-Control fluent helper  -------------------------------- */
 
     /** Read the current Cache-Control header into a mutable builder */
-    public function cache(): \Infocyph\Webrick\Response\Headers\CacheControl
+    public function cache(): CacheControl
     {
-        return \Infocyph\Webrick\Response\Headers\CacheControl::fromHeaderBag($this->headers);
+        return CacheControl::fromHeaderBag($this->headers);
     }
 
     /**

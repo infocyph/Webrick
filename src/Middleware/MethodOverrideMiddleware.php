@@ -27,7 +27,7 @@ final readonly class MethodOverrideMiddleware
         $newMethod = $request->getHeaderLine($this->header);
 
         // Fallback to form field for classic POST forms
-        if ($newMethod === '' && $request->getParsedBody() !== null && is_array($request->getParsedBody())) {
+        if ($newMethod === '' && is_array($request->getParsedBody())) {
             $body = $request->getParsedBody();
             $newMethod = $body['_method'] ?? '';
         }

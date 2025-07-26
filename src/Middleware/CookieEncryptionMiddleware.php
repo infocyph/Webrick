@@ -5,13 +5,13 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Middleware;
 
 use Closure;
+use InvalidArgumentException;
 use LengthException;
-use Psr\Cache\CacheItemPoolInterface;
 use Infocyph\Webrick\Response\Cookies\Cookie;
 use Infocyph\Webrick\Response\Cookies\CookieJar;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
-use Psr\Cache\InvalidArgumentException;
+use Psr\Cache\CacheItemPoolInterface;
 use Random\RandomException;
 
 /**
