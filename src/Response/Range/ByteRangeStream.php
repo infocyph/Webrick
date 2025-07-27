@@ -2,15 +2,15 @@
 
 namespace Infocyph\Webrick\Response\Range;
 
-use Psr\Http\Message\StreamInterface;
+use Infocyph\Webrick\Request\Core\Stream;
 use RuntimeException;
 
-final class ByteRangeStream implements StreamInterface
+final class ByteRangeStream
 {
-    private StreamInterface $base;
+    private Stream $base;
     private int             $remaining;
 
-    public function __construct(StreamInterface $base, int $limit)
+    public function __construct(Stream $base, int $limit)
     {
         $this->base      = $base;
         $this->remaining = $limit;

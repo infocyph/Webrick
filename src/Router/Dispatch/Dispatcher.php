@@ -38,9 +38,7 @@ final class Dispatcher
         }
 
         // ① Index is perfect (numeric, monotonic) – use it when present
-        $routeId = $route->getName() !== null
-            ? $route->getName()
-            : $route->getPath();
+        $routeId = $route->getIndex();
 
         // build + memoise the pipeline once
         $this->pipelines[$routeId] ??= $this->compilePipeline($route);

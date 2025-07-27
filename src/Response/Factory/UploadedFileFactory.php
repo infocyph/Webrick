@@ -4,20 +4,18 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Response\Factory;
 
-use Psr\Http\Message\StreamInterface;
-use Psr\Http\Message\UploadedFileFactoryInterface;
-use Psr\Http\Message\UploadedFileInterface;
-use Infocyph\Webrick\Response\UploadedFile;
+use Infocyph\Webrick\Request\Core\Stream;
+use Infocyph\Webrick\Request\Core\UploadedFile;
 
-final class UploadedFileFactory implements UploadedFileFactoryInterface
+final class UploadedFileFactory
 {
     public function createUploadedFile(
-        StreamInterface $stream,
+        Stream $stream,
         ?int $size = null,
         int             $error = \UPLOAD_ERR_OK,
         ?string $clientFilename = null,
         ?string $clientMediaType = null
-    ): UploadedFileInterface {
+    ): UploadedFile {
         return new UploadedFile(
             $stream,
             $size,

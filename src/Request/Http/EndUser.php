@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Request\Http;
 
-use Infocyph\Webrick\Request\Psr7\ServerRequest;
+use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Request\Support\IpCidr;
 
 /**
@@ -47,13 +47,13 @@ final class EndUser
     private ?string $cachedViaProxy = null;
 
     public function __construct(
-        private readonly ServerRequest $req,
+        private readonly Request $req,
         private readonly array $extraTrusted = []
     ) {
     }
 
     /* fast factory */
-    public static function from(ServerRequest $r, array $cidrs = []): self
+    public static function from(Request $r, array $cidrs = []): self
     {
         return new self($r, $cidrs);
     }

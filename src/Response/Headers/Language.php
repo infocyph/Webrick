@@ -12,8 +12,8 @@ namespace Infocyph\Webrick\Response\Headers;
 final class Language
 {
     /**
-     * @param string[]      $supported ISO tags e.g. ['en', 'fr', 'bn-BD']
-     * @param string        $accept    Raw Accept-Language header
+     * @param string[] $supported ISO tags e.g. ['en', 'fr', 'bn-BD']
+     * @param string $accept Raw Accept-Language header
      */
     public static function negotiate(array $supported, string $accept): string
     {
@@ -25,7 +25,7 @@ final class Language
         $parts = [];
         foreach (explode(',', $accept) as $seg) {
             [$tag, $params] = array_map('trim', explode(';', $seg, 2) + [1 => '']);
-            $q = (float) (preg_match('/q=([\d.]+)/', $params, $m) ? $m[1] : 1);
+            $q = (float)(preg_match('/q=([\d.]+)/', $params, $m) ? $m[1] : 1);
             if ($q == 0.0) {
                 continue;
             }            // “not acceptable” shortcut
@@ -38,9 +38,9 @@ final class Language
             foreach ($supported as $lang) {
                 $low = strtolower($lang);
                 if (
-                    $pref === '*'                          ||          // wildcard
-                    $pref === $low                         ||          // exact
-                    str_starts_with($pref, $low . '-')     ||          // “en-US” vs “en”
+                    $pref === '*' ||          // wildcard
+                    $pref === $low ||          // exact
+                    str_starts_with($pref, $low . '-') ||          // “en-US” vs “en”
                     str_starts_with($low, $pref . '-')                 // “en” vs “en-US”
                 ) {
                     return $lang;                          // first hit wins
@@ -55,7 +55,7 @@ final class Language
     {
         return [
             ['Content-Language', $chosen],
-            ['Vary',             'Accept-Language'],
+            ['Vary', 'Accept-Language'],
         ];
     }
 }

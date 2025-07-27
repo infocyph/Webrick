@@ -5,14 +5,15 @@ namespace Infocyph\Webrick\Request\Psr7;
 use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Request\Core\UploadedFile;
 use Infocyph\Webrick\Request\Core\Uri;
+use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use RuntimeException;
 
 final class HttpFactory
 {
-    public function createServerRequest(string $method, $uri, array $serverParams = []): ServerRequest
+    public function createRequest(string $method, $uri, array $serverParams = []): Request
     {
-        return new ServerRequest($method, $uri instanceof Uri ? $uri : new Uri((string)$uri), $serverParams);
+        return new Request($method, $uri instanceof Uri ? $uri : new Uri((string)$uri), $serverParams);
     }
 
     public function createStream(string $content = ''): Stream

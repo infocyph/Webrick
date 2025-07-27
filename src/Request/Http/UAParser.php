@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Request\Http;
 
-use Infocyph\Webrick\Request\Psr7\ServerRequest;
+use Infocyph\Webrick\Request\Request;
 
 /**
  * UAParser – coarse browser / platform / engine detector
@@ -42,9 +42,9 @@ final class UAParser
 
     /* --------------------------------------------------------------------- */
 
-    public function __construct(ServerRequest|string|null $source = null)
+    public function __construct(Request|string|null $source = null)
     {
-        if ($source instanceof ServerRequest) {
+        if ($source instanceof Request) {
             $this->ua = $source->getHeaderLine('User-Agent');
             $this->hint = $this->parseSecCh($source);
         } else {
@@ -66,7 +66,7 @@ final class UAParser
     /* =====================================================================
        Section 1 – Client-Hints
        ===================================================================== */
-    private function parseSecCh(ServerRequest $req): array
+    private function parseSecCh(Request $req): array
     {
         $bag = [];
 

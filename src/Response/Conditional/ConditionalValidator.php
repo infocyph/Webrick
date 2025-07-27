@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Response\Conditional;
 
-use Psr\Http\Message\ServerRequestInterface;
+use Infocyph\Webrick\Request\Request;
 
 /**
  * Unified conditional-header evaluator  (RFC 9110 §13).
@@ -26,7 +26,7 @@ final class ConditionalValidator
     ) {
     }
 
-    public function evaluate(ServerRequestInterface $req): Outcome
+    public function evaluate(Request $req): Outcome
     {
         $echo = $this->buildEchoHeaders();
 
@@ -42,7 +42,7 @@ final class ConditionalValidator
     /* -------------------------------------------------- public helper */
 
     /** For Range responder – is Range still fresh?  */
-    public function isRangeFresh(ServerRequestInterface $req): bool
+    public function isRangeFresh(Request $req): bool
     {
         $ifRange = trim($req->getHeaderLine('If-Range'));
         if ($ifRange === '') {
@@ -74,7 +74,7 @@ final class ConditionalValidator
     }
 
     /* --- If-Match ---------------------------------------------------- */
-    private function failsIfMatch(ServerRequestInterface $req): bool
+    private function failsIfMatch(Request $req): bool
     {
         $candidates = $this->tokenize($req->getHeaderLine('If-Match'));
         if ($candidates === null) {
@@ -87,7 +87,7 @@ final class ConditionalValidator
     }
 
     /* --- If-Unmodified-Since ---------------------------------------- */
-    private function failsIfUnmodSince(ServerRequestInterface $req): bool
+    private function failsIfUnmodSince(Request $req): bool
     {
         if ($this->lastModified === null) {
             return false;
@@ -97,7 +97,7 @@ final class ConditionalValidator
     }
 
     /* --- If-None-Match ---------------------------------------------- */
-    private function hitsIfNoneMatch(ServerRequestInterface $req): bool
+    private function hitsIfNoneMatch(Request $req): bool
     {
         if (!in_array($req->getMethod(), ['GET', 'HEAD'], true)) {
             return false;
@@ -109,7 +109,7 @@ final class ConditionalValidator
     }
 
     /* --- If-Modified-Since ------------------------------------------ */
-    private function hitsIfModSince(ServerRequestInterface $req): bool
+    private function hitsIfModSince(Request $req): bool
     {
         if (!in_array($req->getMethod(), ['GET', 'HEAD'], true)) {
             return false;

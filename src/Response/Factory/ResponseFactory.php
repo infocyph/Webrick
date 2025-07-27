@@ -4,19 +4,16 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Response\Factory;
 
-use Infocyph\Webrick\Interfaces\ResponseFactoryInterface;   // ← the new umbrella
 use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Response\Response;
-use Psr\Http\Message\ResponseInterface;
-use Psr\Http\Message\StreamInterface;
 use RuntimeException;
 
-final class ResponseFactory implements ResponseFactoryInterface
+final class ResponseFactory
 {
     /* -----------------------------------------------------------------
        PSR-17 ResponseFactoryInterface
        ---------------------------------------------------------------- */
-    public function createResponse(int $code = 200, string $reasonPhrase = ''): ResponseInterface
+    public function createResponse(int $code = 200, string $reasonPhrase = ''): Response
     {
         // empty body keeps memory low; caller can replace via withBody()
         return new Response($code, new Stream(), [], '1.1', $reasonPhrase);
@@ -25,12 +22,12 @@ final class ResponseFactory implements ResponseFactoryInterface
     /* -----------------------------------------------------------------
        PSR-17 StreamFactoryInterface
        ---------------------------------------------------------------- */
-    public function createStream(string $contents = ''): StreamInterface
+    public function createStream(string $contents = ''): Stream
     {
         return new Stream($contents);
     }
 
-    public function createStreamFromFile(string $filename, string $mode = 'r'): StreamInterface
+    public function createStreamFromFile(string $filename, string $mode = 'r'): Stream
     {
         $handle = @fopen($filename, $mode);
         if ($handle === false) {
@@ -40,7 +37,7 @@ final class ResponseFactory implements ResponseFactoryInterface
     }
 
     /** @param resource $resource */
-    public function createStreamFromResource($resource): StreamInterface
+    public function createStreamFromResource($resource): Stream
     {
         if (!\is_resource($resource)) {
             throw new RuntimeException('createStreamFromResource() expects a valid resource');

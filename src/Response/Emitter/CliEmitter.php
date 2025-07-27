@@ -4,25 +4,25 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Response\Emitter;
 
-use Psr\Http\Message\ResponseInterface;
+use Infocyph\Webrick\Response\Response;
 
 /**
  * For unit tests or CLI scripts: dumps an HTTP-like envelope to STDOUT.
  */
 final class CliEmitter implements EmitterInterface
 {
-    public function emit(ResponseInterface $resp): void
+    public function emit(Response $response): void
     {
-        $status = $resp->getStatusCode() . ' ' . $resp->getReasonPhrase();
-        $ver    = $resp->getProtocolVersion();
+        $status = $response->getStatusCode() . ' ' . $response->getReasonPhrase();
+        $ver = $response->getProtocolVersion();
 
-        echo "HTTP/{$ver} {$status}\n";
-        foreach ($resp->getHeaders() as $n => $vals) {
+        echo "HTTP/$ver $status\n";
+        foreach ($response->getHeaders() as $n => $vals) {
             foreach ($vals as $v) {
                 echo "{$n}: {$v}\n";
             }
         }
         echo "\n";
-        echo (string) $resp->getBody();
+        echo (string)$response->getBody();
     }
 }

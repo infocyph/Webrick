@@ -9,9 +9,6 @@ use Infocyph\InterMix\DI\Invoker;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use InvalidArgumentException;
-use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Server\MiddlewareInterface;
-use Psr\Http\Server\RequestHandlerInterface;
 use UnexpectedValueException;
 
 /**
@@ -95,30 +92,6 @@ final class MiddlewarePipeline
 
     private function wrap(callable|string $mw, Closure $next): Closure
     {
-        /* ── PSR-15 objects ───────────────────────────────────────────── */
-        if ($mw instanceof MiddlewareInterface) {
-            $tag = $mw::class;                                         // cached once
-
-            return static fn (Request $req): Response
-                => self::assertResponse(
-                    $mw->process(
-                        $req,
-                        new class ($next) implements RequestHandlerInterface {
-                            public function __construct(private Closure $next)
-                            {
-                            }
-
-                            public function handle(ServerRequestInterface $request): Response
-                            {
-                                $n = $this->next;
-                                return $n($request);
-                            }
-                        },
-                    ),
-                    $tag,
-                );
-        }
-
         /* ── Closure / "function" / "Class::method" / callable[] ─────── */
         static $memo = [];                                             // per-process cache
         $invoker = Invoker::shared();                              // DI resolver (singleton)
@@ -144,13 +117,7 @@ final class MiddlewarePipeline
          * container-resolvable dependencies the middleware may declare.
          */
         return static function (Request $req) use ($invoker, $mw, $next, $tag): Response {
-            $res = $invoker->invoke($mw, [
-                Request::class => $req,
-                'request' => $req,   // common alias
-                Closure::class => $next,  // for `Closure $next` type-hints
-                'next' => $next,  // …and name-based injection
-            ]);
-
+            $res = $invoker->invoke($mw);
             return self::assertResponse($res, $tag);
         };
     }

@@ -20,50 +20,6 @@ use InvalidArgumentException;
  */
 class ServerRequest extends Message
 {
-    /* ======== 1.  Static factory  ====================================== */
-
-    public static function createFromGlobals(): static
-    {
-        $srv = $_SERVER;
-        $uri = Uri::fromServerParams($srv);
-
-        $in = fopen('php://input', 'rb') ?: fopen('php://temp', 'rb');
-        $body = new Stream($in);
-        $httpVer = str_starts_with(($srv['SERVER_PROTOCOL'] ?? ''), 'HTTP/')
-            ? substr((string)$srv['SERVER_PROTOCOL'], 5)
-            : '1.1';
-
-        /* build request (headers filled later in one go) */
-        $req = new static(
-            $srv['REQUEST_METHOD'] ?? 'GET',
-            $uri,
-            $srv,
-            [],                         // headers added later
-            $body,
-            $httpVer,
-            $_POST,
-            self::normaliseFiles($_FILES),
-        );
-
-        /* 1) Import headers **once** (RequestHeaders also adds auth fall-backs) */
-        $bag = new RequestHeaders($req)->all();
-        $req->headers = $bag->all();
-
-        /* 2) x-www-form-urlencoded body for verbs ≠ POST */
-        if (
-            in_array($req->method, ['PUT', 'PATCH', 'DELETE'], true) &&
-            str_contains(strtolower($req->getHeaderLine('Content-Type')), 'application/x-www-form-urlencoded')
-        ) {
-            parse_str((string)$body, $form);
-            $req = $req->withParsedBody($form);
-        }
-
-        /* 3) query + cookies */
-        parse_str($uri->getQuery(), $qs);
-        return $req
-            ->withQueryParams($qs)
-            ->withCookieParams($_COOKIE);
-    }
 
     /* ======== 2.  Non-PSR state  ======================================= */
 
@@ -135,6 +91,51 @@ class ServerRequest extends Message
         }
 
         $this->buildVariableMap();
+    }
+
+    /* ======== 1.  Static factory  ====================================== */
+
+    public static function createFromGlobals(): static
+    {
+        $srv = $_SERVER;
+        $uri = Uri::fromServerParams($srv);
+
+        $in = fopen('php://input', 'rb') ?: fopen('php://temp', 'rb');
+        $body = new Stream($in);
+        $httpVer = str_starts_with(($srv['SERVER_PROTOCOL'] ?? ''), 'HTTP/')
+            ? substr((string)$srv['SERVER_PROTOCOL'], 5)
+            : '1.1';
+
+        /* build request (headers filled later in one go) */
+        $req = new static(
+            $srv['REQUEST_METHOD'] ?? 'GET',
+            $uri,
+            $srv,
+            [],                         // headers added later
+            $body,
+            $httpVer,
+            $_POST,
+            self::normaliseFiles($_FILES),
+        );
+
+        /* 1) Import headers **once** (RequestHeaders also adds auth fall-backs) */
+        $bag = new RequestHeaders($req)->all();
+        $req->headers = $bag->all();
+
+        /* 2) x-www-form-urlencoded body for verbs ≠ POST */
+        if (
+            in_array($req->method, ['PUT', 'PATCH', 'DELETE'], true) &&
+            str_contains(strtolower($req->getHeaderLine('Content-Type')), 'application/x-www-form-urlencoded')
+        ) {
+            parse_str((string)$body, $form);
+            $req = $req->withParsedBody($form);
+        }
+
+        /* 3) query + cookies */
+        parse_str($uri->getQuery(), $qs);
+        return $req
+            ->withQueryParams($qs)
+            ->withCookieParams($_COOKIE);
     }
 
     /* ======== 4.  PSR-7 RequestInterface =============================== */

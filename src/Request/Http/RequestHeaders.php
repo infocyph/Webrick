@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Request\Http;
 
-use Infocyph\Webrick\Request\Psr7\ServerRequest;
+use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Request\Support\HeaderBag;
 
 /**
- * Facade around a PSR-7 ServerRequest that
+ * Facade around a PSR-7 Request that
  *  • exposes an immutable HeaderBag (`all()`)
  *  • parses Accept*, Content-*, conditional & range headers
  *  • injects PHP_AUTH_* fallbacks so they behave like real headers
@@ -25,7 +25,7 @@ final class RequestHeaders
     private ?array $content = null;   // Content-Type/Length/MD5
     private ?array $dep = null;   // If-*, Range, Prefer
 
-    public function __construct(private readonly ServerRequest $req)
+    public function __construct(private readonly Request $req)
     {
     }
 

@@ -6,7 +6,6 @@ namespace Infocyph\Webrick\Response\Payloads;
 
 use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Response\Response;
-use Psr\Http\Message\StreamInterface;
 
 /**
  * Wrap a PHP callable / Generator as a PSR-7 stream.
@@ -16,18 +15,18 @@ use Psr\Http\Message\StreamInterface;
 final class StreamedResponse extends Response
 {
     /**
-     * @param callable():string|callable():\Generator|StreamInterface $source
+     * @param callable():string|callable():\Generator|Stream $source
      *        • string-returning closure (chunks) or generator yielding strings
-     *        • OR an existing StreamInterface.
-     * @param int                                                     $status
-     * @param array                                                   $headers
+     *        • OR an existing Stream.
+     * @param int $status
+     * @param array $headers
      */
     public function __construct(
-        callable|StreamInterface $source,
-        int                      $status  = 200,
-        array                    $headers = [],
+        callable|Stream $source,
+        int $status = 200,
+        array $headers = [],
     ) {
-        $body = $source instanceof StreamInterface
+        $body = $source instanceof Stream
             ? $source
             : new Stream(self::wrap($source));
 
@@ -35,7 +34,7 @@ final class StreamedResponse extends Response
     }
 
     /** Convert callable / generator into PHP stream resource for Stream wrapper. */
-    private static function wrap(callable $fn): string|resource
+    private static function wrap(callable $fn): mixed
     {
         $tmp = fopen('php://temp', 'r+');
 

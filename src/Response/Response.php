@@ -86,14 +86,17 @@ class Response
     /** Redirect helper (`return Response::redirect('/login')`) */
     public static function redirect(
         string $uri,
-        int $status = 302,
-        array $headers = [],
+        int $status = 302
     ): self {
+        // RFC-compliant status codes only
         if ($status < 300 || $status > 399) {
-            throw new RuntimeException("Redirect status must be 3xx; {$status} given.");
+            throw new \InvalidArgumentException('Redirect status must be a 3xx code.');
         }
-        $headers['Location'] = $uri;
-        return new self($status, new Stream(''), $headers);
+
+        return new self($status, new Stream(''))
+            ->withSmartHeader('Location', $uri)
+            ->withoutHeader('Content-Type')              // 3xx responses don’t need it
+            ->withoutHeader('Content-Length');           // length is implicitly 0
     }
 
     /**

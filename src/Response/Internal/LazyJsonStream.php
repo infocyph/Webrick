@@ -6,7 +6,6 @@ namespace Infocyph\Webrick\Response\Internal;
 
 use Infocyph\Webrick\Request\Core\Stream;
 use JsonSerializable;
-use Psr\Http\Message\StreamInterface;
 use RuntimeException;
 
 /**
@@ -16,7 +15,7 @@ use RuntimeException;
  * Once encoded, it replaces itself with an internal Stream instance and
  * transparently proxies every subsequent StreamInterface call.
  */
-final class LazyJsonStream implements StreamInterface
+final class LazyJsonStream
 {
     /** @var callable|JsonSerializable */
     private $source;

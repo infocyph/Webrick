@@ -16,6 +16,7 @@ final class HeaderPolicy
         'content-type' => self::SINGLE,
         'etag' => self::SINGLE,
         'last-modified' => self::SINGLE,
+        'location' => self::SINGLE,
 
         'set-cookie' => self::MULTI_LINE,
         'link' => self::MULTI_LINE,

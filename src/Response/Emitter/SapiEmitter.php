@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Response\Emitter;
 
-use Psr\Http\Message\ResponseInterface;
-use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Message\StreamInterface;
+use Infocyph\Webrick\Request\Core\Stream;
+use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Response\Response;
 
 /**
  * Sends the response to a classic PHP-SAPI (FPM, Apache, nginx-unit …).
@@ -22,8 +22,8 @@ final class SapiEmitter implements EmitterInterface
     private const CHUNK_SIZE = 8_192; // 8 KiB ≈ one TCP segment
 
     public function emit(
-        ResponseInterface       $response,
-        ?ServerRequestInterface $request = null,
+        Response $response,
+        ?Request $request = null,
     ): void {
         $body = $response->getBody();
         $size = $body->getSize(); // may be null (unknown stream)
@@ -43,7 +43,7 @@ final class SapiEmitter implements EmitterInterface
 
             if ($isTemp && $body->isSeekable()) {
                 $body->rewind();
-                echo (string) $body;    // to-string → single fread
+                echo (string)$body;    // to-string → single fread
                 return;
             }
 
@@ -62,7 +62,7 @@ final class SapiEmitter implements EmitterInterface
      * Internals
      * ----------------------------------------------------------------*/
 
-    private function sendHeaders(ResponseInterface $response, ?int $size = null): void
+    private function sendHeaders(Response $response, ?int $size = null): void
     {
         static $sent = false;
         if ($sent || headers_sent()) {
@@ -86,8 +86,8 @@ final class SapiEmitter implements EmitterInterface
     }
 
     private function shouldEmitBody(
-        ResponseInterface       $response,
-        ?ServerRequestInterface $request = null,
+        Response $response,
+        ?Request $request = null,
     ): bool {
         // Spec: no body for 204 / 304
         if (in_array($response->getStatusCode(), [204, 304], true)) {
@@ -99,7 +99,7 @@ final class SapiEmitter implements EmitterInterface
         return strtoupper($method) !== 'HEAD';
     }
 
-    private function streamBody(StreamInterface $body): void
+    private function streamBody(Stream $body): void
     {
         if ($body->isSeekable()) {
             $body->rewind();

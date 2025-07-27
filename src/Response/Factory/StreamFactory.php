@@ -5,17 +5,15 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Response\Factory;
 
 use Infocyph\Webrick\Request\Core\Stream;
-use Psr\Http\Message\StreamFactoryInterface;
-use Psr\Http\Message\StreamInterface;
 
-final class StreamFactory implements StreamFactoryInterface
+final class StreamFactory
 {
-    public function createStream(string $content = ''): StreamInterface
+    public function createStream(string $content = ''): Stream
     {
         return new Stream($content);
     }
 
-    public function createStreamFromFile(string $filename, string $mode = 'r'): StreamInterface
+    public function createStreamFromFile(string $filename, string $mode = 'r'): Stream
     {
         $fp = fopen($filename, $mode);
         if (!$fp) {
@@ -24,7 +22,7 @@ final class StreamFactory implements StreamFactoryInterface
         return new Stream($fp);
     }
 
-    public function createStreamFromResource($resource): StreamInterface
+    public function createStreamFromResource($resource): Stream
     {
         return new Stream($resource);
     }
