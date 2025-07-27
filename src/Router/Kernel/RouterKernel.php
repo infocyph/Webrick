@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Router\Kernel;
 
 use Closure;
+use Infocyph\InterMix\DI\Container;
 use Infocyph\InterMix\DI\Invoker;
+use Infocyph\InterMix\DI\Support\TraceLevel;
 use Infocyph\Webrick\Router\Compile\FastRegexCompiler;
 use Infocyph\Webrick\Exceptions\{
     MethodNotAllowedException,
@@ -75,6 +77,8 @@ final class RouterKernel
 
         /* ② fallback to the new merged matcher */
         $matcher ??= new MergedMatcher();
+        $container = Container::instance('inv_imx');
+        $container->tracer()->setLevel(TraceLevel::Verbose);
 
         $dispatcher = new Dispatcher(Invoker::shared());
         $cache = new RouteCache($cachePool, ttl: $cacheTtl);
@@ -94,7 +98,8 @@ final class RouterKernel
         try {
             [$route, $vars] = $this->matcher->match($method, $host, $path);
             return $this->dispatcher->dispatch($route, $request, $vars);
-        } catch (UnexpectedValueException $e) {                     // CRC mismatch at runtime
+        } catch (UnexpectedValueException $e) {
+            // CRC mismatch at runtime
             $this->log->warning('[router] Stale fast-regex dump detected – regenerating', [
                     'error' => $e->getMessage(),
                 ]);
@@ -118,6 +123,19 @@ final class RouterKernel
             );
         } catch (RouteNotFoundException) {
             return Response::json(['error' => 'Not Found'], 404);
+        } catch (\Throwable $e) {
+            $container = Container::instance('inv_imx');
+            dump($container->tracer()->toArray());
+            dd($e);
+            // Never leak internal details in production.
+            // 1️⃣  Log the full exception for later inspection …
+            $this->log->error(
+                '[router] Uncaught exception during dispatch',
+                ['exception' => $e]        // Monolog will format the stack-trace
+            );
+
+            // 2️⃣  …and send a terse, generic JSON response to the client.
+            return Response::json(['error' => 'Server Error'], 500);
         }
     }
 
