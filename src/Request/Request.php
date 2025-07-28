@@ -14,12 +14,6 @@ use InvalidArgumentException;
 use JsonSerializable;
 use Stringable;
 
-/**
- * Fluent, Laravel-inspired façade around our ultra-fast PSR-7 ServerRequest.
- *
- *  • Keeps 100 % of the public API from your legacy Request class
- *  • Adds no overhead – simply subclasses the new ServerRequest
- */
 class Request extends ServerRequest implements ArrayAccess, JsonSerializable, Stringable
 {
     use MacroMix;
@@ -242,6 +236,11 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
     }
 
     /* ========== 7.  Client helpers ================================== */
+
+    public function canonicalQuery(): string
+    {
+        return Uri::normalizeQueryString($this->getUri()->getQuery());
+    }
 
     public function ip(bool $proxyAware = false): ?string
     {

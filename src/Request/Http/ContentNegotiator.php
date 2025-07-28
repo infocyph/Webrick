@@ -42,14 +42,10 @@ final class ContentNegotiator
      */
     public function preferred(array $candidates): ?string
     {
-        foreach ($this->accept as $have) {                  // quality order
-            foreach ($candidates as $want) {
-                if ($this->matches($want, $have)) {
-                    return $have;                           // ← actual MIME
-                }
-            }
-        }
-        return null;
+        return array_find(
+            $this->accept,
+            fn($have) => array_any($candidates, fn($want) => $this->matches($want, $have)),
+        );
     }
 
     /* ───── helpers ─────────────────────────────────────────────── */

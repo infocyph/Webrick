@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Middleware;
 
 use Closure;
+use Infocyph\Webrick\Request\Core\Uri;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Response\Internal\Utils;
 use Infocyph\Webrick\Request\Request;
@@ -24,8 +25,9 @@ final readonly class ETagMiddleware
             return $resp;
         }
 
-        $body = (string) $resp->getBody();
-        $etag = Utils::generateEtag($body);
+        $payload = (string)$resp->getBody();
+        $qs = Uri::normalizeQueryString($req->getUri()->getQuery());
+        $etag = Utils::generateEtag($payload . '#' . $qs);
 
         return $resp->withHeader('ETag', $etag);
     }

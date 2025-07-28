@@ -51,6 +51,7 @@ class ServerRequest extends Message
     private array $attributes = [];
     private array $filesSpec = [];
     private ?array $filesHydrated = null;
+    private static bool $methodParamOverride = false;
 
     /* Valid verbs */
     private const array VALID = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS', 'CONNECT', 'TRACE'];
@@ -295,6 +296,17 @@ class ServerRequest extends Message
     }
 
     /* ======== 6.  Helper façades ====================================== */
+
+    public static function setMethodParamOverride(bool $enabled): void
+    {
+        self::$methodParamOverride = $enabled;
+    }
+
+    /** Check whether the override is currently allowed. */
+    public static function getMethodParamOverride(): bool
+    {
+        return self::$methodParamOverride;
+    }
 
     public function headers(): RequestHeaders
     {

@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Response;
 
 use Infocyph\InterMix\Remix\MacroMix;
+use Infocyph\Webrick\Constants\Status;
 use Infocyph\Webrick\Response\Constants\Mime;
-use Infocyph\Webrick\Response\Constants\Status;
 use Infocyph\Webrick\Request\Support\HeaderBag;
 use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Response\Headers\CacheControl;
