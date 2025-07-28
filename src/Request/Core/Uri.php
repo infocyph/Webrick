@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Request\Core;
 
+use Infocyph\Webrick\Request\Request;
 use InvalidArgumentException;
 
 final class Uri
@@ -77,7 +78,7 @@ final class Uri
     {
         $scheme = self::detectScheme($srv) . '://';
         [$host, $port] = self::detectHostPort($srv);
-        $uri   = self::detectRequestUri($srv);
+        $uri = self::detectRequestUri($srv);
 
         return new self(self::buildFullUrl($scheme, $host, $port, $uri));
     }
@@ -89,8 +90,11 @@ final class Uri
     {
         $https = (!empty($s['HTTPS']) && strtolower((string)$s['HTTPS']) === 'on')
             || (strtolower($s['REQUEST_SCHEME'] ?? '') === 'https')
-            || (strtolower($s['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https')
-            || (strtolower($s['HTTP_FRONT_END_HTTPS']  ?? '') === 'on')
+            || (
+                (Request::getProxyHeaderFlags() & Request::HEADER_X_FORWARDED_PROTO) !== 0
+                && strtolower($s['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https'
+            )
+            || (strtolower($s['HTTP_FRONT_END_HTTPS'] ?? '') === 'on')
             || ((int)($s['SERVER_PORT'] ?? 0) === 443);
 
         return $https ? 'https' : 'http';
@@ -309,7 +313,7 @@ final class Uri
             $ascii = idn_to_ascii(
                 $host,
                 IDNA_NONTRANSITIONAL_TO_ASCII,
-                \defined('INTL_IDNA_VARIANT_UTS46') ? INTL_IDNA_VARIANT_UTS46 : 0
+                \defined('INTL_IDNA_VARIANT_UTS46') ? INTL_IDNA_VARIANT_UTS46 : 0,
             );
             if ($ascii === false) {
                 throw new InvalidArgumentException("Invalid host: {$host}");
@@ -324,7 +328,7 @@ final class Uri
     {
         // RFC 3986 §5.2.4 dot-segment removal
         do {
-            $old  = $path;
+            $old = $path;
             $path = preg_replace('#(/\.?/)#', '/', $path);        // "/./" or "//"
             $path = preg_replace('#/(?!\.\.)[^/]+/\.\./#', '/', $path); // "x/../"
             $path = preg_replace('#^/\.\.(?=/|$)#', '/', $path);  // leading "/../"

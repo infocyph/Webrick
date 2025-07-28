@@ -24,6 +24,20 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
 {
     use MacroMix;
 
+    public const HEADER_X_FORWARDED_FOR = 0b00001;
+    public const HEADER_X_FORWARDED_HOST = 0b00010;
+    public const HEADER_X_FORWARDED_PROTO = 0b00100;
+    public const HEADER_X_FORWARDED_PORT = 0b01000;
+    public const HEADER_FORWARDED = 0b10000;
+
+    /** @var int */
+    private static int $trustedHeaderFlags =
+        self::HEADER_X_FORWARDED_FOR
+        | self::HEADER_X_FORWARDED_HOST
+        | self::HEADER_X_FORWARDED_PROTO
+        | self::HEADER_X_FORWARDED_PORT
+        | self::HEADER_FORWARDED;
+
     /* ========== 0.  Factory shortcuts  =============================== */
 
     /** Fake request for unit tests */
@@ -45,9 +59,17 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
     }
 
     /** Forward trusted-proxy list to EndUser helper */
-    public static function setTrustedProxies(array $cidrs): void
+    public static function setTrustedProxies(array $cidrs, ?int $headerFlags = null): void
     {
         EndUser::setTrustedProxies($cidrs);
+        if ($headerFlags !== null) {
+            self::$trustedHeaderFlags = $headerFlags;
+        }
+    }
+
+    public static function getProxyHeaderFlags(): int
+    {
+        return self::$trustedHeaderFlags;
     }
 
     /* ========== 1.  Basic accessors  ================================= */
@@ -93,7 +115,7 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
         return $this->cachedSegments ??= array_values(
             array_filter(
                 explode('/', $this->getUri()->getPath()),
-                static fn (string $s) => $s !== '',
+                static fn(string $s) => $s !== '',
             ),
         );
     }
@@ -146,7 +168,7 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
 
     public function has(string|array $keys): bool
     {
-        return array_all((array)$keys, fn ($k) => $this->data($k) !== null);
+        return array_all((array)$keys, fn($k) => $this->data($k) !== null);
     }
 
     public function filled(string|array $keys): bool
@@ -323,7 +345,7 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
             return $this->cachedLocale = strtolower(substr((string)$language[0], 0, 5));
         }
 
-        $supported = array_map(static fn (string $l) => strtolower(str_replace('_', '-', $l)), $supported);
+        $supported = array_map(static fn(string $l) => strtolower(str_replace('_', '-', $l)), $supported);
 
         foreach ($language as $lang) {
             $lang = strtolower(str_replace('_', '-', $lang));

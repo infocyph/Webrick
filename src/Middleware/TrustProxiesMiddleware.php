@@ -7,53 +7,86 @@ namespace Infocyph\Webrick\Middleware;
 use Closure;
 use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Request\Http\EndUser;
-use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Request\Support\IpCidr;
+use Infocyph\Webrick\Response\Response;
 
 /**
- * ① Whitelists *trusted* proxy CIDRs (like the old version)
- * ② **AND** blocks requests coming from a blacklisted *public* IP
- *
- * If the resolved client IP (after proxy‐stripping) lands in `$deny`,
- * the middleware immediately returns **403 Forbidden**.
+ * • Whitelists *trusted* proxy CIDRs **and** specific proxy-headers.<br>
+ * • Blocks requests from black-listed public IPs.<br>
+ * • Rejects “Host” header spoofing unless it matches `$trustedHosts`.
  *
  * ```php
  * $mw = new TrustProxiesMiddleware(
- *     allow: ['10.0.0.0/8','172.16.0.0/12','192.168.0.0/16'],
- *     deny : ['203.0.113.0/24']   // shady datacentre range
+ *     allow        : ['10.0.0.0/8','172.16.0.0/12'],
+ *     deny         : ['203.0.113.0/24'],
+ *     trustedHosts : ['*.example.com','api.example.org'],
+ *     headerFlags  : Request::HEADER_X_FORWARDED_FOR
+ *                 | Request::HEADER_X_FORWARDED_PROTO
  * );
  * ```
  */
-final readonly class TrustProxiesMiddleware
+final class TrustProxiesMiddleware
 {
-    /** @param string[] $allow CIDR blocks that *are* trusted proxies
-     * @param string[] $deny CIDR blocks that must be rejected outright
-     */
+    /** @var string[] CIDR blocks that are trusted proxies */
+    private array $allow;
+    /** @var string[] CIDR blocks that are rejected outright */
+    private array $deny;
+    /** @var string[] host allow-list (wildcards “*” permitted) */
+    private array $trustedHosts;
+    /** compiled regex list – cached per PHP process */
+    private static array $hostRegex = [];
+
     public function __construct(
-        private array $allow = [],
-        private array $deny = [],
+        array $allow = [],
+        array $deny = [],
+        array $trustedHosts = [],
+        ?int $headerFlags = null,   // Symfony-style bit-mask
     ) {
-        if ($this->allow) {
-            EndUser::setTrustedProxies($this->allow);   // ← one-time
+        $this->allow = $allow;
+        $this->deny = $deny;
+        $this->trustedHosts = $trustedHosts;
+
+        // ① proxy CIDRs & header mask → one static call
+        Request::setTrustedProxies($allow, $headerFlags);
+
+        // ② compile host patterns once per worker
+        if (self::$hostRegex === [] && $trustedHosts !== []) {
+            foreach ($trustedHosts as $p) {
+                $escaped = str_replace(['.', '*'], ['\.', '.*'], $p);
+                self::$hostRegex[] = '#^' . $escaped . '$#i';
+            }
         }
     }
 
     public function __invoke(Request $req, Closure $next): Response
     {
-        /* ---------- 2. resolve final client IP ---------------------- */
-        $ip = EndUser::from($req)->ip();   // honours allow-list
-
-        /* ---------- 3. blacklist check ------------------------------ */
-        if ($ip && $this->hits($ip, $this->deny)) {
+        /* ---------- host validation (cheap) ----------------------- */
+        if ($this->trustedHosts !== []
+            && !$this->matchesHost($req->getUri()->getHost())) {
             return new Response(
-                status: 403,
-                headers: ['Content-Type' => 'text/plain; charset=utf-8'],
-                body: new Stream("Forbidden – {$ip} is not allowed."),
+                400,
+                new Stream('Untrusted Host header.'),
+                ['Content-Type' => 'text/plain; charset=utf-8'],
             );
         }
 
-        /* ---------- 4. store the IP for downstream use -------------- */
-        $trusted = $this->hits($ip, $this->allow);
+        /* ---------- IP derivation & ACLs -------------------------- */
+        $endUser = EndUser::from($req);      // already honours proxy mask
+
+        $ip = $endUser->ip();                // final public address
+
+        if ($ip && $this->cidrHit($ip, $this->deny)) {
+            return new Response(
+                403,
+                new Stream("Forbidden – $ip is not allowed."),
+                ['Content-Type' => 'text/plain; charset=utf-8'],
+            );
+        }
+
+        /* ---------- stash for downstream -------------------------- */
+        $trusted = $this->cidrHit($ip, $this->allow);
+
         $req = $req
             ->withAttribute('client_ip', $ip)
             ->withAttribute('is_trusted_proxy', $trusted);
@@ -61,41 +94,18 @@ final readonly class TrustProxiesMiddleware
         return $next($req);
     }
 
-    /* --------------------------------------------------------------- */
-    /** Simple CIDR match (v4 & v6). */
-    private function hits(string $ip, array $cidrs): bool
-    {
-        $check = fn (string $cidr): bool
-            => str_contains($cidr, ':')
-            ? $this->cidrV6($ip, $cidr)
-            : $this->cidrV4($ip, $cidr);
+    /* ───────────────────────── helpers ─────────────────────────── */
 
-        return array_any($cidrs, fn ($c) => $check($c));
+    private function matchesHost(string $host): bool
+    {
+        return array_any(self::$hostRegex, fn ($rx) => preg_match($rx, $host));
     }
 
-    private function cidrV4(string $ip, string $cidr): bool
+    private function cidrHit(?string $ip, array $cidrs): bool
     {
-        [$subnet, $mask] = \strpos($cidr, '/') ? \explode('/', $cidr, 2) : [$cidr, 32];
-        $mask = (int)$mask;
-        return (\ip2long($ip) & ~((1 << (32 - $mask)) - 1))
-            === (\ip2long($subnet) & ~((1 << (32 - $mask)) - 1));
-    }
-
-    private function cidrV6(string $ip, string $cidr): bool
-    {
-        [$subnet, $mask] = \strpos($cidr, '/') ? \explode('/', $cidr, 2) : [$cidr, 128];
-        $mask = (int)$mask;
-        $ipBin = \inet_pton($ip);
-        $netBin = \inet_pton($subnet);
-        if ($ipBin === false || $netBin === false) {
+        if ($ip === null || $cidrs === []) {
             return false;
         }
-        $bytes = intdiv($mask, 8);
-        $same = \substr_compare($ipBin, $netBin, 0, $bytes) === 0;
-        if ($same && $mask % 8) {
-            $bitmask = 0xFF << (8 - ($mask % 8));
-            $same = (\ord($ipBin[$bytes]) & $bitmask) === (\ord($netBin[$bytes]) & $bitmask);
-        }
-        return $same;
+        return array_any($cidrs, fn ($cidr) => IpCidr::match($ip, $cidr));
     }
 }

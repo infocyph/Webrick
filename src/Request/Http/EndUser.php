@@ -48,9 +48,8 @@ final class EndUser
 
     public function __construct(
         private readonly Request $req,
-        private readonly array $extraTrusted = []
-    ) {
-    }
+        private readonly array $extraTrusted = [],
+    ) {}
 
     /* fast factory */
     public static function from(Request $r, array $cidrs = []): self
@@ -112,7 +111,7 @@ final class EndUser
     public function anonymize(string $ip): string
     {
         $wrap = $ip[0] === '[' && $ip[-1] === ']';
-        $ip   = $wrap ? substr($ip, 1, -1) : $ip;
+        $ip = $wrap ? substr($ip, 1, -1) : $ip;
 
         $bin = \inet_pton($ip);
         if ($bin === false) {
@@ -148,10 +147,10 @@ final class EndUser
     private function isPrivate(string $ip): bool
     {
         return \filter_var(
-            $ip,
-            \FILTER_VALIDATE_IP,
-            \FILTER_FLAG_NO_RES_RANGE | \FILTER_FLAG_NO_PRIV_RANGE
-        ) === false;
+                $ip,
+                \FILTER_VALIDATE_IP,
+                \FILTER_FLAG_NO_RES_RANGE | \FILTER_FLAG_NO_PRIV_RANGE,
+            ) === false;
     }
 
     private function isTrustedProxy(string $ip): bool
@@ -167,6 +166,9 @@ final class EndUser
     /** RFC 7239 Forwarded header → IP list (L→R) */
     private function parseForwarded(): array
     {
+        if ((Request::getProxyHeaderFlags() & Request::HEADER_FORWARDED) === 0) {
+            return [];
+        }
         $h = $this->req->getHeaderLine('Forwarded');
         if ($h === '') {
             return [];
@@ -178,6 +180,9 @@ final class EndUser
     /** Fallback: X-Forwarded-For / misc legacy headers */
     private function parseLegacyForwarded(): array
     {
+        if ((Request::getProxyHeaderFlags() & Request::HEADER_X_FORWARDED_FOR) === 0) {
+            return [];
+        }
         $srv = $this->req->getServerParams();
         foreach (self::LEGACY_IP_HEADERS as $hdr) {
             if (empty($srv[$hdr])) {
