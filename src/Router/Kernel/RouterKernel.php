@@ -77,8 +77,8 @@ final class RouterKernel
 
         /* ② fallback to the new merged matcher */
         $matcher ??= new MergedMatcher();
-        $container = Container::instance('inv_imx');
-        $container->tracer()->setLevel(TraceLevel::Verbose);
+//        $container = Container::instance('inv_imx');
+//        $container->tracer()->setLevel(TraceLevel::Verbose);
 
         $dispatcher = new Dispatcher(Invoker::shared());
         $cache = new RouteCache($cachePool, ttl: $cacheTtl);

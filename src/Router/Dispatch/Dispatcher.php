@@ -6,6 +6,7 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Router\Dispatch;
 
 use Infocyph\InterMix\DI\Invoker;
+use Infocyph\Webrick\Request\Psr7\ServerRequest;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
@@ -36,6 +37,11 @@ final class Dispatcher
         if (method_exists($route, 'getCorsPolicy') && $corsPolicy = $route->getCorsPolicy()) {
             $request = $request->withAttribute('cors_policy', $corsPolicy);
         }
+
+        $container = $this->invoker->getContainer();
+        $defs = $container->definitions();
+        $defs->bind(Request::class, $request);
+        $defs->bind(ServerRequest::class, $request);
 
         // ① Index is perfect (numeric, monotonic) – use it when present
         $routeId = $route->getIndex();

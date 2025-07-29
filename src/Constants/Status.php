@@ -162,12 +162,10 @@ enum Status: int
     /* ── entity-body semantics ────────────────────────────────────────── */
     public function isEmpty(): bool
     {
-        return match ($this) {
-            self::NO_CONTENT,
-            self::RESET_CONTENT,
-            self::NOT_MODIFIED => true,
-            default => $this->isInformational(),   // 1xx
-        };
+        return ($this->isInformational() && $this !== self::SWITCHING_PROTOCOLS)
+            || $this === self::NO_CONTENT
+            || $this === self::RESET_CONTENT
+            || $this === self::NOT_MODIFIED;
     }
 
     public function allowsBody(): bool
@@ -187,6 +185,23 @@ enum Status: int
             => true,
             default => false,
         };
+    }
+
+    public function isCacheableByDefault(): bool
+    {
+        return match ($this) {
+            self::OK,
+            self::NON_AUTHORITATIVE_INFO,
+            self::PARTIAL_CONTENT,
+            self::MOVED_PERMANENTLY,
+            self::GONE => true,
+            default => false,
+        };
+    }
+
+    public function needsLocationHeader(): bool
+    {
+        return $this === self::CREATED || $this->isRedirect();
     }
 
     /* ── BC shims ─────────────────────────────────────────────────────── */

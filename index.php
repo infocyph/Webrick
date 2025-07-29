@@ -1,15 +1,10 @@
 <?php
+
 /**
  * index.php – ultra-light Webrick demo
- *
- * Run with:
- *   php -S localhost:8000 index.php
- *
- * No framework, no container – just Composer’s autoloader.
+ * Run: php -S localhost:8000 index.php
  */
-
 declare(strict_types=1);
-
 require __DIR__ . '/vendor/autoload.php';
 
 use Infocyph\InterMix\Cache\Cache;
@@ -24,19 +19,12 @@ use Infocyph\Webrick\Router\Route\Collection;
 use Psr\Log\NullLogger;
 
 /* --------------------------------------------------------------------------
- * 1. Build the route table
+ * 1.  Build the route table (no pre-compiling!)
  * ----------------------------------------------------------------------- */
-
-$routes = new Collection();
-
-/**
- * Pass `true` as 3rd ctor arg to enable automatic trailing-slash
- * redirects for every GET route (e.g. “/foo/” → “/foo”, 308).
- */
-$registrar = new Registrar($routes, autoSlashRedirect: true);
+$routes    = new Collection();
+$registrar = new Registrar($routes, autoSlashRedirect: false);
 
 /* ---- demo routes ------------------------------------------------------ */
-
 $registrar->get('/', function (): HtmlResponse {
     $links = [
         '/ping'         => 'Static text',
@@ -54,49 +42,51 @@ $registrar->get('/', function (): HtmlResponse {
     $html .= '</ul>';
 
     return new HtmlResponse($html);
-})->withName('home');
+});
 
 $registrar->get('/ping', fn () => 'pong');
 
-$registrar->get('/hello/{name}', function (Request $r): Response {
-    $name = $r->getAttribute('route_params')['name'] ?? 'stranger';
-    return Response::json(['hello' => $name]);
-});
+$registrar->get(
+    '/hello/{name}',
+    fn (Request $r) =>
+Response::json(['hello' => $r->getAttribute('route_params')['name'] ?? 'stranger'])
+);
 
 $registrar->get('/json', fn () => Response::json(['time' => date(DATE_ATOM)]));
-
 $registrar->get('/redirect', fn () => Response::redirect('/', 302));
-
 $registrar->get('/download', fn () => Response::attachment(__FILE__, 'index.php'));
-
-$registrar->get('/color/{hex:hex}', function (Request $r): Response {
-    $hex = $r->getAttribute('route_params')['hex'];
-    return Response::json(['you sent hex' => $hex]);
-});
-
-/* --------------------------------------------------------------------------
- * 2. Compile once – immutable after this call
- * ----------------------------------------------------------------------- */
-$compiled = $registrar->compile();
-
-/* --------------------------------------------------------------------------
- * 3. Boot the router kernel (matcher + dispatcher)
- * ----------------------------------------------------------------------- */
-
-$kernel = RouterKernel::boot(
-    log       : new NullLogger(),
-    cachePool : Cache::file('webrick'),          // simple PSR-6 file cache
-    compiler  : fn () => $compiled->all(),       // returns list<CompiledRoute>
-    matcher   : new MergedMatcher(),             // blazing-fast in-memory matcher
-    // Persist a fast-regex dump so the *next* boot skips per-route adds
-    regexDump : __DIR__ . '/.route-table.php',
+$registrar->get(
+    '/color/{hex:hex}',
+    fn (Request $r) =>
+Response::json(['you sent hex' => $r->getAttribute('route_params')['hex']])
 );
 
 /* --------------------------------------------------------------------------
- * 4. Handle the current HTTP request & emit the response
+ * 2.  Prepare a *lazy* compiler – only invoked when the dump is missing
  * ----------------------------------------------------------------------- */
+$routeDumpPath = __DIR__ . '/.route-table.php';
 
-$request  = Request::fromGlobals();      // PSR-7 request from PHP super-globals
-$response = $kernel->handle($request);   // route → middleware → handler
+$compiler = static function () use ($registrar, $routeDumpPath) {
+    return file_exists($routeDumpPath)
+        ? []                             // routes already persisted – skip
+        : $registrar->compile()->all();  // first boot or cache flush
+};
 
-new SapiEmitter()->emit($response);    // send headers & body to the client
+/* --------------------------------------------------------------------------
+ * 3.  Boot the router kernel
+ * ----------------------------------------------------------------------- */
+$kernel = RouterKernel::boot(
+    log       : new NullLogger(),
+    cachePool : Cache::file('webrick.c'),
+    compiler  : $compiler,
+    matcher   : new MergedMatcher(),
+    regexDump : $routeDumpPath,          // on first run it’s created, thereafter loaded
+);
+
+/* --------------------------------------------------------------------------
+ * 4.  Handle & emit
+ * ----------------------------------------------------------------------- */
+$request  = Request::fromGlobals();
+$response = $kernel->handle($request);
+
+new SapiEmitter()->emit($response);
