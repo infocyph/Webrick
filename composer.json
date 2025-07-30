@@ -32,7 +32,7 @@
     "require": {
         "php": ">=8.4",
         "infocyph/arraykit": "^2.03",
-        "infocyph/intermix": "dev-main"
+        "infocyph/intermix": "^5.33"
     },
     "minimum-stability": "stable",
     "prefer-stable": true,

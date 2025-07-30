@@ -27,7 +27,7 @@ final class LazyJsonStream
     /**
      * @param callable|JsonSerializable $source
      */
-    public function __construct($source, int $flags, int $depth)
+    public function __construct(mixed $source, int $flags, int $depth)
     {
         $this->source = $source;
         $this->flags  = $flags;

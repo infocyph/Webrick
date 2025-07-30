@@ -55,7 +55,7 @@ class Response
  * Response::json()
  * =======================================================*/
     public static function json(
-        callable|array|object $data,
+        callable|array|object|string $data,
         int $status = 200,
         array $headers = [],
         int $flags = JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE,

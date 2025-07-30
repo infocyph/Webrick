@@ -77,9 +77,6 @@ final class RouterKernel
 
         /* ② fallback to the new merged matcher */
         $matcher ??= new MergedMatcher();
-//        $container = Container::instance('inv_imx');
-//        $container->tracer()->setLevel(TraceLevel::Verbose);
-
         $dispatcher = new Dispatcher(Invoker::shared());
         $cache = new RouteCache($cachePool, ttl: $cacheTtl);
 
@@ -124,9 +121,6 @@ final class RouterKernel
         } catch (RouteNotFoundException) {
             return Response::json(['error' => 'Not Found'], 404);
         } catch (\Throwable $e) {
-            $container = Container::instance('inv_imx');
-            dump($container->tracer()->toArray());
-            dd($e);
             // Never leak internal details in production.
             // 1️⃣  Log the full exception for later inspection …
             $this->log->error(
