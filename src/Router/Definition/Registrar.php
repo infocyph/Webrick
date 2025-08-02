@@ -167,7 +167,7 @@ final readonly class Registrar
         // 4) Register in collection
         $this->routes->add($route);
 
-        if ($this->autoSlashRedirect && $verb === 'GET') {
+        if ($this->autoSlashRedirect && $verb === 'GET' && !str_contains($fullPath, '{')) {
             $alt = str_ends_with($fullPath, '/')
                 ? rtrim($fullPath, '/')
                 : $fullPath . '/';

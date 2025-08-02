@@ -22,7 +22,7 @@ use Psr\Log\NullLogger;
  * 1.  Build the route table (no pre-compiling!)
  * ----------------------------------------------------------------------- */
 $routes    = new Collection();
-$registrar = new Registrar($routes, autoSlashRedirect: false);
+$registrar = new Registrar($routes, autoSlashRedirect: true);
 
 /* ---- demo routes ------------------------------------------------------ */
 $registrar->get('/', function (): HtmlResponse {
@@ -77,7 +77,7 @@ $compiler = static function () use ($registrar, $routeDumpPath) {
  * ----------------------------------------------------------------------- */
 $kernel = RouterKernel::boot(
     log       : new NullLogger(),
-    cachePool : Cache::file('webrick.c'),
+    cachePool : Cache::file('got'),
     compiler  : $compiler,
     matcher   : new MergedMatcher(),
     regexDump : $routeDumpPath,          // on first run it’s created, thereafter loaded
