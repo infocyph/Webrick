@@ -52,7 +52,7 @@ $registrar->get(
 Response::json(['hello' => $r->getAttribute('route_params')['name'] ?? 'stranger'])
 );
 
-$registrar->get('/json', fn () => Response::json(['time' => date(DATE_ATOM)]));
+$registrar->get('/json', fn () => Response::json(['memory' => memory_get_usage(true)]));
 $registrar->get('/redirect', fn () => Response::redirect('/', 302));
 $registrar->get('/download', fn () => Response::attachment(__FILE__, 'index.php'));
 $registrar->get(
@@ -77,7 +77,7 @@ $compiler = static function () use ($registrar, $routeDumpPath) {
  * ----------------------------------------------------------------------- */
 $kernel = RouterKernel::boot(
     log       : new NullLogger(),
-    cachePool : Cache::file('got'),
+    cachePool : Cache::file('webrick.d'),
     compiler  : $compiler,
     matcher   : new MergedMatcher(),
     regexDump : $routeDumpPath,          // on first run it’s created, thereafter loaded
