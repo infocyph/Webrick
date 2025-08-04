@@ -16,7 +16,14 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
  */
 final class MergedMatcher implements MatcherInterface
 {
-    /** [$host][ 'static' => [verb][path] = Route , 'trie' => node ] */
+    /**
+     * [$host] = [
+     *   'static' => [verb][path] = Route ,
+     *   'single' => [path][verb] = Route ,
+     *   'verbs'  => [path] = ['GET'=>true,'POST'=>true …],   //  ← NEW
+     *   'trie'   => node
+     * ]
+     */
     private array $hosts = [];
 
     /* ────────────────────── public API ────────────────────── */
@@ -75,19 +82,30 @@ final class MergedMatcher implements MatcherInterface
 
     /* ---------- static ---------- */
 
+    /* ─────── registration ─────── */
     private function insertStatic(string $host, string $verb, CompiledRoute $r): void
     {
         $path = $r->getPath();
+        $group = &$this->hosts[$host];
 
+        /* ① route table (as before) ---------------------------------- */
         if (substr_count($path, '/') === 1) {
-            $this->hosts[$host]['single'][$path][$verb] = $r;
-            return;
+            $group['single'][$path][$verb] = $r;
+        } else {
+            if (isset($group['static'][$verb][$path])) {
+                throw new \LogicException("Duplicate route {$verb} {$host}{$path}");
+            }
+            $group['static'][$verb][$path] = $r;
         }
 
-        if (isset($this->hosts[$host]['static'][$verb][$path])) {
-            throw new \LogicException("Duplicate route {$verb} {$host}{$path}");
+        /* ② verbs set for O(1) 405 tests ----------------------------- */
+        $set = &$group['verbs'][$path];
+        $set[$verb] = true;
+        if ($verb === 'GET') {          // cheap HEAD⇆GET alias
+            $set['HEAD'] = true;
+        } elseif ($verb === 'HEAD') {
+            $set['GET'] = true;
         }
-        $this->hosts[$host]['static'][$verb][$path] = $r;
     }
 
     /* ---------- dynamic ---------- */
@@ -139,7 +157,7 @@ final class MergedMatcher implements MatcherInterface
             ) {
                 throw new \LogicException(
                     "Conflicting placeholders at same depth: "
-                    . "{${node['param']['name']}} vs {${spec['name']}}",
+                    . "{$node['param']['name']} vs {$spec['name']}",
                 );
             }
             return $node['param']['node'];
@@ -160,43 +178,28 @@ final class MergedMatcher implements MatcherInterface
      */
     private function matchStatic(string $host, string $verb, string $path, array &$allowed): ?array
     {
-        if (!isset($this->hosts[$host]) && !isset($this->hosts['*'])) {
-            return null;
-        }
-
         foreach ([$host, '*'] as $h) {
-            if (isset($this->hosts[$h]['single'][$path][$verb])) {
-                return [$this->hosts[$h]['single'][$path][$verb], []];
-            }
-        }
-
-        foreach ([$host, '*'] as $h) {
-            if (!isset($this->hosts[$h])) {
-                continue;
+            if (!isset($this->hosts[$h]['verbs'][$path])) {
+                continue;                       // no such path in this bucket
             }
 
-            /* OPTIONS → first path wins */
+            $verbs = $this->hosts[$h]['verbs'][$path];
+
+            /* OPTIONS ⇒ first verb wins (spec) */
             if ($verb === 'OPTIONS') {
-                foreach ($this->hosts[$h]['static'] as $m => $paths) {
-                    if (isset($paths[$path])) {
-                        return [$paths[$path], []];
-                    }
-                }
+                $first = array_key_first($verbs);
+                return [$this->hosts[$h]['static'][$first][$path] ?? $this->hosts[$h]['single'][$path][$first], []];
             }
 
-            $v = ($verb === 'HEAD' && !isset($this->hosts[$h]['static']['HEAD'][$path]))
-                ? 'GET' : $verb;
-
-            if (isset($this->hosts[$h]['static'][$v][$path])) {
-                return [$this->hosts[$h]['static'][$v][$path], []];
+            /* HEAD fallback handled by verbs-set alias */
+            if (isset($verbs[$verb])) {
+                $v = ($verb === 'HEAD' && !isset($this->hosts[$h]['static']['HEAD'][$path])) ? 'GET' : $verb;
+                $route = $this->hosts[$h]['static'][$v][$path] ?? $this->hosts[$h]['single'][$path][$v];
+                return [$route, []];
             }
 
-            /* gather verbs for 405 */
-            foreach ($this->hosts[$h]['static'] as $m => $paths) {
-                if (isset($paths[$path])) {
-                    $allowed[] = $m;
-                }
-            }
+            /* gather for 405 */
+            $allowed = array_merge($allowed, array_keys($verbs));
         }
         return null;
     }
@@ -206,8 +209,18 @@ final class MergedMatcher implements MatcherInterface
     private function matchTrie(string $host, string $verb, string $path, array &$allowed): ?array
     {
         $root = $this->hosts[$host]['trie'] ?? ($this->hosts['*']['trie'] ?? null);
-        return $root ? $this->walk($root, $this->explodePath($path), 0, $verb, [], $allowed) : null;
+        if ($root === null) {
+            return null;
+        }
+
+        $hit = null;
+        if (!$this->walk($root, $this->explodePath($path), 0, $verb, [], $allowed, $hit)) {
+            return null;            // no match
+        }
+
+        return $hit;                // [$route, $params]
     }
+
 
     private function walk(
         array $node,
@@ -216,54 +229,54 @@ final class MergedMatcher implements MatcherInterface
         string $verb,
         array $params,
         array &$allowed,
-    ): ?array {
-        if ($i === \count($seg)) {                    // leaf
-            return $this->pickRoute($node, $verb, $params, $allowed);
+        ?array &$hit,                //  ← out-param
+    ): bool {
+        if ($i === \count($seg)) {                   // leaf
+            return $this->pickRoute($node, $verb, $params, $allowed, $hit);
         }
 
         $piece = $seg[$i];
 
-        /* 1) literal child */
-        if (isset($node['children'][$piece])) {
-            if ($hit = $this->walk($node['children'][$piece], $seg, $i + 1, $verb, $params, $allowed)) {
-                return $hit;
-            }
+        /* 1) literal */
+        if (isset($node['children'][$piece]) &&
+            $this->walk($node['children'][$piece], $seg, $i + 1, $verb, $params, $allowed, $hit)) {
+            return true;
         }
 
-        /* 2) param child */
+        /* 2) placeholder */
         $p = $node['param'];
-        if ($p !== null && preg_match($p['regex'], $piece) === 1) {
-            $hit = $this->walk(
-                $p['node'],
-                $seg,
-                $i + 1,
-                $verb,
-                $params + [$p['name'] => $piece],
-                $allowed,
-            );
-            if ($hit !== null) {
-                return $hit;
-            }
+        if ($p !== null && preg_match($p['regex'], $piece) === 1 &&
+            $this->walk($p['node'], $seg, $i + 1, $verb, $params + [$p['name'] => $piece], $allowed, $hit)) {
+            return true;
         }
 
-        return null;
+        return false;
     }
 
-    private function pickRoute(array $node, string $verb, array $params, array &$allowed): ?array
-    {
-        if ($verb === 'OPTIONS' && $node['routes']) {           // any will do
-            return [reset($node['routes']), $params];
+    private function pickRoute(
+        array $node,
+        string $verb,
+        array $params,
+        array &$allowed,
+        ?array &$hit,          //  ← out-param
+    ): bool {
+        if ($verb === 'OPTIONS' && $node['routes']) {
+            $hit = [reset($node['routes']), $params];
+            return true;
         }
-        if (isset($node['routes'][$verb])) {                    // exact
-            return [$node['routes'][$verb], $params];
+        if (isset($node['routes'][$verb])) {
+            $hit = [$node['routes'][$verb], $params];
+            return true;
         }
         if ($verb === 'HEAD' && isset($node['routes']['GET'])) {
-            return [$node['routes']['GET'], $params];
+            $hit = [$node['routes']['GET'], $params];
+            return true;
         }
-        if ($node['routes']) {                                  // gather 405
+
+        if ($node['routes']) {
             $allowed = array_merge($allowed, array_keys($node['routes']));
         }
-        return null;
+        return false;
     }
 
     /* ────────────────────── utils ────────────────────── */

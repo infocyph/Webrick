@@ -1,10 +1,10 @@
 <?php
-
 /**
  * index.php – ultra-light Webrick demo
  * Run: php -S localhost:8000 index.php
  */
 declare(strict_types=1);
+
 require __DIR__ . '/vendor/autoload.php';
 
 use Infocyph\InterMix\Cache\Cache;
@@ -14,12 +14,11 @@ use Infocyph\Webrick\Response\Payloads\HtmlResponse;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Kernel\RouterKernel;
-use Infocyph\Webrick\Router\Matching\MergedMatcher;
 use Infocyph\Webrick\Router\Route\Collection;
 use Psr\Log\NullLogger;
 
 /* --------------------------------------------------------------------------
- * 1.  Build the route table (no pre-compiling!)
+ * 1.  Build the (runtime) route table
  * ----------------------------------------------------------------------- */
 $routes    = new Collection();
 $registrar = new Registrar($routes, autoSlashRedirect: true);
@@ -49,7 +48,7 @@ $registrar->get('/ping', fn () => 'pong');
 $registrar->get(
     '/hello/{name}',
     fn (Request $r) =>
-Response::json(['hello' => $r->getAttribute('route_params')['name'] ?? 'stranger'])
+    Response::json(['hello' => $r->getAttribute('route_params')['name'] ?? 'stranger'])
 );
 
 $registrar->get('/json', fn () => Response::json(['memory' => memory_get_usage(true)]));
@@ -58,29 +57,27 @@ $registrar->get('/download', fn () => Response::attachment(__FILE__, 'index.php'
 $registrar->get(
     '/color/{hex:hex}',
     fn (Request $r) =>
-Response::json(['you sent hex' => $r->getAttribute('route_params')['hex']])
+    Response::json(['you sent hex' => $r->getAttribute('route_params')['hex']])
 );
 
 /* --------------------------------------------------------------------------
- * 2.  Prepare a *lazy* compiler – only invoked when the dump is missing
+ * 2.  Compiler callback (executed only when route-table cache is cold)
  * ----------------------------------------------------------------------- */
-$routeDumpPath = __DIR__ . '/.route-table.php';
-
-$compiler = static function () use ($registrar, $routeDumpPath) {
-    return file_exists($routeDumpPath)
-        ? []                             // routes already persisted – skip
-        : $registrar->compile()->all();  // first boot or cache flush
-};
+$compiler = static fn () => $registrar->compile()->all();
 
 /* --------------------------------------------------------------------------
  * 3.  Boot the router kernel
+ *      – UnifiedMatcher is chosen automatically
+ *      – segment-group cache dropped into ./.route-cache/
  * ----------------------------------------------------------------------- */
+$routeCacheDir = __DIR__ . '/.route-cache';
+
 $kernel = RouterKernel::boot(
-    log       : new NullLogger(),
-    cachePool : Cache::file('webrick.d'),
-    compiler  : $compiler,
-    matcher   : new MergedMatcher(),
-    regexDump : $routeDumpPath,          // on first run it’s created, thereafter loaded
+    log          : new NullLogger(),
+    cachePool    : Cache::file('tescolab'),
+    compiler     : $compiler,
+    matcher      : null,             // use default UnifiedMatcher
+    routeCacheDir: $routeCacheDir,   // enables lazy on-disk cache
 );
 
 /* --------------------------------------------------------------------------

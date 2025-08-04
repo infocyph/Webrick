@@ -5,10 +5,7 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Router\Kernel;
 
 use Closure;
-use Infocyph\InterMix\DI\Container;
 use Infocyph\InterMix\DI\Invoker;
-use Infocyph\InterMix\DI\Support\TraceLevel;
-use Infocyph\Webrick\Router\Compile\FastRegexCompiler;
 use Infocyph\Webrick\Exceptions\{
     MethodNotAllowedException,
     RouteNotFoundException
@@ -18,15 +15,19 @@ use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Cache\RouteCache;
 use Infocyph\Webrick\Router\Dispatch\Dispatcher;
 use Infocyph\Webrick\Router\Matching\{
-    MergedMatcher,
-    FastRegexMatcher,
-    MatcherInterface
+    MatcherInterface,
+    UnifiedMatcher
 };
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 use Psr\Cache\CacheItemPoolInterface as Psr6Pool;
 use Psr\Log\LoggerInterface;
-use UnexpectedValueException;
 
+/**
+ * Thin orchestration layer gluing together:
+ *   – PSR-6 route-table cache
+ *   – the high-speed matcher (default : UnifiedMatcher)
+ *   – the dispatcher / IoC invoker
+ */
 final class RouterKernel
 {
     /** @var Closure():list<CompiledRoute> */
@@ -38,49 +39,39 @@ final class RouterKernel
         private readonly ?RouteCache $cache,
         Closure $compiler,
         private readonly LoggerInterface $log,
-        private readonly ?string $regexDump = null,
+        private readonly ?string $routeCacheDir = null,
     ) {
         $this->compiler = $compiler;
-        $this->doWarm();
+        $this->warm();
     }
 
     /* ───────────────────────── bootstrap helper ───────────────────────── */
 
     /**
-     * Convenience factory that wires sensible defaults while still allowing
-     * you to swap the matcher for a `FastRegexMatcher` (or any other) later.
-     *
-     * @param Closure():list<CompiledRoute> $compiler Callback that returns the
-     *        *current* compiled route table (e.g. `fn() => $builder->compile()`).
+     * Sensible defaults:
+     *   – UnifiedMatcher (+ segment-group cache if $routeCacheDir given)
+     *   – PSR-6 route-table cache
      */
     public static function boot(
         LoggerInterface $log,
         Psr6Pool $cachePool,
         Closure $compiler,
         MatcherInterface|null $matcher = null,
-        ?string $regexDump = null,
-        int $cacheTtl = 86_400,   // 24 h
+        ?string $routeCacheDir = null,
+        int $cacheTtl = 86_400,
     ): self {
-        /* ① prefer a pre-generated fast-regex table when provided */
-        if ($matcher === null && $regexDump && \is_file($regexDump)) {
-            try {
-                $matcher = new FastRegexMatcher($regexDump);
-            } catch (UnexpectedValueException $e) {
-                // CRC mismatch → fall back gracefully; warm() will re-dump
-                $log->warning('[router] Stale fast-regex dump – using merged matcher', [
-                    'file' => $regexDump,
-                    'error' => $e->getMessage(),
-                ]);
-                $matcher = null;                       // continue to fallback below
-            }
+        /* matcher ------------------------------------------------------- */
+        if ($matcher === null) {
+            $matcher = new UnifiedMatcher();
+        }
+        if ($routeCacheDir && $matcher instanceof UnifiedMatcher) {
+            $matcher->enableCache($routeCacheDir);
         }
 
-        /* ② fallback to the new merged matcher */
-        $matcher ??= new MergedMatcher();
         $dispatcher = new Dispatcher(Invoker::shared());
         $cache = new RouteCache($cachePool, ttl: $cacheTtl);
 
-        return new self($matcher, $dispatcher, $cache, $compiler, $log, $regexDump);
+        return new self($matcher, $dispatcher, $cache, $compiler, $log, $routeCacheDir);
     }
 
     /* ─────────────────────────── request entry ────────────────────────── */
@@ -95,23 +86,6 @@ final class RouterKernel
         try {
             [$route, $vars] = $this->matcher->match($method, $host, $path);
             return $this->dispatcher->dispatch($route, $request, $vars);
-        } catch (UnexpectedValueException $e) {
-            // CRC mismatch at runtime
-            $this->log->warning('[router] Stale fast-regex dump detected – regenerating', [
-                    'error' => $e->getMessage(),
-                ]);
-
-            // purge the bad dump so warm() can recreate it
-            if ($this->regexDump && \is_file($this->regexDump)) {
-                @unlink($this->regexDump);
-            }
-
-            // swap matcher → re-warm → try once more
-            $this->matcher = new MergedMatcher();
-            $this->doWarm();
-
-            [$route, $vars] = $this->matcher->match($method, $host, $path);
-            return $this->dispatcher->dispatch($route, $request, $vars);
         } catch (MethodNotAllowedException $e) {
             return Response::json(
                 ['error' => 'Method Not Allowed'],
@@ -121,90 +95,62 @@ final class RouterKernel
         } catch (RouteNotFoundException) {
             return Response::json(['error' => 'Not Found'], 404);
         } catch (\Throwable $e) {
-            // Never leak internal details in production.
-            // 1️⃣  Log the full exception for later inspection …
-            $this->log->error(
-                '[router] Uncaught exception during dispatch',
-                ['exception' => $e]        // Monolog will format the stack-trace
-            );
-
-            // 2️⃣  …and send a terse, generic JSON response to the client.
+            $this->log->error('[router] Uncaught exception during dispatch', ['exception' => $e]);
             return Response::json(['error' => 'Server Error'], 500);
         }
     }
 
-    /* ─────────────────────── boot-time warm-up ────────────────────────── */
+    /* ───────────────────── warm-up / cache prime ─────────────────────── */
 
-    /**
-     * Load (or compile) the route-table, wire it into the matcher and—when
-     * appropriate—emit a Fast-Regex dump for future, ultra-fast boots.
-     *
-     * @throws \RuntimeException When the compiler returns an empty set.
-     */
-    private function doWarm(): void
+    private function warm(): void
     {
-        /* 1) fetch from cache or build fresh -------------------------------- */
-        $routes = $this->cache?->remember($this->compiler)      // PSR-6/16 path
-            ?? ($this->compiler)();                             // cache disabled / miss
-
+        /* 1 ) fetch (or compile) ---------------------------------------- */
+        $routes = $this->cache?->remember($this->compiler) ?? ($this->compiler)();
         if ($routes === []) {
             throw new \RuntimeException('Route compiler produced an empty table.');
         }
 
-        /* 2) prime the in-memory matcher (fast-regex is read-only) ---------- */
-        if (!$this->matcher instanceof FastRegexMatcher) {
-            foreach ($routes as $route) {
-                $this->matcher->add($route);
-            }
+        /* 2 ) feed matcher --------------------------------------------- */
+        foreach ($routes as $r) {
+            $this->matcher->add($r);
         }
 
-        /* 3) emit fast-regex dump for future boots (first-run only) --------- */
+        /* 3 ) generate group cache on first boot (UnifiedMatcher only) -- */
         if (
-            $this->matcher instanceof MergedMatcher
-            && $this->regexDump !== ''
-            && (!\is_file($this->regexDump) || \filesize($this->regexDump) === 0)
+            $this->routeCacheDir &&
+            $this->matcher instanceof UnifiedMatcher &&
+            !$this->hasGroupFiles($this->routeCacheDir)
         ) {
-            FastRegexCompiler::dump($routes, $this->regexDump);
-            $this->log->info('[router] fast-regex table dumped', ['file' => $this->regexDump]);
+            $this->matcher->dumpCache($this->routeCacheDir);
+            $this->log->info('[router] segment-group cache dumped', ['dir' => $this->routeCacheDir]);
         }
 
-        /* 4) telemetry ------------------------------------------------------ */
-        $this->log->info(
-            '[router] table loaded',
-            [
-                'count' => \count($routes),
-                'cached' => $this->cache !== null,
-                'matcher' => $this->matcher::class,
-            ],
-        );
+        /* 4 ) telemetry ------------------------------------------------- */
+        $this->log->info('[router] route table ready', [
+            'count' => \count($routes),
+            'cached' => $this->cache !== null,
+            'matcher' => $this->matcher::class,
+        ]);
     }
 
-    public function getRegexDumpPath(): ?string
+    /** crude “does directory already contain any *.php group file?” check */
+    private function hasGroupFiles(string $dir): bool
     {
-        return $this->regexDump;
-    }
-    public function warm(): void
-    {
-        $this->doWarm();
+        foreach (glob(rtrim($dir, '/\\') . '/*.php') ?: [] as $_) {
+            return true;
+        }
+        return false;
     }
 
-    /* ─────────────────────────── helpers ──────────────────────────────── */
+    /* ─────────────────────────── helpers ─────────────────────────────── */
 
-    /**
-     * Minimal copy of the previous `Utils::normaliseHost()` so we keep the
-     * exact same sanity checks without a hard dependency on Utils.
-     */
     private static function normaliseHost(string $raw): string
     {
-        // ① basic sanity
         if ($raw === '' || \preg_match('/[\x00-\x20]/', $raw)) {
             throw new \InvalidArgumentException('Illegal Host header.');
         }
-
-        // ② trim trailing “.” and lowercase
         $host = \rtrim(\strtolower($raw), '.');
 
-        // ③ IDN → ASCII if intl ext. available
         if (\function_exists('idn_to_ascii') && !\str_contains($host, 'xn--')) {
             $ascii = @\idn_to_ascii($host, \IDNA_DEFAULT, \INTL_IDNA_VARIANT_UTS46);
             if ($ascii === false) {
@@ -212,12 +158,9 @@ final class RouterKernel
             }
             $host = $ascii;
         }
-
-        // ④ final ASCII-only guard
         if (!\preg_match('/^[\x21-\x7E]+$/', $host)) {
             throw new \InvalidArgumentException('Host contains non-ASCII bytes.');
         }
-
         return $host;
     }
 }
