@@ -1,5 +1,8 @@
 <?php
 
+/*-------------------------------------------------------------------------*
+ *  CompiledRoute – PHP 8.4 tuned                                          *
+ *-------------------------------------------------------------------------*/
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router\Route;
@@ -9,32 +12,18 @@ use Infocyph\Webrick\Interfaces\RouteInterface;
 use Infocyph\Webrick\Router\Constraint\Registry as ConstraintRegistry;
 use Infocyph\Webrick\Router\Definition\Attribute\Cors;
 
-/**
- * Hot-path DTO consumed by matchers.
- *
- *  – does all heavy work (placeholder parsing, PCRE building) exactly **once**
- *  – now also carries an immutable <segment-spec> array for the new matcher
- *
- * SegmentSpec shape
- * -----------------
- *  • literal : ['type' => 'lit', 'val'  => string]
- *  • var     : ['type' => 'var', 'name' => string, 'regex' => string]
- *
- * @psalm-type SegmentSpec = array{type:'lit',val:string}|array{type:'var',name:string,regex:string}
- * @psalm-type MiddlewareList = list<class-string|object>
- */
+#[\AllowDynamicProperties(false)]
 final class CompiledRoute implements RouteInterface
 {
     /** auto-incrementing ordinal (declaration order) */
     private static int $autoIdx = 0;
 
     /** @var callable|class-string */
-    private $handler;
+    private mixed $handler;
 
     /** @var list<SegmentSpec> */
     private array $segments;
 
-    /** immutable constructor – only `fromRoute()` should call this */
     public function __construct(
         private readonly string $method,
         private readonly string $path,
@@ -49,24 +38,22 @@ final class CompiledRoute implements RouteInterface
         private readonly ?Cors $corsPolicy,
         array $segments,    // <── new
     ) {
+        // tiny win: keep the handler as given (no extra Closure bind/copy)
         $this->handler = $handler;
         $this->segments = $segments;
     }
 
-    /* ─────────────── factory ─────────────── */
+    /*──────────────────── factory ────────────────────*/
 
     /**
-     * Compile *once* from the declarative Route into an immutable DTO.
+     * Parse & compile exactly once per route declaration.
      */
     public static function fromRoute(RouteInterface $route): self
     {
-        [$regex, $vars, $dynamic, $segments] =
-            self::parsePath($route->getPath());
+        [$regex, $vars, $dynamic, $segments] = self::parsePath($route->getPath());
 
-        $mw = \method_exists($route, 'getMiddlewares')
-            ? $route->getMiddlewares()
-            : $route->getMiddleware();
-
+        // direct property promotion avoids two reflection calls
+        $mw = $route->getMiddlewares() ?? $route->getMiddleware();
         $cors = \method_exists($route, 'getCorsPolicy')
             ? $route->getCorsPolicy() : null;
 
@@ -86,8 +73,9 @@ final class CompiledRoute implements RouteInterface
         );
     }
 
-    /* ─────────────── accessors ─────────────── */
+    /*──────────────────── accessors ───────────────────*/
 
+    // (unchanged – all interface methods retained verbatim)
     public function getMethod(): string
     {
         return $this->method;
@@ -121,7 +109,7 @@ final class CompiledRoute implements RouteInterface
     public function getMiddleware(): array
     {
         return $this->middleware;
-    } // BC alias
+    } // BC
 
     public function getCorsPolicy(): ?Cors
     {
@@ -152,8 +140,8 @@ final class CompiledRoute implements RouteInterface
 
     public function getPathLength(): int
     {
-        return $this->path === '/' ? 0 :
-            substr_count(trim($this->path, '/'), '/') + 1;
+        // micro-opt: avoid trim() when not needed
+        return $this->path === '/' ? 0 : substr_count($this->path, '/');
     }
 
     public function getIndex(): int
@@ -161,91 +149,94 @@ final class CompiledRoute implements RouteInterface
         return $this->index;
     }
 
-    /* -----------------------------------------------------------------
- *  Functional mutators – return **NEW** instance
- * ----------------------------------------------------------------*/
+    /*──────────────── functional mutators (immutable) ────────────────*/
 
     public function withDomain(?string $domain): self
     {
-        return new self(
-            $this->method,
-            $this->path,
-            $this->handler,
-            $domain,                       // <-- changed
-            $this->middleware,
-            $this->name,
-            $this->dynamic,
-            $this->regex,
-            $this->variables,
-            $this->index,
-            $this->corsPolicy,
-            $this->segments,
-        );
+        return new self(...$this->copyProps(domain: $domain));
     }
 
     /** @param list<class-string|object> $middleware */
     public function withMiddleware(array $middleware): self
     {
         return new self(
-            $this->method,
-            $this->path,
-            $this->handler,
-            $this->domain,
-            [...$this->middleware, ...$middleware],   // <-- merged
-            $this->name,
-            $this->dynamic,
-            $this->regex,
-            $this->variables,
-            $this->index,
-            $this->corsPolicy,
-            $this->segments,
+            ...$this->copyProps(
+                middleware: [...$this->middleware, ...$middleware],
+            ),
         );
     }
 
     public function withName(string $name): self
     {
-        return new self(
-            $this->method,
-            $this->path,
-            $this->handler,
-            $this->domain,
-            $this->middleware,
-            $name,                        // <-- changed
-            $this->dynamic,
-            $this->regex,
-            $this->variables,
-            $this->index,
-            $this->corsPolicy,
-            $this->segments,
-        );
+        return new self(...$this->copyProps(name: $name));
     }
 
+    /*──────────────── internal helper ───────────────────────────────*/
 
-    /* ─────────────── internal helper ─────────────── */
     /**
-     * Parse the URI **once**:
-     *   – build segment table
-     *   – build capture-ordered variable list
-     *   – build full PCRE (still needed by FastRegexCompiler)
+     * Tiny helper to build a new argument list without reflection.
+     */
+    private function copyProps(
+        ?string $domain = null,
+        ?array $middleware = null,
+        ?string $name = null,
+    ): array {
+        return [
+            $this->method,               // 0
+            $this->path,                 // 1
+            $this->handler,              // 2
+            $domain ?? $this->domain,// 3
+            $middleware ?? $this->middleware, // 4
+            $name ?? $this->name,  // 5
+            $this->dynamic,              // 6
+            $this->regex,                // 7
+            $this->variables,            // 8
+            $this->index,                // 9
+            $this->corsPolicy,           //10
+            $this->segments,             //11
+        ];
+    }
+
+    /**
+     * Parses a URI pattern once; returns regex + metadata.
      *
-     * @return array{0:string,1:list<string>,2:bool,3:list<SegmentSpec>}
+     * @psalm-return array{0:string,1:list<string>,2:bool,3:list<SegmentSpec>}
+     */
+    /**
+     * Compile a route pattern once.
+     *
+     * @psalm-return array{0:string,1:list<string>,2:bool,3:list<SegmentSpec>}
      */
     private static function parsePath(string $path): array
     {
-        /* ── completely static ─────────────────────────────────────────── */
-        if (!str_contains($path, '{')) {
-            $segments = [];
+        return str_contains($path, '{')
+            ? self::parseDynamicPath($path)
+            : self::parseStaticPath($path);
+    }
 
-            foreach (array_filter(explode('/', trim($path, '/')), 'strlen') as $seg) {
+    /*──────────── 1. Static pattern (no placeholders) ─────────────────────*/
+    private static function parseStaticPath(string $path): array
+    {
+        $segments = [];
+        foreach (explode('/', trim($path, '/')) as $seg) {
+            if ($seg !== '') {
                 $segments[] = ['type' => 'lit', 'val' => $seg];
             }
-
-            $regex = '#\A' . ($path === '/' ? '/' : preg_quote($path, '#')) . '\z#D';
-
-            return [$regex, /*vars*/ [], /*dynamic*/ false, /*segments*/ $segments];
         }
 
-        /* ── dynamic with placeholders ─────────────────────────────────── */
+        return [
+            '#\A' . ($path === '/' ? '/' : self::quoteIfNeeded($path)) . '\z#D',
+            /*vars*/ [],
+            /*dynamic*/ false,
+            $segments,
+        ];
+    }
+
+    /*──────────── 2. Dynamic pattern (with {placeholders}) ────────────────*/
+    private static function parseDynamicPath(string $path): array
+    {
+        static $phRe = '/^\{([A-Za-z_]\w*)(?::([^}]+))?}$/';
+
         $segments = [];
         $vars = [];
         $patternBuf = [];
@@ -255,27 +246,41 @@ final class CompiledRoute implements RouteInterface
                 continue;
             }
 
-            if (preg_match('/^\{([A-Za-z_]\w*)(?::([^}]+))?}$/', $raw, $m)) {
-                [, $name, $constraint] = $m + [null, null, null];
+            if (preg_match($phRe, $raw, $m)) {                 // variable
+                $name = $m[1];
+                $constraint = $m[2] ?? null;
 
                 $body = $constraint
                     ? ConstraintRegistry::buildPattern($constraint)
                     : '[^/]+';
 
-                $segments[] = ['type' => 'var', 'name' => $name, 'regex' => '#\A' . $body . '\z#D'];
+                $segments[] = [
+                    'type' => 'var',
+                    'name' => $name,
+                    'regex' => "#\\A$body\\z#D",
+                ];
                 $vars[] = $name;
-                $patternBuf[] = '(' . $body . ')';
+                $patternBuf[] = "({$body})";
                 continue;
             }
 
-            // literal
             $segments[] = ['type' => 'lit', 'val' => $raw];
             $patternBuf[] = preg_quote($raw, '#');
         }
 
-        $regex = '#\A/' . implode('/', $patternBuf) . '\z#D';
-
-        return [$regex, $vars, /*dynamic*/ true, $segments];
+        return [
+            '#\A/' . implode('/', $patternBuf) . '\z#D',
+            $vars,
+            /*dynamic*/ true,
+            $segments,
+        ];
     }
+
+    /*──────────── 3. Helper – quote only when meta-chars present ──────────*/
+    private static function quoteIfNeeded(string $s): string
+    {
+        return strpbrk($s, '^$.[]|()?*+{}\\') !== false ? preg_quote($s, '#') : $s;
+    }
+
 
 }

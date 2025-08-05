@@ -6,37 +6,34 @@ namespace Infocyph\Webrick\Router\Kernel;
 
 use Closure;
 use Infocyph\InterMix\DI\Invoker;
-use Infocyph\Webrick\Exceptions\{
-    MethodNotAllowedException,
-    RouteNotFoundException
-};
+use Infocyph\Webrick\Exceptions\{MethodNotAllowedException, RouteNotFoundException};
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
-use Infocyph\Webrick\Router\Cache\RouteCache;
+use Infocyph\Webrick\Router\Cache\CompiledRouteCache;
 use Infocyph\Webrick\Router\Dispatch\Dispatcher;
-use Infocyph\Webrick\Router\Matching\{
-    MatcherInterface,
-    UnifiedMatcher
-};
+use Infocyph\Webrick\Router\Matching\{MatcherInterface, UnifiedMatcher};
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 use Psr\Cache\CacheItemPoolInterface as Psr6Pool;
 use Psr\Log\LoggerInterface;
 
 /**
- * Thin orchestration layer gluing together:
- *   – PSR-6 route-table cache
- *   – the high-speed matcher (default : UnifiedMatcher)
- *   – the dispatcher / IoC invoker
+ * ┌─ kernel glue ──────────────────────────────────────────────────────────┐
+ * │  • Compiled-route table cache (PSR-6/16)                               │
+ * │  • matcher warm-up + hot-path bucket cache (UnifiedMatcher)            │
+ * │  • PSR-7 dispatch via IoC-invoker                                      │
+ * └────────────────────────────────────────────────────────────────────────┘
+ *
+ * @psalm-type RouteList = list<CompiledRoute>
  */
 final class RouterKernel
 {
-    /** @var Closure():list<CompiledRoute> */
+    /** @var Closure():RouteList */
     private Closure $compiler;
 
     public function __construct(
         private MatcherInterface $matcher,
         private readonly Dispatcher $dispatcher,
-        private readonly ?RouteCache $cache,
+        private readonly ?CompiledRouteCache $cache,
         Closure $compiler,
         private readonly LoggerInterface $log,
         private readonly ?string $routeCacheDir = null,
@@ -45,37 +42,29 @@ final class RouterKernel
         $this->warm();
     }
 
-    /* ───────────────────────── bootstrap helper ───────────────────────── */
-
-    /**
-     * Sensible defaults:
-     *   – UnifiedMatcher (+ segment-group cache if $routeCacheDir given)
-     *   – PSR-6 route-table cache
-     */
+    /* --------------------------------------------------------------------- *
+     * Factory
+     * --------------------------------------------------------------------- */
     public static function boot(
         LoggerInterface $log,
         Psr6Pool $cachePool,
         Closure $compiler,
-        MatcherInterface|null $matcher = null,
+        ?MatcherInterface $matcher = null,
         ?string $routeCacheDir = null,
-        int $cacheTtl = 86_400,
     ): self {
-        /* matcher ------------------------------------------------------- */
-        if ($matcher === null) {
-            $matcher = new UnifiedMatcher();
-        }
-        if ($routeCacheDir && $matcher instanceof UnifiedMatcher) {
-            $matcher->enableCache($routeCacheDir);
-        }
-
-        $dispatcher = new Dispatcher(Invoker::shared());
-        $cache = new RouteCache($cachePool, ttl: $cacheTtl);
-
-        return new self($matcher, $dispatcher, $cache, $compiler, $log, $routeCacheDir);
+        return new self(
+            matcher: $matcher,
+            dispatcher: new Dispatcher(Invoker::shared()),
+            cache: new CompiledRouteCache($cachePool),
+            compiler: $compiler,
+            log: $log,
+            routeCacheDir: $routeCacheDir,
+        );
     }
 
-    /* ─────────────────────────── request entry ────────────────────────── */
-
+    /* --------------------------------------------------------------------- *
+     * Request entry-point
+     * --------------------------------------------------------------------- */
     public function handle(Request $request): Response
     {
         $method = strtoupper($request->getMethod());
@@ -100,32 +89,36 @@ final class RouterKernel
         }
     }
 
-    /* ───────────────────── warm-up / cache prime ─────────────────────── */
-
+    /* --------------------------------------------------------------------- *
+     * Warm-up
+     * --------------------------------------------------------------------- */
     private function warm(): void
     {
-        /* 1 ) fetch (or compile) ---------------------------------------- */
+        /* ① fetch or (re)compile ---------------------------------------- */
         $routes = $this->cache?->remember($this->compiler) ?? ($this->compiler)();
         if ($routes === []) {
             throw new \RuntimeException('Route compiler produced an empty table.');
         }
 
-        /* 2 ) feed matcher --------------------------------------------- */
+        /* ② prime matcher ---------------------------------------------- */
         foreach ($routes as $r) {
             $this->matcher->add($r);
         }
 
-        /* 3 ) generate group cache on first boot (UnifiedMatcher only) -- */
+        /* ③ build segment-group cache (first boot only) ---------------- */
         if (
             $this->routeCacheDir &&
             $this->matcher instanceof UnifiedMatcher &&
-            !$this->hasGroupFiles($this->routeCacheDir)
+            !$this->matcher->hasCache()                          // nothing dumped yet
         ) {
-            $this->matcher->dumpCache($this->routeCacheDir);
-            $this->log->info('[router] segment-group cache dumped', ['dir' => $this->routeCacheDir]);
+            $this->matcher->dumpCache($this->routeCacheDir);     // file or APCu
+            $this->log->info('[router] segment-group cache dumped', [
+                'mode' => $this->matcher->getCacheMode(),
+                'target' => $this->routeCacheDir,
+            ]);
         }
 
-        /* 4 ) telemetry ------------------------------------------------- */
+        /* ④ telemetry -------------------------------------------------- */
         $this->log->info('[router] route table ready', [
             'count' => \count($routes),
             'cached' => $this->cache !== null,
@@ -133,17 +126,9 @@ final class RouterKernel
         ]);
     }
 
-    /** crude “does directory already contain any *.php group file?” check */
-    private function hasGroupFiles(string $dir): bool
-    {
-        foreach (glob(rtrim($dir, '/\\') . '/*.php') ?: [] as $_) {
-            return true;
-        }
-        return false;
-    }
-
-    /* ─────────────────────────── helpers ─────────────────────────────── */
-
+    /* --------------------------------------------------------------------- *
+     * Helpers
+     * --------------------------------------------------------------------- */
     private static function normaliseHost(string $raw): string
     {
         if ($raw === '' || \preg_match('/[\x00-\x20]/', $raw)) {

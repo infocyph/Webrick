@@ -14,6 +14,7 @@ use Infocyph\Webrick\Response\Payloads\HtmlResponse;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Kernel\RouterKernel;
+use Infocyph\Webrick\Router\Matching\MergedMatcher;
 use Infocyph\Webrick\Router\Route\Collection;
 use Psr\Log\NullLogger;
 
@@ -77,7 +78,7 @@ $kernel = RouterKernel::boot(
     cachePool    : Cache::file('tescolab'),
     compiler     : $compiler,
     matcher      : null,             // use default UnifiedMatcher
-    routeCacheDir: $routeCacheDir,   // enables lazy on-disk cache
+//    routeCacheDir: $routeCacheDir,   // enables lazy on-disk cache
 );
 
 /* --------------------------------------------------------------------------
