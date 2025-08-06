@@ -4,329 +4,273 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router\Matching;
 
-use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
-use Infocyph\Webrick\Exceptions\RouteNotFoundException;
+use Infocyph\InterMix\Serializer\ValueSerializer;
+use Infocyph\Webrick\Exceptions\{MethodNotAllowedException, RouteNotFoundException};
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 
-/**
- * Fast matcher = static hash-map ➊  +  radix-trie ➋  (+ optional PHP cache).
- *
- * ➊  O(1) lookup for completely static paths.
- * ➋  O(m) descent where  m = segment-count  (no N×regex scans).
- *
- * No domain/host dimension – use one matcher per host if required.
- */
+#[\AllowDynamicProperties(false)]
 final class UnifiedMatcher implements MatcherInterface
 {
-    /* --------------------------------------------------------------------- *
-     * ✧ Data structures
-     * --------------------------------------------------------------------- */
-    /** [verb][path] ⇒ CompiledRoute */
-    private array $static = [];
+    /** @var array<string,?array> resolved groups for no-cache mode */
+    private array $memGroups = [];
 
-    /** [path] ⇒ ['GET'=>true,'POST'=>true,…]  for 405 aggregation               */
-    private array $verbs = [];
-
-    /** Radix-like trie root. */
-    private array $trie;
-
-    /** route-id ⇒ CompiledRoute  (pool used by cache files)                     */
-    private array $pool = [];
-
-    /* -------- optional lazy cache ---------------------------------------- */
-    private ?string $cacheDir = null;
-    /** [groupKey] already included? */
-    private array $loadedGroup = [];
-
-    public function __construct()
+    /*──────────────────────── factory ────────────────────────*/
+    public static function make(): self
     {
-        $this->trie = self::newNode();
+        return new self();
     }
 
-    /* --------------------------------------------------------------------- *
-     * ✧ Public API
-     * --------------------------------------------------------------------- */
+    private function __construct()
+    {
+    }
 
+    /*──────────────────────── public config ───────────────────*/
+    public function enableCache(string $dir): self
+    {
+        $this->cacheEnabled = true;
+        $this->cacheDir = rtrim($dir, '/\\');
+        return $this;
+    }
+
+    public function finalize(): void
+    {
+        if ($this->finalized) {
+            return;
+        }
+
+        if ($this->cacheEnabled) {
+            $this->dumpCacheFiles();
+            // free build-time structures
+            $this->prefixMap = [];
+        }
+        $this->finalized = true;
+    }
+
+    /*──────────────────────── route registration ─────────────*/
     public function add(CompiledRoute $route): void
     {
-        $verb = strtoupper($route->getMethod());
-        $id = $route->getIndex();
-        $this->pool[$id] = $route;                      // pool for cache files
-
-        if ($route->isDynamic()) {
-            $this->insertDynamic($verb, $route, $id);
-        } else {
-            $this->insertStatic($verb, $route->getPath(), $route);
+        if ($this->finalized) {
+            throw new \LogicException('Cannot add routes after finalize().');
         }
+
+        $host = $this->normHost($route->getDomain());
+        $method = \strtoupper($route->getMethod());
+        $prefix = $this->extractPrefix($route);
+
+        // duplicate guard (host+method+path)
+        if (isset($this->pathGuard[$host][$method][$route->getPath()])) {
+            throw new \LogicException("Duplicate route {$method} {$host}{$route->getPath()}");
+        }
+        $this->pathGuard[$host][$method][$route->getPath()] = true;
+
+        // store
+        $this->prefixMap[$prefix][$method][] = $route;
     }
 
-    /**
-     * Turn on lazy loading.  `$dir` must contain files like “batch.php”, “__fallback.php”, …;
-     * every file `return`s the array structure produced by {@see dumpCache()}.
-     */
-    public function enableCache(string $dir): void
-    {
-        $this->cacheDir = rtrim($dir, '/\\');
-    }
-
-    /** @inheritDoc */
+    /*──────────────────────── runtime match ──────────────────*/
     public function match(string $method, string $host, string $path): array
     {
-        $verb = strtoupper($method);
+        $method = \strtoupper($method);
+        $host = \strtolower($host ?: '*');
+        $path = $path === '' ? '/' : $path;
 
-        /* 1) Static ------------------------------------------------------ */
-        if ($route = $this->static[$verb][$path] ?? null) {
-            return [$route, []];
-        }
-
-        /* 2) Cached dynamic (group file lazy-load) ----------------------- */
-        if ($this->cacheDir && ($hit = $this->matchCached($verb, $path))) {
-            return $hit;
-        }
-
-        /* 3) In-memory trie --------------------------------------------- */
-        [$route, $vars, $allowed] = $this->matchTrie($verb, $path);
-        if ($route) {
-            return [$route, $vars];
-        }
-
-        /* 4) Verdict ----------------------------------------------------- */
-        if ($allowed) {
-            throw new MethodNotAllowedException($verb, $path, array_keys($allowed));
-        }
-        throw new RouteNotFoundException($verb, $path);
-    }
-
-    /* --------------------------------------------------------------------- *
-     * ✧ Static routes
-     * --------------------------------------------------------------------- */
-
-    private function insertStatic(string $verb, string $path, CompiledRoute $r): void
-    {
-        if (isset($this->static[$verb][$path])) {
-            throw new \LogicException("Duplicate route {$verb} {$path}");
-        }
-        $this->static[$verb][$path] = $r;
-
-        /* HEAD ⇆ GET alias + verbs set for 405 */
-        $this->verbs[$path][$verb] = true;
-        if ($verb === 'GET') {
-            $this->verbs[$path]['HEAD'] = true;
-        }
-        if ($verb === 'HEAD') {
-            $this->verbs[$path]['GET'] = true;
-        }
-    }
-
-    /* --------------------------------------------------------------------- *
-     * ✧ Dynamic routes – trie insertion
-     * --------------------------------------------------------------------- */
-
-    private function insertDynamic(string $verb, CompiledRoute $r, int $id): void
-    {
-        $node = & $this->trie;
-        foreach ($r->getSegments() as $seg) {
-            $prepared = ($seg['type'] === 'lit')
-                ? $node['children'][$seg['val']] ??= self::newNode()
-                : $this->paramChild($node, $seg['name'], $seg['regex']);
-            $node = & $prepared;
-        }
-        if (isset($node['routes'][$verb])) {
-            throw new \LogicException("Duplicate dynamic route {$verb} {$r->getPath()}");
-        }
-        $node['routes'][$verb] = $id;                   // store only id → smaller dump
-    }
-
-    private function &paramChild(array &$node, string $name, string $regex): array
-    {
-        if ($node['param'] === null) {
-            $node['param'] = ['name' => $name, 'regex' => $regex, 'node' => self::newNode()];
-        }
-        return $node['param']['node'];
-    }
-
-    /* --------------------------------------------------------------------- *
-     * ✧ Trie matching
-     * --------------------------------------------------------------------- */
-
-    /**
-     * @return array{CompiledRoute|null,array, array<string,bool>}  route | vars | allowed-verbs
-     */
-    private function matchTrie(string $verb, string $path): array
-    {
-        $segments = $path === '/' ? [] : explode('/', trim($path, '/'));
-        $allowed = [];
-        $hit = $this->walk($this->trie, $segments, 0, $verb, [], $allowed);
-
-        return [$hit ? $this->pool[$hit[0]] : null, $hit[1] ?? [], $allowed];
-    }
-
-    /** Recursive descent; returns [routeId, params] on success or null. */
-    private function walk(
-        array $node,
-        array $seg,
-        int $i,
-        string $verb,
-        array $params,
-        array &$allowed,
-    ): ?array {
-        if ($i === \count($seg)) {
-            return $this->routeAtLeaf($node, $verb, $params, $allowed);
-        }
-
-        $piece = $seg[$i];
-
-        /* literal branch */
-        if (isset($node['children'][$piece]) &&
-            ($res = $this->walk($node['children'][$piece], $seg, $i + 1, $verb, $params, $allowed))) {
-            return $res;
-        }
-
-        /* param branch */
-        if ($node['param']) {
-            $p = $node['param'];
-            if (preg_match($p['regex'], $piece) === 1 &&
-                ($res = $this->walk(
-                    $p['node'],
-                    $seg,
-                    $i + 1,
-                    $verb,
-                    $params + [$p['name'] => $piece],
-                    $allowed,
-                ))) {
-                return $res;
+        foreach ($this->fileKeysForPath($path) as $fileKey) {
+            $group = $this->loadGroup($fileKey);
+            if ($group === null) {
+                continue;
             }
-        }
-        return null;
-    }
 
-    private function routeAtLeaf(array $node, string $verb, array $params, array &$allowed): ?array
-    {
-        if ($verb === 'OPTIONS' && $node['routes']) {
-            return [reset($node['routes']), $params];
-        }
-        if (isset($node['routes'][$verb])) {
-            return [$node['routes'][$verb], $params];
-        }
-        if ($verb === 'HEAD' && isset($node['routes']['GET'])) {
-            return [$node['routes']['GET'], $params];
-        }
-        $allowed += $node['routes'];    // keys only needed
-        return null;
-    }
+            $prefix = $this->longestPrefixKey($group, $path);
+            if ($prefix === null) {
+                continue;
+            }
 
-    /* --------------------------------------------------------------------- *
-     * ✧ Cache matching
-     * --------------------------------------------------------------------- */
+            $methodMap = $group[$prefix] ?? null;
+            if ($methodMap === null) {
+                continue;
+            }
 
-    private function matchCached(string $verb, string $path): ?array
-    {
-        $key = $this->firstSeg($path) ?: '__fallback';
-        $bucket = $this->loadGroup($key)[$verb] ?? null;
-        if (!$bucket) {
-            return null;                                    // no routes for this verb
-        }
+            $allowed = \array_keys($methodMap);
+            $routes = $methodMap[$method] ?? null;
+            if ($routes === null) {
+                $this->throw405or404($method, $path, $allowed);
+            }
 
-        /* static first */
-        if (isset($bucket['static'][$path])) {
-            $id = $bucket['static'][$path];
-            return [$this->pool[$id], []];
-        }
-
-        /* dynamic list */
-        foreach ($bucket['dynamic'] ?? [] as $spec) {
-            if (preg_match($spec['regex'], $path, $m)) {
-                $vars = [];
-                foreach ($spec['params'] as $p) {
-                    $vars[$p] = $m[$p];
+            foreach ($routes as $r) {
+                if (!$this->hostMatches($r, $host)) {
+                    continue;
                 }
-                return [$this->pool[$spec['id']], $vars];
+
+                if (!$r->isDynamic()) {
+                    if ($r->getPath() === $path) {
+                        return [$r, []];
+                    }
+                    continue;
+                }
+
+                if (\preg_match($r->getRegex(), $path, $m) !== 1) {
+                    continue;
+                }
+
+                $params = [];
+                foreach ($r->getVariables() as $i => $name) {
+                    $params[$name] = $m[$i + 1];
+                }
+                return [$r, $params];
+            }
+
+            $this->throw405or404($method, $path, $allowed);
+        }
+
+        throw new RouteNotFoundException($method, $path);
+    }
+
+    /*──────────────────────── data members ───────────────────*/
+    /** @var array<string,array<string,list<CompiledRoute>>>   prefix → method → routes */
+    private array $prefixMap = [];   // build-time only
+
+    /** @var array<string,true>  memoised file includes */
+    private array $loadedFiles = [];
+
+    private bool $cacheEnabled = false;
+    private string $cacheDir = '';
+    private bool $finalized = false;
+
+    /** duplicate guard: host → method → path */
+    private array $pathGuard = [];
+
+    /*──────────────────────── helpers (build-time) ───────────*/
+    private function extractPrefix(CompiledRoute $r): string
+    {
+        $parts = [];
+        foreach ($r->getSegments() as $s) {
+            if ($s['type'] !== 'lit') {
+                break;
+            }
+            $parts[] = $s['val'];
+        }
+        return '/' . \implode('/', $parts);
+    }
+
+    private function normHost(?string $h): string
+    {
+        if ($h === null || $h === '') {
+            return '*';
+        }
+        if (\preg_match('/[\x00-\x20]/', $h)) {
+            throw new \InvalidArgumentException("Illegal host name: {$h}");
+        }
+        return \strtolower(rtrim($h, '.'));
+    }
+
+    /*──────────────────────── cache dump ----------------------*/
+    private function dumpCacheFiles(): void
+    {
+        foreach ($this->prefixMap as $prefix => $byMethod) {
+            $file = $this->filePathForPrefix($prefix);
+            if (!\is_dir($d = \dirname($file)) && !@mkdir($d, 0775, true) && !\is_dir($d)) {
+                throw new \RuntimeException("Failed to create cache dir {$d}");
+            }
+
+            $payload = [$prefix => $byMethod];
+            if (\is_file($file)) {
+                /** @var array $old */
+                $old = @require $file;
+                $payload = \array_replace_recursive($old, $payload);
+            }
+
+            $blob = ValueSerializer::serialize($payload);
+            $code = "<?php\nreturn \\Infocyph\\InterMix\\Serializer\\ValueSerializer"
+                . "::unserialize(" . \var_export($blob, true) . ");\n";
+
+            $tmp = $file . '.' . \uniqid('', true) . '.tmp';
+            \file_put_contents($tmp, $code, LOCK_EX);
+            @chmod($tmp, 0664);
+            @rename($tmp, $file);
+        }
+    }
+
+    /*──────────────────────── helpers (runtime) ---------------*/
+    private function loadGroup(string $fileKey): ?array
+    {
+        /*──── ① cached file mode ─────────────────────────────────────────*/
+        if ($this->cacheEnabled) {
+            $file = "{$this->cacheDir}/{$fileKey}.php";
+            if (!isset($this->loadedFiles[$file])) {
+                $this->loadedFiles[$file] = \is_file($file) ? require $file : null;
+            }
+            return $this->loadedFiles[$file];
+        }
+
+        /*──── ② in-memory (dev) mode ─────────────────────────────────────*/
+        if (array_key_exists($fileKey, $this->memGroups)) {
+            return $this->memGroups[$fileKey];
+        }
+
+        // build bucket once
+        $bucket = null;
+        $needle = $fileKey === '__root' ? '' : $fileKey;
+
+        foreach ($this->prefixMap as $prefix => $methods) {
+            $firstSeg = $prefix === '/' ? '__root'
+                : \explode('/', \ltrim($prefix, '/'), 2)[0];
+
+            if ($firstSeg !== $fileKey) {
+                continue;
+            }
+
+            // prefix → method map (same shape the cached file would have)
+            $bucket[$prefix] = $methods;
+        }
+
+        return $this->memGroups[$fileKey] = $bucket;
+    }
+
+
+    /** first-segment key(s) for a path */
+    private function fileKeysForPath(string $path): array
+    {
+        if ($path === '/' || $path === '') {
+            return ['__root'];
+        }
+        $first = \explode('/', ltrim($path, '/'), 2)[0];
+        return [$first, '__root'];
+    }
+
+    /** cache file location */
+    private function filePathForPrefix(string $prefix): string
+    {
+        return $prefix === '/'
+            ? "{$this->cacheDir}/__root.php"
+            : "{$this->cacheDir}/" . \explode('/', ltrim($prefix, '/'), 2)[0] . '.php';
+    }
+
+    /** pick longest key in $group that prefixes $path */
+    private function longestPrefixKey(array $group, string $path): ?string
+    {
+        $best = null;
+        foreach ($group as $p => $_) {
+            $match = $p === '/' || \strncmp($path, $p, \strlen($p)) === 0
+                && ($path === $p || $path[\strlen($p)] === '/');
+
+            if ($match && ($best === null || \strlen($p) > \strlen($best))) {
+                $best = $p;
             }
         }
-        return null;
+        return $best;
     }
 
-    /** load + cache PHP file once */
-    private function loadGroup(string $key): array
+    private function hostMatches(CompiledRoute $r, string $host): bool
     {
-        if (isset($this->loadedGroup[$key])) {
-            return $this->loadedGroup[$key];
-        }
-        $file = $this->cacheDir . '/' . $key . '.php';
-        return $this->loadedGroup[$key] = \is_file($file) ? include $file : [];
+        $need = $r->getDomain();
+        return $need === null || $need === '' || \strcasecmp($need, $host) === 0 || $need === '*';
     }
 
-    /* --------------------------------------------------------------------- *
-     * ✧ Cache dump (helper – call from a deploy script / Console cmd)
-     * --------------------------------------------------------------------- */
-
-    /**
-     * Walks current matcher and writes 1 PHP file per first segment
-     * (plus “__fallback.php”) into $dir.
-     * Each file returns:
-     *   ['GET'=>['static'=>[…], 'dynamic'=>[…]], 'POST'=>…]
-     * Static paths map to route-id, dynamic spec holds regex + param list + id.
-     */
-    public function dumpCache(string $dir): void
+    private function throw405or404(string $m, string $p, array $allowed): never
     {
-        $groups = [];
-
-        /* static -------------------------------------------------------- */
-        foreach ($this->static as $verb => $map) {
-            foreach ($map as $path => $route) {
-                $g = & $groups[$this->firstSeg($path) ?: '__fallback'][$verb]['static'];
-                $g[$path] = $route->getIndex();
-            }
+        if ($allowed !== []) {
+            throw new MethodNotAllowedException($m, $p, $allowed);
         }
-
-        /* dynamic ------------------------------------------------------- */
-        $this->collectDynamic($this->trie, '', $groups);
-
-        /* write --------------------------------------------------------- */
-        foreach ($groups as $seg => $data) {
-            $code = "<?php\nreturn " . var_export($data, true) . ";\n";
-            file_put_contents(rtrim($dir, '/\\') . '/' . $seg . '.php', $code);
-        }
-    }
-
-    private function collectDynamic(array $node, string $prefix, array &$g): void
-    {
-        foreach ($node['routes'] as $verb => $id) {
-            $regex = '#^' . ltrim($prefix, '/') . '$#';
-            $params = [];                                // param names captured via (?P<…>)
-            if (preg_match_all('/\(\?P<([^>]+)>/', $regex, $m)) {
-                $params = $m[1];
-            }
-            $first = $this->firstSeg($prefix) ?: '__fallback';
-            $g[$first][$verb]['dynamic'][] = [
-                'regex' => $regex,
-                'params' => $params,
-                'id' => $id,
-            ];
-        }
-        foreach ($node['children'] as $seg => $child) {
-            $this->collectDynamic($child, $prefix . '/' . $seg, $g);
-        }
-        if ($node['param']) {
-            $p = $node['param'];
-            $pl = '{' . $p['name'] . '}';
-            $this->collectDynamic($p['node'], $prefix . '/' . $pl, $g);
-        }
-    }
-
-    /* --------------------------------------------------------------------- *
-     * ✧ Utils
-     * --------------------------------------------------------------------- */
-
-    private static function newNode(): array
-    {
-        return ['children' => [], 'param' => null, 'routes' => []];
-    }
-
-    private function firstSeg(string $path): string
-    {
-        $p = ltrim($path, '/');
-        $s = str_contains($p, '/') ? strstr($p, '/', true) : $p;
-        return $s && $s[0] !== '{' ? $s : '';
+        throw new RouteNotFoundException($m, $p);
     }
 }

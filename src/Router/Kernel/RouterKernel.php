@@ -1,5 +1,4 @@
 <?php
-
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router\Kernel;
@@ -12,21 +11,22 @@ use Infocyph\Webrick\Exceptions\{
 };
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
-use Infocyph\Webrick\Router\Cache\RouteCache;
 use Infocyph\Webrick\Router\Dispatch\Dispatcher;
 use Infocyph\Webrick\Router\Matching\{
     MatcherInterface,
     UnifiedMatcher
 };
 use Infocyph\Webrick\Router\Route\CompiledRoute;
-use Psr\Cache\CacheItemPoolInterface as Psr6Pool;
 use Psr\Log\LoggerInterface;
 
 /**
  * Thin orchestration layer gluing together:
- *   – PSR-6 route-table cache
  *   – the high-speed matcher (default : UnifiedMatcher)
  *   – the dispatcher / IoC invoker
+ *   – a user-supplied route compiler
+ *
+ * No PSR-6 table cache is kept here anymore; UnifiedMatcher’s
+ * file-segment cache (enableCache+finalize) is the only persistence.
  */
 final class RouterKernel
 {
@@ -36,10 +36,8 @@ final class RouterKernel
     public function __construct(
         private MatcherInterface $matcher,
         private readonly Dispatcher $dispatcher,
-        private readonly ?RouteCache $cache,
         Closure $compiler,
         private readonly LoggerInterface $log,
-        private readonly ?string $routeCacheDir = null,
     ) {
         $this->compiler = $compiler;
         $this->warm();
@@ -50,50 +48,49 @@ final class RouterKernel
     /**
      * Sensible defaults:
      *   – UnifiedMatcher (+ segment-group cache if $routeCacheDir given)
-     *   – PSR-6 route-table cache
      */
     public static function boot(
         LoggerInterface $log,
-        Psr6Pool $cachePool,
         Closure $compiler,
         MatcherInterface|null $matcher = null,
         ?string $routeCacheDir = null,
-        int $cacheTtl = 86_400,
     ): self {
         /* matcher ------------------------------------------------------- */
         if ($matcher === null) {
-            $matcher = new UnifiedMatcher();
+            $matcher = UnifiedMatcher::make();
         }
         if ($routeCacheDir && $matcher instanceof UnifiedMatcher) {
             $matcher->enableCache($routeCacheDir);
         }
 
         $dispatcher = new Dispatcher(Invoker::shared());
-        $cache = new RouteCache($cachePool, ttl: $cacheTtl);
 
-        return new self($matcher, $dispatcher, $cache, $compiler, $log, $routeCacheDir);
+        return new self($matcher, $dispatcher, $compiler, $log);
     }
 
     /* ─────────────────────────── request entry ────────────────────────── */
 
     public function handle(Request $request): Response
     {
-        $method = strtoupper($request->getMethod());
-        $uri = $request->getUri();
-        $host = self::normaliseHost($uri->getHost());
-        $path = $uri->getPath() ?: '/';
+        $method = \strtoupper($request->getMethod());
+        $uri    = $request->getUri();
+        $host   = self::normaliseHost($uri->getHost());
+        $path   = $uri->getPath() ?: '/';
 
         try {
             [$route, $vars] = $this->matcher->match($method, $host, $path);
             return $this->dispatcher->dispatch($route, $request, $vars);
+
         } catch (MethodNotAllowedException $e) {
             return Response::json(
                 ['error' => 'Method Not Allowed'],
                 405,
-                ['Allow' => implode(', ', $e->allowed)],
+                ['Allow' => \implode(', ', $e->allowed)],
             );
+
         } catch (RouteNotFoundException) {
             return Response::json(['error' => 'Not Found'], 404);
+
         } catch (\Throwable $e) {
             $this->log->error('[router] Uncaught exception during dispatch', ['exception' => $e]);
             return Response::json(['error' => 'Server Error'], 500);
@@ -104,8 +101,8 @@ final class RouterKernel
 
     private function warm(): void
     {
-        /* 1 ) fetch (or compile) ---------------------------------------- */
-        $routes = $this->cache?->remember($this->compiler) ?? ($this->compiler)();
+        /* 1 ) compile routes ------------------------------------------- */
+        $routes = ($this->compiler)();
         if ($routes === []) {
             throw new \RuntimeException('Route compiler produced an empty table.');
         }
@@ -115,31 +112,18 @@ final class RouterKernel
             $this->matcher->add($r);
         }
 
-        /* 3 ) generate group cache on first boot (UnifiedMatcher only) -- */
-        if (
-            $this->routeCacheDir &&
-            $this->matcher instanceof UnifiedMatcher &&
-            !$this->hasGroupFiles($this->routeCacheDir)
-        ) {
-            $this->matcher->dumpCache($this->routeCacheDir);
-            $this->log->info('[router] segment-group cache dumped', ['dir' => $this->routeCacheDir]);
+        /* 3 ) finalize matcher (writes group cache if enabled) ---------- */
+        if (\method_exists($this->matcher, 'finalize')) {
+            $this->matcher->finalize();
         }
 
-        /* 4 ) telemetry ------------------------------------------------- */
+        /* 4 ) telemetry ------------------------------------------------ */
         $this->log->info('[router] route table ready', [
-            'count' => \count($routes),
-            'cached' => $this->cache !== null,
+            'count'   => \count($routes),
             'matcher' => $this->matcher::class,
+            'cache'   => $this->matcher instanceof UnifiedMatcher
+                && \property_exists($this->matcher, 'cacheEnabled')
         ]);
-    }
-
-    /** crude “does directory already contain any *.php group file?” check */
-    private function hasGroupFiles(string $dir): bool
-    {
-        foreach (glob(rtrim($dir, '/\\') . '/*.php') ?: [] as $_) {
-            return true;
-        }
-        return false;
     }
 
     /* ─────────────────────────── helpers ─────────────────────────────── */
