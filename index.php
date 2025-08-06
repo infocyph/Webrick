@@ -75,7 +75,6 @@ $routeCacheDir = __DIR__ . '/.route-cache';
 
 $kernel = RouterKernel::boot(
     log          : new NullLogger(),
-    cachePool    : Cache::file('tescolab'),
     compiler     : $compiler,
     matcher      : null,             // use default UnifiedMatcher
 //    routeCacheDir: $routeCacheDir,   // enables lazy on-disk cache
