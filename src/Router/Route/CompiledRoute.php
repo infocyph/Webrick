@@ -27,7 +27,7 @@ final class CompiledRoute implements RouteInterface
     public function __construct(
         private readonly string $method,
         private readonly string $path,
-        callable|Closure|string $handler,
+        callable|Closure|string|array $handler,
         private readonly ?string $domain,
         private readonly array $middleware,
         private readonly ?string $name,
@@ -86,7 +86,7 @@ final class CompiledRoute implements RouteInterface
         return $this->path;
     }
 
-    public function getHandler(): callable
+    public function getHandler(): array|string|callable
     {
         return $this->handler;
     }
