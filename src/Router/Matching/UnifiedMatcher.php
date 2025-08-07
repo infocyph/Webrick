@@ -231,9 +231,8 @@ final class UnifiedMatcher implements MatcherInterface
         }
 
         /* 2. Slow path – handler *has* Closure -> ValueSerializer */
-        $blob = ValueSerializer::serialize($r);
         return '\\' . ValueSerializer::class
-            . '::unserialize(' . \var_export($blob, true) . ')';
+            . '::unserialize(' . \var_export(ValueSerializer::serialize($r), true) . ')';
     }
 
 
