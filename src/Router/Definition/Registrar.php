@@ -31,37 +31,37 @@ final readonly class Registrar
      *  HTTP verb helpers
      * ----------------------------------------------------------------*/
 
-    public function get(string $path, callable $handler): RouteInterface
+    public function get(string $path, array|string|callable $handler): RouteInterface
     {
         return $this->add('GET', $path, $handler);
     }
 
-    public function post(string $path, callable $handler): RouteInterface
+    public function post(string $path, array|string|callable $handler): RouteInterface
     {
         return $this->add('POST', $path, $handler);
     }
 
-    public function put(string $path, callable $handler): RouteInterface
+    public function put(string $path, array|string|callable $handler): RouteInterface
     {
         return $this->add('PUT', $path, $handler);
     }
 
-    public function patch(string $path, callable $handler): RouteInterface
+    public function patch(string $path, array|string|callable $handler): RouteInterface
     {
         return $this->add('PATCH', $path, $handler);
     }
 
-    public function delete(string $path, callable $handler): RouteInterface
+    public function delete(string $path, array|string|callable $handler): RouteInterface
     {
         return $this->add('DELETE', $path, $handler);
     }
 
-    public function head(string $path, callable $handler): RouteInterface
+    public function head(string $path, array|string|callable $handler): RouteInterface
     {
         return $this->add('HEAD', $path, $handler);
     }
 
-    public function options(string $path, callable $handler): RouteInterface
+    public function options(string $path, array|string|callable $handler): RouteInterface
     {
         return $this->add('OPTIONS', $path, $handler);
     }
@@ -141,7 +141,7 @@ final readonly class Registrar
      *  Internal helper
      * ----------------------------------------------------------------*/
 
-    private function add(string $verb, string $path, callable $handler): RouteInterface
+    private function add(string $verb, string $path, array|string|callable $handler): RouteInterface
     {
         // 1) Compute full path with scope prefix
         $fullPrefix = ltrim($this->scope->getPrefix(), '/');

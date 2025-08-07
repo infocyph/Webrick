@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router\Matching;
 
+use Closure;
 use Infocyph\InterMix\Serializer\ValueSerializer;
 use Infocyph\Webrick\Exceptions\{MethodNotAllowedException, RouteNotFoundException};
 use Infocyph\Webrick\Router\Route\CompiledRoute;
@@ -11,9 +12,6 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
 #[\AllowDynamicProperties(false)]
 final class UnifiedMatcher implements MatcherInterface
 {
-    /** @var array<string,?array> resolved groups for no-cache mode */
-    private array $memGroups = [];
-
     /*──────────────────────── factory ────────────────────────*/
     public static function make(): self
     {
@@ -38,9 +36,8 @@ final class UnifiedMatcher implements MatcherInterface
             return;
         }
 
-        if ($this->cacheEnabled) {
+        if ($this->cacheEnabled && !file_exists($this->cacheDir . DIRECTORY_SEPARATOR . '__root.php')) {
             $this->dumpCacheFiles();
-            // free build-time structures
             $this->prefixMap = [];
         }
         $this->finalized = true;
@@ -57,13 +54,12 @@ final class UnifiedMatcher implements MatcherInterface
         $method = \strtoupper($route->getMethod());
         $prefix = $this->extractPrefix($route);
 
-        // duplicate guard (host+method+path)
+        // duplicate guard
         if (isset($this->pathGuard[$host][$method][$route->getPath()])) {
             throw new \LogicException("Duplicate route {$method} {$host}{$route->getPath()}");
         }
         $this->pathGuard[$host][$method][$route->getPath()] = true;
 
-        // store
         $this->prefixMap[$prefix][$method][] = $route;
     }
 
@@ -118,7 +114,6 @@ final class UnifiedMatcher implements MatcherInterface
                 }
                 return [$r, $params];
             }
-
             $this->throw405or404($method, $path, $allowed);
         }
 
@@ -126,18 +121,16 @@ final class UnifiedMatcher implements MatcherInterface
     }
 
     /*──────────────────────── data members ───────────────────*/
-    /** @var array<string,array<string,list<CompiledRoute>>>   prefix → method → routes */
+    /** @var array<string,array<string,list<CompiledRoute>>> */
     private array $prefixMap = [];   // build-time only
-
-    /** @var array<string,true>  memoised file includes */
-    private array $loadedFiles = [];
-
+    private array $loadedFiles = [];   // file include memo
     private bool $cacheEnabled = false;
     private string $cacheDir = '';
     private bool $finalized = false;
+    private array $pathGuard = [];  // duplicate guard
 
-    /** duplicate guard: host → method → path */
-    private array $pathGuard = [];
+    /** @var array<string,?array> resolved groups for dev mode */
+    private array $memGroups = [];
 
     /*──────────────────────── helpers (build-time) ───────────*/
     private function extractPrefix(CompiledRoute $r): string
@@ -168,32 +161,98 @@ final class UnifiedMatcher implements MatcherInterface
     {
         foreach ($this->prefixMap as $prefix => $byMethod) {
             $file = $this->filePathForPrefix($prefix);
-            if (!\is_dir($d = \dirname($file)) && !@mkdir($d, 0775, true) && !\is_dir($d)) {
-                throw new \RuntimeException("Failed to create cache dir {$d}");
+
+            if (!\is_dir($dir = \dirname($file)) &&
+                !@mkdir($dir, 0775, true) && !\is_dir($dir)) {
+                throw new \RuntimeException("Failed to create cache dir {$dir}");
             }
 
+            // merge with existing file contents (if any)
             $payload = [$prefix => $byMethod];
             if (\is_file($file)) {
                 /** @var array $old */
                 $old = @require $file;
-                $payload = \array_replace_recursive($old, $payload);
+                $payload += $old;               // keep older prefixes too
             }
 
-            $blob = ValueSerializer::serialize($payload);
-            $code = "<?php\nreturn \\Infocyph\\InterMix\\Serializer\\ValueSerializer"
-                . "::unserialize(" . \var_export($blob, true) . ");\n";
-
+            $php = "<?php\nreturn " . $this->exportArray($payload) . ";\n";
             $tmp = $file . '.' . \uniqid('', true) . '.tmp';
-            \file_put_contents($tmp, $code, LOCK_EX);
+            \file_put_contents($tmp, $php, LOCK_EX);
             @chmod($tmp, 0664);
             @rename($tmp, $file);
         }
     }
 
+    /* export helpers ----------------------------------------------------*/
+    private function exportArray(array $a, int $depth = 0): string
+    {
+        $indent = str_repeat('    ', $depth);
+        $out = "[\n";
+        foreach ($a as $k => $v) {
+            $out .= $indent . '    ' . \var_export($k, true) . ' => ';
+            $out .= \is_array($v)
+                ? $this->exportArray($v, $depth + 1)
+                : $this->exportValue($v, $depth + 1);
+            $out .= ",\n";
+        }
+        return $indent . rtrim($out, ",\n") . "\n" . $indent . "]";
+    }
+
+    private function exportValue(mixed $v, int $depth): string
+    {
+        return $v instanceof CompiledRoute
+            ? $this->exportRoute($v)
+            : (\is_array($v) ? $this->exportArray($v, $depth) : \var_export($v, true));
+    }
+
+
+    private function exportRoute(CompiledRoute $r): string
+    {
+        /* 1. Fast path – handler has NO Closure */
+        if (!$this->handlerHasClosure($r->getHandler())) {
+            return 'new \\' . CompiledRoute::class . '('
+                // method, path, handler
+                . \var_export($r->getMethod(), true) . ', '
+                . \var_export($r->getPath(), true) . ', '
+                . \var_export($r->getHandler(), true) . ', '
+                // domain, middleware, name
+                . \var_export($r->getDomain(), true) . ', '
+                . \var_export($r->getMiddlewares(), true) . ', '
+                . \var_export($r->getName(), true) . ', '
+                // dynamic, regex, variables
+                . ($r->isDynamic() ? 'true' : 'false') . ', '
+                . \var_export($r->getRegex(), true) . ', '
+                . \var_export($r->getVariables(), true) . ', '
+                // index, cors, segments
+                . \var_export($r->getIndex(), true) . ', '
+                . \var_export($r->getCorsPolicy(), true) . ', '
+                . \var_export($r->getSegments(), true)
+                . ')';
+        }
+
+        /* 2. Slow path – handler *has* Closure -> ValueSerializer */
+        $blob = ValueSerializer::serialize($r);
+        return '\\' . ValueSerializer::class
+            . '::unserialize(' . \var_export($blob, true) . ')';
+    }
+
+
+    private function handlerHasClosure(callable|array|string $h): bool
+    {
+        if ($h instanceof Closure) {
+            return true;
+        }
+        if (\is_array($h)) {
+            return ($h[0] ?? null) instanceof Closure
+                || ($h[1] ?? null) instanceof Closure;
+        }
+        return false;
+    }
+
     /*──────────────────────── helpers (runtime) ---------------*/
     private function loadGroup(string $fileKey): ?array
     {
-        /*──── ① cached file mode ─────────────────────────────────────────*/
+        /* 1) cached-file mode ------------------------------------------ */
         if ($this->cacheEnabled) {
             $file = "{$this->cacheDir}/{$fileKey}.php";
             if (!isset($this->loadedFiles[$file])) {
@@ -202,58 +261,50 @@ final class UnifiedMatcher implements MatcherInterface
             return $this->loadedFiles[$file];
         }
 
-        /*──── ② in-memory (dev) mode ─────────────────────────────────────*/
-        if (array_key_exists($fileKey, $this->memGroups)) {
+        /* 2) dev (in-memory) mode -------------------------------------- */
+        if (\array_key_exists($fileKey, $this->memGroups)) {
             return $this->memGroups[$fileKey];
         }
 
-        // build bucket once
         $bucket = null;
-        $needle = $fileKey === '__root' ? '' : $fileKey;
-
         foreach ($this->prefixMap as $prefix => $methods) {
             $firstSeg = $prefix === '/' ? '__root'
                 : \explode('/', \ltrim($prefix, '/'), 2)[0];
-
-            if ($firstSeg !== $fileKey) {
-                continue;
+            if ($firstSeg === $fileKey) {
+                $bucket[$prefix] = $methods;
             }
-
-            // prefix → method map (same shape the cached file would have)
-            $bucket[$prefix] = $methods;
         }
-
         return $this->memGroups[$fileKey] = $bucket;
     }
 
-
-    /** first-segment key(s) for a path */
+    /* path → candidate file keys */
     private function fileKeysForPath(string $path): array
     {
         if ($path === '/' || $path === '') {
             return ['__root'];
         }
-        $first = \explode('/', ltrim($path, '/'), 2)[0];
+        $first = \explode('/', \ltrim($path, '/'), 2)[0];
         return [$first, '__root'];
     }
 
-    /** cache file location */
+    /* prefix → cache file location */
     private function filePathForPrefix(string $prefix): string
     {
         return $prefix === '/'
             ? "{$this->cacheDir}/__root.php"
-            : "{$this->cacheDir}/" . \explode('/', ltrim($prefix, '/'), 2)[0] . '.php';
+            : "{$this->cacheDir}/" . \explode('/', \ltrim($prefix, '/'), 2)[0] . '.php';
     }
 
-    /** pick longest key in $group that prefixes $path */
+    /* choose longest prefix key that matches $path */
     private function longestPrefixKey(array $group, string $path): ?string
     {
         $best = null;
         foreach ($group as $p => $_) {
-            $match = $p === '/' || \strncmp($path, $p, \strlen($p)) === 0
-                && ($path === $p || $path[\strlen($p)] === '/');
+            $ok = $p === '/'
+                || (\strncmp($path, $p, \strlen($p)) === 0 &&
+                    ($path === $p || $path[\strlen($p)] === '/'));
 
-            if ($match && ($best === null || \strlen($p) > \strlen($best))) {
+            if ($ok && (\strlen($p) > \strlen($best ?? ''))) {
                 $best = $p;
             }
         }

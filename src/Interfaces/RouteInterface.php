@@ -15,7 +15,7 @@ interface RouteInterface
     /* ---------- core ---------- */
     public function getMethod(): string;          // "GET", "POST", …
     public function getPath(): string;            // "/users/{id:int}"
-    public function getHandler(): callable;       // controller / closure
+    public function getHandler(): array|string|callable;       // controller / closure
 
     /* ---------- meta ---------- */
     public function getDomain(): ?string;         // "api.example.com" or null

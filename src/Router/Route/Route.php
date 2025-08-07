@@ -29,13 +29,13 @@ final class Route implements RouteInterface
     private ?Cors $corsPolicy = null;
 
     public function __construct(
-        private readonly string  $method,
-        private readonly string  $path,
-        callable                 $handler,
-        private ?string          $domain = null,
-        private ?string          $name   = null,
+        private readonly string $method,
+        private readonly string $path,
+        array|string|callable $handler,
+        private ?string $domain = null,
+        private ?string $name = null,
     ) {
-        $this->handler   = $handler;
+        $this->handler = $handler;
         $this->handlerId = self::fingerprint($handler);
     }
 
@@ -45,26 +45,32 @@ final class Route implements RouteInterface
     {
         return $this->method;
     }
+
     public function getPath(): string
     {
         return $this->path;
     }
-    public function getHandler(): callable
+
+    public function getHandler(): array|string|callable
     {
         return $this->handler;
     }
+
     public function getDomain(): ?string
     {
         return $this->domain;
     }
+
     public function getName(): ?string
     {
         return $this->name;
     }
+
     public function getMiddlewares(): array
     {
         return $this->middleware;
     }
+
     public function getMiddleware(): array
     {
         return $this->middleware;
@@ -90,7 +96,7 @@ final class Route implements RouteInterface
 
     public function withDomain(?string $domain): self
     {
-        $clone         = clone $this;
+        $clone = clone $this;
         $clone->domain = $domain;
         return $clone;
     }
@@ -101,14 +107,14 @@ final class Route implements RouteInterface
             return $this;
         }
 
-        $clone             = clone $this;
+        $clone = clone $this;
         $clone->middleware = [...$clone->middleware, ...$middleware];
         return $clone;
     }
 
     public function withName(string $name): self
     {
-        $clone       = clone $this;
+        $clone = clone $this;
         $clone->name = $name;
         return $clone;
     }
@@ -123,13 +129,13 @@ final class Route implements RouteInterface
     /* ---------------------------------------------------------- internals */
 
     /** Turn any callable spec into a stable scalar id. */
-    public static function fingerprint(callable|string $h): string
+    public static function fingerprint(array|string|callable $h): string
     {
         return match (true) {
-            \is_string($h)                                    => $h,                //  "function"  or  "Cls::method"
-            \is_array($h)                                     => (is_object($h[0]) ? $h[0]::class : $h[0]) . '::' . $h[1],
-            \is_object($h) && !($h instanceof \Closure)       => $h::class . '::__invoke',
-            default                                           => 'closure@' . \spl_object_id($h),
+            \is_string($h) => $h,                //  "function"  or  "Cls::method"
+            \is_array($h) => (is_object($h[0]) ? $h[0]::class : $h[0]) . '::' . $h[1],
+            \is_object($h) && !($h instanceof \Closure) => $h::class . '::__invoke',
+            default => 'closure@' . \spl_object_id($h),
         };
     }
 }
