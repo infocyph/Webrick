@@ -96,7 +96,7 @@ $compiler = static fn () => $registrar->compile()->all();
 $kernel = RouterKernel::boot(
     log: new NullLogger(),
     compiler: $compiler,
-    matcher: null,            // default UnifiedMatcher
+//    matcher: new Infocyph\Webrick\Router\Matching\MergedMatcher(),
     routeCacheDir: __DIR__ . '/.route-cache'
 );
 
