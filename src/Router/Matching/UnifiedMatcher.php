@@ -64,61 +64,82 @@ final class UnifiedMatcher implements MatcherInterface
     }
 
     /*──────────────────────── runtime match ──────────────────*/
+    /*──────────────────────── runtime match ──────────────────*/
     public function match(string $method, string $host, string $path): array
     {
-        $method = \strtoupper($method);
-        $host = \strtolower($host ?: '*');
+        $method = strtoupper($method);
+        $host = strtolower($host ?: '*');
         $path = $path === '' ? '/' : $path;
 
-        foreach ($this->fileKeysForPath($path) as $fileKey) {
-            $group = $this->loadGroup($fileKey);
-            if ($group === null) {
-                continue;
-            }
+        // ① use ONLY the first segment as cache key (no __root fallback)
+        $fileKey = $this->fileKeyForPath($path);
 
-            $prefix = $this->longestPrefixKey($group, $path);
-            if ($prefix === null) {
-                continue;
-            }
+        $group = $this->loadGroup($fileKey);
+        if ($group === null) {
+            // no such file → 404
+            throw new RouteNotFoundException($method, $path);
+        }
 
-            $methodMap = $group[$prefix] ?? null;
-            if ($methodMap === null) {
-                continue;
-            }
+        $prefix = $this->longestPrefixKey($group, $path);
+        if ($prefix === null) {
+            throw new RouteNotFoundException($method, $path);
+        }
 
-            $allowed = \array_keys($methodMap);
-            $routes = $methodMap[$method] ?? null;
-            if ($routes === null) {
-                $this->throw405or404($method, $path, $allowed);
-            }
+        $methodMap = $group[$prefix] ?? null;
+        if ($methodMap === null) {
+            throw new RouteNotFoundException($method, $path);
+        }
 
+        /*── try every method bucket, gather allowed verbs ─────────────*/
+        $allowed = [];
+        foreach ($methodMap as $verb => $routes) {
             foreach ($routes as $r) {
                 if (!$this->hostMatches($r, $host)) {
                     continue;
                 }
 
+                // static
                 if (!$r->isDynamic()) {
-                    if ($r->getPath() === $path) {
-                        return [$r, []];
+                    if ($r->getPath() !== $path) {
+                        continue;
                     }
+                } // dynamic
+                elseif (preg_match($r->getRegex(), $path, $m) !== 1) {
                     continue;
                 }
 
-                if (\preg_match($r->getRegex(), $path, $m) !== 1) {
+                // ✔ path matches – record verb
+                $allowed[$verb] = true;
+
+                // return only when verb matches request
+                if ($verb !== $method && !($verb === 'GET' && $method === 'HEAD')) {
                     continue;
                 }
 
+                /* extract params if dynamic */
                 $params = [];
-                foreach ($r->getVariables() as $i => $name) {
-                    $params[$name] = $m[$i + 1];
+                if ($r->isDynamic()) {
+                    foreach ($r->getVariables() as $i => $name) {
+                        $params[$name] = $m[$i + 1];
+                    }
                 }
                 return [$r, $params];
             }
-            $this->throw405or404($method, $path, $allowed);
         }
 
-        throw new RouteNotFoundException($method, $path);
+        // path matched at least once → 405, else 404
+        $this->throw405or404($method, $path, array_keys($allowed));
     }
+
+    /*──────────── helpers ────────────────────────────────────*/
+    private function fileKeyForPath(string $path): string
+    {
+        if ($path === '/' || $path === '') {
+            return '__root';
+        }
+        return explode('/', ltrim($path, '/'), 2)[0];
+    }
+
 
     /*──────────────────────── data members ───────────────────*/
     /** @var array<string,array<string,list<CompiledRoute>>> */
@@ -274,16 +295,6 @@ final class UnifiedMatcher implements MatcherInterface
             }
         }
         return $this->memGroups[$fileKey] = $bucket;
-    }
-
-    /* path → candidate file keys */
-    private function fileKeysForPath(string $path): array
-    {
-        if ($path === '/' || $path === '') {
-            return ['__root'];
-        }
-        $first = \explode('/', \ltrim($path, '/'), 2)[0];
-        return [$first, '__root'];
     }
 
     /* prefix → cache file location */

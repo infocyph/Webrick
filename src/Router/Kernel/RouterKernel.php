@@ -92,6 +92,7 @@ final class RouterKernel
             return Response::json(['error' => 'Not Found'], 404);
 
         } catch (\Throwable $e) {
+            dd($e);
             $this->log->error('[router] Uncaught exception during dispatch', ['exception' => $e]);
             return Response::json(['error' => 'Server Error'], 500);
         }
