@@ -82,7 +82,7 @@ final class RouterKernel
         } catch (RouteNotFoundException) {
             return Response::json(['error' => 'Not Found'], 404);
 
-        } catch (\Throwable $e) {
+        } catch (\Throwable $e) {dd($e);
             $this->log->error('[router] uncaught exception', ['exception' => $e]);
             return Response::json(['error' => 'Server Error'], 500);
         }

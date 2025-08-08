@@ -95,12 +95,12 @@ $compiler = static fn () => $registrar->compile()->all();
 $logger = new NullLogger();
 
 // A) UnifiedMatcher with segment-dir cache
-$kernel = RouterKernel::boot(
-    $logger,
-    compiler: $compiler,
-    matcher:  null,                     // default = UnifiedMatcher
-    routeCache: __DIR__ . '/.route-cache' // DIRECTORY
-);
+//$kernel = RouterKernel::boot(
+//    $logger,
+//    compiler: $compiler,
+//    matcher:  null,                     // default = UnifiedMatcher
+//    routeCache: __DIR__ . '/.route-cache' // DIRECTORY
+//);
 
 // B) MergedMatcher with single-file cache
 $kernel = RouterKernel::boot(

@@ -182,25 +182,34 @@ final class UnifiedMatcher implements MatcherInterface
     {
         foreach ($this->prefixMap as $prefix => $byMethod) {
             $file = $this->filePathForPrefix($prefix);
-
-            if (!\is_dir($dir = \dirname($file)) &&
-                !@mkdir($dir, 0775, true) && !\is_dir($dir)) {
-                throw new \RuntimeException("Failed to create cache dir {$dir}");
+            if (!\is_dir($d = \dirname($file)) && !@mkdir($d, 0775, true) && !\is_dir($d)) {
+                throw new \RuntimeException("Failed to create cache dir {$d}");
             }
 
-            // merge with existing file contents (if any)
+            /* merge with old data (if any) */
             $payload = [$prefix => $byMethod];
             if (\is_file($file)) {
-                /** @var array $old */
-                $old = @require $file;
-                $payload += $old;               // keep older prefixes too
+                $old = require $file;
+                if (isset($old['_data'])) {           // unwrap header
+                    $old = $old['_data'];
+                }
+                $payload += $old;
             }
 
-            $php = "<?php\nreturn " . $this->exportArray($payload) . ";\n";
-            $tmp = $file . '.' . \uniqid('', true) . '.tmp';
+            $crc  = hash('xxh3', json_encode($payload, JSON_THROW_ON_ERROR));
+            $php  = "<?php\nreturn [\n"
+                . "    '_hash'  => '{$crc}',\n"
+                . "    '_data' => " . $this->exportArray($payload) . ",\n"
+                . "];\n";
+
+            $tmp = $file . '.' . uniqid('', true) . '.tmp';
             \file_put_contents($tmp, $php, LOCK_EX);
             @chmod($tmp, 0664);
             @rename($tmp, $file);
+
+            if (\function_exists('opcache_compile_file')) {
+                @opcache_compile_file($file);
+            }
         }
     }
 
@@ -276,7 +285,19 @@ final class UnifiedMatcher implements MatcherInterface
         if ($this->cacheEnabled) {
             $file = "{$this->cacheDir}/{$fileKey}.php";
             if (!isset($this->loadedFiles[$file])) {
-                $this->loadedFiles[$file] = \is_file($file) ? require $file : null;
+                if (!\is_file($file)) {
+                    return $this->loadedFiles[$file] = null;
+                }
+                /** @var array{_hash:string,_data:array} $blob */
+                $blob = require $file;
+                if (!isset($blob['_hash'], $blob['_data'])) {
+                    throw new \RuntimeException("Cache file {$file} missing Hash.");
+                }
+                $calc = hash('xxh3', json_encode($blob['_data'], JSON_THROW_ON_ERROR));
+                if (!hash_equals($blob['_hash'], $calc)) {
+                    throw new \RuntimeException("Cache hash mismatch ($file).");
+                }
+                $this->loadedFiles[$file] = $blob['_data'];
             }
             return $this->loadedFiles[$file];
         }

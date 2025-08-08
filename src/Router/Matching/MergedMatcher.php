@@ -72,12 +72,19 @@ final class MergedMatcher implements MatcherInterface
     {
         /* lazy-load single cache file */
         if ($this->cacheEnabled && !$this->cacheLoaded) {
-            if (!is_file($this->cacheFile)) {
+            if (!\is_file($this->cacheFile)) {
                 throw new RouteNotFoundException($method, $path);
             }
-            /** @var array $data */
-            $data = require $this->cacheFile;
-            $this->hosts = $data;
+            /** @var array{_hash:string,_data:array} $blob */
+            $blob = require $this->cacheFile;
+            if (!isset($blob['_hash'], $blob['_data'])) {
+                throw new \RuntimeException('Route cache missing Hash.');
+            }
+            $calc = hash('xxh3', json_encode($blob['_data'], JSON_THROW_ON_ERROR));
+            if (!hash_equals($blob['_hash'], $calc)) {
+                throw new \RuntimeException('Route cache Hash mismatch.');
+            }
+            $this->hosts       = $blob['_data'];
             $this->cacheLoaded = true;
         }
 
@@ -277,15 +284,29 @@ final class MergedMatcher implements MatcherInterface
      *-------------------------------------------------------------------*/
     private function dumpCache(): void
     {
-        $dir = dirname($this->cacheFile);
-        if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) {
+        $dir = \dirname($this->cacheFile);
+        if (!\is_dir($dir) && !@mkdir($dir, 0775, true) && !\is_dir($dir)) {
             throw new \RuntimeException("Cannot create cache dir {$dir}");
         }
-        $php = "<?php\nreturn " . $this->exportArray($this->hosts) . ";\n";
+
+        /* ① build payload + CRC */
+        $payload = $this->hosts;
+        $crc     = hash('xxh3', json_encode($payload, JSON_THROW_ON_ERROR));
+
+        $php = "<?php\nreturn [\n"
+            . "    '_hash'  => '" . $crc . "',\n"
+            . "    '_data' => " . $this->exportArray($payload) . ",\n"
+            . "];\n";
+
         $tmp = $this->cacheFile . '.' . uniqid('', true) . '.tmp';
         file_put_contents($tmp, $php, LOCK_EX);
         @chmod($tmp, 0664);
         @rename($tmp, $this->cacheFile);
+
+        /* ② pre-compile into OPcache */
+        if (\function_exists('opcache_compile_file')) {
+            @opcache_compile_file($this->cacheFile);
+        }
     }
 
     private function exportArray(array $a, int $depth = 0): string
