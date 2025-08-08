@@ -106,7 +106,7 @@ $logger = new NullLogger();
 $kernel = RouterKernel::boot(
     $logger,
     compiler: $compiler,
-    matcher:  Infocyph\Webrick\Router\Matching\MergedMatcher::make(),
+    matcher:  Infocyph\Webrick\Router\Matching\MergedMatcher::make()->enableFastRegex(__DIR__ . '/.route-cache/__fast_routes.php',2),
     routeCache: __DIR__ . '/.route-cache/__routes.php' // FILE
 );
 
