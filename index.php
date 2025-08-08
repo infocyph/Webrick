@@ -103,13 +103,12 @@ $kernel = RouterKernel::boot(
 );
 
 // B) MergedMatcher with single-file cache
-//use Infocyph\Webrick\Router\Matching\MergedMatcher;
-//$kernel = RouterKernel::boot(
-//    $logger,
-//    compiler: $compiler,
-//    matcher:  MergedMatcher::make(),
-//    routeCache: __DIR__ . '/.route-cache/__routes.php' // FILE
-//);
+$kernel = RouterKernel::boot(
+    $logger,
+    compiler: $compiler,
+    matcher:  Infocyph\Webrick\Router\Matching\MergedMatcher::make(),
+    routeCache: __DIR__ . '/.route-cache/__routes.php' // FILE
+);
 
 
 /* --------------------------------------------------------------------------
