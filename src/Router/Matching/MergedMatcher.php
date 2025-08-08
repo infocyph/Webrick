@@ -30,10 +30,10 @@ final class MergedMatcher implements MatcherInterface
     }
 
     /*──────────── cache API ──────────*/
-    public function enableCache(string $file): self
+    public function enableCache(string $cacheLocation): self
     {
         $this->cacheEnabled = true;
-        $this->cacheFile = $file;
+        $this->cacheFile = $cacheLocation;
         return $this;
     }
 
@@ -84,7 +84,7 @@ final class MergedMatcher implements MatcherInterface
             if (!hash_equals($blob['_hash'], $calc)) {
                 throw new \RuntimeException('Route cache Hash mismatch.');
             }
-            $this->hosts       = $blob['_data'];
+            $this->hosts = $blob['_data'];
             $this->cacheLoaded = true;
         }
 
@@ -291,7 +291,7 @@ final class MergedMatcher implements MatcherInterface
 
         /* ① build payload + CRC */
         $payload = $this->hosts;
-        $crc     = hash('xxh3', json_encode($payload, JSON_THROW_ON_ERROR));
+        $crc = hash('xxh3', json_encode($payload, JSON_THROW_ON_ERROR));
 
         $php = "<?php\nreturn [\n"
             . "    '_hash'  => '" . $crc . "',\n"

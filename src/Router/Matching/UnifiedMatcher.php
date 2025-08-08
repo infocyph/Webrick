@@ -23,10 +23,10 @@ final class UnifiedMatcher implements MatcherInterface
     }
 
     /*──────────────────────── public config ───────────────────*/
-    public function enableCache(string $dir): self
+    public function enableCache(string $cacheLocation): self
     {
         $this->cacheEnabled = true;
-        $this->cacheDir = rtrim($dir, '/\\');
+        $this->cacheDir = rtrim($cacheLocation, '/\\');
         return $this;
     }
 

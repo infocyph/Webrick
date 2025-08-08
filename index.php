@@ -8,7 +8,7 @@ declare(strict_types=1);
 
 require __DIR__ . '/vendor/autoload.php';
 
-use Infocyph\InterMix\Cache\Cache;
+
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Emitter\SapiEmitter;
 use Infocyph\Webrick\Response\Payloads\HtmlResponse;
@@ -98,7 +98,7 @@ $logger = new NullLogger();
 //$kernel = RouterKernel::boot(
 //    $logger,
 //    compiler: $compiler,
-//    matcher:  null,                     // default = UnifiedMatcher
+//    matcher:  Infocyph\Webrick\Router\Matching\UnifiedMatcher::make(),                     // default = UnifiedMatcher
 //    routeCache: __DIR__ . '/.route-cache' // DIRECTORY
 //);
 
@@ -106,7 +106,7 @@ $logger = new NullLogger();
 $kernel = RouterKernel::boot(
     $logger,
     compiler: $compiler,
-    matcher:  Infocyph\Webrick\Router\Matching\MergedMatcher::make()->enableFastRegex(__DIR__ . '/.route-cache/__fast_routes.php',2),
+    matcher:  Infocyph\Webrick\Router\Matching\MergedMatcher::make(),
     routeCache: __DIR__ . '/.route-cache/__routes.php' // FILE
 );
 

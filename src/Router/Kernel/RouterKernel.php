@@ -42,14 +42,11 @@ final class RouterKernel
     public static function boot(
         LoggerInterface        $log,
         Closure                $compiler,
-        MatcherInterface|null  $matcher     = null,
+        MatcherInterface|null  $matcher,
         ?string                $routeCache  = null,
     ): self {
-        /* 1) choose matcher (default UnifiedMatcher) ------------------- */
-        $matcher ??= UnifiedMatcher::make();
-
         /* 2) enable cache if requested & matcher supports it ----------- */
-        if ($routeCache && \method_exists($matcher, 'enableCache')) {
+        if ($routeCache) {
             $matcher->enableCache($routeCache);
         }
 
@@ -82,7 +79,7 @@ final class RouterKernel
         } catch (RouteNotFoundException) {
             return Response::json(['error' => 'Not Found'], 404);
 
-        } catch (\Throwable $e) {dd($e);
+        } catch (\Throwable $e) {
             $this->log->error('[router] uncaught exception', ['exception' => $e]);
             return Response::json(['error' => 'Server Error'], 500);
         }
