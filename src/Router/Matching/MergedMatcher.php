@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router\Matching;
 
+use Closure;
+use Infocyph\InterMix\Serializer\ValueSerializer;
 use Infocyph\Webrick\Exceptions\{MethodNotAllowedException, RouteNotFoundException};
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 
@@ -16,6 +18,113 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
  */
 final class MergedMatcher implements MatcherInterface
 {
+    public static function make(): self
+    {
+        return new self();
+    }
+
+    private function __construct()
+    {
+    }
+
+    public function enableCache(string $file): self
+    {
+        $this->cacheEnabled = true;
+        $this->cacheFile = $file;
+        return $this;
+    }
+
+    public function finalize(): void
+    {
+        if ($this->finalized) {
+            return;
+        }
+
+        if ($this->cacheEnabled && !file_exists($this->cacheFile)) {
+            if ($this->hosts !== []) {          // routes were added → dump
+                $this->dumpCache();
+            }
+            /* if hosts are empty but file exists we’ll lazy-load on match() */
+        }
+        $this->finalized = true;
+    }
+
+    /*------------------------------------------------------------------------
+     * 4.  Cache-writing helpers  (new)
+     *----------------------------------------------------------------------*/
+    private function dumpCache(): void
+    {
+        $dir = dirname($this->cacheFile);
+        if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) {
+            throw new \RuntimeException("Cannot create cache dir {$dir}");
+        }
+
+        $php  = "<?php\nreturn " . $this->exportArray($this->hosts) . ";\n";
+        $tmp  = $this->cacheFile . '.' . uniqid('', true) . '.tmp';
+        file_put_contents($tmp, $php, LOCK_EX);
+        @chmod($tmp, 0664);
+        @rename($tmp, $this->cacheFile);
+    }
+
+    private function exportArray(array $a, int $depth = 0): string
+    {
+        $indent = str_repeat('    ', $depth);
+        $out    = "[\n";
+        foreach ($a as $k => $v) {
+            $out .= $indent . '    ' . var_export($k, true) . ' => ';
+            $out .= is_array($v)
+                ? $this->exportArray($v, $depth + 1)
+                : $this->exportValue($v, $depth + 1);
+            $out .= ",\n";
+        }
+        return $indent . rtrim($out, ",\n") . "\n" . $indent . "]";
+    }
+
+    private function exportValue(mixed $v, int $d): string
+    {
+        if ($v instanceof CompiledRoute) {
+            return $this->exportRoute($v);
+        }
+        return is_array($v) ? $this->exportArray($v, $d) : var_export($v, true);
+    }
+
+    private function exportRoute(CompiledRoute $r): string
+    {
+        // fast path – no Closure inside handler
+        if (!$this->handlerHasClosure($r->getHandler())) {
+            return 'new \\' . CompiledRoute::class . '('
+                . var_export($r->getMethod(), true) . ', '
+                . var_export($r->getPath(), true) . ', '
+                . var_export($r->getHandler(), true) . ', '
+                . var_export($r->getDomain(), true) . ', '
+                . var_export($r->getMiddlewares(), true) . ', '
+                . var_export($r->getName(), true) . ', '
+                . ($r->isDynamic() ? 'true' : 'false') . ', '
+                . var_export($r->getRegex(), true) . ', '
+                . var_export($r->getVariables(), true) . ', '
+                . var_export($r->getIndex(), true) . ', '
+                . var_export($r->getCorsPolicy(), true) . ', '
+                . var_export($r->getSegments(), true)
+                . ')';
+        }
+
+        // slow path – Closure handler needs serialise
+        $blob = ValueSerializer::serialize($r);
+        return '\\' . ValueSerializer::class
+            . '::unserialize(' . var_export($blob, true) . ')';
+    }
+
+    private function handlerHasClosure(callable|array|string $h): bool
+    {
+        if ($h instanceof Closure) {
+            return true;
+        }
+        if (is_array($h)) {
+            return ($h[0] ?? null) instanceof Closure || ($h[1] ?? null) instanceof Closure;
+        }
+        return false;
+    }
+
     /**
      * [$host] = [
      *   'static' => [verb][path] = Route ,
@@ -25,15 +134,22 @@ final class MergedMatcher implements MatcherInterface
      * ]
      */
     private array $hosts = [];
+    private bool $cacheEnabled = false;
+    private string $cacheFile = '';
+    private bool $cacheLoaded = false;
+    private bool $finalized = false;
 
     /* ────────────────────── public API ────────────────────── */
 
     public function add(CompiledRoute $route): void
     {
+        if ($this->finalized) {
+            throw new \LogicException('Cannot add routes after finalize().');
+        }
         $host = $this->canonicalHost($route->getDomain());
         $verb = strtoupper($route->getMethod());
 
-        $this->hosts[$host] ??= ['static' => [], 'trie' => $this->newNode()];
+        $this->hosts[$host] ??= ['static' => [], 'single' => [], 'verbs' => [], 'trie' => $this->newNode()];
 
         /* static vs dynamic decided **by CompiledRoute** */
         $route->isDynamic()
@@ -44,6 +160,16 @@ final class MergedMatcher implements MatcherInterface
     /** @inheritDoc */
     public function match(string $method, string $host, string $path): array
     {
+        // lazy-load cache into $this->hosts once
+        if ($this->cacheEnabled && !$this->cacheLoaded) {
+            if (!is_file($this->cacheFile)) {
+                throw new RouteNotFoundException($method, $path);   // 1) no file ⇒ 404
+            }
+            /** @var array $data */
+            $data = require $this->cacheFile;
+            $this->hosts = $data;
+            $this->cacheLoaded = true;
+        }
         $verb = strtoupper($method);
         $host = strtolower($host);
         static $verbsCache = [];

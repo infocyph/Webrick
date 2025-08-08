@@ -92,13 +92,25 @@ $compiler = static fn () => $registrar->compile()->all();
 /* --------------------------------------------------------------------------
  * 3.  Boot the router kernel – UnifiedMatcher behind the scenes
  * ----------------------------------------------------------------------- */
+$logger = new NullLogger();
 
+// A) UnifiedMatcher with segment-dir cache
 $kernel = RouterKernel::boot(
-    log: new NullLogger(),
+    $logger,
     compiler: $compiler,
-//    matcher: new Infocyph\Webrick\Router\Matching\MergedMatcher(),
-    routeCacheDir: __DIR__ . '/.route-cache'
+    matcher:  null,                     // default = UnifiedMatcher
+    routeCache: __DIR__ . '/.route-cache' // DIRECTORY
 );
+
+// B) MergedMatcher with single-file cache
+//use Infocyph\Webrick\Router\Matching\MergedMatcher;
+//$kernel = RouterKernel::boot(
+//    $logger,
+//    compiler: $compiler,
+//    matcher:  MergedMatcher::make(),
+//    routeCache: __DIR__ . '/.route-cache/__routes.php' // FILE
+//);
+
 
 /* --------------------------------------------------------------------------
  * 4.  Handle & emit
