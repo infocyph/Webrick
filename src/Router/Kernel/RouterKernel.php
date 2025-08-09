@@ -25,13 +25,18 @@ final class RouterKernel
     /** @var Closure():list<CompiledRoute> */
     private Closure $compiler;
 
+    /** Dir for UnifiedMatcher OR file for MergedMatcher; null when cache disabled */
+    private ?string $routeCache;
+
     public function __construct(
         private MatcherInterface $matcher,
         private readonly Dispatcher $dispatcher,
         Closure $compiler,
         private readonly LoggerInterface $log,
+        ?string $routeCache = null,
     ) {
         $this->compiler = $compiler;
+        $this->routeCache = $routeCache;
         $this->warm();
     }
 
@@ -54,7 +59,7 @@ final class RouterKernel
         /* 3) dispatcher ------------------------------------------------ */
         $dispatcher = new Dispatcher(Invoker::shared());
 
-        return new self($matcher, $dispatcher, $compiler, $log);
+        return new self($matcher, $dispatcher, $compiler, $log, $routeCache);
     }
 
     /*──────────────── request entry ───────────────────*/
@@ -87,6 +92,33 @@ final class RouterKernel
 
     private function warm(): void
     {
+        // Decide if we can skip compilation entirely and rely on cache.
+        $skipCompile = false;
+        if ($this->routeCache) {
+            if (\is_dir($this->routeCache)) {
+                // UnifiedMatcher sentinel: <dir>/__root.php
+                $skipCompile = \is_file($this->routeCache . DIRECTORY_SEPARATOR . '__root.php');
+            } else {
+                // MergedMatcher: single cache file path
+                $skipCompile = \is_file($this->routeCache);
+            }
+        }
+
+        if ($skipCompile) {
+            if (\method_exists($this->matcher, 'finalize')) {
+                // Let matcher set any internal flags; it will lazy-load cache on first match()
+                $this->matcher->finalize();
+            }
+
+            $this->log->info('[router] route table ready (cache primed)', [
+                'count'   => null,
+                'matcher' => $this->matcher::class,
+                'cache'   => true,
+                'primed'  => true,
+            ]);
+            return;
+        }
+
         /* 1) compile --------------------------------------------------- */
         $routes = ($this->compiler)();
         if ($routes === []) {
@@ -105,9 +137,10 @@ final class RouterKernel
 
         /* 4) telemetry ------------------------------------------------ */
         $this->log->info('[router] route table ready', [
-            'count' => count($routes),
+            'count'   => count($routes),
             'matcher' => $this->matcher::class,
-            'cache' => method_exists($this->matcher, 'enableCache'),
+            'cache'   => method_exists($this->matcher, 'enableCache'),
+            'primed'  => false,
         ]);
     }
 
