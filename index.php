@@ -96,19 +96,19 @@ $compiler = static fn () => $registrar->compile()->all();
 $logger = new NullLogger();
 
 // A) UnifiedMatcher with segment-dir cache
-//$kernel = RouterKernel::boot(
-//    $logger,
-//    compiler: $compiler,
-//    matcher:  Infocyph\Webrick\Router\Matching\UnifiedMatcher::make(),
-////    routeCache: __DIR__ . '/.route-cache'
-//);
+$kernel = RouterKernel::boot(
+    $logger,
+    compiler: $compiler,
+    matcher:  Infocyph\Webrick\Router\Matching\ShardedMatcher::make(),
+    routeCache: __DIR__ . '/.route-cache'
+);
 
 // B) MergedMatcher with single-file cache
 $kernel = RouterKernel::boot(
     $logger,
     compiler: $compiler,
-    matcher:  Infocyph\Webrick\Router\Matching\MergedMatcher::make(),
-//    routeCache: __DIR__ . '/.route-cache/__routes.php'
+    matcher:  Infocyph\Webrick\Router\Matching\FusedMatcher::make(),
+    routeCache: __DIR__ . '/.route-cache/__routes.php'
 );
 
 
