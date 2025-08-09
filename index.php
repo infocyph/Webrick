@@ -100,7 +100,7 @@ $logger = new NullLogger();
 //    $logger,
 //    compiler: $compiler,
 //    matcher:  Infocyph\Webrick\Router\Matching\UnifiedMatcher::make(),
-//    routeCache: __DIR__ . '/.route-cache'
+////    routeCache: __DIR__ . '/.route-cache'
 //);
 
 // B) MergedMatcher with single-file cache
@@ -108,7 +108,7 @@ $kernel = RouterKernel::boot(
     $logger,
     compiler: $compiler,
     matcher:  Infocyph\Webrick\Router\Matching\MergedMatcher::make(),
-    routeCache: __DIR__ . '/.route-cache/__routes.php' // FILE
+//    routeCache: __DIR__ . '/.route-cache/__routes.php'
 );
 
 

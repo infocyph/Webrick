@@ -22,6 +22,31 @@ final class UnifiedMatcher implements MatcherInterface
     private const H_DATA = '_data';
     private const SHARD_ROOT = '__root';
 
+    private const WIN_RESERVED = [
+        'CON',
+        'PRN',
+        'AUX',
+        'NUL',
+        'COM1',
+        'COM2',
+        'COM3',
+        'COM4',
+        'COM5',
+        'COM6',
+        'COM7',
+        'COM8',
+        'COM9',
+        'LPT1',
+        'LPT2',
+        'LPT3',
+        'LPT4',
+        'LPT5',
+        'LPT6',
+        'LPT7',
+        'LPT8',
+        'LPT9',
+    ];
+
     /*──────────── state ────────────*/
     /** @var array<string,array<string,list<CompiledRoute>>> prefix → method → routes (build-time only) */
     private array $prefixMap = [];
@@ -66,6 +91,16 @@ final class UnifiedMatcher implements MatcherInterface
         return $this;
     }
 
+    /** Hint for RouterKernel: true if we can skip compiling and boot from cache. */
+    public function canBootFromCache(): bool
+    {
+        if (!$this->cacheEnabled) {
+            return false;
+        }
+        // Use wildcard root as sentinel.
+        return \is_file($this->shardFilePath('*', self::SHARD_ROOT));
+    }
+
     public function finalize(): void
     {
         if ($this->finalized) {
@@ -106,7 +141,6 @@ final class UnifiedMatcher implements MatcherInterface
     {
         [$method, $host, $path] = $this->normalizeRequest($method, $host, $path);
         $bucket = $this->fileKeyForPath($path);
-        $segments = $this->explodePath($path); // split once
 
         // Load per-host + wildcard groups (two tiny files max)
         $grpHost = $this->loadGroupFor($host, $bucket);
@@ -116,7 +150,7 @@ final class UnifiedMatcher implements MatcherInterface
             throw new RouteNotFoundException($method, $path);
         }
 
-        // use a set to aggregate allowed verbs without duplicates
+        /** @var array<string,bool> $allowedSet */
         $allowedSet = [];
 
         // ① static O(1) (host then wildcard)
@@ -127,11 +161,11 @@ final class UnifiedMatcher implements MatcherInterface
             return $hit;
         }
 
-        // ② dynamic tries (host then wildcard) — reusing pre-split segments
-        if ($hit = $this->tryDynamic($grpHost, $method, $segments, $allowedSet)) {
+        // ② dynamic tries (host then wildcard)
+        if ($hit = $this->tryDynamic($grpHost, $method, $path, $allowedSet)) {
             return $hit;
         }
-        if ($hit = $this->tryDynamic($grpAny, $method, $segments, $allowedSet)) {
+        if ($hit = $this->tryDynamic($grpAny, $method, $path, $allowedSet)) {
             return $hit;
         }
 
@@ -166,18 +200,12 @@ final class UnifiedMatcher implements MatcherInterface
             return [$r, []];
         }
 
-        // collect for 405 (+implicit HEAD when GET exists)
-        foreach ($map as $verb => $_) {
-            $allowedSet[$verb] = true;
-        }
-        if (isset($map['GET'])) {
-            $allowedSet['HEAD'] = true;
-        }
+        $this->addAllowedFromMap($map, $allowedSet);
         return null;
     }
 
     /** Dynamic via shard-local trie (per-host shard). */
-    private function tryDynamic(?array $group, string $method, array $segments, array &$allowedSet): ?array
+    private function tryDynamic(?array $group, string $method, string $path, array &$allowedSet): ?array
     {
         if ($group === null) {
             return null;
@@ -189,7 +217,7 @@ final class UnifiedMatcher implements MatcherInterface
 
         $hit = null;
         $params = [];
-        if ($this->trieWalk($root, $segments, 0, $method, $params, $allowedSet, $hit)) {
+        if ($this->trieWalk($root, $this->explodePath($path), 0, $method, $params, $allowedSet, $hit)) {
             return $hit; // [$route, $params]
         }
         return null;
@@ -199,10 +227,7 @@ final class UnifiedMatcher implements MatcherInterface
     private function pickVerbRoute(array $buckets, string $verb): ?CompiledRoute
     {
         if ($verb === 'OPTIONS' && $buckets) {
-            if (isset($buckets['GET'])) {
-                return $buckets['GET']; // deterministic preference
-            }
-            /** @var mixed $first */
+            /** @var ?CompiledRoute $first */
             $first = \reset($buckets);
             return $first instanceof CompiledRoute ? $first : null;
         }
@@ -213,6 +238,27 @@ final class UnifiedMatcher implements MatcherInterface
             return $buckets['GET'];
         }
         return null;
+    }
+
+    /* allowed-set helpers (no merges/uniques) */
+    private function addAllowedFromMap(array $map, array &$set): void
+    {
+        foreach ($map as $verb => $_route) {
+            $set[$verb] = true;
+        }
+        if (isset($map['GET'])) {
+            $set['HEAD'] = true; // implicit
+        }
+    }
+
+    private function addAllowedFromRoutes(array $routes, array &$set): void
+    {
+        foreach ($routes as $verb => $_route) {
+            $set[$verb] = true;
+        }
+        if (isset($routes['GET'])) {
+            $set['HEAD'] = true; // implicit
+        }
     }
 
     /*──────────── path→bucket key ────────────*/
@@ -247,12 +293,10 @@ final class UnifiedMatcher implements MatcherInterface
         }
         $host = \rtrim(\strtolower($raw), '.');
 
-        // disallow spaces/control chars early
         if (\preg_match('/[\x00-\x20]/', $host)) {
             throw new \InvalidArgumentException("Illegal host name: {$raw}");
         }
 
-        // IDN → ASCII (punycode) if available and not already punycoded
         if (\function_exists('idn_to_ascii') && !\str_contains($host, 'xn--')) {
             $ascii = @\idn_to_ascii($host, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
             if ($ascii === false) {
@@ -261,7 +305,6 @@ final class UnifiedMatcher implements MatcherInterface
             $host = $ascii;
         }
 
-        // ensure printable ASCII
         if (!\preg_match('/^[\x21-\x7E]+$/', $host)) {
             throw new \InvalidArgumentException("Host contains non-ASCII bytes: {$raw}");
         }
@@ -286,14 +329,12 @@ final class UnifiedMatcher implements MatcherInterface
                         $this->trieInsert($shards[$hostKey][$bucket][self::K_TRIE], $r, $verb);
                     } else {
                         $p = $r->getPath();
-                        // single route per (path, verb) guaranteed by duplicate guard
-                        $shards[$hostKey][$bucket][self::K_STATIC][$p][$verb] = $r;
+                        $shards[$hostKey][$bucket][self::K_STATIC][$p][$verb] = $r; // one per (path,verb)
                     }
                 }
             }
         }
 
-        // Write each (host,bucket) shard into separate file
         foreach ($shards as $hostKey => $byBucket) {
             foreach ($byBucket as $bucket => $payload) {
                 $this->writeShard($hostKey, $bucket, $payload);
@@ -311,7 +352,7 @@ final class UnifiedMatcher implements MatcherInterface
         if (!\is_dir($d = \dirname($file)) && !@\mkdir($d, 0775, true) && !\is_dir($d)) {
             throw new \RuntimeException("Failed to create cache dir {$d}");
         }
-        $crc = $this->hashPayload($payload);
+        $crc = \hash('xxh3', \json_encode($payload, \JSON_THROW_ON_ERROR));
         $php = "<?php\nreturn [\n"
             . "    '" . self::H_HASH . "' => " . \var_export($crc, true) . ",\n"
             . "    '" . self::H_DATA . "' => " . $this->exportArray($payload) . ",\n"
@@ -345,66 +386,34 @@ final class UnifiedMatcher implements MatcherInterface
 
         for ($i = 0; $i < $len; $i++) {
             $ch = $s[$i];
-            $ord = \ord($ch);
+            $o = \ord($ch);
 
-            $isAlphaNum =
-                ($ord >= 48 && $ord <= 57) || // 0-9
-                ($ord >= 65 && $ord <= 90) || // A-Z
-                ($ord >= 97 && $ord <= 122);    // a-z
-
+            $isAlphaNum = ($o >= 48 && $o <= 57) || ($o >= 65 && $o <= 90) || ($o >= 97 && $o <= 122);
             if ($isAlphaNum || $ch === '.' || $ch === '_' || $ch === '-') {
                 $out .= $ch;
                 $prevUnderscore = false;
-            } elseif (!$prevUnderscore) {
-                $out .= '_';
-                $prevUnderscore = true;
+            } else {
+                if (!$prevUnderscore) {
+                    $out .= '_';
+                    $prevUnderscore = true;
+                }
             }
         }
 
-        // avoid leading dot / Windows trailing dot/space
+        // avoid leading dot / Windows trailing dot or space
         $out = \ltrim($out, '.');
         $out = \rtrim($out, ' .');
 
-        // avoid empty or dot-only results
         if ($out === '') {
             $out = '_';
         }
 
         // avoid Windows reserved basenames
-        static $reserved = [
-            'CON',
-            'PRN',
-            'AUX',
-            'NUL',
-            'COM1',
-            'COM2',
-            'COM3',
-            'COM4',
-            'COM5',
-            'COM6',
-            'COM7',
-            'COM8',
-            'COM9',
-            'LPT1',
-            'LPT2',
-            'LPT3',
-            'LPT4',
-            'LPT5',
-            'LPT6',
-            'LPT7',
-            'LPT8',
-            'LPT9',
-        ];
-        if (\in_array(\strtoupper($out), $reserved, true)) {
+        if (\in_array(\strtoupper($out), self::WIN_RESERVED, true)) {
             $out = '_' . $out;
         }
 
         return $out;
-    }
-
-    private function hashPayload(array $payload): string
-    {
-        return \hash('xxh3', \json_encode($payload, \JSON_THROW_ON_ERROR));
     }
 
     /*──────────── export helpers ────────────*/
@@ -485,7 +494,7 @@ final class UnifiedMatcher implements MatcherInterface
             throw new \RuntimeException("Cache file {$file} missing Hash.");
         }
         if ($this->verifyCacheOnLoad) {
-            $calc = $this->hashPayload($blob[self::H_DATA]);
+            $calc = \hash('xxh3', \json_encode($blob[self::H_DATA], \JSON_THROW_ON_ERROR));
             if (!\hash_equals($blob[self::H_HASH], $calc)) {
                 throw new \RuntimeException("Cache hash mismatch ($file).");
             }
@@ -530,8 +539,7 @@ final class UnifiedMatcher implements MatcherInterface
             if ($r->isDynamic()) {
                 $this->trieInsert($trie, $r, $verb);
             } else {
-                // single route per (path, verb) guaranteed by duplicate guard
-                $static[$r->getPath()][$verb] = $r;
+                $static[$r->getPath()][$verb] = $r; // one per (path,verb)
             }
         }
 
@@ -605,12 +613,7 @@ final class UnifiedMatcher implements MatcherInterface
                 return true;
             }
             if ($routes) {
-                foreach ($routes as $v => $_) {
-                    $allowedSet[$v] = true;
-                }
-                if (isset($routes['GET'])) {
-                    $allowedSet['HEAD'] = true;
-                }
+                $this->addAllowedFromRoutes($routes, $allowedSet);
             }
             return false;
         }

@@ -10,21 +10,25 @@ use Infocyph\Webrick\Exceptions\{MethodNotAllowedException, RouteNotFoundExcepti
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 
 /**
- * High-speed matcher
+ * High-speed matcher (single-file cache variant)
  * ─────────────────────────────────────────────────────────────
  *  • O(1) hash-look-ups for *all* static paths
- *      hosts[host]['static'][path][verb] = Route
+ *      hosts[host]['static'][path][verb] = CompiledRoute
  *  • Radix-style trie for dynamic placeholders
  *  • Optional single-file cache (enableCache + finalize)
  */
 final class MergedMatcher implements MatcherInterface
 {
     /* array key constants (readability + typo-safety) */
-    private const K_STATIC   = 'static';
-    private const K_TRIE     = 'trie';
+    private const K_STATIC = 'static';
+    private const K_TRIE = 'trie';
     private const K_CHILDREN = 'children';
-    private const K_PARAM    = 'param';
-    private const K_ROUTES   = 'routes';
+    private const K_PARAM = 'param';
+    private const K_ROUTES = 'routes';
+
+    /* cache blob keys */
+    private const H_HASH = '_hash';
+    private const H_DATA = '_data';
 
     /*──────────── factory ────────────*/
     public static function make(): self
@@ -51,16 +55,22 @@ final class MergedMatcher implements MatcherInterface
         return $this;
     }
 
+    /** Hint for RouterKernel: true if we can skip compiling and boot from cache. */
+    public function canBootFromCache(): bool
+    {
+        return $this->cacheEnabled && \is_file($this->cacheFile);
+    }
+
     public function finalize(): void
     {
         if ($this->finalized) {
             return;
         }
 
-        /* write cache only if matcher built table and file is absent */
+        // Write cache only if table is built and file is absent
         if ($this->cacheEnabled && !\is_file($this->cacheFile) && $this->hosts !== []) {
             $this->dumpCache();
-            /* free memory; table will be lazy-loaded on first match() */
+            // free memory; table will be lazy-loaded on first match()
             $this->hosts = [];
             $this->cacheLoaded = false;
         }
@@ -74,7 +84,7 @@ final class MergedMatcher implements MatcherInterface
             throw new \LogicException('Cannot add routes after finalize().');
         }
 
-        $host = $this->canonicalHost($route->getDomain());
+        $host = $this->canonicalRouteHost($route->getDomain());
         $verb = \strtoupper($route->getMethod());
 
         $this->hosts[$host] ??= [self::K_STATIC => [], self::K_TRIE => $this->newNode()];
@@ -92,20 +102,21 @@ final class MergedMatcher implements MatcherInterface
             if (!\is_file($this->cacheFile)) {
                 throw new RouteNotFoundException($method, $path);
             }
+
             /** @var array{_hash:string,_data:array} $blob */
             $blob = require $this->cacheFile;
 
             if ($this->verifyCacheOnLoad) {
-                if (!isset($blob['_hash'], $blob['_data'])) {
+                if (!isset($blob[self::H_HASH], $blob[self::H_DATA])) {
                     throw new \RuntimeException('Route cache missing Hash.');
                 }
-                $calc = \hash('xxh3', \json_encode($blob['_data'], \JSON_THROW_ON_ERROR));
-                if (!\hash_equals($blob['_hash'], $calc)) {
+                $calc = \hash('xxh3', \json_encode($blob[self::H_DATA], \JSON_THROW_ON_ERROR));
+                if (!\hash_equals($blob[self::H_HASH], $calc)) {
                     throw new \RuntimeException('Route cache Hash mismatch.');
                 }
             }
 
-            $this->hosts = $blob['_data'];
+            $this->hosts = $blob[self::H_DATA] ?? [];
             $this->cacheLoaded = true;
 
             if (\function_exists('opcache_compile_file')) {
@@ -115,22 +126,23 @@ final class MergedMatcher implements MatcherInterface
 
         $verb = \strtoupper($method);
         $host = \strtolower($host);
-        $allowed = [];
 
-        /* ① full-path static table */
-        if ($hit = $this->matchStatic($host, $verb, $path, $allowed)) {
+        /** @var array<string,bool> $allowedSet */
+        $allowedSet = [];
+
+        /* ① full-path static table (host then wildcard) */
+        if ($hit = $this->matchStatic($host, $verb, $path, $allowedSet)) {
             return $hit;
         }
 
-        /* ② trie descent (check host-specific and wildcard tries) */
-        if ($hit = $this->matchTrie($host, $verb, $path, $allowed)) {
+        /* ② trie descent (host then wildcard) */
+        if ($hit = $this->matchTrie($host, $verb, $path, $allowedSet)) {
             return $hit;
         }
 
         /* ③ verdict */
-        if ($allowed !== []) {
-            $allowed = \array_values(\array_unique($allowed));
-            throw new MethodNotAllowedException($verb, $path, $allowed);
+        if ($allowedSet !== []) {
+            throw new MethodNotAllowedException($verb, $path, \array_keys($allowedSet));
         }
         throw new RouteNotFoundException($verb, $path);
     }
@@ -138,15 +150,34 @@ final class MergedMatcher implements MatcherInterface
     /*---------------------------------------------------------------------
      *  Build-time helpers
      *-------------------------------------------------------------------*/
-    private function canonicalHost(?string $h): string
+    /** Canonicalize route domain to match RouterKernel's normalization. */
+    private function canonicalRouteHost(?string $raw): string
     {
-        if ($h === null) {
+        if ($raw === null || $raw === '' || $raw === '*') {
             return '*';
         }
-        if ($h === '' || \preg_match('/[\x00-\x20]/', $h)) {
-            throw new \InvalidArgumentException('Illegal host name.');
+        $host = \rtrim(\strtolower($raw), '.');
+
+        // disallow spaces/control chars early
+        if (\preg_match('/[\x00-\x20]/', $host)) {
+            throw new \InvalidArgumentException("Illegal host name: {$raw}");
         }
-        return \strtolower(\rtrim($h, '.'));
+
+        // IDN → ASCII (punycode) if available and not already punycoded
+        if (\function_exists('idn_to_ascii') && !\str_contains($host, 'xn--')) {
+            $ascii = @\idn_to_ascii($host, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
+            if ($ascii === false) {
+                throw new \InvalidArgumentException("Invalid IDN host name: {$raw}");
+            }
+            $host = $ascii;
+        }
+
+        // ensure printable ASCII
+        if (!\preg_match('/^[\x21-\x7E]+$/', $host)) {
+            throw new \InvalidArgumentException("Host contains non-ASCII bytes: {$raw}");
+        }
+
+        return $host;
     }
 
     /*—— static route insertion ——*/
@@ -204,7 +235,7 @@ final class MergedMatcher implements MatcherInterface
     /*---------------------------------------------------------------------
      *  Matching helpers
      *-------------------------------------------------------------------*/
-    private function matchStatic(string $host, string $verb, string $path, array &$allowed): ?array
+    private function matchStatic(string $host, string $verb, string $path, array &$allowedSet): ?array
     {
         foreach ([$host, '*'] as $h) {
             $map = $this->hosts[$h][self::K_STATIC][$path] ?? null;
@@ -216,20 +247,17 @@ final class MergedMatcher implements MatcherInterface
                 return [$r, []];
             }
 
-            /* gather for 405 (+implicit HEAD when GET exists) */
-            $verbs = \array_keys($map);
-            if (isset($map['GET'])) {
-                $verbs[] = 'HEAD';
-            }
-            $allowed = \array_merge($allowed, $verbs);
+            // gather for 405 (+implicit HEAD when GET exists)
+            $this->addAllowedFromMap($map, $allowedSet);
         }
         return null;
     }
 
     /*—— radix trie descent (try host + wildcard) ——*/
-    private function matchTrie(string $host, string $verb, string $path, array &$allowed): ?array
+    private function matchTrie(string $host, string $verb, string $path, array &$allowedSet): ?array
     {
         $segments = $this->explodePath($path);
+
         foreach ([$host, '*'] as $h) {
             $root = $this->hosts[$h][self::K_TRIE] ?? null;
             if (!$root) {
@@ -238,7 +266,7 @@ final class MergedMatcher implements MatcherInterface
 
             $hit = null;
             $params = [];
-            if ($this->walk($root, $segments, 0, $verb, $params, $allowed, $hit)) {
+            if ($this->walk($root, $segments, 0, $verb, $params, $allowedSet, $hit)) {
                 return $hit;   // [$route,$params]
             }
         }
@@ -251,24 +279,24 @@ final class MergedMatcher implements MatcherInterface
         int $i,
         string $verb,
         array &$params,
-        array &$allowed,
+        array &$allowedSet,
         ?array &$hit,
     ): bool {
         if ($i === \count($seg)) {
-            return $this->leafPick($node, $verb, $params, $allowed, $hit);
+            return $this->leafPick($node, $verb, $params, $allowedSet, $hit);
         }
 
         $piece = $seg[$i];
 
         if (isset($node[self::K_CHILDREN][$piece]) &&
-            $this->walk($node[self::K_CHILDREN][$piece], $seg, $i + 1, $verb, $params, $allowed, $hit)) {
+            $this->walk($node[self::K_CHILDREN][$piece], $seg, $i + 1, $verb, $params, $allowedSet, $hit)) {
             return true;
         }
 
         $p = $node[self::K_PARAM];
         if ($p && \preg_match($p['regex'], $piece) === 1) {
             $params[$p['name']] = $piece; // push
-            $ok = $this->walk($p['node'], $seg, $i + 1, $verb, $params, $allowed, $hit);
+            $ok = $this->walk($p['node'], $seg, $i + 1, $verb, $params, $allowedSet, $hit);
             unset($params[$p['name']]);   // pop
             if ($ok) {
                 return true;
@@ -281,7 +309,7 @@ final class MergedMatcher implements MatcherInterface
         array $node,
         string $verb,
         array $params,
-        array &$allowed,
+        array &$allowedSet,
         ?array &$hit,
     ): bool {
         $routes = $node[self::K_ROUTES] ?? [];
@@ -292,11 +320,7 @@ final class MergedMatcher implements MatcherInterface
         }
 
         if ($routes) {
-            $verbs = \array_keys($routes);
-            if (isset($routes['GET'])) {
-                $verbs[] = 'HEAD';
-            }
-            $allowed = \array_merge($allowed, $verbs);
+            $this->addAllowedFromRoutes($routes, $allowedSet);
         }
         return false;
     }
@@ -316,6 +340,27 @@ final class MergedMatcher implements MatcherInterface
             return $buckets['GET'];
         }
         return null;
+    }
+
+    /* allowed-set helpers (no merges/uniques) */
+    private function addAllowedFromMap(array $map, array &$set): void
+    {
+        foreach ($map as $verb => $_route) {
+            $set[$verb] = true;
+        }
+        if (isset($map['GET'])) {
+            $set['HEAD'] = true; // implicit
+        }
+    }
+
+    private function addAllowedFromRoutes(array $routes, array &$set): void
+    {
+        foreach ($routes as $verb => $_route) {
+            $set[$verb] = true;
+        }
+        if (isset($routes['GET'])) {
+            $set['HEAD'] = true; // implicit
+        }
     }
 
     /* utils */
@@ -340,8 +385,8 @@ final class MergedMatcher implements MatcherInterface
         $crc = \hash('xxh3', \json_encode($payload, \JSON_THROW_ON_ERROR));
 
         $php = "<?php\nreturn [\n"
-            . "    '_hash'  => '" . $crc . "',\n"
-            . "    '_data' => " . $this->exportArray($payload) . ",\n"
+            . "    '" . self::H_HASH . "'  => " . \var_export($crc, true) . ",\n"
+            . "    '" . self::H_DATA . "' => " . $this->exportArray($payload) . ",\n"
             . "];\n";
 
         $tmp = $this->cacheFile . '.' . \uniqid('', true) . '.tmp';

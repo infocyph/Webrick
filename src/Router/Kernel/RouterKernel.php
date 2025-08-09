@@ -10,7 +10,7 @@ use Infocyph\Webrick\Exceptions\{MethodNotAllowedException, RouteNotFoundExcepti
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Dispatch\Dispatcher;
-use Infocyph\Webrick\Router\Matching\{MatcherInterface, UnifiedMatcher};
+use Infocyph\Webrick\Router\Matching\{MatcherInterface};
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 use Psr\Log\LoggerInterface;
 
@@ -25,18 +25,13 @@ final class RouterKernel
     /** @var Closure():list<CompiledRoute> */
     private Closure $compiler;
 
-    /** Dir for UnifiedMatcher OR file for MergedMatcher; null when cache disabled */
-    private ?string $routeCache;
-
     public function __construct(
         private MatcherInterface $matcher,
         private readonly Dispatcher $dispatcher,
         Closure $compiler,
         private readonly LoggerInterface $log,
-        ?string $routeCache = null,
     ) {
         $this->compiler = $compiler;
-        $this->routeCache = $routeCache;
         $this->warm();
     }
 
@@ -51,15 +46,13 @@ final class RouterKernel
         MatcherInterface $matcher,
         ?string $routeCache = null,
     ): self {
-        /* 2) enable cache if requested & matcher supports it ----------- */
         if ($routeCache) {
             $matcher->enableCache($routeCache);
         }
 
-        /* 3) dispatcher ------------------------------------------------ */
         $dispatcher = new Dispatcher(Invoker::shared());
 
-        return new self($matcher, $dispatcher, $compiler, $log, $routeCache);
+        return new self($matcher, $dispatcher, $compiler, $log);
     }
 
     /*──────────────── request entry ───────────────────*/
@@ -92,55 +85,43 @@ final class RouterKernel
 
     private function warm(): void
     {
-        // Decide if we can skip compilation entirely and rely on cache.
-        $skipCompile = false;
-        if ($this->routeCache) {
-            if (\is_dir($this->routeCache)) {
-                // UnifiedMatcher sentinel: <dir>/__root.php
-                $skipCompile = \is_file($this->routeCache . DIRECTORY_SEPARATOR . '__root.php');
-            } else {
-                // MergedMatcher: single cache file path
-                $skipCompile = \is_file($this->routeCache);
-            }
-        }
+        // If matcher advertises a hot cache, skip compiling & adding entirely.
+        $canBootFromCache = \method_exists($this->matcher, 'canBootFromCache')
+            && (bool) $this->matcher->canBootFromCache();
 
-        if ($skipCompile) {
+        if ($canBootFromCache) {
             if (\method_exists($this->matcher, 'finalize')) {
-                // Let matcher set any internal flags; it will lazy-load cache on first match()
+                // Harmless no-op if finalize only dumps when cache is missing.
                 $this->matcher->finalize();
             }
-
-            $this->log->info('[router] route table ready (cache primed)', [
+            $this->log->info('[router] route table ready (hot cache)', [
                 'count'   => null,
                 'matcher' => $this->matcher::class,
                 'cache'   => true,
-                'primed'  => true,
+                'mode'    => 'cache',
             ]);
             return;
         }
 
-        /* 1) compile --------------------------------------------------- */
+        // Cold start: compile, feed matcher, then finalize (possibly writing cache).
         $routes = ($this->compiler)();
         if ($routes === []) {
             throw new \RuntimeException('Route compiler produced an empty table.');
         }
 
-        /* 2) feed matcher --------------------------------------------- */
         foreach ($routes as $r) {
             $this->matcher->add($r);
         }
 
-        /* 3) finalize (if matcher supports it) ------------------------ */
         if (\method_exists($this->matcher, 'finalize')) {
             $this->matcher->finalize();
         }
 
-        /* 4) telemetry ------------------------------------------------ */
         $this->log->info('[router] route table ready', [
             'count'   => count($routes),
             'matcher' => $this->matcher::class,
-            'cache'   => method_exists($this->matcher, 'enableCache'),
-            'primed'  => false,
+            'cache'   => \method_exists($this->matcher, 'enableCache'),
+            'mode'    => 'compiled',
         ]);
     }
 
