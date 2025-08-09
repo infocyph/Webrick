@@ -99,8 +99,7 @@ $logger = new NullLogger();
 $kernel = RouterKernel::boot(
     $logger,
     compiler: $compiler,
-    matcher:  Infocyph\Webrick\Router\Matching\UnifiedMatcher::make(),                     // default = UnifiedMatcher
-//    matcher:  Infocyph\Webrick\Router\Matching\UnifiedMatcherX::make(),                     // default = UnifiedMatcher
+    matcher:  Infocyph\Webrick\Router\Matching\UnifiedMatcher::make(),
     routeCache: __DIR__ . '/.route-cache' // DIRECTORY
 );
 

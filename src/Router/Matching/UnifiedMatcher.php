@@ -87,7 +87,7 @@ final class UnifiedMatcher implements MatcherInterface
             throw new \LogicException('Cannot add routes after finalize().');
         }
 
-        $host   = $this->normHost($route->getDomain());
+        $host   = $this->canonicalRouteHost($route->getDomain());
         $method = \strtoupper($route->getMethod());
         $prefix = $this->extractPrefix($route);
 
@@ -232,15 +232,34 @@ final class UnifiedMatcher implements MatcherInterface
         return '/' . \implode('/', $parts);
     }
 
-    private function normHost(?string $h): string
+    /** Canonicalize route domain to match RouterKernel's host normalization. */
+    private function canonicalRouteHost(?string $raw): string
     {
-        if ($h === null || $h === '') {
+        if ($raw === null || $raw === '' || $raw === '*') {
             return '*';
         }
-        if (\preg_match('/[\x00-\x20]/', $h)) {
-            throw new \InvalidArgumentException("Illegal host name: {$h}");
+        $host = \rtrim(\strtolower($raw), '.');
+
+        // disallow spaces/control chars early
+        if (\preg_match('/[\x00-\x20]/', $host)) {
+            throw new \InvalidArgumentException("Illegal host name: {$raw}");
         }
-        return \strtolower(\rtrim($h, '.'));
+
+        // IDN → ASCII (punycode) if available and not already punycoded
+        if (\function_exists('idn_to_ascii') && !\str_contains($host, 'xn--')) {
+            $ascii = @\idn_to_ascii($host, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
+            if ($ascii === false) {
+                throw new \InvalidArgumentException("Invalid IDN host name: {$raw}");
+            }
+            $host = $ascii;
+        }
+
+        // ensure printable ASCII
+        if (!\preg_match('/^[\x21-\x7E]+$/', $host)) {
+            throw new \InvalidArgumentException("Host contains non-ASCII bytes: {$raw}");
+        }
+
+        return $host;
     }
 
     /*──────────── cache dump (per-host *and* per-bucket) ────────────*/
@@ -252,7 +271,7 @@ final class UnifiedMatcher implements MatcherInterface
             foreach ($byMethod as $verb => $routes) {
                 foreach ($routes as $r) {
                     $bucket  = $this->fileKeyForPath($r->getPath());
-                    $hostKey = $this->normHost($r->getDomain());
+                    $hostKey = $this->canonicalRouteHost($r->getDomain());
 
                     $shards[$hostKey][$bucket] ??= [self::K_STATIC => [], self::K_TRIE => $this->newNode()];
 
@@ -421,7 +440,7 @@ final class UnifiedMatcher implements MatcherInterface
         $trie   = $this->newNode();
 
         foreach ($this->iterShardRoutes($bucket) as [$verb, $r]) {
-            $h = $this->normHost($r->getDomain());
+            $h = $this->canonicalRouteHost($r->getDomain());
             if ($h !== $hostKey) {
                 continue;
             }
