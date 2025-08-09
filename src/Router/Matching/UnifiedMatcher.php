@@ -35,10 +35,10 @@ final class UnifiedMatcher implements MatcherInterface
         if ($this->finalized) {
             return;
         }
-
-        if ($this->cacheEnabled && !file_exists($this->cacheDir . DIRECTORY_SEPARATOR . '__root.php')) {
+        // Cold-dump only once; runtime always loads.
+        if ($this->cacheEnabled && !\file_exists($this->cacheDir . DIRECTORY_SEPARATOR . '__root.php')) {
             $this->dumpCacheFiles();
-            $this->prefixMap = [];
+            $this->prefixMap = []; // free build-time memory
         }
         $this->finalized = true;
     }
@@ -54,7 +54,7 @@ final class UnifiedMatcher implements MatcherInterface
         $method = \strtoupper($route->getMethod());
         $prefix = $this->extractPrefix($route);
 
-        // duplicate guard
+        // duplicate guard: host+method+path
         if (isset($this->pathGuard[$host][$method][$route->getPath()])) {
             throw new \LogicException("Duplicate route {$method} {$host}{$route->getPath()}");
         }
@@ -64,71 +64,38 @@ final class UnifiedMatcher implements MatcherInterface
     }
 
     /*──────────────────────── runtime match ──────────────────*/
-    /*──────────────────────── runtime match ──────────────────*/
     public function match(string $method, string $host, string $path): array
     {
-        $method = strtoupper($method);
-        $host = strtolower($host ?: '*');
+        $method = \strtoupper($method);
+        $host = \strtolower($host ?: '*');
         $path = $path === '' ? '/' : $path;
 
-        // ① use ONLY the first segment as cache key (no __root fallback)
+        // shard by first segment (no __root fallback)
         $fileKey = $this->fileKeyForPath($path);
-
         $group = $this->loadGroup($fileKey);
         if ($group === null) {
-            // no such file → 404
             throw new RouteNotFoundException($method, $path);
         }
 
-        $prefix = $this->longestPrefixKey($group, $path);
-        if ($prefix === null) {
-            throw new RouteNotFoundException($method, $path);
-        }
-
-        $methodMap = $group[$prefix] ?? null;
-        if ($methodMap === null) {
-            throw new RouteNotFoundException($method, $path);
-        }
-
-        /*── try every method bucket, gather allowed verbs ─────────────*/
+        // ① static O(1) check
         $allowed = [];
-        foreach ($methodMap as $verb => $routes) {
-            foreach ($routes as $r) {
-                if (!$this->hostMatches($r, $host)) {
-                    continue;
-                }
-
-                // static
-                if (!$r->isDynamic()) {
-                    if ($r->getPath() !== $path) {
-                        continue;
-                    }
-                } // dynamic
-                elseif (preg_match($r->getRegex(), $path, $m) !== 1) {
-                    continue;
-                }
-
-                // ✔ path matches – record verb
-                $allowed[$verb] = true;
-
-                // return only when verb matches request
-                if ($verb !== $method && !($verb === 'GET' && $method === 'HEAD')) {
-                    continue;
-                }
-
-                /* extract params if dynamic */
-                $params = [];
-                if ($r->isDynamic()) {
-                    foreach ($r->getVariables() as $i => $name) {
-                        $params[$name] = $m[$i + 1];
-                    }
-                }
-                return [$r, $params];
-            }
+        if ($hit = $this->matchStaticBucket($method, $host, $path, $group['static'] ?? [], $allowed)) {
+            return $hit;
         }
 
-        // path matched at least once → 405, else 404
-        $this->throw405or404($method, $path, array_keys($allowed));
+        // ② dynamic via shard-local trie
+        $root = $group['trie'] ?? null;
+        if (!$root) {
+            // Shard exists but had only statics; none matched → 404
+            throw new RouteNotFoundException($method, $path);
+        }
+
+        $hit = null;
+        if ($this->trieWalk($root, $this->explodePath($path), 0, $method, $host, [], $allowed, $hit)) {
+            return $hit; // [$route, $params]
+        }
+
+        $this->throw405or404($method, $path, \array_keys($allowed));
     }
 
     /*──────────── helpers ────────────────────────────────────*/
@@ -137,20 +104,76 @@ final class UnifiedMatcher implements MatcherInterface
         if ($path === '/' || $path === '') {
             return '__root';
         }
-        return explode('/', ltrim($path, '/'), 2)[0];
+        return \explode('/', \ltrim($path, '/'), 2)[0];
     }
 
+    /** Match exact full-path routes in a shard's static bucket. */
+    private function matchStaticBucket(
+        string $method,
+        string $host,
+        string $path,
+        array $staticBucket,
+        array &$allowed,
+    ): ?array {
+        $map = $staticBucket[$path] ?? null;
+        if ($map === null) {
+            return null; // no static entry → try trie
+        }
+
+        // exact verb
+        if (isset($map[$method])) {
+            foreach ($map[$method] as $r) {
+                if ($this->hostMatches($r, $host)) {
+                    return [$r, []];
+                }
+            }
+        }
+
+        // HEAD→GET
+        if ($method === 'HEAD' && isset($map['GET'])) {
+            foreach ($map['GET'] as $r) {
+                if ($this->hostMatches($r, $host)) {
+                    return [$r, []];
+                }
+            }
+        }
+
+        // OPTIONS: any first host-matching verb wins
+        if ($method === 'OPTIONS') {
+            foreach ($map as $verb => $list) {
+                foreach ($list as $r) {
+                    if ($this->hostMatches($r, $host)) {
+                        return [$r, []];
+                    }
+                }
+            }
+        }
+
+        // Gather host-filtered allowed verbs → 405 if any
+        foreach ($map as $verb => $list) {
+            foreach ($list as $r) {
+                if ($this->hostMatches($r, $host)) {
+                    $allowed[$verb] = true;
+                    break;
+                }
+            }
+        }
+        // If none allowed, fallthrough lets trie try; if trie misses too → 404
+        return null;
+    }
 
     /*──────────────────────── data members ───────────────────*/
-    /** @var array<string,array<string,list<CompiledRoute>>> */
-    private array $prefixMap = [];   // build-time only
-    private array $loadedFiles = [];   // file include memo
+    /** @var array<string,array<string,list<CompiledRoute>>>  prefix → method → routes */
+    private array $prefixMap = [];     // build-time only
+    /** @var array<string,true|array> cached shard contents */
+    private array $loadedFiles = [];
     private bool $cacheEnabled = false;
     private string $cacheDir = '';
     private bool $finalized = false;
-    private array $pathGuard = [];  // duplicate guard
+    /** duplicate guard: host → method → path */
+    private array $pathGuard = [];
 
-    /** @var array<string,?array> resolved groups for dev mode */
+    /** @var array<string,?array> shard cache for dev mode (static+trie) */
     private array $memGroups = [];
 
     /*──────────────────────── helpers (build-time) ───────────*/
@@ -174,41 +197,55 @@ final class UnifiedMatcher implements MatcherInterface
         if (\preg_match('/[\x00-\x20]/', $h)) {
             throw new \InvalidArgumentException("Illegal host name: {$h}");
         }
-        return \strtolower(rtrim($h, '.'));
+        return \strtolower(\rtrim($h, '.'));
     }
 
     /*──────────────────────── cache dump ----------------------*/
     private function dumpCacheFiles(): void
     {
-        foreach ($this->prefixMap as $prefix => $byMethod) {
-            $file = $this->filePathForPrefix($prefix);
-            if (!\is_dir($d = \dirname($file)) && !@mkdir($d, 0775, true) && !\is_dir($d)) {
+        // Build per-shard structures: ['static' => [path][verb] = list<Route>], 'trie' => node
+        $shards = []; // key => ['static' => [], 'trie' => node]
+        foreach ($this->prefixMap as $_prefix => $byMethod) {
+            foreach ($byMethod as $verb => $routes) {
+                foreach ($routes as $r) {
+                    $fileKey = $this->fileKeyForPath($r->getPath());
+                    $shards[$fileKey] ??= ['static' => [], 'trie' => $this->newNode()];
+
+                    if ($r->isDynamic()) {
+                        $this->trieInsert($shards[$fileKey]['trie'], $r, $verb);
+                    } else {
+                        $p = $r->getPath();
+                        $shards[$fileKey]['static'][$p][$verb][] = $r;
+                    }
+                }
+            }
+        }
+
+        // write each shard atomically with hash header
+        foreach ($shards as $fileKey => $data) {
+            $file = "{$this->cacheDir}/{$fileKey}.php";
+            if (!\is_dir($d = \dirname($file)) && !@\mkdir($d, 0775, true) && !\is_dir($d)) {
                 throw new \RuntimeException("Failed to create cache dir {$d}");
             }
 
-            /* merge with old data (if any) */
-            $payload = [$prefix => $byMethod];
-            if (\is_file($file)) {
-                $old = require $file;
-                if (isset($old['_data'])) {           // unwrap header
-                    $old = $old['_data'];
-                }
-                $payload += $old;
-            }
+            $payload = [
+                'static' => $data['static'],
+                'trie' => $data['trie'],
+            ];
 
-            $crc  = hash('xxh3', json_encode($payload, JSON_THROW_ON_ERROR));
-            $php  = "<?php\nreturn [\n"
-                . "    '_hash'  => '{$crc}',\n"
+            $crc = \hash('xxh3', \json_encode($payload, \JSON_THROW_ON_ERROR));
+            $php = "<?php\nreturn [\n"
+                . "    '_hash' => " . \var_export($crc, true) . ",\n"
                 . "    '_data' => " . $this->exportArray($payload) . ",\n"
                 . "];\n";
 
-            $tmp = $file . '.' . uniqid('', true) . '.tmp';
-            \file_put_contents($tmp, $php, LOCK_EX);
-            @chmod($tmp, 0664);
-            @rename($tmp, $file);
+            $tmp = $file . '.' . \uniqid('', true) . '.tmp';
+            \file_put_contents($tmp, $php, \LOCK_EX);
+            @\chmod($tmp, 0664);
+            @\rename($tmp, $file);
 
             if (\function_exists('opcache_compile_file')) {
-                @opcache_compile_file($file);
+                @\opcache_compile_file($file);
             }
         }
     }
@@ -216,7 +253,7 @@ final class UnifiedMatcher implements MatcherInterface
     /* export helpers ----------------------------------------------------*/
     private function exportArray(array $a, int $depth = 0): string
     {
-        $indent = str_repeat('    ', $depth);
+        $indent = \str_repeat('    ', $depth);
         $out = "[\n";
         foreach ($a as $k => $v) {
             $out .= $indent . '    ' . \var_export($k, true) . ' => ';
@@ -225,7 +262,7 @@ final class UnifiedMatcher implements MatcherInterface
                 : $this->exportValue($v, $depth + 1);
             $out .= ",\n";
         }
-        return $indent . rtrim($out, ",\n") . "\n" . $indent . "]";
+        return $indent . \rtrim($out, ",\n") . "\n" . $indent . "]";
     }
 
     private function exportValue(mixed $v, int $depth): string
@@ -235,36 +272,30 @@ final class UnifiedMatcher implements MatcherInterface
             : (\is_array($v) ? $this->exportArray($v, $depth) : \var_export($v, true));
     }
 
-
     private function exportRoute(CompiledRoute $r): string
     {
-        /* 1. Fast path – handler has NO Closure */
+        // Fast path – handler has NO Closure
         if (!$this->handlerHasClosure($r->getHandler())) {
             return 'new \\' . CompiledRoute::class . '('
-                // method, path, handler
                 . \var_export($r->getMethod(), true) . ', '
                 . \var_export($r->getPath(), true) . ', '
                 . \var_export($r->getHandler(), true) . ', '
-                // domain, middleware, name
                 . \var_export($r->getDomain(), true) . ', '
                 . \var_export($r->getMiddlewares(), true) . ', '
                 . \var_export($r->getName(), true) . ', '
-                // dynamic, regex, variables
                 . ($r->isDynamic() ? 'true' : 'false') . ', '
                 . \var_export($r->getRegex(), true) . ', '
                 . \var_export($r->getVariables(), true) . ', '
-                // index, cors, segments
                 . \var_export($r->getIndex(), true) . ', '
                 . \var_export($r->getCorsPolicy(), true) . ', '
                 . \var_export($r->getSegments(), true)
                 . ')';
         }
 
-        /* 2. Slow path – handler *has* Closure -> ValueSerializer */
+        // Slow path – Closure handler via ValueSerializer
         return '\\' . ValueSerializer::class
             . '::unserialize(' . \var_export(ValueSerializer::serialize($r), true) . ')';
     }
-
 
     private function handlerHasClosure(callable|array|string $h): bool
     {
@@ -272,8 +303,7 @@ final class UnifiedMatcher implements MatcherInterface
             return true;
         }
         if (\is_array($h)) {
-            return ($h[0] ?? null) instanceof Closure
-                || ($h[1] ?? null) instanceof Closure;
+            return ($h[0] ?? null) instanceof Closure || ($h[1] ?? null) instanceof Closure;
         }
         return false;
     }
@@ -293,8 +323,8 @@ final class UnifiedMatcher implements MatcherInterface
                 if (!isset($blob['_hash'], $blob['_data'])) {
                     throw new \RuntimeException("Cache file {$file} missing Hash.");
                 }
-                $calc = hash('xxh3', json_encode($blob['_data'], JSON_THROW_ON_ERROR));
-                if (!hash_equals($blob['_hash'], $calc)) {
+                $calc = \hash('xxh3', \json_encode($blob['_data'], \JSON_THROW_ON_ERROR));
+                if (!\hash_equals($blob['_hash'], $calc)) {
                     throw new \RuntimeException("Cache hash mismatch ($file).");
                 }
                 $this->loadedFiles[$file] = $blob['_data'];
@@ -302,44 +332,34 @@ final class UnifiedMatcher implements MatcherInterface
             return $this->loadedFiles[$file];
         }
 
-        /* 2) dev (in-memory) mode -------------------------------------- */
+        /* 2) dev (in-memory) mode: build shard once (static + trie) ---- */
         if (\array_key_exists($fileKey, $this->memGroups)) {
             return $this->memGroups[$fileKey];
         }
 
-        $bucket = null;
-        foreach ($this->prefixMap as $prefix => $methods) {
-            $firstSeg = $prefix === '/' ? '__root'
-                : \explode('/', \ltrim($prefix, '/'), 2)[0];
-            if ($firstSeg === $fileKey) {
-                $bucket[$prefix] = $methods;
+        $bucket = ['static' => [], 'trie' => $this->newNode()];
+
+        foreach ($this->prefixMap as $_prefix => $byMethod) {
+            foreach ($byMethod as $verb => $routes) {
+                foreach ($routes as $r) {
+                    if ($this->fileKeyForPath($r->getPath()) !== $fileKey) {
+                        continue;
+                    }
+                    if ($r->isDynamic()) {
+                        $this->trieInsert($bucket['trie'], $r, $verb);
+                    } else {
+                        $p = $r->getPath();
+                        $bucket['static'][$p][$verb][] = $r;
+                    }
+                }
             }
+        }
+
+        // if bucket is completely empty → null (signals 404 at callsite)
+        if ($bucket['static'] === [] && $this->isEmptyTrieNode($bucket['trie'])) {
+            return $this->memGroups[$fileKey] = null;
         }
         return $this->memGroups[$fileKey] = $bucket;
-    }
-
-    /* prefix → cache file location */
-    private function filePathForPrefix(string $prefix): string
-    {
-        return $prefix === '/'
-            ? "{$this->cacheDir}/__root.php"
-            : "{$this->cacheDir}/" . \explode('/', \ltrim($prefix, '/'), 2)[0] . '.php';
-    }
-
-    /* choose longest prefix key that matches $path */
-    private function longestPrefixKey(array $group, string $path): ?string
-    {
-        $best = null;
-        foreach ($group as $p => $_) {
-            $ok = $p === '/'
-                || (\strncmp($path, $p, \strlen($p)) === 0 &&
-                    ($path === $p || $path[\strlen($p)] === '/'));
-
-            if ($ok && (\strlen($p) > \strlen($best ?? ''))) {
-                $best = $p;
-            }
-        }
-        return $best;
     }
 
     private function hostMatches(CompiledRoute $r, string $host): bool
@@ -354,5 +374,148 @@ final class UnifiedMatcher implements MatcherInterface
             throw new MethodNotAllowedException($m, $p, $allowed);
         }
         throw new RouteNotFoundException($m, $p);
+    }
+
+    /*──────────────────────── trie (build + runtime) ───────────────────*/
+
+    /** shard-local trie node: children, param{name,regex,node}|null, routes: verb => list<CompiledRoute> */
+    private function newNode(): array
+    {
+        return ['children' => [], 'param' => null, 'routes' => []];
+    }
+
+    private function &trieLiteralChild(array &$node, string $seg): array
+    {
+        $node['children'][$seg] ??= $this->newNode();
+        return $node['children'][$seg];
+    }
+
+    private function &trieParamChild(array &$node, array $spec): array
+    {
+        if ($node['param'] !== null) {
+            if ($node['param']['name'] !== $spec['name'] || $node['param']['regex'] !== $spec['regex']) {
+                throw new \LogicException("Conflicting placeholders at same depth");
+            }
+            return $node['param']['node'];
+        }
+        $node['param'] = ['name' => $spec['name'], 'regex' => $spec['regex'], 'node' => $this->newNode()];
+        return $node['param']['node'];
+    }
+
+    private function trieInsert(array &$root, CompiledRoute $r, string $verb): void
+    {
+        $node = &$root;
+        foreach ($r->getSegments() as $seg) {
+            if ($seg['type'] === 'lit') {
+                $node = &$this->trieLiteralChild($node, $seg['val']);
+            } else {
+                $node = &$this->trieParamChild($node, $seg);
+            }
+        }
+        $node['routes'][$verb][] = $r;
+    }
+
+    private function explodePath(string $p): array
+    {
+        $t = \trim($p, '/');
+        return $t === '' ? [] : \explode('/', $t);
+    }
+
+    private function trieWalk(
+        array $node,
+        array $seg,
+        int $i,
+        string $method,
+        string $host,
+        array $params,
+        array &$allowed,
+        ?array &$hit,
+    ): bool {
+        if ($i === \count($seg)) { // leaf
+            return $this->triePick($node, $method, $host, $params, $allowed, $hit);
+        }
+
+        $piece = $seg[$i];
+
+        if (isset($node['children'][$piece]) &&
+            $this->trieWalk($node['children'][$piece], $seg, $i + 1, $method, $host, $params, $allowed, $hit)) {
+            return true;
+        }
+
+        $p = $node['param'];
+        if ($p !== null && \preg_match($p['regex'], $piece) === 1 &&
+            $this->trieWalk(
+                $p['node'],
+                $seg,
+                $i + 1,
+                $method,
+                $host,
+                $params + [$p['name'] => $piece],
+                $allowed,
+                $hit,
+            )) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private function triePick(
+        array $node,
+        string $method,
+        string $host,
+        array $params,
+        array &$allowed,
+        ?array &$hit,
+    ): bool {
+        // OPTIONS: any host-matching verb wins
+        if ($method === 'OPTIONS' && $node['routes']) {
+            foreach ($node['routes'] as $verb => $list) {
+                foreach ($list as $r) {
+                    if ($this->hostMatches($r, $host)) {
+                        $hit = [$r, $params];
+                        return true;
+                    }
+                }
+            }
+        }
+
+        // exact verb
+        if (isset($node['routes'][$method])) {
+            foreach ($node['routes'][$method] as $r) {
+                if ($this->hostMatches($r, $host)) {
+                    $hit = [$r, $params];
+                    return true;
+                }
+            }
+        }
+
+        // HEAD→GET
+        if ($method === 'HEAD' && isset($node['routes']['GET'])) {
+            foreach ($node['routes']['GET'] as $r) {
+                if ($this->hostMatches($r, $host)) {
+                    $hit = [$r, $params];
+                    return true;
+                }
+            }
+        }
+
+        // gather host-filtered allowed
+        if ($node['routes']) {
+            foreach ($node['routes'] as $verb => $list) {
+                foreach ($list as $r) {
+                    if ($this->hostMatches($r, $host)) {
+                        $allowed[$verb] = true;
+                        break;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    private function isEmptyTrieNode(array $n): bool
+    {
+        return ($n['children'] ?? []) === [] && ($n['param'] ?? null) === null && ($n['routes'] ?? []) === [];
     }
 }

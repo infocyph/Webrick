@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router\Kernel;
@@ -37,13 +38,13 @@ final class RouterKernel
     /*──────────────── bootstrap helper ────────────────*/
 
     /**
-     * @param string|null $routeCache  Dir for UnifiedMatcher **or** file for MergedMatcher
+     * @param string|null $routeCache Dir for UnifiedMatcher **or** file for MergedMatcher
      */
     public static function boot(
-        LoggerInterface        $log,
-        Closure                $compiler,
-        MatcherInterface|null  $matcher,
-        ?string                $routeCache  = null,
+        LoggerInterface $log,
+        Closure $compiler,
+        MatcherInterface $matcher,
+        ?string $routeCache = null,
     ): self {
         /* 2) enable cache if requested & matcher supports it ----------- */
         if ($routeCache) {
@@ -61,24 +62,21 @@ final class RouterKernel
     public function handle(Request $request): Response
     {
         $method = strtoupper($request->getMethod());
-        $uri    = $request->getUri();
-        $host   = self::normaliseHost($uri->getHost());
-        $path   = $uri->getPath() ?: '/';
+        $uri = $request->getUri();
+        $host = self::normaliseHost($uri->getHost());
+        $path = $uri->getPath() ?: '/';
 
         try {
             [$route, $vars] = $this->matcher->match($method, $host, $path);
             return $this->dispatcher->dispatch($route, $request, $vars);
-
         } catch (MethodNotAllowedException $e) {
             return Response::json(
                 ['error' => 'Method Not Allowed'],
                 405,
                 ['Allow' => implode(', ', $e->allowed)],
             );
-
         } catch (RouteNotFoundException) {
             return Response::json(['error' => 'Not Found'], 404);
-
         } catch (\Throwable $e) {
             $this->log->error('[router] uncaught exception', ['exception' => $e]);
             return Response::json(['error' => 'Server Error'], 500);
@@ -107,9 +105,9 @@ final class RouterKernel
 
         /* 4) telemetry ------------------------------------------------ */
         $this->log->info('[router] route table ready', [
-            'count'   => count($routes),
+            'count' => count($routes),
             'matcher' => $this->matcher::class,
-            'cache'   => method_exists($this->matcher, 'enableCache'),
+            'cache' => method_exists($this->matcher, 'enableCache'),
         ]);
     }
 

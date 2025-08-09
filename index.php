@@ -83,6 +83,7 @@ $registrar->get(
 /* ---- NEW: class-based route ------------------------------------------ */
 $registrar->get('/class/test/{name}', [DemoController::class, 'hello']);
 $registrar->get('/class/rest/{name}', [DemoController::class, 'hello']);
+$registrar->get('/class/pest', [DemoController::class, 'hello']);
 
 /* --------------------------------------------------------------------------
  * 2.  Compiler callback (executed only when route-table cache is cold)
@@ -95,20 +96,21 @@ $compiler = static fn () => $registrar->compile()->all();
 $logger = new NullLogger();
 
 // A) UnifiedMatcher with segment-dir cache
-//$kernel = RouterKernel::boot(
-//    $logger,
-//    compiler: $compiler,
-//    matcher:  Infocyph\Webrick\Router\Matching\UnifiedMatcher::make(),                     // default = UnifiedMatcher
-//    routeCache: __DIR__ . '/.route-cache' // DIRECTORY
-//);
-
-// B) MergedMatcher with single-file cache
 $kernel = RouterKernel::boot(
     $logger,
     compiler: $compiler,
-    matcher:  Infocyph\Webrick\Router\Matching\MergedMatcher::make(),
-    routeCache: __DIR__ . '/.route-cache/__routes.php' // FILE
+    matcher:  Infocyph\Webrick\Router\Matching\UnifiedMatcher::make(),                     // default = UnifiedMatcher
+//    matcher:  Infocyph\Webrick\Router\Matching\UnifiedMatcherX::make(),                     // default = UnifiedMatcher
+    routeCache: __DIR__ . '/.route-cache' // DIRECTORY
 );
+
+// B) MergedMatcher with single-file cache
+//$kernel = RouterKernel::boot(
+//    $logger,
+//    compiler: $compiler,
+//    matcher:  Infocyph\Webrick\Router\Matching\MergedMatcher::make(),
+//    routeCache: __DIR__ . '/.route-cache/__routes.php' // FILE
+//);
 
 
 /* --------------------------------------------------------------------------
