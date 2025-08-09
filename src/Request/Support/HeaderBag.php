@@ -124,14 +124,13 @@ final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
     public function withSmart(string $name, string $value): self
     {
         $policy = HeaderPolicy::for($name);
-        $lower = strtolower($name);
 
         return match ($policy) {
             HeaderPolicy::SINGLE => $this->with($name, $value),
             HeaderPolicy::MULTI_LINE => $this->withAdded($name, $value),
             HeaderPolicy::MERGE_TOKENS => $this->with(
                 $name,
-                $this->mergeCsv($this->getHeaderLine($lower), $value),
+                $this->mergeCsv($this->getHeaderLine($name), $value),
             ),
         };
     }

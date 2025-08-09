@@ -76,8 +76,8 @@ final class Uri
     /* ---------- 2. factory: build from $_SERVER ------------ */
     public static function fromServerParams(array $srv): self
     {
-        $scheme = self::detectScheme($srv) . '://';
-        [$host, $port] = self::detectHostPort($srv);
+        $scheme = self::detectScheme($srv);          // 'http' | 'https'
+        [$host, $port] = self::detectHostPort($srv); // honors proxy flags
         $uri = self::detectRequestUri($srv);
 
         return new self(self::buildFullUrl($scheme, $host, $port, $uri));
@@ -88,32 +88,118 @@ final class Uri
     /** http vs https deduction (keeps your old rules) */
     private static function detectScheme(array $s): string
     {
-        $https = (!empty($s['HTTPS']) && strtolower((string)$s['HTTPS']) === 'on')
+        if ((Request::getProxyHeaderFlags() & Request::HEADER_FORWARDED) !== 0) {
+            if (!empty($s['HTTP_FORWARDED'])) {
+                $first = explode(',', (string)$s['HTTP_FORWARDED'])[0];
+                if (preg_match('/proto="?([a-z]+)"?/i', $first, $m)) {
+                    $p = strtolower($m[1]);
+                    if ($p === 'https' || $p === 'http') {
+                        return $p;
+                    }
+                }
+            }
+        }
+
+        $https =
+            (!empty($s['HTTPS']) && strtolower((string)$s['HTTPS']) === 'on')
             || (strtolower($s['REQUEST_SCHEME'] ?? '') === 'https')
-            || (
-                (Request::getProxyHeaderFlags() & Request::HEADER_X_FORWARDED_PROTO) !== 0
-                && strtolower($s['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https'
-            )
+            || ((Request::getProxyHeaderFlags() & Request::HEADER_X_FORWARDED_PROTO) !== 0
+                ? strtolower(trim(explode(',', (string)($s['HTTP_X_FORWARDED_PROTO'] ?? ''))[0]))
+                : '') === 'https'
             || (strtolower($s['HTTP_FRONT_END_HTTPS'] ?? '') === 'on')
             || ((int)($s['SERVER_PORT'] ?? 0) === 443);
 
         return $https ? 'https' : 'http';
     }
 
+
     /** returns [host, port|null] */
     private static function detectHostPort(array $s): array
     {
-        $host = $s['HTTP_HOST'] ?? $s['SERVER_NAME'] ?? 'localhost';
+        // 1) RFC 7239 Forwarded: host="example.com:8443"
+        if ($fp = self::detectForwardedHost($s)) {
+            [$h, $p] = $fp;
 
-        $port = null;
-        if (preg_match('/:(\d+)$/', $host, $m)) {
-            $port = (int)$m[1];
-            $host = preg_replace('/:\d+$/', '', $host);
-        } elseif (!empty($s['SERVER_PORT'])) {
+            // Complement with X-Forwarded-Port if allowed and not present
+            if ($p === null && (Request::getProxyHeaderFlags() & Request::HEADER_X_FORWARDED_PORT) !== 0) {
+                if (!empty($s['HTTP_X_FORWARDED_PORT'])) {
+                    $first = (int)trim(explode(',', (string)$s['HTTP_X_FORWARDED_PORT'])[0]);
+                    if ($first > 0 && $first <= 65535) {
+                        $p = $first;
+                    }
+                }
+            }
+            return [$h, $p];
+        }
+
+        // 2) Direct socket view
+        $rawHost = $s['HTTP_HOST'] ?? $s['SERVER_NAME'] ?? 'localhost';
+        [$host, $port] = self::splitHostPort($rawHost);
+
+        if ($port === null && !empty($s['SERVER_PORT'])) {
             $port = (int)$s['SERVER_PORT'];
         }
         return [$host, $port];
     }
+
+    private static function detectForwardedHost(array $s): ?array
+    {
+        // Forwarded: by=...;for=...;host=example.com:8443;proto=https
+        if ((Request::getProxyHeaderFlags() & Request::HEADER_FORWARDED) !== 0) {
+            if (!empty($s['HTTP_FORWARDED'])) {
+                $first = explode(',', (string)$s['HTTP_FORWARDED'])[0];
+                if (preg_match('/host=(?:"([^"]+)"|([^;,\s]+))/i', $first, $m)) {
+                    $hp = $m[1] !== '' ? $m[1] : trim($m[2]);
+                    return self::splitHostPort($hp);
+                }
+            }
+        }
+
+        // X-Forwarded-Host: a.example, b.example
+        if ((Request::getProxyHeaderFlags() & Request::HEADER_X_FORWARDED_HOST) !== 0) {
+            if (!empty($s['HTTP_X_FORWARDED_HOST'])) {
+                $first = trim(explode(',', (string)$s['HTTP_X_FORWARDED_HOST'])[0]);
+                return self::splitHostPort($first);
+            }
+        }
+
+        return null;
+    }
+
+    private static function splitHostPort(string $v): array
+    {
+        $v = trim($v);
+        if ($v === '') {
+            return ['', null];
+        }
+
+        // 1) Bracketed IPv6: "[::1]" or "[::1]:8443"
+        if ($v[0] === '[') {
+            if (preg_match('/^\[(?<host>[^\]]+)\](?::(?<port>\d{1,5}))?$/', $v, $m)) {
+                $host = '[' . $m['host'] . ']';
+                $port = isset($m['port']) ? self::normPort($m['port']) : null;
+                return [$host, $port];
+            }
+            // malformed → keep as host (don’t invent a port)
+            return [$v, null];
+        }
+
+        // 2) Non-IPv6 (no brackets). Treat as "host[:port]" only when there is exactly one colon and a numeric port.
+        if (preg_match('/^(?<host>[^:]+):(?<port>\d{1,5})$/', $v, $m)) {
+            $port = self::normPort($m['port']);
+            return [$m['host'], $port];
+        }
+
+        // Multiple colons (unbracketed IPv6) or no port suffix → host only.
+        return [$v, null];
+    }
+
+    private static function normPort(string $p): ?int
+    {
+        $i = (int)$p;
+        return ($i > 0 && $i <= 65535) ? $i : null;
+    }
+
 
     private static function detectRequestUri(array $s): string
     {
@@ -122,16 +208,16 @@ final class Uri
 
     private static function buildFullUrl(string $scheme, string $host, ?int $port, string $reqUri): string
     {
-        if ($port !== null && $port === self::getDefaultPortForScheme($scheme)) {
+        $default = self::getDefaultPortForScheme($scheme);
+        if ($port !== null && $default !== null && $port === $default) {
             $port = null;
         }
-
-        return $scheme . $host . ($port ? ":{$port}" : '') . $reqUri;
+        return $scheme . '://' . $host . ($port ? ":{$port}" : '') . $reqUri;
     }
 
     private static function getDefaultPortForScheme(string $scheme): ?int
     {
-        return strtolower($scheme) === 'https' ? 443 : 80;
+        return $scheme === 'https' ? 443 : ($scheme === 'http' ? 80 : null);
     }
 
     /* ──────────────────────────  String cast  ─────────────────────────────── */

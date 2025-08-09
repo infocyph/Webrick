@@ -134,6 +134,9 @@ final class Stream
 
     public function write($s): int
     {
+        if (!$this->writable) {
+            throw new RuntimeException('Stream not writable');
+        }
         $bytes = fwrite($this->need(), $s);
         if ($bytes === false) {
             throw new RuntimeException('Stream write failed');
@@ -148,6 +151,9 @@ final class Stream
 
     public function read($l): string
     {
+        if (!$this->readable) {
+            throw new RuntimeException('Stream not readable');
+        }
         $data = fread($this->need(), $l);
         if ($data === false) {
             throw new RuntimeException('Stream read failed');
@@ -157,6 +163,9 @@ final class Stream
 
     public function getContents(): string
     {
+        if (!$this->readable) {
+            throw new RuntimeException('Stream not readable');
+        }
         $data = stream_get_contents($this->need());
         if ($data === false) {
             throw new RuntimeException('Unable to read stream contents');

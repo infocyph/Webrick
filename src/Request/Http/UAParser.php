@@ -26,7 +26,9 @@ final class UAParser
     /* ---- parsed Sec-CH bag (if any) ---- */
     private array $hint = [];
 
-    private static array $tokenMap = [          // longest tokens first
+    private static array $tokenMap = [
+        'crios'           => 'Chrome iOS',
+        'fxios'           => 'Firefox iOS',
         'edg'             => 'Edge',
         'opr'             => 'Opera',
         'vivaldi'         => 'Vivaldi',
@@ -70,7 +72,14 @@ final class UAParser
     {
         $bag = [];
 
-        // "Sec-CH-UA" → brand list
+        // Prefer the full-version list when present
+        if ($full = $req->getHeaderLine('Sec-CH-UA-Full-Version-List')) {
+            preg_match_all('/"([^"]+?)";v="([^"]+)"/', $full, $m, PREG_SET_ORDER);
+            foreach ($m as [, $brand, $ver]) {
+                $bag['brands_full'][$brand] = $ver; // full dotted version
+            }
+        }
+
         if ($uaHint = $req->getHeaderLine('Sec-CH-UA')) {
             preg_match_all('/"([^"]+?)";v="([^"]+)"/', $uaHint, $m, PREG_SET_ORDER);
             foreach ($m as [, $brand, $ver]) {
@@ -91,18 +100,21 @@ final class UAParser
        ===================================================================== */
     private function browser(): array
     {
-        /* ----- BEST: Client-Hints ------------------------------------------------ */
-        if ($brands = ($this->hint['brands'] ?? [])) {
-            $preferred = array_reverse($brands, true);       // Chromium sends real brand last
+        // Client Hints: prefer full-version list brands, real brand last
+        $brands = $this->hint['brands_full'] ?? $this->hint['brands'] ?? null;
+        if ($brands) {
+            $preferred = array_reverse($brands, true);
             foreach ($preferred as $brand => $ver) {
                 if (!preg_match('/^(?:Chromium|Not\s?)?A?Brand$/i', $brand)) {
-                    return [$brand, $this->hint['fullVersion'] ?: $ver];
+                    return [$brand, (string)$ver];
                 }
             }
             if (isset($brands['Chromium'])) {
-                return ['Chromium', $brands['Chromium']];
+                return ['Chromium', (string)$brands['Chromium']];
             }
         }
+
+        // UA fallback (add iOS tokens)
         foreach (self::$tokenMap as $token => $label) {
             if (str_contains($this->uaLower, $token)) {
                 return [$label, $this->extractVersion($token)];
@@ -114,6 +126,8 @@ final class UAParser
     private function extractVersion(string $token): string
     {
         static $rx = [
+            'crios' => '/crios\/([\d.]+)/i',
+            'fxios' => '/fxios\/([\d.]+)/i',
             'edg' => '/edg[e|a]?[ /]([\d.]+)/i',
             'opr' => '/(?:opr|opera)[ /]([\d.]+)/i',
             'vivaldi' => '/vivaldi[ /]([\d.]+)/i',

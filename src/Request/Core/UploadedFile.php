@@ -75,9 +75,13 @@ final class UploadedFile
         $this->assertOkAndNotMoved();
 
         if (is_string($this->src)) {
-            /** @psalm-suppress PossiblyNullArgument */
-            $this->src = new Stream(fopen($this->src, 'rb'));
+            $h = @fopen($this->src, 'rb');
+            if ($h === false) {
+                throw new RuntimeException("Cannot open uploaded file: {$this->src}");
+            }
+            $this->src = new Stream($h);
         }
+
         return $this->src;
     }
 

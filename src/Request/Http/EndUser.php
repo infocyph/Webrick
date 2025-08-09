@@ -110,19 +110,24 @@ final class EndUser
     /* mask /24 for IPv4, /64 for IPv6 */
     public function anonymize(string $ip): string
     {
-        $wrap = $ip[0] === '[' && $ip[-1] === ']';
+        $wrap = str_starts_with($ip, '[') && str_ends_with($ip, ']');
         $ip = $wrap ? substr($ip, 1, -1) : $ip;
+
+        // Strip zone identifiers (e.g., "%eth0" or "%25eth0" in bracketed URIs)
+        if (false !== $pos = strpos($ip, '%')) {
+            $ip = substr($ip, 0, $pos);
+        }
 
         $bin = \inet_pton($ip);
         if ($bin === false) {
-            return $ip;
+            return $wrap ? '[' . $ip . ']' : $ip;
         }
 
         $mask = strlen($bin) === 4
             ? \inet_pton('255.255.255.0')                 // /24
             : \inet_pton('ffff:ffff:ffff:ffff:0:0:0:0');  // /64
 
-        $masked = $bin & $mask;                           // bitwise-and on binary strings
+        $masked = $bin & $mask;
 
         return $wrap ? '[' . \inet_ntop($masked) . ']' : \inet_ntop($masked);
     }

@@ -54,28 +54,32 @@ final class Csrf
 
     public static function matches(Request $req): bool
     {
-        $sent   = self::extractFromRequest($req);
-        $stored = $_SESSION['_token'] ?? null;
+        return self::matchesValue(self::extractFromRequest($req));
+    }
 
+    /** Fast-path: compare a provided token (masked or plain) to the stored one. */
+    public static function matchesValue(?string $sent): bool
+    {
+        $stored = $_SESSION['_token'] ?? null;
         if (!$sent || !$stored) {
             return false;
         }
 
         $hexLen = self::TOKEN_BYTES * 2; // 64
-        $maskedLen = $hexLen * 2;        // 128
+        $maskedLen = $hexLen * 2;           // 128
 
-        // Masked token → unmask
+        // Masked token → verify HMAC(mask · stored)
         if (\strlen($sent) === $maskedLen && \strlen($stored) === $hexLen) {
-            $mask   = \substr($sent, 0, $hexLen);
+            $mask = \substr($sent, 0, $hexLen);
             $hashed = \substr($sent, $hexLen);
 
             return \hash_equals(
                 $hashed,
-                \hash_hmac('sha256', $mask . $stored, '')
+                \hash_hmac('sha256', $mask . $stored, ''),
             );
         }
 
-        // Plain comparison (fallback – should be rare)
+        // Plain comparison
         return \hash_equals($stored, $sent);
     }
 
@@ -99,22 +103,20 @@ final class Csrf
         // 2) Form field wins over query param
         $body = $req->getParsedBody();
         if (\is_array($body) && ($body['_token'] ?? '') !== '') {
-            return (string) $body['_token'];
+            return (string)$body['_token'];
         }
 
         \parse_str($req->getUri()->getQuery(), $q);
         if (($q['_token'] ?? '') !== '') {
-            return (string) $q['_token'];
+            return (string)$q['_token'];
         }
 
         // 3) Cookie
         $cookie = $req->getCookieParams()['XSRF-TOKEN'] ?? null;
 
-        return $cookie !== '' ? (string) $cookie : null;
+        return $cookie !== '' ? (string)$cookie : null;
     }
 
     /** Library is static-only. */
-    private function __construct()
-    {
-    }
+    private function __construct() {}
 }

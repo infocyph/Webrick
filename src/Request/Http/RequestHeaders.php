@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Request\Http;
 
+use Infocyph\Webrick\Request\Psr7\ServerRequest;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Request\Support\HeaderBag;
 
@@ -12,6 +13,7 @@ use Infocyph\Webrick\Request\Support\HeaderBag;
  *  • exposes an immutable HeaderBag (`all()`)
  *  • parses Accept*, Content-*, conditional & range headers
  *  • injects PHP_AUTH_* fallbacks so they behave like real headers
+ *  • can extract headers directly from $_SERVER (portable, fast)
  *
  * ZERO allocations on hot path – heavy parsing happens lazily.
  */
@@ -21,12 +23,61 @@ final class RequestHeaders
        State (all lazy)
        ----------------------------------------------------------------- */
     private ?HeaderBag $all = null;   // raw + auth fallbacks
-    private ?array $accept = null;   // parsed Accept*
+    private ?array $accept = null;    // parsed Accept*
     private ?array $content = null;   // Content-Type/Length/MD5
-    private ?array $dep = null;   // If-*, Range, Prefer
+    private ?array $dep = null;       // If-*, Range, Prefer
 
-    public function __construct(private readonly Request $req)
+    public function __construct(private readonly Request|ServerRequest $req)
     {
+    }
+
+    /* ================================================================
+       0) Header extraction (shared, portable)
+       ================================================================ */
+
+    /** Import HTTP headers from SAPI/$_SERVER into PSR-7 shape: name => string[] */
+    public static function extractFromServer(array $srv): array
+    {
+        // 1) Fast path (available on Apache/FPM/etc.)
+        $raw = \function_exists('getallheaders') ? (array) \getallheaders() : [];
+        $out = [];
+
+        if ($raw !== []) {
+            foreach ($raw as $name => $val) {
+                $out[$name] = \is_array($val) ? \array_values($val) : [(string) $val];
+            }
+            // Some SAPIs omit these even when present in $_SERVER
+            foreach (['CONTENT_TYPE' => 'Content-Type', 'CONTENT_LENGTH' => 'Content-Length', 'CONTENT_MD5' => 'Content-Md5'] as $sk => $hn) {
+                if (isset($srv[$sk]) && !isset($out[$hn])) {
+                    $out[$hn] = [(string) $srv[$sk]];
+                }
+            }
+        } else {
+            // 2) Portable fallback from $_SERVER
+            foreach ($srv as $k => $v) {
+                if (\strncmp($k, 'HTTP_', 5) === 0) {
+                    // HTTP_ACCEPT_ENCODING → Accept-Encoding
+                    $name = \str_replace(' ', '-', \ucwords(\strtolower(\strtr(\substr($k, 5), '_', ' '))));
+                    $out[$name] = [\is_array($v) ? \implode(',', $v) : (string) $v];
+                }
+            }
+            foreach (['CONTENT_TYPE' => 'Content-Type', 'CONTENT_LENGTH' => 'Content-Length', 'CONTENT_MD5' => 'Content-Md5'] as $sk => $hn) {
+                if (isset($srv[$sk])) {
+                    $out[$hn] = [(string) $srv[$sk]];
+                }
+            }
+        }
+
+        // 3) Authorization fallbacks (often stripped by server)
+        if (!isset($out['Authorization'])) {
+            if (isset($srv['HTTP_AUTHORIZATION'])) {
+                $out['Authorization'] = [(string) $srv['HTTP_AUTHORIZATION']];
+            } elseif (isset($srv['REDIRECT_HTTP_AUTHORIZATION'])) {
+                $out['Authorization'] = [(string) $srv['REDIRECT_HTTP_AUTHORIZATION']];
+            }
+        }
+
+        return $out;
     }
 
     /* ================================================================
@@ -38,12 +89,14 @@ final class RequestHeaders
             return $this->all;
         }
 
-        // copy PSR-7 headers (values already arrays)
+        // Copy PSR-7 headers (values already arrays). Defensive fallback if empty.
         $hdr = $this->req->getHeaders();
+        if ($hdr === []) {
+            $hdr = self::extractFromServer($this->req->getServerParams());
+        }
 
         $this->injectAuthorisation($hdr);
 
-        /** @psalm-suppress InvalidArgument */
         return $this->all = new HeaderBag($hdr);
     }
 
@@ -105,7 +158,7 @@ final class RequestHeaders
     /** RFC 9110 §12 quality weighting + wildcard handling. */
     private function parseAccept(string $raw): array
     {
-        $segments = explode(',', $raw);      // faster than preg_split
+        $segments = explode(',', $raw); // faster than preg_split
         $parsed = [];
 
         foreach ($segments as $seg) {
@@ -114,9 +167,9 @@ final class RequestHeaders
                 continue;
             }
             [$mime, $q] = array_pad(array_map('trim', explode(';', $seg, 2)), 2, '');
-            $qVal = (float)(preg_match('/q=([\d.]+)/', $q, $m) ? $m[1] : 1);
-            if ($qVal == 0.0) {                // RFC 9110: not acceptable
-                continue;                       // ← cheap hard-skip, keeps array small
+            $qVal = (float) (preg_match('/q=([\d.]+)/', $q, $m) ? $m[1] : 1);
+            if ($qVal == 0.0) {
+                continue; // not acceptable
             }
             $wild = substr_count($mime, '*');
             $parsed[] = ['mime' => $mime, 'q' => $qVal, 'wild' => $wild];
@@ -137,16 +190,14 @@ final class RequestHeaders
 
         $ct = strtolower($this->req->getHeaderLine('Content-Type'));
         [$type] = explode(';', $ct, 2);
-        $charset = null;
-        if (preg_match('/charset=([^;]+)/', $ct, $m)) {
-            $charset = trim($m[1]);
-        }
+        $charset = preg_match('/charset=([^;]+)/', $ct, $m) ? trim($m[1]) : null;
+        $lenLine = $this->req->getHeaderLine('Content-Length');
 
         return $this->content = [
-            'type' => $type ?: null,
+            'type'    => $type ?: null,
             'charset' => $charset,
-            'length' => (int)$this->req->getHeaderLine('Content-Length'),
-            'md5' => strtolower($this->req->getHeaderLine('Content-Md5')),
+            'length'  => ($lenLine !== '' ? (int) $lenLine : null),
+            'md5'     => strtolower($this->req->getHeaderLine('Content-Md5')),
         ];
     }
 
@@ -159,20 +210,21 @@ final class RequestHeaders
             return $key ? ($this->dep[$key] ?? []) : $this->dep;
         }
 
-        $h = $this->all();     // ensures Authorisation injected
+        $h = $this->all(); // HeaderBag
+        $rangeLine = $h->getHeaderLine('Range');
 
         $dep = [
-            'if_match' => $this->csv($h['If-Match'] ?? ''),
-            'if_none_match' => $this->csv($h['If-None-Match'] ?? ''),
-            'if_modified_since' => $this->httpDate($h['If-Modified-Since'] ?? ''),
-            'if_unmodified_since' => $this->httpDate($h['If-Unmodified-Since'] ?? ''),
-            'prefer_safe' => strcasecmp($h['Prefer'] ?? '', 'safe') === 0
+            'if_match'            => $this->csv($h->getHeaderLine('If-Match')),
+            'if_none_match'       => $this->csv($h->getHeaderLine('If-None-Match')),
+            'if_modified_since'   => $this->httpDate($h->getHeaderLine('If-Modified-Since')),
+            'if_unmodified_since' => $this->httpDate($h->getHeaderLine('If-Unmodified-Since')),
+            'prefer_safe'         => (strtolower($h->first('Prefer') ?? '') === 'safe')
                 && $this->req->getUri()->getScheme() === 'https',
-            'range' => null,
+            'range'               => null,
         ];
 
-        if ($range = $h['Range'] ?? '') {
-            [$unit, $span] = array_pad(explode('=', str_replace(' ', '', $range), 2), 2, '');
+        if ($rangeLine !== '') {
+            [$unit, $span] = array_pad(explode('=', str_replace(' ', '', $rangeLine), 2), 2, '');
             $dep['range'] = $unit ? ['unit' => $unit, 'span' => explode(',', $span)] : null;
         }
 

@@ -106,13 +106,14 @@ class ServerRequest extends Message
         $httpVer = str_starts_with(($srv['SERVER_PROTOCOL'] ?? ''), 'HTTP/')
             ? substr((string)$srv['SERVER_PROTOCOL'], 5)
             : '1.1';
+        $headers = RequestHeaders::extractFromServer($srv);
 
         /* build request (headers filled later in one go) */
         $req = new static(
             $srv['REQUEST_METHOD'] ?? 'GET',
             $uri,
             $srv,
-            [],                         // headers added later
+            $headers,
             $body,
             $httpVer,
             $_POST,
@@ -369,14 +370,37 @@ class ServerRequest extends Message
         };
     }
 
+    private function isFormPost(): bool
+    {
+        if (strtoupper($this->method) !== 'POST') {
+            return false;
+        }
+        $ct = strtolower($this->getHeaderLine('Content-Type'));
+        return str_starts_with($ct, 'application/x-www-form-urlencoded')
+            || str_starts_with($ct, 'multipart/form-data');
+    }
+
+
     private function methodOverride(): ?string
     {
+        // 1) Header-based override (always honored)
         $hdr = $this->getHeaderLine('X-HTTP-Method-Override')
             ?: $this->getHeaderLine('HTTP-Method-Override');
-        $cand = strtoupper($hdr ?: (string)$this->post('_method'));
 
-        return in_array($cand, self::VALID, true) ? $cand : null;
+        if ($hdr !== '') {
+            $cand = strtoupper($hdr);
+            return in_array($cand, self::VALID, true) ? $cand : null;
+        }
+
+        // 2) Form parameter `_method` is gated + only for POST form submissions
+        if (self::$methodParamOverride && $this->isFormPost()) {
+            $cand = strtoupper((string)$this->post('_method'));
+            return in_array($cand, self::VALID, true) ? $cand : null;
+        }
+
+        return null;
     }
+
 
     public function isAjax(): bool
     {
@@ -417,9 +441,10 @@ class ServerRequest extends Message
         return $this->fetch($col, $k);
     }
 
-    public function file(?string $key = null): mixed
+    public function file(?string $key = null): UploadedFile|array|null
     {
-        return $this->fetch(new Collection($this->files), $key);
+        $files = $this->getUploadedFiles();
+        return $key === null ? $files : ($files[$key] ?? null);
     }
 
     private function fetch(Collection $c, ?string $k): mixed

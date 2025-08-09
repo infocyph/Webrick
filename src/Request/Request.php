@@ -145,7 +145,9 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
 
     public function matchesCsrfToken(?string $token = null): bool
     {
-        return Csrf::matches($this);
+        return $token !== null
+            ? Csrf::matchesValue($token)   // fast-path when caller already has a token
+            : Csrf::matches($this);        // extract from request (headers/form/query/cookie)
     }
 
     /* ========== 4.  Data helpers ==================================== */
@@ -218,11 +220,7 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
 
     /* ========== 6.  Files & Headers ================================= */
 
-    public function file(?string $key = null): UploadedFile|array|null
-    {
-        $files = $this->getUploadedFiles();
-        return $key === null ? $files : ($files[$key] ?? null);
-    }
+
 
     public function hasFile(string $key): bool
     {

@@ -55,8 +55,14 @@ enum HttpMethod: string
     /** Does the spec allow a request body for this verb? */
     public function allowsBody(): bool
     {
-        return in_array($this, [self::POST, self::PUT, self::PATCH, self::PROPPATCH, self::COPY, self::MOVE, self::LOCK, self::UNLOCK, self::REPORT], true);
+        return !in_array($this, [self::TRACE, self::HEAD, self::DELETE, self::CONNECT], true);
     }
+
+    public function specAllowsBody(): bool
+    {
+        return $this !== self::TRACE; // RFC 9110
+    }
+
 
     /* -------- convenience factories -------- */
 

@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Constants;
@@ -18,21 +19,22 @@ enum MediaType: string
     /* ------------ canonical cases ------------ */
     // generic
     case OCTET = 'application/octet-stream';
-
-    // text / structured
-    case HTML  = 'text/html; charset=utf-8';
+    case HTML = 'text/html; charset=utf-8';
     case PLAIN = 'text/plain; charset=utf-8';
-    case CSV   = 'text/csv; charset=utf-8';
-    case JSON  = 'application/json';
-    case XML   = 'application/xml';
-
-    // images
-    case JPEG  = 'image/jpeg';
-    case PNG   = 'image/png';
-    case GIF   = 'image/gif';
-
-    // docs
-    case PDF   = 'application/pdf';
+    case CSV = 'text/csv; charset=utf-8';
+    case JSON = 'application/json';
+    case XML = 'application/xml';
+    case JPEG = 'image/jpeg';
+    case PNG = 'image/png';
+    case GIF = 'image/gif';
+    case WEBP = 'image/webp';
+    case SVG = 'image/svg+xml';
+    case AVIF = 'image/avif';
+    case PDF = 'application/pdf';
+    case JAVASCRIPT = 'text/javascript';          // or 'application/javascript' if you prefer
+    case MANIFEST_JSON = 'application/manifest+json';
+    case WASM = 'application/wasm';
+    case NDJSON = 'application/x-ndjson';
 
     /* --------------------------------------------------
      * 1)  Extension → MediaType
@@ -41,8 +43,17 @@ enum MediaType: string
     {
         /* ---- static 1: irregular aliases (opcode-cached) ---- */
         static $alias = [
-            'jpg' => 'jpeg',
-            'htm' => 'html',
+            'jpg'         => 'jpeg',
+            'htm'         => 'html',
+            'svgz'        => 'svg',
+            'txt'         => 'plain',
+            'md'          => 'plain',
+            'webmanifest' => 'manifest_json',
+            'mjs'         => 'javascript',
+            'js'          => 'javascript',
+            'wasm'        => 'wasm',
+            'ndjson'      => 'ndjson',
+            'jsonl'       => 'ndjson',
         ];
 
         /* ---- static 2: resolved memo cache  ----------------- */
