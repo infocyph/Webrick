@@ -5,9 +5,8 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Response\Headers;
 
 /**
- * Create a standards-compliant **Content-Disposition** value.
- *
- * Supports inline / attachment + RFC 5987 fallback filename*.
+ * Create a standards-compliant Content-Disposition value.
+ * Uses RFC 5987 (filename*) with an ASCII quoted fallback.
  */
 final class ContentDisposition
 {
@@ -23,9 +22,12 @@ final class ContentDisposition
 
     private static function build(string $type, string $filename): string
     {
-        // plain token fallback (ASCII only) + UTF-8 encoded copy
-        $safe     = preg_replace('/[^0-9A-Za-z.\-_]/', '_', $filename);
-        $encoded  = rawurlencode($filename);
-        return "{$type}; filename=\"{$safe}\"; filename*=UTF-8''{$encoded}";
+        // ASCII printable fallback; escape only quotes + backslashes for the quoted-string
+        $fallback = preg_replace('/[^\x20-\x7E]/', '_', $filename);
+        $fallback = addcslashes($fallback, "\"\\");  // -> "safe\"name"
+
+        $rfc5987  = rawurlencode($filename);         // full UTF-8 name
+
+        return "{$type}; filename=\"{$fallback}\"; filename*=UTF-8''{$rfc5987}";
     }
 }

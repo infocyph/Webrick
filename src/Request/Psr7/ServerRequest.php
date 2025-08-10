@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Request\Psr7;
 
 use Infocyph\ArrayKit\Collection\Collection;
-use Infocyph\Webrick\Request\Core\{Message, Stream, UploadedFile, Uri};
+use Infocyph\Webrick\Request\Core\{Message, Stream, UploadedFile, UploadedFileCollection, Uri};
 use Infocyph\Webrick\Request\Http\RequestHeaders;
 use InvalidArgumentException;
 
@@ -254,29 +254,23 @@ class ServerRequest extends Message
 
     public function getUploadedFiles(): array
     {
-        return $this->filesHydrated ??= self::normaliseFiles($this->filesSpec);
+        if ($this->filesHydrated !== null) {
+            return $this->filesHydrated;
+        }
+        return $this->filesHydrated = self::normaliseFiles($this->filesSpec);
     }
 
     public function withUploadedFiles(array $uploadedFiles): static
     {
-        $containsObjects = false;
-        array_walk_recursive(
-            $uploadedFiles,
-            static function ($f) use (&$containsObjects): void {
-                if ($f instanceof UploadedFile) {
-                    $containsObjects = true;
-                }
-            },
-        );
         $cl = clone $this;
-        if ($containsObjects) {
-            $cl->filesHydrated = $uploadedFiles;
-            $cl->filesSpec = [];          // no longer needed
-        } else {
-            $cl->filesSpec = $uploadedFiles;
-            $cl->filesHydrated = null;        // will hydrate later
-        }
+        $cl->filesSpec = $uploadedFiles;
+        $cl->filesHydrated = null;
         return $cl;
+    }
+
+    public function getUploadedFilesCollection(): UploadedFileCollection
+    {
+        return $this->filesColl ??= new UploadedFileCollection($this->getUploadedFiles());
     }
 
     public function getParsedBody(): array|null|object
@@ -468,6 +462,11 @@ class ServerRequest extends Message
     {
         $files = $this->getUploadedFiles();
         return $key === null ? $files : ($files[$key] ?? null);
+    }
+
+    public function files(): UploadedFileCollection
+    {
+        return $this->getUploadedFilesCollection();
     }
 
     private function fetch(Collection $c, ?string $k): mixed

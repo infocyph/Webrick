@@ -6,7 +6,9 @@ namespace Infocyph\Webrick\Response\Headers;
 
 /**
  * Builder for the **Vary** response header.
- * Guarantees de-duped, canonicalised tokens.
+ * - De-dupes tokens
+ * - Canonicalises case (dash-aware)
+ * - Understands the "*" wildcard (stands alone)
  */
 final class Vary implements \Stringable
 {
@@ -23,7 +25,15 @@ final class Vary implements \Stringable
     {
         $v = new self();
         foreach (explode(',', $raw) as $t) {
-            $v->tokens[strtolower(trim($t))] = true;
+            $t = self::norm($t);
+            if ($t === '') {
+                continue;
+            }
+            if ($t === '*') {
+                $v->tokens = ['*' => true];
+                break; // "*" must not be combined with others
+            }
+            $v->tokens[$t] = true;
         }
         return $v;
     }
@@ -33,9 +43,22 @@ final class Vary implements \Stringable
     public function add(string ...$headers): self
     {
         $x = clone $this;
+
         foreach ($headers as $h) {
-            $x->tokens[strtolower(trim($h))] = true;
+            $h = self::norm($h);
+            if ($h === '') {
+                continue;
+            }
+            if ($h === '*') {
+                // "*" overrides everything else
+                $x->tokens = ['*' => true];
+                return $x;
+            }
+            if (!isset($x->tokens['*'])) {
+                $x->tokens[$h] = true;
+            }
         }
+
         return $x;
     }
 
@@ -43,13 +66,34 @@ final class Vary implements \Stringable
     {
         $x = clone $this;
         foreach ($headers as $h) {
-            unset($x->tokens[strtolower(trim($h))]);
+            $h = self::norm($h);
+            if ($h === '') {
+                continue;
+            }
+            unset($x->tokens[$h]);
         }
         return $x;
     }
 
     public function __toString(): string
     {
-        return implode(', ', array_map('ucwords', array_keys($this->tokens)));
+        if (isset($this->tokens['*'])) {
+            return '*';
+        }
+        $names = array_map(self::canonicalHeader(...), array_keys($this->tokens));
+        return implode(', ', $names);
+    }
+
+    /* ------------------------------------------------------------------ */
+
+    private static function norm(string $h): string
+    {
+        return strtolower(trim($h));
+    }
+
+    private static function canonicalHeader(string $lower): string
+    {
+        // e.g. "accept-encoding" → "Accept-Encoding"
+        return ucwords($lower, '-');
     }
 }

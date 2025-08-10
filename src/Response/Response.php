@@ -7,31 +7,20 @@ namespace Infocyph\Webrick\Response;
 use Infocyph\InterMix\Remix\MacroMix;
 use Infocyph\Webrick\Constants\Status;
 use Infocyph\Webrick\Interfaces\BodyStream;
-use Infocyph\Webrick\Response\Constants\Mime;
+use Infocyph\Webrick\Constants\MediaType;
 use Infocyph\Webrick\Request\Support\HeaderBag;
 use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Response\Headers\CacheControl;
+use Infocyph\Webrick\Response\Headers\ContentDisposition;
 use Infocyph\Webrick\Response\Internal\LazyJsonStream;
+use Infocyph\Webrick\Response\Internal\Utils;
 use JsonSerializable;
 use RuntimeException;
 
-/**
- * Ultra-lean immutable PSR-7 Response with a few *built-in*
- * Laravel-style factory helpers (json / redirect / attachment).
- *
- * - Zero reflection, zero magic setters.
- * - All operations clone – no accidental mutation.
- * - Helpers allocate only what they absolutely need.
- */
 class Response
 {
     use MacroMix;
 
-    // still handy for custom macros
-
-    /* ---------------------------------------------------------------------
-       0)  Core state
-       ------------------------------------------------------------------- */
     private HeaderBag $headers;
     private BodyStream $body;
 
@@ -47,14 +36,10 @@ class Response
         $this->reasonPhrase ??= self::statusText($this->statusCode);
     }
 
-    /* ---------------------------------------------------------------------
-       1)  Static SHORTCUTS  (no runtime registration)
-       ------------------------------------------------------------------- */
+    /* --------------------------------------------------------------
+       JSON + Redirect helpers (unchanged)
+       -------------------------------------------------------------- */
 
-    /** JSON payload helper (`return Response::json($data, 201)` ) */
-    /* =========================================================
- * Response::json()
- * =======================================================*/
     public static function json(
         callable|array|object|string $data,
         int $status = 200,
@@ -64,80 +49,95 @@ class Response
     ): self {
         $headers += ['Content-Type' => 'application/json; charset=utf-8'];
 
-        /* 1️⃣  Fast-path for small, plain payloads
-         *     – encode once and inline when the final blob ≤ 32 KiB           */
         if (!\is_callable($data) && !$data instanceof JsonSerializable) {
             $json = \json_encode($data, $flags, $depth);
             if ($json === false) {
                 throw new RuntimeException('JSON encode error: ' . \json_last_error_msg());
             }
-
-            if (\strlen($json) <= 32 * 1024) {          // ≤ 32 KiB  → eager
+            if (\strlen($json) <= 32 * 1024) {
                 return new self($status, new Stream($json), $headers);
             }
-            /* >32 KiB – fall through to the lazy path (will re-encode once).
-             * Keeping the streaming behaviour avoids an in-memory copy. */
         }
 
-        /* 2️⃣  Lazy path – postpone encoding until the body is actually read */
         $stream = new LazyJsonStream($data, $flags, $depth);
         return new self($status, $stream, $headers);
     }
 
-    /** Redirect helper (`return Response::redirect('/login')`) */
-    public static function redirect(
-        string $uri,
-        int $status = 302
-    ): self {
-        // RFC-compliant status codes only
+    public static function redirect(string $uri, int $status = 302): self
+    {
         if ($status < 300 || $status > 399) {
             throw new \InvalidArgumentException('Redirect status must be a 3xx code.');
         }
 
         return new self($status, new Stream(''))
             ->withSmartHeader('Location', $uri)
-            ->withoutHeader('Content-Type')              // 3xx responses don’t need it
-            ->withoutHeader('Content-Length');           // length is implicitly 0
+            ->withoutHeader('Content-Type')
+            ->withoutHeader('Content-Length');
     }
 
     /**
      * Attachment / download helper.
      *
      * @param string|Stream $file local path **or** pre-built stream
+     * @param string        $name final filename shown to the client
+     * @param string|null   $mime explicit mime, otherwise inferred
+     * @param array         $headers extra headers (caller wins on conflict)
      */
     public static function attachment(
         string|Stream $file,
         string $name,
-        string $mime = 'application/octet-stream',
+        ?string $mime = null,
         array $headers = [],
     ): self {
-        if (\is_string($file)) {
-            $stream = new Stream(\fopen($file, 'rb'));
+        $stream         = self::streamFor($file);
+        [$size, $mtime] = self::metaFor($file);
+        $mime           = self::inferMime($name, $mime);
+        $defaults       = self::baseDownloadHeaders($name, $mime);
 
-            // Skip stat() when the length is already supplied
-            $len = array_key_exists('Content-Length', $headers)
-                ? null
-                : (\filesize($file) ?: null);
-        } else {
-            $stream = $file;
-            $len = $stream->getSize();
-        }
+        // Fill common headers only when caller didn't provide them
+        self::putIfAbsent($defaults, 'Content-Length', self::chooseLength($file, $stream, $size), $headers);
+        self::putIfAbsent($defaults, 'Last-Modified', self::formatHttpDate($mtime), $headers);
+        self::putIfAbsent($defaults, 'ETag', self::etagFromMeta($size, $mtime, $name), $headers);
 
-        $safeName = addcslashes($name, "\"\r\n\\");
-        $headers += [
-            'Content-Type' => $mime,
-            'Content-Disposition' => "attachment; filename=\"$safeName\"; filename*=UTF-8''" . rawurlencode($name),
-        ];
-        if ($len !== null) {
-            $headers['Content-Length'] = (string)$len;
-        }
-
-        return new self(200, $stream, $headers);
+        return new self(200, $stream, $defaults + $headers);
     }
 
-    /* ---------------------------------------------------------------------
-       2)  PSR-7 MessageInterface
-       ------------------------------------------------------------------- */
+    public static function inline(string|Stream $file, ?string $name = null, ?string $mime = null, array $headers = []): self
+    {
+        $name ??= is_string($file) ? basename($file) : 'inline';
+        $stream = $file instanceof Stream ? $file : self::openFileStream($file);
+        $mime ??= MediaType::fromFilename($name)->value;
+
+        $defaults = [
+            'Content-Type'        => $mime,
+            'Content-Disposition' => ContentDisposition::inline($name),
+        ];
+        if ($stream->getSize() !== null && !isset($headers['Content-Length'])) {
+            $defaults['Content-Length'] = (string)$stream->getSize();
+        }
+        return new self(200, $stream, $defaults + $headers);
+    }
+
+    /**
+     * download() – Laravel-style alias:
+     *   Response::download($fileOrStream, $name = null, array $headers = [], ?string $mime = null)
+     */
+    public static function download(
+        string|Stream $file,
+        ?string $name = null,
+        array $headers = [],
+        ?string $mime = null,
+    ): self {
+        if ($name === null) {
+            $name = is_string($file) ? basename($file) : 'download';
+        }
+        return self::attachment($file, $name, $mime, $headers);
+    }
+
+    /* --------------------------------------------------------------
+       PSR-7 getters/setters (unchanged)
+       -------------------------------------------------------------- */
+
     public function getProtocolVersion(): string
     {
         return $this->protocolVersion;
@@ -170,9 +170,7 @@ class Response
 
     public function withSmartHeader(string $name, string $value): self
     {
-        return $this->copy(
-            headers: $this->headers->withSmart($name, $value)
-        );
+        return $this->copy(headers: $this->headers->withSmart($name, $value));
     }
 
     public function withHeader($n, $v): self
@@ -200,9 +198,6 @@ class Response
         return $this->copy(body: $b);
     }
 
-    /* ---------------------------------------------------------------------
-       3)  PSR-7 ResponseInterface
-       ------------------------------------------------------------------- */
     public function getStatusCode(): int
     {
         return $this->statusCode;
@@ -227,25 +222,20 @@ class Response
 
     public static function empty(int $code, array $headers = []): self
     {
-        // Explicit zero-length body; no Content-Type at all
         $resp = new self($code, new Stream(''), ['Content-Length' => '0']);
-
         foreach ($headers as $name => $value) {
             $resp = $resp->withHeader($name, $value);
         }
         return $resp;
     }
 
+    /* -------------------------------------------------------------- */
 
-    /* ---------------------------------------------------------------------
-       4)  Internals
-       ------------------------------------------------------------------- */
     private static function statusText(int $code): string
     {
         return Status::text($code) ?? '';
     }
 
-    /** Internal named-arg clone helper – avoids dozens of small withXYZ()s */
     private function copy(
         ?int $statusCode = null,
         ?HeaderBag $headers = null,
@@ -262,40 +252,23 @@ class Response
         return $x;
     }
 
-    /**
-     * download() – thin alias of attachment(), signature matches Laravel:
-     *   Response::download($path, $name = null, array $headers = [], ?string $mime = null)
-     */
-    public static function download(
-        string|Stream $file,
-        ?string $name = null,
-        array $headers = [],
-        ?string $mime = null,
-    ): self {
-        $name = $name ? addcslashes($name, "\"\r\n\\") : $name;
-        if ($name === null && \is_string($file)) {
-            $name = basename($file);
+    /** Helper: open a file stream with sensible errors. */
+    private static function openFileStream(string $file): Stream
+    {
+        $h = @fopen($file, 'rb');
+        if ($h === false) {
+            throw new RuntimeException("Unable to open file for download: {$file}");
         }
-        $mime ??= Mime::fromExtension(pathinfo((string)$name, \PATHINFO_EXTENSION));
-
-        return self::attachment($file, $name ?? 'download', $mime, $headers);
+        return new Stream($h);
     }
 
+    /* ---- optional extras you already had (left intact) -------------- */
 
-    /* -----------------------------------------------------------------
- * Extra convenience helpers  – zero-cost unless you call them
- * ---------------------------------------------------------------- */
-
-    /* 1. Symfony-style factory  --------------------------------------- */
-    public static function create(
-        string $content = '',
-        int $status = 200,
-        array $headers = [],
-    ): self {
+    public static function create(string $content = '', int $status = 200, array $headers = []): self
+    {
         return new self($status, $content, $headers);
     }
 
-    /* 2. sendFile / streamDownload (Laravel’s alias of download()) ---- */
     public static function streamDownload(
         string|Stream $file,
         ?string $name = null,
@@ -303,8 +276,8 @@ class Response
         array $headers = [],
     ): self {
         if (\is_string($file)) {
-            $stream = new Stream(\fopen($file, 'rb'));
-            $len = \filesize($file) ?: null;
+            $stream = self::openFileStream($file);
+            $len = @filesize($file) ?: null;
             $name ??= \basename($file);
         } else {
             $stream = $file;
@@ -312,43 +285,100 @@ class Response
             $name ??= 'download';
         }
 
-        $safe = \addcslashes($name, '"\\');
         $headers += [
             'Content-Type' => $mime,
-            'Content-Disposition' => "attachment; filename=\"{$safe}\"; filename*=UTF-8''" .
-                \rawurlencode($name),
+            'Content-Disposition' => ContentDisposition::attachment($name),
         ];
         if ($len !== null) {
             $headers['Content-Length'] = (string)$len;
         }
 
-        // same semantics as attachment() but streams are already given
         return new self(200, $stream, $headers);
     }
 
-    /* 3. noContent() – tight alias around ::empty(204) ---------------- */
     public static function noContent(array $headers = []): self
     {
         return self::empty(204, $headers);
     }
 
-    /* 4. Cache-Control fluent helper  -------------------------------- */
-
-    /** Read the current Cache-Control header into a mutable builder */
     public function cache(): CacheControl
     {
         return CacheControl::fromHeaderBag($this->headers);
     }
 
-    /**
-     * Apply a mutation to Cache-Control in one go:
-     *
-     *     $resp = $resp->withCache(fn($cc) => $cc->public()->maxAge(60));
-     */
     public function withCache(\Closure $edit): self
     {
         $cc = $edit($this->cache());
         return $this->withHeader('Cache-Control', (string)$cc);
     }
 
+    /* --------------------------------------------------------------
+       Low-complexity helpers for attachment()
+       -------------------------------------------------------------- */
+
+    /** Open a stream from path or return the given stream as-is. */
+    private static function streamFor(string|Stream $file): Stream
+    {
+        return $file instanceof Stream ? $file : self::openFileStream($file);
+    }
+
+    /** Return [size|null, mtime|null] only when `$file` is a path. */
+    private static function metaFor(string|Stream $file): array
+    {
+        if (!is_string($file)) {
+            return [null, null];
+        }
+        $size  = @filesize($file) ?: null;
+        $mtime = @filemtime($file) ?: null;
+        return [$size, $mtime];
+    }
+
+    /** Decide the MIME type (explicit wins, else by filename). */
+    private static function inferMime(string $name, ?string $explicit): string
+    {
+        return $explicit ?? MediaType::fromFilename($name)->value;
+    }
+
+    /** Minimal base headers every download should have. */
+    private static function baseDownloadHeaders(string $name, string $mime): array
+    {
+        return [
+            'Content-Type'        => $mime,
+            'Content-Disposition' => ContentDisposition::attachment($name),
+        ];
+    }
+
+    /** Prefer filesystem size when we got a path, else stream length. */
+    private static function chooseLength(string|Stream $file, Stream $stream, ?int $fsSize): ?string
+    {
+        $len = is_string($file) ? $fsSize : ($stream->getSize() ?? null);
+        return $len !== null ? (string) $len : null;
+    }
+
+    /** HTTP-date or null. */
+    private static function formatHttpDate(?int $mtime): ?string
+    {
+        return $mtime ? gmdate('D, d M Y H:i:s', $mtime) . ' GMT' : null;
+    }
+
+    /** Strong ETag from stable file-ish metadata, or null. */
+    private static function etagFromMeta(?int $size, ?int $mtime, string $name): ?string
+    {
+        if ($size === null && $mtime === null) {
+            return null;
+        }
+        $seed = ($size ?? -1) . '|' . ($mtime ?? -1) . '|' . $name;
+        return Utils::generateEtag($seed);
+    }
+
+    /**
+     * Conditionally write a header into $target when value is non-null
+     * and absent from caller-supplied $caller.
+     */
+    private static function putIfAbsent(array &$target, string $name, ?string $value, array $caller): void
+    {
+        if ($value !== null && !array_key_exists($name, $caller)) {
+            $target[$name] = $value;
+        }
+    }
 }

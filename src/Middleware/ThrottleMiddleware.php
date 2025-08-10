@@ -12,18 +12,6 @@ use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Request\Request;
 use Psr\Cache\CacheItemPoolInterface;
 
-/**
- * $middleware = new ThrottleMiddleware(
- *      max: 100,
- *      window: 60,
- *      identifierResolver: function (Request $request) {
- *          // Return the user ID if it exists, otherwise fall back to the IP
- *          return $request->getAttribute('user_id') ?? $request->ip();
- *          // or we could use etc.
- *          return $request->header('X-Api-Key');
- *      }
- * );
- */
 final readonly class ThrottleMiddleware
 {
     private CacheItemPoolInterface $pool;
@@ -34,6 +22,7 @@ final readonly class ThrottleMiddleware
         ?CacheItemPoolInterface $pool = null,
         private bool $retryAsDate = false,   // “Wed, 17 Jul … GMT” vs “120”
         private ?Closure $identifierResolver = null,
+        private bool $emitStandardRateLimit = true, // ← NEW
     ) {
         $this->pool = $pool ?? (extension_loaded('apcu')
             ? Cache::apcu('throttle')
@@ -59,10 +48,6 @@ final readonly class ThrottleMiddleware
         return $this->attachRateHeaders($resp, $remain, $payload['reset']);
     }
 
-    /* -----------------------------------------------------------------------
-     * Helpers (split for readability / lower complexity)
-     * -------------------------------------------------------------------- */
-
     /** @return array{0:string,1:int} */
     private function deriveKeyAndReset(Request $req): array
     {
@@ -84,16 +69,13 @@ final readonly class ThrottleMiddleware
         $item    = $this->pool->getItem($key);
         $payload = $item->isHit() ? $item->get() : null;
 
-        // Legacy integer? upgrade in-place
         if (\is_int($payload)) {
             $payload = ['hits' => $payload, 'reset' => $reset];
         }
-
-        if (!\is_array($payload)) {          // first visit
+        if (!\is_array($payload)) {
             $payload = ['hits' => 0, 'reset' => $reset];
         }
-
-        $payload['hits'] = (int) $payload['hits'];
+        $payload['hits']  = (int) $payload['hits'];
         $payload['reset'] = (int) $payload['reset'];
 
         return $payload;
@@ -106,17 +88,28 @@ final readonly class ThrottleMiddleware
 
     private function limitExceededResponse(array $payload): Response
     {
-        $retryAfter = $this->formatRetryAfter($payload['reset'] - time());
+        $resetDelta = max(1, $payload['reset'] - time());             // ← delta for spec
+        $retryAfter = $this->formatRetryAfter($resetDelta);
+
+        $headers = [
+            'Content-Type'          => 'text/plain; charset=utf-8',
+            'Retry-After'           => $retryAfter,
+            'X-RateLimit-Limit'     => (string) $this->max,
+            'X-RateLimit-Remaining' => '0',
+            'X-RateLimit-Reset'     => (string) $payload['reset'],     // epoch (BC)
+        ];
+
+        if ($this->emitStandardRateLimit) {
+            $headers += [
+                'RateLimit-Limit'     => (string) $this->max,
+                'RateLimit-Remaining' => '0',
+                'RateLimit-Reset'     => (string) $resetDelta,         // spec: seconds
+            ];
+        }
 
         return new Response(
             status  : 429,
-            headers : [
-                'Content-Type'            => 'text/plain; charset=utf-8',
-                'Retry-After'             => $retryAfter,
-                'X-RateLimit-Limit'       => (string) $this->max,
-                'X-RateLimit-Remaining'   => '0',
-                'X-RateLimit-Reset'       => (string) $payload['reset'],
-            ],
+            headers : $headers,
             body    : new Stream('Too Many Requests')
         )->withHeader('Server-Timing', 'throttle;dur=0');
     }
@@ -127,17 +120,25 @@ final readonly class ThrottleMiddleware
 
         $item = $this->pool->getItem($key);
         $item->set($payload);
-        // Align cache expiration with our reset-timestamp
-        $item->expiresAt((new DateTimeImmutable())->setTimestamp($payload['reset']));
+        $item->expiresAt(new DateTimeImmutable()->setTimestamp($payload['reset']));
         $this->pool->saveDeferred($item);
     }
 
     private function attachRateHeaders(Response $resp, int $remain, int $reset): Response
     {
-        return $resp
+        $resp = $resp
             ->withHeader('X-RateLimit-Limit', (string) $this->max)
             ->withHeader('X-RateLimit-Remaining', (string) $remain)
-            ->withHeader('X-RateLimit-Reset', (string) $reset);
+            ->withHeader('X-RateLimit-Reset', (string) $reset);        // epoch (BC)
+
+        if ($this->emitStandardRateLimit) {
+            $resp = $resp
+                ->withHeader('RateLimit-Limit', (string) $this->max)
+                ->withHeader('RateLimit-Remaining', (string) $remain)
+                ->withHeader('RateLimit-Reset', (string) max(1, $reset - time())); // seconds
+        }
+
+        return $resp;
     }
 
     private function formatRetryAfter(int $seconds): string
