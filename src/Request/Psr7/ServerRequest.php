@@ -52,6 +52,7 @@ class ServerRequest extends Message
     private array $filesSpec = [];
     private ?array $filesHydrated = null;
     private static bool $methodParamOverride = false;
+    private ?UploadedFileCollection $filesColl = null;
 
     /* Valid verbs */
     private const array VALID = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS', 'CONNECT', 'TRACE'];
@@ -265,6 +266,7 @@ class ServerRequest extends Message
         $cl = clone $this;
         $cl->filesSpec = $uploadedFiles;
         $cl->filesHydrated = null;
+        $cl->filesColl = null;
         return $cl;
     }
 
@@ -460,8 +462,8 @@ class ServerRequest extends Message
 
     public function file(?string $key = null): UploadedFile|array|null
     {
-        $files = $this->getUploadedFiles();
-        return $key === null ? $files : ($files[$key] ?? null);
+        $coll = $this->files();
+        return $key === null ? $coll->all() : $coll->get($key);
     }
 
     public function files(): UploadedFileCollection

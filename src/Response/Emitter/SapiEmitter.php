@@ -64,8 +64,7 @@ final class SapiEmitter implements EmitterInterface
 
     private function sendHeaders(Response $response, ?int $size = null): void
     {
-        static $sent = false;
-        if ($sent || headers_sent()) {
+        if (headers_sent()) {
             return;
         }
 

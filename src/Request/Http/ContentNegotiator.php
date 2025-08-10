@@ -44,7 +44,7 @@ final class ContentNegotiator
     {
         return array_find(
             $this->accept,
-            fn($have) => array_any($candidates, fn($want) => $this->matches($want, $have)),
+            fn ($have) => array_any($candidates, fn ($want) => $this->matches($want, $have)),
         );
     }
 
@@ -59,18 +59,31 @@ final class ContentNegotiator
 
     private function mimeMatch(string $want, string $have): bool
     {
-        if ($want === $have) {                              // exact
+        if ($want === $have) {
             return true;
         }
 
-        // vendor wildcard  e.g.  application/*+json
-        if (preg_match('#^([^/]+)/\*?\+([^;]+)$#', $want, $m)) {
+        // accept-side wildcards
+        if ($have === '*/*') {
+            return true;
+        }
+        if (preg_match('#^([^/]+)/\*$#', $have, $m)) {
+            return str_starts_with($want, $m[1] . '/');
+        }
+        // accept-side vendor suffix: application/*+json
+        if (preg_match('#^([^/]+)/\*?\+([^;]+)$#', $have, $m)) {
             [$type, $suffix] = [$m[1], $m[2]];
-            return preg_match("#^{$type}/[^+]+\+{$suffix}$#", $have) === 1;
+            return preg_match("#^{$type}/[^+]+\+{$suffix}$#", $want) === 1;
+        }
+
+        // server-side suffix shorthand: "+json"
+        if ($want[0] === '+') {
+            return str_ends_with($have, $want);
         }
 
         return false;
     }
+
 
     /* -----------------------------------------------------------------
        2)  Encoding / charset / language helpers

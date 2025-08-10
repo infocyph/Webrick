@@ -9,7 +9,9 @@ use Infocyph\Webrick\Response\Response;
 
 final readonly class ValidateHeaderSizeMiddleware
 {
-    public function __construct(private int $maxBytes = 8192) {}
+    public function __construct(private int $maxBytes = 8192)
+    {
+    }
 
     public function __invoke(Request $r, Closure $next): Response
     {

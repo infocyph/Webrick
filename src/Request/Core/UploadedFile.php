@@ -99,13 +99,14 @@ final class UploadedFile
                 throw new RuntimeException("Failed to move uploaded file to {$targetPath}");
             }
         } else {
+            $in  = $this->src->detach();
             $out = fopen($targetPath, 'wb');
             if (!$out) {
                 throw new RuntimeException("Cannot write to {$targetPath}");
             }
-            $this->src->rewind();
-            // copy the whole payload (no length arg)
-            stream_copy_to_stream($this->src->detach(), $out, $this->getSize() ?? -1);
+//            $this->src->rewind();
+            stream_copy_to_stream($in, $out);
+            fclose($in);
             fclose($out);
         }
         $this->moved = true;

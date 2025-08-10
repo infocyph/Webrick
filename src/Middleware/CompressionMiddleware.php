@@ -70,7 +70,7 @@ final readonly class CompressionMiddleware
             return $resp;
         }
 
-        VaryAccumulatorMiddleware::add($req, 'Accept-Encoding');
+        $req = VaryAccumulatorMiddleware::add($req, 'Accept-Encoding');
 
         return $resp
             ->withBody(new Stream($enc))
