@@ -6,6 +6,7 @@ namespace Infocyph\Webrick\Response;
 
 use Infocyph\InterMix\Remix\MacroMix;
 use Infocyph\Webrick\Constants\Status;
+use Infocyph\Webrick\Interfaces\BodyStream;
 use Infocyph\Webrick\Response\Constants\Mime;
 use Infocyph\Webrick\Request\Support\HeaderBag;
 use Infocyph\Webrick\Request\Core\Stream;
@@ -32,17 +33,17 @@ class Response
        0)  Core state
        ------------------------------------------------------------------- */
     private HeaderBag $headers;
-    private Stream $body;
+    private BodyStream $body;
 
     public function __construct(
         private int $statusCode = 200,
-        Stream|string|null $body = null,
+        BodyStream|string|null $body = null,
         array $headers = [],
         private string $protocolVersion = '1.1',
         private ?string $reasonPhrase = null,
     ) {
         $this->headers = new HeaderBag($headers);
-        $this->body = $body instanceof Stream ? $body : new Stream($body ?? '');
+        $this->body = $body instanceof BodyStream ? $body : new Stream($body ?? '');
         $this->reasonPhrase ??= self::statusText($this->statusCode);
     }
 
@@ -189,12 +190,12 @@ class Response
         return $this->copy(headers: $this->headers->without($n));
     }
 
-    public function getBody(): Stream
+    public function getBody(): BodyStream
     {
         return $this->body;
     }
 
-    public function withBody(Stream $b): self
+    public function withBody(BodyStream $b): self
     {
         return $this->copy(body: $b);
     }
@@ -224,22 +225,17 @@ class Response
         );
     }
 
-    /** Convenience when you need a body-less reply (e.g. 204, 304, 412). */
     public static function empty(int $code, array $headers = []): self
     {
-        // start with an explicit zero-length body
-        $resp = new self($code, new Stream(''), [
-            'Content-Length' => '0',
-            'Content-Type' => '',
-        ]);
+        // Explicit zero-length body; no Content-Type at all
+        $resp = new self($code, new Stream(''), ['Content-Length' => '0']);
 
-        // merge any caller-supplied headers (ETag, Last-Modified, …)
         foreach ($headers as $name => $value) {
             $resp = $resp->withHeader($name, $value);
         }
-
         return $resp;
     }
+
 
     /* ---------------------------------------------------------------------
        4)  Internals
@@ -253,7 +249,7 @@ class Response
     private function copy(
         ?int $statusCode = null,
         ?HeaderBag $headers = null,
-        ?Stream $body = null,
+        ?BodyStream $body = null,
         ?string $protocolVersion = null,
         ?string $reasonPhrase = null,
     ): self {

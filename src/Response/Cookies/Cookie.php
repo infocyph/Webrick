@@ -97,6 +97,7 @@ final class Cookie implements \Stringable
         }
         if ($this->expires) {
             $parts[] = 'Expires=' . gmdate('D, d M Y H:i:s', $this->expires) . ' GMT';
+            $parts[] = 'Max-Age=' . max(0, $this->expires - time());
         }
         if ($this->secure) {
             $parts[] = 'Secure';

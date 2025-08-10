@@ -2,13 +2,14 @@
 
 namespace Infocyph\Webrick\Response\Range;
 
+use Infocyph\Webrick\Interfaces\BodyStream;
 use Infocyph\Webrick\Request\Core\Stream;
 use RuntimeException;
 
-final class ByteRangeStream
+final class ByteRangeStream implements BodyStream
 {
     private Stream $base;
-    private int             $remaining;
+    private int $remaining;
 
     public function __construct(Stream $base, int $limit)
     {
@@ -28,30 +29,37 @@ final class ByteRangeStream
     {
         $this->base->close();
     }
+
     public function detach(): mixed
     {
         return $this->base->detach();
     }
+
     public function getSize(): ?int
     {
         return $this->remaining;
     }
+
     public function tell(): int
     {
         return $this->base->tell();
     }
+
     public function eof(): bool
     {
         return $this->remaining === 0 || $this->base->eof();
     }
+
     public function isSeekable(): bool
     {
         return $this->base->isSeekable();
     }
+
     public function isWritable(): bool
     {
-        return false;
-    }                // read-only
+        return false; // read-only
+    }
+
     public function isReadable(): bool
     {
         return $this->base->isReadable();
@@ -69,6 +77,7 @@ final class ByteRangeStream
     {
         $this->seek(0);
     }
+
     public function write($string): int
     {
         throw new RuntimeException('ByteRangeStream is read-only');

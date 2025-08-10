@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Response\Internal;
 
+use Infocyph\Webrick\Interfaces\BodyStream;
 use Infocyph\Webrick\Request\Core\Stream;
 use JsonSerializable;
 use RuntimeException;
@@ -15,7 +16,7 @@ use RuntimeException;
  * Once encoded, it replaces itself with an internal Stream instance and
  * transparently proxies every subsequent StreamInterface call.
  */
-final class LazyJsonStream
+final class LazyJsonStream implements BodyStream
 {
     /** @var callable|JsonSerializable */
     private $source;
@@ -30,8 +31,8 @@ final class LazyJsonStream
     public function __construct(mixed $source, int $flags, int $depth)
     {
         $this->source = $source;
-        $this->flags  = $flags;
-        $this->depth  = $depth;
+        $this->flags = $flags;
+        $this->depth = $depth;
     }
 
     /* -------------------------------------------------- lazy bootstrap */
@@ -58,73 +59,87 @@ final class LazyJsonStream
     public function __toString(): string
     {
         $this->boot();
-        return (string) $this->inner;
+        return (string)$this->inner;
     }
+
     public function close(): void
     {
         $this->boot();
         $this->inner->close();
     }
+
     public function detach(): mixed
     {
         $this->boot();
         return $this->inner->detach();
     }
+
     public function getSize(): ?int
     {
         $this->boot();
         return $this->inner->getSize();
     }
+
     public function tell(): int
     {
         $this->boot();
         return $this->inner->tell();
     }
+
     public function eof(): bool
     {
         $this->boot();
         return $this->inner->eof();
     }
+
     public function isSeekable(): bool
     {
         $this->boot();
         return $this->inner->isSeekable();
     }
+
     public function seek($offset, $whence = SEEK_SET): void
     {
         $this->boot();
         $this->inner->seek($offset, $whence);
     }
+
     public function rewind(): void
     {
         $this->boot();
         $this->inner->rewind();
     }
+
     public function isWritable(): bool
     {
         $this->boot();
         return $this->inner->isWritable();
     }
+
     public function write($string): int
     {
         $this->boot();
         return $this->inner->write($string);
     }
+
     public function isReadable(): bool
     {
         $this->boot();
         return $this->inner->isReadable();
     }
+
     public function read($length): string
     {
         $this->boot();
         return $this->inner->read($length);
     }
+
     public function getContents(): string
     {
         $this->boot();
         return $this->inner->getContents();
     }
+
     public function getMetadata($key = null): mixed
     {
         $this->boot();

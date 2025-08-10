@@ -105,7 +105,7 @@ final class MiddlewarePipeline
         if (\is_string($mw)) {
             $mw = $memo[$mw] ??= (
                 str_contains($mw, '::')
-                ? \Closure::fromCallable($mw)                      // bind once
+                ? $mw(...)                      // bind once
                 : $mw                                              // plain function name
             );
         }

@@ -28,8 +28,7 @@ final class SecurityHeaders
             ->withHeader('X-Content-Type-Options', 'nosniff')
             ->withHeader('X-Frame-Options', 'SAMEORIGIN')
             ->withHeader('Referrer-Policy', 'no-referrer-when-downgrade')
-            ->withHeader('Permissions-Policy', "camera=(), geolocation=(), microphone=()") // ← NEW
-            ->withHeader('X-XSS-Protection', '0');
+            ->withHeader('Permissions-Policy', "camera=(), geolocation=(), microphone=()");
 
         return $hsts ? self::hsts($r, $includeSubs) : $r;
     }

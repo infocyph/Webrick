@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Response\Emitter;
 
-use Infocyph\Webrick\Request\Core\Stream;
+use Infocyph\Webrick\Interfaces\BodyStream;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 
@@ -99,7 +99,7 @@ final class SapiEmitter implements EmitterInterface
         return strtoupper($method) !== 'HEAD';
     }
 
-    private function streamBody(Stream $body): void
+    private function streamBody(BodyStream $body): void
     {
         if ($body->isSeekable()) {
             $body->rewind();

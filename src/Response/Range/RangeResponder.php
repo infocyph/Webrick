@@ -23,24 +23,25 @@ final readonly class RangeResponder
         string $mediaType = 'application/octet-stream',
         array $headers = [],
     ): Response {
-        if (!is_file($absolutePath) || !is_readable($absolutePath)) {
+        // TOCTOU-safe: open first; if it fails, bail out cleanly
+        $fp = @fopen($absolutePath, 'rb');
+        if ($fp === false) {
             return new Response(404);
         }
 
-        $stat = stat($absolutePath);
-        $len = (int)$stat['size'];
-        $mtime = (int)$stat['mtime'];
-        $etag = '"' . dechex($len) . '-' . dechex($mtime) . '"';
+        $stat  = fstat($fp) ?: [];
+        $len   = (int)($stat['size']  ?? 0);
+        $mtime = (int)($stat['mtime'] ?? time());
+        $etag  = '"' . dechex($len) . '-' . dechex($mtime) . '"';
 
         $headers += [
             'Accept-Ranges' => 'bytes',
-            'ETag' => $etag,
+            'ETag'          => $etag,
             'Last-Modified' => Utils::httpDate($mtime),
             'Cache-Control' => 'public, max-age=31536000, immutable',
         ];
 
         $range = RangeParser::parse($req->getHeaderLine('Range'), $len);
-        $fp = fopen($absolutePath, 'rb');                    // can’t fail here
 
         return self::fromSeekable($fp, $len, $range, $mediaType, $headers, $req);
     }
@@ -53,20 +54,34 @@ final readonly class RangeResponder
         array $headers = [],
         ?Request $req = null,
     ): Response {
-        /* full-body 200 -------------------------------------------------- */
+        // Distinguish “no Range header” from “unsatisfiable/invalid Range header”
+        $rawRangeHeader   = $req?->getHeaderLine('Range') ?? '';
+        $rangeHeaderGiven = $rawRangeHeader !== '';
+
+        /* 416 – unsatisfiable / invalid Range --------------------------- */
+        if ($range === null && $rangeHeaderGiven) {
+            // RFC 7233: must include Content-Range with unsatisfied range and total length
+            $headers += [
+                'Content-Range' => "bytes */{$totalLength}",
+                // Content-Type is optional here; omit to keep envelope minimal
+            ];
+            return new Response(416, new Stream(''), $headers);
+        }
+
+        /* 200 – full body (no Range header) ----------------------------- */
         if ($range === null) {
             $headers += [
-                'Content-Type' => $mediaType,
+                'Content-Type'   => $mediaType,
                 'Content-Length' => (string)$totalLength,
             ];
-            // Was an invalid Range silently stripped by ConditionalMiddleware?
+            // Was an invalid Range stripped earlier by some middleware?
             if ($req?->getAttribute('range_dropped')) {
                 $headers['X-Range-Dropped'] = '1';
             }
             return new Response(200, self::wrapSeekable($source), $headers);
         }
 
-        /* single-range 206 ---------------------------------------------- */
+        /* 206 – single byte range -------------------------------------- */
         $length = $range->length();
 
         if ($source instanceof Stream) {
@@ -76,9 +91,9 @@ final readonly class RangeResponder
         }
 
         $headers += [
-            'Content-Range' => $range->contentRange(),
+            'Content-Range'  => $range->contentRange(),
             'Content-Length' => (string)$length,
-            'Content-Type' => $mediaType,
+            'Content-Type'   => $mediaType,
         ];
 
         return new Response(206, self::wrapSeekable($source, $length), $headers);

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Request\Core;
 
+use Infocyph\Webrick\Interfaces\BodyStream;
 use RuntimeException;
 use SplFileObject;
 
@@ -15,7 +16,7 @@ use SplFileObject;
  *  • Never buffers entire file unless you explicitly cast to string
  *  • All operations throw RuntimeException on error – *never* return false
  */
-final class Stream
+final class Stream implements BodyStream
 {
     /** Verified PHP stream handle (resource|null after detach/close) */
     private mixed $h;

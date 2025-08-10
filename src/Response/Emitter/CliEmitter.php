@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Response\Emitter;
 
+use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 
 /**
@@ -11,8 +12,10 @@ use Infocyph\Webrick\Response\Response;
  */
 final class CliEmitter implements EmitterInterface
 {
-    public function emit(Response $response): void
-    {
+    public function emit(
+        Response $response,
+        ?Request $request = null,
+    ): void {
         $status = $response->getStatusCode() . ' ' . $response->getReasonPhrase();
         $ver = $response->getProtocolVersion();
 

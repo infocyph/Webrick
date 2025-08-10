@@ -31,6 +31,7 @@ final readonly class DemoController
         return Response::json([
             'handler' => 'DemoController::hello',
             'hello' => $name,
+            'request' => $request->all(),
             'time' => \date(DATE_ATOM),
         ]);
     }
@@ -83,7 +84,7 @@ $registrar->get(
 /* ---- NEW: class-based route ------------------------------------------ */
 $registrar->get('/class/test/{name}', [DemoController::class, 'hello']);
 $registrar->get('/class/rest/{name}', [DemoController::class, 'hello']);
-$registrar->get('/class/pest', [DemoController::class, 'hello']);
+$registrar->get('/plus/{name}/mine', [DemoController::class, 'hello']);
 
 /* --------------------------------------------------------------------------
  * 2.  Compiler callback (executed only when route-table cache is cold)
