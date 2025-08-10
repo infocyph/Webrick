@@ -17,13 +17,14 @@ use Infocyph\Webrick\Response\View\ViewFactoryInterface;
 final class ViewResponse extends Response
 {
     public function __construct(
-        string  $view,
-        array   $data     = [],
-        int     $status   = 200,
-        array   $headers  = [],
-        ?string $charset  = 'utf-8',
+        string $view,
+        array $data = [],
+        int $status = 200,
+        array $headers = [],
+        ?string $charset = 'utf-8',
         ?string $factoryId = ViewFactoryInterface::class, // container key
-    ) {
+    )
+    {
         $container = \Infocyph\InterMix\DI\Container::instance('intermix');
 
         if (!$container->has($factoryId)) {
@@ -32,7 +33,7 @@ final class ViewResponse extends Response
 
         /** @var ViewFactoryInterface $factory */
         $factory = $container->get($factoryId);
-        $html    = $factory->render($view, $data);
+        $html = $factory->render($view, $data);
 
         $headers += ['Content-Type' => "text/html; charset={$charset}"];
         parent::__construct($status, new Stream($html), $headers);

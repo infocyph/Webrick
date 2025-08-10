@@ -21,11 +21,10 @@ final readonly class Cors
      * @param bool|null $allowCredentials
      */
     public function __construct(
-        public array   $origins,
-        public ?string  $methods        = null,
-        public ?string  $headers        = null,
-        public ?int    $maxAgeSeconds  = null,
-        public ?bool    $allowCredentials = null,
-    ) {
-    }
+        public array $origins,
+        public ?string $methods = null,
+        public ?string $headers = null,
+        public ?int $maxAgeSeconds = null,
+        public ?bool $allowCredentials = null,
+    ) {}
 }

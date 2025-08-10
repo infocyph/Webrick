@@ -52,7 +52,7 @@ final class Router
     {
         if (self::$instance === null) {
             throw new RuntimeException(
-                'Router façade used before a concrete instance was set.'
+                'Router façade used before a concrete instance was set.',
             );
         }
 
@@ -62,8 +62,8 @@ final class Router
     /**
      * Forward any static call to the concrete router.
      *
-     * @param  non-empty-string $method
-     * @param  array<int,mixed> $args
+     * @param non-empty-string $method
+     * @param array<int,mixed> $args
      * @return mixed
      */
     public static function __callStatic(string $method, array $args): mixed
@@ -72,7 +72,7 @@ final class Router
 
         if (!method_exists($router, $method)) {
             throw new RuntimeException(
-                sprintf('Method %s::%s() does not exist on concrete router.', $router::class, $method)
+                sprintf('Method %s::%s() does not exist on concrete router.', $router::class, $method),
             );
         }
 
@@ -82,7 +82,5 @@ final class Router
     /**
      * Façade is a purely static utility — no instances allowed.
      */
-    private function __construct()
-    {
-    }
+    private function __construct() {}
 }

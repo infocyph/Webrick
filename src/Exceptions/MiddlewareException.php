@@ -11,7 +11,7 @@ namespace Infocyph\Webrick\Exceptions;
 final class MiddlewareException extends \RuntimeException
 {
     /**
-     * @param class-string<object>|string $middleware  The middleware ID / FQCN
+     * @param class-string<object>|string $middleware The middleware ID / FQCN
      */
     public function __construct(
         public readonly string $middleware,

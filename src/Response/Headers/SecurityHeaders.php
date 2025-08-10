@@ -14,15 +14,13 @@ use Infocyph\Webrick\Response\Response;
  */
 final class SecurityHeaders
 {
-    private function __construct()
-    {
-    }
+    private function __construct() {}
 
     /** Opinionated secure defaults. Optionally adds HSTS. */
     public static function tight(
         Response $r,
-        bool     $hsts        = true,
-        bool     $includeSubs = true
+        bool $hsts = true,
+        bool $includeSubs = true,
     ): Response {
         $r = $r
             ->withHeader('X-Content-Type-Options', 'nosniff')

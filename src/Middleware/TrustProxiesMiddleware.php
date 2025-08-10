@@ -42,7 +42,8 @@ final class TrustProxiesMiddleware
         array $deny = [],
         array $trustedHosts = [],
         ?int $headerFlags = null,   // Symfony-style bit-mask
-    ) {
+    )
+    {
         $this->allow = $allow;
         $this->deny = $deny;
         $this->trustedHosts = $trustedHosts;
@@ -98,7 +99,7 @@ final class TrustProxiesMiddleware
 
     private function matchesHost(string $host): bool
     {
-        return array_any(self::$hostRegex, fn ($rx) => preg_match($rx, $host));
+        return array_any(self::$hostRegex, fn($rx) => preg_match($rx, $host));
     }
 
     private function cidrHit(?string $ip, array $cidrs): bool
@@ -106,6 +107,6 @@ final class TrustProxiesMiddleware
         if ($ip === null || $cidrs === []) {
             return false;
         }
-        return array_any($cidrs, fn ($cidr) => IpCidr::match($ip, $cidr));
+        return array_any($cidrs, fn($cidr) => IpCidr::match($ip, $cidr));
     }
 }

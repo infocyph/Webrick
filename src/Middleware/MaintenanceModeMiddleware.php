@@ -22,21 +22,20 @@ use Infocyph\Webrick\Request\Request;
 final readonly class MaintenanceModeMiddleware
 {
     public function __construct(
-        private string $file = __DIR__ . '/../../storage/framework/down'
-    ) {
-    }
+        private string $file = __DIR__ . '/../../storage/framework/down',
+    ) {}
 
     public function __invoke(Request $req, Closure $next): Response
     {
-        if (! \file_exists($this->file)) {
+        if (!\file_exists($this->file)) {
             return $next($req);
         }
 
         $payload = \file_get_contents($this->file) ?: 'Service is down for maintenance.';
         return new Response(
-            status  : 503,
-            headers : ['Content-Type' => 'text/plain; charset=utf-8', 'Retry-After' => '3600'],
-            body    : new Stream($payload)
+            status: 503,
+            headers: ['Content-Type' => 'text/plain; charset=utf-8', 'Retry-After' => '3600'],
+            body: new Stream($payload),
         );
     }
 }

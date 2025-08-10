@@ -19,20 +19,19 @@ final readonly class NelMiddleware
     public function __construct(
         private string $reportGroup,
         private string $reportEndpoint,           // absolute URL
-        private int    $ttlSeconds   = 86400,     // max-age
-        private bool   $includeSub   = true,
-        private bool   $successFrac  = false,     // collect successes?
-    ) {
-    }
+        private int $ttlSeconds = 86400,     // max-age
+        private bool $includeSub = true,
+        private bool $successFrac = false,     // collect successes?
+    ) {}
 
     public function __invoke(Request $req, Closure $next): Response
     {
         $policy = [
-            'group'              => $this->reportGroup,
-            'max_age'            => $this->ttlSeconds,
+            'group' => $this->reportGroup,
+            'max_age' => $this->ttlSeconds,
             'include_subdomains' => $this->includeSub,
-            'success_fraction'   => $this->successFrac ? 1.0 : 0.0,
-            'failure_fraction'   => 1.0,
+            'success_fraction' => $this->successFrac ? 1.0 : 0.0,
+            'failure_fraction' => 1.0,
         ];
 
         $reportTo = [

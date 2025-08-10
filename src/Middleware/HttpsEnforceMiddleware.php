@@ -13,13 +13,11 @@ use Infocyph\Webrick\Request\Request;
  */
 final readonly class HttpsEnforceMiddleware
 {
-    public function __construct(private bool $productionMode = true)
-    {
-    }
+    public function __construct(private bool $productionMode = true) {}
 
     public function __invoke(Request $request, Closure $next): Response
     {
-        if (! $this->productionMode) {
+        if (!$this->productionMode) {
             return $next($request);
         }
 
@@ -28,8 +26,8 @@ final readonly class HttpsEnforceMiddleware
             $target = $uri->withScheme('https')->withPort(443);
 
             return new Response(
-                status : 308,                                        // permanent redirect preserving verb
-                headers: ['Location' => (string) $target]
+                status: 308,                                        // permanent redirect preserving verb
+                headers: ['Location' => (string)$target],
             );
         }
 

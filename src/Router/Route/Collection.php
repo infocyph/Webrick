@@ -26,7 +26,7 @@ final class Collection implements IteratorAggregate
     /** Indices for O(1) look-ups */
     private array $byName = [];   // name   ⇒ RouteInterface
     private array $byHandler = [];   // key    ⇒ list<RouteInterface>
-    private array $byPath    = []; // path    ⇒ RouteInterface
+    private array $byPath = []; // path    ⇒ RouteInterface
 
     /** State flags */
     private bool $dirty = false;    // builder changed since last compile
@@ -60,7 +60,7 @@ final class Collection implements IteratorAggregate
         $this->assertMutable();
 
         $this->routes = array_values(
-            array_filter($this->routes, static fn ($r) => $r !== $route),
+            array_filter($this->routes, static fn($r) => $r !== $route),
         );
 
         $this->rebuildIndices();
@@ -92,13 +92,13 @@ final class Collection implements IteratorAggregate
         }
 
         $compiledRoutes = array_map(
-            static fn (RouteInterface $r): CompiledRoute => CompiledRoute::fromRoute($r),
+            static fn(RouteInterface $r): CompiledRoute => CompiledRoute::fromRoute($r),
             $this->routes,
         );
 
         $this->compiled = new CompiledCollection($compiledRoutes);
         $this->dirty = false;
-        $this->frozen   = true;
+        $this->frozen = true;
 
         return $this->compiled;
     }
@@ -156,9 +156,9 @@ final class Collection implements IteratorAggregate
 
     private function rebuildIndices(): void
     {
-        $this->byName    = [];
+        $this->byName = [];
         $this->byHandler = [];
-        $this->byPath    = [];
+        $this->byPath = [];
 
         foreach ($this->routes as $route) {
             if (($name = $route->getName()) !== null && $name !== '') {

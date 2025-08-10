@@ -17,13 +17,17 @@ use Infocyph\Webrick\Response\Response;
  */
 final readonly class ClientHintMiddleware
 {
-    /** @param string[] $hints  e.g. ['Sec-CH-UA', 'Sec-CH-UA-Platform'] */
-    public function __construct(private array $hints = [
-        'Sec-CH-UA', 'Sec-CH-UA-Mobile', 'Sec-CH-UA-Platform',
-        'Sec-CH-UA-Arch', 'Sec-CH-UA-Model', 'Sec-CH-UA-Full-Version',
-    ])
-    {
-    }
+    /** @param string[] $hints e.g. ['Sec-CH-UA', 'Sec-CH-UA-Platform'] */
+    public function __construct(
+        private array $hints = [
+            'Sec-CH-UA',
+            'Sec-CH-UA-Mobile',
+            'Sec-CH-UA-Platform',
+            'Sec-CH-UA-Arch',
+            'Sec-CH-UA-Model',
+            'Sec-CH-UA-Full-Version',
+        ],
+    ) {}
 
     public function __invoke(Request $req, Closure $next): Response
     {

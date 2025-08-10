@@ -87,7 +87,7 @@ final class RouterKernel
     {
         // If matcher advertises a hot cache, skip compiling & adding entirely.
         $canBootFromCache = \method_exists($this->matcher, 'canBootFromCache')
-            && (bool) $this->matcher->canBootFromCache();
+            && (bool)$this->matcher->canBootFromCache();
 
         if ($canBootFromCache) {
             if (\method_exists($this->matcher, 'finalize')) {
@@ -95,10 +95,10 @@ final class RouterKernel
                 $this->matcher->finalize();
             }
             $this->log->info('[router] route table ready (hot cache)', [
-                'count'   => null,
+                'count' => null,
                 'matcher' => $this->matcher::class,
-                'cache'   => true,
-                'mode'    => 'cache',
+                'cache' => true,
+                'mode' => 'cache',
             ]);
             return;
         }
@@ -118,10 +118,10 @@ final class RouterKernel
         }
 
         $this->log->info('[router] route table ready', [
-            'count'   => count($routes),
+            'count' => count($routes),
             'matcher' => $this->matcher::class,
-            'cache'   => \method_exists($this->matcher, 'enableCache'),
-            'mode'    => 'compiled',
+            'cache' => \method_exists($this->matcher, 'enableCache'),
+            'mode' => 'compiled',
         ]);
     }
 

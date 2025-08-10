@@ -27,12 +27,13 @@ final class TemporaryUrlGenerator extends SignedUrlGenerator
         Collection $routes,
         string $secret,
         int $defaultTtl = 900, // 15 minutes
-    ) {
+    )
+    {
         // ── sanity: forbid query / fragment on the base URI ─────────────
         $parts = \parse_url($baseUri);
         if ($parts === false || isset($parts['query'], $parts['fragment'])) {
             throw new InvalidArgumentException(
-                'baseUri must not contain query or fragment components'
+                'baseUri must not contain query or fragment components',
             );
         }
 

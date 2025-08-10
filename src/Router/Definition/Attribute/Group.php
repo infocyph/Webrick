@@ -18,11 +18,10 @@ use Attribute;
 final readonly class Group
 {
     public function __construct(
-        public string  $prefix      = '',
-        public ?string $domain      = null,
+        public string $prefix = '',
+        public ?string $domain = null,
         /** @var list<class-string|object> */
-        public array   $middleware  = [],
-        public string  $name        = '',
-    ) {
-    }
+        public array $middleware = [],
+        public string $name = '',
+    ) {}
 }

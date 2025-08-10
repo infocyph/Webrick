@@ -17,13 +17,14 @@ final readonly class ThrottleMiddleware
     private CacheItemPoolInterface $pool;
 
     public function __construct(
-        private int  $max         = 60,
-        private int  $window      = 60,      // seconds
+        private int $max = 60,
+        private int $window = 60,      // seconds
         ?CacheItemPoolInterface $pool = null,
         private bool $retryAsDate = false,   // “Wed, 17 Jul … GMT” vs “120”
         private ?Closure $identifierResolver = null,
         private bool $emitStandardRateLimit = true, // ← NEW
-    ) {
+    )
+    {
         $this->pool = $pool ?? (extension_loaded('apcu')
             ? Cache::apcu('throttle')
             : Cache::file('throttle'));
@@ -32,7 +33,7 @@ final readonly class ThrottleMiddleware
     public function __invoke(Request $req, Closure $next): Response
     {
         [$key, $reset] = $this->deriveKeyAndReset($req);
-        $payload       = $this->loadPayload($key, $reset);
+        $payload = $this->loadPayload($key, $reset);
 
         if ($this->isExceeded($payload)) {
             return $this->limitExceededResponse($payload);
@@ -57,7 +58,7 @@ final readonly class ThrottleMiddleware
                 ?? $req->getServerParams()['REMOTE_ADDR']
                 ?? 'unknown');
 
-        $key   = 't:' . sha1((string) $identifier);
+        $key = 't:' . sha1((string)$identifier);
         $reset = time() + $this->window;
 
         return [$key, $reset];
@@ -66,7 +67,7 @@ final readonly class ThrottleMiddleware
     /** @return array{hits:int, reset:int} */
     private function loadPayload(string $key, int $reset): array
     {
-        $item    = $this->pool->getItem($key);
+        $item = $this->pool->getItem($key);
         $payload = $item->isHit() ? $item->get() : null;
 
         if (\is_int($payload)) {
@@ -75,8 +76,8 @@ final readonly class ThrottleMiddleware
         if (!\is_array($payload)) {
             $payload = ['hits' => 0, 'reset' => $reset];
         }
-        $payload['hits']  = (int) $payload['hits'];
-        $payload['reset'] = (int) $payload['reset'];
+        $payload['hits'] = (int)$payload['hits'];
+        $payload['reset'] = (int)$payload['reset'];
 
         return $payload;
     }
@@ -92,25 +93,25 @@ final readonly class ThrottleMiddleware
         $retryAfter = $this->formatRetryAfter($resetDelta);
 
         $headers = [
-            'Content-Type'          => 'text/plain; charset=utf-8',
-            'Retry-After'           => $retryAfter,
-            'X-RateLimit-Limit'     => (string) $this->max,
+            'Content-Type' => 'text/plain; charset=utf-8',
+            'Retry-After' => $retryAfter,
+            'X-RateLimit-Limit' => (string)$this->max,
             'X-RateLimit-Remaining' => '0',
-            'X-RateLimit-Reset'     => (string) $payload['reset'],     // epoch (BC)
+            'X-RateLimit-Reset' => (string)$payload['reset'],     // epoch (BC)
         ];
 
         if ($this->emitStandardRateLimit) {
             $headers += [
-                'RateLimit-Limit'     => (string) $this->max,
+                'RateLimit-Limit' => (string)$this->max,
                 'RateLimit-Remaining' => '0',
-                'RateLimit-Reset'     => (string) $resetDelta,         // spec: seconds
+                'RateLimit-Reset' => (string)$resetDelta,         // spec: seconds
             ];
         }
 
         return new Response(
-            status  : 429,
-            headers : $headers,
-            body    : new Stream('Too Many Requests')
+            status: 429,
+            headers: $headers,
+            body: new Stream('Too Many Requests'),
         )->withHeader('Server-Timing', 'throttle;dur=0');
     }
 
@@ -127,15 +128,15 @@ final readonly class ThrottleMiddleware
     private function attachRateHeaders(Response $resp, int $remain, int $reset): Response
     {
         $resp = $resp
-            ->withHeader('X-RateLimit-Limit', (string) $this->max)
-            ->withHeader('X-RateLimit-Remaining', (string) $remain)
-            ->withHeader('X-RateLimit-Reset', (string) $reset);        // epoch (BC)
+            ->withHeader('X-RateLimit-Limit', (string)$this->max)
+            ->withHeader('X-RateLimit-Remaining', (string)$remain)
+            ->withHeader('X-RateLimit-Reset', (string)$reset);        // epoch (BC)
 
         if ($this->emitStandardRateLimit) {
             $resp = $resp
-                ->withHeader('RateLimit-Limit', (string) $this->max)
-                ->withHeader('RateLimit-Remaining', (string) $remain)
-                ->withHeader('RateLimit-Reset', (string) max(1, $reset - time())); // seconds
+                ->withHeader('RateLimit-Limit', (string)$this->max)
+                ->withHeader('RateLimit-Remaining', (string)$remain)
+                ->withHeader('RateLimit-Reset', (string)max(1, $reset - time())); // seconds
         }
 
         return $resp;
@@ -146,6 +147,6 @@ final readonly class ThrottleMiddleware
         $seconds = max(1, $seconds); // never zero/negative
         return $this->retryAsDate
             ? gmdate('D, d M Y H:i:s', time() + $seconds) . ' GMT'
-            : (string) $seconds;
+            : (string)$seconds;
     }
 }

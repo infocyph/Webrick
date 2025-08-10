@@ -38,7 +38,5 @@ final class HeaderPolicy
         self::$map[strtolower($header)] = $policy;
     }
 
-    private function __construct()
-    {
-    }
+    private function __construct() {}
 }

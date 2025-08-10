@@ -1,4 +1,5 @@
 <?php
+
 // src/Middleware/VaryAccumulatorMiddleware.php
 declare(strict_types=1);
 
@@ -32,7 +33,7 @@ final class VaryAccumulatorMiddleware
 
         // Merge tokens explicitly registered on the request
         if (($builder = $req->getAttribute(self::ATTR)) instanceof Vary) {
-            $final = $final->add(...array_map('trim', explode(',', (string) $builder)));
+            $final = $final->add(...array_map('trim', explode(',', (string)$builder)));
         }
 
         // Auto-infer common dependencies from the final response
@@ -48,7 +49,7 @@ final class VaryAccumulatorMiddleware
             $final = $final->add('Origin');
         }
 
-        $line = (string) $final;
+        $line = (string)$final;
         return $line !== '' ? $resp->withHeader('Vary', $line) : $resp;
     }
 }

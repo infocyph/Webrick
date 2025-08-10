@@ -125,7 +125,5 @@ final class Registry
         return $rule !== '' && $rule[0] === $rule[-1] && str_contains($rule, '^');
     }
 
-    private function __construct()
-    {
-    }
+    private function __construct() {}
 }

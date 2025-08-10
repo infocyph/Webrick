@@ -28,10 +28,12 @@ final class UploadedFileCollection implements ArrayAccess, Countable, IteratorAg
     {
         return $this->bag;
     }
+
     public function has(string $key): bool
     {
         return isset($this->bag[$key]);
     }
+
     public function get(string $k): mixed
     {
         return $this->bag[$k] ?? null;
@@ -42,6 +44,7 @@ final class UploadedFileCollection implements ArrayAccess, Countable, IteratorAg
     {
         return count($this->bag);
     }
+
     public function getIterator(): Traversable
     {
         return new \ArrayIterator($this->bag);
@@ -52,14 +55,17 @@ final class UploadedFileCollection implements ArrayAccess, Countable, IteratorAg
     {
         return isset($this->bag[$offset]);
     }
+
     public function offsetGet(mixed $offset): mixed
     {
         return $this->bag[$offset] ?? null;
     }
+
     public function offsetSet(mixed $offset, mixed $value): void
     {
         throw new \LogicException('Immutable');
     }
+
     public function offsetUnset(mixed $offset): void
     {
         throw new \LogicException('Immutable');

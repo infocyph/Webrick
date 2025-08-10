@@ -15,9 +15,8 @@ final readonly class ContentSecurityPolicyMiddleware
 {
     public function __construct(
         private string $policy =
-        "default-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self';"
-    ) {
-    }
+        "default-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self';",
+    ) {}
 
     public function __invoke(Request $req, Closure $next): Response
     {

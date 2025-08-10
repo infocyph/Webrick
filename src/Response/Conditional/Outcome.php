@@ -19,13 +19,12 @@ final class Outcome
 {
     /** generic constants – validators decide the exact HTTP code */
     public const PASS = 0;
-    public const HIT  = 1;
+    public const HIT = 1;
     public const FAIL = 2;
 
     public function __construct(
-        public readonly int   $state,   // PASS / HIT / FAIL
-        public readonly int   $http,    // 0 when PASS, otherwise 3xx/4xx
-        public readonly array $headers = []
-    ) {
-    }
+        public readonly int $state,   // PASS / HIT / FAIL
+        public readonly int $http,    // 0 when PASS, otherwise 3xx/4xx
+        public readonly array $headers = [],
+    ) {}
 }

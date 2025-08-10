@@ -14,30 +14,51 @@ use Infocyph\Webrick\Response\Response;
  */
 final readonly class HopByHopStripMiddleware
 {
-    /** Hop-by-hop header names (lower-case) */
     private const HOP_BY_HOP = [
-        'connection','keep-alive','proxy-authenticate','proxy-authorization',
-        'te','trailers','transfer-encoding','upgrade'
+        'connection',
+        'keep-alive',
+        'proxy-authenticate',
+        'proxy-authorization',
+        'te',
+        'trailers',
+        'transfer-encoding',
+        'upgrade',
     ];
 
     public function __invoke(Request $req, Closure $next): Response
     {
-        /* ---- strip from request --------------------------------- */
-        foreach (self::HOP_BY_HOP as $h) {
+        // also strip dynamic tokens mentioned in "Connection"
+        $reqTokens = $this->parseConnectionTokens($req->getHeaderLine('Connection'));
+        foreach (array_unique(array_merge(self::HOP_BY_HOP, $reqTokens)) as $h) {
             if ($req->hasHeader($h)) {
                 $req = $req->withoutHeader($h);
             }
         }
 
-        /* ---- downstream call ------------------------------------ */
         $resp = $next($req);
 
-        /* ---- strip from response -------------------------------- */
-        foreach (self::HOP_BY_HOP as $h) {
+        $resTokens = $this->parseConnectionTokens($resp->getHeaderLine('Connection'));
+        foreach (array_unique(array_merge(self::HOP_BY_HOP, $resTokens)) as $h) {
             if ($resp->hasHeader($h)) {
                 $resp = $resp->withoutHeader($h);
             }
         }
+
         return $resp;
+    }
+
+    private function parseConnectionTokens(string $line): array
+    {
+        if ($line === '') {
+            return [];
+        }
+        $out = [];
+        foreach (explode(',', $line) as $t) {
+            $t = strtolower(trim($t));
+            if ($t !== '') {
+                $out[] = $t;
+            }
+        }
+        return $out;
     }
 }

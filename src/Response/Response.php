@@ -79,9 +79,9 @@ class Response
      * Attachment / download helper.
      *
      * @param string|Stream $file local path **or** pre-built stream
-     * @param string        $name final filename shown to the client
-     * @param string|null   $mime explicit mime, otherwise inferred
-     * @param array         $headers extra headers (caller wins on conflict)
+     * @param string $name final filename shown to the client
+     * @param string|null $mime explicit mime, otherwise inferred
+     * @param array $headers extra headers (caller wins on conflict)
      */
     public static function attachment(
         string|Stream $file,
@@ -89,10 +89,12 @@ class Response
         ?string $mime = null,
         array $headers = [],
     ): self {
-        $stream         = self::streamFor($file);
+        $stream = self::streamFor($file);
         [$size, $mtime] = self::metaFor($file);
-        $mime           = self::inferMime($name, $mime);
-        $defaults       = self::baseDownloadHeaders($name, $mime);
+        $size ??= $stream->getSize();
+        $mtime ??= self::mtimeFromStream($stream);
+        $mime = self::inferMime($name, $mime);
+        $defaults = self::baseDownloadHeaders($name, $mime);
 
         // Fill common headers only when caller didn't provide them
         self::putIfAbsent($defaults, 'Content-Length', self::chooseLength($file, $stream, $size), $headers);
@@ -102,14 +104,18 @@ class Response
         return new self(200, $stream, $defaults + $headers);
     }
 
-    public static function inline(string|Stream $file, ?string $name = null, ?string $mime = null, array $headers = []): self
-    {
+    public static function inline(
+        string|Stream $file,
+        ?string $name = null,
+        ?string $mime = null,
+        array $headers = [],
+    ): self {
         $name ??= is_string($file) ? basename($file) : 'inline';
         $stream = $file instanceof Stream ? $file : self::openFileStream($file);
         $mime ??= MediaType::fromFilename($name)->value;
 
         $defaults = [
-            'Content-Type'        => $mime,
+            'Content-Type' => $mime,
             'Content-Disposition' => ContentDisposition::inline($name),
         ];
         if ($stream->getSize() !== null && !isset($headers['Content-Length'])) {
@@ -231,6 +237,15 @@ class Response
 
     /* -------------------------------------------------------------- */
 
+    private static function mtimeFromStream(Stream $stream): ?int
+    {
+        $uri = $stream->getMetadata('uri');
+        if (is_string($uri) && $uri !== '' && @is_file($uri)) {
+            return @filemtime($uri) ?: null;
+        }
+        return null;
+    }
+
     private static function statusText(int $code): string
     {
         return Status::text($code) ?? '';
@@ -328,7 +343,7 @@ class Response
         if (!is_string($file)) {
             return [null, null];
         }
-        $size  = @filesize($file) ?: null;
+        $size = @filesize($file) ?: null;
         $mtime = @filemtime($file) ?: null;
         return [$size, $mtime];
     }
@@ -343,7 +358,7 @@ class Response
     private static function baseDownloadHeaders(string $name, string $mime): array
     {
         return [
-            'Content-Type'        => $mime,
+            'Content-Type' => $mime,
             'Content-Disposition' => ContentDisposition::attachment($name),
         ];
     }
@@ -352,7 +367,7 @@ class Response
     private static function chooseLength(string|Stream $file, Stream $stream, ?int $fsSize): ?string
     {
         $len = is_string($file) ? $fsSize : ($stream->getSize() ?? null);
-        return $len !== null ? (string) $len : null;
+        return $len !== null ? (string)$len : null;
     }
 
     /** HTTP-date or null. */

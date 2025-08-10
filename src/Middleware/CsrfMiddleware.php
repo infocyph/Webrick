@@ -12,7 +12,7 @@ use Infocyph\Webrick\Response\Response;
 final readonly class CsrfMiddleware
 {
     /** Public flag (can appear in a request) */
-    public const BYPASS_ATTR   = '_csrf_bypass';
+    public const BYPASS_ATTR = '_csrf_bypass';
     /** Private sentinel – never comes from the network */
     private const TRUST_MARKER = '__csrf_internal__';
 
@@ -36,15 +36,15 @@ final readonly class CsrfMiddleware
         }
 
         /*────── normal flow ───────────────────────────────────────────*/
-        if (!\in_array($req->getMethod(), ['POST','PUT','PATCH','DELETE'], true)) {
+        if (!\in_array($req->getMethod(), ['POST', 'PUT', 'PATCH', 'DELETE'], true)) {
             return $next($req);                      // safe verbs
         }
 
         if (!$req->matchesCsrfToken()) {
             return new Response(
-                status  : 419,
-                headers : ['Content-Type' => 'text/plain; charset=utf-8'],
-                body    : new Stream('CSRF token mismatch.')
+                status: 419,
+                headers: ['Content-Type' => 'text/plain; charset=utf-8'],
+                body: new Stream('CSRF token mismatch.'),
             );
         }
 

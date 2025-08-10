@@ -16,9 +16,8 @@ final readonly class CompiledCollection implements IteratorAggregate
 {
     /** @param list<CompiledRoute> $routes */
     public function __construct(
-        private array $routes
-    ) {
-    }
+        private array $routes,
+    ) {}
 
     /** @return list<CompiledRoute> */
     public function all(): array

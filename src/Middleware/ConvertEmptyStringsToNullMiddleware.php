@@ -20,7 +20,7 @@ final readonly class ConvertEmptyStringsToNullMiddleware
         $body = $req->getParsedBody();
         if (\is_array($body)) {
             $body = self::nullify($body);
-            $req  = $req->withParsedBody($body);
+            $req = $req->withParsedBody($body);
         }
 
         $query = $req->getQueryParams();
@@ -39,7 +39,7 @@ final readonly class ConvertEmptyStringsToNullMiddleware
                 if ($v === '') {
                     $v = null;
                 }
-            }
+            },
         );
         return $data;
     }

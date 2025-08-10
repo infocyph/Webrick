@@ -17,8 +17,8 @@ final class RouteNotFoundException extends \RuntimeException
         ?\Throwable $previous = null,
     ) {
         parent::__construct(
-            message : "No route defined for {$verb} {$path}",
-            code    : $code,
+            message: "No route defined for {$verb} {$path}",
+            code: $code,
             previous: $previous,
         );
     }

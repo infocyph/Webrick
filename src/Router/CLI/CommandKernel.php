@@ -7,9 +7,7 @@ namespace Infocyph\Webrick\Router\CLI;
 final class CommandKernel
 {
     /** @param array<string,callable> $cmdMap */
-    public function __construct(private array $cmdMap)
-    {
-    }
+    public function __construct(private array $cmdMap) {}
 
     public function handle(array $argv): int
     {
@@ -18,6 +16,6 @@ final class CommandKernel
             fwrite(STDERR, "Unknown command: {$cmd}\n");
             return 1;
         }
-        return (int) ($this->cmdMap[$cmd])(array_slice($argv, 2));
+        return (int)($this->cmdMap[$cmd])(array_slice($argv, 2));
     }
 }

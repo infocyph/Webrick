@@ -154,8 +154,8 @@ class UrlGenerator
         // ★ If the path exists verbatim in the route table, trust it
         if ($this->routes->hasPath($path)) {
             $uri = $absolute
-                    ? $this->baseUri . $path                      // baseUri already sans trailing “/”
-                    : $path;
+                ? $this->baseUri . $path                      // baseUri already sans trailing “/”
+                : $path;
         } else {
             $uri = ($absolute ? $this->baseUri : '') . '/' . ltrim($path, '/');
         }

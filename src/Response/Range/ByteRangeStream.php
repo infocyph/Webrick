@@ -13,7 +13,7 @@ final class ByteRangeStream implements BodyStream
 
     public function __construct(Stream $base, int $limit)
     {
-        $this->base      = $base;
+        $this->base = $base;
         $this->remaining = $limit;
     }
 
@@ -90,7 +90,7 @@ final class ByteRangeStream implements BodyStream
         }
 
         $length = min($length, $this->remaining);
-        $chunk  = $this->base->read($length);
+        $chunk = $this->base->read($length);
 
         $this->remaining -= strlen($chunk);
         return $chunk;

@@ -26,9 +26,9 @@ final class IpCidr
     private static function v4(string $ip, string $cidr): bool
     {
         [$subnet, $mask] = (str_contains($cidr, '/')) ? explode('/', $cidr, 2) : [$cidr, 32];
-        $mask = (int) $mask;
+        $mask = (int)$mask;
 
-        $ipBin  = @inet_pton($ip);
+        $ipBin = @inet_pton($ip);
         $netBin = @inet_pton($subnet);
         if ($ipBin === false || $netBin === false || strlen($ipBin) !== 4) {
             return false;
@@ -51,14 +51,14 @@ final class IpCidr
     {
         [$subnet, $mask] = strpos($cidr, '/') ? explode('/', $cidr, 2) : [$cidr, 128];
         $mask = (int)$mask;
-        $ipBin  = inet_pton($ip);
+        $ipBin = inet_pton($ip);
         $netBin = inet_pton($subnet);
         if ($ipBin === false || $netBin === false) {
             return false;
         }
 
         $bytes = intdiv($mask, 8);
-        $same  = substr_compare($ipBin, $netBin, 0, $bytes) === 0;
+        $same = substr_compare($ipBin, $netBin, 0, $bytes) === 0;
         if ($same && $mask % 8) {
             $bitmask = 0xFF << (8 - ($mask % 8));
             $same = (ord($ipBin[$bytes]) & $bitmask) === (ord($netBin[$bytes]) & $bitmask);

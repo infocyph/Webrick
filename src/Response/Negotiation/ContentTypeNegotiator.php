@@ -11,20 +11,34 @@ use Infocyph\Webrick\Request\Request;
 final class ContentTypeNegotiator
 {
     /**
+     * Convenience for controllers/middleware.
+     * Uses Request → RequestHeaders → ContentNegotiator.
+     *
      * @param string[] $supported ordered by caller preference
-     * @return string|null        best match or null
      */
-    public static function choose(array $supported, string $accept): ?string
+    public static function chooseFromRequest(Request $req, array $supported): ?string
+    {
+        return self::chooseWithHeaders(new RequestHeaders($req), $supported);
+    }
+
+    /**
+     * If you’ve already built a RequestHeaders façade, use this.
+     *
+     * @param string[] $supported ordered by caller preference
+     */
+    public static function chooseWithHeaders(RequestHeaders $headers, array $supported): ?string
     {
         $first = $supported[0] ?? null;
         if ($first === null) {
             return null;
         }
 
-        // Treat empty Accept the same as */* (common convention)
-        $wildOrEmpty = ($accept === '' || $accept === '*/*');
-        $req = Request::fake(headers: ['Accept' => $wildOrEmpty ? '*/*' : $accept]);
+        $accept = $headers->all()->getHeaderLine('Accept') ?? '';
+        if ($accept === '' || $accept === '*/*') {
+            return $first; // conventional default
+        }
 
-        return new ContentNegotiator(new RequestHeaders($req))->preferred($supported) ?? ($wildOrEmpty ? $first : null);
+        $neg = new ContentNegotiator($headers);
+        return $neg->preferred($supported) ?? null; // caller can 406 on null
     }
 }

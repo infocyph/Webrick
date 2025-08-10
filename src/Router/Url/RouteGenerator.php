@@ -34,9 +34,10 @@ final class RouteGenerator
         $path = $r->getPath();
         return preg_replace_callback(
             '/\{([A-Za-z_]\w*)(?::[^}]+)?}/',
-            fn ($m) => $params[$m[1]]
+            fn($m)
+                => $params[$m[1]]
                 ?? throw new \InvalidArgumentException("Missing “{$m[1]}” for $name"),
-            $path
+            $path,
         );
     }
 }

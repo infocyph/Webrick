@@ -44,7 +44,7 @@ final class ContentNegotiator
     {
         return array_find(
             $this->accept,
-            fn ($have) => array_any($candidates, fn ($want) => $this->matches($want, $have)),
+            fn($have) => array_any($candidates, fn($want) => $this->matches($want, $have)),
         );
     }
 

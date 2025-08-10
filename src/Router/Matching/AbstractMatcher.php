@@ -16,11 +16,11 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
 abstract class AbstractMatcher
 {
     /* shared node keys */
-    protected const K_STATIC   = 'static';
-    protected const K_TRIE     = 'trie';
+    protected const K_STATIC = 'static';
+    protected const K_TRIE = 'trie';
     protected const K_CHILDREN = 'children';
-    protected const K_PARAM    = 'param';
-    protected const K_ROUTES   = 'routes';
+    protected const K_PARAM = 'param';
+    protected const K_ROUTES = 'routes';
 
     /** Optional: verify shard/cache hash on load (dev/CI) */
     protected bool $verifyCacheOnLoad = false;
@@ -148,7 +148,7 @@ abstract class AbstractMatcher
         string $verb,
         array &$params,
         array &$allowedSet,
-        ?array &$hit
+        ?array &$hit,
     ): bool {
         if ($i === \count($seg)) {
             $routes = $node[self::K_ROUTES] ?? [];

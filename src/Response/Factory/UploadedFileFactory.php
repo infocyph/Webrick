@@ -12,16 +12,16 @@ final class UploadedFileFactory
     public function createUploadedFile(
         Stream $stream,
         ?int $size = null,
-        int             $error = \UPLOAD_ERR_OK,
+        int $error = \UPLOAD_ERR_OK,
         ?string $clientFilename = null,
-        ?string $clientMediaType = null
+        ?string $clientMediaType = null,
     ): UploadedFile {
         return new UploadedFile(
             $stream,
             $size,
             $error,
             $clientFilename,
-            $clientMediaType
+            $clientMediaType,
         );
     }
 }

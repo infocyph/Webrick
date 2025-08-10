@@ -18,13 +18,12 @@ namespace Infocyph\Webrick\Router\Definition;
 final class GroupScope
 {
     public function __construct(
-        private readonly string  $prefix     = '',      // always normalized
-        private readonly ?string $domain     = null,
+        private readonly string $prefix = '',      // always normalized
+        private readonly ?string $domain = null,
         /** @var MiddlewareList */
-        private readonly array   $middleware = [],
-        private readonly string  $namePrefix = '',
-    ) {
-    }
+        private readonly array $middleware = [],
+        private readonly string $namePrefix = '',
+    ) {}
 
     /* -----------------------------------------------------------------
      *  Fluent (immutable) setters
@@ -40,7 +39,7 @@ final class GroupScope
             $normalized,
             $this->domain,
             $this->middleware,
-            $this->namePrefix
+            $this->namePrefix,
         );
     }
 
@@ -50,7 +49,7 @@ final class GroupScope
             $this->prefix,
             $domain,
             $this->middleware,
-            $this->namePrefix
+            $this->namePrefix,
         );
     }
 
@@ -63,7 +62,7 @@ final class GroupScope
             $this->prefix,
             $this->domain,
             [...$this->middleware, ...$extra],  // preserves order
-            $this->namePrefix
+            $this->namePrefix,
         );
     }
 
@@ -73,7 +72,7 @@ final class GroupScope
             $this->prefix,
             $this->domain,
             $this->middleware,
-            $this->namePrefix . $namePrefix
+            $this->namePrefix . $namePrefix,
         );
     }
 

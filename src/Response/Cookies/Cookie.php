@@ -16,16 +16,15 @@ final class Cookie implements \Stringable
     private const NAME_RX = '/^[A-Za-z0-9!#$%&\'*+.^_`|~-]+$/';
 
     private function __construct(
-        public string  $name,
-        private string  $value   = '',
-        private ?int    $expires = null,       // unix epoch
-        private string  $path    = '/',
-        private ?string $domain  = null,
-        private bool    $secure  = true,
-        private bool    $httpOnly = true,
-        private string  $sameSite = 'Lax',      // Lax|Strict|None
-    ) {
-    }
+        public string $name,
+        private string $value = '',
+        private ?int $expires = null,       // unix epoch
+        private string $path = '/',
+        private ?string $domain = null,
+        private bool $secure = true,
+        private bool $httpOnly = true,
+        private string $sameSite = 'Lax',      // Lax|Strict|None
+    ) {}
 
     /* ---------- factory helpers ---------------------------------- */
     public static function make(string $name, string $value = ''): self
@@ -47,7 +46,7 @@ final class Cookie implements \Stringable
     {
         $x = clone $this;
         $x->expires = time() - 86400;
-        $x->value   = '';
+        $x->value = '';
         return $x;
     }
 
@@ -57,28 +56,32 @@ final class Cookie implements \Stringable
         $y->path = $p;
         return $y;
     }
+
     public function domain(string $d): self
     {
         $y = clone $this;
         $y->domain = $d;
         return $y;
     }
+
     public function secure(bool $on = true): self
     {
         $y = clone $this;
         $y->secure = $on;
         return $y;
     }
+
     public function httpOnly(bool $on = true): self
     {
         $y = clone $this;
         $y->httpOnly = $on;
         return $y;
     }
+
     public function sameSite(string $mode): self
     {
         $mode = ucfirst(strtolower($mode));
-        if (!in_array($mode, ['Lax','Strict','None'], true)) {
+        if (!in_array($mode, ['Lax', 'Strict', 'None'], true)) {
             throw new \InvalidArgumentException('SameSite must be Lax|Strict|None');
         }
         $y = clone $this;
@@ -89,7 +92,7 @@ final class Cookie implements \Stringable
     /* ---------- output ------------------------------------------- */
     public function __toString(): string
     {
-        $parts   = ["$this->name=" . rawurlencode($this->value)];
+        $parts = ["$this->name=" . rawurlencode($this->value)];
         $parts[] = 'Path=' . $this->path;
 
         if ($this->domain) {

@@ -15,20 +15,18 @@ use Infocyph\Webrick\Request\Request;
  */
 final readonly class ValidatePostSizeMiddleware
 {
-    public function __construct(private ?int $bytes = null)
-    {
-    }
+    public function __construct(private ?int $bytes = null) {}
 
     public function __invoke(Request $req, Closure $next): Response
     {
-        $limit  = $this->bytes ?? self::phpIniBytes(ini_get('post_max_size'));
-        $length = (int) $req->getHeaderLine('Content-Length');
+        $limit = $this->bytes ?? self::phpIniBytes(ini_get('post_max_size'));
+        $length = (int)$req->getHeaderLine('Content-Length');
 
         if ($limit > 0 && $length > $limit) {
             return new Response(
-                status  : 413,
-                headers : ['Content-Type' => 'text/plain; charset=utf-8'],
-                body    : new Stream('Payload exceeds maximum allowed size.')
+                status: 413,
+                headers: ['Content-Type' => 'text/plain; charset=utf-8'],
+                body: new Stream('Payload exceeds maximum allowed size.'),
             );
         }
 
@@ -42,7 +40,7 @@ final readonly class ValidatePostSizeMiddleware
         }
         $val = trim($val);
         $unit = strtolower(substr($val, -1));
-        $num  = (int) $val;
+        $num = (int)$val;
         return match ($unit) {
             'g' => $num * 1024 * 1024 * 1024,
             'm' => $num * 1024 * 1024,

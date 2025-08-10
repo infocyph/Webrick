@@ -21,9 +21,7 @@ final readonly class ConditionalMiddleware
     /**
      * @param Closure(Request): array{string|null,int|null} $meta
      */
-    public function __construct(private Closure $meta)
-    {
-    }
+    public function __construct(private Closure $meta) {}
 
     public function __invoke(Request $req, Closure $next): Response
     {

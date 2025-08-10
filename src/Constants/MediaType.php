@@ -43,17 +43,17 @@ enum MediaType: string
     {
         /* ---- static 1: irregular aliases (opcode-cached) ---- */
         static $alias = [
-            'jpg'         => 'jpeg',
-            'htm'         => 'html',
-            'svgz'        => 'svg',
-            'txt'         => 'plain',
-            'md'          => 'plain',
+            'jpg' => 'jpeg',
+            'htm' => 'html',
+            'svgz' => 'svg',
+            'txt' => 'plain',
+            'md' => 'plain',
             'webmanifest' => 'manifest_json',
-            'mjs'         => 'javascript',
-            'js'          => 'javascript',
-            'wasm'        => 'wasm',
-            'ndjson'      => 'ndjson',
-            'jsonl'       => 'ndjson',
+            'mjs' => 'javascript',
+            'js' => 'javascript',
+            'wasm' => 'wasm',
+            'ndjson' => 'ndjson',
+            'jsonl' => 'ndjson',
         ];
 
         /* ---- static 2: resolved memo cache  ----------------- */

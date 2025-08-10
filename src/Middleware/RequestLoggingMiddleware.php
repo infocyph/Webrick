@@ -15,9 +15,7 @@ use Infocyph\Webrick\Response\Response;
  */
 final readonly class RequestLoggingMiddleware
 {
-    public function __construct(private LoggerInterface $log = new NullLogger())
-    {
-    }
+    public function __construct(private LoggerInterface $log = new NullLogger()) {}
 
     public function __invoke(Request $req, Closure $next): Response
     {

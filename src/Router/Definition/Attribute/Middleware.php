@@ -18,7 +18,5 @@ use Attribute;
 final readonly class Middleware
 {
     /** @param class-string|object ...$stack */
-    public function __construct(public array $stack)
-    {
-    }
+    public function __construct(public array $stack) {}
 }

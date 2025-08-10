@@ -16,9 +16,7 @@ use Infocyph\Webrick\Response\Payloads\StreamedResponse as PayloadStreamedRespon
  */
 final readonly class StreamedEmitter implements EmitterInterface
 {
-    public function __construct(private int $chunk = 8192)
-    {
-    }
+    public function __construct(private int $chunk = 8192) {}
 
     public function emit(Response $response, ?Request $request = null): void
     {

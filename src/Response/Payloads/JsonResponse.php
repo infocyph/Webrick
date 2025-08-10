@@ -12,10 +12,10 @@ final class JsonResponse extends Response
 {
     public function __construct(
         mixed $data,
-        int   $status  = 200,
+        int $status = 200,
         array $headers = [],
-        int   $flags   = JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE,
-        int   $depth   = 512,
+        int $flags = JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE,
+        int $depth = 512,
     ) {
         $json = json_encode($data, $flags, $depth);
         if ($json === false) {

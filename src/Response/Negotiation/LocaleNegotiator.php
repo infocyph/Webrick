@@ -4,30 +4,51 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Response\Negotiation;
 
+use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Headers\Language;
+use Infocyph\Webrick\Response\Response;
 
-/**
- * Pick the best locale (RFC 4647 basic filtering) and
- * supply header tuples ready for the Response.
- *
- * ```php
- * [$chosen, $hdrs] = LocaleNegotiator::negotiate(
- *      ['en', 'bn-BD', 'fr'],
- *      $_SERVER['HTTP_ACCEPT_LANGUAGE'] ?? ''
- * );
- * // $hdrs → [ ['Content-Language','bn-BD'], ['Vary','Accept-Language'] ]
- * ```
- */
 final class LocaleNegotiator
 {
     /**
-     * @param string[] $supported ordered by preference (e.g. config)
-     * @return array{0:string,1:array<array{string,string}>}
+     * @param string[] $supported ordered by preference
+     * @return array{0:string,1:array<array{string,string}>} [chosen, headerTuples]
      */
-    public static function negotiate(array $supported, string $acceptLang): array
+    public static function negotiate(array $supported, string $acceptLang, ?string $fallback = null): array
     {
-        $best  = Language::negotiate($supported, $acceptLang);
-        $hdrs  = Language::headers($best);
-        return [$best, $hdrs];
+        // guarantee a non-empty supported set
+        if ($supported === []) {
+            $supported = [$fallback ?? 'en'];
+        }
+
+        $chosen = Language::negotiate($supported, $acceptLang);
+        if ($chosen === '' && $fallback !== null) {
+            $chosen = $fallback;
+        }
+
+        return [$chosen, Language::headers($chosen)];
+    }
+
+    /**
+     * Convenience: pull Accept-Language from Request and negotiate.
+     *
+     * @param string[] $supported
+     */
+    public static function forRequest(Request $req, array $supported, ?string $fallback = null): array
+    {
+        return self::negotiate($supported, $req->getHeaderLine('Accept-Language'), $fallback);
+    }
+
+    /**
+     * Apply the header tuples returned by negotiate() to a Response.
+     *
+     * @param array<array{string,string}> $hdrs
+     */
+    public static function apply(Response $resp, array $hdrs): Response
+    {
+        foreach ($hdrs as [$k, $v]) {
+            $resp = $resp->withHeader($k, $v);
+        }
+        return $resp;
     }
 }

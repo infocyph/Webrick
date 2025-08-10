@@ -20,9 +20,7 @@ use Throwable;
  */
 final readonly class ErrorHandlerMiddleware
 {
-    public function __construct(private bool $devMode = false)
-    {
-    }
+    public function __construct(private bool $devMode = false) {}
 
     public function __invoke(Request $request, Closure $next): Response
     {
@@ -48,9 +46,9 @@ final readonly class ErrorHandlerMiddleware
         $headers += ['Content-Type' => 'text/plain; charset=utf-8'];
 
         return new Response(
-            status  : $status,
-            body    : new Stream($payload),
-            headers : $headers
+            status: $status,
+            body: new Stream($payload),
+            headers: $headers,
         );
     }
 }

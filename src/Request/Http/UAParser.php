@@ -27,19 +27,19 @@ final class UAParser
     private array $hint = [];
 
     private static array $tokenMap = [
-        'crios'           => 'Chrome iOS',
-        'fxios'           => 'Firefox iOS',
-        'edg'             => 'Edge',
-        'opr'             => 'Opera',
-        'vivaldi'         => 'Vivaldi',
-        'brave'           => 'Brave',
-        'samsungbrowser'  => 'Samsung Internet',
-        'yabrowser'       => 'Yandex Browser',
-        'firefox'         => 'Firefox',
-        'chrome'          => 'Chrome',
-        'safari'          => 'Safari',
-        'msie'            => 'Internet Explorer',
-        'trident/7'       => 'Internet Explorer',
+        'crios' => 'Chrome iOS',
+        'fxios' => 'Firefox iOS',
+        'edg' => 'Edge',
+        'opr' => 'Opera',
+        'vivaldi' => 'Vivaldi',
+        'brave' => 'Brave',
+        'samsungbrowser' => 'Samsung Internet',
+        'yabrowser' => 'Yandex Browser',
+        'firefox' => 'Firefox',
+        'chrome' => 'Chrome',
+        'safari' => 'Safari',
+        'msie' => 'Internet Explorer',
+        'trident/7' => 'Internet Explorer',
     ];
 
     /* --------------------------------------------------------------------- */
@@ -59,7 +59,7 @@ final class UAParser
     {
         [$browser, $version] = $this->browser();   // ← rename $ver → $version
         $platform = $this->platform();
-        $engine   = $this->engine($browser);
+        $engine = $this->engine($browser);
 
         return compact('browser', 'version', 'platform', 'engine');
     }
@@ -170,10 +170,10 @@ final class UAParser
             '/Windows NT 6\.3/i' => 'Windows 8.1',
             '/Windows NT 6\.2/i' => 'Windows 8',
             '/Windows NT 6\.1/i' => 'Windows 7',
-            '/Mac OS X ([\d_]+)/i' => fn ($v) => 'macOS ' . str_replace('_', '.', $v),
-            '/Android ([\d.]+)/i' => fn ($v) => 'Android ' . $v,
-            '/iPhone OS ([\d_]+)/i' => fn ($v) => 'iOS ' . str_replace('_', '.', $v),
-            '/iPad; CPU OS ([\d_]+)/i' => fn ($v) => 'iPadOS ' . str_replace('_', '.', $v),
+            '/Mac OS X ([\d_]+)/i' => fn($v) => 'macOS ' . str_replace('_', '.', $v),
+            '/Android ([\d.]+)/i' => fn($v) => 'Android ' . $v,
+            '/iPhone OS ([\d_]+)/i' => fn($v) => 'iOS ' . str_replace('_', '.', $v),
+            '/iPad; CPU OS ([\d_]+)/i' => fn($v) => 'iPadOS ' . str_replace('_', '.', $v),
             '/Linux/i' => 'Linux',
         ];
         foreach ($rx as $pat => $label) {

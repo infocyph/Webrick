@@ -21,7 +21,7 @@ final readonly class TrimStringsMiddleware
         $body = $req->getParsedBody();
         if (\is_array($body)) {
             $body = self::trimRecursive($body);
-            $req  = $req->withParsedBody($body);
+            $req = $req->withParsedBody($body);
         }
 
         // query params
@@ -41,7 +41,7 @@ final readonly class TrimStringsMiddleware
                 if (is_string($v)) {
                     $v = trim($v);
                 }
-            }
+            },
         );
         return $data;
     }

@@ -104,7 +104,7 @@ final class MiddlewarePipeline
          */
         if (\is_string($mw)) {
             $mw = $memo[$mw] ??= (
-                str_contains($mw, '::')
+            str_contains($mw, '::')
                 ? $mw(...)                      // bind once
                 : $mw                                              // plain function name
             );

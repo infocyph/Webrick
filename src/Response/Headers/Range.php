@@ -19,12 +19,11 @@ final readonly class Range
         public int $start,
         public int $end,
         public int $length,
-    ) {
-    }
+    ) {}
 
     /**
-     * @param non-empty-string $header      Raw **Range:** header
-     * @param positive-int     $resourceLen Full size of the representation
+     * @param non-empty-string $header Raw **Range:** header
+     * @param positive-int $resourceLen Full size of the representation
      *
      * @return self|null
      */
@@ -42,7 +41,7 @@ final readonly class Range
 
         /* ---------- suffix range  bytes=-N  ---------------------------- */
         if ($rawStart === '') {
-            $len = (int) $rawEnd;
+            $len = (int)$rawEnd;
             if ($len <= 0) {
                 return null;
             }
@@ -51,7 +50,7 @@ final readonly class Range
             return new self($start, $resourceLen - 1, $resourceLen);
         }
 
-        $start = (int) $rawStart;
+        $start = (int)$rawStart;
 
         /* ---------- open range  bytes=N-  ------------------------------ */
         if ($rawEnd === '' || $rawEnd === null) {
@@ -62,7 +61,7 @@ final readonly class Range
         }
 
         /* ---------- explicit range  bytes=N-M  ------------------------- */
-        $end = (int) $rawEnd;
+        $end = (int)$rawEnd;
 
         if ($start > $end || $end >= $resourceLen) {
             return null;

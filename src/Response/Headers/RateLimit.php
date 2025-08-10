@@ -19,9 +19,9 @@ final class RateLimit
     public static function forUser(int $limit, int $remaining, int $resetEpoch): array
     {
         return [
-            ['X-RateLimit-Limit',      (string)$limit],
-            ['X-RateLimit-Remaining',  (string)$remaining],
-            ['X-RateLimit-Reset',      (string)$resetEpoch],
+            ['X-RateLimit-Limit', (string)$limit],
+            ['X-RateLimit-Remaining', (string)$remaining],
+            ['X-RateLimit-Reset', (string)$resetEpoch],
         ];
     }
 

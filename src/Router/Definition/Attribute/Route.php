@@ -19,6 +19,7 @@ final readonly class Route
 {
     /** @param string[] $method */
     public array $method;
+
     /** @param string|string[] $method */
     public function __construct(
         array|string $method,
@@ -27,6 +28,6 @@ final readonly class Route
         /** @var list<class-string|object> */
         public array $middleware = [],
     ) {
-        $this->method = (array) $method;  // normalise early
+        $this->method = (array)$method;  // normalise early
     }
 }

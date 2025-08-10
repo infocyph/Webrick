@@ -16,7 +16,7 @@ final readonly class ResponseTimeMiddleware
     public function __invoke(Request $req, Closure $next): Response
     {
         $start = hrtime(true);   // nanoseconds
-        $resp  = $next($req);
+        $resp = $next($req);
         $durMs = (hrtime(true) - $start) / 1e6;
 
         return $resp

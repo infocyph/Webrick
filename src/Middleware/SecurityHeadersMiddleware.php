@@ -12,8 +12,7 @@ final readonly class SecurityHeadersMiddleware
     public function __construct(
         private bool $hsts = true,
         private bool $includeSubs = true,
-    ) {
-    }
+    ) {}
 
     public function __invoke(Request $req, Closure $next): Response
     {
@@ -21,7 +20,7 @@ final readonly class SecurityHeadersMiddleware
         return SecurityHeaders::tight(
             $resp,
             hsts: $this->hsts,
-            includeSubs: $this->includeSubs
+            includeSubs: $this->includeSubs,
         );
     }
 }

@@ -8,7 +8,9 @@ use Closure;
 use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Request\Request;
-use Infocyph\Webrick\Router\Definition\Attribute\Cors; // Import the new Cors attribute
+use Infocyph\Webrick\Router\Definition\Attribute\Cors;
+
+// ✅ add this
 
 /**
  * Very small CORS layer (sufficient for most APIs).
@@ -18,28 +20,27 @@ use Infocyph\Webrick\Router\Definition\Attribute\Cors; // Import the new Cors at
  */
 final readonly class CorsMiddleware
 {
-    /** @param string[] $origins   (‘*’ ⇒ anything) */
+    /** @param string[] $origins (‘*’ ⇒ anything) */
     public function __construct(
-        private array   $origins        = ['*'],
-        private string  $methods        = 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-        private string  $headers        = 'Content-Type, Authorization',
-        private int     $maxAgeSeconds  = 3600,
-        private bool    $allowCredentials = true,
-    ) {
-    }
+        private array $origins = ['*'],
+        private string $methods = 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+        private string $headers = 'Content-Type, Authorization',
+        private int $maxAgeSeconds = 3600,
+        private bool $allowCredentials = true,
+    ) {}
 
     public function __invoke(Request $req, Closure $next): Response
     {
         // Start with the globally configured policy
         $policy = [
-            'origins'        => $this->origins,
-            'methods'        => $this->methods,
-            'headers'        => $this->headers,
-            'maxAgeSeconds'  => $this->maxAgeSeconds,
+            'origins' => $this->origins,
+            'methods' => $this->methods,
+            'headers' => $this->headers,
+            'maxAgeSeconds' => $this->maxAgeSeconds,
             'allowCredentials' => $this->allowCredentials,
         ];
 
-        // Check for a route-specific policy and merge it
+        // Route-specific policy override
         /** @var Cors|null $routePolicy */
         $routePolicy = $req->getAttribute('cors_policy');
         if ($routePolicy instanceof Cors) {
@@ -53,18 +54,23 @@ final readonly class CorsMiddleware
         $origin = $req->getHeaderLine('Origin');
         $allowed = $this->isAllowedOrigin($origin, $policy['origins']) ? $origin : null;
 
+        // ✅ When Origin reflection is possible (non-wildcard list), tell the accumulator.
+        if ($policy['origins'] !== ['*']) {
+            $req = VaryAccumulatorMiddleware::add($req, 'Origin');
+        }
+
         /* ---------- Pre-flight (OPTIONS) --------------------------- */
         if ($req->getMethod() === 'OPTIONS') {
             return $this->applyHeaders(
                 new Response(204, new Stream('')),
                 $allowed,
-                $policy // Pass the final policy
+                $policy,
             );
         }
 
         /* ---------- Normal request -------------------------------- */
         $resp = $next($req);
-        return $this->applyHeaders($resp, $allowed, $policy); // Pass the final policy
+        return $this->applyHeaders($resp, $allowed, $policy);
     }
 
     /* -------------------------------------------------------------- */
@@ -73,15 +79,16 @@ final readonly class CorsMiddleware
         $r = $r
             ->withHeader('Access-Control-Allow-Methods', $policy['methods'])
             ->withHeader('Access-Control-Allow-Headers', $policy['headers'])
-            ->withHeader('Access-Control-Max-Age', (string) $policy['maxAgeSeconds']);
+            ->withHeader('Access-Control-Max-Age', (string)$policy['maxAgeSeconds']);
 
         if ($policy['allowCredentials']) {
             $r = $r->withHeader('Access-Control-Allow-Credentials', 'true');
         }
 
+        // Reflect origin when allowed; otherwise wildcard (only when configured)
         $r = $r->withHeader(
             'Access-Control-Allow-Origin',
-            $origin ?? ($policy['origins'] === ['*'] ? '*' : '')
+            $origin ?? ($policy['origins'] === ['*'] ? '*' : ''),
         );
 
         if ($origin && $policy['allowCredentials']) {
@@ -89,10 +96,6 @@ final readonly class CorsMiddleware
             $r = $r->withHeader('Access-Control-Allow-Origin', $origin);
         }
 
-        // Safari quirk – always echo Vary when Origin is dynamic
-        if ($policy['origins'] !== ['*']) {
-            $r = $r->withHeader('Vary', 'Origin');
-        }
         return $r;
     }
 

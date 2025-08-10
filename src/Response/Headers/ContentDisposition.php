@@ -26,7 +26,7 @@ final class ContentDisposition
         $fallback = preg_replace('/[^\x20-\x7E]/', '_', $filename);
         $fallback = addcslashes($fallback, "\"\\");  // -> "safe\"name"
 
-        $rfc5987  = rawurlencode($filename);         // full UTF-8 name
+        $rfc5987 = rawurlencode($filename);         // full UTF-8 name
 
         return "{$type}; filename=\"{$fallback}\"; filename*=UTF-8''{$rfc5987}";
     }

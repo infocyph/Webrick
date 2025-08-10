@@ -141,12 +141,12 @@ final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
             return $add;
         }
         $set = array_fill_keys(
-            array_map('trim', explode(',', $existing)),
-            true,
-        ) + array_fill_keys(
-            array_map('trim', explode(',', $add)),
-            true,
-        );
+                array_map('trim', explode(',', $existing)),
+                true,
+            ) + array_fill_keys(
+                array_map('trim', explode(',', $add)),
+                true,
+            );
         return implode(', ', array_keys($set));
     }
 

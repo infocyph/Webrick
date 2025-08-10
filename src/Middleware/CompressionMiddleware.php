@@ -25,7 +25,7 @@ final readonly class CompressionMiddleware
 
     /** encoder → callable (only invoked when extension is loaded) */
     private const ALGO = [
-        'br'   => 'brotli_compress',
+        'br' => 'brotli_compress',
         'zstd' => 'zstd_compress',
         'gzip' => 'gzencode',
     ];
@@ -43,8 +43,8 @@ final readonly class CompressionMiddleware
 
         $contentLength = $resp->getHeaderLine('Content-Length');
         if (
-            ($contentLength !== '' && (int) $contentLength < self::MIN_SIZE) ||
-            ($contentLength === ''  && ($resp->getBody()->getSize() ?? 0) < self::MIN_SIZE)
+            ($contentLength !== '' && (int)$contentLength < self::MIN_SIZE) ||
+            ($contentLength === '' && ($resp->getBody()->getSize() ?? 0) < self::MIN_SIZE)
         ) {
             return $resp;                       // payload too small
         }
@@ -61,7 +61,7 @@ final readonly class CompressionMiddleware
         }
 
         /* -------- encode ------------------------------------------ */
-        $raw = (string) $resp->getBody();
+        $raw = (string)$resp->getBody();
         $enc = ($alg === 'gzip')
             ? gzencode($raw, 6, ZLIB_ENCODING_GZIP)
             : \call_user_func(self::ALGO[$alg], $raw);
@@ -70,11 +70,12 @@ final readonly class CompressionMiddleware
             return $resp;
         }
 
+        VaryAccumulatorMiddleware::add($req, 'Accept-Encoding');
+
         return $resp
             ->withBody(new Stream($enc))
             ->withSmartHeader('Content-Encoding', $alg)
-            ->withSmartHeader('Vary', 'Accept-Encoding')         // caching safety
-            ->withSmartHeader('Content-Length', (string) \strlen($enc));
+            ->withSmartHeader('Content-Length', (string)\strlen($enc));
     }
 
     /* ───────────────────────── helpers ──────────────────────────── */
@@ -82,7 +83,7 @@ final readonly class CompressionMiddleware
     /** True when `$ctype` starts with any of the NO_COMPRESS prefixes. */
     private function isNonCompressible(string $ctype): bool
     {
-        return array_any(self::NO_COMPRESS_PREFIXES, fn ($prefix) => \str_starts_with($ctype, $prefix));
+        return array_any(self::NO_COMPRESS_PREFIXES, fn($prefix) => \str_starts_with($ctype, $prefix));
     }
 
     /**
@@ -122,13 +123,13 @@ final readonly class CompressionMiddleware
                 continue;
             }
             [$token, $q] = \array_map('trim', \explode(';', $seg, 2) + [1 => 'q=1']);
-            $qVal = (float) (\preg_match('/q=([\d.]+)/', $q, $m) ? $m[1] : 1);
+            $qVal = (float)(\preg_match('/q=([\d.]+)/', $q, $m) ? $m[1] : 1);
             $parsed[] = [\strtolower($token), $qVal];
         }
 
         \usort(
             $parsed,
-            static fn (array $a, array $b): int => $b[1] <=> $a[1]   // highest q first
+            static fn(array $a, array $b): int => $b[1] <=> $a[1],   // highest q first
         );
 
         return \array_column($parsed, 0);

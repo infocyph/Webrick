@@ -22,9 +22,7 @@ final class Dispatcher
     /** @var array<int,MiddlewarePipeline> route-id ⇒ compiled pipeline */
     private array $pipelines = [];
 
-    public function __construct(private readonly Invoker $invoker)
-    {
-    }
+    public function __construct(private readonly Invoker $invoker) {}
 
     public function dispatch(
         CompiledRoute $route,

@@ -29,14 +29,14 @@ final readonly class RangeResponder
             return new Response(404);
         }
 
-        $stat  = fstat($fp) ?: [];
-        $len   = (int)($stat['size']  ?? 0);
+        $stat = fstat($fp) ?: [];
+        $len = (int)($stat['size'] ?? 0);
         $mtime = (int)($stat['mtime'] ?? time());
-        $etag  = '"' . dechex($len) . '-' . dechex($mtime) . '"';
+        $etag = '"' . dechex($len) . '-' . dechex($mtime) . '"';
 
         $headers += [
             'Accept-Ranges' => 'bytes',
-            'ETag'          => $etag,
+            'ETag' => $etag,
             'Last-Modified' => Utils::httpDate($mtime),
             'Cache-Control' => 'public, max-age=31536000, immutable',
         ];
@@ -55,7 +55,7 @@ final readonly class RangeResponder
         ?Request $req = null,
     ): Response {
         // Distinguish “no Range header” from “unsatisfiable/invalid Range header”
-        $rawRangeHeader   = $req?->getHeaderLine('Range') ?? '';
+        $rawRangeHeader = $req?->getHeaderLine('Range') ?? '';
         $rangeHeaderGiven = $rawRangeHeader !== '';
 
         /* 416 – unsatisfiable / invalid Range --------------------------- */
@@ -71,7 +71,7 @@ final readonly class RangeResponder
         /* 200 – full body (no Range header) ----------------------------- */
         if ($range === null) {
             $headers += [
-                'Content-Type'   => $mediaType,
+                'Content-Type' => $mediaType,
                 'Content-Length' => (string)$totalLength,
             ];
             // Was an invalid Range stripped earlier by some middleware?
@@ -91,9 +91,9 @@ final readonly class RangeResponder
         }
 
         $headers += [
-            'Content-Range'  => $range->contentRange(),
+            'Content-Range' => $range->contentRange(),
             'Content-Length' => (string)$length,
-            'Content-Type'   => $mediaType,
+            'Content-Type' => $mediaType,
         ];
 
         return new Response(206, self::wrapSeekable($source, $length), $headers);

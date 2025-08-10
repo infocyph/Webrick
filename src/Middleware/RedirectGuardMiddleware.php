@@ -8,9 +8,7 @@ use Infocyph\Webrick\Response\Response;
 
 final readonly class RedirectGuardMiddleware
 {
-    public function __construct(private array $allowedHosts)
-    {
-    }
+    public function __construct(private array $allowedHosts) {}
 
     public function __invoke(Request $req, Closure $next): Response
     {

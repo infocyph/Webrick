@@ -28,9 +28,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         return new self();
     }
 
-    private function __construct()
-    {
-    }
+    private function __construct() {}
 
     public function enableCache(string $cacheLocation): self
     {

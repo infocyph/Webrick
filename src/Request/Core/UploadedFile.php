@@ -20,8 +20,8 @@ final class UploadedFile
     /** @var string|Stream */
     private string|Stream $src;
 
-    private readonly ?int    $size;
-    private readonly int     $err;
+    private readonly ?int $size;
+    private readonly int $err;
     private readonly ?string $clientName;
     private readonly ?string $clientType;
 
@@ -30,16 +30,16 @@ final class UploadedFile
     /* ─────────────────────────── ctor ─────────────────────────── */
 
     /**
-     * @param string|Stream $src  tmp filename or stream
-     * @param int|null               $size bytes (0 / null ⇒ auto)
-     * @param int                    $err  UPLOAD_ERR_* constant
+     * @param string|Stream $src tmp filename or stream
+     * @param int|null $size bytes (0 / null ⇒ auto)
+     * @param int $err UPLOAD_ERR_* constant
      */
     public function __construct(
         string|Stream $src,
-        ?int   $size          = null,
-        int    $err           = UPLOAD_ERR_OK,
-        ?string $clientName   = null,
-        ?string $clientType   = null,
+        ?int $size = null,
+        int $err = UPLOAD_ERR_OK,
+        ?string $clientName = null,
+        ?string $clientType = null,
     ) {
         if (!is_string($src) && !$src instanceof Stream) {
             throw new InvalidArgumentException('Source must be filepath or StreamInterface');
@@ -48,9 +48,9 @@ final class UploadedFile
             throw new InvalidArgumentException('Invalid upload error code');
         }
 
-        $this->src        = $src;
-        $this->size       = $size;
-        $this->err        = $err;
+        $this->src = $src;
+        $this->size = $size;
+        $this->err = $err;
         $this->clientName = $clientName;
         $this->clientType = $clientType;
     }
@@ -61,10 +61,10 @@ final class UploadedFile
     {
         return new self(
             $spec['tmp_name'] ?? '',
-            $spec['size']     ?? null,
-            $spec['error']    ?? UPLOAD_ERR_NO_FILE,
-            $spec['name']     ?? null,
-            $spec['type']     ?? null,
+            $spec['size'] ?? null,
+            $spec['error'] ?? UPLOAD_ERR_NO_FILE,
+            $spec['name'] ?? null,
+            $spec['type'] ?? null,
         );
     }
 
@@ -130,10 +130,12 @@ final class UploadedFile
     {
         return $this->err;
     }
+
     public function getClientFilename(): ?string
     {
         return $this->clientName;
     }
+
     public function getClientMediaType(): ?string
     {
         return $this->clientType;
