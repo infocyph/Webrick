@@ -86,26 +86,49 @@ final class Uri
     /* ---------- 3. helpers (pure functions, tiny) ---------- */
 
     /** http vs https deduction (keeps your old rules) */
+    /** http vs https deduction (keeps your old rules) */
     private static function detectScheme(array $s): string
     {
-        if ((Request::getProxyHeaderFlags() & Request::HEADER_FORWARDED) !== 0) {
-            if (!empty($s['HTTP_FORWARDED'])) {
-                $first = explode(',', (string)$s['HTTP_FORWARDED'])[0];
-                if (preg_match('/proto="?([a-z]+)"?/i', $first, $m)) {
-                    $p = strtolower($m[1]);
-                    if ($p === 'https' || $p === 'http') {
-                        return $p;
-                    }
-                }
-            }
+        if ($p = self::protoFromForwarded($s)) {
+            return $p;
         }
+        if ($p = self::protoFromXForwarded($s)) {
+            return $p;
+        }
+        return self::protoFromServer($s);
+    }
 
+    private static function protoFromForwarded(array $s): ?string
+    {
+        if ((Request::getProxyHeaderFlags() & Request::HEADER_FORWARDED) === 0) {
+            return null;
+        }
+        $line = (string)($s['HTTP_FORWARDED'] ?? '');
+        if ($line === '') {
+            return null;
+        }
+        $first = explode(',', $line)[0];
+        if (preg_match('/proto="?([a-z]+)"?/i', $first, $m)) {
+            $p = strtolower($m[1]);
+            return ($p === 'https' || $p === 'http') ? $p : null;
+        }
+        return null;
+    }
+
+    private static function protoFromXForwarded(array $s): ?string
+    {
+        if ((Request::getProxyHeaderFlags() & Request::HEADER_X_FORWARDED_PROTO) === 0) {
+            return null;
+        }
+        $first = strtolower(trim(explode(',', (string)($s['HTTP_X_FORWARDED_PROTO'] ?? ''))[0]));
+        return $first === 'https' ? 'https' : ($first === 'http' ? 'http' : null);
+    }
+
+    private static function protoFromServer(array $s): string
+    {
         $https =
             (!empty($s['HTTPS']) && strtolower((string)$s['HTTPS']) === 'on')
             || (strtolower($s['REQUEST_SCHEME'] ?? '') === 'https')
-            || ((Request::getProxyHeaderFlags() & Request::HEADER_X_FORWARDED_PROTO) !== 0
-                ? strtolower(trim(explode(',', (string)($s['HTTP_X_FORWARDED_PROTO'] ?? ''))[0]))
-                : '') === 'https'
             || (strtolower($s['HTTP_FRONT_END_HTTPS'] ?? '') === 'on')
             || ((int)($s['SERVER_PORT'] ?? 0) === 443);
 

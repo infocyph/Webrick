@@ -94,12 +94,7 @@ final class CookieEncryptionMiddleware
     {
         /* server-side cached? --------------------------------------- */
         if (\str_starts_with($cipher, self::MODE_STORE)) {
-            if ($this->store === null) {
-                return null;
-            }
-            $id = \substr($cipher, 2);
-            $item = $this->store->getItem(self::CACHE_PREFIX . $id);
-            return $item->isHit() ? $item->get() : null;
+            return $this->decryptFromStore($cipher);
         }
 
         /* AES-GCM ---------------------------------------------------- */
@@ -108,6 +103,31 @@ final class CookieEncryptionMiddleware
             return null;
         }
 
+        [$mode, $pt] = $this->aesGcmDecrypt($raw);
+        if ($pt === null) {
+            return null;
+        }
+
+        return $this->decompress($mode, $pt);
+    }
+
+    /** Resolve server-side stored payloads (MODE_STORE). */
+    private function decryptFromStore(string $cipher): mixed
+    {
+        if ($this->store === null) {
+            return null;
+        }
+        $id = \substr($cipher, 2);
+        $item = $this->store->getItem(self::CACHE_PREFIX . $id);
+        return $item->isHit() ? $item->get() : null;
+    }
+
+    /**
+     * AES-256-GCM decrypt the $raw blob produced by encryptBlob().
+     * @return array{0:string,1:?string} [mode, plaintext|null]
+     */
+    private function aesGcmDecrypt(string $raw): array
+    {
         $mode = $raw[0];
         $iv = \substr($raw, 1, 12);
         $tag = \substr($raw, 13, 16);
@@ -121,10 +141,13 @@ final class CookieEncryptionMiddleware
             $iv,
             $tag,
         );
-        if ($pt === false) {
-            return null;
-        }
 
+        return [$mode, $pt === false ? null : $pt];
+    }
+
+    /** Map compression mode → decompressor and return plaintext (or null). */
+    private function decompress(string $mode, string $pt): mixed
+    {
         return match ($mode) {
             self::MODE_ZSTD => self::$hasZstd ? \zstd_uncompress($pt) : null,
             self::MODE_BROTLI => self::$hasBrotli ? \brotli_uncompress($pt) : null,

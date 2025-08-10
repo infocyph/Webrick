@@ -34,8 +34,8 @@ final readonly class ResponseLinterMiddleware
     private int $checks;
 
     /*───────────────────────── flags ─────────────────────────*/
-    public const BODY_REQUIRES_CTYPE   = 0b001;
-    public const NO_BODY_STATUSES      = 0b010;
+    public const BODY_REQUIRES_CTYPE = 0b001;
+    public const NO_BODY_STATUSES = 0b010;
     public const COMPRESSED_NEEDS_VARY = 0b100;
 
     /**
@@ -57,50 +57,62 @@ final readonly class ResponseLinterMiddleware
     public function __invoke(Request $req, Closure $next): Response
     {
         $resp = $next($req);
-
-        if ($this->checks === 0) {                 // short-circuit when disabled
+        if ($this->checks === 0) {
             return $resp;
         }
 
-        $code    = $resp->getStatusCode();
-        $body    = $resp->getBody();
-        $bodyLen = $body->getSize();
-
-        if ($bodyLen === null && $body->isSeekable()) {
-            $pos     = $body->tell();
-            $bodyLen = $body->getSize() ?? strlen($body->getContents());
-            $body->seek($pos);
-        } elseif ($bodyLen === null) {
-            $bodyLen = 0;                          // non-seekable & unknown
-        }
-
-        /* ① Content-Type required on non-empty bodies */
-        if (
-            ($this->checks & self::BODY_REQUIRES_CTYPE) !== 0 &&
-            $bodyLen > 0 &&
-            $resp->getHeaderLine('Content-Type') === ''
-        ) {
-            throw new RuntimeException('Linter: missing Content-Type header');
-        }
-
-        /* ② Body forbidden for 204 / 304 */
-        if (
-            ($this->checks & self::NO_BODY_STATUSES) !== 0 &&
-            $bodyLen > 0 &&
-            ($code === 204 || $code === 304)
-        ) {
-            throw new RuntimeException("Linter: body not allowed on {$code}");
-        }
-
-        /* ③ Compressed payloads must advertise Vary */
-        if (
-            ($this->checks & self::COMPRESSED_NEEDS_VARY) !== 0 &&
-            $resp->hasHeader('Content-Encoding') &&
-            stripos($resp->getHeaderLine('Vary'), 'accept-encoding') === false
-        ) {
-            throw new RuntimeException('Linter: compressed but missing Vary: Accept-Encoding');
-        }
+        $len = $this->bodyLength($resp);
+        $this->assertContentTypeIfBody($resp, $len);
+        $this->assertNoBodyOnStatuses($resp, $len);
+        $this->assertVaryOnCompressed($resp);
 
         return $resp;
+    }
+
+    private function bodyLength(Response $r): int
+    {
+        $b = $r->getBody();
+        $len = $b->getSize();
+        if ($len !== null) {
+            return $len;
+        }
+        if ($b->isSeekable()) {
+            $pos = $b->tell();
+            $len = $b->getSize() ?? strlen($b->getContents());
+            $b->seek($pos);
+            return $len;
+        }
+        return 0;
+    }
+
+    private function assertContentTypeIfBody(Response $r, int $len): void
+    {
+        if (($this->checks & self::BODY_REQUIRES_CTYPE) !== 0 &&
+            $len > 0 &&
+            $r->getHeaderLine('Content-Type') === '') {
+            throw new \RuntimeException('Linter: missing Content-Type header');
+        }
+    }
+
+    private function assertNoBodyOnStatuses(Response $r, int $len): void
+    {
+        if (($this->checks & self::NO_BODY_STATUSES) === 0 || $len === 0) {
+            return;
+        }
+        $code = $r->getStatusCode();
+        if ($code === 204 || $code === 304) {
+            throw new \RuntimeException("Linter: body not allowed on {$code}");
+        }
+    }
+
+    private function assertVaryOnCompressed(Response $r): void
+    {
+        if (($this->checks & self::COMPRESSED_NEEDS_VARY) === 0) {
+            return;
+        }
+        if ($r->hasHeader('Content-Encoding') &&
+            stripos($r->getHeaderLine('Vary'), 'accept-encoding') === false) {
+            throw new \RuntimeException('Linter: compressed but missing Vary: Accept-Encoding');
+        }
     }
 }

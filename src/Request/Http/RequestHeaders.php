@@ -38,46 +38,70 @@ final class RequestHeaders
     /** Import HTTP headers from SAPI/$_SERVER into PSR-7 shape: name => string[] */
     public static function extractFromServer(array $srv): array
     {
-        // 1) Fast path (available on Apache/FPM/etc.)
-        $raw = \function_exists('getallheaders') ? (array) \getallheaders() : [];
-        $out = [];
+        $out = \function_exists('getallheaders')
+            ? self::viaGetAllHeaders()
+            : self::viaServerFallback($srv);
 
-        if ($raw !== []) {
-            foreach ($raw as $name => $val) {
-                $out[$name] = \is_array($val) ? \array_values($val) : [(string) $val];
-            }
-            // Some SAPIs omit these even when present in $_SERVER
-            foreach (['CONTENT_TYPE' => 'Content-Type', 'CONTENT_LENGTH' => 'Content-Length', 'CONTENT_MD5' => 'Content-Md5'] as $sk => $hn) {
-                if (isset($srv[$sk]) && !isset($out[$hn])) {
-                    $out[$hn] = [(string) $srv[$sk]];
-                }
-            }
-        } else {
-            // 2) Portable fallback from $_SERVER
-            foreach ($srv as $k => $v) {
-                if (\strncmp($k, 'HTTP_', 5) === 0) {
-                    // HTTP_ACCEPT_ENCODING → Accept-Encoding
-                    $name = \str_replace(' ', '-', \ucwords(\strtolower(\strtr(\substr($k, 5), '_', ' '))));
-                    $out[$name] = [\is_array($v) ? \implode(',', $v) : (string) $v];
-                }
-            }
-            foreach (['CONTENT_TYPE' => 'Content-Type', 'CONTENT_LENGTH' => 'Content-Length', 'CONTENT_MD5' => 'Content-Md5'] as $sk => $hn) {
-                if (isset($srv[$sk])) {
-                    $out[$hn] = [(string) $srv[$sk]];
-                }
-            }
-        }
-
-        // 3) Authorization fallbacks (often stripped by server)
-        if (!isset($out['Authorization'])) {
-            if (isset($srv['HTTP_AUTHORIZATION'])) {
-                $out['Authorization'] = [(string) $srv['HTTP_AUTHORIZATION']];
-            } elseif (isset($srv['REDIRECT_HTTP_AUTHORIZATION'])) {
-                $out['Authorization'] = [(string) $srv['REDIRECT_HTTP_AUTHORIZATION']];
-            }
-        }
+        self::backfillContentHeaders($srv, $out);
+        self::backfillAuthorization($srv, $out);
 
         return $out;
+    }
+
+    /** Fast path when getallheaders() exists. */
+    private static function viaGetAllHeaders(): array
+    {
+        return array_map(function ($val) {
+            return \is_array($val) ? \array_values($val) : [(string)$val];
+        }, (array)\getallheaders());
+    }
+
+    /** Portable fallback: build headers from $_SERVER. */
+    private static function viaServerFallback(array $srv): array
+    {
+        $out = [];
+        foreach ($srv as $k => $v) {
+            if (\strncmp($k, 'HTTP_', 5) !== 0) {
+                continue;
+            }
+            // HTTP_ACCEPT_ENCODING → Accept-Encoding
+            $name = \str_replace(
+                ' ',
+                '-',
+                \ucwords(\strtolower(\strtr(\substr($k, 5), '_', ' '))),
+            );
+            $out[$name] = [\is_array($v) ? \implode(',', $v) : (string)$v];
+        }
+        return $out;
+    }
+
+    /** Ensure Content-* headers exist when SAPIs place them only in $_SERVER. */
+    private static function backfillContentHeaders(array $srv, array &$out): void
+    {
+        foreach (
+            [
+                'CONTENT_TYPE' => 'Content-Type',
+                'CONTENT_LENGTH' => 'Content-Length',
+                'CONTENT_MD5' => 'Content-Md5',
+            ] as $sk => $hn
+        ) {
+            if (isset($srv[$sk]) && !isset($out[$hn])) {
+                $out[$hn] = [(string)$srv[$sk]];
+            }
+        }
+    }
+
+    /** Some servers strip Authorization; restore from $_SERVER if available. */
+    private static function backfillAuthorization(array $srv, array &$out): void
+    {
+        if (isset($out['Authorization'])) {
+            return;
+        }
+        if (isset($srv['HTTP_AUTHORIZATION'])) {
+            $out['Authorization'] = [(string)$srv['HTTP_AUTHORIZATION']];
+        } elseif (isset($srv['REDIRECT_HTTP_AUTHORIZATION'])) {
+            $out['Authorization'] = [(string)$srv['REDIRECT_HTTP_AUTHORIZATION']];
+        }
     }
 
     /* ================================================================
@@ -100,42 +124,63 @@ final class RequestHeaders
         return $this->all = new HeaderBag($hdr);
     }
 
-    /** Add Authorization header when PHP_AUTH_* populated. */
+    /** Add Authorization header when PHP_AUTH_* populated (and related fallbacks). */
     private function injectAuthorisation(array &$hdr): void
     {
         $srv = $this->req->getServerParams();
         $added = false;
 
-        // Basic / Digest via PHP_AUTH_*
+        $this->injectFromPhpAuth($srv, $hdr, $added);
+        $this->injectFromExplicitAuthorization($srv, $hdr, $added);
+    }
+
+    /** Populate from PHP_AUTH_USER/PHP_AUTH_PW or PHP_AUTH_DIGEST. */
+    private function injectFromPhpAuth(array $srv, array &$hdr, bool &$added): void
+    {
         if (!empty($srv['PHP_AUTH_USER']) && !isset($hdr['Authorization'])) {
             $pw = $srv['PHP_AUTH_PW'] ?? '';
             $hdr['Authorization'] = ['Basic ' . base64_encode($srv['PHP_AUTH_USER'] . ':' . $pw)];
             $added = true;
-        } elseif (!empty($srv['PHP_AUTH_DIGEST'])) {
+            return;
+        }
+        if (!empty($srv['PHP_AUTH_DIGEST'])) {
             $hdr['Authorization'] = [$srv['PHP_AUTH_DIGEST']];
             $added = true;
         }
+    }
 
-        // Explicit HTTP_AUTHORIZATION fallback
-        if (!$added) {
-            $line = $srv['HTTP_AUTHORIZATION']
-                ?? $srv['REDIRECT_HTTP_AUTHORIZATION']
-                ?? null;
-
-            if ($line) {
-                $hdr['Authorization'] ??= [$line];
-
-                // also back-fill PHP_AUTH_* for Basic
-                if (str_starts_with(strtolower($line), 'basic ')) {
-                    $cred = base64_decode(substr($line, 6));
-                    if ($cred !== false && str_contains($cred, ':')) {
-                        [$u, $p] = explode(':', $cred, 2);
-                        $hdr['PHP_AUTH_USER'] = [$u];
-                        $hdr['PHP_AUTH_PW'] = [$p];
-                    }
-                }
-            }
+    /** Fallback to HTTP_AUTHORIZATION/REDIRECT_HTTP_AUTHORIZATION; backfill PHP_AUTH_* for Basic. */
+    private function injectFromExplicitAuthorization(array $srv, array &$hdr, bool $alreadyAdded): void
+    {
+        if ($alreadyAdded) {
+            return;
         }
+        $line = $srv['HTTP_AUTHORIZATION']
+            ?? $srv['REDIRECT_HTTP_AUTHORIZATION']
+            ?? null;
+
+        if (!$line) {
+            return;
+        }
+
+        $hdr['Authorization'] ??= [$line];
+
+        // also back-fill PHP_AUTH_* for Basic (helps downstream libs)
+        if (\str_starts_with(\strtolower($line), 'basic ')) {
+            $this->backfillPhpAuthFromBasicHeader($line, $hdr);
+        }
+    }
+
+    /** Decode Basic header and backfill PHP_AUTH_USER/PHP_AUTH_PW. */
+    private function backfillPhpAuthFromBasicHeader(string $line, array &$hdr): void
+    {
+        $cred = \base64_decode(\substr($line, 6));
+        if ($cred === false || !\str_contains($cred, ':')) {
+            return;
+        }
+        [$u, $p] = \explode(':', $cred, 2);
+        $hdr['PHP_AUTH_USER'] = [$u];
+        $hdr['PHP_AUTH_PW'] = [$p];
     }
 
     /* ================================================================
@@ -167,7 +212,7 @@ final class RequestHeaders
                 continue;
             }
             [$mime, $q] = array_pad(array_map('trim', explode(';', $seg, 2)), 2, '');
-            $qVal = (float) (preg_match('/q=([\d.]+)/', $q, $m) ? $m[1] : 1);
+            $qVal = (float)(preg_match('/q=([\d.]+)/', $q, $m) ? $m[1] : 1);
             if ($qVal == 0.0) {
                 continue; // not acceptable
             }
@@ -194,10 +239,10 @@ final class RequestHeaders
         $lenLine = $this->req->getHeaderLine('Content-Length');
 
         return $this->content = [
-            'type'    => $type ?: null,
+            'type' => $type ?: null,
             'charset' => $charset,
-            'length'  => ($lenLine !== '' ? (int) $lenLine : null),
-            'md5'     => strtolower($this->req->getHeaderLine('Content-Md5')),
+            'length' => ($lenLine !== '' ? (int)$lenLine : null),
+            'md5' => strtolower($this->req->getHeaderLine('Content-Md5')),
         ];
     }
 
@@ -214,13 +259,13 @@ final class RequestHeaders
         $rangeLine = $h->getHeaderLine('Range');
 
         $dep = [
-            'if_match'            => $this->csv($h->getHeaderLine('If-Match')),
-            'if_none_match'       => $this->csv($h->getHeaderLine('If-None-Match')),
-            'if_modified_since'   => $this->httpDate($h->getHeaderLine('If-Modified-Since')),
+            'if_match' => $this->csv($h->getHeaderLine('If-Match')),
+            'if_none_match' => $this->csv($h->getHeaderLine('If-None-Match')),
+            'if_modified_since' => $this->httpDate($h->getHeaderLine('If-Modified-Since')),
             'if_unmodified_since' => $this->httpDate($h->getHeaderLine('If-Unmodified-Since')),
-            'prefer_safe'         => (strtolower($h->first('Prefer') ?? '') === 'safe')
+            'prefer_safe' => (strtolower($h->first('Prefer') ?? '') === 'safe')
                 && $this->req->getUri()->getScheme() === 'https',
-            'range'               => null,
+            'range' => null,
         ];
 
         if ($rangeLine !== '') {

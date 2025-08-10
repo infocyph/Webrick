@@ -42,70 +42,104 @@ final readonly class ThrottleMiddleware
 
     public function __invoke(Request $req, Closure $next): Response
     {
-        /* 1. derive cache-key ------------------------------------------------*/
-        if ($this->identifierResolver) {
-            $identifier = ($this->identifierResolver)($req);
-        } else {
-            $identifier = $req->getAttribute('client_ip')
-                ?? $req->getServerParams()['REMOTE_ADDR']
-                ?? 'unknown';
+        [$key, $reset] = $this->deriveKeyAndReset($req);
+        $payload       = $this->loadPayload($key, $reset);
+
+        if ($this->isExceeded($payload)) {
+            return $this->limitExceededResponse($payload);
         }
 
-        $key  = 't:' . sha1($identifier);
-        $item = $this->pool->getItem($key);
+        // remaining AFTER counting this request
+        $remain = max(0, $this->max - $payload['hits'] - 1);
 
-        /* 2. unpack payload --------------------------------------------------*/
+        $this->persist($key, $payload);
+
+        $resp = $next($req);
+
+        return $this->attachRateHeaders($resp, $remain, $payload['reset']);
+    }
+
+    /* -----------------------------------------------------------------------
+     * Helpers (split for readability / lower complexity)
+     * -------------------------------------------------------------------- */
+
+    /** @return array{0:string,1:int} */
+    private function deriveKeyAndReset(Request $req): array
+    {
+        $identifier = $this->identifierResolver
+            ? ($this->identifierResolver)($req)
+            : ($req->getAttribute('client_ip')
+                ?? $req->getServerParams()['REMOTE_ADDR']
+                ?? 'unknown');
+
+        $key   = 't:' . sha1((string) $identifier);
+        $reset = time() + $this->window;
+
+        return [$key, $reset];
+    }
+
+    /** @return array{hits:int, reset:int} */
+    private function loadPayload(string $key, int $reset): array
+    {
+        $item    = $this->pool->getItem($key);
         $payload = $item->isHit() ? $item->get() : null;
 
         // Legacy integer? upgrade in-place
         if (\is_int($payload)) {
-            $payload = ['hits' => $payload, 'reset' => time() + $this->window];
+            $payload = ['hits' => $payload, 'reset' => $reset];
         }
 
         if (!\is_array($payload)) {          // first visit
-            $payload = ['hits' => 0, 'reset' => time() + $this->window];
+            $payload = ['hits' => 0, 'reset' => $reset];
         }
 
-        $hits   = $payload['hits'];
-        $reset  = $payload['reset'];
-        $remain = max(0, $this->max - $hits - 1);
+        $payload['hits'] = (int) $payload['hits'];
+        $payload['reset'] = (int) $payload['reset'];
 
-        /* 3. limit exceeded? -------------------------------------------------*/
-        if ($hits >= $this->max) {
-            $retryAfter = $this->formatRetryAfter($reset - time());
+        return $payload;
+    }
 
-            return new Response(
-                status  : 429,
-                headers : [
-                    'Content-Type'       => 'text/plain; charset=utf-8',
-                    'Retry-After'        => $retryAfter,
-                    'X-RateLimit-Limit'  => (string) $this->max,
-                    'X-RateLimit-Remaining' => '0',
-                    'X-RateLimit-Reset'  => (string) $reset,
-                ],
-                body    : new Stream('Too Many Requests')
-            )->withHeader('Server-Timing', 'throttle;dur=0');
-        }
+    private function isExceeded(array $payload): bool
+    {
+        return $payload['hits'] >= $this->max;
+    }
 
-        /* 4. increment & persist -------------------------------------------*/
-        $payload['hits'] = $hits + 1;
+    private function limitExceededResponse(array $payload): Response
+    {
+        $retryAfter = $this->formatRetryAfter($payload['reset'] - time());
+
+        return new Response(
+            status  : 429,
+            headers : [
+                'Content-Type'            => 'text/plain; charset=utf-8',
+                'Retry-After'             => $retryAfter,
+                'X-RateLimit-Limit'       => (string) $this->max,
+                'X-RateLimit-Remaining'   => '0',
+                'X-RateLimit-Reset'       => (string) $payload['reset'],
+            ],
+            body    : new Stream('Too Many Requests')
+        )->withHeader('Server-Timing', 'throttle;dur=0');
+    }
+
+    private function persist(string $key, array $payload): void
+    {
+        $payload['hits']++;
+
+        $item = $this->pool->getItem($key);
         $item->set($payload);
         // Align cache expiration with our reset-timestamp
-        $item->expiresAt(new DateTimeImmutable()->setTimestamp($reset));
+        $item->expiresAt((new DateTimeImmutable())->setTimestamp($payload['reset']));
         $this->pool->saveDeferred($item);
+    }
 
-        /* 5. downstream -----------------------------------------------------*/
-        $resp = $next($req);
-
+    private function attachRateHeaders(Response $resp, int $remain, int $reset): Response
+    {
         return $resp
             ->withHeader('X-RateLimit-Limit', (string) $this->max)
             ->withHeader('X-RateLimit-Remaining', (string) $remain)
             ->withHeader('X-RateLimit-Reset', (string) $reset);
     }
 
-    /* -----------------------------------------------------------------------
-     * Helpers
-     * -------------------------------------------------------------------- */
     private function formatRetryAfter(int $seconds): string
     {
         $seconds = max(1, $seconds); // never zero/negative

@@ -100,15 +100,11 @@ class ServerRequest extends Message
     {
         $srv = $_SERVER;
         $uri = Uri::fromServerParams($srv);
-
-        $in = fopen('php://input', 'rb') ?: fopen('php://temp', 'rb');
-        $body = new Stream($in);
-        $httpVer = str_starts_with(($srv['SERVER_PROTOCOL'] ?? ''), 'HTTP/')
-            ? substr((string)$srv['SERVER_PROTOCOL'], 5)
-            : '1.1';
+        $body = self::openInputStream();
+        $httpVer = self::detectHttpVersion($srv);
         $headers = RequestHeaders::extractFromServer($srv);
 
-        /* build request (headers filled later in one go) */
+        // build request (headers re-imported once below)
         $req = new static(
             $srv['REQUEST_METHOD'] ?? 'GET',
             $uri,
@@ -120,11 +116,34 @@ class ServerRequest extends Message
             self::normaliseFiles($_FILES),
         );
 
-        /* 1) Import headers **once** (RequestHeaders also adds auth fall-backs) */
-        $bag = new RequestHeaders($req)->all();
-        $req->headers = $bag->all();
+        $req = self::importHeadersOnce($req);
+        $req = self::maybeParseUrlEncodedForNonPost($req, $body);
+        return self::attachQueryAndCookies($req, $uri);
+    }
 
-        /* 2) x-www-form-urlencoded body for verbs ≠ POST */
+    private static function openInputStream(): Stream
+    {
+        $in = fopen('php://input', 'rb') ?: fopen('php://temp', 'rb');
+        return new Stream($in);
+    }
+
+    private static function detectHttpVersion(array $srv): string
+    {
+        $proto = (string)($srv['SERVER_PROTOCOL'] ?? '');
+        return str_starts_with($proto, 'HTTP/') ? substr($proto, 5) : '1.1';
+    }
+
+    /** Import headers exactly once (includes auth fallbacks via RequestHeaders). */
+    private static function importHeadersOnce(self $req): self
+    {
+        $bag = new RequestHeaders($req)->all();
+        $req->headers = $bag->all();   // protected prop on parent; same class context
+        return $req;
+    }
+
+    /** Parse application/x-www-form-urlencoded for PUT/PATCH/DELETE */
+    private static function maybeParseUrlEncodedForNonPost(self $req, Stream $body): self
+    {
         if (
             in_array($req->method, ['PUT', 'PATCH', 'DELETE'], true) &&
             str_contains(strtolower($req->getHeaderLine('Content-Type')), 'application/x-www-form-urlencoded')
@@ -132,13 +151,17 @@ class ServerRequest extends Message
             parse_str((string)$body, $form);
             $req = $req->withParsedBody($form);
         }
+        return $req;
+    }
 
-        /* 3) query + cookies */
+    private static function attachQueryAndCookies(self $req, Uri $uri): self
+    {
         parse_str($uri->getQuery(), $qs);
         return $req
             ->withQueryParams($qs)
             ->withCookieParams($_COOKIE);
     }
+
 
     /* ======== 4.  PSR-7 RequestInterface =============================== */
 
