@@ -1,76 +1,121 @@
-## 1 How **Request → Route → Response** hang together today
+love it — let’s consolidate the stack into a few “by-type” bundles without losing any behavior. here’s a crisp plan before we touch code.
 
-| Stage                   | What you already ship                                                                                                                                             | Nice touches                                                                                      | Gaps / frictions                                                                                                                                                                                |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Request**       | `Request` façade extends your lean PSR-7 `ServerRequest` and keeps Laravel-style helpers (e.g. `input()`, `expectsJson()`, dot-notation `data()` etc.) | • Lazy JSON / XML parsing`<br>`• Automatic method-spoofing (`getEffectiveMethod()`)         | • Validation stub only throws `InvalidArgumentException`; no rules engine or error bag`<br>`• No first-class *FormRequest* analogue (rules + authorisation + sanitisation in one place) |
-| **Routing layer** | Clean PSR-15 router contract (`RouterInterface`) plus HTTP-verb shortcuts and `urlFor()` generator                                                            | • Route compilation & caching already abstracted (`RouteCache`)                                | • I/O path is missing: we don’t see an**actual dispatcher** that turns the compiled table into a constant-time lookup.                                                                  |
-| **Response**      | Ultra-lean immutable `Response` with helpers `json()`, `redirect()`, `attachment()/download()`                                                            | • Branch-free internal cloning`<br>`• Built-in `Cache-Control` builder and security headers | • No*Response Macro* registration like Laravel’s `Response::macro()` (would fit nicely given you already use `MacroMix`)                                                                |
+# goals
 
----
+* fewer middlewares to think about
+* keep hot paths cheap
+* preserve route-level overrides (attributes) and your Vary accumulator wiring
+* provide a smooth deprecation path
 
-## 2 Fast-path performance: where to shave more latency
+# new bundles (and what they replace)
 
-| Hot path                         | Suggested tweak                                                                                                                                                                                                                                                            | Expected win                                                                                     |
-| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| **Route dispatch**         | Compile*one* combined PCRE for static & param routes (FastRoute-style) and freeze it to an opcode-cached PHP file instead of serialising objects. Keep the matching loop branch-free by ordering routes **first by method, then by host, finally by regex index**. | 10-30 µs saved per request on PHP-FPM for medium tables (3-4× faster than naïve `foreach`). |
-| **Method override & CSRF** | You already pay to parse `$_POST` for `_method` and CSRF every time. Gate those middlewares behind a cheap header check (`content-type` + `content-length>0`) to avoid `php://input` reads on most GET requests.                                                 | \~5 µs off uncached GETs                                                                        |
-| **Request variable map**   | `Request::buildVariableMap()` walks the whole bag on every clone. Memoise the *final* merged map and only rebuild when `query`, `parsedBody`, or `cookie` actually change.                                                                                       | \~2 µs per additional `with*()` hop                                                           |
-| **Response emit**          | In `SapiEmitter` you already chunk-flush but still echo full body for small payloads. Add `if ($len < 8192) { echo $body; return; }` fast-path.                                                                                                                        | Avoid fsync/flush call on tiny JSON                                                              |
+1. **GatewayHardeningMiddleware**
 
----
+    * merges: `TrustProxiesMiddleware`, `HttpsEnforceMiddleware`, `HopByHopStripMiddleware`, `RedirectGuardMiddleware`
+    * job: trust proxy cidrs + header mask, validate Host, enforce HTTPS (308), strip hop-by-hop (req+resp), block open redirects (allow-list)
+    * notes: keep proxy setup (Request::setTrustedProxies) and host regex precompile as “once per worker” just like today.
 
-## 3 Feature-parity audit vs. Laravel 10/11
+2. **RequestLimitsMiddleware**
 
-| Laravel feature                                      | Present?                                                               | How to add / where to hook                                                                                                     |
-| ---------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Route groups (`Route::prefix()->middleware()`)     | **Partly** (middleware via `RouteInterface::withMiddleware()`) | Add a `scope()` / `group()` builder that pushes defaults onto a stack during registration.                                 |
-| Route model binding & implicit bindings              | ✗                                                                     | Decorate the dispatcher: when a placeholder has `:int` etc. inject the matching Eloquent model or return 404.                |
-| Resource / apiResource routes                        | ✗                                                                     | Thin macro that expands to seven route definitions; keep optional `only()`/`except()`.                                     |
-| Route caching CLI (`route:cache`, `route:clear`) | **Half-done** (class `RouteCache` exists)                      | Provide small CLI wrapper (Symfony Console) that calls `RouteCache::warm()` and writes to `bootstrap/cache/routes.php`.    |
-| Signed URLs / URL verification                       | ✗                                                                     | Re-use your existing `CookieEncryptionMiddleware` AES-GCM helper to HMAC the query string and add `Route::signed()` check. |
-| Response macros (`Response::macro()`)              | ✗ (but `MacroMix` is already included)                              | Expose `Response::macro()` & `Response::hasMacro()` proxies that just forward to `MacroMix`.                             |
+    * merges: `ValidateHeaderSizeMiddleware`, `ValidatePostSizeMiddleware`
+    * job: fast 431/413 guards right up front
+    * notes: run **before** anything that parses/reads the body.
 
----
+3. **FormSupportMiddleware**
 
-## 4 Concrete next steps (ordered, bite-sized)
+    * merges: `GuardEmptyPost`, `MethodOverrideMiddleware`
+    * job: skip heavy form paths when certainly empty; apply `_method`/header override **before routing**
+    * notes: `GuardEmptyPost`’s “fast pass” stays intact; no extra cost on non-POSTs.
 
-1. **Ship a real dispatcher**
-   *Take inspiration from nikic/FastRoute*:
+4. **InputSanitizerMiddleware**
 
-   ```php
-   // at container boot
-   $routes = $cache->load() ?? $compiler->build($definitions);
-   [$static, $dynamic] = $optimiser->split($routes);
-   $matcher = new CombinedRegexMatcher($static, $dynamic);
-   ```
+    * merges: `TrimStringsMiddleware`, `ConvertEmptyStringsToNullMiddleware`
+    * job: trim + normalize empty strings in query/body/uploads
+    * notes: JSON bodies untouched as today. Safe to run before CSRF.
 
-   The matcher returns `[handler, vars]` in ≤ O(1).
-2. **Write a `RouteServiceProvider`** that registers:
+5. **NegotiationMiddleware**
 
-   * global middlewares (trust-proxies, error-handler, etc.)
-   * route groups / prefixes
-   * HTTP kernel order list (so users can reorder like Laravel’s `$middlewarePriority`).
-3. **Elevate validation**
-   Swap the stub in `Request::validate()` for the new `symfony/validator`-5 component; cache parsed rules to APCu.
-4. **Add macro support everywhere**
-   `MacroMix` is already a trait ­– expose sugar on `Response`, `Router`, and `Request` so userland can do:
+    * merges: `ContentNegotiationMiddleware`, `CharsetAttachMiddleware` (drop the latter’s separate class)
+    * job: content-type + charset negotiation (with route `Produces`), stash `negotiated.*` attrs, set `Content-Type` if missing, register Vary: Accept (+ Accept-Charset only when it affects octets), **no charset on JSON**
+    * notes: keeps your existing rules; CharsetAttach becomes a no-op folded in here.
 
-   ```php
-   Response::macro('caps', fn($txt) => Response::json(['msg'=>strtoupper($txt)]));
-   ```
-5. **Generate CLI tooling**
-   Small Symfony Console app:
+6. **LocaleMiddleware**
 
-   * `webrick route:list` – dump compiled table
-   * `webrick route:cache` – warm and write PHP file
-   * `webrick cache:clear` – prune PSR-6/16 stores
+    * keeps: `LocaleNegotiationMiddleware` logic, but it can be merged into NegotiationMiddleware **optionally**.
+    * recommendation: keep this separate unless you want one mega-negotiator. It’s cheap and conceptually clear.
+    * job: pick locale, set request `locale`, emit `Content-Language`, Vary: Accept-Language.
 
----
+7. **CacheValidatorsMiddleware**
 
-## 5 Micro-optimisations you can do in-place
+    * merges: `ConditionalMiddleware` + `ETagMiddleware`
+    * job:
 
-* Replace `preg_match(self::NO_COMPRESS_RX…)` inside `CompressionMiddleware` with `str_contains()` slice checks for the
-  common happy-path (`text/html;…`) before falling back to regex.
-* Inline the tiny `norm()` helper in `HeaderBag` (it’s hot in every header lookup).
-* In `Response::json()` switch to `json_encode($data, flags|JSON_THROW_ON_ERROR)` then catch once in the middleware to
-  avoid per-call branch.
+        * pre: evaluate If-None-Match / If-Modified-Since / Range using the provided entity meta closure; short-circuit 304/412; drop stale `Range`
+        * post: if controller forgot, add strong ETag from body (seekable) using chunked hashing (your `Utils::etagFromStream`)
+    * notes: keeps the closure model for cheap entity lookup; avoids double hashing.
+
+8. **CorsAndPoliciesMiddleware**
+
+    * merges: `CorsMiddleware`, `SecurityHeadersMiddleware`, `ContentSecurityPolicyMiddleware`, `ClientHintMiddleware`, `NelMiddleware`
+    * job: handle preflight fully in-memory; add CORS headers on all responses (respect creds rule & Vary: Origin), then attach security headers (HSTS via `SecurityHeaders::tight` options), CSP, Accept-CH, NEL/Report-To.
+    * notes: one config object with subsections (`cors`, `security`, `csp`, `clientHints`, `nel`). Route attribute `Cors` still overrides the `cors` subsection.
+
+9. **TelemetryMiddleware**
+
+    * merges: `RequestLoggingMiddleware`, `ResponseTimeMiddleware`
+    * job: single timer; log combined entry; add `X-Response-Time` + `Server-Timing: app;dur=…`
+    * notes: no double timers; you can later plug more spans (DB, view) if you want.
+
+10. **Keep as standalones**
+
+* `CompressionMiddleware` (transforms the entity; keep independent)
+* `CookieEncryptionMiddleware` (decrypt early, re-encrypt late)
+* `ThrottleMiddleware` (stateful; clean to keep separate)
+* `CsrfMiddleware` (security boundary; keep separate)
+* `MaintenanceModeMiddleware` (single-purpose)
+* `VaryAccumulatorMiddleware` (remains the final combiner)
+* `ResponseLinterMiddleware` (dev-only guard; keep separate)
+
+# proposed pipeline order (top → bottom)
+
+1. `MaintenanceModeMiddleware`
+2. **RequestLimitsMiddleware**  (431/413)
+3. **GatewayHardeningMiddleware** (trust proxies, HTTPS, Host, hop-by-hop)
+4. **TelemetryMiddleware** (start timer)
+5. `ThrottleMiddleware`
+6. `CookieEncryptionMiddleware` (decrypt cookies)
+7. **FormSupportMiddleware** (method override / fast-skip)
+8. **InputSanitizerMiddleware**
+9. **NegotiationMiddleware**
+10. **LocaleMiddleware** (or fold into #9)
+11. **CorsAndPoliciesMiddleware** (preflight here; policies applied always)
+12. **CacheValidatorsMiddleware** (pre 304/412; drop stale Range)
+13. controller / handler
+14. `CookieEncryptionMiddleware` (encrypt Set-Cookie) — implicitly in the same class; it already wraps after next()
+15. `CompressionMiddleware` (and weaken ETag, drop Content-MD5)
+16. `VaryAccumulatorMiddleware`
+17. `ResponseLinterMiddleware` (dev only)
+
+# deprecation & BC plan
+
+* keep old class names for one minor release:
+
+    * make them **thin proxies** that construct and delegate to the new bundles (or to the relevant subsection), so DI bindings don’t break.
+    * mark deprecated in phpdoc + trigger `@deprecated` notices in dev.
+* config:
+
+    * introduce a single `HttpPolicyConfig` (for #8) and `NegotiationConfig` (for #9) objects; map old constructor args to new config where possible.
+
+# routing & attributes
+
+* `Produces` (content types/charsets) → still honored by **NegotiationMiddleware**.
+* `Cors` attribute → still honored by **CorsAndPoliciesMiddleware** (overrides only `cors` subsection).
+* `CacheValidatorsMiddleware` keeps the same “meta closure” signature for conditional requests.
+
+# open questions before we implement
+
+* do you want **Locale** folded into **Negotiation** (#9) or kept separate as now?
+* should `RedirectGuard` live inside **GatewayHardening** (as planned) or remain optional?
+* any additional headers you want in **CorsAndPolicies** (e.g., `Access-Control-Expose-Headers`)?
+
+if you’re good with this shape, I’ll draft the new classes + the compatibility shims and a sample container wiring so you can drop it in.
