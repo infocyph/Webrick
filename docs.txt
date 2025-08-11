@@ -1,0 +1,2089 @@
+=====src/Middleware/CharsetAttachMiddleware.php=====
+<?php
+
+namespace Infocyph\Webrick\Middleware;
+
+use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Response\Negotiation\CharsetNegotiator;
+use Infocyph\Webrick\Response\Response;
+
+final class CharsetAttachMiddleware
+{
+    public function __construct(private array $supported = ['utf-8', 'iso-8859-1']) {}
+
+    public function __invoke(Request $req, \Closure $next): Response
+    {
+        $resp = $next($req);
+
+        $ctype = $resp->getHeaderLine('Content-Type');
+        if ($ctype === '' || stripos($ctype, 'charset=') !== false) {
+            return $resp;
+        }
+        if (!preg_match('#^(text/|application/(?:xml|xhtml\+xml))#i', $ctype)) {
+            return $resp;
+        }
+        if (stripos($ctype, 'application/json') === 0) {
+            return $resp;
+        } // be explicit
+
+        $chosen = CharsetNegotiator::choose(
+            $this->supported,
+            $req->getHeaderLine('Accept-Charset'),
+        ) ?? $this->supported[0];
+
+        return $resp
+            ->withHeader('Content-Type', $ctype . '; charset=' . $chosen)
+            ->withSmartHeader('Vary', 'Accept-Charset');
+    }
+}
+
+rel_path=src/Middleware/CharsetAttachMiddleware.php
+=====src/Middleware/ClientHintMiddleware.php=====
+<?php
+
+declare(strict_types=1);
+
+namespace Infocyph\Webrick\Middleware;
+
+use Closure;
+use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Response\Response;
+
+/**
+ * Advertise that the server understands modern Client-Hints.
+ *
+ * Enable only when you actually consume the hints to avoid
+ * unnecessary UA entropy. Typical placement: global stack,
+ * _after_ security headers.
+ */
+final readonly class ClientHintMiddleware
+{
+    /** @param string[] $hints e.g. ['Sec-CH-UA', 'Sec-CH-UA-Platform'] */
+    public function __construct(
+        private array $hints = [
+            'Sec-CH-UA',
+            'Sec-CH-UA-Mobile',
+            'Sec-CH-UA-Platform',
+            'Sec-CH-UA-Arch',
+            'Sec-CH-UA-Model',
+            'Sec-CH-UA-Full-Version',
+        ],
+    ) {}
+
+    public function __invoke(Request $req, Closure $next): Response
+    {
+        $resp = $next($req);
+        return $resp->withHeader('Accept-CH', implode(', ', $this->hints));
+    }
+}
+
+rel_path=src/Middleware/ClientHintMiddleware.php
+=====src/Middleware/CompressionMiddleware.php=====
+<?php
+
+declare(strict_types=1);
+
+namespace Infocyph\Webrick\Middleware;
+
+use Closure;
+use Infocyph\Webrick\Request\Core\Stream;
+use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Response\Response;
+
+final readonly class CompressionMiddleware
+{
+    private const MIN_SIZE = 1024;
+
+    /** MIME prefixes we never compress */
+    private const NO_COMPRESS_PREFIXES = [
+        'image/',
+        'video/',
+        'audio/',
+        'application/zip',
+        'application/gzip',
+        'application/octet-stream',
+    ];
+
+    /** encoder → callable (only invoked when extension is loaded) */
+    private const ALGO = [
+        'br' => 'brotli_compress',
+        'zstd' => 'zstd_compress',
+        'gzip' => 'gzencode',
+    ];
+
+    /* ─────────────────────────────────────────────────────────────── */
+
+    public function __invoke(Request $req, Closure $next): Response
+    {
+        $resp = $next($req);
+
+        /* -------- quick exits -------------------------------------- */
+        if ($resp->hasHeader('Content-Encoding')) {
+            return $resp; // already encoded
+        }
+
+        $contentLength = $resp->getHeaderLine('Content-Length');
+        if (
+            ($contentLength !== '' && (int)$contentLength < self::MIN_SIZE) ||
+            ($contentLength === '' && ($resp->getBody()->getSize() ?? 0) < self::MIN_SIZE)
+        ) {
+            return $resp; // payload too small
+        }
+
+        $ctype = strtolower($resp->getHeaderLine('Content-Type'));
+        if ($ctype !== '' && $this->isNonCompressible($ctype)) {
+            return $resp; // binary / already-compressed
+        }
+
+        /* -------- pick best algorithm ----------------------------- */
+        $alg = $this->negotiate($req->getHeaderLine('Accept-Encoding'));
+        if ($alg === null) {
+            return $resp; // client accepts none
+        }
+
+        /* -------- encode ------------------------------------------ */
+        $raw = (string)$resp->getBody();
+        $enc = ($alg === 'gzip')
+            ? gzencode($raw, 6, \ZLIB_ENCODING_GZIP)
+            : \call_user_func(self::ALGO[$alg], $raw);
+
+        if ($enc === false) { // encoder failed – extremely rare
+            return $resp;
+        }
+
+        // Register Vary for negotiation
+        $req = VaryAccumulatorMiddleware::add($req, 'Accept-Encoding');
+
+        // Apply encoded body + headers
+        $resp = $resp
+            ->withBody(new Stream($enc))
+            ->withSmartHeader('Content-Encoding', $alg)
+            ->withSmartHeader('Content-Length', (string)\strlen($enc));
+
+        /* -------- ETag & Content-MD5 correctness ------------------ */
+        // If we changed the octets on the wire and a strong ETag exists, make it weak.
+        if ($resp->hasHeader('ETag')) {
+            $tag = $resp->getHeaderLine('ETag');
+            if ($tag !== '' && !str_starts_with($tag, 'W/')) {
+                $resp = $resp->withHeader('ETag', 'W/' . $tag);
+            }
+        }
+
+        // Content-MD5 (if present) is now invalid; remove it.
+        if ($resp->hasHeader('Content-MD5')) {
+            $resp = $resp->withoutHeader('Content-MD5');
+        }
+
+        return $resp;
+    }
+
+    /* ───────────────────────── helpers ──────────────────────────── */
+
+    /** True when `$ctype` starts with any of the NO_COMPRESS prefixes. */
+    private function isNonCompressible(string $ctype): bool
+    {
+        return array_any(self::NO_COMPRESS_PREFIXES, fn ($prefix) => \str_starts_with($ctype, $prefix));
+    }
+
+    /**
+     * Return the best supported encoding from Accept-Encoding or **null**.
+     */
+    private function negotiate(string $header): ?string
+    {
+        $candidates = $this->parseAcceptHeader($header);
+
+        foreach ($candidates as $alg) {
+            if (isset(self::ALGO[$alg]) && \function_exists(self::ALGO[$alg])) {
+                return $alg; // direct hit
+            }
+            if ($alg === '*') { // wildcard ⇒ pick first available
+                foreach (['br', 'zstd', 'gzip'] as $fallback) {
+                    if (isset(self::ALGO[$fallback]) && \function_exists(self::ALGO[$fallback])) {
+                        return $fallback;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    /** Parse and sort “br;q=1.0, gzip;q=0.8” → ordered list ['br','gzip',…] */
+    private function parseAcceptHeader(string $header): array
+    {
+        if ($header === '') {
+            return [];
+        }
+
+        $parsed = [];
+        foreach (\explode(',', $header) as $seg) {
+            if ($seg === '') {
+                continue;
+            }
+            [$token, $q] = \array_map('trim', \explode(';', $seg, 2) + [1 => 'q=1']);
+            $qVal = (float)(\preg_match('/q=([\d.]+)/', $q, $m) ? $m[1] : 1);
+            $parsed[] = [\strtolower($token), $qVal];
+        }
+
+        \usort(
+            $parsed,
+            static fn (array $a, array $b): int => $b[1] <=> $a[1], // highest q first
+        );
+
+        return \array_column($parsed, 0);
+    }
+}
+
+rel_path=src/Middleware/CompressionMiddleware.php
+=====src/Middleware/ConditionalMiddleware.php=====
+<?php
+
+declare(strict_types=1);
+
+namespace Infocyph\Webrick\Middleware;
+
+use Closure;
+use Infocyph\Webrick\Response\Conditional\ConditionalValidator;
+use Infocyph\Webrick\Response\Conditional\Outcome;
+use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Request\Request;
+
+/**
+ * Pre-flight validator for ETag / Last-Modified / Range handling.
+ *
+ * The callable you pass in **must** return `[etag|null, lastModified|null]`
+ * for the current entity. Everything else is taken care of.
+ */
+final readonly class ConditionalMiddleware
+{
+    /**
+     * @param Closure(Request): array{string|null,int|null} $meta
+     */
+    public function __construct(private Closure $meta) {}
+
+    public function __invoke(Request $req, Closure $next): Response
+    {
+        /* ---------- entity metadata ----------------------------------- */
+        [$etag, $lm] = ($this->meta)($req);
+        $validator = new ConditionalValidator($etag, $lm);
+        $result = $validator->evaluate($req);
+
+        /* ---------- 304 / 412 short-circuit --------------------------- */
+        if ($result->state !== Outcome::PASS) {
+            return Response::empty($result->http, $result->headers);
+        }
+
+        /* ---------- stale Range? strip so downstream sends 200 -------- */
+        if ($req->hasHeader('Range') && !$validator->isRangeFresh($req)) {
+            $req = $req
+                ->withoutHeader('Range')
+                ->withAttribute('range_dropped', true);
+        }
+
+        /* ---------- downstream --------------------------------------- */
+        $resp = $next($req);
+
+        /* ---------- add ETag / Last-Modified if controller forgot ----- */
+        foreach ($result->headers as $h => $v) {
+            if (!$resp->hasHeader($h)) {
+                $resp = $resp->withHeader($h, $v);
+            }
+        }
+
+        return $resp;
+    }
+}
+
+rel_path=src/Middleware/ConditionalMiddleware.php
+=====src/Middleware/ContentNegotiationMiddleware.php=====
+<?php
+
+// src/Middleware/ContentNegotiationMiddleware.php
+declare(strict_types=1);
+
+namespace Infocyph\Webrick\Middleware;
+
+use Closure;
+use Infocyph\Webrick\Request\Core\Stream;
+use Infocyph\Webrick\Request\Http\ContentNegotiator;
+use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Router\Definition\Attribute\Produces;
+
+final class ContentNegotiationMiddleware
+{
+    /** @param string[] $produces e.g. ['application/json','text/html'] */
+    /** @param string[] $charsets e.g. ['utf-8','iso-8859-1'] */
+    public function __construct(
+        private array $produces = ['application/json', 'text/html'],
+        private array $charsets = ['utf-8'],
+    ) {}
+
+    public function __invoke(Request $req, Closure $next): Response
+    {
+        // Route-specific override via attribute (optional)
+        $prod = $this->produces;
+        $char = $this->charsets;
+
+        /** @var Produces|null $attr */
+        $attr = $req->getAttribute('produces');
+        if ($attr instanceof Produces) {
+            $prod = $attr->types ?: $prod;
+            if ($attr->charsets !== null && $attr->charsets !== []) {
+                $char = $attr->charsets;
+            }
+        }
+
+        // 1) Negotiate from the request headers
+        $neg = new ContentNegotiator($req->headers());
+        $type = $neg->preferred($prod);                  // null ⇒ 406
+        $cset = $this->pickCharset($neg, $char);         // may be null
+
+        if ($type === null) {
+            // 406 Not Acceptable (Vary will still be finalized by VaryAccumulatorMiddleware)
+            return new Response(
+                status: 406,
+                headers: ['Content-Type' => 'text/plain; charset=utf-8'],
+                body: new Stream('Not acceptable.'),
+            );
+        }
+
+        // Register Vary for what we actually negotiated
+        VaryAccumulatorMiddleware::add($req, 'Accept');
+
+        // Only register Accept-Charset if (a) client sent it and (b) charset affects bytes
+        if (
+            $cset !== null
+            && $req->getHeaderLine('Accept-Charset') !== ''
+            && $this->charsetMattersFor($type)
+        ) {
+            VaryAccumulatorMiddleware::add($req, 'Accept-Charset');
+        }
+
+        // Stash for controllers (if they want to see what was chosen)
+        $req = $req
+            ->withAttribute('negotiated.type', $type)
+            ->withAttribute('negotiated.charset', $cset);
+
+        // 2) Downstream
+        $resp = $next($req);
+
+        // 3) If controller didn’t set Content-Type, apply our negotiated one
+        if (
+            !$resp->hasHeader('Content-Type') &&
+            !in_array($resp->getStatusCode(), [204, 304], true) // no body statuses
+        ) {
+            $resp = $resp->withHeader('Content-Type', $this->composeContentType($type, $cset));
+        }
+
+        return $resp;
+    }
+
+    /* ───────────────────────── helpers ───────────────────────── */
+
+    private function pickCharset(ContentNegotiator $neg, array $candidates): ?string
+    {
+        foreach ($candidates as $cs) {
+            if ($neg->supportsCharset(strtolower($cs))) {
+                return $cs;
+            }
+        }
+        return null;
+    }
+
+    private function composeContentType(string $type, ?string $charset): string
+    {
+        $lower = strtolower($type);
+        $hasParam = str_contains($type, ';');
+
+        // Do NOT append charset for JSON
+        $isJson = str_starts_with($lower, 'application/json');
+
+        // Append for text/*, *xml*, and JavaScript types when no existing params
+        $needsCs = !$hasParam && !$isJson && (
+                str_starts_with($lower, 'text/')
+                || str_contains($lower, 'xml')
+                || $lower === 'application/javascript'
+                || $lower === 'text/javascript'
+            );
+
+        return $needsCs && $charset ? "{$type}; charset={$charset}" : $type;
+    }
+
+    /** True when charset changes the actual octets on the wire for this type. */
+    private function charsetMattersFor(string $type): bool
+    {
+        $t = strtolower($type);
+
+        // JSON is always UTF-8 by spec on the wire; don't vary on charset.
+        if (str_starts_with($t, 'application/json')) {
+            return false;
+        }
+
+        return str_starts_with($t, 'text/')
+            || str_contains($t, 'xml')
+            || $t === 'application/javascript'
+            || $t === 'text/javascript';
+    }
+}
+
+rel_path=src/Middleware/ContentNegotiationMiddleware.php
+=====src/Middleware/ContentSecurityPolicyMiddleware.php=====
+<?php
+
+declare(strict_types=1);
+
+namespace Infocyph\Webrick\Middleware;
+
+use Closure;
+use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Request\Request;
+
+/**
+ * Attaches a configurable Content-Security-Policy header.
+ */
+final readonly class ContentSecurityPolicyMiddleware
+{
+    public function __construct(
+        private string $policy =
+        "default-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self';",
+    ) {}
+
+    public function __invoke(Request $req, Closure $next): Response
+    {
+        return $next($req)->withHeader('Content-Security-Policy', $this->policy);
+    }
+}
+
+rel_path=src/Middleware/ContentSecurityPolicyMiddleware.php
+=====src/Middleware/ConvertEmptyStringsToNullMiddleware.php=====
+<?php
+
+declare(strict_types=1);
+
+namespace Infocyph\Webrick\Middleware;
+
+use Closure;
+use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Request\Request;
+
+/**
+ * Mirrors Laravel’s behaviour: converts `''` → `null` in request data.
+ *
+ * Should run *after* `TrimStringsMiddleware`.
+ */
+final readonly class ConvertEmptyStringsToNullMiddleware
+{
+    public function __invoke(Request $req, Closure $next): Response
+    {
+        $body = $req->getParsedBody();
+        if (\is_array($body)) {
+            $body = self::nullify($body);
+            $req = $req->withParsedBody($body);
+        }
+
+        $query = $req->getQueryParams();
+        if ($query) {
+            $req = $req->withQueryParams(self::nullify($query));
+        }
+
+        return $next($req);
+    }
+
+    private static function nullify(array $data): array
+    {
+        array_walk_recursive(
+            $data,
+            static function (&$v): void {
+                if ($v === '') {
+                    $v = null;
+                }
+            },
+        );
+        return $data;
+    }
+}
+
+rel_path=src/Middleware/ConvertEmptyStringsToNullMiddleware.php
+=====src/Middleware/CookieEncryptionMiddleware.php=====
+<?php
+
+declare(strict_types=1);
+
+namespace Infocyph\Webrick\Middleware;
+
+use Closure;
+use InvalidArgumentException;
+use LengthException;
+use Infocyph\Webrick\Response\Cookies\Cookie;
+use Infocyph\Webrick\Response\Cookies\CookieJar;
+use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Response\Response;
+use Psr\Cache\CacheItemPoolInterface;
+use Random\RandomException;
+
+/**
+ * AES-256-GCM cookie encryption with optional compression and smart chunking.
+ *
+ * Perf tweaks:
+ *   • compression-availability resolved **once per worker process**
+ *   • no repeated `function_exists()` calls in hot paths
+ */
+final class CookieEncryptionMiddleware
+{
+    /* compression flags (1-byte, ASCII) */
+    private const MODE_NONE = '0';
+    private const MODE_ZSTD = 'z';
+    private const MODE_BROTLI = 'b';
+    private const MODE_GZIP = 'g';
+
+    private const MODE_STORE = 'S:';
+    private const CACHE_PREFIX = 'enc_cookie.';
+    private static bool $hasZstd = false;
+    private static bool $hasBrotli = false;
+    private static bool $hasGzip = false;
+
+    public function __construct(
+        private string $key,                           // 32-byte raw key
+        private string $cookiePrefix = 'enc_',
+        private int $maxBytes = 3_800,
+        private ?CacheItemPoolInterface $store = null,
+        private int $storeTtl = 86_400,
+    ) {
+        if (\strlen($this->key) !== 32) {
+            throw new \InvalidArgumentException('Key must be 32 bytes (AES-256).');
+        }
+        if ($this->maxBytes < 256 || $this->maxBytes > 4096) {
+            throw new \InvalidArgumentException('maxBytes must be 256–4096.');
+        }
+
+        /* probe once per worker */
+        if (self::$hasZstd === false && self::$hasBrotli === false && self::$hasGzip === false) {
+            self::$hasZstd = \function_exists('zstd_compress');
+            self::$hasBrotli = \function_exists('brotli_compress');
+            self::$hasGzip = \function_exists('gzdeflate');
+        }
+    }
+
+    /* ───────────── middleware entry ───────────── */
+
+    public function __invoke(Request $req, Closure $next): Response
+    {
+        $req = $req->withCookieParams($this->decryptAll($req->getCookieParams()));
+        $resp = $next($req);
+        return $this->encryptAll($resp);
+    }
+
+    /* ───────────── decrypt path ───────────── */
+
+    private function decryptAll(array $cookies): array
+    {
+        $rx = '/^(' . \preg_quote($this->cookiePrefix, '/') . '[^.]+)(?:\.p(\d+))?$/';
+        $out = $assemblies = [];
+
+        foreach ($cookies as $name => $val) {
+            if (!\preg_match($rx, $name, $m)) {             // not encrypted
+                $out[$name] = $val;
+                continue;
+            }
+            $base = $m[1];
+            $idx = (int)($m[2] ?? 1);
+            $assemblies[$base][$idx] = $val;
+        }
+
+        foreach ($assemblies as $base => $parts) {
+            \ksort($parts);
+            $out[$base] = $this->decrypt(\implode('', $parts));
+        }
+        return $out;
+    }
+
+    private function decrypt(string $cipher): mixed
+    {
+        /* server-side cached? --------------------------------------- */
+        if (\str_starts_with($cipher, self::MODE_STORE)) {
+            return $this->decryptFromStore($cipher);
+        }
+
+        /* AES-GCM ---------------------------------------------------- */
+        $raw = \base64_decode($cipher, true);
+        if ($raw === false || \strlen($raw) < 29) {
+            return null;
+        }
+
+        [$mode, $pt] = $this->aesGcmDecrypt($raw);
+        if ($pt === null) {
+            return null;
+        }
+
+        return $this->decompress($mode, $pt);
+    }
+
+    /** Resolve server-side stored payloads (MODE_STORE). */
+    private function decryptFromStore(string $cipher): mixed
+    {
+        if ($this->store === null) {
+            return null;
+        }
+        $id = \substr($cipher, 2);
+        $item = $this->store->getItem(self::CACHE_PREFIX . $id);
+        return $item->isHit() ? $item->get() : null;
+    }
+
+    /**
+     * AES-256-GCM decrypt the $raw blob produced by encryptBlob().
+     * @return array{0:string,1:?string} [mode, plaintext|null]
+     */
+    private function aesGcmDecrypt(string $raw): array
+    {
+        $mode = $raw[0];
+        $iv = \substr($raw, 1, 12);
+        $tag = \substr($raw, 13, 16);
+        $ct = \substr($raw, 29);
+
+        $pt = \openssl_decrypt(
+            $ct,
+            'aes-256-gcm',
+            $this->key,
+            \OPENSSL_RAW_DATA,
+            $iv,
+            $tag,
+        );
+
+        return [$mode, $pt === false ? null : $pt];
+    }
+
+    /** Map compression mode → decompressor and return plaintext (or null). */
+    private function decompress(string $mode, string $pt): mixed
+    {
+        return match ($mode) {
+            self::MODE_ZSTD => self::$hasZstd ? \zstd_uncompress($pt) : null,
+            self::MODE_BROTLI => self::$hasBrotli ? \brotli_uncompress($pt) : null,
+            self::MODE_GZIP => \gzinflate($pt),
+            default => $pt,
+        };
+    }
+
+    /* ───────────── encrypt path ───────────── */
+
+    private function encryptAll(Response $resp): Response
+    {
+        $jar = new CookieJar();
+
+        foreach ($resp->getHeader('Set-Cookie') as $line) {
+            [$name, $payload] = \explode('=', $line, 2);
+            if (!\str_starts_with($name, $this->cookiePrefix)) {
+                continue;
+            }
+
+            foreach ($this->encryptSegments(\rawurldecode($payload)) as $i => $seg) {
+                $cname = $i === 1 ? $name : "{$name}.p{$i}";
+                $jar = $jar->add(Cookie::make($cname, $seg)->httpOnly()->secure());
+            }
+        }
+        return $jar->apply($resp->withoutHeader('Set-Cookie'));
+    }
+
+    /**
+     * @return array<int,string> 1-based segment list
+     * @throws InvalidArgumentException|RandomException
+     */
+    private function encryptSegments(string $plaintext): array
+    {
+        $cipher = $this->encryptBlob($plaintext);
+
+        /* fits in one? */
+        if (\strlen($cipher) <= $this->maxBytes) {
+            return [1 => $cipher];
+        }
+
+        /* chunk into ≤10 parts */
+        $parts = \str_split($cipher, $this->maxBytes);
+        if (\count($parts) <= 10) {
+            return \array_combine(\range(1, \count($parts)), $parts);
+        }
+
+        /* cache fallback */
+        if ($this->store !== null) {
+            $id = \bin2hex(\random_bytes(16));
+            $item = $this->store->getItem(self::CACHE_PREFIX . $id);
+            $item->set($plaintext)->expiresAfter($this->storeTtl);
+            $this->store->save($item);
+            return [1 => self::MODE_STORE . $id];
+        }
+
+        throw new LengthException(
+            'Encrypted cookie exceeds safe size even after chunking; '
+            . 'consider server-side storage or reduce payload.',
+        );
+    }
+
+    /**
+     * Compress (best of zstd / brotli / gzip) → encrypt → base64.
+     */
+    private function encryptBlob(string $pt): string
+    {
+        $best = $pt;
+        $bestMode = self::MODE_NONE;
+
+        if (self::$hasZstd && ($c = \zstd_compress($pt, 3)) !== false && \strlen($c) + 1 < \strlen($best)) {
+            $best = $c;
+            $bestMode = self::MODE_ZSTD;
+        }
+        if (self::$hasBrotli && ($c = \brotli_compress($pt, 4)) !== false && \strlen($c) + 1 < \strlen($best)) {
+            $best = $c;
+            $bestMode = self::MODE_BROTLI;
+        }
+        if (self::$hasGzip && ($c = \gzdeflate($pt, 4)) !== false && \strlen($c) + 1 < \strlen($best)) {
+            $best = $c;
+            $bestMode = self::MODE_GZIP;
+        }
+
+        /* AES-GCM round-trip (always) */
+        $iv = \random_bytes(12);
+        $tag = '';
+        $ct = \openssl_encrypt(
+            $best,
+            'aes-256-gcm',
+            $this->key,
+            \OPENSSL_RAW_DATA,
+            $iv,
+            $tag,
+        );
+
+        return \base64_encode($bestMode . $iv . $tag . $ct);
+    }
+}
+
+rel_path=src/Middleware/CookieEncryptionMiddleware.php
+=====src/Middleware/CorsMiddleware.php=====
+<?php
+
+declare(strict_types=1);
+
+namespace Infocyph\Webrick\Middleware;
+
+use Closure;
+use Infocyph\Webrick\Request\Core\Stream;
+use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Router\Definition\Attribute\Cors;
+
+// ✅ add this
+
+/**
+ * Very small CORS layer (sufficient for most APIs).
+ *
+ * • Handles pre-flight 100 % in-memory (204 No Content).
+ * • Adds the CORS headers to *every* response.
+ */
+final readonly class CorsMiddleware
+{
+    /** @param string[] $origins (‘*’ ⇒ anything) */
+    public function __construct(
+        private array $origins = ['*'],
+        private string $methods = 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+        private string $headers = 'Content-Type, Authorization',
+        private int $maxAgeSeconds = 3600,
+        private bool $allowCredentials = true,
+    ) {}
+
+    public function __invoke(Request $req, Closure $next): Response
+    {
+        // Start with the globally configured policy
+        $policy = [
+            'origins' => $this->origins,
+            'methods' => $this->methods,
+            'headers' => $this->headers,
+            'maxAgeSeconds' => $this->maxAgeSeconds,
+            'allowCredentials' => $this->allowCredentials,
+        ];
+
+        // Route-specific policy override
+        /** @var Cors|null $routePolicy */
+        $routePolicy = $req->getAttribute('cors_policy');
+        if ($routePolicy instanceof Cors) {
+            $policy['origins'] = $routePolicy->origins;
+            $policy['methods'] = $routePolicy->methods ?? $policy['methods'];
+            $policy['headers'] = $routePolicy->headers ?? $policy['headers'];
+            $policy['maxAgeSeconds'] = $routePolicy->maxAgeSeconds ?? $policy['maxAgeSeconds'];
+            $policy['allowCredentials'] = $routePolicy->allowCredentials ?? $policy['allowCredentials'];
+        }
+
+        $origin = $req->getHeaderLine('Origin');
+        $allowed = $this->isAllowedOrigin($origin, $policy['origins']) ? $origin : null;
+
+        // ✅ When Origin reflection is possible (non-wildcard list), tell the accumulator.
+        if ($policy['origins'] !== ['*']) {
+            $req = VaryAccumulatorMiddleware::add($req, 'Origin');
+        }
+
+        /* ---------- Pre-flight (OPTIONS) --------------------------- */
+        if ($req->getMethod() === 'OPTIONS') {
+            return $this->applyHeaders(
+                new Response(204, new Stream('')),
+                $allowed,
+                $policy,
+            );
+        }
+
+        /* ---------- Normal request -------------------------------- */
+        $resp = $next($req);
+        return $this->applyHeaders($resp, $allowed, $policy);
+    }
+
+    /* -------------------------------------------------------------- */
+    private function applyHeaders(Response $r, ?string $origin, array $policy): Response
+    {
+        $r = $r
+            ->withHeader('Access-Control-Allow-Methods', $policy['methods'])
+            ->withHeader('Access-Control-Allow-Headers', $policy['headers'])
+            ->withHeader('Access-Control-Max-Age', (string)$policy['maxAgeSeconds']);
+
+        if ($policy['allowCredentials']) {
+            $r = $r->withHeader('Access-Control-Allow-Credentials', 'true');
+        }
+
+        // Reflect origin when allowed; otherwise wildcard (only when configured)
+        $r = $r->withHeader(
+            'Access-Control-Allow-Origin',
+            $origin ?? ($policy['origins'] === ['*'] ? '*' : ''),
+        );
+
+        if ($origin && $policy['allowCredentials']) {
+            // When credentials are enabled, wildcard is illegal – reflect.
+            $r = $r->withHeader('Access-Control-Allow-Origin', $origin);
+        }
+
+        return $r;
+    }
+
+    private function isAllowedOrigin(string $origin, array $allowedOrigins): bool
+    {
+        return $origin === ''
+            || $allowedOrigins === ['*']
+            || in_array($origin, $allowedOrigins, true);
+    }
+}
+
+rel_path=src/Middleware/CorsMiddleware.php
+=====src/Middleware/CsrfMiddleware.php=====
+<?php
+
+declare(strict_types=1);
+
+namespace Infocyph\Webrick\Middleware;
+
+use Closure;
+use Infocyph\Webrick\Request\Core\Stream;
+use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Response\Response;
+
+final readonly class CsrfMiddleware
+{
+    /** Public flag (can appear in a request) */
+    public const BYPASS_ATTR = '_csrf_bypass';
+    /** Private sentinel – never comes from the network */
+    private const TRUST_MARKER = '__csrf_internal__';
+
+    /**
+     * Mark a Request object as **trusted** (e.g. in tests, job replay, etc.).
+     * Down-stream code can now attach BYPASS_ATTR safely.
+     */
+    public static function markTrusted(Request $r): Request
+    {
+        return $r->withAttribute(self::TRUST_MARKER, true);
+    }
+
+    public function __invoke(Request $req, Closure $next): Response
+    {
+        /*────── secure bypass ──────────────────────────────────────────*/
+        if (
+            $req->getAttribute(self::TRUST_MARKER, false) === true &&
+            $req->getAttribute(self::BYPASS_ATTR, false) === true
+        ) {
+            return $next($req);                       // ✅ internal bypass
+        }
+
+        /*────── normal flow ───────────────────────────────────────────*/
+        if (!\in_array($req->getMethod(), ['POST', 'PUT', 'PATCH', 'DELETE'], true)) {
+            return $next($req);                      // safe verbs
+        }
+
+        if (!$req->matchesCsrfToken()) {
+            return new Response(
+                status: 419,
+                headers: ['Content-Type' => 'text/plain; charset=utf-8'],
+                body: new Stream('CSRF token mismatch.'),
+            );
+        }
+
+        return $next($req);
+    }
+}
+
+rel_path=src/Middleware/CsrfMiddleware.php
+=====src/Middleware/ErrorHandlerMiddleware.php=====
+<?php
+
+declare(strict_types=1);
+
+namespace Infocyph\Webrick\Middleware;
+
+use Closure;
+use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
+use Infocyph\Webrick\Exceptions\RouteNotFoundException;
+use Infocyph\Webrick\Request\Core\Stream;
+use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Request\Request;
+use Throwable;
+
+/**
+ * Converts uncaught exceptions into HTTP responses.
+ *
+ * Works with Webrick’s routing pipeline signature:
+ *   (Request $request, Closure $next): Response
+ */
+final readonly class ErrorHandlerMiddleware
+{
+    public function __construct(private bool $devMode = false) {}
+
+    public function __invoke(Request $request, Closure $next): Response
+    {
+        try {
+            return $next($request);
+        } catch (RouteNotFoundException $e) {
+            return $this->build(404, $e);
+        } catch (MethodNotAllowedException $e) {
+            return $this->build(405, $e, ['Allow' => implode(', ', $e->allowed)]);
+        } catch (Throwable $e) {
+            return $this->build(500, $e);
+        }
+    }
+
+    /* ------------------------------------------------------------------ */
+
+    private function build(int $status, Throwable $e, array $headers = []): Response
+    {
+        $payload = $this->devMode
+            ? "[DEBUG] $e: {$e->getMessage()}\n\n{$e->getTraceAsString()}"
+            : ($e->getMessage() ?: 'Unexpected error.');
+
+        $headers += ['Content-Type' => 'text/plain; charset=utf-8'];
+
+        return new Response(
+            status: $status,
+            body: new Stream($payload),
+            headers: $headers,
+        );
+    }
+}
+
+rel_path=src/Middleware/ErrorHandlerMiddleware.php
+=====src/Middleware/ETagMiddleware.php=====
+<?php
+
+declare(strict_types=1);
+
+namespace Infocyph\Webrick\Middleware;
+
+use Closure;
+use Infocyph\Webrick\Request\Core\Uri;
+use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Response\Internal\Utils;
+use Infocyph\Webrick\Request\Request;
+
+/**
+ * Adds a strong ETag (sha-1/16) when missing and body is seekable.
+ */
+final readonly class ETagMiddleware
+{
+    public function __invoke(Request $req, Closure $next): Response
+    {
+        $resp = $next($req);
+
+        if ($resp->hasHeader('ETag')
+            || !$resp->getBody()->isSeekable()
+            || $resp->getStatusCode() !== 200
+        ) {
+            return $resp;
+        }
+
+        $qs = Uri::normalizeQueryString($req->getUri()->getQuery());
+        $etag = Utils::etagFromStream($resp->getBody(), $qs);
+
+        return $resp->withHeader('ETag', $etag);
+    }
+}
+
+rel_path=src/Middleware/ETagMiddleware.php
+=====src/Middleware/GuardEmptyPost.php=====
+<?php
+
+declare(strict_types=1);
+
+namespace Infocyph\Webrick\Middleware;
+
+use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Response\Response;
+
+/**
+ * Skip expensive body-parsing middleware only when a form body is
+ * certainly absent.  Handles both Content-Length *and* chunked TE.
+ */
+final class GuardEmptyPost
+{
+    public function __invoke(Request $req, callable $next): Response
+    {
+        /* 1 – cheap predicates that GUARANTEE there is **no** form body */
+        if (
+            $req->getMethod() !== 'POST' ||
+            !$this->isForm($req->getHeaderLine('content-type')) ||
+            $this->isExplicitlyEmpty($req)
+        ) {
+            // fall straight through – no MethodOverride / CSRF parsing needed
+            return $next($req);
+        }
+
+        /* 2 – body might be present (len > 0 or chunked); keep heavy middleware */
+        return $next($req);
+    }
+
+    /* --------------------------------------------------------------------- */
+
+    private function isForm(string $ctype): bool
+    {
+        // strip parameters like "; charset=UTF-8"
+        $mime = strtolower(strtok($ctype, ';') ?: '');
+        return $mime === 'application/x-www-form-urlencoded'
+            || $mime === 'multipart/form-data';
+    }
+
+    /**
+     * True when we can assert the body is empty:
+     *   • `Content-Length: 0`
+     *   • *or* both CL & TE are absent (HTTP/1.0 style)
+     */
+    private function isExplicitlyEmpty(Request $req): bool
+    {
+        $cl = trim($req->getHeaderLine('content-length'));
+        if ($cl !== '') {
+            return (int)$cl === 0;                           // CL present + zero
+        }
+
+        // No Content-Length – check Transfer-Encoding
+        $te = strtolower($req->getHeaderLine('transfer-encoding'));
+
+        // Any TE other than "identity" means a body will stream in (chunked, gzip…)
+        return $te === '' || $te === 'identity';
+    }
+}
+
+rel_path=src/Middleware/GuardEmptyPost.php
+=====src/Middleware/HopByHopStripMiddleware.php=====
+<?php
+
+declare(strict_types=1);
+
+namespace Infocyph\Webrick\Middleware;
+
+use Closure;
+use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Response\Response;
+
+/**
+ * Removes hop-by-hop headers when Webrick acts as a *proxy* or
+ * gateway so they are not forwarded downstream (RFC 9110 §7.6).
+ */
+final readonly class HopByHopStripMiddleware
+{
+    private const HOP_BY_HOP = [
+        'connection',
+        'keep-alive',
+        'proxy-authenticate',
+        'proxy-authorization',
+        'te',
+        'trailers',
+        'transfer-encoding',
+        'upgrade',
+    ];
+
+    public function __invoke(Request $req, Closure $next): Response
+    {
+        // also strip dynamic tokens mentioned in "Connection"
+        $reqTokens = $this->parseConnectionTokens($req->getHeaderLine('Connection'));
+        foreach (array_unique(array_merge(self::HOP_BY_HOP, $reqTokens)) as $h) {
+            if ($req->hasHeader($h)) {
+                $req = $req->withoutHeader($h);
+            }
+        }
+
+        $resp = $next($req);
+
+        $resTokens = $this->parseConnectionTokens($resp->getHeaderLine('Connection'));
+        foreach (array_unique(array_merge(self::HOP_BY_HOP, $resTokens)) as $h) {
+            if ($resp->hasHeader($h)) {
+                $resp = $resp->withoutHeader($h);
+            }
+        }
+
+        return $resp;
+    }
+
+    private function parseConnectionTokens(string $line): array
+    {
+        if ($line === '') {
+            return [];
+        }
+        $out = [];
+        foreach (explode(',', $line) as $t) {
+            $t = strtolower(trim($t));
+            if ($t !== '') {
+                $out[] = $t;
+            }
+        }
+        return $out;
+    }
+}
+
+rel_path=src/Middleware/HopByHopStripMiddleware.php
+=====src/Middleware/HttpsEnforceMiddleware.php=====
+<?php
+
+declare(strict_types=1);
+
+namespace Infocyph\Webrick\Middleware;
+
+use Closure;
+use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Request\Request;
+
+/**
+ * Redirects every incoming request to HTTPS when `$productionMode` is true.
+ */
+final readonly class HttpsEnforceMiddleware
+{
+    public function __construct(private bool $productionMode = true) {}
+
+    public function __invoke(Request $request, Closure $next): Response
+    {
+        if (!$this->productionMode) {
+            return $next($request);
+        }
+
+        $uri = $request->getUri();
+        if ($uri->getScheme() !== 'https') {
+            $target = $uri->withScheme('https')->withPort(443);
+
+            return new Response(
+                status: 308,                                        // permanent redirect preserving verb
+                headers: ['Location' => (string)$target],
+            );
+        }
+
+        return $next($request);
+    }
+}
+
+rel_path=src/Middleware/HttpsEnforceMiddleware.php
+=====src/Middleware/LocaleNegotiationMiddleware.php=====
+<?php
+
+declare(strict_types=1);
+
+namespace Infocyph\Webrick\Middleware;
+
+use Closure;
+use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Response\Negotiation\LocaleNegotiator;
+
+/**
+ * Picks the best locale and adds:
+ *   • request attribute → 'locale'
+ *   • Content-Language → response header
+ *   • registers Vary: Accept-Language (written by VaryAccumulatorMiddleware)
+ */
+final readonly class LocaleNegotiationMiddleware
+{
+    /** @param string[] $supported Ordered by server-side preference */
+    public function __construct(
+        private array $supported,
+        private string $fallback = 'en',
+    ) {}
+
+    public function __invoke(Request $req, Closure $next): Response
+    {
+        // Decide locale via the negotiator (single source of truth)
+        [$chosen] = LocaleNegotiator::forRequest(
+            $req,
+            $this->supported ?: [$this->fallback],
+            $this->fallback,
+        );
+
+        // expose chosen locale to downstream & register Vary token
+        $req = $req->withAttribute('locale', $chosen);
+        $req = VaryAccumulatorMiddleware::add($req, 'Accept-Language');
+
+        $resp = $next($req);
+
+        // Write Content-Language; Vary is emitted by the accumulator
+        return $resp->withHeader('Content-Language', $chosen);
+    }
+}
+
+rel_path=src/Middleware/LocaleNegotiationMiddleware.php
+=====src/Middleware/MaintenanceModeMiddleware.php=====
+<?php
+
+declare(strict_types=1);
+
+namespace Infocyph\Webrick\Middleware;
+
+use Closure;
+use Infocyph\Webrick\Request\Core\Stream;
+use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Request\Request;
+
+/**
+ * Returns **503 Service Unavailable** when the "down file" exists.
+ *
+ * Usage:
+ *     $router->getContainer()->definitions()
+ *            ->bind(MaintenanceModeMiddleware::class,
+ *                   new MaintenanceModeMiddleware(__DIR__.'/../../storage/down'));
+ *
+ * …and add it to the global stack.
+ */
+final readonly class MaintenanceModeMiddleware
+{
+    public function __construct(
+        private string $file = __DIR__ . '/../../storage/framework/down',
+    ) {}
+
+    public function __invoke(Request $req, Closure $next): Response
+    {
+        if (!\file_exists($this->file)) {
+            return $next($req);
+        }
+
+        $payload = \file_get_contents($this->file) ?: 'Service is down for maintenance.';
+        return new Response(
+            status: 503,
+            headers: ['Content-Type' => 'text/plain; charset=utf-8', 'Retry-After' => '3600'],
+            body: new Stream($payload),
+        );
+    }
+}
+
+rel_path=src/Middleware/MaintenanceModeMiddleware.php
+=====src/Middleware/MethodOverrideMiddleware.php=====
+<?php
+
+declare(strict_types=1);
+
+namespace Infocyph\Webrick\Middleware;
+
+use Closure;
+use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Request\Request;
+
+/**
+ * Supports HTML-form method spoofing via:
+ *   – `X-HTTP-Method-Override` header, **or**
+ *   – `_method` field in `application/x-www-form-urlencoded` bodies.
+ *
+ * The override happens **before** routing, so Webrick will match the
+ * intended verb.
+ */
+final readonly class MethodOverrideMiddleware
+{
+    public function __construct(private string $header = 'X-HTTP-Method-Override') {}
+
+    public function __invoke(Request $request, Closure $next): Response
+    {
+        $newMethod = $request->getHeaderLine($this->header);
+
+        // Fallback to form field for classic POST forms
+        if ($newMethod === '' && $request::getMethodParamOverride() && is_array($request->getParsedBody())) {
+            $body = $request->getParsedBody();
+            $newMethod = $body['_method'] ?? '';
+        }
+
+        if ($newMethod !== '') {
+            $request = $request->withMethod(strtoupper($newMethod));
+        }
+
+        return $next($request);
+    }
+}
+
+rel_path=src/Middleware/MethodOverrideMiddleware.php
+=====src/Middleware/NelMiddleware.php=====
+<?php
+
+declare(strict_types=1);
+
+namespace Infocyph\Webrick\Middleware;
+
+use Closure;
+use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Request\Request;
+
+/**
+ * Injects **Network Error Logging** (NEL) + **Report-To** headers.
+ *
+ * Configure once at bootstrap; clients will send error reports
+ * asynchronously to the specified endpoint.
+ */
+final readonly class NelMiddleware
+{
+    public function __construct(
+        private string $reportGroup,
+        private string $reportEndpoint,           // absolute URL
+        private int $ttlSeconds = 86400,     // max-age
+        private bool $includeSub = true,
+        private bool $successFrac = false,     // collect successes?
+    ) {}
+
+    public function __invoke(Request $req, Closure $next): Response
+    {
+        $policy = [
+            'group' => $this->reportGroup,
+            'max_age' => $this->ttlSeconds,
+            'include_subdomains' => $this->includeSub,
+            'success_fraction' => $this->successFrac ? 1.0 : 0.0,
+            'failure_fraction' => 1.0,
+        ];
+
+        $reportTo = [
+            'group' => $this->reportGroup,
+            'max_age' => $this->ttlSeconds,
+            'endpoints' => [['url' => $this->reportEndpoint]],
+        ];
+
+        $resp = $next($req);
+        return $resp
+            ->withHeader('NEL', json_encode($policy, JSON_THROW_ON_ERROR))
+            ->withHeader('Report-To', json_encode($reportTo, JSON_THROW_ON_ERROR));
+    }
+}
+
+rel_path=src/Middleware/NelMiddleware.php
+=====src/Middleware/RedirectGuardMiddleware.php=====
+<?php
+
+namespace Infocyph\Webrick\Middleware;
+
+use Closure;
+use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Response\Response;
+
+final readonly class RedirectGuardMiddleware
+{
+    public function __construct(private array $allowedHosts) {}
+
+    public function __invoke(Request $req, Closure $next): Response
+    {
+        $resp = $next($req);
+
+        if ($resp->hasHeader('Location')) {
+            $loc = $resp->getHeaderLine('Location');
+            $host = parse_url($loc, PHP_URL_HOST);
+            if ($host && !in_array($host, $this->allowedHosts, true)) {
+                return Response::json(['error' => 'Open redirect blocked'], 400);
+            }
+        }
+        return $resp;
+    }
+}
+
+rel_path=src/Middleware/RedirectGuardMiddleware.php
+=====src/Middleware/RequestLoggingMiddleware.php=====
+<?php
+
+declare(strict_types=1);
+
+namespace Infocyph\Webrick\Middleware;
+
+use Closure;
+use Infocyph\Webrick\Request\Request;
+use Psr\Log\LoggerInterface;
+use Psr\Log\NullLogger;
+use Infocyph\Webrick\Response\Response;
+
+/**
+ * Logs a single line per request in Apache combined-style.
+ */
+final readonly class RequestLoggingMiddleware
+{
+    public function __construct(private LoggerInterface $log = new NullLogger()) {}
+
+    public function __invoke(Request $req, Closure $next): Response
+    {
+        $start = microtime(true);
+        $resp = $next($req);
+        $time = (int)((microtime(true) - $start) * 1000);
+
+        $ip = $req->getAttribute('client_ip')
+            ?? $req->getServerParams()['REMOTE_ADDR'] ?? '-';
+        $fromProxy = $req->getAttribute('is_trusted_proxy') ? 'proxy' : 'direct';
+        $method = $req->getMethod();
+        $uri = $req->getUri()->getPath();
+        $code = $resp->getStatusCode();
+        $len = $resp->getBody()->getSize() ?? '-';
+
+        $this->log->info(
+            sprintf(
+                '%s (%s) "%s %s" %d %s %dms',
+                $ip,
+                $fromProxy,
+                $method,
+                $uri,
+                $code,
+                $len,
+                $time,
+            ),
+        );
+
+        return $resp;
+    }
+}
+
+rel_path=src/Middleware/RequestLoggingMiddleware.php
+=====src/Middleware/ResponseLinterMiddleware.php=====
+<?php
+
+declare(strict_types=1);
+
+namespace Infocyph\Webrick\Middleware;
+
+use Closure;
+use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Response\Response;
+use RuntimeException;
+
+/**
+ * Guard that aborts when a response violates our internal HTTP spec.
+ *
+ * Enable individual checks through bit-flags:
+ *  • BODY_REQUIRES_CTYPE     – any non-empty body must declare Content-Type
+ *  • NO_BODY_STATUSES        – 204/304 MUST have an empty body
+ *  • COMPRESSED_NEEDS_VARY   – compressed reply MUST send Vary: Accept-Encoding
+ *
+ * Example (container binding):
+ *     // dev - everything on
+ *     new ResponseLinterMiddleware(
+ *         ResponseLinterMiddleware::BODY_REQUIRES_CTYPE
+ *       | ResponseLinterMiddleware::NO_BODY_STATUSES
+ *       | ResponseLinterMiddleware::COMPRESSED_NEEDS_VARY
+ *     );
+ *
+ *     // prod - keep only the cheap status-code guard
+ *     new ResponseLinterMiddleware(ResponseLinterMiddleware::NO_BODY_STATUSES);
+ */
+final readonly class ResponseLinterMiddleware
+{
+    /** @var int bitmask of enabled checks */
+    private int $checks;
+
+    /*───────────────────────── flags ─────────────────────────*/
+    public const BODY_REQUIRES_CTYPE = 0b001;
+    public const NO_BODY_STATUSES = 0b010;
+    public const COMPRESSED_NEEDS_VARY = 0b100;
+
+    /**
+     * @param int|bool $checks
+     *        • int  – bitmask of flags
+     *        • bool – kept for BC; `true` ⇒ all flags, `false` ⇒ none
+     */
+    public function __construct(int|bool $checks = false)
+    {
+        // bool → full-on/full-off for legacy signature
+        $this->checks = \is_bool($checks)
+            ? ($checks ? self::BODY_REQUIRES_CTYPE
+                | self::NO_BODY_STATUSES
+                | self::COMPRESSED_NEEDS_VARY
+                : 0)
+            : $checks;
+    }
+
+    public function __invoke(Request $req, Closure $next): Response
+    {
+        $resp = $next($req);
+        if ($this->checks === 0) {
+            return $resp;
+        }
+
+        $len = $this->bodyLength($resp);
+        $this->assertContentTypeIfBody($resp, $len);
+        $this->assertNoBodyOnStatuses($resp, $len);
+        $this->assertVaryOnCompressed($resp);
+
+        return $resp;
+    }
+
+    private function bodyLength(Response $r): int
+    {
+        $b = $r->getBody();
+        $len = $b->getSize();
+        if ($len !== null) {
+            return $len;
+        }
+        if ($b->isSeekable()) {
+            $pos = $b->tell();
+            $len = $b->getSize() ?? strlen($b->getContents());
+            $b->seek($pos);
+            return $len;
+        }
+        return 0;
+    }
+
+    private function assertContentTypeIfBody(Response $r, int $len): void
+    {
+        if (($this->checks & self::BODY_REQUIRES_CTYPE) !== 0 &&
+            $len > 0 &&
+            $r->getHeaderLine('Content-Type') === '') {
+            throw new \RuntimeException('Linter: missing Content-Type header');
+        }
+    }
+
+    private function assertNoBodyOnStatuses(Response $r, int $len): void
+    {
+        if (($this->checks & self::NO_BODY_STATUSES) === 0 || $len === 0) {
+            return;
+        }
+        $code = $r->getStatusCode();
+        if ($code === 204 || $code === 304) {
+            throw new \RuntimeException("Linter: body not allowed on {$code}");
+        }
+    }
+
+    private function assertVaryOnCompressed(Response $r): void
+    {
+        if (($this->checks & self::COMPRESSED_NEEDS_VARY) === 0) {
+            return;
+        }
+        if ($r->hasHeader('Content-Encoding') &&
+            stripos($r->getHeaderLine('Vary'), 'accept-encoding') === false) {
+            throw new \RuntimeException('Linter: compressed but missing Vary: Accept-Encoding');
+        }
+    }
+}
+
+rel_path=src/Middleware/ResponseLinterMiddleware.php
+=====src/Middleware/ResponseTimeMiddleware.php=====
+<?php
+
+declare(strict_types=1);
+
+namespace Infocyph\Webrick\Middleware;
+
+use Closure;
+use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Request\Request;
+
+/**
+ * Measures end-to-end latency and surfaces it to the client.
+ */
+final readonly class ResponseTimeMiddleware
+{
+    public function __invoke(Request $req, Closure $next): Response
+    {
+        $start = hrtime(true);   // nanoseconds
+        $resp = $next($req);
+        $durMs = (hrtime(true) - $start) / 1e6;
+
+        return $resp
+            ->withHeader('X-Response-Time', sprintf('%.1fms', $durMs))
+            ->withHeader('Server-Timing', sprintf('app;dur=%.1f', $durMs));
+    }
+}
+
+rel_path=src/Middleware/ResponseTimeMiddleware.php
+=====src/Middleware/SecurityHeadersMiddleware.php=====
+<?php
+
+namespace Infocyph\Webrick\Middleware;
+
+use Closure;
+use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Response\Headers\SecurityHeaders;
+use Infocyph\Webrick\Response\Response;
+
+final readonly class SecurityHeadersMiddleware
+{
+    public function __construct(
+        private bool $hsts = true,
+        private bool $includeSubs = true,
+    ) {}
+
+    public function __invoke(Request $req, Closure $next): Response
+    {
+        $resp = $next($req);
+        return SecurityHeaders::tight(
+            $resp,
+            hsts: $this->hsts,
+            includeSubs: $this->includeSubs,
+        );
+    }
+}
+
+rel_path=src/Middleware/SecurityHeadersMiddleware.php
+=====src/Middleware/ThrottleMiddleware.php=====
+<?php
+
+declare(strict_types=1);
+
+namespace Infocyph\Webrick\Middleware;
+
+use Closure;
+use DateTimeImmutable;
+use Infocyph\InterMix\Cache\Cache;
+use Infocyph\Webrick\Request\Core\Stream;
+use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Request\Request;
+use Psr\Cache\CacheItemPoolInterface;
+
+final readonly class ThrottleMiddleware
+{
+    private CacheItemPoolInterface $pool;
+
+    public function __construct(
+        private int $max = 60,
+        private int $window = 60,      // seconds
+        ?CacheItemPoolInterface $pool = null,
+        private bool $retryAsDate = false,   // “Wed, 17 Jul … GMT” vs “120”
+        private ?Closure $identifierResolver = null,
+        private bool $emitStandardRateLimit = true, // ← NEW
+    )
+    {
+        $this->pool = $pool ?? (extension_loaded('apcu')
+            ? Cache::apcu('throttle')
+            : Cache::file('throttle'));
+    }
+
+    public function __invoke(Request $req, Closure $next): Response
+    {
+        [$key, $reset] = $this->deriveKeyAndReset($req);
+        $payload = $this->loadPayload($key, $reset);
+
+        if ($this->isExceeded($payload)) {
+            return $this->limitExceededResponse($payload);
+        }
+
+        // remaining AFTER counting this request
+        $remain = max(0, $this->max - $payload['hits'] - 1);
+
+        $this->persist($key, $payload);
+
+        $resp = $next($req);
+
+        return $this->attachRateHeaders($resp, $remain, $payload['reset']);
+    }
+
+    /** @return array{0:string,1:int} */
+    private function deriveKeyAndReset(Request $req): array
+    {
+        $identifier = $this->identifierResolver
+            ? ($this->identifierResolver)($req)
+            : ($req->getAttribute('client_ip')
+                ?? $req->getServerParams()['REMOTE_ADDR']
+                ?? 'unknown');
+
+        $key = 't:' . sha1((string)$identifier);
+        $reset = time() + $this->window;
+
+        return [$key, $reset];
+    }
+
+    /** @return array{hits:int, reset:int} */
+    private function loadPayload(string $key, int $reset): array
+    {
+        $item = $this->pool->getItem($key);
+        $payload = $item->isHit() ? $item->get() : null;
+
+        if (\is_int($payload)) {
+            $payload = ['hits' => $payload, 'reset' => $reset];
+        }
+        if (!\is_array($payload)) {
+            $payload = ['hits' => 0, 'reset' => $reset];
+        }
+        $payload['hits'] = (int)$payload['hits'];
+        $payload['reset'] = (int)$payload['reset'];
+
+        return $payload;
+    }
+
+    private function isExceeded(array $payload): bool
+    {
+        return $payload['hits'] >= $this->max;
+    }
+
+    private function limitExceededResponse(array $payload): Response
+    {
+        $resetDelta = max(1, $payload['reset'] - time());             // ← delta for spec
+        $retryAfter = $this->formatRetryAfter($resetDelta);
+
+        $headers = [
+            'Content-Type' => 'text/plain; charset=utf-8',
+            'Retry-After' => $retryAfter,
+            'X-RateLimit-Limit' => (string)$this->max,
+            'X-RateLimit-Remaining' => '0',
+            'X-RateLimit-Reset' => (string)$payload['reset'],     // epoch (BC)
+        ];
+
+        if ($this->emitStandardRateLimit) {
+            $headers += [
+                'RateLimit-Limit' => (string)$this->max,
+                'RateLimit-Remaining' => '0',
+                'RateLimit-Reset' => (string)$resetDelta,         // spec: seconds
+            ];
+        }
+
+        return new Response(
+            status: 429,
+            headers: $headers,
+            body: new Stream('Too Many Requests'),
+        )->withHeader('Server-Timing', 'throttle;dur=0');
+    }
+
+    private function persist(string $key, array $payload): void
+    {
+        $payload['hits']++;
+
+        $item = $this->pool->getItem($key);
+        $item->set($payload);
+        $item->expiresAt(new DateTimeImmutable()->setTimestamp($payload['reset']));
+        $this->pool->saveDeferred($item);
+    }
+
+    private function attachRateHeaders(Response $resp, int $remain, int $reset): Response
+    {
+        $resp = $resp
+            ->withHeader('X-RateLimit-Limit', (string)$this->max)
+            ->withHeader('X-RateLimit-Remaining', (string)$remain)
+            ->withHeader('X-RateLimit-Reset', (string)$reset);        // epoch (BC)
+
+        if ($this->emitStandardRateLimit) {
+            $resp = $resp
+                ->withHeader('RateLimit-Limit', (string)$this->max)
+                ->withHeader('RateLimit-Remaining', (string)$remain)
+                ->withHeader('RateLimit-Reset', (string)max(1, $reset - time())); // seconds
+        }
+
+        return $resp;
+    }
+
+    private function formatRetryAfter(int $seconds): string
+    {
+        $seconds = max(1, $seconds); // never zero/negative
+        return $this->retryAsDate
+            ? gmdate('D, d M Y H:i:s', time() + $seconds) . ' GMT'
+            : (string)$seconds;
+    }
+}
+
+rel_path=src/Middleware/ThrottleMiddleware.php
+=====src/Middleware/TrimStringsMiddleware.php=====
+<?php
+
+declare(strict_types=1);
+
+namespace Infocyph\Webrick\Middleware;
+
+use Closure;
+use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Request\Request;
+
+/**
+ * Recursively `trim()`s *all* string inputs (query + body + uploaded names).
+ *
+ * Works only when `$request->getParsedBody()` is an array/object;
+ * JSON bodies are left untouched because controllers usually want raw data.
+ */
+final readonly class TrimStringsMiddleware
+{
+    public function __invoke(Request $req, Closure $next): Response
+    {
+        $body = $req->getParsedBody();
+        if (\is_array($body)) {
+            $body = self::trimRecursive($body);
+            $req = $req->withParsedBody($body);
+        }
+
+        // query params
+        $query = $req->getQueryParams();
+        if ($query) {
+            $req = $req->withQueryParams(self::trimRecursive($query));
+        }
+
+        return $next($req);
+    }
+
+    private static function trimRecursive(array $data): array
+    {
+        array_walk_recursive(
+            $data,
+            static function (&$v): void {
+                if (is_string($v)) {
+                    $v = trim($v);
+                }
+            },
+        );
+        return $data;
+    }
+}
+
+rel_path=src/Middleware/TrimStringsMiddleware.php
+=====src/Middleware/TrustProxiesMiddleware.php=====
+<?php
+
+declare(strict_types=1);
+
+namespace Infocyph\Webrick\Middleware;
+
+use Closure;
+use Infocyph\Webrick\Request\Core\Stream;
+use Infocyph\Webrick\Request\Http\EndUser;
+use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Request\Support\IpCidr;
+use Infocyph\Webrick\Response\Response;
+
+/**
+ * • Whitelists *trusted* proxy CIDRs **and** specific proxy-headers.<br>
+ * • Blocks requests from black-listed public IPs.<br>
+ * • Rejects “Host” header spoofing unless it matches `$trustedHosts`.
+ *
+ * ```php
+ * $mw = new TrustProxiesMiddleware(
+ *     allow        : ['10.0.0.0/8','172.16.0.0/12'],
+ *     deny         : ['203.0.113.0/24'],
+ *     trustedHosts : ['*.example.com','api.example.org'],
+ *     headerFlags  : Request::HEADER_X_FORWARDED_FOR
+ *                 | Request::HEADER_X_FORWARDED_PROTO
+ * );
+ * ```
+ */
+final class TrustProxiesMiddleware
+{
+    /** @var string[] CIDR blocks that are trusted proxies */
+    private array $allow;
+    /** @var string[] CIDR blocks that are rejected outright */
+    private array $deny;
+    /** @var string[] host allow-list (wildcards “*” permitted) */
+    private array $trustedHosts;
+    /** compiled regex list – cached per PHP process */
+    private static array $hostRegex = [];
+
+    public function __construct(
+        array $allow = [],
+        array $deny = [],
+        array $trustedHosts = [],
+        ?int $headerFlags = null,   // Symfony-style bit-mask
+    )
+    {
+        $this->allow = $allow;
+        $this->deny = $deny;
+        $this->trustedHosts = $trustedHosts;
+
+        // ① proxy CIDRs & header mask → one static call
+        Request::setTrustedProxies($allow, $headerFlags);
+
+        // ② compile host patterns once per worker
+        if (self::$hostRegex === [] && $trustedHosts !== []) {
+            foreach ($trustedHosts as $p) {
+                $escaped = str_replace(['.', '*'], ['\.', '.*'], $p);
+                self::$hostRegex[] = '#^' . $escaped . '$#i';
+            }
+        }
+    }
+
+    public function __invoke(Request $req, Closure $next): Response
+    {
+        /* ---------- host validation (cheap) ----------------------- */
+        if ($this->trustedHosts !== []
+            && !$this->matchesHost($req->getUri()->getHost())) {
+            return new Response(
+                400,
+                new Stream('Untrusted Host header.'),
+                ['Content-Type' => 'text/plain; charset=utf-8'],
+            );
+        }
+
+        /* ---------- IP derivation & ACLs -------------------------- */
+        $endUser = EndUser::from($req);      // already honours proxy mask
+
+        $ip = $endUser->ip();                // final public address
+
+        if ($ip && $this->cidrHit($ip, $this->deny)) {
+            return new Response(
+                403,
+                new Stream("Forbidden – $ip is not allowed."),
+                ['Content-Type' => 'text/plain; charset=utf-8'],
+            );
+        }
+
+        /* ---------- stash for downstream -------------------------- */
+        $trusted = $this->cidrHit($ip, $this->allow);
+
+        $req = $req
+            ->withAttribute('client_ip', $ip)
+            ->withAttribute('is_trusted_proxy', $trusted);
+
+        return $next($req);
+    }
+
+    /* ───────────────────────── helpers ─────────────────────────── */
+
+    private function matchesHost(string $host): bool
+    {
+        return array_any(self::$hostRegex, fn($rx) => preg_match($rx, $host));
+    }
+
+    private function cidrHit(?string $ip, array $cidrs): bool
+    {
+        if ($ip === null || $cidrs === []) {
+            return false;
+        }
+        return array_any($cidrs, fn($cidr) => IpCidr::match($ip, $cidr));
+    }
+}
+
+rel_path=src/Middleware/TrustProxiesMiddleware.php
+=====src/Middleware/ValidateHeaderSizeMiddleware.php=====
+<?php
+
+namespace Infocyph\Webrick\Middleware;
+
+use Closure;
+use Infocyph\Webrick\Request\Core\Stream;
+use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Response\Response;
+
+final readonly class ValidateHeaderSizeMiddleware
+{
+    public function __construct(private int $maxBytes = 8192)
+    {
+    }
+
+    public function __invoke(Request $r, Closure $next): Response
+    {
+        $len = array_sum(array_map('strlen', $r->getHeaders()));
+        return $len > $this->maxBytes
+            ? new Response(431, new Stream('Request headers too large'), [])
+            : $next($r);
+    }
+}
+
+rel_path=src/Middleware/ValidateHeaderSizeMiddleware.php
+=====src/Middleware/ValidatePostSizeMiddleware.php=====
+<?php
+
+declare(strict_types=1);
+
+namespace Infocyph\Webrick\Middleware;
+
+use Closure;
+use Infocyph\Webrick\Request\Core\Stream;
+use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Request\Request;
+
+/**
+ * Aborts the request with **413 Payload Too Large** when the incoming
+ * body size exceeds `post_max_size` (or a custom limit you supply).
+ */
+final readonly class ValidatePostSizeMiddleware
+{
+    public function __construct(private ?int $bytes = null) {}
+
+    public function __invoke(Request $req, Closure $next): Response
+    {
+        $limit = $this->bytes ?? self::phpIniBytes(ini_get('post_max_size'));
+        $length = (int)$req->getHeaderLine('Content-Length');
+
+        if ($limit > 0 && $length > $limit) {
+            return new Response(
+                status: 413,
+                headers: ['Content-Type' => 'text/plain; charset=utf-8'],
+                body: new Stream('Payload exceeds maximum allowed size.'),
+            );
+        }
+
+        return $next($req);
+    }
+
+    private static function phpIniBytes(string|false $val): int
+    {
+        if ($val === false) {
+            return 0;
+        }
+        $val = trim($val);
+        $unit = strtolower(substr($val, -1));
+        $num = (int)$val;
+        return match ($unit) {
+            'g' => $num * 1024 * 1024 * 1024,
+            'm' => $num * 1024 * 1024,
+            'k' => $num * 1024,
+            default => $num,
+        };
+    }
+}
+
+rel_path=src/Middleware/ValidatePostSizeMiddleware.php
+=====src/Middleware/VaryAccumulatorMiddleware.php=====
+<?php
+
+// src/Middleware/VaryAccumulatorMiddleware.php
+declare(strict_types=1);
+
+namespace Infocyph\Webrick\Middleware;
+
+use Closure;
+use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Response\Headers\Vary;
+
+final class VaryAccumulatorMiddleware
+{
+    private const ATTR = '__vary_builder';
+
+    /** Middlewares/controllers can register tokens any time */
+    public static function add(Request $r, string ...$headers): Request
+    {
+        $v = $r->getAttribute(self::ATTR);
+        $v = $v instanceof Vary ? $v->add(...$headers) : Vary::new()->add(...$headers);
+        return $r->withAttribute(self::ATTR, $v);
+    }
+
+    public function __invoke(Request $req, Closure $next): Response
+    {
+        $resp = $next($req);
+
+        // Start from any Vary already set by downstream
+        $final = ($existing = $resp->getHeaderLine('Vary')) !== ''
+            ? Vary::fromString($existing)
+            : Vary::new();
+
+        // Merge tokens explicitly registered on the request
+        if (($builder = $req->getAttribute(self::ATTR)) instanceof Vary) {
+            $final = $final->add(...array_map('trim', explode(',', (string)$builder)));
+        }
+
+        // Auto-infer common dependencies from the final response
+        if ($resp->hasHeader('Content-Encoding')) {
+            $final = $final->add('Accept-Encoding');
+        }
+        if ($resp->hasHeader('Content-Language')) {
+            $final = $final->add('Accept-Language');
+        }
+        // If CORS reflected an origin (i.e., not "*"), vary by Origin
+        $acao = $resp->getHeaderLine('Access-Control-Allow-Origin');
+        if ($acao !== '' && $acao !== '*') {
+            $final = $final->add('Origin');
+        }
+
+        $line = (string)$final;
+        return $line !== '' ? $resp->withHeader('Vary', $line) : $resp;
+    }
+}
+
