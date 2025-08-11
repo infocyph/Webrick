@@ -87,14 +87,13 @@ love it — let’s consolidate the stack into a few “by-type” bundles witho
 7. **FormSupportMiddleware** (method override / fast-skip)
 8. **InputSanitizerMiddleware**
 9. **NegotiationMiddleware**
-10. **LocaleMiddleware** (or fold into #9)
-11. **CorsAndPoliciesMiddleware** (preflight here; policies applied always)
-12. **CacheValidatorsMiddleware** (pre 304/412; drop stale Range)
-13. controller / handler
-14. `CookieEncryptionMiddleware` (encrypt Set-Cookie) — implicitly in the same class; it already wraps after next()
-15. `CompressionMiddleware` (and weaken ETag, drop Content-MD5)
-16. `VaryAccumulatorMiddleware`
-17. `ResponseLinterMiddleware` (dev only)
+10. **CorsAndPoliciesMiddleware** (preflight here; policies applied always)
+11. **CacheValidatorsMiddleware** (pre 304/412; drop stale Range)
+12. controller / handler
+13. `CookieEncryptionMiddleware` (encrypt Set-Cookie) — implicitly in the same class; it already wraps after next()
+14. `CompressionMiddleware` (and weaken ETag, drop Content-MD5)
+15. `VaryAccumulatorMiddleware`
+16. `ResponseLinterMiddleware` (dev only)
 
 # deprecation & BC plan
 

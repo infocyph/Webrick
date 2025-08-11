@@ -12,31 +12,18 @@ use Infocyph\Webrick\Request\Support\IpCidr;
 use Infocyph\Webrick\Response\Response;
 
 /**
- * Consolidated gateway hardening:
- *   • Trust proxy chain (CIDRs + header mask) and derive client IP
- *   • Enforce HTTPS (308) when $forceHttps is true
- *   • Validate Host against an allow-list (wildcards supported)
- *   • Strip hop-by-hop headers on both request and response
- *   • Guard unsafe redirects by limiting Location hosts
+ * GatewayHardeningMiddleware
  *
- * Place this very early in the stack (right after ErrorHandler).
+ * • Validates Host against an allow-list.
+ * • Honors trusted proxy CIDRs + forwarded header mask; derives end-user IP.
+ * • Blocks requests when end-user IP matches a deny-list.
+ * • Optionally redirects plain-HTTP → HTTPS (308).
+ * • Strips hop-by-hop headers on both request and response (RFC 9110 §7.6).
+ * • Guards against open redirects by validating absolute Location hosts.
  */
 final class GatewayHardeningMiddleware
 {
-    /** @var string[] CIDR blocks that are trusted proxies */
-    private array $trustedProxyCidrs;
-    /** @var string[] CIDR blocks that are outright denied for end-user IPs */
-    private array $denyCidrs;
-    /** @var string[] allowed Host header patterns (supports "*") */
-    private array $trustedHosts;
-    /** @var string[] allowed absolute redirect hosts (null ⇒ use $trustedHosts) */
-    private ?array $redirectHosts;
-
-    private bool $forceHttps;
-    private static array $hostRegex = [];
-    private static array $redirHostRegex = [];
-
-    /** Hop-by-hop per RFC 9110 §7.6 */
+    /** Hop-by-hop header names (lower-case) */
     private const HOP_BY_HOP = [
         'connection',
         'keep-alive',
@@ -48,36 +35,45 @@ final class GatewayHardeningMiddleware
         'upgrade',
     ];
 
+    /** compiled regex list – cached per PHP process */
+    private static array $hostRegex = [];
+
+    /**
+     * @param string[]    $trustedProxyCidrs  CIDRs considered trusted proxies
+     * @param string[]    $denyIpCidrs        CIDRs for end-user IPs to block
+     * @param string[]    $trustedHosts       Host header allow-list (supports '*')
+     * @param int|null    $forwardedHeaderMask Symfony-style mask (e.g., Request::HEADER_X_FORWARDED_FOR | …)
+     * @param bool        $enforceHttps       Force HTTPS (308) when scheme != https
+     * @param int         $httpsPort          Port used for HTTPS redirection (typically 443)
+     * @param bool        $stripHopByHop      Remove hop-by-hop headers (req + resp)
+     * @param string[]    $redirectAllowedHosts Absolute redirect targets allowed; empty ⇒ same-origin only
+     */
     public function __construct(
-        array $trustedProxyCidrs = [],
-        array $denyCidrs = [],
-        array $trustedHosts = [],
-        ?int $proxyHeaderFlags = null,   // Symfony-style bit-mask (X-Forwarded-*)
-        bool $forceHttps = true,
-        ?array $redirectHosts = null     // null ⇒ defaults to $trustedHosts
+        private array $trustedProxyCidrs = [],
+        private array $denyIpCidrs = [],
+        private array $trustedHosts = [],
+        ?int $forwardedHeaderMask = null,
+        private bool $enforceHttps = true,
+        private int $httpsPort = 443,
+        private bool $stripHopByHop = true,
+        private array $redirectAllowedHosts = [],
     ) {
-        $this->trustedProxyCidrs = $trustedProxyCidrs;
-        $this->denyCidrs = $denyCidrs;
-        $this->trustedHosts = $trustedHosts;
-        $this->forceHttps = $forceHttps;
-        $this->redirectHosts = $redirectHosts;
+        // ① Configure trusted proxies & which forwarded headers to honor
+        Request::setTrustedProxies($this->trustedProxyCidrs, $forwardedHeaderMask);
 
-        // Configure proxy trust once per worker.
-        Request::setTrustedProxies($trustedProxyCidrs, $proxyHeaderFlags);
-
-        // Pre-compile host regexes once per worker.
-        if (self::$hostRegex === [] && $trustedHosts !== []) {
-            self::$hostRegex = self::compileHostPatterns($trustedHosts);
-        }
-        if (self::$redirHostRegex === [] && $redirectHosts !== null && $redirectHosts !== []) {
-            self::$redirHostRegex = self::compileHostPatterns($redirectHosts);
+        // ② Compile host allow-list once per worker
+        if (self::$hostRegex === [] && $this->trustedHosts !== []) {
+            foreach ($this->trustedHosts as $p) {
+                $escaped = str_replace(['.', '*'], ['\.', '.*'], $p);
+                self::$hostRegex[] = '#^' . $escaped . '$#i';
+            }
         }
     }
 
     public function __invoke(Request $req, Closure $next): Response
     {
-        /* 1) Host allow-list (cheap, before anything else) ---------------- */
-        if ($this->trustedHosts !== [] && !$this->matchesAny($req->getUri()->getHost(), self::$hostRegex)) {
+        /* ── Host allow-list check (cheap + first) ─────────────────── */
+        if ($this->trustedHosts !== [] && !$this->matchesHost($req->getUri()->getHost())) {
             return new Response(
                 400,
                 new Stream('Untrusted Host header.'),
@@ -85,20 +81,11 @@ final class GatewayHardeningMiddleware
             );
         }
 
-        /* 2) Enforce HTTPS (after proxy trust so scheme is canonical) ----- */
-        if ($this->forceHttps && $req->getUri()->getScheme() !== 'https') {
-            $target = $req->getUri()->withScheme('https')->withPort(443);
-            return new Response(
-                status: 308, // permanent, preserves method & body
-                headers: ['Location' => (string)$target],
-            );
-        }
+        /* ── End-user IP via trusted proxies; block deny-listed ────── */
+        $endUser = EndUser::from($req);          // honors proxy mask
+        $ip = $endUser->ip();                    // final public address
 
-        /* 3) Derive end-user IP, apply deny CIDRs, expose attributes ------ */
-        $endUser = EndUser::from($req); // honours trusted proxies/header mask
-        $ip = $endUser->ip();
-
-        if ($ip && $this->cidrHit($ip, $this->denyCidrs)) {
+        if ($ip && $this->cidrHit($ip, $this->denyIpCidrs)) {
             return new Response(
                 403,
                 new Stream("Forbidden – $ip is not allowed."),
@@ -106,30 +93,50 @@ final class GatewayHardeningMiddleware
             );
         }
 
+        // Stash derived info for downstream
         $isTrustedProxy = $this->cidrHit($ip, $this->trustedProxyCidrs);
         $req = $req
             ->withAttribute('client_ip', $ip)
             ->withAttribute('is_trusted_proxy', $isTrustedProxy);
 
-        /* 4) Strip hop-by-hop headers (request) --------------------------- */
-        $req = $this->stripHopByHopOnRequest($req);
+        /* ── HTTPS enforce (after Host validation) ─────────────────── */
+        if ($this->enforceHttps) {
+            $uri = $req->getUri();
+            if ($uri->getScheme() !== 'https') {
+                $target = $uri->withScheme('https')->withPort($this->httpsPort);
+                return new Response(
+                    308,
+                    headers: ['Location' => (string)$target],
+                );
+            }
+        }
 
-        /* 5) Downstream --------------------------------------------------- */
+        /* ── Strip hop-by-hop headers (request) ────────────────────── */
+        if ($this->stripHopByHop) {
+            $req = $this->stripHopByHopFromRequest($req);
+        }
+
+        /* ── Downstream ────────────────────────────────────────────── */
         $resp = $next($req);
 
-        /* 6) Strip hop-by-hop headers (response) -------------------------- */
-        $resp = $this->stripHopByHopOnResponse($resp);
+        /* ── Strip hop-by-hop headers (response) ───────────────────── */
+        if ($this->stripHopByHop) {
+            $resp = $this->stripHopByHopFromResponse($resp);
+        }
 
-        /* 7) Redirect guard ----------------------------------------------- */
+        /* ── Redirect guard (absolute Location hosts) ──────────────── */
         if ($resp->hasHeader('Location')) {
             $loc = $resp->getHeaderLine('Location');
+            $host = parse_url($loc, PHP_URL_HOST);
 
-            // Relative redirects are fine.
-            if ($this->isAbsoluteUrl($loc)) {
-                $host = \parse_url($loc, \PHP_URL_HOST) ?: '';
-                $okList = $this->redirectHosts ?? $this->trustedHosts;
-
-                if ($okList !== [] && !$this->matchesAny($host, $this->redirectRegexes())) {
+            if ($host) {
+                if ($this->redirectAllowedHosts === []) {
+                    // Same-origin only when no explicit allow-list
+                    $current = $req->getUri()->getHost();
+                    if (!self::equalsIgnoreCase($host, $current)) {
+                        return Response::json(['error' => 'Open redirect blocked'], 400);
+                    }
+                } elseif (!in_array($host, $this->redirectAllowedHosts, true)) {
                     return Response::json(['error' => 'Open redirect blocked'], 400);
                 }
             }
@@ -138,41 +145,16 @@ final class GatewayHardeningMiddleware
         return $resp;
     }
 
-    /* ───────────────────────── helpers ─────────────────────────── */
+    /* ───────────────────────── helpers ───────────────────────────── */
 
-    private static function compileHostPatterns(array $patterns): array
+    private static function equalsIgnoreCase(string $a, string $b): bool
     {
-        $rx = [];
-        foreach ($patterns as $p) {
-            $escaped = \str_replace(['.', '*'], ['\.', '.*'], $p);
-            $rx[] = '#^' . $escaped . '$#i';
-        }
-        return $rx;
+        return strcasecmp($a, $b) === 0;
     }
 
-    private function redirectRegexes(): array
+    private function matchesHost(string $host): bool
     {
-        // If redirectHosts were not explicitly provided, mirror trustedHosts
-        if ($this->redirectHosts === null) {
-            return self::$hostRegex;
-        }
-        if (self::$redirHostRegex === []) {
-            self::$redirHostRegex = self::compileHostPatterns($this->redirectHosts);
-        }
-        return self::$redirHostRegex;
-    }
-
-    private function matchesAny(string $host, array $regexes): bool
-    {
-        if ($host === '') {
-            return false;
-        }
-        foreach ($regexes as $rx) {
-            if (\preg_match($rx, $host) === 1) {
-                return true;
-            }
-        }
-        return false;
+        return self::$hostRegex === [] || array_any(self::$hostRegex, fn ($rx) => preg_match($rx, $host));
     }
 
     private function cidrHit(?string $ip, array $cidrs): bool
@@ -180,53 +162,45 @@ final class GatewayHardeningMiddleware
         if ($ip === null || $cidrs === []) {
             return false;
         }
-        foreach ($cidrs as $cidr) {
-            if (IpCidr::match($ip, $cidr)) {
-                return true;
-            }
-        }
-        return false;
+        return array_any($cidrs, fn ($cidr) => IpCidr::match($ip, $cidr));
     }
 
-    private function stripHopByHopOnRequest(Request $req): Request
+    private function stripHopByHopFromRequest(Request $r): Request
     {
-        $tokens = $this->parseConnectionTokens($req->getHeaderLine('Connection'));
-        foreach (\array_unique(\array_merge(self::HOP_BY_HOP, $tokens)) as $h) {
-            if ($req->hasHeader($h)) {
-                $req = $req->withoutHeader($h);
+        // dynamic tokens named in Connection
+        $tokens = $this->parseConnectionTokens($r->getHeaderLine('Connection'));
+        foreach (array_unique(array_merge(self::HOP_BY_HOP, $tokens)) as $h) {
+            if ($r->hasHeader($h)) {
+                $r = $r->withoutHeader($h);
             }
         }
-        return $req;
+        return $r;
     }
 
-    private function stripHopByHopOnResponse(Response $resp): Response
+    private function stripHopByHopFromResponse(Response $r): Response
     {
-        $tokens = $this->parseConnectionTokens($resp->getHeaderLine('Connection'));
-        foreach (\array_unique(\array_merge(self::HOP_BY_HOP, $tokens)) as $h) {
-            if ($resp->hasHeader($h)) {
-                $resp = $resp->withoutHeader($h);
+        $tokens = $this->parseConnectionTokens($r->getHeaderLine('Connection'));
+        foreach (array_unique(array_merge(self::HOP_BY_HOP, $tokens)) as $h) {
+            if ($r->hasHeader($h)) {
+                $r = $r->withoutHeader($h);
             }
         }
-        return $resp;
+        return $r;
     }
 
+    /** Parse "Connection: foo, bar" into ['foo','bar'] (lower-cased) */
     private function parseConnectionTokens(string $line): array
     {
         if ($line === '') {
             return [];
         }
         $out = [];
-        foreach (\explode(',', $line) as $t) {
-            $t = \strtolower(\trim($t));
+        foreach (explode(',', $line) as $t) {
+            $t = strtolower(trim($t));
             if ($t !== '') {
                 $out[] = $t;
             }
         }
         return $out;
-    }
-
-    private function isAbsoluteUrl(string $loc): bool
-    {
-        return \preg_match('#^[a-z][a-z0-9+.-]*://#i', $loc) === 1;
     }
 }
