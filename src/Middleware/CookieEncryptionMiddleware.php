@@ -14,15 +14,16 @@ use InvalidArgumentException;
 use LengthException;
 use Psr\Cache\CacheItemPoolInterface;
 use Random\RandomException;
+use RuntimeException;
 
 /**
  * Encrypted cookies (AES-256-GCM) with compression, chunking and key rotation.
  *
- * • Only cookies whose names start with $cookiePrefix are encrypted/decrypted.
- * • AEAD AAD = cookie base name (binds ciphertext to its logical name).
- * • Ciphertext format (base64 of raw bytes):
+ * • Only cookies with names that start with $cookiePrefix are processed.
+ * • AEAD AAD binds ciphertext to its logical cookie name + key id + compression mode.
+ * • Ciphertext framing (base64 of raw bytes):
  *      v1: 0x31 '1' | MODE(1) | KID(1) | IV(12) | TAG(16) | CT(...)
- *      legacy (v0): MODE(1) | IV(12) | TAG(16) | CT(...)
+ *      v0: MODE(1)  | IV(12)  | TAG(16) | CT(...)
  * • Compression mode byte: '0' none, 'z' zstd, 'b' brotli, 'g' gzip
  * • Optional server-side storage fallback (“S:<id>”) if too large even after chunking
  */
@@ -34,8 +35,8 @@ final class CookieEncryptionMiddleware
     private const MODE_BROTLI = 'b';
     private const MODE_GZIP   = 'g';
 
-    private const V1_BYTE     = "1";   // 0x31
-    private const MODE_STORE  = 'S:';  // server-side storage marker
+    private const V1_BYTE      = "1";   // 0x31
+    private const MODE_STORE   = 'S:';  // server-side storage marker
     private const CACHE_PREFIX = 'enc_cookie.';
 
     private static bool $hasZstd   = false;
@@ -53,6 +54,11 @@ final class CookieEncryptionMiddleware
         private int $maxBytes = 3_800,            // per cookie part, safe headroom under ~4k
         private ?CacheItemPoolInterface $store = null,
         private int $storeTtl = 86_400,           // seconds
+        // hardening / ergonomics
+        private bool $dropOnDecryptFailure = true,
+        private bool $forceSecure = true,
+        private bool $forceHttpOnly = true,
+        private ?string $defaultSameSite = 'Lax', // null = don’t set; 'None' requires Secure (we’ll enforce)
     ) {
         // normalize keys
         $this->keys = is_array($keyOrKeys) ? array_values($keyOrKeys) : [$keyOrKeys];
@@ -76,6 +82,15 @@ final class CookieEncryptionMiddleware
             self::$hasBrotli = function_exists('brotli_compress');
             self::$hasGzip   = function_exists('gzdeflate');
         }
+    }
+
+    /** Rotate the active encryption key by index (0..count-1). */
+    public function rotateToKid(int $kid): void
+    {
+        if (!isset($this->keys[$kid])) {
+            throw new InvalidArgumentException("Unknown key id $kid.");
+        }
+        $this->kid = $kid;
     }
 
     /* ───────────── pipeline ───────────── */
@@ -112,7 +127,12 @@ final class CookieEncryptionMiddleware
         foreach ($assemblies as $base => $parts) {
             ksort($parts);
             $cipher = implode('', $parts);
-            $out[$base] = $this->decrypt($base, $cipher);
+            $plain = $this->decrypt($base, $cipher);
+            if ($plain === null && $this->dropOnDecryptFailure) {
+                // fail closed: omit the cookie entirely
+                continue;
+            }
+            $out[$base] = $plain;
         }
 
         return $out;
@@ -131,7 +151,7 @@ final class CookieEncryptionMiddleware
         }
 
         // v1 or legacy?
-        $off = 0;
+        $off  = 0;
         $isV1 = (isset($raw[0]) && $raw[0] === self::V1_BYTE);
         if ($isV1) {
             $off = 1;
@@ -227,13 +247,10 @@ final class CookieEncryptionMiddleware
             }
 
             foreach ($this->encryptSegments($name, rawurldecode((string)$value)) as $i => $seg) {
-                $cname = $i === 1 ? $name : "{$name}.p{$i}";
+                $cname  = $i === 1 ? $name : "{$name}.p{$i}";
                 $cookie = Cookie::make($cname, $seg);
-
-                // Re-apply original attributes (best effort)
                 $cookie = $this->applyAttrs($cookie, $attrs);
-
-                $jar = $jar->add($cookie);
+                $jar    = $jar->add($cookie);
             }
         }
 
@@ -243,7 +260,7 @@ final class CookieEncryptionMiddleware
 
     /**
      * @return array<int,string> 1-based segments
-     * @throws RandomException|LengthException
+     * @throws RandomException|LengthException|RuntimeException
      */
     private function encryptSegments(string $baseName, string $plaintext): array
     {
@@ -264,7 +281,7 @@ final class CookieEncryptionMiddleware
         if ($this->store !== null) {
             $id = bin2hex(random_bytes(16));
             $item = $this->store->getItem(self::CACHE_PREFIX . $id);
-            $item->set($plaintext)->expiresAt((new DateTimeImmutable())->modify("+{$this->storeTtl} seconds"));
+            $item->set($plaintext)->expiresAt((new DateTimeImmutable())->setTimestamp(time() + $this->storeTtl));
             $this->store->save($item);
             return [1 => self::MODE_STORE . $id];
         }
@@ -294,6 +311,10 @@ final class CookieEncryptionMiddleware
             $this->aad($baseName, $this->kid, $mode),
         );
 
+        if ($ct === false) {
+            throw new RuntimeException('Cookie encryption failed.');
+        }
+
         // v1 framing: '1' | MODE | KID | IV | TAG | CT
         $raw = self::V1_BYTE . $mode . chr($this->kid) . $iv . $tag . $ct;
         return base64_encode($raw);
@@ -305,15 +326,15 @@ final class CookieEncryptionMiddleware
         $best = $pt;
         $mode = self::MODE_NONE;
 
-        if (self::$hasZstd && ($c = zstd_compress($pt, 3)) !== false && strlen($c) + 1 < strlen($best)) {
+        if (self::$hasZstd && ($c = zstd_compress($pt, 3)) !== false && strlen($c) < strlen($best)) {
             $best = $c;
             $mode = self::MODE_ZSTD;
         }
-        if (self::$hasBrotli && ($c = brotli_compress($pt, 4)) !== false && strlen($c) + 1 < strlen($best)) {
+        if (self::$hasBrotli && ($c = brotli_compress($pt, 4)) !== false && strlen($c) < strlen($best)) {
             $best = $c;
             $mode = self::MODE_BROTLI;
         }
-        if (self::$hasGzip && ($c = gzdeflate($pt, 4)) !== false && strlen($c) + 1 < strlen($best)) {
+        if (self::$hasGzip && ($c = gzdeflate($pt, 4)) !== false && strlen($c) < strlen($best)) {
             $best = $c;
             $mode = self::MODE_GZIP;
         }
@@ -337,7 +358,6 @@ final class CookieEncryptionMiddleware
      */
     private function parseSetCookie(string $line): ?array
     {
-        // split on ';' into ["name=value", "Attr", "Attr=val", ...]
         $chunks = array_map('trim', explode(';', $line));
         if ($chunks === [] || !str_contains($chunks[0], '=')) {
             return null;
@@ -357,12 +377,11 @@ final class CookieEncryptionMiddleware
     }
 
     /**
-     * Re-apply attributes we parsed to the Cookie builder (best effort).
-     * We guard with method_exists so we don’t hard-depend on a specific API surface.
+     * Re-apply attributes (and enforce security defaults) to the Cookie builder.
      */
     private function applyAttrs(Cookie $cookie, array $attrs): Cookie
     {
-        // order is not important; setters are best-effort
+        // original attrs (best effort)
         if (isset($attrs['path']) && method_exists($cookie, 'path')) {
             $cookie = $cookie->path($attrs['path']);
         }
@@ -380,14 +399,34 @@ final class CookieEncryptionMiddleware
         }
         if (isset($attrs['samesite']) && method_exists($cookie, 'sameSite')) {
             $cookie = $cookie->sameSite($attrs['samesite']);
+        } elseif ($this->defaultSameSite !== null && method_exists($cookie, 'sameSite')) {
+            $cookie = $cookie->sameSite($this->defaultSameSite);
         }
-        if ((isset($attrs['secure']) || $this->hasFlag($attrs, 'secure')) && method_exists($cookie, 'secure')) {
+
+        $hasSecure   = (isset($attrs['secure'])   && $attrs['secure'] === true) || $this->hasFlag($attrs, 'secure');
+        $hasHttpOnly = (isset($attrs['httponly']) && $attrs['httponly'] === true) || $this->hasFlag($attrs, 'httponly');
+
+        if (($this->forceSecure || $this->isSameSiteNone($attrs)) && method_exists($cookie, 'secure')) {
+            $cookie = $cookie->secure();
+        } elseif ($hasSecure && method_exists($cookie, 'secure')) {
             $cookie = $cookie->secure();
         }
-        if ((isset($attrs['httponly']) || $this->hasFlag($attrs, 'httponly')) && method_exists($cookie, 'httpOnly')) {
+
+        if ($this->forceHttpOnly && method_exists($cookie, 'httpOnly')) {
+            $cookie = $cookie->httpOnly();
+        } elseif ($hasHttpOnly && method_exists($cookie, 'httpOnly')) {
             $cookie = $cookie->httpOnly();
         }
+
         return $cookie;
+    }
+
+    private function isSameSiteNone(array $attrs): bool
+    {
+        if (!isset($attrs['samesite'])) {
+            return false;
+        }
+        return strcasecmp((string)$attrs['samesite'], 'none') === 0;
     }
 
     private function hasFlag(array $attrs, string $flag): bool

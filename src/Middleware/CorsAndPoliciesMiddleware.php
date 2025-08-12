@@ -13,22 +13,35 @@ use Infocyph\Webrick\Router\Definition\Attribute\Cors;
 
 final readonly class CorsAndPoliciesMiddleware
 {
-    /** @param string[] $origins  Allowed origins (['*'] ⇒ wildcard) */
+    /** @param string[] $origins Allowed origins (['*'] ⇒ wildcard) */
     /** @param string[] $acceptCh Client Hints to request via Accept-CH */
+    /** @param string[] $timingAllowOrigins Origins for Timing-Allow-Origin (e.g. ['*'] or list) */
     public function __construct(
         // CORS
-        private array  $origins = ['*'],
+        private array $origins = ['*'],
         private string $methods = 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-        private string $allowHeaders = 'Content-Type, Authorization',
-        private string $exposeHeaders = 'Content-Length, Content-Type, ETag, Server-Timing, Location, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset',
-        private int    $maxAgeSeconds = 3600,
-        private bool   $allowCredentials = true,
+        private string|array $allowHeaders = ['Content-Type', 'Authorization'],
+        private string|array $exposeHeaders = [
+            'Content-Length',
+            'Content-Type',
+            'ETag',
+            'Server-Timing',
+            'Location',
+            'X-RateLimit-Limit',
+            'X-RateLimit-Remaining',
+            'X-RateLimit-Reset',
+        ],
+        private int $maxAgeSeconds = 3600,
+        private bool $allowCredentials = true,
+        private bool $allowPrivateNetwork = false,
 
         // Security / Policies
-        private bool   $hsts = true,
-        private bool   $hstsIncludeSubdomains = true,
+        private bool $hsts = true,
+        private bool $hstsIncludeSubdomains = true,
         private ?string $csp = "default-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self';",
-        private array  $acceptCh = [
+
+        // Client Hints + TAO; assign blank array to disable
+        private array $acceptCh = [
             'Sec-CH-UA',
             'Sec-CH-UA-Mobile',
             'Sec-CH-UA-Platform',
@@ -36,155 +49,198 @@ final readonly class CorsAndPoliciesMiddleware
             'Sec-CH-UA-Model',
             'Sec-CH-UA-Full-Version',
         ],
-
-        // NEL / Reporting
-        private ?string $nelGroup = null,                 // set to enable NEL
-        private ?string $nelEndpoint = null,              // absolute URL
-        private int     $nelTtlSeconds = 86400,
-        private bool    $nelIncludeSubdomains = true,
-        private bool    $nelCollectSuccess = false,
+        private array $timingAllowOrigins = [],   // e.g. ['*'] or ['https://app.example.com']
     ) {
     }
 
     public function __invoke(Request $req, Closure $next): Response
     {
-        // Start with global policy, allow route override via #[Cors] attribute.
+        // Route override via #[Cors]
         $policy = [
-            'origins'          => $this->origins,
-            'methods'          => $this->methods,
-            'allowHeaders'     => $this->allowHeaders,
-            'exposeHeaders'    => $this->exposeHeaders,
-            'maxAgeSeconds'    => $this->maxAgeSeconds,
+            'origins' => $this->origins,
+            'methods' => $this->methods,
+            'allowHeaders' => $this->allowHeaders,
+            'exposeHeaders' => $this->exposeHeaders,
+            'maxAgeSeconds' => $this->maxAgeSeconds,
             'allowCredentials' => $this->allowCredentials,
+            'allowPrivateNetwork' => $this->allowPrivateNetwork,
         ];
 
         /** @var Cors|null $route */
         $route = $req->getAttribute('cors_policy');
         if ($route instanceof Cors) {
-            $policy['origins']          = $route->origins;
-            $policy['methods']          = $route->methods          ?? $policy['methods'];
-            $policy['allowHeaders']     = $route->headers          ?? $policy['allowHeaders'];
-            $policy['maxAgeSeconds']    = $route->maxAgeSeconds    ?? $policy['maxAgeSeconds'];
+            $policy['origins'] = $route->origins;
+            $policy['methods'] = $route->methods ?? $policy['methods'];
+            $policy['allowHeaders'] = $route->headers ?? $policy['allowHeaders'];
+            $policy['maxAgeSeconds'] = $route->maxAgeSeconds ?? $policy['maxAgeSeconds'];
             $policy['allowCredentials'] = $route->allowCredentials ?? $policy['allowCredentials'];
-            // exposeHeaders stays global (route-level override if you like: extend Cors attr)
         }
 
-        $origin  = $req->getHeaderLine('Origin');
-        $allowed = $this->isAllowedOrigin($origin, $policy['origins']) ? $origin : null;
+        $origin = $req->getHeaderLine('Origin');
+        [$acao, $usedWildcard] = $this->resolveAllowedOrigin($origin, $policy['origins'], $policy['allowCredentials']);
 
-        // If we might reflect an Origin (non-wildcard list) tell the accumulator now.
-        if ($policy['origins'] !== ['*']) {
-            $req = VaryAccumulatorMiddleware::add($req, 'Origin');
+        // Register Vary only if outcome depends on Origin
+        if (!$usedWildcard && $origin !== '') {
+            VaryAccumulatorMiddleware::add($req, 'Origin');
         }
 
-        /* ── Preflight short-circuit ───────────────────────────────── */
+        /* ── Preflight ───────────────────────────────────────────── */
         if ($req->getMethod() === 'OPTIONS') {
+            // preflight caches should vary on these request headers
+            VaryAccumulatorMiddleware::add($req, 'Access-Control-Request-Method', 'Access-Control-Request-Headers');
+
             $resp = new Response(204, new Stream(''));
-            $resp = $this->applyCors($resp, $allowed, $policy, /*preflight*/true);
+            $resp = $this->applyCors($resp, $req, $policy, $acao, $usedWildcard, true);
             $resp = $this->applyPolicies($resp);
             return $resp;
         }
 
-        /* ── Normal request ────────────────────────────────────────── */
+        /* ── Normal request ─────────────────────────────────────── */
         $resp = $next($req);
-        $resp = $this->applyCors($resp, $allowed, $policy, /*preflight*/false);
+        $resp = $this->applyCors($resp, $req, $policy, $acao, $usedWildcard, false);
         $resp = $this->applyPolicies($resp);
 
         return $resp;
     }
 
-    /* ───────────────────────── helpers ───────────────────────── */
+    /* ───────────────────────── CORS ───────────────────────── */
 
-    private function applyCors(Response $r, ?string $origin, array $p, bool $preflight): Response
-    {
-        // Always send these
-        $r = $r
-            ->withHeader('Access-Control-Allow-Methods', $p['methods'])
-            ->withHeader('Access-Control-Max-Age', (string)$p['maxAgeSeconds']);
-
-        // Request headers the client is allowed to send on CORS requests
-        $r = $r->withHeader('Access-Control-Allow-Headers', $p['allowHeaders']);
-
-        // Which response headers the client is allowed to read
-        if ($this->exposeHeaders !== '') {
-            $r = $r->withHeader('Access-Control-Expose-Headers', $p['exposeHeaders']);
+    private function applyCors(
+        Response $r,
+        Request $req,
+        array $p,
+        ?string $acao,
+        bool $wildcard,
+        bool $preflight,
+    ): Response {
+        // ACAO: reflect concrete origin when allowed; wildcard only if creds are OFF
+        if ($acao !== null) {
+            $r = $this->setIfAbsent($r, 'Access-Control-Allow-Origin', $acao);
+        } elseif ($wildcard) {
+            $r = $this->setIfAbsent($r, 'Access-Control-Allow-Origin', '*'); // only valid when creds=false
         }
 
-        if ($p['allowCredentials']) {
-            $r = $r->withHeader('Access-Control-Allow-Credentials', 'true');
+        // Credentials allowed only with a specific origin (not '*')
+        if ($p['allowCredentials'] && !$wildcard && $acao !== null) {
+            $r = $this->setIfAbsent($r, 'Access-Control-Allow-Credentials', 'true');
         }
 
-        // ACAO: reflect the specific Origin when allowed, otherwise wildcard (only if legal)
-        $acao = null;
+        // Methods
+        $methods = $p['methods'];
+        $reqMethod = strtoupper($req->getHeaderLine('Access-Control-Request-Method'));
+        if ($preflight && $reqMethod !== '' && $this->methodAllowed($reqMethod, $methods)) {
+            $methods = $reqMethod; // reflect when allowed
+        }
+        $r = $this->setIfAbsent($r, 'Access-Control-Allow-Methods', $methods);
 
-        if ($origin !== null) {
-            // specific origin allowed
-            $acao = $origin;
+        // Allow-Headers: reflect what was requested when configured as wildcard
+        $allowHeaders = $this->csv($p['allowHeaders']);
+        if ($preflight) {
+            $requested = $req->getHeaderLine('Access-Control-Request-Headers');
+            if ($requested !== '' && $this->isWildcard($p['allowHeaders'])) {
+                $r = $this->setIfAbsent($r, 'Access-Control-Allow-Headers', $requested);
+            } else {
+                $r = $this->setIfAbsent($r, 'Access-Control-Allow-Headers', $allowHeaders);
+            }
+            $r = $this->setIfAbsent($r, 'Access-Control-Max-Age', (string)$p['maxAgeSeconds']);
+
+            if ($p['allowPrivateNetwork'] &&
+                strtolower($req->getHeaderLine('Access-Control-Request-Private-Network')) === 'true') {
+                $r = $this->setIfAbsent($r, 'Access-Control-Allow-Private-Network', 'true');
+            }
         } else {
-            // not a listed origin
-            if ($p['origins'] === ['*'] && !$p['allowCredentials']) {
-                $acao = '*'; // wildcard only when credentials are OFF
-            }
+            // harmless to send on non-preflight too (some clients look at it)
+            $r = $this->setIfAbsent($r, 'Access-Control-Allow-Headers', $allowHeaders);
         }
 
-        if ($acao !== null && $acao !== '') {
-            $r = $r->withHeader('Access-Control-Allow-Origin', $acao);
-            // If we reflected, ensure Vary: Origin is present even on preflight
-            if ($acao !== '*') {
-                $vary = $r->getHeaderLine('Vary');
-                $r = $r->withHeader('Vary', $vary === '' ? 'Origin' : $vary . ', Origin');
-            }
+        // Expose-Headers (client-readable response headers)
+        $expose = $this->csv($p['exposeHeaders']);
+        if ($expose !== '') {
+            $r = $this->setIfAbsent($r, 'Access-Control-Expose-Headers', $expose);
         }
 
         return $r;
     }
 
+    /**
+     * Decide whether to reflect a concrete origin or use '*'.
+     * Returns [acao|null, wildcardUsed].
+     */
+    private function resolveAllowedOrigin(string $origin, array $allowed, bool $withCreds): array
+    {
+        $origin = trim($origin);
+        if ($origin === '') {
+            return [null, false];
+        }
+
+        $allowAny = ($allowed === ['*']);
+        if ($allowAny) {
+            // With credentials, '*' is illegal ⇒ reflect the Origin
+            if ($withCreds) {
+                return [$origin, false];
+            }
+            return [null, true]; // wildcard ok (no creds)
+        }
+
+        if (in_array($origin, $allowed, true)) {
+            return [$origin, false];
+        }
+
+        return [null, false]; // not allowed
+    }
+
+    private function methodAllowed(string $method, string $csvList): bool
+    {
+        $list = array_map('trim', explode(',', $csvList));
+        return in_array($method, $list, true);
+    }
+
+    private function csv(string|array $v): string
+    {
+        if (is_string($v)) {
+            return trim($v);
+        }
+        $v = array_values(array_filter(array_map(static fn ($s) => trim((string)$s), $v), fn ($s) => $s !== ''));
+        return implode(', ', array_unique($v));
+    }
+
+    private function isWildcard(string|array $v): bool
+    {
+        return is_string($v) ? trim($v) === '*' : ($v === ['*']);
+    }
+
+    private function setIfAbsent(Response $r, string $name, string $value): Response
+    {
+        return $r->hasHeader($name) ? $r : $r->withHeader($name, $value);
+    }
+
+    /* ───────────────────── Policies (no NEL here) ─────────────────── */
+
     private function applyPolicies(Response $r): Response
     {
-        // SecurityHeaders (HSTS, COOP/COEP/CORP, Referrer-Policy, etc.)
+        // Security headers bundle (HSTS/COOP/COEP/CORP, etc.)
         $r = SecurityHeaders::tight(
             $r,
             hsts: $this->hsts,
             includeSubs: $this->hstsIncludeSubdomains,
         );
 
-        // CSP if provided
-        if ($this->csp !== null && $this->csp !== '') {
+        // CSP (only if absent)
+        if ($this->csp !== null && $this->csp !== '' && !$r->hasHeader('Content-Security-Policy')) {
             $r = $r->withHeader('Content-Security-Policy', $this->csp);
         }
 
-        // Client Hints: only advertise when actually used (config decides)
-        if (!empty($this->acceptCh)) {
+        // Accept-CH (only if configured & absent)
+        if (!empty($this->acceptCh) && !$r->hasHeader('Accept-CH')) {
             $r = $r->withHeader('Accept-CH', implode(', ', $this->acceptCh));
         }
 
-        // Network Error Logging / Report-To (optional)
-        if ($this->nelGroup && $this->nelEndpoint) {
-            $nel = [
-                'group'               => $this->nelGroup,
-                'max_age'             => $this->nelTtlSeconds,
-                'include_subdomains'  => $this->nelIncludeSubdomains,
-                'success_fraction'    => $this->nelCollectSuccess ? 1.0 : 0.0,
-                'failure_fraction'    => 1.0,
-            ];
-            $reportTo = [
-                'group'     => $this->nelGroup,
-                'max_age'   => $this->nelTtlSeconds,
-                'endpoints' => [['url' => $this->nelEndpoint]],
-            ];
-
-            $r = $r
-                ->withHeader('NEL', json_encode($nel, JSON_THROW_ON_ERROR))
-                ->withHeader('Report-To', json_encode($reportTo, JSON_THROW_ON_ERROR));
+        // Timing-Allow-Origin (optional, only if absent)
+        if (!empty($this->timingAllowOrigins) && !$r->hasHeader('Timing-Allow-Origin')) {
+            $tao = $this->timingAllowOrigins === ['*'] ? '*' : implode(', ', $this->timingAllowOrigins);
+            $r = $r->withHeader('Timing-Allow-Origin', $tao);
         }
 
         return $r;
-    }
-
-    private function isAllowedOrigin(string $origin, array $allowedOrigins): bool
-    {
-        return $origin === ''                      // non-CORS request
-            || $allowedOrigins === ['*']           // wildcard mode
-            || in_array($origin, $allowedOrigins, true);
     }
 }

@@ -1,0 +1,298 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Infocyph\Webrick\Middleware;
+
+use Closure;
+use Infocyph\Webrick\Request\Core\Stream;
+use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Response\Response;
+
+final readonly class CompressionMiddleware
+{
+    /* ─────────── ETag strategies ─────────── */
+    public const ETAG_WEAK_ON_ENCODE   = 'weak-on-encode';
+    public const ETAG_STRONG_RECOMP    = 'recompute-strong'; // default (bytes-on-the-wire)
+    public const ETAG_STRONG_DERIVE    = 'derive-strong';    // from base tag + alg/level
+
+    /** don’t bother below this many bytes */
+    public function __construct(
+        private int   $minBytes = 1024,
+        /** prefer-order when wildcard is used */
+        private array $prefOrder = ['br', 'zstd', 'gzip'],
+        /** ETag behavior when encoding is applied */
+        private string $etagMode = self::ETAG_STRONG_RECOMP,
+        /** stable levels (keep fixed for ETag stability) */
+        private int $gzipLevel = 6,
+        private int $brotliQuality = 4,
+        private int $zstdLevel = 3,
+        /** salt version for derived tags; bump if scheme changes */
+        private string $etagDeriveSalt = 'enc-v1',
+    ) {}
+
+    /** MIME prefixes we never compress */
+    private const NO_COMPRESS_PREFIXES = [
+        'image/',
+        'video/',
+        'audio/',
+        'application/zip',
+        'application/gzip',
+        'application/x-gzip',
+        'application/x-tar',
+        'application/octet-stream',
+        'application/wasm',
+    ];
+
+    /** encoder → callable (only invoked when extension is loaded) */
+    private const ALGO = [
+        'br'   => 'brotli_compress',   // ext-brotli
+        'zstd' => 'zstd_compress',     // ext-zstd
+        'gzip' => 'gzencode',          // ext-zlib (bundled)
+    ];
+
+    public function __invoke(Request $req, Closure $next): Response
+    {
+        $resp = $next($req);
+
+        if (!$this->shouldCompress($req, $resp)) {
+            return $resp;
+        }
+
+        $alg = $this->negotiate($req->getHeaderLine('Accept-Encoding'));
+        if ($alg === null) {
+            return $resp; // client accepts none (or only identity)
+        }
+
+        $raw = (string)$resp->getBody();
+        $enc = $this->encode($raw, $alg);
+        if ($enc === false) {
+            return $resp; // encoder failed – rare
+        }
+
+        // Register Vary for negotiation (also auto-inferred by VaryAccumulator)
+        VaryAccumulatorMiddleware::add($req, 'Accept-Encoding');
+
+        $resp = $this->applyEncoded($resp, $enc, $alg);
+        $resp = $this->adjustValidators($resp, $enc, $alg);
+
+        return $resp;
+    }
+
+    /* ───────────────────────── decisions ───────────────────────── */
+
+    private function shouldCompress(Request $req, Response $resp): bool
+    {
+        if ($resp->hasHeader('Content-Encoding')) {
+            return false; // already encoded
+        }
+        $code = $resp->getStatusCode();
+        if ($code === 204 || $code === 304) {
+            return false; // no-body statuses
+        }
+        if ($req->getMethod() === 'HEAD') {
+            return false; // header-only
+        }
+        if ($code === 206 || $resp->hasHeader('Content-Range')) {
+            return false; // don’t compress partial content
+        }
+        if ($this->hasNoTransform($resp)) {
+            return false; // respect Cache-Control: no-transform
+        }
+        $len = $this->payloadLength($resp);
+        if ($len < $this->minBytes) {
+            return false; // payload too small to win
+        }
+        $ctype = strtolower(trim($resp->getHeaderLine('Content-Type')));
+        if ($ctype !== '' && $this->isNonCompressible($ctype)) {
+            return false;
+        }
+        return true;
+    }
+
+    /* ───────────────────────── encoding ───────────────────────── */
+
+    private function encode(string $raw, string $alg): string|false
+    {
+        return match ($alg) {
+            'gzip' => gzencode($raw, $this->gzipLevel, \ZLIB_ENCODING_GZIP),
+            'br'   => \function_exists(self::ALGO['br'])   ? \brotli_compress($raw, $this->brotliQuality) : false,
+            'zstd' => \function_exists(self::ALGO['zstd']) ? \zstd_compress($raw, $this->zstdLevel)       : false,
+            default => false,
+        };
+    }
+
+    private function applyEncoded(Response $resp, string $enc, string $alg): Response
+    {
+        $resp = $resp
+            ->withBody(new Stream($enc))
+            ->withHeader('Content-Encoding', $alg)
+            ->withHeader('Content-Length', (string)\strlen($enc));
+
+        // Content-MD5 (if present) is now invalid; remove it.
+        if ($resp->hasHeader('Content-MD5')) {
+            $resp = $resp->withoutHeader('Content-MD5');
+        }
+        return $resp;
+    }
+
+    private function adjustValidators(Response $resp, string $encodedBytes, string $alg): Response
+    {
+        $etagLine = $resp->getHeaderLine('ETag');
+
+        switch ($this->etagMode) {
+            case self::ETAG_WEAK_ON_ENCODE:
+                if ($etagLine !== '' && !str_starts_with($etagLine, 'W/')) {
+                    $resp = $resp->withHeader('ETag', 'W/' . $etagLine);
+                }
+                break;
+
+            case self::ETAG_STRONG_DERIVE:
+                // If a base ETag exists, derive cheaply; else fall back to hashing encoded bytes.
+                $base = $this->stripWeakQuotes($etagLine);
+                if ($base !== '') {
+                    $level = $this->encodedLevelToken($alg);
+                    $derived = '"' . substr(sha1($base . '|' . $alg . '|' . $level . '|' . $this->etagDeriveSalt), 0, 16) . '"';
+                    $resp = $resp->withHeader('ETag', $derived);
+                } else {
+                    $resp = $resp->withHeader('ETag', $this->strongFromBytes($encodedBytes));
+                }
+                break;
+
+            case self::ETAG_STRONG_RECOMP:
+            default:
+                // Compute a strong ETag for the on-the-wire bytes.
+                $resp = $resp->withHeader('ETag', $this->strongFromBytes($encodedBytes));
+                break;
+        }
+
+        return $resp;
+    }
+
+    private function strongFromBytes(string $bytes): string
+    {
+        return '"' . substr(sha1($bytes), 0, 16) . '"';  // strong, short, cache-friendly
+    }
+
+    private function stripWeakQuotes(string $etagLine): string
+    {
+        $t = trim($etagLine);
+        if ($t === '') return '';
+        if (str_starts_with($t, 'W/')) {
+            $t = substr($t, 2);
+        }
+        // remove optional surrounding quotes
+        if (strlen($t) >= 2 && $t[0] === '"' && $t[strlen($t)-1] === '"') {
+            $t = substr($t, 1, -1);
+        }
+        return trim($t);
+    }
+
+    private function encodedLevelToken(string $alg): string
+    {
+        return match ($alg) {
+            'gzip' => (string)$this->gzipLevel,
+            'br'   => (string)$this->brotliQuality,
+            'zstd' => (string)$this->zstdLevel,
+            default => '0',
+        };
+    }
+
+    /* ───────────────────────── helpers ─────────────────────────── */
+
+    private function payloadLength(Response $r): int
+    {
+        $b = $r->getBody();
+        $len = $b->getSize();
+        if ($len !== null) {
+            return $len;
+        }
+        if ($b->isSeekable()) {
+            $pos = $b->tell();
+            $data = $b->getContents();
+            $b->seek($pos);
+            return \strlen($data);
+        }
+        // unknown length – assume big enough to avoid surprises
+        return $this->minBytes;
+    }
+
+    private function hasNoTransform(Response $r): bool
+    {
+        $cc = strtolower($r->getHeaderLine('Cache-Control'));
+        return $cc !== '' && str_contains($cc, 'no-transform');
+    }
+
+    /** True when `$ctype` starts with any of the NO_COMPRESS prefixes. */
+    private function isNonCompressible(string $ctype): bool
+    {
+        foreach (self::NO_COMPRESS_PREFIXES as $prefix) {
+            if (\str_starts_with($ctype, $prefix)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Return the best supported encoding from Accept-Encoding or **null**.
+     */
+    private function negotiate(string $header): ?string
+    {
+        $candidates = $this->parseAcceptHeader($header);
+        if ($candidates === []) {
+            // No header → HTTP/1.1 implies identity is acceptable
+            return null;
+        }
+
+        foreach ($candidates as $alg) {
+            if ($alg === 'identity') {
+                return null; // explicit identity preference
+            }
+
+            if ($alg === '*') {
+                // wildcard ⇒ pick first available in preferred order
+                foreach ($this->prefOrder as $fallback) {
+                    if (isset(self::ALGO[$fallback]) && \function_exists(self::ALGO[$fallback])) {
+                        return $fallback;
+                    }
+                }
+                continue;
+            }
+
+            if (isset(self::ALGO[$alg]) && \function_exists(self::ALGO[$alg])) {
+                return $alg; // direct hit
+            }
+        }
+
+        return null;
+    }
+
+    /** Parse and sort “br;q=1.0, gzip;q=0.8, identity;q=0” → ['br','gzip'] (filters q=0). */
+    private function parseAcceptHeader(string $header): array
+    {
+        if ($header === '') {
+            return [];
+        }
+
+        $parsed = [];
+        foreach (\explode(',', $header) as $seg) {
+            if ($seg === '') {
+                continue;
+            }
+            [$token, $q] = \array_map('trim', \explode(';', $seg, 2) + [1 => 'q=1']);
+            $qVal = (float)(\preg_match('/q=([\d.]+)/', $q, $m) ? $m[1] : 1);
+            if ($qVal <= 0) {
+                continue; // ignore explicitly refused codings
+            }
+            $parsed[] = [\strtolower($token), $qVal];
+        }
+
+        \usort(
+            $parsed,
+            static fn (array $a, array $b): int => $b[1] <=> $a[1], // highest q first
+        );
+
+        return \array_column($parsed, 0);
+    }
+}
