@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Middleware;
@@ -26,8 +27,9 @@ final readonly class RequestLimitsMiddleware
         private int $maxHeaderBytes = 8192,
         private ?int $maxBodyBytes = null,
         private array $bodyLimitVerbs = ['POST', 'PUT', 'PATCH', 'DELETE'],
-        private bool $violateOnUnknownBody = false,
-    ) {}
+        private bool $violateOnUnknownBody = true,
+    ) {
+    }
 
     public function __invoke(Request $req, Closure $next): Response
     {

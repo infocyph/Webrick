@@ -22,7 +22,7 @@ final readonly class CompressionMiddleware
         /** prefer-order when wildcard is used */
         private array $prefOrder = ['br', 'zstd', 'gzip'],
         /** ETag behavior when encoding is applied */
-        private string $etagMode = self::ETAG_STRONG_RECOMP,
+        private string $etagMode = self::ETAG_WEAK_ON_ENCODE,
         /** stable levels (keep fixed for ETag stability) */
         private int $gzipLevel = 6,
         private int $brotliQuality = 4,

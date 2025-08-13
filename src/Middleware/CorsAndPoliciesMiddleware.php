@@ -81,13 +81,23 @@ final readonly class CorsAndPoliciesMiddleware
 
         // Register Vary only if outcome depends on Origin
         if (!$usedWildcard && $origin !== '') {
-            VaryAccumulatorMiddleware::add($req, 'Origin');
+            $req = VaryAccumulatorMiddleware::add($req, 'Origin');
         }
 
         /* ── Preflight ───────────────────────────────────────────── */
         if ($req->getMethod() === 'OPTIONS') {
             // preflight caches should vary on these request headers
-            VaryAccumulatorMiddleware::add($req, 'Access-Control-Request-Method', 'Access-Control-Request-Headers');
+            $req = VaryAccumulatorMiddleware::add(
+                $req,
+                'Access-Control-Request-Method',
+                'Access-Control-Request-Headers'
+            );
+            // also vary when Private Network Access is in play
+            $req = VaryAccumulatorMiddleware::addIf(
+                $req,
+                $policy['allowPrivateNetwork'],
+                'Access-Control-Request-Private-Network'
+            );
 
             $resp = new Response(204, new Stream(''));
             $resp = $this->applyCors($resp, $req, $policy, $acao, $usedWildcard, true);

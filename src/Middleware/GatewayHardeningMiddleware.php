@@ -20,6 +20,9 @@ use Infocyph\Webrick\Response\Response;
  * • Optionally redirects plain-HTTP → HTTPS (308).
  * • Strips hop-by-hop headers on both request and response (RFC 9110 §7.6).
  * • Guards against open redirects by validating absolute Location hosts.
+ *
+ * Notes:
+ *   - The "is_trusted_proxy" flag reflects the TCP peer (REMOTE_ADDR), not the end-user IP.
  */
 final class GatewayHardeningMiddleware
 {
@@ -72,74 +75,116 @@ final class GatewayHardeningMiddleware
 
     public function __invoke(Request $req, Closure $next): Response
     {
-        /* ── Host allow-list check (cheap + first) ─────────────────── */
-        if ($this->trustedHosts !== [] && !$this->matchesHost($req->getUri()->getHost())) {
-            return new Response(
-                400,
-                new Stream('Untrusted Host header.'),
-                ['Content-Type' => 'text/plain; charset=utf-8'],
-            );
+        if ($resp = $this->rejectIfUntrustedHost($req)) {
+            return $resp;
         }
 
-        /* ── End-user IP via trusted proxies; block deny-listed ────── */
-        $endUser = EndUser::from($req);          // honors proxy mask
-        $ip = $endUser->ip();                    // final public address
-
-        if ($ip && $this->cidrHit($ip, $this->denyIpCidrs)) {
-            return new Response(
-                403,
-                new Stream("Forbidden – $ip is not allowed."),
-                ['Content-Type' => 'text/plain; charset=utf-8'],
-            );
+        // Derive end-user IP (safe via trusted proxies), enforce deny-list,
+        // and stash attributes including peer + is_trusted_proxy.
+        [$req, $denyResp] = $this->applyClientAndProxy($req);
+        if ($denyResp) {
+            return $denyResp;
         }
 
-        // Stash derived info for downstream
-        $isTrustedProxy = $this->cidrHit($ip, $this->trustedProxyCidrs);
-        $req = $req
-            ->withAttribute('client_ip', $ip)
-            ->withAttribute('is_trusted_proxy', $isTrustedProxy);
-
-        /* ── HTTPS enforce (after Host validation) ─────────────────── */
-        if ($this->enforceHttps) {
-            $uri = $req->getUri();
-            if ($uri->getScheme() !== 'https') {
-                $target = $uri->withScheme('https')->withPort($this->httpsPort);
-                return new Response(
-                    308,
-                    headers: ['Location' => (string)$target],
-                );
-            }
+        if ($resp = $this->redirectIfHttpsEnforced($req)) {
+            return $resp;
         }
 
-        /* ── Strip hop-by-hop headers (request) ────────────────────── */
         if ($this->stripHopByHop) {
             $req = $this->stripHopByHopFromRequest($req);
         }
 
-        /* ── Downstream ────────────────────────────────────────────── */
         $resp = $next($req);
 
-        /* ── Strip hop-by-hop headers (response) ───────────────────── */
         if ($this->stripHopByHop) {
             $resp = $this->stripHopByHopFromResponse($resp);
         }
 
-        /* ── Redirect guard (absolute Location hosts) ──────────────── */
-        if ($resp->hasHeader('Location')) {
-            $loc = $resp->getHeaderLine('Location');
-            $host = parse_url($loc, PHP_URL_HOST);
+        return $this->guardRedirects($req, $resp);
+    }
 
-            if ($host) {
-                if ($this->redirectAllowedHosts === []) {
-                    // Same-origin only when no explicit allow-list
-                    $current = $req->getUri()->getHost();
-                    if (!self::equalsIgnoreCase($host, $current)) {
-                        return Response::json(['error' => 'Open redirect blocked'], 400);
-                    }
-                } elseif (!in_array($host, $this->redirectAllowedHosts, true)) {
-                    return Response::json(['error' => 'Open redirect blocked'], 400);
-                }
+    /* ───────────────────────── steps ───────────────────────────── */
+
+    private function rejectIfUntrustedHost(Request $req): ?Response
+    {
+        if ($this->trustedHosts === []) {
+            return null;
+        }
+        if ($this->matchesHost($req->getUri()->getHost())) {
+            return null;
+        }
+        return new Response(
+            400,
+            new Stream('Untrusted Host header.'),
+            ['Content-Type' => 'text/plain; charset=utf-8'],
+        );
+    }
+
+    /**
+     * Resolve end-user IP (via EndUser) and peer IP (REMOTE_ADDR), enforce deny-list,
+     * and attach attributes: client_ip, peer_ip, is_trusted_proxy.
+     *
+     * @return array{0:Request,1:?Response}
+     */
+    private function applyClientAndProxy(Request $req): array
+    {
+        $endUser = EndUser::from($req);          // honors proxy mask set in constructor
+        $clientIp = $endUser->ip();              // final public address (end user)
+        if ($clientIp && $this->cidrHit($clientIp, $this->denyIpCidrs)) {
+            return [
+                $req,
+                new Response(
+                    403,
+                    new Stream("Forbidden – $clientIp is not allowed."),
+                    ['Content-Type' => 'text/plain; charset=utf-8'],
+                ),
+            ];
+        }
+
+        $peerIp = $this->peerIp($req);                               // TCP peer
+        $isTrustedProxy = $this->cidrHit($peerIp, $this->trustedProxyCidrs);
+
+        $req = $req
+            ->withAttribute('client_ip', $clientIp)
+            ->withAttribute('peer_ip', $peerIp)
+            ->withAttribute('is_trusted_proxy', $isTrustedProxy);
+
+        return [$req, null];
+    }
+
+    private function redirectIfHttpsEnforced(Request $req): ?Response
+    {
+        if (!$this->enforceHttps) {
+            return null;
+        }
+        $uri = $req->getUri();
+        if ($uri->getScheme() === 'https') {
+            return null;
+        }
+        $target = $uri->withScheme('https')->withPort($this->httpsPort);
+        return new Response(308, headers: ['Location' => (string)$target]);
+    }
+
+    private function guardRedirects(Request $req, Response $resp): Response
+    {
+        if (!$resp->hasHeader('Location')) {
+            return $resp;
+        }
+
+        $loc = $resp->getHeaderLine('Location');
+        $host = parse_url($loc, PHP_URL_HOST);
+        if (!$host) {
+            return $resp; // relative | opaque → fine
+        }
+
+        if ($this->redirectAllowedHosts === []) {
+            // Same-origin only when no explicit allow-list
+            $current = $req->getUri()->getHost();
+            if (!self::equalsIgnoreCase($host, $current)) {
+                return Response::json(['error' => 'Open redirect blocked'], 400);
             }
+        } elseif (!in_array($host, $this->redirectAllowedHosts, true)) {
+            return Response::json(['error' => 'Open redirect blocked'], 400);
         }
 
         return $resp;
@@ -163,6 +208,13 @@ final class GatewayHardeningMiddleware
             return false;
         }
         return array_any($cidrs, fn ($cidr) => IpCidr::match($ip, $cidr));
+    }
+
+    private function peerIp(Request $req): ?string
+    {
+        $srv = $req->getServerParams();
+        $ip = $srv['REMOTE_ADDR'] ?? null;
+        return is_string($ip) && $ip !== '' ? $ip : null;
     }
 
     private function stripHopByHopFromRequest(Request $r): Request
