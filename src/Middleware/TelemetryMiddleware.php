@@ -148,8 +148,7 @@ final class TelemetryMiddleware
             // 16 bytes → 32 hex chars; short, good entropy, log-friendly
             return bin2hex(random_bytes(16));
         } catch (\Throwable) {
-            // Very rare; fall back to uniqid
-            return uniqid('', true);
+            return str_replace('.', '', uniqid('', true));
         }
     }
 }

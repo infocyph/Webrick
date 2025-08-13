@@ -22,7 +22,9 @@ use Infocyph\Webrick\Response\Response;
  * • Guards against open redirects by validating absolute Location hosts.
  *
  * Notes:
- *   - The "is_trusted_proxy" flag reflects the TCP peer (REMOTE_ADDR), not the end-user IP.
+ *   - "client_ip" attribute is the *end-user* address (honors trusted proxy headers).
+ *   - "peer_ip" attribute is the direct socket peer (no proxy headers) via EndUser::ipNoProxy().
+ *   - "is_trusted_proxy" is computed from peer_ip against the trusted-proxy CIDRs.
  */
 final class GatewayHardeningMiddleware
 {
@@ -33,7 +35,7 @@ final class GatewayHardeningMiddleware
         'proxy-authenticate',
         'proxy-authorization',
         'te',
-        'trailers',
+        'trailer',
         'transfer-encoding',
         'upgrade',
     ];
@@ -41,15 +43,18 @@ final class GatewayHardeningMiddleware
     /** compiled regex list – cached per PHP process */
     private static array $hostRegex = [];
 
+    /** EndUser instance for the current request (set in __invoke) */
+    private ?EndUser $endUser = null;
+
     /**
-     * @param string[]    $trustedProxyCidrs  CIDRs considered trusted proxies
-     * @param string[]    $denyIpCidrs        CIDRs for end-user IPs to block
-     * @param string[]    $trustedHosts       Host header allow-list (supports '*')
-     * @param int|null    $forwardedHeaderMask Symfony-style mask (e.g., Request::HEADER_X_FORWARDED_FOR | …)
-     * @param bool        $enforceHttps       Force HTTPS (308) when scheme != https
-     * @param int         $httpsPort          Port used for HTTPS redirection (typically 443)
-     * @param bool        $stripHopByHop      Remove hop-by-hop headers (req + resp)
-     * @param string[]    $redirectAllowedHosts Absolute redirect targets allowed; empty ⇒ same-origin only
+     * @param string[] $trustedProxyCidrs CIDRs considered trusted proxies
+     * @param string[] $denyIpCidrs CIDRs for end-user IPs to block
+     * @param string[] $trustedHosts Host header allow-list (supports '*')
+     * @param int|null $forwardedHeaderMask Symfony-style mask (e.g., Request::HEADER_X_FORWARDED_FOR | …)
+     * @param bool $enforceHttps Force HTTPS (308) when scheme != https
+     * @param int $httpsPort Port used for HTTPS redirection (typically 443)
+     * @param bool $stripHopByHop Remove hop-by-hop headers (req + resp)
+     * @param string[] $redirectAllowedHosts Absolute redirect targets allowed; empty ⇒ same-origin only
      */
     public function __construct(
         private array $trustedProxyCidrs = [],
@@ -79,12 +84,15 @@ final class GatewayHardeningMiddleware
             return $resp;
         }
 
-        // Derive end-user IP (safe via trusted proxies), enforce deny-list,
-        // and stash attributes including peer + is_trusted_proxy.
-        [$req, $denyResp] = $this->applyClientAndProxy($req);
-        if ($denyResp) {
-            return $denyResp;
+        // Build EndUser once and keep for helpers
+        $this->endUser = EndUser::from($req);
+
+        if ($resp = $this->denyIfBlockedEndUser()) {
+            return $resp;
         }
+
+        // Attach client/peer/flag attributes for downstream
+        $req = $this->attachNetworkAttributes($req);
 
         if ($resp = $this->redirectIfHttpsEnforced($req)) {
             return $resp;
@@ -103,7 +111,7 @@ final class GatewayHardeningMiddleware
         return $this->guardRedirects($req, $resp);
     }
 
-    /* ───────────────────────── steps ───────────────────────────── */
+    /* ───────────── step helpers ───────────── */
 
     private function rejectIfUntrustedHost(Request $req): ?Response
     {
@@ -120,36 +128,29 @@ final class GatewayHardeningMiddleware
         );
     }
 
-    /**
-     * Resolve end-user IP (via EndUser) and peer IP (REMOTE_ADDR), enforce deny-list,
-     * and attach attributes: client_ip, peer_ip, is_trusted_proxy.
-     *
-     * @return array{0:Request,1:?Response}
-     */
-    private function applyClientAndProxy(Request $req): array
+    private function denyIfBlockedEndUser(): ?Response
     {
-        $endUser = EndUser::from($req);          // honors proxy mask set in constructor
-        $clientIp = $endUser->ip();              // final public address (end user)
+        $clientIp = $this->endUser?->ip(); // honors trusted proxy headers
         if ($clientIp && $this->cidrHit($clientIp, $this->denyIpCidrs)) {
-            return [
-                $req,
-                new Response(
-                    403,
-                    new Stream("Forbidden – $clientIp is not allowed."),
-                    ['Content-Type' => 'text/plain; charset=utf-8'],
-                ),
-            ];
+            return new Response(
+                403,
+                new Stream("Forbidden – $clientIp is not allowed."),
+                ['Content-Type' => 'text/plain; charset=utf-8'],
+            );
         }
+        return null;
+    }
 
-        $peerIp = $this->peerIp($req);                               // TCP peer
+    private function attachNetworkAttributes(Request $req): Request
+    {
+        $clientIp = $this->endUser?->ip();          // end-user
+        $peerIp = $this->endUser?->ipNoProxy();   // direct socket peer
         $isTrustedProxy = $this->cidrHit($peerIp, $this->trustedProxyCidrs);
 
-        $req = $req
+        return $req
             ->withAttribute('client_ip', $clientIp)
             ->withAttribute('peer_ip', $peerIp)
             ->withAttribute('is_trusted_proxy', $isTrustedProxy);
-
-        return [$req, null];
     }
 
     private function redirectIfHttpsEnforced(Request $req): ?Response
@@ -190,7 +191,7 @@ final class GatewayHardeningMiddleware
         return $resp;
     }
 
-    /* ───────────────────────── helpers ───────────────────────────── */
+    /* ───────────── general helpers ───────────── */
 
     private static function equalsIgnoreCase(string $a, string $b): bool
     {
@@ -199,7 +200,7 @@ final class GatewayHardeningMiddleware
 
     private function matchesHost(string $host): bool
     {
-        return self::$hostRegex === [] || array_any(self::$hostRegex, fn ($rx) => preg_match($rx, $host));
+        return self::$hostRegex === [] || array_any(self::$hostRegex, fn($rx) => preg_match($rx, $host));
     }
 
     private function cidrHit(?string $ip, array $cidrs): bool
@@ -207,14 +208,7 @@ final class GatewayHardeningMiddleware
         if ($ip === null || $cidrs === []) {
             return false;
         }
-        return array_any($cidrs, fn ($cidr) => IpCidr::match($ip, $cidr));
-    }
-
-    private function peerIp(Request $req): ?string
-    {
-        $srv = $req->getServerParams();
-        $ip = $srv['REMOTE_ADDR'] ?? null;
-        return is_string($ip) && $ip !== '' ? $ip : null;
+        return array_any($cidrs, fn($cidr) => IpCidr::match($ip, $cidr));
     }
 
     private function stripHopByHopFromRequest(Request $r): Request
