@@ -41,6 +41,7 @@ final class GatewayHardeningMiddleware
 
     /** compiled regex list (per instance) */
     private array $hostRegex = [];
+    private bool $allowAllHosts = false;
 
     /** EndUser instance for the current request (set in __invoke) */
     private ?EndUser $endUser = null;
@@ -69,7 +70,8 @@ final class GatewayHardeningMiddleware
         Request::setTrustedProxies($this->trustedProxyCidrs, $forwardedHeaderMask);
 
         // ② Compile host allow-list for this instance
-        if ($this->trustedHosts !== []) {
+        $this->allowAllHosts = ($this->trustedHosts === ['*']);
+        if (!$this->allowAllHosts && $this->trustedHosts !== []) {
             foreach ($this->trustedHosts as $p) {
                 $escaped = str_replace(['.', '*'], ['\.', '.*'], $p);
                 $this->hostRegex[] = '#^' . $escaped . '$#i';
@@ -119,13 +121,12 @@ final class GatewayHardeningMiddleware
 
     private function rejectIfUntrustedHost(Request $req): ?Response
     {
-        if ($this->trustedHosts === []) {
+        if ($this->allowAllHosts || $this->trustedHosts === []) {
             return null;
         }
-        if ($this->matchesHost($req->getUri()->getHost())) {
-            return null;
-        }
-        return Response::plaintext('Untrusted Host header.', 400);
+        return $this->matchesHost($req->getUri()->getHost())
+            ? null
+            : Response::plaintext('Untrusted Host header.', 400);
     }
 
     private function denyIfBlockedEndUser(): ?Response
@@ -160,7 +161,7 @@ final class GatewayHardeningMiddleware
         }
         $port = ($this->httpsPort === 443) ? null : $this->httpsPort; // avoid :443 in Location
         $target = $uri->withScheme('https')->withPort($port);
-        return new Response(308, headers: ['Location' => (string)$target]);
+        return Response::redirect((string)$target, 308);
     }
 
     private function guardRedirects(Request $req, Response $resp): Response

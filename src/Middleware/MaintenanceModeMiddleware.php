@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Middleware;
 
 use Closure;
-use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 
@@ -30,13 +29,8 @@ final readonly class MaintenanceModeMiddleware
 
         $payload = \file_get_contents($this->file) ?: 'Service is down for maintenance.';
 
-        return new Response(
-            status: 503,
-            headers: [
-                'Content-Type' => $this->contentType,
-                'Retry-After' => (string)$this->retryAfter,
-            ],
-            body: new Stream($payload),
-        );
+        return Response::plaintext($payload, 503)
+            ->withHeader('Retry-After', (string)$this->retryAfter)
+            ->withHeader('Content-Type', $this->contentType);
     }
 }

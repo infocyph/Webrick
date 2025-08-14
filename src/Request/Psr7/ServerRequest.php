@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Request\Psr7;
 
 use Infocyph\ArrayKit\Collection\Collection;
+use Infocyph\Webrick\Support\HttpUtils;
 use Infocyph\Webrick\Request\Core\{Message, Stream, UploadedFile, UploadedFileCollection, Uri};
 use Infocyph\Webrick\Request\Http\RequestHeaders;
 use InvalidArgumentException;
@@ -394,9 +395,7 @@ class ServerRequest extends Message
         if (strtoupper($this->method) !== 'POST') {
             return false;
         }
-        $ct = strtolower($this->getHeaderLine('Content-Type'));
-        return str_starts_with($ct, 'application/x-www-form-urlencoded')
-            || str_starts_with($ct, 'multipart/form-data');
+        return HttpUtils::isFormContentType($this->getHeaderLine('Content-Type'));
     }
 
 

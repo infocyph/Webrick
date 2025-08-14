@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Middleware;
@@ -28,13 +29,13 @@ final readonly class ThrottleMiddleware
     private CacheItemPoolInterface $pool;
 
     /**
-     * @param int $max             allowed requests per window
-     * @param int $window          window size in seconds
-     * @param CacheItemPoolInterface|null $pool   PSR-6 pool (APCu/file fallback by default)
-     * @param bool $retryAsDate    format Retry-After as HTTP-date instead of seconds
-     * @param Closure(Request):string|null $identifierResolver  custom key source (default: client IP)
-     * @param bool $emitStandardRateLimit  also emit RateLimit-* (in addition to X-RateLimit-*)
-     * @param string $scope         logical bucket (e.g., "global", "auth", "login")
+     * @param int $max allowed requests per window
+     * @param int $window window size in seconds
+     * @param CacheItemPoolInterface|null $pool PSR-6 pool (APCu/file fallback by default)
+     * @param bool $retryAsDate format Retry-After as HTTP-date instead of seconds
+     * @param Closure(Request):string|null $identifierResolver custom key source (default: client IP)
+     * @param bool $emitStandardRateLimit also emit RateLimit-* (in addition to X-RateLimit-*)
+     * @param string $scope logical bucket (e.g., "global", "auth", "login")
      * @param string $costAttribute request attribute name used for per-request cost
      * @param Closure(Request):bool|null $bypass if returns true, request is not throttled
      */
@@ -133,27 +134,20 @@ final readonly class ThrottleMiddleware
             ? gmdate('D, d M Y H:i:s', time() + $delta) . ' GMT'
             : (string)$delta;
 
-        $headers = [
-            'Content-Type' => 'text/plain; charset=utf-8',
-            'Retry-After' => $retry,
-            'X-RateLimit-Limit' => (string)$this->max,
-            'X-RateLimit-Remaining' => '0',
-            'X-RateLimit-Reset' => (string)$resetEpoch,        // epoch (legacy)
-        ];
+        $resp = Response::plaintext('Too Many Requests', 429)
+            ->withHeader('Retry-After', $retry)
+            ->withHeader('X-RateLimit-Limit', (string)$this->max)
+            ->withHeader('X-RateLimit-Remaining', '0')
+            ->withHeader('X-RateLimit-Reset', (string)$resetEpoch); // epoch (legacy)
 
         if ($this->emitStandardRateLimit) {
-            $headers += [
-                'RateLimit-Limit' => (string)$this->max,
-                'RateLimit-Remaining' => '0',
-                'RateLimit-Reset' => (string)$delta,           // seconds per spec
-            ];
+            $resp = $resp
+                ->withHeader('RateLimit-Limit', (string)$this->max)
+                ->withHeader('RateLimit-Remaining', '0')
+                ->withHeader('RateLimit-Reset', (string)$delta);    // seconds per spec
         }
 
-        return new Response(
-            status: 429,
-            headers: $headers,
-            body: new Stream('Too Many Requests'),
-        )->withHeader('Server-Timing', 'throttle;dur=0');
+        return $resp->withHeader('Server-Timing', 'throttle;dur=0');
     }
 
     private function attachRateHeaders(Response $resp, int $remain, int $resetEpoch): Response
