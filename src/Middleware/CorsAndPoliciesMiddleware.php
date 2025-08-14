@@ -50,8 +50,7 @@ final readonly class CorsAndPoliciesMiddleware
             'Sec-CH-UA-Full-Version',
         ],
         private array $timingAllowOrigins = [],   // e.g. ['*'] or ['https://app.example.com']
-    ) {
-    }
+    ) {}
 
     public function __invoke(Request $req, Closure $next): Response
     {
@@ -90,13 +89,13 @@ final readonly class CorsAndPoliciesMiddleware
             $req = VaryAccumulatorMiddleware::add(
                 $req,
                 'Access-Control-Request-Method',
-                'Access-Control-Request-Headers'
+                'Access-Control-Request-Headers',
             );
             // also vary when Private Network Access is in play
             $req = VaryAccumulatorMiddleware::addIf(
                 $req,
                 $policy['allowPrivateNetwork'],
-                'Access-Control-Request-Private-Network'
+                'Access-Control-Request-Private-Network',
             );
 
             $resp = new Response(204, new Stream(''));
@@ -210,7 +209,7 @@ final readonly class CorsAndPoliciesMiddleware
         if (is_string($v)) {
             return trim($v);
         }
-        $v = array_values(array_filter(array_map(static fn ($s) => trim((string)$s), $v), fn ($s) => $s !== ''));
+        $v = array_values(array_filter(array_map(static fn($s) => trim((string)$s), $v), fn($s) => $s !== ''));
         return implode(', ', array_unique($v));
     }
 

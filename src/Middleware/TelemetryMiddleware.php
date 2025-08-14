@@ -38,7 +38,7 @@ final readonly class TelemetryMiddleware
         private ?string $nelEndpoint = null,  // absolute URL for reports
         private int $nelTtlSeconds = 86400,
         private bool $nelIncludeSubdomains = true,
-        private bool $nelCollectSuccesses = false
+        private bool $nelCollectSuccesses = false,
     ) {}
 
     public function __invoke(Request $req, Closure $next): Response
@@ -116,17 +116,19 @@ final readonly class TelemetryMiddleware
         $lenHeader = $resp->getHeaderLine('Content-Length');
         $len = $lenHeader !== '' ? $lenHeader : ($resp->getBody()->getSize() ?? '-');
 
-        $this->log->info(sprintf(
-            '%s (%s) "%s %s" %d %s %.1fms%s',
-            $ip,
-            $fromProxy,
-            $method,
-            $uri,
-            $code,
-            (string)$len,
-            $durMs,
-            $requestId ? " id={$requestId}" : ''
-        ));
+        $this->log->info(
+            sprintf(
+                '%s (%s) "%s %s" %d %s %.1fms%s',
+                $ip,
+                $fromProxy,
+                $method,
+                $uri,
+                $code,
+                (string)$len,
+                $durMs,
+                $requestId ? " id={$requestId}" : '',
+            ),
+        );
 
         return $resp;
     }

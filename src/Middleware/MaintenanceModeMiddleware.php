@@ -18,8 +18,7 @@ final readonly class MaintenanceModeMiddleware
         private string $file = __DIR__ . '/../../storage/framework/down',
         private int $retryAfter = 3600,
         private string $contentType = 'text/plain; charset=utf-8',
-    ) {
-    }
+    ) {}
 
     public function __invoke(Request $req, Closure $next): Response
     {

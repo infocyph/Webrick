@@ -152,7 +152,7 @@ final class VaryAccumulatorMiddleware
         // split by hyphen and ucwords each part
         $parts = array_map(
             static fn(string $p) => $p === '' ? '' : ucfirst(strtolower($p)),
-            explode('-', $t)
+            explode('-', $t),
         );
         return implode('-', $parts);
     }

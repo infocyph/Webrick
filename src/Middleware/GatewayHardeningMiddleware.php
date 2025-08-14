@@ -181,7 +181,7 @@ final class GatewayHardeningMiddleware
 
     private function matchesHost(string $host): bool
     {
-        return array_any($this->hostRegex, fn ($rx) => preg_match($rx, $host));
+        return array_any($this->hostRegex, fn($rx) => preg_match($rx, $host));
     }
 
     private function cidrHit(?string $ip, array $cidrs): bool
@@ -189,7 +189,7 @@ final class GatewayHardeningMiddleware
         if ($ip === null || $cidrs === []) {
             return false;
         }
-        return array_any($cidrs, fn ($cidr) => IpCidr::match($ip, $cidr));
+        return array_any($cidrs, fn($cidr) => IpCidr::match($ip, $cidr));
     }
 
     private function stripHopByHopFromRequest(Request $r): Request

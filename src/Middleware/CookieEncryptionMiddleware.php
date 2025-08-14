@@ -30,18 +30,18 @@ use RuntimeException;
 final class CookieEncryptionMiddleware
 {
     /* compression flags (1-byte, ASCII) */
-    private const MODE_NONE   = '0';
-    private const MODE_ZSTD   = 'z';
+    private const MODE_NONE = '0';
+    private const MODE_ZSTD = 'z';
     private const MODE_BROTLI = 'b';
-    private const MODE_GZIP   = 'g';
+    private const MODE_GZIP = 'g';
 
-    private const V1_BYTE      = "1";   // 0x31
-    private const MODE_STORE   = 'S:';  // server-side storage marker
+    private const V1_BYTE = "1";   // 0x31
+    private const MODE_STORE = 'S:';  // server-side storage marker
     private const CACHE_PREFIX = 'enc_cookie.';
 
-    private static bool $hasZstd   = false;
+    private static bool $hasZstd = false;
     private static bool $hasBrotli = false;
-    private static bool $hasGzip   = false;
+    private static bool $hasGzip = false;
 
     /** @var list<string> 32-byte raw keys (key ring) */
     private array $keys;
@@ -59,7 +59,8 @@ final class CookieEncryptionMiddleware
         private bool $forceSecure = true,
         private bool $forceHttpOnly = true,
         private ?string $defaultSameSite = 'Lax', // null = don’t set; 'None' requires Secure (we’ll enforce)
-    ) {
+    )
+    {
         // normalize keys
         $this->keys = is_array($keyOrKeys) ? array_values($keyOrKeys) : [$keyOrKeys];
         if ($this->keys === []) {
@@ -78,9 +79,9 @@ final class CookieEncryptionMiddleware
 
         // probe compression once per worker
         if (self::$hasZstd === false && self::$hasBrotli === false && self::$hasGzip === false) {
-            self::$hasZstd   = function_exists('zstd_compress');
+            self::$hasZstd = function_exists('zstd_compress');
             self::$hasBrotli = function_exists('brotli_compress');
-            self::$hasGzip   = function_exists('gzdeflate');
+            self::$hasGzip = function_exists('gzdeflate');
         }
     }
 
@@ -120,7 +121,7 @@ final class CookieEncryptionMiddleware
                 continue;
             }
             $base = $m[1];                     // e.g., enc_session
-            $idx  = (int)($m[2] ?? 1);
+            $idx = (int)($m[2] ?? 1);
             $assemblies[$base][$idx] = $val;
         }
 
@@ -151,7 +152,7 @@ final class CookieEncryptionMiddleware
         }
 
         // v1 or legacy?
-        $off  = 0;
+        $off = 0;
         $isV1 = (isset($raw[0]) && $raw[0] === self::V1_BYTE);
         if ($isV1) {
             $off = 1;
@@ -159,14 +160,14 @@ final class CookieEncryptionMiddleware
 
         $mode = $raw[$off] ?? null;
         $off += 1;
-        $kid  = $isV1 ? (ord($raw[$off] ?? "\x00")) : null;
+        $kid = $isV1 ? (ord($raw[$off] ?? "\x00")) : null;
         $off += $isV1 ? 1 : 0;
 
-        $iv   = substr($raw, $off, 12);
+        $iv = substr($raw, $off, 12);
         $off += 12;
-        $tag  = substr($raw, $off, 16);
+        $tag = substr($raw, $off, 16);
         $off += 16;
-        $ct   = substr($raw, $off);
+        $ct = substr($raw, $off);
 
         if ($mode === null || strlen($iv) !== 12 || strlen($tag) !== 16) {
             return null;
@@ -212,10 +213,10 @@ final class CookieEncryptionMiddleware
     private function decompress(string $mode, string $pt): mixed
     {
         return match ($mode) {
-            self::MODE_ZSTD   => self::$hasZstd ? @zstd_uncompress($pt) : null,
+            self::MODE_ZSTD => self::$hasZstd ? @zstd_uncompress($pt) : null,
             self::MODE_BROTLI => self::$hasBrotli ? @brotli_uncompress($pt) : null,
-            self::MODE_GZIP   => @gzinflate($pt),
-            default           => $pt,
+            self::MODE_GZIP => @gzinflate($pt),
+            default => $pt,
         };
     }
 
@@ -247,10 +248,10 @@ final class CookieEncryptionMiddleware
             }
 
             foreach ($this->encryptSegments($name, rawurldecode((string)$value)) as $i => $seg) {
-                $cname  = $i === 1 ? $name : "{$name}.p{$i}";
+                $cname = $i === 1 ? $name : "{$name}.p{$i}";
                 $cookie = Cookie::make($cname, $seg);
                 $cookie = $this->applyAttrs($cookie, $attrs);
-                $jar    = $jar->add($cookie);
+                $jar = $jar->add($cookie);
             }
         }
 
@@ -288,7 +289,7 @@ final class CookieEncryptionMiddleware
 
         throw new LengthException(
             'Encrypted cookie exceeds safe size even after chunking; ' .
-            'enable server-side storage or reduce payload.'
+            'enable server-side storage or reduce payload.',
         );
     }
 
@@ -403,7 +404,7 @@ final class CookieEncryptionMiddleware
             $cookie = $cookie->sameSite($this->defaultSameSite);
         }
 
-        $hasSecure   = (isset($attrs['secure'])   && $attrs['secure'] === true) || $this->hasFlag($attrs, 'secure');
+        $hasSecure = (isset($attrs['secure']) && $attrs['secure'] === true) || $this->hasFlag($attrs, 'secure');
         $hasHttpOnly = (isset($attrs['httponly']) && $attrs['httponly'] === true) || $this->hasFlag($attrs, 'httponly');
 
         if (($this->forceSecure || $this->isSameSiteNone($attrs)) && method_exists($cookie, 'secure')) {

@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Middleware;
@@ -28,11 +29,11 @@ final readonly class NegotiationMiddleware
 {
     /** @param string[] $produces */
     /** @param string[] $charsets */
-    /** @param string[] $locales  ordered by server-side preference */
+    /** @param string[] $locales ordered by server-side preference */
     public function __construct(
         private array $produces = ['application/json', 'text/html'],
         private array $charsets = ['utf-8'],
-        private array $locales  = ['en'],
+        private array $locales = ['en'],
         private string $localeFallback = 'en',
     ) {}
 
@@ -159,7 +160,9 @@ final readonly class NegotiationMiddleware
     private function charsetMattersFor(string $type): bool
     {
         $t = strtolower($type);
-        if ($this->isJson($t)) return false;
+        if ($this->isJson($t)) {
+            return false;
+        }
 
         return str_starts_with($t, 'text/')
             || str_contains($t, 'xml')
@@ -171,7 +174,9 @@ final readonly class NegotiationMiddleware
     private function charsetMattersForAny(array $types): bool
     {
         foreach ($types as $t) {
-            if ($this->charsetMattersFor($t)) return true;
+            if ($this->charsetMattersFor($t)) {
+                return true;
+            }
         }
         return false;
     }

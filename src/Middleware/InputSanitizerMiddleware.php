@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Middleware;
@@ -20,8 +21,9 @@ final class InputSanitizerMiddleware
         private ?InputSanitizer $sanitizer = null,
         private readonly bool $touchFormBodies = true,
         private readonly bool $touchJsonBodies = false,   // opt-in
-        private readonly bool $touchUploadedNames = false // opt-in (best-effort; requires setters)
-    ) {
+        private readonly bool $touchUploadedNames = false, // opt-in (best-effort; requires setters)
+    )
+    {
         $this->sanitizer ??= new InputSanitizer();
     }
 
@@ -61,7 +63,7 @@ final class InputSanitizerMiddleware
         }
 
         $ctype = strtolower($req->getHeaderLine('content-type'));
-        $body  = $req->getParsedBody();
+        $body = $req->getParsedBody();
 
         if (is_array($body) && $this->shouldTouchBody($ctype)) {
             $req = $req
@@ -74,7 +76,7 @@ final class InputSanitizerMiddleware
 
     private function shouldTouchBody(string $ctype): bool
     {
-        $mime   = strtolower(strtok($ctype, ';') ?: '');
+        $mime = strtolower(strtok($ctype, ';') ?: '');
         $isForm = HttpUtils::isFormContentType($ctype);
         $isJson = str_starts_with($mime, 'application/json');
 

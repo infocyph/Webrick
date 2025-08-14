@@ -40,17 +40,16 @@ final readonly class CacheValidatorsMiddleware
 {
     /**
      * @param Closure(Request): array{0:string|null,1:int|null} $metaProvider
-     * @param bool $autoEtagWhenMissing  Compute strong ETag from body if still missing after controller
-     * @param bool $includeQueryInEtag   Salt auto ETag with normalized query-string
-     * @param int  $autoEtagMinSize      Don’t hash tiny bodies (bytes); 0 = always
+     * @param bool $autoEtagWhenMissing Compute strong ETag from body if still missing after controller
+     * @param bool $includeQueryInEtag Salt auto ETag with normalized query-string
+     * @param int $autoEtagMinSize Don’t hash tiny bodies (bytes); 0 = always
      */
     public function __construct(
         private Closure $metaProvider,
         private bool $autoEtagWhenMissing = true,
         private bool $includeQueryInEtag = true,
         private int $autoEtagMinSize = 0,
-    ) {
-    }
+    ) {}
 
     public function __invoke(Request $req, Closure $next): Response
     {

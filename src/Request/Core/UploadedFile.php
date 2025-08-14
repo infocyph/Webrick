@@ -102,7 +102,7 @@ final class UploadedFile
             if ($this->src->isSeekable()) {
                 $this->src->rewind();
             }
-            $in  = $this->src->detach();
+            $in = $this->src->detach();
             $out = fopen($targetPath, 'wb');
             if (!$out) {
                 throw new RuntimeException("Cannot write to {$targetPath}");

@@ -21,11 +21,11 @@ use RuntimeException;
 final readonly class ResponseLinterMiddleware
 {
     /** bit-flags */
-    public const BODY_REQUIRES_CTYPE     = 0b00001;
-    public const NO_BODY_STATUSES        = 0b00010;  // 204/304 must have empty body
-    public const COMPRESSED_NEEDS_VARY   = 0b00100;  // Content-Encoding ⇒ Vary: Accept-Encoding
+    public const BODY_REQUIRES_CTYPE = 0b00001;
+    public const NO_BODY_STATUSES = 0b00010;  // 204/304 must have empty body
+    public const COMPRESSED_NEEDS_VARY = 0b00100;  // Content-Encoding ⇒ Vary: Accept-Encoding
     public const ETAG_WEAK_WHEN_ENCODING = 0b01000;  // Content-Encoding ⇒ ETag MUST be weak
-    public const CONTENT_LENGTH_MATCH    = 0b10000;  // Content-Length must match actual bytes (when knowable)
+    public const CONTENT_LENGTH_MATCH = 0b10000;  // Content-Length must match actual bytes (when knowable)
 
     private int $checks;
 
@@ -134,11 +134,13 @@ final readonly class ResponseLinterMiddleware
             return;
         }
         if (ctype_digit($cl) && (int)$cl !== $len) {
-            throw new RuntimeException(sprintf(
-                'Linter: Content-Length (%d) does not match body bytes (%d)',
-                (int)$cl,
-                $len
-            ));
+            throw new RuntimeException(
+                sprintf(
+                    'Linter: Content-Length (%d) does not match body bytes (%d)',
+                    (int)$cl,
+                    $len,
+                ),
+            );
         }
     }
 

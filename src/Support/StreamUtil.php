@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Support;
@@ -23,7 +24,7 @@ final class StreamUtil
         if ($s->isSeekable()) {
             $pos = $s->tell();
             $data = $s->getContents(); // reads from current position
-            $len  = \strlen($data);
+            $len = \strlen($data);
             $s->seek($pos);
             return $len;
         }

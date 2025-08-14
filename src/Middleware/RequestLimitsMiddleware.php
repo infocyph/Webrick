@@ -18,7 +18,7 @@ use Infocyph\Webrick\Response\Response;
 final readonly class RequestLimitsMiddleware
 {
     /**
-     * @param int|null $maxBodyBytes  null ⇒ use ini_get('post_max_size')
+     * @param int|null $maxBodyBytes null ⇒ use ini_get('post_max_size')
      * @param string[] $bodyLimitVerbs HTTP methods to which body limit applies
      * @param bool $violateOnUnknownBody When true and no Content-Length is present,
      *                                   treat as violation for the configured verbs.
@@ -28,8 +28,7 @@ final readonly class RequestLimitsMiddleware
         private ?int $maxBodyBytes = null,
         private array $bodyLimitVerbs = ['POST', 'PUT', 'PATCH', 'DELETE'],
         private bool $violateOnUnknownBody = true,
-    ) {
-    }
+    ) {}
 
     public function __invoke(Request $req, Closure $next): Response
     {
