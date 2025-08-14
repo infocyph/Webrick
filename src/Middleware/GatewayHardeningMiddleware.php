@@ -10,21 +10,6 @@ use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Request\Support\IpCidr;
 use Infocyph\Webrick\Response\Response;
 
-/**
- * GatewayHardeningMiddleware
- *
- * • Validates Host against an allow-list.
- * • Honors trusted proxy CIDRs + forwarded header mask; derives end-user IP.
- * • Blocks requests when end-user IP matches a deny-list.
- * • Optionally redirects plain-HTTP → HTTPS (308).
- * • Strips hop-by-hop headers on both request and response (RFC 9110 §7.6).
- * • Guards against open redirects by validating absolute Location hosts.
- *
- * Attributes set on the request:
- *   - client_ip        → end-user address (honors trusted proxy headers)
- *   - peer_ip          → direct TCP peer (no proxy headers)
- *   - is_trusted_proxy → computed from peer_ip ∈ trustedProxyCidrs
- */
 final class GatewayHardeningMiddleware
 {
     /** Hop-by-hop header names (lower-case) */
@@ -39,12 +24,15 @@ final class GatewayHardeningMiddleware
         'upgrade',
     ];
 
-    /** compiled regex list (per instance) */
+    /** compiled regex list for this instance (populated from static cache) */
     private array $hostRegex = [];
     private bool $allowAllHosts = false;
 
     /** EndUser instance for the current request (set in __invoke) */
     private ?EndUser $endUser = null;
+
+    /** per-process cache: key = sha1(json_encode($trustedHosts)), value = list of compiled regex */
+    private static array $hostRegexCache = [];
 
     /**
      * @param string[] $trustedProxyCidrs CIDRs considered trusted proxies
@@ -69,14 +57,9 @@ final class GatewayHardeningMiddleware
         // ① Configure trusted proxies & which forwarded headers to honor
         Request::setTrustedProxies($this->trustedProxyCidrs, $forwardedHeaderMask);
 
-        // ② Compile host allow-list for this instance
+        // ② Compile/resolve host allow-list (static cache)
         $this->allowAllHosts = ($this->trustedHosts === ['*']);
-        if (!$this->allowAllHosts && $this->trustedHosts !== []) {
-            foreach ($this->trustedHosts as $p) {
-                $escaped = str_replace(['.', '*'], ['\.', '.*'], $p);
-                $this->hostRegex[] = '#^' . $escaped . '$#i';
-            }
-        }
+        $this->hostRegex = self::compileHostRegex($this->trustedHosts);
     }
 
     public function __invoke(Request $req, Closure $next): Response
@@ -198,7 +181,7 @@ final class GatewayHardeningMiddleware
 
     private function matchesHost(string $host): bool
     {
-        return $this->hostRegex === [] || array_any($this->hostRegex, fn ($rx) => preg_match($rx, $host));
+        return array_any($this->hostRegex, fn ($rx) => preg_match($rx, $host));
     }
 
     private function cidrHit(?string $ip, array $cidrs): bool
@@ -211,7 +194,6 @@ final class GatewayHardeningMiddleware
 
     private function stripHopByHopFromRequest(Request $r): Request
     {
-        // dynamic tokens named in Connection
         $tokens = $this->parseConnectionTokens($r->getHeaderLine('Connection'));
         foreach (array_unique(array_merge(self::HOP_BY_HOP, $tokens)) as $h) {
             if ($r->hasHeader($h)) {
@@ -246,5 +228,25 @@ final class GatewayHardeningMiddleware
             }
         }
         return $out;
+    }
+
+    /* ───────────── static cache ───────────── */
+
+    /** @return list<string> compiled regexes for this allow-list (cached per process) */
+    private static function compileHostRegex(array $trustedHosts): array
+    {
+        if ($trustedHosts === [] || $trustedHosts === ['*']) {
+            return []; // caller uses $this->allowAllHosts to short-circuit
+        }
+        $key = sha1(json_encode(array_values($trustedHosts), JSON_THROW_ON_ERROR));
+        if (!isset(self::$hostRegexCache[$key])) {
+            $compiled = [];
+            foreach ($trustedHosts as $p) {
+                $escaped = str_replace(['.', '*'], ['\.', '.*'], $p);
+                $compiled[] = '#^' . $escaped . '$#i';
+            }
+            self::$hostRegexCache[$key] = $compiled;
+        }
+        return self::$hostRegexCache[$key];
     }
 }

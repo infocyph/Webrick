@@ -99,12 +99,14 @@ final class UploadedFile
                 throw new RuntimeException("Failed to move uploaded file to {$targetPath}");
             }
         } else {
+            if ($this->src->isSeekable()) {
+                $this->src->rewind();
+            }
             $in  = $this->src->detach();
             $out = fopen($targetPath, 'wb');
             if (!$out) {
                 throw new RuntimeException("Cannot write to {$targetPath}");
             }
-//            $this->src->rewind();
             stream_copy_to_stream($in, $out);
             fclose($in);
             fclose($out);
