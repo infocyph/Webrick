@@ -24,8 +24,8 @@ final class FormSupportMiddleware
     private const ATTR_F = InputSanitizerMiddleware::ATTR_F;
 
     public function __construct(
-        private string $overrideHeader = 'X-HTTP-Method-Override',
-        private bool $sanitize = true,
+        private readonly string $overrideHeader = 'X-HTTP-Method-Override',
+        private readonly bool $sanitize = true,
         private ?InputSanitizer $sanitizer = null,
     ) {
         $this->sanitizer ??= new InputSanitizer();

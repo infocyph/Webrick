@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Middleware;
 
 use Closure;
-use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Request\Http\EndUser;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Request\Support\IpCidr;
@@ -57,14 +56,14 @@ final class GatewayHardeningMiddleware
      * @param string[] $redirectAllowedHosts Absolute redirect targets allowed; empty ⇒ same-origin only
      */
     public function __construct(
-        private array $trustedProxyCidrs = [],
-        private array $denyIpCidrs = [],
-        private array $trustedHosts = [],
+        private readonly array $trustedProxyCidrs = [],
+        private readonly array $denyIpCidrs = [],
+        private readonly array $trustedHosts = [],
         ?int $forwardedHeaderMask = null,
-        private bool $enforceHttps = true,
-        private int $httpsPort = 443,
-        private bool $stripHopByHop = true,
-        private array $redirectAllowedHosts = [],
+        private readonly bool $enforceHttps = true,
+        private readonly int $httpsPort = 443,
+        private readonly bool $stripHopByHop = true,
+        private readonly array $redirectAllowedHosts = [],
     ) {
         // ① Configure trusted proxies & which forwarded headers to honor
         Request::setTrustedProxies($this->trustedProxyCidrs, $forwardedHeaderMask);
@@ -126,22 +125,14 @@ final class GatewayHardeningMiddleware
         if ($this->matchesHost($req->getUri()->getHost())) {
             return null;
         }
-        return new Response(
-            400,
-            new Stream('Untrusted Host header.'),
-            ['Content-Type' => 'text/plain; charset=utf-8'],
-        );
+        return Response::plaintext('Untrusted Host header.', 400);
     }
 
     private function denyIfBlockedEndUser(): ?Response
     {
         $clientIp = $this->endUser?->ip(); // honors trusted proxy headers
         if ($clientIp && $this->cidrHit($clientIp, $this->denyIpCidrs)) {
-            return new Response(
-                403,
-                new Stream("Forbidden – $clientIp is not allowed."),
-                ['Content-Type' => 'text/plain; charset=utf-8'],
-            );
+            return Response::plaintext("Forbidden – $clientIp is not allowed.", 403);
         }
         return null;
     }
@@ -206,7 +197,7 @@ final class GatewayHardeningMiddleware
 
     private function matchesHost(string $host): bool
     {
-        return $this->hostRegex === [] || array_any($this->hostRegex, fn($rx) => preg_match($rx, $host));
+        return $this->hostRegex === [] || array_any($this->hostRegex, fn ($rx) => preg_match($rx, $host));
     }
 
     private function cidrHit(?string $ip, array $cidrs): bool
@@ -214,7 +205,7 @@ final class GatewayHardeningMiddleware
         if ($ip === null || $cidrs === []) {
             return false;
         }
-        return array_any($cidrs, fn($cidr) => IpCidr::match($ip, $cidr));
+        return array_any($cidrs, fn ($cidr) => IpCidr::match($ip, $cidr));
     }
 
     private function stripHopByHopFromRequest(Request $r): Request

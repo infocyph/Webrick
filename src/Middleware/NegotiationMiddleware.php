@@ -24,7 +24,7 @@ use Infocyph\Webrick\Router\Definition\Attribute\Produces;
  *   - Response gets Content-Type if controller forgot
  *   - If controller set a text/xml/js Content-Type without charset, we append one.
  */
-final class NegotiationMiddleware
+final readonly class NegotiationMiddleware
 {
     /** @param string[] $produces */
     /** @param string[] $charsets */

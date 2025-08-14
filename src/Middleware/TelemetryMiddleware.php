@@ -21,7 +21,7 @@ use Psr\Log\NullLogger;
  * Recommended order:
  *   GatewayHardening → ErrorHandler → Telemetry → (rest)
  */
-final class TelemetryMiddleware
+final readonly class TelemetryMiddleware
 {
     public function __construct(
         private LoggerInterface $log = new NullLogger(),

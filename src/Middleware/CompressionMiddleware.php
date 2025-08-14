@@ -13,13 +13,13 @@ use Infocyph\Webrick\Support\StreamUtil;
 final readonly class CompressionMiddleware
 {
     /* ─────────── ETag strategies ─────────── */
-    public const ETAG_WEAK_ON_ENCODE   = 'weak-on-encode';
-    public const ETAG_STRONG_RECOMP    = 'recompute-strong'; // default (bytes-on-the-wire)
-    public const ETAG_STRONG_DERIVE    = 'derive-strong';    // from base tag + alg/level
+    public const ETAG_WEAK_ON_ENCODE = 'weak-on-encode';
+    public const ETAG_STRONG_RECOMP = 'recompute-strong'; // default (bytes-on-the-wire)
+    public const ETAG_STRONG_DERIVE = 'derive-strong';    // from base tag + alg/level
 
     /** don’t bother below this many bytes */
     public function __construct(
-        private int   $minBytes = 1024,
+        private int $minBytes = 1024,
         /** prefer-order when wildcard is used */
         private array $prefOrder = ['br', 'zstd', 'gzip'],
         /** ETag behavior when encoding is applied */
@@ -47,7 +47,7 @@ final readonly class CompressionMiddleware
 
     /** encoder → callable (only invoked when extension is loaded) */
     private const ALGO = [
-        'br'   => 'brotli_compress',   // ext-brotli
+        'br' => 'brotli_compress',   // ext-brotli
         'zstd' => 'zstd_compress',     // ext-zstd
         'gzip' => 'gzencode',          // ext-zlib (bundled)
     ];
@@ -117,8 +117,8 @@ final readonly class CompressionMiddleware
     {
         return match ($alg) {
             'gzip' => gzencode($raw, $this->gzipLevel, \ZLIB_ENCODING_GZIP),
-            'br'   => \function_exists(self::ALGO['br'])   ? \brotli_compress($raw, $this->brotliQuality) : false,
-            'zstd' => \function_exists(self::ALGO['zstd']) ? \zstd_compress($raw, $this->zstdLevel)       : false,
+            'br' => \function_exists(self::ALGO['br']) ? \brotli_compress($raw, $this->brotliQuality) : false,
+            'zstd' => \function_exists(self::ALGO['zstd']) ? \zstd_compress($raw, $this->zstdLevel) : false,
             default => false,
         };
     }
@@ -153,7 +153,11 @@ final readonly class CompressionMiddleware
                 $base = $this->stripWeakQuotes($etagLine);
                 if ($base !== '') {
                     $level = $this->encodedLevelToken($alg);
-                    $derived = '"' . substr(sha1($base . '|' . $alg . '|' . $level . '|' . $this->etagDeriveSalt), 0, 16) . '"';
+                    $derived = '"' . substr(
+                            sha1($base . '|' . $alg . '|' . $level . '|' . $this->etagDeriveSalt),
+                            0,
+                            16,
+                        ) . '"';
                     $resp = $resp->withHeader('ETag', $derived);
                 } else {
                     $resp = $resp->withHeader('ETag', $this->strongFromBytes($encodedBytes));
@@ -178,12 +182,14 @@ final readonly class CompressionMiddleware
     private function stripWeakQuotes(string $etagLine): string
     {
         $t = trim($etagLine);
-        if ($t === '') return '';
+        if ($t === '') {
+            return '';
+        }
         if (str_starts_with($t, 'W/')) {
             $t = substr($t, 2);
         }
         // remove optional surrounding quotes
-        if (strlen($t) >= 2 && $t[0] === '"' && $t[strlen($t)-1] === '"') {
+        if (strlen($t) >= 2 && $t[0] === '"' && $t[strlen($t) - 1] === '"') {
             $t = substr($t, 1, -1);
         }
         return trim($t);
@@ -193,7 +199,7 @@ final readonly class CompressionMiddleware
     {
         return match ($alg) {
             'gzip' => (string)$this->gzipLevel,
-            'br'   => (string)$this->brotliQuality,
+            'br' => (string)$this->brotliQuality,
             'zstd' => (string)$this->zstdLevel,
             default => '0',
         };
@@ -274,7 +280,7 @@ final readonly class CompressionMiddleware
 
         \usort(
             $parsed,
-            static fn (array $a, array $b): int => $b[1] <=> $a[1], // highest q first
+            static fn(array $a, array $b): int => $b[1] <=> $a[1], // highest q first
         );
 
         return \array_column($parsed, 0);

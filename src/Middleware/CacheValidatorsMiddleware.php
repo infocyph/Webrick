@@ -36,7 +36,7 @@ use Infocyph\Webrick\Support\Etag;
  *   • If Compression later adds Content-Encoding, it should weaken a strong ETag (your code already does).
  *   • Auto-ETag is only attempted when: status=200, body is seekable, and no ETag header exists.
  */
-final class CacheValidatorsMiddleware
+final readonly class CacheValidatorsMiddleware
 {
     /**
      * @param Closure(Request): array{0:string|null,1:int|null} $metaProvider
@@ -45,10 +45,10 @@ final class CacheValidatorsMiddleware
      * @param int  $autoEtagMinSize      Don’t hash tiny bodies (bytes); 0 = always
      */
     public function __construct(
-        private readonly Closure $metaProvider,
-        private readonly bool $autoEtagWhenMissing = true,
-        private readonly bool $includeQueryInEtag = true,
-        private readonly int $autoEtagMinSize = 0,
+        private Closure $metaProvider,
+        private bool $autoEtagWhenMissing = true,
+        private bool $includeQueryInEtag = true,
+        private int $autoEtagMinSize = 0,
     ) {
     }
 

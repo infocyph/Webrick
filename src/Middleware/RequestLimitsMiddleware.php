@@ -37,11 +37,7 @@ final readonly class RequestLimitsMiddleware
         if ($this->maxHeaderBytes > 0) {
             $hdrBytes = $this->totalHeaderBytes($req);
             if ($hdrBytes > $this->maxHeaderBytes) {
-                return new Response(
-                    431,
-                    new Stream('Request headers too large'),
-                    ['Content-Type' => 'text/plain; charset=utf-8'],
-                );
+                return Response::plaintext('Request headers too large', 431);
             }
         }
 
@@ -54,19 +50,11 @@ final readonly class RequestLimitsMiddleware
             if ($cl !== '') {
                 $len = (int)$cl;
                 if ($len > $limit) {
-                    return new Response(
-                        413,
-                        new Stream('Payload exceeds maximum allowed size.'),
-                        ['Content-Type' => 'text/plain; charset=utf-8'],
-                    );
+                    return Response::plaintext('Payload exceeds maximum allowed size.', 413);
                 }
             } elseif ($this->violateOnUnknownBody) {
                 // No Content-Length – optionally reject pre-emptively.
-                return new Response(
-                    413,
-                    new Stream('Payload exceeds maximum allowed size.'),
-                    ['Content-Type' => 'text/plain; charset=utf-8'],
-                );
+                return Response::plaintext('Payload exceeds maximum allowed size.', 413);
             }
         }
 

@@ -95,6 +95,25 @@ $compiler = static fn () => $registrar->compile()->all();
  * 3.  Boot the router kernel – UnifiedMatcher behind the scenes
  * ----------------------------------------------------------------------- */
 $logger = new NullLogger();
+//$stack = [
+//    new GatewayHardeningMiddleware(...),
+//    new ErrorHandlerMiddleware(...),
+//    new TelemetryMiddleware(...),          // request_id emitted by default
+//    new MaintenanceModeMiddleware(...),
+//    new RequestLimitsMiddleware(...),      // violateOnUnknownBody = true by default
+//    new ThrottleMiddleware(...),
+//    new NegotiationMiddleware(...),
+//    new CacheValidatorsMiddleware(...),
+//    // ---- your controller / app handler here ----
+//    new CompressionMiddleware(...),        // default: WEAK_ON_ENCODE
+//    new CorsAndPoliciesMiddleware(...),
+//    new VaryAccumulatorMiddleware(),
+//];
+//
+//if ($env === 'dev') {
+//    $stack[] = new ResponseLinterMiddleware(true); // all checks incl. ETAG_WEAK_WHEN_ENCODING
+//}
+
 
 // A) UnifiedMatcher with segment-dir cache
 $kernel = RouterKernel::boot(
