@@ -7,6 +7,7 @@ use Closure;
 use Infocyph\Webrick\Request\Core\UploadedFile;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Support\HttpUtils;
 use Infocyph\Webrick\Support\InputSanitizer;
 
 final class InputSanitizerMiddleware
@@ -74,7 +75,7 @@ final class InputSanitizerMiddleware
     private function shouldTouchBody(string $ctype): bool
     {
         $mime   = strtolower(strtok($ctype, ';') ?: '');
-        $isForm = $mime === 'application/x-www-form-urlencoded' || $mime === 'multipart/form-data';
+        $isForm = HttpUtils::isFormContentType($ctype);
         $isJson = str_starts_with($mime, 'application/json');
 
         return ($isForm && $this->touchFormBodies) || ($isJson && $this->touchJsonBodies);
@@ -89,7 +90,7 @@ final class InputSanitizerMiddleware
         }
 
         $files = $req->getUploadedFiles();
-        if (!is_array($files) || $files === []) {
+        if ($files === []) {
             return $req;
         }
 

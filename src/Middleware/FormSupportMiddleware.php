@@ -7,6 +7,7 @@ namespace Infocyph\Webrick\Middleware;
 use Closure;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Support\HttpUtils;
 use Infocyph\Webrick\Support\InputSanitizer;
 
 /**
@@ -35,7 +36,7 @@ final class FormSupportMiddleware
         // 1) Fast exits when there cannot be a classic form body
         if (
             $req->getMethod() !== 'POST' ||
-            !$this->isForm($req->getHeaderLine('content-type')) ||
+            !HttpUtils::isFormContentType($req->getHeaderLine('content-type')) ||
             $this->isExplicitlyEmpty($req)
         ) {
             // still honor header-based override even without a form body
@@ -70,12 +71,6 @@ final class FormSupportMiddleware
         }
 
         return $new !== '' ? $req->withMethod(strtoupper($new)) : $req;
-    }
-
-    private function isForm(string $ctype): bool
-    {
-        $mime = strtolower(strtok($ctype, ';') ?: '');
-        return $mime === 'application/x-www-form-urlencoded' || $mime === 'multipart/form-data';
     }
 
     /**

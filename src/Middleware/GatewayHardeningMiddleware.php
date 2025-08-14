@@ -21,10 +21,10 @@ use Infocyph\Webrick\Response\Response;
  * • Strips hop-by-hop headers on both request and response (RFC 9110 §7.6).
  * • Guards against open redirects by validating absolute Location hosts.
  *
- * Notes:
- *   - "client_ip" attribute is the *end-user* address (honors trusted proxy headers).
- *   - "peer_ip" attribute is the direct socket peer (no proxy headers) via EndUser::ipNoProxy().
- *   - "is_trusted_proxy" is computed from peer_ip against the trusted-proxy CIDRs.
+ * Attributes set on the request:
+ *   - client_ip        → end-user address (honors trusted proxy headers)
+ *   - peer_ip          → direct TCP peer (no proxy headers)
+ *   - is_trusted_proxy → computed from peer_ip ∈ trustedProxyCidrs
  */
 final class GatewayHardeningMiddleware
 {
@@ -35,13 +35,13 @@ final class GatewayHardeningMiddleware
         'proxy-authenticate',
         'proxy-authorization',
         'te',
-        'trailer',
+        'trailer',               // RFC 9110 (singular)
         'transfer-encoding',
         'upgrade',
     ];
 
-    /** compiled regex list – cached per PHP process */
-    private static array $hostRegex = [];
+    /** compiled regex list (per instance) */
+    private array $hostRegex = [];
 
     /** EndUser instance for the current request (set in __invoke) */
     private ?EndUser $endUser = null;
@@ -69,46 +69,51 @@ final class GatewayHardeningMiddleware
         // ① Configure trusted proxies & which forwarded headers to honor
         Request::setTrustedProxies($this->trustedProxyCidrs, $forwardedHeaderMask);
 
-        // ② Compile host allow-list once per worker
-        if (self::$hostRegex === [] && $this->trustedHosts !== []) {
+        // ② Compile host allow-list for this instance
+        if ($this->trustedHosts !== []) {
             foreach ($this->trustedHosts as $p) {
                 $escaped = str_replace(['.', '*'], ['\.', '.*'], $p);
-                self::$hostRegex[] = '#^' . $escaped . '$#i';
+                $this->hostRegex[] = '#^' . $escaped . '$#i';
             }
         }
     }
 
     public function __invoke(Request $req, Closure $next): Response
     {
-        if ($resp = $this->rejectIfUntrustedHost($req)) {
-            return $resp;
+        try {
+            if ($resp = $this->rejectIfUntrustedHost($req)) {
+                return $resp;
+            }
+
+            // Build EndUser once and keep for helpers
+            $this->endUser = EndUser::from($req);
+
+            if ($resp = $this->denyIfBlockedEndUser()) {
+                return $resp;
+            }
+
+            // Attach client/peer/flag attributes for downstream
+            $req = $this->attachNetworkAttributes($req);
+
+            if ($resp = $this->redirectIfHttpsEnforced($req)) {
+                return $resp;
+            }
+
+            if ($this->stripHopByHop) {
+                $req = $this->stripHopByHopFromRequest($req);
+            }
+
+            $resp = $next($req);
+
+            if ($this->stripHopByHop) {
+                $resp = $this->stripHopByHopFromResponse($resp);
+            }
+
+            return $this->guardRedirects($req, $resp);
+        } finally {
+            // avoid leaking request-scoped state across invocations
+            $this->endUser = null;
         }
-
-        // Build EndUser once and keep for helpers
-        $this->endUser = EndUser::from($req);
-
-        if ($resp = $this->denyIfBlockedEndUser()) {
-            return $resp;
-        }
-
-        // Attach client/peer/flag attributes for downstream
-        $req = $this->attachNetworkAttributes($req);
-
-        if ($resp = $this->redirectIfHttpsEnforced($req)) {
-            return $resp;
-        }
-
-        if ($this->stripHopByHop) {
-            $req = $this->stripHopByHopFromRequest($req);
-        }
-
-        $resp = $next($req);
-
-        if ($this->stripHopByHop) {
-            $resp = $this->stripHopByHopFromResponse($resp);
-        }
-
-        return $this->guardRedirects($req, $resp);
     }
 
     /* ───────────── step helpers ───────────── */
@@ -143,8 +148,8 @@ final class GatewayHardeningMiddleware
 
     private function attachNetworkAttributes(Request $req): Request
     {
-        $clientIp = $this->endUser?->ip();          // end-user
-        $peerIp = $this->endUser?->ipNoProxy();   // direct socket peer
+        $clientIp = $this->endUser?->ip();        // end-user
+        $peerIp = $this->endUser?->ipNoProxy(); // direct socket peer
         $isTrustedProxy = $this->cidrHit($peerIp, $this->trustedProxyCidrs);
 
         return $req
@@ -162,7 +167,8 @@ final class GatewayHardeningMiddleware
         if ($uri->getScheme() === 'https') {
             return null;
         }
-        $target = $uri->withScheme('https')->withPort($this->httpsPort);
+        $port = ($this->httpsPort === 443) ? null : $this->httpsPort; // avoid :443 in Location
+        $target = $uri->withScheme('https')->withPort($port);
         return new Response(308, headers: ['Location' => (string)$target]);
     }
 
@@ -200,7 +206,7 @@ final class GatewayHardeningMiddleware
 
     private function matchesHost(string $host): bool
     {
-        return self::$hostRegex === [] || array_any(self::$hostRegex, fn($rx) => preg_match($rx, $host));
+        return $this->hostRegex === [] || array_any($this->hostRegex, fn($rx) => preg_match($rx, $host));
     }
 
     private function cidrHit(?string $ip, array $cidrs): bool

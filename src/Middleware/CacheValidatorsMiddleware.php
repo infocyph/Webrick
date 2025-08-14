@@ -10,6 +10,7 @@ use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Response\Conditional\ConditionalValidator;
 use Infocyph\Webrick\Response\Conditional\Outcome;
+use Infocyph\Webrick\Support\Etag;
 
 /**
  * CacheValidatorsMiddleware
@@ -30,7 +31,7 @@ use Infocyph\Webrick\Response\Conditional\Outcome;
  *
  * Order:
  *   Negotiation → CacheValidators → (controller) → Compression → VaryAccumulator
-*
+ *
  * Notes:
  *   • If Compression later adds Content-Encoding, it should weaken a strong ETag (your code already does).
  *   • Auto-ETag is only attempted when: status=200, body is seekable, and no ETag header exists.
@@ -91,7 +92,7 @@ final class CacheValidatorsMiddleware
                 ? Uri::normalizeQueryString($req->getUri()->getQuery())
                 : '';
 
-            if (($computed = $this->computeStrongEtag($resp, $qs)) !== null) {
+            if (($computed = Etag::fromStream($resp->getBody(), $qs)) !== null) {
                 $resp = $resp->withHeader('ETag', $computed);
             }
         }
@@ -116,50 +117,5 @@ final class CacheValidatorsMiddleware
         }
         // If the controller already compressed (rare), we’ll hash the on-the-wire bytes, which is fine.
         return true;
-    }
-
-    /**
-     * Compute a strong ETag from the response body using chunked hashing.
-     * We return a quoted hex (first 16 of SHA-1) to keep tags short and cache-friendly.
-     *
-     * @return string|null  e.g. "\"a1b2c3d4e5f67890\"" or null on failure
-     */
-    private function computeStrongEtag(Response $r, string $qsSalt = ''): ?string
-    {
-        $body = $r->getBody();
-        if (!$body->isSeekable()) {
-            return null;
-        }
-
-        try {
-            $pos = $body->tell();
-            $body->seek(0);
-
-            $ctx = hash_init('sha1');
-            if ($qsSalt !== '') {
-                hash_update($ctx, $qsSalt . "\n");
-            }
-
-            // stream in chunks (no giant string casts)
-            while (!$body->eof()) {
-                $chunk = $body->read(131072); // 128 KiB
-                if ($chunk === '') {
-                    break;
-                }
-                hash_update($ctx, $chunk);
-            }
-
-            $hex = hash_final($ctx);
-            // short strong tag: sha1/16
-            $tag = '"' . substr($hex, 0, 16) . '"';
-
-            // restore pointer
-            $body->seek($pos);
-
-            return $tag;
-        } catch (\Throwable) {
-            // best-effort: don’t break responses if hashing fails
-            return null;
-        }
     }
 }

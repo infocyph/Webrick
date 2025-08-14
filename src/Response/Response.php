@@ -40,6 +40,12 @@ class Response
        JSON + Redirect helpers (unchanged)
        -------------------------------------------------------------- */
 
+    public static function plaintext(string $msg, int $code = 400, array $headers = []): self
+    {
+        $headers = ['Content-Type' => $headers['Content-Type'] ?? 'text/plain; charset=utf-8'] + $headers;
+        return new self($code, new Stream($msg), $headers);
+    }
+
     public static function json(
         callable|array|object|string $data,
         int $status = 200,

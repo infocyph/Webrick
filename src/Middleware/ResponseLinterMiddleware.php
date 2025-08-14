@@ -7,6 +7,7 @@ namespace Infocyph\Webrick\Middleware;
 use Closure;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Support\StreamUtil;
 use RuntimeException;
 
 /**
@@ -51,7 +52,7 @@ final readonly class ResponseLinterMiddleware
             return $resp;
         }
 
-        $len = $this->bodyLength($resp); // best-effort
+        $len = StreamUtil::byteLength($resp->getBody(), 0);
 
         // 1) non-empty body requires Content-Type
         if (($this->checks & self::BODY_REQUIRES_CTYPE) !== 0) {
@@ -82,25 +83,6 @@ final readonly class ResponseLinterMiddleware
     }
 
     /* ───────────────────────── helpers ───────────────────────── */
-
-    private function bodyLength(Response $r): int
-    {
-        $b = $r->getBody();
-        $len = $b->getSize();
-        if ($len !== null) {
-            return $len;
-        }
-        if ($b->isSeekable()) {
-            $pos = $b->tell();
-            // getContents() reads from current position; ensure we measure remaining and then rewind.
-            $bytes = $b->getContents();
-            $len = \strlen($bytes);
-            $b->seek($pos);
-            return $len;
-        }
-        // unknown length stream; treat as 0 for linter’s purposes
-        return 0;
-    }
 
     private function assertContentTypeIfBody(Response $r, int $len): void
     {

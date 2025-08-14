@@ -8,6 +8,7 @@ use Closure;
 use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Support\StreamUtil;
 
 final readonly class CompressionMiddleware
 {
@@ -99,7 +100,7 @@ final readonly class CompressionMiddleware
         if ($this->hasNoTransform($resp)) {
             return false; // respect Cache-Control: no-transform
         }
-        $len = $this->payloadLength($resp);
+        $len = StreamUtil::byteLength($resp->getBody(), $this->minBytes);
         if ($len < $this->minBytes) {
             return false; // payload too small to win
         }
@@ -199,23 +200,6 @@ final readonly class CompressionMiddleware
     }
 
     /* ───────────────────────── helpers ─────────────────────────── */
-
-    private function payloadLength(Response $r): int
-    {
-        $b = $r->getBody();
-        $len = $b->getSize();
-        if ($len !== null) {
-            return $len;
-        }
-        if ($b->isSeekable()) {
-            $pos = $b->tell();
-            $data = $b->getContents();
-            $b->seek($pos);
-            return \strlen($data);
-        }
-        // unknown length – assume big enough to avoid surprises
-        return $this->minBytes;
-    }
 
     private function hasNoTransform(Response $r): bool
     {
