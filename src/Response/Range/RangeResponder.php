@@ -57,46 +57,64 @@ final readonly class RangeResponder
         // Distinguish “no Range header” from “unsatisfiable/invalid Range header”
         $rawRangeHeader = $req?->getHeaderLine('Range') ?? '';
         $rangeHeaderGiven = $rawRangeHeader !== '';
+        $multiRequested = self::isMultiRange($rawRangeHeader);
 
-        /* 416 – unsatisfiable / invalid Range --------------------------- */
-        if ($range === null && $rangeHeaderGiven) {
-            // RFC 7233: must include Content-Range with unsatisfied range and total length
-            $headers += [
-                'Content-Range' => "bytes */{$totalLength}",
-                // Content-Type is optional here; omit to keep envelope minimal
-            ];
+        // 416 – unsatisfiable / invalid Range (but NOT multi-range)
+        if ($range === null && $rangeHeaderGiven && !$multiRequested) {
+            $headers += ['Content-Range' => "bytes */{$totalLength}"];
             return new Response(416, new Stream(''), $headers);
         }
 
-        /* 200 – full body (no Range header) ----------------------------- */
-        if ($range === null) {
+        // 200 – full body when no Range OR multi-range (unsupported → fallback)
+        if ($range === null || $multiRequested) {
             $headers += [
                 'Content-Type' => $mediaType,
                 'Content-Length' => (string)$totalLength,
             ];
-            // Was an invalid Range stripped earlier by some middleware?
-            if ($req?->getAttribute('range_dropped')) {
+            if (self::isSeekable($source)) {
+                $headers += ['Accept-Ranges' => 'bytes'];
+            }
+            if ($multiRequested) {
+                $headers['X-Range-Dropped'] = 'multi';
+            } elseif ($req?->getAttribute('range_dropped')) {
                 $headers['X-Range-Dropped'] = '1';
             }
             return new Response(200, self::wrapSeekable($source), $headers);
         }
 
-        /* 206 – single byte range -------------------------------------- */
+        // 206 – single byte range (unchanged)
         $length = $range->length();
-
         if ($source instanceof Stream) {
             $source->seek($range->start);
         } else {
             fseek($source, $range->start);
         }
-
         $headers += [
             'Content-Range' => $range->contentRange(),
             'Content-Length' => (string)$length,
             'Content-Type' => $mediaType,
         ];
-
+        if (self::isSeekable($source)) {
+            $headers += ['Accept-Ranges' => 'bytes'];
+        }
         return new Response(206, self::wrapSeekable($source, $length), $headers);
+    }
+
+    private static function isMultiRange(string $raw): bool
+    {
+        $raw = trim($raw);
+        if ($raw === '' || !str_starts_with($raw, 'bytes=')) {
+            return false;
+        }
+        // RFC 7233 multi-range = comma-separated byte-range-set
+        return str_contains(substr($raw, 6), ',');
+    }
+
+    private static function isSeekable(mixed $src): bool
+    {
+        return $src instanceof Stream
+            ? $src->isSeekable()
+            : (is_resource($src) && (stream_get_meta_data($src)['seekable'] ?? false));
     }
 
     /* ─────────────────────────── internals ───────────────────────────── */
