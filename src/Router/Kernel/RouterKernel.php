@@ -23,7 +23,8 @@ use Infocyph\Webrick\Exceptions\{MethodNotAllowedException, RouteNotFoundExcepti
  *   2) Per-route (existing)     – attached on routes, executed by Dispatcher
  *   3) Post-controller (global) – wraps the dispatch result before emit
  *
- * Works with UnifiedMatcher (dir cache) and MergedMatcher (single-file cache).
+ * If ErrorHandlerMiddleware is present in pre/post rings, exceptions bubble to it.
+ * Otherwise, this kernel provides a minimal JSON fallback for 404/405/500.
  */
 final class RouterKernel
 {
@@ -36,6 +37,9 @@ final class RouterKernel
     /** @var list<callable(Request, Closure(Request):Response):Response> */
     private array $postGlobal = [];
 
+    /** True when an ErrorHandlerMiddleware is present in pre/post globals. */
+    private bool $hasErrorHandler = false;
+
     public function __construct(
         private MatcherInterface $matcher,
         private readonly Dispatcher $dispatcher,
@@ -46,6 +50,10 @@ final class RouterKernel
     ) {
         $this->compiler = $compiler;
         $this->warm();
+
+        // Detect error handler BEFORE normalization (we can see class-strings/instances here)
+        $this->hasErrorHandler =
+            $this->detectErrorHandler($preGlobal) || $this->detectErrorHandler($postGlobal);
 
         // Accept objects, class-strings, or callables
         $this->preGlobal  = $this->normalizeGlobalMiddleware($preGlobal);
@@ -83,29 +91,42 @@ final class RouterKernel
         $defs = $container->definitions();
         $defs->bind(Request::class, $request);
 
-        // Core: match → dispatch (per-route middleware runs inside Dispatcher)
-        $dispatchCore = function (Request $req): Response {
-            $method = strtoupper($req->getMethod());
-            $uri = $req->getUri();
-            $host = self::normaliseHost($uri->getHost());
-            $path = $uri->getPath() ?: '/';
+        // Core: match → dispatch. If an ErrorHandlerMiddleware is present,
+        // let exceptions bubble; otherwise provide a safe JSON fallback.
+        if ($this->hasErrorHandler) {
+            $dispatchCore = function (Request $req): Response {
+                $method = strtoupper($req->getMethod());
+                $uri    = $req->getUri();
+                $host   = self::normaliseHost($uri->getHost());
+                $path   = $uri->getPath() ?: '/';
 
-            try {
                 [$route, $vars] = $this->matcher->match($method, $host, $path);
                 return $this->dispatcher->dispatch($route, $req, $vars);
-            } catch (MethodNotAllowedException $e) {
-                return Response::json(
-                    ['error' => 'Method Not Allowed'],
-                    405,
-                    ['Allow' => implode(', ', $e->allowed)],
-                );
-            } catch (RouteNotFoundException) {
-                return Response::json(['error' => 'Not Found'], 404);
-            } catch (\Throwable $e) {
-                $this->log->error('[router] uncaught exception', ['exception' => $e]);
-                return Response::json(['error' => 'Server Error'], 500);
-            }
-        };
+            };
+        } else {
+            $dispatchCore = function (Request $req): Response {
+                $method = strtoupper($req->getMethod());
+                $uri    = $req->getUri();
+                $host   = self::normaliseHost($uri->getHost());
+                $path   = $uri->getPath() ?: '/';
+
+                try {
+                    [$route, $vars] = $this->matcher->match($method, $host, $path);
+                    return $this->dispatcher->dispatch($route, $req, $vars);
+                } catch (MethodNotAllowedException $e) {
+                    return Response::json(
+                        ['error' => 'Method Not Allowed'],
+                        405,
+                        ['Allow' => implode(', ', $e->allowed)],
+                    );
+                } catch (RouteNotFoundException) {
+                    return Response::json(['error' => 'Not Found'], 404);
+                } catch (\Throwable $e) {
+                    $this->log->error('[router] uncaught exception', ['exception' => $e]);
+                    return Response::json(['error' => 'Server Error'], 500);
+                }
+            };
+        }
 
         // Wrap core with post-global middleware
         $withPost = $this->composePipeline($this->postGlobal, $dispatchCore);
@@ -120,7 +141,6 @@ final class RouterKernel
 
     private function warm(): void
     {
-        // If matcher advertises a hot cache, skip compiling & adding entirely.
         $canBootFromCache = \method_exists($this->matcher, 'canBootFromCache')
             && (bool)$this->matcher->canBootFromCache();
 
@@ -137,7 +157,6 @@ final class RouterKernel
             return;
         }
 
-        // Cold start: compile, feed matcher, then finalize (possibly writing cache).
         $routes = ($this->compiler)();
         if ($routes === []) {
             throw new \RuntimeException('Route compiler produced an empty table.');
@@ -181,6 +200,17 @@ final class RouterKernel
         return $host;
     }
 
+    /** Detect presence of ErrorHandlerMiddleware by class-string or instance. */
+    private function detectErrorHandler(array $list): bool
+    {
+        $fqcn = '\\Infocyph\\Webrick\\Middleware\\ErrorHandlerMiddleware';
+        foreach ($list as $mw) {
+            if (is_string($mw) && $mw === $fqcn) return true;
+            if (is_object($mw) && is_a($mw, $fqcn)) return true;
+        }
+        return false;
+    }
+
     /**
      * Normalize global middleware entries:
      *  - invokable objects / closures / callables
@@ -196,7 +226,6 @@ final class RouterKernel
         foreach ($list as $mw) {
             // 1) Callable (closure, invokable object, [obj,'method'], etc.)
             if (\is_callable($mw) && !\is_string($mw)) {
-                // First-class callable wrapper keeps types (Request, Closure): Response
                 $out[] = $mw(...);
                 continue;
             }

@@ -8,6 +8,20 @@ declare(strict_types=1);
 
 require __DIR__ . '/vendor/autoload.php';
 
+use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
+use Infocyph\Webrick\Exceptions\RouteNotFoundException;
+use Infocyph\Webrick\Middleware\CacheValidatorsMiddleware;
+use Infocyph\Webrick\Middleware\CompressionMiddleware;
+use Infocyph\Webrick\Middleware\CorsAndPoliciesMiddleware;
+use Infocyph\Webrick\Middleware\ErrorHandlerMiddleware;
+use Infocyph\Webrick\Middleware\GatewayHardeningMiddleware;
+use Infocyph\Webrick\Middleware\MaintenanceModeMiddleware;
+use Infocyph\Webrick\Middleware\NegotiationMiddleware;
+use Infocyph\Webrick\Middleware\RequestLimitsMiddleware;
+use Infocyph\Webrick\Middleware\ResponseLinterMiddleware;
+use Infocyph\Webrick\Middleware\TelemetryMiddleware;
+use Infocyph\Webrick\Middleware\ThrottleMiddleware;
+use Infocyph\Webrick\Middleware\VaryAccumulatorMiddleware;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Emitter\SapiEmitter;
 use Infocyph\Webrick\Response\Payloads\HtmlResponse;
@@ -68,20 +82,20 @@ $registrar->get('/', function (): HtmlResponse {
     return new HtmlResponse($html);
 });
 
-$registrar->get('/ping', fn () => 'pong');
+$registrar->get('/ping', fn() => 'pong');
 
 $registrar->get(
     '/hello/{name}',
-    fn (Request $r)
+    fn(Request $r)
         => Response::json(['hello' => $r->getAttribute('route_params')['name'] ?? 'stranger']),
 );
 
-$registrar->get('/json', fn () => Response::json(['memory' => memory_get_usage(true)]));
-$registrar->get('/redirect', fn () => Response::redirect('/', 302));
-$registrar->get('/download', fn () => Response::attachment(__FILE__, 'index.php'));
+$registrar->get('/json', fn() => Response::json(['memory' => memory_get_usage(true)]));
+$registrar->get('/redirect', fn() => Response::redirect('/', 302));
+$registrar->get('/download', fn() => Response::attachment(__FILE__, 'index.php'));
 $registrar->get(
     '/color/{hex:hex}',
-    fn (Request $r)
+    fn(Request $r)
         => Response::json(['you sent hex' => $r->getAttribute('route_params')['hex']]),
 );
 
@@ -93,9 +107,9 @@ $registrar->get('/plus/{name}/mine', [DemoController::class, 'hello']);
 /* ---- extra variety routes -------------------------------------------- */
 $registrar->post('/post/echo', function (Request $r): Response {
     return Response::json([
-        'method'  => $r->getMethod(),
+        'method' => $r->getMethod(),
         'payload' => $r->all(),
-        'time'    => \date(DATE_ATOM),
+        'time' => \date(DATE_ATOM),
     ]);
 });
 
@@ -103,7 +117,7 @@ $registrar->put('/user/{id}', function (Request $r): Response {
     $id = $r->getAttribute('route_params')['id'] ?? null;
     return Response::json([
         'updated' => $id,
-        'input'   => $r->all(),
+        'input' => $r->all(),
     ]);
 });
 
@@ -136,7 +150,7 @@ $registrar->get('/status/{code}', function (Request $r): Response {
 $registrar->get('/json/slow', function (): Response {
     return Response::json(function () {
         return [
-            'now'   => time(),
+            'now' => time(),
             'items' => array_map(fn($i) => ['n' => $i, 'v' => bin2hex(random_bytes(4))], range(1, 100)),
         ];
     });
@@ -145,7 +159,7 @@ $registrar->get('/json/slow', function (): Response {
 /* --------------------------------------------------------------------------
  * 2.  Compiler callback
  * ----------------------------------------------------------------------- */
-$compiler = static fn () => $registrar->compile()->all();
+$compiler = static fn() => $registrar->compile()->all();
 
 /* --------------------------------------------------------------------------
  * 3.  Boot the router kernel
@@ -158,25 +172,34 @@ $dev = ($env !== 'prod');
 // Pre-route (global) middleware stack – order matters
 $preGlobal = [
     // If any of these need DI/args, pass an INSTANCE instead of a class-string.
-    \Infocyph\Webrick\Middleware\GatewayHardeningMiddleware::class,
-//    \Infocyph\Webrick\Middleware\ErrorHandlerMiddleware::class,
-    \Infocyph\Webrick\Middleware\TelemetryMiddleware::class,
-    \Infocyph\Webrick\Middleware\MaintenanceModeMiddleware::class,
-    new \Infocyph\Webrick\Middleware\RequestLimitsMiddleware(),
-    \Infocyph\Webrick\Middleware\ThrottleMiddleware::class,
-    new \Infocyph\Webrick\Middleware\NegotiationMiddleware(),
+    GatewayHardeningMiddleware::class,
+    new ErrorHandlerMiddleware(
+        logger: $logger,
+        debug: $dev,                          // show traces in non-prod
+        capturePhpErrors: true,               // convert warnings/notices to exceptions
+        requestIdHeader: 'X-Request-Id',
+        exceptionMap: [
+            RouteNotFoundException::class => 404,
+            MethodNotAllowedException::class => 405,
+        ],
+    ),
+    TelemetryMiddleware::class,
+    MaintenanceModeMiddleware::class,
+    new RequestLimitsMiddleware(),
+    ThrottleMiddleware::class,
+    new NegotiationMiddleware(),
 
     // CacheValidators requires a metaProvider
-    new \Infocyph\Webrick\Middleware\CacheValidatorsMiddleware(
-        metaProvider: static function (\Infocyph\Webrick\Request\Request $r): array {
-            $path  = $r->getUri()->getPath();
+    new CacheValidatorsMiddleware(
+        metaProvider: static function (Request $r): array {
+            $path = $r->getUri()->getPath();
             $nowMtime = @filemtime(__FILE__) ?: null;
 
             if ($path === '/download' && is_file(__FILE__)) {
-                $size  = @filesize(__FILE__) ?: null;
+                $size = @filesize(__FILE__) ?: null;
                 $mtime = @filemtime(__FILE__) ?: $nowMtime;
-                $seed  = ($size ?? -1) . '|' . ($mtime ?? -1) . '|index.php';
-                $etag  = '"' . substr(sha1($seed), 0, 16) . '"';
+                $seed = ($size ?? -1) . '|' . ($mtime ?? -1) . '|index.php';
+                $etag = '"' . substr(sha1($seed), 0, 16) . '"';
                 return [$etag, $mtime];
             }
 
@@ -185,26 +208,26 @@ $preGlobal = [
         },
         autoEtagWhenMissing: true,
         includeQueryInEtag: true,
-        autoEtagMinSize: 0
+        autoEtagMinSize: 0,
     ),
 ];
 
 // Post-controller (global) middleware stack
 $postGlobal = [
-    new \Infocyph\Webrick\Middleware\CompressionMiddleware(), // default: WEAK_ON_ENCODE
-    new \Infocyph\Webrick\Middleware\CorsAndPoliciesMiddleware(), // ← instance to avoid DI invoking __invoke
-    new \Infocyph\Webrick\Middleware\VaryAccumulatorMiddleware(),
+    new CompressionMiddleware(), // default: WEAK_ON_ENCODE
+    new CorsAndPoliciesMiddleware(), // ← instance to avoid DI invoking __invoke
+    new VaryAccumulatorMiddleware(),
 ];
 
 if ($dev) {
-    $postGlobal[] = new \Infocyph\Webrick\Middleware\ResponseLinterMiddleware(true);
+    $postGlobal[] = new ResponseLinterMiddleware(true);
 }
 
 // A) UnifiedMatcher with segment-dir cache
 $kernel = RouterKernel::boot(
     $logger,
     compiler: $compiler,
-    matcher:  Infocyph\Webrick\Router\Matching\ShardedMatcher::make(),
+    matcher: Infocyph\Webrick\Router\Matching\ShardedMatcher::make(),
     routeCache: __DIR__ . '/.route-cache',
     preGlobal: $preGlobal,
     postGlobal: $postGlobal,
