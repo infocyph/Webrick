@@ -251,7 +251,7 @@ class Response
 
     public function getHeaderLine($n): string
     {
-        return $this->headers->line($n);
+        return $this->headers->getHeaderLine($n);
     }
 
     public function withSmartHeader(string $name, string $value): self

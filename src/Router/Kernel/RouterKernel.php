@@ -18,27 +18,22 @@ use Infocyph\Webrick\Exceptions\{MethodNotAllowedException, RouteNotFoundExcepti
 /**
  * Glues together compiler → matcher → dispatcher.
  *
- * Now supports three middleware rings:
- *   1) Pre-route (global)    – executes on request landing (before routing/dispatch)
- *   2) Per-route (existing)  – registered per route (Authorization, etc.) via Dispatcher
- *   3) Post-controller (global) – executes after controller, before emit
+ * Supports three middleware rings:
+ *   1) Pre-route (global)       – runs on request entry
+ *   2) Per-route (existing)     – attached on routes, executed by Dispatcher
+ *   3) Post-controller (global) – wraps the dispatch result before emit
  *
- * Supports both UnifiedMatcher (dir cache) and MergedMatcher (single-file cache)
- * transparently via duck-typed `enableCache()` / `finalize()`.
+ * Works with UnifiedMatcher (dir cache) and MergedMatcher (single-file cache).
  */
 final class RouterKernel
 {
     /** @var Closure():list<CompiledRoute> */
     private Closure $compiler;
 
-    /**
-     * @var list<callable(Request, Closure(Request):Response):Response>
-     */
+    /** @var list<callable(Request, Closure(Request):Response):Response> */
     private array $preGlobal = [];
 
-    /**
-     * @var list<callable(Request, Closure(Request):Response):Response>
-     */
+    /** @var list<callable(Request, Closure(Request):Response):Response> */
     private array $postGlobal = [];
 
     public function __construct(
@@ -83,12 +78,12 @@ final class RouterKernel
 
     public function handle(Request $request): Response
     {
-        // Make Request available for DI across all rings (pre, per-route, post)
+        // Bind Request for DI across pre/per-route/post rings
         $container = Invoker::shared()->getContainer();
         $defs = $container->definitions();
         $defs->bind(Request::class, $request);
 
-        // Final core: match → dispatch (per-route middleware runs inside dispatch)
+        // Core: match → dispatch (per-route middleware runs inside Dispatcher)
         $dispatchCore = function (Request $req): Response {
             $method = strtoupper($req->getMethod());
             $uri = $req->getUri();
@@ -107,16 +102,15 @@ final class RouterKernel
             } catch (RouteNotFoundException) {
                 return Response::json(['error' => 'Not Found'], 404);
             } catch (\Throwable $e) {
-                // If a pre-route ErrorHandlerMiddleware is registered, it can catch this too.
                 $this->log->error('[router] uncaught exception', ['exception' => $e]);
                 return Response::json(['error' => 'Server Error'], 500);
             }
         };
 
-        // Wrap dispatch with post-controller global middleware
+        // Wrap core with post-global middleware
         $withPost = $this->composePipeline($this->postGlobal, $dispatchCore);
 
-        // Wrap the above with pre-route global middleware and execute
+        // Wrap with pre-global middleware, then execute
         $withPre  = $this->composePipeline($this->preGlobal, $withPost);
 
         return $withPre($request);
@@ -132,8 +126,7 @@ final class RouterKernel
 
         if ($canBootFromCache) {
             if (\method_exists($this->matcher, 'finalize')) {
-                // Harmless no-op if finalize only dumps when cache is missing.
-                $this->matcher->finalize();
+                $this->matcher->finalize(); // harmless no-op if already final
             }
             $this->log->info('[router] route table ready (hot cache)', [
                 'count' => null,
@@ -189,11 +182,9 @@ final class RouterKernel
     }
 
     /**
-     * Normalize global middleware definitions.
-     * Accepts:
-     *  - invokable objects (fn(Request, Closure): Response)
-     *  - class-strings (constructed via Invoker; one instance per worker)
-     *  - plain callables
+     * Normalize global middleware entries:
+     *  - invokable objects / closures / callables
+     *  - class-strings (instantiated directly; if you need DI, pass an object)
      *
      * @param array<class-string|object|callable> $list
      * @return list<callable(Request, Closure(Request):Response):Response>
@@ -201,32 +192,32 @@ final class RouterKernel
     private function normalizeGlobalMiddleware(array $list): array
     {
         $out = [];
-        $invoker = Invoker::shared();
 
         foreach ($list as $mw) {
-            if (\is_callable($mw)) {
-                // invokable object or closure/callable
+            // 1) Callable (closure, invokable object, [obj,'method'], etc.)
+            if (\is_callable($mw) && !\is_string($mw)) {
+                // First-class callable wrapper keeps types (Request, Closure): Response
                 $out[] = $mw(...);
                 continue;
             }
 
+            // 2) Class-string → instantiate once per worker; must be invokable
             if (\is_string($mw)) {
                 if (!\class_exists($mw)) {
                     throw new InvalidArgumentException("Middleware class '{$mw}' not found.");
                 }
-                $out[] = static function (Request $req, Closure $next) use ($mw, $invoker): Response {
-                    static $instance = null;           // one per worker
-                    $instance ??= $invoker->make($mw); // constructor DI
+                $out[] = static function (Request $req, Closure $next) use ($mw): Response {
+                    static $instance = null;     // one instance per worker
+                    $instance ??= new $mw();     // direct instantiation to avoid DI invoking __invoke
+                    if (!\is_callable($instance)) {
+                        throw new InvalidArgumentException("Middleware {$mw} must be invokable (__invoke).");
+                    }
                     return $instance($req, $next);
                 };
                 continue;
             }
 
-            if (\is_object($mw) && method_exists($mw, '__invoke')) {
-                $out[] = $mw;
-                continue;
-            }
-
+            // 3) Object that isn’t callable → error (pass a callable or class-string)
             throw new InvalidArgumentException(
                 sprintf('Unsupported middleware entry of type %s', gettype($mw))
             );
@@ -245,7 +236,6 @@ final class RouterKernel
     private function composePipeline(array $stack, Closure $last): Closure
     {
         $next = $last;
-        // Build inside-out: last middleware wraps $next, etc.
         for ($i = count($stack) - 1; $i >= 0; $i--) {
             $mw = $stack[$i];
             $next = static function (Request $req) use ($mw, $next): Response {

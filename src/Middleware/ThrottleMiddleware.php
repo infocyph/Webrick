@@ -92,7 +92,7 @@ final readonly class ThrottleMiddleware
                 ?? 'unknown');
 
         $bucket = $this->scope;
-        $key = 't:' . sha1($bucket . '|' . (string)$id);
+        $key = 't.' . sha1($bucket . '|' . (string)$id);
 
         // fixed window reset
         $reset = $now + $this->window;

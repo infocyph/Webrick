@@ -49,7 +49,8 @@ final readonly class CacheValidatorsMiddleware
         private bool $autoEtagWhenMissing = true,
         private bool $includeQueryInEtag = true,
         private int $autoEtagMinSize = 0,
-    ) {}
+    ) {
+    }
 
     public function __invoke(Request $req, Closure $next): Response
     {
