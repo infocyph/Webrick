@@ -47,8 +47,8 @@ final readonly class CompressionMiddleware
     /** encoder → callable (only invoked when extension is loaded) */
     private const ALGO = [
         'br' => 'brotli_compress',   // ext-brotli
-        'zstd' => 'zstd_compress',     // ext-zstd
-        'gzip' => 'gzencode',          // ext-zlib (bundled)
+        'zstd' => 'zstd_compress',   // ext-zstd
+        'gzip' => 'gzencode',        // ext-zlib (bundled)
     ];
 
     public function __invoke(Request $req, Closure $next): Response
@@ -137,8 +137,12 @@ final readonly class CompressionMiddleware
 
         switch ($this->etagMode) {
             case self::ETAG_WEAK_ON_ENCODE:
+                // If a strong base ETag exists, weaken it. If none exists, emit a weak validator
+                // derived from the encoded bytes so caches can revalidate the compressed variant.
                 if ($etagLine !== '' && !str_starts_with($etagLine, 'W/')) {
                     $resp = $resp->withHeader('ETag', 'W/' . $etagLine);
+                } elseif ($etagLine === '') {
+                    $resp = $resp->withHeader('ETag', 'W/' . $this->strongFromBytes($encodedBytes));
                 }
                 break;
 

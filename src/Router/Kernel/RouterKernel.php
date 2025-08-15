@@ -5,17 +5,23 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Router\Kernel;
 
 use Closure;
+use InvalidArgumentException;
+use Psr\Log\LoggerInterface;
 use Infocyph\InterMix\DI\Invoker;
-use Infocyph\Webrick\Exceptions\{MethodNotAllowedException, RouteNotFoundException};
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
-use Infocyph\Webrick\Router\Dispatch\Dispatcher;
-use Infocyph\Webrick\Router\Matching\{MatcherInterface};
 use Infocyph\Webrick\Router\Route\CompiledRoute;
-use Psr\Log\LoggerInterface;
+use Infocyph\Webrick\Router\Dispatch\Dispatcher;
+use Infocyph\Webrick\Router\Matching\MatcherInterface;
+use Infocyph\Webrick\Exceptions\{MethodNotAllowedException, RouteNotFoundException};
 
 /**
  * Glues together compiler → matcher → dispatcher.
+ *
+ * Now supports three middleware rings:
+ *   1) Pre-route (global)    – executes on request landing (before routing/dispatch)
+ *   2) Per-route (existing)  – registered per route (Authorization, etc.) via Dispatcher
+ *   3) Post-controller (global) – executes after controller, before emit
  *
  * Supports both UnifiedMatcher (dir cache) and MergedMatcher (single-file cache)
  * transparently via duck-typed `enableCache()` / `finalize()`.
@@ -25,14 +31,30 @@ final class RouterKernel
     /** @var Closure():list<CompiledRoute> */
     private Closure $compiler;
 
+    /**
+     * @var list<callable(Request, Closure(Request):Response):Response>
+     */
+    private array $preGlobal = [];
+
+    /**
+     * @var list<callable(Request, Closure(Request):Response):Response>
+     */
+    private array $postGlobal = [];
+
     public function __construct(
         private MatcherInterface $matcher,
         private readonly Dispatcher $dispatcher,
         Closure $compiler,
         private readonly LoggerInterface $log,
+        array $preGlobal = [],
+        array $postGlobal = [],
     ) {
         $this->compiler = $compiler;
         $this->warm();
+
+        // Accept objects, class-strings, or callables
+        $this->preGlobal  = $this->normalizeGlobalMiddleware($preGlobal);
+        $this->postGlobal = $this->normalizeGlobalMiddleware($postGlobal);
     }
 
     /*──────────────── bootstrap helper ────────────────*/
@@ -45,6 +67,8 @@ final class RouterKernel
         Closure $compiler,
         MatcherInterface $matcher,
         ?string $routeCache = null,
+        array $preGlobal = [],
+        array $postGlobal = [],
     ): self {
         if ($routeCache) {
             $matcher->enableCache($routeCache);
@@ -52,33 +76,50 @@ final class RouterKernel
 
         $dispatcher = new Dispatcher(Invoker::shared());
 
-        return new self($matcher, $dispatcher, $compiler, $log);
+        return new self($matcher, $dispatcher, $compiler, $log, $preGlobal, $postGlobal);
     }
 
     /*──────────────── request entry ───────────────────*/
 
     public function handle(Request $request): Response
     {
-        $method = strtoupper($request->getMethod());
-        $uri = $request->getUri();
-        $host = self::normaliseHost($uri->getHost());
-        $path = $uri->getPath() ?: '/';
+        // Make Request available for DI across all rings (pre, per-route, post)
+        $container = Invoker::shared()->getContainer();
+        $defs = $container->definitions();
+        $defs->bind(Request::class, $request);
 
-        try {
-            [$route, $vars] = $this->matcher->match($method, $host, $path);
-            return $this->dispatcher->dispatch($route, $request, $vars);
-        } catch (MethodNotAllowedException $e) {
-            return Response::json(
-                ['error' => 'Method Not Allowed'],
-                405,
-                ['Allow' => implode(', ', $e->allowed)],
-            );
-        } catch (RouteNotFoundException) {
-            return Response::json(['error' => 'Not Found'], 404);
-        } catch (\Throwable $e) {
-            $this->log->error('[router] uncaught exception', ['exception' => $e]);
-            return Response::json(['error' => 'Server Error'], 500);
-        }
+        // Final core: match → dispatch (per-route middleware runs inside dispatch)
+        $dispatchCore = function (Request $req): Response {
+            $method = strtoupper($req->getMethod());
+            $uri = $req->getUri();
+            $host = self::normaliseHost($uri->getHost());
+            $path = $uri->getPath() ?: '/';
+
+            try {
+                [$route, $vars] = $this->matcher->match($method, $host, $path);
+                return $this->dispatcher->dispatch($route, $req, $vars);
+            } catch (MethodNotAllowedException $e) {
+                return Response::json(
+                    ['error' => 'Method Not Allowed'],
+                    405,
+                    ['Allow' => implode(', ', $e->allowed)],
+                );
+            } catch (RouteNotFoundException) {
+                return Response::json(['error' => 'Not Found'], 404);
+            } catch (\Throwable $e) {
+                // If a pre-route ErrorHandlerMiddleware is registered, it can catch this too.
+                $this->log->error('[router] uncaught exception', ['exception' => $e]);
+                return Response::json(['error' => 'Server Error'], 500);
+            }
+        };
+
+        // Wrap dispatch with post-controller global middleware
+        $withPost = $this->composePipeline($this->postGlobal, $dispatchCore);
+
+        // Wrap the above with pre-route global middleware and execute
+        $withPre  = $this->composePipeline($this->preGlobal, $withPost);
+
+        return $withPre($request);
     }
 
     /*──────────────── warm-up / cache prime ──────────*/
@@ -145,5 +186,72 @@ final class RouterKernel
             throw new \InvalidArgumentException('Host contains non-ASCII bytes.');
         }
         return $host;
+    }
+
+    /**
+     * Normalize global middleware definitions.
+     * Accepts:
+     *  - invokable objects (fn(Request, Closure): Response)
+     *  - class-strings (constructed via Invoker; one instance per worker)
+     *  - plain callables
+     *
+     * @param array<class-string|object|callable> $list
+     * @return list<callable(Request, Closure(Request):Response):Response>
+     */
+    private function normalizeGlobalMiddleware(array $list): array
+    {
+        $out = [];
+        $invoker = Invoker::shared();
+
+        foreach ($list as $mw) {
+            if (\is_callable($mw)) {
+                // invokable object or closure/callable
+                $out[] = $mw(...);
+                continue;
+            }
+
+            if (\is_string($mw)) {
+                if (!\class_exists($mw)) {
+                    throw new InvalidArgumentException("Middleware class '{$mw}' not found.");
+                }
+                $out[] = static function (Request $req, Closure $next) use ($mw, $invoker): Response {
+                    static $instance = null;           // one per worker
+                    $instance ??= $invoker->make($mw); // constructor DI
+                    return $instance($req, $next);
+                };
+                continue;
+            }
+
+            if (\is_object($mw) && method_exists($mw, '__invoke')) {
+                $out[] = $mw;
+                continue;
+            }
+
+            throw new InvalidArgumentException(
+                sprintf('Unsupported middleware entry of type %s', gettype($mw))
+            );
+        }
+
+        return $out;
+    }
+
+    /**
+     * Compose a middleware pipeline into a single callable(Request): Response.
+     *
+     * @param list<callable(Request, Closure(Request):Response):Response> $stack
+     * @param Closure(Request):Response $last
+     * @return Closure(Request):Response
+     */
+    private function composePipeline(array $stack, Closure $last): Closure
+    {
+        $next = $last;
+        // Build inside-out: last middleware wraps $next, etc.
+        for ($i = count($stack) - 1; $i >= 0; $i--) {
+            $mw = $stack[$i];
+            $next = static function (Request $req) use ($mw, $next): Response {
+                return $mw($req, $next);
+            };
+        }
+        return $next;
     }
 }
