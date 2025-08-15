@@ -150,11 +150,6 @@ final readonly class ResponseLinterMiddleware
         if ($line === '') {
             return false;
         }
-        foreach (explode(',', $line) as $tok) {
-            if (\strtolower(trim($tok)) === $needleLower) {
-                return true;
-            }
-        }
-        return false;
+        return array_any(explode(',', $line), fn ($tok) => \strtolower(trim($tok)) === $needleLower);
     }
 }

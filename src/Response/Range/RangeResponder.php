@@ -61,14 +61,21 @@ final readonly class RangeResponder
 
         // 416 – unsatisfiable / invalid Range (but NOT multi-range)
         if ($range === null && $rangeHeaderGiven && !$multiRequested) {
-            $headers += ['Content-Range' => "bytes */{$totalLength}"];
+            // Ensure we do NOT imply a representation: strip type/encoding/language and force zero-length body
+            unset($headers['Content-Type'], $headers['Content-Encoding'], $headers['Content-Language'], $headers['Content-Length']);
+
+            $headers += [
+                'Content-Range'  => "bytes */{$totalLength}", // RFC 9110 §14.4.2 requirement
+                'Content-Length' => '0',
+            ];
+
             return new Response(416, new Stream(''), $headers);
         }
 
         // 200 – full body when no Range OR multi-range (unsupported → fallback)
         if ($range === null || $multiRequested) {
             $headers += [
-                'Content-Type' => $mediaType,
+                'Content-Type'   => $mediaType,
                 'Content-Length' => (string)$totalLength,
             ];
             if (self::isSeekable($source)) {
@@ -90,9 +97,9 @@ final readonly class RangeResponder
             fseek($source, $range->start);
         }
         $headers += [
-            'Content-Range' => $range->contentRange(),
+            'Content-Range'  => $range->contentRange(),
             'Content-Length' => (string)$length,
-            'Content-Type' => $mediaType,
+            'Content-Type'   => $mediaType,
         ];
         if (self::isSeekable($source)) {
             $headers += ['Accept-Ranges' => 'bytes'];

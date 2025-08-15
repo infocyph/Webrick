@@ -126,28 +126,13 @@ final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
         $policy = HeaderPolicy::for($name);
 
         return match ($policy) {
-            HeaderPolicy::SINGLE => $this->with($name, $value),
+            HeaderPolicy::SINGLE     => $this->with($name, $value),
             HeaderPolicy::MULTI_LINE => $this->withAdded($name, $value),
             HeaderPolicy::MERGE_TOKENS => $this->with(
                 $name,
-                $this->mergeCsv($this->getHeaderLine($name), $value),
+                HeaderPolicy::mergeCsv($name, $this->getHeaderLine($name), $value),
             ),
         };
-    }
-
-    private function mergeCsv(string $existing, string $add): string
-    {
-        if ($existing === '') {
-            return $add;
-        }
-        $set = array_fill_keys(
-                array_map('trim', explode(',', $existing)),
-                true,
-            ) + array_fill_keys(
-                array_map('trim', explode(',', $add)),
-                true,
-            );
-        return implode(', ', array_keys($set));
     }
 
     /* -----------------------------------------------------------------

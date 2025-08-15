@@ -20,17 +20,15 @@ final readonly class CompressionMiddleware
     /** don’t bother below this many bytes */
     public function __construct(
         private int $minBytes = 1024,
-        /** prefer-order when wildcard is used */
         private array $prefOrder = ['br', 'zstd', 'gzip'],
-        /** ETag behavior when encoding is applied */
         private string $etagMode = self::ETAG_WEAK_ON_ENCODE,
-        /** stable levels (keep fixed for ETag stability) */
         private int $gzipLevel = 6,
         private int $brotliQuality = 4,
         private int $zstdLevel = 3,
-        /** salt version for derived tags; bump if scheme changes */
         private string $etagDeriveSalt = 'enc-v1',
-    ) {}
+        private int $maxBufferBytes = 8_388_608, // 8 MiB hard ceiling for in-memory re-encode
+    ) {
+    }
 
     /** MIME prefixes we never compress */
     private const NO_COMPRESS_PREFIXES = [
@@ -43,6 +41,7 @@ final readonly class CompressionMiddleware
         'application/x-tar',
         'application/octet-stream',
         'application/wasm',
+        'text/event-stream',
     ];
 
     /** encoder → callable (only invoked when extension is loaded) */
@@ -81,44 +80,39 @@ final readonly class CompressionMiddleware
     }
 
     /* ───────────────────────── decisions ───────────────────────── */
-
     private function shouldCompress(Request $req, Response $resp): bool
     {
-        if ($resp->hasHeader('Content-Encoding')) {
-            return false; // already encoded
-        }
-        $code = $resp->getStatusCode();
-        if ($code === 204 || $code === 304) {
-            return false; // no-body statuses
-        }
-        if ($req->getMethod() === 'HEAD') {
-            return false; // header-only
-        }
-        if ($code === 206 || $resp->hasHeader('Content-Range')) {
-            return false; // don’t compress partial content
-        }
-        if ($this->hasNoTransform($resp)) {
-            return false; // respect Cache-Control: no-transform
-        }
-        $len = StreamUtil::byteLength($resp->getBody(), $this->minBytes);
-        if ($len < $this->minBytes) {
-            return false; // payload too small to win
-        }
-        $ctype = strtolower(trim($resp->getHeaderLine('Content-Type')));
-        if ($ctype !== '' && $this->isNonCompressible($ctype)) {
-            return false;
-        }
-        return true;
+        return match (true) {
+            $resp->isStreaming(),
+            in_array($resp->getStatusCode(), [204, 304, 206], true),
+            strtoupper($req->getMethod()) === 'HEAD',
+            $resp->hasHeader('Content-Encoding'),
+            $resp->hasHeader('Content-Range'),
+            $this->hasNoTransform($resp),
+            (function () use ($resp): bool {
+                $length = StreamUtil::byteLength($resp->getBody(), $this->minBytes);
+                return $length < $this->minBytes || $length > $this->maxBufferBytes;
+            })(),
+            (function () use ($resp): bool {
+                $contentType = strtolower(trim($resp->getHeaderLine('Content-Type')));
+                return $contentType !== '' && $this->isNonCompressible($contentType);
+            })() => false,
+            default => true,
+        };
     }
 
     /* ───────────────────────── encoding ───────────────────────── */
 
     private function encode(string $raw, string $alg): string|false
     {
-        return match ($alg) {
-            'gzip' => gzencode($raw, $this->gzipLevel, \ZLIB_ENCODING_GZIP),
-            'br' => \function_exists(self::ALGO['br']) ? \brotli_compress($raw, $this->brotliQuality) : false,
-            'zstd' => \function_exists(self::ALGO['zstd']) ? \zstd_compress($raw, $this->zstdLevel) : false,
+        return match (true) {
+            $alg === 'gzip' && \function_exists(self::ALGO['gzip']) => \gzencode(
+                $raw,
+                $this->gzipLevel,
+                \ZLIB_ENCODING_GZIP,
+            ),
+            $alg === 'br' && \function_exists(self::ALGO['br']) => \brotli_compress($raw, $this->brotliQuality),
+            $alg === 'zstd' && \function_exists(self::ALGO['zstd']) => \zstd_compress($raw, $this->zstdLevel),
             default => false,
         };
     }
@@ -154,10 +148,10 @@ final readonly class CompressionMiddleware
                 if ($base !== '') {
                     $level = $this->encodedLevelToken($alg);
                     $derived = '"' . substr(
-                            sha1($base . '|' . $alg . '|' . $level . '|' . $this->etagDeriveSalt),
-                            0,
-                            16,
-                        ) . '"';
+                        sha1($base . '|' . $alg . '|' . $level . '|' . $this->etagDeriveSalt),
+                        0,
+                        16,
+                    ) . '"';
                     $resp = $resp->withHeader('ETag', $derived);
                 } else {
                     $resp = $resp->withHeader('ETag', $this->strongFromBytes($encodedBytes));
@@ -280,7 +274,7 @@ final readonly class CompressionMiddleware
 
         \usort(
             $parsed,
-            static fn(array $a, array $b): int => $b[1] <=> $a[1], // highest q first
+            static fn (array $a, array $b): int => $b[1] <=> $a[1], // highest q first
         );
 
         return \array_column($parsed, 0);

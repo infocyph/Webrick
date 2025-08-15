@@ -12,19 +12,6 @@ use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Response\Negotiation\LocaleNegotiator;
 use Infocyph\Webrick\Router\Definition\Attribute\Produces;
 
-/**
- * Content-Type + Charset + Locale negotiation in one place.
- *
- * • Accept             → negotiated.type          (406 if no match)
- * • Accept-Charset     → negotiated.charset       (optional)
- * • Accept-Language    → locale                   (always chosen; fallback)
- *
- * Also ensures:
- *   - Vary accumulation for Accept / Accept-Charset (when relevant) / Accept-Language
- *   - Response has Content-Language
- *   - Response gets Content-Type if controller forgot
- *   - If controller set a text/xml/js Content-Type without charset, we append one.
- */
 final readonly class NegotiationMiddleware
 {
     /** @param string[] $produces */
@@ -35,11 +22,40 @@ final readonly class NegotiationMiddleware
         private array $charsets = ['utf-8'],
         private array $locales = ['en'],
         private string $localeFallback = 'en',
-    ) {}
+    ) {
+    }
 
     public function __invoke(Request $req, Closure $next): Response
     {
-        // Route attribute override (optional)
+        [$prod, $char] = $this->resolveRouteOverrides($req);
+
+        // 1) Negotiate type & charset (with early 406)
+        [$type, $cset, $maybeEarly] = $this->negotiateTypeAndCharset($req, $prod, $char);
+        if ($maybeEarly instanceof Response) {
+            return $maybeEarly;
+        }
+
+        // 2) Negotiate locale & register Vary if it can affect result
+        $locale = $this->negotiateLocaleRegisterVary($req);
+
+        // 3) Stash negotiated choices for controllers
+        $req = $this->stashChoices($req, $type, $cset, $locale);
+
+        // 4) Downstream
+        $resp = $next($req);
+
+        // 5) Ensure Content-Type and append charset when appropriate
+        $resp = $this->ensureContentType($resp, $type, $cset);
+
+        // 6) Always set Content-Language reflecting chosen locale
+        return $resp->withHeader('Content-Language', $locale);
+    }
+
+    /* ───────────────────────── orchestration helpers ───────────────────────── */
+
+    /** @return array{0: string[], 1: string[]} */
+    private function resolveRouteOverrides(Request $req): array
+    {
         $prod = $this->produces;
         $char = $this->charsets;
 
@@ -47,92 +63,133 @@ final readonly class NegotiationMiddleware
         $attr = $req->getAttribute('produces');
         if ($attr instanceof Produces) {
             $prod = $attr->types ?: $prod;
-            if ($attr->charsets !== null && $attr->charsets !== []) {
+            if (!empty($attr->charsets)) {
                 $char = $attr->charsets;
             }
         }
+        return [$prod, $char];
+    }
 
-        // 1) Accept / Accept-Charset
-        $neg = new ContentNegotiator($req->headers());
-        $type = $neg->preferred($prod);                 // null ⇒ 406
-        $cset = $this->pickCharset($neg, $char);        // may be null
+    /**
+     * @param string[] $prod
+     * @param string[] $char
+     * @return array{0: string, 1: ?string, 2: ?Response}
+     */
+    private function negotiateTypeAndCharset(Request $req, array $prod, array $char): array
+    {
+        // Tiny fast-paths to avoid work:
+        $accept = $req->getHeaderLine('Accept');
+        $acceptCharset = $req->getHeaderLine('Accept-Charset');
+
+        // Build negotiator only if we need it
+        $neg = ($accept !== '' || $acceptCharset !== '')
+            ? new ContentNegotiator($req->headers())
+            : null;
+
+        // Type
+        $type = ($neg !== null)
+            ? $neg->preferred($prod)   // may be null
+            : ($prod[0] ?? null);
 
         if ($type === null) {
-            // Register what we varied on before short-circuiting,
-            // so VaryAccumulator (outer in the stack) can write Vary.
+            // Register Vary before short-circuit 406 so accumulator can write it
             VaryAccumulatorMiddleware::add($req, 'Accept');
-            if ($req->getHeaderLine('Accept-Charset') !== '' && $this->charsetMattersForAny($prod)) {
+            if ($acceptCharset !== '' && $this->charsetMattersForAny($prod)) {
                 VaryAccumulatorMiddleware::add($req, 'Accept-Charset');
             }
 
-            return new Response(
-                status: 406,
-                headers: ['Content-Type' => 'text/plain; charset=utf-8'],
-                body: new Stream('Not acceptable.'),
-            );
+            return [
+                '',
+                null,
+                new Response(
+                    status: 406,
+                    headers: ['Content-Type' => 'text/plain; charset=utf-8'],
+                    body: new Stream('Not acceptable.')
+                ),
+            ];
         }
 
-        // Vary: Accept always
+        // Vary: Accept always (negotiation exists even if client didn't send Accept)
         VaryAccumulatorMiddleware::add($req, 'Accept');
 
-        // Only register Accept-Charset if the client sent it and the chosen type cares
-        if (
-            $cset !== null
-            && $req->getHeaderLine('Accept-Charset') !== ''
-            && $this->charsetMattersFor($type)
-        ) {
-            VaryAccumulatorMiddleware::add($req, 'Accept-Charset');
+        // Charset
+        $cset = null;
+        if ($acceptCharset !== '' && $this->charsetMattersFor($type)) {
+            // Only check if header sent and type cares about charset
+            $cset = $this->pickCharset($neg ?? new ContentNegotiator($req->headers()), $char);
+            if ($cset !== null) {
+                VaryAccumulatorMiddleware::add($req, 'Accept-Charset');
+            }
         }
 
-        // 2) Accept-Language (locale)
+        return [$type, $cset, null];
+    }
+
+    private function negotiateLocaleRegisterVary(Request $req): string
+    {
         [$locale] = LocaleNegotiator::forRequest(
             $req,
             $this->locales ?: [$this->localeFallback],
             $this->localeFallback,
         );
-        // Register Vary: Accept-Language now (Content-Language will be set later)
-        VaryAccumulatorMiddleware::add($req, 'Accept-Language');
 
-        // Stash choices for controllers
-        $req = $req
+        // Only vary if client sent the header OR server offers > 1 locale
+        $acceptLangPresent = $req->getHeaderLine('Accept-Language') !== '';
+        $multiLocales = \count($this->locales) > 1;
+        VaryAccumulatorMiddleware::addIf($req, $acceptLangPresent || $multiLocales, 'Accept-Language');
+
+        return $locale;
+    }
+
+    private function stashChoices(Request $req, string $type, ?string $cset, string $locale): Request
+    {
+        return $req
             ->withAttribute('negotiated.type', $type)
             ->withAttribute('negotiated.charset', $cset)
             ->withAttribute('locale', $locale);
+    }
 
-        // 3) Downstream
-        $resp = $next($req);
-
-        // 4) Ensure Content-Type and append charset when appropriate
-        if (!in_array($resp->getStatusCode(), [204, 304], true)) {
-            $existing = $resp->getHeaderLine('Content-Type');
-
-            if ($existing === '') {
-                $resp = $resp->withHeader('Content-Type', $this->composeContentType($type, $cset));
-            } else {
-                // If controller set a text/xml/js type without charset, and our negotiated charset exists, append it.
-                $base = strtolower(strtok($existing, ';') ?: $existing);
-                if (
-                    stripos($existing, 'charset=') === false
-                    && $cset !== null
-                    && $this->charsetMattersFor($base)
-                    && !$this->isJson($base)
-                ) {
-                    $resp = $resp->withHeader('Content-Type', trim($existing) . '; charset=' . $cset);
-                }
-            }
+    private function ensureContentType(Response $resp, string $type, ?string $cset): Response
+    {
+        $code = $resp->getStatusCode();
+        if ($code === 204 || $code === 304) {
+            return $resp;
         }
 
-        // 5) Always set Content-Language reflecting the chosen locale
-        $resp = $resp->withHeader('Content-Language', $locale);
+        $existing = $resp->getHeaderLine('Content-Type');
+        if ($existing === '') {
+            return $resp->withHeader('Content-Type', $this->composeContentType($type, $cset));
+        }
+
+        // Append charset if needed and we negotiated one
+        if ($cset === null) {
+            return $resp;
+        }
+
+        // Compute base type once, case-insensitively
+        $semicolonPos = strpos($existing, ';');
+        $base = $semicolonPos === false ? $existing : substr($existing, 0, $semicolonPos);
+        $baseLower = strtolower($base);
+
+        if (
+            stripos($existing, 'charset=') === false
+            && $this->charsetMattersFor($baseLower)
+            && !$this->isJson($baseLower)
+        ) {
+            // Preserve original spacing, just append param
+            return $resp->withHeader('Content-Type', rtrim($existing) . '; charset=' . $cset);
+        }
 
         return $resp;
     }
 
-    /* ───────────────────────── helpers ───────────────────────── */
+    /* ───────────────────────── leaf helpers ───────────────────────── */
 
     private function pickCharset(ContentNegotiator $neg, array $candidates): ?string
     {
+        // candidates are already ordered by server preference
         foreach ($candidates as $cs) {
+            // negotiator expects lowercase charsets
             if ($neg->supportsCharset(strtolower($cs))) {
                 return $cs;
             }
@@ -142,47 +199,52 @@ final readonly class NegotiationMiddleware
 
     private function composeContentType(string $type, ?string $charset): string
     {
-        $lower = strtolower($type);
-        $hasParam = str_contains($type, ';');
+        // Avoid repeated lowercasing/contains checks
+        $typeLower = strtolower($type);
+        if ($this->isJson($typeLower)) {
+            return $type; // never append for JSON; UTF-8 by spec
+        }
 
-        // never append for JSON (UTF-8 on the wire by spec)
-        $needsCs = !$hasParam && !$this->isJson($lower) && (
-                str_starts_with($lower, 'text/')
-                || str_contains($lower, 'xml')
-                || $lower === 'application/javascript'
-                || $lower === 'text/javascript'
-            );
+        // If controller already included params, trust them
+        if (str_contains($type, ';')) {
+            return $type;
+        }
 
-        return $needsCs && $charset ? "{$type}; charset={$charset}" : $type;
+        $needsCs =
+            str_starts_with($typeLower, 'text/') ||
+            str_contains($typeLower, 'xml') ||
+            $typeLower === 'application/javascript' ||
+            $typeLower === 'text/javascript';
+
+        return ($needsCs && $charset) ? "{$type}; charset={$charset}" : $type;
     }
 
     /** True when charset changes octets on the wire for this media type. */
-    private function charsetMattersFor(string $type): bool
+    private function charsetMattersFor(string $typeLower): bool
     {
-        $t = strtolower($type);
-        if ($this->isJson($t)) {
+        if ($this->isJson($typeLower)) {
             return false;
         }
 
-        return str_starts_with($t, 'text/')
-            || str_contains($t, 'xml')
-            || $t === 'application/javascript'
-            || $t === 'text/javascript';
+        return str_starts_with($typeLower, 'text/')
+            || str_contains($typeLower, 'xml')
+            || $typeLower === 'application/javascript'
+            || $typeLower === 'text/javascript';
     }
 
     /** Conservative check used for 406 short-circuit Vary decision. */
     private function charsetMattersForAny(array $types): bool
     {
         foreach ($types as $t) {
-            if ($this->charsetMattersFor($t)) {
+            if ($this->charsetMattersFor(strtolower($t))) {
                 return true;
             }
         }
         return false;
     }
 
-    private function isJson(string $lowerType): bool
+    private function isJson(string $typeLower): bool
     {
-        return str_starts_with($lowerType, 'application/json');
+        return str_starts_with($typeLower, 'application/json');
     }
 }

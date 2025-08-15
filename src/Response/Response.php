@@ -24,6 +24,20 @@ class Response
     private HeaderBag $headers;
     private BodyStream $body;
 
+    /**
+     * When non-null, the response is a live stream. The callable MUST return
+     * an iterable<string> (e.g., a Generator yielding string chunks) OR a
+     * single string for one-shot writes.
+     *
+     * The emitter will:
+     *  - skip auto Content-Length
+     *  - optionally add Transfer-Encoding: chunked for HTTP/1.1
+     *  - echo/flush each yielded chunk
+     *
+     * @var null|\Closure(): iterable<string>|string
+     */
+    private ?\Closure $producer = null;
+
     public function __construct(
         private int $statusCode = 200,
         BodyStream|string|null $body = null,
@@ -34,6 +48,68 @@ class Response
         $this->headers = new HeaderBag($headers);
         $this->body = $body instanceof BodyStream ? $body : new Stream($body ?? '');
         $this->reasonPhrase ??= self::statusText($this->statusCode);
+    }
+
+    /* --------------------------------------------------------------
+       New: streaming helper (no Content-Length, emitter streams live)
+       -------------------------------------------------------------- */
+
+    /**
+     * Create a live streaming response.
+     *
+     * @param callable(): (iterable<string>|string)|iterable<string> $producer
+     *        Callable returning an iterable of chunks, or a single string; OR an iterable directly.
+     */
+    public static function stream(
+        callable|iterable $producer,
+        int $status = 200,
+        array $headers = [],
+    ): self {
+        // Don’t let callers accidentally pin a length
+        unset($headers['Content-Length'], $headers['content-length']);
+
+        // Sensible streaming defaults (override as desired)
+        $headers = [
+                'Cache-Control'     => $headers['Cache-Control']     ?? 'no-store',
+                'X-Accel-Buffering' => $headers['X-Accel-Buffering'] ?? 'no', // helps with Nginx proxy buffering
+            ] + $headers;
+
+        $resp = new self($status, new Stream(''), $headers);
+        $resp->producer = self::normalizeProducer($producer);
+        return $resp;
+    }
+
+    /** True when this response will be streamed by the emitter. */
+    public function isStreaming(): bool
+    {
+        return $this->producer !== null;
+    }
+
+    /**
+     * Internal use by emitter.
+     * @return null|\Closure(): iterable<string>|string
+     */
+    public function getProducer(): ?\Closure
+    {
+        return $this->producer;
+    }
+
+    /** Convert a callable/iterable into a normalized closure. */
+    private static function normalizeProducer(callable|iterable $producer): \Closure
+    {
+        if (is_iterable($producer)) {
+            return static fn() => $producer;
+        }
+
+        // callable()
+        return static function () use ($producer) {
+            $out = $producer();
+            if ($out instanceof \Generator || is_iterable($out)) {
+                return $out;
+            }
+            // Treat anything else as a one-shot string (including '')
+            return $out === null ? [] : [$out];
+        };
     }
 
     /* --------------------------------------------------------------
@@ -71,12 +147,14 @@ class Response
 
     public static function redirect(string $uri, int $status = 302): self
     {
-        if ($status < 300 || $status > 399) {
+        $s = Status::tryFrom($status);
+        if (!$s || !$s->isRedirect()) {
             throw new \InvalidArgumentException('Redirect status must be a 3xx code.');
         }
 
         return new self($status, new Stream(''))
             ->withSmartHeader('Location', $uri)
+            ->withHeader('Cache-Control', 'no-store')
             ->withoutHeader('Content-Type')
             ->withoutHeader('Content-Length');
     }
@@ -130,10 +208,6 @@ class Response
         return new self(200, $stream, $defaults + $headers);
     }
 
-    /**
-     * download() – Laravel-style alias:
-     *   Response::download($fileOrStream, $name = null, array $headers = [], ?string $mime = null)
-     */
     public static function download(
         string|Stream $file,
         ?string $name = null,
@@ -147,7 +221,7 @@ class Response
     }
 
     /* --------------------------------------------------------------
-       PSR-7 getters/setters (unchanged)
+       PSR-7-ish surface (kept as-is; withBody clears producer)
        -------------------------------------------------------------- */
 
     public function getProtocolVersion(): string
@@ -207,7 +281,10 @@ class Response
 
     public function withBody(BodyStream $b): self
     {
-        return $this->copy(body: $b);
+        $x = $this->copy(body: $b);
+        // If caller replaces the body, this is no longer a live stream.
+        $x->producer = null;
+        return $x;
     }
 
     public function getStatusCode(): int
@@ -270,6 +347,7 @@ class Response
         $x->body = $body ?? $this->body;
         $x->protocolVersion = $protocolVersion ?? $this->protocolVersion;
         $x->reasonPhrase = $reasonPhrase ?? $this->reasonPhrase;
+        // keep $x->producer as-is; specific methods (withBody) may clear it.
         return $x;
     }
 
@@ -337,13 +415,11 @@ class Response
        Low-complexity helpers for attachment()
        -------------------------------------------------------------- */
 
-    /** Open a stream from path or return the given stream as-is. */
     private static function streamFor(string|Stream $file): Stream
     {
         return $file instanceof Stream ? $file : self::openFileStream($file);
     }
 
-    /** Return [size|null, mtime|null] only when `$file` is a path. */
     private static function metaFor(string|Stream $file): array
     {
         if (!is_string($file)) {
@@ -354,13 +430,11 @@ class Response
         return [$size, $mtime];
     }
 
-    /** Decide the MIME type (explicit wins, else by filename). */
     private static function inferMime(string $name, ?string $explicit): string
     {
         return $explicit ?? MediaType::fromFilename($name)->value;
     }
 
-    /** Minimal base headers every download should have. */
     private static function baseDownloadHeaders(string $name, string $mime): array
     {
         return [
@@ -369,20 +443,17 @@ class Response
         ];
     }
 
-    /** Prefer filesystem size when we got a path, else stream length. */
     private static function chooseLength(string|Stream $file, Stream $stream, ?int $fsSize): ?string
     {
         $len = is_string($file) ? $fsSize : ($stream->getSize() ?? null);
         return $len !== null ? (string)$len : null;
     }
 
-    /** HTTP-date or null. */
     private static function formatHttpDate(?int $mtime): ?string
     {
         return $mtime ? gmdate('D, d M Y H:i:s', $mtime) . ' GMT' : null;
     }
 
-    /** Strong ETag from stable file-ish metadata, or null. */
     private static function etagFromMeta(?int $size, ?int $mtime, string $name): ?string
     {
         if ($size === null && $mtime === null) {
@@ -392,10 +463,6 @@ class Response
         return Utils::generateEtag($seed);
     }
 
-    /**
-     * Conditionally write a header into $target when value is non-null
-     * and absent from caller-supplied $caller.
-     */
     private static function putIfAbsent(array &$target, string $name, ?string $value, array $caller): void
     {
         if ($value !== null && !array_key_exists($name, $caller)) {

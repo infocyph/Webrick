@@ -22,37 +22,4 @@ final class Utils
     {
         return '"' . substr(sha1($payload, false), 0, 16) . '"';
     }
-
-    /**
-     * Strong, short ETag from a **seekable** stream without buffering the whole body.
-     * Adds an optional salt (e.g. canonical query string) the same way your old code did.
-     */
-    public static function etagFromStream(Stream $body, string $salt = ''): string
-    {
-        $ctx = hash_init('sha1');
-
-        // remember position and rewind
-        $pos = $body->isSeekable() ? $body->tell() : null;
-        if ($body->isSeekable()) {
-            $body->rewind();
-        }
-
-        // 64 KiB chunks
-        while (!$body->eof()) {
-            hash_update($ctx, $body->read(65536));
-        }
-
-        if ($salt !== '') {
-            hash_update($ctx, '#' . $salt);
-        }
-
-        $hex = hash_final($ctx);
-
-        // restore cursor
-        if ($pos !== null) {
-            $body->seek($pos);
-        }
-
-        return '"' . substr($hex, 0, 16) . '"';
-    }
 }

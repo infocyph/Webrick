@@ -37,6 +37,27 @@ final class VaryAccumulatorMiddleware
         return $when ? self::add($r, ...$headers) : $r;
     }
 
+    /**
+     * TEST HELPER: clear any queued vary tokens on the request.
+     */
+    public static function clear(Request $r): Request
+    {
+        return $r->withAttribute(self::ATTR, []);
+    }
+
+    /**
+     * TEST HELPER: inspect queued tokens on the request.
+     * @return string[] tokens (normalized Title-Case by default)
+     */
+    public static function peek(Request $r, bool $normalized = true): array
+    {
+        $pending = $r->getAttribute(self::ATTR);
+        if (!is_array($pending) || $pending === []) {
+            return [];
+        }
+        return $normalized ? self::normalize($pending) : $pending;
+    }
+
     public function __invoke(Request $req, Closure $next): Response
     {
         $resp = $next($req);
@@ -55,26 +76,39 @@ final class VaryAccumulatorMiddleware
             $tokens = self::merge($tokens, self::normalize($pending));
         }
 
-        // Auto-infer common dependencies from the final response
+        // ── Auto-infer from final response ─────────────────────────
+
+        // Encoding implies Accept-Encoding variance
         if ($resp->hasHeader('Content-Encoding')) {
             $tokens = self::merge($tokens, ['Accept-Encoding']);
         }
+
+        // If we declare a content language, we likely varied by Accept-Language
         if ($resp->hasHeader('Content-Language')) {
             $tokens = self::merge($tokens, ['Accept-Language']);
         }
-        // If CORS reflected an origin (i.e., not "*"), vary by Origin
+
+        // CORS: if ACAO is reflected (not "*"), vary by Origin (and preflight headers for OPTIONS)
         $acao = trim($resp->getHeaderLine('Access-Control-Allow-Origin'));
         if ($acao !== '' && $acao !== '*') {
             $tokens = self::merge($tokens, ['Origin']);
+
+            // Preflight: vary on Access-Control-Request-Method/Headers when present
+            if (strtoupper($req->getMethod()) === 'OPTIONS') {
+                if ($req->getHeaderLine('Access-Control-Request-Method') !== '') {
+                    $tokens = self::merge($tokens, ['Access-Control-Request-Method']);
+                }
+                if ($req->getHeaderLine('Access-Control-Request-Headers') !== '') {
+                    $tokens = self::merge($tokens, ['Access-Control-Request-Headers']);
+                }
+            }
         }
 
         if ($tokens === []) {
-            // leave header as-is (remove if downstream set empty string)
             return $resp->getHeaderLine('Vary') === '' ? $resp : $resp->withoutHeader('Vary');
         }
 
         $final = implode(', ', $tokens);
-        // Don’t rewrite if identical (keeps identity operations cheap)
         return $final === $resp->getHeaderLine('Vary')
             ? $resp
             : $resp->withHeader('Vary', $final);
@@ -111,7 +145,6 @@ final class VaryAccumulatorMiddleware
 
     /**
      * Normalize tokens: case-insensitive dedupe, canonical Title-Case form.
-     * (HTTP field names are case-insensitive; Vary values are field names.)
      */
     private static function normalize(array $tokens): array
     {
@@ -149,9 +182,8 @@ final class VaryAccumulatorMiddleware
         if ($t === '') {
             return '';
         }
-        // split by hyphen and ucwords each part
         $parts = array_map(
-            static fn(string $p) => $p === '' ? '' : ucfirst(strtolower($p)),
+            static fn (string $p) => $p === '' ? '' : ucfirst(strtolower($p)),
             explode('-', $t),
         );
         return implode('-', $parts);

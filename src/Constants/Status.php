@@ -103,7 +103,7 @@ enum Status: int
         static $irregular = [
             self::MULTI_STATUS->value => 'Multi-Status',
             self::NON_AUTHORITATIVE_INFO->value => 'Non-Authoritative Information',
-            self::IM_A_TEAPOT->value => 'I’m a teapot',
+            self::IM_A_TEAPOT->value => "I'm a teapot",
             self::NETWORK_AUTH_REQUIRED->value => 'Network Authentication Required',
         ];
 
