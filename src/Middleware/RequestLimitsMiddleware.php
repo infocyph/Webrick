@@ -14,15 +14,16 @@ use Infocyph\Webrick\Response\Response;
  *
  * - Header bytes + header fields count apply to every request.
  * - Body cap checks Content-Length (can’t pre-measure chunked streams).
+ * - HTTP/2-safe: never emits hop-by-hop "Connection" header on H2.
  */
 final readonly class RequestLimitsMiddleware
 {
     /**
-     * @param int      $maxHeaderBytes 0 disables byte check
-     * @param int      $maxHeaderCount 0 disables count check (fields = each header value line)
-     * @param int|null $maxBodyBytes   null ⇒ use ini_get('post_max_size')
+     * @param int $maxHeaderBytes 0 disables byte check
+     * @param int $maxHeaderCount 0 disables count check (fields = each header value line)
+     * @param int|null $maxBodyBytes null ⇒ use ini_get('post_max_size')
      * @param string[] $bodyLimitVerbs HTTP methods to which body limit applies
-     * @param bool     $violateOnUnknownBody When true and no Content-Length is present,
+     * @param bool $violateOnUnknownBody When true and no Content-Length is present,
      *                                       treat as violation for the configured verbs.
      */
     public function __construct(
@@ -31,7 +32,8 @@ final readonly class RequestLimitsMiddleware
         private ?int $maxBodyBytes = null,
         private array $bodyLimitVerbs = ['POST', 'PUT', 'PATCH', 'DELETE'],
         private bool $violateOnUnknownBody = true,
-    ) {}
+    ) {
+    }
 
     public function __invoke(Request $req, Closure $next): Response
     {
@@ -39,8 +41,8 @@ final readonly class RequestLimitsMiddleware
         if ($this->maxHeaderCount > 0) {
             $fields = $this->totalHeaderFields($req);
             if ($fields > $this->maxHeaderCount) {
-                return Response::plaintext('Too many header fields', 431)
-                    ->withHeader('Connection', 'close');
+                $resp = Response::plaintext('Too many header fields', 431);
+                return $this->withConnCloseIfHttp1($req, $resp);
             }
         }
 
@@ -48,8 +50,8 @@ final readonly class RequestLimitsMiddleware
         if ($this->maxHeaderBytes > 0) {
             $hdrBytes = $this->totalHeaderBytes($req);
             if ($hdrBytes > $this->maxHeaderBytes) {
-                return Response::plaintext('Request headers too large', 431)
-                    ->withHeader('Connection', 'close');
+                $resp = Response::plaintext('Request headers too large', 431);
+                return $this->withConnCloseIfHttp1($req, $resp);
             }
         }
 
@@ -60,13 +62,13 @@ final readonly class RequestLimitsMiddleware
             if ($cl !== '') {
                 $len = (int)$cl;
                 if ($len > $limit) {
-                    return Response::plaintext('Payload exceeds maximum allowed size.', 413)
-                        ->withHeader('Connection', 'close');
+                    $resp = Response::plaintext('Payload exceeds maximum allowed size.', 413);
+                    return $this->withConnCloseIfHttp1($req, $resp);
                 }
             } elseif ($this->violateOnUnknownBody) {
                 // No Content-Length – optionally reject pre-emptively.
-                return Response::plaintext('Payload exceeds maximum allowed size.', 413)
-                    ->withHeader('Connection', 'close');
+                $resp = Response::plaintext('Payload exceeds maximum allowed size.', 413);
+                return $this->withConnCloseIfHttp1($req, $resp);
             }
         }
 
@@ -135,12 +137,22 @@ final readonly class RequestLimitsMiddleware
             return 0;
         }
         $unit = \strtolower(substr($val, -1));
-        $num  = (int)$val;
+        $num = (int)$val;
         return match ($unit) {
             'g' => $num * 1024 * 1024 * 1024,
             'm' => $num * 1024 * 1024,
             'k' => $num * 1024,
             default => (int)$val,
         };
+    }
+
+    /** Add Connection: close only for HTTP/1.x; never for HTTP/2. */
+    private function withConnCloseIfHttp1(Request $req, Response $resp): Response
+    {
+        $proto = strtoupper((string)($req->getServerParam('SERVER_PROTOCOL') ?? 'HTTP/1.1'));
+        if (\str_starts_with($proto, 'HTTP/1.')) {
+            return $resp->withHeader('Connection', 'close');
+        }
+        return $resp;
     }
 }

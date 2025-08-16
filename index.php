@@ -185,9 +185,9 @@ $preGlobal = [
     ),
     TelemetryMiddleware::class,
     MaintenanceModeMiddleware::class,
-    new RequestLimitsMiddleware(),
+    RequestLimitsMiddleware::class,
     ThrottleMiddleware::class,
-    new NegotiationMiddleware(),
+    NegotiationMiddleware::class,
 
     // CacheValidators requires a metaProvider
     new CacheValidatorsMiddleware(
@@ -206,21 +206,18 @@ $preGlobal = [
             $etag = '"' . substr(sha1('demo|' . $path . '|' . (string)$nowMtime), 0, 16) . '"';
             return [$etag, $nowMtime];
         },
-        autoEtagWhenMissing: true,
-        includeQueryInEtag: true,
-        autoEtagMinSize: 0,
     ),
 ];
 
 // Post-controller (global) middleware stack
 $postGlobal = [
-    new CompressionMiddleware(), // default: WEAK_ON_ENCODE
-    new CorsAndPoliciesMiddleware(), // ← instance to avoid DI invoking __invoke
-    new VaryAccumulatorMiddleware(),
+    CompressionMiddleware::class,
+    CorsAndPoliciesMiddleware::class,
+    VaryAccumulatorMiddleware::class,
 ];
 
 if ($dev) {
-    $postGlobal[] = new ResponseLinterMiddleware(true);
+    $postGlobal[] = ResponseLinterMiddleware::class;
 }
 
 // A) UnifiedMatcher with segment-dir cache
