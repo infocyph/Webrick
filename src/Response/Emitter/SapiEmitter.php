@@ -87,25 +87,55 @@ final class SapiEmitter implements EmitterInterface
         header_remove('X-Powered-By');
     }
 
+    /**
+     * Very small now: just iterate filtered headers and emit.
+     */
     private function emitHeaderLines(Response $response, bool $isHttp2): void
+    {
+        foreach ($this->filteredHeaderIterator($response, $isHttp2) as [$name, $value]) {
+            header("{$name}: {$value}", false);
+        }
+    }
+
+    /**
+     * Yields header name/value pairs after applying protocol-specific filters.
+     *
+     * @return \Generator<array{0:string,1:string}>
+     */
+    private function filteredHeaderIterator(Response $response, bool $isHttp2): \Generator
     {
         foreach ($response->getHeaders() as $name => $values) {
             $lname = strtolower($name);
-
             foreach ($values as $value) {
-                if ($isHttp2) {
-                    // Drop hop-by-hop headers on HTTP/2
-                    if (isset(self::H2_HOP_BY_HOP[$lname])) {
-                        continue;
-                    }
-                    // TE is only allowed with the value "trailers"
-                    if ($lname === 'te' && strtolower(trim((string)$value)) !== 'trailers') {
-                        continue;
-                    }
+                $v = (string)$value;
+                if ($this->shouldSendHeader($lname, $v, $isHttp2)) {
+                    yield [$name, $v];
                 }
-                header("{$name}: {$value}", false);
             }
         }
+    }
+
+    /**
+     * Decide if a header should be emitted under the given protocol.
+     */
+    private function shouldSendHeader(string $lowerName, string $value, bool $isHttp2): bool
+    {
+        if (!$isHttp2) {
+            return true; // No special filtering on HTTP/1.x
+        }
+
+        // Drop all hop-by-hop headers on HTTP/2
+        if (isset(self::H2_HOP_BY_HOP[$lowerName])) {
+            return false;
+        }
+
+        // TE is only allowed with the exact value "trailers"
+        if ($lowerName === 'te' && strtolower(trim($value)) !== 'trailers') {
+            return false;
+        }
+
+        return true;
+        // (Other protocol-specific rules can be added here with tiny guards.)
     }
 
     private function finalizeLengthAndEncoding(
