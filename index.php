@@ -82,20 +82,20 @@ $registrar->get('/', function (): HtmlResponse {
     return new HtmlResponse($html);
 });
 
-$registrar->get('/ping', fn() => 'pong');
+$registrar->get('/ping', fn () => 'pong');
 
 $registrar->get(
     '/hello/{name}',
-    fn(Request $r)
+    fn (Request $r)
         => Response::json(['hello' => $r->getAttribute('route_params')['name'] ?? 'stranger']),
 );
 
-$registrar->get('/json', fn() => Response::json(['memory' => memory_get_usage(true)]));
-$registrar->get('/redirect', fn() => Response::redirect('/', 302));
-$registrar->get('/download', fn() => Response::attachment(__FILE__, 'index.php'));
+$registrar->get('/json', fn () => Response::json(['memory' => memory_get_usage(true)]));
+$registrar->get('/redirect', fn () => Response::redirect('/', 302));
+$registrar->get('/download', fn () => Response::attachment(__FILE__, 'index.php'));
 $registrar->get(
     '/color/{hex:hex}',
-    fn(Request $r)
+    fn (Request $r)
         => Response::json(['you sent hex' => $r->getAttribute('route_params')['hex']]),
 );
 
@@ -151,7 +151,7 @@ $registrar->get('/json/slow', function (): Response {
     return Response::json(function () {
         return [
             'now' => time(),
-            'items' => array_map(fn($i) => ['n' => $i, 'v' => bin2hex(random_bytes(4))], range(1, 100)),
+            'items' => array_map(fn ($i) => ['n' => $i, 'v' => bin2hex(random_bytes(4))], range(1, 100)),
         ];
     });
 });
@@ -159,7 +159,7 @@ $registrar->get('/json/slow', function (): Response {
 /* --------------------------------------------------------------------------
  * 2.  Compiler callback
  * ----------------------------------------------------------------------- */
-$compiler = static fn() => $registrar->compile()->all();
+$compiler = static fn () => $registrar->compile()->all();
 
 /* --------------------------------------------------------------------------
  * 3.  Boot the router kernel
