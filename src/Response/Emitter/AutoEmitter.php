@@ -1,4 +1,5 @@
 <?php
+
 // src/Response/Emitter/AutoEmitter.php
 declare(strict_types=1);
 
@@ -17,22 +18,15 @@ final class AutoEmitter implements EmitterInterface
         $this->chosen->emit($response, $request);
     }
 
-    /**
-     * Resolve an emitter by trying async/event-loop engines first,
-     * then falling back to concrete SAPIs (FPM, LSAPI, Apache, …).
-     */
+    /** Try async/event-loop engines first, then concrete SAPIs. */
     private function pick(?Request $request): EmitterInterface
     {
-        return $this->pickAsync($request) ?? $this->pickConcrete($request);
+        return $this->pickAsync($request) ?? $this->pickConcrete();
     }
 
-    /**
-     * Async / long-running engines (request-coupled).
-     * Returns null when none match.
-     */
+    /** Async / long-running engines; null when none match. */
     private function pickAsync(?Request $request): ?EmitterInterface
     {
-        // Precompute guards
         $hasSwooleResp = \extension_loaded('swoole')
             && $request?->getAttribute('swoole.response') instanceof \Swoole\Http\Response;
 
@@ -44,34 +38,31 @@ final class AutoEmitter implements EmitterInterface
 
         return match (true) {
             $hasSwooleResp => new SwooleEmitter(),
-            $hasRR         => new RoadRunnerEmitter(),
-            $hasWorkerman  => new WorkermanEmitter(),
-            default        => null,
+            $hasRR => new RoadRunnerEmitter(),
+            $hasWorkerman => new WorkermanEmitter(),
+            default => null,
         };
     }
 
-    /**
-     * Concrete SAPI / server integrations (stateless selection).
-     */
-    private function pickConcrete(?Request $request): EmitterInterface
+    /** Concrete SAPI/server integrations (stateless). */
+    private function pickConcrete(): EmitterInterface
     {
         $serverSoftware = strtolower((string)($_SERVER['SERVER_SOFTWARE'] ?? ''));
 
-        $isFranken   = \function_exists('frankenphp_is_worker') && \frankenphp_is_worker();
+        $isFranken = \function_exists('frankenphp_is_worker') && \frankenphp_is_worker();
         $isLiteSpeed = \PHP_SAPI === 'litespeed' || \function_exists('litespeed_finish_request');
-        $isUnit      = \function_exists('fastcgi_finish_request') && $serverSoftware !== '' && str_contains($serverSoftware, 'unit');
-        $isFpmLike   = \PHP_SAPI === 'fpm-fcgi' || \function_exists('fastcgi_finish_request');
-        $isApache    = \PHP_SAPI === 'apache2handler';
-        $isCliSrv    = \PHP_SAPI === 'cli-server';
+        $isUnit = \function_exists('fastcgi_finish_request') && $serverSoftware !== '' && str_contains(
+                $serverSoftware,
+                'unit',
+            );
+        $isFpmLike = \PHP_SAPI === 'fpm-fcgi' || \function_exists('fastcgi_finish_request');
 
         return match (true) {
-            $isFranken   => new FrankenPhpEmitter(),
+            $isFranken => new FrankenPhpEmitter(),
             $isLiteSpeed => new LsapiEmitter(),
-            $isUnit      => new UnitEmitter(),
-            $isFpmLike   => new FpmEmitter(),
-            $isApache    => new ApacheEmitter(),
-            $isCliSrv    => new CliServerEmitter(),
-            default      => new SapiEmitter(),
+            $isUnit => new UnitEmitter(),
+            $isFpmLike => new FpmEmitter(),
+            default => new DefaultEmitter(), // Apache & PHP built-in server land here
         };
     }
 }
