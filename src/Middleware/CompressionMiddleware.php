@@ -121,8 +121,8 @@ final readonly class CompressionMiddleware
     {
         $resp = $resp
             ->withBody(new Stream($enc))
-            ->withHeader('Content-Encoding', $alg)
-            ->withHeader('Content-Length', (string)\strlen($enc));
+            ->withSmartHeader('Content-Encoding', $alg)
+            ->withSmartHeader('Content-Length', (string)\strlen($enc));
 
         // Content-MD5 (if present) is now invalid; remove it.
         if ($resp->hasHeader('Content-MD5')) {
@@ -137,39 +137,79 @@ final readonly class CompressionMiddleware
 
         switch ($this->etagMode) {
             case self::ETAG_WEAK_ON_ENCODE:
-                // If a strong base ETag exists, weaken it. If none exists, emit a weak validator
-                // derived from the encoded bytes so caches can revalidate the compressed variant.
                 if ($etagLine !== '' && !str_starts_with($etagLine, 'W/')) {
-                    $resp = $resp->withHeader('ETag', 'W/' . $etagLine);
+                    $resp = $resp->withSmartHeader('ETag', 'W/' . $etagLine);
                 } elseif ($etagLine === '') {
-                    $resp = $resp->withHeader('ETag', 'W/' . $this->strongFromBytes($encodedBytes));
+                    $resp = $resp->withSmartHeader('ETag', 'W/' . $this->strongFromBytes($encodedBytes));
                 }
                 break;
 
             case self::ETAG_STRONG_DERIVE:
-                // If a base ETag exists, derive cheaply; else fall back to hashing encoded bytes.
-                $base = $this->stripWeakQuotes($etagLine);
-                if ($base !== '') {
-                    $level = $this->encodedLevelToken($alg);
-                    $derived = '"' . substr(
-                        sha1($base . '|' . $alg . '|' . $level . '|' . $this->etagDeriveSalt),
-                        0,
-                        16,
-                    ) . '"';
-                    $resp = $resp->withHeader('ETag', $derived);
-                } else {
-                    $resp = $resp->withHeader('ETag', $this->strongFromBytes($encodedBytes));
+                {
+                    [$base, $isWeak] = $this->parseEtag($etagLine);
+
+                    // No base tag at all → compute a real strong tag from the bytes we’re serving.
+                    if ($base === '') {
+                        return $resp->withSmartHeader('ETag', $this->strongFromBytes($encodedBytes));
+                    }
+
+                    // If base is weak, **do not** upgrade; derive a WEAK tag keyed by base+alg+level.
+                    if ($isWeak) {
+                        $level = $this->encodedLevelToken($alg);
+                        $derived = 'W/"' . substr(
+                            sha1($base . '|' . $alg . '|' . $level . '|' . $this->etagDeriveSalt),
+                            0,
+                            16,
+                        ) . '"';
+                        return $resp->withSmartHeader('ETag', $derived);
+                    }
+
+                    // Base is strong. Only safe to derive-strong when encoding is deterministic.
+                    if ($this->isEncodingDeterministic($alg)) {
+                        $level = $this->encodedLevelToken($alg);
+                        $derived = '"' . substr(
+                            sha1($base . '|' . $alg . '|' . $level . '|' . $this->etagDeriveSalt),
+                            0,
+                            16,
+                        ) . '"';
+                        return $resp->withSmartHeader('ETag', $derived);
+                    }
+
+                    // Non-deterministic encoding (e.g., gzip MTIME) → recompute on-the-wire strong tag.
+                    return $resp->withSmartHeader('ETag', $this->strongFromBytes($encodedBytes));
                 }
-                break;
 
             case self::ETAG_STRONG_RECOMP:
             default:
-                // Compute a strong ETag for the on-the-wire bytes.
-                $resp = $resp->withHeader('ETag', $this->strongFromBytes($encodedBytes));
+                $resp = $resp->withSmartHeader('ETag', $this->strongFromBytes($encodedBytes));
                 break;
         }
 
         return $resp;
+    }
+
+    /** Returns [value-without-quotes, isWeak]. Blank value means “no ETag present". */
+    private function parseEtag(string $etagLine): array
+    {
+        $t = trim($etagLine);
+        if ($t === '') {
+            return ['', false];
+        }
+        $isWeak = str_starts_with($t, 'W/');
+        if ($isWeak) {
+            $t = substr($t, 2);
+        }
+        if (strlen($t) >= 2 && $t[0] === '"' && $t[strlen($t) - 1] === '"') {
+            $t = substr($t, 1, -1);
+        }
+        return [trim($t), $isWeak];
+    }
+
+    /** gzip via gzencode adds an MTIME by default → bytes can vary run-to-run. */
+    private function isEncodingDeterministic(string $alg): bool
+    {
+        // If you later make gzip deterministic (e.g., zero MTIME), flip this.
+        return $alg !== 'gzip';
     }
 
     private function strongFromBytes(string $bytes): string

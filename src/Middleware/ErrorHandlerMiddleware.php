@@ -111,8 +111,34 @@ final class ErrorHandlerMiddleware
         }
 
         switch ($wanted) {
-            case 'application/json':
-            case 'application/problem+json':
+            case 'application/problem+json': {
+                // RFC 7807 Problem Details
+                $payload = [
+                    'type'     => 'about:blank',
+                    'title'    => $reason,
+                    'status'   => $status,
+                    'detail'   => $msg,
+                    'instance' => (string)$req->getUri()->getPath(),
+                ];
+                if ($rid) {
+                    $payload['request_id'] = (string)$rid; // extension member
+                }
+                if ($this->debug) {
+                    $payload += [
+                        'exception' => $e::class,
+                        'file'      => $e->getFile() . ':' . $e->getLine(),
+                        'trace'     => explode("\n", $e->getTraceAsString()),
+                    ];
+                }
+                $headers['Content-Type'] = 'application/problem+json';
+                $json = json_encode(
+                    $payload,
+                    JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE | JSON_UNESCAPED_SLASHES
+                );
+                return Response::create($json === false ? '{}' : $json, $status, $headers);
+            }
+
+            case 'application/json': {
                 $payload = [
                     'error' => $msg,
                     'code' => $status,
@@ -129,6 +155,7 @@ final class ErrorHandlerMiddleware
                     ];
                 }
                 return Response::json($payload, $status, $headers);
+            }
 
             case 'application/xml':
             case 'text/xml':
@@ -158,11 +185,12 @@ final class ErrorHandlerMiddleware
 
     private function pickType(string $accept): string
     {
-        // Simple but robust: prefer JSON, then HTML, then XML, then text
-        if (str_contains($accept, 'application/json')) {
-            return 'application/json';
-        }
+        $accept = strtolower($accept);
+        // Prefer RFC 7807 when explicitly requested
         if (str_contains($accept, 'application/problem+json')) {
+            return 'application/problem+json';
+        }
+        if (str_contains($accept, 'application/json')) {
             return 'application/json';
         }
         if (str_contains($accept, 'text/html')) {

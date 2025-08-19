@@ -42,8 +42,7 @@ final class CacheValidatorsMiddleware
         private bool $autoEtagWhenMissing = true,
         private bool $includeQueryInEtag = true,
         private int $autoEtagMinSize = 0,
-    ) {
-    }
+    ) {}
 
     /**
      * Allow app code to set a global default provider once and still register via class-string.
@@ -123,22 +122,63 @@ final class CacheValidatorsMiddleware
     {
         $path = $r->getUri()->getPath() ?: '/';
         $docRoot = (string)($_SERVER['DOCUMENT_ROOT'] ?? '');
-        $candidate = $docRoot !== '' ? $docRoot . $path : null;
-
         $nowMtime = @filemtime((string)($_SERVER['SCRIPT_FILENAME'] ?? __FILE__)) ?: null;
 
-        // Map to a readable file under docroot (basic safety check)
-        if ($candidate && is_string($candidate) && @is_file($candidate) && @is_readable($candidate)) {
-            $size = @filesize($candidate) ?: 0;
-            $mtime = @filemtime($candidate) ?: $nowMtime;
-            $seed = $size . '|' . ($mtime ?? -1) . '|' . basename($candidate);
-            $etag = '"' . substr(sha1($seed), 0, 16) . '"';
-            return [$etag, $mtime];
+        if ($docRoot !== '') {
+            // 1) normalize request path: decode %XX and collapse dot-segments
+            $decoded = rawurldecode($path);
+            $norm = self::collapseDotSegments($decoded);
+            $rel = ltrim($norm, "/\\");
+            $candidate = $rel === '' ? $docRoot : ($docRoot . DIRECTORY_SEPARATOR . $rel);
+
+            // 2) canonicalize with realpath() and bound to docroot
+            $real = @realpath($candidate);
+            if ($real !== false) {
+                $rootNorm = self::normPath($docRoot) . '/';
+                $realNorm = self::normPath($real);
+
+                if (str_starts_with($realNorm . '/', $rootNorm) && @is_file($real) && @is_readable($real)) {
+                    $size = @filesize($real) ?: 0;
+                    $mtime = @filemtime($real) ?: $nowMtime;
+                    $seed = $size . '|' . ($mtime ?? -1) . '|' . basename($real);
+                    $etag = '"' . substr(sha1($seed), 0, 16) . '"';
+                    return [$etag, $mtime];
+                }
+            }
         }
 
-        // Fallback: per-path synthetic ETag, LM = script mtime (still lets clients send If-None-Match)
+        // 3) fallback: synthetic, per-path (still revalidates fine client-side)
         $etag = '"' . substr(sha1('fallback|' . $path . '|' . (string)$nowMtime), 0, 16) . '"';
         return [$etag, $nowMtime];
+    }
+
+    /** RFC 3986-ish collapse of "." and ".." without touching leading slash semantics. */
+    private static function collapseDotSegments(string $p): string
+    {
+        $isAbs = str_starts_with($p, '/');
+        $parts = [];
+        foreach (explode('/', $p) as $seg) {
+            if ($seg === '' || $seg === '.') {
+                continue;
+            }
+            if ($seg === '..') {
+                array_pop($parts);
+                continue;
+            }
+            $parts[] = $seg;
+        }
+        $out = implode('/', $parts);
+        return $isAbs ? '/' . $out : $out;
+    }
+
+    /** Normalize for prefix checks: unify slashes, trim, and lower-case on Windows. */
+    private static function normPath(string $p): string
+    {
+        $p = str_replace('\\', '/', $p);
+        if (PHP_OS_FAMILY === 'Windows') {
+            $p = strtolower($p);
+        }
+        return rtrim($p, '/');
     }
 
     private function isAutoEtagEligible(Response $r): bool

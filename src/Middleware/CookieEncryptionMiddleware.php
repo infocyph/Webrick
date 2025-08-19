@@ -25,7 +25,9 @@ use RuntimeException;
  *      v1: 0x31 '1' | MODE(1) | KID(1) | IV(12) | TAG(16) | CT(...)
  *      v0: MODE(1)  | IV(12)  | TAG(16) | CT(...)
  * • Compression mode byte: '0' none, 'z' zstd, 'b' brotli, 'g' gzip
- * • Optional server-side storage fallback (“S:<id>”) if too large even after chunking
+ * • Optional server-side storage fallback pointer (“S:<id>”).
+ *   Stored cache blob (v1): "C1:<8-hex-checksum>:<base64-ciphertext>"
+ *   - checksum = first 8 hex chars of SHA-256 over the base64 ciphertext
  */
 final class CookieEncryptionMiddleware
 {
@@ -35,9 +37,13 @@ final class CookieEncryptionMiddleware
     private const MODE_BROTLI = 'b';
     private const MODE_GZIP = 'g';
 
-    private const V1_BYTE = "1";   // 0x31
-    private const MODE_STORE = 'S:';  // server-side storage marker
+    private const V1_BYTE = "1";      // 0x31
+    private const MODE_STORE = 'S:';  // server-side storage marker in cookie value
     private const CACHE_PREFIX = 'enc_cookie.';
+
+    /** versioned cache blob prefix + simple integrity check (pre-b64 sanity) */
+    private const STORE_BLOB_V1 = 'C1:';   // "C1:<chk>:<b64cipher>"
+    private const STORE_SEP = ':';         // separator used in cache blob
 
     private static bool $hasZstd = false;
     private static bool $hasBrotli = false;
@@ -143,7 +149,27 @@ final class CookieEncryptionMiddleware
     {
         // server-side store indirection
         if (str_starts_with($cipher, self::MODE_STORE)) {
-            return $this->fromStore(substr($cipher, 2));
+            $stored = $this->fromStore(substr($cipher, 2));
+            if (!is_string($stored)) {
+                return null;
+            }
+
+            // New format: "C1:<chk>:<b64cipher>"
+            if (str_starts_with($stored, self::STORE_BLOB_V1)) {
+                $decoded = $this->decodeCacheBlobV1($stored);
+                if ($decoded === null) {
+                    return null; // checksum/prefix invalid or malformed
+                }
+                $cipher = $decoded; // validated base64 ciphertext string
+            } else {
+                // Back-compat: pre-V1 cache could contain either ciphertext (base64) or plaintext.
+                $maybeRaw = base64_decode($stored, true);
+                if ($maybeRaw === false) {
+                    // Legacy plaintext path — return as-is.
+                    return $stored;
+                }
+                $cipher = $stored; // legacy cached ciphertext (no version/checksum)
+            }
         }
 
         $raw = base64_decode($cipher, true);
@@ -208,6 +234,40 @@ final class CookieEncryptionMiddleware
         }
         $item = $this->store->getItem(self::CACHE_PREFIX . $id);
         return $item->isHit() ? $item->get() : null;
+    }
+
+    /**
+     * Decode and validate a v1 cache blob ("C1:<chk>:<b64cipher>").
+     * Returns the base64 ciphertext string on success, or null on failure.
+     */
+    private function decodeCacheBlobV1(string $blob): ?string
+    {
+        // Expect: "C1:<chk>:<b64cipher>"
+        $prefixLen = strlen(self::STORE_BLOB_V1); // "C1:"
+        $body = substr($blob, $prefixLen);
+        $pos = strpos($body, self::STORE_SEP);
+        if ($pos === false) {
+            return null;
+        }
+        $chk = substr($body, 0, $pos);
+        $b64 = substr($body, $pos + 1);
+
+        if ($chk === '' || $b64 === '') {
+            return null;
+        }
+
+        // quick integrity: first 8 hex chars of sha256(base64-cipher)
+        $calc = substr(hash('sha256', $b64), 0, 8);
+        if (!hash_equals($chk, $calc)) {
+            return null;
+        }
+
+        // don't decode yet; just ensure it's plausible base64
+        if (base64_decode($b64, true) === false) {
+            return null;
+        }
+
+        return $b64;
     }
 
     private function decompress(string $mode, string $pt): mixed
@@ -278,11 +338,11 @@ final class CookieEncryptionMiddleware
             return array_combine(range(1, count($parts)), $parts);
         }
 
-        // server-side fallback
+        // server-side fallback: **store ciphertext, wrapped with version + checksum**
         if ($this->store !== null) {
             $id = bin2hex(random_bytes(16));
             $item = $this->store->getItem(self::CACHE_PREFIX . $id);
-            $item->set($plaintext)->expiresAt((new DateTimeImmutable())->setTimestamp(time() + $this->storeTtl));
+            $item->set($this->encodeCacheBlobV1($cipher))->expiresAfter($this->storeTtl);
             $this->store->save($item);
             return [1 => self::MODE_STORE . $id];
         }
@@ -348,6 +408,15 @@ final class CookieEncryptionMiddleware
     {
         // Bind logical identity + key id + compression mode
         return $baseName . '|' . $kid . '|' . $mode;
+    }
+
+    /* ───────────── cache blob helpers ───────────── */
+
+    /** Build v1 cache blob: "C1:<8-hex-chk>:<b64cipher>" */
+    private function encodeCacheBlobV1(string $b64Cipher): string
+    {
+        $chk = substr(hash('sha256', $b64Cipher), 0, 8);
+        return self::STORE_BLOB_V1 . $chk . self::STORE_SEP . $b64Cipher;
     }
 
     /* ───────────── helpers ───────────── */

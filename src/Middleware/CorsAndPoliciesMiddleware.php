@@ -50,7 +50,8 @@ final readonly class CorsAndPoliciesMiddleware
             'Sec-CH-UA-Full-Version',
         ],
         private array $timingAllowOrigins = [],   // e.g. ['*'] or ['https://app.example.com']
-    ) {}
+    ) {
+    }
 
     public function __invoke(Request $req, Closure $next): Response
     {
@@ -209,7 +210,7 @@ final readonly class CorsAndPoliciesMiddleware
         if (is_string($v)) {
             return trim($v);
         }
-        $v = array_values(array_filter(array_map(static fn($s) => trim((string)$s), $v), fn($s) => $s !== ''));
+        $v = array_values(array_filter(array_map(static fn ($s) => trim((string)$s), $v), fn ($s) => $s !== ''));
         return implode(', ', array_unique($v));
     }
 
@@ -220,7 +221,7 @@ final readonly class CorsAndPoliciesMiddleware
 
     private function setIfAbsent(Response $r, string $name, string $value): Response
     {
-        return $r->hasHeader($name) ? $r : $r->withHeader($name, $value);
+        return $r->hasHeader($name) ? $r : $r->withSmartHeader($name, $value);
     }
 
     /* ───────────────────── Policies (no NEL here) ─────────────────── */
@@ -236,18 +237,18 @@ final readonly class CorsAndPoliciesMiddleware
 
         // CSP (only if absent)
         if ($this->csp !== null && $this->csp !== '' && !$r->hasHeader('Content-Security-Policy')) {
-            $r = $r->withHeader('Content-Security-Policy', $this->csp);
+            $r = $r->withSmartHeader('Content-Security-Policy', $this->csp);
         }
 
         // Accept-CH (only if configured & absent)
         if (!empty($this->acceptCh) && !$r->hasHeader('Accept-CH')) {
-            $r = $r->withHeader('Accept-CH', implode(', ', $this->acceptCh));
+            $r = $r->withSmartHeader('Accept-CH', implode(', ', $this->acceptCh));
         }
 
         // Timing-Allow-Origin (optional, only if absent)
         if (!empty($this->timingAllowOrigins) && !$r->hasHeader('Timing-Allow-Origin')) {
             $tao = $this->timingAllowOrigins === ['*'] ? '*' : implode(', ', $this->timingAllowOrigins);
-            $r = $r->withHeader('Timing-Allow-Origin', $tao);
+            $r = $r->withSmartHeader('Timing-Allow-Origin', $tao);
         }
 
         return $r;

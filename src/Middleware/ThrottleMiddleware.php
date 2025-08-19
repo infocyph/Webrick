@@ -7,7 +7,6 @@ namespace Infocyph\Webrick\Middleware;
 use Closure;
 use DateTimeImmutable;
 use Infocyph\InterMix\Cache\Cache;
-use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Psr\Cache\CacheItemPoolInterface;
@@ -61,7 +60,9 @@ final readonly class ThrottleMiddleware
             return $next($req);
         }
 
-        $now = time();
+        // Anchor timing to the start of the request for consistent math
+        $now = (int)($_SERVER['REQUEST_TIME'] ?? time());
+
         [$key, $resetAt] = $this->deriveKeyAndReset($req, $now);
         $payload = $this->load($key, $resetAt);
 
@@ -92,10 +93,14 @@ final readonly class ThrottleMiddleware
                 ?? 'unknown');
 
         $bucket = $this->scope;
-        $key = 't.' . sha1($bucket . '|' . (string)$id);
 
-        // fixed window reset
-        $reset = $now + $this->window;
+        // ---- fixed-window alignment ----
+        // Start of the current window (e.g., 12:00:00, 12:01:00, … for w=60)
+        $winStart = intdiv($now, $this->window) * $this->window;
+        $reset = $winStart + $this->window;
+
+        // Hard-partition by window to avoid cross-window races
+        $key = 't.' . sha1($bucket . '|' . (string)$id . '|' . $winStart);
 
         return [$key, $reset];
     }
@@ -109,7 +114,7 @@ final readonly class ThrottleMiddleware
         if (!is_array($data)) {
             $data = ['hits' => 0, 'reset' => $reset];
         } else {
-            // If the record is stale or missing reset, normalize
+            // Normalize
             $data['hits'] = (int)($data['hits'] ?? 0);
             $data['reset'] = (int)($data['reset'] ?? $reset);
             if ($data['reset'] <= time()) {
@@ -123,45 +128,57 @@ final readonly class ThrottleMiddleware
     {
         $item = $this->pool->getItem($key);
         $item->set($payload);
-        $item->expiresAt((new DateTimeImmutable())->setTimestamp($payload['reset']));
-        $this->pool->saveDeferred($item);
+        $item->expiresAt(new DateTimeImmutable()->setTimestamp($payload['reset']));
+        // Write immediately (less chance of loss/race than saveDeferred)
+        $this->pool->save($item);
+    }
+
+    private function secondsUntil(int $resetEpoch): int
+    {
+        $t0 = (int)($_SERVER['REQUEST_TIME'] ?? time());
+        return max(0, $resetEpoch - $t0);
     }
 
     private function tooMany(int $resetEpoch): Response
     {
-        $delta = max(1, $resetEpoch - time());
+        $delta = $this->secondsUntil($resetEpoch);
+
         $retry = $this->retryAsDate
-            ? gmdate('D, d M Y H:i:s', time() + $delta) . ' GMT'
+            ? gmdate('D, d M Y H:i:s', $resetEpoch) . ' GMT'
             : (string)$delta;
 
         $resp = Response::plaintext('Too Many Requests', 429)
-            ->withHeader('Retry-After', $retry)
-            ->withHeader('X-RateLimit-Limit', (string)$this->max)
-            ->withHeader('X-RateLimit-Remaining', '0')
-            ->withHeader('X-RateLimit-Reset', (string)$resetEpoch); // epoch (legacy)
+            ->withSmartHeader('Retry-After', $retry)
+            ->withSmartHeader('X-RateLimit-Limit', (string)$this->max)
+            ->withSmartHeader('X-RateLimit-Remaining', '0')
+            ->withSmartHeader('X-RateLimit-Reset', (string)$resetEpoch);
 
         if ($this->emitStandardRateLimit) {
             $resp = $resp
-                ->withHeader('RateLimit-Limit', (string)$this->max)
-                ->withHeader('RateLimit-Remaining', '0')
-                ->withHeader('RateLimit-Reset', (string)$delta);    // seconds per spec
+                ->withSmartHeader('RateLimit-Limit', (string)$this->max)
+                ->withSmartHeader('RateLimit-Remaining', '0')
+                ->withSmartHeader('RateLimit-Reset', (string)$delta)
+                ->withSmartHeader('RateLimit-Policy', "{$this->max};w={$this->window}");
         }
 
-        return $resp->withHeader('Server-Timing', 'throttle;dur=0');
+        return $resp->withSmartHeader('Server-Timing', 'throttle;dur=0');
     }
 
     private function attachRateHeaders(Response $resp, int $remain, int $resetEpoch): Response
     {
+        $delta = $this->secondsUntil($resetEpoch);
+
         $resp = $resp
-            ->withHeader('X-RateLimit-Limit', (string)$this->max)
-            ->withHeader('X-RateLimit-Remaining', (string)$remain)
-            ->withHeader('X-RateLimit-Reset', (string)$resetEpoch); // epoch (legacy)
+            ->withSmartHeader('X-RateLimit-Limit', (string)$this->max)
+            ->withSmartHeader('X-RateLimit-Remaining', (string)$remain)
+            ->withSmartHeader('X-RateLimit-Reset', (string)$resetEpoch);
 
         if ($this->emitStandardRateLimit) {
             $resp = $resp
-                ->withHeader('RateLimit-Limit', (string)$this->max)
-                ->withHeader('RateLimit-Remaining', (string)$remain)
-                ->withHeader('RateLimit-Reset', (string)max(1, $resetEpoch - time())); // seconds
+                ->withSmartHeader('RateLimit-Limit', (string)$this->max)
+                ->withSmartHeader('RateLimit-Remaining', (string)$remain)
+                ->withSmartHeader('RateLimit-Reset', (string)$delta)
+                ->withSmartHeader('RateLimit-Policy', "{$this->max};w={$this->window}");
         }
 
         return $resp;

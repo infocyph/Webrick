@@ -44,7 +44,7 @@ final class HeaderPolicy
     public static function mergeCsv(string $name, string $existing, string $incoming): string|array
     {
         if ($existing === '') {
-            return self::normalizeCsv($incoming);
+            return implode(', ', self::normalizeCsv($incoming));
         }
 
         if (strtolower($name) === 'cache-control') {
@@ -71,9 +71,9 @@ final class HeaderPolicy
         $toks = array_values(array_filter($toks, fn ($t) => $t !== ''));
         // Title-Case typical header tokens (Accept-Encoding, Origin, etc.)
         return array_map(static function (string $t): string {
-            foreach (explode('-', $t) as $i => $part) {
-                $parts[$i] = $part === '' ? '' : ucfirst(strtolower($part));
-            }
+            $parts = array_map(function ($part) {
+                return $part === '' ? '' : ucfirst(strtolower($part));
+            }, explode('-', $t));
             return implode('-', $parts ?? []);
         }, $toks);
     }

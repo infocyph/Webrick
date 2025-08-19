@@ -29,7 +29,7 @@ final readonly class MaintenanceModeMiddleware
         $payload = \file_get_contents($this->file) ?: 'Service is down for maintenance.';
 
         return Response::plaintext($payload, 503)
-            ->withHeader('Retry-After', (string)$this->retryAfter)
-            ->withHeader('Content-Type', $this->contentType);
+            ->withSmartHeader('Retry-After', (string)$this->retryAfter)
+            ->withSmartHeader('Content-Type', $this->contentType);
     }
 }

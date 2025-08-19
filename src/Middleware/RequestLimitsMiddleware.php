@@ -171,7 +171,7 @@ final readonly class RequestLimitsMiddleware
     {
         $proto = strtoupper((string)($req->getServerParam('SERVER_PROTOCOL') ?? 'HTTP/1.1'));
         if (\str_starts_with($proto, 'HTTP/1.')) {
-            return $resp->withHeader('Connection', 'close');
+            return $resp->withSmartHeader('Connection', 'close');
         }
         return $resp;
     }

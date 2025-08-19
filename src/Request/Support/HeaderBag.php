@@ -126,7 +126,7 @@ final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
         $policy = HeaderPolicy::for($name);
 
         return match ($policy) {
-            HeaderPolicy::SINGLE     => $this->with($name, $value),
+            HeaderPolicy::SINGLE => $this->with($name, $value),
             HeaderPolicy::MULTI_LINE => $this->withAdded($name, $value),
             HeaderPolicy::MERGE_TOKENS => $this->with(
                 $name,

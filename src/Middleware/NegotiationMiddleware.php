@@ -48,7 +48,7 @@ final readonly class NegotiationMiddleware
         $resp = $this->ensureContentType($resp, $type, $cset);
 
         // 6) Always set Content-Language reflecting chosen locale
-        return $resp->withHeader('Content-Language', $locale);
+        return $resp->withSmartHeader('Content-Language', $locale);
     }
 
     /* ───────────────────────── orchestration helpers ───────────────────────── */
@@ -158,7 +158,7 @@ final readonly class NegotiationMiddleware
 
         $existing = $resp->getHeaderLine('Content-Type');
         if ($existing === '') {
-            return $resp->withHeader('Content-Type', $this->composeContentType($type, $cset));
+            return $resp->withSmartHeader('Content-Type', $this->composeContentType($type, $cset));
         }
 
         // Append charset if needed and we negotiated one
@@ -177,7 +177,7 @@ final readonly class NegotiationMiddleware
             && !$this->isJson($baseLower)
         ) {
             // Preserve original spacing, just append param
-            return $resp->withHeader('Content-Type', rtrim($existing) . '; charset=' . $cset);
+            return $resp->withSmartHeader('Content-Type', rtrim($existing) . '; charset=' . $cset);
         }
 
         return $resp;
