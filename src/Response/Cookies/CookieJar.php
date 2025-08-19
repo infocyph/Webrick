@@ -11,8 +11,10 @@ use Infocyph\Webrick\Response\Response;
  */
 final class CookieJar
 {
-    /** @var array<string,Cookie> keyed by name */
+    /** @var array<string,Cookie> */
     private array $cookies = [];
+    /** @var string[] raw Set-Cookie lines to pass through unchanged */
+    private array $raw = [];
 
     public function add(Cookie $c): self
     {
@@ -21,14 +23,24 @@ final class CookieJar
         return $x;
     }
 
+    /** Keep an original Set-Cookie line verbatim */
+    public function raw(string $line): self
+    {
+        $x = clone $this;
+        $x->raw[] = $line;
+        return $x;
+    }
+
     public function remove(string $name): self
     {
         return $this->add(Cookie::make($name)->expire());
     }
 
-    /** Idempotently attach Set-Cookie headers */
     public function apply(Response $r): Response
     {
+        foreach ($this->raw as $line) {
+            $r = $r->withAddedHeader('Set-Cookie', $line);
+        }
         foreach ($this->cookies as $c) {
             $r = $r->withAddedHeader('Set-Cookie', (string)$c);
         }

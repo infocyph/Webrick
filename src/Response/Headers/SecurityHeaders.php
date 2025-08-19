@@ -56,7 +56,9 @@ final class SecurityHeaders
         }
 
         // HSTS (non-clobbering)
-        return $hsts && ($_SERVER['HTTPS'] === 'on' || $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') ? self::hsts($r, $includeSubs) : $r;
+        $httpsish = (($_SERVER['HTTPS'] ?? '') === 'on' || ($_SERVER['HTTPS'] ?? '') === '1')
+            || (strtolower($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
+        return $hsts && $httpsish ? self::hsts($r, $includeSubs) : $r;
     }
 
     /** Apply Strict-Transport-Security (defaults to 1 year), set-if-absent. */

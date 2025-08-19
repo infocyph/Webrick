@@ -23,59 +23,57 @@ use Infocyph\Webrick\Support\Etag;
  *  • Optionally auto-generate a strong ETag from the response body using chunked hashing.
  *
  * Usage:
- *   $mw = new CacheValidatorsMiddleware(function(Request $r): array {
- *       // Return current validators for the route/entity (fast! no body I/O)
- *       // etag as string (quoted or unquoted – we’ll normalize), last-modified as UNIX timestamp
- *       return [$etag, $lastModified];
- *   });
+ *   // (A) Full control – instance with custom provider
+ *   new CacheValidatorsMiddleware(function(Request $r): array { return [$etag, $lastModified]; });
  *
- * Order:
- *   Negotiation → CacheValidators → (controller) → Compression → VaryAccumulator
- *
- * Notes:
- *   • If Compression later adds Content-Encoding, it should weaken a strong ETag (your code already does).
- *   • Auto-ETag is only attempted when: status=200, body is seekable, and no ETag header exists.
+ *   // (B) Class-string registration – set default once, then use ::class in stacks
+ *   CacheValidatorsMiddleware::setDefaultMetaProvider(fn(Request $r) => [$etag, $lastModified]);
+ *   // later in stack:
+ *   CacheValidatorsMiddleware::class
  */
-final readonly class CacheValidatorsMiddleware
+final class CacheValidatorsMiddleware
 {
-    /**
-     * @param Closure(Request): array{0:string|null,1:int|null} $metaProvider
-     * @param bool $autoEtagWhenMissing Compute strong ETag from body if still missing after controller
-     * @param bool $includeQueryInEtag Salt auto ETag with normalized query-string
-     * @param int $autoEtagMinSize Don’t hash tiny bodies (bytes); 0 = always
-     */
+    /** @var null|Closure(Request): array{0:string|null,1:int|null} */
+    private static ?Closure $defaultProvider = null;
+
+    /** @param null|Closure(Request): array{0:string|null,1:int|null} $metaProvider */
     public function __construct(
-        private Closure $metaProvider,
+        private ?Closure $metaProvider = null,
         private bool $autoEtagWhenMissing = true,
         private bool $includeQueryInEtag = true,
         private int $autoEtagMinSize = 0,
     ) {
     }
 
+    /**
+     * Allow app code to set a global default provider once and still register via class-string.
+     */
+    public static function setDefaultMetaProvider(?Closure $provider): void
+    {
+        self::$defaultProvider = $provider;
+    }
+
     public function __invoke(Request $req, Closure $next): Response
     {
         /* ── 1) Precondition evaluation (cheap, before controller) ───────── */
-        [$etag, $lm] = ($this->metaProvider)($req);
+        [$etag, $lm] = $this->resolveProvider()($req);
         $validator = new ConditionalValidator($etag, $lm);
         $result = $validator->evaluate($req);
 
         if ($result->state !== Outcome::PASS) {
-            // 304 / 412 with the computed validator headers
+            // 304 / 412 with computed validator headers — controller won't run
             return Response::empty($result->http, $result->headers);
         }
 
         // If a Range was supplied but isn’t fresh, drop it so downstream generates 200.
         if ($req->hasHeader('Range') && !$validator->isRangeFresh($req)) {
-            $req = $req
-                ->withoutHeader('Range')
-                ->withAttribute('range_dropped', true);
+            $req = $req->withoutHeader('Range')->withAttribute('range_dropped', true);
         }
 
         /* ── 2) Downstream ────────────────────────────────────────────────── */
         $resp = $next($req);
 
-        /* ── 3) Ensure validators are present on the final response ───────── */
-        // Add the precomputed headers (ETag / Last-Modified) only if missing.
+        /* ── 3) Ensure validators on final response ──────────────────────── */
         foreach ($result->headers as $h => $v) {
             if ($v !== null && !$resp->hasHeader($h)) {
                 $resp = $resp->withHeader($h, $v);
@@ -102,6 +100,47 @@ final readonly class CacheValidatorsMiddleware
 
     /* ───────────────────────── helpers ───────────────────────── */
 
+    /** Choose provider in priority: ctor → global default → built-in fallback. */
+    private function resolveProvider(): Closure
+    {
+        if ($this->metaProvider instanceof Closure) {
+            return $this->metaProvider;
+        }
+        if (self::$defaultProvider instanceof Closure) {
+            return self::$defaultProvider;
+        }
+        return self::fallbackMetaProvider(...);
+    }
+
+    /**
+     * Built-in fallback: fast best-effort validators without I/O on bodies.
+     * - If the requested path maps to a real file under DOCROOT, use its mtime/size.
+     * - Otherwise, mint a stable-ish demo ETag salted by path + current script mtime.
+     *
+     * @return array{0:string|null,1:int|null} [ETag, Last-Modified]
+     */
+    private static function fallbackMetaProvider(Request $r): array
+    {
+        $path = $r->getUri()->getPath() ?: '/';
+        $docRoot = (string)($_SERVER['DOCUMENT_ROOT'] ?? '');
+        $candidate = $docRoot !== '' ? $docRoot . $path : null;
+
+        $nowMtime = @filemtime((string)($_SERVER['SCRIPT_FILENAME'] ?? __FILE__)) ?: null;
+
+        // Map to a readable file under docroot (basic safety check)
+        if ($candidate && is_string($candidate) && @is_file($candidate) && @is_readable($candidate)) {
+            $size = @filesize($candidate) ?: 0;
+            $mtime = @filemtime($candidate) ?: $nowMtime;
+            $seed = $size . '|' . ($mtime ?? -1) . '|' . basename($candidate);
+            $etag = '"' . substr(sha1($seed), 0, 16) . '"';
+            return [$etag, $mtime];
+        }
+
+        // Fallback: per-path synthetic ETag, LM = script mtime (still lets clients send If-None-Match)
+        $etag = '"' . substr(sha1('fallback|' . $path . '|' . (string)$nowMtime), 0, 16) . '"';
+        return [$etag, $nowMtime];
+    }
+
     private function isAutoEtagEligible(Response $r): bool
     {
         if ($r->getStatusCode() !== 200) {
@@ -115,7 +154,6 @@ final readonly class CacheValidatorsMiddleware
         if ($size !== null && $size < $this->autoEtagMinSize) {
             return false;
         }
-        // If the controller already compressed (rare), we’ll hash the on-the-wire bytes, which is fine.
         return true;
     }
 }

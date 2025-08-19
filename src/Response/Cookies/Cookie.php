@@ -24,7 +24,8 @@ final class Cookie implements \Stringable
         private bool $secure = true,
         private bool $httpOnly = true,
         private string $sameSite = 'Lax',      // Lax|Strict|None
-    ) {}
+    ) {
+    }
 
     /* ---------- factory helpers ---------------------------------- */
     public static function make(string $name, string $value = ''): self
@@ -87,6 +88,19 @@ final class Cookie implements \Stringable
         $y = clone $this;
         $y->sameSite = $mode;
         return $y;
+    }
+
+    public function expires(\DateTimeInterface $when): self
+    {
+        $x = clone $this;
+        $x->expires = $when->getTimestamp();
+        return $x;
+    }
+    public function maxAge(int $seconds): self
+    {
+        $x = clone $this;
+        $x->expires = time() + max(0, $seconds);
+        return $x;
     }
 
     /* ---------- output ------------------------------------------- */

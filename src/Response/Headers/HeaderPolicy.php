@@ -41,7 +41,7 @@ final class HeaderPolicy
 
     // Infocyph\Webrick\Response\Headers\HeaderPolicy
 
-    public static function mergeCsv(string $name, string $existing, string $incoming): string
+    public static function mergeCsv(string $name, string $existing, string $incoming): string|array
     {
         if ($existing === '') {
             return self::normalizeCsv($incoming);

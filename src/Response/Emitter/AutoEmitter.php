@@ -18,51 +18,26 @@ final class AutoEmitter implements EmitterInterface
         $this->chosen->emit($response, $request);
     }
 
-    /** Try async/event-loop engines first, then concrete SAPIs. */
-    private function pick(?Request $request): EmitterInterface
-    {
-        return $this->pickAsync($request) ?? $this->pickConcrete();
-    }
-
     /** Async / long-running engines; null when none match. */
-    private function pickAsync(?Request $request): ?EmitterInterface
-    {
-        $hasSwooleResp = \extension_loaded('swoole')
-            && $request?->getAttribute('swoole.response') instanceof \Swoole\Http\Response;
-
-        $hasRR = (\getenv('RR_MODE') || \class_exists('\\Spiral\\RoadRunner\\Environment'))
-            && \is_callable($request?->getAttribute('roadrunner.respond'));
-
-        $hasWorkerman = \class_exists('\\Workerman\\Worker')
-            && ($request?->getAttribute('workerman.response') || $request?->getAttribute('workerman.connection'));
-
-        return match (true) {
-            $hasSwooleResp => new SwooleEmitter(),
-            $hasRR => new RoadRunnerEmitter(),
-            $hasWorkerman => new WorkermanEmitter(),
-            default => null,
-        };
-    }
-
-    /** Concrete SAPI/server integrations (stateless). */
-    private function pickConcrete(): EmitterInterface
+    private function pick(?Request $request): ?EmitterInterface
     {
         $serverSoftware = strtolower((string)($_SERVER['SERVER_SOFTWARE'] ?? ''));
-
-        $isFranken = \function_exists('frankenphp_is_worker') && \frankenphp_is_worker();
-        $isLiteSpeed = \PHP_SAPI === 'litespeed' || \function_exists('litespeed_finish_request');
-        $isUnit = \function_exists('fastcgi_finish_request') && $serverSoftware !== '' && str_contains(
-                $serverSoftware,
-                'unit',
-            );
-        $isFpmLike = \PHP_SAPI === 'fpm-fcgi' || \function_exists('fastcgi_finish_request');
-
         return match (true) {
-            $isFranken => new FrankenPhpEmitter(),
-            $isLiteSpeed => new LsapiEmitter(),
-            $isUnit => new UnitEmitter(),
-            $isFpmLike => new FpmEmitter(),
-            default => new DefaultEmitter(), // Apache & PHP built-in server land here
+            \extension_loaded('swoole')
+            && $request?->getAttribute('swoole.response') instanceof \Swoole\Http\Response => new SwooleEmitter(),
+            (\getenv('RR_MODE') || \class_exists('\\Spiral\\RoadRunner\\Environment'))
+            && \is_callable($request?->getAttribute('roadrunner.respond')) => new RoadRunnerEmitter(),
+            \class_exists('\\Workerman\\Worker')
+            && ($request?->getAttribute('workerman.response')
+                || $request?->getAttribute('workerman.connection')) => new WorkermanEmitter(),
+
+            \function_exists('frankenphp_is_worker') && \frankenphp_is_worker() => new FrankenPhpEmitter(),
+            \PHP_SAPI === 'litespeed' || \function_exists('litespeed_finish_request') => new LsapiEmitter(),
+            \function_exists('fastcgi_finish_request') && $serverSoftware !== '' &&
+            \str_contains($serverSoftware, 'unit') => new UnitEmitter(),
+            \PHP_SAPI === 'fpm-fcgi' || \function_exists('fastcgi_finish_request') => new FpmEmitter(),
+
+            default => new DefaultEmitter(),
         };
     }
 }

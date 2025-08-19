@@ -13,7 +13,8 @@ use Infocyph\Webrick\Response\Response;
  * and body size (413).
  *
  * - Header bytes + header fields count apply to every request.
- * - Body cap checks Content-Length (can’t pre-measure chunked streams).
+ * - Body cap checks Content-Length; when Transfer-Encoding (e.g. chunked) is present,
+ *   we don't pre-reject on size because the length is not known up front.
  * - HTTP/2-safe: never emits hop-by-hop "Connection" header on H2.
  */
 final readonly class RequestLimitsMiddleware
@@ -23,7 +24,7 @@ final readonly class RequestLimitsMiddleware
      * @param int $maxHeaderCount 0 disables count check (fields = each header value line)
      * @param int|null $maxBodyBytes null ⇒ use ini_get('post_max_size')
      * @param string[] $bodyLimitVerbs HTTP methods to which body limit applies
-     * @param bool $violateOnUnknownBody When true and no Content-Length is present,
+     * @param bool $violateOnUnknownBody When true and no Content-Length is present and no transfer-coding is used,
      *                                       treat as violation for the configured verbs.
      */
     public function __construct(
@@ -55,18 +56,37 @@ final readonly class RequestLimitsMiddleware
             }
         }
 
-        /* ── 2) body size → 413 (by Content-Length) ─────────────── */
+        /* ── 2) body size → 413 (by Content-Length; don't pre-reject chunked) ─ */
         $limit = $this->resolveBodyLimit();
         if ($limit > 0 && \in_array(\strtoupper($req->getMethod()), $this->bodyLimitVerbs, true)) {
             $cl = trim($req->getHeaderLine('Content-Length'));
-            if ($cl !== '') {
+
+            // Detect presence of a transfer-coding (e.g., "chunked").
+            // Per RFC, HTTP/2 may legitimately send "TE: trailers" which is NOT a transfer-coding;
+            // ignore that token for this purpose.
+            $teLine = strtolower($req->getHeaderLine('Transfer-Encoding'));
+            $hasTransferCoding = false;
+            if ($teLine !== '') {
+                foreach (explode(',', $teLine) as $tok) {
+                    $tok = trim($tok);
+                    if ($tok !== '' && $tok !== 'identity' && $tok !== 'trailers') {
+                        $hasTransferCoding = true; // e.g., "chunked"
+                        break;
+                    }
+                }
+            }
+
+            if ($hasTransferCoding) {
+                // Length unknown up front (chunked/other coding) → do not 413 pre-emptively.
+                // Let downstream read/stream and enforce limits there if needed.
+            } elseif ($cl !== '') {
                 $len = (int)$cl;
                 if ($len > $limit) {
                     $resp = Response::plaintext('Payload exceeds maximum allowed size.', 413);
                     return $this->withConnCloseIfHttp1($req, $resp);
                 }
             } elseif ($this->violateOnUnknownBody) {
-                // No Content-Length – optionally reject pre-emptively.
+                // No Content-Length and no transfer-coding ⇒ treat as violation (conservative).
                 $resp = Response::plaintext('Payload exceeds maximum allowed size.', 413);
                 return $this->withConnCloseIfHttp1($req, $resp);
             }

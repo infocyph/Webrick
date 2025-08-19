@@ -23,7 +23,7 @@ use Infocyph\Webrick\Middleware\TelemetryMiddleware;
 use Infocyph\Webrick\Middleware\ThrottleMiddleware;
 use Infocyph\Webrick\Middleware\VaryAccumulatorMiddleware;
 use Infocyph\Webrick\Request\Request;
-use Infocyph\Webrick\Response\Emitter\SapiEmitter;
+use Infocyph\Webrick\Response\Emitter\AutoEmitter;
 use Infocyph\Webrick\Response\Payloads\HtmlResponse;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Definition\Registrar;
@@ -188,25 +188,7 @@ $preGlobal = [
     RequestLimitsMiddleware::class,
     ThrottleMiddleware::class,
     NegotiationMiddleware::class,
-
-    // CacheValidators requires a metaProvider
-    new CacheValidatorsMiddleware(
-        metaProvider: static function (Request $r): array {
-            $path = $r->getUri()->getPath();
-            $nowMtime = @filemtime(__FILE__) ?: null;
-
-            if ($path === '/download' && is_file(__FILE__)) {
-                $size = @filesize(__FILE__) ?: null;
-                $mtime = @filemtime(__FILE__) ?: $nowMtime;
-                $seed = ($size ?? -1) . '|' . ($mtime ?? -1) . '|index.php';
-                $etag = '"' . substr(sha1($seed), 0, 16) . '"';
-                return [$etag, $mtime];
-            }
-
-            $etag = '"' . substr(sha1('demo|' . $path . '|' . (string)$nowMtime), 0, 16) . '"';
-            return [$etag, $nowMtime];
-        },
-    ),
+    CacheValidatorsMiddleware::class,
 ];
 
 // Post-controller (global) middleware stack
@@ -231,14 +213,14 @@ $kernel = RouterKernel::boot(
 );
 
 // B) MergedMatcher with single-file cache
-// $kernel = RouterKernel::boot(
-//     $logger,
-//     compiler: $compiler,
-//     matcher:  Infocyph\Webrick\Router\Matching\FusedMatcher::make(),
-//     routeCache: __DIR__ . '/.route-cache/__routes.php',
-//     preGlobal: $preGlobal,
-//     postGlobal: $postGlobal,
-// );
+//$kernel = RouterKernel::boot(
+//    $logger,
+//    compiler: $compiler,
+//    matcher:  Infocyph\Webrick\Router\Matching\FusedMatcher::make(),
+//    routeCache: __DIR__ . '/.route-cache/__routes.php',
+//    preGlobal: $preGlobal,
+//    postGlobal: $postGlobal,
+//);
 
 /* --------------------------------------------------------------------------
  * 4.  Handle & emit
@@ -246,4 +228,4 @@ $kernel = RouterKernel::boot(
 $request = Request::fromGlobals();
 $response = $kernel->handle($request);
 
-new SapiEmitter()->emit($response);
+new AutoEmitter()->emit($response);
