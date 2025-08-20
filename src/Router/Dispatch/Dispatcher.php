@@ -34,7 +34,7 @@ final class Dispatcher
             $request = $request->withAttribute('cors_policy', $corsPolicy);
         }
 
-        // ① Index is perfect (numeric, monotonic) – use it when present
+        // Index is perfect (numeric, monotonic) – use it when present
         $routeId = $route->getIndex();
 
         // build + memoise the pipeline once
@@ -58,41 +58,33 @@ final class Dispatcher
 
         /* -- middleware stack ------------------------------------------- */
         $stack = [];
-
         foreach ($route->getMiddlewares() as $mw) {
             // callable object / closure
-            if (\is_object($mw)) {
-                if (!\is_callable($mw)) {
-                    throw new InvalidArgumentException(
+            $stack[] = match (true) {
+                \is_object($mw) => match (true) {
+                    \is_callable($mw) => $mw,
+                    default => throw new InvalidArgumentException(
                         sprintf('Middleware object %s is not callable', $mw::class),
-                    );
-                }
-                $stack[] = $mw;
-                continue;
-            }
+                    ),
+                },
 
-            // class-string
-            if (\is_string($mw)) {
-                if (!\class_exists($mw)) {
-                    throw new InvalidArgumentException("Middleware class '$mw' not found.");
-                }
+                \is_string($mw) => match (true) {
+                    !\class_exists($mw) => throw new InvalidArgumentException("Middleware class '{$mw}' not found."),
+                    default => static function (Request $req, callable $next) use ($mw, $invoker): Response {
+                        static $instance = null;
+                        $instance ??= $invoker->make($mw);
+                        if (!\is_callable($instance)) {
+                            throw new InvalidArgumentException("Middleware {$mw} must be invokable (__invoke).");
+                        }
+                        return $instance($req, $next);
+                    },
+                },
 
-                $stack[] = static function (Request $req, callable $next) use ($mw, $invoker): Response {
-                    static $instance = null;
-                    $instance ??= $invoker->make($mw);
-                    if (!\is_callable($instance)) {
-                        throw new InvalidArgumentException("Middleware {$mw} must be invokable (__invoke).");
-                    }
-                    return $instance($req, $next);
-                };
-                continue;
-            }
-
-            throw new InvalidArgumentException(
-                sprintf('Unsupported middleware of type %s', \gettype($mw)),
-            );
+                default => throw new InvalidArgumentException(
+                    sprintf('Unsupported middleware of type %s', \gettype($mw)),
+                ),
+            };
         }
-
         return new MiddlewarePipeline($stack, $final);
     }
 }

@@ -19,7 +19,7 @@ final class GatewayHardeningMiddleware
         'proxy-authenticate',
         'proxy-authorization',
         'te',
-        'trailer',               // RFC 9110 (singular)
+        'trailer',
         'transfer-encoding',
         'upgrade',
     ];
@@ -256,7 +256,7 @@ final class GatewayHardeningMiddleware
         if ($trustedHosts === [] || $trustedHosts === ['*']) {
             return []; // caller uses $this->allowAllHosts to short-circuit
         }
-        $key = sha1(json_encode(array_values($trustedHosts), JSON_THROW_ON_ERROR));
+        $key = hash('xxh3', json_encode(array_values($trustedHosts), JSON_THROW_ON_ERROR));
         if (!isset(self::$hostRegexCache[$key])) {
             $compiled = [];
             foreach ($trustedHosts as $p) {
