@@ -30,14 +30,11 @@ use Psr\Log\NullLogger;
 
 final readonly class DemoController
 {
-    public function hello(Request $request): Response
+    public function hello(Request $request, string $nameDE): Response
     {
-        $request->hoist();
-        $name = $request->getAttribute('route_params')['name'] ?? 'World';
-
         return Response::json([
             'handler' => 'DemoController::hello',
-            'hello' => $name,
+            'hello' => $nameDE,
             'request' => $request->all(),
             'time' => \date(DATE_ATOM),
         ]);

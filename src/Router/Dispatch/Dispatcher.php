@@ -6,7 +6,6 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Router\Dispatch;
 
 use Infocyph\InterMix\DI\Invoker;
-use Infocyph\Webrick\Request\Psr7\ServerRequest;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
@@ -31,9 +30,6 @@ final class Dispatcher
         Request $request,
         array $vars,
     ): Response {
-        // expose path params to downstream code
-        $request = $request->withAttribute('route_params', $vars);
-
         if (method_exists($route, 'getCorsPolicy') && $corsPolicy = $route->getCorsPolicy()) {
             $request = $request->withAttribute('cors_policy', $corsPolicy);
         }
@@ -42,7 +38,7 @@ final class Dispatcher
         $routeId = $route->getIndex();
 
         // build + memoise the pipeline once
-        $this->pipelines[$routeId] ??= $this->compilePipeline($route);
+        $this->pipelines[$routeId] ??= $this->compilePipeline($route, $vars);
 
         return $this->pipelines[$routeId]->handle($request);
     }
@@ -51,12 +47,12 @@ final class Dispatcher
      * Internals
      * ------------------------------------------------------------------ */
 
-    private function compilePipeline(CompiledRoute $route): MiddlewarePipeline
+    private function compilePipeline(CompiledRoute $route, array $vars): MiddlewarePipeline
     {
         /* -- terminal handler ------------------------------------------- */
         $invoker = $this->invoker;
-        $final = static function (Request $req) use ($route, $invoker): Response {
-            $result = $invoker->invoke($route->getHandler());
+        $final = static function (Request $req) use ($route, $invoker, $vars): Response {
+            $result = $invoker->invoke($route->getHandler(), $vars);
             return $result instanceof Response ? $result : Response::json($result);
         };
 
@@ -71,23 +67,22 @@ final class Dispatcher
                         sprintf('Middleware object %s is not callable', $mw::class),
                     );
                 }
-                $stack[] = $mw; // actual invoke happens in MiddlewarePipeline via Invoker
+                $stack[] = $mw;
                 continue;
             }
 
             // class-string
             if (\is_string($mw)) {
                 if (!\class_exists($mw)) {
-                    throw new InvalidArgumentException("Middleware class '{$mw}' not found.");
+                    throw new InvalidArgumentException("Middleware class '$mw' not found.");
                 }
 
                 $stack[] = static function (Request $req, callable $next) use ($mw, $invoker): Response {
-                    static $instance = null;              // one per worker process
-                    $instance ??= $invoker->make($mw);    // constructor DI once
+                    static $instance = null;
+                    $instance ??= $invoker->make($mw);
                     if (!\is_callable($instance)) {
                         throw new InvalidArgumentException("Middleware {$mw} must be invokable (__invoke).");
                     }
-                    // manual path is fine here; Pipeline fix ensures $next is passed for other shapes
                     return $instance($req, $next);
                 };
                 continue;
