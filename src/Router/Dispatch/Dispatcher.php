@@ -5,6 +5,7 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router\Dispatch;
 
+use Closure;
 use Infocyph\InterMix\DI\Invoker;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
@@ -34,11 +35,18 @@ final class Dispatcher
             $request = $request->withAttribute('cors_policy', $corsPolicy);
         }
 
+        $invoker = $this->invoker;
+
+        $final = static function (Request $req) use ($route, $vars, $invoker): Response {
+            $result = $invoker->invoke($route->getHandler(), $vars);
+            return $result instanceof Response ? $result : Response::json($result);
+        };
+
         // Index is perfect (numeric, monotonic) – use it when present
         $routeId = $route->getIndex();
 
         // build + memoise the pipeline once
-        $this->pipelines[$routeId] ??= $this->compilePipeline($route, $vars);
+        $this->pipelines[$routeId] ??= $this->compilePipeline($route, $final, $invoker);
 
         return $this->pipelines[$routeId]->handle($request);
     }
@@ -47,19 +55,10 @@ final class Dispatcher
      * Internals
      * ------------------------------------------------------------------ */
 
-    private function compilePipeline(CompiledRoute $route, array $vars): MiddlewarePipeline
+    private function compilePipeline(CompiledRoute $route, Closure $final, Invoker $invoker): MiddlewarePipeline
     {
-        /* -- terminal handler ------------------------------------------- */
-        $invoker = $this->invoker;
-        $final = static function (Request $req) use ($route, $invoker, $vars): Response {
-            $result = $invoker->invoke($route->getHandler(), $vars);
-            return $result instanceof Response ? $result : Response::json($result);
-        };
-
-        /* -- middleware stack ------------------------------------------- */
         $stack = [];
         foreach ($route->getMiddlewares() as $mw) {
-            // callable object / closure
             $stack[] = match (true) {
                 \is_object($mw) => match (true) {
                     \is_callable($mw) => $mw,
