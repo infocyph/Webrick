@@ -64,6 +64,8 @@ final class RouterKernel
 
     /**
      * @param string|null $routeCache Dir for UnifiedMatcher **or** file for MergedMatcher
+     * @param bool $useInvokerForRoute When true, per-route middleware/handler are called via DI Invoker.
+     *                                 When false, per-route middleware are called manually ($mw($req, $next)).
      */
     public static function boot(
         LoggerInterface $log,
@@ -72,12 +74,14 @@ final class RouterKernel
         ?string $routeCache = null,
         array $preGlobal = [],
         array $postGlobal = [],
+        bool $useInvokerForRoute = true,
     ): self {
         if ($routeCache) {
             $matcher->enableCache($routeCache);
         }
 
-        $dispatcher = new Dispatcher(Invoker::shared());
+        // Pass the toggle down to Dispatcher (BC: default true).
+        $dispatcher = new Dispatcher(Invoker::shared(), $useInvokerForRoute);
 
         return new self($matcher, $dispatcher, $compiler, $log, $preGlobal, $postGlobal);
     }
@@ -87,46 +91,12 @@ final class RouterKernel
     public function handle(Request $request): Response
     {
         // Bind Request for DI across pre/per-route/post rings
-        $container = Invoker::shared()->getContainer();
-        $defs = $container->definitions();
+        $defs = Invoker::shared()->getContainer()->definitions();
         $defs->bind(Request::class, $request);
 
         // Core: match → dispatch. If an ErrorHandlerMiddleware is present,
         // let exceptions bubble; otherwise provide a safe JSON fallback.
-        if ($this->hasErrorHandler) {
-            $dispatchCore = function (Request $req): Response {
-                $method = strtoupper($req->getMethod());
-                $uri    = $req->getUri();
-                $host   = self::normaliseHost($uri->getHost());
-                $path   = $uri->getPath() ?: '/';
-
-                [$route, $vars] = $this->matcher->match($method, $host, $path);
-                return $this->dispatcher->dispatch($route, $req, $vars);
-            };
-        } else {
-            $dispatchCore = function (Request $req): Response {
-                $method = strtoupper($req->getMethod());
-                $uri    = $req->getUri();
-                $host   = self::normaliseHost($uri->getHost());
-                $path   = $uri->getPath() ?: '/';
-
-                try {
-                    [$route, $vars] = $this->matcher->match($method, $host, $path);
-                    return $this->dispatcher->dispatch($route, $req, $vars);
-                } catch (MethodNotAllowedException $e) {
-                    return Response::json(
-                        ['error' => 'Method Not Allowed'],
-                        405,
-                        ['Allow' => implode(', ', $e->allowed)],
-                    );
-                } catch (RouteNotFoundException) {
-                    return Response::json(['error' => 'Not Found'], 404);
-                } catch (\Throwable $e) {
-                    $this->log->error('[router] uncaught exception', ['exception' => $e]);
-                    return Response::json(['error' => 'Server Error'], 500);
-                }
-            };
-        }
+        $dispatchCore = $this->buildDispatchCore($this->hasErrorHandler);
 
         // Wrap core with post-global middleware
         $withPost = $this->composePipeline($this->postGlobal, $dispatchCore);
@@ -135,6 +105,47 @@ final class RouterKernel
         $withPre  = $this->composePipeline($this->preGlobal, $withPost);
 
         return $withPre($request);
+    }
+
+    private function buildDispatchCore(bool $bubbleExceptions): Closure
+    {
+        if ($bubbleExceptions) {
+            return function (Request $req): Response {
+                [$route, $vars] = $this->matchRoute($req);
+                return $this->dispatcher->dispatch($route, $req, $vars);
+            };
+        }
+
+        return function (Request $req): Response {
+            try {
+                [$route, $vars] = $this->matchRoute($req);
+                return $this->dispatcher->dispatch($route, $req, $vars);
+            } catch (MethodNotAllowedException $e) {
+                return Response::json(
+                    ['error' => 'Method Not Allowed'],
+                    405,
+                    ['Allow' => implode(', ', $e->allowed)],
+                );
+            } catch (RouteNotFoundException) {
+                return Response::json(['error' => 'Not Found'], 404);
+            } catch (\Throwable $e) {
+                $this->log->error('[router] uncaught exception', ['exception' => $e]);
+                return Response::json(['error' => 'Server Error'], 500);
+            }
+        };
+    }
+
+    /**
+     * @return array{CompiledRoute, array} [route, vars]
+     */
+    private function matchRoute(Request $req): array
+    {
+        $method = strtoupper($req->getMethod());
+        $uri    = $req->getUri();
+        $host   = self::normaliseHost($uri->getHost());
+        $path   = $uri->getPath() ?: '/';
+
+        return $this->matcher->match($method, $host, $path);
     }
 
     /*──────────────── warm-up / cache prime ──────────*/
@@ -205,8 +216,12 @@ final class RouterKernel
     {
         $fqcn = '\\Infocyph\\Webrick\\Middleware\\ErrorHandlerMiddleware';
         foreach ($list as $mw) {
-            if (is_string($mw) && $mw === $fqcn) return true;
-            if (is_object($mw) && is_a($mw, $fqcn)) return true;
+            if (is_string($mw) && $mw === $fqcn) {
+                return true;
+            }
+            if (is_object($mw) && is_a($mw, $fqcn)) {
+                return true;
+            }
         }
         return false;
     }

@@ -41,7 +41,7 @@ final class CacheValidatorsMiddleware
         private ?Closure $metaProvider = null,
         private bool $autoEtagWhenMissing = true,
         private bool $includeQueryInEtag = true,
-        private int $autoEtagMinSize = 1024,
+        private int $autoEtagMinSize = 2048,
     ) {}
 
     /**

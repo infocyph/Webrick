@@ -19,8 +19,8 @@ final readonly class CompressionMiddleware
 
     /** don’t bother below this many bytes */
     public function __construct(
-        private int $minBytes = 1024,
-        private array $prefOrder = ['br', 'zstd', 'gzip'],
+        private int $minBytes = 1400,
+        private array $prefOrder = [['zstd', 'br', 'gzip']],
         private string $etagMode = self::ETAG_WEAK_ON_ENCODE,
         private int $gzipLevel = 6,
         private int $brotliQuality = 4,

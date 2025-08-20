@@ -22,7 +22,9 @@ final class Dispatcher
     /** @var array<int,MiddlewarePipeline> route-id ⇒ compiled pipeline */
     private array $pipelines = [];
 
-    public function __construct(private readonly Invoker $invoker) {}
+    public function __construct(private readonly Invoker $invoker)
+    {
+    }
 
     public function dispatch(
         CompiledRoute $route,
@@ -35,11 +37,6 @@ final class Dispatcher
         if (method_exists($route, 'getCorsPolicy') && $corsPolicy = $route->getCorsPolicy()) {
             $request = $request->withAttribute('cors_policy', $corsPolicy);
         }
-
-        $container = $this->invoker->getContainer();
-        $defs = $container->definitions();
-        $defs->bind(Request::class, $request);
-        $defs->bind(ServerRequest::class, $request);
 
         // ① Index is perfect (numeric, monotonic) – use it when present
         $routeId = $route->getIndex();
@@ -58,7 +55,7 @@ final class Dispatcher
     {
         /* -- terminal handler ------------------------------------------- */
         $invoker = $this->invoker;
-        $final = static function () use ($route, $invoker): Response {
+        $final = static function (Request $req) use ($route, $invoker): Response {
             $result = $invoker->invoke($route->getHandler());
             return $result instanceof Response ? $result : Response::json($result);
         };
@@ -74,7 +71,7 @@ final class Dispatcher
                         sprintf('Middleware object %s is not callable', $mw::class),
                     );
                 }
-                $stack[] = $mw;
+                $stack[] = $mw; // actual invoke happens in MiddlewarePipeline via Invoker
                 continue;
             }
 
@@ -87,6 +84,10 @@ final class Dispatcher
                 $stack[] = static function (Request $req, callable $next) use ($mw, $invoker): Response {
                     static $instance = null;              // one per worker process
                     $instance ??= $invoker->make($mw);    // constructor DI once
+                    if (!\is_callable($instance)) {
+                        throw new InvalidArgumentException("Middleware {$mw} must be invokable (__invoke).");
+                    }
+                    // manual path is fine here; Pipeline fix ensures $next is passed for other shapes
                     return $instance($req, $next);
                 };
                 continue;

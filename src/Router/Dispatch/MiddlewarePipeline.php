@@ -30,13 +30,21 @@ final class MiddlewarePipeline
     /** @var Closure(Request):Response */
     private Closure $pipeline;
 
+    /** Whether to call via Invoker (DI) or manually. */
+    private bool $useInvoker;
+
+    /** DI resolver (singleton by default). */
+    private Invoker $invoker;
+
     /**
      * @param list<Middleware> $stack
-     * @param FinalHandler $last
+     * @param FinalHandler     $last
+     * @param bool             $useInvoker  When true, call via Invoker and inject ($req, $next). When false, call manually.
+     * @param Invoker|null     $invoker     Optional custom invoker (defaults to Invoker::shared()).
      *
      * @throws InvalidArgumentException
      */
-    public function __construct(array $stack, callable $last)
+    public function __construct(array $stack, callable $last, bool $useInvoker = true, ?Invoker $invoker = null)
     {
         foreach ($stack as $mw) {
             if (!\is_callable($mw)) {
@@ -46,8 +54,11 @@ final class MiddlewarePipeline
             }
         }
 
-        $this->stack = $stack;
+        $this->stack       = $stack;
         $this->lastHandler = $last;
+        $this->useInvoker  = $useInvoker;
+        $this->invoker     = $invoker ?? Invoker::shared();
+
         $this->pipeline = $this->compose();
     }
 
@@ -76,25 +87,25 @@ final class MiddlewarePipeline
 
     private function wrapFinal(callable $handler): Closure
     {
-        static $factory = null;                 // <── promoted static
+        $useInvoker = $this->useInvoker;
+        $invoker    = $this->invoker;
 
-        if ($factory === null) {
-            $factory = static function (callable $h): Closure {
-                $tag = 'Final handler';
-                return static function (Request $req) use ($h, $tag): Response {
-                    $res = $h($req);
-                    return self::assertResponse($res, $tag);
-                };
-            };
-        }
-        return $factory($handler);
+        return static function (Request $req) use ($handler, $useInvoker, $invoker): Response {
+            $res = $useInvoker
+                // Allow both positional and named for widest DI compatibility.
+                ? $invoker->invoke($handler, [0 => $req, 'request' => $req])
+                : $handler($req);
+
+            return self::assertResponse($res, 'Final handler');
+        };
     }
 
     private function wrap(callable|string $mw, Closure $next): Closure
     {
         /* ── Closure / "function" / "Class::method" / callable[] ─────── */
-        static $memo = [];                                             // per-process cache
-        $invoker = Invoker::shared();                              // DI resolver (singleton)
+        static $memo = [];                          // per-process cache for "Cls::method"/function names
+        $invoker    = $this->invoker;
+        $useInvoker = $this->useInvoker;
 
         /**
          * Resolve **once**:
@@ -104,25 +115,29 @@ final class MiddlewarePipeline
          */
         if (\is_string($mw)) {
             $mw = $memo[$mw] ??= (
-            str_contains($mw, '::')
-                ? $mw(...)                      // bind once
-                : $mw                                              // plain function name
+                str_contains($mw, '::')
+                ? $mw(...)          // bind once
+                : $mw               // plain function name
             );
         }
 
-        $tag = self::describe($mw);                                    // cheap after memo
+        $tag = self::describe($mw);                 // cheap after memo
 
         /**
-         * Final trampoline: let Invoker inject `$req`, `$next`, plus any other
-         * container-resolvable dependencies the middleware may declare.
+         * Final trampoline for each middleware in the stack.
+         * If using DI, inject `$req` and `$next` both positionally and by name.
          */
-        return static function (Request $req) use ($invoker, $mw, $next, $tag): Response {
-            $res = $invoker->invoke($mw);
+        return static function (Request $req) use ($invoker, $mw, $next, $tag, $useInvoker): Response {
+            $res = $useInvoker
+                ? $invoker->invoke($mw, [
+                    0 => $req, 1 => $next,           // positional fallback
+                    'request' => $req, 'next' => $next, // named for autowiring
+                ])
+                : $mw($req, $next);
+
             return self::assertResponse($res, $tag);
         };
     }
-
-
 
     /* -------------------------------------------------------------------------
      * Helpers

@@ -107,7 +107,15 @@ final class GatewayHardeningMiddleware
         if ($this->allowAllHosts || $this->trustedHosts === []) {
             return null;
         }
-        return $this->matchesHost($req->getUri()->getHost())
+
+        $host = trim($req->getUri()->getHost());
+
+        // Treat empty Host as invalid when enforcing an allow-list
+        if ($host === '') {
+            return Response::plaintext('Missing or empty Host header.', 400);
+        }
+
+        return $this->matchesHost($host)
             ? null
             : Response::plaintext('Untrusted Host header.', 400);
     }
@@ -153,7 +161,17 @@ final class GatewayHardeningMiddleware
             return $resp;
         }
 
-        $loc = $resp->getHeaderLine('Location');
+        $loc = trim($resp->getHeaderLine('Location'));
+
+        // Only allow http/https schemes (block javascript:, data:, file:, etc.)
+        $scheme = parse_url($loc, PHP_URL_SCHEME);
+        if ($scheme !== null && $scheme !== '') {
+            $scheme = strtolower($scheme);
+            if ($scheme !== 'http' && $scheme !== 'https') {
+                return Response::json(['error' => 'Invalid redirect scheme'], 400);
+            }
+        }
+
         $host = parse_url($loc, PHP_URL_HOST);
         if (!$host) {
             return $resp; // relative | opaque → fine
@@ -181,7 +199,7 @@ final class GatewayHardeningMiddleware
 
     private function matchesHost(string $host): bool
     {
-        return array_any($this->hostRegex, fn($rx) => preg_match($rx, $host));
+        return array_any($this->hostRegex, fn ($rx) => preg_match($rx, $host));
     }
 
     private function cidrHit(?string $ip, array $cidrs): bool
@@ -189,7 +207,7 @@ final class GatewayHardeningMiddleware
         if ($ip === null || $cidrs === []) {
             return false;
         }
-        return array_any($cidrs, fn($cidr) => IpCidr::match($ip, $cidr));
+        return array_any($cidrs, fn ($cidr) => IpCidr::match($ip, $cidr));
     }
 
     private function stripHopByHopFromRequest(Request $r): Request
