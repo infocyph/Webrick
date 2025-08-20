@@ -18,13 +18,12 @@ use Infocyph\Webrick\Exceptions\{MethodNotAllowedException, RouteNotFoundExcepti
 /**
  * Glues together compiler → matcher → dispatcher.
  *
- * Supports three middleware rings:
- *   1) Pre-route (global)       – runs on request entry
- *   2) Per-route (existing)     – attached on routes, executed by Dispatcher
- *   3) Post-controller (global) – wraps the dispatch result before emit
+ * Rings:
+ *   1) Pre-route (global)
+ *   2) Per-route (Dispatcher)
+ *   3) Post-controller (global)
  *
- * If ErrorHandlerMiddleware is present in pre/post rings, exceptions bubble to it.
- * Otherwise, this kernel provides a minimal JSON fallback for 404/405/500.
+ * Errors are handled natively by ErrorHandler (always-on).
  */
 final class RouterKernel
 {
@@ -37,8 +36,7 @@ final class RouterKernel
     /** @var list<callable(Request, Closure(Request):Response):Response> */
     private array $postGlobal = [];
 
-    /** True when an ErrorHandlerMiddleware is present in pre/post globals. */
-    private bool $hasErrorHandler = false;
+    private ErrorHandler $errorHandler;
 
     public function __construct(
         private MatcherInterface $matcher,
@@ -47,25 +45,33 @@ final class RouterKernel
         private readonly LoggerInterface $log,
         array $preGlobal = [],
         array $postGlobal = [],
+        ?ErrorHandler $errorHandler = null,
     ) {
         $this->compiler = $compiler;
         $this->warm();
 
-        // Detect error handler BEFORE normalization (we can see class-strings/instances here)
-        $this->hasErrorHandler =
-            $this->detectErrorHandler($preGlobal) || $this->detectErrorHandler($postGlobal);
-
         // Accept objects, class-strings, or callables
         $this->preGlobal  = $this->normalizeGlobalMiddleware($preGlobal);
         $this->postGlobal = $this->normalizeGlobalMiddleware($postGlobal);
+
+        // Hard-bind native error handler (always present)
+        $this->errorHandler = $errorHandler ?? new ErrorHandler(
+            logger: $this->log,
+            debug: true,
+            capturePhpErrors: true,
+            requestIdHeader: 'X-Request-Id',
+            exceptionMap: [
+                RouteNotFoundException::class   => 404,
+                MethodNotAllowedException::class => 405,
+            ],
+        );
     }
 
     /*──────────────── bootstrap helper ────────────────*/
 
     /**
      * @param string|null $routeCache Dir for UnifiedMatcher **or** file for MergedMatcher
-     * @param bool $useInvokerForRoute When true, per-route middleware/handler are called via DI Invoker.
-     *                                 When false, per-route middleware are called manually ($mw($req, $next)).
+     * @param bool $useInvokerForRoute Call per-route stack via DI Invoker (true) or manually (false)
      */
     public static function boot(
         LoggerInterface $log,
@@ -75,15 +81,23 @@ final class RouterKernel
         array $preGlobal = [],
         array $postGlobal = [],
         bool $useInvokerForRoute = true,
+        ?ErrorHandler $errorHandler = null,
     ): self {
         if ($routeCache) {
             $matcher->enableCache($routeCache);
         }
 
-        // Pass the toggle down to Dispatcher (BC: default true).
         $dispatcher = new Dispatcher(Invoker::shared(), $useInvokerForRoute);
 
-        return new self($matcher, $dispatcher, $compiler, $log, $preGlobal, $postGlobal);
+        return new self(
+            $matcher,
+            $dispatcher,
+            $compiler,
+            $log,
+            $preGlobal,
+            $postGlobal,
+            $errorHandler,
+        );
     }
 
     /*──────────────── request entry ───────────────────*/
@@ -91,47 +105,27 @@ final class RouterKernel
     public function handle(Request $request): Response
     {
         // Bind Request for DI across pre/per-route/post rings
-        $defs = Invoker::shared()->getContainer()->definitions();
-        $defs->bind(Request::class, $request);
+        Invoker::shared()->getContainer()->definitions()
+            ->bind(Request::class, $request);
 
-        // Core: match → dispatch. If an ErrorHandlerMiddleware is present,
-        // let exceptions bubble; otherwise provide a safe JSON fallback.
-        $dispatchCore = $this->buildDispatchCore($this->hasErrorHandler);
+        // Core: match → dispatch (let exceptions bubble to ErrorHandler)
+        $dispatchCore = $this->buildDispatchCore();
 
         // Wrap core with post-global middleware
         $withPost = $this->composePipeline($this->postGlobal, $dispatchCore);
 
-        // Wrap with pre-global middleware, then execute
+        // Wrap with pre-global middleware
         $withPre  = $this->composePipeline($this->preGlobal, $withPost);
 
-        return $withPre($request);
+        // Native error boundary around the whole pipeline
+        return $this->errorHandler->handle($request, $withPre);
     }
 
-    private function buildDispatchCore(bool $bubbleExceptions): Closure
+    private function buildDispatchCore(): Closure
     {
-        if ($bubbleExceptions) {
-            return function (Request $req): Response {
-                [$route, $vars] = $this->matchRoute($req);
-                return $this->dispatcher->dispatch($route, $req, $vars);
-            };
-        }
-
         return function (Request $req): Response {
-            try {
-                [$route, $vars] = $this->matchRoute($req);
-                return $this->dispatcher->dispatch($route, $req, $vars);
-            } catch (MethodNotAllowedException $e) {
-                return Response::json(
-                    ['error' => 'Method Not Allowed'],
-                    405,
-                    ['Allow' => implode(', ', $e->allowed)],
-                );
-            } catch (RouteNotFoundException) {
-                return Response::json(['error' => 'Not Found'], 404);
-            } catch (\Throwable $e) {
-                $this->log->error('[router] uncaught exception', ['exception' => $e]);
-                return Response::json(['error' => 'Server Error'], 500);
-            }
+            [$route, $vars] = $this->matchRoute($req);
+            return $this->dispatcher->dispatch($route, $req, $vars);
         };
     }
 
@@ -209,21 +203,6 @@ final class RouterKernel
             throw new \InvalidArgumentException('Host contains non-ASCII bytes.');
         }
         return $host;
-    }
-
-    /** Detect presence of ErrorHandlerMiddleware by class-string or instance. */
-    private function detectErrorHandler(array $list): bool
-    {
-        $fqcn = '\\Infocyph\\Webrick\\Middleware\\ErrorHandlerMiddleware';
-        foreach ($list as $mw) {
-            if (is_string($mw) && $mw === $fqcn) {
-                return true;
-            }
-            if (is_object($mw) && is_a($mw, $fqcn)) {
-                return true;
-            }
-        }
-        return false;
     }
 
     /**

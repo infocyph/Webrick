@@ -8,12 +8,9 @@ declare(strict_types=1);
 
 require __DIR__ . '/vendor/autoload.php';
 
-use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
-use Infocyph\Webrick\Exceptions\RouteNotFoundException;
 use Infocyph\Webrick\Middleware\CacheValidatorsMiddleware;
 use Infocyph\Webrick\Middleware\CompressionMiddleware;
 use Infocyph\Webrick\Middleware\CorsAndPoliciesMiddleware;
-use Infocyph\Webrick\Middleware\ErrorHandlerMiddleware;
 use Infocyph\Webrick\Middleware\GatewayHardeningMiddleware;
 use Infocyph\Webrick\Middleware\MaintenanceModeMiddleware;
 use Infocyph\Webrick\Middleware\NegotiationMiddleware;
@@ -35,6 +32,7 @@ final readonly class DemoController
 {
     public function hello(Request $request): Response
     {
+        $request->hoist();
         $name = $request->getAttribute('route_params')['name'] ?? 'World';
 
         return Response::json([
@@ -173,16 +171,6 @@ $dev = ($env !== 'prod');
 $preGlobal = [
     // If any of these need DI/args, pass an INSTANCE instead of a class-string.
     GatewayHardeningMiddleware::class,
-    new ErrorHandlerMiddleware(
-        logger: $logger,
-        debug: $dev,                          // show traces in non-prod
-        capturePhpErrors: true,               // convert warnings/notices to exceptions
-        requestIdHeader: 'X-Request-Id',
-        exceptionMap: [
-            RouteNotFoundException::class => 404,
-            MethodNotAllowedException::class => 405,
-        ],
-    ),
     TelemetryMiddleware::class,
     MaintenanceModeMiddleware::class,
     RequestLimitsMiddleware::class,
