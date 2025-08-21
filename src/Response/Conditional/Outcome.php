@@ -26,5 +26,6 @@ final class Outcome
         public readonly int $state,   // PASS / HIT / FAIL
         public readonly int $http,    // 0 when PASS, otherwise 3xx/4xx
         public readonly array $headers = [],
-    ) {}
+    ) {
+    }
 }

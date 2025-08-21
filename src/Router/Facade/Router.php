@@ -82,5 +82,7 @@ final class Router
     /**
      * Façade is a purely static utility — no instances allowed.
      */
-    private function __construct() {}
+    private function __construct()
+    {
+    }
 }

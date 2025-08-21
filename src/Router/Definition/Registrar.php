@@ -24,7 +24,8 @@ final readonly class Registrar
         private Collection $routes,
         private GroupScope $scope = new GroupScope(),
         private bool $autoSlashRedirect = false,
-    ) {}
+    ) {
+    }
 
     /* -----------------------------------------------------------------
      *  HTTP verb helpers
@@ -175,7 +176,7 @@ final readonly class Registrar
                 new Route(
                     'GET',
                     $alt,
-                    static fn() => Response::redirect($fullPath, 308),
+                    static fn () => Response::redirect($fullPath, 308),
                 ),
             );
         }

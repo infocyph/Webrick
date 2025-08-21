@@ -12,5 +12,6 @@ final class Produces
     public function __construct(
         public array $types,
         public ?array $charsets = null,
-    ) {}
+    ) {
+    }
 }

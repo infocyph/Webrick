@@ -44,7 +44,7 @@ final class WorkermanEmitter implements EmitterInterface
 
             // Ensure Content-Length present
             $headers = $response->getHeaders();
-            $hasCL = array_any($headers, fn($hv, $hn) => strtolower($hn) === 'content-length');
+            $hasCL = array_any($headers, fn ($hv, $hn) => strtolower($hn) === 'content-length');
             if (!$hasCL) {
                 $headers['Content-Length'] = [ (string)\strlen($bodyStr) ];
             }

@@ -22,8 +22,7 @@ final class InputSanitizerMiddleware
         private readonly bool $touchFormBodies = true,
         private readonly bool $touchJsonBodies = false,   // opt-in
         private readonly bool $touchUploadedNames = false, // opt-in (best-effort; requires setters)
-    )
-    {
+    ) {
         $this->sanitizer ??= new InputSanitizer();
     }
 

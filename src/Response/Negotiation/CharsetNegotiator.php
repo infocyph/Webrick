@@ -42,7 +42,7 @@ final class CharsetNegotiator
         }
 
         // sort by q desc, then keep client order for ties
-        usort($cands, fn($a, $b) => ($b['q'] <=> $a['q']) ?: ($a['i'] <=> $b['i']));
+        usort($cands, fn ($a, $b) => ($b['q'] <=> $a['q']) ?: ($a['i'] <=> $b['i']));
 
         foreach ($cands as $c) {
             if ($c['ch'] === '*') {

@@ -16,5 +16,7 @@ final class Signature
         return \hash_equals(self::make($payload, $key), $sig);
     }
 
-    private function __construct() {}
+    private function __construct()
+    {
+    }
 }

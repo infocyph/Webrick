@@ -21,7 +21,6 @@ use InvalidArgumentException;
  */
 class ServerRequest extends Message
 {
-
     /* ======== 2.  Non-PSR state  ======================================= */
 
     private string $method;

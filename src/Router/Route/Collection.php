@@ -60,7 +60,7 @@ final class Collection implements IteratorAggregate
         $this->assertMutable();
 
         $this->routes = array_values(
-            array_filter($this->routes, static fn($r) => $r !== $route),
+            array_filter($this->routes, static fn ($r) => $r !== $route),
         );
 
         $this->rebuildIndices();
@@ -92,7 +92,7 @@ final class Collection implements IteratorAggregate
         }
 
         $compiledRoutes = array_map(
-            static fn(RouteInterface $r): CompiledRoute => CompiledRoute::fromRoute($r),
+            static fn (RouteInterface $r): CompiledRoute => CompiledRoute::fromRoute($r),
             $this->routes,
         );
 

@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Response\Internal;
 
-use Infocyph\Webrick\Request\Core\Stream;
-
 /**
  * Tiny reusable helpers – **no** globals.
  */

@@ -39,7 +39,8 @@ final readonly class TelemetryMiddleware
         private int $nelTtlSeconds = 86400,
         private bool $nelIncludeSubdomains = true,
         private bool $nelCollectSuccesses = false,
-    ) {}
+    ) {
+    }
 
     public function __invoke(Request $req, Closure $next): Response
     {

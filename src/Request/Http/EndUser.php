@@ -49,7 +49,8 @@ final class EndUser
     public function __construct(
         private readonly Request $req,
         private readonly array $extraTrusted = [],
-    ) {}
+    ) {
+    }
 
     /* fast factory */
     public static function from(Request $r, array $cidrs = []): self
@@ -152,15 +153,15 @@ final class EndUser
     private function isPrivate(string $ip): bool
     {
         return \filter_var(
-                $ip,
-                \FILTER_VALIDATE_IP,
-                \FILTER_FLAG_NO_RES_RANGE | \FILTER_FLAG_NO_PRIV_RANGE,
-            ) === false;
+            $ip,
+            \FILTER_VALIDATE_IP,
+            \FILTER_FLAG_NO_RES_RANGE | \FILTER_FLAG_NO_PRIV_RANGE,
+        ) === false;
     }
 
     private function isTrustedProxy(string $ip): bool
     {
-        return array_any(array_merge(self::$trustedGlobal, $this->extraTrusted), fn($cidr) => IpCidr::match($ip, $cidr));
+        return array_any(array_merge(self::$trustedGlobal, $this->extraTrusted), fn ($cidr) => IpCidr::match($ip, $cidr));
     }
 
     /** RFC 7239 Forwarded header → IP list (L→R) */

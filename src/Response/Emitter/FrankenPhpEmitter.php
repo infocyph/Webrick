@@ -1,4 +1,5 @@
 <?php
+
 // src/Response/Emitter/FrankenPhpEmitter.php
 declare(strict_types=1);
 

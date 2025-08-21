@@ -26,5 +26,6 @@ final readonly class Cors
         public ?string $headers = null,
         public ?int $maxAgeSeconds = null,
         public ?bool $allowCredentials = null,
-    ) {}
+    ) {
+    }
 }

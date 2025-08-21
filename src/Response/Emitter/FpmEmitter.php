@@ -1,4 +1,5 @@
 <?php
+
 // src/Response/Emitter/FpmEmitter.php
 declare(strict_types=1);
 

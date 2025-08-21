@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Response\Emitter;
 
-
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 

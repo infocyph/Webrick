@@ -31,7 +31,7 @@ final class Language
             }            // “not acceptable” shortcut
             $parts[] = [strtolower($tag), $q];
         }
-        usort($parts, fn($a, $b) => $b[1] <=> $a[1]); // highest-q first
+        usort($parts, fn ($a, $b) => $b[1] <=> $a[1]); // highest-q first
 
         /* --- 2. best-match against supported list ------------------------------ */
         foreach ($parts as [$pref]) {

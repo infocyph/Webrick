@@ -23,8 +23,7 @@ final class ViewResponse extends Response
         array $headers = [],
         ?string $charset = 'utf-8',
         ?string $factoryId = ViewFactoryInterface::class, // container key
-    )
-    {
+    ) {
         $container = \Infocyph\InterMix\DI\Container::instance('intermix');
 
         if (!$container->has($factoryId)) {

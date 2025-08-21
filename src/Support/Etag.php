@@ -18,8 +18,7 @@ final class Etag
         string $algo = 'sha1',
         int $hexLen = 16,
         int $chunk = 131072, // 128 KiB
-    ): ?string
-    {
+    ): ?string {
         if (!$stream->isSeekable()) {
             return null;
         }

@@ -1,4 +1,5 @@
 <?php
+
 // src/Response/Emitter/DefaultEmitter.php
 declare(strict_types=1);
 

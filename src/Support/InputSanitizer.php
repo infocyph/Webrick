@@ -13,7 +13,8 @@ final class InputSanitizer
         private ?int $maxBytes = null,
         private array $skipKeys = [],
         private array $skipKeyPatterns = [],
-    ) {}
+    ) {
+    }
 
     public function sanitizeArray(array $data): array
     {
@@ -66,6 +67,6 @@ final class InputSanitizer
         if (in_array($key, $this->skipKeys, true)) {
             return true;
         }
-        return array_any($this->skipKeyPatterns, fn($rx) => $rx !== '' && @preg_match($rx, $key) === 1);
+        return array_any($this->skipKeyPatterns, fn ($rx) => $rx !== '' && @preg_match($rx, $key) === 1);
     }
 }

@@ -27,7 +27,9 @@ final class RequestHeaders
     private ?array $content = null;   // Content-Type/Length/MD5
     private ?array $dep = null;       // If-*, Range, Prefer
 
-    public function __construct(private readonly Request|ServerRequest $req) {}
+    public function __construct(private readonly Request|ServerRequest $req)
+    {
+    }
 
     /* ================================================================
        0) Header extraction (shared, portable)
@@ -218,7 +220,7 @@ final class RequestHeaders
             $parsed[] = ['mime' => $mime, 'q' => $qVal, 'wild' => $wild];
         }
 
-        usort($parsed, fn($a, $b) => [$b['q'], $a['wild']] <=> [$a['q'], $b['wild']]);
+        usort($parsed, fn ($a, $b) => [$b['q'], $a['wild']] <=> [$a['q'], $b['wild']]);
         return array_column($parsed, 'mime');
     }
 

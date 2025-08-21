@@ -15,7 +15,9 @@ use Infocyph\Webrick\Response\Response;
  */
 final class SecurityHeaders
 {
-    private function __construct() {}
+    private function __construct()
+    {
+    }
 
     /**
      * Opinionated secure defaults (set-if-absent). Optionally adds HSTS.

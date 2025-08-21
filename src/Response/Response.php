@@ -98,7 +98,7 @@ class Response
     private static function normalizeProducer(callable|iterable $producer): \Closure
     {
         if (is_iterable($producer)) {
-            return static fn() => $producer;
+            return static fn () => $producer;
         }
 
         // callable()

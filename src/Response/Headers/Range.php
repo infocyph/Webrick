@@ -19,7 +19,8 @@ final readonly class Range
         public int $start,
         public int $end,
         public int $length,
-    ) {}
+    ) {
+    }
 
     /**
      * @param non-empty-string $header Raw **Range:** header

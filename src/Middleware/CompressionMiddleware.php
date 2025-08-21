@@ -254,7 +254,7 @@ final readonly class CompressionMiddleware
     /** True when `$ctype` starts with any of the NO_COMPRESS prefixes. */
     private function isNonCompressible(string $ctype): bool
     {
-        return array_any(self::NO_COMPRESS_PREFIXES, fn($prefix) => \str_starts_with($ctype, $prefix));
+        return array_any(self::NO_COMPRESS_PREFIXES, fn ($prefix) => \str_starts_with($ctype, $prefix));
     }
 
     /**

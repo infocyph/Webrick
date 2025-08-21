@@ -7,7 +7,9 @@ namespace Infocyph\Webrick\Router\CLI;
 final class CommandKernel
 {
     /** @param array<string,callable> $cmdMap */
-    public function __construct(private array $cmdMap) {}
+    public function __construct(private array $cmdMap)
+    {
+    }
 
     public function handle(array $argv): int
     {

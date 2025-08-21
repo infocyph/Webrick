@@ -1,4 +1,5 @@
 <?php
+
 // src/Response/Emitter/RoadRunnerEmitter.php
 declare(strict_types=1);
 

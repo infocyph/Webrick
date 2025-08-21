@@ -65,8 +65,7 @@ final class CookieEncryptionMiddleware
         private bool $forceSecure = true,
         private bool $forceHttpOnly = true,
         private ?string $defaultSameSite = 'Lax', // null = don’t set; 'None' requires Secure (we’ll enforce)
-    )
-    {
+    ) {
         // normalize keys
         $this->keys = is_array($keyOrKeys) ? array_values($keyOrKeys) : [$keyOrKeys];
         if ($this->keys === []) {
@@ -501,6 +500,6 @@ final class CookieEncryptionMiddleware
 
     private function hasFlag(array $attrs, string $flag): bool
     {
-        return array_any($attrs, fn($v, $k) => $k === $flag && $v === true);
+        return array_any($attrs, fn ($v, $k) => $k === $flag && $v === true);
     }
 }

@@ -118,5 +118,7 @@ final class Csrf
     }
 
     /** Library is static-only. */
-    private function __construct() {}
+    private function __construct()
+    {
+    }
 }
