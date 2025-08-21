@@ -38,11 +38,12 @@ final class CacheValidatorsMiddleware
 
     /** @param null|Closure(Request): array{0:string|null,1:int|null} $metaProvider */
     public function __construct(
-        private ?Closure $metaProvider = null,
-        private bool $autoEtagWhenMissing = true,
-        private bool $includeQueryInEtag = true,
-        private int $autoEtagMinSize = 2048,
-    ) {}
+        private readonly ?Closure $metaProvider = null,
+        private readonly bool $autoEtagWhenMissing = true,
+        private readonly bool $includeQueryInEtag = true,
+        private readonly int $autoEtagMinSize = 2048,
+    ) {
+    }
 
     /**
      * Allow app code to set a global default provider once and still register via class-string.

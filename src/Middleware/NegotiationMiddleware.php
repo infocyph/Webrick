@@ -235,12 +235,7 @@ final readonly class NegotiationMiddleware
     /** Conservative check used for 406 short-circuit Vary decision. */
     private function charsetMattersForAny(array $types): bool
     {
-        foreach ($types as $t) {
-            if ($this->charsetMattersFor(strtolower($t))) {
-                return true;
-            }
-        }
-        return false;
+        return array_any($types, fn($t) => $this->charsetMattersFor(strtolower($t)));
     }
 
     private function isJson(string $typeLower): bool

@@ -20,7 +20,7 @@ final class MiddlewareException extends \RuntimeException
         ?\Throwable $previous = null,
     ) {
         parent::__construct(
-            $message ?: "Middleware failure: {$middleware}",
+            $message ?: "Middleware failure: $middleware",
             $code,
             $previous,
         );

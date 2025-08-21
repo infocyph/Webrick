@@ -134,5 +134,7 @@ abstract class Message
     }
 
     /* guard: subclasses only */
-    protected function __clone(): void {}
+    protected function __clone(): void
+    {
+    }
 }

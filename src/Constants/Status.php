@@ -5,19 +5,6 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Constants;
 
-/**
- * Typed HTTP status codes with rich helpers.
- *
- *  ── new helpers ─────────────────────────────────────────────
- *  • series()            → 1, 2, 3, 4, 5              (int)
- *  • isInformational()   1xx                          (bool)
- *  • isSuccess()         2xx                          (bool)
- *  • isRedirect()        3xx                          (bool)
- *  • isClientError()     4xx                          (bool)
- *  • isServerError()     5xx                          (bool)
- *  • isCacheable()       RFC-defined default cacheability
- *  • allowsBody()        ! isEmpty()                  (bool)
- */
 enum Status: int
 {
     /* 1xx */

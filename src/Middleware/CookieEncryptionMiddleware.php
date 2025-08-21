@@ -501,11 +501,6 @@ final class CookieEncryptionMiddleware
 
     private function hasFlag(array $attrs, string $flag): bool
     {
-        foreach ($attrs as $k => $v) {
-            if ($k === $flag && $v === true) {
-                return true;
-            }
-        }
-        return false;
+        return array_any($attrs, fn($v, $k) => $k === $flag && $v === true);
     }
 }

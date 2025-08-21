@@ -4,16 +4,6 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Constants;
 
-/**
- * Minimal MIME registry – alias-aware, *zero* loops.
- *
- * ➊  canonical media-types are enum cases
- * ➋  `fromExtension()` resolves the case by:
- *       • alias-table fast-path (`jpg` → `jpeg`, …)
- *       • constant-exists check (`defined()`) – O(1)
- *       • per-worker memo cache – subsequent calls are
- *         one hash-lookup and a return.
- */
 enum MediaType: string
 {
     /* ------------ canonical cases ------------ */
@@ -36,9 +26,12 @@ enum MediaType: string
     case WASM = 'application/wasm';
     case NDJSON = 'application/x-ndjson';
 
-    /* --------------------------------------------------
-     * 1)  Extension → MediaType
-     * ------------------------------------------------- */
+    /**
+     * Resolve a MediaType enum case from a file extension.
+     *
+     * @param string $ext The file extension (e.g. "jpg", "json", ...).
+     * @return self The resolved MediaType enum case.
+     */
     public static function fromExtension(string $ext): self
     {
         /* ---- static 1: irregular aliases (opcode-cached) ---- */
@@ -57,30 +50,19 @@ enum MediaType: string
         ];
 
         /* ---- static 2: resolved memo cache  ----------------- */
-        static $cache = [];                // 'json' => MediaType::JSON
+        static $cache = [];
 
         $ext = strtolower($ext);
-
-        /* fast memo hit */
         if (isset($cache[$ext])) {
             return $cache[$ext];
         }
 
-        /* ① normalise via alias table */
         $key = $alias[$ext] ?? $ext;       // 'jpg' → 'jpeg'
-
-        /* ② build the would-be case name (HTML, JSON, …) */
         $caseName = strtoupper($key);
+        $case = defined(self::class . '::' . $caseName)
+            ? constant(self::class . '::' . $caseName)
+            : self::OCTET;
 
-        /* ③ constant lookup – O(1); no reflection, no loops */
-        if (defined(self::class . '::' . $caseName)) {
-            /** @var self $case */
-            $case = constant(self::class . '::' . $caseName);
-        } else {
-            $case = self::OCTET;
-        }
-
-        /* ④ memoise & return */
         return $cache[$ext] = $case;
     }
 

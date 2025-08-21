@@ -70,7 +70,6 @@ final class ErrorHandler
         $statusEnum = Status::tryFrom($status) ?? Status::INTERNAL_SERVER_ERROR;
         $reason = $statusEnum->reason();
 
-        // Choose type: use result of NegotiationMiddleware if present; else Accept
         $wanted = (string)$req->getAttribute('negotiated.type');
         if ($wanted === '') {
             $accept = strtolower($req->getHeaderLine('Accept'));
@@ -80,20 +79,23 @@ final class ErrorHandler
         $headers = [
             'Cache-Control' => 'no-store',
             'X-Content-Type-Options' => 'nosniff',
-            'Vary' => 'Accept', // explicit, since post-stack may not run on errors
+            'Vary' => 'Accept',
         ];
 
-        // Echo request id if any
         $rid = $req->getAttribute('request_id') ?: $req->getHeaderLine($this->requestIdHeader);
         if (is_string($rid) && $rid !== '') {
             $headers[$this->requestIdHeader] = $rid;
         }
 
-        // 405: include Allow if extractable
         if ($status === Status::METHOD_NOT_ALLOWED->value) {
             if ($allow = $this->extractAllow($e)) {
                 $headers['Allow'] = $allow;
             }
+        }
+
+        // 🚀 NEW: HEAD must not include a body regardless of status
+        if (strtoupper($req->getMethod()) === 'HEAD') {
+            return Response::empty($status, $headers);
         }
 
         $public = $reason;

@@ -11,7 +11,7 @@ use SplFileObject;
 /**
  * Tiny, allocation-aware PSR-7 stream.
  *
- *  • Accepts:  string payload · fopen() handle · SplFileObject · another StreamInterface
+ *  • Accepts:  string payload · fopen() handle · SplFileObject · another Stream
  *  • Determines readable / writable flags once in the ctor (cheap bit-test)
  *  • Never buffers entire file unless you explicitly cast to string
  *  • All operations throw RuntimeException on error – *never* return false

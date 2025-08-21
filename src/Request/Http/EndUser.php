@@ -160,12 +160,7 @@ final class EndUser
 
     private function isTrustedProxy(string $ip): bool
     {
-        foreach (array_merge(self::$trustedGlobal, $this->extraTrusted) as $cidr) {
-            if (IpCidr::match($ip, $cidr)) {
-                return true;
-            }
-        }
-        return false;
+        return array_any(array_merge(self::$trustedGlobal, $this->extraTrusted), fn($cidr) => IpCidr::match($ip, $cidr));
     }
 
     /** RFC 7239 Forwarded header → IP list (L→R) */

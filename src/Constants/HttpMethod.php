@@ -35,9 +35,9 @@ enum HttpMethod: string
     case LINK = 'LINK';
     case UNLINK = 'UNLINK';
 
-    /* ───────────────────────── helpers ───────────────────────── */
-
-    /** True for safe reads with *no intended* state change (RFC 9110 §9.2). */
+    /**
+     * True for safe reads with *no intended* state change (RFC 9110 &sect;9.2).
+     */
     public function isSafe(): bool
     {
         return match ($this) {
@@ -46,40 +46,82 @@ enum HttpMethod: string
         };
     }
 
-    /** True for methods that may be repeated without side-effects (§9.2.3). */
+    /**
+     * True for methods that may be repeated without side-effects (RFC 9110 &sect;9.2.3).
+     *
+     * @return bool
+     */
     public function isIdempotent(): bool
     {
         return in_array($this, [self::GET, self::HEAD, self::PUT, self::DELETE, self::OPTIONS, self::TRACE], true);
     }
 
-    /** Does the spec allow a request body for this verb? */
+    /**
+     * Whether the method allows sending a request body.
+     *
+     * Per the HTTP spec, the following methods do not allow a request body:
+     *   - TRACE
+     *   - HEAD
+     *   - DELETE
+     *   - CONNECT
+     *
+     * @return bool
+     */
     public function allowsBody(): bool
     {
         return !in_array($this, [self::TRACE, self::HEAD, self::DELETE, self::CONNECT], true);
     }
 
+    /**
+     * Whether the HTTP method allows sending a request body according to the HTTP spec (RFC 9110).
+     *
+     * The only method that does not allow a request body is TRACE.
+     *
+     * @return bool
+     */
     public function specAllowsBody(): bool
     {
         return $this !== self::TRACE; // RFC 9110
     }
 
-
-    /* -------- convenience factories -------- */
-
-    /** Case-insensitive parse with graceful failure. */
+    /**
+     * Returns an instance of the HTTP method enum case matching the given string, or null if the string does not match any known HTTP method.
+     *
+     * The string is case-insensitive.
+     *
+     * @param string $verb The HTTP method verb to match.
+     *
+     * @return self|null
+     */
     public static function tryFromString(string $verb): ?self
     {
         return self::tryFrom(strtoupper($verb));
     }
 
-    /** Hard parse with descriptive exception. */
+
+    /**
+     * Returns an instance of the HTTP method enum case matching the given string.
+     *
+     * @param string $verb The HTTP method verb to match. The string is case-insensitive.
+     *
+     * @return self
+     *
+     * @throws \InvalidArgumentException If the given string does not match any known HTTP method.
+     */
     public static function fromString(string $verb): self
     {
         return self::tryFromString($verb)
             ?? throw new \InvalidArgumentException("Unsupported method: {$verb}");
     }
 
-    /** List-all helper for reflection-free loops. */
+
+    /**
+     * Return an array of all the HTTP method enum cases.
+     *
+     * The returned array is cached for performance reasons.
+     *
+     * @return array<self>
+     */
     public static function all(): array
     {
         static $cache = null;

@@ -135,12 +135,7 @@ final class VaryAccumulatorMiddleware
     /** Return true if the Vary line contains a bare star (*). */
     private static function hasStar(string $line): bool
     {
-        foreach (self::splitTokens($line) as $t) {
-            if ($t === '*') {
-                return true;
-            }
-        }
-        return false;
+        return array_any(self::splitTokens($line), fn($t) => $t === '*');
     }
 
     /**
