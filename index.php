@@ -45,7 +45,7 @@ final readonly class DemoController
  * 1.  Build the (runtime) route table
  * ----------------------------------------------------------------------- */
 $routes = new Collection();
-$registrar = new Registrar($routes, autoSlashRedirect: true);
+$registrar = new Registrar($routes, autoSlashRedirect: false);
 
 /* ---- demo routes (existing + a few extras) ---------------------------- */
 $registrar->get('/', function (): HtmlResponse {
@@ -81,17 +81,17 @@ $registrar->get('/ping', fn () => 'pong');
 
 $registrar->get(
     '/hello/{name}',
-    fn (Request $r)
-        => Response::json(['hello' => $r->getAttribute('route_params')['name'] ?? 'stranger']),
+    fn (Request $r, $name)
+        => Response::json(['hello' => $name]),
 );
 
 $registrar->get('/json', fn () => Response::json(['memory' => memory_get_usage(true)]));
 $registrar->get('/redirect', fn () => Response::redirect('/', 302));
 $registrar->get('/download', fn () => Response::attachment(__FILE__, 'index.php'));
 $registrar->get(
-    '/color/{hex:hex}',
-    fn (Request $r)
-        => Response::json(['you sent hex' => $r->getAttribute('route_params')['hex']]),
+    '/color/{color:hex}',
+    fn (Request $r, $hex)
+        => Response::json(['you sent hex' => $hex]),
 );
 
 /* ---- class-based routes (existing) ------------------------------------ */
@@ -108,8 +108,7 @@ $registrar->post('/post/echo', function (Request $r): Response {
     ]);
 });
 
-$registrar->put('/user/{id}', function (Request $r): Response {
-    $id = $r->getAttribute('route_params')['id'] ?? null;
+$registrar->put('/user/{id}', function (Request $r, $id): Response {
     return Response::json([
         'updated' => $id,
         'input' => $r->all(),
@@ -137,8 +136,7 @@ $registrar->get('/xml', function (): Response {
     return Response::create($xml, 200, ['Content-Type' => 'application/xml']);
 });
 
-$registrar->get('/status/{code}', function (Request $r): Response {
-    $code = (int)($r->getAttribute('route_params')['code'] ?? 200);
+$registrar->get('/status/{code}', function (Request $r, $code): Response {
     return Response::plaintext("Status: {$code}", $code);
 });
 

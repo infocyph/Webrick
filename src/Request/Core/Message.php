@@ -20,9 +20,9 @@ abstract class Message
     protected Stream $body;
 
     /* ---------------- ctor ----------------- */
-    protected function __construct(array $hdr = [], ?Stream $body = null, string $proto = '1.1')
+    protected function __construct(array $headers = [], ?Stream $body = null, string $proto = '1.1')
     {
-        $this->headers = $this->normalise($hdr);
+        $this->headers = $this->normalise($headers);
         $this->body = $body ?? new Stream();
         $this->protocol = $proto;
     }
@@ -33,13 +33,13 @@ abstract class Message
         return $this->protocol;
     }
 
-    public function withProtocolVersion($v): static
+    public function withProtocolVersion($version): static
     {
-        if ($v === $this->protocol) {
+        if ($version === $this->protocol) {
             return $this;
         }
         $c = clone $this;
-        $c->protocol = $v;
+        $c->protocol = $version;
         return $c;
     }
 
@@ -64,10 +64,10 @@ abstract class Message
         return implode(',', $this->getHeader($name));
     }
 
-    public function withHeader($n, $v): static
+    public function withHeader($name, $value): static
     {
-        $norm = $this->norm($n);
-        $val = is_array($v) ? array_values($v) : [(string)$v];
+        $norm = $this->norm($name);
+        $val = is_array($value) ? array_values($value) : [(string)$value];
         if (($this->headers[$norm] ?? null) === $val) {
             return $this;
         }
@@ -76,10 +76,10 @@ abstract class Message
         return $c;
     }
 
-    public function withAddedHeader($n, $v): static
+    public function withAddedHeader($name, $value): static
     {
-        $norm = $this->norm($n);
-        $val = is_array($v) ? $v : [(string)$v];
+        $norm = $this->norm($name);
+        $val = is_array($value) ? $value : [(string)$value];
         if (!$this->hasHeader($norm)) {
             return $this->withHeader($norm, $val);
         }
@@ -91,13 +91,13 @@ abstract class Message
         return $c;
     }
 
-    public function withoutHeader($n): static
+    public function withoutHeader($name): static
     {
-        if (!$this->hasHeader($n)) {
+        if (!$this->hasHeader($name)) {
             return $this;
         }
         $c = clone $this;
-        unset($c->headers[$this->norm($n)]);
+        unset($c->headers[$this->norm($name)]);
         return $c;
     }
 
@@ -107,13 +107,13 @@ abstract class Message
         return $this->body;
     }
 
-    public function withBody(Stream $b): static
+    public function withBody(Stream $body): static
     {
-        if ($b === $this->body) {
+        if ($body === $this->body) {
             return $this;
         }
         $c = clone $this;
-        $c->body = $b;
+        $c->body = $body;
         return $c;
     }
 

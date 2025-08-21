@@ -174,7 +174,7 @@ final class EndUser
         if ($h === '') {
             return [];
         }
-        preg_match_all('/for=(?:"?\[?)([A-F0-9:.]+)/i', $h, $m);
+        preg_match_all('/for="?\[?([A-F0-9:.]+)/i', $h, $m);
         return $m[1] ?? [];
     }
 

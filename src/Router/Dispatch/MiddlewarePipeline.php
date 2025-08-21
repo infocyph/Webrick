@@ -38,9 +38,9 @@ final class MiddlewarePipeline
 
     /**
      * @param list<Middleware> $stack
-     * @param FinalHandler     $last
-     * @param bool             $useInvoker  When true, call via Invoker and inject ($req, $next). When false, call manually.
-     * @param Invoker|null     $invoker     Optional custom invoker (defaults to Invoker::shared()).
+     * @param FinalHandler $last
+     * @param bool $useInvoker When true, call via Invoker and inject ($req, $next). When false, call manually.
+     * @param Invoker|null $invoker Optional custom invoker (defaults to Invoker::shared()).
      *
      * @throws InvalidArgumentException
      */
@@ -54,11 +54,10 @@ final class MiddlewarePipeline
             }
         }
 
-        $this->stack       = $stack;
+        $this->stack = $stack;
         $this->lastHandler = $last;
-        $this->useInvoker  = $useInvoker;
-        $this->invoker     = $invoker ?? Invoker::shared();
-
+        $this->useInvoker = $useInvoker;
+        $this->invoker = $invoker;
         $this->pipeline = $this->compose();
     }
 
@@ -88,12 +87,11 @@ final class MiddlewarePipeline
     private function wrapFinal(callable $handler): Closure
     {
         $useInvoker = $this->useInvoker;
-        $invoker    = $this->invoker;
+        $invoker = $this->invoker;
 
         return static function (Request $req) use ($handler, $useInvoker, $invoker): Response {
             $res = $useInvoker
-                // Allow both positional and named for widest DI compatibility.
-                ? $invoker->invoke($handler, [0 => $req, 'request' => $req])
+                ? $invoker->invoke($handler)
                 : $handler($req);
 
             return self::assertResponse($res, 'Final handler');
@@ -104,7 +102,7 @@ final class MiddlewarePipeline
     {
         /* ── Closure / "function" / "Class::method" / callable[] ─────── */
         static $memo = [];                          // per-process cache for "Cls::method"/function names
-        $invoker    = $this->invoker;
+        $invoker = $this->invoker;
         $useInvoker = $this->useInvoker;
 
         /**
@@ -130,8 +128,8 @@ final class MiddlewarePipeline
         return static function (Request $req) use ($invoker, $mw, $next, $tag, $useInvoker): Response {
             $res = $useInvoker
                 ? $invoker->invoke($mw, [
-                    0 => $req, 1 => $next,           // positional fallback
-                    'request' => $req, 'next' => $next, // named for autowiring
+                    'request' => $req,
+                    'next' => $next, // named for autowiring
                 ])
                 : $mw($req, $next);
 

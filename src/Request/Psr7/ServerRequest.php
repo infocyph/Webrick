@@ -29,7 +29,6 @@ class ServerRequest extends Message
     private array $server = [];
     private array $cookie = [];
     private array $query = [];
-    private array $files = [];
 
     /** @var null|array|object */
     private null|array|object $parsed;
@@ -76,7 +75,6 @@ class ServerRequest extends Message
         $this->uri = $uri instanceof Uri ? $uri : new Uri($uri);
         $this->server = $server;
         $this->parsed = $parsed;
-        $this->files = $files;
         $this->filesSpec = $files ?: $_FILES;
         $this->requestTarget = $requestTarget;
 

@@ -36,7 +36,6 @@ final class Dispatcher
         }
 
         $invoker = $this->invoker;
-
         $final = static function (Request $req) use ($route, $vars, $invoker): Response {
             $result = $invoker->invoke($route->getHandler(), $vars);
             return $result instanceof Response ? $result : Response::json($result);
@@ -84,6 +83,6 @@ final class Dispatcher
                 ),
             };
         }
-        return new MiddlewarePipeline($stack, $final);
+        return new MiddlewarePipeline($stack, $final, useInvoker: false, invoker: $this->invoker);
     }
 }
