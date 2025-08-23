@@ -169,7 +169,7 @@ $preGlobal = [
     TelemetryMiddleware::class,
     MaintenanceModeMiddleware::class,
     RequestLimitsMiddleware::class,
-//    ThrottleMiddleware::class,
+    ThrottleMiddleware::class,
     NegotiationMiddleware::class,
     CacheValidatorsMiddleware::class,
 ];

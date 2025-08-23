@@ -39,19 +39,17 @@ final readonly class ThrottleMiddleware
      * @param Closure(Request):bool|null $bypass if returns true, request is not throttled
      */
     public function __construct(
-        private int $max = 60,
-        private int $window = 60,
+        private int $max = 1,
+        private int $window = 1,
         ?CacheItemPoolInterface $pool = null,
         private bool $retryAsDate = false,
         private ?Closure $identifierResolver = null,
         private bool $emitStandardRateLimit = true,
         private string $scope = 'global',
-        private string $costAttribute = 'rate_cost',
+        private string $costAttribute = 'rate_cost.thm',
         private ?Closure $bypass = null,
     ) {
-        $this->pool = $pool ?? (extension_loaded('apcu')
-            ? Cache::apcu('throttle')
-            : Cache::file('throttle'));
+        $this->pool = $pool ?? Cache::local($_SERVER['DOCUMENT_ROOT'] . '.thm');
     }
 
     public function __invoke(Request $req, Closure $next): Response
