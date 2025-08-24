@@ -18,6 +18,6 @@ final class Utils
     /** Strong, short ETag: `"sha1-8-bytes"` from a string payload. */
     public static function generateEtag(string $payload): string
     {
-        return '"' . substr(sha1($payload, false), 0, 16) . '"';
+        return '"' . substr(hash('xxh3', $payload, false), 0, 16) . '"';
     }
 }

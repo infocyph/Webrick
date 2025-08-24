@@ -36,6 +36,7 @@ final readonly class DemoController
             'handler' => 'DemoController::hello',
             'hello' => $name,
             'request' => $request->all(),
+            'algos' => hash_algos(),
             'time' => \date(DATE_ATOM),
         ]);
     }

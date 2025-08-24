@@ -98,9 +98,10 @@ final readonly class ThrottleMiddleware
         $reset = $winStart + $this->window;
 
         // Hard-partition by window to avoid cross-window races
-        $key = 't.' . sha1($bucket . '|' . (string)$id . '|' . $winStart);
-
-        return [$key, $reset];
+        return [
+            't.' . hash('xxh3', $bucket . '|' . (string)$id . '|' . $winStart, false),
+            $reset
+        ];
     }
 
     /** @return array{hits:int, reset:int} */

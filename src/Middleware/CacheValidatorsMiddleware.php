@@ -55,48 +55,55 @@ final class CacheValidatorsMiddleware
 
     public function __invoke(Request $req, Closure $next): Response
     {
-        /* ── 1) Precondition evaluation (cheap, before controller) ───────── */
+        $method = strtoupper($req->getMethod());
+        $isGetHead = ($method === 'GET' || $method === 'HEAD');
+
+        /* 1) Precondition evaluation (cheap, before controller) */
         [$etag, $lm] = $this->resolveProvider()($req);
         $validator = new ConditionalValidator($etag, $lm);
         $result = $validator->evaluate($req);
 
         if ($result->state !== Outcome::PASS) {
-            // 304 / 412 with computed validator headers — controller won't run
-            return Response::empty($result->http, $result->headers);
+            // RFC 7232: For methods other than GET/HEAD, a matching If-None-Match yields 412
+            $status = (!$isGetHead && $result->http === 304) ? 412 : $result->http;
+            return Response::empty($status, $result->headers);
         }
 
-        // If a Range was supplied but isn’t fresh, drop it so downstream generates 200.
-        if ($req->hasHeader('Range') && !$validator->isRangeFresh($req)) {
+        // Range logic applies to GET (and HEAD) only
+        if ($isGetHead && $req->hasHeader('Range') && !$validator->isRangeFresh($req)) {
             $req = $req->withoutHeader('Range')->withAttribute('range_dropped', true);
         }
 
-        /* ── 2) Downstream ────────────────────────────────────────────────── */
+        /* 2) Downstream */
         $resp = $next($req);
 
-        /* ── 3) Ensure validators on final response ──────────────────────── */
-        foreach ($result->headers as $h => $v) {
-            if ($v !== null && !$resp->hasHeader($h)) {
-                $resp = $resp->withHeader($h, $v);
+        /* 3) Ensure validators on final response – for GET/HEAD only */
+        if ($isGetHead) {
+            foreach ($result->headers as $h => $v) {
+                if ($v !== null && !$resp->hasHeader($h)) {
+                    $resp = $resp->withHeader($h, $v);
+                }
             }
-        }
 
-        // Optionally auto-ETag when still missing
-        if (
-            $this->autoEtagWhenMissing
-            && !$resp->hasHeader('ETag')
-            && $this->isAutoEtagEligible($resp)
-        ) {
-            $qs = $this->includeQueryInEtag
-                ? Uri::normalizeQueryString($req->getUri()->getQuery())
-                : '';
+            // Optionally auto-ETag when still missing – GET/HEAD only
+            if (
+                $this->autoEtagWhenMissing
+                && !$resp->hasHeader('ETag')
+                && $this->isAutoEtagEligible($resp)
+            ) {
+                $qs = $this->includeQueryInEtag
+                    ? Uri::normalizeQueryString($req->getUri()->getQuery())
+                    : '';
 
-            if (($computed = Etag::fromStream($resp->getBody(), $qs)) !== null) {
-                $resp = $resp->withHeader('ETag', $computed);
+                if (($computed = Etag::fromStream($resp->getBody(), $qs)) !== null) {
+                    $resp = $resp->withHeader('ETag', $computed);
+                }
             }
         }
 
         return $resp;
     }
+
 
     /* ───────────────────────── helpers ───────────────────────── */
 
@@ -142,14 +149,14 @@ final class CacheValidatorsMiddleware
                     $size = @filesize($real) ?: 0;
                     $mtime = @filemtime($real) ?: $nowMtime;
                     $seed = $size . '|' . ($mtime ?? -1) . '|' . basename($real);
-                    $etag = '"' . substr(sha1($seed), 0, 16) . '"';
+                    $etag = '"' . substr(hash('xxh3', $seed, false), 0, 16) . '"';
                     return [$etag, $mtime];
                 }
             }
         }
 
         // 3) fallback: synthetic, per-path (still revalidates fine client-side)
-        $etag = '"' . substr(sha1('fallback|' . $path . '|' . (string)$nowMtime), 0, 16) . '"';
+        $etag = '"' . substr(hash('xxh3', 'fallback|' . $path . '|' . (string)$nowMtime, false), 0, 16) . '"';
         return [$etag, $nowMtime];
     }
 

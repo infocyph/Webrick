@@ -8,7 +8,7 @@ final class Signature
 {
     public static function make(string $payload, string $key): string
     {
-        return hash_hmac('sha256', $payload, $key);
+        return hash_hmac('sha3-256', $payload, $key);
     }
 
     public static function check(string $payload, string $sig, string $key): bool

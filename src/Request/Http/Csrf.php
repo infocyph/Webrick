@@ -37,7 +37,7 @@ final class Csrf
 
     /**
      * Return a masked token:
-     *   mask (64 hex) + hash_hmac('sha256', mask·token, '')
+     *   mask (64 hex) + hash_hmac('sha3-256', mask·token, '')
      * Length = 64 + 64 = 128 chars.
      */
     public static function maskedToken(): string
@@ -45,7 +45,7 @@ final class Csrf
         $mask = bin2hex(random_bytes(self::TOKEN_BYTES));
 
         // Empty key ⇒ pure SHA-256, but `hash_hmac` is constant-time.
-        return $mask . hash_hmac('sha256', $mask . self::token(), '');
+        return $mask . hash_hmac('sha3-256', $mask . self::token(), '');
     }
 
     /* -----------------------------------------------------------------
@@ -75,7 +75,7 @@ final class Csrf
 
             return \hash_equals(
                 $hashed,
-                \hash_hmac('sha256', $mask . $stored, ''),
+                \hash_hmac('sha3-256', $mask . $stored, ''),
             );
         }
 

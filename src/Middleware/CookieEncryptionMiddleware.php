@@ -255,8 +255,8 @@ final class CookieEncryptionMiddleware
             return null;
         }
 
-        // quick integrity: first 8 hex chars of sha256(base64-cipher)
-        $calc = substr(hash('sha256', $b64), 0, 8);
+        // quick integrity: first 8 hex chars of sha3-256(base64-cipher)
+        $calc = substr(hash('sha3-256', $b64), 0, 8);
         if (!hash_equals($chk, $calc)) {
             return null;
         }
@@ -414,7 +414,7 @@ final class CookieEncryptionMiddleware
     /** Build v1 cache blob: "C1:<8-hex-chk>:<b64cipher>" */
     private function encodeCacheBlobV1(string $b64Cipher): string
     {
-        $chk = substr(hash('sha256', $b64Cipher), 0, 8);
+        $chk = substr(hash('sha3-256', $b64Cipher), 0, 8);
         return self::STORE_BLOB_V1 . $chk . self::STORE_SEP . $b64Cipher;
     }
 

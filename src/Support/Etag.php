@@ -15,7 +15,7 @@ final class Etag
     public static function fromStream(
         Stream $stream,
         string $salt = '',
-        string $algo = 'sha1',
+        string $algo = 'xxh3',
         int $hexLen = 16,
         int $chunk = 131072, // 128 KiB
     ): ?string {

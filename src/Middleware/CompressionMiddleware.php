@@ -20,7 +20,7 @@ final readonly class CompressionMiddleware
     /** don’t bother below this many bytes */
     public function __construct(
         private int $minBytes = 1400,
-        private array $prefOrder = [['zstd', 'br', 'gzip']],
+        private array $prefOrder = ['zstd', 'br', 'gzip'],
         private string $etagMode = self::ETAG_WEAK_ON_ENCODE,
         private int $gzipLevel = 6,
         private int $brotliQuality = 4,
@@ -70,14 +70,12 @@ final readonly class CompressionMiddleware
             return $resp; // encoder failed – rare
         }
 
-        // Register Vary for negotiation (also auto-inferred by VaryAccumulator)
         VaryAccumulatorMiddleware::add($req, 'Accept-Encoding');
 
         $resp = $this->applyEncoded($resp, $enc, $alg);
-        $resp = $this->adjustValidators($resp, $enc, $alg);
-
-        return $resp;
+        return $this->adjustValidators($req, $resp, $enc, $alg);
     }
+
 
     /* ───────────────────────── decisions ───────────────────────── */
     private function shouldCompress(Request $req, Response $resp): bool
@@ -131,8 +129,14 @@ final readonly class CompressionMiddleware
         return $resp;
     }
 
-    private function adjustValidators(Response $resp, string $encodedBytes, string $alg): Response
+    private function adjustValidators(Request $req, Response $resp, string $encodedBytes, string $alg): Response
     {
+        // Only manipulate ETag for GET/HEAD responses
+        $m = strtoupper($req->getMethod());
+        if ($m !== 'GET' && $m !== 'HEAD') {
+            return $resp;
+        }
+
         $etagLine = $resp->getHeaderLine('ETag');
 
         switch ($this->etagMode) {
@@ -148,34 +152,30 @@ final readonly class CompressionMiddleware
                 {
                     [$base, $isWeak] = $this->parseEtag($etagLine);
 
-                    // No base tag at all → compute a real strong tag from the bytes we’re serving.
                     if ($base === '') {
                         return $resp->withSmartHeader('ETag', $this->strongFromBytes($encodedBytes));
                     }
 
-                    // If base is weak, **do not** upgrade; derive a WEAK tag keyed by base+alg+level.
                     if ($isWeak) {
                         $level = $this->encodedLevelToken($alg);
                         $derived = 'W/"' . substr(
-                            sha1($base . '|' . $alg . '|' . $level . '|' . $this->etagDeriveSalt),
+                            hash('xxh3', $base . '|' . $alg . '|' . $level . '|' . $this->etagDeriveSalt, false),
                             0,
                             16,
                         ) . '"';
                         return $resp->withSmartHeader('ETag', $derived);
                     }
 
-                    // Base is strong. Only safe to derive-strong when encoding is deterministic.
                     if ($this->isEncodingDeterministic($alg)) {
                         $level = $this->encodedLevelToken($alg);
                         $derived = '"' . substr(
-                            sha1($base . '|' . $alg . '|' . $level . '|' . $this->etagDeriveSalt),
+                            hash('xxh3', $base . '|' . $alg . '|' . $level . '|' . $this->etagDeriveSalt, false),
                             0,
                             16,
                         ) . '"';
                         return $resp->withSmartHeader('ETag', $derived);
                     }
 
-                    // Non-deterministic encoding (e.g., gzip MTIME) → recompute on-the-wire strong tag.
                     return $resp->withSmartHeader('ETag', $this->strongFromBytes($encodedBytes));
                 }
 
@@ -214,7 +214,7 @@ final readonly class CompressionMiddleware
 
     private function strongFromBytes(string $bytes): string
     {
-        return '"' . substr(sha1($bytes), 0, 16) . '"';  // strong, short, cache-friendly
+        return '"' . substr(hash('xxh3', $bytes, false), 0, 16) . '"';  // strong, short, cache-friendly
     }
 
     private function stripWeakQuotes(string $etagLine): string
