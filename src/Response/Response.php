@@ -14,6 +14,10 @@ use Infocyph\Webrick\Response\Headers\CacheControl;
 use Infocyph\Webrick\Response\Headers\ContentDisposition;
 use Infocyph\Webrick\Response\Internal\LazyJsonStream;
 use Infocyph\Webrick\Response\Internal\Utils;
+use Infocyph\Webrick\Router\Route\Collection;
+use Infocyph\Webrick\Router\Url\SignedUrlGenerator;
+use Infocyph\Webrick\Router\Url\TemporaryUrlGenerator;
+use Infocyph\Webrick\Router\Url\UrlGenerator;
 use JsonSerializable;
 use RuntimeException;
 
@@ -23,6 +27,10 @@ class Response
 
     private HeaderBag $headers;
     private BodyStream $body;
+    private static ?UrlGenerator $urlGen = null;
+    private static ?SignedUrlGenerator $signedGen = null;
+    private static ?TemporaryUrlGenerator $tempGen = null;
+    private static ?Collection $routesRef = null;
 
     /**
      * When non-null, the response is a live stream. The callable MUST return
@@ -70,7 +78,7 @@ class Response
 
         // Sensible streaming defaults (override as desired)
         $headers = [
-                'Cache-Control'     => $headers['Cache-Control']     ?? 'no-store',
+                'Cache-Control' => $headers['Cache-Control'] ?? 'no-store',
                 'X-Accel-Buffering' => $headers['X-Accel-Buffering'] ?? 'no', // helps with Nginx proxy buffering
             ] + $headers;
 
@@ -98,7 +106,7 @@ class Response
     private static function normalizeProducer(callable|iterable $producer): \Closure
     {
         if (is_iterable($producer)) {
-            return static fn () => $producer;
+            return static fn() => $producer;
         }
 
         // callable()
@@ -157,6 +165,100 @@ class Response
             ->withHeader('Cache-Control', 'no-store')
             ->withoutHeader('Content-Type')
             ->withoutHeader('Content-Length');
+    }
+
+    /**
+     * One-time binding done by Registrar’s constructor.
+     * No base URL here — generators build *relative* paths.
+     */
+    public static function bindUrlServices(
+        Collection $routes,
+        ?string $signKey = null,
+        ?int $defaultTtl = null,
+    ): void {
+        self::$routesRef = $routes;
+        self::$urlGen = new UrlGenerator('', $routes);
+
+        if ($signKey !== null && $signKey !== '') {
+            self::$signedGen = new SignedUrlGenerator('', $routes, $signKey);
+            if ($defaultTtl !== null) {
+                self::$tempGen = new TemporaryUrlGenerator('', $routes, $signKey, $defaultTtl);
+            }
+        }
+    }
+
+    /* ───────────────── URL helpers you call from handlers ───────────── */
+
+    public static function urlFor(
+        string $name,
+        array $params = [],
+        array $query = [],
+        bool $absolute = false,
+    ): string {
+        self::assertUrlBound();
+        $path = self::$urlGen->urlFor($name, $params, $query, false);
+        return $absolute ? self::withRouteDomain($name, $path) : $path;
+    }
+
+    public static function signedUrlFor(
+        string $name,
+        array $params = [],
+        array $query = [],
+        ?int $ttl = null,
+        bool $absolute = false,
+    ): string {
+        self::assertSignedBound();
+
+        // Build signed *relative* URL first
+        if ($ttl === null) {
+            // no TTL -> SignedUrlGenerator::signed with null TTL
+            $path = self::$signedGen->signed($name, $params, $query, null, false);
+        } else {
+            if ($ttl < 1) {
+                throw new \InvalidArgumentException('TTL must be >= 1');
+            }
+            $path = self::$signedGen->signed($name, $params, $query, $ttl, false);
+        }
+
+        return $absolute ? self::withRouteDomain($name, $path) : $path;
+    }
+
+    public static function temporaryUrlFor(
+        string $name,
+        array $params = [],
+        array $query = [],
+        bool $absolute = false,
+    ): string {
+        if (!self::$tempGen) {
+            throw new \LogicException('TemporaryUrlGenerator not bound (no default TTL provided).');
+        }
+        $path = self::$tempGen->temporary($name, $params, $query, null, false);
+        return $absolute ? self::withRouteDomain($name, $path) : $path;
+    }
+
+    /* ───────────────── private helpers ───────────────── */
+
+    private static function assertUrlBound(): void
+    {
+        if (!self::$urlGen || !self::$routesRef) {
+            throw new \LogicException('URL services not bound. Enable via Registrar constructor.');
+        }
+    }
+
+    private static function assertSignedBound(): void
+    {
+        if (!self::$signedGen || !self::$routesRef) {
+            throw new \LogicException('Signed URL service not bound. Provide $signKey to Registrar.');
+        }
+    }
+
+    /** Prefix with the route’s own domain (protocol-relative) when present. */
+    private static function withRouteDomain(string $name, string $path): string
+    {
+        $route = self::$routesRef->findByName($name);
+        $domain = $route?->getDomain();
+
+        return ($domain && $domain !== '*') ? ('//' . $domain . $path) : $path;
     }
 
     /**

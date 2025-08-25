@@ -24,7 +24,13 @@ final readonly class Registrar
         private Collection $routes,
         private GroupScope $scope = new GroupScope(),
         private bool $autoSlashRedirect = false,
+        private bool $exposeUrlServices = false,
+        private ?string $signKey = null,
+        private ?int $signedDefaultTtl = null,
     ) {
+        if ($this->exposeUrlServices) {
+            Response::bindUrlServices($this->routes, $this->signKey, $this->signedDefaultTtl);
+        }
     }
 
     /* -----------------------------------------------------------------
