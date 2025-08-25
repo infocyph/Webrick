@@ -133,7 +133,7 @@ $registrar->get(
         => Response::json(['hello' => $name]),
 );
 
-$registrar->get('/json', fn () => Response::json(['memory' => memory_get_usage(true)]))->withName('json');
+$registrar->get('/json', fn () => Response::json(['memory' => memory_get_usage(true)]), 'json');
 $registrar->get('/redirect', fn () => Response::redirect('/', 302));
 $registrar->get('/download', fn () => Response::attachment(__FILE__, 'index.php'));
 $registrar->get(
@@ -203,13 +203,11 @@ $registrar->resource('users', '/users', UsersController::class);
 
 /* ---- redirects using aliases ----------------------------------------- */
 $registrar->get('/to-json', function () use ($routes): Response {
-    // relative link to named route 'json'
     $url = new UrlGenerator('', $routes)->urlFor('json', [], [], false);
     return Response::redirect($url, 302);
 });
 
 $registrar->get('/to-user-42', function () use ($routes): Response {
-    // relative link to named resource route 'users.show'
     $gen = new UrlGenerator('', $routes);
     $url = $gen->urlFor('users.show', ['id' => 42], [], false);
     return Response::redirect($url, 302);
@@ -261,14 +259,14 @@ $kernel = RouterKernel::boot(
 );
 
 // B) FusedMatcher (single-file cache)
-// $kernel = RouterKernel::boot(
-//     $logger,
-//     compiler: $compiler,
-//     matcher:  Infocyph\Webrick\Router\Matching\FusedMatcher::make(),
-//     routeCache: __DIR__ . '/.route-cache/__routes.php',
-//     preGlobal: $preGlobal,
-//     postGlobal: $postGlobal,
-// );
+$kernel = RouterKernel::boot(
+    $logger,
+    compiler: $compiler,
+    matcher:  Infocyph\Webrick\Router\Matching\FusedMatcher::make(),
+    routeCache: __DIR__ . '/.route-cache/__routes.php',
+    preGlobal: $preGlobal,
+    postGlobal: $postGlobal,
+);
 
 /* --------------------------------------------------------------------------
  * 4.  Handle & emit

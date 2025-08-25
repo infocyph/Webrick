@@ -4,9 +4,8 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Interfaces;
 
-use Psr\Http\Server\RequestHandlerInterface;
-use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Message\ResponseInterface;
+use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Response\Response;
 use RuntimeException;
 
 /**
@@ -15,7 +14,7 @@ use RuntimeException;
  * Adding routes returns the freshly-built Route so
  * you can chain `.withName()` / `.withMiddleware()`.
  */
-interface RouterInterface extends RequestHandlerInterface
+interface RouterInterface
 {
     /* ---------- registration (generic) ---------- */
     public function addRoute(
@@ -40,7 +39,7 @@ interface RouterInterface extends RequestHandlerInterface
     public function options(string $path, callable $handler): RouteInterface;
 
     /* ---------- PSR-15 ---------- */
-    public function handle(ServerRequestInterface $request): ResponseInterface;
+    public function handle(Request $request): Response;
 
     /* ---------- URL generator --- */
     /**
