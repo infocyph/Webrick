@@ -94,12 +94,6 @@ final class CompiledRoute implements RouteInterface
 
     public function getHandler(): callable|array|string
     {
-//        if (\is_object($this->handler)) {
-//            $class = $this->handler::class;
-//            if ($class === 'Opis\\Closure\\Box' || \is_subclass_of($this->handler, 'Opis\\Closure\\Box')) {
-//                return $this->handler->get();
-//            }
-//        }
         return $this->handler;
     }
 
