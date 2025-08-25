@@ -18,6 +18,8 @@ final class CommandKernel
             fwrite(STDERR, "Unknown command: {$cmd}\n");
             return 1;
         }
-        return (int)($this->cmdMap[$cmd])(array_slice($argv, 2));
+        $fn = $this->cmdMap[$cmd];
+        $code = $fn(array_slice($argv, 2));
+        return (int)$code;
     }
 }

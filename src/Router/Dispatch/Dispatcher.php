@@ -22,8 +22,10 @@ final class Dispatcher
     /** @var array<int,MiddlewarePipeline> route-id ⇒ compiled pipeline */
     private array $pipelines = [];
 
-    public function __construct(private readonly Invoker $invoker)
-    {
+    public function __construct(
+        private readonly Invoker $invoker,
+        private readonly bool $useInvoker = true,
+    ) {
     }
 
     public function dispatch(
@@ -31,6 +33,8 @@ final class Dispatcher
         Request $request,
         array $vars,
     ): Response {
+        $request = $request->withAttribute('route_params', $vars);
+
         if (method_exists($route, 'getCorsPolicy') && $corsPolicy = $route->getCorsPolicy()) {
             $request = $request->withAttribute('cors_policy', $corsPolicy);
         }
@@ -83,6 +87,6 @@ final class Dispatcher
                 ),
             };
         }
-        return new MiddlewarePipeline($stack, $final, useInvoker: false, invoker: $this->invoker);
+        return new MiddlewarePipeline($stack, $final, invoker: $this->invoker, useInvoker: $this->useInvoker);
     }
 }

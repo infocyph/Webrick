@@ -30,28 +30,34 @@ final class RouterKernel
     /** @var Closure():list<CompiledRoute> */
     private Closure $compiler;
 
-    /** @var list<callable(Request, Closure(Request):Response):Response> */
-    private array $preGlobal = [];
-
-    /** @var list<callable(Request, Closure(Request):Response):Response> */
-    private array $postGlobal = [];
-
     private ErrorHandler $errorHandler;
+    private Invoker $invoker;
+    private Dispatcher $dispatcher;
+    /**
+     * @var callable[]
+     */
+    private array $preGlobal;
+    /**
+     * @var callable[]
+     */
+    private array $postGlobal;
 
     public function __construct(
-        private MatcherInterface $matcher,
-        private readonly Dispatcher $dispatcher,
-        Closure $compiler,
         private readonly LoggerInterface $log,
+        Closure $compiler,
+        private readonly MatcherInterface $matcher,
         array $preGlobal = [],
         array $postGlobal = [],
+        bool $invokerOnMiddleware = false,
         ?ErrorHandler $errorHandler = null,
     ) {
         $this->compiler = $compiler;
         $this->warm();
+        $this->invoker = Invoker::shared();
+        $this->dispatcher = new Dispatcher($this->invoker, $invokerOnMiddleware);
 
         // Accept objects, class-strings, or callables
-        $this->preGlobal  = $this->normalizeGlobalMiddleware($preGlobal);
+        $this->preGlobal = $this->normalizeGlobalMiddleware($preGlobal);
         $this->postGlobal = $this->normalizeGlobalMiddleware($postGlobal);
 
         // Hard-bind native error handler (always present)
@@ -61,7 +67,7 @@ final class RouterKernel
             capturePhpErrors: true,
             requestIdHeader: 'X-Request-Id',
             exceptionMap: [
-                RouteNotFoundException::class   => 404,
+                RouteNotFoundException::class => 404,
                 MethodNotAllowedException::class => 405,
             ],
         );
@@ -71,7 +77,7 @@ final class RouterKernel
 
     /**
      * @param string|null $routeCache Dir for UnifiedMatcher **or** file for MergedMatcher
-     * @param bool $useInvokerForRoute Call per-route stack via DI Invoker (true) or manually (false)
+     * @param bool $invokerOnMiddleware Call per-route stack via DI Invoker (true) or manually (false)
      */
     public static function boot(
         LoggerInterface $log,
@@ -80,22 +86,20 @@ final class RouterKernel
         ?string $routeCache = null,
         array $preGlobal = [],
         array $postGlobal = [],
-        bool $useInvokerForRoute = true,
+        bool $invokerOnMiddleware = false,
         ?ErrorHandler $errorHandler = null,
     ): self {
         if ($routeCache) {
             $matcher->enableCache($routeCache);
         }
 
-        $dispatcher = new Dispatcher(Invoker::shared(), $useInvokerForRoute);
-
         return new self(
-            $matcher,
-            $dispatcher,
-            $compiler,
             $log,
+            $compiler,
+            $matcher,
             $preGlobal,
             $postGlobal,
+            $invokerOnMiddleware,
             $errorHandler,
         );
     }
@@ -105,7 +109,7 @@ final class RouterKernel
     public function handle(Request $request): Response
     {
         // Bind Request for DI across pre/per-route/post rings
-        Invoker::shared()->getContainer()->definitions()
+        $this->invoker->getContainer()->definitions()
             ->bind(Request::class, $request);
 
         // Core: match → dispatch (let exceptions bubble to ErrorHandler)
@@ -115,7 +119,7 @@ final class RouterKernel
         $withPost = $this->composePipeline($this->postGlobal, $dispatchCore);
 
         // Wrap with pre-global middleware
-        $withPre  = $this->composePipeline($this->preGlobal, $withPost);
+        $withPre = $this->composePipeline($this->preGlobal, $withPost);
 
         // Native error boundary around the whole pipeline
         return $this->errorHandler->handle($request, $withPre);
@@ -135,9 +139,9 @@ final class RouterKernel
     private function matchRoute(Request $req): array
     {
         $method = strtoupper($req->getMethod());
-        $uri    = $req->getUri();
-        $host   = self::normaliseHost($uri->getHost());
-        $path   = $uri->getPath() ?: '/';
+        $uri = $req->getUri();
+        $host = self::normaliseHost($uri->getHost());
+        $path = $uri->getPath() ?: '/';
 
         return $this->matcher->match($method, $host, $path);
     }
@@ -242,7 +246,7 @@ final class RouterKernel
 
             // 3) Object that isn’t callable → error (pass a callable or class-string)
             throw new InvalidArgumentException(
-                sprintf('Unsupported middleware entry of type %s', gettype($mw))
+                sprintf('Unsupported middleware entry of type %s', gettype($mw)),
             );
         }
 
@@ -253,12 +257,11 @@ final class RouterKernel
      * Compose a middleware pipeline into a single callable(Request): Response.
      *
      * @param list<callable(Request, Closure(Request):Response):Response> $stack
-     * @param Closure(Request):Response $last
+     * @param Closure $next
      * @return Closure(Request):Response
      */
-    private function composePipeline(array $stack, Closure $last): Closure
+    private function composePipeline(array $stack, Closure $next): Closure
     {
-        $next = $last;
         for ($i = count($stack) - 1; $i >= 0; $i--) {
             $mw = $stack[$i];
             $next = static function (Request $req) use ($mw, $next): Response {

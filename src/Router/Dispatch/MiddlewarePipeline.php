@@ -39,12 +39,11 @@ final class MiddlewarePipeline
     /**
      * @param list<Middleware> $stack
      * @param FinalHandler $last
+     * @param Invoker $invoker Optional custom invoker.
      * @param bool $useInvoker When true, call via Invoker and inject ($req, $next). When false, call manually.
-     * @param Invoker|null $invoker Optional custom invoker (defaults to Invoker::shared()).
      *
-     * @throws InvalidArgumentException
      */
-    public function __construct(array $stack, callable $last, bool $useInvoker = true, ?Invoker $invoker = null)
+    public function __construct(array $stack, callable $last, Invoker $invoker, bool $useInvoker = true)
     {
         foreach ($stack as $mw) {
             if (!\is_callable($mw)) {

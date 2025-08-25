@@ -1,7 +1,7 @@
 <?php
 
 /*-------------------------------------------------------------------------*
- *  CompiledRoute – cache-friendly (PHP 8.4)                               *
+ *  CompiledRoute – cache-friendly (PHP 8.4) with callable constraints     *
  *-------------------------------------------------------------------------*/
 declare(strict_types=1);
 
@@ -13,7 +13,11 @@ use Infocyph\Webrick\Router\Constraint\Registry as ConstraintRegistry;
 use Infocyph\Webrick\Router\Definition\Attribute\Cors;
 
 /**
- * @psalm-type SegmentSpec = array{type:'lit',val:string}|array{type:'var',name:string,regex:string}
+ * @psalm-type SegmentSpec =
+ *   array{type:'lit',val:string}|
+ *   array{type:'var',name:string,regex:string}|
+ *   array{type:'var',name:string,call:callable-string}
+ *
  * @psalm-type MiddlewareList = list<class-string|object>
  */
 #[\AllowDynamicProperties(false)]
@@ -78,8 +82,6 @@ final class CompiledRoute implements RouteInterface
         return new self(...$data);
     }
 
-
-    // (unchanged – all interface methods retained verbatim)
     public function getMethod(): string
     {
         return $this->method;
@@ -192,6 +194,10 @@ final class CompiledRoute implements RouteInterface
     }
 
     /*────────────  path-pattern compilation  ───────────────────────*/
+
+    /**
+     * @return array{0:string,1:list<string>,2:bool,3:list<SegmentSpec>}
+     */
     private static function parsePath(string $path): array
     {
         return \str_contains($path, '{')
@@ -199,7 +205,58 @@ final class CompiledRoute implements RouteInterface
             : self::parseStaticPath($path);
     }
 
+    /**
+     * @return array{0:string,1:list<string>,2:false,3:list<SegmentSpec>}
+     */
     private static function parseStaticPath(string $path): array
+    {
+        $segments = self::explodeLiterals($path);
+
+        $pattern = '#\A' . ($path === '/' ? '/' : self::quoteIfNeeded($path)) . '\z#D';
+
+        return [$pattern, /*vars*/ [], /*dynamic*/ false, $segments];
+    }
+
+    /**
+     * @return array{0:string,1:list<string>,2:true,3:list<SegmentSpec>}
+     */
+    private static function parseDynamicPath(string $path): array
+    {
+        $rawSegs = self::explodeRawSegments($path);
+
+        $vars = [];
+        $segments = [];
+        $patternBuf = [];
+
+        foreach ($rawSegs as $raw) {
+            if ($raw === '') {
+                continue;
+            }
+
+            if (self::isPlaceholder($raw)) {
+                [$name, $constraint] = self::extractPlaceholder($raw);
+                $vars[] = $name;
+
+                [$segSpec, $pieceRegex] = self::buildVarSegment($name, $constraint);
+                $segments[] = $segSpec;
+                $patternBuf[] = $pieceRegex; // capture group
+                continue;
+            }
+
+            // literal
+            $segments[] = ['type' => 'lit', 'val' => $raw];
+            $patternBuf[] = \preg_quote($raw, '#');
+        }
+
+        $pattern = self::buildAnchoredPattern($patternBuf);
+
+        return [$pattern, $vars, /*dynamic*/ true, $segments];
+    }
+
+    /*──────────── small utilities & splits ────────────*/
+
+    /** @return list<SegmentSpec> */
+    private static function explodeLiterals(string $path): array
     {
         $segments = [];
         foreach (\explode('/', \trim($path, '/')) as $seg) {
@@ -207,51 +264,79 @@ final class CompiledRoute implements RouteInterface
                 $segments[] = ['type' => 'lit', 'val' => $seg];
             }
         }
+        return $segments;
+    }
 
+    /** @return list<string> */
+    private static function explodeRawSegments(string $path): array
+    {
+        return \explode('/', \trim($path, '/'));
+    }
+
+    private static function isPlaceholder(string $raw): bool
+    {
+        static $phRe = '/^\{([A-Za-z_]\w*)(?::([^}]+))?}$/';
+        return (bool)\preg_match($phRe, $raw);
+    }
+
+    /**
+     * @return array{0:non-empty-string,1:?non-empty-string}
+     */
+    private static function extractPlaceholder(string $raw): array
+    {
+        static $phRe = '/^\{([A-Za-z_]\w*)(?::([^}]+))?}$/';
+        \preg_match($phRe, $raw, $m);
+        /** @var non-empty-string $name */
+        $name = (string)($m[1] ?? '');
+        /** @var ?non-empty-string $constraint */
+        $constraint = isset($m[2]) && $m[2] !== '' ? (string)$m[2] : null;
+        return [$name, $constraint];
+    }
+
+    /**
+     * Build a variable segment spec + its piece regex for the route pattern.
+     *
+     * - If constraint is regex: use inner regex for both segment check and pattern.
+     * - If constraint is callable: store callable and keep pattern permissive `([^/]+)`.
+     *
+     * @param non-empty-string $name
+     * @param ?non-empty-string $constraint
+     * @return array{0:SegmentSpec,1:string} [segmentSpec, piecePattern]
+     */
+    private static function buildVarSegment(string $name, ?string $constraint): array
+    {
+        if ($constraint) {
+            $spec = ConstraintRegistry::getValidatorSpec($constraint);
+
+            if (isset($spec['regex'])) {
+                $inner = $spec['regex']; // inner body, no anchors
+                return [
+                    ['type' => 'var', 'name' => $name, 'regex' => "#\\A{$inner}\\z#D"],
+                    "({$inner})",
+                ];
+            }
+
+            /** @var callable-string $call */
+            $call = $spec['callable'];
+            return [
+                ['type' => 'var', 'name' => $name, 'call' => $call],
+                '([^/]+)',
+            ];
+        }
+
+        // No constraint → default “[ ^/ ]+”
         return [
-            '#\A' . ($path === '/' ? '/' : self::quoteIfNeeded($path)) . '\z#D',
-            /* vars    */ [],
-            /* dynamic */ false,
-            $segments,
+            ['type' => 'var', 'name' => $name, 'regex' => "#\\A[^/]+\\z#D"],
+            '([^/]+)',
         ];
     }
 
-    private static function parseDynamicPath(string $path): array
+    /**
+     * @param list<string> $patternBuf capture or literal piece patterns (no anchors)
+     */
+    private static function buildAnchoredPattern(array $patternBuf): string
     {
-        static $phRe = '/^\{([A-Za-z_]\w*)(?::([^}]+))?}$/';
-
-        $segments = [];
-        $vars = [];
-        $patternBuf = [];
-
-        foreach (\explode('/', \trim($path, '/')) as $raw) {
-            if ($raw === '') {
-                continue;
-            }
-
-            if (\preg_match($phRe, $raw, $m)) {
-                [$full, $name, $constraint] = $m + [null, null, null];
-
-                $body = $constraint
-                    ? ConstraintRegistry::buildPattern($constraint)
-                    : '[^/]+';
-
-                $segments[] = ['type' => 'var', 'name' => $name, 'regex' => "#\\A{$body}\\z#D"];
-                $vars[] = $name;
-                $patternBuf[] = "({$body})";
-                continue;
-            }
-
-            $segments[] = ['type' => 'lit', 'val' => $raw];
-            $patternBuf[] = \preg_quote($raw, '#');
-        }
-
-        return [
-            '#\A/' . \implode('/', $patternBuf) . '\z#D',
-            $vars,
-            /* dynamic */ true,
-            $segments,
-        ];
+        return '#\A/' . \implode('/', $patternBuf) . '\z#D';
     }
 
     private static function quoteIfNeeded(string $s): string

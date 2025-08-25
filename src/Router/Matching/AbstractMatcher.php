@@ -16,11 +16,11 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
 abstract class AbstractMatcher
 {
     /* shared node keys */
-    protected const K_STATIC = 'static';
-    protected const K_TRIE = 'trie';
+    protected const K_STATIC   = 'static';
+    protected const K_TRIE     = 'trie';
     protected const K_CHILDREN = 'children';
-    protected const K_PARAM = 'param';
-    protected const K_ROUTES = 'routes';
+    protected const K_PARAM    = 'param';   // ['name'=>..., 'regex'=>?string, 'call'=>?callable-string, 'node'=>array]
+    protected const K_ROUTES   = 'routes';
 
     /** Optional: verify shard/cache hash on load (dev/CI) */
     protected bool $verifyCacheOnLoad = false;
@@ -106,15 +106,31 @@ abstract class AbstractMatcher
         return $node[self::K_CHILDREN][$seg];
     }
 
+    /**
+     * Accepts var segment specs that may contain **regex** OR **call**.
+     * Ensures same-depth placeholders are identical (name + rule).
+     */
     protected function &trieParamChild(array &$node, array $spec): array
     {
+        $ruleKey = $this->paramRuleKey($spec); // 'regex' or 'call'
+
         if ($node[self::K_PARAM] !== null) {
-            if ($node[self::K_PARAM]['name'] !== $spec['name'] || $node[self::K_PARAM]['regex'] !== $spec['regex']) {
+            $cur = $node[self::K_PARAM];
+            if (
+                $cur['name'] !== $spec['name']
+                || ($cur[$ruleKey] ?? null) !== ($spec[$ruleKey] ?? null)
+            ) {
                 throw new \LogicException("Conflicting placeholders at same depth");
             }
             return $node[self::K_PARAM]['node'];
         }
-        $node[self::K_PARAM] = ['name' => $spec['name'], 'regex' => $spec['regex'], 'node' => $this->newNode()];
+
+        $node[self::K_PARAM] = [
+            'name'  => $spec['name'],
+            'regex' => $spec['regex'] ?? null,
+            'call'  => $spec['call']  ?? null,
+            'node'  => $this->newNode(),
+        ];
         return $node[self::K_PARAM]['node'];
     }
 
@@ -125,6 +141,7 @@ abstract class AbstractMatcher
             if ($seg['type'] === 'lit') {
                 $node = &$this->trieLiteralChild($node, $seg['val']);
             } else {
+                // var segment: may have 'regex' or 'call'
                 $node = &$this->trieParamChild($node, $seg);
             }
         }
@@ -164,13 +181,15 @@ abstract class AbstractMatcher
 
         $piece = $seg[$i];
 
+        // literal branch
         if (isset($node[self::K_CHILDREN][$piece]) &&
             $this->trieWalkNode($node[self::K_CHILDREN][$piece], $seg, $i + 1, $verb, $params, $allowedSet, $hit)) {
             return true;
         }
 
+        // param branch (regex OR callable)
         $p = $node[self::K_PARAM];
-        if ($p && \preg_match($p['regex'], $piece) === 1) {
+        if ($p && $this->pieceMatches($p, $piece)) {
             $params[$p['name']] = $piece;        // push
             $ok = $this->trieWalkNode($p['node'], $seg, $i + 1, $verb, $params, $allowedSet, $hit);
             unset($params[$p['name']]);          // pop
@@ -184,7 +203,38 @@ abstract class AbstractMatcher
 
     protected function isEmptyTrieNode(array $n): bool
     {
-        return ($n[self::K_CHILDREN] ?? []) === [] && ($n[self::K_PARAM] ?? null) === null && ($n[self::K_ROUTES] ?? []) === [];
+        return ($n[self::K_CHILDREN] ?? []) === []
+            && ($n[self::K_PARAM] ?? null) === null
+            && ($n[self::K_ROUTES] ?? []) === [];
+    }
+
+    /*──────────── helpers (rule + matching) ───────────*/
+
+    /** @param array{name:string,regex?:string,call?:string} $spec */
+    private function paramRuleKey(array $spec): string
+    {
+        if (isset($spec['regex'])) {
+            return 'regex';
+        }
+        if (isset($spec['call'])) {
+            return 'call';
+        }
+        throw new \LogicException('Param spec missing both regex and call.');
+    }
+
+    /** @param array{name:string,regex?:string|null,call?:string|null} $p */
+    private function pieceMatches(array $p, string $piece): bool
+    {
+        if (!empty($p['regex'])) {
+            return \preg_match($p['regex'], $piece) === 1;
+        }
+        if (!empty($p['call'])) {
+            /** @var callable-string $fn */
+            $fn = $p['call'];
+            // direct call (expects a string argument)
+            return (bool)\call_user_func($fn, $piece);
+        }
+        return false;
     }
 
     /*──────────── export helpers ───────────*/
