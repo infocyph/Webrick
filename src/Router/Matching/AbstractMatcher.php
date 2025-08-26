@@ -21,6 +21,9 @@ abstract class AbstractMatcher
     protected const K_CHILDREN = 'children';
     protected const K_PARAM    = 'param';   // ['name'=>..., 'regex'=>?string, 'call'=>?callable-string, 'node'=>array]
     protected const K_ROUTES   = 'routes';
+    protected const H_HASH = '_hash';
+    protected const H_DATA = '_data';
+    protected const H_TS = '_ts';
 
     /** Optional: verify shard/cache hash on load (dev/CI) */
     protected bool $verifyCacheOnLoad = false;

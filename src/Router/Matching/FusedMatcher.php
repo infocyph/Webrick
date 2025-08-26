@@ -9,10 +9,6 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
 
 final class FusedMatcher extends AbstractMatcher implements MatcherInterface
 {
-    /* cache blob keys */
-    private const H_HASH = '_hash';
-    private const H_DATA = '_data';
-
     /*──────────── state ────────────*/
     /** host-bucket data: [$host]['static'|'trie'] */
     private array $hosts = [];
@@ -196,6 +192,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
 
         $php = "<?php\nreturn [\n"
             . "    '" . self::H_HASH . "'  => " . \var_export($crc, true) . ",\n"
+            . "    '" . self::H_TS . "'  => " . \var_export(date(DATE_ATOM), true) . ",\n"
             . "    '" . self::H_DATA . "' => " . $this->exportArray($payload) . ",\n"
             . "];\n";
 

@@ -10,8 +10,6 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
 #[\AllowDynamicProperties(false)]
 final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
 {
-    private const H_HASH = '_hash';
-    private const H_DATA = '_data';
     private const SHARD_ROOT = '__root';
 
     /* Windows reserved base names for safety in filenames */
@@ -262,6 +260,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         $crc = \hash('xxh3', \json_encode($payload, \JSON_THROW_ON_ERROR));
         $php = "<?php\nreturn [\n"
             . "    '" . self::H_HASH . "' => " . \var_export($crc, true) . ",\n"
+            . "    '" . self::H_TS . "'  => " . \var_export(date(DATE_ATOM), true) . ",\n"
             . "    '" . self::H_DATA . "' => " . $this->exportArray($payload) . ",\n"
             . "];\n";
         $tmp = $file . '.' . \uniqid('', true) . '.tmp';

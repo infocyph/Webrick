@@ -26,8 +26,6 @@ use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Kernel\RouterKernel;
 use Infocyph\Webrick\Router\Route\Collection;
-use Infocyph\Webrick\Router\Url\UrlGenerator;
-
 // ← for alias-based redirects
 use Psr\Log\NullLogger;
 
@@ -134,20 +132,20 @@ $registrar->get('/', function (): HtmlResponse {
     return new HtmlResponse($html);
 });
 
-$registrar->get('/ping', fn() => 'pong');
+$registrar->get('/ping', fn () => 'pong');
 
 $registrar->get(
     '/hello/{name}',
-    fn(Request $r, $name)
+    fn (Request $r, $name)
         => Response::json(['hello' => $name]),
 );
 
-$registrar->get('/json', fn() => Response::json(['memory' => memory_get_usage(true)]), 'json');
-$registrar->get('/redirect', fn() => Response::redirect('/', 302));
-$registrar->get('/download', fn() => Response::attachment(__FILE__, 'index.php'));
+$registrar->get('/json', fn () => Response::json(['memory' => memory_get_usage(true)]), 'json');
+$registrar->get('/redirect', fn () => Response::redirect('/', 302));
+$registrar->get('/download', fn () => Response::attachment(__FILE__, 'index.php'));
 $registrar->get(
     '/color/{color:hex}',
-    fn(Request $r, $hex)
+    fn (Request $r, $hex)
         => Response::json(['you sent hex' => $hex]),
 );
 
@@ -201,7 +199,7 @@ $registrar->get('/json/slow', function (): Response {
     return Response::json(function () {
         return [
             'now' => time(),
-            'items' => array_map(fn($i) => ['n' => $i, 'v' => bin2hex(random_bytes(4))], range(1, 100)),
+            'items' => array_map(fn ($i) => ['n' => $i, 'v' => bin2hex(random_bytes(4))], range(1, 100)),
         ];
     });
 });
@@ -211,15 +209,21 @@ $registrar->get('/json/slow', function (): Response {
 $registrar->resource('users', '/users', UsersController::class);
 
 /* ---- redirects using aliases ----------------------------------------- */
-$registrar->get('/to-json', fn()
+$registrar->get(
+    '/to-json',
+    fn ()
     => Response::redirect(Response::urlFor('json'), 302),
 );
 
-$registrar->get('/to-user-42', fn()
+$registrar->get(
+    '/to-user-42',
+    fn ()
     => Response::redirect(Response::urlFor('users.show', ['id' => 42], absolute: true), 302),
 );
 
-$registrar->get('/signed-demo', fn()
+$registrar->get(
+    '/signed-demo',
+    fn ()
     => Response::json([
     'rel' => Response::signedUrlFor('users.show', ['id' => 42]),
     'abs' => Response::signedUrlFor('users.show', ['id' => 42], absolute: true),
@@ -230,7 +234,7 @@ $registrar->get('/signed-demo', fn()
 /* --------------------------------------------------------------------------
  * 2.  Compiler callback
  * ----------------------------------------------------------------------- */
-$compiler = static fn() => $registrar->compile()->all();
+$compiler = static fn () => $registrar->compile()->all();
 
 /* --------------------------------------------------------------------------
  * 3.  Boot the router kernel
@@ -246,7 +250,7 @@ $preGlobal = [
     TelemetryMiddleware::class,
     MaintenanceModeMiddleware::class,
     RequestLimitsMiddleware::class,
-//    ThrottleMiddleware::class,
+    ThrottleMiddleware::class,
     NegotiationMiddleware::class,
     CacheValidatorsMiddleware::class,
 ];
@@ -263,24 +267,24 @@ if ($dev) {
 }
 
 // A) ShardedMatcher (segment-dir cache)
-//$kernel = RouterKernel::boot(
-//    $logger,
-//    compiler: $compiler,
-//    matcher: Infocyph\Webrick\Router\Matching\ShardedMatcher::make(),
-//    routeCache: __DIR__ . '/.route-cache',
-//    preGlobal: $preGlobal,
-//    postGlobal: $postGlobal,
-//);
-
-// B) FusedMatcher (single-file cache)
 $kernel = RouterKernel::boot(
     $logger,
     compiler: $compiler,
-    matcher:  Infocyph\Webrick\Router\Matching\FusedMatcher::make(),
-    routeCache: __DIR__ . '/.route-cache/__routes.php',
+    matcher: Infocyph\Webrick\Router\Matching\ShardedMatcher::make(),
+    routeCache: __DIR__ . '/.route-cache',
     preGlobal: $preGlobal,
     postGlobal: $postGlobal,
 );
+
+// B) FusedMatcher (single-file cache)
+//$kernel = RouterKernel::boot(
+//    $logger,
+//    compiler: $compiler,
+//    matcher:  Infocyph\Webrick\Router\Matching\FusedMatcher::make(),
+//    routeCache: __DIR__ . '/.route-cache/__routes.php',
+//    preGlobal: $preGlobal,
+//    postGlobal: $postGlobal,
+//);
 
 /* --------------------------------------------------------------------------
  * 4.  Handle & emit
