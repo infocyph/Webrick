@@ -10,6 +10,7 @@ use Infocyph\Webrick\Request\Http\ContentNegotiator;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Response\Negotiation\LocaleNegotiator;
+use Infocyph\Webrick\Response\Negotiation\ContentTypeNegotiator;
 use Infocyph\Webrick\Router\Definition\Attribute\Produces;
 
 final readonly class NegotiationMiddleware
@@ -18,7 +19,7 @@ final readonly class NegotiationMiddleware
     /** @param string[] $charsets */
     /** @param string[] $locales ordered by server-side preference */
     public function __construct(
-        private array $produces = ['application/json', 'text/html'],
+        private array $produces = ['+json','application/json', 'text/html'],
         private array $charsets = ['utf-8'],
         private array $locales = ['en'],
         private string $localeFallback = 'en',
@@ -77,46 +78,40 @@ final readonly class NegotiationMiddleware
      */
     private function negotiateTypeAndCharset(Request $req, array $prod, array $char): array
     {
-        // Tiny fast-paths to avoid work:
-        $accept = $req->getHeaderLine('Accept');
-        $acceptCharset = $req->getHeaderLine('Accept-Charset');
-
-        // Build negotiator only if we need it
-        $neg = ($accept !== '' || $acceptCharset !== '')
-            ? new ContentNegotiator($req->headers())
-            : null;
-
-        // Type
-        $type = ($neg !== null)
-            ? $neg->preferred($prod)   // may be null
-            : ($prod[0] ?? null);
+        // ---------- Media type (delegate to your negotiator) ----------
+        // chooseFromRequest() returns first supported if Accept is empty/*/*, or null on mismatch.
+        $type = ContentTypeNegotiator::chooseFromRequest($req, $prod);
 
         if ($type === null) {
             // Register Vary before short-circuit 406 so accumulator can write it
             VaryAccumulatorMiddleware::add($req, 'Accept');
-            if ($acceptCharset !== '' && $this->charsetMattersForAny($prod)) {
+            if ($req->getHeaderLine('Accept-Charset') !== '' && $this->charsetMattersForAny($prod)) {
                 VaryAccumulatorMiddleware::add($req, 'Accept-Charset');
             }
 
             return [
                 '',
                 null,
+                // Response(statusCode, body, headers)
                 new Response(
-                    status: 406,
-                    headers: ['Content-Type' => 'text/plain; charset=utf-8'],
-                    body: new Stream('Not acceptable.')
+                    406,
+                    new Stream('Not acceptable.'),
+                    ['Content-Type' => 'text/plain; charset=utf-8'],
                 ),
             ];
         }
 
-        // Vary: Accept always (negotiation exists even if client didn't send Accept)
+        // We negotiated a type → always vary on Accept
         VaryAccumulatorMiddleware::add($req, 'Accept');
 
-        // Charset
+        // ---------- Charset (delegate to ContentNegotiator supportsCharset) ----------
         $cset = null;
-        if ($acceptCharset !== '' && $this->charsetMattersFor($type)) {
-            // Only check if header sent and type cares about charset
-            $cset = $this->pickCharset($neg ?? new ContentNegotiator($req->headers()), $char);
+        $acceptCharset = $req->getHeaderLine('Accept-Charset');
+        $typeLower = strtolower($type);
+
+        if ($acceptCharset !== '' && $this->charsetMattersFor($typeLower)) {
+            $neg = new ContentNegotiator($req->headers());
+            $cset = $this->pickCharset($neg, $char);
             if ($cset !== null) {
                 VaryAccumulatorMiddleware::add($req, 'Accept-Charset');
             }
@@ -166,7 +161,6 @@ final readonly class NegotiationMiddleware
             return $resp;
         }
 
-        // Compute base type once, case-insensitively
         $semicolonPos = strpos($existing, ';');
         $base = $semicolonPos === false ? $existing : substr($existing, 0, $semicolonPos);
         $baseLower = strtolower($base);
@@ -176,7 +170,6 @@ final readonly class NegotiationMiddleware
             && $this->charsetMattersFor($baseLower)
             && !$this->isJson($baseLower)
         ) {
-            // Preserve original spacing, just append param
             return $resp->withSmartHeader('Content-Type', rtrim($existing) . '; charset=' . $cset);
         }
 
@@ -187,9 +180,7 @@ final readonly class NegotiationMiddleware
 
     private function pickCharset(ContentNegotiator $neg, array $candidates): ?string
     {
-        // candidates are already ordered by server preference
         foreach ($candidates as $cs) {
-            // negotiator expects lowercase charsets
             if ($neg->supportsCharset(strtolower($cs))) {
                 return $cs;
             }
@@ -199,15 +190,12 @@ final readonly class NegotiationMiddleware
 
     private function composeContentType(string $type, ?string $charset): string
     {
-        // Avoid repeated lowercasing/contains checks
         $typeLower = strtolower($type);
         if ($this->isJson($typeLower)) {
             return $type; // never append for JSON; UTF-8 by spec
         }
-
-        // If controller already included params, trust them
         if (str_contains($type, ';')) {
-            return $type;
+            return $type; // controller already set params
         }
 
         $needsCs =
@@ -240,6 +228,6 @@ final readonly class NegotiationMiddleware
 
     private function isJson(string $typeLower): bool
     {
-        return str_starts_with($typeLower, 'application/json');
+        return str_starts_with($typeLower, 'application/json') || str_ends_with($typeLower, '+json');
     }
 }

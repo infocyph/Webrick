@@ -53,7 +53,7 @@ final class ContentNegotiator
     private function matches(string $want, string $have): bool
     {
         return $want[0] === '+'
-            ? str_ends_with($have, $want)                   // “+json”
+            ? str_ends_with($have, $want)
             : $this->mimeMatch($want, $have);
     }
 

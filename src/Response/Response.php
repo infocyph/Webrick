@@ -8,12 +8,14 @@ use Infocyph\InterMix\Remix\MacroMix;
 use Infocyph\Webrick\Constants\Status;
 use Infocyph\Webrick\Interfaces\BodyStream;
 use Infocyph\Webrick\Constants\MediaType;
+use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Request\Support\HeaderBag;
 use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Response\Headers\CacheControl;
 use Infocyph\Webrick\Response\Headers\ContentDisposition;
 use Infocyph\Webrick\Response\Internal\LazyJsonStream;
 use Infocyph\Webrick\Response\Internal\Utils;
+use Infocyph\Webrick\Response\Negotiation\ContentTypeNegotiator;
 use Infocyph\Webrick\Router\Route\Collection;
 use Infocyph\Webrick\Router\Url\SignedUrlGenerator;
 use Infocyph\Webrick\Router\Url\TemporaryUrlGenerator;
@@ -109,7 +111,7 @@ class Response
     private static function normalizeProducer(callable|iterable $producer): \Closure
     {
         if (is_iterable($producer)) {
-            return static fn () => $producer;
+            return static fn() => $producer;
         }
 
         // callable()
@@ -154,6 +156,40 @@ class Response
 
         $stream = new LazyJsonStream($data, $flags, $depth);
         return new self($status, $stream, $headers);
+    }
+
+    public static function auto(
+        Request $r,
+        callable|array|object|string|int|float|bool|null $data,
+        int $status = 200,
+        array $headers = [],
+        int $flags = JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE,
+        int $depth = 512,
+    ): self {
+        // Ask the request which of these it prefers (client Accept order wins).
+        // We include "+json" so "application/*+json" is recognized.
+        $want = ContentTypeNegotiator::chooseFromRequest($r, ['application/json', '+json', 'text/plain'])
+            ?? 'application/json';
+
+        // JSON path (includes "+json" like application/*+json)
+        if ($want === 'application/json' || str_ends_with($want, '+json')) {
+            return self::json($data, $status, $headers, $flags, $depth);
+        }
+
+        // Plain text path
+        if (is_string($data) || is_scalar($data) || $data === null) {
+            return self::plaintext((string) $data, $status, $headers);
+        }
+
+        // Complex payload but client prefers text: serialize to JSON string,
+        // serve as text/plain (readable + unambiguous).
+        $payload = $data instanceof \JsonSerializable ? $data->jsonSerialize() : $data;
+        $json = \json_encode($payload, $flags, $depth);
+        if ($json === false) {
+            throw new \RuntimeException('JSON encode error: ' . \json_last_error_msg());
+        }
+        $headers = ['Content-Type' => $headers['Content-Type'] ?? 'text/plain; charset=utf-8'] + $headers;
+        return new self($status, new Stream($json), $headers);
     }
 
     public static function redirect(string $uri, int $status = 302): self

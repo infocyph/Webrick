@@ -36,6 +36,7 @@ final readonly class DemoController
     {
         return Response::json([
             'handler' => 'DemoController::hello',
+            'prefers' => $request->prefers(),
             'hello' => $name,
             'request' => $request->all(),
             'algos' => hash_algos(),
@@ -123,6 +124,8 @@ $registrar->get('/', function (): HtmlResponse {
         '/to-json' => 'Redirect to route alias: json',
         '/to-user-42' => 'Redirect to route alias: users.show (id=42)',
         '/signed-demo' => 'Signed Demo',
+        '/auto-demo' => 'Auto Demo',
+        '/xml-demo' => 'XML Demo',
     ];
 
     $html = "<h1>Webrick demo</h1><ul>";
@@ -260,6 +263,15 @@ $registrar->get('/secure/{id:int}', function (\Infocyph\Webrick\Request\Request 
         ),
     ],
 ]);
+$registrar->get('/auto-demo', function (\Infocyph\Webrick\Request\Request $r) {
+    $data = ['now' => time(), 'msg' => 'hello'];
+    return \Infocyph\Webrick\Response\Response::auto($r, $data);
+});
+
+$registrar->get('/auto-hello', function (\Infocyph\Webrick\Request\Request $r) {
+    return \Infocyph\Webrick\Response\Response::auto($r, 'Hello world!');
+});
+
 
 /* --------------------------------------------------------------------------
  * 2.  Compiler callback
