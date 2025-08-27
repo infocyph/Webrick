@@ -42,8 +42,7 @@ final readonly class Registrar
         array|string|callable $handler,
         string|array|null $nameOrOpts = null,
     ): RouteInterface {
-        [$name, $extraMw] = $this->normalizeNameAndMiddleware($nameOrOpts);
-        return $this->add('GET', $path, $handler, $name, $extraMw);
+        return $this->add('GET', $path, $handler, $nameOrOpts);
     }
 
     public function post(
@@ -51,8 +50,7 @@ final readonly class Registrar
         array|string|callable $handler,
         string|array|null $nameOrOpts = null,
     ): RouteInterface {
-        [$name, $extraMw] = $this->normalizeNameAndMiddleware($nameOrOpts);
-        return $this->add('POST', $path, $handler, $name, $extraMw);
+        return $this->add('POST', $path, $handler, $nameOrOpts);
     }
 
     public function put(
@@ -60,8 +58,7 @@ final readonly class Registrar
         array|string|callable $handler,
         string|array|null $nameOrOpts = null,
     ): RouteInterface {
-        [$name, $extraMw] = $this->normalizeNameAndMiddleware($nameOrOpts);
-        return $this->add('PUT', $path, $handler, $name, $extraMw);
+        return $this->add('PUT', $path, $handler, $nameOrOpts);
     }
 
     public function patch(
@@ -69,8 +66,7 @@ final readonly class Registrar
         array|string|callable $handler,
         string|array|null $nameOrOpts = null,
     ): RouteInterface {
-        [$name, $extraMw] = $this->normalizeNameAndMiddleware($nameOrOpts);
-        return $this->add('PATCH', $path, $handler, $name, $extraMw);
+        return $this->add('PATCH', $path, $handler, $nameOrOpts);
     }
 
     public function delete(
@@ -78,8 +74,7 @@ final readonly class Registrar
         array|string|callable $handler,
         string|array|null $nameOrOpts = null,
     ): RouteInterface {
-        [$name, $extraMw] = $this->normalizeNameAndMiddleware($nameOrOpts);
-        return $this->add('DELETE', $path, $handler, $name, $extraMw);
+        return $this->add('DELETE', $path, $handler, $nameOrOpts);
     }
 
     public function head(
@@ -87,8 +82,7 @@ final readonly class Registrar
         array|string|callable $handler,
         string|array|null $nameOrOpts = null,
     ): RouteInterface {
-        [$name, $extraMw] = $this->normalizeNameAndMiddleware($nameOrOpts);
-        return $this->add('HEAD', $path, $handler, $name, $extraMw);
+        return $this->add('HEAD', $path, $handler, $nameOrOpts);
     }
 
     public function options(
@@ -96,8 +90,7 @@ final readonly class Registrar
         array|string|callable $handler,
         string|array|null $nameOrOpts = null,
     ): RouteInterface {
-        [$name, $extraMw] = $this->normalizeNameAndMiddleware($nameOrOpts);
-        return $this->add('OPTIONS', $path, $handler, $name, $extraMw);
+        return $this->add('OPTIONS', $path, $handler, $nameOrOpts);
     }
 
     /* -----------------------------------------------------------------
@@ -292,7 +285,7 @@ final readonly class Registrar
      * @param string|array|null $nameOrOpts string=name, array=['name'|'as'=>..., 'middleware'=>[...]]
      * @return array{0:?string,1:array}      [name, extraMiddleware]
      */
-    private function normalizeNameAndMiddleware(string|array|null $nameOrOpts): array
+    private function normalizeOptions(string|array|null $nameOrOpts): array
     {
         if ($nameOrOpts === null) {
             return [null, []];
@@ -311,19 +304,11 @@ final readonly class Registrar
         return [$name, $mw];
     }
 
-    /**
-     * @param string $verb
-     * @param string $path
-     * @param array|string|callable $handler
-     * @param string|null $name
-     * @param array $extraMw
-     */
     private function add(
         string $verb,
         string $path,
         array|string|callable $handler,
-        ?string $name = null,
-        array $extraMw = [],
+        string|array|null $nameOrOpts = null,
     ): RouteInterface {
         // 1) Compute full path with scope prefix
         $fullPrefix = ltrim($this->scope->getPrefix(), '/');
@@ -331,6 +316,8 @@ final readonly class Registrar
 
         // 2) Instantiate the Route DTO
         $route = new Route($verb, $fullPath, $handler);
+
+        [$name, $extraMw] = $this->normalizeOptions($nameOrOpts);
 
         // 2.1) Per-call name first (group name prefix will prepend it later)
         if ($name !== null && $name !== '') {

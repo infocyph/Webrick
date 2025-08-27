@@ -197,7 +197,7 @@ $registrar->get('/xml', function (): Response {
 });
 
 $registrar->get('/status/{code}', function (Request $r, $code): Response {
-    return Response::plaintext("Status: {$code}", $code);
+    return Response::plaintext("Status: $code", (int)$code);
 });
 
 $registrar->get('/json/slow', function (): Response {
@@ -241,7 +241,7 @@ $registrar->get('/make-signed/{id:int}', function ($id) {
         'secure.show',         // name below
         ['id' => $id],
         ['dl' => 1],           // any extra query you want included in the signature
-        false                  // relative (recommended)
+        false,                  // relative (recommended)
     );
     return \Infocyph\Webrick\Response\Response::redirect($signed, 302);
 }, 'make.signed');
@@ -249,9 +249,9 @@ $registrar->get('/make-signed/{id:int}', function ($id) {
 // 2) Protected endpoint (verified by the middleware above)
 $registrar->get('/secure/{id:int}', function (\Infocyph\Webrick\Request\Request $r, $id) {
     return \Infocyph\Webrick\Response\Response::json([
-        'ok'   => true,
-        'id'   => $id,
-        'qs'   => $r->getQueryParams(),
+        'ok' => true,
+        'id' => $id,
+        'qs' => $r->getQueryParams(),
         'time' => \date(DATE_ATOM),
     ]);
 }, [
@@ -313,7 +313,7 @@ $kernel = RouterKernel::boot(
     $logger,
     compiler: $compiler,
     matcher: Infocyph\Webrick\Router\Matching\ShardedMatcher::make(),
-    //    routeCache: __DIR__ . '/.route-cache',
+    routeCache: __DIR__ . '/.route-cache',
     preGlobal: $preGlobal,
     postGlobal: $postGlobal,
 );
@@ -333,5 +333,5 @@ $kernel = RouterKernel::boot(
  * ----------------------------------------------------------------------- */
 $request = Request::fromGlobals();
 $response = $kernel->handle($request);
-
+// ToDo: Versioning via Accept header (using json vendor: apply using group)
 new AutoEmitter()->emit($response);
