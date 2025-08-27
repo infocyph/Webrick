@@ -65,8 +65,11 @@ class Response
     /**
      * Create a live streaming response.
      *
-     * @param callable(): (iterable<string>|string)|iterable<string> $producer
+     * @param callable|iterable $producer
      *        Callable returning an iterable of chunks, or a single string; OR an iterable directly.
+     * @param int $status
+     * @param array $headers
+     * @return Response
      */
     public static function stream(
         callable|iterable $producer,
@@ -106,7 +109,7 @@ class Response
     private static function normalizeProducer(callable|iterable $producer): \Closure
     {
         if (is_iterable($producer)) {
-            return static fn() => $producer;
+            return static fn () => $producer;
         }
 
         // callable()

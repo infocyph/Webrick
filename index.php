@@ -19,6 +19,7 @@ use Infocyph\Webrick\Middleware\ResponseLinterMiddleware;
 use Infocyph\Webrick\Middleware\TelemetryMiddleware;
 use Infocyph\Webrick\Middleware\ThrottleMiddleware;
 use Infocyph\Webrick\Middleware\VaryAccumulatorMiddleware;
+use Infocyph\Webrick\Middleware\VerifySignedUrlMiddleware;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Emitter\AutoEmitter;
 use Infocyph\Webrick\Response\Payloads\HtmlResponse;
@@ -84,12 +85,13 @@ final readonly class UsersController
 /* --------------------------------------------------------------------------
  * 1.  Build the (runtime) route table
  * ----------------------------------------------------------------------- */
+$signUrlSecret = 'hog';
 $routes = new Collection();
 $registrar = new Registrar(
     routes: $routes,
     autoSlashRedirect: false,
     exposeUrlServices: true,
-    signKey: 'hog',    // optional
+    signKey: $signUrlSecret,
     signedDefaultTtl: 900,                      // optional
 );
 
@@ -212,24 +214,52 @@ $registrar->resource('users', '/users', UsersController::class);
 $registrar->get(
     '/to-json',
     fn ()
-    => Response::redirect(Response::urlFor('json'), 302),
+        => Response::redirect(Response::urlFor('json'), 302),
 );
 
 $registrar->get(
     '/to-user-42',
     fn ()
-    => Response::redirect(Response::urlFor('users.show', ['id' => 42], absolute: true), 302),
+        => Response::redirect(Response::urlFor('users.show', ['id' => 42], absolute: true), 302),
 );
 
 $registrar->get(
     '/signed-demo',
     fn ()
-    => Response::json([
-    'rel' => Response::signedUrlFor('users.show', ['id' => 42]),
-    'abs' => Response::signedUrlFor('users.show', ['id' => 42], absolute: true),
-]),
+        => Response::json([
+        'rel' => Response::signedUrlFor('users.show', ['id' => 42]),
+        'abs' => Response::signedUrlFor('users.show', ['id' => 42], absolute: true),
+    ]),
 );
 
+// 1) Generate a signed URL (relative) and redirect to it
+$registrar->get('/make-signed/{id:int}', function ($id) {
+    $signed = \Infocyph\Webrick\Response\Response::temporaryUrlFor(
+        'secure.show',         // name below
+        ['id' => $id],
+        ['dl' => 1],           // any extra query you want included in the signature
+        false                  // relative (recommended)
+    );
+    return \Infocyph\Webrick\Response\Response::redirect($signed, 302);
+}, 'make.signed');
+
+// 2) Protected endpoint (verified by the middleware above)
+$registrar->get('/secure/{id:int}', function (\Infocyph\Webrick\Request\Request $r, $id) {
+    return \Infocyph\Webrick\Response\Response::json([
+        'ok'   => true,
+        'id'   => $id,
+        'qs'   => $r->getQueryParams(),
+        'time' => \date(DATE_ATOM),
+    ]);
+}, [
+    'as' => 'secure.show',
+    'middleware' => [
+        new VerifySignedUrlMiddleware(
+            $signUrlSecret,
+            leeway: 5,
+        ),
+    ],
+]);
 
 /* --------------------------------------------------------------------------
  * 2.  Compiler callback
@@ -250,7 +280,7 @@ $preGlobal = [
     TelemetryMiddleware::class,
     MaintenanceModeMiddleware::class,
     RequestLimitsMiddleware::class,
-    ThrottleMiddleware::class,
+//    ThrottleMiddleware::class,
     NegotiationMiddleware::class,
     CacheValidatorsMiddleware::class,
 ];
@@ -271,7 +301,7 @@ $kernel = RouterKernel::boot(
     $logger,
     compiler: $compiler,
     matcher: Infocyph\Webrick\Router\Matching\ShardedMatcher::make(),
-    routeCache: __DIR__ . '/.route-cache',
+    //    routeCache: __DIR__ . '/.route-cache',
     preGlobal: $preGlobal,
     postGlobal: $postGlobal,
 );

@@ -150,13 +150,8 @@ final class RouterKernel
 
     private function warm(): void
     {
-        $canBootFromCache = \method_exists($this->matcher, 'canBootFromCache')
-            && (bool)$this->matcher->canBootFromCache();
-
-        if ($canBootFromCache) {
-            if (\method_exists($this->matcher, 'finalize')) {
-                $this->matcher->finalize(); // harmless no-op if already final
-            }
+        if ($this->matcher->canBootFromCache()) {
+            $this->matcher->finalize();
             $this->log->info('[router] route table ready (hot cache)', [
                 'count' => null,
                 'matcher' => $this->matcher::class,
@@ -175,9 +170,7 @@ final class RouterKernel
             $this->matcher->add($r);
         }
 
-        if (\method_exists($this->matcher, 'finalize')) {
-            $this->matcher->finalize();
-        }
+        $this->matcher->finalize();
 
         $this->log->info('[router] route table ready', [
             'count' => count($routes),

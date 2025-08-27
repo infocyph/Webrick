@@ -52,4 +52,24 @@ interface MatcherInterface
      * @param string $cacheLocation Directory path for cache storage.
      */
     public function enableCache(string $cacheLocation): self;
+
+    /**
+     * True when the matcher can skip compilation and use an existing cache.
+     *
+     * This method is used by the RouterKernel to determine whether the
+     * matcher can load its compiled routes from a cache, or if it must
+     * recompile the routes from scratch.
+     *
+     * @return bool True if the matcher can boot from cache, false otherwise.
+     */
+    public function canBootFromCache(): bool;
+
+    /**
+     * Finalize the matcher after all routes are added.
+     *
+     * Some matchers may need to perform additional work after all routes
+     * have been added. This step is optional and should be used sparingly.
+     * Implementations should be idempotent and safe to call multiple times.
+     */
+    public function finalize(): void;
 }
