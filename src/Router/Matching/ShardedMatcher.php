@@ -67,7 +67,9 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         return new self();
     }
 
-    private function __construct() {}
+    private function __construct()
+    {
+    }
 
     public function enableCache(string $cacheLocation): self
     {
@@ -391,9 +393,9 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     private function buildDevGroupOnce(string $hostKey, string $bucket): ?array
     {
         if (isset($this->memGroups[$hostKey][$bucket]) || \array_key_exists(
-                $bucket,
-                $this->memGroups[$hostKey] ?? [],
-            )) {
+            $bucket,
+            $this->memGroups[$hostKey] ?? [],
+        )) {
             return $this->memGroups[$hostKey][$bucket];
         }
 
