@@ -34,7 +34,8 @@ final readonly class Registrar
     }
 
     /* -----------------------------------------------------------------
-     *  HTTP verb helpers (3rd arg: string name OR ['name'|'as'=>..,'middleware'=>[..]])
+     *  HTTP verb helpers (3rd arg: string name OR
+     *                     ['name'|'as'=>..,'aliases'=>[..],'middleware'=>[..]])
      * ----------------------------------------------------------------*/
 
     public function get(
@@ -109,7 +110,10 @@ final readonly class Registrar
 
             $path = rtrim($prefix, '/') . $suffix;
             $routeName = $nameable ? ($names[$key] ?? "$name.$key") : null;
-            $nameOrOpt = $this->routeOptionsArg($routeName, $mwAll);
+
+            $nameOrOpt = $routeName === null
+                ? ($mwAll !== [] ? ['middleware' => $mwAll] : null)
+                : ['as' => $routeName, 'middleware' => $mwAll];
 
             $method = strtolower($http);
             $this->{$method}($path, [$ctrl, $action], $nameOrOpt);
@@ -166,21 +170,6 @@ final readonly class Registrar
         return true;
     }
 
-    /** Build the 3rd verb-arg: string name | ['as'=>..,'middleware'=>[..]] | null */
-    private function routeOptionsArg(?string $name, array $mwAll): string|array|null
-    {
-        if ($name !== null && $mwAll !== []) {
-            return ['as' => $name, 'middleware' => $mwAll];
-        }
-        if ($name !== null) {
-            return $name;
-        }
-        if ($mwAll !== []) {
-            return ['middleware' => $mwAll];
-        }
-        return null;
-    }
-
     /* -----------------------------------------------------------------
      *  Grouping (split normalization from registration)
      * ----------------------------------------------------------------*/
@@ -215,7 +204,14 @@ final readonly class Registrar
             ->withNamePrefix(is_string($namePrefix) ? $namePrefix : '');
 
         // Delegate into nested Registrar
-        $child = new self($this->routes, $childScope);
+        $child = new self(
+            $this->routes,
+            $childScope,
+            $this->autoSlashRedirect, // preserve flag inside groups
+            false,                    // do NOT re-bind URL services in children
+            $this->signKey,
+            $this->signedDefaultTtl,
+        );
         $callback($child);
     }
 
@@ -282,26 +278,34 @@ final readonly class Registrar
      * ----------------------------------------------------------------*/
 
     /**
-     * @param string|array|null $nameOrOpts string=name, array=['name'|'as'=>..., 'middleware'=>[...]]
-     * @return array{0:?string,1:array}      [name, extraMiddleware]
+     * @param string|array|null $nameOrOpts
+     *   string => primary name
+     *   array  => ['name'|'as'=>string, 'aliases'|'alias'=>string|string[], 'middleware'=>string[]]
+     *
+     * @return array{0:?string,1:array,2:array} [name, extraMiddleware, aliases]
      */
     private function normalizeOptions(string|array|null $nameOrOpts): array
     {
         if ($nameOrOpts === null) {
-            return [null, []];
+            return [null, [], []];
         }
 
         if (is_string($nameOrOpts)) {
-            return [$nameOrOpts, []];
+            return [$nameOrOpts, [], []];
         }
 
         $name = $nameOrOpts['name'] ?? $nameOrOpts['as'] ?? null;
+
         $mw = $nameOrOpts['middleware'] ?? [];
         if (!is_array($mw)) {
             $mw = [];
         }
 
-        return [$name, $mw];
+        $aliasesRaw = $nameOrOpts['aliases'] ?? ($nameOrOpts['alias'] ?? []);
+        $aliases = is_array($aliasesRaw) ? $aliasesRaw : [$aliasesRaw];
+        $aliases = array_values(array_filter(array_map('strval', $aliases), static fn ($s) => $s !== ''));
+
+        return [$name, $mw, $aliases];
     }
 
     private function add(
@@ -317,7 +321,7 @@ final readonly class Registrar
         // 2) Instantiate the Route DTO
         $route = new Route($verb, $fullPath, $handler);
 
-        [$name, $extraMw] = $this->normalizeOptions($nameOrOpts);
+        [$name, $extraMw, $aliases] = $this->normalizeOptions($nameOrOpts);
 
         // 2.1) Per-call name first (group name prefix will prepend it later)
         if ($name !== null && $name !== '') {
@@ -341,10 +345,24 @@ final readonly class Registrar
         if ($namePrefix = $this->scope->getNamePrefix()) {
             $baseName = $route->getName() ?? '';
             $route = $route->withName($namePrefix . $baseName);
+
+            // Also prefix any provided aliases
+            if ($aliases !== []) {
+                $aliases = array_map(
+                    static fn (string $a) => $namePrefix . $a,
+                    $aliases,
+                );
+            }
         }
 
         // 4) Register in collection
         $this->routes->add($route);
+
+        // 4.1) Register aliases in the collection (optional fast lookups)
+        foreach ($aliases as $alias) {
+            // Assumes Collection::addAlias(RouteInterface $route, string $alias): void
+            $this->routes->addAlias($route, $alias);
+        }
 
         // 5) Optional auto “slash variant” redirect
         if ($this->autoSlashRedirect && $verb === 'GET' && !str_contains($fullPath, '{')) {

@@ -12,6 +12,9 @@ class UrlGenerator
     private string $baseUri;
     private Collection $routes;
 
+    /**
+     * @param string $baseUri Typically "", since domains are applied elsewhere.
+     */
     public function __construct(string $baseUri, Collection $routes)
     {
         // Strip any trailing slash so we can always do "$baseUri . '/' . ltrim(path)"
@@ -20,31 +23,29 @@ class UrlGenerator
     }
 
     /* -----------------------------------------------------------------
-     *  Public API
+     *  Public API  (defaults to RELATIVE)
      * ----------------------------------------------------------------*/
 
     /**
      * Build a URL for a **named route**.
      *
      * @param non-empty-string $name
-     * @param array<string,mixed> $params Placeholder values
-     * @param array<string,mixed> $query Query parameters
+     * @param array<string,scalar|null> $params Placeholder values
+     * @param array<string,scalar|array|null> $query Query parameters
      * @param bool $absolute Prepend baseUri?
      */
     public function urlFor(
         string $name,
         array $params = [],
         array $query = [],
-        bool $absolute = true,
+        bool $absolute = false,
     ): string {
         $route = $this->routes->findByName($name);
-
         if ($route === null) {
             throw new InvalidArgumentException("Route '{$name}' not found.");
         }
 
         $path = $this->substitute($route->getPath(), $params);
-
         return $this->build($path, $query, $absolute);
     }
 
@@ -54,12 +55,11 @@ class UrlGenerator
      * @param non-empty-string $path Leading slash optional
      * @param array<string,scalar|array|null> $query
      * @param bool $absolute
-     * @return string
      */
     public function to(
         string $path,
         array $query = [],
-        bool $absolute = true,
+        bool $absolute = false,
     ): string {
         return $this->build($path, $query, $absolute);
     }
@@ -68,24 +68,22 @@ class UrlGenerator
      * Build a URL by **handler reference**.
      *
      * @param callable|string $handler Class::method or callable name
-     * @param array<string,mixed> $params
-     * @param array<string,mixed> $query
+     * @param array<string,scalar|null> $params
+     * @param array<string,scalar|array|null> $query
      * @param bool $absolute
      */
     public function action(
         callable|string $handler,
         array $params = [],
         array $query = [],
-        bool $absolute = true,
+        bool $absolute = false,
     ): string {
         $route = $this->routes->findByHandler($handler);
-
         if ($route === null) {
             throw new InvalidArgumentException('Route for given handler not found.');
         }
 
         $path = $this->substitute($route->getPath(), $params);
-
         return $this->build($path, $query, $absolute);
     }
 
@@ -97,9 +95,8 @@ class UrlGenerator
      * Replace `{name}` or `{name:type}` in the template with URL-encoded scalars.
      *
      * @param string $template
-     * @param array<string,mixed> $params
+     * @param array<string,scalar|null> $params
      * @return string
-     * @throws InvalidArgumentException
      */
     private function substitute(string $template, array $params): string
     {
@@ -146,15 +143,15 @@ class UrlGenerator
      * Join path + query and optionally prepend baseUri.
      *
      * @param string $path
-     * @param array<string,mixed> $query
+     * @param array<string,scalar|array|null> $query
      * @param bool $absolute
      */
     private function build(string $path, array $query, bool $absolute): string
     {
-        // ★ If the path exists verbatim in the route table, trust it
+        // If the path exists verbatim in the route table, trust it.
         if ($this->routes->hasPath($path)) {
             $uri = $absolute
-                ? $this->baseUri . $path                      // baseUri already sans trailing “/”
+                ? $this->baseUri . $path
                 : $path;
         } else {
             $uri = ($absolute ? $this->baseUri : '') . '/' . ltrim($path, '/');

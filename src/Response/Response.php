@@ -39,11 +39,6 @@ class Response
      * an iterable<string> (e.g., a Generator yielding string chunks) OR a
      * single string for one-shot writes.
      *
-     * The emitter will:
-     *  - skip auto Content-Length
-     *  - optionally add Transfer-Encoding: chunked for HTTP/1.1
-     *  - echo/flush each yielded chunk
-     *
      * @var null|\Closure(): iterable<string>|string
      */
     private ?\Closure $producer = null;
@@ -68,23 +63,19 @@ class Response
      * Create a live streaming response.
      *
      * @param callable|iterable $producer
-     *        Callable returning an iterable of chunks, or a single string; OR an iterable directly.
      * @param int $status
      * @param array $headers
-     * @return Response
      */
     public static function stream(
         callable|iterable $producer,
         int $status = 200,
         array $headers = [],
     ): self {
-        // Don’t let callers accidentally pin a length
         unset($headers['Content-Length'], $headers['content-length']);
 
-        // Sensible streaming defaults (override as desired)
         $headers = [
                 'Cache-Control' => $headers['Cache-Control'] ?? 'no-store',
-                'X-Accel-Buffering' => $headers['X-Accel-Buffering'] ?? 'no', // helps with Nginx proxy buffering
+                'X-Accel-Buffering' => $headers['X-Accel-Buffering'] ?? 'no',
             ] + $headers;
 
         $resp = new self($status, new Stream(''), $headers);
@@ -92,41 +83,34 @@ class Response
         return $resp;
     }
 
-    /** True when this response will be streamed by the emitter. */
     public function isStreaming(): bool
     {
         return $this->producer !== null;
     }
 
-    /**
-     * Internal use by emitter.
-     * @return null|\Closure(): iterable<string>|string
-     */
+    /** @return null|\Closure(): iterable<string>|string */
     public function getProducer(): ?\Closure
     {
         return $this->producer;
     }
 
-    /** Convert a callable/iterable into a normalized closure. */
     private static function normalizeProducer(callable|iterable $producer): \Closure
     {
         if (is_iterable($producer)) {
             return static fn () => $producer;
         }
 
-        // callable()
         return static function () use ($producer) {
             $out = $producer();
             if ($out instanceof \Generator || is_iterable($out)) {
                 return $out;
             }
-            // Treat anything else as a one-shot string (including '')
             return $out === null ? [] : [$out];
         };
     }
 
     /* --------------------------------------------------------------
-       JSON + Redirect helpers (unchanged)
+       JSON + Redirect helpers
        -------------------------------------------------------------- */
 
     public static function plaintext(string $msg, int $code = 400, array $headers = []): self
@@ -167,22 +151,27 @@ class Response
         int $depth = 512,
     ): self {
         // Ask the request which of these it prefers (client Accept order wins).
-        // We include "+json" so "application/*+json" is recognized.
         $want = ContentTypeNegotiator::chooseFromRequest($r, ['application/json', '+json', 'text/plain'])
             ?? 'application/json';
 
-        // JSON path (includes "+json" like application/*+json)
+        // JSON path (recognize vendor/structured +json)
         if ($want === 'application/json' || str_ends_with($want, '+json')) {
-            return self::json($data, $status, $headers, $flags, $depth);
+            $resp = self::json($data, $status, $headers, $flags, $depth);
+
+            // Preserve the negotiated +json type (e.g., application/vnd.api+json)
+            if ($want !== 'application/json') {
+                // JSON:API and many +json types prefer no charset parameter.
+                return $resp->withHeader('Content-Type', $want);
+            }
+            return $resp;
         }
 
         // Plain text path
         if (is_string($data) || is_scalar($data) || $data === null) {
-            return self::plaintext((string) $data, $status, $headers);
+            return self::plaintext((string)$data, $status, $headers);
         }
 
-        // Complex payload but client prefers text: serialize to JSON string,
-        // serve as text/plain (readable + unambiguous).
+        // Complex payload but client prefers text: serialize to JSON string as text/plain
         $payload = $data instanceof \JsonSerializable ? $data->jsonSerialize() : $data;
         $json = \json_encode($payload, $flags, $depth);
         if ($json === false) {
@@ -248,16 +237,9 @@ class Response
     ): string {
         self::assertSignedBound();
 
-        // Build signed *relative* URL first
-        if ($ttl === null) {
-            // no TTL -> SignedUrlGenerator::signed with null TTL
-            $path = self::$signedGen->signed($name, $params, $query, null, false);
-        } else {
-            if ($ttl < 1) {
-                throw new \InvalidArgumentException('TTL must be >= 1');
-            }
-            $path = self::$signedGen->signed($name, $params, $query, $ttl, false);
-        }
+        $path = $ttl === null
+            ? self::$signedGen->signed($name, $params, $query, null, false)
+            : self::$signedGen->signed($name, $params, $query, max(1, (int)$ttl), false);
 
         return $absolute ? self::withRouteDomain($name, $path) : $path;
     }
@@ -294,8 +276,18 @@ class Response
     /** Prefix with the route’s own domain (protocol-relative) when present. */
     private static function withRouteDomain(string $name, string $path): string
     {
-        $route = self::$routesRef->findByName($name);
-        $domain = $route?->getDomain();
+        $domain = null;
+
+        if (self::$routesRef) {
+            // Prefer alias-aware accessor if your Collection supplies it
+            if (method_exists(self::$routesRef, 'domainForName')) {
+                /** @phpstan-ignore-next-line (duck typing) */
+                $domain = self::$routesRef->domainForName($name);
+            } else {
+                $route = self::$routesRef->findByName($name);
+                $domain = $route?->getDomain();
+            }
+        }
 
         return ($domain && $domain !== '*') ? ('//' . $domain . $path) : $path;
     }
@@ -303,10 +295,10 @@ class Response
     /**
      * Attachment / download helper.
      *
-     * @param string|Stream $file local path **or** pre-built stream
-     * @param string $name final filename shown to the client
-     * @param string|null $mime explicit mime, otherwise inferred
-     * @param array $headers extra headers (caller wins on conflict)
+     * @param string|Stream $file
+     * @param string $name
+     * @param string|null $mime
+     * @param array $headers
      */
     public static function attachment(
         string|Stream $file,
@@ -321,7 +313,6 @@ class Response
         $mime = self::inferMime($name, $mime);
         $defaults = self::baseDownloadHeaders($name, $mime);
 
-        // Fill common headers only when caller didn't provide them
         self::putIfAbsent($defaults, 'Content-Length', self::chooseLength($file, $stream, $size), $headers);
         self::putIfAbsent($defaults, 'Last-Modified', self::formatHttpDate($mtime), $headers);
         self::putIfAbsent($defaults, 'ETag', self::etagFromMeta($size, $mtime, $name), $headers);
@@ -362,7 +353,7 @@ class Response
     }
 
     /* --------------------------------------------------------------
-       PSR-7-ish surface (kept as-is; withBody clears producer)
+       PSR-7-ish surface (withBody clears producer)
        -------------------------------------------------------------- */
 
     public function getProtocolVersion(): string
@@ -423,7 +414,6 @@ class Response
     public function withBody(BodyStream $b): self
     {
         $x = $this->copy(body: $b);
-        // If caller replaces the body, this is no longer a live stream.
         $x->producer = null;
         return $x;
     }
@@ -488,11 +478,9 @@ class Response
         $x->body = $body ?? $this->body;
         $x->protocolVersion = $protocolVersion ?? $this->protocolVersion;
         $x->reasonPhrase = $reasonPhrase ?? $this->reasonPhrase;
-        // keep $x->producer as-is; specific methods (withBody) may clear it.
         return $x;
     }
 
-    /** Helper: open a file stream with sensible errors. */
     private static function openFileStream(string $file): Stream
     {
         $h = @fopen($file, 'rb');
@@ -501,8 +489,6 @@ class Response
         }
         return new Stream($h);
     }
-
-    /* ---- optional extras you already had (left intact) -------------- */
 
     public static function create(string $content = '', int $status = 200, array $headers = []): self
     {

@@ -9,14 +9,20 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
 
 final class FusedMatcher extends AbstractMatcher implements MatcherInterface
 {
-    /*──────────── state ────────────*/
     /** host-bucket data: [$host]['static'|'trie'] */
     private array $hosts = [];
+
+    /** name => [path, domain] */
+    /** @var array<string, array{0:string,1:?string}> */
+    private array $alias = [];
 
     private bool $cacheEnabled = false;
     private string $cacheFile = '';
     private bool $cacheLoaded = false;
     private bool $finalized = false;
+
+    /** extra cache key for alias side-data */
+    private const H_ALIAS = '_alias';
 
     /*──────────── factory/config ────────────*/
     public static function make(): self
@@ -49,7 +55,9 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         // Write cache only if table is built and file is absent
         if ($this->cacheEnabled && !\is_file($this->cacheFile) && $this->hosts !== []) {
             $this->dumpCache();
-            $this->hosts = [];      // free memory; will lazy-load
+            // free memory; will lazy-load on first match()
+            $this->hosts = [];
+            $this->alias = [];
             $this->cacheLoaded = false;
         }
         $this->finalized = true;
@@ -71,6 +79,11 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
             $this->insertDynamic($host, $verb, $route);
         } else {
             $this->insertStatic($host, $verb, $route);
+        }
+
+        // record alias (name → [path, domain]) if present
+        if (($name = $route->getName()) !== null && $name !== '') {
+            $this->alias[$name] = [$route->getPath(), $route->getDomain()];
         }
     }
 
@@ -100,7 +113,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
                 throw new RouteNotFoundException($method, $path);
             }
 
-            /** @var array{_hash:string,_data:array} $blob */
+            /** @var array{_hash:string,_data:array,_alias?:array<string,array{0:string,1:?string}>} $blob */
             $blob = require $this->cacheFile;
 
             if ($this->verifyCacheOnLoad) {
@@ -114,6 +127,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
             }
 
             $this->hosts = $blob[self::H_DATA] ?? [];
+            $this->alias = $blob[self::H_ALIAS] ?? [];
             $this->cacheLoaded = true;
 
             if (\function_exists('opcache_compile_file')) {
@@ -179,6 +193,38 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         return null;
     }
 
+    /*──────────── alias accessors ────────────*/
+
+    /**
+     * Get the entire alias index: name => [path, domain].
+     *
+     * @return array<string, array{0:string,1:?string}>
+     */
+    public function aliasIndex(): array
+    {
+        // ensure the lazy cache load occurred if caching is enabled
+        if ($this->cacheEnabled && !$this->cacheLoaded && \is_file($this->cacheFile)) {
+            // trigger load on demand without doing a match (rely on require)
+            /** @var array{_data:array,_alias?:array<string,array{0:string,1:?string}>} $blob */
+            $blob = require $this->cacheFile;
+            $this->alias = $blob[self::H_ALIAS] ?? $this->alias;
+            $this->hosts = $this->hosts ?: ($blob[self::H_DATA] ?? []);
+            $this->cacheLoaded = true;
+        }
+        return $this->alias;
+    }
+
+    /**
+     * Resolve a route name quickly via the alias index.
+     *
+     * @return array{0:string,1:?string}|null [path, domain] or null
+     */
+    public function resolveAlias(string $name): ?array
+    {
+        $idx = $this->aliasIndex();
+        return $idx[$name] ?? null;
+    }
+
     /*──────────── cache export (single file) ────────────*/
     private function dumpCache(): void
     {
@@ -187,13 +233,14 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
             throw new \RuntimeException("Cannot create cache dir {$dir}");
         }
 
-        $payload = $this->hosts;
-        $crc = \hash('xxh3', \json_encode($payload, \JSON_THROW_ON_ERROR));
+        $payloadHosts = $this->hosts;
+        $crc = \hash('xxh3', \json_encode($payloadHosts, \JSON_THROW_ON_ERROR));
 
         $php = "<?php\nreturn [\n"
             . "    '" . self::H_HASH . "'  => " . \var_export($crc, true) . ",\n"
-            . "    '" . self::H_TS . "'  => " . \var_export(date(DATE_ATOM), true) . ",\n"
-            . "    '" . self::H_DATA . "' => " . $this->exportArray($payload) . ",\n"
+            . "    '" . self::H_TS   . "'  => " . \var_export(date(DATE_ATOM), true) . ",\n"
+            . "    '" . self::H_DATA . "' => " . $this->exportArray($payloadHosts) . ",\n"
+            . "    '" . self::H_ALIAS. "' => " . $this->exportArray($this->alias) . ",\n"
             . "];\n";
 
         $tmp = $this->cacheFile . '.' . \uniqid('', true) . '.tmp';

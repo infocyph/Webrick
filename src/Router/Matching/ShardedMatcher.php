@@ -55,15 +55,19 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     /** dev-mode in-memory shards: memGroups[host][bucket] = array|null */
     private array $memGroups = [];
 
+    /** name => [path, domain] (dev or when cache not yet loaded) */
+    /** @var array<string, array{0:string,1:?string}> */
+    private array $alias = [];
+
+    private ?bool $aliasLoaded = null; // null = not attempted; true/false after load
+
     /*──────────── factory/config ────────────*/
     public static function make(): self
     {
         return new self();
     }
 
-    private function __construct()
-    {
-    }
+    private function __construct() {}
 
     public function enableCache(string $cacheLocation): self
     {
@@ -75,6 +79,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     /** true when multi-file cache already exists and we can skip compile */
     public function canBootFromCache(): bool
     {
+        // Sentinel is wildcard root shard; alias file will be lazy-loaded.
         return $this->cacheEnabled && \is_file($this->shardFilePath('*', self::SHARD_ROOT));
     }
 
@@ -86,8 +91,11 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         // Cold-dump only once; check wildcard root shard as sentinel.
         $sentinel = $this->shardFilePath('*', self::SHARD_ROOT);
         if ($this->cacheEnabled && !\file_exists($sentinel)) {
-            $this->dumpCacheFiles();
-            $this->prefixMap = []; // free build-time memory
+            $this->dumpCacheFiles();     // writes all shards
+            $this->dumpAliasFile();      // writes __alias.php
+            // free build-time memory
+            $this->prefixMap = [];
+            $this->alias = [];
         }
         $this->finalized = true;
     }
@@ -109,6 +117,11 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         $this->pathGuard[$host][$method][$route->getPath()] = true;
 
         $this->prefixMap[$prefix][$method][] = $route;
+
+        // capture alias for dev-mode and for later cache dump
+        if (($name = $route->getName()) !== null && $name !== '') {
+            $this->alias[$name] = [$route->getPath(), $route->getDomain()];
+        }
     }
 
     /*──────────── runtime match ────────────*/
@@ -378,9 +391,9 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     private function buildDevGroupOnce(string $hostKey, string $bucket): ?array
     {
         if (isset($this->memGroups[$hostKey][$bucket]) || \array_key_exists(
-            $bucket,
-            $this->memGroups[$hostKey] ?? [],
-        )) {
+                $bucket,
+                $this->memGroups[$hostKey] ?? [],
+            )) {
             return $this->memGroups[$hostKey][$bucket];
         }
 
@@ -406,5 +419,98 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
 
         $this->memGroups[$hostKey][$bucket] = $group;
         return $group;
+    }
+
+    /*──────────── alias helpers (public API) ────────────*/
+
+    /**
+     * Get the alias index (name => [path, domain]).
+     *  • Dev mode: from in-memory $alias.
+     *  • Cached mode: lazy-load __alias.php once.
+     *
+     * @return array<string, array{0:string,1:?string}>
+     */
+    public function aliasIndex(): array
+    {
+        if (!$this->cacheEnabled) {
+            return $this->alias;
+        }
+
+        if ($this->aliasLoaded === true) {
+            return $this->alias;
+        }
+
+        $file = $this->aliasFilePath();
+        if (!\is_file($file)) {
+            // No alias file (e.g., cache not dumped) → fall back to memory
+            $this->aliasLoaded = false;
+            return $this->alias;
+        }
+
+        /** @var array{_hash:string,_data:array<string,array{0:string,1:?string}>} $blob */
+        $blob = require $file;
+
+        if (!isset($blob[self::H_HASH], $blob[self::H_DATA])) {
+            throw new \RuntimeException("Alias cache file {$file} missing Hash.");
+        }
+        if ($this->verifyCacheOnLoad) {
+            $calc = \hash('xxh3', \json_encode($blob[self::H_DATA], \JSON_THROW_ON_ERROR));
+            if (!\hash_equals($blob[self::H_HASH], $calc)) {
+                throw new \RuntimeException("Alias cache hash mismatch ({$file}).");
+            }
+        }
+
+        $this->alias = $blob[self::H_DATA] ?? [];
+        $this->aliasLoaded = true;
+
+        if (\function_exists('opcache_compile_file')) {
+            @\opcache_compile_file($file);
+        }
+
+        return $this->alias;
+    }
+
+    /**
+     * Fast resolve name → [path, domain] (or null if unknown).
+     *
+     * @return array{0:string,1:?string}|null
+     */
+    public function resolveAlias(string $name): ?array
+    {
+        $idx = $this->aliasIndex();
+        return $idx[$name] ?? null;
+    }
+
+    /*──────────── alias cache dump ────────────*/
+
+    private function dumpAliasFile(): void
+    {
+        $file = $this->aliasFilePath();
+        if (!\is_dir($d = \dirname($file)) && !@\mkdir($d, 0775, true) && !\is_dir($d)) {
+            throw new \RuntimeException("Failed to create cache dir {$d}");
+        }
+
+        $payload = $this->alias;
+        $crc = \hash('xxh3', \json_encode($payload, \JSON_THROW_ON_ERROR));
+
+        $php = "<?php\nreturn [\n"
+            . "    '" . self::H_HASH . "' => " . \var_export($crc, true) . ",\n"
+            . "    '" . self::H_TS . "' => " . \var_export(date(DATE_ATOM), true) . ",\n"
+            . "    '" . self::H_DATA . "' => " . $this->exportArray($payload) . ",\n"
+            . "];\n";
+
+        $tmp = $file . '.' . \uniqid('', true) . '.tmp';
+        \file_put_contents($tmp, $php, \LOCK_EX);
+        @\chmod($tmp, 0664);
+        @\rename($tmp, $file);
+
+        if (\function_exists('opcache_compile_file')) {
+            @\opcache_compile_file($file);
+        }
+    }
+
+    private function aliasFilePath(): string
+    {
+        return $this->cacheDir . DIRECTORY_SEPARATOR . '__alias.php';
     }
 }
