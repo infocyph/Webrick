@@ -10,57 +10,87 @@ use Psr\Log\LoggerInterface;
 use Infocyph\InterMix\DI\Invoker;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
-use Infocyph\Webrick\Router\Route\CompiledRoute;
+use Infocyph\Webrick\Router\Route\{CompiledRoute, Route, Collection};
 use Infocyph\Webrick\Router\Dispatch\Dispatcher;
 use Infocyph\Webrick\Router\Matching\MatcherInterface;
 use Infocyph\Webrick\Exceptions\{MethodNotAllowedException, RouteNotFoundException};
 
 /**
- * Glues together compiler → matcher → dispatcher.
- *
- * Rings:
- *   1) Pre-route (global)
- *   2) Per-route (Dispatcher)
- *   3) Post-controller (global)
- *
- * Errors are handled natively by ErrorHandler (always-on).
+ * Option B kernel:
+ *  - Hot cache: do not register routes; hydrate alias-only Collection for URL helpers.
+ *  - Cold path: run registrar → compile → add to matcher.
+ *  - If alias cache is missing/empty, optionally run registrar ONLY to build alias Collection (matcher untouched).
  */
 final class RouterKernel
 {
-    /** @var Closure():list<CompiledRoute> */
+    /** Canonical non-filename alias key (reserved for consistency across codebase). */
+    private const K_ALIAS = '_alias';
+
+    /** Canonical alias filename (plural, double-underscore). */
+    private const F_ALIASES = '__aliases.php';
+
+    /** No-op compiler kept for API parity. */
     private Closure $compiler;
 
     private ErrorHandler $errorHandler;
     private Invoker $invoker;
     private Dispatcher $dispatcher;
-    /**
-     * @var callable[]
-     */
+
+    /** @var list<callable(Request,Closure(Request):Response):Response> */
     private array $preGlobal;
-    /**
-     * @var callable[]
-     */
+
+    /** @var list<callable(Request,Closure(Request):Response):Response> */
     private array $postGlobal;
+
+    /** Cache location (dir for Sharded, file for Fused); null disables cache. */
+    private ?string $routeCache;
+
+    /** Optional callback to bind Response URL services after warm-up. */
+    private ?Closure $bindUrlServices;
+
+    /** Your route registration closure (used on cold path; on hot path only for alias fallback). */
+    private Closure $register;
+
+    /** Options for Registrar constructor. */
+    private array $registrarOptions;
+
+    private MatcherInterface $matcher;
+
+    /** When true, if alias cache yields 0 entries, run registrar just to build aliases (matcher untouched). */
+    private bool $fallbackAliasesFromRegistrar = true;
 
     public function __construct(
         private readonly LoggerInterface $log,
-        Closure $compiler,
-        private readonly MatcherInterface $matcher,
+        MatcherInterface $matcher,
+        Closure $register,
+        ?string $routeCache = null,
+        array $registrarOptions = [],
         array $preGlobal = [],
         array $postGlobal = [],
         bool $invokerOnMiddleware = false,
         ?ErrorHandler $errorHandler = null,
+        ?Closure $bindUrlServices = null,
+        ?bool $fallbackAliasesFromRegistrar = null,
     ) {
-        $this->compiler = $compiler;
+        $this->routeCache = ($routeCache !== '' ? $routeCache : null);
+        $this->bindUrlServices = $bindUrlServices;
+        $this->register = $register;
+        $this->registrarOptions = $registrarOptions;
+        $this->matcher = $matcher;
+        if ($fallbackAliasesFromRegistrar !== null) {
+            $this->fallbackAliasesFromRegistrar = $fallbackAliasesFromRegistrar;
+        }
+
+        $this->compiler = static fn (): array => [];
+
         $this->warm();
+
         $this->invoker = Invoker::shared();
         $this->dispatcher = new Dispatcher($this->invoker, $invokerOnMiddleware);
 
-        // Accept objects, class-strings, or callables
-        $this->preGlobal = $this->normalizeGlobalMiddleware($preGlobal);
+        $this->preGlobal  = $this->normalizeGlobalMiddleware($preGlobal);
         $this->postGlobal = $this->normalizeGlobalMiddleware($postGlobal);
 
-        // Hard-bind native error handler (always present)
         $this->errorHandler = $errorHandler ?? new ErrorHandler(
             logger: $this->log,
             debug: true,
@@ -73,55 +103,50 @@ final class RouterKernel
         );
     }
 
-    /*──────────────── bootstrap helper ────────────────*/
-
     /**
-     * @param string|null $routeCache Dir for UnifiedMatcher **or** file for MergedMatcher
-     * @param bool $invokerOnMiddleware Call per-route stack via DI Invoker (true) or manually (false)
+     * Boot with a registrar closure (Option B).
      */
-    public static function boot(
+    public static function bootWithRegistrar(
         LoggerInterface $log,
-        Closure $compiler,
         MatcherInterface $matcher,
+        Closure $register,
         ?string $routeCache = null,
+        array $registrarOptions = [],
         array $preGlobal = [],
         array $postGlobal = [],
         bool $invokerOnMiddleware = false,
         ?ErrorHandler $errorHandler = null,
+        ?Closure $bindUrlServices = null,
+        ?bool $fallbackAliasesFromRegistrar = null,
     ): self {
-        if ($routeCache) {
-            $matcher->enableCache($routeCache);
+        $normalizedCache = ($routeCache !== null && $routeCache !== '') ? $routeCache : null;
+        if ($normalizedCache !== null && \method_exists($matcher, 'enableCache')) {
+            $matcher->enableCache($normalizedCache);
         }
 
         return new self(
-            $log,
-            $compiler,
-            $matcher,
-            $preGlobal,
-            $postGlobal,
-            $invokerOnMiddleware,
-            $errorHandler,
+            log: $log,
+            matcher: $matcher,
+            register: $register,
+            routeCache: $normalizedCache,
+            registrarOptions: $registrarOptions,
+            preGlobal: $preGlobal,
+            postGlobal: $postGlobal,
+            invokerOnMiddleware: $invokerOnMiddleware,
+            errorHandler: $errorHandler,
+            bindUrlServices: $bindUrlServices,
+            fallbackAliasesFromRegistrar: $fallbackAliasesFromRegistrar,
         );
     }
 
-    /*──────────────── request entry ───────────────────*/
-
     public function handle(Request $request): Response
     {
-        // Bind Request for DI across pre/per-route/post rings
-        $this->invoker->getContainer()->definitions()
-            ->bind(Request::class, $request);
+        $this->invoker->getContainer()->definitions()->bind(Request::class, $request);
 
-        // Core: match → dispatch (let exceptions bubble to ErrorHandler)
         $dispatchCore = $this->buildDispatchCore();
-
-        // Wrap core with post-global middleware
         $withPost = $this->composePipeline($this->postGlobal, $dispatchCore);
+        $withPre  = $this->composePipeline($this->preGlobal,  $withPost);
 
-        // Wrap with pre-global middleware
-        $withPre = $this->composePipeline($this->preGlobal, $withPost);
-
-        // Native error boundary around the whole pipeline
         return $this->errorHandler->handle($request, $withPre);
     }
 
@@ -133,54 +158,195 @@ final class RouterKernel
         };
     }
 
-    /**
-     * @return array{CompiledRoute, array} [route, vars]
-     */
+    /** @return array{CompiledRoute, array} */
     private function matchRoute(Request $req): array
     {
         $method = strtoupper($req->getMethod());
-        $uri = $req->getUri();
-        $host = self::normaliseHost($uri->getHost());
-        $path = $uri->getPath() ?: '/';
+        $uri    = $req->getUri();
+        $host   = self::normaliseHost($uri->getHost());
+        $path   = $uri->getPath() ?: '/';
 
         return $this->matcher->match($method, $host, $path);
     }
 
-    /*──────────────── warm-up / cache prime ──────────*/
+    /* ────────────────── warm-up / cache prime ────────────────── */
 
     private function warm(): void
     {
         if ($this->matcher->canBootFromCache()) {
             $this->matcher->finalize();
+
+            // Build alias-only collection
+            $aliasOnly = new Collection();
+            $added = 0;
+            if ($this->routeCache !== null) {
+                $added = $this->hydrateAliasesFromCache($aliasOnly, $this->routeCache);
+            }
+
+            // Fallback: registrar-only aliases (matcher untouched)
+            if ($added === 0 && $this->fallbackAliasesFromRegistrar) {
+                $this->log->info('[router] alias cache empty; building aliases via registrar (matcher untouched)');
+                $aliasOnly = $this->buildAliasesViaRegistrar();
+                $added = count($aliasOnly->aliasIndex());
+            }
+
+            // Always bind URL services; prefer user callback
+            if ($this->bindUrlServices) {
+                ($this->bindUrlServices)($aliasOnly);
+            } else {
+                Response::bindUrlServices($aliasOnly, null, null);
+            }
+
             $this->log->info('[router] route table ready (hot cache)', [
-                'count' => null,
                 'matcher' => $this->matcher::class,
-                'cache' => true,
-                'mode' => 'cache',
+                'cache'   => true,
+                'mode'    => 'cache',
+                'aliases' => $added,
             ]);
             return;
         }
 
-        $routes = ($this->compiler)();
-        if ($routes === []) {
-            throw new \RuntimeException('Route compiler produced an empty table.');
-        }
+        // Cold path: run registrar → compile → add to matcher.
+        $routes = new Collection();
 
-        foreach ($routes as $r) {
+        $opts = $this->registrarOptions + [
+                'autoSlashRedirect' => false,
+                'exposeUrlServices' => false,
+                'signKey'           => null,
+                'signedDefaultTtl'  => null,
+            ];
+
+        $registrar = new \Infocyph\Webrick\Router\Definition\Registrar(
+            routes: $routes,
+            autoSlashRedirect: (bool)$opts['autoSlashRedirect'],
+            exposeUrlServices: (bool)$opts['exposeUrlServices'],
+            signKey: $opts['signKey'],
+            signedDefaultTtl: $opts['signedDefaultTtl'],
+        );
+
+        ($this->register)($registrar);
+
+        $compiled = $routes->compile()->all();
+        if ($compiled === []) {
+            throw new \RuntimeException('Registration produced an empty route table.');
+        }
+        foreach ($compiled as $r) {
             $this->matcher->add($r);
         }
-
         $this->matcher->finalize();
 
+        if ($this->bindUrlServices) {
+            ($this->bindUrlServices)($routes);
+        }
+
         $this->log->info('[router] route table ready', [
-            'count' => count($routes),
+            'count'   => count($compiled),
             'matcher' => $this->matcher::class,
-            'cache' => \method_exists($this->matcher, 'enableCache'),
-            'mode' => 'compiled',
+            'cache'   => \method_exists($this->matcher, 'enableCache'),
+            'mode'    => 'compiled',
         ]);
     }
 
-    /*──────────────── helpers ────────────────────────*/
+    /**
+     * Registrar-only pass to build an alias Collection when cache is hot
+     * and alias cache isn’t available.
+     */
+    private function buildAliasesViaRegistrar(): Collection
+    {
+        $routes = new Collection();
+
+        $opts = $this->registrarOptions + [
+                'autoSlashRedirect' => false,
+                'exposeUrlServices' => false, // we’ll bind explicitly below
+                'signKey'           => null,
+                'signedDefaultTtl'  => null,
+            ];
+
+        $registrar = new \Infocyph\Webrick\Router\Definition\Registrar(
+            routes: $routes,
+            autoSlashRedirect: (bool)$opts['autoSlashRedirect'],
+            exposeUrlServices: false,
+            signKey: $opts['signKey'],
+            signedDefaultTtl: $opts['signedDefaultTtl'],
+        );
+
+        // Let user add routes – matcher is NOT touched in this path.
+        ($this->register)($registrar);
+
+        // We don’t compile or add to matcher; we only need the name/path map.
+        return $routes;
+    }
+
+    /**
+     * Hydrate minimal Collection from the canonical alias cache file.
+     *
+     * Returns number of aliases added.
+     */
+    private function hydrateAliasesFromCache(Collection $dst, string $cacheLocation): int
+    {
+        $aliasFile = $this->aliasFilePath($cacheLocation);
+        if ($aliasFile === null || !\is_file($aliasFile)) {
+            $this->log->warning('[router] alias cache file not found; URL helpers may be limited', [
+                'cache' => $cacheLocation,
+            ]);
+            return 0;
+        }
+
+        /** @var mixed $blob */
+        $blob = require $aliasFile;
+
+        // Expect the standard structure from matchers:
+        // return ['_hash'=>..., '_ts'=>..., '_data'=> array<string, [string, ?string]> ]
+        if (!\is_array($blob) || !isset($blob['_data']) || !\is_array($blob['_data'])) {
+            $this->log->warning('[router] alias cache has unexpected format; URL helpers may be limited', [
+                'file' => $aliasFile,
+            ]);
+            return 0;
+        }
+
+        /** @var array<string, array{0:string,1:?string}> $pairs */
+        $pairs = $blob['_data'];
+
+        $added = 0;
+        foreach ($pairs as $name => $tuple) {
+            if (!\is_string($name) || $name === '' || !\is_array($tuple)) {
+                continue;
+            }
+            $path   = $tuple[0] ?? null;
+            $domain = $tuple[1] ?? null;
+            if (!\is_string($path) || $path === '') {
+                continue;
+            }
+
+            $r = new Route('GET', $path, static fn () => Response::noContent());
+            $r = $r->withName($name);
+            if (\is_string($domain) && $domain !== '') {
+                $r = $r->withDomain($domain);
+            }
+            try {
+                $dst->add($r);
+                $added++;
+            } catch (\Throwable) {
+                /* skip dupes or invalids */
+            }
+        }
+
+        $this->log->info('[router] alias cache hydrated', [
+            'file'  => $aliasFile,
+            'count' => $added,
+        ]);
+
+        return $added;
+    }
+
+    /** Resolve the canonical alias file path for either cache dir (sharded) or file (fused). */
+    private function aliasFilePath(string $cacheLocation): ?string
+    {
+        $dir = \is_dir($cacheLocation) ? \rtrim($cacheLocation, '/\\') : \dirname($cacheLocation);
+        return $dir . DIRECTORY_SEPARATOR . self::F_ALIASES;
+    }
+
+    /* ─────────────── helpers ─────────────── */
 
     private static function normaliseHost(string $raw): string
     {
@@ -190,6 +356,7 @@ final class RouterKernel
         $host = rtrim(strtolower($raw), '.');
 
         if (function_exists('idn_to_ascii') && !str_contains($host, 'xn--')) {
+            /** @noinspection PhpElementIsNotAvailableInCurrentPhpVersionInspection */
             $ascii = @idn_to_ascii($host, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
             if ($ascii === false) {
                 throw new \InvalidArgumentException('Invalid IDN host name.');
@@ -203,9 +370,7 @@ final class RouterKernel
     }
 
     /**
-     * Normalize global middleware entries:
-     *  - invokable objects / closures / callables
-     *  - class-strings (instantiated directly; if you need DI, pass an object)
+     * Normalize global middleware entries to invokables.
      *
      * @param array<class-string|object|callable> $list
      * @return list<callable(Request, Closure(Request):Response):Response>
@@ -215,20 +380,18 @@ final class RouterKernel
         $out = [];
 
         foreach ($list as $mw) {
-            // 1) Callable (closure, invokable object, [obj,'method'], etc.)
             if (\is_callable($mw) && !\is_string($mw)) {
                 $out[] = $mw(...);
                 continue;
             }
 
-            // 2) Class-string → instantiate once per worker; must be invokable
             if (\is_string($mw)) {
                 if (!\class_exists($mw)) {
                     throw new InvalidArgumentException("Middleware class '{$mw}' not found.");
                 }
                 $out[] = static function (Request $req, Closure $next) use ($mw): Response {
-                    static $instance = null;     // one instance per worker
-                    $instance ??= new $mw();     // direct instantiation to avoid DI invoking __invoke
+                    static $instance = null;
+                    $instance ??= new $mw();
                     if (!\is_callable($instance)) {
                         throw new InvalidArgumentException("Middleware {$mw} must be invokable (__invoke).");
                     }
@@ -237,7 +400,6 @@ final class RouterKernel
                 continue;
             }
 
-            // 3) Object that isn’t callable → error (pass a callable or class-string)
             throw new InvalidArgumentException(
                 sprintf('Unsupported middleware entry of type %s', gettype($mw)),
             );

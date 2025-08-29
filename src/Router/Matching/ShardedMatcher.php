@@ -12,30 +12,17 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
 {
     private const SHARD_ROOT = '__root';
 
+    /** Non-filename alias key (reserved for consistency across codebase) */
+    private const K_ALIAS = '_alias';
+
+    /** Alias filename (plural, double-underscore), kept in one place */
+    private const F_ALIASES = '__aliases.php';
+
     /* Windows reserved base names for safety in filenames */
     private const WIN_RESERVED = [
-        'CON',
-        'PRN',
-        'AUX',
-        'NUL',
-        'COM1',
-        'COM2',
-        'COM3',
-        'COM4',
-        'COM5',
-        'COM6',
-        'COM7',
-        'COM8',
-        'COM9',
-        'LPT1',
-        'LPT2',
-        'LPT3',
-        'LPT4',
-        'LPT5',
-        'LPT6',
-        'LPT7',
-        'LPT8',
-        'LPT9',
+        'CON','PRN','AUX','NUL',
+        'COM1','COM2','COM3','COM4','COM5','COM6','COM7','COM8','COM9',
+        'LPT1','LPT2','LPT3','LPT4','LPT5','LPT6','LPT7','LPT8','LPT9',
     ];
 
     /*──────────── state ────────────*/
@@ -94,7 +81,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         $sentinel = $this->shardFilePath('*', self::SHARD_ROOT);
         if ($this->cacheEnabled && !\file_exists($sentinel)) {
             $this->dumpCacheFiles();     // writes all shards
-            $this->dumpAliasFile();      // writes __alias.php
+            $this->dumpAliasFile();      // writes __aliases.php
             // free build-time memory
             $this->prefixMap = [];
             $this->alias = [];
@@ -393,9 +380,9 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     private function buildDevGroupOnce(string $hostKey, string $bucket): ?array
     {
         if (isset($this->memGroups[$hostKey][$bucket]) || \array_key_exists(
-            $bucket,
-            $this->memGroups[$hostKey] ?? [],
-        )) {
+                $bucket,
+                $this->memGroups[$hostKey] ?? [],
+            )) {
             return $this->memGroups[$hostKey][$bucket];
         }
 
@@ -428,7 +415,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     /**
      * Get the alias index (name => [path, domain]).
      *  • Dev mode: from in-memory $alias.
-     *  • Cached mode: lazy-load __alias.php once.
+     *  • Cached mode: lazy-load __aliases.php once.
      *
      * @return array<string, array{0:string,1:?string}>
      */
@@ -513,6 +500,6 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
 
     private function aliasFilePath(): string
     {
-        return $this->cacheDir . DIRECTORY_SEPARATOR . '__alias.php';
+        return $this->cacheDir . DIRECTORY_SEPARATOR . self::F_ALIASES;
     }
 }

@@ -21,7 +21,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
     private bool $cacheLoaded = false;
     private bool $finalized = false;
 
-    /** extra cache key for alias side-data */
+    /** extra cache key for alias side-data (non-filename) */
     private const H_ALIAS = '_alias';
 
     /*──────────── factory/config ────────────*/
@@ -204,7 +204,6 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
     {
         // ensure the lazy cache load occurred if caching is enabled
         if ($this->cacheEnabled && !$this->cacheLoaded && \is_file($this->cacheFile)) {
-            // trigger load on demand without doing a match (rely on require)
             /** @var array{_data:array,_alias?:array<string,array{0:string,1:?string}>} $blob */
             $blob = require $this->cacheFile;
             $this->alias = $blob[self::H_ALIAS] ?? $this->alias;
