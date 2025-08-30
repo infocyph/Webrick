@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Router\Kernel;
 
 use Closure;
+use Infocyph\Webrick\Router\Definition\Registrar;
 use InvalidArgumentException;
 use Psr\Log\LoggerInterface;
 use Infocyph\InterMix\DI\Invoker;
@@ -88,7 +89,7 @@ final class RouterKernel
         $this->invoker = Invoker::shared();
         $this->dispatcher = new Dispatcher($this->invoker, $invokerOnMiddleware);
 
-        $this->preGlobal  = $this->normalizeGlobalMiddleware($preGlobal);
+        $this->preGlobal = $this->normalizeGlobalMiddleware($preGlobal);
         $this->postGlobal = $this->normalizeGlobalMiddleware($postGlobal);
 
         $this->errorHandler = $errorHandler ?? new ErrorHandler(
@@ -145,7 +146,7 @@ final class RouterKernel
 
         $dispatchCore = $this->buildDispatchCore();
         $withPost = $this->composePipeline($this->postGlobal, $dispatchCore);
-        $withPre  = $this->composePipeline($this->preGlobal,  $withPost);
+        $withPre = $this->composePipeline($this->preGlobal, $withPost);
 
         return $this->errorHandler->handle($request, $withPre);
     }
@@ -162,9 +163,9 @@ final class RouterKernel
     private function matchRoute(Request $req): array
     {
         $method = strtoupper($req->getMethod());
-        $uri    = $req->getUri();
-        $host   = self::normaliseHost($uri->getHost());
-        $path   = $uri->getPath() ?: '/';
+        $uri = $req->getUri();
+        $host = self::normaliseHost($uri->getHost());
+        $path = $uri->getPath() ?: '/';
 
         return $this->matcher->match($method, $host, $path);
     }
@@ -199,8 +200,8 @@ final class RouterKernel
 
             $this->log->info('[router] route table ready (hot cache)', [
                 'matcher' => $this->matcher::class,
-                'cache'   => true,
-                'mode'    => 'cache',
+                'cache' => true,
+                'mode' => 'cache',
                 'aliases' => $added,
             ]);
             return;
@@ -212,11 +213,11 @@ final class RouterKernel
         $opts = $this->registrarOptions + [
                 'autoSlashRedirect' => false,
                 'exposeUrlServices' => false,
-                'signKey'           => null,
-                'signedDefaultTtl'  => null,
+                'signKey' => null,
+                'signedDefaultTtl' => null,
             ];
 
-        $registrar = new \Infocyph\Webrick\Router\Definition\Registrar(
+        $registrar = new Registrar(
             routes: $routes,
             autoSlashRedirect: (bool)$opts['autoSlashRedirect'],
             exposeUrlServices: (bool)$opts['exposeUrlServices'],
@@ -240,10 +241,10 @@ final class RouterKernel
         }
 
         $this->log->info('[router] route table ready', [
-            'count'   => count($compiled),
+            'count' => count($compiled),
             'matcher' => $this->matcher::class,
-            'cache'   => \method_exists($this->matcher, 'enableCache'),
-            'mode'    => 'compiled',
+            'cache' => \method_exists($this->matcher, 'enableCache'),
+            'mode' => 'compiled',
         ]);
     }
 
@@ -258,11 +259,11 @@ final class RouterKernel
         $opts = $this->registrarOptions + [
                 'autoSlashRedirect' => false,
                 'exposeUrlServices' => false, // we’ll bind explicitly below
-                'signKey'           => null,
-                'signedDefaultTtl'  => null,
+                'signKey' => null,
+                'signedDefaultTtl' => null,
             ];
 
-        $registrar = new \Infocyph\Webrick\Router\Definition\Registrar(
+        $registrar = new Registrar(
             routes: $routes,
             autoSlashRedirect: (bool)$opts['autoSlashRedirect'],
             exposeUrlServices: false,
@@ -312,7 +313,7 @@ final class RouterKernel
             if (!\is_string($name) || $name === '' || !\is_array($tuple)) {
                 continue;
             }
-            $path   = $tuple[0] ?? null;
+            $path = $tuple[0] ?? null;
             $domain = $tuple[1] ?? null;
             if (!\is_string($path) || $path === '') {
                 continue;
@@ -332,7 +333,7 @@ final class RouterKernel
         }
 
         $this->log->info('[router] alias cache hydrated', [
-            'file'  => $aliasFile,
+            'file' => $aliasFile,
             'count' => $added,
         ]);
 
@@ -342,8 +343,11 @@ final class RouterKernel
     /** Resolve the canonical alias file path for either cache dir (sharded) or file (fused). */
     private function aliasFilePath(string $cacheLocation): ?string
     {
-        $dir = \is_dir($cacheLocation) ? \rtrim($cacheLocation, '/\\') : \dirname($cacheLocation);
-        return $dir . DIRECTORY_SEPARATOR . self::F_ALIASES;
+        return (
+            \is_dir($cacheLocation)
+                ? \rtrim($cacheLocation, '/\\')
+                : \dirname($cacheLocation)
+        ) . DIRECTORY_SEPARATOR . self::F_ALIASES;
     }
 
     /* ─────────────── helpers ─────────────── */
@@ -356,7 +360,6 @@ final class RouterKernel
         $host = rtrim(strtolower($raw), '.');
 
         if (function_exists('idn_to_ascii') && !str_contains($host, 'xn--')) {
-            /** @noinspection PhpElementIsNotAvailableInCurrentPhpVersionInspection */
             $ascii = @idn_to_ascii($host, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
             if ($ascii === false) {
                 throw new \InvalidArgumentException('Invalid IDN host name.');

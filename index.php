@@ -177,7 +177,7 @@ $register = static function (Registrar $registrar) use ($signUrlSecret): void {
     );
 
     /* ---- class-based routes ---- */
-    $registrar->get('/class/test/{name}', [DemoController::class, 'hello']);
+    $registrar->get('/class/test/{name}', [DemoController::class, 'hello'],'test');
     $registrar->get('/class/rest/{name}', [DemoController::class, 'hello']);
     $registrar->get('/plus/{name}/mine', [DemoController::class, 'hello']);
 
