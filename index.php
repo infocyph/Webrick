@@ -91,17 +91,13 @@ $env = $_ENV['APP_ENV'] ?? getenv('APP_ENV') ?? 'prod';
 $dev = ($env !== 'prod');
 $signUrlSecret = 'hog';
 
-// toggle cache here if you like:
-$routeCache = __DIR__ . '/.route-cache';            // enable (dir for Sharded)
-// $routeCache = null;                               // disable cache
-
 /* Pre-route (global) middleware – order matters */
 $preGlobal = [
     GatewayHardeningMiddleware::class,
     TelemetryMiddleware::class,
     MaintenanceModeMiddleware::class,
     RequestLimitsMiddleware::class,
-    //ThrottleMiddleware::class,
+    ThrottleMiddleware::class,
     NegotiationMiddleware::class,
     CacheValidatorsMiddleware::class,
 ];
@@ -160,7 +156,7 @@ $register = static function (Registrar $registrar) use ($signUrlSecret): void {
         return new HtmlResponse($html);
     });
 
-    $registrar->get('/ping', fn () => 'pong');
+    $registrar->get('/ping', fn () => 'pong', 'ping');
 
     $registrar->get(
         '/hello/{name}',
@@ -304,7 +300,7 @@ $kernel = RouterKernel::bootWithRegistrar(
     log: $logger,
     matcher: Infocyph\Webrick\Router\Matching\ShardedMatcher::make(),
     register: $register,                          // ← 3rd arg
-    routeCache: $routeCache,                      // set null to disable cache
+    routeCache: __DIR__ . '/.route-cache',
     registrarOptions: [
         'autoSlashRedirect' => false,
         'exposeUrlServices' => true,
@@ -320,7 +316,7 @@ $kernel = RouterKernel::bootWithRegistrar(
         Response::bindUrlServices($routes, $signUrlSecret, 900);
     },
     // while you’re validating your cache’s __aliases.php, leave this true;
-    // once the alias file is produced reliably, set to false to never run registration in hot mode:
+    // once the alias file is produced reliably set to false, to never run registration in hot mode:
     fallbackAliasesFromRegistrar: true
 );
 

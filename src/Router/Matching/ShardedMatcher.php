@@ -12,17 +12,30 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
 {
     private const SHARD_ROOT = '__root';
 
-    /** Non-filename alias key (reserved for consistency across codebase) */
-    private const K_ALIAS = '_alias';
-
-    /** Alias filename (plural, double-underscore), kept in one place */
-    private const F_ALIASES = '__aliases.php';
-
     /* Windows reserved base names for safety in filenames */
     private const WIN_RESERVED = [
-        'CON','PRN','AUX','NUL',
-        'COM1','COM2','COM3','COM4','COM5','COM6','COM7','COM8','COM9',
-        'LPT1','LPT2','LPT3','LPT4','LPT5','LPT6','LPT7','LPT8','LPT9',
+        'CON',
+        'PRN',
+        'AUX',
+        'NUL',
+        'COM1',
+        'COM2',
+        'COM3',
+        'COM4',
+        'COM5',
+        'COM6',
+        'COM7',
+        'COM8',
+        'COM9',
+        'LPT1',
+        'LPT2',
+        'LPT3',
+        'LPT4',
+        'LPT5',
+        'LPT6',
+        'LPT7',
+        'LPT8',
+        'LPT9',
     ];
 
     /*──────────── state ────────────*/
@@ -380,9 +393,9 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     private function buildDevGroupOnce(string $hostKey, string $bucket): ?array
     {
         if (isset($this->memGroups[$hostKey][$bucket]) || \array_key_exists(
-                $bucket,
-                $this->memGroups[$hostKey] ?? [],
-            )) {
+            $bucket,
+            $this->memGroups[$hostKey] ?? [],
+        )) {
             return $this->memGroups[$hostKey][$bucket];
         }
 

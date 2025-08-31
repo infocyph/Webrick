@@ -19,13 +19,13 @@ abstract class AbstractMatcher
     protected const K_STATIC   = 'static';
     protected const K_TRIE     = 'trie';
     protected const K_CHILDREN = 'children';
-    protected const K_PARAM    = 'param';   // ['name'=>..., 'regex'=>?string, 'call'=>?callable-string, 'node'=>array]
+    protected const K_PARAM    = 'param';
     protected const K_ROUTES   = 'routes';
     protected const H_HASH = '_hash';
     protected const H_DATA = '_data';
     protected const H_TS = '_ts';
-
-    /** Optional: verify shard/cache hash on load (dev/CI) */
+    protected const F_ALIASES = '__aliases.php';
+    protected const H_ALIAS = '_alias';
     protected bool $verifyCacheOnLoad = false;
 
     public function verifyCacheOnLoad(bool $enable = true): static

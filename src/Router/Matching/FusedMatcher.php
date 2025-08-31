@@ -22,7 +22,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
     private bool $finalized = false;
 
     /** extra cache key for alias side-data (non-filename) */
-    private const H_ALIAS = '_alias';
+
 
     /*──────────── factory/config ────────────*/
     public static function make(): self
