@@ -76,7 +76,7 @@ $preGlobal = [
 
 /* Post-controller (global) middleware */
 $postGlobal = [
-    CompressionMiddleware::class,
+//    CompressionMiddleware::class,
     CorsAndPoliciesMiddleware::class,
     VaryAccumulatorMiddleware::class,
 ];
@@ -100,10 +100,15 @@ $register = static function (Registrar $registrar) use ($signUrlSecret): void {
             '/color/ff00ff'      => 'Regex-constrained placeholder',
             '/class/Bob'         => 'Class-based handler',
 
-            // Extra
+            // Streaming
+            '/stream'            => 'Streaming response (chunks)',
+            '/stream-fast'       => 'Streaming (no compression)',
+            '/logs'              => 'NDJSON stream',
+            '/sse'               => 'Server-Sent Events',
+
+            // Extras
             '/post/echo'         => 'POST echo',
             '/user/42 (PUT)'     => 'Update user (PUT)',
-            '/stream'            => 'Streaming response',
             '/locale'            => 'Show negotiated locale',
             '/xml'               => 'XML payload (charset-aware)',
             '/status/418'        => 'Status echo (I’m a teapot)',
@@ -156,6 +161,75 @@ $register = static function (Registrar $registrar) use ($signUrlSecret): void {
     $registrar->get('/class/rest/{name}', [DemoController::class, 'hello']);
     $registrar->get('/plus/{name}/mine', [DemoController::class, 'hello']);
 
+    /* ---- streaming routes ---- */
+
+    // Plain chunked stream
+    $registrar->get('/stream', function (): Response {
+        // If your Response::stream accepts headers, pass them here.
+        // Otherwise, chain ->withHeader(...) on the returned Response.
+        $res = Response::stream(function () {
+            for ($i = 1; $i <= 10; $i++) {
+                yield "chunk {$i}\n";
+                usleep(100_000);
+            }
+            return ''; // optional
+        });
+
+        return $res
+            ->withHeader('Content-Type', 'text/plain; charset=utf-8')
+            ->withHeader('Cache-Control', 'no-cache, no-transform') // no-transform = proxies must not re-compress
+            ->withHeader('X-Accel-Buffering', 'no')                 // respected by nginx
+            ->withHeader('Connection', 'keep-alive');
+    });
+
+
+    // Stream with compression skipped via a tiny per-route middleware flag
+    $registrar->get('/stream-fast', function (): Response {
+        return Response::stream(function () {
+            for ($i = 1; $i <= 5; $i++) {
+                yield "fast {$i}\n";
+                usleep(50_000);
+            }
+        });
+    }, [
+        'middleware' => [
+            static function (Request $r, Closure $next): Response {
+                // Your CompressionMiddleware should early-exit if this attribute is true
+                $r = $r->withAttribute('skip_compression', true);
+                return $next($r);
+            },
+        ],
+    ]);
+
+    // NDJSON logs
+    $registrar->get('/logs', function (): Response {
+        return Response::stream(function () {
+            for ($i = 1; $i <= 5; $i++) {
+                yield json_encode(['ts' => time(), 'n' => $i]) . "\n";
+                usleep(200_000);
+            }
+        }, 200, [
+            'Content-Type'       => 'application/x-ndjson',
+            'Cache-Control'      => 'no-cache',
+            'X-Accel-Buffering'  => 'no',
+        ]);
+    });
+
+    // Server-Sent Events
+    $registrar->get('/sse', function (): Response {
+        return Response::stream(function () {
+            for ($i = 1; $i <= 5; $i++) {
+                yield "event: tick\n";
+                yield "data: " . json_encode(['i' => $i, 'ts' => time()]) . "\n\n";
+                usleep(1_000_000);
+            }
+        }, 200, [
+            'Content-Type'       => 'text/event-stream',
+            'Cache-Control'      => 'no-cache',
+            'X-Accel-Buffering'  => 'no',
+        ]);
+    });
+
     /* ---- extra variety routes ---- */
     $registrar->post('/post/echo', function (Request $r): Response {
         return Response::json(['method' => $r->getMethod(), 'payload' => $r->all(), 'time' => \date(DATE_ATOM)]);
@@ -163,16 +237,6 @@ $register = static function (Registrar $registrar) use ($signUrlSecret): void {
 
     $registrar->put('/user/{id:int}', function (Request $r, $id): Response {
         return Response::json(['updated' => $id, 'input' => $r->all()]);
-    });
-
-    $registrar->get('/stream', function (): Response {
-        return Response::stream(function () {
-            for ($i = 1; $i <= 10; $i++) {
-                yield "chunk {$i}\n";
-                usleep(100_000);
-            }
-            return '';
-        });
     });
 
     $registrar->get('/locale', fn (Request $r) => Response::json(['locale' => $r->getAttribute('locale') ?? 'unknown']));
@@ -199,7 +263,7 @@ $register = static function (Registrar $registrar) use ($signUrlSecret): void {
         });
     });
 
-    /* ---- resource routes (Laravel-ish) ---- */
+    /* ---- resource routes ---- */
     $registrar->resource('users', '/users', UsersController::class);
 
     /* ---- redirects using aliases ---- */
@@ -255,8 +319,7 @@ $register = static function (Registrar $registrar) use ($signUrlSecret): void {
 
     /* ------------------------------------------------------------------
      * MULTI-DOMAIN EXAMPLES
-     * (You must map these hostnames to your server for them to work,
-     *  e.g., /etc/hosts → 127.0.0.1 api.localhost admin.localhost)
+     * (Map these hostnames to your server: 127.0.0.1 api.localhost admin.localhost)
      * ----------------------------------------------------------------*/
 
     // C) API domain group
@@ -275,7 +338,7 @@ $register = static function (Registrar $registrar) use ($signUrlSecret): void {
         domain: 'admin.localhost',
         namePrefix: 'admin.',
         callback: function (Registrar $adm): void {
-            $adm->get('/dashboard', fn () => Response::json(['domain' => 'admin.localhost', 'page' => 'dashboard'])); // admin.dashboard (same name as site admin.*, but domain-scoped)
+            $adm->get('/dashboard', fn () => Response::json(['domain' => 'admin.localhost', 'page' => 'dashboard'])); // admin.dashboard
         }
     );
 };
