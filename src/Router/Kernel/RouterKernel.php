@@ -6,6 +6,7 @@ namespace Infocyph\Webrick\Router\Kernel;
 
 use Closure;
 use Infocyph\Webrick\Router\Definition\Registrar;
+use Infocyph\Webrick\Router\Facade\Router;
 use InvalidArgumentException;
 use Psr\Log\LoggerInterface;
 use Infocyph\InterMix\DI\Invoker;
@@ -224,7 +225,7 @@ final class RouterKernel
             signKey: $opts['signKey'],
             signedDefaultTtl: $opts['signedDefaultTtl'],
         );
-
+        Router::setInstance($registrar);
         ($this->register)($registrar);
 
         $compiled = $routes->compile()->all();
@@ -272,6 +273,7 @@ final class RouterKernel
         );
 
         // Let user add routes – matcher is NOT touched in this path.
+        Router::setInstance($registrar);
         ($this->register)($registrar);
 
         // We don’t compile or add to matcher; we only need the name/path map.

@@ -1,0 +1,209 @@
+<?php
+declare(strict_types=1);
+
+use Infocyph\Webrick\Middleware\ThrottleMiddleware;
+use Infocyph\Webrick\Middleware\VerifySignedUrlMiddleware;
+use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Response\Payloads\HtmlResponse;
+use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Router\Definition\Registrar;
+use Infocyph\Webrick\Router\Facade\Router as Route;
+
+/**
+ * This file is included inside the $register closure in index.php,
+ * so the variables $registrar (Registrar) and $signUrlSecret are available.
+ *
+ * NOTE: DemoController and UsersController are declared in index.php (global namespace),
+ * so we can reference them directly here.
+ */
+
+/* ---- homepage with links ---- */
+Route::get('/', function (): HtmlResponse {
+    $links = [
+        '/ping'              => 'Static text',
+        '/hello/Alice'       => 'Dynamic placeholder',
+        '/json'              => 'JSON payload (named: json)',
+        '/download'          => 'Download (attachment)',
+        '/redirect'          => 'Redirect 302 → /',
+        '/color/ff00ff'      => 'Regex-constrained placeholder',
+        '/class/Bob'         => 'Class-based handler',
+
+        // Extra
+        '/post/echo'         => 'POST echo',
+        '/user/42 (PUT)'     => 'Update user (PUT)',
+        '/stream'            => 'Streaming response',
+        '/locale'            => 'Show negotiated locale',
+        '/xml'               => 'XML payload (charset-aware)',
+        '/status/418'        => 'Status echo (I’m a teapot)',
+        '/json/slow'         => 'Lazy JSON via callable',
+
+        // Resource & alias-redirect demos
+        '/users'             => 'Resource: users.index',
+        '/users/create'      => 'Resource: users.create',
+        '/users/42'          => 'Resource: users.show',
+        '/users/42/edit'     => 'Resource: users.edit',
+        '/to-json'           => 'Redirect to route alias: json',
+        '/to-user-42'        => 'Redirect to route alias: users.show (id=42)',
+        '/signed-demo'       => 'Signed Demo',
+        '/auto-demo'         => 'Auto Demo',
+        '/auto-hello'        => 'Auto Hello',
+        '/xml-demo'          => 'XML Demo',
+
+        // Group demo links (prefix-based, same host)
+        '/blog'              => 'Group: blog.index',
+        '/blog/hello-world'  => 'Group: blog.show (slug)',
+        '/admin/dashboard'   => 'Group: admin.dashboard (throttled)',
+
+        // Multi-domain demo (requires hostnames to resolve)
+        'http://api.localhost/v1/ping'      => 'Domain: api.localhost → api.ping',
+        'http://api.localhost/v1/users/7'   => 'Domain: api.localhost → api.users.show',
+        'http://admin.localhost/dashboard'  => 'Domain: admin.localhost → admin.dashboard',
+    ];
+
+    $html = "<h1>Webrick demo</h1><ul>";
+    foreach ($links as $href => $title) {
+        $html .= "<li><a href=\"{$href}\">{$title}</a></li>";
+    }
+    $html .= '</ul>';
+
+    return new HtmlResponse($html);
+});
+
+/* ---- simple routes ---- */
+Route::get('/ping', fn () => 'pong', 'ping');
+
+Route::get('/hello/{name}', fn (Request $r, $name) => Response::json(['hello' => $name]));
+Route::get('/json', fn () => Response::json(['memory' => memory_get_usage(true)]), 'json');
+Route::get('/redirect', fn () => Response::redirect('/', 302));
+Route::get('/download', fn () => Response::attachment(__FILE__, 'index.php'));
+
+Route::get('/color/{color:hex}', fn (Request $r, $hex) => Response::json(['you sent hex' => $hex]));
+
+/* ---- class-based routes ---- */
+Route::get('/class/test/{name}', [DemoController::class, 'hello'], 'test');
+Route::get('/class/rest/{name}', [DemoController::class, 'hello']);
+Route::get('/plus/{name}/mine', [DemoController::class, 'hello']);
+
+/* ---- extra variety routes ---- */
+Route::post('/post/echo', function (Request $r): Response {
+    return Response::json(['method' => $r->getMethod(), 'payload' => $r->all(), 'time' => \date(DATE_ATOM)]);
+});
+
+Route::put('/user/{id:int}', function (Request $r, $id): Response {
+    return Response::json(['updated' => $id, 'input' => $r->all()]);
+});
+
+Route::get('/stream', function (): Response {
+    return Response::stream(function () {
+        for ($i = 1; $i <= 10; $i++) {
+            yield "chunk {$i}\n";
+            usleep(100_000);
+        }
+        return '';
+    });
+});
+
+Route::get('/locale', fn (Request $r) => Response::json(['locale' => $r->getAttribute('locale') ?? 'unknown']));
+
+Route::get('/xml', fn () => Response::create(
+    "<note><to>You</to><from>Me</from><msg>Hello</msg></note>",
+    200,
+    ['Content-Type' => 'application/xml'],
+));
+Route::get('/xml-demo', fn () => Response::create(
+    "<note><to>You</to><from>Me</from><msg>Hello</msg></note>",
+    200,
+    ['Content-Type' => 'application/xml'],
+));
+
+Route::get('/status/{code}', fn (Request $r, $code) => Response::plaintext("Status: $code", (int)$code));
+
+Route::get('/json/slow', function (): Response {
+    return Response::json(function () {
+        return [
+            'now'   => time(),
+            'items' => array_map(fn ($i) => ['n' => $i, 'v' => bin2hex(random_bytes(4))], range(1, 100)),
+        ];
+    });
+});
+
+/* ---- resource routes (Laravel-ish) ---- */
+Route::resource('users', '/users', UsersController::class);
+
+/* ---- redirects using aliases ---- */
+Route::get('/to-json', fn () => Response::redirect(Response::urlFor('json'), 302));
+Route::get('/to-user-42', fn () => Response::redirect(Response::urlFor('users.show', ['id' => 42], absolute: true), 302));
+
+Route::get('/signed-demo', fn () => Response::json([
+    'rel' => Response::signedUrlFor('users.show', ['id' => 42]),
+    'abs' => Response::signedUrlFor('users.show', ['id' => 42], absolute: true),
+]));
+
+// 1) Generate a signed URL (relative) and redirect to it
+Route::get('/make-signed/{id:int}', function ($id) {
+    $signed = Response::temporaryUrlFor('secure.show', ['id' => $id], ['dl' => 1], false);
+    return Response::redirect($signed, 302);
+}, 'make.signed');
+
+// 2) Protected endpoint (verified by middleware)
+Route::get('/secure/{id:int}', function (Request $r, $id) {
+    return Response::json(['ok' => true, 'id' => $id, 'qs' => $r->getQueryParams(), 'time' => \date(DATE_ATOM)]);
+}, [
+    'as' => 'secure.show',
+    'middleware' => [ new VerifySignedUrlMiddleware($signUrlSecret, leeway: 5) ],
+]);
+
+Route::get('/auto-demo', fn (Request $r) => Response::auto($r, ['now' => time(), 'msg' => 'hello']));
+Route::get('/auto-hello', fn (Request $r) => Response::auto($r, 'Hello world!'));
+
+/* ------------------------------------------------------------------
+ * GROUP EXAMPLES
+ * ----------------------------------------------------------------*/
+
+// A) Simple prefix group with name prefix (same host)
+Route::group(
+    prefix: '/blog',
+    namePrefix: 'blog.',
+    callback: function (Registrar $blog): void {
+        $blog->get('/', fn () => Response::json(['section' => 'blog', 'action' => 'index']));                 // blog.index
+        Route::get('/{slug}', fn ($slug) => Response::json(['section' => 'blog', 'slug' => $slug]), 'show');   // blog.show
+    }
+);
+
+// B) Nested group with extra middleware (same host)
+Route::group(
+    prefix: '/admin',
+    middleware: [ThrottleMiddleware::class],
+    namePrefix: 'admin.',
+    callback: function (Registrar $admin): void {
+        $admin->get('/dashboard', fn () => Response::json(['admin' => true, 'action' => 'dashboard']), 'dashboard'); // admin.dashboard
+        $admin->get('/stats', fn () => Response::json(['admin' => true, 'action' => 'stats']), 'stats');             // admin.stats
+    }
+);
+
+/* ------------------------------------------------------------------
+ * MULTI-DOMAIN EXAMPLES
+ * (map these hosts to your dev server — e.g. /etc/hosts)
+ *   127.0.0.1 api.localhost
+ *   127.0.0.1 admin.localhost
+ * ----------------------------------------------------------------*/
+
+// C) API domain group
+Route::group(
+    prefix: '/v1',
+    domain: 'api.localhost',
+    namePrefix: 'api.',
+    callback: function (): void {
+        Route::get('/ping', fn () => Response::json(['domain' => 'api.localhost', 'ok' => true]), 'ping');              // api.ping
+        Route::get('/users/{id:int}', fn ($id) => Response::json(['domain' => 'api.localhost', 'user' => (int)$id]), 'users.show'); // api.users.show
+    }
+);
+
+// D) Admin domain group
+Route::group(
+    domain: 'admin.localhost',
+    namePrefix: 'admin.',
+    callback: function (Registrar $adm): void {
+        Route::get('/dashboard', fn () => Response::json(['domain' => 'admin.localhost', 'page' => 'dashboard'])); // admin.dashboard
+    }
+);

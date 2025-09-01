@@ -10,6 +10,7 @@ use Infocyph\Webrick\Interfaces\RouteInterface;
 use Infocyph\Webrick\Router\Route\Collection;
 use Infocyph\Webrick\Router\Route\CompiledCollection;
 use Infocyph\Webrick\Router\Route\Route;
+use Infocyph\Webrick\Router\Facade\Router;
 use InvalidArgumentException;
 
 /**
@@ -212,7 +213,11 @@ final readonly class Registrar
             $this->signKey,
             $this->signedDefaultTtl,
         );
-        $callback($child);
+
+        // allow both styles:
+        //  • function (Registrar $r) { $r->get(...); }
+        //  • function () { Route::get(...); }
+        Router::withScopedInstance($child, $callback);
     }
 
     /**
