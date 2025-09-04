@@ -5,12 +5,13 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Router\Definition;
 
 use Closure;
-use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Interfaces\RouteInterface;
+use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Router\Dispatch\MiddlewareAliases;
+use Infocyph\Webrick\Router\Facade\Router;
 use Infocyph\Webrick\Router\Route\Collection;
 use Infocyph\Webrick\Router\Route\CompiledCollection;
 use Infocyph\Webrick\Router\Route\Route;
-use Infocyph\Webrick\Router\Facade\Router;
 use InvalidArgumentException;
 
 /**
@@ -153,7 +154,7 @@ final readonly class Registrar
                 'PATCH',
                 '/{' . $param . '}',
                 $patchAction,
-                $patchAction === 'update' ? 'update' : $patchAction,
+                $patchAction,
                 $patchAction !== 'update',
             ],
             ['DELETE', '/{' . $param . '}', 'destroy', 'destroy', true],
@@ -216,7 +217,7 @@ final readonly class Registrar
 
         // allow both styles:
         //  • function (Registrar $r) { $r->get(...); }
-        //  • function () { Route::get(...); }
+        //  • function () { Router::get(...); }
         Router::withScopedInstance($child, $callback);
     }
 
@@ -338,12 +339,13 @@ final readonly class Registrar
             $route = $route->withDomain($domain);
         }
 
-        // 3.1) Group middleware, then per-call extra middleware
-        if ($groupMw = $this->scope->getMiddleware()) {
-            $route = $route->withMiddleware($groupMw);
-        }
-        if ($extraMw !== []) {
-            $route = $route->withMiddleware($extraMw);
+        // 3.1) Merge middleware with **alias override** semantics, then resolve aliases
+        $groupMw = $this->scope->getMiddleware() ?? [];
+        $merged = $this->mergeMiddlewareWithAliasOverrides($groupMw, $extraMw);
+        $resolved = $this->resolveAliasMiddleware($merged);
+
+        if ($resolved !== []) {
+            $route = $route->withMiddleware($resolved);
         }
 
         // 3.2) Name prefix (prepends whatever name we already set)
@@ -365,7 +367,6 @@ final readonly class Registrar
 
         // 4.1) Register aliases in the collection (optional fast lookups)
         foreach ($aliases as $alias) {
-            // Assumes Collection::addAlias(RouteInterface $route, string $alias): void
             $this->routes->addAlias($route, $alias);
         }
 
@@ -374,14 +375,107 @@ final readonly class Registrar
             $alt = str_ends_with($fullPath, '/') ? rtrim($fullPath, '/') : $fullPath . '/';
 
             $this->routes->add(
-                new Route(
-                    'GET',
-                    $alt,
-                    static fn () => Response::redirect($fullPath, 308),
-                ),
+                new Route('GET', $alt, static fn () => Response::redirect($fullPath, 308)),
             );
         }
 
         return $route;
+    }
+
+    /* ──────────────────────────── Alias helpers ─────────────────────────── */
+
+    /**
+     * Merge group + route middleware arrays with **alias override**:
+     *   - If both contain the same alias key (e.g. 'throttle'), the route's
+     *     version replaces the group's.
+     *   - Non-aliased entries keep order: group first, then route extras.
+     *
+     * @param array $group
+     * @param array $route
+     * @return array merged raw specs (strings/objects/callables)
+     */
+    private function mergeMiddlewareWithAliasOverrides(array $group, array $route): array
+    {
+        // Build list of specs where alias entries are recognized and comparable
+        $result = [];
+        $aliasPos = []; // aliasKey => index in $result
+
+        $push = function (mixed $mw) use (&$result, &$aliasPos): void {
+            if (is_string($mw) && ($spec = $this->parseAliasSpec($mw))) {
+                // if alias already present, drop older one (keep newest)
+                if (isset($aliasPos[$spec['key']])) {
+                    unset($result[$aliasPos[$spec['key']]]);
+                }
+                $result[] = $spec;                          // store structured spec
+                $aliasPos[$spec['key']] = array_key_last($result);
+            } else {
+                $result[] = $mw;                             // non-aliased (class-string/object/callable)
+            }
+        };
+
+        foreach ($group as $mw) {
+            $push($mw);
+        }
+        foreach ($route as $mw) {
+            $push($mw);
+        }
+
+        // Reindex (in case we unset something)
+        return array_values($result);
+    }
+
+    /**
+     * Turn alias specs into actual middleware values using MiddlewareAliases.
+     * Keeps non-aliased entries as-is.
+     *
+     * @param array $list mixed items; alias items are ['__alias'=>true,'key'=>string,'params'=>array]
+     * @return array list of callables|objects|string(class-string)
+     */
+    private function resolveAliasMiddleware(array $list): array
+    {
+        $out = [];
+        foreach ($list as $item) {
+            if (is_array($item) && ($item['__alias'] ?? false) === true) {
+                $key = (string)$item['key'];
+                $params = $item['params'] ?? [];
+                $s = $key;
+                if ($params !== []) {
+                    $s .= ':' . implode(',', array_map(static fn ($v) => (string)$v, $params));
+                }
+                // Let MiddlewareAliases produce either object or class-string
+                $out[] = MiddlewareAliases::resolveString($s);
+            } else {
+                // untouched: callable|object|string(class-string)
+                $out[] = $item;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * If $s is "alias:arg1,arg2" and alias is registered, return a structured spec.
+     * Otherwise return null.
+     *
+     * @return array{__alias:true,key:string,params:array}|null
+     */
+    private function parseAliasSpec(string $s): ?array
+    {
+        // class-string? then it's NOT an alias
+        if (class_exists($s)) {
+            return null;
+        }
+
+        [$name, $paramStr] = explode(':', $s, 2) + [1 => null];
+        $key = strtolower(trim($name));
+
+        if ($key === '' || !MiddlewareAliases::has($key)) {
+            return null;
+        }
+
+        $params = ($paramStr !== null && $paramStr !== '')
+            ? array_map('trim', explode(',', $paramStr))
+            : [];
+
+        return ['__alias' => true, 'key' => $key, 'params' => $params];
     }
 }

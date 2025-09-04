@@ -25,6 +25,8 @@ use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Kernel\RouterKernel;
 use Infocyph\Webrick\Router\Route\Collection;
+use Infocyph\Webrick\Router\Dispatch\MiddlewareAliases;
+// 👈 add this
 use Psr\Log\NullLogger;
 
 final readonly class DemoController
@@ -88,13 +90,23 @@ $env = $_ENV['APP_ENV'] ?? getenv('APP_ENV') ?? 'prod';
 $dev = ($env !== 'prod');
 $signUrlSecret = 'hog';
 
+/* --------------------------------------------------------------------------
+ * Middleware aliases (string-based), e.g. 'throttle:60,60'
+ * ----------------------------------------------------------------------- */
+// throttle:<max>,<perSeconds>
+//MiddlewareAliases::register('throttle', static function (...$params) {
+//    // Pass-through varargs; ThrottleMiddleware expects (int $max, int $perSeconds)
+//    $params = array_map('intval', $params);
+//    return new ThrottleMiddleware(...$params);
+//});
+
 /* Pre-route (global) middleware – order matters */
 $preGlobal = [
     GatewayHardeningMiddleware::class,
     TelemetryMiddleware::class,
     MaintenanceModeMiddleware::class,
     RequestLimitsMiddleware::class,
-    ThrottleMiddleware::class,
+    ThrottleMiddleware::class,      // global throttle (can be tightened per-route via 'throttle:x,y')
     NegotiationMiddleware::class,
     CacheValidatorsMiddleware::class,
 ];
