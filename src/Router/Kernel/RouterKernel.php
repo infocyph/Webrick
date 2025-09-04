@@ -32,9 +32,6 @@ final class RouterKernel
     /** Canonical alias filename (plural, double-underscore). */
     private const F_ALIASES = '__aliases.php';
 
-    /** No-op compiler kept for API parity. */
-    private Closure $compiler;
-
     private ErrorHandler $errorHandler;
     private Invoker $invoker;
     private Dispatcher $dispatcher;
@@ -75,24 +72,22 @@ final class RouterKernel
         ?Closure $bindUrlServices = null,
         ?bool $fallbackAliasesFromRegistrar = null,
     ) {
-        $this->routeCache         = ($routeCache !== '' ? $routeCache : null);
-        $this->bindUrlServices    = $bindUrlServices;
-        $this->register           = $register;
-        $this->registrarOptions   = $registrarOptions;
-        $this->matcher            = $matcher;
+        $this->routeCache = ($routeCache !== '' ? $routeCache : null);
+        $this->bindUrlServices = $bindUrlServices;
+        $this->register = $register;
+        $this->registrarOptions = $registrarOptions;
+        $this->matcher = $matcher;
         if ($fallbackAliasesFromRegistrar !== null) {
             $this->fallbackAliasesFromRegistrar = $fallbackAliasesFromRegistrar;
         }
 
-        $this->compiler = static fn (): array => [];
-
         $this->warm();
 
-        $this->invoker     = Invoker::shared();
-        $this->dispatcher  = new Dispatcher($this->invoker, $invokerOnMiddleware);
+        $this->invoker = Invoker::shared();
+        $this->dispatcher = new Dispatcher($this->invoker, $invokerOnMiddleware);
 
         // ⚠️ Global middleware: now supports alias strings like 'throttle:60,60'
-        $this->preGlobal  = $this->normalizeGlobalMiddleware($preGlobal);
+        $this->preGlobal = $this->normalizeGlobalMiddleware($preGlobal);
         $this->postGlobal = $this->normalizeGlobalMiddleware($postGlobal);
 
         $this->errorHandler = $errorHandler ?? new ErrorHandler(
@@ -101,7 +96,7 @@ final class RouterKernel
             capturePhpErrors: true,
             requestIdHeader: 'X-Request-Id',
             exceptionMap: [
-                RouteNotFoundException::class    => 404,
+                RouteNotFoundException::class => 404,
                 MethodNotAllowedException::class => 405,
             ],
         );
@@ -143,13 +138,14 @@ final class RouterKernel
         );
     }
 
-    public function handle(Request $request): Response
+    public function handle(?Request $request = null): Response
     {
+        $request ??= Request::fromGlobals();
         $this->invoker->getContainer()->definitions()->bind(Request::class, $request);
 
         $dispatchCore = $this->buildDispatchCore();
-        $withPost     = $this->composePipeline($this->postGlobal, $dispatchCore);
-        $withPre      = $this->composePipeline($this->preGlobal, $withPost);
+        $withPost = $this->composePipeline($this->postGlobal, $dispatchCore);
+        $withPre = $this->composePipeline($this->preGlobal, $withPost);
 
         return $this->errorHandler->handle($request, $withPre);
     }
@@ -166,9 +162,9 @@ final class RouterKernel
     private function matchRoute(Request $req): array
     {
         $method = strtoupper($req->getMethod());
-        $uri    = $req->getUri();
-        $host   = self::normaliseHost($uri->getHost());
-        $path   = $uri->getPath() ?: '/';
+        $uri = $req->getUri();
+        $host = self::normaliseHost($uri->getHost());
+        $path = $uri->getPath() ?: '/';
 
         return $this->matcher->match($method, $host, $path);
     }
@@ -190,7 +186,7 @@ final class RouterKernel
 
         // Build alias-only collection (for URL helpers)
         $aliasOnly = new Collection();
-        $added     = 0;
+        $added = 0;
         if ($this->routeCache !== null) {
             $added = $this->hydrateAliasesFromCache($aliasOnly, $this->routeCache);
         }
@@ -199,7 +195,7 @@ final class RouterKernel
         if ($added === 0 && $this->fallbackAliasesFromRegistrar) {
             $this->log->info('[router] alias cache empty; building aliases via registrar (matcher untouched)');
             $aliasOnly = $this->buildAliasesViaRegistrar();
-            $added     = \count($aliasOnly->aliasIndex());
+            $added = \count($aliasOnly->aliasIndex());
         }
 
         // Always bind URL services; prefer user callback
@@ -211,8 +207,8 @@ final class RouterKernel
 
         $this->log->info('[router] route table ready (hot cache)', [
             'matcher' => $this->matcher::class,
-            'cache'   => true,
-            'mode'    => 'cache',
+            'cache' => true,
+            'mode' => 'cache',
             'aliases' => $added,
         ]);
     }
@@ -224,8 +220,8 @@ final class RouterKernel
         $opts = $this->registrarOptions + [
                 'autoSlashRedirect' => false,
                 'exposeUrlServices' => false,
-                'signKey'           => null,
-                'signedDefaultTtl'  => null,
+                'signKey' => null,
+                'signedDefaultTtl' => null,
             ];
 
         $registrar = new Registrar(
@@ -252,10 +248,10 @@ final class RouterKernel
         }
 
         $this->log->info('[router] route table ready', [
-            'count'   => \count($compiled),
+            'count' => \count($compiled),
             'matcher' => $this->matcher::class,
-            'cache'   => \method_exists($this->matcher, 'enableCache'),
-            'mode'    => 'compiled',
+            'cache' => \method_exists($this->matcher, 'enableCache'),
+            'mode' => 'compiled',
         ]);
     }
 
@@ -270,8 +266,8 @@ final class RouterKernel
         $opts = $this->registrarOptions + [
                 'autoSlashRedirect' => false,
                 'exposeUrlServices' => false, // we’ll bind explicitly below
-                'signKey'           => null,
-                'signedDefaultTtl'  => null,
+                'signKey' => null,
+                'signedDefaultTtl' => null,
             ];
 
         $registrar = new Registrar(
@@ -285,7 +281,7 @@ final class RouterKernel
         Router::setInstance($registrar);
         ($this->register)($registrar);
 
-        return $routes; // alias map only
+        return $routes;
     }
 
     /**
@@ -317,7 +313,7 @@ final class RouterKernel
         $added = $this->addAliasPairsToCollection($dst, $pairs);
 
         $this->log->info('[router] alias cache hydrated', [
-            'file'  => $aliasFile,
+            'file' => $aliasFile,
             'count' => $added,
         ]);
 
@@ -331,7 +327,7 @@ final class RouterKernel
             \is_dir($cacheLocation)
                 ? \rtrim($cacheLocation, '/\\')
                 : \dirname($cacheLocation)
-        ) . \DIRECTORY_SEPARATOR . self::F_ALIASES;
+            ) . \DIRECTORY_SEPARATOR . self::F_ALIASES;
     }
 
     private function aliasFileExists(?string $path): bool
@@ -360,13 +356,13 @@ final class RouterKernel
             if (!\is_string($name) || $name === '' || !\is_array($tuple)) {
                 continue;
             }
-            $path   = $tuple[0] ?? null;
+            $path = $tuple[0] ?? null;
             $domain = $tuple[1] ?? null;
             if (!\is_string($path) || $path === '') {
                 continue;
             }
 
-            $r = new Route('GET', $path, static fn () => Response::noContent());
+            $r = new Route('GET', $path, static fn() => Response::noContent());
             $r = $r->withName($name);
             if (\is_string($domain) && $domain !== '') {
                 $r = $r->withDomain($domain);
@@ -505,7 +501,7 @@ final class RouterKernel
     private function composePipeline(array $stack, Closure $next): Closure
     {
         for ($i = \count($stack) - 1; $i >= 0; $i--) {
-            $mw   = $stack[$i];
+            $mw = $stack[$i];
             $next = static function (Request $req) use ($mw, $next): Response {
                 return $mw($req, $next);
             };

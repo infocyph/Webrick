@@ -181,6 +181,4 @@ $kernel = RouterKernel::bootWithRegistrar(
 /* --------------------------------------------------------------------------
  * 4) Handle & emit
  * ----------------------------------------------------------------------- */
-$request = Request::fromGlobals();
-$response = $kernel->handle($request);
-new AutoEmitter()->emit($response);
+new AutoEmitter()->emit($kernel->handle());
