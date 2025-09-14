@@ -144,14 +144,17 @@ Route::get('/signed-demo', fn () => Response::json([
 Route::get('/make-signed/{id:int}', function ($id) {
     $signed = Response::temporaryUrlFor('secure.show', ['id' => $id], ['dl' => 1], false);
     return Response::redirect($signed, 302);
-}, 'make.signed');
+}, [
+    'as' => 'make.signed',
+    'middleware' => [ 'throttle:2,1' ],
+]);
 
 // 2) Protected endpoint (verified by middleware)
 Route::get('/secure/{id:int}', function (Request $r, $id) {
     return Response::json(['ok' => true, 'id' => $id, 'qs' => $r->getQueryParams(), 'time' => \date(DATE_ATOM)]);
 }, [
     'as' => 'secure.show',
-    'middleware' => [ new VerifySignedUrlMiddleware($signUrlSecret, leeway: 5) ],
+    'middleware' => [ 'verifySignedUrl','throttle:2,1' ],
 ]);
 
 Route::get('/auto-demo', fn (Request $r) => Response::auto($r, ['now' => time(), 'msg' => 'hello']));

@@ -327,7 +327,7 @@ final class RouterKernel
             \is_dir($cacheLocation)
                 ? \rtrim($cacheLocation, '/\\')
                 : \dirname($cacheLocation)
-            ) . \DIRECTORY_SEPARATOR . self::F_ALIASES;
+        ) . \DIRECTORY_SEPARATOR . self::F_ALIASES;
     }
 
     private function aliasFileExists(?string $path): bool
@@ -362,7 +362,7 @@ final class RouterKernel
                 continue;
             }
 
-            $r = new Route('GET', $path, static fn() => Response::noContent());
+            $r = new Route('GET', $path, static fn () => Response::noContent());
             $r = $r->withName($name);
             if (\is_string($domain) && $domain !== '') {
                 $r = $r->withDomain($domain);

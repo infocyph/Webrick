@@ -19,6 +19,7 @@ use Infocyph\Webrick\Middleware\ResponseLinterMiddleware;
 use Infocyph\Webrick\Middleware\TelemetryMiddleware;
 use Infocyph\Webrick\Middleware\ThrottleMiddleware;
 use Infocyph\Webrick\Middleware\VaryAccumulatorMiddleware;
+use Infocyph\Webrick\Middleware\VerifySignedUrlMiddleware;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Emitter\AutoEmitter;
 use Infocyph\Webrick\Response\Response;
@@ -94,11 +95,14 @@ $signUrlSecret = 'hog';
  * Middleware aliases (string-based), e.g. 'throttle:60,60'
  * ----------------------------------------------------------------------- */
 // throttle:<max>,<perSeconds>
-//MiddlewareAliases::register('throttle', static function (...$params) {
-//    // Pass-through varargs; ThrottleMiddleware expects (int $max, int $perSeconds)
-//    $params = array_map('intval', $params);
-//    return new ThrottleMiddleware(...$params);
-//});
+MiddlewareAliases::register('throttle', static function (...$params) {
+    // Pass-through varargs; ThrottleMiddleware expects (int $max, int $perSeconds)
+    $params = array_map('intval', $params);
+    return new ThrottleMiddleware(...$params);
+});
+MiddlewareAliases::register('verifySignedUrl', static function () use ($signUrlSecret) {
+    return new VerifySignedUrlMiddleware($signUrlSecret, 5);
+});
 
 /* Pre-route (global) middleware – order matters */
 $preGlobal = [
