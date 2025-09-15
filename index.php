@@ -123,7 +123,7 @@ if ($dev) {
 /* --------------------------------------------------------------------------
  * 2) Registration closure (executed only when cache is NOT hot)
  * ----------------------------------------------------------------------- */
-$register = static function (Registrar $registrar): void {//die('hi');
+$register = static function (Registrar $registrar): void {
     require_once __DIR__ . '/routes.php';
 };
 
@@ -145,8 +145,6 @@ $kernel = RouterKernel::bootWithRegistrar(
     ],
     preGlobal: $preGlobal,
     postGlobal: $postGlobal,
-    invokerOnMiddleware: false,
-    errorHandler: null,
     bindUrlServices: static function (Collection $routes) use ($signUrlSecret): void {
         Response::bindUrlServices($routes, $signUrlSecret, 900);
     },
@@ -168,8 +166,6 @@ $kernel = RouterKernel::bootWithRegistrar(
 //     ],
 //     preGlobal: $preGlobal,
 //     postGlobal: $postGlobal,
-//     invokerOnMiddleware: false,
-//     errorHandler: null,
 //     bindUrlServices: static function (Collection $routes) use ($signUrlSecret): void {
 //         Response::bindUrlServices($routes, $signUrlSecret, 900);
 //     },
