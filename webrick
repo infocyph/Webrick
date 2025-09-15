@@ -1,22 +1,115 @@
 #!/usr/bin/env php
 <?php
+
 declare(strict_types=1);
 
-/**
- * Webrick CLI entry-point – run like:
- *
- *   php webrick route:list
- *   php webrick route:cache
- *   php webrick route:clear
- *
- * Requirements
- * ------------
- *  • `vendor/autoload.php` must exist (Composer).
- *  • Make this file executable on *nix:  chmod +x webrick
- */
+use Infocyph\Webrick\Support\RouteCache;
 
-require_once __DIR__ . '/vendor/autoload.php';
+require __DIR__ . '/vendor/autoload.php';
 
-use Infocyph\Webrick\Router\Console\RouteCommand;
+function out(string $msg): void
+{
+    fwrite(STDOUT, $msg);
+}
 
-exit(RouteCommand::run($argv));
+function err(string $msg): void
+{
+    fwrite(STDERR, $msg);
+}
+
+$args = $argv;
+array_shift($args);
+$cmd = $args[0] ?? 'help';
+
+$longOpts = [
+    'matcher::',           // sharded|fused
+    'cache::',             // path to cache dir (sharded) or file (fused)
+    'routes::',            // path to routes.php
+    'signkey::',           // secret for signed URLs (optional)
+    'ttl::',               // signedDefaultTtl (seconds)
+    'alias-fallback::',    // 1|0 — derive aliases from registrar if cache lacks them
+    'aggressive::',        // 1|0 — for route:clear (sharded)
+];
+
+$usage = <<<TXT
+    Webrick CLI
+
+    USAGE:
+      webrick route:cache [--matcher=sharded|fused] [--cache=PATH] [--routes=PATH] [--signkey=KEY] [--ttl=900] [--alias-fallback=1|0]
+      webrick route:clear [--matcher=sharded|fused] [--cache=PATH] [--aggressive=1|0]
+      webrick help
+
+    NOTES:
+    - Sharded matcher expects --cache to be a directory (e.g. ./.route-cache)
+    - Fused matcher expects --cache to be a single php file (e.g. ./.route-cache/__routes.php)
+    - If --matcher is omitted, it is auto-detected by whether --cache ends with ".php"
+    - If --routes is omitted, your app must provide a registrar via library integration instead.
+    TXT;
+
+switch ($cmd) {
+    case 'route:cache':
+        {
+            $opts = getopt('', $longOpts);
+
+            $cache = $opts['cache'] ?? (__DIR__ . '/.route-cache');
+            $routes = $opts['routes'] ?? (__DIR__ . '/routes.php');
+            $matcher = $opts['matcher'] ?? null;
+            $signKey = $opts['signkey'] ?? null;
+            $ttl = (int)($opts['ttl'] ?? 900);
+            $alias = filter_var($opts['alias-fallback'] ?? '1', FILTER_VALIDATE_BOOL);
+
+            try {
+                $sentinel = RouteCache::build([
+                    'matcher' => $matcher,
+                    'cache' => $cache,
+                    'routes' => $routes,     // or pass 'register' in library usage
+                    'signKey' => $signKey,
+                    'signedDefaultTtl' => $ttl,
+                    'registrarOptions' => [
+                        'autoSlashRedirect' => false,
+                        'exposeUrlServices' => true,
+                    ],
+                    'fallbackAliasesFromRegistrar' => $alias,
+                ]);
+            } catch (\Throwable $e) {
+                err("✖ route:cache failed: {$e->getMessage()}\n");
+                exit(2);
+            }
+
+            $ok = is_file($sentinel);
+            out(($ok ? "✔" : "✖") . " Route cache ready at: {$sentinel}\n");
+            exit($ok ? 0 : 3);
+        }
+
+    case 'route:clear':
+        {
+            $opts = getopt('', $longOpts);
+
+            $cache = $opts['cache'] ?? (__DIR__ . '/.route-cache');
+            $matcher = $opts['matcher'] ?? null;
+            $aggressive = filter_var($opts['aggressive'] ?? '1', FILTER_VALIDATE_BOOL);
+
+            try {
+                $removed = RouteCache::clear([
+                    'matcher' => $matcher,
+                    'cache' => $cache,
+                    'aggressive' => $aggressive,
+                ]);
+            } catch (Throwable $e) {
+                err("✖ route:clear failed: {$e->getMessage()}\n");
+                exit(4);
+            }
+
+            if ($removed) {
+                out("✔ Route cache cleared: {$cache}\n");
+                exit(0);
+            }
+
+            out("ℹ Nothing to clear at: {$cache}\n");
+            exit(0);
+        }
+
+    default:
+        out($usage);
+        exit(0);
+}
