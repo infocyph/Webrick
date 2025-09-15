@@ -27,7 +27,6 @@ use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Kernel\RouterKernel;
 use Infocyph\Webrick\Router\Route\Collection;
 use Infocyph\Webrick\Router\Dispatch\MiddlewareAliases;
-// 👈 add this
 use Psr\Log\NullLogger;
 
 final readonly class DemoController
@@ -95,11 +94,7 @@ $signUrlSecret = 'hog';
  * Middleware aliases (string-based), e.g. 'throttle:60,60'
  * ----------------------------------------------------------------------- */
 // throttle:<max>,<perSeconds>
-MiddlewareAliases::register('throttle', static function (...$params) {
-    // Pass-through varargs; ThrottleMiddleware expects (int $max, int $perSeconds)
-    $params = array_map('intval', $params);
-    return new ThrottleMiddleware(...$params);
-});
+MiddlewareAliases::register('throttle', static fn (...$p) => new ThrottleMiddleware((int)($p[0] ?? 60), (int)($p[1] ?? 60)));
 MiddlewareAliases::register('verifySignedUrl', static function () use ($signUrlSecret) {
     return new VerifySignedUrlMiddleware($signUrlSecret, 5);
 });
@@ -110,7 +105,7 @@ $preGlobal = [
     TelemetryMiddleware::class,
     MaintenanceModeMiddleware::class,
     RequestLimitsMiddleware::class,
-    ThrottleMiddleware::class,      // global throttle (can be tightened per-route via 'throttle:x,y')
+    ThrottleMiddleware::class,
     NegotiationMiddleware::class,
     CacheValidatorsMiddleware::class,
 ];
@@ -128,7 +123,7 @@ if ($dev) {
 /* --------------------------------------------------------------------------
  * 2) Registration closure (executed only when cache is NOT hot)
  * ----------------------------------------------------------------------- */
-$register = static function (Registrar $registrar) use ($signUrlSecret): void {
+$register = static function (Registrar $registrar): void {//die('hi');
     require_once __DIR__ . '/routes.php';
 };
 
@@ -153,7 +148,6 @@ $kernel = RouterKernel::bootWithRegistrar(
     invokerOnMiddleware: false,
     errorHandler: null,
     bindUrlServices: static function (Collection $routes) use ($signUrlSecret): void {
-        // Called in both modes; in hot-cache we pass the alias-only Collection
         Response::bindUrlServices($routes, $signUrlSecret, 900);
     },
     // leave true while validating your cache’s __aliases.php
