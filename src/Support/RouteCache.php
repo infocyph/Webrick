@@ -138,35 +138,52 @@ final class RouteCache
             default   => \str_ends_with($cachePath, '.php'),
         };
 
-        $aggressive = (bool) ($options['aggressive'] ?? true);
+        // ✅ SAFE BY DEFAULT: keep directory for sharded caches
+        $aggressive = (bool) ($options['aggressive'] ?? false);
+
+        // Basic guardrails against dangerous targets
+        $danger = ['/', '\\', '.', '..', ''];
+        if (\in_array($cachePath, $danger, true)) {
+            throw new \RuntimeException("RouteCache::clear: refusing to operate on risky path '{$cachePath}'.");
+        }
 
         if ($isFused) {
+            // single cache file
             return self::rmFile($cachePath);
         }
 
-        // sharded: directory
+        // sharded = directory of PHP shards + sentinels
         $dir = \rtrim($cachePath, "/\\");
         if (! \is_dir($dir)) {
             return false;
         }
 
         if ($aggressive) {
+            // remove directory recursively (dotfiles included) – use with care
             return self::rrmdir($dir);
         }
 
-        // non-aggressive: delete known files only
+        // Non-aggressive: remove only our cache artifacts, keep folder & dotfiles (.gitignore)
         $removed = false;
+
+        // Known sentinels
         foreach (['__root.php', '__aliases.php'] as $known) {
             $removed = self::rmFile($dir . DIRECTORY_SEPARATOR . $known) || $removed;
         }
-        // remove numbered shards *.php
+
+        // Shards (*.php)
         foreach (\glob($dir . DIRECTORY_SEPARATOR . '*.php') ?: [] as $php) {
+            $base = \basename($php);
+            if ($base === '__root.php' || $base === '__aliases.php') {
+                continue; // already handled
+            }
             $removed = self::rmFile($php) || $removed;
         }
-        // try to remove dir if empty
-        @\rmdir($dir);
+
+        // keep the directory (so .gitignore survives)
         return $removed;
     }
+
 
     private static function rmFile(string $file): bool
     {

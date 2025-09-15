@@ -32,19 +32,18 @@ $longOpts = [
 ];
 
 $usage = <<<TXT
-    Webrick CLI
+Webrick CLI
 
-    USAGE:
-      webrick route:cache [--matcher=sharded|fused] [--cache=PATH] [--routes=PATH] [--signkey=KEY] [--ttl=900] [--alias-fallback=1|0]
-      webrick route:clear [--matcher=sharded|fused] [--cache=PATH] [--aggressive=1|0]
-      webrick help
+USAGE:
+  webrick route:cache [--matcher=sharded|fused] [--cache=PATH] [--routes=PATH] [--signkey=KEY] [--ttl=900] [--alias-fallback=1|0]
+  webrick route:clear [--matcher=sharded|fused] [--cache=PATH] [--aggressive=1|0]
 
-    NOTES:
-    - Sharded matcher expects --cache to be a directory (e.g. ./.route-cache)
-    - Fused matcher expects --cache to be a single php file (e.g. ./.route-cache/__routes.php)
-    - If --matcher is omitted, it is auto-detected by whether --cache ends with ".php"
-    - If --routes is omitted, your app must provide a registrar via library integration instead.
-    TXT;
+NOTES:
+- route:clear keeps the cache directory by default (safe). Use --aggressive=1 to delete the folder.
+- Sharded matcher: --cache is a directory (e.g. ./.route-cache)
+- Fused matcher:   --cache is a file     (e.g. ./.route-cache/__routes.php)
+TXT;
+
 
 switch ($cmd) {
     case 'route:cache':
@@ -81,33 +80,34 @@ switch ($cmd) {
             exit($ok ? 0 : 3);
         }
 
-    case 'route:clear':
-        {
-            $opts = getopt('', $longOpts);
+    case 'route:clear': {
+        $opts = getopt('', $longOpts);
 
-            $cache = $opts['cache'] ?? (__DIR__ . '/.route-cache');
-            $matcher = $opts['matcher'] ?? null;
-            $aggressive = filter_var($opts['aggressive'] ?? '1', FILTER_VALIDATE_BOOL);
+        $cache      = $opts['cache'] ?? (__DIR__ . '/.route-cache');
+        $matcher    = $opts['matcher'] ?? null;
 
-            try {
-                $removed = RouteCache::clear([
-                    'matcher' => $matcher,
-                    'cache' => $cache,
-                    'aggressive' => $aggressive,
-                ]);
-            } catch (Throwable $e) {
-                err("✖ route:clear failed: {$e->getMessage()}\n");
-                exit(4);
-            }
+        // ✅ default false — preserve folder & dotfiles
+        $aggressive = filter_var($opts['aggressive'] ?? '0', FILTER_VALIDATE_BOOL);
 
-            if ($removed) {
-                out("✔ Route cache cleared: {$cache}\n");
-                exit(0);
-            }
+        try {
+            $removed = RouteCache::clear([
+                'matcher'    => $matcher,
+                'cache'      => $cache,
+                'aggressive' => $aggressive,
+            ]);
+        } catch (Throwable $e) {
+            err("✖ route:clear failed: {$e->getMessage()}\n");
+            exit(4);
+        }
 
-            out("ℹ Nothing to clear at: {$cache}\n");
+        if ($removed) {
+            out("✔ Route cache cleared: {$cache}\n");
             exit(0);
         }
+
+        out("ℹ Nothing to clear at: {$cache}\n");
+        exit(0);
+    }
 
     default:
         out($usage);
