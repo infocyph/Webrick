@@ -16,7 +16,6 @@ use Infocyph\Webrick\Request\Support\IpCidr;
  */
 final class EndUser
 {
-    /* ========== static trusted proxy list (shared across requests) ========== */
     private static array $trustedGlobal = [];                    // CIDR strings
 
     public static function setTrustedProxies(array $cidrs): void
@@ -46,23 +45,40 @@ final class EndUser
     private ?string $cachedNoProxy = null;
     private ?string $cachedViaProxy = null;
 
+    /**
+     * Creates a new EndUser instance from the given Request.
+     *
+     * @param Request $req The request to get the end-user from.
+     * @param array $extraTrusted Extra trusted proxies (CIDR strings).
+     */
     public function __construct(
         private readonly Request $req,
         private readonly array $extraTrusted = [],
     ) {
     }
-
-    /* fast factory */
+    
+    /**
+     * Creates a new EndUser instance from the given Request.
+     *
+     * @param Request $r The request to get the end-user from.
+     * @param array $cidrs Extra trusted proxies (CIDR strings).
+     * @return self
+     */
     public static function from(Request $r, array $cidrs = []): self
     {
         return new self($r, $cidrs);
     }
 
-    /* ============================================================
-       1)   IP helpers
-       ============================================================*/
 
-    /** Public IP (proxy-aware) or null */
+    /**
+     * Return the public IP of the client that is not behind a trusted proxy.
+     * If the client is behind a trusted proxy, return null.
+     *
+     * This method first checks if the client is behind a trusted proxy.
+     * If so, it returns null. Otherwise, it returns the public IP address of the client.
+     *
+     * @return string|null public IP or null
+     */
     public function ip(): ?string
     {
         $hop = $this->ipNoProxy();
@@ -72,6 +88,15 @@ final class EndUser
             : $hop;                       // use REMOTE_ADDR
     }
 
+    /**
+     * Return the public IP of the client that is not behind a trusted proxy.
+     * If the client is behind a trusted proxy, return null.
+     *
+     * This method first checks if the client is behind a trusted proxy.
+     * If so, it returns null. Otherwise, it returns the public IP address of the client.
+     *
+     * @return string|null The public IP address of the client, or null if behind a trusted proxy.
+     */
     public function ipNoProxy(): ?string
     {
         if ($this->cachedNoProxy !== null) {
@@ -211,7 +236,7 @@ final class EndUser
     {
         return array_any(array_merge(self::$trustedGlobal, $this->extraTrusted), fn ($cidr) => IpCidr::match($ip, $cidr));
     }
-    
+
     /**
      * Parses the Forwarded header (if present) and returns an array of IP addresses.
      * The order of the IP addresses is the same as in the header.
@@ -230,7 +255,7 @@ final class EndUser
         preg_match_all('/for="?\[?([A-F0-9:.]+)/i', $h, $m);
         return $m[1] ?? [];
     }
-    
+
     /**
      * Parses legacy IP headers (X-Forwarded-For, Forwarded, Client-IP, etc.).
      * Returns an array of IP addresses (in the order they appear in the headers).
