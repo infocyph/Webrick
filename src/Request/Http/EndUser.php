@@ -18,6 +18,15 @@ final class EndUser
 {
     private static array $trustedGlobal = [];                    // CIDR strings
 
+    /**
+     * Sets the global trusted proxies.
+     *
+     * These are the IP addresses or CIDR ranges that are trusted to pass
+     * the client's IP address. The list is global and applies to all
+     * EndUser objects.
+     *
+     * @param array $cidrs An array of IP addresses or CIDR ranges.
+     */
     public static function setTrustedProxies(array $cidrs): void
     {
         self::$trustedGlobal = $cidrs;
@@ -56,7 +65,7 @@ final class EndUser
         private readonly array $extraTrusted = [],
     ) {
     }
-    
+
     /**
      * Creates a new EndUser instance from the given Request.
      *
