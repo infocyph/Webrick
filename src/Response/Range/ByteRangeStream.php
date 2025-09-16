@@ -65,7 +65,7 @@ final class ByteRangeStream implements BodyStream
         return $this->base->isReadable();
     }
 
-    public function seek($offset, $whence = SEEK_SET): void
+    public function seek(int $offset, int $whence = SEEK_SET): void
     {
         if (!$this->isSeekable()) {
             throw new RuntimeException('Stream is not seek-able');
@@ -78,12 +78,12 @@ final class ByteRangeStream implements BodyStream
         $this->seek(0);
     }
 
-    public function write($string): int
+    public function write(string $string): int
     {
         throw new RuntimeException('ByteRangeStream is read-only');
     }
 
-    public function read($length): string
+    public function read(int $length): string
     {
         if ($this->remaining === 0) {
             return '';
@@ -104,7 +104,7 @@ final class ByteRangeStream implements BodyStream
         return $data;
     }
 
-    public function getMetadata($key = null): mixed
+    public function getMetadata(string $key = null): mixed
     {
         return $this->base->getMetadata($key);
     }

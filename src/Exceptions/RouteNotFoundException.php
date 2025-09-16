@@ -7,8 +7,12 @@ namespace Infocyph\Webrick\Exceptions;
 final class RouteNotFoundException extends \RuntimeException
 {
     /**
-     * @param non-empty-string $verb
-     * @param non-empty-string $path
+     * Constructor.
+     *
+     * @param string $verb The HTTP verb associated with the route.
+     * @param string $path The path associated with the route.
+     * @param int $code The HTTP status code associated with the exception.
+     * @param \Throwable|null $previous The previous exception, if any.
      */
     public function __construct(
         public readonly string $verb,

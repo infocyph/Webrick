@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Support;
 
-use Infocyph\Webrick\Request\Core\Stream;
+use Infocyph\Webrick\Interfaces\BodyStream;
 
 final class Etag
 {
@@ -13,7 +13,7 @@ final class Etag
      * Returns a quoted hex (first $hexLen chars of $algo digest) or null on failure.
      */
     public static function fromStream(
-        Stream $stream,
+        BodyStream $stream,
         string $salt = '',
         string $algo = 'xxh3',
         int $hexLen = 16,

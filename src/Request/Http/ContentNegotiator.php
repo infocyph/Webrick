@@ -20,6 +20,11 @@ final class ContentNegotiator
     private array $charsets;      // Accept-Charset
     private array $languages;     // Accept-Language
 
+    /**
+     * Populate the content negotiator with data from the given RequestHeaders.
+     *
+     * @param RequestHeaders $hdr Request headers
+     */
     public function __construct(RequestHeaders $hdr)
     {
         $m = $hdr->accept();          // map<string,string[]>
@@ -29,16 +34,11 @@ final class ContentNegotiator
         $this->languages = $m['Accept-Language'] ?? [];
     }
 
-    /* -----------------------------------------------------------------
-       1)  MIME-type negotiation
-       ---------------------------------------------------------------- */
-
     /**
-     * Return the **first client MIME** that matches one of the given
-     * $candidates or `null` (⇒ 406 Not Acceptable).
+     * Find the best match from a list of candidates.
      *
-     *
-     * @param string[] $candidates ordered by caller preference
+     * @param string[] $candidates
+     * @return string|null
      */
     public function preferred(array $candidates): ?string
     {
@@ -50,6 +50,16 @@ final class ContentNegotiator
 
     /* ───── helpers ─────────────────────────────────────────────── */
 
+    /**
+     * Check if a client-preferred MIME-type matches a server-supported MIME-type.
+     *
+     * If the client's MIME-type starts with a '+', it is treated as a suffix match.
+     * Otherwise, the MIME-type is matched according to the rules of RFC 9110.
+     *
+     * @param string $want the client's preferred MIME-type
+     * @param string $have the server's supported MIME-type
+     * @return bool whether the client supports the given MIME-type
+     */
     private function matches(string $want, string $have): bool
     {
         return $want[0] === '+'
@@ -57,6 +67,16 @@ final class ContentNegotiator
             : $this->mimeMatch($want, $have);
     }
 
+    /**
+     * MIME-type matching algorithm.
+     *
+     * Compares two MIME-types according to the rules of RFC 9110.
+     * Returns true if the client supports the given MIME-type, false otherwise.
+     *
+     * @param string $want the client's preferred MIME-type
+     * @param string $have the server's supported MIME-type
+     * @return bool whether the client supports the given MIME-type
+     */
     private function mimeMatch(string $want, string $have): bool
     {
         if ($want === $have) {
@@ -84,11 +104,13 @@ final class ContentNegotiator
         return false;
     }
 
-
-    /* -----------------------------------------------------------------
-       2)  Encoding / charset / language helpers
-       ---------------------------------------------------------------- */
-
+    /**
+     * Return true if the encoding $enc is supported by the client.
+     * False if not supported.
+     *
+     * @param string $enc the encoding to check, e.g. 'gzip', 'br', 'identity'
+     * @return bool
+     */
     public function supportsEncoding(string $enc): bool
     {
         return $this->encodings === []                      // header omitted
@@ -96,6 +118,13 @@ final class ContentNegotiator
             || in_array('*', $this->encodings, true);
     }
 
+    /**
+     * Return true if the character set $cs is supported by the client.
+     * False if not supported.
+     *
+     * @param string $cs the character set to check, e.g. 'utf-8', 'iso-8859-1'
+     * @return bool
+     */
     public function supportsCharset(string $cs): bool
     {
         return $this->charsets === []
@@ -103,6 +132,13 @@ final class ContentNegotiator
             || in_array('*', $this->charsets, true);
     }
 
+    /**
+     * Return true if the language $lang is supported by the client.
+     * False if not supported.
+     *
+     * @param string $lang the language to check, e.g. 'en', 'fr', 'bn-BD'
+     * @return bool
+     */
     public function supportsLanguage(string $lang): bool
     {
         return $this->languages === []
@@ -110,28 +146,56 @@ final class ContentNegotiator
             || in_array('*', $this->languages, true);
     }
 
-    /* convenient one-liners */
-
+    /**
+     * True if the client prefers to receive responses with gzip encoding.
+     * False otherwise.
+     *
+     * @return bool
+     */
     public function wantsGzip(): bool
     {
         return $this->supportsEncoding('gzip');
     }
 
+    /**
+     * True if the client prefers to receive responses with Brotli encoding.
+     * False otherwise.
+     *
+     * @return bool
+     */
     public function wantsBrotli(): bool
     {
         return $this->supportsEncoding('br');
     }
 
+    /**
+     * True if the client prefers to receive responses with Zstd encoding.
+     * False otherwise.
+     *
+     * @return bool
+     */
     public function wantsZstd(): bool
     {
         return $this->supportsEncoding('zstd');
     }
 
+    /**
+     * Return true if the client prefers to receive responses with UTF-8 encoding.
+     * False otherwise.
+     *
+     * @return bool
+     */
     public function acceptsUtf8(): bool
     {
         return $this->supportsCharset('utf-8');
     }
 
+    /**
+     * Return true if the client prefers to receive responses with ISO-8859-1 (Latin-1) encoding.
+     * False otherwise.
+     *
+     * @return bool
+     */
     public function acceptsLatin1(): bool
     {
         return $this->supportsCharset('iso-8859-1');

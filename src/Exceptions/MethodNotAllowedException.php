@@ -4,17 +4,16 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Exceptions;
 
-/**
- * Thrown when the requested HTTP verb is not permitted for a matched path.
- *
- * @psalm-type NonEmptyString = non-empty-string
- */
 final class MethodNotAllowedException extends \RuntimeException
 {
     /**
-     * @param NonEmptyString $verb e.g. "POST"
-     * @param NonEmptyString $path e.g. "/users/42"
-     * @param list<NonEmptyString> $allowed e.g. ["GET", "HEAD"]
+     * Initializes a new instance of the MethodNotAllowedException class.
+     *
+     * @param string $verb The HTTP verb that was used.
+     * @param string $path The path that was requested.
+     * @param array $allowed The list of allowed HTTP verbs for the given path.
+     * @param int $code The error code.
+     * @param \Throwable|null $previous The previous throwable used for the exception chaining.
      */
     public function __construct(
         public readonly string $verb,
@@ -30,7 +29,11 @@ final class MethodNotAllowedException extends \RuntimeException
         );
     }
 
-    /** Return the list of allowed HTTP verbs for this path. */
+    /**
+     * Return the list of allowed methods for the given path.
+     *
+     * @return array<string> List of allowed HTTP methods.
+     */
     public function allowed(): array
     {
         return $this->allowed;

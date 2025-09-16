@@ -19,6 +19,16 @@ final class Uri
     private string $fragment;
     private static array $asciiCache = [];
 
+    /**
+     * Create a new Uri object from a given string or empty object.
+     *
+     * If the string is empty, it will create an empty Uri object.
+     * Otherwise, it will parse the string and compute all the properties
+     * needed for the Uri object.
+     *
+     * @param string $uri The string to parse into a Uri object.
+     * @throws InvalidArgumentException If the given string is not a valid URI.
+     */
     public function __construct(string $uri = '')
     {
         /* ---- fast-path: empty URI object ------------------------- */
@@ -64,16 +74,27 @@ final class Uri
         $this->query = $query;
         $this->fragment = $fragment;
     }
-
-    /* ------------------------------------------------------------------------- */
-
-    /* ---------- 1. factory: raw string --------------------- */
+    /**
+     * Constructs a Uri object from a raw URI string.
+     *
+     * @param string $raw The raw URI string.
+     * @return self A new Uri object.
+     */
     public static function from(string $raw): self
     {
         return new self($raw);
     }
-
-    /* ---------- 2. factory: build from $_SERVER ------------ */
+    
+    /**
+     * Constructs a Uri object from server parameters ($_SERVER).
+     *
+     * This method takes into account proxy headers (e.g. Forwarded, X-Forwarded-*)
+     * if configured, and returns a Uri object that reflects the best available
+     * information about the client.
+     *
+     * @param array $srv The server parameters, typically from $_SERVER.
+     * @return self A new Uri object.
+     */
     public static function fromServerParams(array $srv): self
     {
         $scheme = self::detectScheme($srv);          // 'http' | 'https'
@@ -82,11 +103,17 @@ final class Uri
 
         return new self(self::buildFullUrl($scheme, $host, $port, $uri));
     }
-
-    /* ---------- 3. helpers (pure functions, tiny) ---------- */
-
-    /** http vs https deduction (keeps your old rules) */
-    /** http vs https deduction (keeps your old rules) */
+    /**
+     * Detects the scheme (http or https) from server parameters, considering proxy headers if configured.
+     *
+     * The detection follows this order of precedence:
+     * 1. RFC 7239 Forwarded header (proto parameter)
+     * 2. X-Forwarded-Proto header
+     * 3. Direct socket view (HTTPS, REQUEST_SCHEME, HTTP_FRONT_END_HTTPS, SERVER_PORT)
+     *
+     * @param array $s The server parameters, typically from $_SERVER.
+     * @return string The detected scheme, either 'http' or 'https'.
+     */
     private static function detectScheme(array $s): string
     {
         if ($p = self::protoFromForwarded($s)) {
@@ -98,6 +125,15 @@ final class Uri
         return self::protoFromServer($s);
     }
 
+    /**
+     * Detects the protocol (http or https) from the Forwarded header.
+     *
+     * If the Forwarded header is present and has a "proto" parameter,
+     * returns the protocol. Otherwise, returns null.
+     *
+     * @param array $s The server parameters, typically from $_SERVER.
+     * @return string|null The protocol (http or https) or null if not present.
+     */
     private static function protoFromForwarded(array $s): ?string
     {
         if ((Request::getProxyHeaderFlags() & Request::HEADER_FORWARDED) === 0) {
@@ -115,6 +151,13 @@ final class Uri
         return null;
     }
 
+    /**
+     * Detects the protocol from the X-Forwarded-Proto header.
+     * Returns one of 'http', 'https' or null.
+     *
+     * @param array $s The server parameters, typically from $_SERVER.
+     * @return string|null The detected protocol, or null if not present.
+     */
     private static function protoFromXForwarded(array $s): ?string
     {
         if ((Request::getProxyHeaderFlags() & Request::HEADER_X_FORWARDED_PROTO) === 0) {
@@ -124,6 +167,17 @@ final class Uri
         return $first === 'https' ? 'https' : ($first === 'http' ? 'http' : null);
     }
 
+    /**
+     * Detects the protocol from the server parameters.
+     * The detection follows this order of precedence:
+     * 1. $_SERVER['HTTPS'] (on/off)
+     * 2. $_SERVER['REQUEST_SCHEME'] (https/http)
+     * 3. $_SERVER['HTTP_FRONT_END_HTTPS'] (on/off)
+     * 4. $_SERVER['SERVER_PORT'] (443 implies https)
+     *
+     * @param array $s The server parameters, typically from $_SERVER.
+     * @return string The detected protocol, either 'http' or 'https'.
+     */
     private static function protoFromServer(array $s): string
     {
         $https =
@@ -135,8 +189,20 @@ final class Uri
         return $https ? 'https' : 'http';
     }
 
-
-    /** returns [host, port|null] */
+    /**
+     * Detects the host and port from server parameters, considering proxy headers if configured.
+     *
+     * The detection follows this order of precedence:
+     * 1. RFC 7239 Forwarded header (host parameter)
+     * 2. X-Forwarded-Host header
+     * 3. Direct socket view (HTTP_HOST or SERVER_NAME and SERVER_PORT)
+     *
+     * If the port is not specified in the host headers, it may be supplemented
+     * by the X-Forwarded-Port header if allowed by proxy header flags.
+     *
+     * @param array $s The server parameters, typically from $_SERVER.
+     * @return array An array containing the detected host and port (host, port|null).
+     */
     private static function detectHostPort(array $s): array
     {
         // 1) RFC 7239 Forwarded: host="example.com:8443"
@@ -165,6 +231,14 @@ final class Uri
         return [$host, $port];
     }
 
+    /**
+     * Returns [host, port|null] parsed from Forwarded or X-Forwarded-Host
+     * headers. If no headers are present, returns null.
+     *
+     * @see https://tools.ietf.org/html/rfc7239#section-5.3
+     * @see https://tools.ietf.org/html/rfc7239#section-5.5
+     * @see https://tools.ietf.org/html/rfc7239#section-5.5.2
+     */
     private static function detectForwardedHost(array $s): ?array
     {
         // Forwarded: by=...;for=...;host=example.com:8443;proto=https
@@ -189,6 +263,19 @@ final class Uri
         return null;
     }
 
+    /**
+     * Splits a host string into host and port components.
+     *
+     * Given a hostname (or IP address) optionally followed by a colon and a port number,
+     * returns an array with two elements: the hostname (or IP address) and the port number.
+     *
+     * Examples:
+     *   - "[::1]"    => ["[::1]", null]
+     *   - "[::1]:8443" => ["[::1]", 8443]
+     *   - "example.com" => ["example.com", null]
+     *   - "example.com:8443" => ["example.com", 8443]
+     *   - "example.com:foo" => ["example.com:foo", null]
+     */
     private static function splitHostPort(string $v): array
     {
         $v = trim($v);
@@ -217,6 +304,15 @@ final class Uri
         return [$v, null];
     }
 
+    /**
+     * Normalizes a port number string to an integer.
+     *
+     * @param string $p the port number string
+     * @return int|null the normalized port number, or null if invalid
+     *
+     * The port number is only considered valid if it is a positive integer
+     * between 1 and 65535, inclusive.
+     */
     private static function normPort(string $p): ?int
     {
         $i = (int)$p;
@@ -224,11 +320,31 @@ final class Uri
     }
 
 
+    /**
+     * Retrieves the request URI from the given server parameters.
+     *
+     * Returns the value of the 'REQUEST_URI' key in the given server parameters, or
+     * a single forward slash character ('/') if the key is not present.
+     *
+     * @param array $s The server parameters.
+     * @return string The request URI.
+     */
     private static function detectRequestUri(array $s): string
     {
         return $s['REQUEST_URI'] ?? '/';
     }
 
+    /**
+     * Reconstructs the full URL from individual components.
+     *
+     * Suppresses the port number if it matches the default port for the given scheme.
+     *
+     * @param string $scheme The URL scheme (e.g. "http", "https").
+     * @param string $host The hostname or IP address.
+     * @param int|null $port The port number, or null if it should be omitted.
+     * @param string $reqUri The request URI.
+     * @return string The full URL.
+     */
     private static function buildFullUrl(string $scheme, string $host, ?int $port, string $reqUri): string
     {
         $default = self::getDefaultPortForScheme($scheme);
@@ -238,13 +354,22 @@ final class Uri
         return $scheme . '://' . $host . ($port ? ":{$port}" : '') . $reqUri;
     }
 
+/**
+ * Returns the default port number for the given scheme.
+ *
+ * @param string $scheme The scheme to get the default port for.
+ * @return int|null The default port number, or null if no default port is known.
+ */
     private static function getDefaultPortForScheme(string $scheme): ?int
     {
         return $scheme === 'https' ? 443 : ($scheme === 'http' ? 80 : null);
     }
 
-    /* ──────────────────────────  String cast  ─────────────────────────────── */
-
+    /**
+     * Returns a string representation of the URI object.
+     *
+     * @return string The string representation of the URI object.
+     */
     public function __toString(): string
     {
         $uri = '';
@@ -269,29 +394,58 @@ final class Uri
         return $uri;
     }
 
-    /* ───────────────────────  PSR-7 getters  ─────────────────────────────── */
-
+    /**
+     * Retrieves the scheme component of the URI (e.g. "https" or "http").
+     *
+     * @return string The scheme component of the URI.
+     */
     public function getScheme(): string
     {
         return $this->scheme;
     }
 
+    /**
+     * Retrieves the user information component of the URI.
+     *
+     * @return string The user information component of the URI, e.g. "username:password".
+     */
     public function getUserInfo(): string
     {
         return $this->user === '' ? '' :
             ($this->pass === '' ? $this->user : "{$this->user}:{$this->pass}");
     }
 
+    /**
+     * Retrieves the host component of the URI.
+     *
+     * @return string The hostname or IP address of the URI.
+     */
     public function getHost(): string
     {
         return $this->host;
     }
 
+    /**
+     * Retrieves the port component of the URI.
+     *
+     * If the port is empty, null will be returned.
+     *
+     * @return int|null The port component of the URI if set, or null if empty.
+     */
     public function getPort(): ?int
     {
         return $this->port;
     }
 
+    /**
+     * Retrieves the authority component of the URI.
+     *
+     * The authority component consists of the userinfo, host and port.
+     * If the userinfo is empty, only the host and port will be returned.
+     * If the port is null, only the host will be returned.
+     *
+     * @return string The authority component of the URI.
+     */
     public function getAuthority(): string
     {
         if ($this->host === '') {
@@ -307,23 +461,56 @@ final class Uri
         return $auth;
     }
 
+    /**
+     * Returns the path of the URI.
+     *
+     * The path is the part of the URI between the authority and the query string.
+     * If the URI does not have a path, an empty string is returned.
+     *
+     * @return string The path of the URI
+     */
     public function getPath(): string
     {
         return $this->path;
     }
 
+    /**
+     * Returns the query string of the URI.
+     *
+     * The query string is the part of the URI after the '?'.
+     * If the URI does not have a query string, an empty string is returned.
+     *
+     * @return string The query string of the URI
+     */
     public function getQuery(): string
     {
         return $this->query;
     }
 
+    /**
+     * Returns the fragment of the URI.
+     *
+     * The fragment is the part of the URI after the '#'.
+     * If the URI does not have a fragment, an empty string is returned.
+     *
+     * @return string The fragment of the URI
+     */
     public function getFragment(): string
     {
         return $this->fragment;
     }
 
-    /* ───────────────────────  PSR-7 immutable setters  ───────────────────── */
-
+    /**
+     * Returns a new Uri with the given scheme.
+     *
+     * If the given scheme is the same as the current scheme, the original Uri is returned.
+     *
+     * If the given scheme is different from the current scheme, a new Uri is returned with the given scheme.
+     * The port is set to null if it is equal to the default port for the given scheme.
+     *
+     * @param string $scheme The scheme to use (e.g. "http", "https")
+     * @return Uri A new Uri with the given scheme
+     */
     public function withScheme(string $scheme): Uri
     {
         $scheme = strtolower($scheme);
@@ -338,6 +525,16 @@ final class Uri
         return $clone;
     }
 
+    /**
+     * Returns a new Uri with the given user information.
+     *
+     * If the given user information is the same as the current user information,
+     * the original Uri is returned.
+     *
+     * @param string $user
+     * @param string|null $password
+     * @return Uri
+     */
     public function withUserInfo(string $user, ?string $password = null): Uri
     {
         if ($user === $this->user && ($password ?? '') === $this->pass) {
@@ -349,6 +546,15 @@ final class Uri
         return $clone;
     }
 
+    /**
+     * Returns a new Uri with the given host.
+     *
+     * If the given host is empty, the host is omitted from the URI.
+     * If the given host is the same as the current host, the original Uri is returned.
+     *
+     * @param string $host
+     * @return Uri
+     */
     public function withHost(string $host): Uri
     {
         $host = $host !== '' ? $this->asciiHost($host) : '';
@@ -360,6 +566,15 @@ final class Uri
         return $clone;
     }
 
+    /**
+     * Returns a new Uri with the given port.
+     * If the given port is the same as the default port for the current scheme,
+     * the port is omitted from the URI.
+     *
+     * @param int|null $port
+     * @return Uri
+     * @throws InvalidArgumentException if the port is invalid (< 1 or > 65535)
+     */
     public function withPort(?int $port): Uri
     {
         if ($port !== null && ($port < 1 || $port > 65535)) {
@@ -373,6 +588,15 @@ final class Uri
         return $clone;
     }
 
+    /**
+     * Returns a new Uri with the given path.
+     *
+     * The path is normalized by calling filterPath() on it.
+     * If the normalized path is the same as the current one, the original Uri is returned.
+     *
+     * @param string $path The path to use.
+     * @return Uri A new Uri with the given path.
+     */
     public function withPath(string $path): Uri
     {
         $path = $this->filterPath($path);
@@ -384,6 +608,15 @@ final class Uri
         return $clone;
     }
 
+    /**
+     * Returns a new Uri with the given query string.
+     *
+     * The query string is normalized by calling filterQuery() on it.
+     * If the normalized query string is the same as the current one, the original Uri is returned.
+     *
+     * @param string $query The query string to use.
+     * @return Uri A new Uri with the given query string.
+     */
     public function withQuery(string $query): Uri
     {
         $query = $this->filterQuery($query);
@@ -395,6 +628,15 @@ final class Uri
         return $clone;
     }
 
+    /**
+     * Returns a new Uri with the given fragment.
+     *
+     * The fragment is normalized by calling filterFragment() on it.
+     * If the normalized fragment is the same as the current one, the original Uri is returned.
+     *
+     * @param string $fragment The fragment to set
+     * @return Uri A new Uri with the given fragment
+     */
     public function withFragment(string $fragment): Uri
     {
         $fragment = $this->filterFragment($fragment);
@@ -405,12 +647,19 @@ final class Uri
         $clone->fragment = $fragment;
         return $clone;
     }
-
+    
     /**
-     * Canonicalise a raw query-string:
-     *   •   alpha-sort keys
-     *   •   keep duplicate keys stable
+     * Normalize a query-string.
+     *
+     * This function takes a raw query-string and returns a new one with:
+     *   •   alpha-sorted keys
+     *   •   duplicate keys preserved in order
      *   •   RFC 3986 escaping
+     *
+     * Useful for normalizing URLs and checking for equality.
+     *
+     * @param string $qs The query-string to normalize
+     * @return string The normalized query-string
      */
     public static function normalizeQueryString(string $qs): string
     {
@@ -442,8 +691,19 @@ final class Uri
         return rtrim($out, '&');
     }
 
-    /* ────────────────────────────  internals  ───────────────────────────── */
-
+    /**
+     * Converts a host name to an ASCII-compatible string.
+     *
+     * If the host name is an IPv6 address with a zone, it is left unchanged.
+     * If the IDN library is available, it is used to convert the host name to an ASCII-compatible string.
+     * If the IDN library is not available, the host name is converted to lowercase.
+     *
+     * The result is cached to avoid redundant computation.
+     *
+     * @param string $host The host name to convert.
+     * @return string The ASCII-compatible host name.
+     * @throws InvalidArgumentException If the host name cannot be converted to an ASCII-compatible string.
+     */
     private function asciiHost(string $host): string
     {
         if (isset(self::$asciiCache[$host])) {
@@ -469,9 +729,17 @@ final class Uri
         return self::$asciiCache[$host] = strtolower($host); // intl not loaded
     }
 
+    /**
+     * Apply RFC 3986 §5.2.4 dot-segment removal to a path segment.
+     *
+     * This process removes unnecessary dot segments from a path, and is
+     * necessary to ensure that URIs are properly normalized.
+     *
+     * @param string $path The path segment to filter
+     * @return string The filtered path segment
+     */
     private function filterPath(string $path): string
     {
-        // RFC 3986 §5.2.4 dot-segment removal
         do {
             $old = $path;
             $path = preg_replace('#(/\.?/)#', '/', $path);        // "/./" or "//"
@@ -482,16 +750,36 @@ final class Uri
         return $path === '' ? '/' : $path;
     }
 
+    /**
+     * Trim a query string to ensure it doesn't begin with a '?'
+     * character.
+     *
+     * @param string $query The query string to trim
+     * @return string The trimmed query string
+     */
     private function filterQuery(string $query): string
     {
         return ltrim($query, '?');
     }
 
+    /**
+     * Trim a fragment string (e.g. "#anchor") to ensure it begins with a '#'
+     * character.
+     *
+     * @param string $fragment The fragment string to trim
+     * @return string The trimmed fragment string
+     */
     private function filterFragment(string $fragment): string
     {
         return ltrim($fragment, '#');
     }
 
+    /**
+     * Get the default port for the given scheme.
+     *
+     * @param string $scheme One of 'http' or 'https'
+     * @return int|null The default port for the scheme, or null if unknown
+     */
     private function defaultPort(string $scheme): ?int
     {
         return match ($scheme) {

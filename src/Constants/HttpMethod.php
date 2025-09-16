@@ -35,8 +35,16 @@ enum HttpMethod: string
     case LINK = 'LINK';
     case UNLINK = 'UNLINK';
 
+
     /**
-     * True for safe reads with *no intended* state change (RFC 9110 &sect;9.2).
+     * Determine if the HTTP method is safe (read-only).
+     *
+     * @return bool true if the method is safe, false otherwise
+     *
+     * @see https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/GET
+     * @see https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/HEAD
+     * @see https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/OPTIONS
+     * @see https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/TRACE
      */
     public function isSafe(): bool
     {
@@ -47,9 +55,22 @@ enum HttpMethod: string
     }
 
     /**
-     * True for methods that may be repeated without side-effects (RFC 9110 &sect;9.2.3).
+     * Determine if the HTTP method is idempotent (can be called multiple times without side effects).
      *
-     * @return bool
+     * The following HTTP methods are considered idempotent:
+     * - GET
+     * - HEAD
+     * - PUT
+     * - DELETE
+     * - OPTIONS
+     * - TRACE
+     *
+     * @return bool true if the method is idempotent, false otherwise
+     *
+     * @see https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/GET
+     * @see https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/HEAD
+     * @see https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/OPTIONS
+     * @see https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/TRACE
      */
     public function isIdempotent(): bool
     {
@@ -57,15 +78,15 @@ enum HttpMethod: string
     }
 
     /**
-     * Whether the method allows sending a request body.
+     * Determine if the HTTP method allows a request body.
      *
-     * Per the HTTP spec, the following methods do not allow a request body:
-     *   - TRACE
-     *   - HEAD
-     *   - DELETE
-     *   - CONNECT
+     * The following HTTP methods do not allow a request body:
+     * - TRACE
+     * - HEAD
+     * - DELETE
+     * - CONNECT
      *
-     * @return bool
+     * @return bool true if the method allows a request body, false otherwise
      */
     public function allowsBody(): bool
     {
@@ -73,11 +94,11 @@ enum HttpMethod: string
     }
 
     /**
-     * Whether the HTTP method allows sending a request body according to the HTTP spec (RFC 9110).
+     * Check if the HTTP method allows a request body according to RFC 9110.
      *
-     * The only method that does not allow a request body is TRACE.
+     * @return bool true if the method allows a request body, false otherwise
      *
-     * @return bool
+     * @see https://tools.ietf.org/html/rfc9110#section-5.13
      */
     public function specAllowsBody(): bool
     {
@@ -85,28 +106,28 @@ enum HttpMethod: string
     }
 
     /**
-     * Returns an instance of the HTTP method enum case matching the given string, or null if the string does not match any known HTTP method.
+     * Attempt to resolve a HTTP method from a string.
      *
-     * The string is case-insensitive.
+     * This is a case-insensitive version of {@see self::tryFrom()}.
      *
-     * @param string $verb The HTTP method verb to match.
-     *
-     * @return self|null
+     * @param string $verb The HTTP method to resolve.
+     * @return self|null The resolved HTTP method, or null if not supported.
      */
     public static function tryFromString(string $verb): ?self
     {
         return self::tryFrom(strtoupper($verb));
     }
 
-
     /**
-     * Returns an instance of the HTTP method enum case matching the given string.
+     * Attempt to resolve a HTTP method from a string.
      *
-     * @param string $verb The HTTP method verb to match. The string is case-insensitive.
+     * This is a case-insensitive version of {@see self::tryFrom()}.
      *
-     * @return self
+     * @param string $verb The HTTP method to resolve.
      *
-     * @throws \InvalidArgumentException If the given string does not match any known HTTP method.
+     * @return self The resolved HTTP method.
+     *
+     * @throws \InvalidArgumentException If the method is not supported.
      */
     public static function fromString(string $verb): self
     {
@@ -114,13 +135,13 @@ enum HttpMethod: string
             ?? throw new \InvalidArgumentException("Unsupported method: {$verb}");
     }
 
-
     /**
-     * Return an array of all the HTTP method enum cases.
+     * Get all HTTP methods.
      *
-     * The returned array is cached for performance reasons.
+     * This method returns an array of all supported HTTP methods.
+     * The array will contain all the constants defined in this class.
      *
-     * @return array<self>
+     * @return array<int, self> An array of all supported HTTP methods.
      */
     public static function all(): array
     {

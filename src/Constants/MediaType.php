@@ -66,7 +66,17 @@ enum MediaType: string
         return $cache[$ext] = $case;
     }
 
-    /** Convenience – resolve from a whole filename. */
+    /**
+     * Resolve a MediaType enum case from a file name.
+     *
+     * This function works by finding the last '.' character in the file name,
+     * and then resolving the MediaType enum case from the extension found
+     * after that character. If no '.' character is found, the MediaType
+     * enum case defaults to MediaType::OCTET.
+     *
+     * @param string $file The file name (e.g. "example.jpg", "example.json", ...).
+     * @return self The resolved MediaType enum case.
+     */
     public static function fromFilename(string $file): self
     {
         return ($dot = strrpos($file, '.')) === false
@@ -74,9 +84,14 @@ enum MediaType: string
             : self::fromExtension(substr($file, $dot + 1));
     }
 
-    /* --------------------------------------------------
-     * 2)  Misc helpers
-     * ------------------------------------------------- */
+    /**
+     * Returns true if the media type is textual, false otherwise.
+     *
+     * Textual media types are those that start with "text/", or are
+     * equal to MediaType::JSON or MediaType::XML.
+     *
+     * @return bool True if the media type is textual, false otherwise.
+     */
     public function isTextual(): bool
     {
         return str_starts_with($this->value, 'text/')
@@ -84,11 +99,23 @@ enum MediaType: string
             || $this === self::XML;
     }
 
+    /**
+     * Return the character set from the media type header value.
+     *
+     * e.g. "text/html; charset=utf-8" → "utf-8"
+     *
+     * @return string|null The character set, or null if not found.
+     */
     public function charset(): ?string
     {
         return preg_match('/charset=([^;]+)/i', $this->value, $m) ? $m[1] : null;
     }
 
+    /**
+     * Get the HTTP header value for this media type.
+     *
+     * @return string The HTTP header value.
+     */
     public function header(): string
     {
         return $this->value;

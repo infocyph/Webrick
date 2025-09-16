@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Response\Payloads;
 
+use Infocyph\Webrick\Constants\MediaType;
 use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Response\Response;
-use Infocyph\Webrick\Response\Constants\Mime;
 
 final class JsonResponse extends Response
 {
@@ -22,7 +22,7 @@ final class JsonResponse extends Response
             throw new \RuntimeException('JSON encode error: ' . json_last_error_msg());
         }
 
-        $headers += ['Content-Type' => Mime::fromExtension('json')];
+        $headers += ['Content-Type' => MediaType::fromExtension('json')];
         parent::__construct($status, new Stream($json), $headers);
     }
 }

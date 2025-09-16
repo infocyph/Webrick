@@ -98,7 +98,7 @@ final class LazyJsonStream implements BodyStream
         return $this->inner->isSeekable();
     }
 
-    public function seek($offset, $whence = SEEK_SET): void
+    public function seek(int $offset, int $whence = SEEK_SET): void
     {
         $this->boot();
         $this->inner->seek($offset, $whence);
@@ -116,7 +116,7 @@ final class LazyJsonStream implements BodyStream
         return $this->inner->isWritable();
     }
 
-    public function write($string): int
+    public function write(string $string): int
     {
         $this->boot();
         return $this->inner->write($string);
@@ -128,7 +128,7 @@ final class LazyJsonStream implements BodyStream
         return $this->inner->isReadable();
     }
 
-    public function read($length): string
+    public function read(int $length): string
     {
         $this->boot();
         return $this->inner->read($length);
@@ -140,7 +140,7 @@ final class LazyJsonStream implements BodyStream
         return $this->inner->getContents();
     }
 
-    public function getMetadata($key = null): mixed
+    public function getMetadata(string $key = null): mixed
     {
         $this->boot();
         return $this->inner->getMetadata($key);

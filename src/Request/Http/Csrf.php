@@ -9,10 +9,7 @@ use Infocyph\Webrick\Request\Request;
 /**
  * Csrf – tiny helper that mirrors Laravel 12 semantics
  * ----------------------------------------------------
- *   // on first request
  *   $cookie = Csrf::maskedToken();              // send as "XSRF-TOKEN" cookie
- *
- *   // later, on POST/PUT/…
  *   if (!Csrf::matches($request)) {
  *       throw new \RuntimeException('419 CSRF mismatch');
  *   }
@@ -25,20 +22,25 @@ final class Csrf
      */
     private const TOKEN_BYTES = 32;
 
-    /* -----------------------------------------------------------------
-       1)  Stored token helpers  (session-backed)
-       ---------------------------------------------------------------- */
-
-    /** Return the plain token (hex-encoded), create if absent. */
+    /**
+     * Retrieves the CSRF token from the session, or generates a new one if it does not exist.
+     *
+     * @return string The CSRF token as a 64-hex-char string.
+     */
     public static function token(): string
     {
         return $_SESSION['_token'] ??= bin2hex(random_bytes(self::TOKEN_BYTES));
     }
-
+    
     /**
-     * Return a masked token:
-     *   mask (64 hex) + hash_hmac('sha3-256', mask·token, '')
-     * Length = 64 + 64 = 128 chars.
+     * Returns a masked CSRF token (128 hex chars) that contains the following components:
+     *   - A random 64-hex-char mask
+     *   - The SHA-3-256 HMAC of the concatenation of the mask and the plain token
+     *
+     * This format provides both a secure and efficient way to verify the token.
+     * The empty key argument to `hash_hmac` ensures that the HMAC computation is constant-time.
+     *
+     * @return string The masked CSRF token.
      */
     public static function maskedToken(): string
     {
@@ -48,16 +50,31 @@ final class Csrf
         return $mask . hash_hmac('sha3-256', $mask . self::token(), '');
     }
 
-    /* -----------------------------------------------------------------
-       2)  Matching helper
-       ---------------------------------------------------------------- */
-
+    /**
+     * Check if the given CSRF token matches the stored value.
+     *
+     * The CSRF token is extracted from the request using {@see extractFromRequest}.
+     * The extracted token is then compared with the stored value using
+     * {@see matchesValue}.
+     *
+     * @param Request $req The request object to extract the CSRF token from.
+     * @return bool True if the token matches, false otherwise.
+     */
     public static function matches(Request $req): bool
     {
         return self::matchesValue(self::extractFromRequest($req));
     }
-
-    /** Fast-path: compare a provided token (masked or plain) to the stored one. */
+    
+    /**
+     * Compares the given CSRF token against the stored value.
+     *
+     * Handles both plain and masked tokens. If the given token is a masked
+     * token, it will be verified using HMAC-SHA3-256. Plain tokens are compared
+     * directly.
+     *
+     * @param ?string $sent The CSRF token to compare.
+     * @return bool True if the token matches, false otherwise.
+     */
     public static function matchesValue(?string $sent): bool
     {
         $stored = $_SESSION['_token'] ?? null;
@@ -83,13 +100,14 @@ final class Csrf
         return \hash_equals($stored, $sent);
     }
 
-    /* -----------------------------------------------------------------
-       3)  Internals
-       ---------------------------------------------------------------- */
-
     /**
-     * Look for token in header, body, query, cookie
-     * (Laravel priority order).
+     * Extract the CSRF token from the request (in this order):
+     *   1. Header ('X-CSRF-TOKEN' or 'X-XSRF-TOKEN')
+     *   2. Form field ('_token')
+     *   3. Query param ('_token')
+     *   4. Cookie ('XSRF-TOKEN')
+     *
+     * @return string|null Token value if found, or null if not.
      */
     private static function extractFromRequest(Request $req): ?string
     {
@@ -117,7 +135,10 @@ final class Csrf
         return $cookie !== '' ? (string)$cookie : null;
     }
 
-    /** Library is static-only. */
+
+/**
+ * Private constructor to prevent instantiation of this class.
+ */
     private function __construct()
     {
     }
