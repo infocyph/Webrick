@@ -19,11 +19,9 @@ use Infocyph\Webrick\Request\Request;
  */
 final class UAParser
 {
-    /* ---- raw UA + lowercase cache ---- */
     private string $ua;
     private string $uaLower;
 
-    /* ---- parsed Sec-CH bag (if any) ---- */
     private array $hint = [];
 
     private static array $tokenMap = [
@@ -42,8 +40,15 @@ final class UAParser
         'trident/7' => 'Internet Explorer',
     ];
 
-    /* --------------------------------------------------------------------- */
-
+    /**
+     * Initializes a new UAParser instance.
+     *
+     * If `$source` is an instance of `Request`, it will be used to extract the User-Agent header.
+     * Otherwise, the value of `$source` will be used as the User-Agent string, or if it is null,
+     * the value of `$_SERVER['HTTP_USER_AGENT']` will be used.
+     *
+     * @param Request|string|null $source The source of the User-Agent string.
+     */
     public function __construct(Request|string|null $source = null)
     {
         if ($source instanceof Request) {
@@ -55,6 +60,16 @@ final class UAParser
         $this->uaLower = strtolower($this->ua);
     }
 
+    /**
+     * Coarsely parses the User-Agent string and returns an associative array
+     * with the following keys:
+     * - browser: the browser name
+     * - version: the browser version
+     * - platform: the platform name
+     * - engine: the rendering engine name
+     *
+     * @return array
+     */
     public function parse(): array
     {
         [$browser, $version] = $this->browser();   // ← rename $ver → $version
@@ -65,9 +80,20 @@ final class UAParser
     }
 
 
-    /* =====================================================================
-       Section 1 – Client-Hints
-       ===================================================================== */
+
+    /**
+     * Parses the Sec-CH-UA* headers from the request.
+     *
+     * Returns an array with the following keys:
+     * - brands_full: an associative array of brand names to their full version
+     * - brands: an associative array of brand names to their version
+     * - mobile: a boolean indicating whether the client is a mobile device
+     * - platform: the platform name
+     * - platformVersion: the platform version
+     * - fullVersion: the full version string
+     *
+     * @return array
+     */
     private function parseSecCh(Request $req): array
     {
         $bag = [];
@@ -95,9 +121,14 @@ final class UAParser
         return array_filter($bag);
     }
 
-    /* =====================================================================
-       Section 2 – Browser + version
-       ===================================================================== */
+
+    /**
+     * Determine the browser name and version from the given headers.
+     * Client Hints: prefer full-version list brands, real brand last.
+     * UA fallback: detect iOS tokens and extract version.
+     * Returns an array [$browser, $version].
+     * @return array<string,string> [$browser, $version]
+     */
     private function browser(): array
     {
         // Client Hints: prefer full-version list brands, real brand last
@@ -123,6 +154,15 @@ final class UAParser
         return ['Unknown', ''];
     }
 
+    /**
+     * Extracts a version from the UA string given a token.
+     * Tokens are matched against regex patterns in the static $rx array.
+     * If a match is found, the matched version is returned.
+     * Otherwise, an empty string is returned.
+     *
+     * @param string $token The token to search for in the UA string.
+     * @return string The extracted version or an empty string if no match is found.
+     */
     private function extractVersion(string $token): string
     {
         static $rx = [
@@ -145,9 +185,16 @@ final class UAParser
             : '';
     }
 
-    /* =====================================================================
-       Section 3 – Platform
-       ===================================================================== */
+
+    /**
+     * Detects the client's platform (OS, browser, etc.) and
+     * returns a human-readable string.
+     *
+     * Client-Hints are prioritized, falling back to UA sniffing
+     * if no hints are provided.
+     *
+     * @return string
+     */
     private function platform(): string
     {
         /* Client-Hints first */
@@ -184,9 +231,19 @@ final class UAParser
         return 'Unknown';
     }
 
-    /* =====================================================================
-       Section 4 – Rendering / JS engine
-       ===================================================================== */
+    
+    /**
+     * Maps a browser to its rendering engine.
+     *
+     * @param string $browser Browser name (case-insensitive)
+     * @return string Engine name (case-sensitive)
+     * @example
+     * <code>
+     * $ua = new UAParser('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36');
+     * $engine = $ua->engine($ua->browser());
+     * var_dump($engine); // Blink
+     * </code>
+     */
     private function engine(string $browser): string
     {
         if (in_array($browser, ['Chrome', 'Edge', 'Brave', 'Vivaldi', 'Yandex Browser', 'Samsung Internet'], true)) {
@@ -201,7 +258,12 @@ final class UAParser
         };
     }
 
-    /* Public helper */
+
+/**
+ * Returns the User-Agent header of the current request.
+ *
+ * @return string the User-Agent header value
+ */
     public function getUserAgent(): string
     {
         return $this->ua;

@@ -19,23 +19,31 @@ use Infocyph\Webrick\Request\Support\HeaderBag;
  */
 final class RequestHeaders
 {
-    /* -----------------------------------------------------------------
-       State (all lazy)
-       ----------------------------------------------------------------- */
     private ?HeaderBag $all = null;   // raw + auth fallbacks
     private ?array $accept = null;    // parsed Accept*
     private ?array $content = null;   // Content-Type/Length/MD5
     private ?array $dep = null;       // If-*, Range, Prefer
 
+
     public function __construct(private readonly Request|ServerRequest $req)
     {
     }
 
-    /* ================================================================
-       0) Header extraction (shared, portable)
-       ================================================================ */
-
-    /** Import HTTP headers from SAPI/$_SERVER into PSR-7 shape: name => string[] */
+    /**
+     * Extract headers from $_SERVER if getallheaders() is not available.
+     *
+     * This method is used as a fallback when the PSR-7 Request does not
+     * provide headers (e.g. when created from globals).
+     *
+     * It first tries to use getallheaders() if available, otherwise
+     * it falls back to parsing $_SERVER directly.
+     *
+     * It also backfills Content-* headers and Authorization header
+     * from relevant $_SERVER keys.
+     *
+     * @param array $srv Server parameters (e.g. $_SERVER)
+     * @return array Header bag in PSR-7 format: name => string[]
+     */
     public static function extractFromServer(array $srv): array
     {
         $out = \function_exists('getallheaders')
@@ -48,7 +56,15 @@ final class RequestHeaders
         return $out;
     }
 
-    /** Fast path when getallheaders() exists. */
+    /**
+     * Use getallheaders() if available (Apache, FastCGI, etc).
+     * This function is used when getallheaders() is available.
+     * It returns an array of headers in PSR-7 format: name => string[].
+     * If the value is an array, it is converted to an array of strings.
+     * If the value is a string, it is wrapped in an array.
+     *
+     * @return array    Header bag
+     */
     private static function viaGetAllHeaders(): array
     {
         return array_map(function ($val) {
@@ -56,7 +72,18 @@ final class RequestHeaders
         }, (array)\getallheaders());
     }
 
-    /** Portable fallback: build headers from $_SERVER. */
+
+    /**
+     * Fall back to $_SERVER when getallheaders() is not available.
+     * This function is used when getallheaders() is not available.
+     * It maps $_SERVER['HTTP_*'] to a PSR-7 header name.
+     * For example, $_SERVER['HTTP_ACCEPT_ENCODING'] becomes 'Accept-Encoding'.
+     * If the value is an array, it is imploded with commas.
+     * If the value is a string, it is used as is.
+     *
+     * @param array $srv    Server parameters (e.g. $_SERVER)
+     * @return array    Header bag
+     */
     private static function viaServerFallback(array $srv): array
     {
         $out = [];
@@ -75,7 +102,13 @@ final class RequestHeaders
         return $out;
     }
 
-    /** Ensure Content-* headers exist when SAPIs place them only in $_SERVER. */
+
+    /**
+     * Populate Content-* headers from $_SERVER if missing.
+     *
+     * @param array $srv    Server parameters (e.g. $_SERVER)
+     * @param array $out    Header bag to populate
+     */
     private static function backfillContentHeaders(array $srv, array &$out): void
     {
         foreach (
@@ -91,7 +124,14 @@ final class RequestHeaders
         }
     }
 
-    /** Some servers strip Authorization; restore from $_SERVER if available. */
+
+    /**
+     * Inject Authorization header from PHP_AUTH_* or HTTP_AUTHORIZATION if
+     * available (and related fallbacks).
+     *
+     * @param array $srv    Server parameters (e.g. $_SERVER)
+     * @param array $hdr    Header bag to populate
+     */
     private static function backfillAuthorization(array $srv, array &$out): void
     {
         if (isset($out['Authorization'])) {
@@ -104,9 +144,19 @@ final class RequestHeaders
         }
     }
 
-    /* ================================================================
-       1) Raw header bag  (with Basic/Digest fallbacks)
-       ================================================================ */
+
+    /**
+     * Get all headers as an immutable HeaderBag.
+     *
+     * First tries to get headers from the PSR-7 Request.
+     * If that fails, it extracts headers from the SAPI/$_SERVER.
+     *
+     * Then it injects the Authorization header if it exists in $_SERVER.
+     *
+     * Finally, it returns a new HeaderBag instance.
+     *
+     * @return HeaderBag
+     */
     public function all(): HeaderBag
     {
         if ($this->all) {
@@ -124,7 +174,12 @@ final class RequestHeaders
         return $this->all = new HeaderBag($hdr);
     }
 
-    /** Add Authorization header when PHP_AUTH_* populated (and related fallbacks). */
+    /**
+     * Inject Authorization header from PHP_AUTH_* or HTTP_AUTHORIZATION if
+     * available (and related fallbacks).
+     *
+     * @param array $hdr Header bag to populate
+     */
     private function injectAuthorisation(array &$hdr): void
     {
         $srv = $this->req->getServerParams();
@@ -134,7 +189,14 @@ final class RequestHeaders
         $this->injectFromExplicitAuthorization($srv, $hdr, $added);
     }
 
-    /** Populate from PHP_AUTH_USER/PHP_AUTH_PW or PHP_AUTH_DIGEST. */
+    /**
+     * Populate Authorization header from PHP_AUTH_USER/PHP_AUTH_PW or PHP_AUTH_DIGEST if
+     * available (and related fallbacks).
+     *
+     * @param array $srv    Server parameters (e.g. $_SERVER)
+     * @param array $hdr    Header bag to populate
+     * @param bool $added   Whether an Authorization header has been added
+     */
     private function injectFromPhpAuth(array $srv, array &$hdr, bool &$added): void
     {
         if (!empty($srv['PHP_AUTH_USER']) && !isset($hdr['Authorization'])) {
@@ -149,7 +211,15 @@ final class RequestHeaders
         }
     }
 
-    /** Fallback to HTTP_AUTHORIZATION/REDIRECT_HTTP_AUTHORIZATION; backfill PHP_AUTH_* for Basic. */
+
+    /**
+     * Populate Authorization header from HTTP_AUTHORIZATION or REDIRECT_HTTP_AUTHORIZATION if
+     * available (and related fallbacks).
+     *
+     * @param array $srv    Server parameters (e.g. $_SERVER)
+     * @param array $hdr    Header bag to populate
+     * @param bool $alreadyAdded    Whether an Authorization header has already been added
+     */
     private function injectFromExplicitAuthorization(array $srv, array &$hdr, bool $alreadyAdded): void
     {
         if ($alreadyAdded) {
@@ -171,7 +241,14 @@ final class RequestHeaders
         }
     }
 
-    /** Decode Basic header and backfill PHP_AUTH_USER/PHP_AUTH_PW. */
+
+    /**
+     * Fallback to populate PHP_AUTH_USER and PHP_AUTH_PW from an existing Authorization header
+     * containing a Basic auth credential.
+     *
+     * @param string $line The Authorization header containing the Basic credential.
+     * @param array $hdr The header bag to populate with PHP_AUTH_* values.
+     */
     private function backfillPhpAuthFromBasicHeader(string $line, array &$hdr): void
     {
         $cred = \base64_decode(\substr($line, 6));
@@ -183,9 +260,14 @@ final class RequestHeaders
         $hdr['PHP_AUTH_PW'] = [$p];
     }
 
-    /* ================================================================
-       2)  Accept* parsing – returns whole map or one header
-       ================================================================ */
+
+    /**
+     * Returns an array of parsed Accept* headers.
+     *
+     * @param string $key [optional] The name of the Accept* header to retrieve.
+     *                      If null, returns all parsed Accept* headers.
+     * @return array An array of parsed Accept* headers.
+     */
     public function accept(?string $key = null): array
     {
         if ($this->accept === null) {
@@ -200,7 +282,16 @@ final class RequestHeaders
         return $key ? ($this->accept[$key] ?? []) : $this->accept;
     }
 
-    /** RFC 9110 §12 quality weighting + wildcard handling. */
+
+    /**
+     * Parse an Accept* header string into an array of acceptable MIME types.
+     *
+     * The returned array is sorted by the q parameter (highest first).
+     * If two MIME types have the same q parameter, the one with the least number of wildcards is placed first.
+     *
+     * @param string $raw The Accept* header string
+     * @return array An array of acceptable MIME types
+     */
     private function parseAccept(string $raw): array
     {
         $segments = explode(',', $raw); // faster than preg_split
@@ -224,9 +315,19 @@ final class RequestHeaders
         return array_column($parsed, 'mime');
     }
 
-    /* ================================================================
-       3)  Content-* helpers
-       ================================================================ */
+
+    /**
+     * Content metadata.
+     *
+     * Returns an associative array with the following keys:
+     *
+     * - type: Content-Type header value (e.g. application/json)
+     * - charset: Content-Type charset parameter value (e.g. utf-8)
+     * - length: Content-Length header value as an integer
+     * - md5: Content-Md5 header value as a lowercase string
+     *
+     * @return array
+     */
     public function content(): array
     {
         if ($this->content !== null) {
@@ -246,9 +347,20 @@ final class RequestHeaders
         ];
     }
 
-    /* ================================================================
-       4)  Conditional / Range helpers
-       ================================================================ */
+
+    /**
+     * Extracts dependency information from the request headers.
+     *
+     *     • If-Match: comma-separated list of ETags
+     *     • If-None-Match: comma-separated list of ETags
+     *     • If-Modified-Since: HTTP date
+     *     • If-Unmodified-Since: HTTP date
+     *     • Prefer: 'safe' if present and HTTPS
+     *     • Range: ['unit' => 'bytes', 'span' => [int, int, …]]
+     *
+     * @param string|null $key If specified, returns the value for that key.
+     * @return array Dependency information
+     */
     public function dependency(?string $key = null): array
     {
         if ($this->dep !== null) {
@@ -277,14 +389,31 @@ final class RequestHeaders
         return $key ? ($dep[$key] ?? []) : $dep;
     }
 
-    /* ================================================================
-       tiny helpers (no allocations)
-       ================================================================ */
+
+/**
+ * Split a string into an array using a CSV-like syntax.
+ *
+ *   • Input string is trimmed before splitting.
+ *   • Empty strings are ignored.
+ *   • Whitespace is trimmed from both sides of the delimiters.
+ *   • Delimiters are commas (",") or whitespace characters (one or more).
+ *
+ * @param string $v Input string to split
+ * @return array Resulting array of strings
+ */
     private function csv(string $v): array
     {
         return $v === '' ? [] : preg_split('/\s*,\s*/', $v);
     }
 
+    /**
+     * Return a Unix epoch from an HTTP date string (RFC 7231).
+     *
+     * Returns null if the input string is empty or invalid.
+     *
+     * @param string $v HTTP date string (e.g. "Fri, 12 Jan 2018 08:00:00 GMT")
+     * @return int|null Unix epoch or null if invalid
+     */
     private function httpDate(string $v): ?int
     {
         return $v === '' ? null : (strtotime($v) ?: null);
