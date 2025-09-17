@@ -52,7 +52,7 @@ final class HeaderPolicy
         }
 
         $seen = [];
-        $out  = [];
+        $out = [];
         foreach ([self::normalizeCsv($existing), self::normalizeCsv($incoming)] as $list) {
             foreach ($list as $tok) {
                 $k = strtolower($tok);
@@ -77,7 +77,6 @@ final class HeaderPolicy
             return implode('-', $parts ?? []);
         }, $toks);
     }
-
 
 
     private function __construct()

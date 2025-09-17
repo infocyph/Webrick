@@ -64,8 +64,13 @@ final class SwooleEmitter extends BaseEmitter
         return 'HTTP/2';
     }
 
-    protected function wantsChunked(bool $isHttp11, bool $allowsBody, Response $response, bool $isStreaming, ?int $size): bool
-    {
+    protected function wantsChunked(
+        bool $isHttp11,
+        bool $allowsBody,
+        Response $response,
+        bool $isStreaming,
+        ?int $size,
+    ): bool {
         // Never emit TE: chunked — Swoole handles framing internally
         return false;
     }
@@ -76,6 +81,8 @@ final class SwooleEmitter extends BaseEmitter
         if ($res instanceof \Swoole\Http\Response) {
             return $res;
         }
-        throw new \RuntimeException('SwooleEmitter requires Request attribute "swoole.response" (Swoole\Http\Response).');
+        throw new \RuntimeException(
+            'SwooleEmitter requires Request attribute "swoole.response" (Swoole\Http\Response).',
+        );
     }
 }

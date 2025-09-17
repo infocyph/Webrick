@@ -96,6 +96,7 @@ final class Cookie implements \Stringable
         $x->expires = $when->getTimestamp();
         return $x;
     }
+
     public function maxAge(int $seconds): self
     {
         $x = clone $this;

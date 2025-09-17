@@ -18,20 +18,6 @@ final class EndUser
 {
     private static array $trustedGlobal = [];                    // CIDR strings
 
-    /**
-     * Sets the global trusted proxies.
-     *
-     * These are the IP addresses or CIDR ranges that are trusted to pass
-     * the client's IP address. The list is global and applies to all
-     * EndUser objects.
-     *
-     * @param array $cidrs An array of IP addresses or CIDR ranges.
-     */
-    public static function setTrustedProxies(array $cidrs): void
-    {
-        self::$trustedGlobal = $cidrs;
-    }
-
     /* ----------------------------------------------------------------------- */
     private const LEGACY_IP_HEADERS = [
         'HTTP_X_FORWARDED_FOR',
@@ -64,6 +50,20 @@ final class EndUser
         private readonly Request $req,
         private readonly array $extraTrusted = [],
     ) {
+    }
+
+    /**
+     * Sets the global trusted proxies.
+     *
+     * These are the IP addresses or CIDR ranges that are trusted to pass
+     * the client's IP address. The list is global and applies to all
+     * EndUser objects.
+     *
+     * @param array $cidrs An array of IP addresses or CIDR ranges.
+     */
+    public static function setTrustedProxies(array $cidrs): void
+    {
+        self::$trustedGlobal = $cidrs;
     }
 
     /**
@@ -150,6 +150,7 @@ final class EndUser
         }
         return $this->cachedViaProxy = $this->ipNoProxy();     // fallback
     }
+
     /**
      * Anonymize an IP address for privacy.
      *
@@ -185,6 +186,7 @@ final class EndUser
 
         return $wrap ? '[' . \inet_ntop($masked) . ']' : \inet_ntop($masked);
     }
+
     /**
      * Retrieves the User-Agent header of the current request.
      *
@@ -212,6 +214,7 @@ final class EndUser
         return new UAParser($this->req)->parse()
             + ['raw' => $this->userAgent() ?? ''];        // keep raw for logs
     }
+
     /**
      * Checks if an IP address is private (i.e., not routable on the internet).
      *
@@ -243,7 +246,10 @@ final class EndUser
      */
     private function isTrustedProxy(string $ip): bool
     {
-        return array_any(array_merge(self::$trustedGlobal, $this->extraTrusted), fn ($cidr) => IpCidr::match($ip, $cidr));
+        return array_any(
+            array_merge(self::$trustedGlobal, $this->extraTrusted),
+            fn ($cidr) => IpCidr::match($ip, $cidr),
+        );
     }
 
     /**

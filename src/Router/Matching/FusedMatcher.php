@@ -237,9 +237,9 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
 
         $php = "<?php\nreturn [\n"
             . "    '" . self::H_HASH . "'  => " . \var_export($crc, true) . ",\n"
-            . "    '" . self::H_TS   . "'  => " . \var_export(date(DATE_ATOM), true) . ",\n"
+            . "    '" . self::H_TS . "'  => " . \var_export(date(DATE_ATOM), true) . ",\n"
             . "    '" . self::H_DATA . "' => " . $this->exportArray($payloadHosts) . ",\n"
-            . "    '" . self::H_ALIAS. "' => " . $this->exportArray($this->alias) . ",\n"
+            . "    '" . self::H_ALIAS . "' => " . $this->exportArray($this->alias) . ",\n"
             . "];\n";
 
         $tmp = $this->cacheFile . '.' . \uniqid('', true) . '.tmp';

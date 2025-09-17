@@ -38,47 +38,47 @@ final class RouteCache
      */
     public static function build(array $options): string
     {
-        $logger     = $options['logger'] ?? new NullLogger();
+        $logger = $options['logger'] ?? new NullLogger();
         \assert($logger instanceof LoggerInterface);
 
-        $cachePath  = (string) ($options['cache'] ?? '');
+        $cachePath = (string)($options['cache'] ?? '');
         if ($cachePath === '') {
             throw new \InvalidArgumentException("RouteCache::build: 'cache' path is required.");
         }
 
         $matcherOpt = $options['matcher'] ?? null;
-        $matcherOpt = $matcherOpt ? \strtolower((string) $matcherOpt) : null;
+        $matcherOpt = $matcherOpt ? \strtolower((string)$matcherOpt) : null;
 
         // Heuristic: if path ends with ".php" treat as fused, otherwise sharded.
         $isFused = match ($matcherOpt) {
-            'fused'   => true,
+            'fused' => true,
             'sharded' => false,
-            default   => \str_ends_with($cachePath, '.php'),
+            default => \str_ends_with($cachePath, '.php'),
         };
 
         $register = $options['register'] ?? null;
-        if (! $register) {
-            $routesFile = (string) ($options['routes'] ?? '');
+        if (!$register) {
+            $routesFile = (string)($options['routes'] ?? '');
             if ($routesFile === '') {
                 throw new \InvalidArgumentException("RouteCache::build: provide 'register' callable or 'routes' file.");
             }
             $register = static function (Registrar $r) use ($routesFile): void {
                 require $routesFile;
             };
-        } elseif (! $register instanceof \Closure && ! \is_callable($register)) {
+        } elseif (!$register instanceof \Closure && !\is_callable($register)) {
             throw new \InvalidArgumentException("RouteCache::build: 'register' must be callable.");
         }
 
-        $signKey          = $options['signKey']          ?? null;
-        $signedDefaultTtl = (int) ($options['signedDefaultTtl'] ?? 900);
-        $regOpts          = (array) ($options['registrarOptions'] ?? []);
-        $preGlobal        = (array) ($options['preGlobal'] ?? []);
-        $postGlobal       = (array) ($options['postGlobal'] ?? []);
-        $fallbackAliases  = (bool)  ($options['fallbackAliasesFromRegistrar'] ?? true);
+        $signKey = $options['signKey'] ?? null;
+        $signedDefaultTtl = (int)($options['signedDefaultTtl'] ?? 900);
+        $regOpts = (array)($options['registrarOptions'] ?? []);
+        $preGlobal = (array)($options['preGlobal'] ?? []);
+        $postGlobal = (array)($options['postGlobal'] ?? []);
+        $fallbackAliases = (bool)($options['fallbackAliasesFromRegistrar'] ?? true);
 
         /** @var null|callable $bind */
         $bind = $options['bindUrlServices'] ?? null;
-        if (! $bind) {
+        if (!$bind) {
             $bind = static function (Collection $routes) use ($signKey, $signedDefaultTtl): void {
                 Response::bindUrlServices($routes, $signKey, $signedDefaultTtl);
             };
@@ -98,8 +98,8 @@ final class RouteCache
             routeCache: $routeCache,
             registrarOptions: $regOpts + [
                 'exposeUrlServices' => true,
-                'signKey'           => $signKey,
-                'signedDefaultTtl'  => $signedDefaultTtl,
+                'signKey' => $signKey,
+                'signedDefaultTtl' => $signedDefaultTtl,
             ],
             preGlobal: $preGlobal,
             postGlobal: $postGlobal,
@@ -124,22 +124,22 @@ final class RouteCache
      */
     public static function clear(array $options): bool
     {
-        $cachePath  = (string) ($options['cache'] ?? '');
+        $cachePath = (string)($options['cache'] ?? '');
         if ($cachePath === '') {
             throw new \InvalidArgumentException("RouteCache::clear: 'cache' path is required.");
         }
 
         $matcherOpt = $options['matcher'] ?? null;
-        $matcherOpt = $matcherOpt ? \strtolower((string) $matcherOpt) : null;
+        $matcherOpt = $matcherOpt ? \strtolower((string)$matcherOpt) : null;
 
         $isFused = match ($matcherOpt) {
-            'fused'   => true,
+            'fused' => true,
             'sharded' => false,
-            default   => \str_ends_with($cachePath, '.php'),
+            default => \str_ends_with($cachePath, '.php'),
         };
 
         // ✅ SAFE BY DEFAULT: keep directory for sharded caches
-        $aggressive = (bool) ($options['aggressive'] ?? false);
+        $aggressive = (bool)($options['aggressive'] ?? false);
 
         // Basic guardrails against dangerous targets
         $danger = ['/', '\\', '.', '..', ''];
@@ -154,7 +154,7 @@ final class RouteCache
 
         // sharded = directory of PHP shards + sentinels
         $dir = \rtrim($cachePath, "/\\");
-        if (! \is_dir($dir)) {
+        if (!\is_dir($dir)) {
             return false;
         }
 
@@ -192,13 +192,13 @@ final class RouteCache
 
     private static function rrmdir(string $dir): bool
     {
-        if (! \is_dir($dir)) {
+        if (!\is_dir($dir)) {
             return false;
         }
         $ok = true;
         $it = new \RecursiveIteratorIterator(
             new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS),
-            \RecursiveIteratorIterator::CHILD_FIRST
+            \RecursiveIteratorIterator::CHILD_FIRST,
         );
         foreach ($it as $path) {
             $ok = ($path->isDir() ? @\rmdir($path->getPathname()) : @\unlink($path->getPathname())) && $ok;

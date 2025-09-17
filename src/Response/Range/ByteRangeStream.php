@@ -104,7 +104,7 @@ final class ByteRangeStream implements BodyStream
         return $data;
     }
 
-    public function getMetadata(string $key = null): mixed
+    public function getMetadata(?string $key = null): mixed
     {
         return $this->base->getMetadata($key);
     }

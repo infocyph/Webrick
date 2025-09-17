@@ -140,7 +140,7 @@ final class LazyJsonStream implements BodyStream
         return $this->inner->getContents();
     }
 
-    public function getMetadata(string $key = null): mixed
+    public function getMetadata(?string $key = null): mixed
     {
         $this->boot();
         return $this->inner->getMetadata($key);

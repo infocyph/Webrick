@@ -19,7 +19,7 @@ final readonly class NegotiationMiddleware
     /** @param string[] $charsets */
     /** @param string[] $locales ordered by server-side preference */
     public function __construct(
-        private array $produces = ['+json','application/json', 'text/html'],
+        private array $produces = ['+json', 'application/json', 'text/html'],
         private array $charsets = ['utf-8'],
         private array $locales = ['en'],
         private string $localeFallback = 'en',

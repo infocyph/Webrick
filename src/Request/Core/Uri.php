@@ -74,6 +74,7 @@ final class Uri
         $this->query = $query;
         $this->fragment = $fragment;
     }
+
     /**
      * Constructs a Uri object from a raw URI string.
      *
@@ -84,7 +85,7 @@ final class Uri
     {
         return new self($raw);
     }
-    
+
     /**
      * Constructs a Uri object from server parameters ($_SERVER).
      *
@@ -103,6 +104,7 @@ final class Uri
 
         return new self(self::buildFullUrl($scheme, $host, $port, $uri));
     }
+
     /**
      * Detects the scheme (http or https) from server parameters, considering proxy headers if configured.
      *
@@ -354,12 +356,12 @@ final class Uri
         return $scheme . '://' . $host . ($port ? ":{$port}" : '') . $reqUri;
     }
 
-/**
- * Returns the default port number for the given scheme.
- *
- * @param string $scheme The scheme to get the default port for.
- * @return int|null The default port number, or null if no default port is known.
- */
+    /**
+     * Returns the default port number for the given scheme.
+     *
+     * @param string $scheme The scheme to get the default port for.
+     * @return int|null The default port number, or null if no default port is known.
+     */
     private static function getDefaultPortForScheme(string $scheme): ?int
     {
         return $scheme === 'https' ? 443 : ($scheme === 'http' ? 80 : null);
@@ -647,7 +649,7 @@ final class Uri
         $clone->fragment = $fragment;
         return $clone;
     }
-    
+
     /**
      * Normalize a query-string.
      *

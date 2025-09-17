@@ -35,7 +35,7 @@ final class WorkermanEmitter implements EmitterInterface
         $conn = $request?->getAttribute('workerman.connection');
         if ($conn && method_exists($conn, 'send')) {
             $status = $response->getStatusCode() . ' ' . $response->getReasonPhrase();
-            $ver    = $response->getProtocolVersion();
+            $ver = $response->getProtocolVersion();
 
             $method = strtoupper($request?->getMethod() ?? 'GET');
             $noBody = in_array($response->getStatusCode(), [204, 304], true) || $method === 'HEAD';
@@ -46,7 +46,7 @@ final class WorkermanEmitter implements EmitterInterface
             $headers = $response->getHeaders();
             $hasCL = array_any($headers, fn ($hv, $hn) => strtolower($hn) === 'content-length');
             if (!$hasCL) {
-                $headers['Content-Length'] = [ (string)\strlen($bodyStr) ];
+                $headers['Content-Length'] = [(string)\strlen($bodyStr)];
             }
 
             // Build envelope
@@ -61,6 +61,8 @@ final class WorkermanEmitter implements EmitterInterface
             return;
         }
 
-        throw new \RuntimeException('WorkermanEmitter requires "workerman.response" or "workerman.connection" attribute.');
+        throw new \RuntimeException(
+            'WorkermanEmitter requires "workerman.response" or "workerman.connection" attribute.',
+        );
     }
 }

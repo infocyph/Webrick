@@ -28,6 +28,7 @@ final class UploadedFileCollection implements ArrayAccess, Countable, IteratorAg
     {
         $this->bag = $files; // assume already normalised
     }
+
     /**
      * Returns all uploaded files in the collection.
      *
@@ -61,7 +62,7 @@ final class UploadedFileCollection implements ArrayAccess, Countable, IteratorAg
     {
         return $this->bag[$k] ?? null;
     }
-    
+
     /**
      * Returns the number of uploaded files in the collection.
      *

@@ -31,7 +31,7 @@ final class Csrf
     {
         return $_SESSION['_token'] ??= bin2hex(random_bytes(self::TOKEN_BYTES));
     }
-    
+
     /**
      * Returns a masked CSRF token (128 hex chars) that contains the following components:
      *   - A random 64-hex-char mask
@@ -64,7 +64,7 @@ final class Csrf
     {
         return self::matchesValue(self::extractFromRequest($req));
     }
-    
+
     /**
      * Compares the given CSRF token against the stored value.
      *
@@ -136,9 +136,9 @@ final class Csrf
     }
 
 
-/**
- * Private constructor to prevent instantiation of this class.
- */
+    /**
+     * Private constructor to prevent instantiation of this class.
+     */
     private function __construct()
     {
     }

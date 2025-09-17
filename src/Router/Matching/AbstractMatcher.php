@@ -16,11 +16,11 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
 abstract class AbstractMatcher
 {
     /* shared node keys */
-    protected const K_STATIC   = 'static';
-    protected const K_TRIE     = 'trie';
+    protected const K_STATIC = 'static';
+    protected const K_TRIE = 'trie';
     protected const K_CHILDREN = 'children';
-    protected const K_PARAM    = 'param';
-    protected const K_ROUTES   = 'routes';
+    protected const K_PARAM = 'param';
+    protected const K_ROUTES = 'routes';
     protected const H_HASH = '_hash';
     protected const H_DATA = '_data';
     protected const H_TS = '_ts';
@@ -129,10 +129,10 @@ abstract class AbstractMatcher
         }
 
         $node[self::K_PARAM] = [
-            'name'  => $spec['name'],
+            'name' => $spec['name'],
             'regex' => $spec['regex'] ?? null,
-            'call'  => $spec['call']  ?? null,
-            'node'  => $this->newNode(),
+            'call' => $spec['call'] ?? null,
+            'node' => $this->newNode(),
         ];
         return $node[self::K_PARAM]['node'];
     }

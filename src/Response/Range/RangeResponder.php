@@ -65,7 +65,7 @@ final readonly class RangeResponder
             unset($headers['Content-Type'], $headers['Content-Encoding'], $headers['Content-Language'], $headers['Content-Length']);
 
             $headers += [
-                'Content-Range'  => "bytes */{$totalLength}", // RFC 9110 §14.4.2 requirement
+                'Content-Range' => "bytes */{$totalLength}", // RFC 9110 §14.4.2 requirement
                 'Content-Length' => '0',
             ];
 
@@ -75,7 +75,7 @@ final readonly class RangeResponder
         // 200 – full body when no Range OR multi-range (unsupported → fallback)
         if ($range === null || $multiRequested) {
             $headers += [
-                'Content-Type'   => $mediaType,
+                'Content-Type' => $mediaType,
                 'Content-Length' => (string)$totalLength,
             ];
             if (self::isSeekable($source)) {
@@ -97,9 +97,9 @@ final readonly class RangeResponder
             fseek($source, $range->start);
         }
         $headers += [
-            'Content-Range'  => $range->contentRange(),
+            'Content-Range' => $range->contentRange(),
             'Content-Length' => (string)$length,
-            'Content-Type'   => $mediaType,
+            'Content-Type' => $mediaType,
         ];
         if (self::isSeekable($source)) {
             $headers += ['Accept-Ranges' => 'bytes'];

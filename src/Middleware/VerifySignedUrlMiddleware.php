@@ -22,7 +22,7 @@ final readonly class VerifySignedUrlMiddleware
     public function __invoke(Request $request, Closure $next)
     {
         // 1) pull query and signature, then remove _sig
-        $qs  = $request->getQueryParams();
+        $qs = $request->getQueryParams();
         $sig = $qs[SignedUrlGenerator::SIG_PARAM] ?? '';
         if (!is_string($sig) || $sig === '') {
             return Response::plaintext('Missing signature', 400);
@@ -31,7 +31,7 @@ final readonly class VerifySignedUrlMiddleware
 
         // 2) expiry check (if present)
         if (isset($qs[SignedUrlGenerator::EXPIRES_PARAM])) {
-            $exp = (int) $qs[SignedUrlGenerator::EXPIRES_PARAM];
+            $exp = (int)$qs[SignedUrlGenerator::EXPIRES_PARAM];
             if (time() > $exp + $this->leeway) {
                 return Response::plaintext('URL expired', 410);
             }
@@ -53,9 +53,9 @@ final readonly class VerifySignedUrlMiddleware
         if (!Signature::check($payload, $sig, $this->secret)) {
             if ($this->verbose) {
                 return Response::json([
-                    'error'   => 'Bad signature',
+                    'error' => 'Bad signature',
                     'payload' => $payload,
-                    'sig'     => $sig,
+                    'sig' => $sig,
                 ], 400);
             }
             return Response::plaintext('Bad signature', 400);

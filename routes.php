@@ -3,7 +3,6 @@
 declare(strict_types=1);
 
 use Infocyph\Webrick\Middleware\ThrottleMiddleware;
-use Infocyph\Webrick\Middleware\VerifySignedUrlMiddleware;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Payloads\HtmlResponse;
 use Infocyph\Webrick\Response\Response;

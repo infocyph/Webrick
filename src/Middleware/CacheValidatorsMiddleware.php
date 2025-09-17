@@ -280,6 +280,7 @@ final class CacheValidatorsMiddleware
         // Synthetic but stable-enough per-path fallback
         return [self::syntheticEtag($path, $scriptMts), $scriptMts];
     }
+
     /**
      * DOCUMENT_ROOT if set, else null.
      *
@@ -290,6 +291,7 @@ final class CacheValidatorsMiddleware
         $dr = (string)($_SERVER['DOCUMENT_ROOT'] ?? '');
         return $dr !== '' ? $dr : null;
     }
+
     /**
      * Current script's mtime (file modification time) or null if not accessible.
      *
@@ -304,6 +306,7 @@ final class CacheValidatorsMiddleware
         $mt = filemtime($file);
         return $mt === false ? null : $mt;
     }
+
     /**
      * Resolve request path to a safe, readable file under docroot.
      *
@@ -361,6 +364,7 @@ final class CacheValidatorsMiddleware
         $seed = $size . '|' . $mtime . '|' . basename($realPath);
         return '"' . substr(hash('xxh3', $seed, false), 0, 16) . '"';
     }
+
     /**
      * Builds a synthetic ETag fingerprint based on the request path and an optional best-effort script mtime.
      *

@@ -6,7 +6,6 @@ namespace Infocyph\Webrick\Interfaces;
 
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
-use RuntimeException;
 
 interface RouterInterface
 {

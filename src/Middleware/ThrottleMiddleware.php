@@ -100,7 +100,7 @@ final readonly class ThrottleMiddleware
         // Hard-partition by window to avoid cross-window races
         return [
             't.' . hash('xxh3', $bucket . '|' . (string)$id . '|' . $winStart, false),
-            $reset
+            $reset,
         ];
     }
 

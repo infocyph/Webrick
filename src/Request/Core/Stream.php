@@ -275,8 +275,8 @@ final class Stream implements BodyStream
      * If an error occurs while reading, a RuntimeException is thrown.
      *
      * @param int $length The number of bytes to read from the stream.
-     * @throws RuntimeException If unable to read from the stream.
      * @return string The data read from the stream.
+     * @throws RuntimeException If unable to read from the stream.
      */
     public function read(int $length): string
     {
@@ -295,9 +295,9 @@ final class Stream implements BodyStream
      *
      * If the stream is not readable, a RuntimeException is thrown.
      *
+     * @return string The remaining contents of the stream.
      * @throws RuntimeException If unable to read stream contents.
      *
-     * @return string The remaining contents of the stream.
      */
     public function getContents(): string
     {
@@ -339,12 +339,12 @@ final class Stream implements BodyStream
         return $key ? ($meta[$key] ?? null) : $meta;
     }
 
-/**
- * Return the underlying stream resource, or throw if the stream is detached.
- *
- * @throws RuntimeException if the stream is detached
- * @return mixed the underlying stream resource
- */
+    /**
+     * Return the underlying stream resource, or throw if the stream is detached.
+     *
+     * @return mixed the underlying stream resource
+     * @throws RuntimeException if the stream is detached
+     */
     private function need(): mixed
     {
         return $this->h ?? throw new RuntimeException('Stream detached');

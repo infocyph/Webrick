@@ -63,8 +63,8 @@ $sentinel2 = RouteCache::build([
     // Supply your own registration logic instead of routes.php:
     'register' => static function (Registrar $r): void {
         // Minimal demo routes
-        $r->get('/ping', fn() => 'pong', 'ping');
-        $r->get('/hello/{name}', fn($req, $name) => Response::json(['hello' => $name]), 'hello');
+        $r->get('/ping', fn () => 'pong', 'ping');
+        $r->get('/hello/{name}', fn ($req, $name) => Response::json(['hello' => $name]), 'hello');
     },
     'signKey' => $signKey,
     'signedDefaultTtl' => 300,

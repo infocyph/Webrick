@@ -26,7 +26,7 @@ final class UploadedFile
     private readonly ?string $clientType;
 
     private bool $moved = false;
-    
+
     /**
      * Constructs a new UploadedFile value object.
      *
@@ -94,9 +94,9 @@ final class UploadedFile
     /**
      * Return a PSR-7 Stream for the uploaded file.
      *
+     * @return Stream A PSR-7 Stream representing the uploaded file.
      * @throws RuntimeException If the uploaded file cannot be opened.
      *
-     * @return Stream A PSR-7 Stream representing the uploaded file.
      */
     public function getStream(): Stream
     {
@@ -193,10 +193,10 @@ final class UploadedFile
 
     /**
      * Get the original filename of the uploaded file as sent in the request.
-     * 
+     *
      * This value is available from the $_FILES superglobal and can be used to
      * determine the original filename of the uploaded file.
-     * 
+     *
      * @return string|null The original filename of the uploaded file, or null if not available.
      */
     public function getClientFilename(): ?string
@@ -206,10 +206,10 @@ final class UploadedFile
 
     /**
      * Get the media type of the uploaded file as sent in the request.
-     * 
+     *
      * This value is available from the $_FILES superglobal and can be used to
      * determine the MIME type of the uploaded file.
-     * 
+     *
      * @return string|null The media type of the uploaded file, or null if not available.
      */
     public function getClientMediaType(): ?string
@@ -236,13 +236,13 @@ final class UploadedFile
         }
     }
 
-/**
- * Checks if the given target path is non-empty.
- *
- * @param string $path The target path to check.
- *
- * @throws InvalidArgumentException If the target path is empty.
- */
+    /**
+     * Checks if the given target path is non-empty.
+     *
+     * @param string $path The target path to check.
+     *
+     * @throws InvalidArgumentException If the target path is empty.
+     */
     private function assertTarget(string $path): void
     {
         if ($path === '') {

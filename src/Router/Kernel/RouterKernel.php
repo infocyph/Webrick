@@ -279,17 +279,25 @@ final class RouterKernel
 
         $added = 0;
         foreach ($pairs as $name => $tuple) {
-            if (!\is_string($name) || $name === '' || !\is_array($tuple)) continue;
+            if (!\is_string($name) || $name === '' || !\is_array($tuple)) {
+                continue;
+            }
             $path = $tuple[0] ?? null;
             $domain = $tuple[1] ?? null;
-            if (!\is_string($path) || $path === '') continue;
+            if (!\is_string($path) || $path === '') {
+                continue;
+            }
 
             $r = new Route('GET', $path, static fn () => Response::noContent());
             $r = $r->withName($name);
             if (\is_string($domain) && $domain !== '') {
                 $r = $r->withDomain($domain);
             }
-            try { $dst->add($r); $added++; } catch (\Throwable) { /* skip dupes */ }
+            try {
+                $dst->add($r);
+                $added++;
+            } catch (\Throwable) { /* skip dupes */
+            }
         }
 
         $this->log->info('[router] alias cache hydrated', ['file' => $aliasFile, 'count' => $added]);
@@ -302,7 +310,7 @@ final class RouterKernel
             \is_dir($cacheLocation)
                 ? \rtrim($cacheLocation, '/\\')
                 : \dirname($cacheLocation)
-            ) . \DIRECTORY_SEPARATOR . self::F_ALIASES;
+        ) . \DIRECTORY_SEPARATOR . self::F_ALIASES;
     }
 
     private function aliasFileExists(?string $path): bool

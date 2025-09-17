@@ -36,7 +36,7 @@ final class Dispatcher
         array $preGlobal = [],
         array $postGlobal = [],
     ) {
-        $this->preGlobalRaw  = $preGlobal;
+        $this->preGlobalRaw = $preGlobal;
         $this->postGlobalRaw = $postGlobal;
     }
 
@@ -94,10 +94,10 @@ final class Dispatcher
     {
         $routeClasses = $this->routeMiddlewareClasses($route);
 
-        $preRaw  = $this->filterGlobals($this->preGlobalRaw, $routeClasses);
+        $preRaw = $this->filterGlobals($this->preGlobalRaw, $routeClasses);
         $postRaw = $this->filterGlobals($this->postGlobalRaw, $routeClasses);
 
-        $preInv  = $this->buildInvokables($preRaw);
+        $preInv = $this->buildInvokables($preRaw);
         $postInv = $this->buildInvokables($postRaw);
 
         return [$preInv, $postInv];

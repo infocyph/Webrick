@@ -22,11 +22,11 @@ final class RoadRunnerEmitter implements EmitterInterface
             throw new \RuntimeException('RoadRunnerEmitter requires Request attribute "roadrunner.respond" callable.');
         }
 
-        $status  = $response->getStatusCode();
+        $status = $response->getStatusCode();
         $headers = $response->getHeaders();
 
         if ($response->isStreaming()) {
-            $fn  = $response->getProducer();
+            $fn = $response->getProducer();
             $out = $fn ? $fn() : [];
             $respond($status, $headers, $out);
             return;

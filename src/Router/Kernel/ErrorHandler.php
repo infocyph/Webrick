@@ -19,11 +19,11 @@ use Infocyph\Webrick\Constants\Status;
 final class ErrorHandler
 {
     /**
-     * @param LoggerInterface|null     $logger
-     * @param bool                     $debug            Expose details (stack, file) when true
-     * @param bool                     $capturePhpErrors Convert PHP warnings/notices into ErrorException
-     * @param string                   $requestIdHeader  Header to echo if present
-     * @param array<class-string,int>  $exceptionMap     Map specific exceptions to HTTP status
+     * @param LoggerInterface|null $logger
+     * @param bool $debug Expose details (stack, file) when true
+     * @param bool $capturePhpErrors Convert PHP warnings/notices into ErrorException
+     * @param string $requestIdHeader Header to echo if present
+     * @param array<class-string,int> $exceptionMap Map specific exceptions to HTTP status
      */
     public function __construct(
         private readonly ?LoggerInterface $logger = null,
@@ -41,19 +41,21 @@ final class ErrorHandler
     {
         $prev = null;
         if ($this->capturePhpErrors) {
-            $prev = set_error_handler(function (int $severity, string $message, ?string $file = null, ?int $line = null): bool {
-                if (!(error_reporting() & $severity)) {
-                    return false; // respect @
-                }
-                throw new ErrorException($message, 0, $severity, $file ?? 'unknown', $line ?? 0);
-            });
+            $prev = set_error_handler(
+                function (int $severity, string $message, ?string $file = null, ?int $line = null): bool {
+                    if (!(error_reporting() & $severity)) {
+                        return false; // respect @
+                    }
+                    throw new ErrorException($message, 0, $severity, $file ?? 'unknown', $line ?? 0);
+                },
+            );
         }
 
         try {
             return $core($req);
         } catch (Throwable $e) {
             $status = $this->resolveStatus($e);
-            $resp   = $this->render($req, $e, $status);
+            $resp = $this->render($req, $e, $status);
             $this->log($e, $req, $status);
             return $resp;
         } finally {
@@ -106,47 +108,52 @@ final class ErrorHandler
         }
 
         switch ($wanted) {
-            case 'application/problem+json': {
-                $payload = [
-                    'type'     => 'about:blank',
-                    'title'    => $reason,
-                    'status'   => $status,
-                    'detail'   => $msg,
-                    'instance' => (string)$req->getUri()->getPath(),
-                ];
-                if ($rid) {
-                    $payload['request_id'] = (string)$rid;
-                }
-                if ($this->debug) {
-                    $payload += [
-                        'exception' => $e::class,
-                        'file'      => $e->getFile() . ':' . $e->getLine(),
-                        'trace'     => explode("\n", $e->getTraceAsString()),
+            case 'application/problem+json':
+                {
+                    $payload = [
+                        'type' => 'about:blank',
+                        'title' => $reason,
+                        'status' => $status,
+                        'detail' => $msg,
+                        'instance' => (string)$req->getUri()->getPath(),
                     ];
+                    if ($rid) {
+                        $payload['request_id'] = (string)$rid;
+                    }
+                    if ($this->debug) {
+                        $payload += [
+                            'exception' => $e::class,
+                            'file' => $e->getFile() . ':' . $e->getLine(),
+                            'trace' => explode("\n", $e->getTraceAsString()),
+                        ];
+                    }
+                    $headers['Content-Type'] = 'application/problem+json';
+                    $json = json_encode(
+                        $payload,
+                        JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE | JSON_UNESCAPED_SLASHES,
+                    );
+                    return Response::create($json === false ? '{}' : $json, $status, $headers);
                 }
-                $headers['Content-Type'] = 'application/problem+json';
-                $json = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE | JSON_UNESCAPED_SLASHES);
-                return Response::create($json === false ? '{}' : $json, $status, $headers);
-            }
 
-            case 'application/json': {
-                $payload = [
-                    'error'  => $msg,
-                    'code'   => $status,
-                    'reason' => $reason,
-                ];
-                if ($rid) {
-                    $payload['request_id'] = (string)$rid;
-                }
-                if ($this->debug) {
-                    $payload += [
-                        'exception' => $e::class,
-                        'file' => $e->getFile() . ':' . $e->getLine(),
-                        'trace' => explode("\n", $e->getTraceAsString()),
+            case 'application/json':
+                {
+                    $payload = [
+                        'error' => $msg,
+                        'code' => $status,
+                        'reason' => $reason,
                     ];
+                    if ($rid) {
+                        $payload['request_id'] = (string)$rid;
+                    }
+                    if ($this->debug) {
+                        $payload += [
+                            'exception' => $e::class,
+                            'file' => $e->getFile() . ':' . $e->getLine(),
+                            'trace' => explode("\n", $e->getTraceAsString()),
+                        ];
+                    }
+                    return Response::json($payload, $status, $headers);
                 }
-                return Response::json($payload, $status, $headers);
-            }
 
             case 'application/xml':
             case 'text/xml':
@@ -235,7 +242,8 @@ final class ErrorHandler
         $trace = $this->debug ? '<trace>' . $xe($e->getTraceAsString()) . '</trace>' : '';
         $ridEl = $rid !== '' ? '<request_id>' . $xe($rid) . '</request_id>' : '';
         $exEl = $this->debug
-            ? '<exception>' . $xe($e::class) . '</exception><file>' . $xe($e->getFile()) . ':' . $e->getLine() . '</file>'
+            ? '<exception>' . $xe($e::class) . '</exception><file>' . $xe($e->getFile()) . ':' . $e->getLine(
+            ) . '</file>'
             : '';
         return <<<XML
             <?xml version="1.0" encoding="UTF-8"?>
@@ -325,7 +333,7 @@ final class ErrorHandler
                 'status' => $status,
                 'series' => Status::tryFrom($status)?->series(),
                 'method' => strtoupper($req->getMethod()),
-                'path'   => (string)$req->getUri()->getPath(),
+                'path' => (string)$req->getUri()->getPath(),
                 'request_id' => $req->getAttribute('request_id') ?: null,
                 'exception' => $e,
             ],

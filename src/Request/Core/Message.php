@@ -17,6 +17,7 @@ abstract class Message
     protected string $protocol = '1.1';
     protected array $headers = [];
     protected Stream $body;
+
     /**
      * @param array<string,string[]> $headers header-name => string[] or string (ucwords-dashed)
      * @param Stream|null $body body stream or null for an empty stream
@@ -28,6 +29,7 @@ abstract class Message
         $this->body = $body ?? new Stream();
         $this->protocol = $proto;
     }
+
     /**
      * Retrieve the HTTP protocol version as a string (e.g. "1.1")
      *
@@ -161,11 +163,11 @@ abstract class Message
     }
 
 
-/**
- * Returns the current message body as an instance of Stream.
- *
- * @return Stream The current message body.
- */
+    /**
+     * Returns the current message body as an instance of Stream.
+     *
+     * @return Stream The current message body.
+     */
     public function getBody(): Stream
     {
         return $this->body;
