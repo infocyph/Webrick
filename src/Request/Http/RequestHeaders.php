@@ -390,17 +390,17 @@ final class RequestHeaders
     }
 
 
-/**
- * Split a string into an array using a CSV-like syntax.
- *
- *   • Input string is trimmed before splitting.
- *   • Empty strings are ignored.
- *   • Whitespace is trimmed from both sides of the delimiters.
- *   • Delimiters are commas (",") or whitespace characters (one or more).
- *
- * @param string $v Input string to split
- * @return array Resulting array of strings
- */
+    /**
+     * Split a string into an array using a CSV-like syntax.
+     *
+     *   • Input string is trimmed before splitting.
+     *   • Empty strings are ignored.
+     *   • Whitespace is trimmed from both sides of the delimiters.
+     *   • Delimiters are commas (",") or whitespace characters (one or more).
+     *
+     * @param string $v Input string to split
+     * @return array Resulting array of strings
+     */
     private function csv(string $v): array
     {
         return $v === '' ? [] : preg_split('/\s*,\s*/', $v);

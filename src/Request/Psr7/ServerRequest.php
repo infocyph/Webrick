@@ -10,19 +10,8 @@ use Infocyph\Webrick\Request\Core\{Message, Stream, UploadedFile, UploadedFileCo
 use Infocyph\Webrick\Request\Http\RequestHeaders;
 use InvalidArgumentException;
 
-/**
- * PSR-7 ServerRequest + Webrick sugar (2025 edition)
- *
- *  ✔ createFromGlobals()
- *  ✔ method-override, AJAX, JSON, XML helpers
- *  ✔ magic __get obeying variables_order & request_order
- *  ✔ RequestHeaders façade + ContentNegotiator, EndUser, …
- *  ✔ 100 % immutable         (every with*() clones)
- */
 class ServerRequest extends Message
 {
-    /* ======== 2.  Non-PSR state  ======================================= */
-
     private string $method;
     private Uri $uri;
 
@@ -56,8 +45,23 @@ class ServerRequest extends Message
     /* Valid verbs */
     private const array VALID = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS', 'CONNECT', 'TRACE'];
 
-    /* ======== 3.  Constructor (private, use factory) ==================== */
-
+    /**
+     * Create a new ServerRequest instance.
+     *
+     * The constructor takes various parameters to build a PSR-7 ServerRequest
+     * object. It is recommended to use the static factory methods to create a
+     * request object from globals.
+     *
+     * @param string $method The HTTP method (e.g. GET, POST, etc.)
+     * @param Uri|string $uri The URI object or a string that can be parsed into a URI object.
+     * @param array $server Server parameters (e.g. $_SERVER)
+     * @param array $headers Headers (e.g. $_SERVER['HTTP_*'])
+     * @param Stream $body The request body as a Stream object.
+     * @param string $httpVer The HTTP protocol version (e.g. "1.1")
+     * @param null|array|object $parsed The parsed request body (e.g. JSON, XML, etc.)
+     * @param array $files The $_FILES superglobal array.
+     * @param string|null $requestTarget The request target (e.g. "index.php").
+     */
     public function __construct(
         string $method,
         Uri|string $uri,
@@ -93,8 +97,11 @@ class ServerRequest extends Message
         $this->buildVariableMap();
     }
 
-    /* ======== 1.  Static factory  ====================================== */
-
+    /**
+     * Create a new ServerRequest object from $_SERVER superglobal.
+     *
+     * @return static A new ServerRequest object.
+     */
     public static function createFromGlobals(): static
     {
         $srv = $_SERVER;
@@ -120,27 +127,67 @@ class ServerRequest extends Message
         return self::attachQueryAndCookies($req, $uri);
     }
 
+    /**
+     * Opens a stream for reading from the current request body.
+     *
+     * This function first tries to open a stream for reading from the
+     * 'php://input' stream, which represents the request body.
+     * If this fails, it will fall back to opening a stream for reading
+     * from the 'php://temp' stream, which represents the temporary file
+     * stream.
+     *
+     * @return Stream A new Stream object representing the request body.
+     */
     private static function openInputStream(): Stream
     {
         $in = fopen('php://input', 'rb') ?: fopen('php://temp', 'rb');
         return new Stream($in);
     }
 
+    /**
+     * Detects the HTTP protocol version from the given server parameters.
+     *
+     * This function extracts the HTTP protocol version from the
+     * SERVER_PROTOCOL key in the given server parameters.
+     *
+     * If the SERVER_PROTOCOL key is not present, or does not start with
+     * 'HTTP/', the function returns '1.1' as the HTTP protocol version.
+     *
+     * Otherwise, it returns the version part of the SERVER_PROTOCOL key,
+     * which is the substring starting from the 5th character of the key value.
+     *
+     * @param array $srv The server parameters, typically from $_SERVER.
+     * @return string The detected HTTP protocol version.
+     */
     private static function detectHttpVersion(array $srv): string
     {
         $proto = (string)($srv['SERVER_PROTOCOL'] ?? '');
         return str_starts_with($proto, 'HTTP/') ? substr($proto, 5) : '1.1';
     }
-
-    /** Import headers exactly once (includes auth fallbacks via RequestHeaders). */
+    /**
+     * Replaces the request headers with an immutable HeaderBag.
+     *
+     * Called once when creating a new ServerRequest from globals.
+     *
+     * @return self The request object with the replaced headers.
+     */
     private static function importHeadersOnce(self $req): self
     {
         $bag = new RequestHeaders($req)->all();
         $req->headers = $bag->all();   // protected prop on parent; same class context
         return $req;
     }
-
-    /** Parse application/x-www-form-urlencoded for PUT/PATCH/DELETE */
+    /**
+     * Attempt to parse the body of a non-POST request as URL-encoded
+     * form data.
+     *
+     * If the request method is PUT, PATCH or DELETE and the Content-Type
+     * header is application/x-www-form-urlencoded, the body is parsed and
+     * attached to the request as a parsed body.
+     *
+     * @return self The request object with the parsed body, or the original
+     *               request object if the body could not be parsed.
+     */
     private static function maybeParseUrlEncodedForNonPost(self $req, Stream $body): self
     {
         if (
@@ -153,6 +200,13 @@ class ServerRequest extends Message
         return $req;
     }
 
+    /**
+     * Attach query string and cookie parameters to the request.
+     *
+     * @param self $req The request object.
+     * @param Uri $uri The URI object.
+     * @return self The request object with the query string and cookie parameters attached.
+     */
     private static function attachQueryAndCookies(self $req, Uri $uri): self
     {
         parse_str($uri->getQuery(), $qs);
@@ -161,9 +215,14 @@ class ServerRequest extends Message
             ->withCookieParams($_COOKIE);
     }
 
-
-    /* ======== 4.  PSR-7 RequestInterface =============================== */
-
+    /**
+     * Retrieve the request target as a string.
+     *
+     * If the request target was explicitly set, return that value.
+     * Otherwise, return the path and query string of the Uri.
+     *
+     * @return string
+     */
     public function getRequestTarget(): string
     {
         if ($this->requestTarget) {
@@ -176,6 +235,13 @@ class ServerRequest extends Message
         return $t;
     }
 
+    /**
+     * Creates a new instance with the specified request-target.
+     *
+     * @param string $requestTarget The request-target to use.
+     * @return static A new instance with the specified request-target.
+     * @throws InvalidArgumentException If the request-target contains whitespace.
+     */
     public function withRequestTarget($requestTarget): static
     {
         if (preg_match('#\s#', $requestTarget)) {
@@ -186,11 +252,23 @@ class ServerRequest extends Message
         return $c;
     }
 
+    /**
+     * Retrieves the HTTP method (GET, POST, PUT, DELETE, OPTIONS, etc.)
+     * that this request was created with.
+     *
+     * @return string The HTTP method (e.g. "GET", "POST", etc.)
+     */
     public function getMethod(): string
     {
         return $this->method;
     }
 
+    /**
+     * Returns a new instance with the specified HTTP method.
+     *
+     * @param string $method HTTP method (e.g. GET, POST, PUT, DELETE, OPTIONS)
+     * @return static
+     */
     public function withMethod($method): static
     {
         $c = clone $this;
@@ -199,11 +277,23 @@ class ServerRequest extends Message
         return $c;
     }
 
+    /**
+     * Retrieves the Uri object of the request.
+     *
+     * @return Uri The Uri object of the request.
+     */
     public function getUri(): Uri
     {
         return $this->uri;
     }
 
+    /**
+     * Return a new instance with the specified URI, optionally preserving the original Host header.
+     *
+     * @param Uri $uri The new URI.
+     * @param bool $preserveHost If true, the original Host header will be preserved.
+     * @return static A new instance with the specified URI.
+     */
     public function withUri(Uri $uri, $preserveHost = false): static
     {
         $c = clone $this;
@@ -220,16 +310,42 @@ class ServerRequest extends Message
 
     /* ======== 5.  PSR-7 ServerRequestInterface ========================= */
 
+    /**
+     * Retrieves a copy of the $_SERVER superglobal.
+     *
+     * If the instance does not wrap a specific request instance, this method MUST return an empty array.
+     *
+     * @return array A copy of the $_SERVER values.
+     * @see https://www.php.net/manual/en/reserved.variables.server.php
+     */
     public function getServerParams(): array
     {
         return $this->server;
     }
 
+    /**
+     * Retrieve cookies.
+     *
+     * Returns cookies sent in the request.
+     * The data IS NOT filtered in any way.
+     *
+     * @return array Cookies as an associative array.
+     */
     public function getCookieParams(): array
     {
         return $this->cookie;
     }
 
+    /**
+     * Return an instance with the specified cookies.
+     *
+     * This method MUST be implemented in such a way as to retain the
+     * immutability of the message, and MUST return an instance that has the
+     * updated cookies.
+     *
+     * @param array $cookies The cookies as an associative array.
+     * @return static
+     */
     public function withCookieParams(array $cookies): static
     {
         $cl = clone $this;
@@ -238,11 +354,29 @@ class ServerRequest extends Message
         return $cl;
     }
 
+    /**
+     * Return the query string parameters as an associative array.
+     *
+     * This method returns the query string parameters as an associative array.
+     * The array keys are the parameter names, and the array values are the parameter values.
+     *
+     * @return array The query string parameters as an associative array.
+     */
     public function getQueryParams(): array
     {
         return $this->query;
     }
 
+    /**
+     * Return an instance with the specified query string as the parameters.
+     *
+     * This method MUST be implemented in such a way as to retain the
+     * immutability of the message, and MUST return an instance that has the
+     * updated query string.
+     *
+     * @param array $query The query string as an associative array.
+     * @return static
+     */
     public function withQueryParams(array $query): static
     {
         $cl = clone $this;
@@ -251,6 +385,18 @@ class ServerRequest extends Message
         return $cl;
     }
 
+    /**
+     * Retrieves an array of uploaded files, each being an instance of
+     * UploadedFile.
+     *
+     * The array keys are the names of the fields in the $_FILES superglobal,
+     * and the values are UploadedFile instances.
+     *
+     * This method is immutable, meaning it will always return the same
+     * array of uploaded files.
+     *
+     * @return array<string, UploadedFile> An array of uploaded files.
+     */
     public function getUploadedFiles(): array
     {
         if ($this->filesHydrated !== null) {
@@ -259,6 +405,14 @@ class ServerRequest extends Message
         return $this->filesHydrated = self::normaliseFiles($this->filesSpec);
     }
 
+    /**
+     * Creates a new instance of the request with the given uploaded files.
+     *
+     * Does not mutate the current instance.
+     *
+     * @param array $uploadedFiles $_FILES-style specification array.
+     * @return static
+     */
     public function withUploadedFiles(array $uploadedFiles): static
     {
         $cl = clone $this;
@@ -268,16 +422,42 @@ class ServerRequest extends Message
         return $cl;
     }
 
+    /**
+     * Returns the collection of uploaded files.
+     *
+     * The collection is an immutable collection of uploaded files where
+     * each key is the name of the field and the value is either an
+     * UploadedFile or an array of UploadedFile objects.
+     *
+     * @return UploadedFileCollection An immutable collection of uploaded files.
+     */
     public function getUploadedFilesCollection(): UploadedFileCollection
     {
         return $this->filesColl ??= new UploadedFileCollection($this->getUploadedFiles());
     }
 
+    /**
+     * Returns the parsed body of the request.
+     *
+     * The parsed body is a key-value pair of the request body.
+     * If the request body is JSON, the parsed body is an object.
+     * If the request body is a form, the parsed body is an array.
+     * If the request body is empty, the parsed body is null.
+     *
+     * @return array|null|object The parsed body of the request
+     */
     public function getParsedBody(): array|null|object
     {
         return $this->parsed;
     }
 
+    /**
+     * Return an instance with the specified parsed body.
+     *
+     * @param array|object|null $data Parsed body data to replace the internal value
+     * @return static A new instance with the specified parsed body
+     * @throws InvalidArgumentException if the parsed body is invalid
+     */
     public function withParsedBody($data): static
     {
         if ($data !== null && !is_array($data) && !is_object($data)) {
@@ -289,16 +469,38 @@ class ServerRequest extends Message
         return $cl;
     }
 
+    /**
+     * Retrieves the attributes associated with the request.
+     *
+     * @return array A key-value map of attributes
+     */
     public function getAttributes(): array
     {
         return $this->attributes;
     }
 
+    /**
+     * Retrieve an attribute from the request.
+     *
+     * If the attribute does not exist, returns the default value instead of throwing an exception.
+     *
+     * @param string $name Attribute name
+     * @param mixed $default Default value if attribute does not exist
+     * @return mixed The attribute value or the default value if it does not exist
+     */
     public function getAttribute($name, $default = null): mixed
     {
         return $this->attributes[$name] ?? $default;
     }
 
+    /**
+     * Create a new instance with the specified attribute set to the given value.
+     *
+     * @param string $name Attribute name
+     * @param mixed $value Attribute value
+     *
+     * @return static New instance with the attribute set
+     */
     public function withAttribute($name, $value): static
     {
         $cl = clone $this;
@@ -306,6 +508,12 @@ class ServerRequest extends Message
         return $cl;
     }
 
+    /**
+     * Clone the request object without the specified attribute.
+     *
+     * @param string $name The attribute name to remove.
+     * @return static The cloned request object without the specified attribute.
+     */
     public function withoutAttribute($name): static
     {
         $cl = clone $this;
@@ -313,30 +521,60 @@ class ServerRequest extends Message
         return $cl;
     }
 
-    /* ======== 6.  Helper façades ====================================== */
-
+    /**
+     * Set whether the request object should interpret the '_method' parameter as overriding the HTTP method.
+     *
+     * @param bool $enabled Whether the request object should interpret the '_method' parameter as overriding the HTTP method.
+     */
     public static function setMethodParamOverride(bool $enabled): void
     {
         self::$methodParamOverride = $enabled;
     }
-
-    /** Check whether the override is currently allowed. */
+    /**
+     * Returns whether the request object should interpret the '_method' parameter as overriding the HTTP method.
+     *
+     * @return bool Whether the request object should interpret the '_method' parameter as overriding the HTTP method.
+     */
     public static function getMethodParamOverride(): bool
     {
         return self::$methodParamOverride;
     }
 
+    /**
+     * Return a RequestHeaders instance.
+     *
+     * If a headers instance was already set using withHeaders(), return that instance.
+     * Otherwise, create a new instance with the current request object.
+     *
+     * @return RequestHeaders
+     */
     public function headers(): RequestHeaders
     {
         return $this->hdrFacade ??= new RequestHeaders($this);
     }
-
-    /* ---- raw / JSON / XML ------------------------------------------ */
+    /**
+     * Return the raw request body as a string.
+     *
+     * If the request body was parsed successfully (e.g. JSON, form data),
+     * the parsed body is returned instead of the raw body.
+     *
+     * @return string The raw request body as a string.
+     */
     public function raw(): string
     {
         return $this->rawBody ??= (string)$this->body;
     }
 
+    /**
+     * Retrieve the parsed JSON from the request body.
+     * If the request body was not JSON, an empty Collection is returned.
+     * If the key is null, the entire parsed JSON is returned as a Collection.
+     * If the key is not null, the value associated with that key is returned,
+     * or null if the key was not found in the parsed JSON.
+     *
+     * @param string|null $key The key to retrieve from the parsed JSON.
+     * @return mixed The value associated with the key, or the entire parsed JSON.
+     */
     public function parsedJson(?string $key = null): mixed
     {
         if (!$this->jsonCol) {
@@ -351,6 +589,16 @@ class ServerRequest extends Message
         return $this->jsonCol->isEmpty() ? $this->post($key) : $this->fetch($this->jsonCol, $key);
     }
 
+    /**
+     * Retrieve the parsed XML from the request body.
+     * If the request body was not XML, an empty Collection is returned.
+     * If the key is null, the entire parsed XML is returned as a Collection.
+     * If the key is not null, the value associated with that key is returned,
+     * or null if the key was not found in the parsed XML.
+     *
+     * @param string|null $key The key to retrieve from the parsed XML.
+     * @return mixed The value associated with the key, or the entire parsed XML.
+     */
     public function parsedXml(?string $key = null): mixed
     {
         if (!$this->xmlCol) {
@@ -369,8 +617,15 @@ class ServerRequest extends Message
         }
         return $this->xmlCol->isEmpty() ? $this->post($key) : $this->fetch($this->xmlCol, $key);
     }
-
-    /* ---- method-override / AJAX / negotiation ---------------------- */
+    /**
+     * Return the effective HTTP method used (HEAD/GET/POST/PUT/DELETE/PATCH/TRACE/OPTIONS/REPORT/SEARCH).
+     * - HEAD will be transformed to GET.
+     * - POST might be transformed to the overridden method (if set).
+     * - Other non-standard HTTP methods will be returned as-is.
+     * - This method is idempotent.
+     *
+     * @return string The effective HTTP method used.
+     */
     public function getEffectiveMethod(): string
     {
         if ($this->effectiveMethod) {
@@ -387,6 +642,15 @@ class ServerRequest extends Message
         };
     }
 
+    /**
+     * Returns true if the request is a POST form submission.
+     *
+     * A request is considered a form submission if its method is POST and its
+     * Content-Type header is either application/x-www-form-urlencoded or
+     * multipart/form-data.
+     *
+     * @return bool True if the request is a form submission, false otherwise.
+     */
     private function isFormPost(): bool
     {
         if (strtoupper($this->method) !== 'POST') {
@@ -396,6 +660,16 @@ class ServerRequest extends Message
     }
 
 
+    /**
+     * Detects the overridden HTTP method, if any.
+     *
+     * This method checks for both header-based override and form parameter `_method` override.
+     *
+     * Header-based override is always honored, while form parameter override is only honored
+     * when `methodParamOverride` is set to true and the current request is a POST form submission.
+     *
+     * @return string|null The overridden HTTP method, if any; null otherwise.
+     */
     private function methodOverride(): ?string
     {
         // 1) Header-based override (always honored)
@@ -417,6 +691,15 @@ class ServerRequest extends Message
     }
 
 
+    /**
+     * Determine if the request is an AJAX request.
+     *
+     * This method checks the existence of the `X-Requested-With` header
+     * and its value being equal to `XMLHttpRequest`. This header is
+     * typically sent by JavaScript libraries like jQuery.
+     *
+     * @return bool true if the request is an AJAX request, false otherwise
+     */
     public function isAjax(): bool
     {
         $hdr = $this->server('HTTP_X_REQUESTED_WITH')
@@ -424,55 +707,128 @@ class ServerRequest extends Message
         return $hdr !== null && strcasecmp((string)$hdr, 'xmlhttprequest') === 0;
     }
 
+    /**
+     * Whether the request expects JSON content in response.
+     *
+     * This method checks if the 'Accept' header contains 'application/json' or
+     * if the request is an AJAX request (by checking the 'X-Requested-With' header).
+     *
+     * @return bool Whether request expects JSON content in response.
+     */
     public function expectsJson(): bool
     {
         return str_contains($this->getHeaderLine('Accept'), 'json') || $this->isAjax();
     }
 
+    /**
+     * Whether the request expects XML content in response.
+     *
+     * @return bool Whether request expects XML content in response.
+     */
     public function expectsXml(): bool
     {
         return str_contains($this->getHeaderLine('Accept'), 'xml');
     }
 
-    /* ---- super-global style helpers -------------------------------- */
+    /**
+     * Retrieves a value from the $_SERVER superglobal.
+     *
+     * If `$key` is `null`, returns the entire $_SERVER array.
+     *
+     * @param string|null $k The key to retrieve from $_SERVER.
+     * @return mixed The value associated with the key or the entire $_SERVER array if `$key` is `null`.
+     */
     public function server(?string $k = null): mixed
     {
         return $this->fetch(new Collection($this->server), $k);
     }
 
+    /**
+     * Retrieves a value from the $_COOKIE superglobal.
+     *
+     * If `$key` is `null`, returns the entire $_COOKIE array.
+     *
+     * @param string|null $k The key to retrieve from $_COOKIE.
+     * @return mixed The value associated with the key or the entire $_COOKIE array if `$key` is `null`.
+     */
     public function cookie(?string $k = null): mixed
     {
         return $this->fetch(new Collection($this->cookie), $k);
     }
 
+    /**
+     * Retrieves a value from the $_GET superglobal.
+     *
+     * If `$key` is `null`, returns the entire $_GET array.
+     *
+     * @param string|null $k The key to retrieve from $_GET.
+     * @return mixed The value associated with the key or the entire $_GET array if `$key` is `null`.
+     */
     public function query(?string $k = null): mixed
     {
         return $this->fetch(new Collection($this->query), $k);
     }
 
+    /**
+     * Retrieves a value from the $_POST superglobal.
+     *
+     * If `$key` is `null`, returns the entire $_POST array.
+     *
+     * @param string|null $k the key to retrieve from $_POST
+     * @return mixed the value from $_POST or null if not found
+     */
     public function post(?string $k = null): mixed
     {
         $col = new Collection(is_array($this->parsed) ? $this->parsed : []);
         return $this->fetch($col, $k);
     }
 
+    /**
+     * Retrieves an uploaded file or all uploaded files in the collection.
+     *
+     * If `$key` is `null`, returns all uploaded files in the collection.
+     * Otherwise, returns the uploaded file associated with the given key.
+     *
+     * @param string|null $key Key of the uploaded file to retrieve, or null to get all uploaded files.
+     * @return UploadedFile|array|null UploadedFile instance if found, null otherwise, or an associative array of all uploaded files if `$key` is null.
+     */
     public function file(?string $key = null): UploadedFile|array|null
     {
         $coll = $this->files();
         return $key === null ? $coll->all() : $coll->get($key);
     }
 
+    /**
+     * Retrieves the collection of uploaded files.
+     *
+     * @return UploadedFileCollection An immutable collection of uploaded files.
+     */
     public function files(): UploadedFileCollection
     {
         return $this->getUploadedFilesCollection();
     }
 
+    /**
+     * Fetches a value from the collection.
+     *
+     * If `$k` is null, the entire collection is returned.
+     * Otherwise, the value associated with the key `$k` is returned,
+     * or null if the key does not exist in the collection.
+     *
+     * @param Collection $c the collection to fetch from
+     * @param string|null $k the key to fetch
+     * @return mixed the value associated with the key, or null if the key does not exist
+     */
     private function fetch(Collection $c, ?string $k): mixed
     {
         return $k === null ? $c : ($c->$k ?? null);
     }
-
-    /* magic variable-order map ------------------------------------------------ */
+    /**
+     * Magic property isset() for the varMap.
+     *
+     * @param string $key key to check
+     * @return mixed|null value of the key in the varMap, or null if the key does not exist
+     */
     public function __get(string $key): mixed
     {
         if (array_key_exists($key, $this->varMap)) {
@@ -484,13 +840,29 @@ class ServerRequest extends Message
         return null;
     }
 
+    /**
+     * Magic property isset() for the varMap.
+     *
+     * @param string $key key to check
+     * @return bool true if the key exists in the varMap, false otherwise
+     */
     public function __isset(string $key): bool
     {
         return $this->__get($key) !== null;
     }
 
-    /* ======== 7.  Internals =============================================== */
-
+    /**
+     * Normalises an array of file specs into an array of UploadedFile objects.
+     *
+     * The input array is expected to have the same structure as $_FILES.
+     *
+     * This function recursively unwinds nested arrays of file specs into an array of UploadedFile objects.
+     * If a part is already an instance of UploadedFile, it is passed through unchanged.
+     * If a part is a nested array, it is recursively unwound.
+     * Otherwise, a new UploadedFile object is created from the part.
+     *
+     * @return array An array of UploadedFile objects, keyed by the name of the file field.
+     */
     private static function normaliseFiles(array $spec): array
     {
         if ($spec === []) {
@@ -517,6 +889,14 @@ class ServerRequest extends Message
         return $out;
     }
 
+    /**
+     * Recursively unwinds an array of file specs into an array of UploadedFile objects.
+     *
+     * The input array is expected to have the same structure as $_FILES.
+     *
+     * @param array $bag An array of file specs, the same structure as $_FILES.
+     * @return array An array of UploadedFile objects.
+     */
     private static function unwindNestedFiles(array $bag): array
     {
         $out = [];
@@ -535,7 +915,17 @@ class ServerRequest extends Message
         return $out;
     }
 
-    /* variable-order helpers ---------------------------------------------- */
+    /**
+     * Lazily builds a single variable map for the lifetime of the request.
+     * It uses the determined variable order to construct the map.
+     * If the map is already built, it returns immediately.
+     * The map is built by iterating over the variable order and
+     * adding the corresponding values from the source tables ($this->query,
+     * $this->parsed, $this->cookie, $this->server, and $_ENV).
+     * The map is then stored in the $this->varMap property.
+     * Additionally, the $this->checkEnv flag is set if $_ENV is present
+     * in the variable order.
+     */
     private function buildVariableMap(): void
     {
         if ($this->varMap !== null) {
@@ -569,6 +959,16 @@ class ServerRequest extends Message
         $this->checkEnv = in_array('E', $seq, true);
     }
 
+    /**
+     * Determines the order of variables for the lifetime of the PHP process.
+     * Reads 'variables_order' and 'request_order' from ini_get() and returns an array
+     * of characters that represent the order of variables (G: GET, P: POST, C: COOKIE, S: SERVER, E: ENV).
+     * If 'variables_order' is not set, defaults to 'EGPCS'.
+     * If 'request_order' is not set, defaults to an empty string.
+     * If 'request_order' contains any of G, P, C, the corresponding characters are removed from the order.
+     * The remaining characters from 'request_order' are inserted at the position of E in the order.
+     * @return array
+     */
     private function determineVariableOrder(): array
     {
         $vars = strtoupper(preg_replace('/[^EGPCS]/', '', ini_get('variables_order') ?: 'EGPCS'));

@@ -231,7 +231,7 @@ final class UAParser
         return 'Unknown';
     }
 
-    
+
     /**
      * Maps a browser to its rendering engine.
      *
@@ -259,11 +259,11 @@ final class UAParser
     }
 
 
-/**
- * Returns the User-Agent header of the current request.
- *
- * @return string the User-Agent header value
- */
+    /**
+     * Returns the User-Agent header of the current request.
+     *
+     * @return string the User-Agent header value
+     */
     public function getUserAgent(): string
     {
         return $this->ua;
