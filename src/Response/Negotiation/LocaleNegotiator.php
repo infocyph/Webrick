@@ -11,8 +11,20 @@ use Infocyph\Webrick\Response\Response;
 final class LocaleNegotiator
 {
     /**
-     * @param string[] $supported ordered by preference
-     * @return array{0:string,1:array<array{string,string}>} [chosen, headerTuples]
+     * Select a locale from the client's Accept-Language header and produce headers.
+     *
+     * Behaviour:
+     *  - $supported is an ordered list of supported language tags (server preference).
+     *  - If $supported is empty a single entry is synthesized from $fallback or 'en'.
+     *  - Uses Language::negotiate() to pick the best match from $acceptLang.
+     *  - If negotiation yields an empty string and $fallback is provided, $fallback is used.
+     *  - Returns a two-element tuple: [chosenLocale, headerTuples], where headerTuples
+     *    is an array of [name, value] pairs suitable for applying to a Response.
+     *
+     * @param string[] $supported Ordered list of supported language tags.
+     * @param string $acceptLang Raw Accept-Language header value.
+     * @param string|null $fallback Optional fallback language tag to use when no match.
+     * @return array{0:string,1:array<array{string,string}>} Tuple of chosen language and header tuples.
      */
     public static function negotiate(array $supported, string $acceptLang, ?string $fallback = null): array
     {
@@ -30,9 +42,14 @@ final class LocaleNegotiator
     }
 
     /**
-     * Convenience: pull Accept-Language from Request and negotiate.
+     * Convenience helper: extract Accept-Language from a Request and negotiate.
      *
-     * @param string[] $supported
+     * Reads the 'Accept-Language' header line from $req and delegates to negotiate().
+     *
+     * @param Request $req PSR-like request object to read headers from.
+     * @param string[] $supported Ordered list of supported language tags.
+     * @param string|null $fallback Optional fallback language tag.
+     * @return array{0:string,1:array<array{string,string}>} Tuple of chosen language and header tuples.
      */
     public static function forRequest(Request $req, array $supported, ?string $fallback = null): array
     {
@@ -40,9 +57,14 @@ final class LocaleNegotiator
     }
 
     /**
-     * Apply the header tuples returned by negotiate() to a Response.
+     * Apply header tuples produced by negotiate() to a Response instance.
      *
-     * @param array<array{string,string}> $hdrs
+     * Iterates over $hdrs and calls withHeader() for each tuple. The Response API
+     * is treated as immutable; the returned Response may be a new instance.
+     *
+     * @param Response $resp Response to apply headers to.
+     * @param array<array{string,string}> $hdrs Array of [name, value] header tuples.
+     * @return Response Response with the provided headers applied.
      */
     public static function apply(Response $resp, array $hdrs): Response
     {

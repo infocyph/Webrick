@@ -22,6 +22,14 @@ final class Outcome
     public const HIT = 1;
     public const FAIL = 2;
 
+    /**
+     * Creates a new Outcome.
+     *
+     * @param int $state PASS, HIT or FAIL
+     * @param int $http 0 when PASS, otherwise 3xx/4xx HTTP status code
+     * @param array<string,string[]> $headers Optional extra response headers that must be echoed back
+     *                                    when code ≠ PASS (ETag, Last-Modified, …).
+     */
     public function __construct(
         public readonly int $state,   // PASS / HIT / FAIL
         public readonly int $http,    // 0 when PASS, otherwise 3xx/4xx

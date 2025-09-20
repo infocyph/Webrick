@@ -43,6 +43,20 @@ class Response
      */
     private ?\Closure $producer = null;
 
+    /**
+     * Construct a Response.
+     *
+     * - $statusCode is the HTTP status.
+     * - $body may be a BodyStream, a string, or null.
+     * - $headers is a name => value map.
+     * - $protocolVersion and $reasonPhrase are optional.
+     *
+     * @param int $statusCode HTTP status code (default 200)
+     * @param BodyStream|string|null $body Body stream or string content
+     * @param array $headers Initial headers (name => value)
+     * @param string $protocolVersion HTTP protocol version
+     * @param string|null $reasonPhrase Optional reason phrase
+     */
     public function __construct(
         private int $statusCode = 200,
         BodyStream|string|null $body = null,
@@ -62,9 +76,14 @@ class Response
     /**
      * Create a live streaming response.
      *
-     * @param callable|iterable $producer
-     * @param int $status
-     * @param array $headers
+     * - Removes any Content-Length header.
+     * - Sets conservative caching and buffering defaults suitable for streams.
+     * - $producer may be a callable that yields strings or an iterable of strings.
+     *
+     * @param callable|iterable $producer Callable returning iterable|string or an iterable of chunks
+     * @param int $status HTTP status code
+     * @param array $headers Initial headers
+     * @return self Streaming Response instance
      */
     public static function stream(
         callable|iterable $producer,
@@ -83,17 +102,33 @@ class Response
         return $resp;
     }
 
+    /**
+     * Whether this response is a live streaming response.
+     *
+     * @return bool True when a producer is attached
+     */
     public function isStreaming(): bool
     {
         return $this->producer !== null;
     }
 
-    /** @return null|\Closure(): iterable<string>|string */
+    /**
+     * Get the attached producer closure.
+     *
+     * @return null|\Closure(): iterable<string>|string The normalized producer or null
+     */
     public function getProducer(): ?\Closure
     {
         return $this->producer;
     }
 
+    /**
+     * Normalize a producer value into a closure that consistently returns
+     * either an iterable of strings or a single string.
+     *
+     * @param callable|iterable $producer Callable or iterable to normalize
+     * @return \Closure Normalized producer closure
+     */
     private static function normalizeProducer(callable|iterable $producer): \Closure
     {
         if (is_iterable($producer)) {
@@ -113,12 +148,37 @@ class Response
        JSON + Redirect helpers
        -------------------------------------------------------------- */
 
+    /**
+     * Create a plaintext response.
+     *
+     * - Ensures a Content-Type of text/plain; charset=utf-8 unless overridden.
+     *
+     * @param string $msg Body text
+     * @param int $code HTTP status code
+     * @param array $headers Additional headers
+     * @return self Plaintext Response
+     */
     public static function plaintext(string $msg, int $code = 400, array $headers = []): self
     {
         $headers = ['Content-Type' => $headers['Content-Type'] ?? 'text/plain; charset=utf-8'] + $headers;
         return new self($code, new Stream($msg), $headers);
     }
 
+    /**
+     * Create a JSON response.
+     *
+     * - Encodes $data using json_encode unless a lazy encoder is used (callable/JsonSerializable).
+     * - Uses LazyJsonStream for deferred encoding when appropriate.
+     * - Ensures Content-Type application/json; charset=utf-8 by default.
+     *
+     * @param callable|array|object|string $data Data or callable/JsonSerializable
+     * @param int $status HTTP status
+     * @param array $headers Additional headers
+     * @param int $flags json_encode flags
+     * @param int $depth json_encode depth
+     * @return self JSON Response
+     * @throws RuntimeException When json_encode fails for eager encoding
+     */
     public static function json(
         callable|array|object|string $data,
         int $status = 200,
@@ -142,6 +202,21 @@ class Response
         return new self($status, $stream, $headers);
     }
 
+    /**
+     * Auto-select response form (JSON or plaintext) based on request negotiation.
+     *
+     * - Chooses a content type using the request Accept header.
+     * - Returns JSON, plaintext, or JSON-as-plain depending on client preference.
+     *
+     * @param Request $r Request object to inspect Accept preferences
+     * @param callable|array|object|string|int|float|bool|null $data Payload to serialize
+     * @param int $status HTTP status
+     * @param array $headers Additional headers
+     * @param int $flags json_encode flags
+     * @param int $depth json_encode depth
+     * @return self Response chosen by negotiation
+     * @throws RuntimeException When eager JSON encoding fails
+     */
     public static function auto(
         Request $r,
         callable|array|object|string|int|float|bool|null $data,
@@ -181,6 +256,17 @@ class Response
         return new self($status, new Stream($json), $headers);
     }
 
+    /**
+     * Create a redirect response.
+     *
+     * - Validates that $status is a redirect status.
+     * - Sets Location and clears entity headers.
+     *
+     * @param string $uri Target URI
+     * @param int $status Redirect status (3xx)
+     * @return self Redirect Response
+     * @throws \InvalidArgumentException When $status is not a 3xx code
+     */
     public static function redirect(string $uri, int $status = 302): self
     {
         $s = Status::tryFrom($status);
@@ -196,8 +282,14 @@ class Response
     }
 
     /**
-     * One-time binding done by Registrar’s constructor.
-     * No base URL here — generators build *relative* paths.
+     * One-time binding for URL generation services used by helper methods.
+     *
+     * - Binds route collection and optional signed/temporary URL generators.
+     *
+     * @param Collection $routes Route collection
+     * @param string|null $signKey Optional signing key for signed URLs
+     * @param int|null $defaultTtl Optional default TTL for temporary URLs
+     * @return void
      */
     public static function bindUrlServices(
         Collection $routes,
@@ -217,6 +309,15 @@ class Response
 
     /* ───────────────── URL helpers you call from handlers ───────────── */
 
+    /**
+     * Build a URL for a named route.
+     *
+     * @param string $name Route name
+     * @param array $params Route parameters
+     * @param array $query Query parameters
+     * @param bool $absolute Whether to return an absolute URL
+     * @return string Generated URL
+     */
     public static function urlFor(
         string $name,
         array $params = [],
@@ -228,6 +329,16 @@ class Response
         return $absolute ? self::withRouteDomain($name, $path) : $path;
     }
 
+    /**
+     * Build a signed URL for a named route.
+     *
+     * @param string $name Route name
+     * @param array $params Route parameters
+     * @param array $query Query parameters
+     * @param int|null $ttl Optional TTL in seconds
+     * @param bool $absolute Whether to return an absolute URL
+     * @return string Signed URL
+     */
     public static function signedUrlFor(
         string $name,
         array $params = [],
@@ -244,6 +355,16 @@ class Response
         return $absolute ? self::withRouteDomain($name, $path) : $path;
     }
 
+    /**
+     * Build a temporary (time-limited) URL for a named route.
+     *
+     * @param string $name Route name
+     * @param array $params Route parameters
+     * @param array $query Query parameters
+     * @param bool $absolute Whether to return an absolute URL
+     * @return string Temporary URL
+     * @throws \LogicException When temporary URL generator is not bound
+     */
     public static function temporaryUrlFor(
         string $name,
         array $params = [],
@@ -259,6 +380,12 @@ class Response
 
     /* ───────────────── private helpers ───────────────── */
 
+    /**
+     * Assert that URL services have been bound.
+     *
+     * @return void
+     * @throws \LogicException When URL services are not bound
+     */
     private static function assertUrlBound(): void
     {
         if (!self::$urlGen || !self::$routesRef) {
@@ -266,6 +393,12 @@ class Response
         }
     }
 
+    /**
+     * Assert that Signed URL services have been bound.
+     *
+     * @return void
+     * @throws \LogicException When signed URL services are not bound
+     */
     private static function assertSignedBound(): void
     {
         if (!self::$signedGen || !self::$routesRef) {
@@ -273,7 +406,16 @@ class Response
         }
     }
 
-    /** Prefix with the route’s own domain (protocol-relative) when present. */
+    /**
+     * Prefix a generated path with the route's domain when available.
+     *
+     * Returns a protocol-relative absolute path when the route has a specific
+     * domain, otherwise returns the original path.
+     *
+     * @param string $name Route name
+     * @param string $path Generated path
+     * @return string Possibly domain-prefixed path
+     */
     private static function withRouteDomain(string $name, string $path): string
     {
         $domain = null;
@@ -293,12 +435,15 @@ class Response
     }
 
     /**
-     * Attachment / download helper.
+     * Create an attachment/download response.
      *
-     * @param string|Stream $file
-     * @param string $name
-     * @param string|null $mime
-     * @param array $headers
+     * - Prepares headers (Content-Length, Last-Modified, ETag) when available.
+     *
+     * @param string|Stream $file File path or Stream
+     * @param string $name Filename provided to client
+     * @param string|null $mime Optional MIME type
+     * @param array $headers Additional headers
+     * @return self Attachment Response
      */
     public static function attachment(
         string|Stream $file,
@@ -320,6 +465,17 @@ class Response
         return new self(200, $stream, $defaults + $headers);
     }
 
+    /**
+     * Create an inline file response suitable for embedding in-browser.
+     *
+     * - Sets Content-Disposition: inline and retains Content-Length when known.
+     *
+     * @param string|Stream $file File path or Stream
+     * @param string|null $name Suggested filename
+     * @param string|null $mime Optional MIME type
+     * @param array $headers Additional headers
+     * @return self Inline response
+     */
     public static function inline(
         string|Stream $file,
         ?string $name = null,
@@ -340,6 +496,15 @@ class Response
         return new self(200, $stream, $defaults + $headers);
     }
 
+    /**
+     * Create a download response (alias for attachment with optional name).
+     *
+     * @param string|Stream $file File path or Stream
+     * @param string|null $name Optional filename
+     * @param array $headers Additional headers
+     * @param string|null $mime Optional MIME type
+     * @return self Download response
+     */
     public static function download(
         string|Stream $file,
         ?string $name = null,
@@ -352,149 +517,18 @@ class Response
         return self::attachment($file, $name, $mime, $headers);
     }
 
-    /* --------------------------------------------------------------
-       PSR-7-ish surface (withBody clears producer)
-       -------------------------------------------------------------- */
-
-    public function getProtocolVersion(): string
-    {
-        return $this->protocolVersion;
-    }
-
-    public function withProtocolVersion($v): self
-    {
-        return $this->copy(protocolVersion: (string)$v);
-    }
-
-    public function getHeaders(): array
-    {
-        return $this->headers->all();
-    }
-
-    public function hasHeader($n): bool
-    {
-        return $this->headers->has($n);
-    }
-
-    public function getHeader($n): array
-    {
-        return $this->headers->get($n);
-    }
-
-    public function getHeaderLine($n): string
-    {
-        return $this->headers->getHeaderLine($n);
-    }
-
-    public function withSmartHeader(string $name, string $value): self
-    {
-        return $this->copy(headers: $this->headers->withSmart($name, $value));
-    }
-
-    public function withHeader($n, $v): self
-    {
-        return $this->copy(headers: $this->headers->with($n, $v));
-    }
-
-    public function withAddedHeader($n, $v): self
-    {
-        return $this->copy(headers: $this->headers->withAdded($n, $v));
-    }
-
-    public function withoutHeader($n): self
-    {
-        return $this->copy(headers: $this->headers->without($n));
-    }
-
-    public function getBody(): BodyStream
-    {
-        return $this->body;
-    }
-
-    public function withBody(BodyStream $b): self
-    {
-        $x = $this->copy(body: $b);
-        $x->producer = null;
-        return $x;
-    }
-
-    public function getStatusCode(): int
-    {
-        return $this->statusCode;
-    }
-
-    public function getReasonPhrase(): string
-    {
-        return $this->reasonPhrase ?? '';
-    }
-
-    public function withStatus($code, $reasonPhrase = ''): self
-    {
-        $code = (int)$code;
-        if ($code < 100 || $code > 599) {
-            throw new RuntimeException("Invalid HTTP status: {$code}");
-        }
-        return $this->copy(
-            statusCode: $code,
-            reasonPhrase: $reasonPhrase !== '' ? $reasonPhrase : self::statusText($code),
-        );
-    }
-
-    public static function empty(int $code, array $headers = []): self
-    {
-        $resp = new self($code, new Stream(''), ['Content-Length' => '0']);
-        foreach ($headers as $name => $value) {
-            $resp = $resp->withHeader($name, $value);
-        }
-        return $resp;
-    }
-
-    /* -------------------------------------------------------------- */
-
-    private static function mtimeFromStream(Stream $stream): ?int
-    {
-        $uri = $stream->getMetadata('uri');
-        if (is_string($uri) && $uri !== '' && @is_file($uri)) {
-            return @filemtime($uri) ?: null;
-        }
-        return null;
-    }
-
-    private static function statusText(int $code): string
-    {
-        return Status::text($code) ?? '';
-    }
-
-    private function copy(
-        ?int $statusCode = null,
-        ?HeaderBag $headers = null,
-        ?BodyStream $body = null,
-        ?string $protocolVersion = null,
-        ?string $reasonPhrase = null,
-    ): self {
-        $x = clone $this;
-        $x->statusCode = $statusCode ?? $this->statusCode;
-        $x->headers = $headers ?? clone $this->headers;
-        $x->body = $body ?? $this->body;
-        $x->protocolVersion = $protocolVersion ?? $this->protocolVersion;
-        $x->reasonPhrase = $reasonPhrase ?? $this->reasonPhrase;
-        return $x;
-    }
-
-    private static function openFileStream(string $file): Stream
-    {
-        $h = @fopen($file, 'rb');
-        if ($h === false) {
-            throw new RuntimeException("Unable to open file for download: {$file}");
-        }
-        return new Stream($h);
-    }
-
-    public static function create(string $content = '', int $status = 200, array $headers = []): self
-    {
-        return new self($status, $content, $headers);
-    }
-
+    /**
+     * Create a streaming download response.
+     *
+     * - If $file is a filename it opens a stream; otherwise uses provided Stream.
+     * - Sets Content-Type and Content-Disposition and Content-Length when known.
+     *
+     * @param string|Stream $file Filename or Stream
+     * @param string|null $name Suggested filename
+     * @param string $mime MIME type
+     * @param array $headers Additional headers
+     * @return self Streaming download response
+     */
     public static function streamDownload(
         string|Stream $file,
         ?string $name = null,
@@ -522,16 +556,33 @@ class Response
         return new self(200, $stream, $headers);
     }
 
+    /**
+     * Create a 204 No Content response.
+     *
+     * @param array $headers Additional headers
+     * @return self 204 Response with Content-Length: 0
+     */
     public static function noContent(array $headers = []): self
     {
         return self::empty(204, $headers);
     }
 
+    /**
+     * Access the Cache-Control builder for this response.
+     *
+     * @return CacheControl CacheControl instance based on current headers
+     */
     public function cache(): CacheControl
     {
         return CacheControl::fromHeaderBag($this->headers);
     }
 
+    /**
+     * Apply a CacheControl editing closure and return a new Response with the result.
+     *
+     * @param \Closure $edit Closure receiving a CacheControl instance and returning an edited one
+     * @return self New Response with updated Cache-Control header
+     */
     public function withCache(\Closure $edit): self
     {
         $cc = $edit($this->cache());
@@ -542,11 +593,23 @@ class Response
        Low-complexity helpers for attachment()
        -------------------------------------------------------------- */
 
+    /**
+     * Ensure a Stream instance for a file input.
+     *
+     * @param string|Stream $file File path or existing Stream
+     * @return Stream Stream instance wrapping the file/resource
+     */
     private static function streamFor(string|Stream $file): Stream
     {
         return $file instanceof Stream ? $file : self::openFileStream($file);
     }
 
+    /**
+     * Retrieve filesystem metadata for a file input when available.
+     *
+     * @param string|Stream $file File path or Stream
+     * @return array{0:?int,1:?int} [size|null, mtime|null]
+     */
     private static function metaFor(string|Stream $file): array
     {
         if (!is_string($file)) {
@@ -557,11 +620,25 @@ class Response
         return [$size, $mtime];
     }
 
+    /**
+     * Infer a MIME type for a filename, falling back to explicit value.
+     *
+     * @param string $name Filename
+     * @param string|null $explicit Explicit MIME if provided
+     * @return string Resolved MIME type
+     */
     private static function inferMime(string $name, ?string $explicit): string
     {
         return $explicit ?? MediaType::fromFilename($name)->value;
     }
 
+    /**
+     * Base headers used for downloads.
+     *
+     * @param string $name Filename
+     * @param string $mime MIME type
+     * @return array Base header map
+     */
     private static function baseDownloadHeaders(string $name, string $mime): array
     {
         return [
@@ -570,17 +647,39 @@ class Response
         ];
     }
 
+    /**
+     * Choose a Content-Length string if available.
+     *
+     * @param string|Stream $file File path or Stream
+     * @param Stream $stream Stream instance
+     * @param int|null $fsSize Filesystem size when known
+     * @return string|null Content-Length string or null
+     */
     private static function chooseLength(string|Stream $file, Stream $stream, ?int $fsSize): ?string
     {
         $len = is_string($file) ? $fsSize : ($stream->getSize() ?? null);
         return $len !== null ? (string)$len : null;
     }
 
+    /**
+     * Format an mtime as an HTTP date string or return null.
+     *
+     * @param int|null $mtime UNIX epoch or null
+     * @return string|null RFC-7231 date string or null
+     */
     private static function formatHttpDate(?int $mtime): ?string
     {
         return $mtime ? gmdate('D, d M Y H:i:s', $mtime) . ' GMT' : null;
     }
 
+    /**
+     * Produce a small ETag token from available metadata.
+     *
+     * @param int|null $size File size or null
+     * @param int|null $mtime File mtime or null
+     * @param string $name Filename used in seed
+     * @return string|null Quoted ETag or null when no metadata available
+     */
     private static function etagFromMeta(?int $size, ?int $mtime, string $name): ?string
     {
         if ($size === null && $mtime === null) {
@@ -590,10 +689,298 @@ class Response
         return Utils::generateEtag($seed);
     }
 
+    /**
+     * Helper to set a default header value only when caller did not supply it.
+     *
+     * @param array &$target Default header map to mutate
+     * @param string $name Header name
+     * @param string|null $value Value to set when present
+     * @param array $caller Original caller headers to check
+     * @return void
+     */
     private static function putIfAbsent(array &$target, string $name, ?string $value, array $caller): void
     {
         if ($value !== null && !array_key_exists($name, $caller)) {
             $target[$name] = $value;
         }
+    }
+
+    /* --------------------------------------------------------------
+       PSR-7-ish surface (withBody clears producer)
+       -------------------------------------------------------------- */
+
+    /**
+     * Get the HTTP protocol version.
+     *
+     * @return string Protocol version
+     */
+    public function getProtocolVersion(): string
+    {
+        return $this->protocolVersion;
+    }
+
+    /**
+     * Return a copy with the provided protocol version.
+     *
+     * @param mixed $v Protocol version
+     * @return self New Response instance
+     */
+    public function withProtocolVersion($v): self
+    {
+        return $this->copy(protocolVersion: (string)$v);
+    }
+
+    /**
+     * Return all response headers as an associative array.
+     *
+     * @return array Header map
+     */
+    public function getHeaders(): array
+    {
+        return $this->headers->all();
+    }
+
+    /**
+     * Determine whether the response has a header.
+     *
+     * @param string $n Header name
+     * @return bool True when present
+     */
+    public function hasHeader($n): bool
+    {
+        return $this->headers->has($n);
+    }
+
+    /**
+     * Retrieve a header's values as an array.
+     *
+     * @param string $n Header name
+     * @return array Header values
+     */
+    public function getHeader($n): array
+    {
+        return $this->headers->get($n);
+    }
+
+    /**
+     * Retrieve a header's values as a single comma-separated line.
+     *
+     * @param string $n Header name
+     * @return string Header line
+     */
+    public function getHeaderLine($n): string
+    {
+        return $this->headers->getHeaderLine($n);
+    }
+
+    /**
+     * Set a header using "smart" merging semantics and return a copy.
+     *
+     * @param string $name Header name
+     * @param string $value Header value
+     * @return self New Response with header set
+     */
+    public function withSmartHeader(string $name, string $value): self
+    {
+        return $this->copy(headers: $this->headers->withSmart($name, $value));
+    }
+
+    /**
+     * Return a copy with the specified header replaced.
+     *
+     * @param string $n Header name
+     * @param string|array $v Header value(s)
+     * @return self New Response instance
+     */
+    public function withHeader($n, $v): self
+    {
+        return $this->copy(headers: $this->headers->with($n, $v));
+    }
+
+    /**
+     * Return a copy with an additional header value appended.
+     *
+     * @param string $n Header name
+     * @param string|array $v Header value(s)
+     * @return self New Response instance
+     */
+    public function withAddedHeader($n, $v): self
+    {
+        return $this->copy(headers: $this->headers->withAdded($n, $v));
+    }
+
+    /**
+     * Return a copy without the given header.
+     *
+     * @param string $n Header name
+     * @return self New Response instance
+     */
+    public function withoutHeader($n): self
+    {
+        return $this->copy(headers: $this->headers->without($n));
+    }
+
+    /**
+     * Get the response body stream.
+     *
+     * @return BodyStream Body stream instance
+     */
+    public function getBody(): BodyStream
+    {
+        return $this->body;
+    }
+
+    /**
+     * Return a copy with a new body stream. Clears any streaming producer.
+     *
+     * @param BodyStream $b New body stream
+     * @return self New Response instance
+     */
+    public function withBody(BodyStream $b): self
+    {
+        $x = $this->copy(body: $b);
+        $x->producer = null;
+        return $x;
+    }
+
+    /**
+     * Get the current HTTP status code.
+     *
+     * @return int Status code
+     */
+    public function getStatusCode(): int
+    {
+        return $this->statusCode;
+    }
+
+    /**
+     * Get the reason phrase for the current status.
+     *
+     * @return string Reason phrase or empty string
+     */
+    public function getReasonPhrase(): string
+    {
+        return $this->reasonPhrase ?? '';
+    }
+
+    /**
+     * Return a copy with a changed status code and optional reason phrase.
+     *
+     * - Validates the status value is within 100..599.
+     *
+     * @param mixed $code New status code
+     * @param string $reasonPhrase Optional reason phrase
+     * @return self New Response instance
+     * @throws RuntimeException When the status code is out of range
+     */
+    public function withStatus($code, $reasonPhrase = ''): self
+    {
+        $code = (int)$code;
+        if ($code < 100 || $code > 599) {
+            throw new RuntimeException("Invalid HTTP status: {$code}");
+        }
+        return $this->copy(
+            statusCode: $code,
+            reasonPhrase: $reasonPhrase !== '' ? $reasonPhrase : self::statusText($code),
+        );
+    }
+
+    /**
+     * Create an empty response with Content-Length: 0.
+     *
+     * @param int $code HTTP status code
+     * @param array $headers Additional headers
+     * @return self Response with empty body
+     */
+    public static function empty(int $code, array $headers = []): self
+    {
+        $resp = new self($code, new Stream(''), ['Content-Length' => '0']);
+        foreach ($headers as $name => $value) {
+            $resp = $resp->withHeader($name, $value);
+        }
+        return $resp;
+    }
+
+    /* -------------------------------------------------------------- */
+
+    /**
+     * Attempt to obtain an mtime from a Stream's metadata URI when available.
+     *
+     * @param Stream $stream Stream instance
+     * @return int|null File mtime or null when not applicable
+     */
+    private static function mtimeFromStream(Stream $stream): ?int
+    {
+        $uri = $stream->getMetadata('uri');
+        if (is_string($uri) && $uri !== '' && @is_file($uri)) {
+            return @filemtime($uri) ?: null;
+        }
+        return null;
+    }
+
+    /**
+     * Map a numeric status code to its standard reason text.
+     *
+     * @param int $code Status code
+     * @return string Reason text or empty string
+     */
+    private static function statusText(int $code): string
+    {
+        return Status::text($code) ?? '';
+    }
+
+    /**
+     * Internal clone-and-replace helper used by immutable setters.
+     *
+     * @param int|null $statusCode Optional replacement status
+     * @param HeaderBag|null $headers Optional replacement HeaderBag
+     * @param BodyStream|null $body Optional replacement BodyStream
+     * @param string|null $protocolVersion Optional replacement protocolVersion
+     * @param string|null $reasonPhrase Optional replacement reasonPhrase
+     * @return self Cloned and modified Response instance
+     */
+    private function copy(
+        ?int $statusCode = null,
+        ?HeaderBag $headers = null,
+        ?BodyStream $body = null,
+        ?string $protocolVersion = null,
+        ?string $reasonPhrase = null,
+    ): self {
+        $x = clone $this;
+        $x->statusCode = $statusCode ?? $this->statusCode;
+        $x->headers = $headers ?? clone $this->headers;
+        $x->body = $body ?? $this->body;
+        $x->protocolVersion = $protocolVersion ?? $this->protocolVersion;
+        $x->reasonPhrase = $reasonPhrase ?? $this->reasonPhrase;
+        return $x;
+    }
+
+    /**
+     * Open a file as a Stream, throwing on failure.
+     *
+     * @param string $file Path to open
+     * @return Stream Stream wrapping the opened resource
+     * @throws RuntimeException When the file cannot be opened
+     */
+    private static function openFileStream(string $file): Stream
+    {
+        $h = @fopen($file, 'rb');
+        if ($h === false) {
+            throw new RuntimeException("Unable to open file for download: {$file}");
+        }
+        return new Stream($h);
+    }
+
+    /**
+     * Convenience factory to create a Response from string content.
+     *
+     * @param string $content Body content
+     * @param int $status HTTP status
+     * @param array $headers Additional headers
+     * @return self New Response
+     */
+    public static function create(string $content = '', int $status = 200, array $headers = []): self
+    {
+        return new self($status, $content, $headers);
     }
 }

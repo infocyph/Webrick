@@ -12,6 +12,12 @@ use Infocyph\Webrick\Response\Response;
  */
 final class CliEmitter implements EmitterInterface
 {
+/**
+ * Dumps an HTTP-like envelope to STDOUT.
+ *
+ * @param Response $response
+ * @param null|Request $request
+ */
     public function emit(
         Response $response,
         ?Request $request = null,

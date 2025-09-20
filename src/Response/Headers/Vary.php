@@ -15,12 +15,25 @@ final class Vary implements \Stringable
     /** @var array<string,bool> */
     private array $tokens = [];
 
+    /**
+     * Create a new, empty Vary builder.
+     *
+     * @return self New Vary instance with no tokens.
+     */
     public static function new(): self
     {
         return new self();
     }
 
-    /** Merge an existing raw Vary header. */
+    /**
+     * Parse a raw Vary header value into a Vary builder.
+     *
+     * - Splits on commas, trims and normalizes tokens.
+     * - Treats "*" as a standalone wildcard (overrides other tokens).
+     *
+     * @param string $raw Raw Vary header value (possibly comma-separated)
+     * @return self Vary instance containing parsed tokens
+     */
     public static function fromString(string $raw): self
     {
         $v = new self();
@@ -40,6 +53,16 @@ final class Vary implements \Stringable
 
     /* ------------------------------------------------------------------ */
 
+    /**
+     * Return a new Vary instance with the provided header names added.
+     *
+     * - Accepts one or more header tokens.
+     * - Normalizes tokens, ignores empty entries.
+     * - If "*" is added, it overrides all other tokens.
+     *
+     * @param string ...$headers Header names to add
+     * @return self New Vary instance with tokens added
+     */
     public function add(string ...$headers): self
     {
         $x = clone $this;
@@ -62,6 +85,15 @@ final class Vary implements \Stringable
         return $x;
     }
 
+    /**
+     * Return a new Vary instance with the provided header names removed.
+     *
+     * - Normalizes tokens before removal.
+     * - Ignores empty entries.
+     *
+     * @param string ...$headers Header names to remove
+     * @return self New Vary instance with tokens removed
+     */
     public function remove(string ...$headers): self
     {
         $x = clone $this;
@@ -75,6 +107,14 @@ final class Vary implements \Stringable
         return $x;
     }
 
+    /**
+     * Render the Vary header value.
+     *
+     * - Returns "*" if wildcard token is present.
+     * - Otherwise returns a comma+space separated list of canonicalized token names.
+     *
+     * @return string Vary header value suitable for sending in responses
+     */
     public function __toString(): string
     {
         if (isset($this->tokens['*'])) {
@@ -86,11 +126,27 @@ final class Vary implements \Stringable
 
     /* ------------------------------------------------------------------ */
 
+    /**
+     * Normalize a header token for internal storage.
+     *
+     * - Trims whitespace and lowercases the token.
+     *
+     * @param string $h Raw token
+     * @return string Normalized lower-case token or empty string if input blank
+     */
     private static function norm(string $h): string
     {
         return strtolower(trim($h));
     }
 
+    /**
+     * Convert a normalized lower-case token to the canonical header form.
+     *
+     * Example: "accept-encoding" => "Accept-Encoding"
+     *
+     * @param string $lower Normalized lower-case token
+     * @return string Canonical header token with dash-aware title-casing
+     */
     private static function canonicalHeader(string $lower): string
     {
         // e.g. "accept-encoding" → "Accept-Encoding"

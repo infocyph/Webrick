@@ -12,13 +12,28 @@ final class AutoEmitter implements EmitterInterface
 {
     private ?EmitterInterface $chosen = null;
 
+    /**
+     * Auto-detect the best emitter for the current environment and emit the response.
+     * If an emitter is chosen, it will be cached for future calls.
+     * If no emitter matches, null is returned.
+     *
+     * @param Response $response
+     * @param Request|null $request
+     */
     public function emit(Response $response, ?Request $request = null): void
     {
         $this->chosen ??= $this->pick($request);
         $this->chosen->emit($response, $request);
     }
-
-    /** Async / long-running engines; null when none match. */
+    
+    /**
+     * Choose the best emitter based on the current environment.
+     *
+     * If an emitter is chosen, it will be cached for future calls.
+     * If no emitter matches, null is returned.
+     *
+     * @return null|EmitterInterface
+     */
     private function pick(?Request $request): ?EmitterInterface
     {
         $serverSoftware = strtolower((string)($_SERVER['SERVER_SOFTWARE'] ?? ''));

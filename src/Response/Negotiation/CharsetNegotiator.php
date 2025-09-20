@@ -7,8 +7,19 @@ namespace Infocyph\Webrick\Response\Negotiation;
 final class CharsetNegotiator
 {
     /**
-     * @param string[] $supported e.g. ['utf-8','iso-8859-1']
-     * @return string|null        best match or null if none
+     * Choose the best matching charset from an Accept-Charset header.
+     *
+     * Behaviour:
+     *  - $supported is an ordered list of server-supported charset names.
+     *  - Parses $acceptCharset for tokens and optional q-values (0.000 - 1.000).
+     *  - Ignores entries with q=0 and respects client q-weighting and order.
+     *  - Treats '*' as a wildcard that yields the server's preferred charset.
+     *  - Returns the matching entry from $supported preserving its original casing,
+     *    or null if no supported charset is acceptable.
+     *
+     * @param string[] $supported Server-supported charset names (preference order)
+     * @param string $acceptCharset Raw Accept-Charset header value
+     * @return string|null Best matching supported charset, or null if none match
      */
     public static function choose(array $supported, string $acceptCharset): ?string
     {
@@ -55,6 +66,14 @@ final class CharsetNegotiator
         return null;
     }
 
+    /**
+     * Canonicalize a charset token for comparison.
+     *
+     * - Lowercases the token and normalizes common aliases (e.g. "utf8" -> "utf-8").
+     *
+     * @param string $x Input charset token
+     * @return string Canonicalized charset token for matching
+     */
     private static function canon(string $x): string
     {
         $x = strtolower($x);

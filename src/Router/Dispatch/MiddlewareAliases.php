@@ -2,21 +2,62 @@
 
 declare(strict_types=1);
 
+/**
+ * MiddlewareAliases
+ *
+ * File-level helper that manages a registry of short alias names for middleware.
+ * Each alias maps to a factory that, when invoked with variadic string parameters,
+ * returns one of:
+ *  - a callable (e.g. closure) to be used directly as middleware,
+ *  - an instantiated object (middleware instance),
+ *  - a class-string which the caller may choose to instantiate or memoize.
+ *
+ * Typical usage:
+ *  • MiddlewareAliases::register('throttle', ThrottleMiddleware::class);
+ *  • MiddlewareAliases::register('auth', fn (...$params) => new AuthMiddleware(...$params));
+ *  • $resolved = MiddlewareAliases::resolveString('throttle:60,60');
+ *
+ * The registry is global and static; resolution functions are intentionally simple
+ * and synchronous to support middleware pipeline construction in the router.
+ *
+ * @package Infocyph\Webrick\Router\Dispatch
+ */
+
 namespace Infocyph\Webrick\Router\Dispatch;
 
 final class MiddlewareAliases
 {
     /**
-     * alias => factory(...$params): callable|object|string(class-string)
+     * Map of alias key => factory callable.
+     *
+     * The factory callable receives variadic string parameters and must return one of:
+     *  - callable  : middleware callable/closure,
+     *  - object    : instantiated middleware object,
+     *  - string    : class-string (returned when no parameters are provided so callers
+     *                       may instantiate/memoize instances themselves).
+     *
      * @var array<string, callable>
      */
     private static array $map = [];
 
     /**
-     * Register an alias.
-     *  • Closure factory gets **variadic** params.
-     *  • Or pass a class-string; we’ll `new $class(...$params)` when params exist,
-     *    otherwise we return the class-string (so the pipeline can memoize a single instance).
+     * Register an alias name with a factory or a class-string.
+     *
+     * Behaviour:
+     *  - If $factoryOrClass is a callable it will be stored directly and will be
+     *    invoked with variadic parameters when resolving the alias.
+     *  - If $factoryOrClass is a class-string it will be wrapped into a factory
+     *    that:
+     *      • returns the raw class-string when invoked with no params (allowing
+     *        callers to memoize or instantiate later), or
+     *      • constructs and returns a new instance via `new $class(...$params)`
+     *        when parameters are provided.
+     *
+     * The alias name is normalized to lower-case.
+     *
+     * @param string $alias Lower-case alias label (case-insensitive)
+     * @param callable|string $factoryOrClass Callable factory or middleware class-string
+     * @return void
      */
     public static function register(string $alias, callable|string $factoryOrClass): void
     {
@@ -36,14 +77,35 @@ final class MiddlewareAliases
         self::$map[$alias] = $factoryOrClass;
     }
 
+    /**
+     * Determine if an alias is registered.
+     *
+     * @param string $alias Alias name to check (case-insensitive)
+     * @return bool True when the alias exists in the registry
+     */
     public static function has(string $alias): bool
     {
         return isset(self::$map[strtolower($alias)]);
     }
 
     /**
-     * Resolve "alias:arg1,arg2" → callable|object|string(class-string).
-     * If not a known alias, returns the original string untouched.
+     * Resolve a potential alias string into a middleware descriptor.
+     *
+     * Input:
+     *  - If $maybeAlias is already a concrete class-string (class_exists returns true)
+     *    the same string is returned unchanged.
+     *  - Otherwise $maybeAlias is split at the first ':' into name and comma-separated
+     *    params. If the name corresponds to a registered alias the associated factory
+     *    is invoked with the trimmed params and its return value is returned.
+     *  - If the name is not a registered alias the original string is returned.
+     *
+     * Return value is one of:
+     *  - callable : middleware callable/closure,
+     *  - object   : instantiated middleware,
+     *  - string   : class-string (caller may choose to instantiate or memoize).
+     *
+     * @param string $maybeAlias Alias-like string such as "throttle:60,60" or a class-string
+     * @return callable|object|string Resolved middleware descriptor or original string when not an alias
      */
     public static function resolveString(string $maybeAlias): callable|object|string
     {
@@ -63,7 +125,7 @@ final class MiddlewareAliases
             ? array_map('trim', explode(',', $paramStr))
             : [];
 
-        // Call variadic factory
+        // Call variadic factory and return whatever it produces.
         return (self::$map[$key])(...$params);
     }
 }

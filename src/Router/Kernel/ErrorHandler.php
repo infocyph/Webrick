@@ -12,18 +12,33 @@ use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Constants\Status;
 
 /**
- * Kernel-native error boundary (formerly ErrorHandlerMiddleware).
+ * Kernel error boundary
  *
- * Wrap the whole request pipeline with ->handle($req, $core).
+ * Top-level error boundary used by the HTTP kernel to catch all Throwables
+ * emitted during request handling and convert them into safe HTTP Responses.
+ *
+ * Responsibilities:
+ *  - Optionally convert PHP warnings/notices into ErrorException for unified handling.
+ *  - Map exceptions to HTTP status codes via a configurable map.
+ *  - Render error responses in multiple media types (problem+json, json, xml, html, plain).
+ *  - Attach a request identifier header when available.
+ *  - Log errors using a PSR-3 logger with severity based on HTTP status series.
+ *
+ * Instances are immutable; configuration is supplied via constructor promotion.
+ *
+ * @package Infocyph\Webrick\Router\Kernel
  */
 final class ErrorHandler
 {
     /**
-     * @param LoggerInterface|null $logger
-     * @param bool $debug Expose details (stack, file) when true
-     * @param bool $capturePhpErrors Convert PHP warnings/notices into ErrorException
-     * @param string $requestIdHeader Header to echo if present
-     * @param array<class-string,int> $exceptionMap Map specific exceptions to HTTP status
+     * Construct an ErrorHandler.
+     *
+     * @param LoggerInterface|null $logger PSR-3 logger used to persist error details (optional)
+     * @param bool $debug When true include exception details (file/trace) in responses
+     * @param bool $capturePhpErrors Convert PHP warnings/notices/stricter errors into ErrorException
+     *                               so they are handled by this boundary (respects @ operator)
+     * @param string $requestIdHeader Header name to echo back when a request id is present
+     * @param array<class-string,int> $exceptionMap Map of exception class => HTTP status code to override resolution
      */
     public function __construct(
         private readonly ?LoggerInterface $logger = null,
@@ -35,7 +50,17 @@ final class ErrorHandler
     }
 
     /**
-     * @param callable(Request):Response $core
+     * Handle a request through the wrapped core pipeline with error boundary.
+     *
+     * This method executes $core with the provided Request. Any Throwable thrown
+     * by the pipeline is caught, converted to an HTTP status via resolveStatus()
+     * and rendered into a Response by render(). When configured, PHP errors are
+     * temporarily converted into ErrorException for unified handling; the previous
+     * error handler is always restored.
+     *
+     * @param Request $req Incoming request
+     * @param callable(Request):Response $core Terminal pipeline callable to execute
+     * @return Response Response returned by the core or the error renderer
      */
     public function handle(Request $req, callable $core): Response
     {
@@ -43,8 +68,9 @@ final class ErrorHandler
         if ($this->capturePhpErrors) {
             $prev = set_error_handler(
                 function (int $severity, string $message, ?string $file = null, ?int $line = null): bool {
+                    // Respect error suppression (@) by honouring error_reporting mask.
                     if (!(error_reporting() & $severity)) {
-                        return false; // respect @
+                        return false;
                     }
                     throw new ErrorException($message, 0, $severity, $file ?? 'unknown', $line ?? 0);
                 },
@@ -60,6 +86,7 @@ final class ErrorHandler
             return $resp;
         } finally {
             if ($this->capturePhpErrors) {
+                // Restore previous error handler to avoid global side-effects.
                 set_error_handler($prev);
             }
         }
@@ -67,6 +94,22 @@ final class ErrorHandler
 
     /* ──────────────────────── render ──────────────────────── */
 
+    /**
+     * Render a Throwable into an HTTP Response according to content negotiation.
+     *
+     * Behavior:
+     *  - If Accept negotiation produced a content type it will be honoured.
+     *  - HEAD requests always return an empty body with appropriate headers.
+     *  - Certain HTTP statuses disallow bodies (as per Status enum); an empty
+     *    Response will be returned in those cases.
+     *  - When debug mode is enabled structured details (exception class, file,
+     *    trace) are included in the response payload.
+     *
+     * @param Request $req Request instance (used for Accept, method, URI and request id)
+     * @param Throwable $e Exception/Throwable to render
+     * @param int $status HTTP status code to use for the response
+     * @return Response Generated Response instance
+     */
     private function render(Request $req, Throwable $e, int $status): Response
     {
         $statusEnum = Status::tryFrom($status) ?? Status::INTERNAL_SERVER_ERROR;
@@ -95,7 +138,7 @@ final class ErrorHandler
             }
         }
 
-        // 🚀 NEW: HEAD must not include a body regardless of status
+        // HEAD must not include a body regardless of status.
         if (strtoupper($req->getMethod()) === 'HEAD') {
             return Response::empty($status, $headers);
         }
@@ -103,6 +146,7 @@ final class ErrorHandler
         $public = $reason;
         $msg = $this->debug ? ($e->getMessage() ?: $public) : $public;
 
+        // Some status codes (e.g. 204, 304) do not allow bodies.
         if (!$statusEnum->allowsBody()) {
             return Response::empty($status, $headers);
         }
@@ -181,6 +225,15 @@ final class ErrorHandler
         }
     }
 
+    /**
+     * Pick a preferred response content type based on an Accept header value.
+     *
+     * This is a simple heuristic that looks for well-known types in order of
+     * preference and falls back to text/plain.
+     *
+     * @param string $accept Lowercased Accept header value
+     * @return string Chosen MIME type for error rendering
+     */
     private function pickType(string $accept): string
     {
         $accept = strtolower($accept);
@@ -199,6 +252,18 @@ final class ErrorHandler
         return 'text/plain';
     }
 
+    /**
+     * Render an HTML error page.
+     *
+     * When debug mode is enabled the page includes exception details and trace.
+     *
+     * @param int $status HTTP status code
+     * @param string $reason Short reason phrase
+     * @param string $msg Public or debug message
+     * @param string $rid Request identifier (may be empty)
+     * @param Throwable $e Source exception for debug details
+     * @return string Full HTML document
+     */
     private function htmlError(int $status, string $reason, string $msg, string $rid, Throwable $e): string
     {
         $esc = fn (string $s): string => htmlspecialchars($s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
@@ -236,6 +301,18 @@ final class ErrorHandler
             HTML;
     }
 
+    /**
+     * Render an XML error payload.
+     *
+     * When debug mode is enabled exception class/file/trace are included.
+     *
+     * @param int $status HTTP status code
+     * @param string $reason Reason phrase
+     * @param string $msg Message to include in the payload
+     * @param string $rid Request identifier (may be empty)
+     * @param Throwable $e Source exception for debug details
+     * @return string XML string
+     */
     private function xmlError(int $status, string $reason, string $msg, string $rid, Throwable $e): string
     {
         $xe = fn (string $s): string => htmlspecialchars($s, ENT_XML1 | ENT_COMPAT, 'UTF-8');
@@ -260,6 +337,19 @@ final class ErrorHandler
 
     /* ───────────────────── status + logging ───────────────────── */
 
+    /**
+     * Resolve an HTTP status for a Throwable.
+     *
+     * Resolution order:
+     *  1. Check $this->exceptionMap for a mapped exception class (first match)
+     *  2. If exception exposes getStatusCode() use that when valid HTTP status
+     *  3. If exception has a public property 'status' use it when valid
+     *  4. Fall back to exception->getCode() when within HTTP range
+     *  5. Otherwise return 500 (INTERNAL_SERVER_ERROR)
+     *
+     * @param Throwable $e Exception to inspect
+     * @return int Resolved HTTP status code (400-599 or 500 fallback)
+     */
     private function resolveStatus(Throwable $e): int
     {
         foreach ($this->exceptionMap as $cls => $code) {
@@ -282,11 +372,31 @@ final class ErrorHandler
         return $this->isHttp($code) ? $code : Status::INTERNAL_SERVER_ERROR->value;
     }
 
+    /**
+     * Check whether an integer is a valid HTTP error/status code.
+     *
+     * @param int $code Candidate code
+     * @return bool True when code is between 400 and 599 inclusive
+     */
     private function isHttp(int $code): bool
     {
         return $code >= 400 && $code <= 599;
     }
 
+    /**
+     * Extract an Allow header value from a Throwable representing method constraints.
+     *
+     * Supports:
+     *  - public property 'allowed' (array)
+     *  - method allowed()
+     *  - method getAllowedMethods()
+     *
+     * Normalises to an RFC-style comma separated list and ensures HEAD/OPTIONS
+     * are included where appropriate.
+     *
+     * @param Throwable $e Source throwable that may expose allowed methods
+     * @return string|null Comma-separated methods or null when none present
+     */
     private function extractAllow(Throwable $e): ?string
     {
         $list = null;
@@ -305,15 +415,33 @@ final class ErrorHandler
         $list = array_unique(array_map('strtoupper', (array)$list));
         sort($list, SORT_STRING);
 
+        // Ensure HEAD is present whenever GET exists and HEAD was not explicitly given.
         if (in_array('GET', $list, true) && !in_array('HEAD', $list, true)) {
             $list[] = 'HEAD';
         }
+        // Always include OPTIONS for method discovery convenience.
         if (!in_array('OPTIONS', $list, true)) {
             $list[] = 'OPTIONS';
         }
         return implode(', ', $list);
     }
 
+    /**
+     * Log the Throwable using the configured PSR-3 logger.
+     *
+     * Severity mapping:
+     *  - 5xx -> error
+     *  - 404 / 405 -> notice
+     *  - otherwise -> warning
+     *
+     * The message includes HTTP status and exception class; context carries
+     * request metadata and the exception itself for structured logging.
+     *
+     * @param Throwable $e Exception to log
+     * @param Request $req Request associated with the failure
+     * @param int $status Resolved HTTP status code
+     * @return void
+     */
     private function log(Throwable $e, Request $req, int $status): void
     {
         if (!$this->logger) {

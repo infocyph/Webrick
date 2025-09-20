@@ -12,8 +12,19 @@ namespace Infocyph\Webrick\Response\Headers;
 final class Language
 {
     /**
-     * @param string[] $supported ISO tags e.g. ['en', 'fr', 'bn-BD']
-     * @param string $accept Raw Accept-Language header
+     * Determine the best matching language from an Accept-Language header.
+     *
+     * Behaviour:
+     * - $supported is an ordered list of supported language tags (e.g. ['en', 'fr', 'bn-BD']).
+     * - Parses $accept for language ranges and optional q-values (e.g. "da, en-gb;q=0.8, en;q=0.7").
+     * - Ignores entries with q=0.
+     * - Supports wildcard '*' and prefix matches: exact match, "en" ↔ "en-US" prefix matching.
+     * - Chooses the first supported language that matches the highest-preference client range.
+     * - If $accept is empty or no range matches, returns the first entry from $supported.
+     *
+     * @param string[] $supported Ordered list of supported language tags.
+     * @param string $accept Raw Accept-Language header value.
+     * @return string Selected language tag from $supported.
      */
     public static function negotiate(array $supported, string $accept): string
     {
@@ -50,7 +61,18 @@ final class Language
         return $supported[0];                              // nothing matched – fallback
     }
 
-    /** Build Content-Language + Vary header pair. */
+    /**
+     * Build the Content-Language and Vary headers for the chosen language.
+     *
+     * Returns an array of header tuples suitable for appending to a response:
+     * [
+     *   ['Content-Language', $chosen],
+     *   ['Vary', 'Accept-Language'],
+     * ]
+     *
+     * @param string $chosen The selected language tag (result of negotiate()).
+     * @return array<int, array{string,string}> Array of header name/value pairs.
+     */
     public static function headers(string $chosen): array
     {
         return [

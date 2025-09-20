@@ -7,12 +7,26 @@ namespace Infocyph\Webrick\Response\Payloads;
 use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Response\Response;
 
+/**
+ * Response representing an HTTP redirect.
+ *
+ * Convenience subclass that sets a Location header and an empty body.
+ * Ensures the status code is a valid 3xx redirect code.
+ */
 final class RedirectResponse extends Response
 {
     /**
-     * @param string $uri Absolute or relative URI.
-     * @param int $status 301, 302, 303, 307, 308 (default 302).
-     * @param array $headers Extra headers.
+     * Create a redirect response.
+     *
+     * Behaviour:
+     *  - Validates that $status is a 3xx redirect status (300-399).
+     *  - Ensures a 'Location' header is present (will be added if absent).
+     *  - Uses an empty body stream and delegates to the parent Response constructor.
+     *
+     * @param string $uri Absolute or relative URI to redirect to.
+     * @param int $status HTTP redirect status (301,302,303,307,308). Default 302.
+     * @param array<string,string> $headers Optional additional headers (name => value).
+     * @throws \InvalidArgumentException If $status is not a 3xx code.
      */
     public function __construct(
         string $uri,

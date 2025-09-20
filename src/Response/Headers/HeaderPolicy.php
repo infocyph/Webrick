@@ -27,11 +27,31 @@ final class HeaderPolicy
         'cache-control' => self::MERGE_TOKENS,
     ];
 
+    /**
+     * Return the merge policy for a header name.
+     *
+     * Looks up a header name (case-insensitive) and returns one of the
+     * policy constants: SINGLE, MULTI_LINE or MERGE_TOKENS. Unknown headers
+     * default to SINGLE.
+     *
+     * @param string $header Header name (e.g. "Cache-Control")
+     * @return int One of the HeaderPolicy::* constants
+     */
     public static function for(string $header): int
     {
         return self::$map[strtolower($header)] ?? self::SINGLE;
     }
 
+    /**
+     * Register or override the merge policy for a header name.
+     *
+     * This allows adding custom header handling rules at runtime. The
+     * header name is stored in lowercase.
+     *
+     * @param string $header Header name to register (case-insensitive)
+     * @param int $policy One of the HeaderPolicy::* constants
+     * @return void
+     */
     public static function register(string $header, int $policy): void
     {
         self::$map[strtolower($header)] = $policy;
@@ -41,6 +61,19 @@ final class HeaderPolicy
 
     // Infocyph\Webrick\Response\Headers\HeaderPolicy
 
+    /**
+     * Merge two comma-separated header values into a canonical representation.
+     *
+     * - If $existing is empty, returns the normalized tokens from $incoming.
+     * - Cache-Control is handled specially via CacheControl::canonicalizeMerge.
+     * - For other headers tokens are normalized, de-duplicated (case-insensitive)
+     *   and returned as a single comma+space separated string.
+     *
+     * @param string $name Header name (used to select special-case logic)
+     * @param string $existing Current header value (may be empty)
+     * @param string $incoming New header value to merge in
+     * @return string|array Merged header string, or other canonical form returned by special cases
+     */
     public static function mergeCsv(string $name, string $existing, string $incoming): string|array
     {
         if ($existing === '') {
@@ -65,6 +98,15 @@ final class HeaderPolicy
         return implode(', ', $out);
     }
 
+    /**
+     * Normalize a comma-separated header value into an array of tokens.
+     *
+     * - Splits on commas, trims tokens and removes empty entries.
+     * - Normalizes hyphenated tokens to Title-Case (e.g. "accept-encoding" -> "Accept-Encoding").
+     *
+     * @param string $csv Comma-separated header value
+     * @return array<int,string> Array of normalized token strings
+     */
     private static function normalizeCsv(string $csv): array
     {
         $toks = array_map('trim', explode(',', $csv));
@@ -79,6 +121,11 @@ final class HeaderPolicy
     }
 
 
+    /**
+     * Private constructor to prevent instantiation.
+     *
+     * The class provides only static helpers; creating an instance is not intended.
+     */
     private function __construct()
     {
     }

@@ -10,6 +10,16 @@ use Infocyph\Webrick\Response\Response;
 
 final class WorkermanEmitter implements EmitterInterface
 {
+    /**
+     * Emit the response to the current IO target.
+     * Supports two native Workerman HTTP Response object paths:
+     * 1. Native Workerman HTTP Response object path
+     * 2. TcpConnection path — build raw HTTP envelope
+     *
+     * @param Response $response
+     * @param Request|null $request
+     * @throws \RuntimeException
+     */
     public function emit(Response $response, ?Request $request = null): void
     {
         // 1) Native Workerman HTTP Response object path

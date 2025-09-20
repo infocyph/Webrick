@@ -15,6 +15,16 @@ namespace Infocyph\Webrick\Response\Headers;
  */
 final readonly class Range
 {
+    /**
+     * Create a Range value object.
+     *
+     * @param int $start Inclusive start offset (0-based).
+     * @param int $end Inclusive end offset.
+     * @param int $length Total length of the resource (must be positive).
+     *
+     * Note: callers should ensure 0 <= $start <= $end < $length. The constructor
+     * does not perform heavy validation to stay allocation-light on the hot-path.
+     */
     public function __construct(
         public int $start,
         public int $end,
@@ -23,10 +33,19 @@ final readonly class Range
     }
 
     /**
-     * @param non-empty-string $header Raw **Range:** header
-     * @param positive-int $resourceLen Full size of the representation
+     * Parse a Range header and return a Range object for the first satisfiable byte-range.
      *
-     * @return self|null
+     * Supported forms (RFC 7233):
+     *  - "bytes=N-M" explicit range (inclusive)
+     *  - "bytes=N-"   open range to end
+     *  - "bytes=-N"   suffix range (last N bytes)
+     *
+     * Only the first range is considered; multipart ranges are not supported.
+     * Returns null when the header is malformed or the requested range is not satisfiable.
+     *
+     * @param non-empty-string $header Raw Range header value (e.g. "bytes=0-499")
+     * @param positive-int $resourceLen Total size of the resource in bytes
+     * @return self|null Parsed Range instance or null if invalid / unsatisfiable
      */
     public static function parse(string $header, int $resourceLen): ?self
     {
@@ -71,13 +90,25 @@ final readonly class Range
         return new self($start, $end, $resourceLen);
     }
 
-    /** RFC-compliant **Content-Range** value */
+    /**
+     * Produce an RFC 7233 compliant Content-Range header value for this range.
+     *
+     * Example: "bytes 0-499/1234"
+     *
+     * @return string Content-Range header value
+     */
     public function contentRange(): string
     {
         return "bytes {$this->start}-{$this->end}/{$this->length}";
     }
 
-    /** Length of this partial segment */
+    /**
+     * Length (in bytes) of the partial segment represented by this Range.
+     *
+     * Computed as (end - start + 1).
+     *
+     * @return int Number of bytes in the range
+     */
     public function length(): int
     {
         return $this->end - $this->start + 1;

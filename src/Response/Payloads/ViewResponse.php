@@ -16,6 +16,26 @@ use Infocyph\Webrick\Response\View\ViewFactoryInterface;
  */
 final class ViewResponse extends Response
 {
+    /**
+     * Render a view and construct an HTML Response.
+     *
+     * Behaviour:
+     *  - Resolves a ViewFactoryInterface implementation from the Intermix DI container
+     *    using $factoryId (default: ViewFactoryInterface::class).
+     *  - Throws RuntimeException if no factory is bound for the given $factoryId.
+     *  - Calls $factory->render($view, $data) to obtain the rendered HTML.
+     *  - Ensures a Content-Type header of "text/html; charset={$charset}" is present
+     *    (will be added if not provided in $headers).
+     *  - Delegates to parent Response with the rendered HTML as the body Stream.
+     *
+     * @param string $view Template name / identifier passed to the factory.
+     * @param array<string,mixed> $data Data to be made available to the template.
+     * @param int $status HTTP status code to use for the response (default 200).
+     * @param array<string,string> $headers Additional response headers (name => value).
+     * @param string|null $charset Charset to include in the Content-Type header (default 'utf-8').
+     * @param string|null $factoryId Container key for the view factory (default ViewFactoryInterface::class).
+     * @throws \RuntimeException If no view factory is bound for $factoryId.
+     */
     public function __construct(
         string $view,
         array $data = [],

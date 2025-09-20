@@ -21,6 +21,18 @@ use Infocyph\Webrick\Response\Headers\Range as SimpleRange;
  */
 final class RangeParser
 {
+    /**
+     * Parse a raw HTTP "Range" header and return a single range object.
+     *
+     * Delegates to Infocyph\Webrick\Response\Headers\Range::parse() and returns
+     * the parsed Range value object for the first satisfiable byte-range.
+     * Returns null when the header is malformed, requests multipart ranges,
+     * or the requested range is unsatisfiable for the given resource length.
+     *
+     * @param string $raw Raw "Range" header value (e.g. "bytes=0-499")
+     * @param int $resourceLen Total size of the resource in bytes (positive integer)
+     * @return SimpleRange|null Parsed Range instance or null if invalid / unsatisfiable
+     */
     public static function parse(string $raw, int $resourceLen): ?SimpleRange
     {
         return SimpleRange::parse($raw, $resourceLen);

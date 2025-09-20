@@ -15,13 +15,36 @@ use Infocyph\Webrick\Response\Response;
  */
 final class SecurityHeaders
 {
+    /**
+     * Prevent instantiation — this class exposes only static helper methods.
+     */
     private function __construct()
     {
     }
 
     /**
-     * Opinionated secure defaults (set-if-absent). Optionally adds HSTS.
-     * Extra hardening (COOP/COEP/CORP/OAC) is opt-in to avoid breaking embeds.
+     * Apply an opinionated set of security headers without overriding existing values.
+     *
+     * Behaviour:
+     *  - Ensures X-Content-Type-Options, X-Frame-Options, Referrer-Policy and Permissions-Policy
+     *    are present (set only if absent).
+     *  - Optionally adds COOP/COEP/CORP/OAC headers when explicitly requested.
+     *  - Optionally applies HSTS when $hsts is true and the request looks HTTPS-like.
+     *
+     * Parameters are tunable to avoid breaking embeds by default; use the boolean flags to
+     * opt-in to stronger isolation policies.
+     *
+     * @param Response $r Response to modify (immutable API; returned value may be a new instance)
+     * @param bool $hsts Whether to apply Strict-Transport-Security when the request is HTTPS-like
+     * @param bool $includeSubs Whether to include subdomains in the HSTS header
+     * @param bool $coop If true, set Cross-Origin-Opener-Policy: same-origin
+     * @param bool $coep If true, set Cross-Origin-Embedder-Policy: require-corp
+     * @param string|null $corp If non-null/non-empty, set Cross-Origin-Resource-Policy to this value
+     * @param bool $oac If true, set Origin-Agent-Cluster: ?1
+     * @param string $referrer Referrer-Policy value to set if absent
+     * @param string $xfo X-Frame-Options value to set if absent
+     * @param string $permissions Permissions-Policy value to set if absent
+     * @return Response Response instance with the applied headers
      */
     public static function tight(
         Response $r,
@@ -63,7 +86,16 @@ final class SecurityHeaders
         return $hsts && $httpsish ? self::hsts($r, $includeSubs) : $r;
     }
 
-    /** Apply Strict-Transport-Security (defaults to 1 year), set-if-absent. */
+    /**
+     * Apply Strict-Transport-Security if the header is not already present.
+     *
+     * Produces the header value "max-age=31536000" (1 year) and appends
+     * "; includeSubDomains" when $includeSub is true.
+     *
+     * @param Response $r Response to modify (immutable API; returned value may be a new instance)
+     * @param bool $includeSub Whether to include subdomains in the HSTS directive
+     * @return Response Response instance with Strict-Transport-Security set if absent
+     */
     public static function hsts(Response $r, bool $includeSub = true): Response
     {
         $val = 'max-age=31536000' . ($includeSub ? '; includeSubDomains' : '');
@@ -72,6 +104,17 @@ final class SecurityHeaders
 
     /* ——— internal utility ——— */
 
+    /**
+     * Set a header on the response only if it is not already present.
+     *
+     * This respects upstream/clobbering semantics: if the given header name
+     * already exists on $r, the original response is returned unmodified.
+     *
+     * @param Response $r Response to check and possibly modify
+     * @param string $name Header name to set (case-insensitive per PSR/http)
+     * @param string $value Header value to set when absent
+     * @return Response The response with the header set, or the original response if present
+     */
     private static function setIfAbsent(Response $r, string $name, string $value): Response
     {
         return $r->hasHeader($name) ? $r : $r->withHeader($name, $value);
