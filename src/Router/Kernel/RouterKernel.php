@@ -16,32 +16,123 @@ use Infocyph\Webrick\Router\Matching\MatcherInterface;
 use Infocyph\Webrick\Router\Route\{Collection, CompiledRoute, Route};
 use Infocyph\Webrick\Exceptions\{MethodNotAllowedException, RouteNotFoundException};
 
+/**
+ * RouterKernel
+ *
+ * HTTP router kernel responsible for preparing routing state (warm-up/cache),
+ * matching incoming requests to compiled routes and dispatching them via the
+ * middleware dispatcher while providing a top-level error boundary.
+ *
+ * Responsibilities:
+ *  - Warm and optionally hydrate route alias cache or build routes via a
+ *    provided registrar callback on cold starts.
+ *  - Compose Dispatcher with global middleware and Invoker settings.
+ *  - Match HTTP requests using a MatcherInterface and hand CompiledRoute to
+ *    the Dispatcher for execution.
+ *  - Provide utilities to extract alias files and convert host headers to a
+ *    normalized ASCII form.
+ *
+ * Instances are constructed with telemetry (PSR-3 logger), a matcher and a
+ * registration callback and may be created via the static bootWithRegistrar
+ * helper which will enable matcher caching when supported.
+ *
+ * @package Infocyph\Webrick\Router\Kernel
+ */
 final class RouterKernel
 {
-    /** Canonical alias filename (plural, double-underscore). */
+    /**
+     * Canonical alias filename stored alongside route cache. Kept private and
+     * constant to allow consistent file lookup across cache modes.
+     */
     private const F_ALIASES = '__aliases.php';
 
+    /**
+     * Error boundary used for request handling.
+     *
+     * @var ErrorHandler
+     */
     private ErrorHandler $errorHandler;
+
+    /**
+     * Shared DI invoker used for handler/middleware invocation.
+     *
+     * @var Invoker
+     */
     private Invoker $invoker;
+
+    /**
+     * Dispatcher responsible for composing and executing middleware pipelines.
+     *
+     * @var Dispatcher
+     */
     private Dispatcher $dispatcher;
 
-    /** Cache location (dir for Sharded, file for Fused); null disables cache. */
+    /**
+     * Path to route cache. Can be a directory (sharded mode) or file (fused mode).
+     * When null route caching is disabled.
+     *
+     * @var string|null
+     */
     private ?string $routeCache;
 
-    /** Optional callback to bind Response URL services after warm-up. */
+    /**
+     * Optional callback used to bind URL services (Response helpers) after warm-up.
+     *
+     * Signature: function(Collection $routes): void
+     *
+     * @var Closure|null
+     */
     private ?Closure $bindUrlServices;
 
-    /** Your route registration closure (used on cold path; on hot path only for alias fallback). */
+    /**
+     * User-provided route registration callback executed on cold-path warm-up.
+     *
+     * Signature: function(Registrar $r): void
+     *
+     * @var Closure
+     */
     private Closure $register;
 
-    /** Options for Registrar constructor. */
+    /**
+     * Options forwarded to Registrar when building routes via the registrar path.
+     *
+     * @var array<string,mixed>
+     */
     private array $registrarOptions;
 
+    /**
+     * Matcher implementation used to add compiled routes and perform request matching.
+     *
+     * @var MatcherInterface
+     */
     private MatcherInterface $matcher;
 
-    /** When true, if alias cache yields 0 entries, run registrar just to build aliases (matcher untouched). */
+    /**
+     * When true and an alias cache yields zero entries, the kernel will run the
+     * registrar solely to build aliases while leaving the matcher (route table)
+     * untouched. Default true.
+     *
+     * @var bool
+     */
     private bool $fallbackAliasesFromRegistrar = true;
 
+    /**
+     * Construct the RouterKernel.
+     *
+     * Note: The first parameter $log is promoted as a readonly property.
+     *
+     * @param LoggerInterface $log PSR-3 logger used for informational and error logging
+     * @param MatcherInterface $matcher Matcher implementation used to add/lookup compiled routes
+     * @param Closure $register User callback that registers routes onto a Registrar
+     * @param string|null $routeCache Optional route cache path (directory or file); empty string treated as null
+     * @param array<string,mixed> $registrarOptions Options forwarded to Registrar when invoked
+     * @param array<int,mixed> $preGlobal Global "pre" middleware descriptors passed to Dispatcher
+     * @param array<int,mixed> $postGlobal Global "post" middleware descriptors passed to Dispatcher
+     * @param bool $invokerOnMiddleware If true, Dispatcher will use the Invoker when calling middleware
+     * @param ErrorHandler|null $errorHandler Optional custom error handler (defaults created when null)
+     * @param Closure|null $bindUrlServices Optional callback to bind URL services after warm-up
+     * @param bool|null $fallbackAliasesFromRegistrar Optional override for alias fallback behaviour
+     */
     public function __construct(
         private readonly LoggerInterface $log,
         MatcherInterface $matcher,
@@ -87,6 +178,26 @@ final class RouterKernel
         );
     }
 
+    /**
+     * Bootstrap helper that optionally enables matcher caching and returns a
+     * configured RouterKernel instance.
+     *
+     * This factory will call Matcher::enableCache when the matcher supports it
+     * and a non-empty cache location is supplied.
+     *
+     * @param LoggerInterface $log
+     * @param MatcherInterface $matcher
+     * @param Closure $register Registrar callback
+     * @param string|null $routeCache Cache location (directory or file) or null
+     * @param array<string,mixed> $registrarOptions Options forwarded to Registrar
+     * @param array<int,mixed> $preGlobal Global "pre" middleware descriptors
+     * @param array<int,mixed> $postGlobal Global "post" middleware descriptors
+     * @param bool $invokerOnMiddleware Whether to use Invoker for middleware invocation
+     * @param ErrorHandler|null $errorHandler Optional error handler override
+     * @param Closure|null $bindUrlServices Optional callback to bind URL services
+     * @param bool|null $fallbackAliasesFromRegistrar Optional alias fallback behaviour override
+     * @return self Configured RouterKernel instance
+     */
     public static function bootWithRegistrar(
         LoggerInterface $log,
         MatcherInterface $matcher,
@@ -120,6 +231,16 @@ final class RouterKernel
         );
     }
 
+    /**
+     * Handle an incoming HTTP request through the router kernel.
+     *
+     * The Request is bound into the DI container for consumption by handlers.
+     * The actual route matching and dispatch is executed inside the error
+     * boundary provided by the ErrorHandler.
+     *
+     * @param Request|null $request Optional request to handle; when null Request::fromGlobals() is used
+     * @return Response Response produced by the dispatched handler or by the error renderer
+     */
     public function handle(?Request $request = null): Response
     {
         $request ??= Request::fromGlobals();
@@ -133,7 +254,14 @@ final class RouterKernel
         return $this->errorHandler->handle($request, $runner);
     }
 
-    /** @return array{CompiledRoute, array} */
+    /**
+     * Match the incoming request to a compiled route using the matcher.
+     *
+     * Returns a two-element tuple: [CompiledRoute, array<string,mixed> vars].
+     *
+     * @param Request $req
+     * @return array{0:CompiledRoute,1:array<string,mixed>} Tuple of matched compiled route and extracted variables
+     */
     private function matchRoute(Request $req): array
     {
         $method = \strtoupper($req->getMethod());
@@ -143,8 +271,17 @@ final class RouterKernel
         return $this->matcher->match($method, $host, $path);
     }
 
-    /* ───────── warm-up / cache prime ───────── */
+    /* -----------------------------------------------------------------
+     * Warm-up / cache priming helpers
+     * ----------------------------------------------------------------- */
 
+    /**
+     * Warm the router state either from cache or by invoking the registrar.
+     *
+     * Chooses cache path when the matcher indicates cache-boot support.
+     *
+     * @return void
+     */
     private function warm(): void
     {
         if ($this->matcher->canBootFromCache()) {
@@ -154,6 +291,13 @@ final class RouterKernel
         $this->warmFromRegistrar();
     }
 
+    /**
+     * Warm from matcher cache: finalize matcher, hydrate alias-only collection
+     * if available, or optionally run registrar to build aliases when cache is
+     * empty. Binds URL helpers after alias hydration.
+     *
+     * @return void
+     */
     private function warmFromCache(): void
     {
         $this->matcher->finalize();
@@ -183,6 +327,16 @@ final class RouterKernel
         ]);
     }
 
+    /**
+     * Warm by invoking the registrar callback to compile and add routes to the matcher.
+     *
+     * This method builds a temporary Collection, constructs a Registrar using
+     * configured options, executes the user registration callback, compiles the
+     * routes and populates the matcher. It also binds URL services when requested.
+     *
+     * @return void
+     * @throws \RuntimeException When registration produces an empty compiled route table
+     */
     private function warmFromRegistrar(): void
     {
         $routes = new Collection();
@@ -226,8 +380,12 @@ final class RouterKernel
     }
 
     /**
-     * Registrar-only pass to build an alias Collection when cache is hot
-     * and alias cache isn’t available. (Matcher is NOT touched.)
+     * Registrar-only pass to build a Collection containing named route aliases
+     * (used when alias cache is hot but empty and we need name -> path mapping).
+     *
+     * The matcher is intentionally NOT altered by this pass.
+     *
+     * @return Collection Collection populated with named routes (alias-only)
      */
     private function buildAliasesViaRegistrar(): Collection
     {
@@ -256,6 +414,17 @@ final class RouterKernel
         return $routes;
     }
 
+    /**
+     * Hydrate a destination Collection with named route aliases read from the
+     * alias cache file. Returns the number of successfully added alias entries.
+     *
+     * Expected cache blob format:
+     *   ['_data' => [ name => [path, domain|null], ... ]]
+     *
+     * @param Collection $dst Destination collection to populate with alias routes
+     * @param string $cacheLocation Path to cache (directory or file)
+     * @return int Number of alias entries added to $dst
+     */
     private function hydrateAliasesFromCache(Collection $dst, string $cacheLocation): int
     {
         $aliasFile = $this->aliasFilePath($cacheLocation);
@@ -304,6 +473,15 @@ final class RouterKernel
         return $added;
     }
 
+    /**
+     * Compute the canonical alias file path for the provided cache location.
+     *
+     * If $cacheLocation is a directory the alias file is created inside it,
+     * otherwise the alias file is placed in the same directory as the given file.
+     *
+     * @param string $cacheLocation Directory or file path used for route cache
+     * @return string|null Resolved alias file path or null when $cacheLocation is null/empty
+     */
     private function aliasFilePath(string $cacheLocation): ?string
     {
         return (
@@ -313,24 +491,60 @@ final class RouterKernel
         ) . \DIRECTORY_SEPARATOR . self::F_ALIASES;
     }
 
+    /**
+     * Check whether the alias cache file exists and is a regular file.
+     *
+     * @param string|null $path Path to check (may be null)
+     * @return bool True when path is a string and points to an existing file
+     */
     private function aliasFileExists(?string $path): bool
     {
         return \is_string($path) && \is_file($path);
     }
 
-    /** @return mixed */
+    /**
+     * Require and return the contents of the alias file.
+     *
+     * This wraps the include with a Psalm suppression to allow dynamic includes
+     * whose return type cannot be resolved statically.
+     *
+     * @param string $file Path to alias PHP file that returns the alias blob
+     * @return mixed The value returned by the required file (expected array blob)
+     *
+     * @psalm-suppress UnresolvableInclude
+     */
     private function requireAliasBlob(string $file)
     {
         /** @psalm-suppress UnresolvableInclude */
         return require $file;
     }
 
-    /** @param mixed $blob */
+    /**
+     * Validate the alias blob structure returned from requireAliasBlob().
+     *
+     * Expected shape: array with key '_data' whose value is an array.
+     *
+     * @param mixed $blob Value returned from included alias file
+     * @return bool True when $blob is an array and contains an array under '_data'
+     */
     private function isValidAliasBlob(mixed $blob): bool
     {
         return \is_array($blob) && isset($blob['_data']) && \is_array($blob['_data']);
     }
 
+    /**
+     * Normalize a Host header value to its ASCII, lower-cased, non-trailing-dot form.
+     *
+     * Behaviour and validations:
+     *  - Empty host or host containing control characters will throw InvalidArgumentException.
+     *  - Trailing dots are removed.
+     *  - If idn_to_ascii is available, internationalized names will be converted to ASCII.
+     *  - Hosts containing non-printable/extended bytes after conversion will throw.
+     *
+     * @param string $raw Raw Host header value
+     * @return string Normalized ASCII host name
+     * @throws \InvalidArgumentException When the Host is illegal, invalid IDN, or contains non-ASCII bytes
+     */
     private static function normaliseHost(string $raw): string
     {
         if ($raw === '' || \preg_match('/[\x00-\x20]/', $raw)) {
