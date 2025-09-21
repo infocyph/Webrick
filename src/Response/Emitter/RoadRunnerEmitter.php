@@ -34,14 +34,17 @@ final class RoadRunnerEmitter implements EmitterInterface
 
         $status = $response->getStatusCode();
         $headers = $response->getHeaders();
+        $method = strtoupper($request?->getMethod() ?? 'GET');
+        $noBody = in_array($status, [204, 304], true) || $method === 'HEAD';
 
         if ($response->isStreaming()) {
             $fn = $response->getProducer();
             $out = $fn ? $fn() : [];
-            $respond($status, $headers, $out);
+            // Respect HEAD / no-body statuses by responding with an empty payload
+            $respond($status, $headers, $noBody ? '' : $out);
             return;
         }
 
-        $respond($status, $headers, (string)$response->getBody());
+        $respond($status, $headers, $noBody ? '' : (string)$response->getBody());
     }
 }
