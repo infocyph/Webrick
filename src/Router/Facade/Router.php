@@ -96,6 +96,19 @@ final class Router
         }
     }
 
+    /**
+     * Reset the façade by clearing the bound Registrar instance.
+     *
+     * Intended for long-running worker environments (e.g., RoadRunner/Swoole)
+     * where process state persists across requests. Call this at the start of
+     * a new request or during a worker reset to ensure no stale Registrar is
+     * leaked between lifecycles.
+     */
+    public static function reset(): void
+    {
+        self::$instance = null;
+    }
+
     /*──────────── explicit accessors (typed, IDE-friendly) ────────────*/
 
     /**

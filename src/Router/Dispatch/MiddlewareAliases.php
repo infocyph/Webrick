@@ -128,4 +128,18 @@ final class MiddlewareAliases
         // Call variadic factory and return whatever it produces.
         return (self::$map[$key])(...$params);
     }
+
+    /**
+     * Reset the alias registry.
+     *
+     * Clears all registered middleware aliases. This is primarily intended for
+     * long-running worker environments (e.g., RoadRunner/Swoole) where process
+     * state persists across requests. Invoke this method during your worker's
+     * bootstrap or per-request reset phase to ensure a clean slate before
+     * (re)registering aliases for the next request/lifecycle.
+     */
+     public static function reset(): void
+     {
+         self::$map = [];
+     }
 }
