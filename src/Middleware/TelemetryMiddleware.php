@@ -1,5 +1,20 @@
 <?php
 
+/**
+ * Webrick - Telemetry middleware (observability).
+ *
+ * Responsibilities:
+ * - Log a single line per request (IP, method, path, status, bytes, duration, request-id).
+ * - Add X-Response-Time and Server-Timing (app;dur=...).
+ * - Emit a stable request ID (header + request attribute) for correlation.
+ * - Optionally inject Network Error Logging (NEL) + Report-To (once; won't overwrite).
+ *
+ * Recommended order:
+ *   GatewayHardening → ErrorHandler → Telemetry → (rest)
+ *
+ * @package Infocyph\Webrick\Middleware
+ */
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Middleware;
@@ -11,18 +26,25 @@ use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 
 /**
- * TelemetryMiddleware (observability)
- *
- * • Logs one line per request (IP, method, path, status, bytes, duration, request-id).
- * • Adds X-Response-Time and Server-Timing (app;dur=...).
- * • Emits a stable request ID (header + request attribute) for correlation.
- * • Optionally injects Network Error Logging (NEL) + Report-To (once; won't overwrite).
- *
- * Recommended order:
- *   GatewayHardening → ErrorHandler → Telemetry → (rest)
+ * Observability middleware that measures, annotates, and logs each request/response.
  */
 final readonly class TelemetryMiddleware
 {
+    /**
+     * Configure telemetry behavior and optional NEL.
+     *
+     * @param LoggerInterface $log                    Logger for request summaries (default NullLogger).
+     * @param bool            $addXResponseTime       Emit X-Response-Time header with duration in ms.
+     * @param bool            $addServerTiming        Emit Server-Timing metric "app;dur=...".
+     * @param bool            $emitRequestId          Assign/propagate a request ID.
+     * @param string          $requestIdHeader        Header name to carry the request ID.
+     * @param bool            $respectExistingRequestId Do not override if client already provided an ID.
+     * @param string|null     $nelGroup               NEL group name (null disables NEL).
+     * @param string|null     $nelEndpoint            Absolute URL for NEL reports (paired with group).
+     * @param int             $nelTtlSeconds          NEL policy TTL.
+     * @param bool            $nelIncludeSubdomains   Whether NEL applies to subdomains.
+     * @param bool            $nelCollectSuccesses    Whether to collect successful request reports.
+     */
     public function __construct(
         private LoggerInterface $log = new NullLogger(),
         private bool $addXResponseTime = true,
@@ -42,6 +64,14 @@ final readonly class TelemetryMiddleware
     ) {
     }
 
+    /**
+     * Measure request duration, set headers, optionally emit NEL, and log a summary.
+     *
+     * @param Request $req  Incoming request.
+     * @param Closure $next Next handler.
+     *
+     * @return Response Augmented response with timing headers and optional request ID.
+     */
     public function __invoke(Request $req, Closure $next): Response
     {
         $start = hrtime(true);
@@ -136,6 +166,13 @@ final readonly class TelemetryMiddleware
 
     /* ───────────────────────── helpers ───────────────────────── */
 
+    /**
+     * Derive or propagate a request ID based on configuration.
+     *
+     * @param Request $req The incoming request.
+     *
+     * @return string|null Request ID to use, or null if disabled.
+     */
     private function deriveRequestId(Request $req): ?string
     {
         if (!$this->emitRequestId) {

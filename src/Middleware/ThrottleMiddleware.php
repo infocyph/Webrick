@@ -1,5 +1,20 @@
 <?php
 
+/**
+ * Webrick - Throttle middleware (fixed-window).
+ *
+ * Applies fixed-window request rate limiting and attaches standard headers:
+ * - Standard RateLimit-* and legacy X-RateLimit-* headers
+ * - Optional Retry-After as seconds or HTTP-date
+ * - Per-request cost via request attribute (default: "rate_cost.thm")
+ * - Optional bypass callback
+ * - Pluggable identifier resolver and scope
+ *
+ * Place early in the pipeline (after gateway hardening, before app handlers).
+ *
+ * @package Infocyph\Webrick\Middleware
+ */
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Middleware;
@@ -12,31 +27,29 @@ use Infocyph\Webrick\Response\Response;
 use Psr\Cache\CacheItemPoolInterface;
 
 /**
- * Fixed-window throttling with standard headers.
- *
- * Features:
- *  • Standard RateLimit-* + legacy X-RateLimit-* headers
- *  • Optional Retry-After as seconds or HTTP-date
- *  • Cost-per-request via request attribute (default: "rate_cost")
- *  • Optional bypass callback
- *  • Pluggable identifier resolver and scope
- *
- * Place early in the stack (after GatewayHardening, before app handlers).
+ * Fixed-window throttling with standard headers and flexible configuration.
  */
 final readonly class ThrottleMiddleware
 {
+    /**
+     * PSR-6 cache pool used to store counters and reset epochs.
+     *
+     * @var CacheItemPoolInterface
+     */
     private CacheItemPoolInterface $pool;
 
     /**
-     * @param int $max allowed requests per window
-     * @param int $window window size in seconds
-     * @param CacheItemPoolInterface|null $pool PSR-6 pool (APCu/file fallback by default)
-     * @param bool $retryAsDate format Retry-After as HTTP-date instead of seconds
-     * @param Closure(Request):string|null $identifierResolver custom key source (default: client IP)
-     * @param bool $emitStandardRateLimit also emit RateLimit-* (in addition to X-RateLimit-*)
-     * @param string $scope logical bucket (e.g., "global", "auth", "login")
-     * @param string $costAttribute request attribute name used for per-request cost
-     * @param Closure(Request):bool|null $bypass if returns true, request is not throttled
+     * Configure the throttle middleware.
+     *
+     * @param int                               $max                 Allowed requests per window.
+     * @param int                               $window              Window size in seconds.
+     * @param CacheItemPoolInterface|null       $pool                PSR-6 pool (APCu/file fallback by default).
+     * @param bool                              $retryAsDate         Format Retry-After as HTTP-date (true) or seconds (false).
+     * @param Closure(Request):string|null      $identifierResolver  Custom key source (default: client IP).
+     * @param bool                              $emitStandardRateLimit Also emit RateLimit-* (besides X-RateLimit-*).
+     * @param string                            $scope               Logical bucket (e.g., "global", "auth", "login").
+     * @param string                            $costAttribute       Request attribute name used for per-request cost.
+     * @param Closure(Request):bool|null        $bypass              If returns true, request is not throttled.
      */
     public function __construct(
         private int $max = 1,
@@ -52,6 +65,21 @@ final readonly class ThrottleMiddleware
         $this->pool = $pool ?? Cache::local($_SERVER['DOCUMENT_ROOT'] . '.thm');
     }
 
+    /**
+     * Enforce throttling and attach rate-limit headers.
+     *
+     * Flow:
+     * 1) Optional bypass.
+     * 2) Anchor timing to request start for consistent math.
+     * 3) Compute bucket key and reset epoch; load current window payload.
+     * 4) If this request would exceed the limit, return 429 with headers.
+     * 5) Otherwise increment hits, persist, call next, and attach headers.
+     *
+     * @param Request $req  Incoming request.
+     * @param Closure $next Next handler.
+     *
+     * @return Response Throttled or normal response with rate headers.
+     */
     public function __invoke(Request $req, Closure $next): Response
     {
         if ($this->bypass && ($this->bypass)($req) === true) {
@@ -71,7 +99,7 @@ final readonly class ThrottleMiddleware
             return $this->tooMany($payload['reset']);
         }
 
-        // Count this request *before* executing the handler
+        // Count this request before executing the handler
         $payload['hits'] += $cost;
         $this->persist($key, $payload);
 
@@ -81,7 +109,14 @@ final readonly class ThrottleMiddleware
         return $this->attachRateHeaders($resp, $remain, $payload['reset']);
     }
 
-    /** @return array{0:string,1:int} */
+    /**
+     * Derive the cache key and reset epoch for the current window.
+     *
+     * @param Request $req Incoming request.
+     * @param int     $now Anchor timestamp (usually REQUEST_TIME).
+     *
+     * @return array{0:string,1:int} Tuple of [cacheKey, resetEpoch].
+     */
     private function deriveKeyAndReset(Request $req, int $now): array
     {
         $id = $this->identifierResolver
@@ -104,7 +139,14 @@ final readonly class ThrottleMiddleware
         ];
     }
 
-    /** @return array{hits:int, reset:int} */
+    /**
+     * Load the current window payload or initialize a new counter.
+     *
+     * @param string $key   Cache key.
+     * @param int    $reset Reset epoch for a fresh window.
+     *
+     * @return array{hits:int, reset:int} Payload.
+     */
     private function load(string $key, int $reset): array
     {
         $item = $this->pool->getItem($key);
@@ -123,6 +165,14 @@ final readonly class ThrottleMiddleware
         return $data;
     }
 
+    /**
+     * Persist the updated payload with an expiry aligned to the reset epoch.
+     *
+     * @param string               $key     Cache key.
+     * @param array{hits:int,reset:int} $payload Payload to store.
+     *
+     * @return void
+     */
     private function persist(string $key, array $payload): void
     {
         $item = $this->pool->getItem($key);
@@ -132,12 +182,26 @@ final readonly class ThrottleMiddleware
         $this->pool->save($item);
     }
 
+    /**
+     * Compute seconds until the reset epoch based on request anchor time.
+     *
+     * @param int $resetEpoch Target epoch.
+     *
+     * @return int Non-negative seconds until reset.
+     */
     private function secondsUntil(int $resetEpoch): int
     {
         $t0 = (int)($_SERVER['REQUEST_TIME'] ?? time());
         return max(0, $resetEpoch - $t0);
     }
 
+    /**
+     * Build a 429 Too Many Requests response with appropriate headers.
+     *
+     * @param int $resetEpoch Reset epoch for the current window.
+     *
+     * @return Response 429 response with Retry-After and rate-limit headers.
+     */
     private function tooMany(int $resetEpoch): Response
     {
         $delta = $this->secondsUntil($resetEpoch);
@@ -163,6 +227,15 @@ final readonly class ThrottleMiddleware
         return $resp->withSmartHeader('Server-Timing', 'throttle;dur=0');
     }
 
+    /**
+     * Attach rate-limit headers to a successful response.
+     *
+     * @param Response $resp       Response to augment.
+     * @param int      $remain     Remaining requests in the window.
+     * @param int      $resetEpoch Window reset epoch.
+     *
+     * @return Response Response with rate-limit headers.
+     */
     private function attachRateHeaders(Response $resp, int $remain, int $resetEpoch): Response
     {
         $delta = $this->secondsUntil($resetEpoch);

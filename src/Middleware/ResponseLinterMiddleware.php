@@ -1,5 +1,17 @@
 <?php
 
+/**
+ * Webrick - Response linter middleware.
+ *
+ * Performs strict runtime checks to catch common HTTP response pitfalls during
+ * development and testing. Controlled via bitmask flags or a single boolean.
+ *
+ * Recommended order (dev/test only):
+ *   … → Compression → CorsAndPolicies → VaryAccumulator → ResponseLinter
+ *
+ * @package Infocyph\Webrick\Middleware
+ */
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Middleware;
@@ -11,26 +23,39 @@ use Infocyph\Webrick\Support\StreamUtil;
 use RuntimeException;
 
 /**
- * ResponseLinterMiddleware
+ * Strict response validator for common HTTP footguns.
  *
- * Strict runtime checks for common HTTP response footguns.
- *
- * Recommended order (dev/test only):
- *   … → Compression → CorsAndPolicies → VaryAccumulator → ResponseLinter
+ * Flags:
+ * - BODY_REQUIRES_CTYPE: Non-empty body must have Content-Type header.
+ * - NO_BODY_STATUSES: Status 204/304 must not include a response body.
+ * - COMPRESSED_NEEDS_VARY: Content-Encoding implies Vary: Accept-Encoding.
+ * - ETAG_WEAK_WHEN_ENCODING: Strong ETag is invalid when Content-Encoding is present.
+ * - CONTENT_LENGTH_MATCH: Content-Length must match actual byte length (when knowable).
  */
 final readonly class ResponseLinterMiddleware
 {
     /** bit-flags */
     public const BODY_REQUIRES_CTYPE = 0b00001;
-    public const NO_BODY_STATUSES = 0b00010;  // 204/304 must have empty body
-    public const COMPRESSED_NEEDS_VARY = 0b00100;  // Content-Encoding ⇒ Vary: Accept-Encoding
-    public const ETAG_WEAK_WHEN_ENCODING = 0b01000;  // Content-Encoding ⇒ ETag MUST be weak
-    public const CONTENT_LENGTH_MATCH = 0b10000;  // Content-Length must match actual bytes (when knowable)
+    public const NO_BODY_STATUSES = 0b00010;            // 204/304 must have empty body
+    public const COMPRESSED_NEEDS_VARY = 0b00100;       // Content-Encoding ⇒ Vary: Accept-Encoding
+    public const ETAG_WEAK_WHEN_ENCODING = 0b01000;     // Content-Encoding ⇒ ETag MUST be weak
+    public const CONTENT_LENGTH_MATCH = 0b10000;        // Content-Length must match actual bytes (when knowable)
 
+    /**
+     * Enabled checks bitmask.
+     *
+     * @var int
+     */
     private int $checks;
 
     /**
-     * @param int|bool $checks bitmask of flags; true ⇒ all checks, false ⇒ none
+     * Configure which checks are active.
+     *
+     * When $checks is a boolean:
+     * - true enables all checks
+     * - false disables all checks
+     *
+     * @param int|bool $checks Bitmask of flags; true ⇒ all checks, false ⇒ none.
      */
     public function __construct(int|bool $checks = false)
     {
@@ -45,6 +70,16 @@ final readonly class ResponseLinterMiddleware
             : $checks;
     }
 
+    /**
+     * Run response checks after invoking the next handler.
+     *
+     * @param Request $req  Incoming request.
+     * @param Closure $next Next handler.
+     *
+     * @return Response Possibly unmodified response; exceptions thrown on violations.
+     *
+     * @throws RuntimeException If any enabled check fails.
+     */
     public function __invoke(Request $req, Closure $next): Response
     {
         $resp = $next($req);
@@ -84,6 +119,16 @@ final readonly class ResponseLinterMiddleware
 
     /* ───────────────────────── helpers ───────────────────────── */
 
+    /**
+     * Ensure non-empty bodies have a Content-Type header.
+     *
+     * @param Response $r   Response to inspect.
+     * @param int      $len Body byte length.
+     *
+     * @return void
+     *
+     * @throws RuntimeException If len > 0 and Content-Type is missing.
+     */
     private function assertContentTypeIfBody(Response $r, int $len): void
     {
         if ($len > 0 && $r->getHeaderLine('Content-Type') === '') {
@@ -91,6 +136,16 @@ final readonly class ResponseLinterMiddleware
         }
     }
 
+    /**
+     * Disallow bodies on 204/304 status codes.
+     *
+     * @param Response $r   Response to inspect.
+     * @param int      $len Body byte length.
+     *
+     * @return void
+     *
+     * @throws RuntimeException If a body is present for 204 or 304 responses.
+     */
     private function assertNoBodyOnStatuses(Response $r, int $len): void
     {
         if ($len === 0) {
@@ -102,6 +157,15 @@ final readonly class ResponseLinterMiddleware
         }
     }
 
+    /**
+     * Ensure compressed responses imply Vary: Accept-Encoding.
+     *
+     * @param Response $r Response to inspect.
+     *
+     * @return void
+     *
+     * @throws RuntimeException If Content-Encoding is set but Vary lacks Accept-Encoding.
+     */
     private function assertVaryOnCompressed(Response $r): void
     {
         if (!$r->hasHeader('Content-Encoding')) {
@@ -112,6 +176,15 @@ final readonly class ResponseLinterMiddleware
         }
     }
 
+    /**
+     * Enforce weak ETag when Content-Encoding is present.
+     *
+     * @param Response $r Response to inspect.
+     *
+     * @return void
+     *
+     * @throws RuntimeException If a strong ETag is used with Content-Encoding.
+     */
     private function assertWeakEtagWhenEncoded(Response $r): void
     {
         if (!$r->hasHeader('Content-Encoding') || !$r->hasHeader('ETag')) {
@@ -123,6 +196,18 @@ final readonly class ResponseLinterMiddleware
         }
     }
 
+    /**
+     * Validate Content-Length against actual byte length (when knowable).
+     *
+     * Skips check when Transfer-Encoding is present or when length is missing/zero.
+     *
+     * @param Response $r   Response to inspect.
+     * @param int      $len Actual body byte length.
+     *
+     * @return void
+     *
+     * @throws RuntimeException If Content-Length is numeric and mismatches $len.
+     */
     private function assertContentLengthMatches(Response $r, int $len): void
     {
         // If TE is present, ignore (length is controlled by transfer-coding).
@@ -144,7 +229,14 @@ final readonly class ResponseLinterMiddleware
         }
     }
 
-    /** Case-insensitive list-membership check for comma-separated header values. */
+    /**
+     * Case-insensitive membership check within a comma-separated header value.
+     *
+     * @param string $line         Raw header value (possibly CSV).
+     * @param string $needleLower  Lower-cased token to search for.
+     *
+     * @return bool True if token is present; false otherwise.
+     */
     private function lineHasToken(string $line, string $needleLower): bool
     {
         if ($line === '') {

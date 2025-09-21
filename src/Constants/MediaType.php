@@ -1,9 +1,25 @@
 <?php
 
+/**
+ * Webrick - Media (MIME) type enumeration and helpers.
+ *
+ * Defines canonical media types used across the Webrick stack and provides utilities
+ * to resolve a media type from file extensions or filenames, as well as helpers for
+ * textual classification and header/charset retrieval.
+ *
+ * @package Infocyph\Webrick\Constants
+ */
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Constants;
 
+/**
+ * Canonical media (MIME) types with convenience helpers.
+ *
+ * Includes commonly used textual, image, and application types. Utility methods
+ * support resolution by extension/filename, textual checks, and header formatting.
+ */
 enum MediaType: string
 {
     /* ------------ canonical cases ------------ */
@@ -29,8 +45,13 @@ enum MediaType: string
     /**
      * Resolve a MediaType enum case from a file extension.
      *
-     * @param string $ext The file extension (e.g. "jpg", "json", ...).
-     * @return self The resolved MediaType enum case.
+     * - Handles irregular aliases (e.g., "jpg" → "jpeg", "htm" → "html").
+     * - Uses a small memo cache for repeat lookups.
+     * - Defaults to MediaType::OCTET when unknown.
+     *
+     * @param string $ext File extension (e.g., "jpg", "json").
+     *
+     * @return self Resolved MediaType enum case.
      */
     public static function fromExtension(string $ext): self
     {
@@ -69,13 +90,12 @@ enum MediaType: string
     /**
      * Resolve a MediaType enum case from a file name.
      *
-     * This function works by finding the last '.' character in the file name,
-     * and then resolving the MediaType enum case from the extension found
-     * after that character. If no '.' character is found, the MediaType
-     * enum case defaults to MediaType::OCTET.
+     * Finds the last '.' in the file name and resolves from the extension part.
+     * If there is no '.', defaults to MediaType::OCTET.
      *
-     * @param string $file The file name (e.g. "example.jpg", "example.json", ...).
-     * @return self The resolved MediaType enum case.
+     * @param string $file File name (e.g., "example.jpg", "document.json").
+     *
+     * @return self Resolved MediaType enum case.
      */
     public static function fromFilename(string $file): self
     {
@@ -85,12 +105,11 @@ enum MediaType: string
     }
 
     /**
-     * Returns true if the media type is textual, false otherwise.
+     * Determine whether the media type is textual.
      *
-     * Textual media types are those that start with "text/", or are
-     * equal to MediaType::JSON or MediaType::XML.
+     * A type is considered textual when it starts with "text/" or equals JSON/XML.
      *
-     * @return bool True if the media type is textual, false otherwise.
+     * @return bool True if textual; false otherwise.
      */
     public function isTextual(): bool
     {
@@ -100,11 +119,12 @@ enum MediaType: string
     }
 
     /**
-     * Return the character set from the media type header value.
+     * Extract the character set from the media type header value.
      *
-     * e.g. "text/html; charset=utf-8" → "utf-8"
+     * Example:
+     * - "text/html; charset=utf-8" → "utf-8"
      *
-     * @return string|null The character set, or null if not found.
+     * @return string|null The charset value, or null if no charset parameter is present.
      */
     public function charset(): ?string
     {
@@ -114,7 +134,7 @@ enum MediaType: string
     /**
      * Get the HTTP header value for this media type.
      *
-     * @return string The HTTP header value.
+     * @return string Header-ready media type string.
      */
     public function header(): string
     {

@@ -1,5 +1,21 @@
 <?php
 
+/**
+ * Webrick - HTTP response compression middleware.
+ *
+ * Performs transparent content-encoding based on Accept-Encoding negotiation:
+ * - Negotiates among zstd, brotli, and gzip (configurable preference order).
+ * - Skips compression for small, non-compressible, partial, or streaming responses.
+ * - Adds/adjusts Vary and ETag validators based on the chosen encoding strategy.
+ *
+ * ETag strategies:
+ * - weak-on-encode: Make existing tags weak; synthesize weak tag when absent.
+ * - recompute-strong (default): Compute strong tag from encoded bytes.
+ * - derive-strong: Derive deterministic tag from base ETag + alg/level when safe.
+ *
+ * @package Infocyph\Webrick\Middleware
+ */
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Middleware;
@@ -10,6 +26,9 @@ use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Support\StreamUtil;
 
+/**
+ * Content-encoding middleware with ETag management.
+ */
 final readonly class CompressionMiddleware
 {
     /* ─────────── ETag strategies ─────────── */
@@ -17,7 +36,18 @@ final readonly class CompressionMiddleware
     public const ETAG_STRONG_RECOMP = 'recompute-strong'; // default (bytes-on-the-wire)
     public const ETAG_STRONG_DERIVE = 'derive-strong';    // from base tag + alg/level
 
-    /** don’t bother below this many bytes */
+    /**
+     * Configure compression thresholds, preference, and ETag behavior.
+     *
+     * @param int    $minBytes        Minimum response size to consider encoding.
+     * @param array<int,string> $prefOrder Preferred encoders in order (subset of ['zstd','br','gzip']).
+     * @param string $etagMode        One of ETAG_* constants.
+     * @param int    $gzipLevel       gzip level (zlib).
+     * @param int    $brotliQuality   Brotli quality parameter.
+     * @param int    $zstdLevel       Zstd compression level.
+     * @param string $etagDeriveSalt  Salt used for derive-strong mode.
+     * @param int    $maxBufferBytes  Safety ceiling for in-memory encoding buffer.
+     */
     public function __construct(
         private int $minBytes = 1400,
         private array $prefOrder = ['zstd', 'br', 'gzip'],
@@ -51,6 +81,14 @@ final readonly class CompressionMiddleware
         'gzip' => 'gzencode',        // ext-zlib (bundled)
     ];
 
+    /**
+     * Negotiate, encode, and adjust validators for the response when appropriate.
+     *
+     * @param Request $req
+     * @param Closure $next
+     *
+     * @return Response Possibly encoded response with adjusted ETag.
+     */
     public function __invoke(Request $req, Closure $next): Response
     {
         $resp = $next($req);
@@ -78,6 +116,15 @@ final readonly class CompressionMiddleware
 
 
     /* ───────────────────────── decisions ───────────────────────── */
+
+    /**
+     * Decide whether the response is eligible and practical to compress.
+     *
+     * @param Request  $req
+     * @param Response $resp
+     *
+     * @return bool True when encoding should be attempted.
+     */
     private function shouldCompress(Request $req, Response $resp): bool
     {
         return match (true) {
@@ -101,6 +148,14 @@ final readonly class CompressionMiddleware
 
     /* ───────────────────────── encoding ───────────────────────── */
 
+    /**
+     * Encode raw bytes using the selected algorithm.
+     *
+     * @param string $raw Raw response bytes.
+     * @param string $alg Algorithm identifier ('gzip','br','zstd').
+     *
+     * @return string|false Encoded bytes or false when encoder unavailable/fails.
+     */
     private function encode(string $raw, string $alg): string|false
     {
         return match (true) {
@@ -115,6 +170,15 @@ final readonly class CompressionMiddleware
         };
     }
 
+    /**
+     * Apply body and headers for the encoded response.
+     *
+     * @param Response $resp Original response.
+     * @param string   $enc  Encoded bytes.
+     * @param string   $alg  Encoding algorithm.
+     *
+     * @return Response Response with Content-Encoding and adjusted headers.
+     */
     private function applyEncoded(Response $resp, string $enc, string $alg): Response
     {
         $resp = $resp
@@ -129,6 +193,16 @@ final readonly class CompressionMiddleware
         return $resp;
     }
 
+    /**
+     * Adjust ETag validators according to configured strategy.
+     *
+     * @param Request $req
+     * @param Response $resp
+     * @param string $encodedBytes
+     * @param string $alg
+     *
+     * @return Response Response with updated ETag when applicable.
+     */
     private function adjustValidators(Request $req, Response $resp, string $encodedBytes, string $alg): Response
     {
         // Only manipulate ETag for GET/HEAD responses
@@ -212,11 +286,25 @@ final readonly class CompressionMiddleware
         return $alg !== 'gzip';
     }
 
+    /**
+     * Compute a short, strong ETag from encoded bytes.
+     *
+     * @param string $bytes Encoded bytes on the wire.
+     *
+     * @return string Strong ETag value with quotes.
+     */
     private function strongFromBytes(string $bytes): string
     {
         return '"' . substr(hash('xxh3', $bytes, false), 0, 16) . '"';  // strong, short, cache-friendly
     }
 
+    /**
+     * Strip weak prefix and surrounding quotes from an ETag line.
+     *
+     * @param string $etagLine Raw ETag header line.
+     *
+     * @return string Core opaque tag value (or empty string when absent).
+     */
     private function stripWeakQuotes(string $etagLine): string
     {
         $t = trim($etagLine);
@@ -233,6 +321,13 @@ final readonly class CompressionMiddleware
         return trim($t);
     }
 
+    /**
+     * Encode level token used for derive-strong strategy.
+     *
+     * @param string $alg Algorithm identifier.
+     *
+     * @return string Level token.
+     */
     private function encodedLevelToken(string $alg): string
     {
         return match ($alg) {
@@ -245,6 +340,13 @@ final readonly class CompressionMiddleware
 
     /* ───────────────────────── helpers ─────────────────────────── */
 
+    /**
+     * True when Cache-Control contains no-transform (case-insensitive).
+     *
+     * @param Response $r
+     *
+     * @return bool
+     */
     private function hasNoTransform(Response $r): bool
     {
         $cc = strtolower($r->getHeaderLine('Cache-Control'));
@@ -258,7 +360,11 @@ final readonly class CompressionMiddleware
     }
 
     /**
-     * Return the best supported encoding from Accept-Encoding or **null**.
+     * Return the best supported encoding from Accept-Encoding or null.
+     *
+     * @param string $header Raw Accept-Encoding value.
+     *
+     * @return string|null Chosen encoding or null.
      */
     private function negotiate(string $header): ?string
     {
@@ -291,7 +397,13 @@ final readonly class CompressionMiddleware
         return null;
     }
 
-    /** Parse and sort “br;q=1.0, gzip;q=0.8, identity;q=0” → ['br','gzip'] (filters q=0). */
+    /**
+     * Parse and sort Accept-Encoding into tokens by q-value (desc), filtering q=0.
+     *
+     * @param string $header Raw header.
+     *
+     * @return array<int,string> Tokens sorted by preference.
+     */
     private function parseAcceptHeader(string $header): array
     {
         if ($header === '') {

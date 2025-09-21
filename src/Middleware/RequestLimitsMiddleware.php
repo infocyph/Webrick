@@ -1,5 +1,17 @@
 <?php
 
+/**
+ * Webrick - Request limits middleware.
+ *
+ * Enforces hard caps on incoming request header size (431), header field count (431),
+ * and body size (413). Safe for HTTP/2 (never emits hop-by-hop "Connection" header
+ * on H2). Body size enforcement is based on Content-Length; when Transfer-Encoding
+ * (e.g., chunked) is present, the middleware does not pre-reject because the length
+ * is not known up front.
+ *
+ * @package Infocyph\Webrick\Middleware
+ */
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Middleware;
@@ -9,23 +21,27 @@ use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 
 /**
- * Hard caps on request header size (431), header fields count (431),
- * and body size (413).
+ * Apply request caps for headers (bytes and field count) and body size.
  *
- * - Header bytes + header fields count apply to every request.
- * - Body cap checks Content-Length; when Transfer-Encoding (e.g. chunked) is present,
- *   we don't pre-reject on size because the length is not known up front.
- * - HTTP/2-safe: never emits hop-by-hop "Connection" header on H2.
+ * Behavior notes:
+ * - Header bytes and header field count apply to every request.
+ * - Body size applies to configured HTTP methods only and relies on Content-Length.
+ * - If Transfer-Encoding is present (other than "trailers"), body size is not pre-enforced here.
+ * - On violation, responds with appropriate status (431/413) and may add "Connection: close"
+ *   for HTTP/1.x only.
  */
 final readonly class RequestLimitsMiddleware
 {
     /**
-     * @param int $maxHeaderBytes 0 disables byte check
-     * @param int $maxHeaderCount 0 disables count check (fields = each header value line)
-     * @param int|null $maxBodyBytes null ⇒ use ini_get('post_max_size')
-     * @param string[] $bodyLimitVerbs HTTP methods to which body limit applies
-     * @param bool $violateOnUnknownBody When true and no Content-Length is present and no transfer-coding is used,
-     *                                       treat as violation for the configured verbs.
+     * Construct the middleware with limit settings.
+     *
+     * @param int                 $maxHeaderBytes       Maximum total header bytes; 0 disables the byte check.
+     * @param int                 $maxHeaderCount       Maximum number of header fields; 0 disables the count check
+     *                                                  (fields counted as each header value line).
+     * @param int|null            $maxBodyBytes         Maximum allowed body bytes; null uses ini_get('post_max_size').
+     * @param array<int,string>   $bodyLimitVerbs       HTTP methods to which the body limit applies (uppercased compare).
+     * @param bool                $violateOnUnknownBody When true and neither Content-Length nor transfer-coding is present,
+     *                                                  treat as violation for configured verbs.
      */
     public function __construct(
         private int $maxHeaderBytes = 8192,
@@ -36,6 +52,19 @@ final readonly class RequestLimitsMiddleware
     ) {
     }
 
+    /**
+     * Enforce header/body limits and return 431/413 when violated.
+     *
+     * Steps:
+     * 0) Enforce header field count (431).
+     * 1) Enforce header byte size (431).
+     * 2) Enforce body size (413) based on Content-Length; do not pre-reject when Transfer-Encoding (e.g., chunked).
+     *
+     * @param Request $req  Incoming request.
+     * @param Closure $next Next handler.
+     *
+     * @return Response Response from next handler or an error response on violation.
+     */
     public function __invoke(Request $req, Closure $next): Response
     {
         /* ── 0) header fields count → 431 ───────────────────────── */
@@ -97,6 +126,13 @@ final readonly class RequestLimitsMiddleware
 
     /* ───────────────────────── helpers ─────────────────────────── */
 
+    /**
+     * Resolve the body size limit in bytes.
+     *
+     * Uses $this->maxBodyBytes when set; otherwise converts ini "post_max_size" to bytes.
+     *
+     * @return int Body limit in bytes (0 means disabled).
+     */
     private function resolveBodyLimit(): int
     {
         if ($this->maxBodyBytes !== null) {
@@ -105,7 +141,15 @@ final readonly class RequestLimitsMiddleware
         return self::phpIniBytes(\ini_get('post_max_size'));
     }
 
-    /** Conservative byte count for headers (name + ": " + value per line). */
+    /**
+     * Compute a conservative byte count for all headers.
+     *
+     * Counts "Name: value" length for each header value line or raw line in flat-list mode.
+     *
+     * @param Request $r The request.
+     *
+     * @return int Total header bytes.
+     */
     private function totalHeaderBytes(Request $r): int
     {
         $sum = 0;
@@ -127,8 +171,13 @@ final readonly class RequestLimitsMiddleware
 
     /**
      * Count total header fields (each value counts as one field).
+     *
      * Example: "Set-Cookie" repeated 5 times + "Accept: a,b" (still 1 field here since
      * your Request flattens repeated-name values as an array).
+     *
+     * @param Request $r The request.
+     *
+     * @return int Number of header fields.
      */
     private function totalHeaderFields(Request $r): int
     {
@@ -147,6 +196,13 @@ final readonly class RequestLimitsMiddleware
         return $count;
     }
 
+    /**
+     * Convert a php.ini size string (e.g., "8M", "1G") to bytes.
+     *
+     * @param string|false $val Value returned by ini_get().
+     *
+     * @return int Byte count (0 for empty/false).
+     */
     private static function phpIniBytes(string|false $val): int
     {
         if ($val === false) {
@@ -166,7 +222,14 @@ final readonly class RequestLimitsMiddleware
         };
     }
 
-    /** Add Connection: close only for HTTP/1.x; never for HTTP/2. */
+    /**
+     * Add "Connection: close" only for HTTP/1.x responses; never for HTTP/2.
+     *
+     * @param Request  $req  The incoming request (for protocol detection).
+     * @param Response $resp The response to augment when applicable.
+     *
+     * @return Response Response with "Connection: close" for HTTP/1.x; unchanged for HTTP/2.
+     */
     private function withConnCloseIfHttp1(Request $req, Response $resp): Response
     {
         $proto = strtoupper((string)($req->getServerParam('SERVER_PROTOCOL') ?? 'HTTP/1.1'));

@@ -1,5 +1,20 @@
 <?php
 
+/**
+ * Webrick - Gateway hardening middleware.
+ *
+ * Enforces gateway/front-door security and hygiene:
+ * - Validates Host header against an allow-list (blocks request if untrusted).
+ * - Identifies end-user vs. peer IPs and attaches request attributes.
+ * - Optionally enforces HTTPS with 308 redirects.
+ * - Optionally strips hop-by-hop headers from request and response.
+ * - Guards outgoing redirects to avoid open-redirect vulnerabilities.
+ *
+ * Caches compiled host allow-list patterns per process for performance.
+ *
+ * @package Infocyph\Webrick\Middleware
+ */
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Middleware;
@@ -10,6 +25,20 @@ use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Request\Support\IpCidr;
 use Infocyph\Webrick\Response\Response;
 
+/**
+ * Harden the edge/gateway behavior and normalize request/response surfaces.
+ *
+ * Responsibilities:
+ * - Host allow-list enforcement (supports '*' wildcard).
+ * - End-user vs. immediate peer IP extraction with trusted proxy semantics.
+ * - HTTPS enforcement (port configurable).
+ * - Hop-by-hop header stripping (Connection tokens + well-known list).
+ * - Redirect validation (scheme allow-list + same-origin policy unless configured).
+ *
+ * Notes:
+ * - Uses Request::setTrustedProxies to configure proxy-awareness.
+ * - Uses a per-process static cache for compiled trusted host regexes.
+ */
 final class GatewayHardeningMiddleware
 {
     /** Hop-by-hop header names (lower-case) */
@@ -35,14 +64,16 @@ final class GatewayHardeningMiddleware
     private static array $hostRegexCache = [];
 
     /**
-     * @param string[] $trustedProxyCidrs CIDRs considered trusted proxies
-     * @param string[] $denyIpCidrs CIDRs for end-user IPs to block
-     * @param string[] $trustedHosts Host header allow-list (supports '*')
-     * @param int|null $forwardedHeaderMask Symfony-style mask (e.g., Request::HEADER_X_FORWARDED_FOR | …)
-     * @param bool $enforceHttps Force HTTPS (308) when scheme != https
-     * @param int $httpsPort Port used for HTTPS redirection (typically 443)
-     * @param bool $stripHopByHop Remove hop-by-hop headers (req + resp)
-     * @param string[] $redirectAllowedHosts Absolute redirect targets allowed; empty ⇒ same-origin only
+     * Configure gateway hardening knobs and pre-compile host allow-list.
+     *
+     * @param string[]   $trustedProxyCidrs     CIDRs considered trusted proxies.
+     * @param string[]   $denyIpCidrs           CIDRs for end-user IPs to block.
+     * @param string[]   $trustedHosts          Host header allow-list (supports '*' wildcard).
+     * @param int|null   $forwardedHeaderMask   Symfony-style mask (e.g., Request::HEADER_X_FORWARDED_FOR | …).
+     * @param bool       $enforceHttps          Force HTTPS (308) when scheme != https.
+     * @param int        $httpsPort             Port used for HTTPS redirection (typically 443).
+     * @param bool       $stripHopByHop         Remove hop-by-hop headers (req + resp).
+     * @param string[]   $redirectAllowedHosts  Absolute redirect targets allowed; empty ⇒ same-origin only.
      */
     public function __construct(
         private readonly array $trustedProxyCidrs = [],
@@ -62,6 +93,22 @@ final class GatewayHardeningMiddleware
         $this->hostRegex = self::compileHostRegex($this->trustedHosts);
     }
 
+    /**
+     * Apply gateway hardening checks/normalizations and pass control downstream.
+     *
+     * Flow:
+     * 1) Reject untrusted Host (400).
+     * 2) Resolve end-user/peer IPs and block endpoints in deny lists (403).
+     * 3) Attach network attributes (client_ip, peer_ip, is_trusted_proxy).
+     * 4) Enforce HTTPS redirect (308) when enabled.
+     * 5) Optionally strip hop-by-hop headers on request/response.
+     * 6) Validate redirects (scheme and origin) before returning.
+     *
+     * @param Request $req  Incoming request.
+     * @param Closure $next Next handler.
+     *
+     * @return Response Hardened response.
+     */
     public function __invoke(Request $req, Closure $next): Response
     {
         try {
@@ -102,6 +149,13 @@ final class GatewayHardeningMiddleware
 
     /* ───────────── step helpers ───────────── */
 
+    /**
+     * Enforce Host allow-list; reject requests with untrusted/empty Host.
+     *
+     * @param Request $req
+     *
+     * @return Response|null 400 response on rejection; null when allowed.
+     */
     private function rejectIfUntrustedHost(Request $req): ?Response
     {
         if ($this->allowAllHosts || $this->trustedHosts === []) {
@@ -120,6 +174,11 @@ final class GatewayHardeningMiddleware
             : Response::plaintext('Untrusted Host header.', 400);
     }
 
+    /**
+     * Block requests from end-user IPs that match deny CIDRs.
+     *
+     * @return Response|null 403 response when blocked; null when allowed.
+     */
     private function denyIfBlockedEndUser(): ?Response
     {
         $clientIp = $this->endUser?->ip(); // honors trusted proxy headers
@@ -129,6 +188,13 @@ final class GatewayHardeningMiddleware
         return null;
     }
 
+    /**
+     * Attach network-related request attributes for downstream consumers.
+     *
+     * @param Request $req
+     *
+     * @return Request Request carrying client/peer/flag attributes.
+     */
     private function attachNetworkAttributes(Request $req): Request
     {
         $clientIp = $this->endUser?->ip();        // end-user
@@ -141,6 +207,13 @@ final class GatewayHardeningMiddleware
             ->withAttribute('is_trusted_proxy', $isTrustedProxy);
     }
 
+    /**
+     * Enforce HTTPS by redirecting to https:// with optional port.
+     *
+     * @param Request $req
+     *
+     * @return Response|null 308 redirect response; null if already HTTPS or disabled.
+     */
     private function redirectIfHttpsEnforced(Request $req): ?Response
     {
         if (!$this->enforceHttps) {
@@ -155,6 +228,18 @@ final class GatewayHardeningMiddleware
         return Response::redirect((string)$target, 308);
     }
 
+    /**
+     * Validate Location header to prevent open or unsafe redirects.
+     *
+     * - Only http/https schemes are allowed.
+     * - If $redirectAllowedHosts is empty, enforce same-origin redirects.
+     * - Otherwise, require destination host to be in the allow-list.
+     *
+     * @param Request  $req  Current request (for same-origin checks).
+     * @param Response $resp Response to validate.
+     *
+     * @return Response Potentially replaced 400 response on violation, or original response.
+     */
     private function guardRedirects(Request $req, Response $resp): Response
     {
         if (!$resp->hasHeader('Location')) {
@@ -192,16 +277,39 @@ final class GatewayHardeningMiddleware
 
     /* ───────────── general helpers ───────────── */
 
+    /**
+     * Case-insensitive string equality.
+     *
+     * @param string $a
+     * @param string $b
+     *
+     * @return bool
+     */
     private static function equalsIgnoreCase(string $a, string $b): bool
     {
         return strcasecmp($a, $b) === 0;
     }
 
+    /**
+     * Check if a host matches any compiled allow-list pattern.
+     *
+     * @param string $host
+     *
+     * @return bool True when host is allowed.
+     */
     private function matchesHost(string $host): bool
     {
         return array_any($this->hostRegex, fn ($rx) => preg_match($rx, $host));
     }
 
+    /**
+     * Determine if an IP matches any of the provided CIDRs.
+     *
+     * @param string|null $ip    Candidate IP address.
+     * @param array<int,string> $cidrs CIDR ranges.
+     *
+     * @return bool True on match; false otherwise.
+     */
     private function cidrHit(?string $ip, array $cidrs): bool
     {
         if ($ip === null || $cidrs === []) {
@@ -210,6 +318,13 @@ final class GatewayHardeningMiddleware
         return array_any($cidrs, fn ($cidr) => IpCidr::match($ip, $cidr));
     }
 
+    /**
+     * Remove hop-by-hop headers from the request (Connection tokens + known list).
+     *
+     * @param Request $r
+     *
+     * @return Request Request without hop-by-hop headers.
+     */
     private function stripHopByHopFromRequest(Request $r): Request
     {
         $tokens = $this->parseConnectionTokens($r->getHeaderLine('Connection'));
@@ -221,6 +336,13 @@ final class GatewayHardeningMiddleware
         return $r;
     }
 
+    /**
+     * Remove hop-by-hop headers from the response (Connection tokens + known list).
+     *
+     * @param Response $r
+     *
+     * @return Response Response without hop-by-hop headers.
+     */
     private function stripHopByHopFromResponse(Response $r): Response
     {
         $tokens = $this->parseConnectionTokens($r->getHeaderLine('Connection'));
@@ -232,7 +354,13 @@ final class GatewayHardeningMiddleware
         return $r;
     }
 
-    /** Parse "Connection: foo, bar" into ['foo','bar'] (lower-cased) */
+    /**
+     * Parse a Connection header line into lower-cased tokens.
+     *
+     * @param string $line Raw Connection header value.
+     *
+     * @return array<int,string> Tokens (lower-cased), empty when header missing.
+     */
     private function parseConnectionTokens(string $line): array
     {
         if ($line === '') {
@@ -250,7 +378,13 @@ final class GatewayHardeningMiddleware
 
     /* ───────────── static cache ───────────── */
 
-    /** @return list<string> compiled regexes for this allow-list (cached per process) */
+    /**
+     * Compile trusted host patterns to case-insensitive regexes (cached per process).
+     *
+     * @param array<int,string> $trustedHosts Host allow-list patterns.
+     *
+     * @return list<string> Compiled regexes for this allow-list (cached per process).
+     */
     private static function compileHostRegex(array $trustedHosts): array
     {
         if ($trustedHosts === [] || $trustedHosts === ['*']) {

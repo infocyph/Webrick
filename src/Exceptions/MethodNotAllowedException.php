@@ -1,19 +1,33 @@
 <?php
 
+/**
+ * Webrick - HTTP routing exception: Method Not Allowed.
+ *
+ * Thrown when an HTTP request uses a verb that is not permitted for the
+ * requested path. Carries the attempted verb, the requested path, and the
+ * list of allowed verbs for convenient handling (e.g., generating 405 responses
+ * and Allow headers).
+ *
+ * @package Infocyph\Webrick\Exceptions
+ */
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Exceptions;
 
+/**
+ * Exception indicating that the HTTP method is not allowed for the given path.
+ */
 final class MethodNotAllowedException extends \RuntimeException
 {
     /**
-     * Initializes a new instance of the MethodNotAllowedException class.
+     * Create a new MethodNotAllowedException.
      *
-     * @param string $verb The HTTP verb that was used.
-     * @param string $path The path that was requested.
-     * @param array $allowed The list of allowed HTTP verbs for the given path.
-     * @param int $code The error code.
-     * @param \Throwable|null $previous The previous throwable used for the exception chaining.
+     * @param string                 $verb     The attempted HTTP verb (e.g., "POST").
+     * @param string                 $path     The requested path (e.g., "/users/1").
+     * @param array<int,string>      $allowed  List of allowed HTTP verbs for the path.
+     * @param int                    $code     Optional error code.
+     * @param \Throwable|null        $previous Optional previous throwable for chaining.
      */
     public function __construct(
         public readonly string $verb,
@@ -30,9 +44,9 @@ final class MethodNotAllowedException extends \RuntimeException
     }
 
     /**
-     * Return the list of allowed methods for the given path.
+     * Get the list of allowed HTTP methods for the path.
      *
-     * @return array<string> List of allowed HTTP methods.
+     * @return array<int,string> Allowed HTTP methods.
      */
     public function allowed(): array
     {

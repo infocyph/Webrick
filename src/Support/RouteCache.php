@@ -1,5 +1,15 @@
 <?php
 
+/**
+ * Webrick - Router cache builder and clearer.
+ *
+ * Provides utilities to build (warm) and clear router caches for different matcher
+ * implementations (sharded or fused). Accepts flexible options for registration,
+ * signing, logging, and cache layout.
+ *
+ * @package Infocyph\Webrick\Support
+ */
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Support;
@@ -13,6 +23,18 @@ use Infocyph\Webrick\Router\Kernel\RouterKernel;
 use Infocyph\Webrick\Router\Matching\FusedMatcher;
 use Infocyph\Webrick\Router\Matching\ShardedMatcher;
 
+/**
+ * Utility for managing the router cache for Webrick.
+ *
+ * Responsibilities:
+ * - Build/warm caches for either fused (single file) or sharded (directory) matchers.
+ * - Clear caches safely with optional aggressive removal.
+ *
+ * Notes:
+ * - The matcher flavor can be forced via the 'matcher' option or auto-detected
+ *   by the format of the 'cache' path.
+ * - For sharded mode, the cache target is a directory; for fused mode, it is a file.
+ */
 final class RouteCache
 {
     /**
@@ -35,6 +57,12 @@ final class RouteCache
      * Returns the sentinel path that proves the cache is hot:
      *  - sharded: <cacheDir>/__root.php
      *  - fused:   <cacheFile>
+     *
+     * @param array<string,mixed> $options Build options (see list above).
+     *
+     * @return string Path to the sentinel that indicates a hot cache.
+     *
+     * @throws \InvalidArgumentException If required options are missing or invalid.
      */
     public static function build(array $options): string
     {
@@ -113,14 +141,23 @@ final class RouteCache
     }
 
     /**
-     * Clear the router cache.
+     * Clear the router cache for fused or sharded modes.
      *
-     * Options:
-     *  - matcher: 'sharded'|'fused'|null (auto-detect by cache path if null)
-     *  - cache: string  (dir for sharded; file for fused). REQUIRED
-     *  - aggressive: bool (default true) — sharded: remove entire dir; fused: unlink the file
+     * Behavior:
+     * - Fused: unlinks the single cache file (if it exists).
+     * - Sharded: by default removes only generated PHP shards and sentinels, preserving
+     *   the directory (and dotfiles like .gitignore). If 'aggressive' is true, removes
+     *   the entire directory recursively.
      *
-     * Returns true if any file/dir was removed.
+     * @param array<string,mixed> $options Clear options:
+     *   - matcher: 'sharded'|'fused'|null (auto-detect if null)
+     *   - cache: string (REQUIRED; dir for sharded, file for fused)
+     *   - aggressive: bool (default false) — sharded: remove entire dir
+     *
+     * @return bool True if any file or directory was removed; false otherwise.
+     *
+     * @throws \InvalidArgumentException If required options are missing.
+     * @throws \RuntimeException If the provided cache path is considered dangerous.
      */
     public static function clear(array $options): bool
     {
@@ -184,12 +221,26 @@ final class RouteCache
         return $removed;
     }
 
-
+    /**
+     * Remove a single file if it exists.
+     *
+     * @param string $file Absolute or relative path to the file.
+     *
+     * @return bool True if the file existed and was removed; false otherwise.
+     */
     private static function rmFile(string $file): bool
     {
         return \is_file($file) && @\unlink($file);
     }
 
+    /**
+     * Recursively remove a directory and all of its contents (including dotfiles).
+     *
+     * @param string $dir Directory path to remove.
+     *
+     * @return bool True on full removal success; false if the directory did not exist
+     *              or if any operation failed.
+     */
     private static function rrmdir(string $dir): bool
     {
         if (!\is_dir($dir)) {

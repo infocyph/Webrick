@@ -1,9 +1,24 @@
 <?php
 
+/**
+ * Webrick - HTTP status code enumeration and helpers.
+ *
+ * Defines a comprehensive set of HTTP status codes and provides convenience
+ * methods to resolve reason phrases, determine code series, classify responses
+ * (informational/success/redirect/client-error/server-error), and evaluate body
+ * allowance and cacheability. Also includes static utilities for code-to-text
+ * conversion and emptiness checks.
+ *
+ * @package Infocyph\Webrick\Constants
+ */
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Constants;
 
+/**
+ * HTTP status codes as int-backed enum with convenience helpers.
+ */
 enum Status: int
 {
     /* 1xx */
@@ -80,11 +95,11 @@ enum Status: int
     case NETWORK_AUTH_REQUIRED = 511;
 
     /**
-     * Returns the human-readable reason phrase associated with the given HTTP status code.
+     * Get the human-readable reason phrase for this status code.
      *
-     * If the status code is not recognized, an empty string is returned.
+     * Falls back to a derived phrase from the enum name when not explicitly listed.
      *
-     * @return string The human-readable reason phrase associated with the status code.
+     * @return string Reason phrase for the status code (empty string if unknown).
      */
     public function reason(): string
     {
@@ -116,11 +131,9 @@ enum Status: int
     }
 
     /**
-     * Returns the HTTP status code series (1xx, 2xx, 3xx, etc.) as an integer.
+     * Return the status code series (1xx, 2xx, 3xx, etc.) as an integer.
      *
-     * The series is calculated by dividing the status code by 100.
-     *
-     * @return int The HTTP status code series.
+     * @return int Series of the status code (e.g., 2 for 2xx).
      */
     public function series(): int
     {
@@ -128,13 +141,9 @@ enum Status: int
     }
 
     /**
-     * Checks if the HTTP status code is an informational response (100-199).
+     * Check if the status code is informational (100–199).
      *
-     * Informational responses are used for providing information about the connection
-     * status or for indicating pending redirects. The client should not repeat the request
-     * without user confirmation.
-     *
-     * @return bool True if the status code is an informational response, false otherwise.
+     * @return bool True for informational; false otherwise.
      */
     public function isInformational(): bool
     {
@@ -142,12 +151,9 @@ enum Status: int
     }
 
     /**
-     * Checks if the HTTP status code is a success (200-299).
+     * Check if the status code is success (200–299).
      *
-     * Success status codes indicate that the request was successfully received,
-     * understood, and accepted.
-     *
-     * @return bool True if the status code is a success, false otherwise.
+     * @return bool True for success; false otherwise.
      */
     public function isSuccess(): bool
     {
@@ -155,13 +161,9 @@ enum Status: int
     }
 
     /**
-     * Checks if the HTTP status code is a redirect (300-399).
+     * Check if the status code is redirect (300–399).
      *
-     * Redirect status codes indicate that the client must take additional action
-     * to fulfill the request. The client may repeat the request with a new
-     * location or without performing the redirect.
-     *
-     * @return bool True if the status code is a redirect, false otherwise.
+     * @return bool True for redirects; false otherwise.
      */
     public function isRedirect(): bool
     {
@@ -169,12 +171,9 @@ enum Status: int
     }
 
     /**
-     * Checks if the HTTP status code is a client error (400-499).
+     * Check if the status code is client error (400–499).
      *
-     * Client error status codes indicate that the request contains bad syntax or
-     * cannot be fulfilled.
-     *
-     * @return bool True if the status code is a client error, false otherwise.
+     * @return bool True for client errors; false otherwise.
      */
     public function isClientError(): bool
     {
@@ -182,12 +181,9 @@ enum Status: int
     }
 
     /**
-     * Checks if the HTTP status code is a server error (500-599).
+     * Check if the status code is server error (500–599).
      *
-     * Server error status codes indicate that the server is aware that it has
-     * encountered an error or is incapable of performing the request.
-     *
-     * @return bool True if the status code is a server error, false otherwise.
+     * @return bool True for server errors; false otherwise.
      */
     public function isServerError(): bool
     {
@@ -195,14 +191,15 @@ enum Status: int
     }
 
     /**
-     * Checks if the HTTP status code is empty (100-199).
+     * Check if the response is considered "empty" (no body).
      *
-     * If the status code is not recognized, it will check if the code is
-     * within the 1xx range (Informational responses).
+     * Empty responses include:
+     * - 1xx (except 101 Switching Protocols)
+     * - 204 No Content
+     * - 205 Reset Content
+     * - 304 Not Modified
      *
-     * Otherwise, the status code is not cacheable by default.
-     *
-     * @return bool True if the status code is empty, false otherwise.
+     * @return bool True if empty; false otherwise.
      */
     public function isEmpty(): bool
     {
@@ -213,14 +210,9 @@ enum Status: int
     }
 
     /**
-     * Returns true if the response body is allowed, false otherwise.
+     * Whether a response body is allowed for this status code.
      *
-     * The response body is allowed unless the status code is informational
-     * (1xx), or one of the following:
-     * - 204 No Content
-     * - 304 Not Modified
-     *
-     * @return bool True if the response body is allowed, false otherwise.
+     * @return bool True if a body is allowed; false if the response is empty.
      */
     public function allowsBody(): bool
     {
@@ -228,25 +220,13 @@ enum Status: int
     }
 
     /**
-     * Checks if the HTTP response is cacheable by default.
+     * Heuristic: whether the response is cacheable by default.
      *
-     * By default, the following status codes are considered cacheable:
-     * - 200 OK
-     * - 203 Non-Authoritative Information
-     * - 204 No Content
-     * - 206 Partial Content
-     * - 300 Multiple Choices
-     * - 301 Moved Permanently
-     * - 302 Found
-     * - 303 See Other
-     * - 403 Forbidden
-     * - 404 Not Found
-     * - 410 Gone
-     * - 401 Unauthorized
-     * - If explicit Expires/Cache-Control headers are present
-     * - If heuristics are allowed
+     * Notes:
+     * - Some codes are cacheable only when explicit Expires/Cache-Control headers exist,
+     *   or when heuristics are permitted (see inline comments).
      *
-     * @return bool True if the response is cacheable by default, false otherwise.
+     * @return bool True if cacheable by default; false otherwise.
      */
     public function isCacheable(): bool
     {
@@ -262,18 +242,9 @@ enum Status: int
     }
 
     /**
-     * Checks if the HTTP response is cacheable by default.
+     * Strict default-cacheable set (subset of isCacheable()).
      *
-     * If the response code is one of the following, the response is considered cacheable by default:
-     * - 200 OK
-     * - 203 Non-Authoritative Information
-     * - 206 Partial Content
-     * - 301 Moved Permanently
-     * - 410 Gone
-     *
-     * Otherwise, the response is not cacheable by default.
-     *
-     * @return bool True if the response is cacheable by default, false otherwise.
+     * @return bool True if cacheable by default in stricter sense; false otherwise.
      */
     public function isCacheableByDefault(): bool
     {
@@ -288,11 +259,9 @@ enum Status: int
     }
 
     /**
-     * Indicates whether the HTTP response should include a Location header.
+     * Whether a Location header is expected (201 Created or any 3xx).
      *
-     * The Location header is included for 201 Created responses, as well as for 3xx Redirect responses.
-     *
-     * @return bool True if the response should include a Location header, false otherwise.
+     * @return bool True if Location should be included; false otherwise.
      */
     public function needsLocationHeader(): bool
     {
@@ -300,12 +269,11 @@ enum Status: int
     }
 
     /**
-     * Returns the human-readable reason phrase associated with the given HTTP status code.
+     * Get the reason phrase for the given status code.
      *
-     * If the status code is not recognized, an empty string is returned.
+     * @param int $code HTTP status code.
      *
-     * @param int $code The HTTP status code.
-     * @return string The human-readable reason phrase associated with the status code.
+     * @return string Reason phrase (empty string if unknown).
      */
     public static function text(int $code): string
     {
@@ -313,13 +281,13 @@ enum Status: int
     }
 
     /**
-     * Checks if the given HTTP status code is empty (100-199).
+     * Check if the given status code is "empty" (no body).
      *
-     * If the status code is not recognized, it will check if the code is
-     * within the 1xx range (Informational responses).
+     * If not recognized, checks whether it lies in the 1xx range.
      *
-     * @param int $code The HTTP status code to check.
-     * @return bool True if the status code is empty, false otherwise.
+     * @param int $code HTTP status code to check.
+     *
+     * @return bool True if empty; false otherwise.
      */
     public static function isEmptyCode(int $code): bool
     {

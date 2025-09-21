@@ -1,5 +1,14 @@
 <?php
 
+/**
+ * Webrick - Signed URL generator.
+ *
+ * Builds URL strings with an appended HMAC signature and optional expiry parameter.
+ * The signature is computed deterministically over the final relative URL (path + sorted query).
+ *
+ * @package Infocyph\Webrick\Router\Url
+ */
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router\Url;
@@ -8,16 +17,36 @@ use Infocyph\Webrick\Router\Route\Collection;
 use InvalidArgumentException;
 
 /**
- * verify signed URLs
- * if (!Signature::check($urlWithoutSig, $_GET['_sig'] ?? '', $secret)) {
- * throw new \RuntimeException('URL signature mismatch.');
- * }
+ * Generate signed URLs for named routes.
+ *
+ * Usage example (verification side):
+ *   if (!Signature::check($urlWithoutSig, $_GET['_sig'] ?? '', $secret)) {
+ *       throw new \RuntimeException('URL signature mismatch.');
+ *   }
  */
 class SignedUrlGenerator extends UrlGenerator
 {
+    /**
+     * Query parameter name used to carry the URL signature.
+     *
+     * @var string
+     */
     public const string SIG_PARAM = '_sig';
+
+    /**
+     * Query parameter name used to carry the expiry timestamp (UNIX epoch).
+     *
+     * @var string
+     */
     public const string EXPIRES_PARAM = '_exp';
 
+    /**
+     * Create a signed URL generator.
+     *
+     * @param string     $baseUri Base URI used when generating absolute URLs.
+     * @param Collection $routes  Route collection for URL resolution.
+     * @param string     $secret  Secret key used to compute HMAC signatures.
+     */
     public function __construct(
         string $baseUri,
         Collection $routes,
@@ -29,13 +58,23 @@ class SignedUrlGenerator extends UrlGenerator
     /**
      * Build a signed URL, optionally expiring after $ttl seconds.
      *
-     * @param non-empty-string $name Route name
-     * @param array<string,mixed> $params Path parameters
-     * @param array<string,mixed> $query Extra query parameters
-     * @param int|null $ttl TTL in seconds, null = no expiry
-     * @param bool $absolute Prepend baseUri?
+     * Process:
+     * 1) Ensure reserved parameters are not already present in $query.
+     * 2) Optionally set an expiry timestamp.
+     * 3) Sort query parameters for a deterministic signature.
+     * 4) Generate the relative path (without query).
+     * 5) Compute signature over the relative URL (path + sorted query).
+     * 6) Return the final absolute or relative URL.
      *
-     * @return string
+     * @param non-empty-string       $name     Route name.
+     * @param array<string,mixed>    $params   Path parameters for placeholder substitution.
+     * @param array<string,mixed>    $query    Extra query parameters (will be sorted).
+     * @param int|null               $ttl      TTL in seconds; null for no expiry.
+     * @param bool                   $absolute Whether to return an absolute URL.
+     *
+     * @return string The signed URL.
+     *
+     * @throws InvalidArgumentException If reserved parameters are present, or if TTL is invalid.
      */
     public function signed(
         string $name,
@@ -44,7 +83,7 @@ class SignedUrlGenerator extends UrlGenerator
         ?int $ttl = null,
         bool $absolute = true,
     ): string {
-        // 1) Disallow any pre-existing reserved params
+        // 1) Disallow any pre-existing reserved params (signature or expiry)
         if (
             array_key_exists(self::SIG_PARAM, $query)
             || array_key_exists(self::EXPIRES_PARAM, $query)
@@ -55,7 +94,7 @@ class SignedUrlGenerator extends UrlGenerator
             );
         }
 
-        // 2) Validate and set expiry
+        // 2) Validate and set expiry (UNIX epoch)
         if ($ttl !== null) {
             if ($ttl < 1) {
                 throw new InvalidArgumentException('TTL must be a positive integer.');
@@ -66,7 +105,7 @@ class SignedUrlGenerator extends UrlGenerator
         // 3) Sort for deterministic signature
         ksort($query);
 
-        // 4) Build the *relative* path (no query)
+        // 4) Build the relative path (no query)
         $relativePath = parent::urlFor($name, $params, [], false);
 
         // 5) Compute HMAC and append it

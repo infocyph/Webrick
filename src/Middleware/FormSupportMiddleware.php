@@ -1,5 +1,18 @@
 <?php
 
+/**
+ * Webrick - Form support middleware.
+ *
+ * Enhances traditional HTML form handling:
+ * - Fast exit when a form body is certainly absent.
+ * - Supports HTTP method override via header or _method field.
+ * - Optional form body sanitization using a shared InputSanitizer.
+ *
+ * Use together with CsrfMiddleware when CSRF protection is required.
+ *
+ * @package Infocyph\Webrick\Middleware
+ */
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Middleware;
@@ -11,18 +24,20 @@ use Infocyph\Webrick\Support\HttpUtils;
 use Infocyph\Webrick\Support\InputSanitizer;
 
 /**
- * FormSupportMiddleware
- *
- * • Cheap guard to skip work when a form body is certainly absent
- * • HTML form method-override: header or _method field
- * • (Optional) sanitize form body via shared InputSanitizer
- *
- * Use together with CsrfMiddleware if you need CSRF protection.
+ * Middleware that provides HTML form ergonomics (method override and optional sanitization).
  */
 final class FormSupportMiddleware
 {
+    /** Marker attribute set by InputSanitizerMiddleware for body sanitization. */
     private const ATTR_F = InputSanitizerMiddleware::ATTR_F;
 
+    /**
+     * Configure form support behavior.
+     *
+     * @param string               $overrideHeader Header name for method override (e.g., X-HTTP-Method-Override).
+     * @param bool                 $sanitize       Whether to sanitize form bodies using the shared sanitizer.
+     * @param InputSanitizer|null  $sanitizer      Optional sanitizer; defaults to a new InputSanitizer.
+     */
     public function __construct(
         private readonly string $overrideHeader = 'X-HTTP-Method-Override',
         private readonly bool $sanitize = true,
@@ -31,6 +46,19 @@ final class FormSupportMiddleware
         $this->sanitizer ??= new InputSanitizer();
     }
 
+    /**
+     * Apply method override and optionally sanitize form bodies.
+     *
+     * Flow:
+     * 1) If not a POST with form Content-Type or explicitly empty, still honor header-based override and return.
+     * 2) Otherwise apply header-based override first, then _method field if enabled and present.
+     * 3) Optionally sanitize the form body if not already sanitized globally.
+     *
+     * @param Request $req  Incoming request.
+     * @param Closure $next Next handler.
+     *
+     * @return Response Downstream response.
+     */
     public function __invoke(Request $req, Closure $next): Response
     {
         // 1) Fast exits when there cannot be a classic form body
@@ -62,6 +90,14 @@ final class FormSupportMiddleware
 
     /* ───────────────────────── helpers ───────────────────────── */
 
+    /**
+     * Apply method override from header or, if allowed, from the _method form field.
+     *
+     * @param Request $req
+     * @param bool    $headerOnly When true, do not consult form field override.
+     *
+     * @return Request Possibly modified request with overridden method.
+     */
     private function applyMethodOverride(Request $req, bool $headerOnly): Request
     {
         $new = $req->getHeaderLine($this->overrideHeader);
@@ -74,9 +110,16 @@ final class FormSupportMiddleware
     }
 
     /**
-     * True when we can assert the body is empty:
-     *   • Content-Length: 0
-     *   • or both CL & TE absent (HTTP/1.0 style)
+     * Determine whether the request body is explicitly empty.
+     *
+     * Considered empty when:
+     * - Content-Length is "0", or
+     * - Both Content-Length and Transfer-Encoding are absent (HTTP/1.0 style),
+     *   or Transfer-Encoding is explicitly "identity".
+     *
+     * @param Request $req
+     *
+     * @return bool True if the body can be considered empty.
      */
     private function isExplicitlyEmpty(Request $req): bool
     {

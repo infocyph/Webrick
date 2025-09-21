@@ -1,5 +1,29 @@
 <?php
 
+/**
+ * Webrick - Cookie encryption middleware.
+ *
+ * Provides authenticated encryption (AES-256-GCM) for selected cookies with:
+ * - Optional compression (zstd/brotli/gzip) chosen adaptively per value.
+ * - Safe chunking for large ciphertexts, with server-side storage fallback.
+ * - Key rotation using a key ring (by index, KID in framing).
+ * - Security hardening for Set-Cookie attributes (Secure/HttpOnly/SameSite).
+ *
+ * Ciphertext framing (base64 of raw bytes):
+ * - v1: 0x31 '1' | MODE(1) | KID(1) | IV(12) | TAG(16) | CT(...)
+ * - v0: MODE(1)  | IV(12)  | TAG(16) | CT(...)
+ *
+ * Notes:
+ * - Only cookies whose names start with $cookiePrefix are encrypted/decrypted.
+ * - AAD binds ciphertext to its logical cookie name + KID + compression mode.
+ * - Compression mode byte: '0' none, 'z' zstd, 'b' brotli, 'g' gzip.
+ * - Optional server-side storage pointer uses the cookie value "S:<id>".
+ *   The cache blob format (v1) is "C1:<8-hex-chk>:<base64-ciphertext>" where
+ *   chk = first 8 hex chars of sha3-256 over the base64 ciphertext.
+ *
+ * @package Infocyph\Webrick\Middleware
+ */
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Middleware;
@@ -17,17 +41,7 @@ use Random\RandomException;
 use RuntimeException;
 
 /**
- * Encrypted cookies (AES-256-GCM) with compression, chunking and key rotation.
- *
- * • Only cookies with names that start with $cookiePrefix are processed.
- * • AEAD AAD binds ciphertext to its logical cookie name + key id + compression mode.
- * • Ciphertext framing (base64 of raw bytes):
- *      v1: 0x31 '1' | MODE(1) | KID(1) | IV(12) | TAG(16) | CT(...)
- *      v0: MODE(1)  | IV(12)  | TAG(16) | CT(...)
- * • Compression mode byte: '0' none, 'z' zstd, 'b' brotli, 'g' gzip
- * • Optional server-side storage fallback pointer (“S:<id>”).
- *   Stored cache blob (v1): "C1:<8-hex-checksum>:<base64-ciphertext>"
- *   - checksum = first 8 hex chars of SHA-256 over the base64 ciphertext
+ * Encrypt and authenticate outbound cookies; decrypt inbound cookies.
  */
 final class CookieEncryptionMiddleware
 {
@@ -54,6 +68,21 @@ final class CookieEncryptionMiddleware
     /** current encryption key id (index into $keys) */
     private int $kid;
 
+    /**
+     * Configure cookie encryption and storage settings.
+     *
+     * @param string|array<int,string>    $keyOrKeys     32B key or list of 32B keys; index 0 is default KID.
+     * @param string                      $cookiePrefix  Cookie name prefix to process (others pass through).
+     * @param int                         $maxBytes      Max bytes per cookie part (safe headroom under ~4k).
+     * @param CacheItemPoolInterface|null $store         Optional PSR-6 cache for storage fallback.
+     * @param int                         $storeTtl      TTL for server-side stored ciphertext (seconds).
+     * @param bool                        $dropOnDecryptFailure Omit cookie when decrypt/auth fails.
+     * @param bool                        $forceSecure   Enforce Secure attribute on encrypted cookies.
+     * @param bool                        $forceHttpOnly Enforce HttpOnly attribute on encrypted cookies.
+     * @param string|null                 $defaultSameSite Default SameSite value; null to leave unset.
+     *
+     * @throws InvalidArgumentException If keys are missing/invalid or maxBytes out of range.
+     */
     public function __construct(
         string|array $keyOrKeys,                  // 32B key or list of 32B keys (key[0] is default)
         private string $cookiePrefix = 'enc_',
@@ -90,7 +119,15 @@ final class CookieEncryptionMiddleware
         }
     }
 
-    /** Rotate the active encryption key by index (0..count-1). */
+    /**
+     * Rotate the active encryption key by index.
+     *
+     * @param int $kid Key index (0..count-1).
+     *
+     * @return void
+     *
+     * @throws InvalidArgumentException When the index is unknown.
+     */
     public function rotateToKid(int $kid): void
     {
         if (!isset($this->keys[$kid])) {
@@ -101,6 +138,14 @@ final class CookieEncryptionMiddleware
 
     /* ───────────── pipeline ───────────── */
 
+    /**
+     * Decrypt inbound cookies before handling; encrypt outbound Set-Cookie headers after.
+     *
+     * @param Request $req
+     * @param Closure $next
+     *
+     * @return Response Response with encrypted Set-Cookie headers.
+     */
     public function __invoke(Request $req, Closure $next): Response
     {
         // decrypt incoming
@@ -115,6 +160,13 @@ final class CookieEncryptionMiddleware
 
     /* ───────────── decrypt path ───────────── */
 
+    /**
+     * Decrypt all cookies with the configured prefix and reassemble chunked values.
+     *
+     * @param array<string,string> $cookies Incoming cookie map.
+     *
+     * @return array<string,mixed> Cookie map with decrypted values (others pass through).
+     */
     private function decryptAll(array $cookies): array
     {
         $rx = '/^(' . preg_quote($this->cookiePrefix, '/') . '[^.]+)(?:\.p(\d+))?$/';
@@ -144,6 +196,14 @@ final class CookieEncryptionMiddleware
         return $out;
     }
 
+    /**
+     * Decrypt a single cookie ciphertext (base64 string).
+     *
+     * @param string $baseName Logical cookie name (without .pN suffix).
+     * @param string $cipher   Base64 ciphertext or "S:<id>" pointer.
+     *
+     * @return mixed|null Decrypted value or null when authentication fails.
+     */
     private function decrypt(string $baseName, string $cipher): mixed
     {
         // server-side store indirection
@@ -226,6 +286,13 @@ final class CookieEncryptionMiddleware
         return null; // auth failed with all keys
     }
 
+    /**
+     * Fetch a stored ciphertext/cache blob by id.
+     *
+     * @param string $id Storage key id (hex).
+     *
+     * @return mixed|null Stored payload or null when not found.
+     */
     private function fromStore(string $id): mixed
     {
         if ($this->store === null) {
@@ -237,7 +304,10 @@ final class CookieEncryptionMiddleware
 
     /**
      * Decode and validate a v1 cache blob ("C1:<chk>:<b64cipher>").
-     * Returns the base64 ciphertext string on success, or null on failure.
+     *
+     * @param string $blob The cache blob.
+     *
+     * @return string|null The base64 ciphertext string on success; null on failure.
      */
     private function decodeCacheBlobV1(string $blob): ?string
     {
@@ -269,6 +339,14 @@ final class CookieEncryptionMiddleware
         return $b64;
     }
 
+    /**
+     * Decompress plaintext according to mode.
+     *
+     * @param string $mode Compression mode flag.
+     * @param string $pt   Raw plaintext (possibly compressed).
+     *
+     * @return string|null Decompressed or original plaintext; null for unsupported mode.
+     */
     private function decompress(string $mode, string $pt): mixed
     {
         return match ($mode) {
@@ -281,6 +359,13 @@ final class CookieEncryptionMiddleware
 
     /* ───────────── encrypt path ───────────── */
 
+    /**
+     * Replace Set-Cookie headers with encrypted equivalents for matching names.
+     *
+     * @param Response $resp Outgoing response.
+     *
+     * @return Response Response with updated Set-Cookie headers.
+     */
     private function encryptAll(Response $resp): Response
     {
         $set = $resp->getHeader('Set-Cookie');
@@ -319,8 +404,16 @@ final class CookieEncryptionMiddleware
     }
 
     /**
-     * @return array<int,string> 1-based segments
-     * @throws RandomException|LengthException|RuntimeException
+     * Split ciphertext into cookie-sized segments or store server-side if too large.
+     *
+     * @param string $baseName  Logical cookie name.
+     * @param string $plaintext Plaintext payload.
+     *
+     * @return array<int,string> 1-based segments.
+     *
+     * @throws RandomException
+     * @throws LengthException
+     * @throws RuntimeException
      */
     private function encryptSegments(string $baseName, string $plaintext): array
     {
@@ -354,6 +447,14 @@ final class CookieEncryptionMiddleware
 
     /**
      * Compress (best of zstd/brotli/gzip) → AES-256-GCM → base64.
+     *
+     * @param string $baseName Logical cookie name.
+     * @param string $pt       Plaintext to encrypt.
+     *
+     * @return string Base64 ciphertext.
+     *
+     * @throws RandomException
+     * @throws RuntimeException
      */
     private function encryptBlob(string $baseName, string $pt): string
     {
@@ -380,7 +481,13 @@ final class CookieEncryptionMiddleware
         return base64_encode($raw);
     }
 
-    /** @return array{0:string,1:string} [payload, mode] */
+    /**
+     * Choose best compression among zstd, brotli, gzip, or none.
+     *
+     * @param string $pt Plaintext.
+     *
+     * @return array{0:string,1:string} [payload, mode]
+     */
     private function bestCompress(string $pt): array
     {
         $best = $pt;
@@ -402,7 +509,15 @@ final class CookieEncryptionMiddleware
         return [$best, $mode];
     }
 
-    /** Additional Authenticated Data binding */
+    /**
+     * Build Additional Authenticated Data (AAD) for AES-GCM.
+     *
+     * @param string $baseName Logical cookie name.
+     * @param int    $kid      Key id.
+     * @param string $mode     Compression mode flag.
+     *
+     * @return string AAD string used for encryption/decryption.
+     */
     private function aad(string $baseName, int $kid, string $mode): string
     {
         // Bind logical identity + key id + compression mode
@@ -411,7 +526,13 @@ final class CookieEncryptionMiddleware
 
     /* ───────────── cache blob helpers ───────────── */
 
-    /** Build v1 cache blob: "C1:<8-hex-chk>:<b64cipher>" */
+    /**
+     * Build v1 cache blob "C1:<8-hex-chk>:<b64cipher>".
+     *
+     * @param string $b64Cipher Base64 ciphertext.
+     *
+     * @return string Encoded cache blob.
+     */
     private function encodeCacheBlobV1(string $b64Cipher): string
     {
         $chk = substr(hash('sha3-256', $b64Cipher), 0, 8);
@@ -421,9 +542,13 @@ final class CookieEncryptionMiddleware
     /* ───────────── helpers ───────────── */
 
     /**
-     * Minimal Set-Cookie parser:
-     *  returns [name, value, attrs[]] or null when unparseable.
-     *  value is raw (still urlencoded per RFC).
+     * Minimal Set-Cookie parser.
+     *
+     * @param string $line Raw Set-Cookie line.
+     *
+     * @return array{name:string, value:string, attrs:array<string,bool|string>}|null
+     *               Returns [name, value, attrs[]] or null when unparseable.
+     *               Value is raw (still urlencoded per RFC).
      */
     private function parseSetCookie(string $line): ?array
     {
@@ -446,7 +571,12 @@ final class CookieEncryptionMiddleware
     }
 
     /**
-     * Re-apply attributes (and enforce security defaults) to the Cookie builder.
+     * Re-apply (and enforce) cookie attributes to the builder.
+     *
+     * @param Cookie               $cookie Cookie builder.
+     * @param array<string,bool|string> $attrs  Parsed attributes from original Set-Cookie.
+     *
+     * @return Cookie Cookie with attributes applied and security defaults enforced.
      */
     private function applyAttrs(Cookie $cookie, array $attrs): Cookie
     {
@@ -490,6 +620,13 @@ final class CookieEncryptionMiddleware
         return $cookie;
     }
 
+    /**
+     * Whether attributes indicate SameSite=None.
+     *
+     * @param array<string,bool|string> $attrs
+     *
+     * @return bool True when SameSite=None is configured.
+     */
     private function isSameSiteNone(array $attrs): bool
     {
         if (!isset($attrs['samesite'])) {
@@ -498,6 +635,14 @@ final class CookieEncryptionMiddleware
         return strcasecmp((string)$attrs['samesite'], 'none') === 0;
     }
 
+    /**
+     * Whether a flag-like attribute is present (e.g., Secure/HttpOnly).
+     *
+     * @param array<string,bool|string> $attrs
+     * @param string                    $flag
+     *
+      * @return bool True when the attribute exists as a valueless flag.
+     */
     private function hasFlag(array $attrs, string $flag): bool
     {
         return array_any($attrs, fn ($v, $k) => $k === $flag && $v === true);

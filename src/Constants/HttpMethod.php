@@ -1,7 +1,26 @@
 <?php
 
+/**
+ * Webrick - HTTP method enumeration and helpers.
+ *
+ * Defines a comprehensive set of HTTP verbs, including core methods, CDN/cache
+ * extensions, and WebDAV methods. Provides helper predicates to determine
+ * safety, idempotency, and whether a request body is allowed, along with
+ * case-insensitive parsing utilities.
+ *
+ * @package Infocyph\Webrick\Constants
+ */
+
 namespace Infocyph\Webrick\Constants;
 
+/**
+ * HTTP methods as string-backed enum with convenience helpers.
+ *
+ * Includes:
+ * - Core methods (GET, POST, etc.)
+ * - CDN/cache methods (PURGE, BAN)
+ * - WebDAV methods (PROPFIND, MKCOL, etc.)
+ */
 enum HttpMethod: string
 {
     /* core */
@@ -35,11 +54,12 @@ enum HttpMethod: string
     case LINK = 'LINK';
     case UNLINK = 'UNLINK';
 
-
     /**
      * Determine if the HTTP method is safe (read-only).
      *
-     * @return bool true if the method is safe, false otherwise
+     * Safe methods are intended only for retrieval and must not have side effects.
+     *
+     * @return bool True if the method is safe; false otherwise.
      *
      * @see https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/GET
      * @see https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/HEAD
@@ -55,17 +75,12 @@ enum HttpMethod: string
     }
 
     /**
-     * Determine if the HTTP method is idempotent (can be called multiple times without side effects).
+     * Determine if the HTTP method is idempotent (repeatable without additional effects).
      *
-     * The following HTTP methods are considered idempotent:
-     * - GET
-     * - HEAD
-     * - PUT
-     * - DELETE
-     * - OPTIONS
-     * - TRACE
+     * Idempotent methods can be called multiple times producing the same outcome,
+     * as defined by the HTTP specification.
      *
-     * @return bool true if the method is idempotent, false otherwise
+     * @return bool True if the method is idempotent; false otherwise.
      *
      * @see https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/GET
      * @see https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/HEAD
@@ -78,15 +93,12 @@ enum HttpMethod: string
     }
 
     /**
-     * Determine if the HTTP method allows a request body.
+     * Determine if the HTTP method allows a request body (per common practice).
      *
-     * The following HTTP methods do not allow a request body:
-     * - TRACE
-     * - HEAD
-     * - DELETE
-     * - CONNECT
+     * Note: This reflects widely implemented behavior and interoperability concerns,
+     * not strictly the RFC’s allowance for a message body on any request.
      *
-     * @return bool true if the method allows a request body, false otherwise
+     * @return bool True if the method commonly allows a request body; false otherwise.
      */
     public function allowsBody(): bool
     {
@@ -94,11 +106,13 @@ enum HttpMethod: string
     }
 
     /**
-     * Check if the HTTP method allows a request body according to RFC 9110.
+     * Determine if a request body is allowed according to RFC 9110.
      *
-     * @return bool true if the method allows a request body, false otherwise
+     * RFC 9110 only explicitly forbids a body for TRACE; other methods may have a body.
      *
-     * @see https://tools.ietf.org/html/rfc9110#section-5.13
+     * @return bool True if the method allows a request body; false otherwise.
+     *
+     * @see https://www.rfc-editor.org/rfc/rfc9110#name-request-method
      */
     public function specAllowsBody(): bool
     {
@@ -106,11 +120,12 @@ enum HttpMethod: string
     }
 
     /**
-     * Attempt to resolve a HTTP method from a string.
+     * Case-insensitive attempt to resolve an HTTP method from a string.
      *
-     * This is a case-insensitive version of {@see self::tryFrom()}.
+     * Equivalent to {@see self::tryFrom()} after normalizing to upper-case.
      *
      * @param string $verb The HTTP method to resolve.
+     *
      * @return self|null The resolved HTTP method, or null if not supported.
      */
     public static function tryFromString(string $verb): ?self
@@ -119,9 +134,9 @@ enum HttpMethod: string
     }
 
     /**
-     * Attempt to resolve a HTTP method from a string.
+     * Case-insensitive resolution of an HTTP method from a string or exception on failure.
      *
-     * This is a case-insensitive version of {@see self::tryFrom()}.
+     * Equivalent to {@see self::tryFromString()} but throws on unsupported input.
      *
      * @param string $verb The HTTP method to resolve.
      *
@@ -136,12 +151,11 @@ enum HttpMethod: string
     }
 
     /**
-     * Get all HTTP methods.
+     * Get all supported HTTP methods.
      *
-     * This method returns an array of all supported HTTP methods.
-     * The array will contain all the constants defined in this class.
+     * The list is cached statically for repeated calls.
      *
-     * @return array<int, self> An array of all supported HTTP methods.
+     * @return array<int,self> Ordered list of all enum cases.
      */
     public static function all(): array
     {

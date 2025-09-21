@@ -7,13 +7,32 @@ namespace Infocyph\Webrick\Router\Url;
 use Infocyph\Webrick\Router\Route\Collection;
 use InvalidArgumentException;
 
+/**
+ * Generates URLs for named routes, controller actions, and arbitrary paths.
+ *
+ * This class provides a fluent interface for generating URLs with support for:
+ * - Named routes with parameters
+ * - Controller/action references
+ * - Arbitrary paths with query parameters
+ * - Relative and absolute URL generation
+ */
 class UrlGenerator
 {
+    /**
+     * The base URI to prepend for absolute URLs.
+     */
     private string $baseUri;
+
+    /**
+     * Collection of registered routes.
+     */
     private Collection $routes;
 
     /**
-     * @param string $baseUri Typically "", since domains are applied elsewhere.
+     * Initializes the URL generator with base URI and route collection.
+     *
+     * @param string $baseUri Base URI (typically empty string as domains are handled elsewhere)
+     * @param Collection $routes Collection of registered routes
      */
     public function __construct(string $baseUri, Collection $routes)
     {
@@ -27,12 +46,14 @@ class UrlGenerator
      * ----------------------------------------------------------------*/
 
     /**
-     * Build a URL for a **named route**.
+     * Build a URL for a named route.
      *
-     * @param non-empty-string $name
-     * @param array<string,scalar|null> $params Placeholder values
-     * @param array<string,scalar|array|null> $query Query parameters
-     * @param bool $absolute Prepend baseUri?
+     * @param non-empty-string $name Name of the route
+     * @param array<string,scalar|null> $params Route parameter values
+     * @param array<string,scalar|array|null> $query Query string parameters
+     * @param bool $absolute Whether to generate an absolute URL
+     * @return string Generated URL
+     * @throws InvalidArgumentException If the named route is not found
      */
     public function urlFor(
         string $name,
@@ -50,11 +71,12 @@ class UrlGenerator
     }
 
     /**
-     * Build a URL to an **arbitrary path**.
+     * Build a URL to an arbitrary path.
      *
-     * @param non-empty-string $path Leading slash optional
-     * @param array<string,scalar|array|null> $query
-     * @param bool $absolute
+     * @param non-empty-string $path URL path (leading slash optional)
+     * @param array<string,scalar|array|null> $query Query string parameters
+     * @param bool $absolute Whether to generate an absolute URL
+     * @return string Generated URL
      */
     public function to(
         string $path,
@@ -65,12 +87,14 @@ class UrlGenerator
     }
 
     /**
-     * Build a URL by **handler reference**.
+     * Build a URL by handler reference.
      *
-     * @param callable|string $handler Class::method or callable name
-     * @param array<string,scalar|null> $params
-     * @param array<string,scalar|array|null> $query
-     * @param bool $absolute
+     * @param callable|string $handler Callable or "Class::method" string
+     * @param array<string,scalar|null> $params Route parameters
+     * @param array<string,scalar|array|null> $query Query string parameters
+     * @param bool $absolute Whether to generate an absolute URL
+     * @return string Generated URL
+     * @throws InvalidArgumentException If no route is found for the handler
      */
     public function action(
         callable|string $handler,
@@ -92,11 +116,12 @@ class UrlGenerator
      * ----------------------------------------------------------------*/
 
     /**
-     * Replace `{name}` or `{name:type}` in the template with URL-encoded scalars.
+     * Replaces placeholders in the URL template with encoded parameter values.
      *
-     * @param string $template
-     * @param array<string,scalar|null> $params
-     * @return string
+     * @param string $template URL template with {param} or {param:type} placeholders
+     * @param array<string,scalar|null> $params Parameter values
+     * @return string URL with placeholders replaced
+     * @throws InvalidArgumentException If parameters are missing or invalid
      */
     private function substitute(string $template, array $params): string
     {
@@ -140,11 +165,12 @@ class UrlGenerator
     }
 
     /**
-     * Join path + query and optionally prepend baseUri.
+     * Constructs the final URL from path, query parameters, and base URI.
      *
-     * @param string $path
-     * @param array<string,scalar|array|null> $query
-     * @param bool $absolute
+     * @param string $path URL path
+     * @param array<string,scalar|array|null> $query Query parameters
+     * @param bool $absolute Whether to include the base URI
+     * @return string The fully constructed URL
      */
     private function build(string $path, array $query, bool $absolute): string
     {

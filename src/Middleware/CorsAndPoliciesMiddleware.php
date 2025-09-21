@@ -1,5 +1,16 @@
 <?php
 
+/**
+ * Webrick - CORS and security policies middleware.
+ *
+ * Applies CORS headers for preflight and simple/actual requests, with support for
+ * route-level overrides via the #[Cors] attribute. Also attaches a curated set of
+ * security headers (HSTS, COOP/COEP/CORP via SecurityHeaders::tight), and optionally
+ * sets Client Hints (Accept-CH) and Timing-Allow-Origin.
+ *
+ * @package Infocyph\Webrick\Middleware
+ */
+
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Middleware;
@@ -11,11 +22,16 @@ use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Response\Headers\SecurityHeaders;
 use Infocyph\Webrick\Router\Definition\Attribute\Cors;
 
+/**
+ * CORS and security policy middleware with route-level overrides.
+ */
 final readonly class CorsAndPoliciesMiddleware
 {
-    /** @param string[] $origins Allowed origins (['*'] ⇒ wildcard) */
-    /** @param string[] $acceptCh Client Hints to request via Accept-CH */
-    /** @param string[] $timingAllowOrigins Origins for Timing-Allow-Origin (e.g. ['*'] or list) */
+    /**
+     * @param array<int,string> $origins Allowed origins (['*'] ⇒ wildcard).
+     * @param array<int,string> $acceptCh Client Hints to request via Accept-CH.
+     * @param array<int,string> $timingAllowOrigins Origins for Timing-Allow-Origin (e.g., ['*'] or list).
+     */
     public function __construct(
         // CORS
         private array $origins = ['*'],
@@ -53,6 +69,18 @@ final readonly class CorsAndPoliciesMiddleware
     ) {
     }
 
+    /**
+     * Apply CORS and policies to preflight and normal requests.
+     *
+     * - Reads route-level #[Cors] overrides when present.
+     * - Reflects Origin when allowed; otherwise uses wildcard if credentials are off.
+     * - Registers Vary tokens when outcome depends on Origin or preflight headers.
+     *
+     * @param Request $req  Incoming request.
+     * @param Closure $next Next handler.
+     *
+     * @return Response Response with CORS and security headers applied.
+     */
     public function __invoke(Request $req, Closure $next): Response
     {
         // Route override via #[Cors]
@@ -115,6 +143,18 @@ final readonly class CorsAndPoliciesMiddleware
 
     /* ───────────────────────── CORS ───────────────────────── */
 
+    /**
+     * Attach CORS headers to the response based on resolved policy/origin.
+     *
+     * @param Response $r        Response to modify.
+     * @param Request  $req      Current request.
+     * @param array<string,mixed> $p CORS policy.
+     * @param string|null $acao  Access-Control-Allow-Origin value to reflect (or null).
+     * @param bool $wildcard     Whether '*' is allowed (only when credentials=false).
+     * @param bool $preflight    Whether handling a preflight request.
+     *
+     * @return Response Response with CORS headers.
+     */
     private function applyCors(
         Response $r,
         Request $req,
@@ -175,6 +215,12 @@ final readonly class CorsAndPoliciesMiddleware
     /**
      * Decide whether to reflect a concrete origin or use '*'.
      * Returns [acao|null, wildcardUsed].
+     *
+     * @param string $origin   Origin header value.
+     * @param array<int,string> $allowed Allowed origins.
+     * @param bool   $withCreds Whether credentials are allowed.
+     *
+     * @return array{0:?string,1:bool} Tuple of [ACAO value or null, wildcard used].
      */
     private function resolveAllowedOrigin(string $origin, array $allowed, bool $withCreds): array
     {
@@ -199,12 +245,27 @@ final readonly class CorsAndPoliciesMiddleware
         return [null, false]; // not allowed
     }
 
+    /**
+     * Check whether a requested method is allowed by the policy.
+     *
+     * @param string $method   Requested method.
+     * @param string $csvList  CSV list of allowed methods.
+     *
+     * @return bool True if allowed.
+     */
     private function methodAllowed(string $method, string $csvList): bool
     {
         $list = array_map('trim', explode(',', $csvList));
         return in_array($method, $list, true);
     }
 
+    /**
+     * Normalize a string|array header configuration to a CSV string.
+     *
+     * @param string|array<int,string> $v
+     *
+     * @return string CSV value.
+     */
     private function csv(string|array $v): string
     {
         if (is_string($v)) {
@@ -214,11 +275,27 @@ final readonly class CorsAndPoliciesMiddleware
         return implode(', ', array_unique($v));
     }
 
+    /**
+     * Whether a header configuration represents a wildcard.
+     *
+     * @param string|array<int,string> $v
+     *
+     * @return bool True when '*' wildcard is configured.
+     */
     private function isWildcard(string|array $v): bool
     {
         return is_string($v) ? trim($v) === '*' : ($v === ['*']);
     }
 
+    /**
+     * Set a header only if absent.
+     *
+     * @param Response $r
+     * @param string   $name
+     * @param string   $value
+     *
+     * @return Response Response with header ensured.
+     */
     private function setIfAbsent(Response $r, string $name, string $value): Response
     {
         return $r->hasHeader($name) ? $r : $r->withSmartHeader($name, $value);
@@ -226,6 +303,13 @@ final readonly class CorsAndPoliciesMiddleware
 
     /* ───────────────────── Policies (no NEL here) ─────────────────── */
 
+    /**
+     * Attach security headers (HSTS, CSP, CH, TAO) when configured and absent.
+     *
+     * @param Response $r Response to augment.
+     *
+     * @return Response Response with security headers applied.
+     */
     private function applyPolicies(Response $r): Response
     {
         // Security headers bundle (HSTS/COOP/COEP/CORP, etc.)
