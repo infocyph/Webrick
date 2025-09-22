@@ -16,13 +16,20 @@ final class Vary implements \Stringable
     private array $tokens = [];
 
     /**
-     * Create a new, empty Vary builder.
+     * Render the Vary header value.
      *
-     * @return self New Vary instance with no tokens.
+     * - Returns "*" if wildcard token is present.
+     * - Otherwise returns a comma+space separated list of canonicalized token names.
+     *
+     * @return string Vary header value suitable for sending in responses
      */
-    public static function new(): self
+    public function __toString(): string
     {
-        return new self();
+        if (isset($this->tokens['*'])) {
+            return '*';
+        }
+        $names = array_map(self::canonicalHeader(...), array_keys($this->tokens));
+        return implode(', ', $names);
     }
 
     /**
@@ -49,6 +56,16 @@ final class Vary implements \Stringable
             $v->tokens[$t] = true;
         }
         return $v;
+    }
+
+    /**
+     * Create a new, empty Vary builder.
+     *
+     * @return self New Vary instance with no tokens.
+     */
+    public static function new(): self
+    {
+        return new self();
     }
 
     /* ------------------------------------------------------------------ */
@@ -108,20 +125,17 @@ final class Vary implements \Stringable
     }
 
     /**
-     * Render the Vary header value.
+     * Convert a normalized lower-case token to the canonical header form.
      *
-     * - Returns "*" if wildcard token is present.
-     * - Otherwise returns a comma+space separated list of canonicalized token names.
+     * Example: "accept-encoding" => "Accept-Encoding"
      *
-     * @return string Vary header value suitable for sending in responses
+     * @param string $lower Normalized lower-case token
+     * @return string Canonical header token with dash-aware title-casing
      */
-    public function __toString(): string
+    private static function canonicalHeader(string $lower): string
     {
-        if (isset($this->tokens['*'])) {
-            return '*';
-        }
-        $names = array_map(self::canonicalHeader(...), array_keys($this->tokens));
-        return implode(', ', $names);
+        // e.g. "accept-encoding" → "Accept-Encoding"
+        return ucwords($lower, '-');
     }
 
     /* ------------------------------------------------------------------ */
@@ -137,19 +151,5 @@ final class Vary implements \Stringable
     private static function norm(string $h): string
     {
         return strtolower(trim($h));
-    }
-
-    /**
-     * Convert a normalized lower-case token to the canonical header form.
-     *
-     * Example: "accept-encoding" => "Accept-Encoding"
-     *
-     * @param string $lower Normalized lower-case token
-     * @return string Canonical header token with dash-aware title-casing
-     */
-    private static function canonicalHeader(string $lower): string
-    {
-        // e.g. "accept-encoding" → "Accept-Encoding"
-        return ucwords($lower, '-');
     }
 }

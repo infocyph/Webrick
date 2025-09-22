@@ -53,15 +53,15 @@ final class GatewayHardeningMiddleware
         'upgrade',
     ];
 
-    /** compiled regex list for this instance (populated from static cache) */
-    private array $hostRegex = [];
+    /** per-process cache: key = sha1(json_encode($trustedHosts)), value = list of compiled regex */
+    private static array $hostRegexCache = [];
     private bool $allowAllHosts = false;
 
     /** EndUser instance for the current request (set in __invoke) */
     private ?EndUser $endUser = null;
 
-    /** per-process cache: key = sha1(json_encode($trustedHosts)), value = list of compiled regex */
-    private static array $hostRegexCache = [];
+    /** compiled regex list for this instance (populated from static cache) */
+    private array $hostRegex = [];
 
     /**
      * Configure gateway hardening knobs and pre-compile host allow-list.
@@ -147,45 +147,45 @@ final class GatewayHardeningMiddleware
         }
     }
 
-    /* ───────────── step helpers ───────────── */
+    /* ───────────── static cache ───────────── */
 
     /**
-     * Enforce Host allow-list; reject requests with untrusted/empty Host.
+     * Compile trusted host patterns to case-insensitive regexes (cached per process).
      *
-     * @param Request $req
+     * @param array<int,string> $trustedHosts Host allow-list patterns.
      *
-     * @return Response|null 400 response on rejection; null when allowed.
+     * @return list<string> Compiled regexes for this allow-list (cached per process).
      */
-    private function rejectIfUntrustedHost(Request $req): ?Response
+    private static function compileHostRegex(array $trustedHosts): array
     {
-        if ($this->allowAllHosts || $this->trustedHosts === []) {
-            return null;
+        if ($trustedHosts === [] || $trustedHosts === ['*']) {
+            return []; // caller uses $this->allowAllHosts to short-circuit
         }
-
-        $host = trim($req->getUri()->getHost());
-
-        // Treat empty Host as invalid when enforcing an allow-list
-        if ($host === '') {
-            return Response::plaintext('Missing or empty Host header.', 400);
+        $key = hash('xxh3', json_encode(array_values($trustedHosts), JSON_THROW_ON_ERROR));
+        if (!isset(self::$hostRegexCache[$key])) {
+            $compiled = [];
+            foreach ($trustedHosts as $p) {
+                $escaped = str_replace(['.', '*'], ['\.', '.*'], $p);
+                $compiled[] = '#^' . $escaped . '$#i';
+            }
+            self::$hostRegexCache[$key] = $compiled;
         }
-
-        return $this->matchesHost($host)
-            ? null
-            : Response::plaintext('Untrusted Host header.', 400);
+        return self::$hostRegexCache[$key];
     }
 
+    /* ───────────── general helpers ───────────── */
+
     /**
-     * Block requests from end-user IPs that match deny CIDRs.
+     * Case-insensitive string equality.
      *
-     * @return Response|null 403 response when blocked; null when allowed.
+     * @param string $a
+     * @param string $b
+     *
+     * @return bool
      */
-    private function denyIfBlockedEndUser(): ?Response
+    private static function equalsIgnoreCase(string $a, string $b): bool
     {
-        $clientIp = $this->endUser?->ip(); // honors trusted proxy headers
-        if ($clientIp && $this->cidrHit($clientIp, $this->denyIpCidrs)) {
-            return Response::plaintext("Forbidden – $clientIp is not allowed.", 403);
-        }
-        return null;
+        return strcasecmp($a, $b) === 0;
     }
 
     /**
@@ -208,24 +208,33 @@ final class GatewayHardeningMiddleware
     }
 
     /**
-     * Enforce HTTPS by redirecting to https:// with optional port.
+     * Determine if an IP matches any of the provided CIDRs.
      *
-     * @param Request $req
+     * @param string|null $ip    Candidate IP address.
+     * @param array<int,string> $cidrs CIDR ranges.
      *
-     * @return Response|null 308 redirect response; null if already HTTPS or disabled.
+     * @return bool True on match; false otherwise.
      */
-    private function redirectIfHttpsEnforced(Request $req): ?Response
+    private function cidrHit(?string $ip, array $cidrs): bool
     {
-        if (!$this->enforceHttps) {
-            return null;
+        if ($ip === null || $cidrs === []) {
+            return false;
         }
-        $uri = $req->getUri();
-        if ($uri->getScheme() === 'https') {
-            return null;
+        return array_any($cidrs, fn ($cidr) => IpCidr::match($ip, $cidr));
+    }
+
+    /**
+     * Block requests from end-user IPs that match deny CIDRs.
+     *
+     * @return Response|null 403 response when blocked; null when allowed.
+     */
+    private function denyIfBlockedEndUser(): ?Response
+    {
+        $clientIp = $this->endUser?->ip(); // honors trusted proxy headers
+        if ($clientIp && $this->cidrHit($clientIp, $this->denyIpCidrs)) {
+            return Response::plaintext("Forbidden – $clientIp is not allowed.", 403);
         }
-        $port = ($this->httpsPort === 443) ? null : $this->httpsPort; // avoid :443 in Location
-        $target = $uri->withScheme('https')->withPort($port);
-        return Response::redirect((string)$target, 308);
+        return null;
     }
 
     /**
@@ -275,21 +284,6 @@ final class GatewayHardeningMiddleware
         return $resp;
     }
 
-    /* ───────────── general helpers ───────────── */
-
-    /**
-     * Case-insensitive string equality.
-     *
-     * @param string $a
-     * @param string $b
-     *
-     * @return bool
-     */
-    private static function equalsIgnoreCase(string $a, string $b): bool
-    {
-        return strcasecmp($a, $b) === 0;
-    }
-
     /**
      * Check if a host matches any compiled allow-list pattern.
      *
@@ -303,19 +297,73 @@ final class GatewayHardeningMiddleware
     }
 
     /**
-     * Determine if an IP matches any of the provided CIDRs.
+     * Parse a Connection header line into lower-cased tokens.
      *
-     * @param string|null $ip    Candidate IP address.
-     * @param array<int,string> $cidrs CIDR ranges.
+     * @param string $line Raw Connection header value.
      *
-     * @return bool True on match; false otherwise.
+     * @return array<int,string> Tokens (lower-cased), empty when header missing.
      */
-    private function cidrHit(?string $ip, array $cidrs): bool
+    private function parseConnectionTokens(string $line): array
     {
-        if ($ip === null || $cidrs === []) {
-            return false;
+        if ($line === '') {
+            return [];
         }
-        return array_any($cidrs, fn ($cidr) => IpCidr::match($ip, $cidr));
+        $out = [];
+        foreach (explode(',', $line) as $t) {
+            $t = strtolower(trim($t));
+            if ($t !== '') {
+                $out[] = $t;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Enforce HTTPS by redirecting to https:// with optional port.
+     *
+     * @param Request $req
+     *
+     * @return Response|null 308 redirect response; null if already HTTPS or disabled.
+     */
+    private function redirectIfHttpsEnforced(Request $req): ?Response
+    {
+        if (!$this->enforceHttps) {
+            return null;
+        }
+        $uri = $req->getUri();
+        if ($uri->getScheme() === 'https') {
+            return null;
+        }
+        $port = ($this->httpsPort === 443) ? null : $this->httpsPort; // avoid :443 in Location
+        $target = $uri->withScheme('https')->withPort($port);
+        return Response::redirect((string)$target, 308);
+    }
+
+    /* ───────────── step helpers ───────────── */
+
+    /**
+     * Enforce Host allow-list; reject requests with untrusted/empty Host.
+     *
+     * @param Request $req
+     *
+     * @return Response|null 400 response on rejection; null when allowed.
+     */
+    private function rejectIfUntrustedHost(Request $req): ?Response
+    {
+        if ($this->allowAllHosts || $this->trustedHosts === []) {
+            return null;
+        }
+
+        $host = trim($req->getUri()->getHost());
+
+        // Treat empty Host as invalid when enforcing an allow-list
+        if ($host === '') {
+            return Response::plaintext('Missing or empty Host header.', 400);
+        }
+
+        return $this->matchesHost($host)
+            ? null
+            : Response::plaintext('Untrusted Host header.', 400);
     }
 
     /**
@@ -352,53 +400,5 @@ final class GatewayHardeningMiddleware
             }
         }
         return $r;
-    }
-
-    /**
-     * Parse a Connection header line into lower-cased tokens.
-     *
-     * @param string $line Raw Connection header value.
-     *
-     * @return array<int,string> Tokens (lower-cased), empty when header missing.
-     */
-    private function parseConnectionTokens(string $line): array
-    {
-        if ($line === '') {
-            return [];
-        }
-        $out = [];
-        foreach (explode(',', $line) as $t) {
-            $t = strtolower(trim($t));
-            if ($t !== '') {
-                $out[] = $t;
-            }
-        }
-        return $out;
-    }
-
-    /* ───────────── static cache ───────────── */
-
-    /**
-     * Compile trusted host patterns to case-insensitive regexes (cached per process).
-     *
-     * @param array<int,string> $trustedHosts Host allow-list patterns.
-     *
-     * @return list<string> Compiled regexes for this allow-list (cached per process).
-     */
-    private static function compileHostRegex(array $trustedHosts): array
-    {
-        if ($trustedHosts === [] || $trustedHosts === ['*']) {
-            return []; // caller uses $this->allowAllHosts to short-circuit
-        }
-        $key = hash('xxh3', json_encode(array_values($trustedHosts), JSON_THROW_ON_ERROR));
-        if (!isset(self::$hostRegexCache[$key])) {
-            $compiled = [];
-            foreach ($trustedHosts as $p) {
-                $escaped = str_replace(['.', '*'], ['\.', '.*'], $p);
-                $compiled[] = '#^' . $escaped . '$#i';
-            }
-            self::$hostRegexCache[$key] = $compiled;
-        }
-        return self::$hostRegexCache[$key];
     }
 }

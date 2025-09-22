@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Response\Negotiation;
 
-use Infocyph\Webrick\Request\Http\RequestHeaders;
 use Infocyph\Webrick\Request\Http\ContentNegotiator;
+use Infocyph\Webrick\Request\Http\RequestHeaders;
 use Infocyph\Webrick\Request\Request;
 
 /**

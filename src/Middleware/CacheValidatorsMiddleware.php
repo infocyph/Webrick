@@ -7,9 +7,9 @@ namespace Infocyph\Webrick\Middleware;
 use Closure;
 use Infocyph\Webrick\Request\Core\Uri;
 use Infocyph\Webrick\Request\Request;
-use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Response\Conditional\ConditionalValidator;
 use Infocyph\Webrick\Response\Conditional\Outcome;
+use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Support\Etag;
 
 /**
@@ -53,22 +53,6 @@ final class CacheValidatorsMiddleware
     }
 
     /**
-     * Sets the default meta provider for all CacheValidatorsMiddleware instances.
-     *
-     * If no meta provider is explicitly passed to the CacheValidatorsMiddleware constructor,
-     * the default meta provider is used instead.
-     *
-     * The default meta provider should be a Closure instance that takes a Request object as its
-     * only argument and returns an array containing the ETag and Last-Modified values for the request.
-     *
-     * @param null|Closure(Request): array{0:string|null,1:int|null} $provider The default meta provider to use
-     */
-    public static function setDefaultMetaProvider(?Closure $provider): void
-    {
-        self::$defaultProvider = $provider;
-    }
-
-    /**
      * Handle a request and return a response.
      *
      * This method is the entry point of the middleware.
@@ -108,152 +92,73 @@ final class CacheValidatorsMiddleware
     }
 
     /**
-     * Resolve the meta provider instance to use for evaluating preconditions.
+     * Sets the default meta provider for all CacheValidatorsMiddleware instances.
      *
-     * This method returns a Closure instance, which is either:
-     *  - The instance's meta provider if set
-     *  - The global default meta provider if set
-     *  - The built-in fallback meta provider otherwise
+     * If no meta provider is explicitly passed to the CacheValidatorsMiddleware constructor,
+     * the default meta provider is used instead.
      *
-     * @return Closure The meta provider instance to use
+     * The default meta provider should be a Closure instance that takes a Request object as its
+     * only argument and returns an array containing the ETag and Last-Modified values for the request.
+     *
+     * @param null|Closure(Request): array{0:string|null,1:int|null} $provider The default meta provider to use
      */
-    private function resolveProvider(): Closure
+    public static function setDefaultMetaProvider(?Closure $provider): void
     {
-        if ($this->metaProvider instanceof Closure) {
-            return $this->metaProvider;
-        }
-        if (self::$defaultProvider instanceof Closure) {
-            return self::$defaultProvider;
-        }
-        return self::fallbackMetaProvider(...);
+        self::$defaultProvider = $provider;
     }
 
     /**
-     * Check if the given request method is GET or HEAD.
+     * Collapse dot segments (RFC 3986-ish) without touching leading slash semantics.
      *
-     * @param Request $req The request to check
-     * @return bool True if the request method is GET or HEAD, false otherwise
+     * This function takes a path string and collapses all occurrences of "." and ".."
+     * while preserving absolute path semantics. "." is ignored, ".." removes the
+     * last segment, and trailing slashes are removed.
+     *
+     * @param string $p The path string to collapse
+     * @return string The collapsed path string
      */
-    private function isGetOrHead(Request $req): bool
+    private static function collapseDotSegments(string $p): string
     {
-        $m = strtoupper($req->getMethod());
-        return $m === 'GET' || $m === 'HEAD';
-    }
-
-    /**
-     * Evaluate If-* preconditions using the resolved meta provider.
-     *
-     * Resolves the meta provider, extracts the ETag and Last-Modified from it,
-     * creates a ConditionalValidator instance with those values, and
-     * evaluates the preconditions against the given request.
-     *
-     * Returns an array containing the ConditionalValidator instance and the
-     * result of the evaluation.
-     *
-     * @param Request $req The request to evaluate preconditions against
-     * @return array [$validator, $result] The ConditionalValidator instance and the result of the evaluation
-     */
-    private function evaluatePreconditionsWithProvider(Request $req): array
-    {
-        [$etag, $lm] = $this->resolveProvider()($req);
-        $validator = new ConditionalValidator($etag, $lm);
-        $result = $validator->evaluate($req);
-        return [$validator, $result];
-    }
-
-    /**
-     * Short-circuit response if preconditions fail (e.g., 304 or 412).
-     *
-     * If the preconditions fail (i.e., the outcome is not Outcome::PASS), returns a short-circuit response with the computed HTTP status and headers.
-     * Otherwise, returns null.
-     *
-     * RFC 7232 dictates that non-GET/HEAD requests with If-None-Match preconditions should return a 412 status code instead of a 304.
-     * @param object $result Has ->state, ->http, ->headers
-     * @param bool $isGetHead Is the request a GET or HEAD?
-     * @return Response|null Short-circuit response if preconditions fail, otherwise null
-     */
-    private function maybeShortCircuit(object $result, bool $isGetHead): ?Response
-    {
-        if (($result->state ?? null) === Outcome::PASS) {
-            return null;
-        }
-
-        // RFC 7232: Non-GET/HEAD with If-None-Match → 412 instead of 304
-        $status = (!$isGetHead && ($result->http ?? 0) === 304) ? 412 : ($result->http ?? 412);
-        return Response::empty($status, $result->headers ?? []);
-    }
-
-    /**
-     * Maybe drop the Range header from the request if the Range is stale.
-     *
-     * This method is only relevant for GET/HEAD requests with a Range header.
-     * If the Range is stale, the Range header is dropped from the request.
-     * Otherwise, the original request is returned.
-     *
-     * @param Request $req The request to check and modify if necessary.
-     * @param ConditionalValidator $validator The validator to use for checking the freshness of the Range.
-     * @param bool $isGetHead Whether the request is a GET or HEAD request.
-     * @return Request The modified request if the Range is stale, otherwise the original request.
-     */
-    private function maybeDropStaleRangeHeader(Request $req, ConditionalValidator $validator, bool $isGetHead): Request
-    {
-        if (!$isGetHead || !$req->hasHeader('Range')) {
-            return $req;
-        }
-        return $validator->isRangeFresh($req)
-            ? $req
-            : $req->withoutHeader('Range')->withAttribute('range_dropped', true);
-    }
-
-    /**
-     * Ensure the response has the specified validator headers.
-     *
-     * If any of the specified validator headers are missing from the response, adds them to the response.
-     * @param Response $resp The response to modify
-     * @param array<string, string|null> $headers The validator headers to ensure are present in the response, keyed by header name
-     * @return Response The modified response with the specified validator headers added if missing
-     */
-    private function ensureValidatorHeaders(Response $resp, array $headers): Response
-    {
-        foreach ($headers as $h => $v) {
-            if ($v !== null && !$resp->hasHeader($h)) {
-                $resp = $resp->withHeader($h, $v);
+        $isAbs = str_starts_with($p, '/');
+        $parts = [];
+        foreach (explode('/', $p) as $seg) {
+            if ($seg === '' || $seg === '.') {
+                continue;
             }
+            if ($seg === '..') {
+                array_pop($parts);
+                continue;
+            }
+            $parts[] = $seg;
         }
-        return $resp;
+        $out = implode('/', $parts);
+        return $isAbs ? '/' . $out : $out;
     }
 
     /**
-     * Maybe attach an auto-computed ETag to the response.
+     * DOCUMENT_ROOT if set, else null.
      *
-     * Conditions to attach an auto-ETag:
-     *  - `autoEtagWhenMissing` is true
-     *  - The response does not already have an ETag
-     *  - The response is eligible for auto-ETag computation (i.e., its body is seekable and >= $autoEtagMinSize bytes)
-     *
-     * If the conditions are met, computes an ETag from the response body, optionally salted by the request query string.
-     * @param Response $resp The response to maybe attach an auto-ETag to
-     * @param Request $req The original request
-     * @return Response The response with an auto-ETag attached if conditions are met, otherwise the original response
+     * @return string|null DOCUMENT_ROOT if set, else null
      */
-    private function maybeAttachAutoEtag(Response $resp, Request $req): Response
+    private static function docRoot(): ?string
     {
-        if (
-            !$this->autoEtagWhenMissing
-            || $resp->hasHeader('ETag')
-            || !$this->isAutoEtagEligible($resp)
-        ) {
-            return $resp;
-        }
+        $dr = (string)($_SERVER['DOCUMENT_ROOT'] ?? '');
+        return $dr !== '' ? $dr : null;
+    }
 
-        $qs = $this->includeQueryInEtag
-            ? Uri::normalizeQueryString($req->getUri()->getQuery())
-            : '';
-
-        if (($computed = Etag::fromStream($resp->getBody(), $qs)) !== null) {
-            $resp = $resp->withHeader('ETag', $computed);
-        }
-        return $resp;
+    /**
+     * Build a short ETag fingerprint from file facts.
+     *
+     * Given file size, mtime, and path, returns a quoted hex (first 16 chars of xxh3 digest).
+     * @param int $size File size in bytes
+     * @param int $mtime File mtime in seconds since Epoch
+     * @param string $realPath Absolute file path
+     * @return string Quoted hex ETag fingerprint
+     */
+    private static function etagForFile(int $size, int $mtime, string $realPath): string
+    {
+        $seed = $size . '|' . $mtime . '|' . basename($realPath);
+        return '"' . substr(hash('xxh3', $seed, false), 0, 16) . '"';
     }
 
     /**
@@ -282,29 +187,20 @@ final class CacheValidatorsMiddleware
     }
 
     /**
-     * DOCUMENT_ROOT if set, else null.
+     * Normalizes a path by replacing backslashes with forward slashes and
+     * (on Windows) converting to lowercase. Finally, trims any trailing
+     * slashes from the end of the path.
      *
-     * @return string|null DOCUMENT_ROOT if set, else null
+     * @param string $p The path to normalize
+     * @return string The normalized path
      */
-    private static function docRoot(): ?string
+    private static function normPath(string $p): string
     {
-        $dr = (string)($_SERVER['DOCUMENT_ROOT'] ?? '');
-        return $dr !== '' ? $dr : null;
-    }
-
-    /**
-     * Current script's mtime (file modification time) or null if not accessible.
-     *
-     * @return int|null File modification time in seconds since epoch, or null if not accessible.
-     */
-    private static function scriptMtime(): ?int
-    {
-        $file = (string)($_SERVER['SCRIPT_FILENAME'] ?? __FILE__);
-        if (!is_file($file)) {
-            return null;
+        $p = str_replace('\\', '/', $p);
+        if (PHP_OS_FAMILY === 'Windows') {
+            $p = strtolower($p);
         }
-        $mt = filemtime($file);
-        return $mt === false ? null : $mt;
+        return rtrim($p, '/');
     }
 
     /**
@@ -351,18 +247,18 @@ final class CacheValidatorsMiddleware
     }
 
     /**
-     * Build a short ETag fingerprint from file facts.
+     * Current script's mtime (file modification time) or null if not accessible.
      *
-     * Given file size, mtime, and path, returns a quoted hex (first 16 chars of xxh3 digest).
-     * @param int $size File size in bytes
-     * @param int $mtime File mtime in seconds since Epoch
-     * @param string $realPath Absolute file path
-     * @return string Quoted hex ETag fingerprint
+     * @return int|null File modification time in seconds since epoch, or null if not accessible.
      */
-    private static function etagForFile(int $size, int $mtime, string $realPath): string
+    private static function scriptMtime(): ?int
     {
-        $seed = $size . '|' . $mtime . '|' . basename($realPath);
-        return '"' . substr(hash('xxh3', $seed, false), 0, 16) . '"';
+        $file = (string)($_SERVER['SCRIPT_FILENAME'] ?? __FILE__);
+        if (!is_file($file)) {
+            return null;
+        }
+        $mt = filemtime($file);
+        return $mt === false ? null : $mt;
     }
 
     /**
@@ -380,48 +276,42 @@ final class CacheValidatorsMiddleware
     }
 
     /**
-     * Collapse dot segments (RFC 3986-ish) without touching leading slash semantics.
+     * Ensure the response has the specified validator headers.
      *
-     * This function takes a path string and collapses all occurrences of "." and ".."
-     * while preserving absolute path semantics. "." is ignored, ".." removes the
-     * last segment, and trailing slashes are removed.
-     *
-     * @param string $p The path string to collapse
-     * @return string The collapsed path string
+     * If any of the specified validator headers are missing from the response, adds them to the response.
+     * @param Response $resp The response to modify
+     * @param array<string, string|null> $headers The validator headers to ensure are present in the response, keyed by header name
+     * @return Response The modified response with the specified validator headers added if missing
      */
-    private static function collapseDotSegments(string $p): string
+    private function ensureValidatorHeaders(Response $resp, array $headers): Response
     {
-        $isAbs = str_starts_with($p, '/');
-        $parts = [];
-        foreach (explode('/', $p) as $seg) {
-            if ($seg === '' || $seg === '.') {
-                continue;
+        foreach ($headers as $h => $v) {
+            if ($v !== null && !$resp->hasHeader($h)) {
+                $resp = $resp->withHeader($h, $v);
             }
-            if ($seg === '..') {
-                array_pop($parts);
-                continue;
-            }
-            $parts[] = $seg;
         }
-        $out = implode('/', $parts);
-        return $isAbs ? '/' . $out : $out;
+        return $resp;
     }
 
     /**
-     * Normalizes a path by replacing backslashes with forward slashes and
-     * (on Windows) converting to lowercase. Finally, trims any trailing
-     * slashes from the end of the path.
+     * Evaluate If-* preconditions using the resolved meta provider.
      *
-     * @param string $p The path to normalize
-     * @return string The normalized path
+     * Resolves the meta provider, extracts the ETag and Last-Modified from it,
+     * creates a ConditionalValidator instance with those values, and
+     * evaluates the preconditions against the given request.
+     *
+     * Returns an array containing the ConditionalValidator instance and the
+     * result of the evaluation.
+     *
+     * @param Request $req The request to evaluate preconditions against
+     * @return array [$validator, $result] The ConditionalValidator instance and the result of the evaluation
      */
-    private static function normPath(string $p): string
+    private function evaluatePreconditionsWithProvider(Request $req): array
     {
-        $p = str_replace('\\', '/', $p);
-        if (PHP_OS_FAMILY === 'Windows') {
-            $p = strtolower($p);
-        }
-        return rtrim($p, '/');
+        [$etag, $lm] = $this->resolveProvider()($req);
+        $validator = new ConditionalValidator($etag, $lm);
+        $result = $validator->evaluate($req);
+        return [$validator, $result];
     }
 
     /**
@@ -445,5 +335,115 @@ final class CacheValidatorsMiddleware
         }
         $size = $b->getSize();
         return !($size !== null && $size < $this->autoEtagMinSize);
+    }
+
+    /**
+     * Check if the given request method is GET or HEAD.
+     *
+     * @param Request $req The request to check
+     * @return bool True if the request method is GET or HEAD, false otherwise
+     */
+    private function isGetOrHead(Request $req): bool
+    {
+        $m = strtoupper($req->getMethod());
+        return $m === 'GET' || $m === 'HEAD';
+    }
+
+    /**
+     * Maybe attach an auto-computed ETag to the response.
+     *
+     * Conditions to attach an auto-ETag:
+     *  - `autoEtagWhenMissing` is true
+     *  - The response does not already have an ETag
+     *  - The response is eligible for auto-ETag computation (i.e., its body is seekable and >= $autoEtagMinSize bytes)
+     *
+     * If the conditions are met, computes an ETag from the response body, optionally salted by the request query string.
+     * @param Response $resp The response to maybe attach an auto-ETag to
+     * @param Request $req The original request
+     * @return Response The response with an auto-ETag attached if conditions are met, otherwise the original response
+     */
+    private function maybeAttachAutoEtag(Response $resp, Request $req): Response
+    {
+        if (
+            !$this->autoEtagWhenMissing
+            || $resp->hasHeader('ETag')
+            || !$this->isAutoEtagEligible($resp)
+        ) {
+            return $resp;
+        }
+
+        $qs = $this->includeQueryInEtag
+            ? Uri::normalizeQueryString($req->getUri()->getQuery())
+            : '';
+
+        if (($computed = Etag::fromStream($resp->getBody(), $qs)) !== null) {
+            $resp = $resp->withHeader('ETag', $computed);
+        }
+        return $resp;
+    }
+
+    /**
+     * Maybe drop the Range header from the request if the Range is stale.
+     *
+     * This method is only relevant for GET/HEAD requests with a Range header.
+     * If the Range is stale, the Range header is dropped from the request.
+     * Otherwise, the original request is returned.
+     *
+     * @param Request $req The request to check and modify if necessary.
+     * @param ConditionalValidator $validator The validator to use for checking the freshness of the Range.
+     * @param bool $isGetHead Whether the request is a GET or HEAD request.
+     * @return Request The modified request if the Range is stale, otherwise the original request.
+     */
+    private function maybeDropStaleRangeHeader(Request $req, ConditionalValidator $validator, bool $isGetHead): Request
+    {
+        if (!$isGetHead || !$req->hasHeader('Range')) {
+            return $req;
+        }
+        return $validator->isRangeFresh($req)
+            ? $req
+            : $req->withoutHeader('Range')->withAttribute('range_dropped', true);
+    }
+
+    /**
+     * Short-circuit response if preconditions fail (e.g., 304 or 412).
+     *
+     * If the preconditions fail (i.e., the outcome is not Outcome::PASS), returns a short-circuit response with the computed HTTP status and headers.
+     * Otherwise, returns null.
+     *
+     * RFC 7232 dictates that non-GET/HEAD requests with If-None-Match preconditions should return a 412 status code instead of a 304.
+     * @param object $result Has ->state, ->http, ->headers
+     * @param bool $isGetHead Is the request a GET or HEAD?
+     * @return Response|null Short-circuit response if preconditions fail, otherwise null
+     */
+    private function maybeShortCircuit(object $result, bool $isGetHead): ?Response
+    {
+        if (($result->state ?? null) === Outcome::PASS) {
+            return null;
+        }
+
+        // RFC 7232: Non-GET/HEAD with If-None-Match → 412 instead of 304
+        $status = (!$isGetHead && ($result->http ?? 0) === 304) ? 412 : ($result->http ?? 412);
+        return Response::empty($status, $result->headers ?? []);
+    }
+
+    /**
+     * Resolve the meta provider instance to use for evaluating preconditions.
+     *
+     * This method returns a Closure instance, which is either:
+     *  - The instance's meta provider if set
+     *  - The global default meta provider if set
+     *  - The built-in fallback meta provider otherwise
+     *
+     * @return Closure The meta provider instance to use
+     */
+    private function resolveProvider(): Closure
+    {
+        if ($this->metaProvider instanceof Closure) {
+            return $this->metaProvider;
+        }
+        if (self::$defaultProvider instanceof Closure) {
+            return self::$defaultProvider;
+        }
+        return self::fallbackMetaProvider(...);
     }
 }

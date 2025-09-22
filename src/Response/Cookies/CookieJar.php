@@ -30,6 +30,27 @@ final class CookieJar
         $x->cookies[$c->name] = $c;
         return $x;
     }
+
+    /**
+     * Attach all cookies to a Response.
+     *
+     * This method is typically used once you've added all desired cookies to the jar.
+     *
+     * It will attach the raw Set-Cookie lines first, followed by the {@see Cookie} objects.
+     *
+     * @param Response $r The response to attach cookies to
+     * @return Response The response with attached cookies
+     */
+    public function apply(Response $r): Response
+    {
+        foreach ($this->raw as $line) {
+            $r = $r->withAddedHeader('Set-Cookie', $line);
+        }
+        foreach ($this->cookies as $c) {
+            $r = $r->withAddedHeader('Set-Cookie', (string)$c);
+        }
+        return $r;
+    }
     /**
      * Add a raw Set-Cookie line to the jar.
      *
@@ -58,26 +79,5 @@ final class CookieJar
     public function remove(string $name): self
     {
         return $this->add(Cookie::make($name)->expire());
-    }
-
-    /**
-     * Attach all cookies to a Response.
-     *
-     * This method is typically used once you've added all desired cookies to the jar.
-     *
-     * It will attach the raw Set-Cookie lines first, followed by the {@see Cookie} objects.
-     *
-     * @param Response $r The response to attach cookies to
-     * @return Response The response with attached cookies
-     */
-    public function apply(Response $r): Response
-    {
-        foreach ($this->raw as $line) {
-            $r = $r->withAddedHeader('Set-Cookie', $line);
-        }
-        foreach ($this->cookies as $c) {
-            $r = $r->withAddedHeader('Set-Cookie', (string)$c);
-        }
-        return $r;
     }
 }

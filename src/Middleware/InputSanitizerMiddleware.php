@@ -31,10 +31,10 @@ use Infocyph\Webrick\Support\InputSanitizer;
  */
 final class InputSanitizerMiddleware
 {
-    /** Request attribute: query sanitized. */
-    public const ATTR_Q = '__sanitized.query';
     /** Request attribute: form/json body sanitized. */
     public const ATTR_F = '__sanitized.form';
+    /** Request attribute: query sanitized. */
+    public const ATTR_Q = '__sanitized.query';
     /** Request attribute: uploads sanitized. */
     public const ATTR_U = '__sanitized.uploads';
 
@@ -70,31 +70,6 @@ final class InputSanitizerMiddleware
         return $next($req);
     }
 
-    /* ───────────────────────── query ───────────────────────── */
-
-    /**
-     * Sanitize query parameters if not already processed.
-     *
-     * @param Request $req
-     *
-     * @return Request Possibly augmented request.
-     */
-    private function sanitizeQueryIfNeeded(Request $req): Request
-    {
-        if ($req->getAttribute(self::ATTR_Q, false)) {
-            return $req;
-        }
-
-        $q = $req->getQueryParams();
-        if ($q) {
-            $req = $req
-                ->withQueryParams($this->sanitizer->sanitizeArray($q))
-                ->withAttribute(self::ATTR_Q, true);
-        }
-
-        return $req;
-    }
-
     /* ───────────────────────── body ────────────────────────── */
 
     /**
@@ -122,53 +97,29 @@ final class InputSanitizerMiddleware
         return $req;
     }
 
-    /**
-     * Determine if the body should be sanitized based on content type and flags.
-     *
-     * @param string $ctype Raw Content-Type header.
-     *
-     * @return bool True when body sanitization is enabled for this request.
-     */
-    private function shouldTouchBody(string $ctype): bool
-    {
-        $mime = strtolower(strtok($ctype, ';') ?: '');
-        $isForm = HttpUtils::isFormContentType($ctype);
-        $isJson = str_starts_with($mime, 'application/json');
-
-        return ($isForm && $this->touchFormBodies) || ($isJson && $this->touchJsonBodies);
-    }
-
-    /* ─────────────────────── uploads (opt-in) ─────────────────────── */
+    /* ───────────────────────── query ───────────────────────── */
 
     /**
-     * Sanitize uploaded file metadata (client filename/media type) best-effort.
-     *
-     * Applies only if enabled and not previously processed. Recurses to handle
-     * nested uploaded files arrays.
+     * Sanitize query parameters if not already processed.
      *
      * @param Request $req
      *
      * @return Request Possibly augmented request.
      */
-    private function sanitizeUploadsIfNeeded(Request $req): Request
+    private function sanitizeQueryIfNeeded(Request $req): Request
     {
-        if (!$this->touchUploadedNames || $req->getAttribute(self::ATTR_U, false)) {
+        if ($req->getAttribute(self::ATTR_Q, false)) {
             return $req;
         }
 
-        $files = $req->getUploadedFiles();
-        if ($files === []) {
-            return $req;
+        $q = $req->getQueryParams();
+        if ($q) {
+            $req = $req
+                ->withQueryParams($this->sanitizer->sanitizeArray($q))
+                ->withAttribute(self::ATTR_Q, true);
         }
 
-        $san = $this->sanitizeUploadedFilesRecursive($files);
-
-        // Only replace when something actually changed
-        if ($san !== $files) {
-            $req = $req->withUploadedFiles($san);
-        }
-
-        return $req->withAttribute(self::ATTR_U, true);
+        return $req;
     }
 
     /**
@@ -211,5 +162,54 @@ final class InputSanitizerMiddleware
         }
 
         return $files;
+    }
+
+    /* ─────────────────────── uploads (opt-in) ─────────────────────── */
+
+    /**
+     * Sanitize uploaded file metadata (client filename/media type) best-effort.
+     *
+     * Applies only if enabled and not previously processed. Recurses to handle
+     * nested uploaded files arrays.
+     *
+     * @param Request $req
+     *
+     * @return Request Possibly augmented request.
+     */
+    private function sanitizeUploadsIfNeeded(Request $req): Request
+    {
+        if (!$this->touchUploadedNames || $req->getAttribute(self::ATTR_U, false)) {
+            return $req;
+        }
+
+        $files = $req->getUploadedFiles();
+        if ($files === []) {
+            return $req;
+        }
+
+        $san = $this->sanitizeUploadedFilesRecursive($files);
+
+        // Only replace when something actually changed
+        if ($san !== $files) {
+            $req = $req->withUploadedFiles($san);
+        }
+
+        return $req->withAttribute(self::ATTR_U, true);
+    }
+
+    /**
+     * Determine if the body should be sanitized based on content type and flags.
+     *
+     * @param string $ctype Raw Content-Type header.
+     *
+     * @return bool True when body sanitization is enabled for this request.
+     */
+    private function shouldTouchBody(string $ctype): bool
+    {
+        $mime = strtolower(strtok($ctype, ';') ?: '');
+        $isForm = HttpUtils::isFormContentType($ctype);
+        $isJson = str_starts_with($mime, 'application/json');
+
+        return ($isForm && $this->touchFormBodies) || ($isJson && $this->touchJsonBodies);
     }
 }

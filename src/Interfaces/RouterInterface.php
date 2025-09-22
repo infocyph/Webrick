@@ -27,6 +27,18 @@ interface RouterInterface
     ): RouteInterface;
 
     /**
+     * Add a DELETE route to the router.
+     *
+     * The route is identified by the given path.
+     * The handler is the callable that will be executed when the route is matched.
+     *
+     * @param string $path The path of the route.
+     * @param callable $handler The handler of the route.
+     * @return RouteInterface The added route.
+     */
+    public function delete(string $path, callable $handler): RouteInterface;
+
+    /**
      * Add a GET route to the router.
      *
      * The route is identified by the given path.
@@ -39,52 +51,12 @@ interface RouterInterface
     public function get(string $path, callable $handler): RouteInterface;
 
     /**
-     * Add a POST route to the router.
+     * Handle a request and return a response.
      *
-     * The route is identified by the given path.
-     * The handler is the callable that will be executed when the route is matched.
-     *
-     * @param string $path The path of the route.
-     * @param callable $handler The handler of the route.
-     * @return RouteInterface The added route.
+     * @param Request $request The request to be handled.
+     * @return Response The response to the request.
      */
-    public function post(string $path, callable $handler): RouteInterface;
-
-    /**
-     * Add a PUT route to the router.
-     *
-     * The route is identified by the given path.
-     * The handler is the callable that will be executed when the route is matched.
-     *
-     * @param string $path The path of the route.
-     * @param callable $handler The handler of the route.
-     * @return RouteInterface The added route.
-     */
-    public function put(string $path, callable $handler): RouteInterface;
-
-    /**
-     * Add a PATCH route to the router.
-     *
-     * The route is identified by the given path.
-     * The handler is the callable that will be executed when the route is matched.
-     *
-     * @param string $path The path of the route.
-     * @param callable $handler The handler of the route.
-     * @return RouteInterface The added route.
-     */
-    public function patch(string $path, callable $handler): RouteInterface;
-
-    /**
-     * Add a DELETE route to the router.
-     *
-     * The route is identified by the given path.
-     * The handler is the callable that will be executed when the route is matched.
-     *
-     * @param string $path The path of the route.
-     * @param callable $handler The handler of the route.
-     * @return RouteInterface The added route.
-     */
-    public function delete(string $path, callable $handler): RouteInterface;
+    public function handle(Request $request): Response;
 
     /**
      * Add a HEAD route to the router.
@@ -111,12 +83,40 @@ interface RouterInterface
     public function options(string $path, callable $handler): RouteInterface;
 
     /**
-     * Handle a request and return a response.
+     * Add a PATCH route to the router.
      *
-     * @param Request $request The request to be handled.
-     * @return Response The response to the request.
+     * The route is identified by the given path.
+     * The handler is the callable that will be executed when the route is matched.
+     *
+     * @param string $path The path of the route.
+     * @param callable $handler The handler of the route.
+     * @return RouteInterface The added route.
      */
-    public function handle(Request $request): Response;
+    public function patch(string $path, callable $handler): RouteInterface;
+
+    /**
+     * Add a POST route to the router.
+     *
+     * The route is identified by the given path.
+     * The handler is the callable that will be executed when the route is matched.
+     *
+     * @param string $path The path of the route.
+     * @param callable $handler The handler of the route.
+     * @return RouteInterface The added route.
+     */
+    public function post(string $path, callable $handler): RouteInterface;
+
+    /**
+     * Add a PUT route to the router.
+     *
+     * The route is identified by the given path.
+     * The handler is the callable that will be executed when the route is matched.
+     *
+     * @param string $path The path of the route.
+     * @param callable $handler The handler of the route.
+     * @return RouteInterface The added route.
+     */
+    public function put(string $path, callable $handler): RouteInterface;
 
     /**
      * Generate a URL for the given route name.

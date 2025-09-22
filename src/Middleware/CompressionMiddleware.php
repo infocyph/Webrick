@@ -31,10 +31,31 @@ use Infocyph\Webrick\Support\StreamUtil;
  */
 final readonly class CompressionMiddleware
 {
+    public const ETAG_STRONG_DERIVE = 'derive-strong';    // from base tag + alg/level
+    public const ETAG_STRONG_RECOMP = 'recompute-strong'; // default (bytes-on-the-wire)
     /* ─────────── ETag strategies ─────────── */
     public const ETAG_WEAK_ON_ENCODE = 'weak-on-encode';
-    public const ETAG_STRONG_RECOMP = 'recompute-strong'; // default (bytes-on-the-wire)
-    public const ETAG_STRONG_DERIVE = 'derive-strong';    // from base tag + alg/level
+
+    /** encoder → callable (only invoked when extension is loaded) */
+    private const ALGO = [
+        'br' => 'brotli_compress',   // ext-brotli
+        'zstd' => 'zstd_compress',   // ext-zstd
+        'gzip' => 'gzencode',        // ext-zlib (bundled)
+    ];
+
+    /** MIME prefixes we never compress */
+    private const NO_COMPRESS_PREFIXES = [
+        'image/',
+        'video/',
+        'audio/',
+        'application/zip',
+        'application/gzip',
+        'application/x-gzip',
+        'application/x-tar',
+        'application/octet-stream',
+        'application/wasm',
+        'text/event-stream',
+    ];
 
     /**
      * Configure compression thresholds, preference, and ETag behavior.
@@ -59,27 +80,6 @@ final readonly class CompressionMiddleware
         private int $maxBufferBytes = 8_388_608, // 8 MiB hard ceiling for in-memory re-encode
     ) {
     }
-
-    /** MIME prefixes we never compress */
-    private const NO_COMPRESS_PREFIXES = [
-        'image/',
-        'video/',
-        'audio/',
-        'application/zip',
-        'application/gzip',
-        'application/x-gzip',
-        'application/x-tar',
-        'application/octet-stream',
-        'application/wasm',
-        'text/event-stream',
-    ];
-
-    /** encoder → callable (only invoked when extension is loaded) */
-    private const ALGO = [
-        'br' => 'brotli_compress',   // ext-brotli
-        'zstd' => 'zstd_compress',   // ext-zstd
-        'gzip' => 'gzencode',        // ext-zlib (bundled)
-    ];
 
     /**
      * Negotiate, encode, and adjust validators for the response when appropriate.
@@ -112,85 +112,6 @@ final readonly class CompressionMiddleware
 
         $resp = $this->applyEncoded($resp, $enc, $alg);
         return $this->adjustValidators($req, $resp, $enc, $alg);
-    }
-
-
-    /* ───────────────────────── decisions ───────────────────────── */
-
-    /**
-     * Decide whether the response is eligible and practical to compress.
-     *
-     * @param Request  $req
-     * @param Response $resp
-     *
-     * @return bool True when encoding should be attempted.
-     */
-    private function shouldCompress(Request $req, Response $resp): bool
-    {
-        return match (true) {
-            $resp->isStreaming(),
-            in_array($resp->getStatusCode(), [204, 304, 206], true),
-            strtoupper($req->getMethod()) === 'HEAD',
-            $resp->hasHeader('Content-Encoding'),
-            $resp->hasHeader('Content-Range'),
-            $this->hasNoTransform($resp),
-            (function () use ($resp): bool {
-                $length = StreamUtil::byteLength($resp->getBody(), $this->minBytes);
-                return $length < $this->minBytes || $length > $this->maxBufferBytes;
-            })(),
-            (function () use ($resp): bool {
-                $contentType = strtolower(trim($resp->getHeaderLine('Content-Type')));
-                return $contentType !== '' && $this->isNonCompressible($contentType);
-            })() => false,
-            default => true,
-        };
-    }
-
-    /* ───────────────────────── encoding ───────────────────────── */
-
-    /**
-     * Encode raw bytes using the selected algorithm.
-     *
-     * @param string $raw Raw response bytes.
-     * @param string $alg Algorithm identifier ('gzip','br','zstd').
-     *
-     * @return string|false Encoded bytes or false when encoder unavailable/fails.
-     */
-    private function encode(string $raw, string $alg): string|false
-    {
-        return match (true) {
-            $alg === 'gzip' && \function_exists(self::ALGO['gzip']) => \gzencode(
-                $raw,
-                $this->gzipLevel,
-                \ZLIB_ENCODING_GZIP,
-            ),
-            $alg === 'br' && \function_exists(self::ALGO['br']) => \brotli_compress($raw, $this->brotliQuality),
-            $alg === 'zstd' && \function_exists(self::ALGO['zstd']) => \zstd_compress($raw, $this->zstdLevel),
-            default => false,
-        };
-    }
-
-    /**
-     * Apply body and headers for the encoded response.
-     *
-     * @param Response $resp Original response.
-     * @param string   $enc  Encoded bytes.
-     * @param string   $alg  Encoding algorithm.
-     *
-     * @return Response Response with Content-Encoding and adjusted headers.
-     */
-    private function applyEncoded(Response $resp, string $enc, string $alg): Response
-    {
-        $resp = $resp
-            ->withBody(new Stream($enc))
-            ->withSmartHeader('Content-Encoding', $alg)
-            ->withSmartHeader('Content-Length', (string)\strlen($enc));
-
-        // Content-MD5 (if present) is now invalid; remove it.
-        if ($resp->hasHeader('Content-MD5')) {
-            $resp = $resp->withoutHeader('Content-MD5');
-        }
-        return $resp;
     }
 
     /**
@@ -262,63 +183,51 @@ final readonly class CompressionMiddleware
         return $resp;
     }
 
-    /** Returns [value-without-quotes, isWeak]. Blank value means “no ETag present". */
-    private function parseEtag(string $etagLine): array
+    /**
+     * Apply body and headers for the encoded response.
+     *
+     * @param Response $resp Original response.
+     * @param string   $enc  Encoded bytes.
+     * @param string   $alg  Encoding algorithm.
+     *
+     * @return Response Response with Content-Encoding and adjusted headers.
+     */
+    private function applyEncoded(Response $resp, string $enc, string $alg): Response
     {
-        $t = trim($etagLine);
-        if ($t === '') {
-            return ['', false];
+        $resp = $resp
+            ->withBody(new Stream($enc))
+            ->withSmartHeader('Content-Encoding', $alg)
+            ->withSmartHeader('Content-Length', (string)\strlen($enc));
+
+        // Content-MD5 (if present) is now invalid; remove it.
+        if ($resp->hasHeader('Content-MD5')) {
+            $resp = $resp->withoutHeader('Content-MD5');
         }
-        $isWeak = str_starts_with($t, 'W/');
-        if ($isWeak) {
-            $t = substr($t, 2);
-        }
-        if (strlen($t) >= 2 && $t[0] === '"' && $t[strlen($t) - 1] === '"') {
-            $t = substr($t, 1, -1);
-        }
-        return [trim($t), $isWeak];
+        return $resp;
     }
 
-    /** gzip via gzencode adds an MTIME by default → bytes can vary run-to-run. */
-    private function isEncodingDeterministic(string $alg): bool
-    {
-        // If you later make gzip deterministic (e.g., zero MTIME), flip this.
-        return $alg !== 'gzip';
-    }
+    /* ───────────────────────── encoding ───────────────────────── */
 
     /**
-     * Compute a short, strong ETag from encoded bytes.
+     * Encode raw bytes using the selected algorithm.
      *
-     * @param string $bytes Encoded bytes on the wire.
+     * @param string $raw Raw response bytes.
+     * @param string $alg Algorithm identifier ('gzip','br','zstd').
      *
-     * @return string Strong ETag value with quotes.
+     * @return string|false Encoded bytes or false when encoder unavailable/fails.
      */
-    private function strongFromBytes(string $bytes): string
+    private function encode(string $raw, string $alg): string|false
     {
-        return '"' . substr(hash('xxh3', $bytes, false), 0, 16) . '"';  // strong, short, cache-friendly
-    }
-
-    /**
-     * Strip weak prefix and surrounding quotes from an ETag line.
-     *
-     * @param string $etagLine Raw ETag header line.
-     *
-     * @return string Core opaque tag value (or empty string when absent).
-     */
-    private function stripWeakQuotes(string $etagLine): string
-    {
-        $t = trim($etagLine);
-        if ($t === '') {
-            return '';
-        }
-        if (str_starts_with($t, 'W/')) {
-            $t = substr($t, 2);
-        }
-        // remove optional surrounding quotes
-        if (strlen($t) >= 2 && $t[0] === '"' && $t[strlen($t) - 1] === '"') {
-            $t = substr($t, 1, -1);
-        }
-        return trim($t);
+        return match (true) {
+            $alg === 'gzip' && \function_exists(self::ALGO['gzip']) => \gzencode(
+                $raw,
+                $this->gzipLevel,
+                \ZLIB_ENCODING_GZIP,
+            ),
+            $alg === 'br' && \function_exists(self::ALGO['br']) => \brotli_compress($raw, $this->brotliQuality),
+            $alg === 'zstd' && \function_exists(self::ALGO['zstd']) => \zstd_compress($raw, $this->zstdLevel),
+            default => false,
+        };
     }
 
     /**
@@ -351,6 +260,13 @@ final readonly class CompressionMiddleware
     {
         $cc = strtolower($r->getHeaderLine('Cache-Control'));
         return $cc !== '' && str_contains($cc, 'no-transform');
+    }
+
+    /** gzip via gzencode adds an MTIME by default → bytes can vary run-to-run. */
+    private function isEncodingDeterministic(string $alg): bool
+    {
+        // If you later make gzip deterministic (e.g., zero MTIME), flip this.
+        return $alg !== 'gzip';
     }
 
     /** True when `$ctype` starts with any of the NO_COMPRESS prefixes. */
@@ -429,5 +345,89 @@ final readonly class CompressionMiddleware
         );
 
         return \array_column($parsed, 0);
+    }
+
+    /** Returns [value-without-quotes, isWeak]. Blank value means “no ETag present". */
+    private function parseEtag(string $etagLine): array
+    {
+        $t = trim($etagLine);
+        if ($t === '') {
+            return ['', false];
+        }
+        $isWeak = str_starts_with($t, 'W/');
+        if ($isWeak) {
+            $t = substr($t, 2);
+        }
+        if (strlen($t) >= 2 && $t[0] === '"' && $t[strlen($t) - 1] === '"') {
+            $t = substr($t, 1, -1);
+        }
+        return [trim($t), $isWeak];
+    }
+
+
+    /* ───────────────────────── decisions ───────────────────────── */
+
+    /**
+     * Decide whether the response is eligible and practical to compress.
+     *
+     * @param Request  $req
+     * @param Response $resp
+     *
+     * @return bool True when encoding should be attempted.
+     */
+    private function shouldCompress(Request $req, Response $resp): bool
+    {
+        return match (true) {
+            $resp->isStreaming(),
+            in_array($resp->getStatusCode(), [204, 304, 206], true),
+            strtoupper($req->getMethod()) === 'HEAD',
+            $resp->hasHeader('Content-Encoding'),
+            $resp->hasHeader('Content-Range'),
+            $this->hasNoTransform($resp),
+            (function () use ($resp): bool {
+                $length = StreamUtil::byteLength($resp->getBody(), $this->minBytes);
+                return $length < $this->minBytes || $length > $this->maxBufferBytes;
+            })(),
+            (function () use ($resp): bool {
+                $contentType = strtolower(trim($resp->getHeaderLine('Content-Type')));
+                return $contentType !== '' && $this->isNonCompressible($contentType);
+            })() => false,
+            default => true,
+        };
+    }
+
+    /**
+     * Strip weak prefix and surrounding quotes from an ETag line.
+     *
+     * @param string $etagLine Raw ETag header line.
+     *
+     * @return string Core opaque tag value (or empty string when absent).
+     */
+    private function stripWeakQuotes(string $etagLine): string
+    {
+        $t = trim($etagLine);
+        if ($t === '') {
+            return '';
+        }
+        if (str_starts_with($t, 'W/')) {
+            $t = substr($t, 2);
+        }
+        // remove optional surrounding quotes
+        if (strlen($t) >= 2 && $t[0] === '"' && $t[strlen($t) - 1] === '"') {
+            $t = substr($t, 1, -1);
+        }
+        return trim($t);
+    }
+
+    /**
+     * Compute a short, strong ETag from encoded bytes.
+     *
+     * @param string $bytes Encoded bytes on the wire.
+     *
+     * @return string Strong ETag value with quotes.
+     */
+    private function strongFromBytes(string $bytes): string
+    {
+        return '"' . substr(hash('xxh3', $bytes, false), 0, 16) . '"';  // strong, short, cache-friendly
     }
 }

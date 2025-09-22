@@ -11,17 +11,6 @@ namespace Infocyph\Webrick\Response\Headers;
 final class ContentDisposition
 {
     /**
-     * Generates a Content-Disposition header value for inline display.
-     *
-     * @param string $filename The filename to include in the header.
-     * @return string The formatted Content-Disposition header value.
-     */
-    public static function inline(string $filename): string
-    {
-        return self::build('inline', $filename);
-    }
-
-    /**
      * Generates a Content-Disposition header value for attachment download.
      *
      * @param string $filename The filename to include in the header.
@@ -30,6 +19,16 @@ final class ContentDisposition
     public static function attachment(string $filename): string
     {
         return self::build('attachment', $filename);
+    }
+    /**
+     * Generates a Content-Disposition header value for inline display.
+     *
+     * @param string $filename The filename to include in the header.
+     * @return string The formatted Content-Disposition header value.
+     */
+    public static function inline(string $filename): string
+    {
+        return self::build('inline', $filename);
     }
 
     /**

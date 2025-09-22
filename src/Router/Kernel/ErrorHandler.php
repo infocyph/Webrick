@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Router\Kernel;
 
 use ErrorException;
-use Throwable;
-use Psr\Log\LoggerInterface;
+use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
-use Infocyph\Webrick\Constants\StatusEnum;
+use Psr\Log\LoggerInterface;
+use Throwable;
 
 /**
  * Kernel error boundary
@@ -90,6 +90,178 @@ final class ErrorHandler
                 set_error_handler($prev);
             }
         }
+    }
+
+    /**
+     * Extract an Allow header value from a Throwable representing method constraints.
+     *
+     * Supports:
+     *  - public property 'allowed' (array)
+     *  - method allowed()
+     *  - method getAllowedMethods()
+     *
+     * Normalises to an RFC-style comma separated list and ensures HEAD/OPTIONS
+     * are included where appropriate.
+     *
+     * @param Throwable $e Source throwable that may expose allowed methods
+     * @return string|null Comma-separated methods or null when none present
+     */
+    private function extractAllow(Throwable $e): ?string
+    {
+        $list = null;
+        if (property_exists($e, 'allowed') && is_array($e->allowed)) {
+            $list = $e->allowed;
+        } elseif (method_exists($e, 'allowed')) {
+            $list = $e->allowed();
+        } elseif (method_exists($e, 'getAllowedMethods')) {
+            $list = $e->getAllowedMethods();
+        }
+
+        if (!$list) {
+            return null;
+        }
+
+        $list = array_unique(array_map('strtoupper', (array)$list));
+        sort($list, SORT_STRING);
+
+        // Ensure HEAD is present whenever GET exists and HEAD was not explicitly given.
+        if (in_array('GET', $list, true) && !in_array('HEAD', $list, true)) {
+            $list[] = 'HEAD';
+        }
+        // Always include OPTIONS for method discovery convenience.
+        if (!in_array('OPTIONS', $list, true)) {
+            $list[] = 'OPTIONS';
+        }
+        return implode(', ', $list);
+    }
+
+    /**
+     * Render an HTML error page.
+     *
+     * When debug mode is enabled the page includes exception details and trace.
+     *
+     * @param int $status HTTP status code
+     * @param string $reason Short reason phrase
+     * @param string $msg Public or debug message
+     * @param string $rid Request identifier (may be empty)
+     * @param Throwable $e Source exception for debug details
+     * @return string Full HTML document
+     */
+    private function htmlError(int $status, string $reason, string $msg, string $rid, Throwable $e): string
+    {
+        $esc = fn (string $s): string => htmlspecialchars($s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $debug = '';
+        if ($this->debug) {
+            $debug = sprintf(
+                '<div style="margin-top:1rem;padding:.75rem;border:1px solid #ddd;border-radius:6px;">
+                    <div><strong>%s</strong></div>
+                    <div>%s:%d</div>
+                    <pre style="white-space:pre-wrap">%s</pre>
+                 </div>',
+                $esc($e::class),
+                $esc($e->getFile()),
+                $e->getLine(),
+                $esc($e->getTraceAsString()),
+            );
+        }
+        $ridHtml = $rid !== '' ? '<div style="opacity:.7">Request-Id: ' . $esc($rid) . '</div>' : '';
+        return <<<HTML
+            <!doctype html>
+            <meta charset="utf-8">
+            <title>{$status} {$esc($reason)}</title>
+            <style>
+            body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; margin: 2rem; line-height:1.45;}
+            h1 { margin: 0 0 .25rem 0; font-size: 1.5rem;}
+            .card { padding: 1rem; border: 1px solid #e5e7eb; border-radius: .75rem; background: #fff; max-width: 900px;}
+            .sub { color: #6b7280; margin-top:.25rem; }
+            </style>
+            <div class="card">
+              <h1>{$status} {$esc($reason)}</h1>
+              <div class="sub">{$esc($msg)}</div>
+              {$ridHtml}
+              {$debug}
+            </div>
+            HTML;
+    }
+
+    /**
+     * Check whether an integer is a valid HTTP error/status code.
+     *
+     * @param int $code Candidate code
+     * @return bool True when code is between 400 and 599 inclusive
+     */
+    private function isHttp(int $code): bool
+    {
+        return $code >= 400 && $code <= 599;
+    }
+
+    /**
+     * Log the Throwable using the configured PSR-3 logger.
+     *
+     * Severity mapping:
+     *  - 5xx -> error
+     *  - 404 / 405 -> notice
+     *  - otherwise -> warning
+     *
+     * The message includes HTTP status and exception class; context carries
+     * request metadata and the exception itself for structured logging.
+     *
+     * @param Throwable $e Exception to log
+     * @param Request $req Request associated with the failure
+     * @param int $status Resolved HTTP status code
+     * @return void
+     */
+    private function log(Throwable $e, Request $req, int $status): void
+    {
+        if (!$this->logger) {
+            return;
+        }
+
+        $level = match (true) {
+            $status >= 500 => 'error',
+            $status === StatusEnum::NOT_FOUND->value
+            || $status === StatusEnum::METHOD_NOT_ALLOWED->value => 'notice',
+            default => 'warning',
+        };
+
+        $this->logger->{$level}(
+            sprintf('[http:%d] %s: %s', $status, $e::class, $e->getMessage()),
+            [
+                'status' => $status,
+                'series' => StatusEnum::tryFrom($status)?->series(),
+                'method' => strtoupper($req->getMethod()),
+                'path' => (string)$req->getUri()->getPath(),
+                'request_id' => $req->getAttribute('request_id') ?: null,
+                'exception' => $e,
+            ],
+        );
+    }
+
+    /**
+     * Pick a preferred response content type based on an Accept header value.
+     *
+     * This is a simple heuristic that looks for well-known types in order of
+     * preference and falls back to text/plain.
+     *
+     * @param string $accept Lowercased Accept header value
+     * @return string Chosen MIME type for error rendering
+     */
+    private function pickType(string $accept): string
+    {
+        $accept = strtolower($accept);
+        if (str_contains($accept, 'application/problem+json')) {
+            return 'application/problem+json';
+        }
+        if (str_contains($accept, 'application/json')) {
+            return 'application/json';
+        }
+        if (str_contains($accept, 'text/html')) {
+            return 'text/html';
+        }
+        if (str_contains($accept, 'application/xml') || str_contains($accept, 'text/xml')) {
+            return 'application/xml';
+        }
+        return 'text/plain';
     }
 
     /* ──────────────────────── render ──────────────────────── */
@@ -225,116 +397,6 @@ final class ErrorHandler
         }
     }
 
-    /**
-     * Pick a preferred response content type based on an Accept header value.
-     *
-     * This is a simple heuristic that looks for well-known types in order of
-     * preference and falls back to text/plain.
-     *
-     * @param string $accept Lowercased Accept header value
-     * @return string Chosen MIME type for error rendering
-     */
-    private function pickType(string $accept): string
-    {
-        $accept = strtolower($accept);
-        if (str_contains($accept, 'application/problem+json')) {
-            return 'application/problem+json';
-        }
-        if (str_contains($accept, 'application/json')) {
-            return 'application/json';
-        }
-        if (str_contains($accept, 'text/html')) {
-            return 'text/html';
-        }
-        if (str_contains($accept, 'application/xml') || str_contains($accept, 'text/xml')) {
-            return 'application/xml';
-        }
-        return 'text/plain';
-    }
-
-    /**
-     * Render an HTML error page.
-     *
-     * When debug mode is enabled the page includes exception details and trace.
-     *
-     * @param int $status HTTP status code
-     * @param string $reason Short reason phrase
-     * @param string $msg Public or debug message
-     * @param string $rid Request identifier (may be empty)
-     * @param Throwable $e Source exception for debug details
-     * @return string Full HTML document
-     */
-    private function htmlError(int $status, string $reason, string $msg, string $rid, Throwable $e): string
-    {
-        $esc = fn (string $s): string => htmlspecialchars($s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        $debug = '';
-        if ($this->debug) {
-            $debug = sprintf(
-                '<div style="margin-top:1rem;padding:.75rem;border:1px solid #ddd;border-radius:6px;">
-                    <div><strong>%s</strong></div>
-                    <div>%s:%d</div>
-                    <pre style="white-space:pre-wrap">%s</pre>
-                 </div>',
-                $esc($e::class),
-                $esc($e->getFile()),
-                $e->getLine(),
-                $esc($e->getTraceAsString()),
-            );
-        }
-        $ridHtml = $rid !== '' ? '<div style="opacity:.7">Request-Id: ' . $esc($rid) . '</div>' : '';
-        return <<<HTML
-            <!doctype html>
-            <meta charset="utf-8">
-            <title>{$status} {$esc($reason)}</title>
-            <style>
-            body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; margin: 2rem; line-height:1.45;}
-            h1 { margin: 0 0 .25rem 0; font-size: 1.5rem;}
-            .card { padding: 1rem; border: 1px solid #e5e7eb; border-radius: .75rem; background: #fff; max-width: 900px;}
-            .sub { color: #6b7280; margin-top:.25rem; }
-            </style>
-            <div class="card">
-              <h1>{$status} {$esc($reason)}</h1>
-              <div class="sub">{$esc($msg)}</div>
-              {$ridHtml}
-              {$debug}
-            </div>
-            HTML;
-    }
-
-    /**
-     * Render an XML error payload.
-     *
-     * When debug mode is enabled exception class/file/trace are included.
-     *
-     * @param int $status HTTP status code
-     * @param string $reason Reason phrase
-     * @param string $msg Message to include in the payload
-     * @param string $rid Request identifier (may be empty)
-     * @param Throwable $e Source exception for debug details
-     * @return string XML string
-     */
-    private function xmlError(int $status, string $reason, string $msg, string $rid, Throwable $e): string
-    {
-        $xe = fn (string $s): string => htmlspecialchars($s, ENT_XML1 | ENT_COMPAT, 'UTF-8');
-        $trace = $this->debug ? '<trace>' . $xe($e->getTraceAsString()) . '</trace>' : '';
-        $ridEl = $rid !== '' ? '<request_id>' . $xe($rid) . '</request_id>' : '';
-        $exEl = $this->debug
-            ? '<exception>' . $xe($e::class) . '</exception><file>' . $xe($e->getFile()) . ':' . $e->getLine(
-            ) . '</file>'
-            : '';
-        return <<<XML
-            <?xml version="1.0" encoding="UTF-8"?>
-            <error>
-              <code>{$status}</code>
-              <reason>{$xe($reason)}</reason>
-              <message>{$xe($msg)}</message>
-              {$ridEl}
-              {$exEl}
-              {$trace}
-            </error>
-            XML;
-    }
-
     /* ───────────────────── status + logging ───────────────────── */
 
     /**
@@ -373,98 +435,36 @@ final class ErrorHandler
     }
 
     /**
-     * Check whether an integer is a valid HTTP error/status code.
+     * Render an XML error payload.
      *
-     * @param int $code Candidate code
-     * @return bool True when code is between 400 and 599 inclusive
+     * When debug mode is enabled exception class/file/trace are included.
+     *
+     * @param int $status HTTP status code
+     * @param string $reason Reason phrase
+     * @param string $msg Message to include in the payload
+     * @param string $rid Request identifier (may be empty)
+     * @param Throwable $e Source exception for debug details
+     * @return string XML string
      */
-    private function isHttp(int $code): bool
+    private function xmlError(int $status, string $reason, string $msg, string $rid, Throwable $e): string
     {
-        return $code >= 400 && $code <= 599;
-    }
-
-    /**
-     * Extract an Allow header value from a Throwable representing method constraints.
-     *
-     * Supports:
-     *  - public property 'allowed' (array)
-     *  - method allowed()
-     *  - method getAllowedMethods()
-     *
-     * Normalises to an RFC-style comma separated list and ensures HEAD/OPTIONS
-     * are included where appropriate.
-     *
-     * @param Throwable $e Source throwable that may expose allowed methods
-     * @return string|null Comma-separated methods or null when none present
-     */
-    private function extractAllow(Throwable $e): ?string
-    {
-        $list = null;
-        if (property_exists($e, 'allowed') && is_array($e->allowed)) {
-            $list = $e->allowed;
-        } elseif (method_exists($e, 'allowed')) {
-            $list = $e->allowed();
-        } elseif (method_exists($e, 'getAllowedMethods')) {
-            $list = $e->getAllowedMethods();
-        }
-
-        if (!$list) {
-            return null;
-        }
-
-        $list = array_unique(array_map('strtoupper', (array)$list));
-        sort($list, SORT_STRING);
-
-        // Ensure HEAD is present whenever GET exists and HEAD was not explicitly given.
-        if (in_array('GET', $list, true) && !in_array('HEAD', $list, true)) {
-            $list[] = 'HEAD';
-        }
-        // Always include OPTIONS for method discovery convenience.
-        if (!in_array('OPTIONS', $list, true)) {
-            $list[] = 'OPTIONS';
-        }
-        return implode(', ', $list);
-    }
-
-    /**
-     * Log the Throwable using the configured PSR-3 logger.
-     *
-     * Severity mapping:
-     *  - 5xx -> error
-     *  - 404 / 405 -> notice
-     *  - otherwise -> warning
-     *
-     * The message includes HTTP status and exception class; context carries
-     * request metadata and the exception itself for structured logging.
-     *
-     * @param Throwable $e Exception to log
-     * @param Request $req Request associated with the failure
-     * @param int $status Resolved HTTP status code
-     * @return void
-     */
-    private function log(Throwable $e, Request $req, int $status): void
-    {
-        if (!$this->logger) {
-            return;
-        }
-
-        $level = match (true) {
-            $status >= 500 => 'error',
-            $status === StatusEnum::NOT_FOUND->value
-            || $status === StatusEnum::METHOD_NOT_ALLOWED->value => 'notice',
-            default => 'warning',
-        };
-
-        $this->logger->{$level}(
-            sprintf('[http:%d] %s: %s', $status, $e::class, $e->getMessage()),
-            [
-                'status' => $status,
-                'series' => StatusEnum::tryFrom($status)?->series(),
-                'method' => strtoupper($req->getMethod()),
-                'path' => (string)$req->getUri()->getPath(),
-                'request_id' => $req->getAttribute('request_id') ?: null,
-                'exception' => $e,
-            ],
-        );
+        $xe = fn (string $s): string => htmlspecialchars($s, ENT_XML1 | ENT_COMPAT, 'UTF-8');
+        $trace = $this->debug ? '<trace>' . $xe($e->getTraceAsString()) . '</trace>' : '';
+        $ridEl = $rid !== '' ? '<request_id>' . $xe($rid) . '</request_id>' : '';
+        $exEl = $this->debug
+            ? '<exception>' . $xe($e::class) . '</exception><file>' . $xe($e->getFile()) . ':' . $e->getLine(
+            ) . '</file>'
+            : '';
+        return <<<XML
+            <?xml version="1.0" encoding="UTF-8"?>
+            <error>
+              <code>{$status}</code>
+              <reason>{$xe($reason)}</reason>
+              <message>{$xe($msg)}</message>
+              {$ridEl}
+              {$exEl}
+              {$trace}
+            </error>
+            XML;
     }
 }

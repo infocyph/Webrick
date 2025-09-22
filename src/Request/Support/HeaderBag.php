@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Request\Support;
 
+use ArrayAccess;
+use ArrayIterator;
 use Countable;
 use Infocyph\Webrick\Response\Headers\HeaderPolicy;
 use IteratorAggregate;
-use ArrayAccess;
 use Traversable;
-use ArrayIterator;
 
 /**
  * Immutable, case–insensitive header store shared by *Request* and *Response* layers.
@@ -24,9 +24,9 @@ use ArrayIterator;
  */
 final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
 {
+    private static array $normCache = [];
     /** @var array<string,string[]> */
     private array $map = [];
-    private static array $normCache = [];
     /**
      * Constructor.
      *
@@ -52,14 +52,26 @@ final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
     }
 
     /**
-     * Check if a header exists.
+     * Returns the number of header fields in the collection.
+     *
+     * @return int The number of header fields.
+     */
+    public function count(): int
+    {
+        return count($this->map);
+    }
+    /**
+     * Retrieves the first value of the specified header.
+     *
+     * If the header is absent or has no values, returns null.
+     * If the header has exactly one value, returns that value as a string.
      *
      * @param string $name Case-insensitive header name
-     * @return bool True if header exists, false otherwise
+     * @return string|null The first header value or null
      */
-    public function has(string $name): bool
+    public function first(string $name): ?string
     {
-        return isset($this->map[$this->norm($name)]);
+        return $this->map[$this->norm($name)][0] ?? null;
     }
     /**
      * Retrieves the values of the specified header.
@@ -74,18 +86,101 @@ final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
     {
         return $this->map[$this->norm($name)] ?? [];
     }
+
     /**
-     * Retrieves the first value of the specified header.
-     *
-     * If the header is absent or has no values, returns null.
-     * If the header has exactly one value, returns that value as a string.
+     * Return a comma-concatenated header line (empty string when header absent).
      *
      * @param string $name Case-insensitive header name
-     * @return string|null The first header value or null
+     * @return string Comma-concatenated header line or empty string when header absent
      */
-    public function first(string $name): ?string
+    public function getHeaderLine(string $name): string
     {
-        return $this->map[$this->norm($name)][0] ?? null;
+        return ($vals = $this->get($name)) ? implode(',', $vals) : '';
+    }
+
+    /**
+     * Returns an iterator for the collection.
+     *
+     * The returned iterator will iterate over the header fields in the collection,
+     * yielding each header field as a key-value pair where the key is the header
+     * name (in lowercase) and the value is an array of strings for each value
+     * of the header.
+     *
+     * @return Traversable The iterator for the collection.
+     */
+    public function getIterator(): Traversable
+    {
+        return new ArrayIterator($this->map);
+    }
+
+    /**
+     * Check if a header exists.
+     *
+     * @param string $name Case-insensitive header name
+     * @return bool True if header exists, false otherwise
+     */
+    public function has(string $name): bool
+    {
+        return isset($this->map[$this->norm($name)]);
+    }
+    /**
+     * Return a comma-concatenated header line (null when header absent).
+     *
+     * @param string $name Case-insensitive header name
+     * @return string|null Comma-concatenated header line or null when header absent
+     */
+    public function line(string $name): ?string
+    {
+        return ($vals = $this->get($name)) ? implode(',', $vals) : null;
+    }
+
+    /**
+     * Check if a given offset exists in the collection.
+     *
+     * @param mixed $offset The key to check for existence.
+     * @return bool True if the offset exists, false otherwise.
+     */
+    public function offsetExists(mixed $offset): bool
+    {
+        return $this->has((string)$offset);
+    }
+
+    /**
+     * Retrieves a header value by name.
+     *
+     * @param mixed $offset The name of the header to retrieve.
+     * @return mixed The header value if present, otherwise null.
+     */
+    public function offsetGet(mixed $offset): mixed
+    {
+        return $this->get((string)$offset);
+    }
+
+    /**
+     * This method is not intended to be used directly. HeaderBag is immutable and
+     * cannot be modified after creation. Calling this method will throw a
+     * \LogicException.
+     *
+     * @param mixed $offset The header to set.
+     * @param mixed $value The value to set.
+     *
+     * @throws \LogicException Always thrown as HeaderBag is immutable.
+     */
+    public function offsetSet(mixed $offset, mixed $value): void
+    {
+        throw new \LogicException('HeaderBag is immutable');
+    }
+
+    /**
+     * Unsets a header.
+     *
+     * @param mixed $offset The header to unset.
+     *
+     * @throws \LogicException HeaderBag is immutable.
+     */
+    public function offsetUnset(mixed $offset): void
+    {
+        throw new \LogicException('HeaderBag is immutable');
     }
     /**
      * Retrieves the value of the specified header.
@@ -104,27 +199,6 @@ final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
             return null;
         }
         return count($all) === 1 ? $all[0] : $all;
-    }
-    /**
-     * Return a comma-concatenated header line (null when header absent).
-     *
-     * @param string $name Case-insensitive header name
-     * @return string|null Comma-concatenated header line or null when header absent
-     */
-    public function line(string $name): ?string
-    {
-        return ($vals = $this->get($name)) ? implode(',', $vals) : null;
-    }
-
-    /**
-     * Return a comma-concatenated header line (empty string when header absent).
-     *
-     * @param string $name Case-insensitive header name
-     * @return string Comma-concatenated header line or empty string when header absent
-     */
-    public function getHeaderLine(string $name): string
-    {
-        return ($vals = $this->get($name)) ? implode(',', $vals) : '';
     }
 
     /**
@@ -203,77 +277,17 @@ final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
     }
 
     /**
-     * Returns an iterator for the collection.
+     * Normalize a header name to ucwords-dashed.
      *
-     * The returned iterator will iterate over the header fields in the collection,
-     * yielding each header field as a key-value pair where the key is the header
-     * name (in lowercase) and the value is an array of strings for each value
-     * of the header.
+     * This method is used internally to normalize header names.
+     * It caches the results to avoid repeated computation.
      *
-     * @return Traversable The iterator for the collection.
+     * @param string $name The header name to normalize.
+     * @return string The normalized header name.
      */
-    public function getIterator(): Traversable
+    private function norm(string $name): string
     {
-        return new ArrayIterator($this->map);
-    }
-
-    /**
-     * Returns the number of header fields in the collection.
-     *
-     * @return int The number of header fields.
-     */
-    public function count(): int
-    {
-        return count($this->map);
-    }
-
-    /**
-     * Check if a given offset exists in the collection.
-     *
-     * @param mixed $offset The key to check for existence.
-     * @return bool True if the offset exists, false otherwise.
-     */
-    public function offsetExists(mixed $offset): bool
-    {
-        return $this->has((string)$offset);
-    }
-
-    /**
-     * Retrieves a header value by name.
-     *
-     * @param mixed $offset The name of the header to retrieve.
-     * @return mixed The header value if present, otherwise null.
-     */
-    public function offsetGet(mixed $offset): mixed
-    {
-        return $this->get((string)$offset);
-    }
-
-    /**
-     * This method is not intended to be used directly. HeaderBag is immutable and
-     * cannot be modified after creation. Calling this method will throw a
-     * \LogicException.
-     *
-     * @param mixed $offset The header to set.
-     * @param mixed $value The value to set.
-     *
-     * @throws \LogicException Always thrown as HeaderBag is immutable.
-     */
-    public function offsetSet(mixed $offset, mixed $value): void
-    {
-        throw new \LogicException('HeaderBag is immutable');
-    }
-
-    /**
-     * Unsets a header.
-     *
-     * @param mixed $offset The header to unset.
-     *
-     * @throws \LogicException HeaderBag is immutable.
-     */
-    public function offsetUnset(mixed $offset): void
-    {
-        throw new \LogicException('HeaderBag is immutable');
+        return self::$normCache[$name] ??= ucwords(strtolower($name), '-');
     }
     /**
      * Internal helper to set a header.
@@ -288,19 +302,5 @@ final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
         $this->map[$this->norm($name)] = is_array($value)
             ? array_values($value)
             : [$value];
-    }
-
-    /**
-     * Normalize a header name to ucwords-dashed.
-     *
-     * This method is used internally to normalize header names.
-     * It caches the results to avoid repeated computation.
-     *
-     * @param string $name The header name to normalize.
-     * @return string The normalized header name.
-     */
-    private function norm(string $name): string
-    {
-        return self::$normCache[$name] ??= ucwords(strtolower($name), '-');
     }
 }

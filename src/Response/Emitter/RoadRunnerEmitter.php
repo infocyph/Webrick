@@ -15,16 +15,16 @@ use Infocyph\Webrick\Response\Response;
  */
 final class RoadRunnerEmitter implements EmitterInterface
 {
-/**
- * Emits a response to the current IO target.
- *
- * Requires Request attribute 'roadrunner.respond' (callable):
- *   function (int $status, array $headers, string|iterable $body): void
- *
- * @param Response $response
- * @param null|Request $request
- * @throws \RuntimeException
- */
+    /**
+     * Emits a response to the current IO target.
+     *
+     * Requires Request attribute 'roadrunner.respond' (callable):
+     *   function (int $status, array $headers, string|iterable $body): void
+     *
+     * @param Response $response
+     * @param null|Request $request
+     * @throws \RuntimeException
+     */
     public function emit(Response $response, ?Request $request = null): void
     {
         $respond = $request?->getAttribute('roadrunner.respond');

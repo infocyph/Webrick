@@ -5,16 +5,16 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Router\Kernel;
 
 use Closure;
-use Psr\Log\LoggerInterface;
 use Infocyph\InterMix\DI\Invoker;
+use Infocyph\Webrick\Exceptions\{MethodNotAllowedException, RouteNotFoundException};
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Definition\Registrar;
-use Infocyph\Webrick\Router\Facade\Router;
 use Infocyph\Webrick\Router\Dispatch\Dispatcher;
+use Infocyph\Webrick\Router\Facade\Router;
 use Infocyph\Webrick\Router\Matching\MatcherInterface;
 use Infocyph\Webrick\Router\Route\{Collection, CompiledRoute, Route};
-use Infocyph\Webrick\Exceptions\{MethodNotAllowedException, RouteNotFoundException};
+use Psr\Log\LoggerInterface;
 
 /**
  * RouterKernel
@@ -47,18 +47,13 @@ final class RouterKernel
     private const F_ALIASES = '__aliases.php';
 
     /**
-     * Error boundary used for request handling.
+     * Optional callback used to bind URL services (Response helpers) after warm-up.
      *
-     * @var ErrorHandler
-     */
-    private ErrorHandler $errorHandler;
-
-    /**
-     * Shared DI invoker used for handler/middleware invocation.
+     * Signature: function(Collection $routes): void
      *
-     * @var Invoker
+     * @var Closure|null
      */
-    private Invoker $invoker;
+    private ?Closure $bindUrlServices;
 
     /**
      * Dispatcher responsible for composing and executing middleware pipelines.
@@ -68,21 +63,34 @@ final class RouterKernel
     private Dispatcher $dispatcher;
 
     /**
-     * Path to route cache. Can be a directory (sharded mode) or file (fused mode).
-     * When null route caching is disabled.
+     * Error boundary used for request handling.
      *
-     * @var string|null
+     * @var ErrorHandler
      */
-    private ?string $routeCache;
+    private ErrorHandler $errorHandler;
 
     /**
-     * Optional callback used to bind URL services (Response helpers) after warm-up.
+     * When true and an alias cache yields zero entries, the kernel will run the
+     * registrar solely to build aliases while leaving the matcher (route table)
+     * untouched. Default true.
      *
-     * Signature: function(Collection $routes): void
-     *
-     * @var Closure|null
+     * @var bool
      */
-    private ?Closure $bindUrlServices;
+    private bool $fallbackAliasesFromRegistrar = true;
+
+    /**
+     * Shared DI invoker used for handler/middleware invocation.
+     *
+     * @var Invoker
+     */
+    private Invoker $invoker;
+
+    /**
+     * Matcher implementation used to add compiled routes and perform request matching.
+     *
+     * @var MatcherInterface
+     */
+    private MatcherInterface $matcher;
 
     /**
      * User-provided route registration callback executed on cold-path warm-up.
@@ -101,20 +109,12 @@ final class RouterKernel
     private array $registrarOptions;
 
     /**
-     * Matcher implementation used to add compiled routes and perform request matching.
+     * Path to route cache. Can be a directory (sharded mode) or file (fused mode).
+     * When null route caching is disabled.
      *
-     * @var MatcherInterface
+     * @var string|null
      */
-    private MatcherInterface $matcher;
-
-    /**
-     * When true and an alias cache yields zero entries, the kernel will run the
-     * registrar solely to build aliases while leaving the matcher (route table)
-     * untouched. Default true.
-     *
-     * @var bool
-     */
-    private bool $fallbackAliasesFromRegistrar = true;
+    private ?string $routeCache;
 
     /**
      * Construct the RouterKernel.
@@ -255,6 +255,175 @@ final class RouterKernel
     }
 
     /**
+     * Normalize a Host header value to its ASCII, lower-cased, non-trailing-dot form.
+     *
+     * Behaviour and validations:
+     *  - Empty host or host containing control characters will throw InvalidArgumentException.
+     *  - Trailing dots are removed.
+     *  - If idn_to_ascii is available, internationalized names will be converted to ASCII.
+     *  - Hosts containing non-printable/extended bytes after conversion will throw.
+     *
+     * @param string $raw Raw Host header value
+     * @return string Normalized ASCII host name
+     * @throws \InvalidArgumentException When the Host is illegal, invalid IDN, or contains non-ASCII bytes
+     */
+    private static function normaliseHost(string $raw): string
+    {
+        if ($raw === '' || \preg_match('/[\x00-\x20]/', $raw)) {
+            throw new \InvalidArgumentException('Illegal Host header.');
+        }
+        $host = \strtolower(\rtrim($raw, '.'));
+
+        if (\function_exists('idn_to_ascii') && !\str_contains($host, 'xn--')) {
+            $ascii = @\idn_to_ascii($host, \IDNA_DEFAULT, \INTL_IDNA_VARIANT_UTS46);
+            if ($ascii === false) {
+                throw new \InvalidArgumentException('Invalid IDN host name.');
+            }
+            $host = $ascii;
+        }
+        if (!\preg_match('/^[\x21-\x7E]+$/', $host)) {
+            throw new \InvalidArgumentException('Host contains non-ASCII bytes.');
+        }
+        return $host;
+    }
+
+    /**
+     * Check whether the alias cache file exists and is a regular file.
+     *
+     * @param string|null $path Path to check (may be null)
+     * @return bool True when path is a string and points to an existing file
+     */
+    private function aliasFileExists(?string $path): bool
+    {
+        return \is_string($path) && \is_file($path);
+    }
+
+    /**
+     * Compute the canonical alias file path for the provided cache location.
+     *
+     * If $cacheLocation is a directory the alias file is created inside it,
+     * otherwise the alias file is placed in the same directory as the given file.
+     *
+     * @param string $cacheLocation Directory or file path used for route cache
+     * @return string|null Resolved alias file path or null when $cacheLocation is null/empty
+     */
+    private function aliasFilePath(string $cacheLocation): ?string
+    {
+        return (
+            \is_dir($cacheLocation)
+                ? \rtrim($cacheLocation, '/\\')
+                : \dirname($cacheLocation)
+        ) . \DIRECTORY_SEPARATOR . self::F_ALIASES;
+    }
+
+    /**
+     * Registrar-only pass to build a Collection containing named route aliases
+     * (used when alias cache is hot but empty and we need name -> path mapping).
+     *
+     * The matcher is intentionally NOT altered by this pass.
+     *
+     * @return Collection Collection populated with named routes (alias-only)
+     */
+    private function buildAliasesViaRegistrar(): Collection
+    {
+        $routes = new Collection();
+
+        $opts = $this->registrarOptions + [
+                'autoSlashRedirect' => false,
+                'exposeUrlServices' => false, // bind explicitly later
+                'signKey' => null,
+                'signedDefaultTtl' => null,
+            ];
+
+        $registrar = new Registrar(
+            routes: $routes,
+            autoSlashRedirect: (bool)$opts['autoSlashRedirect'],
+            exposeUrlServices: false,
+            signKey: $opts['signKey'],
+            signedDefaultTtl: $opts['signedDefaultTtl'],
+        );
+
+        // Let user add routes – matcher is NOT touched in this path.
+        Router::setInstance($registrar);
+        ($this->register)($registrar);
+
+        // We only need the name/path map for URL helpers.
+        return $routes;
+    }
+
+    /**
+     * Hydrate a destination Collection with named route aliases read from the
+     * alias cache file. Returns the number of successfully added alias entries.
+     *
+     * Expected cache blob format:
+     *   ['_data' => [ name => [path, domain|null], ... ]]
+     *
+     * @param Collection $dst Destination collection to populate with alias routes
+     * @param string $cacheLocation Path to cache (directory or file)
+     * @return int Number of alias entries added to $dst
+     */
+    private function hydrateAliasesFromCache(Collection $dst, string $cacheLocation): int
+    {
+        $aliasFile = $this->aliasFilePath($cacheLocation);
+        if (!$this->aliasFileExists($aliasFile)) {
+            $this->log->warning('[router] alias cache file not found; URL helpers may be limited', [
+                'cache' => $cacheLocation,
+            ]);
+            return 0;
+        }
+
+        $blob = $this->requireAliasBlob($aliasFile);
+        if (!$this->isValidAliasBlob($blob)) {
+            $this->log->warning('[router] alias cache has unexpected format; URL helpers may be limited', [
+                'file' => $aliasFile,
+            ]);
+            return 0;
+        }
+
+        /** @var array<string, array{0:string,1:?string}> $pairs */
+        $pairs = $blob['_data'];
+
+        $added = 0;
+        foreach ($pairs as $name => $tuple) {
+            if (!\is_string($name) || $name === '' || !\is_array($tuple)) {
+                continue;
+            }
+            $path = $tuple[0] ?? null;
+            $domain = $tuple[1] ?? null;
+            if (!\is_string($path) || $path === '') {
+                continue;
+            }
+
+            $r = new Route('GET', $path, static fn () => Response::noContent());
+            $r = $r->withName($name);
+            if (\is_string($domain) && $domain !== '') {
+                $r = $r->withDomain($domain);
+            }
+            try {
+                $dst->add($r);
+                $added++;
+            } catch (\Throwable) { /* skip dupes */
+            }
+        }
+
+        $this->log->info('[router] alias cache hydrated', ['file' => $aliasFile, 'count' => $added]);
+        return $added;
+    }
+
+    /**
+     * Validate the alias blob structure returned from requireAliasBlob().
+     *
+     * Expected shape: array with key '_data' whose value is an array.
+     *
+     * @param mixed $blob Value returned from included alias file
+     * @return bool True when $blob is an array and contains an array under '_data'
+     */
+    private function isValidAliasBlob(mixed $blob): bool
+    {
+        return \is_array($blob) && isset($blob['_data']) && \is_array($blob['_data']);
+    }
+
+    /**
      * Match the incoming request to a compiled route using the matcher.
      *
      * Returns a two-element tuple: [CompiledRoute, array<string,mixed> vars].
@@ -269,6 +438,23 @@ final class RouterKernel
         $host = self::normaliseHost($uri->getHost());
         $path = $uri->getPath() ?: '/';
         return $this->matcher->match($method, $host, $path);
+    }
+
+    /**
+     * Require and return the contents of the alias file.
+     *
+     * This wraps the include with a Psalm suppression to allow dynamic includes
+     * whose return type cannot be resolved statically.
+     *
+     * @param string $file Path to alias PHP file that returns the alias blob
+     * @return mixed The value returned by the required file (expected array blob)
+     *
+     * @psalm-suppress UnresolvableInclude
+     */
+    private function requireAliasBlob(string $file)
+    {
+        /** @psalm-suppress UnresolvableInclude */
+        return require $file;
     }
 
     /* -----------------------------------------------------------------
@@ -377,191 +563,5 @@ final class RouterKernel
             'cache' => \method_exists($this->matcher, 'enableCache'),
             'mode' => 'compiled',
         ]);
-    }
-
-    /**
-     * Registrar-only pass to build a Collection containing named route aliases
-     * (used when alias cache is hot but empty and we need name -> path mapping).
-     *
-     * The matcher is intentionally NOT altered by this pass.
-     *
-     * @return Collection Collection populated with named routes (alias-only)
-     */
-    private function buildAliasesViaRegistrar(): Collection
-    {
-        $routes = new Collection();
-
-        $opts = $this->registrarOptions + [
-                'autoSlashRedirect' => false,
-                'exposeUrlServices' => false, // bind explicitly later
-                'signKey' => null,
-                'signedDefaultTtl' => null,
-            ];
-
-        $registrar = new Registrar(
-            routes: $routes,
-            autoSlashRedirect: (bool)$opts['autoSlashRedirect'],
-            exposeUrlServices: false,
-            signKey: $opts['signKey'],
-            signedDefaultTtl: $opts['signedDefaultTtl'],
-        );
-
-        // Let user add routes – matcher is NOT touched in this path.
-        Router::setInstance($registrar);
-        ($this->register)($registrar);
-
-        // We only need the name/path map for URL helpers.
-        return $routes;
-    }
-
-    /**
-     * Hydrate a destination Collection with named route aliases read from the
-     * alias cache file. Returns the number of successfully added alias entries.
-     *
-     * Expected cache blob format:
-     *   ['_data' => [ name => [path, domain|null], ... ]]
-     *
-     * @param Collection $dst Destination collection to populate with alias routes
-     * @param string $cacheLocation Path to cache (directory or file)
-     * @return int Number of alias entries added to $dst
-     */
-    private function hydrateAliasesFromCache(Collection $dst, string $cacheLocation): int
-    {
-        $aliasFile = $this->aliasFilePath($cacheLocation);
-        if (!$this->aliasFileExists($aliasFile)) {
-            $this->log->warning('[router] alias cache file not found; URL helpers may be limited', [
-                'cache' => $cacheLocation,
-            ]);
-            return 0;
-        }
-
-        $blob = $this->requireAliasBlob($aliasFile);
-        if (!$this->isValidAliasBlob($blob)) {
-            $this->log->warning('[router] alias cache has unexpected format; URL helpers may be limited', [
-                'file' => $aliasFile,
-            ]);
-            return 0;
-        }
-
-        /** @var array<string, array{0:string,1:?string}> $pairs */
-        $pairs = $blob['_data'];
-
-        $added = 0;
-        foreach ($pairs as $name => $tuple) {
-            if (!\is_string($name) || $name === '' || !\is_array($tuple)) {
-                continue;
-            }
-            $path = $tuple[0] ?? null;
-            $domain = $tuple[1] ?? null;
-            if (!\is_string($path) || $path === '') {
-                continue;
-            }
-
-            $r = new Route('GET', $path, static fn () => Response::noContent());
-            $r = $r->withName($name);
-            if (\is_string($domain) && $domain !== '') {
-                $r = $r->withDomain($domain);
-            }
-            try {
-                $dst->add($r);
-                $added++;
-            } catch (\Throwable) { /* skip dupes */
-            }
-        }
-
-        $this->log->info('[router] alias cache hydrated', ['file' => $aliasFile, 'count' => $added]);
-        return $added;
-    }
-
-    /**
-     * Compute the canonical alias file path for the provided cache location.
-     *
-     * If $cacheLocation is a directory the alias file is created inside it,
-     * otherwise the alias file is placed in the same directory as the given file.
-     *
-     * @param string $cacheLocation Directory or file path used for route cache
-     * @return string|null Resolved alias file path or null when $cacheLocation is null/empty
-     */
-    private function aliasFilePath(string $cacheLocation): ?string
-    {
-        return (
-            \is_dir($cacheLocation)
-                ? \rtrim($cacheLocation, '/\\')
-                : \dirname($cacheLocation)
-        ) . \DIRECTORY_SEPARATOR . self::F_ALIASES;
-    }
-
-    /**
-     * Check whether the alias cache file exists and is a regular file.
-     *
-     * @param string|null $path Path to check (may be null)
-     * @return bool True when path is a string and points to an existing file
-     */
-    private function aliasFileExists(?string $path): bool
-    {
-        return \is_string($path) && \is_file($path);
-    }
-
-    /**
-     * Require and return the contents of the alias file.
-     *
-     * This wraps the include with a Psalm suppression to allow dynamic includes
-     * whose return type cannot be resolved statically.
-     *
-     * @param string $file Path to alias PHP file that returns the alias blob
-     * @return mixed The value returned by the required file (expected array blob)
-     *
-     * @psalm-suppress UnresolvableInclude
-     */
-    private function requireAliasBlob(string $file)
-    {
-        /** @psalm-suppress UnresolvableInclude */
-        return require $file;
-    }
-
-    /**
-     * Validate the alias blob structure returned from requireAliasBlob().
-     *
-     * Expected shape: array with key '_data' whose value is an array.
-     *
-     * @param mixed $blob Value returned from included alias file
-     * @return bool True when $blob is an array and contains an array under '_data'
-     */
-    private function isValidAliasBlob(mixed $blob): bool
-    {
-        return \is_array($blob) && isset($blob['_data']) && \is_array($blob['_data']);
-    }
-
-    /**
-     * Normalize a Host header value to its ASCII, lower-cased, non-trailing-dot form.
-     *
-     * Behaviour and validations:
-     *  - Empty host or host containing control characters will throw InvalidArgumentException.
-     *  - Trailing dots are removed.
-     *  - If idn_to_ascii is available, internationalized names will be converted to ASCII.
-     *  - Hosts containing non-printable/extended bytes after conversion will throw.
-     *
-     * @param string $raw Raw Host header value
-     * @return string Normalized ASCII host name
-     * @throws \InvalidArgumentException When the Host is illegal, invalid IDN, or contains non-ASCII bytes
-     */
-    private static function normaliseHost(string $raw): string
-    {
-        if ($raw === '' || \preg_match('/[\x00-\x20]/', $raw)) {
-            throw new \InvalidArgumentException('Illegal Host header.');
-        }
-        $host = \strtolower(\rtrim($raw, '.'));
-
-        if (\function_exists('idn_to_ascii') && !\str_contains($host, 'xn--')) {
-            $ascii = @\idn_to_ascii($host, \IDNA_DEFAULT, \INTL_IDNA_VARIANT_UTS46);
-            if ($ascii === false) {
-                throw new \InvalidArgumentException('Invalid IDN host name.');
-            }
-            $host = $ascii;
-        }
-        if (!\preg_match('/^[\x21-\x7E]+$/', $host)) {
-            throw new \InvalidArgumentException('Host contains non-ASCII bytes.');
-        }
-        return $host;
     }
 }

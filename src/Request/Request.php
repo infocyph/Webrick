@@ -16,12 +16,12 @@ use Stringable;
 class Request extends ServerRequest implements ArrayAccess, JsonSerializable, Stringable
 {
     use MacroMix;
+    public const HEADER_FORWARDED = 0b10000;
 
     public const HEADER_X_FORWARDED_FOR = 0b00001;
     public const HEADER_X_FORWARDED_HOST = 0b00010;
-    public const HEADER_X_FORWARDED_PROTO = 0b00100;
     public const HEADER_X_FORWARDED_PORT = 0b01000;
-    public const HEADER_FORWARDED = 0b10000;
+    public const HEADER_X_FORWARDED_PROTO = 0b00100;
 
     /** @var int */
     private static int $trustedHeaderFlags =
@@ -32,8 +32,20 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
         | self::HEADER_FORWARDED;
 
     private ?array $cachedAll = null;
-    private ?array $cachedSegments = null;
     private ?string $cachedLocale = null;
+    private ?array $cachedSegments = null;
+
+    /**
+     * Returns a JSON string representation of the request data.
+     *
+     * The JSON encode options are set to JSON_UNESCAPED_UNICODE and JSON_THROW_ON_ERROR.
+     *
+     * @return string A JSON string representation of the request data.
+     */
+    public function __toString(): string
+    {
+        return json_encode($this->all(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    }
 
     /**
      * Create a fake Request object from the given parameters.
@@ -71,6 +83,20 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
     {
         return static::createFromGlobals();
     }
+
+    /**
+     * Retrieves the trusted proxy headers mask set by `setTrustedProxies`.
+     *
+     * This is a static method that returns the trusted proxy headers mask
+     * set by `setTrustedProxies`. The mask is a bitwise OR of the
+     * `HEADER_X_FORWARDED_*` constants.
+     *
+     * @return int The trusted proxy headers mask.
+     */
+    public static function getProxyHeaderFlags(): int
+    {
+        return self::$trustedHeaderFlags;
+    }
     /**
      * Sets the trusted proxies and header flags for EndUser.
      *
@@ -85,20 +111,6 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
         if ($headerFlags !== null) {
             self::$trustedHeaderFlags = $headerFlags;
         }
-    }
-
-    /**
-     * Retrieves the trusted proxy headers mask set by `setTrustedProxies`.
-     *
-     * This is a static method that returns the trusted proxy headers mask
-     * set by `setTrustedProxies`. The mask is a bitwise OR of the
-     * `HEADER_X_FORWARDED_*` constants.
-     *
-     * @return int The trusted proxy headers mask.
-     */
-    public static function getProxyHeaderFlags(): int
-    {
-        return self::$trustedHeaderFlags;
     }
 
     /**
@@ -127,20 +139,6 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
     }
 
     /**
-     * Retrieves a value from the request data for the given key.
-     *
-     * If the value is not present, the given default value is returned.
-     *
-     * @param string $key The key to retrieve from the request data.
-     * @param mixed $default The default value to return if the key is not present.
-     * @return mixed The value associated with the key or the default value if not found.
-     */
-    public function input(string $key, mixed $default = null): mixed
-    {
-        return $this->data($key, $default);
-    }
-
-    /**
      * Retrieves a boolean value for the given key.
      *
      * If the value is not present or is not a boolean, the given default value is returned.
@@ -155,123 +153,42 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
         return $val ?? $default;
     }
 
+    /* ========== 7.  Client helpers ================================== */
+
     /**
-     * Returns an integer value for the given key. If the value is not present or is not an integer,
-     * the given default value is returned.
+     * Returns the canonicalized query string.
      *
-     * @param string $key The key to retrieve the value for
-     * @param int $default The default value to return if the key is not present or is not an integer
-     * @return int The integer value for the given key, or the default value
+     * The canonicalized query string is the normalized form of the query string, where
+     * all keys are sorted alphabetically and all values are URL-encoded.
+     *
+     * @return string The canonicalized query string.
      */
-    public function int(string $key, int $default = 0): int
+    public function canonicalQuery(): string
     {
-        $v = filter_var($this->data($key), FILTER_VALIDATE_INT);
-        return $v !== false ? $v : $default;
+        return Uri::normalizeQueryString($this->getUri()->getQuery());
     }
 
     /**
-     * Returns an array of all path segments of the current URI.
-     * Segments are split by the '/' character and empty segments are removed.
-     * The resulting array is 0-indexed.
+     * Retrieve a value from the request data using dot-notation.
+     * e.g. $request->data('user.name') will return the value of 'name' from the 'user' array.
+     * If the key was not found, returns the default value.
      *
-     * Example: for the URI "/foo/bar/baz", the segments array will be ["foo", "bar", "baz"]
-     *
-     * @return array an array of path segments
+     * @param string $dot The dot-notated key to retrieve from the request data.
+     * @param mixed $default The default value to return if the key was not found.
+     * @return mixed The value associated with the key, or the default value if not found.
      */
-    public function segments(): array
+    public function data(string $dot, mixed $default = null): mixed
     {
-        return $this->cachedSegments ??= array_values(
-            array_filter(
-                explode('/', $this->getUri()->getPath()),
-                static fn (string $s) => $s !== '',
-            ),
-        );
-    }
+        $segments = explode('.', $dot);
+        $value = parent::__get(array_shift($segments));
 
-    /**
-     * Returns the value of the segment at the given 1-based index or the
-     * given default value if the index is out of bounds.
-     *
-     * @param int $index 1-based index of the segment to retrieve
-     * @param mixed $default Value to return if the index is out of bounds
-     * @return string|null The value of the segment at the given index or the default value
-     */
-    public function segment(int $index, mixed $default = null): ?string
-    {
-        return $this->segments()[$index - 1] ?? $default;
-    }
-
-    /**
-     * Checks if the current request target matches any of the given patterns.
-     *
-     * The patterns can contain '*' as a wildcard character.
-     *
-     * @param string|array $patterns One or multiple patterns to match against.
-     * @return bool True if the request target matches any of the patterns, false otherwise.
-     */
-    public function routeIs(string|array $patterns): bool
-    {
-        $target = $this->getRequestTarget();
-        foreach ((array)$patterns as $p) {
-            $regex = '#^' . str_replace('\*', '.*', preg_quote($p, '#')) . '$#';
-            if (preg_match($regex, $target)) {
-                return true;
+        foreach ($segments as $seg) {
+            if (!is_array($value) || !array_key_exists($seg, $value)) {
+                return $default;
             }
+            $value = $value[$seg];
         }
-        return false;
-    }
-
-    /**
-     * Whether the request was made with one of the given HTTP verbs.
-     *
-     * @param string|array $verbs HTTP verbs to check against (e.g. 'GET', 'POST', ['GET', 'HEAD']).
-     * @return bool True if the request was made with one of the given HTTP verbs, false otherwise.
-     */
-    public function isMethod(string|array $verbs): bool
-    {
-        return in_array($this->getEffectiveMethod(), array_map('strtoupper', (array)$verbs), true);
-    }
-
-    /**
-     * Whether the request was made over HTTPS.
-     *
-     * @return bool True if the request was made over HTTPS, false otherwise.
-     */
-    public function isSecure(): bool
-    {
-        return $this->getUri()->getScheme() === 'https';
-    }
-
-    /**
-     * Verify a CSRF token against the stored value.
-     *
-     * If the first argument `$token` is given, it will be compared directly
-     * against the stored value. Otherwise, the function will extract the
-     * CSRF token from the request (in this order: headers/form/query/cookie) and
-     * compare it against the stored value.
-     *
-     * @param string|null $token The CSRF token to compare.
-     * @return bool True if the token matches, false otherwise.
-     */
-    public function matchesCsrfToken(?string $token = null): bool
-    {
-        return $token !== null
-            ? Csrf::matchesValue($token)   // fast-path when caller already has a token
-            : Csrf::matches($this);        // extract from request (headers/form/query/cookie)
-    }
-
-    /**
-     * Returns a new array containing all the key-value pairs from the current request
-     * except for the given keys.
-     *
-     * Useful for validating forms where some fields must have a value.
-     *
-     * @param array $keys The keys to exclude from the request.
-     * @return array The filtered request data.
-     */
-    public function only(array $keys): array
-    {
-        return array_intersect_key($this->all(), array_flip($keys));
+        return $value ?? $default;
     }
 
     /**
@@ -286,80 +203,6 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
     public function except(array $keys): array
     {
         return array_diff_key($this->all(), array_flip($keys));
-    }
-
-    /**
-     * Checks if all of the given data keys have a value.
-     * Useful for validating forms where some fields must have a value.
-     *
-     * @param string|array $keys The keys to check.
-     * @return bool True if all keys have a value, false otherwise.
-     */
-    public function has(string|array $keys): bool
-    {
-        return array_all((array)$keys, fn ($k) => $this->data($k) !== null);
-    }
-
-    /**
-     * Checks if all of the given data keys have a value.
-     * Useful for validating forms where all fields must have a value.
-     *
-     * @param string|array $keys The keys to check.
-     * @return bool True if all keys have a value, false otherwise.
-     */
-    public function filled(string|array $keys): bool
-    {
-        foreach ((array)$keys as $k) {
-            $v = $this->data($k);
-            if ($v === null || $v === '') {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    /**
-     * Determine if the given key(s) is missing from the request data.
-     *
-     * This method is a shortcut for checking if a key does not exist in the request data.
-     * It returns true if the key does not exist, otherwise false.
-     * If an array of keys is given, it returns true if any of the keys do not exist, otherwise false.
-     *
-     * @param string|array $keys Key(s) to check for existence
-     * @return bool True if the key(s) is missing, false otherwise
-     */
-    public function missing(string|array $keys): bool
-    {
-        return !$this->has($keys);
-    }
-
-    /**
-     * Retrieve a string value from the request data.
-     *
-     * This method is a shortcut for retrieving a string value from the request data.
-     * If the key does not exist in the request data, the given default value is returned.
-     *
-     * @param string $key The key to retrieve from the request data.
-     * @param string $default The default value to return if the key does not exist.
-     * @return string The string value associated with the key or the default value if the key does not exist.
-     */
-    public function string(string $key, string $default = ''): string
-    {
-        return (string)($this->data($key) ?? $default);
-    }
-
-    /**
-     * Check if the client prefers any of the given MIME types.
-     *
-     * @param string[] $mimeTypes ordered list of MIME types the client prefers
-     * @return string|null the first matching MIME type (or null if none match)
-     */
-    public function prefers(array $mimeTypes): ?string
-    {
-        // The helper already returns the first matching MIME type (or null)
-        return new ContentNegotiator(
-            $this->headers(),
-        )->preferred($mimeTypes);
     }
 
     /**
@@ -390,31 +233,33 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
     }
 
     /**
-     * Check if the request body contains JSON content.
+     * Checks if all of the given data keys have a value.
+     * Useful for validating forms where all fields must have a value.
      *
-     * This method checks the Content-Type header of the request to see if it contains
-     * a MIME type that indicates JSON content. If the header is not present, or does not
-     * match the expected pattern, the method returns false.
-     *
-     * @return bool Whether the request body contains JSON content.
+     * @param string|array $keys The keys to check.
+     * @return bool True if all keys have a value, false otherwise.
      */
-    public function isJson(): bool
+    public function filled(string|array $keys): bool
     {
-        return (bool)preg_match('#(?:application|text)/(?:[^\s;]+\+)?json#i', $this->getHeaderLine('Content-Type'));
+        foreach ((array)$keys as $k) {
+            $v = $this->data($k);
+            if ($v === null || $v === '') {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
-     * Check if the request body contains XML content.
+     * Checks if all of the given data keys have a value.
+     * Useful for validating forms where some fields must have a value.
      *
-     * This method checks the Content-Type header of the request to see if it contains
-     * a MIME type that indicates XML content. If the header is not present, or does not
-     * contain a valid MIME type for XML, this method will return false.
-     *
-     * @return bool True if the request body contains XML content, false otherwise.
+     * @param string|array $keys The keys to check.
+     * @return bool True if all keys have a value, false otherwise.
      */
-    public function isXml(): bool
+    public function has(string|array $keys): bool
     {
-        return (bool)preg_match('#(?:application|text)/(?:[^\s;]+\+)?xml#i', $this->getHeaderLine('Content-Type'));
+        return array_all((array)$keys, fn ($k) => $this->data($k) !== null);
     }
 
     /**
@@ -446,19 +291,32 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
         return $line !== '' ? $line : $default;
     }
 
-    /* ========== 7.  Client helpers ================================== */
+    /**
+     * Retrieves a value from the request data for the given key.
+     *
+     * If the value is not present, the given default value is returned.
+     *
+     * @param string $key The key to retrieve from the request data.
+     * @param mixed $default The default value to return if the key is not present.
+     * @return mixed The value associated with the key or the default value if not found.
+     */
+    public function input(string $key, mixed $default = null): mixed
+    {
+        return $this->data($key, $default);
+    }
 
     /**
-     * Returns the canonicalized query string.
+     * Returns an integer value for the given key. If the value is not present or is not an integer,
+     * the given default value is returned.
      *
-     * The canonicalized query string is the normalized form of the query string, where
-     * all keys are sorted alphabetically and all values are URL-encoded.
-     *
-     * @return string The canonicalized query string.
+     * @param string $key The key to retrieve the value for
+     * @param int $default The default value to return if the key is not present or is not an integer
+     * @return int The integer value for the given key, or the default value
      */
-    public function canonicalQuery(): string
+    public function int(string $key, int $default = 0): int
     {
-        return Uri::normalizeQueryString($this->getUri()->getQuery());
+        $v = filter_var($this->data($key), FILTER_VALIDATE_INT);
+        return $v !== false ? $v : $default;
     }
 
     /**
@@ -479,38 +337,126 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
     }
 
     /**
-     * Returns an associative array with the following keys:
-     *   - browser: the browser name (e.g. Chrome, Firefox, Safari)
-     *   - version: the browser version (e.g. 117, 108.0.1)
-     *   - platform: the platform name (e.g. Windows, macOS, Linux)
-     *   - engine: the rendering engine name (e.g. Blink, Gecko, WebKit)
-     *   - raw: the raw User-Agent string
+     * Check if the request body contains JSON content.
      *
-     * @return array
+     * This method checks the Content-Type header of the request to see if it contains
+     * a MIME type that indicates JSON content. If the header is not present, or does not
+     * match the expected pattern, the method returns false.
+     *
+     * @return bool Whether the request body contains JSON content.
      */
-    public function ua(): array
+    public function isJson(): bool
     {
-        return EndUser::from($this)->parseUserAgent();
+        return (bool)preg_match('#(?:application|text)/(?:[^\s;]+\+)?json#i', $this->getHeaderLine('Content-Type'));
     }
 
     /**
-     * Validate the request data against the given rules.
+     * Whether the request was made with one of the given HTTP verbs.
      *
-     * If a "required" rule is specified for a field and that field is not present in the request,
-     * an InvalidArgumentException will be thrown.
-     *
-     * @param array $rules an associative array where the keys are the field names and the values are strings containing the rules.
-     * @return array the validated request data with only the fields specified in the rules.
-     * @throws InvalidArgumentException if a "required" field is not present in the request.
+     * @param string|array $verbs HTTP verbs to check against (e.g. 'GET', 'POST', ['GET', 'HEAD']).
+     * @return bool True if the request was made with one of the given HTTP verbs, false otherwise.
      */
-    public function validate(array $rules): array
+    public function isMethod(string|array $verbs): bool
     {
-        foreach ($rules as $field => $rule) {
-            if (str_contains((string)$rule, 'required') && !$this->filled($field)) {
-                throw new InvalidArgumentException("Field '{$field}' is required");
+        return in_array($this->getEffectiveMethod(), array_map('strtoupper', (array)$verbs), true);
+    }
+
+    /**
+     * Whether the request was made over HTTPS.
+     *
+     * @return bool True if the request was made over HTTPS, false otherwise.
+     */
+    public function isSecure(): bool
+    {
+        return $this->getUri()->getScheme() === 'https';
+    }
+
+    /**
+     * Check if the request body contains XML content.
+     *
+     * This method checks the Content-Type header of the request to see if it contains
+     * a MIME type that indicates XML content. If the header is not present, or does not
+     * contain a valid MIME type for XML, this method will return false.
+     *
+     * @return bool True if the request body contains XML content, false otherwise.
+     */
+    public function isXml(): bool
+    {
+        return (bool)preg_match('#(?:application|text)/(?:[^\s;]+\+)?xml#i', $this->getHeaderLine('Content-Type'));
+    }
+
+    /**
+     * Return an associative array that can be used to serialize the request data.
+     *
+     * @return array An associative array containing the request data.
+     */
+    public function jsonSerialize(): array
+    {
+        return $this->all();
+    }
+
+    /**
+     * Get the best-match language from the Accept-Language header.
+     *
+     * @param array|null $supported list of supported languages (e.g. ['en', 'fr', 'bn-BD'])
+     * @param string $fallback language to use if no match is found
+     * @param bool $cache whether to store the result in an instance variable
+     * @return string the best-match language
+     *
+     * If $supported is null, the method will use the first 5 characters of the header
+     * as the best-match language. If $supported is not null, the method will iterate over
+     * the list of supported languages and find the best match. If no match is found, the method
+     * will return the $fallback language.
+     */
+    public function locale(
+        ?array $supported = null,
+        string $fallback = 'en',
+        bool $cache = true,
+    ): string {
+        if ($cache && $supported === null && $this->cachedLocale !== null) {
+            return $this->cachedLocale;
+        }
+
+        $language = $this->headers()->accept('Accept-Language');
+        if ($language === []) {
+            return $fallback;
+        }
+
+        if ($supported === null) {
+            return $this->cachedLocale = strtolower(substr((string)$language[0], 0, 5));
+        }
+
+        $supported = array_map(static fn (string $l) => strtolower(str_replace('_', '-', $l)), $supported);
+
+        foreach ($language as $lang) {
+            $lang = strtolower(str_replace('_', '-', $lang));
+            $short = substr($lang, 0, 2);
+            if (in_array($lang, $supported, true)) {
+                return $this->cachedLocale = $lang;
+            }
+            if (in_array($short, $supported, true)) {
+                return $this->cachedLocale = $short;
             }
         }
-        return $this->only(array_keys($rules));
+        return $fallback;
+    }
+
+    /**
+     * Verify a CSRF token against the stored value.
+     *
+     * If the first argument `$token` is given, it will be compared directly
+     * against the stored value. Otherwise, the function will extract the
+     * CSRF token from the request (in this order: headers/form/query/cookie) and
+     * compare it against the stored value.
+     *
+     * @param string|null $token The CSRF token to compare.
+     * @return bool True if the token matches, false otherwise.
+     */
+    public function matchesCsrfToken(?string $token = null): bool
+    {
+        return $token !== null
+            ? Csrf::matchesValue($token)   // fast-path when caller already has a token
+            : Csrf::matches($this);        // extract from request (headers/form/query/cookie)
     }
 
     /**
@@ -527,14 +473,18 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
     }
 
     /**
-     * Replace the entire request data with the given array.
+     * Determine if the given key(s) is missing from the request data.
      *
-     * @param array $data The new request data to replace the old one.
-     * @return self A new instance with the replaced request data.
+     * This method is a shortcut for checking if a key does not exist in the request data.
+     * It returns true if the key does not exist, otherwise false.
+     * If an array of keys is given, it returns true if any of the keys do not exist, otherwise false.
+     *
+     * @param string|array $keys Key(s) to check for existence
+     * @return bool True if the key(s) is missing, false otherwise
      */
-    public function replace(array $data): self
+    public function missing(string|array $keys): bool
     {
-        return $this->withParsedBody($data);
+        return !$this->has($keys);
     }
 
     /**
@@ -585,94 +535,144 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
     }
 
     /**
-     * Return an associative array that can be used to serialize the request data.
+     * Returns a new array containing all the key-value pairs from the current request
+     * except for the given keys.
      *
-     * @return array An associative array containing the request data.
+     * Useful for validating forms where some fields must have a value.
+     *
+     * @param array $keys The keys to exclude from the request.
+     * @return array The filtered request data.
      */
-    public function jsonSerialize(): array
+    public function only(array $keys): array
     {
-        return $this->all();
+        return array_intersect_key($this->all(), array_flip($keys));
     }
 
     /**
-     * Returns a JSON string representation of the request data.
+     * Check if the client prefers any of the given MIME types.
      *
-     * The JSON encode options are set to JSON_UNESCAPED_UNICODE and JSON_THROW_ON_ERROR.
-     *
-     * @return string A JSON string representation of the request data.
+     * @param string[] $mimeTypes ordered list of MIME types the client prefers
+     * @return string|null the first matching MIME type (or null if none match)
      */
-    public function __toString(): string
+    public function prefers(array $mimeTypes): ?string
     {
-        return json_encode($this->all(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        // The helper already returns the first matching MIME type (or null)
+        return new ContentNegotiator(
+            $this->headers(),
+        )->preferred($mimeTypes);
     }
 
     /**
-     * Retrieve a value from the request data using dot-notation.
-     * e.g. $request->data('user.name') will return the value of 'name' from the 'user' array.
-     * If the key was not found, returns the default value.
+     * Replace the entire request data with the given array.
      *
-     * @param string $dot The dot-notated key to retrieve from the request data.
-     * @param mixed $default The default value to return if the key was not found.
-     * @return mixed The value associated with the key, or the default value if not found.
+     * @param array $data The new request data to replace the old one.
+     * @return self A new instance with the replaced request data.
      */
-    public function data(string $dot, mixed $default = null): mixed
+    public function replace(array $data): self
     {
-        $segments = explode('.', $dot);
-        $value = parent::__get(array_shift($segments));
-
-        foreach ($segments as $seg) {
-            if (!is_array($value) || !array_key_exists($seg, $value)) {
-                return $default;
-            }
-            $value = $value[$seg];
-        }
-        return $value ?? $default;
+        return $this->withParsedBody($data);
     }
 
     /**
-     * Get the best-match language from the Accept-Language header.
+     * Checks if the current request target matches any of the given patterns.
      *
-     * @param array|null $supported list of supported languages (e.g. ['en', 'fr', 'bn-BD'])
-     * @param string $fallback language to use if no match is found
-     * @param bool $cache whether to store the result in an instance variable
-     * @return string the best-match language
+     * The patterns can contain '*' as a wildcard character.
      *
-     * If $supported is null, the method will use the first 5 characters of the header
-     * as the best-match language. If $supported is not null, the method will iterate over
-     * the list of supported languages and find the best match. If no match is found, the method
-     * will return the $fallback language.
+     * @param string|array $patterns One or multiple patterns to match against.
+     * @return bool True if the request target matches any of the patterns, false otherwise.
      */
-    public function locale(
-        ?array $supported = null,
-        string $fallback = 'en',
-        bool $cache = true,
-    ): string {
-        if ($cache && $supported === null && $this->cachedLocale !== null) {
-            return $this->cachedLocale;
-        }
-
-        $language = $this->headers()->accept('Accept-Language');
-        if ($language === []) {
-            return $fallback;
-        }
-
-        if ($supported === null) {
-            return $this->cachedLocale = strtolower(substr((string)$language[0], 0, 5));
-        }
-
-        $supported = array_map(static fn (string $l) => strtolower(str_replace('_', '-', $l)), $supported);
-
-        foreach ($language as $lang) {
-            $lang = strtolower(str_replace('_', '-', $lang));
-            $short = substr($lang, 0, 2);
-            if (in_array($lang, $supported, true)) {
-                return $this->cachedLocale = $lang;
-            }
-            if (in_array($short, $supported, true)) {
-                return $this->cachedLocale = $short;
+    public function routeIs(string|array $patterns): bool
+    {
+        $target = $this->getRequestTarget();
+        foreach ((array)$patterns as $p) {
+            $regex = '#^' . str_replace('\*', '.*', preg_quote($p, '#')) . '$#';
+            if (preg_match($regex, $target)) {
+                return true;
             }
         }
-        return $fallback;
+        return false;
+    }
+
+    /**
+     * Returns the value of the segment at the given 1-based index or the
+     * given default value if the index is out of bounds.
+     *
+     * @param int $index 1-based index of the segment to retrieve
+     * @param mixed $default Value to return if the index is out of bounds
+     * @return string|null The value of the segment at the given index or the default value
+     */
+    public function segment(int $index, mixed $default = null): ?string
+    {
+        return $this->segments()[$index - 1] ?? $default;
+    }
+
+    /**
+     * Returns an array of all path segments of the current URI.
+     * Segments are split by the '/' character and empty segments are removed.
+     * The resulting array is 0-indexed.
+     *
+     * Example: for the URI "/foo/bar/baz", the segments array will be ["foo", "bar", "baz"]
+     *
+     * @return array an array of path segments
+     */
+    public function segments(): array
+    {
+        return $this->cachedSegments ??= array_values(
+            array_filter(
+                explode('/', $this->getUri()->getPath()),
+                static fn (string $s) => $s !== '',
+            ),
+        );
+    }
+
+    /**
+     * Retrieve a string value from the request data.
+     *
+     * This method is a shortcut for retrieving a string value from the request data.
+     * If the key does not exist in the request data, the given default value is returned.
+     *
+     * @param string $key The key to retrieve from the request data.
+     * @param string $default The default value to return if the key does not exist.
+     * @return string The string value associated with the key or the default value if the key does not exist.
+     */
+    public function string(string $key, string $default = ''): string
+    {
+        return (string)($this->data($key) ?? $default);
+    }
+
+    /**
+     * Returns an associative array with the following keys:
+     *   - browser: the browser name (e.g. Chrome, Firefox, Safari)
+     *   - version: the browser version (e.g. 117, 108.0.1)
+     *   - platform: the platform name (e.g. Windows, macOS, Linux)
+     *   - engine: the rendering engine name (e.g. Blink, Gecko, WebKit)
+     *   - raw: the raw User-Agent string
+     *
+     * @return array
+     */
+    public function ua(): array
+    {
+        return EndUser::from($this)->parseUserAgent();
+    }
+
+    /**
+     * Validate the request data against the given rules.
+     *
+     * If a "required" rule is specified for a field and that field is not present in the request,
+     * an InvalidArgumentException will be thrown.
+     *
+     * @param array $rules an associative array where the keys are the field names and the values are strings containing the rules.
+     * @return array the validated request data with only the fields specified in the rules.
+     * @throws InvalidArgumentException if a "required" field is not present in the request.
+     */
+    public function validate(array $rules): array
+    {
+        foreach ($rules as $field => $rule) {
+            if (str_contains((string)$rule, 'required') && !$this->filled($field)) {
+                throw new InvalidArgumentException("Field '{$field}' is required");
+            }
+        }
+        return $this->only(array_keys($rules));
     }
 
     /**

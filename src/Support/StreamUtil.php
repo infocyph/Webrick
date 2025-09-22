@@ -2,7 +2,7 @@
 
 /**
  * Webrick - Stream utility functions
- * 
+ *
  * @package Infocyph\Webrick\Support
  */
 
@@ -20,7 +20,7 @@ final class StreamUtil
 {
     /**
      * Gets the best-effort byte length of a PSR-7 stream.
-     * 
+     *
      * The method attempts to determine the stream length in the following order:
      * 1. Uses the stream's getSize() method if available
      * 2. If the stream is seekable, reads remaining bytes and calculates length

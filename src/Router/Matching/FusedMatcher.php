@@ -34,22 +34,6 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
 final class FusedMatcher extends AbstractMatcher implements MatcherInterface
 {
     /**
-     * Host-bucket data structure.
-     *
-     * Shape:
-     *   [
-     *     'host.name' => [
-     *         'static' => array<string, array<string, CompiledRoute>>, // path => [VERB => CompiledRoute]
-     *         'trie'   => array // trie root node created by newNode()
-     *     ],
-     *     '*' => ... // wildcard host
-     *   ]
-     *
-     * @var array<string, array{static: array, trie: array}>
-     */
-    private array $hosts = [];
-
-    /**
      * Alias index mapping route name => [path, domain|null].
      *
      * @var array<string, array{0:string,1:?string}>
@@ -83,6 +67,28 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
      * @var bool
      */
     private bool $finalized = false;
+    /**
+     * Host-bucket data structure.
+     *
+     * Shape:
+     *   [
+     *     'host.name' => [
+     *         'static' => array<string, array<string, CompiledRoute>>, // path => [VERB => CompiledRoute]
+     *         'trie'   => array // trie root node created by newNode()
+     *     ],
+     *     '*' => ... // wildcard host
+     *   ]
+     *
+     * @var array<string, array{static: array, trie: array}>
+     */
+    private array $hosts = [];
+
+    /**
+     * Private constructor to enforce factory creation.
+     */
+    private function __construct()
+    {
+    }
 
     /*──────────── factory/config ────────────*/
 
@@ -94,69 +100,6 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
     public static function make(): self
     {
         return new self();
-    }
-
-    /**
-     * Private constructor to enforce factory creation.
-     */
-    private function __construct()
-    {
-    }
-
-    /**
-     * Enable single-file cache output and set the target file path.
-     *
-     * The matcher will attempt to write the cache in finalize() if routes have
-     * been added and the target file is absent.
-     *
-     * @param string $cacheLocation Path to the output cache file
-     * @return self Fluent self for chaining
-     */
-    public function enableCache(string $cacheLocation): self
-    {
-        $this->cacheEnabled = true;
-        $this->cacheFile = $cacheLocation;
-        return $this;
-    }
-
-    /**
-     * Indicate whether a ready cache file exists such that the matcher can be
-     * booted from cache without compiling routes.
-     *
-     * @return bool True when cache is enabled and the cache file exists
-     */
-    public function canBootFromCache(): bool
-    {
-        return $this->cacheEnabled && \is_file($this->cacheFile);
-    }
-
-    /**
-     * Finalize the matcher.
-     *
-     * Behavior:
-     *  - If caching is enabled and the single-file cache does not exist but the
-     *    in-memory hosts table is populated, the cache file will be written.
-     *  - When the cache is written the in-memory tables are cleared to allow
-     *    lazy reload from the cache file later.
-     *
-     * This method is idempotent.
-     *
-     * @return void
-     */
-    public function finalize(): void
-    {
-        if ($this->finalized) {
-            return;
-        }
-        // Write cache only if table is built and file is absent
-        if ($this->cacheEnabled && !\is_file($this->cacheFile) && $this->hosts !== []) {
-            $this->dumpCache();
-            // Free memory; tables will be lazy-loaded on first match()
-            $this->hosts = [];
-            $this->alias = [];
-            $this->cacheLoaded = false;
-        }
-        $this->finalized = true;
     }
 
     /*──────────── registration ────────────*/
@@ -195,38 +138,83 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         }
     }
 
-    /**
-     * Insert a static (exact path) route into the host static table.
-     *
-     * @param string $host Canonical host key
-     * @param string $verb HTTP verb (uppercased)
-     * @param CompiledRoute $r Compiled route being inserted
-     * @throws \LogicException On duplicate insertion of the same verb/path
-     * @return void
-     */
-    private function insertStatic(string $host, string $verb, CompiledRoute $r): void
-    {
-        $path = $r->getPath();
-        $table = &$this->hosts[$host][self::K_STATIC];
+    /*──────────── alias accessors ────────────*/
 
-        if (isset($table[$path][$verb])) {
-            throw new \LogicException("Duplicate route {$verb} {$host}{$path}");
+    /**
+     * Return the alias index mapping name => [path, domain].
+     *
+     * If caching is enabled and not yet loaded, this will lazily load the alias
+     * side-data from the cache file.
+     *
+     * @return array<string, array{0:string,1:?string}>
+     */
+    public function aliasIndex(): array
+    {
+        // Ensure the lazy cache load occurred if caching is enabled
+        if ($this->cacheEnabled && !$this->cacheLoaded && \is_file($this->cacheFile)) {
+            /** @var array{_data:array,_alias?:array<string,array{0:string,1:?string}>} $blob */
+            $blob = require $this->cacheFile;
+            $this->alias = $blob[self::H_ALIAS] ?? $this->alias;
+            $this->hosts = $this->hosts ?: ($blob[self::H_DATA] ?? []);
+            $this->cacheLoaded = true;
         }
-        $table[$path][$verb] = $r;
+        return $this->alias;
     }
 
     /**
-     * Insert a dynamic route into the host trie.
+     * Indicate whether a ready cache file exists such that the matcher can be
+     * booted from cache without compiling routes.
      *
-     * @param string $host Canonical host key
-     * @param string $verb HTTP verb (uppercased)
-     * @param CompiledRoute $r Compiled dynamic route
+     * @return bool True when cache is enabled and the cache file exists
+     */
+    public function canBootFromCache(): bool
+    {
+        return $this->cacheEnabled && \is_file($this->cacheFile);
+    }
+
+    /**
+     * Enable single-file cache output and set the target file path.
+     *
+     * The matcher will attempt to write the cache in finalize() if routes have
+     * been added and the target file is absent.
+     *
+     * @param string $cacheLocation Path to the output cache file
+     * @return self Fluent self for chaining
+     */
+    public function enableCache(string $cacheLocation): self
+    {
+        $this->cacheEnabled = true;
+        $this->cacheFile = $cacheLocation;
+        return $this;
+    }
+
+    /**
+     * Finalize the matcher.
+     *
+     * Behavior:
+     *  - If caching is enabled and the single-file cache does not exist but the
+     *    in-memory hosts table is populated, the cache file will be written.
+     *  - When the cache is written the in-memory tables are cleared to allow
+     *    lazy reload from the cache file later.
+     *
+     * This method is idempotent.
+     *
      * @return void
      */
-    private function insertDynamic(string $host, string $verb, CompiledRoute $r): void
+    public function finalize(): void
     {
-        $node = &$this->hosts[$host][self::K_TRIE];
-        $this->trieInsert($node, $r, $verb);
+        if ($this->finalized) {
+            return;
+        }
+        // Write cache only if table is built and file is absent
+        if ($this->cacheEnabled && !\is_file($this->cacheFile) && $this->hosts !== []) {
+            $this->dumpCache();
+            // Free memory; tables will be lazy-loaded on first match()
+            $this->hosts = [];
+            $this->alias = [];
+            $this->cacheLoaded = false;
+        }
+        $this->finalized = true;
     }
 
     /*──────────── runtime match ────────────*/
@@ -309,6 +297,90 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
     }
 
     /**
+     * Resolve a named route to its [path, domain] tuple.
+     *
+     * @param string $name Route name
+     * @return array{0:string,1:?string}|null [path, domain] or null when not found
+     */
+    public function resolveAlias(string $name): ?array
+    {
+        $idx = $this->aliasIndex();
+        return $idx[$name] ?? null;
+    }
+
+    /*──────────── cache export (single file) ────────────*/
+
+    /**
+     * Dump the in-memory host and alias tables into the configured cache file.
+     *
+     * The cache blob contains a checksum (xxh3) and a timestamp to allow basic
+     * integrity checks and identifying stale files.
+     *
+     * @throws \RuntimeException When the cache directory cannot be created
+     * @return void
+     */
+    private function dumpCache(): void
+    {
+        $dir = \dirname($this->cacheFile);
+        if (!\is_dir($dir) && !@\mkdir($dir, 0775, true) && !\is_dir($dir)) {
+            throw new \RuntimeException("Cannot create cache dir {$dir}");
+        }
+
+        $payloadHosts = $this->hosts;
+        $crc = \hash('xxh3', \json_encode($payloadHosts, \JSON_THROW_ON_ERROR));
+
+        $php = "<?php\nreturn [\n"
+            . "    '" . self::H_HASH . "'  => " . \var_export($crc, true) . ",\n"
+            . "    '" . self::H_TS . "'  => " . \var_export(date(DATE_ATOM), true) . ",\n"
+            . "    '" . self::H_DATA . "' => " . $this->exportArray($payloadHosts) . ",\n"
+            . "    '" . self::H_ALIAS . "' => " . $this->exportArray($this->alias) . ",\n"
+            . "];\n";
+
+        $tmp = $this->cacheFile . '.' . \uniqid('', true) . '.tmp';
+        \file_put_contents($tmp, $php, \LOCK_EX);
+        @\chmod($tmp, 0664);
+        @\rename($tmp, $this->cacheFile);
+
+        if (\function_exists('opcache_compile_file')) {
+            @\opcache_compile_file($this->cacheFile);
+        }
+    }
+
+    /**
+     * Insert a dynamic route into the host trie.
+     *
+     * @param string $host Canonical host key
+     * @param string $verb HTTP verb (uppercased)
+     * @param CompiledRoute $r Compiled dynamic route
+     * @return void
+     */
+    private function insertDynamic(string $host, string $verb, CompiledRoute $r): void
+    {
+        $node = &$this->hosts[$host][self::K_TRIE];
+        $this->trieInsert($node, $r, $verb);
+    }
+
+    /**
+     * Insert a static (exact path) route into the host static table.
+     *
+     * @param string $host Canonical host key
+     * @param string $verb HTTP verb (uppercased)
+     * @param CompiledRoute $r Compiled route being inserted
+     * @throws \LogicException On duplicate insertion of the same verb/path
+     * @return void
+     */
+    private function insertStatic(string $host, string $verb, CompiledRoute $r): void
+    {
+        $path = $r->getPath();
+        $table = &$this->hosts[$host][self::K_STATIC];
+
+        if (isset($table[$path][$verb])) {
+            throw new \LogicException("Duplicate route {$verb} {$host}{$path}");
+        }
+        $table[$path][$verb] = $r;
+    }
+
+    /**
      * Attempt to match against the static tables for a host and wildcard.
      *
      * On success returns [$route, []] (no params). When a path is present but
@@ -362,78 +434,5 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
             }
         }
         return null;
-    }
-
-    /*──────────── alias accessors ────────────*/
-
-    /**
-     * Return the alias index mapping name => [path, domain].
-     *
-     * If caching is enabled and not yet loaded, this will lazily load the alias
-     * side-data from the cache file.
-     *
-     * @return array<string, array{0:string,1:?string}>
-     */
-    public function aliasIndex(): array
-    {
-        // Ensure the lazy cache load occurred if caching is enabled
-        if ($this->cacheEnabled && !$this->cacheLoaded && \is_file($this->cacheFile)) {
-            /** @var array{_data:array,_alias?:array<string,array{0:string,1:?string}>} $blob */
-            $blob = require $this->cacheFile;
-            $this->alias = $blob[self::H_ALIAS] ?? $this->alias;
-            $this->hosts = $this->hosts ?: ($blob[self::H_DATA] ?? []);
-            $this->cacheLoaded = true;
-        }
-        return $this->alias;
-    }
-
-    /**
-     * Resolve a named route to its [path, domain] tuple.
-     *
-     * @param string $name Route name
-     * @return array{0:string,1:?string}|null [path, domain] or null when not found
-     */
-    public function resolveAlias(string $name): ?array
-    {
-        $idx = $this->aliasIndex();
-        return $idx[$name] ?? null;
-    }
-
-    /*──────────── cache export (single file) ────────────*/
-
-    /**
-     * Dump the in-memory host and alias tables into the configured cache file.
-     *
-     * The cache blob contains a checksum (xxh3) and a timestamp to allow basic
-     * integrity checks and identifying stale files.
-     *
-     * @throws \RuntimeException When the cache directory cannot be created
-     * @return void
-     */
-    private function dumpCache(): void
-    {
-        $dir = \dirname($this->cacheFile);
-        if (!\is_dir($dir) && !@\mkdir($dir, 0775, true) && !\is_dir($dir)) {
-            throw new \RuntimeException("Cannot create cache dir {$dir}");
-        }
-
-        $payloadHosts = $this->hosts;
-        $crc = \hash('xxh3', \json_encode($payloadHosts, \JSON_THROW_ON_ERROR));
-
-        $php = "<?php\nreturn [\n"
-            . "    '" . self::H_HASH . "'  => " . \var_export($crc, true) . ",\n"
-            . "    '" . self::H_TS . "'  => " . \var_export(date(DATE_ATOM), true) . ",\n"
-            . "    '" . self::H_DATA . "' => " . $this->exportArray($payloadHosts) . ",\n"
-            . "    '" . self::H_ALIAS . "' => " . $this->exportArray($this->alias) . ",\n"
-            . "];\n";
-
-        $tmp = $this->cacheFile . '.' . \uniqid('', true) . '.tmp';
-        \file_put_contents($tmp, $php, \LOCK_EX);
-        @\chmod($tmp, 0664);
-        @\rename($tmp, $this->cacheFile);
-
-        if (\function_exists('opcache_compile_file')) {
-            @\opcache_compile_file($this->cacheFile);
-        }
     }
 }

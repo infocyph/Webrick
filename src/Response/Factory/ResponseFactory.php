@@ -26,7 +26,7 @@ final class ResponseFactory
         // empty body keeps memory low; caller can replace via withBody()
         return new Response($code, new Stream(), [], '1.1', $reasonPhrase);
     }
-    
+
     /**
      * Creates a new Stream object from a string.
      *
@@ -54,7 +54,7 @@ final class ResponseFactory
         }
         return new Stream($handle);
     }
-    
+
     /**
      * Creates a new Stream object from a given resource.
      *

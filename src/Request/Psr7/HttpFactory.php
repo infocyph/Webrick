@@ -26,6 +26,24 @@ final class HttpFactory
     }
 
     /**
+     * Creates a new Response object.
+     *
+     * If no reason phrase is provided, it will use the corresponding status code to
+     * determine the reason phrase.
+     *
+     * @param int $code The HTTP status code.
+     * @param string $reasonPhrase The reason phrase for the status code.
+     * @return Response A new Response object.
+     */
+    public function createResponse(int $code = 200, string $reasonPhrase = ''): Response
+    {
+        if ($reasonPhrase === '' && ($st = StatusEnum::tryFrom($code))) {
+            $reasonPhrase = $st->reason();
+        }
+        return new Response($code, new Stream(), [], '1.1', $reasonPhrase);
+    }
+
+    /**
      * Creates a new Stream object from a string.
      *
      * @param string $content The string to create a Stream from.
@@ -82,24 +100,6 @@ final class HttpFactory
         ?string $clientMediaType = null,
     ): UploadedFile {
         return new UploadedFile($stream, $size, $error, $clientFilename, $clientMediaType);
-    }
-
-    /**
-     * Creates a new Response object.
-     *
-     * If no reason phrase is provided, it will use the corresponding status code to
-     * determine the reason phrase.
-     *
-     * @param int $code The HTTP status code.
-     * @param string $reasonPhrase The reason phrase for the status code.
-     * @return Response A new Response object.
-     */
-    public function createResponse(int $code = 200, string $reasonPhrase = ''): Response
-    {
-        if ($reasonPhrase === '' && ($st = StatusEnum::tryFrom($code))) {
-            $reasonPhrase = $st->reason();
-        }
-        return new Response($code, new Stream(), [], '1.1', $reasonPhrase);
     }
 
     /**

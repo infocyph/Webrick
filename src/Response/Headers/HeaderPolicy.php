@@ -6,9 +6,9 @@ namespace Infocyph\Webrick\Response\Headers;
 
 final class HeaderPolicy
 {
-    public const SINGLE = 0;
-    public const MULTI_LINE = 1;
     public const MERGE_TOKENS = 2;
+    public const MULTI_LINE = 1;
+    public const SINGLE = 0;
 
     /** @var array<string,int> lowercase-header => policy */
     private static array $map = [
@@ -27,6 +27,16 @@ final class HeaderPolicy
         'cache-control' => self::MERGE_TOKENS,
     ];
 
+
+    /**
+     * Private constructor to prevent instantiation.
+     *
+     * The class provides only static helpers; creating an instance is not intended.
+     */
+    private function __construct()
+    {
+    }
+
     /**
      * Return the merge policy for a header name.
      *
@@ -40,21 +50,6 @@ final class HeaderPolicy
     public static function for(string $header): int
     {
         return self::$map[strtolower($header)] ?? self::SINGLE;
-    }
-
-    /**
-     * Register or override the merge policy for a header name.
-     *
-     * This allows adding custom header handling rules at runtime. The
-     * header name is stored in lowercase.
-     *
-     * @param string $header Header name to register (case-insensitive)
-     * @param int $policy One of the HeaderPolicy::* constants
-     * @return void
-     */
-    public static function register(string $header, int $policy): void
-    {
-        self::$map[strtolower($header)] = $policy;
     }
 
     /* ---------------- NEW: central merge for CSV headers ---------------- */
@@ -99,6 +94,21 @@ final class HeaderPolicy
     }
 
     /**
+     * Register or override the merge policy for a header name.
+     *
+     * This allows adding custom header handling rules at runtime. The
+     * header name is stored in lowercase.
+     *
+     * @param string $header Header name to register (case-insensitive)
+     * @param int $policy One of the HeaderPolicy::* constants
+     * @return void
+     */
+    public static function register(string $header, int $policy): void
+    {
+        self::$map[strtolower($header)] = $policy;
+    }
+
+    /**
      * Normalize a comma-separated header value into an array of tokens.
      *
      * - Splits on commas, trims tokens and removes empty entries.
@@ -118,15 +128,5 @@ final class HeaderPolicy
             }, explode('-', $t));
             return implode('-', $parts ?? []);
         }, $toks);
-    }
-
-
-    /**
-     * Private constructor to prevent instantiation.
-     *
-     * The class provides only static helpers; creating an instance is not intended.
-     */
-    private function __construct()
-    {
     }
 }

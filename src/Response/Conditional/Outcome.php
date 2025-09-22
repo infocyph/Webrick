@@ -17,10 +17,10 @@ namespace Infocyph\Webrick\Response\Conditional;
  */
 final class Outcome
 {
+    public const FAIL = 2;
+    public const HIT = 1;
     /** generic constants – validators decide the exact HTTP code */
     public const PASS = 0;
-    public const HIT = 1;
-    public const FAIL = 2;
 
     /**
      * Creates a new Outcome.

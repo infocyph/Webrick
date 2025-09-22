@@ -23,6 +23,22 @@ final class SecurityHeaders
     }
 
     /**
+     * Apply Strict-Transport-Security if the header is not already present.
+     *
+     * Produces the header value "max-age=31536000" (1 year) and appends
+     * "; includeSubDomains" when $includeSub is true.
+     *
+     * @param Response $r Response to modify (immutable API; returned value may be a new instance)
+     * @param bool $includeSub Whether to include subdomains in the HSTS directive
+     * @return Response Response instance with Strict-Transport-Security set if absent
+     */
+    public static function hsts(Response $r, bool $includeSub = true): Response
+    {
+        $val = 'max-age=31536000' . ($includeSub ? '; includeSubDomains' : '');
+        return self::setIfAbsent($r, 'Strict-Transport-Security', $val);
+    }
+
+    /**
      * Apply an opinionated set of security headers without overriding existing values.
      *
      * Behaviour:
@@ -84,22 +100,6 @@ final class SecurityHeaders
         $httpsish = (($_SERVER['HTTPS'] ?? '') === 'on' || ($_SERVER['HTTPS'] ?? '') === '1')
             || (strtolower($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
         return $hsts && $httpsish ? self::hsts($r, $includeSubs) : $r;
-    }
-
-    /**
-     * Apply Strict-Transport-Security if the header is not already present.
-     *
-     * Produces the header value "max-age=31536000" (1 year) and appends
-     * "; includeSubDomains" when $includeSub is true.
-     *
-     * @param Response $r Response to modify (immutable API; returned value may be a new instance)
-     * @param bool $includeSub Whether to include subdomains in the HSTS directive
-     * @return Response Response instance with Strict-Transport-Security set if absent
-     */
-    public static function hsts(Response $r, bool $includeSub = true): Response
-    {
-        $val = 'max-age=31536000' . ($includeSub ? '; includeSubDomains' : '');
-        return self::setIfAbsent($r, 'Strict-Transport-Security', $val);
     }
 
     /* ——— internal utility ——— */

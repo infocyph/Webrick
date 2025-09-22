@@ -63,32 +63,6 @@ final class ByteRangeStream implements BodyStream
     }
 
     /**
-     * Return the number of bytes remaining in this window.
-     *
-     * Note: this reports the remaining quota, not the total size of the
-     * underlying stream resource.
-     *
-     * @return int|null Remaining bytes available to read, or null if unknown
-     */
-    public function getSize(): ?int
-    {
-        return $this->remaining;
-    }
-
-    /**
-     * Return the current read pointer of the underlying stream.
-     *
-     * The value relates to the base stream; callers should consider that
-     * $this->remaining is decremented independently when reading.
-     *
-     * @return int Current position in the underlying stream
-     */
-    public function tell(): int
-    {
-        return $this->base->tell();
-    }
-
-    /**
      * Check whether the stream has reached end-of-file for this window.
      *
      * Returns true when either the window quota is exhausted or the base
@@ -99,99 +73,6 @@ final class ByteRangeStream implements BodyStream
     public function eof(): bool
     {
         return $this->remaining === 0 || $this->base->eof();
-    }
-
-    /**
-     * Whether the underlying stream supports seeking.
-     *
-     * @return bool True if seek operations are supported by the base stream
-     */
-    public function isSeekable(): bool
-    {
-        return $this->base->isSeekable();
-    }
-
-    /**
-     * This wrapper is read-only.
-     *
-     * @return bool Always false
-     */
-    public function isWritable(): bool
-    {
-        return false; // read-only
-    }
-
-    /**
-     * Whether the underlying stream is readable.
-     *
-     * @return bool True if the base stream supports reads
-     */
-    public function isReadable(): bool
-    {
-        return $this->base->isReadable();
-    }
-
-    /**
-     * Seek the underlying stream.
-     *
-     * Note: seeking does not modify the remaining byte quota; callers
-     * must ensure semantics they expect when combining seek + read.
-     *
-     * @param int $offset Byte offset to seek to on the underlying stream.
-     * @param int $whence One of SEEK_SET, SEEK_CUR or SEEK_END.
-     * @return void
-     * @throws RuntimeException If the underlying stream is not seekable.
-     */
-    public function seek(int $offset, int $whence = SEEK_SET): void
-    {
-        if (!$this->isSeekable()) {
-            throw new RuntimeException('Stream is not seek-able');
-        }
-        $this->base->seek($offset, $whence);
-    }
-
-    /**
-     * Rewind the underlying stream to the start.
-     *
-     * @return void
-     * @throws RuntimeException If the underlying stream is not seekable.
-     */
-    public function rewind(): void
-    {
-        $this->seek(0);
-    }
-
-    /**
-     * Writing is not supported for this wrapper.
-     *
-     * @param string $string Ignored
-     * @return int Never returns; always throws
-     * @throws RuntimeException Always thrown because the stream is read-only
-     */
-    public function write(string $string): int
-    {
-        throw new RuntimeException('ByteRangeStream is read-only');
-    }
-
-    /**
-     * Read up to $length bytes from the underlying stream, capped by the
-     * remaining window quota. Decrements the remaining quota by the number
-     * of bytes actually read.
-     *
-     * @param int $length Maximum number of bytes to read.
-     * @return string Bytes read (may be shorter than $length).
-     */
-    public function read(int $length): string
-    {
-        if ($this->remaining === 0) {
-            return '';
-        }
-
-        $length = min($length, $this->remaining);
-        $chunk = $this->base->read($length);
-
-        $this->remaining -= strlen($chunk);
-        return $chunk;
     }
 
     /**
@@ -220,5 +101,124 @@ final class ByteRangeStream implements BodyStream
     public function getMetadata(?string $key = null): mixed
     {
         return $this->base->getMetadata($key);
+    }
+
+    /**
+     * Return the number of bytes remaining in this window.
+     *
+     * Note: this reports the remaining quota, not the total size of the
+     * underlying stream resource.
+     *
+     * @return int|null Remaining bytes available to read, or null if unknown
+     */
+    public function getSize(): ?int
+    {
+        return $this->remaining;
+    }
+
+    /**
+     * Whether the underlying stream is readable.
+     *
+     * @return bool True if the base stream supports reads
+     */
+    public function isReadable(): bool
+    {
+        return $this->base->isReadable();
+    }
+
+    /**
+     * Whether the underlying stream supports seeking.
+     *
+     * @return bool True if seek operations are supported by the base stream
+     */
+    public function isSeekable(): bool
+    {
+        return $this->base->isSeekable();
+    }
+
+    /**
+     * This wrapper is read-only.
+     *
+     * @return bool Always false
+     */
+    public function isWritable(): bool
+    {
+        return false; // read-only
+    }
+
+    /**
+     * Read up to $length bytes from the underlying stream, capped by the
+     * remaining window quota. Decrements the remaining quota by the number
+     * of bytes actually read.
+     *
+     * @param int $length Maximum number of bytes to read.
+     * @return string Bytes read (may be shorter than $length).
+     */
+    public function read(int $length): string
+    {
+        if ($this->remaining === 0) {
+            return '';
+        }
+
+        $length = min($length, $this->remaining);
+        $chunk = $this->base->read($length);
+
+        $this->remaining -= strlen($chunk);
+        return $chunk;
+    }
+
+    /**
+     * Rewind the underlying stream to the start.
+     *
+     * @return void
+     * @throws RuntimeException If the underlying stream is not seekable.
+     */
+    public function rewind(): void
+    {
+        $this->seek(0);
+    }
+
+    /**
+     * Seek the underlying stream.
+     *
+     * Note: seeking does not modify the remaining byte quota; callers
+     * must ensure semantics they expect when combining seek + read.
+     *
+     * @param int $offset Byte offset to seek to on the underlying stream.
+     * @param int $whence One of SEEK_SET, SEEK_CUR or SEEK_END.
+     * @return void
+     * @throws RuntimeException If the underlying stream is not seekable.
+     */
+    public function seek(int $offset, int $whence = SEEK_SET): void
+    {
+        if (!$this->isSeekable()) {
+            throw new RuntimeException('Stream is not seek-able');
+        }
+        $this->base->seek($offset, $whence);
+    }
+
+    /**
+     * Return the current read pointer of the underlying stream.
+     *
+     * The value relates to the base stream; callers should consider that
+     * $this->remaining is decremented independently when reading.
+     *
+     * @return int Current position in the underlying stream
+     */
+    public function tell(): int
+    {
+        return $this->base->tell();
+    }
+
+    /**
+     * Writing is not supported for this wrapper.
+     *
+     * @param string $string Ignored
+     * @return int Never returns; always throws
+     * @throws RuntimeException Always thrown because the stream is read-only
+     */
+    public function write(string $string): int
+    {
+        throw new RuntimeException('ByteRangeStream is read-only');
     }
 }

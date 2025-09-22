@@ -16,8 +16,6 @@ use Infocyph\Webrick\Request\Support\IpCidr;
  */
 final class EndUser
 {
-    private static array $trustedGlobal = [];                    // CIDR strings
-
     /* ----------------------------------------------------------------------- */
     private const LEGACY_IP_HEADERS = [
         'HTTP_X_FORWARDED_FOR',
@@ -35,6 +33,7 @@ final class EndUser
         'HTTP_X_ORACLE_CLIENT_IP',
         'HTTP_X_STACKPATH_EDGE_IP',
     ];
+    private static array $trustedGlobal = [];                    // CIDR strings
 
     /* ----------------------------------------------------------------------- */
     private ?string $cachedNoProxy = null;
@@ -53,6 +52,18 @@ final class EndUser
     }
 
     /**
+     * Creates a new EndUser instance from the given Request.
+     *
+     * @param Request $r The request to get the end-user from.
+     * @param array $cidrs Extra trusted proxies (CIDR strings).
+     * @return self
+     */
+    public static function from(Request $r, array $cidrs = []): self
+    {
+        return new self($r, $cidrs);
+    }
+
+    /**
      * Sets the global trusted proxies.
      *
      * These are the IP addresses or CIDR ranges that are trusted to pass
@@ -67,15 +78,39 @@ final class EndUser
     }
 
     /**
-     * Creates a new EndUser instance from the given Request.
+     * Anonymize an IP address for privacy.
      *
-     * @param Request $r The request to get the end-user from.
-     * @param array $cidrs Extra trusted proxies (CIDR strings).
-     * @return self
+     * Given an IP address, return an anonymized version of it.
+     * IPv4 addresses are anonymized by zeroing out the last 8 bits.
+     * IPv6 addresses are anonymized by zeroing out the last 80 bits.
+     * If the IP address is bracketed (e.g., "[2001:db8::1f16:3984:2c01:dead:beef:1a2e:4a2e]") strip the brackets.
+     * If the IP address contains a zone identifier (e.g., "%eth0" or "%25eth0") strip the zone identifier.
+     *
+     * @param string $ip the IP address to anonymize
+     * @return string the anonymized IP address
      */
-    public static function from(Request $r, array $cidrs = []): self
+    public function anonymize(string $ip): string
     {
-        return new self($r, $cidrs);
+        $wrap = str_starts_with($ip, '[') && str_ends_with($ip, ']');
+        $ip = $wrap ? substr($ip, 1, -1) : $ip;
+
+        // Strip zone identifiers (e.g., "%eth0" or "%25eth0" in bracketed URIs)
+        if (false !== $pos = strpos($ip, '%')) {
+            $ip = substr($ip, 0, $pos);
+        }
+
+        $bin = \inet_pton($ip);
+        if ($bin === false) {
+            return $wrap ? '[' . $ip . ']' : $ip;
+        }
+
+        $mask = strlen($bin) === 4
+            ? \inet_pton('255.255.255.0')                 // /24
+            : \inet_pton('ffff:ffff:ffff:ffff:0:0:0:0');  // /64
+
+        $masked = $bin & $mask;
+
+        return $wrap ? '[' . \inet_ntop($masked) . ']' : \inet_ntop($masked);
     }
 
 
@@ -152,52 +187,6 @@ final class EndUser
     }
 
     /**
-     * Anonymize an IP address for privacy.
-     *
-     * Given an IP address, return an anonymized version of it.
-     * IPv4 addresses are anonymized by zeroing out the last 8 bits.
-     * IPv6 addresses are anonymized by zeroing out the last 80 bits.
-     * If the IP address is bracketed (e.g., "[2001:db8::1f16:3984:2c01:dead:beef:1a2e:4a2e]") strip the brackets.
-     * If the IP address contains a zone identifier (e.g., "%eth0" or "%25eth0") strip the zone identifier.
-     *
-     * @param string $ip the IP address to anonymize
-     * @return string the anonymized IP address
-     */
-    public function anonymize(string $ip): string
-    {
-        $wrap = str_starts_with($ip, '[') && str_ends_with($ip, ']');
-        $ip = $wrap ? substr($ip, 1, -1) : $ip;
-
-        // Strip zone identifiers (e.g., "%eth0" or "%25eth0" in bracketed URIs)
-        if (false !== $pos = strpos($ip, '%')) {
-            $ip = substr($ip, 0, $pos);
-        }
-
-        $bin = \inet_pton($ip);
-        if ($bin === false) {
-            return $wrap ? '[' . $ip . ']' : $ip;
-        }
-
-        $mask = strlen($bin) === 4
-            ? \inet_pton('255.255.255.0')                 // /24
-            : \inet_pton('ffff:ffff:ffff:ffff:0:0:0:0');  // /64
-
-        $masked = $bin & $mask;
-
-        return $wrap ? '[' . \inet_ntop($masked) . ']' : \inet_ntop($masked);
-    }
-
-    /**
-     * Retrieves the User-Agent header of the current request.
-     *
-     * @return string|null the User-Agent header value, or null if not present
-     */
-    public function userAgent(): ?string
-    {
-        return $this->req->getHeaderLine('User-Agent') ?: null;
-    }
-
-    /**
      * Parses the User-Agent header of the current request.
      *
      * Returns an associative array with the following keys:
@@ -213,6 +202,16 @@ final class EndUser
     {
         return new UAParser($this->req)->parse()
             + ['raw' => $this->userAgent() ?? ''];        // keep raw for logs
+    }
+
+    /**
+     * Retrieves the User-Agent header of the current request.
+     *
+     * @return string|null the User-Agent header value, or null if not present
+     */
+    public function userAgent(): ?string
+    {
+        return $this->req->getHeaderLine('User-Agent') ?: null;
     }
 
     /**

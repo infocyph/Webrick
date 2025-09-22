@@ -63,72 +63,17 @@ final readonly class Registrar
     }
 
     /* -----------------------------------------------------------------
-     *  HTTP verb helpers (3rd arg: string name OR
-     *                     ['name'|'as'=>..,'aliases'=>[..],'middleware'=>[..]])
+     *  Compile
      * ----------------------------------------------------------------*/
 
     /**
-     * Register a GET route.
+     * Compile the registered routes into a compiled collection.
      *
-     * @param string $path Route path template
-     * @param array|string|callable $handler Controller or callable handler
-     * @param string|array|null $nameOrOpts Optional route name or options array
-     * @return RouteInterface Registered Route DTO
+     * @return CompiledCollection Compiled route collection for dispatch
      */
-    public function get(
-        string $path,
-        array|string|callable $handler,
-        string|array|null $nameOrOpts = null,
-    ): RouteInterface {
-        return $this->add('GET', $path, $handler, $nameOrOpts);
-    }
-
-    /**
-     * Register a POST route.
-     *
-     * @param string $path
-     * @param array|string|callable $handler
-     * @param string|array|null $nameOrOpts
-     * @return RouteInterface
-     */
-    public function post(
-        string $path,
-        array|string|callable $handler,
-        string|array|null $nameOrOpts = null,
-    ): RouteInterface {
-        return $this->add('POST', $path, $handler, $nameOrOpts);
-    }
-
-    /**
-     * Register a PUT route.
-     *
-     * @param string $path
-     * @param array|string|callable $handler
-     * @param string|array|null $nameOrOpts
-     * @return RouteInterface
-     */
-    public function put(
-        string $path,
-        array|string|callable $handler,
-        string|array|null $nameOrOpts = null,
-    ): RouteInterface {
-        return $this->add('PUT', $path, $handler, $nameOrOpts);
-    }
-
-    /**
-     * Register a PATCH route.
-     *
-     * @param string $path
-     * @param array|string|callable $handler
-     * @param string|array|null $nameOrOpts
-     * @return RouteInterface
-     */
-    public function patch(
-        string $path,
-        array|string|callable $handler,
-        string|array|null $nameOrOpts = null,
-    ): RouteInterface {
-        return $this->add('PATCH', $path, $handler, $nameOrOpts);
+    public function compile(): CompiledCollection
+    {
+        return $this->routes->compile();
     }
 
     /**
@@ -147,151 +92,25 @@ final readonly class Registrar
         return $this->add('DELETE', $path, $handler, $nameOrOpts);
     }
 
-    /**
-     * Register a HEAD route.
-     *
-     * @param string $path
-     * @param array|string|callable $handler
-     * @param string|array|null $nameOrOpts
-     * @return RouteInterface
-     */
-    public function head(
-        string $path,
-        array|string|callable $handler,
-        string|array|null $nameOrOpts = null,
-    ): RouteInterface {
-        return $this->add('HEAD', $path, $handler, $nameOrOpts);
-    }
-
-    /**
-     * Register an OPTIONS route.
-     *
-     * @param string $path
-     * @param array|string|callable $handler
-     * @param string|array|null $nameOrOpts
-     * @return RouteInterface
-     */
-    public function options(
-        string $path,
-        array|string|callable $handler,
-        string|array|null $nameOrOpts = null,
-    ): RouteInterface {
-        return $this->add('OPTIONS', $path, $handler, $nameOrOpts);
-    }
-
     /* -----------------------------------------------------------------
-     *  Resource helper (Laravel-ish) – split for clarity
+     *  HTTP verb helpers (3rd arg: string name OR
+     *                     ['name'|'as'=>..,'aliases'=>[..],'middleware'=>[..]])
      * ----------------------------------------------------------------*/
 
     /**
-     * Register a set of resourceful routes for a controller (index, show, create, store, edit, update, patch, destroy).
+     * Register a GET route.
      *
-     * @param string $name Resource base name used for route naming
-     * @param string $prefix URL prefix for the resource (e.g. "/users")
-     * @param string $ctrl Controller class name or callable representation
-     * @param array $opts Optional configuration keys:
-     *   - 'param' => string name of route parameter (default 'id')
-     *   - 'only' => array of keys to include
-     *   - 'except' => array of keys to exclude
-     *   - 'names' => array of custom names per key
-     *   - 'middleware' => array middleware applied to all generated routes
-     *   - 'patch_action' => string name for PATCH action (default 'update')
-     *
-     * @return void
+     * @param string $path Route path template
+     * @param array|string|callable $handler Controller or callable handler
+     * @param string|array|null $nameOrOpts Optional route name or options array
+     * @return RouteInterface Registered Route DTO
      */
-    public function resource(string $name, string $prefix, string $ctrl, array $opts = []): void
-    {
-        [$param, $only, $except, $names, $mwAll, $patchAction] = $this->parseResourceOptions($opts);
-        $spec = $this->buildResourceSpec($param, $patchAction);
-
-        foreach ($spec as [$http, $suffix, $action, $key, $nameable]) {
-            if (!$this->includeResourceKey($key, $only, $except)) {
-                continue;
-            }
-
-            $path = rtrim($prefix, '/') . $suffix;
-            $routeName = $nameable ? ($names[$key] ?? "$name.$key") : null;
-
-            $nameOrOpt = $routeName === null
-                ? ($mwAll !== [] ? ['middleware' => $mwAll] : null)
-                : ['as' => $routeName, 'middleware' => $mwAll];
-
-            $method = strtolower($http);
-            $this->{$method}($path, [$ctrl, $action], $nameOrOpt);
-        }
-    }
-
-    /**
-     * Parse and normalise resource options.
-     *
-     * @param array $opts Raw options passed to resource()
-     * @return array{0:string,1:?array,2:?array,3:array,4:array,5:string} [
-     *   0 => parameter name,
-     *   1 => only list or null,
-     *   2 => except list or null,
-     *   3 => names map,
-     *   4 => middleware list,
-     *   5 => patch action name
-     * ]
-     */
-    private function parseResourceOptions(array $opts): array
-    {
-        $param = is_string($opts['param'] ?? null) ? $opts['param'] : 'id';
-        $only = (isset($opts['only']) && is_array($opts['only'])) ? $opts['only'] : null;
-        $except = (isset($opts['except']) && is_array($opts['except'])) ? $opts['except'] : null;
-        $names = (isset($opts['names']) && is_array($opts['names'])) ? $opts['names'] : [];
-        $mwAll = (isset($opts['middleware']) && is_array($opts['middleware'])) ? $opts['middleware'] : [];
-        $patchAction = is_string($opts['patch_action'] ?? null) ? $opts['patch_action'] : 'update';
-        return [$param, $only, $except, $names, $mwAll, $patchAction];
-    }
-
-    /**
-     * Build the resource route specification used by resource().
-     *
-     * Each item is a tuple:
-     *   [HTTP method, URI suffix, controller method, key, nameable?]
-     *
-     * @param string $param Route parameter name to inject into patterns
-     * @param string $patchAction Controller method name for PATCH requests
-     * @return list<array{0:string,1:string,2:string,3:string,4:bool}>
-     */
-    private function buildResourceSpec(string $param, string $patchAction): array
-    {
-        return [
-            ['GET', '', 'index', 'index', true],
-            ['GET', '/create', 'create', 'create', true],
-            ['POST', '', 'store', 'store', true],
-            ['GET', '/{' . $param . '}', 'show', 'show', true],
-            ['GET', '/{' . $param . '}/edit', 'edit', 'edit', true],
-            ['PUT', '/{' . $param . '}', 'update', 'update', true],
-            [
-                'PATCH',
-                '/{' . $param . '}',
-                $patchAction,
-                $patchAction,
-                $patchAction !== 'update',
-            ],
-            ['DELETE', '/{' . $param . '}', 'destroy', 'destroy', true],
-        ];
-    }
-
-    /**
-     * Determine whether a resource key should be included based on only/except filters.
-     *
-     * @param string $key Resource route key (e.g., 'index', 'show')
-     * @param array|null $only Optional include list
-     * @param array|null $except Optional exclude list
-     * @return bool True when key should be included
-     */
-    private function includeResourceKey(string $key, ?array $only, ?array $except): bool
-    {
-        if ($only !== null && !in_array($key, $only, true)) {
-            return false;
-        }
-        if ($except !== null && in_array($key, $except, true)) {
-            return false;
-        }
-        return true;
+    public function get(
+        string $path,
+        array|string|callable $handler,
+        string|array|null $nameOrOpts = null,
+    ): RouteInterface {
+        return $this->add('GET', $path, $handler, $nameOrOpts);
     }
 
     /* -----------------------------------------------------------------
@@ -351,114 +170,125 @@ final readonly class Registrar
     }
 
     /**
-     * Normalize group arguments (supports Laravel-style array or positional).
+     * Register a HEAD route.
      *
-     * Returns a 5-tuple:
-     *  [prefix, domain, middlewareArray, namePrefixOrNull, callbackClosure]
-     *
-     * @param array|string|null $prefix
-     * @param string|array|Closure|null $domain
-     * @param array|Closure $middleware
-     * @param string|Closure|null $namePrefix
-     * @param Closure|null $callback
-     * @return array{0:array|string|null,1:string|array|null,2:array,3:string|null,4:Closure}
-     * @throws InvalidArgumentException When the final callback is not a Closure
-     */
-    private function normalizeGroupInputs(
-        array|string|null $prefix,
-        string|array|Closure|null $domain,
-        array|Closure $middleware,
-        string|Closure|null $namePrefix,
-        ?Closure $callback,
-    ): array {
-        // Laravel-style options array
-        if (is_array($prefix)) {
-            $opts = $prefix;
-            $callback = $domain instanceof Closure ? $domain : $callback;
-            $prefix = $opts['prefix'] ?? null;
-            $domain = $opts['domain'] ?? null;
-            $middleware = $opts['middleware'] ?? [];
-            $namePrefix = $opts['name'] ?? $opts['as'] ?? null;
-        }
-
-        // Positional shifting when callback is passed early
-        if ($domain instanceof Closure && $callback === null) {
-            $callback = $domain;
-            $domain = null;
-        }
-        if ($middleware instanceof Closure && $callback === null) {
-            $callback = $middleware;
-            $middleware = [];
-        }
-        if ($namePrefix instanceof Closure && $callback === null) {
-            $callback = $namePrefix;
-            $namePrefix = null;
-        }
-
-        if (!$callback instanceof Closure) {
-            throw new InvalidArgumentException('A group callback Closure is required.');
-        }
-
-        return [
-            $prefix,
-            $domain,
-            is_array($middleware) ? $middleware : [],
-            is_string($namePrefix) ? $namePrefix : null,
-            $callback,
-        ];
-    }
-
-    /* -----------------------------------------------------------------
-     *  Compile
-     * ----------------------------------------------------------------*/
-
-    /**
-     * Compile the registered routes into a compiled collection.
-     *
-     * @return CompiledCollection Compiled route collection for dispatch
-     */
-    public function compile(): CompiledCollection
-    {
-        return $this->routes->compile();
-    }
-
-    /* -----------------------------------------------------------------
-     *  Internals
-     * ----------------------------------------------------------------*/
-
-    /**
-     * Normalize name/options array into canonical tuple.
-     *
-     * Returned tuple: [name|null, extraMiddleware:list, aliases:list]
-     *
+     * @param string $path
+     * @param array|string|callable $handler
      * @param string|array|null $nameOrOpts
-     *   string => primary name
-     *   array  => ['name'|'as'=>string, 'aliases'|'alias'=>string|string[], 'middleware'=>string[]]
-     *
-     * @return array{0:?string,1:array,2:array} [name, extraMiddleware, aliases]
+     * @return RouteInterface
      */
-    private function normalizeOptions(string|array|null $nameOrOpts): array
+    public function head(
+        string $path,
+        array|string|callable $handler,
+        string|array|null $nameOrOpts = null,
+    ): RouteInterface {
+        return $this->add('HEAD', $path, $handler, $nameOrOpts);
+    }
+
+    /**
+     * Register an OPTIONS route.
+     *
+     * @param string $path
+     * @param array|string|callable $handler
+     * @param string|array|null $nameOrOpts
+     * @return RouteInterface
+     */
+    public function options(
+        string $path,
+        array|string|callable $handler,
+        string|array|null $nameOrOpts = null,
+    ): RouteInterface {
+        return $this->add('OPTIONS', $path, $handler, $nameOrOpts);
+    }
+
+    /**
+     * Register a PATCH route.
+     *
+     * @param string $path
+     * @param array|string|callable $handler
+     * @param string|array|null $nameOrOpts
+     * @return RouteInterface
+     */
+    public function patch(
+        string $path,
+        array|string|callable $handler,
+        string|array|null $nameOrOpts = null,
+    ): RouteInterface {
+        return $this->add('PATCH', $path, $handler, $nameOrOpts);
+    }
+
+    /**
+     * Register a POST route.
+     *
+     * @param string $path
+     * @param array|string|callable $handler
+     * @param string|array|null $nameOrOpts
+     * @return RouteInterface
+     */
+    public function post(
+        string $path,
+        array|string|callable $handler,
+        string|array|null $nameOrOpts = null,
+    ): RouteInterface {
+        return $this->add('POST', $path, $handler, $nameOrOpts);
+    }
+
+    /**
+     * Register a PUT route.
+     *
+     * @param string $path
+     * @param array|string|callable $handler
+     * @param string|array|null $nameOrOpts
+     * @return RouteInterface
+     */
+    public function put(
+        string $path,
+        array|string|callable $handler,
+        string|array|null $nameOrOpts = null,
+    ): RouteInterface {
+        return $this->add('PUT', $path, $handler, $nameOrOpts);
+    }
+
+    /* -----------------------------------------------------------------
+     *  Resource helper (Laravel-ish) – split for clarity
+     * ----------------------------------------------------------------*/
+
+    /**
+     * Register a set of resourceful routes for a controller (index, show, create, store, edit, update, patch, destroy).
+     *
+     * @param string $name Resource base name used for route naming
+     * @param string $prefix URL prefix for the resource (e.g. "/users")
+     * @param string $ctrl Controller class name or callable representation
+     * @param array $opts Optional configuration keys:
+     *   - 'param' => string name of route parameter (default 'id')
+     *   - 'only' => array of keys to include
+     *   - 'except' => array of keys to exclude
+     *   - 'names' => array of custom names per key
+     *   - 'middleware' => array middleware applied to all generated routes
+     *   - 'patch_action' => string name for PATCH action (default 'update')
+     *
+     * @return void
+     */
+    public function resource(string $name, string $prefix, string $ctrl, array $opts = []): void
     {
-        if ($nameOrOpts === null) {
-            return [null, [], []];
+        [$param, $only, $except, $names, $mwAll, $patchAction] = $this->parseResourceOptions($opts);
+        $spec = $this->buildResourceSpec($param, $patchAction);
+
+        foreach ($spec as [$http, $suffix, $action, $key, $nameable]) {
+            if (!$this->includeResourceKey($key, $only, $except)) {
+                continue;
+            }
+
+            $path = rtrim($prefix, '/') . $suffix;
+            $routeName = $nameable ? ($names[$key] ?? "$name.$key") : null;
+
+            $nameOrOpt = $routeName === null
+                ? ($mwAll !== [] ? ['middleware' => $mwAll] : null)
+                : ['as' => $routeName, 'middleware' => $mwAll];
+
+            $method = strtolower($http);
+            $this->{$method}($path, [$ctrl, $action], $nameOrOpt);
         }
-
-        if (is_string($nameOrOpts)) {
-            return [$nameOrOpts, [], []];
-        }
-
-        $name = $nameOrOpts['name'] ?? $nameOrOpts['as'] ?? null;
-
-        $mw = $nameOrOpts['middleware'] ?? [];
-        if (!is_array($mw)) {
-            $mw = [];
-        }
-
-        $aliasesRaw = $nameOrOpts['aliases'] ?? ($nameOrOpts['alias'] ?? []);
-        $aliases = is_array($aliasesRaw) ? $aliasesRaw : [$aliasesRaw];
-        $aliases = array_values(array_filter(array_map('strval', $aliases), static fn ($s) => $s !== ''));
-
-        return [$name, $mw, $aliases];
     }
 
     /**
@@ -545,6 +375,55 @@ final readonly class Registrar
         return $route;
     }
 
+    /**
+     * Build the resource route specification used by resource().
+     *
+     * Each item is a tuple:
+     *   [HTTP method, URI suffix, controller method, key, nameable?]
+     *
+     * @param string $param Route parameter name to inject into patterns
+     * @param string $patchAction Controller method name for PATCH requests
+     * @return list<array{0:string,1:string,2:string,3:string,4:bool}>
+     */
+    private function buildResourceSpec(string $param, string $patchAction): array
+    {
+        return [
+            ['GET', '', 'index', 'index', true],
+            ['GET', '/create', 'create', 'create', true],
+            ['POST', '', 'store', 'store', true],
+            ['GET', '/{' . $param . '}', 'show', 'show', true],
+            ['GET', '/{' . $param . '}/edit', 'edit', 'edit', true],
+            ['PUT', '/{' . $param . '}', 'update', 'update', true],
+            [
+                'PATCH',
+                '/{' . $param . '}',
+                $patchAction,
+                $patchAction,
+                $patchAction !== 'update',
+            ],
+            ['DELETE', '/{' . $param . '}', 'destroy', 'destroy', true],
+        ];
+    }
+
+    /**
+     * Determine whether a resource key should be included based on only/except filters.
+     *
+     * @param string $key Resource route key (e.g., 'index', 'show')
+     * @param array|null $only Optional include list
+     * @param array|null $except Optional exclude list
+     * @return bool True when key should be included
+     */
+    private function includeResourceKey(string $key, ?array $only, ?array $except): bool
+    {
+        if ($only !== null && !in_array($key, $only, true)) {
+            return false;
+        }
+        if ($except !== null && in_array($key, $except, true)) {
+            return false;
+        }
+        return true;
+    }
+
     /* ──────────────────────────── Alias helpers ─────────────────────────── */
 
     /**
@@ -590,33 +469,100 @@ final readonly class Registrar
     }
 
     /**
-     * Resolve alias specifications into actual middleware entries using MiddlewareAliases.
+     * Normalize group arguments (supports Laravel-style array or positional).
      *
-     * Alias specs have the form ['__alias'=>true,'key'=>string,'params'=>array].
-     * This method leaves non-aliased entries untouched.
+     * Returns a 5-tuple:
+     *  [prefix, domain, middlewareArray, namePrefixOrNull, callbackClosure]
      *
-     * @param array $list Mixed items; alias items are structured arrays as above
-     * @return array List of callables|objects|class-string values ready for Route middleware
+     * @param array|string|null $prefix
+     * @param string|array|Closure|null $domain
+     * @param array|Closure $middleware
+     * @param string|Closure|null $namePrefix
+     * @param Closure|null $callback
+     * @return array{0:array|string|null,1:string|array|null,2:array,3:string|null,4:Closure}
+     * @throws InvalidArgumentException When the final callback is not a Closure
      */
-    private function resolveAliasMiddleware(array $list): array
-    {
-        $out = [];
-        foreach ($list as $item) {
-            if (is_array($item) && ($item['__alias'] ?? false) === true) {
-                $key = (string)$item['key'];
-                $params = $item['params'] ?? [];
-                $s = $key;
-                if ($params !== []) {
-                    $s .= ':' . implode(',', array_map(static fn ($v) => (string)$v, $params));
-                }
-                // Let MiddlewareAliases produce either object or class-string
-                $out[] = MiddlewareAliases::resolveString($s);
-            } else {
-                // untouched: callable|object|string(class-string)
-                $out[] = $item;
-            }
+    private function normalizeGroupInputs(
+        array|string|null $prefix,
+        string|array|Closure|null $domain,
+        array|Closure $middleware,
+        string|Closure|null $namePrefix,
+        ?Closure $callback,
+    ): array {
+        // Laravel-style options array
+        if (is_array($prefix)) {
+            $opts = $prefix;
+            $callback = $domain instanceof Closure ? $domain : $callback;
+            $prefix = $opts['prefix'] ?? null;
+            $domain = $opts['domain'] ?? null;
+            $middleware = $opts['middleware'] ?? [];
+            $namePrefix = $opts['name'] ?? $opts['as'] ?? null;
         }
-        return $out;
+
+        // Positional shifting when callback is passed early
+        if ($domain instanceof Closure && $callback === null) {
+            $callback = $domain;
+            $domain = null;
+        }
+        if ($middleware instanceof Closure && $callback === null) {
+            $callback = $middleware;
+            $middleware = [];
+        }
+        if ($namePrefix instanceof Closure && $callback === null) {
+            $callback = $namePrefix;
+            $namePrefix = null;
+        }
+
+        if (!$callback instanceof Closure) {
+            throw new InvalidArgumentException('A group callback Closure is required.');
+        }
+
+        return [
+            $prefix,
+            $domain,
+            is_array($middleware) ? $middleware : [],
+            is_string($namePrefix) ? $namePrefix : null,
+            $callback,
+        ];
+    }
+
+    /* -----------------------------------------------------------------
+     *  Internals
+     * ----------------------------------------------------------------*/
+
+    /**
+     * Normalize name/options array into canonical tuple.
+     *
+     * Returned tuple: [name|null, extraMiddleware:list, aliases:list]
+     *
+     * @param string|array|null $nameOrOpts
+     *   string => primary name
+     *   array  => ['name'|'as'=>string, 'aliases'|'alias'=>string|string[], 'middleware'=>string[]]
+     *
+     * @return array{0:?string,1:array,2:array} [name, extraMiddleware, aliases]
+     */
+    private function normalizeOptions(string|array|null $nameOrOpts): array
+    {
+        if ($nameOrOpts === null) {
+            return [null, [], []];
+        }
+
+        if (is_string($nameOrOpts)) {
+            return [$nameOrOpts, [], []];
+        }
+
+        $name = $nameOrOpts['name'] ?? $nameOrOpts['as'] ?? null;
+
+        $mw = $nameOrOpts['middleware'] ?? [];
+        if (!is_array($mw)) {
+            $mw = [];
+        }
+
+        $aliasesRaw = $nameOrOpts['aliases'] ?? ($nameOrOpts['alias'] ?? []);
+        $aliases = is_array($aliasesRaw) ? $aliasesRaw : [$aliasesRaw];
+        $aliases = array_values(array_filter(array_map('strval', $aliases), static fn ($s) => $s !== ''));
+
+        return [$name, $mw, $aliases];
     }
 
     /**
@@ -647,5 +593,59 @@ final readonly class Registrar
             : [];
 
         return ['__alias' => true, 'key' => $key, 'params' => $params];
+    }
+
+    /**
+     * Parse and normalise resource options.
+     *
+     * @param array $opts Raw options passed to resource()
+     * @return array{0:string,1:?array,2:?array,3:array,4:array,5:string} [
+     *   0 => parameter name,
+     *   1 => only list or null,
+     *   2 => except list or null,
+     *   3 => names map,
+     *   4 => middleware list,
+     *   5 => patch action name
+     * ]
+     */
+    private function parseResourceOptions(array $opts): array
+    {
+        $param = is_string($opts['param'] ?? null) ? $opts['param'] : 'id';
+        $only = (isset($opts['only']) && is_array($opts['only'])) ? $opts['only'] : null;
+        $except = (isset($opts['except']) && is_array($opts['except'])) ? $opts['except'] : null;
+        $names = (isset($opts['names']) && is_array($opts['names'])) ? $opts['names'] : [];
+        $mwAll = (isset($opts['middleware']) && is_array($opts['middleware'])) ? $opts['middleware'] : [];
+        $patchAction = is_string($opts['patch_action'] ?? null) ? $opts['patch_action'] : 'update';
+        return [$param, $only, $except, $names, $mwAll, $patchAction];
+    }
+
+    /**
+     * Resolve alias specifications into actual middleware entries using MiddlewareAliases.
+     *
+     * Alias specs have the form ['__alias'=>true,'key'=>string,'params'=>array].
+     * This method leaves non-aliased entries untouched.
+     *
+     * @param array $list Mixed items; alias items are structured arrays as above
+     * @return array List of callables|objects|class-string values ready for Route middleware
+     */
+    private function resolveAliasMiddleware(array $list): array
+    {
+        $out = [];
+        foreach ($list as $item) {
+            if (is_array($item) && ($item['__alias'] ?? false) === true) {
+                $key = (string)$item['key'];
+                $params = $item['params'] ?? [];
+                $s = $key;
+                if ($params !== []) {
+                    $s .= ':' . implode(',', array_map(static fn ($v) => (string)$v, $params));
+                }
+                // Let MiddlewareAliases produce either object or class-string
+                $out[] = MiddlewareAliases::resolveString($s);
+            } else {
+                // untouched: callable|object|string(class-string)
+                $out[] = $item;
+            }
+        }
+        return $out;
     }
 }

@@ -36,10 +36,10 @@ final readonly class ResponseLinterMiddleware
 {
     /** bit-flags */
     public const BODY_REQUIRES_CTYPE = 0b00001;
-    public const NO_BODY_STATUSES = 0b00010;            // 204/304 must have empty body
     public const COMPRESSED_NEEDS_VARY = 0b00100;       // Content-Encoding ⇒ Vary: Accept-Encoding
-    public const ETAG_WEAK_WHEN_ENCODING = 0b01000;     // Content-Encoding ⇒ ETag MUST be weak
     public const CONTENT_LENGTH_MATCH = 0b10000;        // Content-Length must match actual bytes (when knowable)
+    public const ETAG_WEAK_WHEN_ENCODING = 0b01000;     // Content-Encoding ⇒ ETag MUST be weak
+    public const NO_BODY_STATUSES = 0b00010;            // 204/304 must have empty body
 
     /**
      * Enabled checks bitmask.
@@ -115,6 +115,39 @@ final readonly class ResponseLinterMiddleware
         }
 
         return $resp;
+    }
+
+    /**
+     * Validate Content-Length against actual byte length (when knowable).
+     *
+     * Skips check when Transfer-Encoding is present or when length is missing/zero.
+     *
+     * @param Response $r   Response to inspect.
+     * @param int      $len Actual body byte length.
+     *
+     * @return void
+     *
+     * @throws RuntimeException If Content-Length is numeric and mismatches $len.
+     */
+    private function assertContentLengthMatches(Response $r, int $len): void
+    {
+        // If TE is present, ignore (length is controlled by transfer-coding).
+        if ($r->hasHeader('Transfer-Encoding')) {
+            return;
+        }
+        $cl = trim($r->getHeaderLine('Content-Length'));
+        if ($cl === '' || $len === 0) {
+            return;
+        }
+        if (ctype_digit($cl) && (int)$cl !== $len) {
+            throw new RuntimeException(
+                sprintf(
+                    'Linter: Content-Length (%d) does not match body bytes (%d)',
+                    (int)$cl,
+                    $len,
+                ),
+            );
+        }
     }
 
     /* ───────────────────────── helpers ───────────────────────── */
@@ -193,39 +226,6 @@ final readonly class ResponseLinterMiddleware
         $etag = trim($r->getHeaderLine('ETag'));
         if ($etag !== '' && !\str_starts_with($etag, 'W/')) {
             throw new RuntimeException('Linter: strong ETag with Content-Encoding; make it weak (W/…).');
-        }
-    }
-
-    /**
-     * Validate Content-Length against actual byte length (when knowable).
-     *
-     * Skips check when Transfer-Encoding is present or when length is missing/zero.
-     *
-     * @param Response $r   Response to inspect.
-     * @param int      $len Actual body byte length.
-     *
-     * @return void
-     *
-     * @throws RuntimeException If Content-Length is numeric and mismatches $len.
-     */
-    private function assertContentLengthMatches(Response $r, int $len): void
-    {
-        // If TE is present, ignore (length is controlled by transfer-coding).
-        if ($r->hasHeader('Transfer-Encoding')) {
-            return;
-        }
-        $cl = trim($r->getHeaderLine('Content-Length'));
-        if ($cl === '' || $len === 0) {
-            return;
-        }
-        if (ctype_digit($cl) && (int)$cl !== $len) {
-            throw new RuntimeException(
-                sprintf(
-                    'Linter: Content-Length (%d) does not match body bytes (%d)',
-                    (int)$cl,
-                    $len,
-                ),
-            );
         }
     }
 

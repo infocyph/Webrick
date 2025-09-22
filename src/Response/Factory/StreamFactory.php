@@ -36,16 +36,16 @@ final class StreamFactory
         return new Stream($fp);
     }
 
-/**
- * Creates a new Stream instance from a given resource.
- *
- * Accepts a string, a PSR-7 Stream, a PHP stream resource, or a SplFileObject.
- * If the given source is invalid, it will throw a RuntimeException.
- *
- * @param mixed $resource The resource to create a Stream from.
- * @return Stream A new Stream instance.
- * @throws RuntimeException If the given source is invalid.
- */
+    /**
+     * Creates a new Stream instance from a given resource.
+     *
+     * Accepts a string, a PSR-7 Stream, a PHP stream resource, or a SplFileObject.
+     * If the given source is invalid, it will throw a RuntimeException.
+     *
+     * @param mixed $resource The resource to create a Stream from.
+     * @return Stream A new Stream instance.
+     * @throws RuntimeException If the given source is invalid.
+     */
     public function createStreamFromResource($resource): Stream
     {
         return new Stream($resource);

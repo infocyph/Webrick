@@ -27,11 +27,14 @@ use Infocyph\Webrick\Router\Definition\Attribute\Cors;
 final class Route implements RouteInterface
 {
     /**
-     * Middleware to apply for this route.
+     * One-time, stable fingerprint for the handler, used for fast lookups.
      *
-     * @var MiddlewareList
+     * @var string
      */
-    private array $middleware = [];
+    private readonly string $handlerId;
+
+    /** @var Cors|null The route-specific CORS policy. */
+    private ?Cors $corsPolicy = null;
 
     /**
      * Handler specification accepted by the router.
@@ -46,16 +49,12 @@ final class Route implements RouteInterface
      * @var array|string|callable
      */
     private $handler;
-
     /**
-     * One-time, stable fingerprint for the handler, used for fast lookups.
+     * Middleware to apply for this route.
      *
-     * @var string
+     * @var MiddlewareList
      */
-    private readonly string $handlerId;
-
-    /** @var Cors|null The route-specific CORS policy. */
-    private ?Cors $corsPolicy = null;
+    private array $middleware = [];
 
     /**
      * Create a new route.
@@ -77,86 +76,29 @@ final class Route implements RouteInterface
         $this->handlerId = self::fingerprint($handler);
     }
 
-    /* ---------------------------------------------------------- getters */
+    /* ---------------------------------------------------------- internals */
 
     /**
-     * Get the HTTP method.
+     * Produce a stable, stringable id for any handler specification.
      *
-     * @return string
-     */
-    public function getMethod(): string
-    {
-        return $this->method;
-    }
-
-    /**
-     * Get the route path template.
+     * - "function" → "function"
+     * - ["Cls","method"] → "Cls::method"
+     * - [$object,"method"] → "<Class>::method"
+     * - Invokable object → "<Class>::__invoke"
+     * - Closure → "closure@<uniqueId>"
      *
-     * @return string
-     */
-    public function getPath(): string
-    {
-        return $this->path;
-    }
-
-    /**
-     * Get the handler specification.
+     * @param array|string|callable $h Handler specification.
      *
-     * @return array|string|callable
+     * @return string Stable identifier for hashing and lookups.
      */
-    public function getHandler(): array|string|callable
+    public static function fingerprint(array|string|callable $h): string
     {
-        return $this->handler;
-    }
-
-    /**
-     * Get the domain constraint, if any.
-     *
-     * @return string|null
-     */
-    public function getDomain(): ?string
-    {
-        return $this->domain;
-    }
-
-    /**
-     * Get the route name, if any.
-     *
-     * @return string|null
-     */
-    public function getName(): ?string
-    {
-        return $this->name;
-    }
-
-    /**
-     * Get the middleware stack.
-     *
-     * @return list<class-string|object>
-     */
-    public function getMiddlewares(): array
-    {
-        return $this->middleware;
-    }
-
-    /**
-     * Alias of getMiddlewares().
-     *
-     * @return list<class-string|object>
-     */
-    public function getMiddleware(): array
-    {
-        return $this->middleware;
-    }
-
-    /**
-     * Fast, stable identifier for the handler (used by collections).
-     *
-     * @return string
-     */
-    public function getHandlerId(): string
-    {
-        return $this->handlerId;
+        return match (true) {
+            \is_string($h) => $h,                //  "function"  or  "Cls::method"
+            \is_array($h) => (is_object($h[0]) ? $h[0]::class : $h[0]) . '::' . $h[1],
+            \is_object($h) && !($h instanceof \Closure) => $h::class . '::__invoke',
+            default => 'closure@' . \spl_object_id($h),
+        };
     }
 
     /**
@@ -170,6 +112,88 @@ final class Route implements RouteInterface
     }
 
     /**
+     * Get the domain constraint, if any.
+     *
+     * @return string|null
+     */
+    public function getDomain(): ?string
+    {
+        return $this->domain;
+    }
+
+    /**
+     * Get the handler specification.
+     *
+     * @return array|string|callable
+     */
+    public function getHandler(): array|string|callable
+    {
+        return $this->handler;
+    }
+
+    /**
+     * Fast, stable identifier for the handler (used by collections).
+     *
+     * @return string
+     */
+    public function getHandlerId(): string
+    {
+        return $this->handlerId;
+    }
+
+    /* ---------------------------------------------------------- getters */
+
+    /**
+     * Get the HTTP method.
+     *
+     * @return string
+     */
+    public function getMethod(): string
+    {
+        return $this->method;
+    }
+
+    /**
+     * Alias of getMiddlewares().
+     *
+     * @return list<class-string|object>
+     */
+    public function getMiddleware(): array
+    {
+        return $this->middleware;
+    }
+
+    /**
+     * Get the middleware stack.
+     *
+     * @return list<class-string|object>
+     */
+    public function getMiddlewares(): array
+    {
+        return $this->middleware;
+    }
+
+    /**
+     * Get the route name, if any.
+     *
+     * @return string|null
+     */
+    public function getName(): ?string
+    {
+        return $this->name;
+    }
+
+    /**
+     * Get the route path template.
+     *
+     * @return string
+     */
+    public function getPath(): string
+    {
+        return $this->path;
+    }
+
+    /**
      * Whether the path contains dynamic parameters (e.g., "{id}").
      *
      * @return bool
@@ -177,6 +201,20 @@ final class Route implements RouteInterface
     public function isDynamic(): bool
     {
         return str_contains($this->path, '{');
+    }
+
+    /**
+     * Return a copy with a route-specific CORS policy.
+     *
+     * @param Cors $policy
+     *
+     * @return self
+     */
+    public function withCorsPolicy(Cors $policy): self
+    {
+        $clone = clone $this;
+        $clone->corsPolicy = $policy;
+        return $clone;
     }
 
     /* ---------------------------------------------------------- immutable setters (carry id unchanged) */
@@ -227,44 +265,5 @@ final class Route implements RouteInterface
         $clone = clone $this;
         $clone->name = $name;
         return $clone;
-    }
-
-    /**
-     * Return a copy with a route-specific CORS policy.
-     *
-     * @param Cors $policy
-     *
-     * @return self
-     */
-    public function withCorsPolicy(Cors $policy): self
-    {
-        $clone = clone $this;
-        $clone->corsPolicy = $policy;
-        return $clone;
-    }
-
-    /* ---------------------------------------------------------- internals */
-
-    /**
-     * Produce a stable, stringable id for any handler specification.
-     *
-     * - "function" → "function"
-     * - ["Cls","method"] → "Cls::method"
-     * - [$object,"method"] → "<Class>::method"
-     * - Invokable object → "<Class>::__invoke"
-     * - Closure → "closure@<uniqueId>"
-     *
-     * @param array|string|callable $h Handler specification.
-     *
-     * @return string Stable identifier for hashing and lookups.
-     */
-    public static function fingerprint(array|string|callable $h): string
-    {
-        return match (true) {
-            \is_string($h) => $h,                //  "function"  or  "Cls::method"
-            \is_array($h) => (is_object($h[0]) ? $h[0]::class : $h[0]) . '::' . $h[1],
-            \is_object($h) && !($h instanceof \Closure) => $h::class . '::__invoke',
-            default => 'closure@' . \spl_object_id($h),
-        };
     }
 }

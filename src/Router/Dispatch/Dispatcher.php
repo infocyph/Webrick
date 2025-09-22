@@ -52,6 +52,13 @@ final class Dispatcher
     private array $pipelines = [];
 
     /**
+     * Raw global "post" middleware entries (same shapes as preGlobalRaw).
+     *
+     * @var array<class-string|object|callable|string>
+     */
+    private array $postGlobalRaw;
+
+    /**
      * Raw global "pre" middleware entries.
      *
      * Entries may be:
@@ -63,13 +70,6 @@ final class Dispatcher
      * @var array<class-string|object|callable|string>
      */
     private array $preGlobalRaw;
-
-    /**
-     * Raw global "post" middleware entries (same shapes as preGlobalRaw).
-     *
-     * @var array<class-string|object|callable|string>
-     */
-    private array $postGlobalRaw;
 
     /**
      * Construct the Dispatcher.
@@ -133,144 +133,30 @@ final class Dispatcher
         return $this->pipelines[$routeId]->handle($request);
     }
 
-    /* ---------------------------------------------------------------------
-     * Internals
-     * ------------------------------------------------------------------ */
-
     /**
-     * Compile a MiddlewarePipeline for a given route and terminal handler.
+     * Extract the class-string (if any) that an alias string resolves to.
      *
-     * @param CompiledRoute $route Target compiled route
-     * @param Closure(Request):Response $final Final handler that returns a Response
-     * @return MiddlewarePipeline Compiled pipeline ready for handling requests
+     * Returns the resolved class-string when the alias maps to a class or an
+     * instantiated object; returns null when the alias resolves to a plain
+     * callable (no class to compare).
+     *
+     * @param string $alias Alias string
+     * @return string|null Resolved class-string or null if none applicable
      */
-    private function compilePipelineForRoute(CompiledRoute $route, Closure $final): MiddlewarePipeline
+    private function aliasStringClass(string $alias): ?string
     {
-        // Compute filtered global stacks (route may override globals).
-        [$preInv, $postInv] = $this->filteredGlobalsFor($route);
+        $resolved = MiddlewareAliases::resolveString($alias);
 
-        // Convert route-level middleware into invokable callables.
-        $routeInvokables = $this->buildInvokables($route->getMiddlewares());
-
-        // Merge pre → route → post into the final stack.
-        $stack = [...$preInv, ...$routeInvokables, ...$postInv];
-
-        return new MiddlewarePipeline($stack, $final, invoker: $this->invoker, useInvoker: $this->useInvoker);
-    }
-
-    /**
-     * Compute filtered global middleware stacks for a specific route.
-     *
-     * Rules:
-     *  - If a middleware class is present on the route, that class is removed
-     *    from the global stacks so the route-level definition wins.
-     *  - Alias strings in globals are resolved to classes where possible to
-     *    allow fair comparison against route entries.
-     *
-     * @param CompiledRoute $route Compiled route
-     * @return array{0:list<callable>,1:list<callable>} Tuple [preInvokables, postInvokables]
-     */
-    private function filteredGlobalsFor(CompiledRoute $route): array
-    {
-        $routeClasses = $this->routeMiddlewareClasses($route);
-
-        $preRaw = $this->filterGlobals($this->preGlobalRaw, $routeClasses);
-        $postRaw = $this->filterGlobals($this->postGlobalRaw, $routeClasses);
-
-        $preInv = $this->buildInvokables($preRaw);
-        $postInv = $this->buildInvokables($postRaw);
-
-        return [$preInv, $postInv];
-    }
-
-    /**
-     * Collect the set of middleware class-strings referenced by the route.
-     *
-     * This inspects route middleware entries and returns a set of class names
-     * so globals can be filtered when a route provides an explicit replacement.
-     *
-     * @param CompiledRoute $route Compiled route
-     * @return array<string,true> Map of class-string => true
-     */
-    private function routeMiddlewareClasses(CompiledRoute $route): array
-    {
-        $set = [];
-        foreach ($route->getMiddlewares() as $mw) {
-            if (\is_string($mw)) {
-                if (\class_exists($mw)) {
-                    $set[$mw] = true;
-                } elseif ($this->looksLikeAliasString($mw) && ($cls = $this->aliasStringClass($mw))) {
-                    $set[$cls] = true;
-                }
-            } elseif (\is_object($mw)) {
-                $set[$mw::class] = true;
-            }
+        if (\is_string($resolved)) {
+            return \class_exists($resolved) ? $resolved : null;
         }
-        return $set;
-    }
 
-    /**
-     * Remove any global middleware whose class matches a route middleware class.
-     *
-     * Additionally resolves alias strings in globals (e.g. 'throttle:60,60') to
-     * their class so a route override can be detected.
-     *
-     * @param array<class-string|object|callable|string> $globals Raw global middleware entries
-     * @param array<string,true> $routeClasses Set of route middleware classes
-     * @return array<class-string|object|callable|string> Filtered globals preserving original shapes
-     *
-     * @throws InvalidArgumentException When encountering an unknown string or unsupported entry type
-     */
-    private function filterGlobals(array $globals, array $routeClasses): array
-    {
-        $out = [];
-        foreach ($globals as $mw) {
-            // class-string
-            if (\is_string($mw) && \class_exists($mw)) {
-                if (isset($routeClasses[$mw])) {
-                    continue;
-                }
-                $out[] = $mw;
-                continue;
-            }
-
-            // object instance
-            if (\is_object($mw)) {
-                if (isset($routeClasses[$mw::class])) {
-                    continue;
-                }
-                $out[] = $mw;
-                continue;
-            }
-
-            // callable (non-string)
-            if (\is_callable($mw) && !\is_string($mw)) {
-                $out[] = $mw;
-                continue;
-            }
-
-            // alias string like "throttle:60,60"
-            if (\is_string($mw) && $this->looksLikeAliasString($mw)) {
-                $cls = $this->aliasStringClass($mw); // null if resolver returns plain callable
-                if ($cls !== null && isset($routeClasses[$cls])) {
-                    // Route overrides this global alias.
-                    continue;
-                }
-                $out[] = $mw;
-                continue;
-            }
-
-            // plain string that is not a recognised alias or class
-            if (\is_string($mw)) {
-                throw new InvalidArgumentException("Middleware class or alias '{$mw}' not found.");
-            }
-
-            // Any other type is unsupported.
-            throw new InvalidArgumentException(
-                \sprintf('Unsupported middleware entry of type %s', \gettype($mw)),
-            );
+        if (\is_object($resolved)) {
+            return $resolved::class;
         }
-        return $out;
+
+        // Callable or unexpected shape — no comparable class.
+        return null;
     }
 
     /**
@@ -338,6 +224,120 @@ final class Dispatcher
         return $out;
     }
 
+    /* ---------------------------------------------------------------------
+     * Internals
+     * ------------------------------------------------------------------ */
+
+    /**
+     * Compile a MiddlewarePipeline for a given route and terminal handler.
+     *
+     * @param CompiledRoute $route Target compiled route
+     * @param Closure(Request):Response $final Final handler that returns a Response
+     * @return MiddlewarePipeline Compiled pipeline ready for handling requests
+     */
+    private function compilePipelineForRoute(CompiledRoute $route, Closure $final): MiddlewarePipeline
+    {
+        // Compute filtered global stacks (route may override globals).
+        [$preInv, $postInv] = $this->filteredGlobalsFor($route);
+
+        // Convert route-level middleware into invokable callables.
+        $routeInvokables = $this->buildInvokables($route->getMiddlewares());
+
+        // Merge pre → route → post into the final stack.
+        $stack = [...$preInv, ...$routeInvokables, ...$postInv];
+
+        return new MiddlewarePipeline($stack, $final, invoker: $this->invoker, useInvoker: $this->useInvoker);
+    }
+
+    /**
+     * Compute filtered global middleware stacks for a specific route.
+     *
+     * Rules:
+     *  - If a middleware class is present on the route, that class is removed
+     *    from the global stacks so the route-level definition wins.
+     *  - Alias strings in globals are resolved to classes where possible to
+     *    allow fair comparison against route entries.
+     *
+     * @param CompiledRoute $route Compiled route
+     * @return array{0:list<callable>,1:list<callable>} Tuple [preInvokables, postInvokables]
+     */
+    private function filteredGlobalsFor(CompiledRoute $route): array
+    {
+        $routeClasses = $this->routeMiddlewareClasses($route);
+
+        $preRaw = $this->filterGlobals($this->preGlobalRaw, $routeClasses);
+        $postRaw = $this->filterGlobals($this->postGlobalRaw, $routeClasses);
+
+        $preInv = $this->buildInvokables($preRaw);
+        $postInv = $this->buildInvokables($postRaw);
+
+        return [$preInv, $postInv];
+    }
+
+    /**
+     * Remove any global middleware whose class matches a route middleware class.
+     *
+     * Additionally resolves alias strings in globals (e.g. 'throttle:60,60') to
+     * their class so a route override can be detected.
+     *
+     * @param array<class-string|object|callable|string> $globals Raw global middleware entries
+     * @param array<string,true> $routeClasses Set of route middleware classes
+     * @return array<class-string|object|callable|string> Filtered globals preserving original shapes
+     *
+     * @throws InvalidArgumentException When encountering an unknown string or unsupported entry type
+     */
+    private function filterGlobals(array $globals, array $routeClasses): array
+    {
+        $out = [];
+        foreach ($globals as $mw) {
+            // class-string
+            if (\is_string($mw) && \class_exists($mw)) {
+                if (isset($routeClasses[$mw])) {
+                    continue;
+                }
+                $out[] = $mw;
+                continue;
+            }
+
+            // object instance
+            if (\is_object($mw)) {
+                if (isset($routeClasses[$mw::class])) {
+                    continue;
+                }
+                $out[] = $mw;
+                continue;
+            }
+
+            // callable (non-string)
+            if (\is_callable($mw) && !\is_string($mw)) {
+                $out[] = $mw;
+                continue;
+            }
+
+            // alias string like "throttle:60,60"
+            if (\is_string($mw) && $this->looksLikeAliasString($mw)) {
+                $cls = $this->aliasStringClass($mw); // null if resolver returns plain callable
+                if ($cls !== null && isset($routeClasses[$cls])) {
+                    // Route overrides this global alias.
+                    continue;
+                }
+                $out[] = $mw;
+                continue;
+            }
+
+            // plain string that is not a recognised alias or class
+            if (\is_string($mw)) {
+                throw new InvalidArgumentException("Middleware class or alias '{$mw}' not found.");
+            }
+
+            // Any other type is unsupported.
+            throw new InvalidArgumentException(
+                \sprintf('Unsupported middleware entry of type %s', \gettype($mw)),
+            );
+        }
+        return $out;
+    }
+
     /* -------------------- alias helpers -------------------- */
 
     /**
@@ -362,29 +362,29 @@ final class Dispatcher
     }
 
     /**
-     * Extract the class-string (if any) that an alias string resolves to.
+     * Collect the set of middleware class-strings referenced by the route.
      *
-     * Returns the resolved class-string when the alias maps to a class or an
-     * instantiated object; returns null when the alias resolves to a plain
-     * callable (no class to compare).
+     * This inspects route middleware entries and returns a set of class names
+     * so globals can be filtered when a route provides an explicit replacement.
      *
-     * @param string $alias Alias string
-     * @return string|null Resolved class-string or null if none applicable
+     * @param CompiledRoute $route Compiled route
+     * @return array<string,true> Map of class-string => true
      */
-    private function aliasStringClass(string $alias): ?string
+    private function routeMiddlewareClasses(CompiledRoute $route): array
     {
-        $resolved = MiddlewareAliases::resolveString($alias);
-
-        if (\is_string($resolved)) {
-            return \class_exists($resolved) ? $resolved : null;
+        $set = [];
+        foreach ($route->getMiddlewares() as $mw) {
+            if (\is_string($mw)) {
+                if (\class_exists($mw)) {
+                    $set[$mw] = true;
+                } elseif ($this->looksLikeAliasString($mw) && ($cls = $this->aliasStringClass($mw))) {
+                    $set[$cls] = true;
+                }
+            } elseif (\is_object($mw)) {
+                $set[$mw::class] = true;
+            }
         }
-
-        if (\is_object($resolved)) {
-            return $resolved::class;
-        }
-
-        // Callable or unexpected shape — no comparable class.
-        return null;
+        return $set;
     }
 
     /**

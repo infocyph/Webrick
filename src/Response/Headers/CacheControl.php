@@ -21,6 +21,24 @@ use Infocyph\Webrick\Request\Support\HeaderBag;
  */
 final class CacheControl implements \Stringable
 {
+    /** Fast membership maps */
+    private const BOOL_TOKENS = [
+        'no-store' => true,
+        'no-cache' => true,
+        'no-transform' => true,
+        'must-revalidate' => true,
+        'proxy-revalidate' => true,
+        'immutable' => true,
+    ];
+    /** tokens that accept field lists */
+    private const FIELD_TOKENS = ['no-cache' => true, 'private' => true];
+    private const NUM_TOKENS = [
+        'max-age' => true,
+        's-maxage' => true,
+        'stale-while-revalidate' => true,
+        'stale-if-error' => true,
+    ];
+    private const PRIVACY_TOKENS = ['public' => true, 'private' => true];
     /** Known order for stable rendering */
     private const RENDER_ORDER = [
         'no-store',
@@ -37,295 +55,19 @@ final class CacheControl implements \Stringable
         'stale-if-error',
     ];
 
-    /** Fast membership maps */
-    private const BOOL_TOKENS = [
-        'no-store' => true,
-        'no-cache' => true,
-        'no-transform' => true,
-        'must-revalidate' => true,
-        'proxy-revalidate' => true,
-        'immutable' => true,
-    ];
-    private const PRIVACY_TOKENS = ['public' => true, 'private' => true];
-    private const NUM_TOKENS = [
-        'max-age' => true,
-        's-maxage' => true,
-        'stale-while-revalidate' => true,
-        'stale-if-error' => true,
-    ];
-    /** tokens that accept field lists */
-    private const FIELD_TOKENS = ['no-cache' => true, 'private' => true];
-
     /** @var array<string,string|null> token => value|null (builder mode only) */
     private array $parts = [];
 
-/**
- * Private constructor for the CacheControl class.
- *
- * This constructor is only used internally by the factory methods.
- *
- * @param array<string,string|null> $existing Existing Cache-Control parts
- */
+    /**
+     * Private constructor for the CacheControl class.
+     *
+     * This constructor is only used internally by the factory methods.
+     *
+     * @param array<string,string|null> $existing Existing Cache-Control parts
+     */
     private function __construct(array $existing = [])
     {
         $this->parts = $existing;
-    }
-
-    /* ---------- Factory ---------- */
-
-    /**
-     * Reconstructs a CacheControl instance from a HeaderBag.
-     *
-     * If the HeaderBag does not contain a Cache-Control header, an empty CacheControl instance is returned.
-     *
-     * @param HeaderBag $bag The HeaderBag to reconstruct the CacheControl instance from.
-     * @return static The reconstructed CacheControl instance.
-     */
-    public static function fromHeaderBag(HeaderBag $bag): self
-    {
-        $line = $bag->getHeaderLine('Cache-Control');
-        if ($line === '') {
-            return new self();
-        }
-
-        $parsed = [];
-        foreach (self::splitCsvRespectingQuotes($line) as $token) {
-            $token = trim($token);
-            if ($token === '') {
-                continue;
-            }
-            $eqPos = strpos($token, '=');
-            if ($eqPos === false) {
-                $parsed[strtolower($token)] = null;
-            } else {
-                $name = strtolower(trim(substr($token, 0, $eqPos)));
-                $val = trim(substr($token, $eqPos + 1));
-                $parsed[$name] = $val;
-            }
-        }
-        return new self($parsed);
-    }
-
-    /**
-     * Creates a new CacheControl instance with no settings.
-     *
-     * Use this to start building a Cache-Control header from scratch.
-     *
-     * @return static
-     */
-    public static function new(): self
-    {
-        return new self();
-    }
-    
-    /**
-     * Split a comma-separated string into an array, respecting quoted strings.
-     *
-     * The function works by iterating through each character of the input string.
-     * It keeps track of whether it is currently inside a quoted string or not.
-     * When it encounters a comma outside of a quoted string, it splits the buffer and resets it.
-     * When it encounters a double quote, it toggles the "in quote" flag.
-     * Finally, it trims and filters out empty strings from the output array.
-     *
-     * @param string $line The input string to split
-     * @return array The resulting array of strings
-     */
-    private static function splitCsvRespectingQuotes(string $line): array
-    {
-        if ($line === '') {
-            return [];
-        }
-        $out = [];
-        $buf = '';
-        $inQ = false;
-        $n = strlen($line);
-        for ($i = 0; $i < $n; $i++) {
-            $ch = $line[$i];
-            if ($ch === '"') {
-                $inQ = !$inQ;
-                $buf .= $ch;
-                continue;
-            }
-            if ($ch === ',' && !$inQ) {
-                $out[] = trim($buf);
-                $buf = '';
-                continue;
-            }
-            $buf .= $ch;
-        }
-        if ($buf !== '') {
-            $out[] = trim($buf);
-        }
-        return array_values(array_filter($out, fn ($s) => $s !== ''));
-    }
-
-    /**
-     * Instructs caching layers to cache the response publicly.
-     * This directive is usually set by the origin server to allow caching of
-     * publicly accessible resources.
-     * 
-     * @return self
-     */
-    public function public(): self
-    {
-        return $this->with('public');
-    }
-
-    /**
-     * Sets the Cache-Control header to "private", indicating that the response should
-     * not be cached by shared caches. This directive is usually set by the origin
-     * server to prevent caching of sensitive information.
-     *
-     * @return self
-     */
-    public function private(): self
-    {
-        return $this->with('private');
-    }
-
-    /**
-     * Instructs caching layers to not cache the response at all.
-     * This directive is usually set by the origin server to prevent caching of
-     * sensitive information.
-     *
-     * @return static
-     */
-    public function noCache(): self
-    {
-        return $this->with('no-cache');
-    }
-
-    /**
-     * Disables the response from being stored by any caching layer.
-     *
-     * @return static
-     */
-    public function noStore(): self
-    {
-        return $this->with('no-store');
-    }
-
-    /**
-     * Instructs caching intermediaries (notably CDNs) to revalidate the response
-     * after it has become stale, but before the end-user is impacted.
-     *
-     * This directive is usually set by a caching layer (like a CDN) to
-     * reduce the load on the origin server.
-     *
-     * @return static
-     */
-    public function mustRevalidate(): self
-    {
-        return $this->with('must-revalidate');
-    }
-
-    /**
-     * Instructs caching intermediaries (notably CDNs) to revalidate the response
-     * after it has become stale, but before the end-user is impacted.
-     *
-     * This directive is usually set by a caching layer (like a CDN) to
-     * instruct any downstream caches to revalidate their cached copy of the
-     * response after it has become stale.
-     *
-     * @return self
-     */
-    public function proxyRevalidate(): self
-    {
-        return $this->with('proxy-revalidate');
-    }
-
-    /**
-     * Marks the response as immutable.
-     *
-     * The immutable Cache-Control directive indicates that this response
-     * will not be updated while it is fresh.
-     *
-     * @return self
-     */
-    public function immutable(): self
-    {
-        return $this->with('immutable');
-    }
-
-    /**
-     * Sets the maximum age of the response in seconds.
-     * The max-age Cache-Control directive indicates that the client is
-     * eligible to use this response until the specified number of
-     * seconds have passed since the response was generated.
-     * @param int $s Number of seconds
-     * @return self
-     */
-    public function maxAge(int $s): self
-    {
-        return $this->with('max-age', $s);
-    }
-
-    /**
-     * The s-maxage Cache-Control extension indicates that the shared cache
-     * should not revalidate the response until either the specified number
-     * of seconds have passed or the response's Age header value is greater
-     * than the specified number of seconds.
-     * @param int $s Number of seconds
-     * @return self
-     */
-    public function sMaxAge(int $s): self
-    {
-        return $this->with('s-maxage', $s);
-    }
-
-    /**
-     * The stale-while-revalidate Cache-Control extension indicates that the
-     * client should not revalidate the response until either the
-     * specified number of seconds have passed or the response's Age
-     * header value is greater than the specified number of seconds.
-     *
-     * @param int $s Maximum number of seconds to serve the response stale.
-     * @return self New instance with the specified Cache-Control directive set.
-     */
-    public function staleWhileRevalidate(int $s): self
-    {
-        return $this->with('stale-while-revalidate', $s);
-    }
-
-    /**
-     * The stale-if-error Cache-Control extension allows the origin server
-     * to explicitly indicate that when an error occurs, a cached response
-     * can be used in place of the 5xx response that would have been
-     * generated due to the error, without requiring the end user to
-     * revalidate the cached copy against the origin server.
-     *
-     * @param int $s Maximum number of seconds that the response can be served
-     *     stale in case of an error.
-     * @return self New instance with the specified Cache-Control directive set
-     */
-    public function staleIfError(int $s): self
-    {
-        return $this->with('stale-if-error', $s);
-    }
-
-    /**
-     * Return a new instance with the specified Cache-Control directive set.
-     *
-     *   • If the value is null, the directive is removed.
-     *   • Public and private are mutually exclusive; last write wins.
-     *   • Each directive is canonicalized to lowercase.
-     *
-     * @param string $token Valid directive name (e.g., 'max-age', 'public', etc.)
-     * @param int|string|null $value New value for the directive (or null to remove)
-     * @return self New instance with the specified Cache-Control directive set
-     */
-    private function with(string $token, int|string|null $value = null): self
-    {
-        $token = strtolower($token); // canonicalize once
-        $x = clone $this;
-        $x->parts[$token] = $value === null ? null : (string)$value;
-        // public/private mutually exclusive – last write wins
-        if ($token === 'public') {
-            unset($x->parts['private']);
-        } elseif ($token === 'private') {
-            unset($x->parts['public']);
-        }
-        return $x;
     }
 
     /**
@@ -393,7 +135,411 @@ final class CacheControl implements \Stringable
 
         return self::modelToLine($base);
     }
-    
+
+    /* ---------- Factory ---------- */
+
+    /**
+     * Reconstructs a CacheControl instance from a HeaderBag.
+     *
+     * If the HeaderBag does not contain a Cache-Control header, an empty CacheControl instance is returned.
+     *
+     * @param HeaderBag $bag The HeaderBag to reconstruct the CacheControl instance from.
+     * @return static The reconstructed CacheControl instance.
+     */
+    public static function fromHeaderBag(HeaderBag $bag): self
+    {
+        $line = $bag->getHeaderLine('Cache-Control');
+        if ($line === '') {
+            return new self();
+        }
+
+        $parsed = [];
+        foreach (self::splitCsvRespectingQuotes($line) as $token) {
+            $token = trim($token);
+            if ($token === '') {
+                continue;
+            }
+            $eqPos = strpos($token, '=');
+            if ($eqPos === false) {
+                $parsed[strtolower($token)] = null;
+            } else {
+                $name = strtolower(trim(substr($token, 0, $eqPos)));
+                $val = trim(substr($token, $eqPos + 1));
+                $parsed[$name] = $val;
+            }
+        }
+        return new self($parsed);
+    }
+
+    /**
+     * Creates a new CacheControl instance with no settings.
+     *
+     * Use this to start building a Cache-Control header from scratch.
+     *
+     * @return static
+     */
+    public static function new(): self
+    {
+        return new self();
+    }
+
+    /**
+     * Marks the response as immutable.
+     *
+     * The immutable Cache-Control directive indicates that this response
+     * will not be updated while it is fresh.
+     *
+     * @return self
+     */
+    public function immutable(): self
+    {
+        return $this->with('immutable');
+    }
+
+    /**
+     * Sets the maximum age of the response in seconds.
+     * The max-age Cache-Control directive indicates that the client is
+     * eligible to use this response until the specified number of
+     * seconds have passed since the response was generated.
+     * @param int $s Number of seconds
+     * @return self
+     */
+    public function maxAge(int $s): self
+    {
+        return $this->with('max-age', $s);
+    }
+
+    /**
+     * Instructs caching intermediaries (notably CDNs) to revalidate the response
+     * after it has become stale, but before the end-user is impacted.
+     *
+     * This directive is usually set by a caching layer (like a CDN) to
+     * reduce the load on the origin server.
+     *
+     * @return static
+     */
+    public function mustRevalidate(): self
+    {
+        return $this->with('must-revalidate');
+    }
+
+    /**
+     * Instructs caching layers to not cache the response at all.
+     * This directive is usually set by the origin server to prevent caching of
+     * sensitive information.
+     *
+     * @return static
+     */
+    public function noCache(): self
+    {
+        return $this->with('no-cache');
+    }
+
+    /**
+     * Disables the response from being stored by any caching layer.
+     *
+     * @return static
+     */
+    public function noStore(): self
+    {
+        return $this->with('no-store');
+    }
+
+    /**
+     * Sets the Cache-Control header to "private", indicating that the response should
+     * not be cached by shared caches. This directive is usually set by the origin
+     * server to prevent caching of sensitive information.
+     *
+     * @return self
+     */
+    public function private(): self
+    {
+        return $this->with('private');
+    }
+
+    /**
+     * Instructs caching intermediaries (notably CDNs) to revalidate the response
+     * after it has become stale, but before the end-user is impacted.
+     *
+     * This directive is usually set by a caching layer (like a CDN) to
+     * instruct any downstream caches to revalidate their cached copy of the
+     * response after it has become stale.
+     *
+     * @return self
+     */
+    public function proxyRevalidate(): self
+    {
+        return $this->with('proxy-revalidate');
+    }
+
+    /**
+     * Instructs caching layers to cache the response publicly.
+     * This directive is usually set by the origin server to allow caching of
+     * publicly accessible resources.
+     *
+     * @return self
+     */
+    public function public(): self
+    {
+        return $this->with('public');
+    }
+
+    /**
+     * The s-maxage Cache-Control extension indicates that the shared cache
+     * should not revalidate the response until either the specified number
+     * of seconds have passed or the response's Age header value is greater
+     * than the specified number of seconds.
+     * @param int $s Number of seconds
+     * @return self
+     */
+    public function sMaxAge(int $s): self
+    {
+        return $this->with('s-maxage', $s);
+    }
+
+    /**
+     * The stale-if-error Cache-Control extension allows the origin server
+     * to explicitly indicate that when an error occurs, a cached response
+     * can be used in place of the 5xx response that would have been
+     * generated due to the error, without requiring the end user to
+     * revalidate the cached copy against the origin server.
+     *
+     * @param int $s Maximum number of seconds that the response can be served
+     *     stale in case of an error.
+     * @return self New instance with the specified Cache-Control directive set
+     */
+    public function staleIfError(int $s): self
+    {
+        return $this->with('stale-if-error', $s);
+    }
+
+    /**
+     * The stale-while-revalidate Cache-Control extension indicates that the
+     * client should not revalidate the response until either the
+     * specified number of seconds have passed or the response's Age
+     * header value is greater than the specified number of seconds.
+     *
+     * @param int $s Maximum number of seconds to serve the response stale.
+     * @return self New instance with the specified Cache-Control directive set.
+     */
+    public function staleWhileRevalidate(int $s): self
+    {
+        return $this->with('stale-while-revalidate', $s);
+    }
+
+
+    /**
+     * Applies the rules of the no-store directive on the Cache-Control model.
+     *
+     * If no-store is present, it sets all numeric tokens to null and disables immutable.
+     */
+    private static function applyNoStoreRules(array &$base): void
+    {
+        if ($base['bools']['no-store']) {
+            foreach (self::NUM_TOKENS as $n => $_) {
+                $base['nums'][$n] = null;
+            }
+            $base['bools']['immutable'] = false;
+        }
+    }
+
+    /** @param array<string,true> $dst */
+
+    /**
+     * Populate an array with boolean values from a comma-separated string.
+     * Each token in the string is used as a key in the array and the value is always true.
+     *
+     * @param array<string, bool> &$dst Destination array
+     * @param string $csv comma-separated string to process
+     */
+    private static function ingestCsvFields(array &$dst, string $csv): void
+    {
+        foreach (explode(',', $csv) as $f) {
+            $f = trim($f);
+            if ($f !== '') {
+                $dst[$f] = true;
+            }
+        }
+    }
+
+    /**
+     * Merge two extension lists, with incoming extensions overriding base on key conflicts.
+     *
+     * Extension lists are associative arrays where the key is the extension name and the value is the extension value.
+     *
+     * @param array $base the base extension list to be merged with
+     * @param array $inc the incoming extension list to be merged
+     */
+    private static function mergeExtensions(array &$base, array $inc): void
+    {
+        // incoming overrides base on key conflicts
+        $base['ext'] = $inc['ext'] + $base['ext'];
+    }
+
+    /**
+     * Merges two associative arrays of fields, with the incoming fields array overriding the base fields array on key conflicts.
+     * If the resulting array of fields is non-empty, or if the corresponding boolean flag is present in either the base or incoming arrays,
+     * then the corresponding boolean flag is set to true in the base array.
+     */
+    private static function mergeFieldLists(array &$base, array $inc): void
+    {
+        // union of fields (Authorization, etc.)
+        foreach (self::FIELD_TOKENS as $k => $_) {
+            if (!isset($base['fields'][$k])) {
+                $base['fields'][$k] = [];
+            }
+            $base['fields'][$k] = $base['fields'][$k] + $inc['fields'][$k];
+            // Mark corresponding bool as present if fields were provided
+            if ($base['fields'][$k] !== [] || $base['bools'][$k] || $inc['bools'][$k]) {
+                $base['bools'][$k] = true;
+            }
+        }
+    }
+
+    /**
+     * Merge two associative arrays of cache control boolean directives.
+     *
+     * @param array &$base The base array to merge into
+     * @param array $inc The array to merge from
+     */
+    private static function mergeFlags(array &$base, array $inc): void
+    {
+        foreach (self::BOOL_TOKENS as $k => $_) {
+            $base['bools'][$k] = $base['bools'][$k] || $inc['bools'][$k];
+        }
+    }
+
+    /**
+     * Merge two associative arrays of cache control directives with numerical values.
+     *
+     * Each directive in the incoming array overrides the corresponding directive in the base array.
+     * The resulting array of directives will have the minimum value of the same directive from either the base or incoming array.
+     *
+     * @param array $base The base array of directives.
+     * @param array $inc The incoming array of directives to merge.
+     */
+    private static function mergeNumbers(array &$base, array $inc): void
+    {
+        foreach (self::NUM_TOKENS as $n => $_) {
+            $base['nums'][$n] = self::minInt($base['nums'][$n], $inc['nums'][$n]);
+        }
+    }
+
+    /**
+     * Merge two associative arrays of cache control privacy directives.
+     *
+     * private beats public. If either the $base or $inc array has a "private" key set to true,
+     * the resulting merged array will also have "private" set to true. If neither has a "private" key
+     * set to true, the resulting merged array will have "public" set to true if either the $base or
+     * $inc array has a "public" key set to true.
+     *
+     * @param array $base The base associative array to merge into.
+     * @param array $inc The associative array to merge into $base.
+     */
+    private static function mergePrivacy(array &$base, array $inc): void
+    {
+        // private beats public
+        $base['privacy']['private'] = $base['privacy']['private'] || $inc['privacy']['private'];
+        $base['privacy']['public'] = !$base['privacy']['private'] && ($base['privacy']['public'] || $inc['privacy']['public']);
+    }
+
+    /**
+     * Returns the minimum of two integers, or null if either is null.
+     *
+     * This is a tiny, fast, and regex-free implementation of min() that
+     * only works with integers and null. It is not suitable for general use.
+     *
+     * @param ?int $a The first integer to compare
+     * @param ?int $b The second integer to compare
+     * @return ?int The minimum of the two integers, or null if either is null
+     */
+    private static function minInt(?int $a, ?int $b): ?int
+    {
+        if ($a === null) {
+            return $b;
+        }
+        if ($b === null) {
+            return $a;
+        }
+        return ($a <= $b) ? $a : $b;
+    }
+
+    /**
+     * Serializes the Cache-Control model into a Cache-Control header line.
+     *
+     * @param array $m The Cache-Control model to serialize
+     * @return string The serialized Cache-Control header line
+     */
+    private static function modelToLine(array $m): string
+    {
+        $parts = [];
+
+        if ($m['bools']['no-store']) {
+            $parts[] = 'no-store';
+        }
+        if ($m['bools']['no-cache']) {
+            $parts[] = self::renderFieldToken('no-cache', $m['fields']['no-cache']);
+        }
+        if ($m['privacy']['private']) {
+            $parts[] = self::renderFieldToken('private', $m['fields']['private']);
+        }
+        if ($m['privacy']['public'] && !$m['privacy']['private']) {
+            $parts[] = 'public';
+        }
+        if ($m['bools']['no-transform']) {
+            $parts[] = 'no-transform';
+        }
+        if ($m['bools']['must-revalidate']) {
+            $parts[] = 'must-revalidate';
+        }
+        if ($m['bools']['proxy-revalidate']) {
+            $parts[] = 'proxy-revalidate';
+        }
+        if ($m['bools']['immutable']) {
+            $parts[] = 'immutable';
+        }
+
+        foreach (self::NUM_TOKENS as $k => $_) {
+            $v = $m['nums'][$k];
+            if ($v !== null) {
+                $parts[] = $k . '=' . $v;
+            }
+        }
+
+        if ($m['ext'] !== []) {
+            ksort($m['ext']);
+            foreach ($m['ext'] as $k => $v) {
+                $parts[] = $v === null ? $k : "$k=$v";
+            }
+        }
+
+        return implode(', ', $parts);
+    }
+
+    /**
+     * If immutable is set, but other Cache-Control directives that disable caching are present,
+     * then set immutable to false.
+     *
+     * The presence of immutable means that the response is uncacheable, but other directives
+     * like no-store, no-cache, must-revalidate, or proxy-revalidate would also prevent caching.
+     * This method normalizes the Cache-Control directives by removing immutable if any of the above
+     * directives are present.
+     */
+    private static function normalizeImmutable(array &$base): void
+    {
+        if (
+            $base['bools']['immutable'] &&
+            (
+                $base['bools']['no-store'] ||
+                $base['bools']['no-cache'] ||
+                $base['bools']['must-revalidate'] ||
+                $base['bools']['proxy-revalidate']
+            )
+        ) {
+            $base['bools']['immutable'] = false;
+        }
+    }
+
     /**
      * Parses a Cache-Control line into an immutable, typed layout.
      * Returns an empty model when the input is empty.
@@ -484,179 +630,6 @@ final class CacheControl implements \Stringable
     }
 
     /**
-     * Merge two associative arrays of cache control boolean directives.
-     *
-     * @param array &$base The base array to merge into
-     * @param array $inc The array to merge from
-     */
-    private static function mergeFlags(array &$base, array $inc): void
-    {
-        foreach (self::BOOL_TOKENS as $k => $_) {
-            $base['bools'][$k] = $base['bools'][$k] || $inc['bools'][$k];
-        }
-    }
-
-    /**
-     * Merge two associative arrays of cache control privacy directives.
-     *
-     * private beats public. If either the $base or $inc array has a "private" key set to true,
-     * the resulting merged array will also have "private" set to true. If neither has a "private" key
-     * set to true, the resulting merged array will have "public" set to true if either the $base or
-     * $inc array has a "public" key set to true.
-     *
-     * @param array $base The base associative array to merge into.
-     * @param array $inc The associative array to merge into $base.
-     */
-    private static function mergePrivacy(array &$base, array $inc): void
-    {
-        // private beats public
-        $base['privacy']['private'] = $base['privacy']['private'] || $inc['privacy']['private'];
-        $base['privacy']['public'] = !$base['privacy']['private'] && ($base['privacy']['public'] || $inc['privacy']['public']);
-    }
-
-    /**
-     * Merge two associative arrays of cache control directives with numerical values.
-     *
-     * Each directive in the incoming array overrides the corresponding directive in the base array.
-     * The resulting array of directives will have the minimum value of the same directive from either the base or incoming array.
-     *
-     * @param array $base The base array of directives.
-     * @param array $inc The incoming array of directives to merge.
-     */
-    private static function mergeNumbers(array &$base, array $inc): void
-    {
-        foreach (self::NUM_TOKENS as $n => $_) {
-            $base['nums'][$n] = self::minInt($base['nums'][$n], $inc['nums'][$n]);
-        }
-    }
-
-    /**
-     * Merges two associative arrays of fields, with the incoming fields array overriding the base fields array on key conflicts.
-     * If the resulting array of fields is non-empty, or if the corresponding boolean flag is present in either the base or incoming arrays,
-     * then the corresponding boolean flag is set to true in the base array.
-     */
-    private static function mergeFieldLists(array &$base, array $inc): void
-    {
-        // union of fields (Authorization, etc.)
-        foreach (self::FIELD_TOKENS as $k => $_) {
-            if (!isset($base['fields'][$k])) {
-                $base['fields'][$k] = [];
-            }
-            $base['fields'][$k] = $base['fields'][$k] + $inc['fields'][$k];
-            // Mark corresponding bool as present if fields were provided
-            if ($base['fields'][$k] !== [] || $base['bools'][$k] || $inc['bools'][$k]) {
-                $base['bools'][$k] = true;
-            }
-        }
-    }
-
-    /**
-     * Merge two extension lists, with incoming extensions overriding base on key conflicts.
-     *
-     * Extension lists are associative arrays where the key is the extension name and the value is the extension value.
-     *
-     * @param array $base the base extension list to be merged with
-     * @param array $inc the incoming extension list to be merged
-     */
-    private static function mergeExtensions(array &$base, array $inc): void
-    {
-        // incoming overrides base on key conflicts
-        $base['ext'] = $inc['ext'] + $base['ext'];
-    }
-
-    /**
-     * If immutable is set, but other Cache-Control directives that disable caching are present,
-     * then set immutable to false.
-     *
-     * The presence of immutable means that the response is uncacheable, but other directives
-     * like no-store, no-cache, must-revalidate, or proxy-revalidate would also prevent caching.
-     * This method normalizes the Cache-Control directives by removing immutable if any of the above
-     * directives are present.
-     */
-    private static function normalizeImmutable(array &$base): void
-    {
-        if (
-            $base['bools']['immutable'] &&
-            (
-                $base['bools']['no-store'] ||
-                $base['bools']['no-cache'] ||
-                $base['bools']['must-revalidate'] ||
-                $base['bools']['proxy-revalidate']
-            )
-        ) {
-            $base['bools']['immutable'] = false;
-        }
-    }
-
-
-    /**
-     * Applies the rules of the no-store directive on the Cache-Control model.
-     *
-     * If no-store is present, it sets all numeric tokens to null and disables immutable.
-     */
-    private static function applyNoStoreRules(array &$base): void
-    {
-        if ($base['bools']['no-store']) {
-            foreach (self::NUM_TOKENS as $n => $_) {
-                $base['nums'][$n] = null;
-            }
-            $base['bools']['immutable'] = false;
-        }
-    }
-
-    /**
-     * Serializes the Cache-Control model into a Cache-Control header line.
-     *
-     * @param array $m The Cache-Control model to serialize
-     * @return string The serialized Cache-Control header line
-     */
-    private static function modelToLine(array $m): string
-    {
-        $parts = [];
-
-        if ($m['bools']['no-store']) {
-            $parts[] = 'no-store';
-        }
-        if ($m['bools']['no-cache']) {
-            $parts[] = self::renderFieldToken('no-cache', $m['fields']['no-cache']);
-        }
-        if ($m['privacy']['private']) {
-            $parts[] = self::renderFieldToken('private', $m['fields']['private']);
-        }
-        if ($m['privacy']['public'] && !$m['privacy']['private']) {
-            $parts[] = 'public';
-        }
-        if ($m['bools']['no-transform']) {
-            $parts[] = 'no-transform';
-        }
-        if ($m['bools']['must-revalidate']) {
-            $parts[] = 'must-revalidate';
-        }
-        if ($m['bools']['proxy-revalidate']) {
-            $parts[] = 'proxy-revalidate';
-        }
-        if ($m['bools']['immutable']) {
-            $parts[] = 'immutable';
-        }
-
-        foreach (self::NUM_TOKENS as $k => $_) {
-            $v = $m['nums'][$k];
-            if ($v !== null) {
-                $parts[] = $k . '=' . $v;
-            }
-        }
-
-        if ($m['ext'] !== []) {
-            ksort($m['ext']);
-            foreach ($m['ext'] as $k => $v) {
-                $parts[] = $v === null ? $k : "$k=$v";
-            }
-        }
-
-        return implode(', ', $parts);
-    }
-    
-    /**
      * Renders a Cache-Control header field token given a name and an array of fields.
      * If the fields array is empty, returns the name as is.
      * Otherwise, returns the name followed by an equals sign and a quoted comma-separated list of the sorted field names.
@@ -674,23 +647,45 @@ final class CacheControl implements \Stringable
         return $name . '="' . implode(', ', $keys) . '"';
     }
 
-    /** @param array<string,true> $dst */
-    
     /**
-     * Populate an array with boolean values from a comma-separated string.
-     * Each token in the string is used as a key in the array and the value is always true.
+     * Split a comma-separated string into an array, respecting quoted strings.
      *
-     * @param array<string, bool> &$dst Destination array
-     * @param string $csv comma-separated string to process
+     * The function works by iterating through each character of the input string.
+     * It keeps track of whether it is currently inside a quoted string or not.
+     * When it encounters a comma outside of a quoted string, it splits the buffer and resets it.
+     * When it encounters a double quote, it toggles the "in quote" flag.
+     * Finally, it trims and filters out empty strings from the output array.
+     *
+     * @param string $line The input string to split
+     * @return array The resulting array of strings
      */
-    private static function ingestCsvFields(array &$dst, string $csv): void
+    private static function splitCsvRespectingQuotes(string $line): array
     {
-        foreach (explode(',', $csv) as $f) {
-            $f = trim($f);
-            if ($f !== '') {
-                $dst[$f] = true;
-            }
+        if ($line === '') {
+            return [];
         }
+        $out = [];
+        $buf = '';
+        $inQ = false;
+        $n = strlen($line);
+        for ($i = 0; $i < $n; $i++) {
+            $ch = $line[$i];
+            if ($ch === '"') {
+                $inQ = !$inQ;
+                $buf .= $ch;
+                continue;
+            }
+            if ($ch === ',' && !$inQ) {
+                $out[] = trim($buf);
+                $buf = '';
+                continue;
+            }
+            $buf .= $ch;
+        }
+        if ($buf !== '') {
+            $out[] = trim($buf);
+        }
+        return array_values(array_filter($out, fn ($s) => $s !== ''));
     }
 
     /**
@@ -716,23 +711,27 @@ final class CacheControl implements \Stringable
     }
 
     /**
-     * Returns the minimum of two integers, or null if either is null.
+     * Return a new instance with the specified Cache-Control directive set.
      *
-     * This is a tiny, fast, and regex-free implementation of min() that
-     * only works with integers and null. It is not suitable for general use.
+     *   • If the value is null, the directive is removed.
+     *   • Public and private are mutually exclusive; last write wins.
+     *   • Each directive is canonicalized to lowercase.
      *
-     * @param ?int $a The first integer to compare
-     * @param ?int $b The second integer to compare
-     * @return ?int The minimum of the two integers, or null if either is null
+     * @param string $token Valid directive name (e.g., 'max-age', 'public', etc.)
+     * @param int|string|null $value New value for the directive (or null to remove)
+     * @return self New instance with the specified Cache-Control directive set
      */
-    private static function minInt(?int $a, ?int $b): ?int
+    private function with(string $token, int|string|null $value = null): self
     {
-        if ($a === null) {
-            return $b;
+        $token = strtolower($token); // canonicalize once
+        $x = clone $this;
+        $x->parts[$token] = $value === null ? null : (string)$value;
+        // public/private mutually exclusive – last write wins
+        if ($token === 'public') {
+            unset($x->parts['private']);
+        } elseif ($token === 'private') {
+            unset($x->parts['public']);
         }
-        if ($b === null) {
-            return $a;
-        }
-        return ($a <= $b) ? $a : $b;
+        return $x;
     }
 }

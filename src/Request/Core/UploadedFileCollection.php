@@ -40,14 +40,13 @@ final class UploadedFileCollection implements ArrayAccess, Countable, IteratorAg
     }
 
     /**
-     * Checks if an uploaded file exists in the collection by key.
+     * Returns the number of uploaded files in the collection.
      *
-     * @param string $key Key of the uploaded file.
-     * @return bool True if the uploaded file exists, false otherwise.
+     * @return int
      */
-    public function has(string $key): bool
+    public function count(): int
     {
-        return isset($this->bag[$key]);
+        return count($this->bag);
     }
 
     /**
@@ -64,16 +63,6 @@ final class UploadedFileCollection implements ArrayAccess, Countable, IteratorAg
     }
 
     /**
-     * Returns the number of uploaded files in the collection.
-     *
-     * @return int
-     */
-    public function count(): int
-    {
-        return count($this->bag);
-    }
-
-    /**
      * Returns an iterator for the collection.
      *
      * The returned iterator will iterate over the uploaded files in the collection,
@@ -85,6 +74,17 @@ final class UploadedFileCollection implements ArrayAccess, Countable, IteratorAg
     public function getIterator(): Traversable
     {
         return new \ArrayIterator($this->bag);
+    }
+
+    /**
+     * Checks if an uploaded file exists in the collection by key.
+     *
+     * @param string $key Key of the uploaded file.
+     * @return bool True if the uploaded file exists, false otherwise.
+     */
+    public function has(string $key): bool
+    {
+        return isset($this->bag[$key]);
     }
 
     /**

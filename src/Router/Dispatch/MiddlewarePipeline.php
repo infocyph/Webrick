@@ -44,11 +44,11 @@ use UnexpectedValueException;
 final class MiddlewarePipeline
 {
     /**
-     * Middleware stack in execution order (first executed -> first element).
+     * DI invoker used to call middleware and handlers when $useInvoker is true.
      *
-     * @var list<Middleware>
+     * @var Invoker
      */
-    private array $stack;
+    private Invoker $invoker;
 
     /**
      * Final handler callable executed after all middleware.
@@ -68,6 +68,12 @@ final class MiddlewarePipeline
      * @var Closure(Request):Response
      */
     private Closure $pipeline;
+    /**
+     * Middleware stack in execution order (first executed -> first element).
+     *
+     * @var list<Middleware>
+     */
+    private array $stack;
 
     /**
      * Whether to dispatch middleware/handler via the Invoker (DI/autowiring).
@@ -75,13 +81,6 @@ final class MiddlewarePipeline
      * @var bool
      */
     private bool $useInvoker;
-
-    /**
-     * DI invoker used to call middleware and handlers when $useInvoker is true.
-     *
-     * @var Invoker
-     */
-    private Invoker $invoker;
 
     /**
      * Construct the pipeline executor.
@@ -128,6 +127,47 @@ final class MiddlewarePipeline
     }
 
     /* -------------------------------------------------------------------------
+     * Helpers
+     * ---------------------------------------------------------------------- */
+
+    /**
+     * Ensure the returned value is a Response instance.
+     *
+     * Throws UnexpectedValueException when a middleware or handler returns a
+     * non-Response value which indicates an implementation error upstream.
+     *
+     * @param mixed $res Value returned by middleware or final handler.
+     * @param string $source Human-readable tag used in exception messages.
+     * @return Response The validated Response instance.
+     *
+     * @throws UnexpectedValueException When $res is not an instance of Response.
+     */
+    private static function assertResponse(mixed $res, string $source): Response
+    {
+        if (!$res instanceof Response) {
+            $type = \is_object($res) ? $res::class : \gettype($res);
+            throw new UnexpectedValueException(
+                sprintf('%s returned %s; expected %s', $source, $type, Response::class),
+            );
+        }
+        return $res;
+    }
+
+    /**
+     * Describe a middleware item for diagnostics.
+     *
+     * Produces a short string identifying the middleware by class name or type.
+     *
+     * @param mixed $mw Middleware descriptor (callable/object/array/string).
+     * @return string Readable description for use in error messages.
+     */
+    private static function describe(mixed $mw): string
+    {
+        return \is_object($mw) ? $mw::class
+            : (\is_array($mw) ? 'callable[]' : (string)\gettype($mw));
+    }
+
+    /* -------------------------------------------------------------------------
      * Internals
      * ---------------------------------------------------------------------- */
 
@@ -153,32 +193,6 @@ final class MiddlewarePipeline
 
         /** @var Closure(Request):Response $next */
         return $next;
-    }
-
-    /**
-     * Wrap the final handler into a Closure(Request):Response.
-     *
-     * When $useInvoker is true the Invoker is used to invoke the handler so
-     * parameter autowiring is available. The handler result is normalized to
-     * a Response instance via assertResponse().
-     *
-     * @param callable $handler Terminal handler callable.
-     * @return Closure(Request):Response Closure that executes the handler and returns a Response.
-     *
-     * @throws UnexpectedValueException If the handler returns a non-Response value.
-     */
-    private function wrapFinal(callable $handler): Closure
-    {
-        $useInvoker = $this->useInvoker;
-        $invoker = $this->invoker;
-
-        return static function (Request $req) use ($handler, $useInvoker, $invoker): Response {
-            $res = $useInvoker
-                ? $invoker->invoke($handler)
-                : $handler($req);
-
-            return self::assertResponse($res, 'Final handler');
-        };
     }
 
     /**
@@ -244,44 +258,29 @@ final class MiddlewarePipeline
         };
     }
 
-    /* -------------------------------------------------------------------------
-     * Helpers
-     * ---------------------------------------------------------------------- */
-
     /**
-     * Ensure the returned value is a Response instance.
+     * Wrap the final handler into a Closure(Request):Response.
      *
-     * Throws UnexpectedValueException when a middleware or handler returns a
-     * non-Response value which indicates an implementation error upstream.
+     * When $useInvoker is true the Invoker is used to invoke the handler so
+     * parameter autowiring is available. The handler result is normalized to
+     * a Response instance via assertResponse().
      *
-     * @param mixed $res Value returned by middleware or final handler.
-     * @param string $source Human-readable tag used in exception messages.
-     * @return Response The validated Response instance.
+     * @param callable $handler Terminal handler callable.
+     * @return Closure(Request):Response Closure that executes the handler and returns a Response.
      *
-     * @throws UnexpectedValueException When $res is not an instance of Response.
+     * @throws UnexpectedValueException If the handler returns a non-Response value.
      */
-    private static function assertResponse(mixed $res, string $source): Response
+    private function wrapFinal(callable $handler): Closure
     {
-        if (!$res instanceof Response) {
-            $type = \is_object($res) ? $res::class : \gettype($res);
-            throw new UnexpectedValueException(
-                sprintf('%s returned %s; expected %s', $source, $type, Response::class),
-            );
-        }
-        return $res;
-    }
+        $useInvoker = $this->useInvoker;
+        $invoker = $this->invoker;
 
-    /**
-     * Describe a middleware item for diagnostics.
-     *
-     * Produces a short string identifying the middleware by class name or type.
-     *
-     * @param mixed $mw Middleware descriptor (callable/object/array/string).
-     * @return string Readable description for use in error messages.
-     */
-    private static function describe(mixed $mw): string
-    {
-        return \is_object($mw) ? $mw::class
-            : (\is_array($mw) ? 'callable[]' : (string)\gettype($mw));
+        return static function (Request $req) use ($handler, $useInvoker, $invoker): Response {
+            $res = $useInvoker
+                ? $invoker->invoke($handler)
+                : $handler($req);
+
+            return self::assertResponse($res, 'Final handler');
+        };
     }
 }

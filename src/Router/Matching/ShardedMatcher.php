@@ -69,64 +69,6 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         'LPT9',
     ];
 
-    /*──────────── state ────────────*/
-
-    /**
-     * Build-time prefix map used to group routes for shard output.
-     *
-     * Shape: prefix => method => list<CompiledRoute>
-     *
-     * @var array<string, array<string, list<CompiledRoute>>>
-     */
-    private array $prefixMap = [];
-
-    /**
-     * Cache of loaded shard arrays keyed by absolute file path.
-     *
-     * Value is the array returned from the required shard file, or null when
-     * the file exists but contains no data for the requested group.
-     *
-     * @var array<string, array|null>
-     */
-    private array $loadedFiles = [];
-
-    /**
-     * Whether multi-file caching has been enabled.
-     *
-     * @var bool
-     */
-    private bool $cacheEnabled = false;
-
-    /**
-     * Path to cache directory when caching is enabled. Empty when caching is off.
-     *
-     * @var string
-     */
-    private string $cacheDir = '';
-
-    /**
-     * Whether the matcher has been finalized (no further route additions allowed).
-     *
-     * @var bool
-     */
-    private bool $finalized = false;
-
-    /**
-     * Duplicate guard to prevent adding the same host+method+path twice.
-     *
-     * Shape: host => method => path => true
-     *
-     * @var array<string, array<string, array<string, bool>>>
-     */
-    private array $pathGuard = [];
-
-    /**
-     * In-memory shards used in dev-mode: memGroups[host][bucket] => group array|null.
-     *
-     * @var array<string, array<string, array|null>>
-     */
-    private array $memGroups = [];
-
     /**
      * Alias index (name => [path, domain]) collected at build-time or loaded from alias cache.
      *
@@ -141,6 +83,71 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
      */
     private ?bool $aliasLoaded = null; // null = not attempted; true/false after load
 
+    /**
+     * Path to cache directory when caching is enabled. Empty when caching is off.
+     *
+     * @var string
+     */
+    private string $cacheDir = '';
+
+    /**
+     * Whether multi-file caching has been enabled.
+     *
+     * @var bool
+     */
+    private bool $cacheEnabled = false;
+
+    /**
+     * Whether the matcher has been finalized (no further route additions allowed).
+     *
+     * @var bool
+     */
+    private bool $finalized = false;
+
+    /**
+     * Cache of loaded shard arrays keyed by absolute file path.
+     *
+     * Value is the array returned from the required shard file, or null when
+     * the file exists but contains no data for the requested group.
+     *
+     * @var array<string, array|null>
+     */
+    private array $loadedFiles = [];
+
+    /**
+     * In-memory shards used in dev-mode: memGroups[host][bucket] => group array|null.
+     *
+     * @var array<string, array<string, array|null>>
+     */
+    private array $memGroups = [];
+
+    /**
+     * Duplicate guard to prevent adding the same host+method+path twice.
+     *
+     * Shape: host => method => path => true
+     *
+     * @var array<string, array<string, array<string, bool>>>
+     */
+    private array $pathGuard = [];
+
+    /*──────────── state ────────────*/
+
+    /**
+     * Build-time prefix map used to group routes for shard output.
+     *
+     * Shape: prefix => method => list<CompiledRoute>
+     *
+     * @var array<string, array<string, list<CompiledRoute>>>
+     */
+    private array $prefixMap = [];
+
+    /**
+     * Private constructor to enforce factory usage.
+     */
+    private function __construct()
+    {
+    }
+
     /*──────────── factory/config ────────────*/
 
     /**
@@ -151,69 +158,6 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     public static function make(): self
     {
         return new self();
-    }
-
-    /**
-     * Private constructor to enforce factory usage.
-     */
-    private function __construct()
-    {
-    }
-
-    /**
-     * Enable per-file cache output and set the target directory.
-     *
-     * @param string $cacheLocation Absolute or relative directory path for shard files.
-     * @return self Fluent self for chaining.
-     */
-    public function enableCache(string $cacheLocation): self
-    {
-        $this->cacheEnabled = true;
-        $this->cacheDir = \rtrim($cacheLocation, '/\\');
-        return $this;
-    }
-
-    /**
-     * Whether a ready shard set exists so the matcher can boot directly from files.
-     *
-     * The sentinel used is the wildcard root shard; if present we treat the cache
-     * as available for lazy loading.
-     *
-     * @return bool True when cache is enabled and sentinel shard file exists.
-     */
-    public function canBootFromCache(): bool
-    {
-        // Sentinel is wildcard root shard; alias file will be lazy-loaded.
-        return $this->cacheEnabled && \is_file($this->shardFilePath('*', self::SHARD_ROOT));
-    }
-
-    /**
-     * Finalize the matcher and emit shard files when caching is enabled.
-     *
-     * Behavior:
-     *  - Writes shard files and alias file only once if cache does not exist.
-     *  - Frees build-time in-memory maps after successful dump.
-     *
-     * This method is idempotent.
-     *
-     * @return void
-     * @throws \RuntimeException When cache directory cannot be created or files cannot be written.
-     */
-    public function finalize(): void
-    {
-        if ($this->finalized) {
-            return;
-        }
-        // Cold-dump only once; check wildcard root shard as sentinel.
-        $sentinel = $this->shardFilePath('*', self::SHARD_ROOT);
-        if ($this->cacheEnabled && !\file_exists($sentinel)) {
-            $this->dumpCacheFiles();     // writes all shards
-            $this->dumpAliasFile();      // writes __aliases.php
-            // free build-time memory
-            $this->prefixMap = [];
-            $this->alias = [];
-        }
-        $this->finalized = true;
     }
 
     /*──────────── registration ────────────*/
@@ -249,6 +193,113 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         if (($name = $route->getName()) !== null && $name !== '') {
             $this->alias[$name] = [$route->getPath(), $route->getDomain()];
         }
+    }
+
+    /*──────────── alias helpers (public API) ────────────*/
+
+    /**
+     * Get the alias index mapping name => [path, domain].
+     *
+     * Dev mode: returns in-memory $this->alias.
+     * Cached mode: lazy-loads __aliases.php on first call.
+     *
+     * @return array<string, array{0:string,1:?string}>
+     * @throws \RuntimeException When alias cache format is invalid or hash mismatches (when verify enabled)
+     */
+    public function aliasIndex(): array
+    {
+        if (!$this->cacheEnabled) {
+            return $this->alias;
+        }
+
+        if ($this->aliasLoaded === true) {
+            return $this->alias;
+        }
+
+        $file = $this->aliasFilePath();
+        if (!\is_file($file)) {
+            // No alias file (e.g., cache not dumped) → fall back to memory
+            $this->aliasLoaded = false;
+            return $this->alias;
+        }
+
+        /** @var array{_hash:string,_data:array<string,array{0:string,1:?string}>} $blob */
+        $blob = require $file;
+
+        if (!isset($blob[self::H_HASH], $blob[self::H_DATA])) {
+            throw new \RuntimeException("Alias cache file {$file} missing Hash.");
+        }
+        if ($this->verifyCacheOnLoad) {
+            $calc = \hash('xxh3', \json_encode($blob[self::H_DATA], \JSON_THROW_ON_ERROR));
+            if (!\hash_equals($blob[self::H_HASH], $calc)) {
+                throw new \RuntimeException("Alias cache hash mismatch ({$file}).");
+            }
+        }
+
+        $this->alias = $blob[self::H_DATA] ?? [];
+        $this->aliasLoaded = true;
+
+        if (\function_exists('opcache_compile_file')) {
+            @\opcache_compile_file($file);
+        }
+
+        return $this->alias;
+    }
+
+    /**
+     * Whether a ready shard set exists so the matcher can boot directly from files.
+     *
+     * The sentinel used is the wildcard root shard; if present we treat the cache
+     * as available for lazy loading.
+     *
+     * @return bool True when cache is enabled and sentinel shard file exists.
+     */
+    public function canBootFromCache(): bool
+    {
+        // Sentinel is wildcard root shard; alias file will be lazy-loaded.
+        return $this->cacheEnabled && \is_file($this->shardFilePath('*', self::SHARD_ROOT));
+    }
+
+    /**
+     * Enable per-file cache output and set the target directory.
+     *
+     * @param string $cacheLocation Absolute or relative directory path for shard files.
+     * @return self Fluent self for chaining.
+     */
+    public function enableCache(string $cacheLocation): self
+    {
+        $this->cacheEnabled = true;
+        $this->cacheDir = \rtrim($cacheLocation, '/\\');
+        return $this;
+    }
+
+    /**
+     * Finalize the matcher and emit shard files when caching is enabled.
+     *
+     * Behavior:
+     *  - Writes shard files and alias file only once if cache does not exist.
+     *  - Frees build-time in-memory maps after successful dump.
+     *
+     * This method is idempotent.
+     *
+     * @return void
+     * @throws \RuntimeException When cache directory cannot be created or files cannot be written.
+     */
+    public function finalize(): void
+    {
+        if ($this->finalized) {
+            return;
+        }
+        // Cold-dump only once; check wildcard root shard as sentinel.
+        $sentinel = $this->shardFilePath('*', self::SHARD_ROOT);
+        if ($this->cacheEnabled && !\file_exists($sentinel)) {
+            $this->dumpCacheFiles();     // writes all shards
+            $this->dumpAliasFile();      // writes __aliases.php
+            // free build-time memory
+            $this->prefixMap = [];
+            $this->alias = [];
+        }
+        $this->finalized = true;
     }
 
     /*──────────── runtime match ────────────*/
@@ -310,121 +361,102 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         throw new RouteNotFoundException($method, $path);
     }
 
-    /*──────────────────────── match helpers ─────────────────*/
-
     /**
-     * Normalize incoming request tuple.
+     * Resolve a named route to its [path, domain] tuple.
      *
-     * @param string $method
-     * @param string $host
-     * @param string $path
-     * @return array{0:string,1:string,2:string} Normalized [METHOD, hostOrWildcard, path]
+     * @param string $name Route name to resolve.
+     * @return array{0:string,1:?string}|null Tuple [path, domain] or null when unknown.
      */
-    private function normalizeRequest(string $method, string $host, string $path): array
+    public function resolveAlias(string $name): ?array
     {
-        return [\strtoupper($method), \strtolower($host ?: '*'), ($path === '' ? '/' : $path)];
+        $idx = $this->aliasIndex();
+        return $idx[$name] ?? null;
     }
 
     /**
-     * Try static (exact path) lookup in a preloaded group.
+     * Compute the canonical alias file path inside the configured cache directory.
      *
-     * On success returns [$route, []] (no params). When a path exists but
-     * the verb does not match this method populates $allowedSet.
-     *
-     * @param array|null $group Group payload (or null when absent)
-     * @param string $method Uppercased HTTP method
-     * @param string $path Request path
-     * @param array<string,bool> $allowedSet Accumulator for allowed verbs (by-ref)
-     * @return array{0:CompiledRoute,1:array<string,string>}|null Match tuple or null
+     * @return string Path to __aliases.php
      */
-    private function tryStatic(?array $group, string $method, string $path, array &$allowedSet): ?array
+    private function aliasFilePath(): string
     {
-        if ($group === null) {
-            return null;
-        }
-        /** @var array<string,array<string,CompiledRoute>> $static */
-        $static = $group[self::K_STATIC] ?? [];
-        $map = $static[$path] ?? null;
-        if ($map === null) {
-            return null;
-        }
-        if ($r = $this->pickVerbRoute($map, $method)) {
-            return [$r, []];
-        }
-        $this->addAllowedFromMap($map, $allowedSet);
-        return null;
+        return $this->cacheDir . DIRECTORY_SEPARATOR . self::F_ALIASES;
     }
 
     /**
-     * Try dynamic trie descent for a preloaded group.
+     * Build an in-memory group for dev mode on first request and memoise it.
      *
-     * @param array|null $group Group payload (or null when absent)
-     * @param string $method Uppercased HTTP method
-     * @param string $path Request path
-     * @param array<string,bool> $allowedSet Accumulator for allowed verbs (by-ref)
-     * @return array{0:CompiledRoute,1:array<string,string>}|null Match tuple or null
+     * The built group has keys K_STATIC and K_TRIE or null when empty.
+     *
+     * @param string $hostKey
+     * @param string $bucket
+     * @return array|null Group or null when empty
      */
-    private function tryDynamic(?array $group, string $method, string $path, array &$allowedSet): ?array
+    private function buildDevGroupOnce(string $hostKey, string $bucket): ?array
     {
-        if ($group === null) {
-            return null;
+        if (isset($this->memGroups[$hostKey][$bucket]) || \array_key_exists(
+            $bucket,
+            $this->memGroups[$hostKey] ?? [],
+        )) {
+            return $this->memGroups[$hostKey][$bucket];
         }
-        $root = $group[self::K_TRIE] ?? null;
-        if (!$root) {
-            return null;
-        }
 
-        $hit = null;
-        $params = [];
-        if ($this->trieWalkNode($root, $this->explodePath($path), 0, $method, $params, $allowedSet, $hit)) {
-            return $hit;
-        }
-        return null;
-    }
+        $static = [];
+        $trie = $this->newNode();
 
-    /*──────────── path→bucket key ────────────*/
-
-    /**
-     * Compute the shard bucket key for a given path.
-     *
-     * Root path maps to SHARD_ROOT. Otherwise the first segment is used.
-     *
-     * @param string $path Request path
-     * @return string Bucket key
-     */
-    private function fileKeyForPath(string $path): string
-    {
-        if ($path === '/' || $path === '') {
-            return self::SHARD_ROOT;
-        }
-        $p = $path[0] === '/' ? \substr($path, 1) : $path;
-        $pos = \strpos($p, '/');
-        return $pos === false ? $p : \substr($p, 0, $pos);
-    }
-
-    /*──────────── build-time helpers ───────────*/
-
-    /**
-     * Extract the literal prefix for a route based on its leading literal segments.
-     *
-     * Examples:
-     *  - '/users/{id}'   => '/users'
-     *  - '/about'        => '/about'
-     *  - '/'             => '/'
-     *
-     * @param CompiledRoute $r
-     * @return string Prefix beginning with '/'
-     */
-    private function extractPrefix(CompiledRoute $r): string
-    {
-        $parts = [];
-        foreach ($r->getSegments() as $s) {
-            if ($s['type'] !== 'lit') {
-                break;
+        foreach ($this->iterShardRoutes($bucket) as [$verb, $r]) {
+            $h = $this->canonicalRouteHost($r->getDomain());
+            if ($h !== $hostKey) {
+                continue;
             }
-            $parts[] = $s['val'];
+
+            if ($r->isDynamic()) {
+                $this->trieInsert($trie, $r, $verb);
+            } else {
+                $static[$r->getPath()][$verb] = $r;
+            }
         }
-        return '/' . \implode('/', $parts);
+
+        $group = ($static === [] && $this->isEmptyTrieNode($trie))
+            ? null
+            : [self::K_STATIC => $static, self::K_TRIE => $trie];
+
+        $this->memGroups[$hostKey][$bucket] = $group;
+        return $group;
+    }
+
+    /*──────────── alias cache dump ────────────*/
+
+    /**
+     * Dump the alias index into the canonical __aliases.php file.
+     *
+     * @return void
+     * @throws \RuntimeException When cache directory cannot be created or file write fails.
+     */
+    private function dumpAliasFile(): void
+    {
+        $file = $this->aliasFilePath();
+        if (!\is_dir($d = \dirname($file)) && !@\mkdir($d, 0775, true) && !\is_dir($d)) {
+            throw new \RuntimeException("Failed to create cache dir {$d}");
+        }
+
+        $payload = $this->alias;
+        $crc = \hash('xxh3', \json_encode($payload, \JSON_THROW_ON_ERROR));
+
+        $php = "<?php\nreturn [\n"
+            . "    '" . self::H_HASH . "' => " . \var_export($crc, true) . ",\n"
+            . "    '" . self::H_TS . "' => " . \var_export(date(DATE_ATOM), true) . ",\n"
+            . "    '" . self::H_DATA . "' => " . $this->exportArray($payload) . ",\n"
+            . "];\n";
+
+        $tmp = $file . '.' . \uniqid('', true) . '.tmp';
+        \file_put_contents($tmp, $php, \LOCK_EX);
+        @\chmod($tmp, 0664);
+        @\rename($tmp, $file);
+
+        if (\function_exists('opcache_compile_file')) {
+            @\opcache_compile_file($file);
+        }
     }
 
     /*──────────── cache dump (per-host *and* per-bucket) ───────────*/
@@ -469,102 +501,68 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         $this->writeShard('*', self::SHARD_ROOT, $shards['*'][self::SHARD_ROOT]);
     }
 
-    /**
-     * Serialize and write a single shard file.
-     *
-     * @param string $hostKey Canonical host key or '*' for wildcard
-     * @param string $bucket Bucket name for the shard
-     * @param array $payload Data payload to export into PHP array form
-     * @return void
-     * @throws \RuntimeException When the cache directory cannot be created.
-     */
-    private function writeShard(string $hostKey, string $bucket, array $payload): void
-    {
-        $file = $this->shardFilePath($hostKey, $bucket);
-        if (!\is_dir($d = \dirname($file)) && !@\mkdir($d, 0775, true) && !\is_dir($d)) {
-            throw new \RuntimeException("Failed to create cache dir {$d}");
-        }
-        $crc = \hash('xxh3', \json_encode($payload, \JSON_THROW_ON_ERROR));
-        $php = "<?php\nreturn [\n"
-            . "    '" . self::H_HASH . "' => " . \var_export($crc, true) . ",\n"
-            . "    '" . self::H_TS . "'  => " . \var_export(date(DATE_ATOM), true) . ",\n"
-            . "    '" . self::H_DATA . "' => " . $this->exportArray($payload) . ",\n"
-            . "];\n";
-        $tmp = $file . '.' . \uniqid('', true) . '.tmp';
-        \file_put_contents($tmp, $php, \LOCK_EX);
-        @\chmod($tmp, 0664);
-        @\rename($tmp, $file);
+    /*──────────── build-time helpers ───────────*/
 
-        if (\function_exists('opcache_compile_file')) {
-            @\opcache_compile_file($file);
+    /**
+     * Extract the literal prefix for a route based on its leading literal segments.
+     *
+     * Examples:
+     *  - '/users/{id}'   => '/users'
+     *  - '/about'        => '/about'
+     *  - '/'             => '/'
+     *
+     * @param CompiledRoute $r
+     * @return string Prefix beginning with '/'
+     */
+    private function extractPrefix(CompiledRoute $r): string
+    {
+        $parts = [];
+        foreach ($r->getSegments() as $s) {
+            if ($s['type'] !== 'lit') {
+                break;
+            }
+            $parts[] = $s['val'];
         }
+        return '/' . \implode('/', $parts);
+    }
+
+    /*──────────── path→bucket key ────────────*/
+
+    /**
+     * Compute the shard bucket key for a given path.
+     *
+     * Root path maps to SHARD_ROOT. Otherwise the first segment is used.
+     *
+     * @param string $path Request path
+     * @return string Bucket key
+     */
+    private function fileKeyForPath(string $path): string
+    {
+        if ($path === '/' || $path === '') {
+            return self::SHARD_ROOT;
+        }
+        $p = $path[0] === '/' ? \substr($path, 1) : $path;
+        $pos = \strpos($p, '/');
+        return $pos === false ? $p : \substr($p, 0, $pos);
     }
 
     /**
-     * Compute the shard file path for a given hostKey and bucket.
+     * Iterate all (verb, route) pairs contained in the build-time prefix map for a bucket.
      *
-     * HostKey '*' maps to bucketSafe.php, otherwise hostKey.bucketSafe.php.
-     *
-     * @param string $hostKey Canonical host key or '*'
-     * @param string $bucket Bucket name
-     * @return string Absolute/relative file path inside $this->cacheDir
+     * @param string $bucket
+     * @return \Generator<array{0:string,1:CompiledRoute}>
      */
-    private function shardFilePath(string $hostKey, string $bucket): string
+    private function iterShardRoutes(string $bucket): \Generator
     {
-        $bucketSafe = $this->sanitizeForFilename($bucket);
-        $name = ($hostKey === '*')
-            ? $bucketSafe . '.php'
-            : $this->sanitizeForFilename($hostKey) . '.' . $bucketSafe . '.php';
-
-        return $this->cacheDir . DIRECTORY_SEPARATOR . $name;
-    }
-
-    /**
-     * Fast ASCII-only filename sanitizer.
-     *
-     * Replaces runs of invalid characters with underscores, trims leading dots
-     * and trailing spaces/dots, ensures non-empty output and avoids Windows
-     * reserved basenames by prefixing an underscore when necessary.
-     *
-     * @param string $s Input string to sanitise
-     * @return string Sanitised filename-safe string
-     */
-    private function sanitizeForFilename(string $s): string
-    {
-        $out = '';
-        $prevUnderscore = false;
-        $len = \strlen($s);
-
-        for ($i = 0; $i < $len; $i++) {
-            $ch = $s[$i];
-            $o = \ord($ch);
-
-            $isAlphaNum = ($o >= 48 && $o <= 57) || ($o >= 65 && $o <= 90) || ($o >= 97 && $o <= 122);
-            if ($isAlphaNum || $ch === '.' || $ch === '_' || $ch === '-') {
-                $out .= $ch;
-                $prevUnderscore = false;
-            } else {
-                if (!$prevUnderscore) {
-                    $out .= '_';
-                    $prevUnderscore = true;
+        foreach ($this->prefixMap as $byMethod) {
+            foreach ($byMethod as $verb => $routes) {
+                foreach ($routes as $r) {
+                    if ($this->fileKeyForPath($r->getPath()) === $bucket) {
+                        yield [$verb, $r];
+                    }
                 }
             }
         }
-
-        // avoid leading dot / Windows trailing dot or space
-        $out = \ltrim($out, '.');
-        $out = \rtrim($out, ' .');
-
-        if ($out === '') {
-            $out = '_';
-        }
-
-        // avoid Windows reserved basenames
-        if (\in_array(\strtoupper($out), self::WIN_RESERVED, true)) {
-            $out = '_' . $out;
-        }
-
-        return $out;
     }
 
     /*──────────── runtime shard loading ────────────*/
@@ -620,154 +618,166 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         return $this->loadedFiles[$file] = $blob[self::H_DATA];
     }
 
+    /*──────────────────────── match helpers ─────────────────*/
+
     /**
-     * Iterate all (verb, route) pairs contained in the build-time prefix map for a bucket.
+     * Normalize incoming request tuple.
      *
-     * @param string $bucket
-     * @return \Generator<array{0:string,1:CompiledRoute}>
+     * @param string $method
+     * @param string $host
+     * @param string $path
+     * @return array{0:string,1:string,2:string} Normalized [METHOD, hostOrWildcard, path]
      */
-    private function iterShardRoutes(string $bucket): \Generator
+    private function normalizeRequest(string $method, string $host, string $path): array
     {
-        foreach ($this->prefixMap as $byMethod) {
-            foreach ($byMethod as $verb => $routes) {
-                foreach ($routes as $r) {
-                    if ($this->fileKeyForPath($r->getPath()) === $bucket) {
-                        yield [$verb, $r];
-                    }
+        return [\strtoupper($method), \strtolower($host ?: '*'), ($path === '' ? '/' : $path)];
+    }
+
+    /**
+     * Fast ASCII-only filename sanitizer.
+     *
+     * Replaces runs of invalid characters with underscores, trims leading dots
+     * and trailing spaces/dots, ensures non-empty output and avoids Windows
+     * reserved basenames by prefixing an underscore when necessary.
+     *
+     * @param string $s Input string to sanitise
+     * @return string Sanitised filename-safe string
+     */
+    private function sanitizeForFilename(string $s): string
+    {
+        $out = '';
+        $prevUnderscore = false;
+        $len = \strlen($s);
+
+        for ($i = 0; $i < $len; $i++) {
+            $ch = $s[$i];
+            $o = \ord($ch);
+
+            $isAlphaNum = ($o >= 48 && $o <= 57) || ($o >= 65 && $o <= 90) || ($o >= 97 && $o <= 122);
+            if ($isAlphaNum || $ch === '.' || $ch === '_' || $ch === '-') {
+                $out .= $ch;
+                $prevUnderscore = false;
+            } else {
+                if (!$prevUnderscore) {
+                    $out .= '_';
+                    $prevUnderscore = true;
                 }
             }
         }
+
+        // avoid leading dot / Windows trailing dot or space
+        $out = \ltrim($out, '.');
+        $out = \rtrim($out, ' .');
+
+        if ($out === '') {
+            $out = '_';
+        }
+
+        // avoid Windows reserved basenames
+        if (\in_array(\strtoupper($out), self::WIN_RESERVED, true)) {
+            $out = '_' . $out;
+        }
+
+        return $out;
     }
 
     /**
-     * Build an in-memory group for dev mode on first request and memoise it.
+     * Compute the shard file path for a given hostKey and bucket.
      *
-     * The built group has keys K_STATIC and K_TRIE or null when empty.
+     * HostKey '*' maps to bucketSafe.php, otherwise hostKey.bucketSafe.php.
      *
-     * @param string $hostKey
-     * @param string $bucket
-     * @return array|null Group or null when empty
+     * @param string $hostKey Canonical host key or '*'
+     * @param string $bucket Bucket name
+     * @return string Absolute/relative file path inside $this->cacheDir
      */
-    private function buildDevGroupOnce(string $hostKey, string $bucket): ?array
+    private function shardFilePath(string $hostKey, string $bucket): string
     {
-        if (isset($this->memGroups[$hostKey][$bucket]) || \array_key_exists(
-            $bucket,
-            $this->memGroups[$hostKey] ?? [],
-        )) {
-            return $this->memGroups[$hostKey][$bucket];
-        }
+        $bucketSafe = $this->sanitizeForFilename($bucket);
+        $name = ($hostKey === '*')
+            ? $bucketSafe . '.php'
+            : $this->sanitizeForFilename($hostKey) . '.' . $bucketSafe . '.php';
 
-        $static = [];
-        $trie = $this->newNode();
-
-        foreach ($this->iterShardRoutes($bucket) as [$verb, $r]) {
-            $h = $this->canonicalRouteHost($r->getDomain());
-            if ($h !== $hostKey) {
-                continue;
-            }
-
-            if ($r->isDynamic()) {
-                $this->trieInsert($trie, $r, $verb);
-            } else {
-                $static[$r->getPath()][$verb] = $r;
-            }
-        }
-
-        $group = ($static === [] && $this->isEmptyTrieNode($trie))
-            ? null
-            : [self::K_STATIC => $static, self::K_TRIE => $trie];
-
-        $this->memGroups[$hostKey][$bucket] = $group;
-        return $group;
+        return $this->cacheDir . DIRECTORY_SEPARATOR . $name;
     }
 
-    /*──────────── alias helpers (public API) ────────────*/
-
     /**
-     * Get the alias index mapping name => [path, domain].
+     * Try dynamic trie descent for a preloaded group.
      *
-     * Dev mode: returns in-memory $this->alias.
-     * Cached mode: lazy-loads __aliases.php on first call.
-     *
-     * @return array<string, array{0:string,1:?string}>
-     * @throws \RuntimeException When alias cache format is invalid or hash mismatches (when verify enabled)
+     * @param array|null $group Group payload (or null when absent)
+     * @param string $method Uppercased HTTP method
+     * @param string $path Request path
+     * @param array<string,bool> $allowedSet Accumulator for allowed verbs (by-ref)
+     * @return array{0:CompiledRoute,1:array<string,string>}|null Match tuple or null
      */
-    public function aliasIndex(): array
+    private function tryDynamic(?array $group, string $method, string $path, array &$allowedSet): ?array
     {
-        if (!$this->cacheEnabled) {
-            return $this->alias;
+        if ($group === null) {
+            return null;
+        }
+        $root = $group[self::K_TRIE] ?? null;
+        if (!$root) {
+            return null;
         }
 
-        if ($this->aliasLoaded === true) {
-            return $this->alias;
+        $hit = null;
+        $params = [];
+        if ($this->trieWalkNode($root, $this->explodePath($path), 0, $method, $params, $allowedSet, $hit)) {
+            return $hit;
         }
-
-        $file = $this->aliasFilePath();
-        if (!\is_file($file)) {
-            // No alias file (e.g., cache not dumped) → fall back to memory
-            $this->aliasLoaded = false;
-            return $this->alias;
-        }
-
-        /** @var array{_hash:string,_data:array<string,array{0:string,1:?string}>} $blob */
-        $blob = require $file;
-
-        if (!isset($blob[self::H_HASH], $blob[self::H_DATA])) {
-            throw new \RuntimeException("Alias cache file {$file} missing Hash.");
-        }
-        if ($this->verifyCacheOnLoad) {
-            $calc = \hash('xxh3', \json_encode($blob[self::H_DATA], \JSON_THROW_ON_ERROR));
-            if (!\hash_equals($blob[self::H_HASH], $calc)) {
-                throw new \RuntimeException("Alias cache hash mismatch ({$file}).");
-            }
-        }
-
-        $this->alias = $blob[self::H_DATA] ?? [];
-        $this->aliasLoaded = true;
-
-        if (\function_exists('opcache_compile_file')) {
-            @\opcache_compile_file($file);
-        }
-
-        return $this->alias;
+        return null;
     }
 
     /**
-     * Resolve a named route to its [path, domain] tuple.
+     * Try static (exact path) lookup in a preloaded group.
      *
-     * @param string $name Route name to resolve.
-     * @return array{0:string,1:?string}|null Tuple [path, domain] or null when unknown.
+     * On success returns [$route, []] (no params). When a path exists but
+     * the verb does not match this method populates $allowedSet.
+     *
+     * @param array|null $group Group payload (or null when absent)
+     * @param string $method Uppercased HTTP method
+     * @param string $path Request path
+     * @param array<string,bool> $allowedSet Accumulator for allowed verbs (by-ref)
+     * @return array{0:CompiledRoute,1:array<string,string>}|null Match tuple or null
      */
-    public function resolveAlias(string $name): ?array
+    private function tryStatic(?array $group, string $method, string $path, array &$allowedSet): ?array
     {
-        $idx = $this->aliasIndex();
-        return $idx[$name] ?? null;
+        if ($group === null) {
+            return null;
+        }
+        /** @var array<string,array<string,CompiledRoute>> $static */
+        $static = $group[self::K_STATIC] ?? [];
+        $map = $static[$path] ?? null;
+        if ($map === null) {
+            return null;
+        }
+        if ($r = $this->pickVerbRoute($map, $method)) {
+            return [$r, []];
+        }
+        $this->addAllowedFromMap($map, $allowedSet);
+        return null;
     }
 
-    /*──────────── alias cache dump ────────────*/
-
     /**
-     * Dump the alias index into the canonical __aliases.php file.
+     * Serialize and write a single shard file.
      *
+     * @param string $hostKey Canonical host key or '*' for wildcard
+     * @param string $bucket Bucket name for the shard
+     * @param array $payload Data payload to export into PHP array form
      * @return void
-     * @throws \RuntimeException When cache directory cannot be created or file write fails.
+     * @throws \RuntimeException When the cache directory cannot be created.
      */
-    private function dumpAliasFile(): void
+    private function writeShard(string $hostKey, string $bucket, array $payload): void
     {
-        $file = $this->aliasFilePath();
+        $file = $this->shardFilePath($hostKey, $bucket);
         if (!\is_dir($d = \dirname($file)) && !@\mkdir($d, 0775, true) && !\is_dir($d)) {
             throw new \RuntimeException("Failed to create cache dir {$d}");
         }
-
-        $payload = $this->alias;
         $crc = \hash('xxh3', \json_encode($payload, \JSON_THROW_ON_ERROR));
-
         $php = "<?php\nreturn [\n"
             . "    '" . self::H_HASH . "' => " . \var_export($crc, true) . ",\n"
-            . "    '" . self::H_TS . "' => " . \var_export(date(DATE_ATOM), true) . ",\n"
+            . "    '" . self::H_TS . "'  => " . \var_export(date(DATE_ATOM), true) . ",\n"
             . "    '" . self::H_DATA . "' => " . $this->exportArray($payload) . ",\n"
             . "];\n";
-
         $tmp = $file . '.' . \uniqid('', true) . '.tmp';
         \file_put_contents($tmp, $php, \LOCK_EX);
         @\chmod($tmp, 0664);
@@ -776,15 +786,5 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         if (\function_exists('opcache_compile_file')) {
             @\opcache_compile_file($file);
         }
-    }
-
-    /**
-     * Compute the canonical alias file path inside the configured cache directory.
-     *
-     * @return string Path to __aliases.php
-     */
-    private function aliasFilePath(): string
-    {
-        return $this->cacheDir . DIRECTORY_SEPARATOR . self::F_ALIASES;
     }
 }

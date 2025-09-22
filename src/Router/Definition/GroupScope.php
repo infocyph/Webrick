@@ -73,32 +73,51 @@ final class GroupScope
     ) {
     }
 
+    /**
+     * Get the optional domain constraint for this scope.
+     *
+     * @return string|null Domain name or null if none set
+     */
+    public function getDomain(): ?string
+    {
+        return $this->domain;
+    }
+
+    /**
+     * Get the middleware list for this scope.
+     *
+     * Returns the middleware entries in declared order. Each element is either
+     * a class-string or an instantiated middleware object.
+     *
+     * @return MiddlewareList
+     */
+    public function getMiddleware(): array
+    {
+        return $this->middleware;
+    }
+
+    /**
+     * Get the route name prefix for this scope.
+     *
+     * @return string Name prefix (may be empty)
+     */
+    public function getNamePrefix(): string
+    {
+        return $this->namePrefix;
+    }
+
     /* -----------------------------------------------------------------
-     *  Fluent (immutable) setters
+     *  Accessors
      * ----------------------------------------------------------------*/
 
     /**
-     * Return a new GroupScope with an extended path prefix.
+     * Get the normalized URI prefix for this scope.
      *
-     * The provided $more segment is concatenated to the existing prefix and
-     * the result is normalized (leading slash, no trailing slash, collapsed
-     * duplicate separators).
-     *
-     * @param string $more Additional path segment to append (e.g. "/v2" or "v2")
-     * @return self New instance with updated prefix
+     * @return string Normalized prefix (leading slash, no trailing slash)
      */
-    public function withPrefix(string $more): self
+    public function getPrefix(): string
     {
-        $combined = trim($this->prefix, '/') . '/' . trim($more, '/');
-        // Normalize: ensure leading slash, remove trailing slash and collapse duplicate '/'
-        $normalized = '/' . trim(preg_replace('#/+#', '/', $combined), '/');
-
-        return new self(
-            $normalized,
-            $this->domain,
-            $this->middleware,
-            $this->namePrefix,
-        );
+        return $this->prefix;
     }
 
     /**
@@ -157,49 +176,30 @@ final class GroupScope
     }
 
     /* -----------------------------------------------------------------
-     *  Accessors
+     *  Fluent (immutable) setters
      * ----------------------------------------------------------------*/
 
     /**
-     * Get the normalized URI prefix for this scope.
+     * Return a new GroupScope with an extended path prefix.
      *
-     * @return string Normalized prefix (leading slash, no trailing slash)
+     * The provided $more segment is concatenated to the existing prefix and
+     * the result is normalized (leading slash, no trailing slash, collapsed
+     * duplicate separators).
+     *
+     * @param string $more Additional path segment to append (e.g. "/v2" or "v2")
+     * @return self New instance with updated prefix
      */
-    public function getPrefix(): string
+    public function withPrefix(string $more): self
     {
-        return $this->prefix;
-    }
+        $combined = trim($this->prefix, '/') . '/' . trim($more, '/');
+        // Normalize: ensure leading slash, remove trailing slash and collapse duplicate '/'
+        $normalized = '/' . trim(preg_replace('#/+#', '/', $combined), '/');
 
-    /**
-     * Get the optional domain constraint for this scope.
-     *
-     * @return string|null Domain name or null if none set
-     */
-    public function getDomain(): ?string
-    {
-        return $this->domain;
-    }
-
-    /**
-     * Get the middleware list for this scope.
-     *
-     * Returns the middleware entries in declared order. Each element is either
-     * a class-string or an instantiated middleware object.
-     *
-     * @return MiddlewareList
-     */
-    public function getMiddleware(): array
-    {
-        return $this->middleware;
-    }
-
-    /**
-     * Get the route name prefix for this scope.
-     *
-     * @return string Name prefix (may be empty)
-     */
-    public function getNamePrefix(): string
-    {
-        return $this->namePrefix;
+        return new self(
+            $normalized,
+            $this->domain,
+            $this->middleware,
+            $this->namePrefix,
+        );
     }
 }

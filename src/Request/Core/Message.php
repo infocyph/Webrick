@@ -14,9 +14,9 @@ namespace Infocyph\Webrick\Request\Core;
  */
 abstract class Message
 {
-    protected string $protocol = '1.1';
-    protected array $headers = [];
     protected Stream $body;
+    protected array $headers = [];
+    protected string $protocol = '1.1';
 
     /**
      * @param array<string,string[]> $headers header-name => string[] or string (ucwords-dashed)
@@ -31,55 +31,21 @@ abstract class Message
     }
 
     /**
-     * Retrieve the HTTP protocol version as a string (e.g. "1.1")
-     *
-     * @return string The HTTP protocol version
+     * Cloning is disabled.
      */
-    public function getProtocolVersion(): string
+    protected function __clone(): void
     {
-        return $this->protocol;
-    }
-
-    /**
-     * Create a new instance with the specified HTTP protocol version.
-     *
-     * @param string $version HTTP protocol version
-     * @return static
-     */
-    public function withProtocolVersion($version): static
-    {
-        if ($version === $this->protocol) {
-            return $this;
-        }
-        $c = clone $this;
-        $c->protocol = $version;
-        return $c;
     }
 
 
     /**
-     * Retrieves the headers of this request.
+     * Returns the current message body as an instance of Stream.
      *
-     * Headers are returned as an associative array where the key is the header
-     * name (in lowercase) and the value is an array of strings for each value
-     * of the header.
-     *
-     * @return array
+     * @return Stream The current message body.
      */
-    public function getHeaders(): array
+    public function getBody(): Stream
     {
-        return $this->headers;
-    }
-
-    /**
-     * Check if a header exists.
-     *
-     * @param string $name Case-insensitive header name
-     * @return bool True if header exists, false otherwise
-     */
-    public function hasHeader($name): bool
-    {
-        return isset($this->headers[$this->norm($name)]);
+        return $this->body;
     }
 
     /**
@@ -104,24 +70,40 @@ abstract class Message
         return implode(',', $this->getHeader($name));
     }
 
+
     /**
-     * Return a new instance with the specified header, replacing any existing values.
-     * If the header already exists with the same values, the original instance is returned.
+     * Retrieves the headers of this request.
+     *
+     * Headers are returned as an associative array where the key is the header
+     * name (in lowercase) and the value is an array of strings for each value
+     * of the header.
+     *
+     * @return array
+     */
+    public function getHeaders(): array
+    {
+        return $this->headers;
+    }
+
+    /**
+     * Retrieve the HTTP protocol version as a string (e.g. "1.1")
+     *
+     * @return string The HTTP protocol version
+     */
+    public function getProtocolVersion(): string
+    {
+        return $this->protocol;
+    }
+
+    /**
+     * Check if a header exists.
      *
      * @param string $name Case-insensitive header name
-     * @param string|array $value New header values
-     * @return static
+     * @return bool True if header exists, false otherwise
      */
-    public function withHeader($name, $value): static
+    public function hasHeader($name): bool
     {
-        $norm = $this->norm($name);
-        $val = is_array($value) ? array_values($value) : [(string)$value];
-        if (($this->headers[$norm] ?? null) === $val) {
-            return $this;
-        }
-        $c = clone $this;
-        $c->headers[$norm] = $val;
-        return $c;
+        return isset($this->headers[$this->norm($name)]);
     }
 
     /**
@@ -147,6 +129,42 @@ abstract class Message
     }
 
     /**
+     * Create a new instance with the specified body.
+     *
+     * @param Stream $body The new body stream
+     * @return static
+     */
+    public function withBody(Stream $body): static
+    {
+        if ($body === $this->body) {
+            return $this;
+        }
+        $c = clone $this;
+        $c->body = $body;
+        return $c;
+    }
+
+    /**
+     * Return a new instance with the specified header, replacing any existing values.
+     * If the header already exists with the same values, the original instance is returned.
+     *
+     * @param string $name Case-insensitive header name
+     * @param string|array $value New header values
+     * @return static
+     */
+    public function withHeader($name, $value): static
+    {
+        $norm = $this->norm($name);
+        $val = is_array($value) ? array_values($value) : [(string)$value];
+        if (($this->headers[$norm] ?? null) === $val) {
+            return $this;
+        }
+        $c = clone $this;
+        $c->headers[$norm] = $val;
+        return $c;
+    }
+
+    /**
      * Create a new instance without the specified header.
      *
      * @param string $name Header name to remove
@@ -162,30 +180,19 @@ abstract class Message
         return $c;
     }
 
-
     /**
-     * Returns the current message body as an instance of Stream.
+     * Create a new instance with the specified HTTP protocol version.
      *
-     * @return Stream The current message body.
-     */
-    public function getBody(): Stream
-    {
-        return $this->body;
-    }
-
-    /**
-     * Create a new instance with the specified body.
-     *
-     * @param Stream $body The new body stream
+     * @param string $version HTTP protocol version
      * @return static
      */
-    public function withBody(Stream $body): static
+    public function withProtocolVersion($version): static
     {
-        if ($body === $this->body) {
+        if ($version === $this->protocol) {
             return $this;
         }
         $c = clone $this;
-        $c->body = $body;
+        $c->protocol = $version;
         return $c;
     }
 
@@ -215,12 +222,5 @@ abstract class Message
             $out[$this->norm($k)] = is_array($v) ? array_values($v) : [(string)$v];
         }
         return $out;
-    }
-
-    /**
-     * Cloning is disabled.
-     */
-    protected function __clone(): void
-    {
     }
 }

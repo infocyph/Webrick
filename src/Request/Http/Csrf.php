@@ -22,14 +22,12 @@ final class Csrf
      */
     private const TOKEN_BYTES = 32;
 
+
     /**
-     * Retrieves the CSRF token from the session, or generates a new one if it does not exist.
-     *
-     * @return string The CSRF token as a 64-hex-char string.
+     * Private constructor to prevent instantiation of this class.
      */
-    public static function token(): string
+    private function __construct()
     {
-        return $_SESSION['_token'] ??= bin2hex(random_bytes(self::TOKEN_BYTES));
     }
 
     /**
@@ -101,6 +99,16 @@ final class Csrf
     }
 
     /**
+     * Retrieves the CSRF token from the session, or generates a new one if it does not exist.
+     *
+     * @return string The CSRF token as a 64-hex-char string.
+     */
+    public static function token(): string
+    {
+        return $_SESSION['_token'] ??= bin2hex(random_bytes(self::TOKEN_BYTES));
+    }
+
+    /**
      * Extract the CSRF token from the request (in this order):
      *   1. Header ('X-CSRF-TOKEN' or 'X-XSRF-TOKEN')
      *   2. Form field ('_token')
@@ -133,13 +141,5 @@ final class Csrf
         $cookie = $req->getCookieParams()['XSRF-TOKEN'] ?? null;
 
         return $cookie !== '' ? (string)$cookie : null;
-    }
-
-
-    /**
-     * Private constructor to prevent instantiation of this class.
-     */
-    private function __construct()
-    {
     }
 }

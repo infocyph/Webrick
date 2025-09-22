@@ -21,9 +21,9 @@ use Closure;
 use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Request\Http\ContentNegotiator;
 use Infocyph\Webrick\Request\Request;
-use Infocyph\Webrick\Response\Response;
-use Infocyph\Webrick\Response\Negotiation\LocaleNegotiator;
 use Infocyph\Webrick\Response\Negotiation\ContentTypeNegotiator;
+use Infocyph\Webrick\Response\Negotiation\LocaleNegotiator;
+use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Definition\Attribute\Produces;
 
 /**
@@ -89,29 +89,142 @@ final readonly class NegotiationMiddleware
         return $resp->withSmartHeader('Content-Language', $locale);
     }
 
-    /* ───────────────────────── orchestration helpers ───────────────────────── */
+    /**
+     * Whether charset meaningfully affects wire bytes for the given media type.
+     *
+     * JSON is excluded since the spec fixes UTF-8.
+     *
+     * @param string $typeLower Lower-cased media type.
+     *
+     * @return bool True when charset matters for this type.
+     */
+    private function charsetMattersFor(string $typeLower): bool
+    {
+        if ($this->isJson($typeLower)) {
+            return false;
+        }
+
+        return str_starts_with($typeLower, 'text/')
+            || str_contains($typeLower, 'xml')
+            || $typeLower === 'application/javascript'
+            || $typeLower === 'text/javascript';
+    }
 
     /**
-     * Read route-level overrides for produces/charsets from a Produces attribute.
+     * Conservative check used for 406 short-circuit Vary decision.
+     *
+     * @param array<int,string> $types
+     *
+     * @return bool True if any type would have charset significance.
+     */
+    private function charsetMattersForAny(array $types): bool
+    {
+        return array_any($types, fn ($t) => $this->charsetMattersFor(strtolower($t)));
+    }
+
+    /**
+     * Compose a Content-Type header value, appending charset when applicable.
+     *
+     * For JSON types, no charset parameter is appended (UTF-8 by spec).
+     *
+     * @param string      $type
+     * @param string|null $charset
+     *
+     * @return string Header value.
+     */
+    private function composeContentType(string $type, ?string $charset): string
+    {
+        $typeLower = strtolower($type);
+        if ($this->isJson($typeLower)) {
+            return $type; // never append for JSON; UTF-8 by spec
+        }
+        if (str_contains($type, ';')) {
+            return $type; // controller already set params
+        }
+
+        $needsCs =
+            str_starts_with($typeLower, 'text/') ||
+            str_contains($typeLower, 'xml') ||
+            $typeLower === 'application/javascript' ||
+            $typeLower === 'text/javascript';
+
+        return ($needsCs && $charset) ? "{$type}; charset={$charset}" : $type;
+    }
+
+    /**
+     * Ensure Content-Type is present and append charset when appropriate.
+     *
+     * @param Response    $resp
+     * @param string      $type
+     * @param string|null $cset
+     *
+     * @return Response Normalized response.
+     */
+    private function ensureContentType(Response $resp, string $type, ?string $cset): Response
+    {
+        $code = $resp->getStatusCode();
+        if ($code === 204 || $code === 304) {
+            return $resp;
+        }
+
+        $existing = $resp->getHeaderLine('Content-Type');
+        if ($existing === '') {
+            return $resp->withSmartHeader('Content-Type', $this->composeContentType($type, $cset));
+        }
+
+        // Append charset if needed and we negotiated one
+        if ($cset === null) {
+            return $resp;
+        }
+
+        $semicolonPos = strpos($existing, ';');
+        $base = $semicolonPos === false ? $existing : substr($existing, 0, $semicolonPos);
+        $baseLower = strtolower($base);
+
+        if (
+            stripos($existing, 'charset=') === false
+            && $this->charsetMattersFor($baseLower)
+            && !$this->isJson($baseLower)
+        ) {
+            return $resp->withSmartHeader('Content-Type', rtrim($existing) . '; charset=' . $cset);
+        }
+
+        return $resp;
+    }
+
+    /**
+     * Identify JSON media types (including structured suffix).
+     *
+     * @param string $typeLower Lower-cased media type.
+     *
+     * @return bool True if JSON or +json.
+     */
+    private function isJson(string $typeLower): bool
+    {
+        return str_starts_with($typeLower, 'application/json') || str_ends_with($typeLower, '+json');
+    }
+
+    /**
+     * Negotiate locale and register Vary when the outcome can vary by request.
      *
      * @param Request $req
      *
-     * @return array{0: string[], 1: string[]} Tuple of [produces, charsets].
+     * @return string Selected locale.
      */
-    private function resolveRouteOverrides(Request $req): array
+    private function negotiateLocaleRegisterVary(Request $req): string
     {
-        $prod = $this->produces;
-        $char = $this->charsets;
+        [$locale] = LocaleNegotiator::forRequest(
+            $req,
+            $this->locales ?: [$this->localeFallback],
+            $this->localeFallback,
+        );
 
-        /** @var Produces|null $attr */
-        $attr = $req->getAttribute('produces');
-        if ($attr instanceof Produces) {
-            $prod = $attr->types ?: $prod;
-            if (!empty($attr->charsets)) {
-                $char = $attr->charsets;
-            }
-        }
-        return [$prod, $char];
+        // Only vary if client sent the header OR server offers > 1 locale
+        $acceptLangPresent = $req->getHeaderLine('Accept-Language') !== '';
+        $multiLocales = \count($this->locales) > 1;
+        VaryAccumulatorMiddleware::addIf($req, $acceptLangPresent || $multiLocales, 'Accept-Language');
+
+        return $locale;
     }
 
     /**
@@ -166,88 +279,6 @@ final readonly class NegotiationMiddleware
         return [$type, $cset, null];
     }
 
-    /**
-     * Negotiate locale and register Vary when the outcome can vary by request.
-     *
-     * @param Request $req
-     *
-     * @return string Selected locale.
-     */
-    private function negotiateLocaleRegisterVary(Request $req): string
-    {
-        [$locale] = LocaleNegotiator::forRequest(
-            $req,
-            $this->locales ?: [$this->localeFallback],
-            $this->localeFallback,
-        );
-
-        // Only vary if client sent the header OR server offers > 1 locale
-        $acceptLangPresent = $req->getHeaderLine('Accept-Language') !== '';
-        $multiLocales = \count($this->locales) > 1;
-        VaryAccumulatorMiddleware::addIf($req, $acceptLangPresent || $multiLocales, 'Accept-Language');
-
-        return $locale;
-    }
-
-    /**
-     * Store negotiated parameters on the request for downstream use.
-     *
-     * @param Request     $req
-     * @param string      $type
-     * @param string|null $cset
-     * @param string      $locale
-     *
-     * @return Request Request augmented with negotiation attributes.
-     */
-    private function stashChoices(Request $req, string $type, ?string $cset, string $locale): Request
-    {
-        return $req
-            ->withAttribute('negotiated.type', $type)
-            ->withAttribute('negotiated.charset', $cset)
-            ->withAttribute('locale', $locale);
-    }
-
-    /**
-     * Ensure Content-Type is present and append charset when appropriate.
-     *
-     * @param Response    $resp
-     * @param string      $type
-     * @param string|null $cset
-     *
-     * @return Response Normalized response.
-     */
-    private function ensureContentType(Response $resp, string $type, ?string $cset): Response
-    {
-        $code = $resp->getStatusCode();
-        if ($code === 204 || $code === 304) {
-            return $resp;
-        }
-
-        $existing = $resp->getHeaderLine('Content-Type');
-        if ($existing === '') {
-            return $resp->withSmartHeader('Content-Type', $this->composeContentType($type, $cset));
-        }
-
-        // Append charset if needed and we negotiated one
-        if ($cset === null) {
-            return $resp;
-        }
-
-        $semicolonPos = strpos($existing, ';');
-        $base = $semicolonPos === false ? $existing : substr($existing, 0, $semicolonPos);
-        $baseLower = strtolower($base);
-
-        if (
-            stripos($existing, 'charset=') === false
-            && $this->charsetMattersFor($baseLower)
-            && !$this->isJson($baseLower)
-        ) {
-            return $resp->withSmartHeader('Content-Type', rtrim($existing) . '; charset=' . $cset);
-        }
-
-        return $resp;
-    }
-
     /* ───────────────────────── leaf helpers ───────────────────────── */
 
     /**
@@ -268,77 +299,46 @@ final readonly class NegotiationMiddleware
         return null;
     }
 
+    /* ───────────────────────── orchestration helpers ───────────────────────── */
+
     /**
-     * Compose a Content-Type header value, appending charset when applicable.
+     * Read route-level overrides for produces/charsets from a Produces attribute.
      *
-     * For JSON types, no charset parameter is appended (UTF-8 by spec).
+     * @param Request $req
      *
+     * @return array{0: string[], 1: string[]} Tuple of [produces, charsets].
+     */
+    private function resolveRouteOverrides(Request $req): array
+    {
+        $prod = $this->produces;
+        $char = $this->charsets;
+
+        /** @var Produces|null $attr */
+        $attr = $req->getAttribute('produces');
+        if ($attr instanceof Produces) {
+            $prod = $attr->types ?: $prod;
+            if (!empty($attr->charsets)) {
+                $char = $attr->charsets;
+            }
+        }
+        return [$prod, $char];
+    }
+
+    /**
+     * Store negotiated parameters on the request for downstream use.
+     *
+     * @param Request     $req
      * @param string      $type
-     * @param string|null $charset
+     * @param string|null $cset
+     * @param string      $locale
      *
-     * @return string Header value.
+     * @return Request Request augmented with negotiation attributes.
      */
-    private function composeContentType(string $type, ?string $charset): string
+    private function stashChoices(Request $req, string $type, ?string $cset, string $locale): Request
     {
-        $typeLower = strtolower($type);
-        if ($this->isJson($typeLower)) {
-            return $type; // never append for JSON; UTF-8 by spec
-        }
-        if (str_contains($type, ';')) {
-            return $type; // controller already set params
-        }
-
-        $needsCs =
-            str_starts_with($typeLower, 'text/') ||
-            str_contains($typeLower, 'xml') ||
-            $typeLower === 'application/javascript' ||
-            $typeLower === 'text/javascript';
-
-        return ($needsCs && $charset) ? "{$type}; charset={$charset}" : $type;
-    }
-
-    /**
-     * Whether charset meaningfully affects wire bytes for the given media type.
-     *
-     * JSON is excluded since the spec fixes UTF-8.
-     *
-     * @param string $typeLower Lower-cased media type.
-     *
-     * @return bool True when charset matters for this type.
-     */
-    private function charsetMattersFor(string $typeLower): bool
-    {
-        if ($this->isJson($typeLower)) {
-            return false;
-        }
-
-        return str_starts_with($typeLower, 'text/')
-            || str_contains($typeLower, 'xml')
-            || $typeLower === 'application/javascript'
-            || $typeLower === 'text/javascript';
-    }
-
-    /**
-     * Conservative check used for 406 short-circuit Vary decision.
-     *
-     * @param array<int,string> $types
-     *
-     * @return bool True if any type would have charset significance.
-     */
-    private function charsetMattersForAny(array $types): bool
-    {
-        return array_any($types, fn ($t) => $this->charsetMattersFor(strtolower($t)));
-    }
-
-    /**
-     * Identify JSON media types (including structured suffix).
-     *
-     * @param string $typeLower Lower-cased media type.
-     *
-     * @return bool True if JSON or +json.
-     */
-    private function isJson(string $typeLower): bool
-    {
-        return str_starts_with($typeLower, 'application/json') || str_ends_with($typeLower, '+json');
+        return $req
+            ->withAttribute('negotiated.type', $type)
+            ->withAttribute('negotiated.charset', $cset)
+            ->withAttribute('locale', $locale);
     }
 }

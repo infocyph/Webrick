@@ -38,7 +38,7 @@ final class ConditionalValidator
         }
         return new Outcome(Outcome::PASS, 0, $echo);
     }
-    
+
     /**
      * Checks if the If-Range header is fresh.
      *
@@ -81,6 +81,35 @@ final class ConditionalValidator
         }
         return $h;
     }
+
+    /**
+     * Compares a current ETag against a list of candidate ETags (RFC 9110 § 8.8.3).
+     *
+     * @param string $current The current ETag to compare against.
+     * @param array|string $candidates The list of candidate ETags to compare with.
+     * @param bool $strong Whether to perform a strong comparison (exact match)
+     *     or a weak comparison (ignoring W/ prefix and ignoring case).
+     * @return bool True if the current ETag matches one of the candidate ETags, false otherwise.
+     */
+    private function etagEquals(string $current, array|string $candidates, bool $strong): bool
+    {
+        if ($candidates === '*') {
+            return true;
+        }
+        $candidates = (array)$candidates;
+        foreach ($candidates as $cand) {
+            if ($strong) {
+                if ($cand === $current) {
+                    return true;
+                }
+            } else {
+                if (ltrim($cand, 'W/') === ltrim($current, 'W/')) {
+                    return true;               // weak match allowed
+                }
+            }
+        }
+        return false;
+    }
     /**
      * Evaluate If-Match pre-condition.
      *
@@ -114,29 +143,7 @@ final class ConditionalValidator
         $since = $this->parseDate($req->getHeaderLine('If-Unmodified-Since'));
         return $since !== null && $this->lastModified > $since;
     }
-    
-    /**
-     * Check if the request has a valid If-None-Match header
-     * and the resource has the same ETag as one of the candidates.
-     *
-     * Returns true if the request has a valid If-None-Match header
-     * and the resource has the same ETag as one of the candidates, false otherwise.
-     *
-     * @param Request $req The request to evaluate.
-     * @return bool Whether the request has a valid If-None-Match header
-     *     and the resource has the same ETag as one of the candidates.
-     */
-    private function hitsIfNoneMatch(Request $req): bool
-    {
-        if (!in_array($req->getMethod(), ['GET', 'HEAD'], true)) {
-            return false;
-        }
-        $candidates = $this->tokenize($req->getHeaderLine('If-None-Match'));
-        return $candidates !== null
-            && $this->etag !== null
-            && $this->etagEquals($this->etag, $candidates, false);
-    }
-    
+
     /**
      * Check if the request has a valid If-Modified-Since header
      * and the resource has not been modified since then.
@@ -162,47 +169,27 @@ final class ConditionalValidator
         $since = $this->parseDate($req->getHeaderLine('If-Modified-Since'));
         return $since !== null && $this->lastModified <= $since;
     }
-    
+
     /**
-     * Tokenizes a comma-separated list of strings into an array of strings.
+     * Check if the request has a valid If-None-Match header
+     * and the resource has the same ETag as one of the candidates.
      *
-     * If the list is empty, returns null.
+     * Returns true if the request has a valid If-None-Match header
+     * and the resource has the same ETag as one of the candidates, false otherwise.
      *
-     * @param string $list The list of strings to tokenize.
-     * @return array|null The tokenized list of strings, or null if the list is empty.
+     * @param Request $req The request to evaluate.
+     * @return bool Whether the request has a valid If-None-Match header
+     *     and the resource has the same ETag as one of the candidates.
      */
-    private function tokenize(string $list): ?array
+    private function hitsIfNoneMatch(Request $req): bool
     {
-        return $list === '' ? null : array_map('trim', explode(',', $list));
-    }
-    
-    /**
-     * Compares a current ETag against a list of candidate ETags (RFC 9110 § 8.8.3).
-     *
-     * @param string $current The current ETag to compare against.
-     * @param array|string $candidates The list of candidate ETags to compare with.
-     * @param bool $strong Whether to perform a strong comparison (exact match)
-     *     or a weak comparison (ignoring W/ prefix and ignoring case).
-     * @return bool True if the current ETag matches one of the candidate ETags, false otherwise.
-     */
-    private function etagEquals(string $current, array|string $candidates, bool $strong): bool
-    {
-        if ($candidates === '*') {
-            return true;
+        if (!in_array($req->getMethod(), ['GET', 'HEAD'], true)) {
+            return false;
         }
-        $candidates = (array)$candidates;
-        foreach ($candidates as $cand) {
-            if ($strong) {
-                if ($cand === $current) {
-                    return true;
-                }
-            } else {
-                if (ltrim($cand, 'W/') === ltrim($current, 'W/')) {
-                    return true;               // weak match allowed
-                }
-            }
-        }
-        return false;
+        $candidates = $this->tokenize($req->getHeaderLine('If-None-Match'));
+        return $candidates !== null
+            && $this->etag !== null
+            && $this->etagEquals($this->etag, $candidates, false);
     }
 
     /**
@@ -216,5 +203,18 @@ final class ConditionalValidator
     private function parseDate(string $httpDate): ?int
     {
         return $httpDate === '' ? null : (strtotime($httpDate) ?: null);
+    }
+
+    /**
+     * Tokenizes a comma-separated list of strings into an array of strings.
+     *
+     * If the list is empty, returns null.
+     *
+     * @param string $list The list of strings to tokenize.
+     * @return array|null The tokenized list of strings, or null if the list is empty.
+     */
+    private function tokenize(string $list): ?array
+    {
+        return $list === '' ? null : array_map('trim', explode(',', $list));
     }
 }

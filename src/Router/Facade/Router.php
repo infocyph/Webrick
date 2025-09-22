@@ -43,70 +43,56 @@ final class Router
      */
     private static ?Registrar $instance = null;
 
-    /*──────────── lifecycle ────────────*/
-
     /**
-     * Bind a concrete Registrar instance to the façade.
-     *
-     * Subsequent static calls are forwarded to this instance.
-     *
-     * @param Registrar $router Registrar to bind
-     * @return void
+     * Private constructor to prevent instantiation — façade is static-only.
      */
-    public static function setInstance(Registrar $router): void
+    private function __construct()
     {
-        self::$instance = $router;
     }
 
-    /**
-     * Return the bound Registrar instance or throw if none is set.
-     *
-     * @return Registrar
-     * @throws RuntimeException When the façade is used before a Registrar is set
-     */
-    private static function getInstance(): Registrar
-    {
-        return self::$instance
-            ?? throw new RuntimeException('Router façade used before a concrete instance was set.');
-    }
+    /*──────────── fallback ────────────*/
 
     /**
-     * Temporarily swap the façade instance while executing a callback.
+     * Dynamic fallback to forward any undeclared static calls to the Registrar.
      *
-     * The previous instance is restored after $callback completes (even on
-     * exception). If $callback declares a single parameter it receives the
-     * scoped Registrar instance.
+     * This keeps the façade resilient to new Registrar APIs without requiring
+     * immediate updates to the façade. If the method does not exist on the
+     * concrete Registrar a RuntimeException is thrown.
      *
-     * @param Registrar $router Registrar to use for the duration of the callback
-     * @param Closure $callback Callback to execute while $router is scoped
-     * @return mixed The callback return value (any type)
+     * @param string $method Method name being called statically
+     * @param array $args Positional arguments passed to the method
+     * @return mixed The underlying Registrar method return value
+     * @throws RuntimeException When the concrete Registrar does not implement the method
      */
-    public static function withScopedInstance(Registrar $router, Closure $callback): mixed
+    public static function __callStatic(string $method, array $args): mixed
     {
-        $prev = self::$instance;
-        self::$instance = $router;
-        try {
-            $ref = ReflectionResource::getFunctionReflection($callback);
-            return $ref->getNumberOfParameters() > 0
-                ? $callback($router)
-                : $callback();
-        } finally {
-            // Always restore previous instance to avoid surprising global state.
-            self::$instance = $prev;
+        $router = self::getInstance();
+        if (!method_exists($router, $method)) {
+            throw new RuntimeException(
+                sprintf(
+                    'Method %s::%s() does not exist on concrete router.',
+                    $router::class,
+                    $method,
+                ),
+            );
         }
+        return $router->$method(...$args);
     }
 
     /**
-     * Reset the façade by clearing the bound Registrar instance.
+     * Register a DELETE route via the bound Registrar.
      *
-     * Intended for long-running worker environments (e.g., RoadRunner/Swoole)
-     * where process state persists across requests. Call this at the start of
-     * a new request or during a worker reset to ensure no stale Registrar is
-     * leaked between lifecycles.
+     * @param string $path
+     * @param array|string|callable $handler
+     * @param string|array|null $nameOrOpts
+     * @return RouteInterface
      */
-    public static function reset(): void
-    {
-        self::$instance = null;
+    public static function delete(
+        string $path,
+        array|string|callable $handler,
+        string|array|null $nameOrOpts = null,
+    ): RouteInterface {
+        return self::getInstance()->delete($path, $handler, $nameOrOpts);
     }
 
     /*──────────── explicit accessors (typed, IDE-friendly) ────────────*/
@@ -128,67 +114,26 @@ final class Router
     }
 
     /**
-     * Register a POST route via the bound Registrar.
+     * Mirrors Registrar::group signature and forwards to the bound Registrar.
      *
-     * @param string $path
-     * @param array|string|callable $handler
-     * @param string|array|null $nameOrOpts
-     * @return RouteInterface
-     */
-    public static function post(
-        string $path,
-        array|string|callable $handler,
-        string|array|null $nameOrOpts = null,
-    ): RouteInterface {
-        return self::getInstance()->post($path, $handler, $nameOrOpts);
-    }
-
-    /**
-     * Register a PUT route via the bound Registrar.
+     * Accepts both positional and associative (Laravel-style) arguments and
+     * supports the callback styles that Registrar::group accepts.
      *
-     * @param string $path
-     * @param array|string|callable $handler
-     * @param string|array|null $nameOrOpts
-     * @return RouteInterface
+     * @param array|string|null $prefix Path prefix or options array
+     * @param string|array|Closure|null $domain Domain constraint or closure
+     * @param array|Closure $middleware Middleware list or closure
+     * @param string|Closure|null $namePrefix Name prefix or closure
+     * @param Closure|null $callback Callback used to declare nested routes
+     * @return void
      */
-    public static function put(
-        string $path,
-        array|string|callable $handler,
-        string|array|null $nameOrOpts = null,
-    ): RouteInterface {
-        return self::getInstance()->put($path, $handler, $nameOrOpts);
-    }
-
-    /**
-     * Register a PATCH route via the bound Registrar.
-     *
-     * @param string $path
-     * @param array|string|callable $handler
-     * @param string|array|null $nameOrOpts
-     * @return RouteInterface
-     */
-    public static function patch(
-        string $path,
-        array|string|callable $handler,
-        string|array|null $nameOrOpts = null,
-    ): RouteInterface {
-        return self::getInstance()->patch($path, $handler, $nameOrOpts);
-    }
-
-    /**
-     * Register a DELETE route via the bound Registrar.
-     *
-     * @param string $path
-     * @param array|string|callable $handler
-     * @param string|array|null $nameOrOpts
-     * @return RouteInterface
-     */
-    public static function delete(
-        string $path,
-        array|string|callable $handler,
-        string|array|null $nameOrOpts = null,
-    ): RouteInterface {
-        return self::getInstance()->delete($path, $handler, $nameOrOpts);
+    public static function group(
+        array|string|null $prefix = null,
+        string|array|Closure|null $domain = null,
+        array|Closure $middleware = [],
+        string|Closure|null $namePrefix = null,
+        ?Closure $callback = null,
+    ): void {
+        self::getInstance()->group($prefix, $domain, $middleware, $namePrefix, $callback);
     }
 
     /**
@@ -224,6 +169,67 @@ final class Router
     }
 
     /**
+     * Register a PATCH route via the bound Registrar.
+     *
+     * @param string $path
+     * @param array|string|callable $handler
+     * @param string|array|null $nameOrOpts
+     * @return RouteInterface
+     */
+    public static function patch(
+        string $path,
+        array|string|callable $handler,
+        string|array|null $nameOrOpts = null,
+    ): RouteInterface {
+        return self::getInstance()->patch($path, $handler, $nameOrOpts);
+    }
+
+    /**
+     * Register a POST route via the bound Registrar.
+     *
+     * @param string $path
+     * @param array|string|callable $handler
+     * @param string|array|null $nameOrOpts
+     * @return RouteInterface
+     */
+    public static function post(
+        string $path,
+        array|string|callable $handler,
+        string|array|null $nameOrOpts = null,
+    ): RouteInterface {
+        return self::getInstance()->post($path, $handler, $nameOrOpts);
+    }
+
+    /**
+     * Register a PUT route via the bound Registrar.
+     *
+     * @param string $path
+     * @param array|string|callable $handler
+     * @param string|array|null $nameOrOpts
+     * @return RouteInterface
+     */
+    public static function put(
+        string $path,
+        array|string|callable $handler,
+        string|array|null $nameOrOpts = null,
+    ): RouteInterface {
+        return self::getInstance()->put($path, $handler, $nameOrOpts);
+    }
+
+    /**
+     * Reset the façade by clearing the bound Registrar instance.
+     *
+     * Intended for long-running worker environments (e.g., RoadRunner/Swoole)
+     * where process state persists across requests. Call this at the start of
+     * a new request or during a worker reset to ensure no stale Registrar is
+     * leaked between lifecycles.
+     */
+    public static function reset(): void
+    {
+        self::$instance = null;
+    }
+
+    /**
      * Register a set of resourceful routes for a controller.
      *
      * Forwards to Registrar::resource and mirrors its options.
@@ -239,62 +245,56 @@ final class Router
         self::getInstance()->resource($name, $prefix, $controller, $opts);
     }
 
+    /*──────────── lifecycle ────────────*/
+
     /**
-     * Mirrors Registrar::group signature and forwards to the bound Registrar.
+     * Bind a concrete Registrar instance to the façade.
      *
-     * Accepts both positional and associative (Laravel-style) arguments and
-     * supports the callback styles that Registrar::group accepts.
+     * Subsequent static calls are forwarded to this instance.
      *
-     * @param array|string|null $prefix Path prefix or options array
-     * @param string|array|Closure|null $domain Domain constraint or closure
-     * @param array|Closure $middleware Middleware list or closure
-     * @param string|Closure|null $namePrefix Name prefix or closure
-     * @param Closure|null $callback Callback used to declare nested routes
+     * @param Registrar $router Registrar to bind
      * @return void
      */
-    public static function group(
-        array|string|null $prefix = null,
-        string|array|Closure|null $domain = null,
-        array|Closure $middleware = [],
-        string|Closure|null $namePrefix = null,
-        ?Closure $callback = null,
-    ): void {
-        self::getInstance()->group($prefix, $domain, $middleware, $namePrefix, $callback);
+    public static function setInstance(Registrar $router): void
+    {
+        self::$instance = $router;
     }
 
-    /*──────────── fallback ────────────*/
-
     /**
-     * Dynamic fallback to forward any undeclared static calls to the Registrar.
+     * Temporarily swap the façade instance while executing a callback.
      *
-     * This keeps the façade resilient to new Registrar APIs without requiring
-     * immediate updates to the façade. If the method does not exist on the
-     * concrete Registrar a RuntimeException is thrown.
+     * The previous instance is restored after $callback completes (even on
+     * exception). If $callback declares a single parameter it receives the
+     * scoped Registrar instance.
      *
-     * @param string $method Method name being called statically
-     * @param array $args Positional arguments passed to the method
-     * @return mixed The underlying Registrar method return value
-     * @throws RuntimeException When the concrete Registrar does not implement the method
+     * @param Registrar $router Registrar to use for the duration of the callback
+     * @param Closure $callback Callback to execute while $router is scoped
+     * @return mixed The callback return value (any type)
      */
-    public static function __callStatic(string $method, array $args): mixed
+    public static function withScopedInstance(Registrar $router, Closure $callback): mixed
     {
-        $router = self::getInstance();
-        if (!method_exists($router, $method)) {
-            throw new RuntimeException(
-                sprintf(
-                    'Method %s::%s() does not exist on concrete router.',
-                    $router::class,
-                    $method,
-                ),
-            );
+        $prev = self::$instance;
+        self::$instance = $router;
+        try {
+            $ref = ReflectionResource::getFunctionReflection($callback);
+            return $ref->getNumberOfParameters() > 0
+                ? $callback($router)
+                : $callback();
+        } finally {
+            // Always restore previous instance to avoid surprising global state.
+            self::$instance = $prev;
         }
-        return $router->$method(...$args);
     }
 
     /**
-     * Private constructor to prevent instantiation — façade is static-only.
+     * Return the bound Registrar instance or throw if none is set.
+     *
+     * @return Registrar
+     * @throws RuntimeException When the façade is used before a Registrar is set
      */
-    private function __construct()
+    private static function getInstance(): Registrar
     {
+        return self::$instance
+            ?? throw new RuntimeException('Router façade used before a concrete instance was set.');
     }
 }

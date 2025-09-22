@@ -17,15 +17,15 @@ use RuntimeException;
  */
 final class UploadedFile
 {
-    /** @var string|Stream */
-    private string|Stream $src;
-
-    private readonly ?int $size;
-    private readonly int $err;
     private readonly ?string $clientName;
     private readonly ?string $clientType;
+    private readonly int $err;
+
+    private readonly ?int $size;
 
     private bool $moved = false;
+    /** @var string|Stream */
+    private string|Stream $src;
 
     /**
      * Constructs a new UploadedFile value object.
@@ -92,6 +92,67 @@ final class UploadedFile
     }
 
     /**
+     * Get the original filename of the uploaded file as sent in the request.
+     *
+     * This value is available from the $_FILES superglobal and can be used to
+     * determine the original filename of the uploaded file.
+     *
+     * @return string|null The original filename of the uploaded file, or null if not available.
+     */
+    public function getClientFilename(): ?string
+    {
+        return $this->clientName;
+    }
+
+    /**
+     * Get the media type of the uploaded file as sent in the request.
+     *
+     * This value is available from the $_FILES superglobal and can be used to
+     * determine the MIME type of the uploaded file.
+     *
+     * @return string|null The media type of the uploaded file, or null if not available.
+     */
+    public function getClientMediaType(): ?string
+    {
+        return $this->clientType;
+    }
+
+    /**
+     * Return the error code associated with the uploaded file.
+     *
+     * @return int The error code associated with the uploaded file.
+     *              One of the UPLOAD_ERR_* constants.
+     *
+     * @see https://www.php.net/manual/en/features.file-upload.errors.php
+     */
+    public function getError(): int
+    {
+        return $this->err;
+    }
+
+    /**
+     * Return the size of the uploaded file in bytes.
+     *
+     * If the size is known, it will be returned. Otherwise, it will
+     * attempt to determine the size based on the underlying stream
+     * or file.
+     *
+     * @return int|null The size of the uploaded file in bytes, or null if unknown.
+     */
+    public function getSize(): ?int
+    {
+        if ($this->size) {
+            return $this->size;
+        }
+        if (is_string($this->src) && is_file($this->src)) {
+            return filesize($this->src) ?: null;
+        }
+        return $this->src instanceof Stream
+            ? $this->src->getSize()
+            : null;
+    }
+
+    /**
      * Return a PSR-7 Stream for the uploaded file.
      *
      * @return Stream A PSR-7 Stream representing the uploaded file.
@@ -154,67 +215,6 @@ final class UploadedFile
             fclose($out);
         }
         $this->moved = true;
-    }
-
-    /**
-     * Return the size of the uploaded file in bytes.
-     *
-     * If the size is known, it will be returned. Otherwise, it will
-     * attempt to determine the size based on the underlying stream
-     * or file.
-     *
-     * @return int|null The size of the uploaded file in bytes, or null if unknown.
-     */
-    public function getSize(): ?int
-    {
-        if ($this->size) {
-            return $this->size;
-        }
-        if (is_string($this->src) && is_file($this->src)) {
-            return filesize($this->src) ?: null;
-        }
-        return $this->src instanceof Stream
-            ? $this->src->getSize()
-            : null;
-    }
-
-    /**
-     * Return the error code associated with the uploaded file.
-     *
-     * @return int The error code associated with the uploaded file.
-     *              One of the UPLOAD_ERR_* constants.
-     *
-     * @see https://www.php.net/manual/en/features.file-upload.errors.php
-     */
-    public function getError(): int
-    {
-        return $this->err;
-    }
-
-    /**
-     * Get the original filename of the uploaded file as sent in the request.
-     *
-     * This value is available from the $_FILES superglobal and can be used to
-     * determine the original filename of the uploaded file.
-     *
-     * @return string|null The original filename of the uploaded file, or null if not available.
-     */
-    public function getClientFilename(): ?string
-    {
-        return $this->clientName;
-    }
-
-    /**
-     * Get the media type of the uploaded file as sent in the request.
-     *
-     * This value is available from the $_FILES superglobal and can be used to
-     * determine the MIME type of the uploaded file.
-     *
-     * @return string|null The media type of the uploaded file, or null if not available.
-     */
-    public function getClientMediaType(): ?string
-    {
-        return $this->clientType;
     }
 
     /**

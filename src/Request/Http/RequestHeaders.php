@@ -19,8 +19,8 @@ use Infocyph\Webrick\Request\Support\HeaderBag;
  */
 final class RequestHeaders
 {
-    private ?HeaderBag $all = null;   // raw + auth fallbacks
     private ?array $accept = null;    // parsed Accept*
+    private ?HeaderBag $all = null;   // raw + auth fallbacks
     private ?array $content = null;   // Content-Type/Length/MD5
     private ?array $dep = null;       // If-*, Range, Prefer
 
@@ -56,92 +56,26 @@ final class RequestHeaders
         return $out;
     }
 
-    /**
-     * Use getallheaders() if available (Apache, FastCGI, etc).
-     * This function is used when getallheaders() is available.
-     * It returns an array of headers in PSR-7 format: name => string[].
-     * If the value is an array, it is converted to an array of strings.
-     * If the value is a string, it is wrapped in an array.
-     *
-     * @return array    Header bag
-     */
-    private static function viaGetAllHeaders(): array
-    {
-        return array_map(function ($val) {
-            return \is_array($val) ? \array_values($val) : [(string)$val];
-        }, (array)\getallheaders());
-    }
-
 
     /**
-     * Fall back to $_SERVER when getallheaders() is not available.
-     * This function is used when getallheaders() is not available.
-     * It maps $_SERVER['HTTP_*'] to a PSR-7 header name.
-     * For example, $_SERVER['HTTP_ACCEPT_ENCODING'] becomes 'Accept-Encoding'.
-     * If the value is an array, it is imploded with commas.
-     * If the value is a string, it is used as is.
+     * Returns an array of parsed Accept* headers.
      *
-     * @param array $srv    Server parameters (e.g. $_SERVER)
-     * @return array    Header bag
+     * @param string $key [optional] The name of the Accept* header to retrieve.
+     *                      If null, returns all parsed Accept* headers.
+     * @return array An array of parsed Accept* headers.
      */
-    private static function viaServerFallback(array $srv): array
+    public function accept(?string $key = null): array
     {
-        $out = [];
-        foreach ($srv as $k => $v) {
-            if (\strncmp($k, 'HTTP_', 5) !== 0) {
-                continue;
+        if ($this->accept === null) {
+            $map = [];
+            foreach (['Accept', 'Accept-Charset', 'Accept-Encoding', 'Accept-Language'] as $h) {
+                if ($raw = $this->req->getHeaderLine($h)) {
+                    $map[$h] = $this->parseAccept($raw);
+                }
             }
-            // HTTP_ACCEPT_ENCODING → Accept-Encoding
-            $name = \str_replace(
-                ' ',
-                '-',
-                \ucwords(\strtolower(\strtr(\substr($k, 5), '_', ' '))),
-            );
-            $out[$name] = [\is_array($v) ? \implode(',', $v) : (string)$v];
+            $this->accept = $map;
         }
-        return $out;
-    }
-
-
-    /**
-     * Populate Content-* headers from $_SERVER if missing.
-     *
-     * @param array $srv    Server parameters (e.g. $_SERVER)
-     * @param array $out    Header bag to populate
-     */
-    private static function backfillContentHeaders(array $srv, array &$out): void
-    {
-        foreach (
-            [
-                'CONTENT_TYPE' => 'Content-Type',
-                'CONTENT_LENGTH' => 'Content-Length',
-                'CONTENT_MD5' => 'Content-Md5',
-            ] as $sk => $hn
-        ) {
-            if (isset($srv[$sk]) && !isset($out[$hn])) {
-                $out[$hn] = [(string)$srv[$sk]];
-            }
-        }
-    }
-
-
-    /**
-     * Inject Authorization header from PHP_AUTH_* or HTTP_AUTHORIZATION if
-     * available (and related fallbacks).
-     *
-     * @param array $srv    Server parameters (e.g. $_SERVER)
-     * @param array $hdr    Header bag to populate
-     */
-    private static function backfillAuthorization(array $srv, array &$out): void
-    {
-        if (isset($out['Authorization'])) {
-            return;
-        }
-        if (isset($srv['HTTP_AUTHORIZATION'])) {
-            $out['Authorization'] = [(string)$srv['HTTP_AUTHORIZATION']];
-        } elseif (isset($srv['REDIRECT_HTTP_AUTHORIZATION'])) {
-            $out['Authorization'] = [(string)$srv['REDIRECT_HTTP_AUTHORIZATION']];
-        }
+        return $key ? ($this->accept[$key] ?? []) : $this->accept;
     }
 
 
@@ -172,147 +106,6 @@ final class RequestHeaders
         $this->injectAuthorisation($hdr);
 
         return $this->all = new HeaderBag($hdr);
-    }
-
-    /**
-     * Inject Authorization header from PHP_AUTH_* or HTTP_AUTHORIZATION if
-     * available (and related fallbacks).
-     *
-     * @param array $hdr Header bag to populate
-     */
-    private function injectAuthorisation(array &$hdr): void
-    {
-        $srv = $this->req->getServerParams();
-        $added = false;
-
-        $this->injectFromPhpAuth($srv, $hdr, $added);
-        $this->injectFromExplicitAuthorization($srv, $hdr, $added);
-    }
-
-    /**
-     * Populate Authorization header from PHP_AUTH_USER/PHP_AUTH_PW or PHP_AUTH_DIGEST if
-     * available (and related fallbacks).
-     *
-     * @param array $srv    Server parameters (e.g. $_SERVER)
-     * @param array $hdr    Header bag to populate
-     * @param bool $added   Whether an Authorization header has been added
-     */
-    private function injectFromPhpAuth(array $srv, array &$hdr, bool &$added): void
-    {
-        if (!empty($srv['PHP_AUTH_USER']) && !isset($hdr['Authorization'])) {
-            $pw = $srv['PHP_AUTH_PW'] ?? '';
-            $hdr['Authorization'] = ['Basic ' . base64_encode($srv['PHP_AUTH_USER'] . ':' . $pw)];
-            $added = true;
-            return;
-        }
-        if (!empty($srv['PHP_AUTH_DIGEST'])) {
-            $hdr['Authorization'] = [$srv['PHP_AUTH_DIGEST']];
-            $added = true;
-        }
-    }
-
-
-    /**
-     * Populate Authorization header from HTTP_AUTHORIZATION or REDIRECT_HTTP_AUTHORIZATION if
-     * available (and related fallbacks).
-     *
-     * @param array $srv    Server parameters (e.g. $_SERVER)
-     * @param array $hdr    Header bag to populate
-     * @param bool $alreadyAdded    Whether an Authorization header has already been added
-     */
-    private function injectFromExplicitAuthorization(array $srv, array &$hdr, bool $alreadyAdded): void
-    {
-        if ($alreadyAdded) {
-            return;
-        }
-        $line = $srv['HTTP_AUTHORIZATION']
-            ?? $srv['REDIRECT_HTTP_AUTHORIZATION']
-            ?? null;
-
-        if (!$line) {
-            return;
-        }
-
-        $hdr['Authorization'] ??= [$line];
-
-        // also back-fill PHP_AUTH_* for Basic (helps downstream libs)
-        if (\str_starts_with(\strtolower($line), 'basic ')) {
-            $this->backfillPhpAuthFromBasicHeader($line, $hdr);
-        }
-    }
-
-
-    /**
-     * Fallback to populate PHP_AUTH_USER and PHP_AUTH_PW from an existing Authorization header
-     * containing a Basic auth credential.
-     *
-     * @param string $line The Authorization header containing the Basic credential.
-     * @param array $hdr The header bag to populate with PHP_AUTH_* values.
-     */
-    private function backfillPhpAuthFromBasicHeader(string $line, array &$hdr): void
-    {
-        $cred = \base64_decode(\substr($line, 6));
-        if ($cred === false || !\str_contains($cred, ':')) {
-            return;
-        }
-        [$u, $p] = \explode(':', $cred, 2);
-        $hdr['PHP_AUTH_USER'] = [$u];
-        $hdr['PHP_AUTH_PW'] = [$p];
-    }
-
-
-    /**
-     * Returns an array of parsed Accept* headers.
-     *
-     * @param string $key [optional] The name of the Accept* header to retrieve.
-     *                      If null, returns all parsed Accept* headers.
-     * @return array An array of parsed Accept* headers.
-     */
-    public function accept(?string $key = null): array
-    {
-        if ($this->accept === null) {
-            $map = [];
-            foreach (['Accept', 'Accept-Charset', 'Accept-Encoding', 'Accept-Language'] as $h) {
-                if ($raw = $this->req->getHeaderLine($h)) {
-                    $map[$h] = $this->parseAccept($raw);
-                }
-            }
-            $this->accept = $map;
-        }
-        return $key ? ($this->accept[$key] ?? []) : $this->accept;
-    }
-
-
-    /**
-     * Parse an Accept* header string into an array of acceptable MIME types.
-     *
-     * The returned array is sorted by the q parameter (highest first).
-     * If two MIME types have the same q parameter, the one with the least number of wildcards is placed first.
-     *
-     * @param string $raw The Accept* header string
-     * @return array An array of acceptable MIME types
-     */
-    private function parseAccept(string $raw): array
-    {
-        $segments = explode(',', $raw); // faster than preg_split
-        $parsed = [];
-
-        foreach ($segments as $seg) {
-            $seg = trim($seg);
-            if ($seg === '') {
-                continue;
-            }
-            [$mime, $q] = array_pad(array_map('trim', explode(';', $seg, 2)), 2, '');
-            $qVal = (float)(preg_match('/q=([\d.]+)/', $q, $m) ? $m[1] : 1);
-            if ($qVal == 0.0) {
-                continue; // not acceptable
-            }
-            $wild = substr_count($mime, '*');
-            $parsed[] = ['mime' => $mime, 'q' => $qVal, 'wild' => $wild];
-        }
-
-        usort($parsed, fn ($a, $b) => [$b['q'], $a['wild']] <=> [$a['q'], $b['wild']]);
-        return array_column($parsed, 'mime');
     }
 
 
@@ -391,6 +184,113 @@ final class RequestHeaders
 
 
     /**
+     * Inject Authorization header from PHP_AUTH_* or HTTP_AUTHORIZATION if
+     * available (and related fallbacks).
+     *
+     * @param array $srv    Server parameters (e.g. $_SERVER)
+     * @param array $hdr    Header bag to populate
+     */
+    private static function backfillAuthorization(array $srv, array &$out): void
+    {
+        if (isset($out['Authorization'])) {
+            return;
+        }
+        if (isset($srv['HTTP_AUTHORIZATION'])) {
+            $out['Authorization'] = [(string)$srv['HTTP_AUTHORIZATION']];
+        } elseif (isset($srv['REDIRECT_HTTP_AUTHORIZATION'])) {
+            $out['Authorization'] = [(string)$srv['REDIRECT_HTTP_AUTHORIZATION']];
+        }
+    }
+
+
+    /**
+     * Populate Content-* headers from $_SERVER if missing.
+     *
+     * @param array $srv    Server parameters (e.g. $_SERVER)
+     * @param array $out    Header bag to populate
+     */
+    private static function backfillContentHeaders(array $srv, array &$out): void
+    {
+        foreach (
+            [
+                'CONTENT_TYPE' => 'Content-Type',
+                'CONTENT_LENGTH' => 'Content-Length',
+                'CONTENT_MD5' => 'Content-Md5',
+            ] as $sk => $hn
+        ) {
+            if (isset($srv[$sk]) && !isset($out[$hn])) {
+                $out[$hn] = [(string)$srv[$sk]];
+            }
+        }
+    }
+
+    /**
+     * Use getallheaders() if available (Apache, FastCGI, etc).
+     * This function is used when getallheaders() is available.
+     * It returns an array of headers in PSR-7 format: name => string[].
+     * If the value is an array, it is converted to an array of strings.
+     * If the value is a string, it is wrapped in an array.
+     *
+     * @return array    Header bag
+     */
+    private static function viaGetAllHeaders(): array
+    {
+        return array_map(function ($val) {
+            return \is_array($val) ? \array_values($val) : [(string)$val];
+        }, (array)\getallheaders());
+    }
+
+
+    /**
+     * Fall back to $_SERVER when getallheaders() is not available.
+     * This function is used when getallheaders() is not available.
+     * It maps $_SERVER['HTTP_*'] to a PSR-7 header name.
+     * For example, $_SERVER['HTTP_ACCEPT_ENCODING'] becomes 'Accept-Encoding'.
+     * If the value is an array, it is imploded with commas.
+     * If the value is a string, it is used as is.
+     *
+     * @param array $srv    Server parameters (e.g. $_SERVER)
+     * @return array    Header bag
+     */
+    private static function viaServerFallback(array $srv): array
+    {
+        $out = [];
+        foreach ($srv as $k => $v) {
+            if (\strncmp($k, 'HTTP_', 5) !== 0) {
+                continue;
+            }
+            // HTTP_ACCEPT_ENCODING → Accept-Encoding
+            $name = \str_replace(
+                ' ',
+                '-',
+                \ucwords(\strtolower(\strtr(\substr($k, 5), '_', ' '))),
+            );
+            $out[$name] = [\is_array($v) ? \implode(',', $v) : (string)$v];
+        }
+        return $out;
+    }
+
+
+    /**
+     * Fallback to populate PHP_AUTH_USER and PHP_AUTH_PW from an existing Authorization header
+     * containing a Basic auth credential.
+     *
+     * @param string $line The Authorization header containing the Basic credential.
+     * @param array $hdr The header bag to populate with PHP_AUTH_* values.
+     */
+    private function backfillPhpAuthFromBasicHeader(string $line, array &$hdr): void
+    {
+        $cred = \base64_decode(\substr($line, 6));
+        if ($cred === false || !\str_contains($cred, ':')) {
+            return;
+        }
+        [$u, $p] = \explode(':', $cred, 2);
+        $hdr['PHP_AUTH_USER'] = [$u];
+        $hdr['PHP_AUTH_PW'] = [$p];
+    }
+
+
+    /**
      * Split a string into an array using a CSV-like syntax.
      *
      *   • Input string is trimmed before splitting.
@@ -417,5 +317,105 @@ final class RequestHeaders
     private function httpDate(string $v): ?int
     {
         return $v === '' ? null : (strtotime($v) ?: null);
+    }
+
+    /**
+     * Inject Authorization header from PHP_AUTH_* or HTTP_AUTHORIZATION if
+     * available (and related fallbacks).
+     *
+     * @param array $hdr Header bag to populate
+     */
+    private function injectAuthorisation(array &$hdr): void
+    {
+        $srv = $this->req->getServerParams();
+        $added = false;
+
+        $this->injectFromPhpAuth($srv, $hdr, $added);
+        $this->injectFromExplicitAuthorization($srv, $hdr, $added);
+    }
+
+
+    /**
+     * Populate Authorization header from HTTP_AUTHORIZATION or REDIRECT_HTTP_AUTHORIZATION if
+     * available (and related fallbacks).
+     *
+     * @param array $srv    Server parameters (e.g. $_SERVER)
+     * @param array $hdr    Header bag to populate
+     * @param bool $alreadyAdded    Whether an Authorization header has already been added
+     */
+    private function injectFromExplicitAuthorization(array $srv, array &$hdr, bool $alreadyAdded): void
+    {
+        if ($alreadyAdded) {
+            return;
+        }
+        $line = $srv['HTTP_AUTHORIZATION']
+            ?? $srv['REDIRECT_HTTP_AUTHORIZATION']
+            ?? null;
+
+        if (!$line) {
+            return;
+        }
+
+        $hdr['Authorization'] ??= [$line];
+
+        // also back-fill PHP_AUTH_* for Basic (helps downstream libs)
+        if (\str_starts_with(\strtolower($line), 'basic ')) {
+            $this->backfillPhpAuthFromBasicHeader($line, $hdr);
+        }
+    }
+
+    /**
+     * Populate Authorization header from PHP_AUTH_USER/PHP_AUTH_PW or PHP_AUTH_DIGEST if
+     * available (and related fallbacks).
+     *
+     * @param array $srv    Server parameters (e.g. $_SERVER)
+     * @param array $hdr    Header bag to populate
+     * @param bool $added   Whether an Authorization header has been added
+     */
+    private function injectFromPhpAuth(array $srv, array &$hdr, bool &$added): void
+    {
+        if (!empty($srv['PHP_AUTH_USER']) && !isset($hdr['Authorization'])) {
+            $pw = $srv['PHP_AUTH_PW'] ?? '';
+            $hdr['Authorization'] = ['Basic ' . base64_encode($srv['PHP_AUTH_USER'] . ':' . $pw)];
+            $added = true;
+            return;
+        }
+        if (!empty($srv['PHP_AUTH_DIGEST'])) {
+            $hdr['Authorization'] = [$srv['PHP_AUTH_DIGEST']];
+            $added = true;
+        }
+    }
+
+
+    /**
+     * Parse an Accept* header string into an array of acceptable MIME types.
+     *
+     * The returned array is sorted by the q parameter (highest first).
+     * If two MIME types have the same q parameter, the one with the least number of wildcards is placed first.
+     *
+     * @param string $raw The Accept* header string
+     * @return array An array of acceptable MIME types
+     */
+    private function parseAccept(string $raw): array
+    {
+        $segments = explode(',', $raw); // faster than preg_split
+        $parsed = [];
+
+        foreach ($segments as $seg) {
+            $seg = trim($seg);
+            if ($seg === '') {
+                continue;
+            }
+            [$mime, $q] = array_pad(array_map('trim', explode(';', $seg, 2)), 2, '');
+            $qVal = (float)(preg_match('/q=([\d.]+)/', $q, $m) ? $m[1] : 1);
+            if ($qVal == 0.0) {
+                continue; // not acceptable
+            }
+            $wild = substr_count($mime, '*');
+            $parsed[] = ['mime' => $mime, 'q' => $qVal, 'wild' => $wild];
+        }
+
+        usort($parsed, fn ($a, $b) => [$b['q'], $a['wild']] <=> [$a['q'], $b['wild']]);
+        return array_column($parsed, 'mime');
     }
 }

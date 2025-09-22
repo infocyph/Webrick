@@ -9,11 +9,11 @@ declare(strict_types=1);
 
 require __DIR__ . '/vendor/autoload.php';
 
-use Infocyph\Webrick\Support\RouteCache;
-use Psr\Log\NullLogger;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Route\Collection;
+use Infocyph\Webrick\Support\RouteCache;
+use Psr\Log\NullLogger;
 
 // ----------------------------------------------------------------------------------
 // Common inputs (tweak as you like)

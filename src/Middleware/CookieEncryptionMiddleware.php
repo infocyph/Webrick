@@ -30,9 +30,9 @@ namespace Infocyph\Webrick\Middleware;
 
 use Closure;
 use DateTimeImmutable;
+use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Cookies\Cookie;
 use Infocyph\Webrick\Response\Cookies\CookieJar;
-use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use InvalidArgumentException;
 use LengthException;
@@ -45,23 +45,23 @@ use RuntimeException;
  */
 final class CookieEncryptionMiddleware
 {
-    /* compression flags (1-byte, ASCII) */
-    private const MODE_NONE = '0';
-    private const MODE_ZSTD = 'z';
+    private const CACHE_PREFIX = 'enc_cookie.';
     private const MODE_BROTLI = 'b';
     private const MODE_GZIP = 'g';
-
-    private const V1_BYTE = "1";      // 0x31
+    /* compression flags (1-byte, ASCII) */
+    private const MODE_NONE = '0';
     private const MODE_STORE = 'S:';  // server-side storage marker in cookie value
-    private const CACHE_PREFIX = 'enc_cookie.';
+    private const MODE_ZSTD = 'z';
 
     /** versioned cache blob prefix + simple integrity check (pre-b64 sanity) */
     private const STORE_BLOB_V1 = 'C1:';   // "C1:<chk>:<b64cipher>"
     private const STORE_SEP = ':';         // separator used in cache blob
 
-    private static bool $hasZstd = false;
+    private const V1_BYTE = "1";      // 0x31
     private static bool $hasBrotli = false;
     private static bool $hasGzip = false;
+
+    private static bool $hasZstd = false;
 
     /** @var list<string> 32-byte raw keys (key ring) */
     private array $keys;
@@ -119,23 +119,6 @@ final class CookieEncryptionMiddleware
         }
     }
 
-    /**
-     * Rotate the active encryption key by index.
-     *
-     * @param int $kid Key index (0..count-1).
-     *
-     * @return void
-     *
-     * @throws InvalidArgumentException When the index is unknown.
-     */
-    public function rotateToKid(int $kid): void
-    {
-        if (!isset($this->keys[$kid])) {
-            throw new InvalidArgumentException("Unknown key id $kid.");
-        }
-        $this->kid = $kid;
-    }
-
     /* ───────────── pipeline ───────────── */
 
     /**
@@ -158,42 +141,169 @@ final class CookieEncryptionMiddleware
         return $this->encryptAll($resp);
     }
 
-    /* ───────────── decrypt path ───────────── */
+    /**
+     * Rotate the active encryption key by index.
+     *
+     * @param int $kid Key index (0..count-1).
+     *
+     * @return void
+     *
+     * @throws InvalidArgumentException When the index is unknown.
+     */
+    public function rotateToKid(int $kid): void
+    {
+        if (!isset($this->keys[$kid])) {
+            throw new InvalidArgumentException("Unknown key id $kid.");
+        }
+        $this->kid = $kid;
+    }
 
     /**
-     * Decrypt all cookies with the configured prefix and reassemble chunked values.
+     * Build Additional Authenticated Data (AAD) for AES-GCM.
      *
-     * @param array<string,string> $cookies Incoming cookie map.
+     * @param string $baseName Logical cookie name.
+     * @param int    $kid      Key id.
+     * @param string $mode     Compression mode flag.
      *
-     * @return array<string,mixed> Cookie map with decrypted values (others pass through).
+     * @return string AAD string used for encryption/decryption.
      */
-    private function decryptAll(array $cookies): array
+    private function aad(string $baseName, int $kid, string $mode): string
     {
-        $rx = '/^(' . preg_quote($this->cookiePrefix, '/') . '[^.]+)(?:\.p(\d+))?$/';
-        $out = $assemblies = [];
+        // Bind logical identity + key id + compression mode
+        return $baseName . '|' . $kid . '|' . $mode;
+    }
 
-        foreach ($cookies as $name => $val) {
-            if (!preg_match($rx, $name, $m)) {
-                $out[$name] = $val; // not an encrypted cookie
-                continue;
+    /**
+     * Re-apply (and enforce) cookie attributes to the builder.
+     *
+     * @param Cookie               $cookie Cookie builder.
+     * @param array<string,bool|string> $attrs  Parsed attributes from original Set-Cookie.
+     *
+     * @return Cookie Cookie with attributes applied and security defaults enforced.
+     */
+    private function applyAttrs(Cookie $cookie, array $attrs): Cookie
+    {
+        // original attrs (best effort)
+        if (isset($attrs['path']) && method_exists($cookie, 'path')) {
+            $cookie = $cookie->path($attrs['path']);
+        }
+        if (isset($attrs['domain']) && method_exists($cookie, 'domain')) {
+            $cookie = $cookie->domain($attrs['domain']);
+        }
+        if (isset($attrs['max-age']) && method_exists($cookie, 'maxAge')) {
+            $cookie = $cookie->maxAge((int)$attrs['max-age']);
+        }
+        if (isset($attrs['expires']) && method_exists($cookie, 'expires')) {
+            $ts = strtotime($attrs['expires']);
+            if ($ts !== false) {
+                $cookie = $cookie->expires(new DateTimeImmutable("@$ts"));
             }
-            $base = $m[1];                     // e.g., enc_session
-            $idx = (int)($m[2] ?? 1);
-            $assemblies[$base][$idx] = $val;
+        }
+        if (isset($attrs['samesite']) && method_exists($cookie, 'sameSite')) {
+            $cookie = $cookie->sameSite($attrs['samesite']);
+        } elseif ($this->defaultSameSite !== null && method_exists($cookie, 'sameSite')) {
+            $cookie = $cookie->sameSite($this->defaultSameSite);
         }
 
-        foreach ($assemblies as $base => $parts) {
-            ksort($parts);
-            $cipher = implode('', $parts);
-            $plain = $this->decrypt($base, $cipher);
-            if ($plain === null && $this->dropOnDecryptFailure) {
-                // fail closed: omit the cookie entirely
-                continue;
-            }
-            $out[$base] = $plain;
+        $hasSecure = (isset($attrs['secure']) && $attrs['secure'] === true) || $this->hasFlag($attrs, 'secure');
+        $hasHttpOnly = (isset($attrs['httponly']) && $attrs['httponly'] === true) || $this->hasFlag($attrs, 'httponly');
+
+        if (($this->forceSecure || $this->isSameSiteNone($attrs)) && method_exists($cookie, 'secure')) {
+            $cookie = $cookie->secure();
+        } elseif ($hasSecure && method_exists($cookie, 'secure')) {
+            $cookie = $cookie->secure();
         }
 
-        return $out;
+        if ($this->forceHttpOnly && method_exists($cookie, 'httpOnly')) {
+            $cookie = $cookie->httpOnly();
+        } elseif ($hasHttpOnly && method_exists($cookie, 'httpOnly')) {
+            $cookie = $cookie->httpOnly();
+        }
+
+        return $cookie;
+    }
+
+    /**
+     * Choose best compression among zstd, brotli, gzip, or none.
+     *
+     * @param string $pt Plaintext.
+     *
+     * @return array{0:string,1:string} [payload, mode]
+     */
+    private function bestCompress(string $pt): array
+    {
+        $best = $pt;
+        $mode = self::MODE_NONE;
+
+        if (self::$hasZstd && ($c = zstd_compress($pt, 3)) !== false && strlen($c) < strlen($best)) {
+            $best = $c;
+            $mode = self::MODE_ZSTD;
+        }
+        if (self::$hasBrotli && ($c = brotli_compress($pt, 4)) !== false && strlen($c) < strlen($best)) {
+            $best = $c;
+            $mode = self::MODE_BROTLI;
+        }
+        if (self::$hasGzip && ($c = gzdeflate($pt, 4)) !== false && strlen($c) < strlen($best)) {
+            $best = $c;
+            $mode = self::MODE_GZIP;
+        }
+
+        return [$best, $mode];
+    }
+
+    /**
+     * Decode and validate a v1 cache blob ("C1:<chk>:<b64cipher>").
+     *
+     * @param string $blob The cache blob.
+     *
+     * @return string|null The base64 ciphertext string on success; null on failure.
+     */
+    private function decodeCacheBlobV1(string $blob): ?string
+    {
+        // Expect: "C1:<chk>:<b64cipher>"
+        $prefixLen = strlen(self::STORE_BLOB_V1); // "C1:"
+        $body = substr($blob, $prefixLen);
+        $pos = strpos($body, self::STORE_SEP);
+        if ($pos === false) {
+            return null;
+        }
+        $chk = substr($body, 0, $pos);
+        $b64 = substr($body, $pos + 1);
+
+        if ($chk === '' || $b64 === '') {
+            return null;
+        }
+
+        // quick integrity: first 8 hex chars of sha3-256(base64-cipher)
+        $calc = substr(hash('sha3-256', $b64), 0, 8);
+        if (!hash_equals($chk, $calc)) {
+            return null;
+        }
+
+        // don't decode yet; just ensure it's plausible base64
+        if (base64_decode($b64, true) === false) {
+            return null;
+        }
+
+        return $b64;
+    }
+
+    /**
+     * Decompress plaintext according to mode.
+     *
+     * @param string $mode Compression mode flag.
+     * @param string $pt   Raw plaintext (possibly compressed).
+     *
+     * @return string|null Decompressed or original plaintext; null for unsupported mode.
+     */
+    private function decompress(string $mode, string $pt): mixed
+    {
+        return match ($mode) {
+            self::MODE_ZSTD => self::$hasZstd ? @zstd_uncompress($pt) : null,
+            self::MODE_BROTLI => self::$hasBrotli ? @brotli_uncompress($pt) : null,
+            self::MODE_GZIP => @gzinflate($pt),
+            default => $pt,
+        };
     }
 
     /**
@@ -286,75 +396,57 @@ final class CookieEncryptionMiddleware
         return null; // auth failed with all keys
     }
 
+    /* ───────────── decrypt path ───────────── */
+
     /**
-     * Fetch a stored ciphertext/cache blob by id.
+     * Decrypt all cookies with the configured prefix and reassemble chunked values.
      *
-     * @param string $id Storage key id (hex).
+     * @param array<string,string> $cookies Incoming cookie map.
      *
-     * @return mixed|null Stored payload or null when not found.
+     * @return array<string,mixed> Cookie map with decrypted values (others pass through).
      */
-    private function fromStore(string $id): mixed
+    private function decryptAll(array $cookies): array
     {
-        if ($this->store === null) {
-            return null;
+        $rx = '/^(' . preg_quote($this->cookiePrefix, '/') . '[^.]+)(?:\.p(\d+))?$/';
+        $out = $assemblies = [];
+
+        foreach ($cookies as $name => $val) {
+            if (!preg_match($rx, $name, $m)) {
+                $out[$name] = $val; // not an encrypted cookie
+                continue;
+            }
+            $base = $m[1];                     // e.g., enc_session
+            $idx = (int)($m[2] ?? 1);
+            $assemblies[$base][$idx] = $val;
         }
-        $item = $this->store->getItem(self::CACHE_PREFIX . $id);
-        return $item->isHit() ? $item->get() : null;
+
+        foreach ($assemblies as $base => $parts) {
+            ksort($parts);
+            $cipher = implode('', $parts);
+            $plain = $this->decrypt($base, $cipher);
+            if ($plain === null && $this->dropOnDecryptFailure) {
+                // fail closed: omit the cookie entirely
+                continue;
+            }
+            $out[$base] = $plain;
+        }
+
+        return $out;
     }
 
-    /**
-     * Decode and validate a v1 cache blob ("C1:<chk>:<b64cipher>").
-     *
-     * @param string $blob The cache blob.
-     *
-     * @return string|null The base64 ciphertext string on success; null on failure.
-     */
-    private function decodeCacheBlobV1(string $blob): ?string
-    {
-        // Expect: "C1:<chk>:<b64cipher>"
-        $prefixLen = strlen(self::STORE_BLOB_V1); // "C1:"
-        $body = substr($blob, $prefixLen);
-        $pos = strpos($body, self::STORE_SEP);
-        if ($pos === false) {
-            return null;
-        }
-        $chk = substr($body, 0, $pos);
-        $b64 = substr($body, $pos + 1);
-
-        if ($chk === '' || $b64 === '') {
-            return null;
-        }
-
-        // quick integrity: first 8 hex chars of sha3-256(base64-cipher)
-        $calc = substr(hash('sha3-256', $b64), 0, 8);
-        if (!hash_equals($chk, $calc)) {
-            return null;
-        }
-
-        // don't decode yet; just ensure it's plausible base64
-        if (base64_decode($b64, true) === false) {
-            return null;
-        }
-
-        return $b64;
-    }
+    /* ───────────── cache blob helpers ───────────── */
 
     /**
-     * Decompress plaintext according to mode.
+     * Build v1 cache blob "C1:<8-hex-chk>:<b64cipher>".
      *
-     * @param string $mode Compression mode flag.
-     * @param string $pt   Raw plaintext (possibly compressed).
+     * @param string $b64Cipher Base64 ciphertext.
      *
-     * @return string|null Decompressed or original plaintext; null for unsupported mode.
+     * @return string Encoded cache blob.
      */
-    private function decompress(string $mode, string $pt): mixed
+    private function encodeCacheBlobV1(string $b64Cipher): string
     {
-        return match ($mode) {
-            self::MODE_ZSTD => self::$hasZstd ? @zstd_uncompress($pt) : null,
-            self::MODE_BROTLI => self::$hasBrotli ? @brotli_uncompress($pt) : null,
-            self::MODE_GZIP => @gzinflate($pt),
-            default => $pt,
-        };
+        $chk = substr(hash('sha3-256', $b64Cipher), 0, 8);
+        return self::STORE_BLOB_V1 . $chk . self::STORE_SEP . $b64Cipher;
     }
 
     /* ───────────── encrypt path ───────────── */
@@ -404,6 +496,42 @@ final class CookieEncryptionMiddleware
     }
 
     /**
+     * Compress (best of zstd/brotli/gzip) → AES-256-GCM → base64.
+     *
+     * @param string $baseName Logical cookie name.
+     * @param string $pt       Plaintext to encrypt.
+     *
+     * @return string Base64 ciphertext.
+     *
+     * @throws RandomException
+     * @throws RuntimeException
+     */
+    private function encryptBlob(string $baseName, string $pt): string
+    {
+        [$best, $mode] = $this->bestCompress($pt);
+
+        $iv = random_bytes(12);
+        $tag = '';
+        $ct = openssl_encrypt(
+            $best,
+            'aes-256-gcm',
+            $this->keys[$this->kid],
+            OPENSSL_RAW_DATA,
+            $iv,
+            $tag,
+            $this->aad($baseName, $this->kid, $mode),
+        );
+
+        if ($ct === false) {
+            throw new RuntimeException('Cookie encryption failed.');
+        }
+
+        // v1 framing: '1' | MODE | KID | IV | TAG | CT
+        $raw = self::V1_BYTE . $mode . chr($this->kid) . $iv . $tag . $ct;
+        return base64_encode($raw);
+    }
+
+    /**
      * Split ciphertext into cookie-sized segments or store server-side if too large.
      *
      * @param string $baseName  Logical cookie name.
@@ -446,97 +574,47 @@ final class CookieEncryptionMiddleware
     }
 
     /**
-     * Compress (best of zstd/brotli/gzip) → AES-256-GCM → base64.
+     * Fetch a stored ciphertext/cache blob by id.
      *
-     * @param string $baseName Logical cookie name.
-     * @param string $pt       Plaintext to encrypt.
+     * @param string $id Storage key id (hex).
      *
-     * @return string Base64 ciphertext.
-     *
-     * @throws RandomException
-     * @throws RuntimeException
+     * @return mixed|null Stored payload or null when not found.
      */
-    private function encryptBlob(string $baseName, string $pt): string
+    private function fromStore(string $id): mixed
     {
-        [$best, $mode] = $this->bestCompress($pt);
-
-        $iv = random_bytes(12);
-        $tag = '';
-        $ct = openssl_encrypt(
-            $best,
-            'aes-256-gcm',
-            $this->keys[$this->kid],
-            OPENSSL_RAW_DATA,
-            $iv,
-            $tag,
-            $this->aad($baseName, $this->kid, $mode),
-        );
-
-        if ($ct === false) {
-            throw new RuntimeException('Cookie encryption failed.');
+        if ($this->store === null) {
+            return null;
         }
-
-        // v1 framing: '1' | MODE | KID | IV | TAG | CT
-        $raw = self::V1_BYTE . $mode . chr($this->kid) . $iv . $tag . $ct;
-        return base64_encode($raw);
+        $item = $this->store->getItem(self::CACHE_PREFIX . $id);
+        return $item->isHit() ? $item->get() : null;
     }
 
     /**
-     * Choose best compression among zstd, brotli, gzip, or none.
+     * Whether a flag-like attribute is present (e.g., Secure/HttpOnly).
      *
-     * @param string $pt Plaintext.
+     * @param array<string,bool|string> $attrs
+     * @param string                    $flag
      *
-     * @return array{0:string,1:string} [payload, mode]
+      * @return bool True when the attribute exists as a valueless flag.
      */
-    private function bestCompress(string $pt): array
+    private function hasFlag(array $attrs, string $flag): bool
     {
-        $best = $pt;
-        $mode = self::MODE_NONE;
-
-        if (self::$hasZstd && ($c = zstd_compress($pt, 3)) !== false && strlen($c) < strlen($best)) {
-            $best = $c;
-            $mode = self::MODE_ZSTD;
-        }
-        if (self::$hasBrotli && ($c = brotli_compress($pt, 4)) !== false && strlen($c) < strlen($best)) {
-            $best = $c;
-            $mode = self::MODE_BROTLI;
-        }
-        if (self::$hasGzip && ($c = gzdeflate($pt, 4)) !== false && strlen($c) < strlen($best)) {
-            $best = $c;
-            $mode = self::MODE_GZIP;
-        }
-
-        return [$best, $mode];
+        return array_any($attrs, fn ($v, $k) => $k === $flag && $v === true);
     }
 
     /**
-     * Build Additional Authenticated Data (AAD) for AES-GCM.
+     * Whether attributes indicate SameSite=None.
      *
-     * @param string $baseName Logical cookie name.
-     * @param int    $kid      Key id.
-     * @param string $mode     Compression mode flag.
+     * @param array<string,bool|string> $attrs
      *
-     * @return string AAD string used for encryption/decryption.
+     * @return bool True when SameSite=None is configured.
      */
-    private function aad(string $baseName, int $kid, string $mode): string
+    private function isSameSiteNone(array $attrs): bool
     {
-        // Bind logical identity + key id + compression mode
-        return $baseName . '|' . $kid . '|' . $mode;
-    }
-
-    /* ───────────── cache blob helpers ───────────── */
-
-    /**
-     * Build v1 cache blob "C1:<8-hex-chk>:<b64cipher>".
-     *
-     * @param string $b64Cipher Base64 ciphertext.
-     *
-     * @return string Encoded cache blob.
-     */
-    private function encodeCacheBlobV1(string $b64Cipher): string
-    {
-        $chk = substr(hash('sha3-256', $b64Cipher), 0, 8);
-        return self::STORE_BLOB_V1 . $chk . self::STORE_SEP . $b64Cipher;
+        if (!isset($attrs['samesite'])) {
+            return false;
+        }
+        return strcasecmp((string)$attrs['samesite'], 'none') === 0;
     }
 
     /* ───────────── helpers ───────────── */
@@ -568,83 +646,5 @@ final class CookieEncryptionMiddleware
             $attrs[$k] = $v;
         }
         return [trim($name), $value, $attrs];
-    }
-
-    /**
-     * Re-apply (and enforce) cookie attributes to the builder.
-     *
-     * @param Cookie               $cookie Cookie builder.
-     * @param array<string,bool|string> $attrs  Parsed attributes from original Set-Cookie.
-     *
-     * @return Cookie Cookie with attributes applied and security defaults enforced.
-     */
-    private function applyAttrs(Cookie $cookie, array $attrs): Cookie
-    {
-        // original attrs (best effort)
-        if (isset($attrs['path']) && method_exists($cookie, 'path')) {
-            $cookie = $cookie->path($attrs['path']);
-        }
-        if (isset($attrs['domain']) && method_exists($cookie, 'domain')) {
-            $cookie = $cookie->domain($attrs['domain']);
-        }
-        if (isset($attrs['max-age']) && method_exists($cookie, 'maxAge')) {
-            $cookie = $cookie->maxAge((int)$attrs['max-age']);
-        }
-        if (isset($attrs['expires']) && method_exists($cookie, 'expires')) {
-            $ts = strtotime($attrs['expires']);
-            if ($ts !== false) {
-                $cookie = $cookie->expires(new DateTimeImmutable("@$ts"));
-            }
-        }
-        if (isset($attrs['samesite']) && method_exists($cookie, 'sameSite')) {
-            $cookie = $cookie->sameSite($attrs['samesite']);
-        } elseif ($this->defaultSameSite !== null && method_exists($cookie, 'sameSite')) {
-            $cookie = $cookie->sameSite($this->defaultSameSite);
-        }
-
-        $hasSecure = (isset($attrs['secure']) && $attrs['secure'] === true) || $this->hasFlag($attrs, 'secure');
-        $hasHttpOnly = (isset($attrs['httponly']) && $attrs['httponly'] === true) || $this->hasFlag($attrs, 'httponly');
-
-        if (($this->forceSecure || $this->isSameSiteNone($attrs)) && method_exists($cookie, 'secure')) {
-            $cookie = $cookie->secure();
-        } elseif ($hasSecure && method_exists($cookie, 'secure')) {
-            $cookie = $cookie->secure();
-        }
-
-        if ($this->forceHttpOnly && method_exists($cookie, 'httpOnly')) {
-            $cookie = $cookie->httpOnly();
-        } elseif ($hasHttpOnly && method_exists($cookie, 'httpOnly')) {
-            $cookie = $cookie->httpOnly();
-        }
-
-        return $cookie;
-    }
-
-    /**
-     * Whether attributes indicate SameSite=None.
-     *
-     * @param array<string,bool|string> $attrs
-     *
-     * @return bool True when SameSite=None is configured.
-     */
-    private function isSameSiteNone(array $attrs): bool
-    {
-        if (!isset($attrs['samesite'])) {
-            return false;
-        }
-        return strcasecmp((string)$attrs['samesite'], 'none') === 0;
-    }
-
-    /**
-     * Whether a flag-like attribute is present (e.g., Secure/HttpOnly).
-     *
-     * @param array<string,bool|string> $attrs
-     * @param string                    $flag
-     *
-      * @return bool True when the attribute exists as a valueless flag.
-     */
-    private function hasFlag(array $attrs, string $flag): bool
-    {
-        return array_any($attrs, fn ($v, $k) => $k === $flag && $v === true);
     }
 }

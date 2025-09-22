@@ -25,16 +25,10 @@ namespace Infocyph\Webrick\Router\Url;
 final class Signature
 {
     /**
-     * Compute an HMAC for the given payload using sha3-256.
-     *
-     * @param string $payload Arbitrary string to sign (e.g., canonicalized query).
-     * @param string $key     Secret key used for HMAC.
-     *
-     * @return string Hex-encoded HMAC digest.
+     * Prevent instantiation; use static methods only.
      */
-    public static function make(string $payload, string $key): string
+    private function __construct()
     {
-        return hash_hmac('sha3-256', $payload, $key);
     }
 
     /**
@@ -52,11 +46,16 @@ final class Signature
     {
         return \hash_equals(self::make($payload, $key), $sig);
     }
-
     /**
-     * Prevent instantiation; use static methods only.
+     * Compute an HMAC for the given payload using sha3-256.
+     *
+     * @param string $payload Arbitrary string to sign (e.g., canonicalized query).
+     * @param string $key     Secret key used for HMAC.
+     *
+     * @return string Hex-encoded HMAC digest.
      */
-    private function __construct()
+    public static function make(string $payload, string $key): string
     {
+        return hash_hmac('sha3-256', $payload, $key);
     }
 }

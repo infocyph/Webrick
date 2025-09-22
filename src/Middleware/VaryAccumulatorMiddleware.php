@@ -40,73 +40,6 @@ final class VaryAccumulatorMiddleware
     private const ATTR = '__vary_tokens';
 
     /**
-     * Queue one or more request-header names that the response will vary on.
-     *
-     * Accepts plain tokens or comma-separated lists. Values are stored on the
-     * request for later merging by the middleware.
-     *
-     * @param Request       $r          The current request (immutable carrier).
-     * @param string        ...$headers One or more header tokens or CSV strings.
-     *
-     * @return Request A new request instance with tokens queued.
-     */
-    public static function add(Request $r, string ...$headers): Request
-    {
-        $added = $r->getAttribute(self::ATTR) ?? [];
-        foreach ($headers as $h) {
-            foreach (self::splitTokens($h) as $tok) {
-                if ($tok !== '') {
-                    $added[] = $tok;
-                }
-            }
-        }
-        return $r->withAttribute(self::ATTR, $added);
-    }
-
-    /**
-     * Conditionally queue vary tokens, avoiding call-site branching.
-     *
-     * @param Request $r          The current request.
-     * @param bool    $when       Whether to add the tokens.
-     * @param string  ...$headers Header tokens or CSV strings to queue when $when is true.
-     *
-     * @return Request The original request or a new instance with tokens queued.
-     */
-    public static function addIf(Request $r, bool $when, string ...$headers): Request
-    {
-        return $when ? self::add($r, ...$headers) : $r;
-    }
-
-    /**
-     * TEST HELPER: Clear any queued vary tokens on the request.
-     *
-     * @param Request $r The current request.
-     *
-     * @return Request A new request with an empty token list.
-     */
-    public static function clear(Request $r): Request
-    {
-        return $r->withAttribute(self::ATTR, []);
-    }
-
-    /**
-     * TEST HELPER: Inspect queued tokens on the request.
-     *
-     * @param Request $r           The current request.
-     * @param bool    $normalized  When true, return canonical Title-Case tokens with dedupe.
-     *
-     * @return array<int,string> Token list (possibly normalized).
-     */
-    public static function peek(Request $r, bool $normalized = true): array
-    {
-        $pending = $r->getAttribute(self::ATTR);
-        if (!is_array($pending) || $pending === []) {
-            return [];
-        }
-        return $normalized ? self::normalize($pending) : $pending;
-    }
-
-    /**
      * Merge tokens from downstream Vary header, queued tokens, and auto-inference.
      *
      * Rules:
@@ -177,28 +110,91 @@ final class VaryAccumulatorMiddleware
             : $resp->withHeader('Vary', $final);
     }
 
-    /* ───────────────────────── helpers ───────────────────────── */
-
     /**
-     * Split a comma-separated header list into trimmed tokens.
+     * Queue one or more request-header names that the response will vary on.
      *
-     * @param string $line Raw header line string.
+     * Accepts plain tokens or comma-separated lists. Values are stored on the
+     * request for later merging by the middleware.
      *
-     * @return array<int,string> Token list (empty when $line is empty).
+     * @param Request       $r          The current request (immutable carrier).
+     * @param string        ...$headers One or more header tokens or CSV strings.
+     *
+     * @return Request A new request instance with tokens queued.
      */
-    private static function splitTokens(string $line): array
+    public static function add(Request $r, string ...$headers): Request
     {
-        if ($line === '') {
-            return [];
-        }
-        $out = [];
-        foreach (explode(',', $line) as $t) {
-            $t = trim($t);
-            if ($t !== '') {
-                $out[] = $t;
+        $added = $r->getAttribute(self::ATTR) ?? [];
+        foreach ($headers as $h) {
+            foreach (self::splitTokens($h) as $tok) {
+                if ($tok !== '') {
+                    $added[] = $tok;
+                }
             }
         }
-        return $out;
+        return $r->withAttribute(self::ATTR, $added);
+    }
+
+    /**
+     * Conditionally queue vary tokens, avoiding call-site branching.
+     *
+     * @param Request $r          The current request.
+     * @param bool    $when       Whether to add the tokens.
+     * @param string  ...$headers Header tokens or CSV strings to queue when $when is true.
+     *
+     * @return Request The original request or a new instance with tokens queued.
+     */
+    public static function addIf(Request $r, bool $when, string ...$headers): Request
+    {
+        return $when ? self::add($r, ...$headers) : $r;
+    }
+
+    /**
+     * TEST HELPER: Clear any queued vary tokens on the request.
+     *
+     * @param Request $r The current request.
+     *
+     * @return Request A new request with an empty token list.
+     */
+    public static function clear(Request $r): Request
+    {
+        return $r->withAttribute(self::ATTR, []);
+    }
+
+    /**
+     * TEST HELPER: Inspect queued tokens on the request.
+     *
+     * @param Request $r           The current request.
+     * @param bool    $normalized  When true, return canonical Title-Case tokens with dedupe.
+     *
+     * @return array<int,string> Token list (possibly normalized).
+     */
+    public static function peek(Request $r, bool $normalized = true): array
+    {
+        $pending = $r->getAttribute(self::ATTR);
+        if (!is_array($pending) || $pending === []) {
+            return [];
+        }
+        return $normalized ? self::normalize($pending) : $pending;
+    }
+
+    /**
+     * Canonicalize a header name to Title-Case (e.g., "accept-encoding" → "Accept-Encoding").
+     *
+     * @param string $t Raw header token.
+     *
+     * @return string Canonical Title-Case token or empty string if input is blank.
+     */
+    private static function canonical(string $t): string
+    {
+        $t = trim($t);
+        if ($t === '') {
+            return '';
+        }
+        $parts = array_map(
+            static fn (string $p) => $p === '' ? '' : ucfirst(strtolower($p)),
+            explode('-', $t),
+        );
+        return implode('-', $parts);
     }
 
     /**
@@ -211,28 +207,6 @@ final class VaryAccumulatorMiddleware
     private static function hasStar(string $line): bool
     {
         return array_any(self::splitTokens($line), fn ($t) => $t === '*');
-    }
-
-    /**
-     * Normalize tokens by canonicalizing to Title-Case and de-duplicating case-insensitively.
-     *
-     * @param array<int,string> $tokens Input tokens.
-     *
-     * @return array<int,string> Canonicalized, deduped tokens.
-     */
-    private static function normalize(array $tokens): array
-    {
-        $seen = [];
-        $out = [];
-        foreach ($tokens as $t) {
-            $norm = self::canonical($t);
-            $key = strtolower($norm);
-            if ($norm !== '' && !isset($seen[$key])) {
-                $seen[$key] = true;
-                $out[] = $norm;
-            }
-        }
-        return $out;
     }
 
     /**
@@ -257,22 +231,48 @@ final class VaryAccumulatorMiddleware
     }
 
     /**
-     * Canonicalize a header name to Title-Case (e.g., "accept-encoding" → "Accept-Encoding").
+     * Normalize tokens by canonicalizing to Title-Case and de-duplicating case-insensitively.
      *
-     * @param string $t Raw header token.
+     * @param array<int,string> $tokens Input tokens.
      *
-     * @return string Canonical Title-Case token or empty string if input is blank.
+     * @return array<int,string> Canonicalized, deduped tokens.
      */
-    private static function canonical(string $t): string
+    private static function normalize(array $tokens): array
     {
-        $t = trim($t);
-        if ($t === '') {
-            return '';
+        $seen = [];
+        $out = [];
+        foreach ($tokens as $t) {
+            $norm = self::canonical($t);
+            $key = strtolower($norm);
+            if ($norm !== '' && !isset($seen[$key])) {
+                $seen[$key] = true;
+                $out[] = $norm;
+            }
         }
-        $parts = array_map(
-            static fn (string $p) => $p === '' ? '' : ucfirst(strtolower($p)),
-            explode('-', $t),
-        );
-        return implode('-', $parts);
+        return $out;
+    }
+
+    /* ───────────────────────── helpers ───────────────────────── */
+
+    /**
+     * Split a comma-separated header list into trimmed tokens.
+     *
+     * @param string $line Raw header line string.
+     *
+     * @return array<int,string> Token list (empty when $line is empty).
+     */
+    private static function splitTokens(string $line): array
+    {
+        if ($line === '') {
+            return [];
+        }
+        $out = [];
+        foreach (explode(',', $line) as $t) {
+            $t = trim($t);
+            if ($t !== '') {
+                $out[] = $t;
+            }
+        }
+        return $out;
     }
 }

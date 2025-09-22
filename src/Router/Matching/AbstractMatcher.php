@@ -26,19 +26,19 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
  */
 abstract class AbstractMatcher
 {
-    /* Shared node keys used in trie structures */
-    protected const K_STATIC = 'static';
-    protected const K_TRIE = 'trie';
-    protected const K_CHILDREN = 'children';
-    protected const K_PARAM = 'param';
-    protected const K_ROUTES = 'routes';
+    protected const F_ALIASES = '__aliases.php';
+    protected const H_ALIAS = '_alias';
+    protected const H_DATA = '_data';
 
     /* Header / cache blob keys */
     protected const H_HASH = '_hash';
-    protected const H_DATA = '_data';
     protected const H_TS = '_ts';
-    protected const F_ALIASES = '__aliases.php';
-    protected const H_ALIAS = '_alias';
+    protected const K_CHILDREN = 'children';
+    protected const K_PARAM = 'param';
+    protected const K_ROUTES = 'routes';
+    /* Shared node keys used in trie structures */
+    protected const K_STATIC = 'static';
+    protected const K_TRIE = 'trie';
 
     /**
      * When true the matcher will perform an integrity verification when loading
@@ -47,6 +47,17 @@ abstract class AbstractMatcher
      * @var bool
      */
     protected bool $verifyCacheOnLoad = false;
+
+    /**
+     * Optional hook for kernels; concrete matchers may override to indicate
+     * whether they can boot from a persisted cache.
+     *
+     * @return bool True when the matcher supports cache booting; default false.
+     */
+    public function canBootFromCache(): bool
+    {
+        return false;
+    }
 
     /**
      * Enable or disable cache verification on load.
@@ -58,128 +69,6 @@ abstract class AbstractMatcher
     {
         $this->verifyCacheOnLoad = $enable;
         return $this;
-    }
-
-    /*──────────────────── canonical host (mirrors RouterKernel rules) ────────────────────*/
-
-    /**
-     * Normalise a host name for internal route storage/lookup.
-     *
-     * Behaviour:
-     *  - Null/empty/'*' maps to literal '*' (wildcard host).
-     *  - Trailing dots are removed and the host is lower-cased.
-     *  - If idn_to_ascii is available, internationalised names are converted to ASCII
-     *    (skipping punycode names that already contain 'xn--').
-     *  - Hosts containing control characters or non-ASCII bytes are rejected.
-     *
-     * @param string|null $raw Raw Host header value or route host specification.
-     * @return string Normalised ASCII host (or '*' for wildcard).
-     *
-     * @throws \InvalidArgumentException When the host is illegal, invalid IDN, or contains non-ASCII bytes.
-     */
-    protected function canonicalRouteHost(?string $raw): string
-    {
-        if ($raw === null || $raw === '' || $raw === '*') {
-            return '*';
-        }
-        $host = \rtrim(\strtolower($raw), '.');
-
-        if (\preg_match('/[\x00-\x20]/', $host)) {
-            throw new \InvalidArgumentException("Illegal host name: {$raw}");
-        }
-        if (\function_exists('idn_to_ascii') && !\str_contains($host, 'xn--')) {
-            $ascii = @\idn_to_ascii($host, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
-            if ($ascii === false) {
-                throw new \InvalidArgumentException("Invalid IDN host name: {$raw}");
-            }
-            $host = $ascii;
-        }
-        if (!\preg_match('/^[\x21-\x7E]+$/', $host)) {
-            throw new \InvalidArgumentException("Host contains non-ASCII bytes: {$raw}");
-        }
-        return $host;
-    }
-
-    /*──────────────────── verb selection + allowed-set helpers ────────────────────*/
-
-    /**
-     * Select the appropriate CompiledRoute for the requested HTTP verb.
-     *
-     * Rules:
-     *  - OPTIONS returns the first available route in the bucket (if any).
-     *  - Exact verb match returns that route.
-     *  - HEAD falls back to GET when a GET route exists.
-     *
-     * @param array<string,CompiledRoute> $buckets Map of verb => CompiledRoute
-     * @param string $verb Uppercased HTTP verb to resolve (e.g. 'GET')
-     * @return CompiledRoute|null Matching compiled route or null when none applicable
-     */
-    protected function pickVerbRoute(array $buckets, string $verb): ?CompiledRoute
-    {
-        if ($verb === 'OPTIONS' && $buckets) {
-            /** @var ?CompiledRoute $first */
-            $first = \reset($buckets);
-            return $first instanceof CompiledRoute ? $first : null;
-        }
-        if (isset($buckets[$verb])) {
-            return $buckets[$verb];
-        }
-        if ($verb === 'HEAD' && isset($buckets['GET'])) {
-            return $buckets['GET'];
-        }
-        return null;
-    }
-
-    /**
-     * Populate an allowed-set map from a verb => route map.
-     *
-     * Adds HEAD automatically when GET is present. Uses bit-set-style map where
-     * keys are verbs and values are true.
-     *
-     * @param array<string,mixed> $map Verb => route-like map (values not inspected)
-     * @param array<string,bool>  $set Map being populated (by reference)
-     * @return void
-     */
-    protected function addAllowedFromMap(array $map, array &$set): void
-    {
-        foreach ($map as $verb => $_route) {
-            $set[$verb] = true;
-        }
-        if (isset($map['GET'])) {
-            $set['HEAD'] = true;
-        }
-    }
-
-    /**
-     * Populate an allowed-set map from an array of CompiledRoute entries.
-     *
-     * Equivalent to addAllowedFromMap but provided for semantic clarity when the
-     * source is an array of route instances.
-     *
-     * @param array<string,CompiledRoute> $routes Verb => CompiledRoute map
-     * @param array<string,bool>          $set    Map being populated (by reference)
-     * @return void
-     */
-    protected function addAllowedFromRoutes(array $routes, array &$set): void
-    {
-        foreach ($routes as $verb => $_route) {
-            $set[$verb] = true;
-        }
-        if (isset($routes['GET'])) {
-            $set['HEAD'] = true;
-        }
-    }
-
-    /*──────────────────── trie helpers ────────────────────*/
-
-    /**
-     * Create a new empty trie node with standard slot keys.
-     *
-     * @return array{children:array,param:?array,routes:array} New node structure
-     */
-    protected function newNode(): array
-    {
-        return [self::K_CHILDREN => [], self::K_PARAM => null, self::K_ROUTES => []];
     }
 
     /**
@@ -239,6 +128,244 @@ abstract class AbstractMatcher
     }
 
     /**
+     * Populate an allowed-set map from a verb => route map.
+     *
+     * Adds HEAD automatically when GET is present. Uses bit-set-style map where
+     * keys are verbs and values are true.
+     *
+     * @param array<string,mixed> $map Verb => route-like map (values not inspected)
+     * @param array<string,bool>  $set Map being populated (by reference)
+     * @return void
+     */
+    protected function addAllowedFromMap(array $map, array &$set): void
+    {
+        foreach ($map as $verb => $_route) {
+            $set[$verb] = true;
+        }
+        if (isset($map['GET'])) {
+            $set['HEAD'] = true;
+        }
+    }
+
+    /**
+     * Populate an allowed-set map from an array of CompiledRoute entries.
+     *
+     * Equivalent to addAllowedFromMap but provided for semantic clarity when the
+     * source is an array of route instances.
+     *
+     * @param array<string,CompiledRoute> $routes Verb => CompiledRoute map
+     * @param array<string,bool>          $set    Map being populated (by reference)
+     * @return void
+     */
+    protected function addAllowedFromRoutes(array $routes, array &$set): void
+    {
+        foreach ($routes as $verb => $_route) {
+            $set[$verb] = true;
+        }
+        if (isset($routes['GET'])) {
+            $set['HEAD'] = true;
+        }
+    }
+
+    /*──────────────────── canonical host (mirrors RouterKernel rules) ────────────────────*/
+
+    /**
+     * Normalise a host name for internal route storage/lookup.
+     *
+     * Behaviour:
+     *  - Null/empty/'*' maps to literal '*' (wildcard host).
+     *  - Trailing dots are removed and the host is lower-cased.
+     *  - If idn_to_ascii is available, internationalised names are converted to ASCII
+     *    (skipping punycode names that already contain 'xn--').
+     *  - Hosts containing control characters or non-ASCII bytes are rejected.
+     *
+     * @param string|null $raw Raw Host header value or route host specification.
+     * @return string Normalised ASCII host (or '*' for wildcard).
+     *
+     * @throws \InvalidArgumentException When the host is illegal, invalid IDN, or contains non-ASCII bytes.
+     */
+    protected function canonicalRouteHost(?string $raw): string
+    {
+        if ($raw === null || $raw === '' || $raw === '*') {
+            return '*';
+        }
+        $host = \rtrim(\strtolower($raw), '.');
+
+        if (\preg_match('/[\x00-\x20]/', $host)) {
+            throw new \InvalidArgumentException("Illegal host name: {$raw}");
+        }
+        if (\function_exists('idn_to_ascii') && !\str_contains($host, 'xn--')) {
+            $ascii = @\idn_to_ascii($host, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
+            if ($ascii === false) {
+                throw new \InvalidArgumentException("Invalid IDN host name: {$raw}");
+            }
+            $host = $ascii;
+        }
+        if (!\preg_match('/^[\x21-\x7E]+$/', $host)) {
+            throw new \InvalidArgumentException("Host contains non-ASCII bytes: {$raw}");
+        }
+        return $host;
+    }
+
+    /**
+     * Split a path into segments (without leading/trailing slashes).
+     *
+     * Returns an empty array for root '/'.
+     *
+     * @param string $p Raw path (e.g. '/users/{id}')
+     * @return list<string> Array of path segments
+     */
+    protected function explodePath(string $p): array
+    {
+        $t = \trim($p, '/');
+        return $t === '' ? [] : \explode('/', $t);
+    }
+
+    /*──────────────────── export helpers ────────────────────*/
+
+    /**
+     * Export an array into a PHP source-like formatted string (used for caches).
+     *
+     * Produces a readable representation intended for embedding into generated
+     * PHP cache files.
+     *
+     * @param array<mixed,mixed> $a Array to export
+     * @param int $depth Current indentation depth
+     * @return string PHP-like representation
+     */
+    protected function exportArray(array $a, int $depth = 0): string
+    {
+        $indent = \str_repeat('    ', $depth);
+        $out = "[\n";
+        foreach ($a as $k => $v) {
+            $out .= $indent . '    ' . \var_export($k, true) . ' => ';
+            $out .= \is_array($v) ? $this->exportArray($v, $depth + 1) : $this->exportValue($v, $depth + 1);
+            $out .= ",\n";
+        }
+        return $indent . \rtrim($out, ",\n") . "\n" . $indent . "]";
+    }
+
+    /**
+     * Produce PHP source to recreate a CompiledRoute instance.
+     *
+     * When the route's handler is a Closure the ValueSerializer is used to
+     * produce a safe serialised form; otherwise a direct constructor expression
+     * is emitted so consumers may instantiate or memoize the class-string.
+     *
+     * @param CompiledRoute $r Compiled route to export
+     * @return string PHP expression that reconstructs the route
+     */
+    protected function exportRoute(CompiledRoute $r): string
+    {
+        if (!$this->handlerHasClosure($r->getHandler())) {
+            return 'new \\' . CompiledRoute::class . '('
+                . \var_export($r->getMethod(), true) . ', '
+                . \var_export($r->getPath(), true) . ', '
+                . \var_export($r->getHandler(), true) . ', '
+                . \var_export($r->getDomain(), true) . ', '
+                . \var_export($r->getMiddlewares(), true) . ', '
+                . \var_export($r->getName(), true) . ', '
+                . ($r->isDynamic() ? 'true' : 'false') . ', '
+                . \var_export($r->getRegex(), true) . ', '
+                . \var_export($r->getVariables(), true) . ', '
+                . \var_export($r->getIndex(), true) . ', '
+                . \var_export($r->getCorsPolicy(), true) . ', '
+                . \var_export($r->getSegments(), true)
+                . ')';
+        }
+        return '\\' . ValueSerializer::class
+            . '::unserialize(' . \var_export(ValueSerializer::serialize($r), true) . ')';
+    }
+
+    /**
+     * Export a single value into a PHP source-like string.
+     *
+     * CompiledRoute instances are handled specially to avoid serialising closures
+     * into cache blobs; routes with closures are serialized via ValueSerializer.
+     *
+     * @param mixed $v Value to export
+     * @param int $depth Indentation depth (unused for non-array values)
+     * @return string PHP-like representation
+     */
+    protected function exportValue(mixed $v, int $depth): string
+    {
+        return $v instanceof CompiledRoute
+            ? $this->exportRoute($v)
+            : (\is_array($v) ? $this->exportArray($v, $depth) : \var_export($v, true));
+    }
+
+    /**
+     * Detect whether the given handler contains a Closure element.
+     *
+     * Returns true when:
+     *  - handler is a Closure
+     *  - handler is an array and either element 0 or 1 is a Closure instance
+     *
+     * @param callable|array|string $h Candidate handler
+     * @return bool True when handler contains a Closure
+     */
+    protected function handlerHasClosure(callable|array|string $h): bool
+    {
+        return $h instanceof Closure
+            || (\is_array($h) && (($h[0] ?? null) instanceof Closure || ($h[1] ?? null) instanceof Closure));
+    }
+
+    /**
+     * Determine whether a trie node is empty (no children, no param, no routes).
+     *
+     * @param array $n Node to inspect
+     * @return bool True when node contains no useful entries
+     */
+    protected function isEmptyTrieNode(array $n): bool
+    {
+        return ($n[self::K_CHILDREN] ?? []) === []
+            && ($n[self::K_PARAM] ?? null) === null
+            && ($n[self::K_ROUTES] ?? []) === [];
+    }
+
+    /*──────────────────── trie helpers ────────────────────*/
+
+    /**
+     * Create a new empty trie node with standard slot keys.
+     *
+     * @return array{children:array,param:?array,routes:array} New node structure
+     */
+    protected function newNode(): array
+    {
+        return [self::K_CHILDREN => [], self::K_PARAM => null, self::K_ROUTES => []];
+    }
+
+    /*──────────────────── verb selection + allowed-set helpers ────────────────────*/
+
+    /**
+     * Select the appropriate CompiledRoute for the requested HTTP verb.
+     *
+     * Rules:
+     *  - OPTIONS returns the first available route in the bucket (if any).
+     *  - Exact verb match returns that route.
+     *  - HEAD falls back to GET when a GET route exists.
+     *
+     * @param array<string,CompiledRoute> $buckets Map of verb => CompiledRoute
+     * @param string $verb Uppercased HTTP verb to resolve (e.g. 'GET')
+     * @return CompiledRoute|null Matching compiled route or null when none applicable
+     */
+    protected function pickVerbRoute(array $buckets, string $verb): ?CompiledRoute
+    {
+        if ($verb === 'OPTIONS' && $buckets) {
+            /** @var ?CompiledRoute $first */
+            $first = \reset($buckets);
+            return $first instanceof CompiledRoute ? $first : null;
+        }
+        if (isset($buckets[$verb])) {
+            return $buckets[$verb];
+        }
+        if ($verb === 'HEAD' && isset($buckets['GET'])) {
+            return $buckets['GET'];
+        }
+        return null;
+    }
+
+    /**
      * Insert a compiled route into a trie rooted at $root for the given verb.
      *
      * Traverses/creates nodes for each segment and stores the route under the
@@ -267,20 +394,6 @@ abstract class AbstractMatcher
             throw new \LogicException("Duplicate dynamic route {$verb} {$r->getPath()}");
         }
         $node[self::K_ROUTES][$verb] = $r;
-    }
-
-    /**
-     * Split a path into segments (without leading/trailing slashes).
-     *
-     * Returns an empty array for root '/'.
-     *
-     * @param string $p Raw path (e.g. '/users/{id}')
-     * @return list<string> Array of path segments
-     */
-    protected function explodePath(string $p): array
-    {
-        $t = \trim($p, '/');
-        return $t === '' ? [] : \explode('/', $t);
     }
 
     /**
@@ -345,19 +458,6 @@ abstract class AbstractMatcher
         return false;
     }
 
-    /**
-     * Determine whether a trie node is empty (no children, no param, no routes).
-     *
-     * @param array $n Node to inspect
-     * @return bool True when node contains no useful entries
-     */
-    protected function isEmptyTrieNode(array $n): bool
-    {
-        return ($n[self::K_CHILDREN] ?? []) === []
-            && ($n[self::K_PARAM] ?? null) === null
-            && ($n[self::K_ROUTES] ?? []) === [];
-    }
-
     /*──────────────────── helpers (rule + matching) ────────────────────*/
 
     /**
@@ -401,106 +501,6 @@ abstract class AbstractMatcher
             // direct call (expects a string argument)
             return (bool)\call_user_func($fn, $piece);
         }
-        return false;
-    }
-
-    /*──────────────────── export helpers ────────────────────*/
-
-    /**
-     * Export an array into a PHP source-like formatted string (used for caches).
-     *
-     * Produces a readable representation intended for embedding into generated
-     * PHP cache files.
-     *
-     * @param array<mixed,mixed> $a Array to export
-     * @param int $depth Current indentation depth
-     * @return string PHP-like representation
-     */
-    protected function exportArray(array $a, int $depth = 0): string
-    {
-        $indent = \str_repeat('    ', $depth);
-        $out = "[\n";
-        foreach ($a as $k => $v) {
-            $out .= $indent . '    ' . \var_export($k, true) . ' => ';
-            $out .= \is_array($v) ? $this->exportArray($v, $depth + 1) : $this->exportValue($v, $depth + 1);
-            $out .= ",\n";
-        }
-        return $indent . \rtrim($out, ",\n") . "\n" . $indent . "]";
-    }
-
-    /**
-     * Export a single value into a PHP source-like string.
-     *
-     * CompiledRoute instances are handled specially to avoid serialising closures
-     * into cache blobs; routes with closures are serialized via ValueSerializer.
-     *
-     * @param mixed $v Value to export
-     * @param int $depth Indentation depth (unused for non-array values)
-     * @return string PHP-like representation
-     */
-    protected function exportValue(mixed $v, int $depth): string
-    {
-        return $v instanceof CompiledRoute
-            ? $this->exportRoute($v)
-            : (\is_array($v) ? $this->exportArray($v, $depth) : \var_export($v, true));
-    }
-
-    /**
-     * Produce PHP source to recreate a CompiledRoute instance.
-     *
-     * When the route's handler is a Closure the ValueSerializer is used to
-     * produce a safe serialised form; otherwise a direct constructor expression
-     * is emitted so consumers may instantiate or memoize the class-string.
-     *
-     * @param CompiledRoute $r Compiled route to export
-     * @return string PHP expression that reconstructs the route
-     */
-    protected function exportRoute(CompiledRoute $r): string
-    {
-        if (!$this->handlerHasClosure($r->getHandler())) {
-            return 'new \\' . CompiledRoute::class . '('
-                . \var_export($r->getMethod(), true) . ', '
-                . \var_export($r->getPath(), true) . ', '
-                . \var_export($r->getHandler(), true) . ', '
-                . \var_export($r->getDomain(), true) . ', '
-                . \var_export($r->getMiddlewares(), true) . ', '
-                . \var_export($r->getName(), true) . ', '
-                . ($r->isDynamic() ? 'true' : 'false') . ', '
-                . \var_export($r->getRegex(), true) . ', '
-                . \var_export($r->getVariables(), true) . ', '
-                . \var_export($r->getIndex(), true) . ', '
-                . \var_export($r->getCorsPolicy(), true) . ', '
-                . \var_export($r->getSegments(), true)
-                . ')';
-        }
-        return '\\' . ValueSerializer::class
-            . '::unserialize(' . \var_export(ValueSerializer::serialize($r), true) . ')';
-    }
-
-    /**
-     * Detect whether the given handler contains a Closure element.
-     *
-     * Returns true when:
-     *  - handler is a Closure
-     *  - handler is an array and either element 0 or 1 is a Closure instance
-     *
-     * @param callable|array|string $h Candidate handler
-     * @return bool True when handler contains a Closure
-     */
-    protected function handlerHasClosure(callable|array|string $h): bool
-    {
-        return $h instanceof Closure
-            || (\is_array($h) && (($h[0] ?? null) instanceof Closure || ($h[1] ?? null) instanceof Closure));
-    }
-
-    /**
-     * Optional hook for kernels; concrete matchers may override to indicate
-     * whether they can boot from a persisted cache.
-     *
-     * @return bool True when the matcher supports cache booting; default false.
-     */
-    public function canBootFromCache(): bool
-    {
         return false;
     }
 }

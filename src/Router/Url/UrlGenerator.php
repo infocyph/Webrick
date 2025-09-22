@@ -41,6 +41,47 @@ class UrlGenerator
         $this->routes = $routes;
     }
 
+    /**
+     * Build a URL by handler reference.
+     *
+     * @param callable|string $handler Callable or "Class::method" string
+     * @param array<string,scalar|null> $params Route parameters
+     * @param array<string,scalar|array|null> $query Query string parameters
+     * @param bool $absolute Whether to generate an absolute URL
+     * @return string Generated URL
+     * @throws InvalidArgumentException If no route is found for the handler
+     */
+    public function action(
+        callable|string $handler,
+        array $params = [],
+        array $query = [],
+        bool $absolute = false,
+    ): string {
+        $route = $this->routes->findByHandler($handler);
+        if ($route === null) {
+            throw new InvalidArgumentException('Route for given handler not found.');
+        }
+
+        $path = $this->substitute($route->getPath(), $params);
+        return $this->build($path, $query, $absolute);
+    }
+
+    /**
+     * Build a URL to an arbitrary path.
+     *
+     * @param non-empty-string $path URL path (leading slash optional)
+     * @param array<string,scalar|array|null> $query Query string parameters
+     * @param bool $absolute Whether to generate an absolute URL
+     * @return string Generated URL
+     */
+    public function to(
+        string $path,
+        array $query = [],
+        bool $absolute = false,
+    ): string {
+        return $this->build($path, $query, $absolute);
+    }
+
     /* -----------------------------------------------------------------
      *  Public API  (defaults to RELATIVE)
      * ----------------------------------------------------------------*/
@@ -71,44 +112,30 @@ class UrlGenerator
     }
 
     /**
-     * Build a URL to an arbitrary path.
+     * Constructs the final URL from path, query parameters, and base URI.
      *
-     * @param non-empty-string $path URL path (leading slash optional)
-     * @param array<string,scalar|array|null> $query Query string parameters
-     * @param bool $absolute Whether to generate an absolute URL
-     * @return string Generated URL
+     * @param string $path URL path
+     * @param array<string,scalar|array|null> $query Query parameters
+     * @param bool $absolute Whether to include the base URI
+     * @return string The fully constructed URL
      */
-    public function to(
-        string $path,
-        array $query = [],
-        bool $absolute = false,
-    ): string {
-        return $this->build($path, $query, $absolute);
-    }
-
-    /**
-     * Build a URL by handler reference.
-     *
-     * @param callable|string $handler Callable or "Class::method" string
-     * @param array<string,scalar|null> $params Route parameters
-     * @param array<string,scalar|array|null> $query Query string parameters
-     * @param bool $absolute Whether to generate an absolute URL
-     * @return string Generated URL
-     * @throws InvalidArgumentException If no route is found for the handler
-     */
-    public function action(
-        callable|string $handler,
-        array $params = [],
-        array $query = [],
-        bool $absolute = false,
-    ): string {
-        $route = $this->routes->findByHandler($handler);
-        if ($route === null) {
-            throw new InvalidArgumentException('Route for given handler not found.');
+    private function build(string $path, array $query, bool $absolute): string
+    {
+        // If the path exists verbatim in the route table, trust it.
+        if ($this->routes->hasPath($path)) {
+            $uri = $absolute
+                ? $this->baseUri . $path
+                : $path;
+        } else {
+            $uri = ($absolute ? $this->baseUri : '') . '/' . ltrim($path, '/');
         }
 
-        $path = $this->substitute($route->getPath(), $params);
-        return $this->build($path, $query, $absolute);
+        if ($query === []) {
+            return $uri;
+        }
+
+        // RFC3986 encoding:
+        return $uri . '?' . http_build_query($query, '', '&', PHP_QUERY_RFC3986);
     }
 
     /* -----------------------------------------------------------------
@@ -162,32 +189,5 @@ class UrlGenerator
         }
 
         return $result;
-    }
-
-    /**
-     * Constructs the final URL from path, query parameters, and base URI.
-     *
-     * @param string $path URL path
-     * @param array<string,scalar|array|null> $query Query parameters
-     * @param bool $absolute Whether to include the base URI
-     * @return string The fully constructed URL
-     */
-    private function build(string $path, array $query, bool $absolute): string
-    {
-        // If the path exists verbatim in the route table, trust it.
-        if ($this->routes->hasPath($path)) {
-            $uri = $absolute
-                ? $this->baseUri . $path
-                : $path;
-        } else {
-            $uri = ($absolute ? $this->baseUri : '') . '/' . ltrim($path, '/');
-        }
-
-        if ($query === []) {
-            return $uri;
-        }
-
-        // RFC3986 encoding:
-        return $uri . '?' . http_build_query($query, '', '&', PHP_QUERY_RFC3986);
     }
 }

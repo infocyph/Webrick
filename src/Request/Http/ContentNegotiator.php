@@ -16,8 +16,8 @@ final class ContentNegotiator
 {
     /** @var string[] quality-sorted by RequestHeaders */
     private array $accept;        // Accept
-    private array $encodings;     // Accept-Encoding
     private array $charsets;      // Accept-Charset
+    private array $encodings;     // Accept-Encoding
     private array $languages;     // Accept-Language
 
     /**
@@ -35,6 +35,28 @@ final class ContentNegotiator
     }
 
     /**
+     * Return true if the client prefers to receive responses with ISO-8859-1 (Latin-1) encoding.
+     * False otherwise.
+     *
+     * @return bool
+     */
+    public function acceptsLatin1(): bool
+    {
+        return $this->supportsCharset('iso-8859-1');
+    }
+
+    /**
+     * Return true if the client prefers to receive responses with UTF-8 encoding.
+     * False otherwise.
+     *
+     * @return bool
+     */
+    public function acceptsUtf8(): bool
+    {
+        return $this->supportsCharset('utf-8');
+    }
+
+    /**
      * Find the best match from a list of candidates.
      *
      * @param string[] $candidates
@@ -46,6 +68,81 @@ final class ContentNegotiator
             $this->accept,
             fn ($have) => array_any($candidates, fn ($want) => $this->matches($want, $have)),
         );
+    }
+
+    /**
+     * Return true if the character set $cs is supported by the client.
+     * False if not supported.
+     *
+     * @param string $cs the character set to check, e.g. 'utf-8', 'iso-8859-1'
+     * @return bool
+     */
+    public function supportsCharset(string $cs): bool
+    {
+        return $this->charsets === []
+            || in_array($cs, $this->charsets, true)
+            || in_array('*', $this->charsets, true);
+    }
+
+    /**
+     * Return true if the encoding $enc is supported by the client.
+     * False if not supported.
+     *
+     * @param string $enc the encoding to check, e.g. 'gzip', 'br', 'identity'
+     * @return bool
+     */
+    public function supportsEncoding(string $enc): bool
+    {
+        return $this->encodings === []                      // header omitted
+            || in_array($enc, $this->encodings, true)
+            || in_array('*', $this->encodings, true);
+    }
+
+    /**
+     * Return true if the language $lang is supported by the client.
+     * False if not supported.
+     *
+     * @param string $lang the language to check, e.g. 'en', 'fr', 'bn-BD'
+     * @return bool
+     */
+    public function supportsLanguage(string $lang): bool
+    {
+        return $this->languages === []
+            || in_array($lang, $this->languages, true)
+            || in_array('*', $this->languages, true);
+    }
+
+    /**
+     * True if the client prefers to receive responses with Brotli encoding.
+     * False otherwise.
+     *
+     * @return bool
+     */
+    public function wantsBrotli(): bool
+    {
+        return $this->supportsEncoding('br');
+    }
+
+    /**
+     * True if the client prefers to receive responses with gzip encoding.
+     * False otherwise.
+     *
+     * @return bool
+     */
+    public function wantsGzip(): bool
+    {
+        return $this->supportsEncoding('gzip');
+    }
+
+    /**
+     * True if the client prefers to receive responses with Zstd encoding.
+     * False otherwise.
+     *
+     * @return bool
+     */
+    public function wantsZstd(): bool
+    {
+        return $this->supportsEncoding('zstd');
     }
 
     /* ───── helpers ─────────────────────────────────────────────── */
@@ -102,102 +199,5 @@ final class ContentNegotiator
         }
 
         return false;
-    }
-
-    /**
-     * Return true if the encoding $enc is supported by the client.
-     * False if not supported.
-     *
-     * @param string $enc the encoding to check, e.g. 'gzip', 'br', 'identity'
-     * @return bool
-     */
-    public function supportsEncoding(string $enc): bool
-    {
-        return $this->encodings === []                      // header omitted
-            || in_array($enc, $this->encodings, true)
-            || in_array('*', $this->encodings, true);
-    }
-
-    /**
-     * Return true if the character set $cs is supported by the client.
-     * False if not supported.
-     *
-     * @param string $cs the character set to check, e.g. 'utf-8', 'iso-8859-1'
-     * @return bool
-     */
-    public function supportsCharset(string $cs): bool
-    {
-        return $this->charsets === []
-            || in_array($cs, $this->charsets, true)
-            || in_array('*', $this->charsets, true);
-    }
-
-    /**
-     * Return true if the language $lang is supported by the client.
-     * False if not supported.
-     *
-     * @param string $lang the language to check, e.g. 'en', 'fr', 'bn-BD'
-     * @return bool
-     */
-    public function supportsLanguage(string $lang): bool
-    {
-        return $this->languages === []
-            || in_array($lang, $this->languages, true)
-            || in_array('*', $this->languages, true);
-    }
-
-    /**
-     * True if the client prefers to receive responses with gzip encoding.
-     * False otherwise.
-     *
-     * @return bool
-     */
-    public function wantsGzip(): bool
-    {
-        return $this->supportsEncoding('gzip');
-    }
-
-    /**
-     * True if the client prefers to receive responses with Brotli encoding.
-     * False otherwise.
-     *
-     * @return bool
-     */
-    public function wantsBrotli(): bool
-    {
-        return $this->supportsEncoding('br');
-    }
-
-    /**
-     * True if the client prefers to receive responses with Zstd encoding.
-     * False otherwise.
-     *
-     * @return bool
-     */
-    public function wantsZstd(): bool
-    {
-        return $this->supportsEncoding('zstd');
-    }
-
-    /**
-     * Return true if the client prefers to receive responses with UTF-8 encoding.
-     * False otherwise.
-     *
-     * @return bool
-     */
-    public function acceptsUtf8(): bool
-    {
-        return $this->supportsCharset('utf-8');
-    }
-
-    /**
-     * Return true if the client prefers to receive responses with ISO-8859-1 (Latin-1) encoding.
-     * False otherwise.
-     *
-     * @return bool
-     */
-    public function acceptsLatin1(): bool
-    {
-        return $this->supportsCharset('iso-8859-1');
     }
 }

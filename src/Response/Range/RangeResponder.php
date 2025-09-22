@@ -6,9 +6,9 @@ namespace Infocyph\Webrick\Response\Range;
 
 use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Request\Request;
-use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Response\Headers\Range as SimpleRange;
 use Infocyph\Webrick\Response\Internal\Utils;
+use Infocyph\Webrick\Response\Response;
 
 /**
  * Builds **206 Partial Content** (or 200 / 416) responses for seek-able sources.

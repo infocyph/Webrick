@@ -41,6 +41,17 @@ final class MiddlewareAliases
     private static array $map = [];
 
     /**
+     * Determine if an alias is registered.
+     *
+     * @param string $alias Alias name to check (case-insensitive)
+     * @return bool True when the alias exists in the registry
+     */
+    public static function has(string $alias): bool
+    {
+        return isset(self::$map[strtolower($alias)]);
+    }
+
+    /**
      * Register an alias name with a factory or a class-string.
      *
      * Behaviour:
@@ -78,14 +89,17 @@ final class MiddlewareAliases
     }
 
     /**
-     * Determine if an alias is registered.
+     * Reset the alias registry.
      *
-     * @param string $alias Alias name to check (case-insensitive)
-     * @return bool True when the alias exists in the registry
+     * Clears all registered middleware aliases. This is primarily intended for
+     * long-running worker environments (e.g., RoadRunner/Swoole) where process
+     * state persists across requests. Invoke this method during your worker's
+     * bootstrap or per-request reset phase to ensure a clean slate before
+     * (re)registering aliases for the next request/lifecycle.
      */
-    public static function has(string $alias): bool
+    public static function reset(): void
     {
-        return isset(self::$map[strtolower($alias)]);
+        self::$map = [];
     }
 
     /**
@@ -128,18 +142,4 @@ final class MiddlewareAliases
         // Call variadic factory and return whatever it produces.
         return (self::$map[$key])(...$params);
     }
-
-    /**
-     * Reset the alias registry.
-     *
-     * Clears all registered middleware aliases. This is primarily intended for
-     * long-running worker environments (e.g., RoadRunner/Swoole) where process
-     * state persists across requests. Invoke this method during your worker's
-     * bootstrap or per-request reset phase to ensure a clean slate before
-     * (re)registering aliases for the next request/lifecycle.
-     */
-     public static function reset(): void
-     {
-         self::$map = [];
-     }
 }

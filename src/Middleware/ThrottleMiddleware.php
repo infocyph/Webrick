@@ -110,6 +110,35 @@ final readonly class ThrottleMiddleware
     }
 
     /**
+     * Attach rate-limit headers to a successful response.
+     *
+     * @param Response $resp       Response to augment.
+     * @param int      $remain     Remaining requests in the window.
+     * @param int      $resetEpoch Window reset epoch.
+     *
+     * @return Response Response with rate-limit headers.
+     */
+    private function attachRateHeaders(Response $resp, int $remain, int $resetEpoch): Response
+    {
+        $delta = $this->secondsUntil($resetEpoch);
+
+        $resp = $resp
+            ->withSmartHeader('X-RateLimit-Limit', (string)$this->max)
+            ->withSmartHeader('X-RateLimit-Remaining', (string)$remain)
+            ->withSmartHeader('X-RateLimit-Reset', (string)$resetEpoch);
+
+        if ($this->emitStandardRateLimit) {
+            $resp = $resp
+                ->withSmartHeader('RateLimit-Limit', (string)$this->max)
+                ->withSmartHeader('RateLimit-Remaining', (string)$remain)
+                ->withSmartHeader('RateLimit-Reset', (string)$delta)
+                ->withSmartHeader('RateLimit-Policy', "{$this->max};w={$this->window}");
+        }
+
+        return $resp;
+    }
+
+    /**
      * Derive the cache key and reset epoch for the current window.
      *
      * @param Request $req Incoming request.
@@ -225,34 +254,5 @@ final readonly class ThrottleMiddleware
         }
 
         return $resp->withSmartHeader('Server-Timing', 'throttle;dur=0');
-    }
-
-    /**
-     * Attach rate-limit headers to a successful response.
-     *
-     * @param Response $resp       Response to augment.
-     * @param int      $remain     Remaining requests in the window.
-     * @param int      $resetEpoch Window reset epoch.
-     *
-     * @return Response Response with rate-limit headers.
-     */
-    private function attachRateHeaders(Response $resp, int $remain, int $resetEpoch): Response
-    {
-        $delta = $this->secondsUntil($resetEpoch);
-
-        $resp = $resp
-            ->withSmartHeader('X-RateLimit-Limit', (string)$this->max)
-            ->withSmartHeader('X-RateLimit-Remaining', (string)$remain)
-            ->withSmartHeader('X-RateLimit-Reset', (string)$resetEpoch);
-
-        if ($this->emitStandardRateLimit) {
-            $resp = $resp
-                ->withSmartHeader('RateLimit-Limit', (string)$this->max)
-                ->withSmartHeader('RateLimit-Remaining', (string)$remain)
-                ->withSmartHeader('RateLimit-Reset', (string)$delta)
-                ->withSmartHeader('RateLimit-Policy', "{$this->max};w={$this->window}");
-        }
-
-        return $resp;
     }
 }

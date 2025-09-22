@@ -28,11 +28,27 @@ use Traversable;
 final class Collection implements IteratorAggregate
 {
     /**
-     * Ordered list of routes in registration order.
+     * Alias index: alias name => RouteInterface.
      *
-     * @var list<RouteInterface>
+     * @var array<string, RouteInterface>
      */
-    private array $routes = [];
+    private array $aliases = [];
+
+    /**
+     * Lazily-built flat alias index used by URL helpers and cache writers.
+     *
+     * Shape: name_or_alias => [path, domain|null]
+     *
+     * @var array<string, array{0:string,1:?string}>|null
+     */
+    private ?array $aliasIndex = null;
+
+    /**
+     * Handler index: handler fingerprint => list of RouteInterface.
+     *
+     * @var array<string, list<RouteInterface>>
+     */
+    private array $byHandler = [];
 
     /* ---------------------------------------------------------------------
      *  Indices for O(1) lookups (kept in-sync during build phase)
@@ -46,25 +62,18 @@ final class Collection implements IteratorAggregate
     private array $byName = [];
 
     /**
-     * Alias index: alias name => RouteInterface.
-     *
-     * @var array<string, RouteInterface>
-     */
-    private array $aliases = [];
-
-    /**
-     * Handler index: handler fingerprint => list of RouteInterface.
-     *
-     * @var array<string, list<RouteInterface>>
-     */
-    private array $byHandler = [];
-
-    /**
      * Path index: path => RouteInterface.
      *
      * @var array<string, RouteInterface>
      */
     private array $byPath = [];
+
+    /**
+     * Cached compiled representation returned by compile().
+     *
+     * @var CompiledCollection|null
+     */
+    private ?CompiledCollection $compiled = null;
 
     /* ---------------------------------------------------------------------
      *  State flags
@@ -83,22 +92,12 @@ final class Collection implements IteratorAggregate
      * @var bool
      */
     private bool $frozen = false;
-
     /**
-     * Cached compiled representation returned by compile().
+     * Ordered list of routes in registration order.
      *
-     * @var CompiledCollection|null
+     * @var list<RouteInterface>
      */
-    private ?CompiledCollection $compiled = null;
-
-    /**
-     * Lazily-built flat alias index used by URL helpers and cache writers.
-     *
-     * Shape: name_or_alias => [path, domain|null]
-     *
-     * @var array<string, array{0:string,1:?string}>|null
-     */
-    private ?array $aliasIndex = null;
+    private array $routes = [];
 
     /* ---------------------------------------------------------------------
      *  Core mutators  (disabled after ->compile())
@@ -191,38 +190,51 @@ final class Collection implements IteratorAggregate
         }
     }
 
+    /* ---------------------------------------------------------------------
+     *  Flat alias index (name_or_alias => [path, domain])
+     * ------------------------------------------------------------------ */
+
     /**
-     * Remove a route from the collection.
+     * Build and return a flattened index mapping primary names and aliases to
+     * the tuple [path, domain]. Built lazily and cached until collection mutates.
      *
-     * Behaviour:
-     *  - Removes the route from the ordered list.
-     *  - Rebuilds indices from remaining routes.
-     *  - Purges aliases that pointed to the removed route.
-     *
-     * @param RouteInterface $route Route to remove.
-     * @return void
+     * @return array<string, array{0:string,1:?string}>
      */
-    public function remove(RouteInterface $route): void
+    public function aliasIndex(): array
     {
-        $this->assertMutable();
+        if ($this->aliasIndex !== null) {
+            return $this->aliasIndex;
+        }
 
-        // remove from the ordered list
-        $this->routes = array_values(
-            array_filter($this->routes, static fn ($r) => $r !== $route),
-        );
+        $out = [];
 
-        // rebuild primary indices from remaining routes
-        $this->rebuildIndices();
+        // primary names
+        foreach ($this->byName as $name => $route) {
+            $out[$name] = [$route->getPath(), $route->getDomain()];
+        }
 
-        // purge aliases pointing to the removed route
-        foreach ($this->aliases as $name => $r) {
-            if ($r === $route) {
-                unset($this->aliases[$name]);
+        // aliases (keep primary name when conflict arises)
+        foreach ($this->aliases as $alias => $route) {
+            if (!isset($out[$alias])) {
+                $out[$alias] = [$route->getPath(), $route->getDomain()];
             }
         }
 
-        $this->dirty = true;
-        $this->aliasIndex = null;
+        return $this->aliasIndex = $out;
+    }
+
+    /* ---------------------------------------------------------------------
+     *  Hot-path accessors
+     * ------------------------------------------------------------------ */
+
+    /**
+     * Return all registered RouteInterface instances in insertion order.
+     *
+     * @return list<RouteInterface>
+     */
+    public function all(): array
+    {
+        return $this->routes;
     }
 
     /**
@@ -273,20 +285,6 @@ final class Collection implements IteratorAggregate
         return $this->compiled;
     }
 
-    /* ---------------------------------------------------------------------
-     *  Hot-path accessors
-     * ------------------------------------------------------------------ */
-
-    /**
-     * Return all registered RouteInterface instances in insertion order.
-     *
-     * @return list<RouteInterface>
-     */
-    public function all(): array
-    {
-        return $this->routes;
-    }
-
     /**
      * Whether the collection has uncompiled changes.
      *
@@ -298,13 +296,27 @@ final class Collection implements IteratorAggregate
     }
 
     /**
-     * Whether the collection has been frozen via compile().
+     * Find all routes that match the given handler fingerprint.
      *
-     * @return bool True once compile() has been called.
+     * @param callable|string $handler Handler descriptor.
+     * @return list<RouteInterface> List of matching routes (may be empty).
      */
-    public function frozen(): bool
+    public function findAllByHandler(callable|string $handler): array
     {
-        return $this->frozen;
+        $id = Route::fingerprint($handler);
+        return $this->byHandler[$id] ?? [];
+    }
+
+    /**
+     * Find a single route that matches the given handler fingerprint.
+     *
+     * @param callable|string $handler Handler descriptor (callable or "Class::method" string).
+     * @return RouteInterface|null First matching route or null when none found.
+     */
+    public function findByHandler(callable|string $handler): ?RouteInterface
+    {
+        $id = Route::fingerprint($handler); // helper in Route class
+        return $this->byHandler[$id][0] ?? null;
     }
 
     /**
@@ -326,27 +338,27 @@ final class Collection implements IteratorAggregate
     }
 
     /**
-     * Find a single route that matches the given handler fingerprint.
+     * Whether the collection has been frozen via compile().
      *
-     * @param callable|string $handler Handler descriptor (callable or "Class::method" string).
-     * @return RouteInterface|null First matching route or null when none found.
+     * @return bool True once compile() has been called.
      */
-    public function findByHandler(callable|string $handler): ?RouteInterface
+    public function frozen(): bool
     {
-        $id = Route::fingerprint($handler); // helper in Route class
-        return $this->byHandler[$id][0] ?? null;
+        return $this->frozen;
     }
 
+    /* ---------------------------------------------------------------------
+     *  IteratorAggregate
+     * ------------------------------------------------------------------ */
+
     /**
-     * Find all routes that match the given handler fingerprint.
+     * Return an iterator over the registered routes (preserves registration order).
      *
-     * @param callable|string $handler Handler descriptor.
-     * @return list<RouteInterface> List of matching routes (may be empty).
+     * @return Traversable|ArrayIterator<RouteInterface>
      */
-    public function findAllByHandler(callable|string $handler): array
+    public function getIterator(): Traversable
     {
-        $id = Route::fingerprint($handler);
-        return $this->byHandler[$id] ?? [];
+        return new ArrayIterator($this->routes);
     }
 
     /**
@@ -360,49 +372,16 @@ final class Collection implements IteratorAggregate
         return isset($this->byPath[$path]);
     }
 
-    /* ---------------------------------------------------------------------
-     *  Flat alias index (name_or_alias => [path, domain])
-     * ------------------------------------------------------------------ */
-
     /**
-     * Build and return a flattened index mapping primary names and aliases to
-     * the tuple [path, domain]. Built lazily and cached until collection mutates.
+     * Return the domain for a primary route name.
      *
-     * @return array<string, array{0:string,1:?string}>
+     * @param string $name Primary route name.
+     * @return string|null Domain string or null when not found.
      */
-    public function aliasIndex(): array
+    public function nameDomain(string $name): ?string
     {
-        if ($this->aliasIndex !== null) {
-            return $this->aliasIndex;
-        }
-
-        $out = [];
-
-        // primary names
-        foreach ($this->byName as $name => $route) {
-            $out[$name] = [$route->getPath(), $route->getDomain()];
-        }
-
-        // aliases (keep primary name when conflict arises)
-        foreach ($this->aliases as $alias => $route) {
-            if (!isset($out[$alias])) {
-                $out[$alias] = [$route->getPath(), $route->getDomain()];
-            }
-        }
-
-        return $this->aliasIndex = $out;
-    }
-
-    /**
-     * Resolve any key (primary or alias) into its [path, domain] tuple.
-     *
-     * @param string $name Primary name or alias.
-     * @return array{0:string,1:?string}|null [path, domain] or null when unknown.
-     */
-    public function resolveAlias(string $name): ?array
-    {
-        $idx = $this->aliasIndex();
-        return $idx[$name] ?? null;
+        $r = $this->findByName($name);
+        return $r?->getDomain();
     }
 
     /**
@@ -418,29 +397,62 @@ final class Collection implements IteratorAggregate
     }
 
     /**
-     * Return the domain for a primary route name.
+     * Remove a route from the collection.
      *
-     * @param string $name Primary route name.
-     * @return string|null Domain string or null when not found.
+     * Behaviour:
+     *  - Removes the route from the ordered list.
+     *  - Rebuilds indices from remaining routes.
+     *  - Purges aliases that pointed to the removed route.
+     *
+     * @param RouteInterface $route Route to remove.
+     * @return void
      */
-    public function nameDomain(string $name): ?string
+    public function remove(RouteInterface $route): void
     {
-        $r = $this->findByName($name);
-        return $r?->getDomain();
+        $this->assertMutable();
+
+        // remove from the ordered list
+        $this->routes = array_values(
+            array_filter($this->routes, static fn ($r) => $r !== $route),
+        );
+
+        // rebuild primary indices from remaining routes
+        $this->rebuildIndices();
+
+        // purge aliases pointing to the removed route
+        foreach ($this->aliases as $name => $r) {
+            if ($r === $route) {
+                unset($this->aliases[$name]);
+            }
+        }
+
+        $this->dirty = true;
+        $this->aliasIndex = null;
     }
 
-    /* ---------------------------------------------------------------------
-     *  IteratorAggregate
-     * ------------------------------------------------------------------ */
+    /**
+     * Resolve any key (primary or alias) into its [path, domain] tuple.
+     *
+     * @param string $name Primary name or alias.
+     * @return array{0:string,1:?string}|null [path, domain] or null when unknown.
+     */
+    public function resolveAlias(string $name): ?array
+    {
+        $idx = $this->aliasIndex();
+        return $idx[$name] ?? null;
+    }
 
     /**
-     * Return an iterator over the registered routes (preserves registration order).
+     * Assert the collection is in a mutable (pre-compile) state.
      *
-     * @return Traversable|ArrayIterator<RouteInterface>
+     * @return void
+     * @throws LogicException When the collection has been frozen via compile().
      */
-    public function getIterator(): Traversable
+    private function assertMutable(): void
     {
-        return new ArrayIterator($this->routes);
+        if ($this->frozen) {
+            throw new LogicException('Route collection already compiled – further mutation prohibited.');
+        }
     }
 
     /* ---------------------------------------------------------------------
@@ -483,18 +495,5 @@ final class Collection implements IteratorAggregate
         }
 
         $this->aliasIndex = null; // invalidate cached flat index
-    }
-
-    /**
-     * Assert the collection is in a mutable (pre-compile) state.
-     *
-     * @return void
-     * @throws LogicException When the collection has been frozen via compile().
-     */
-    private function assertMutable(): void
-    {
-        if ($this->frozen) {
-            throw new LogicException('Route collection already compiled – further mutation prohibited.');
-        }
     }
 }

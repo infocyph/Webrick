@@ -19,11 +19,6 @@ use Infocyph\Webrick\Request\Request;
  */
 final class UAParser
 {
-    private string $ua;
-    private string $uaLower;
-
-    private array $hint = [];
-
     private static array $tokenMap = [
         'crios' => 'Chrome iOS',
         'fxios' => 'Firefox iOS',
@@ -39,6 +34,10 @@ final class UAParser
         'msie' => 'Internet Explorer',
         'trident/7' => 'Internet Explorer',
     ];
+
+    private array $hint = [];
+    private string $ua;
+    private string $uaLower;
 
     /**
      * Initializes a new UAParser instance.
@@ -60,6 +59,17 @@ final class UAParser
         $this->uaLower = strtolower($this->ua);
     }
 
+
+    /**
+     * Returns the User-Agent header of the current request.
+     *
+     * @return string the User-Agent header value
+     */
+    public function getUserAgent(): string
+    {
+        return $this->ua;
+    }
+
     /**
      * Coarsely parses the User-Agent string and returns an associative array
      * with the following keys:
@@ -77,6 +87,97 @@ final class UAParser
         $engine = $this->engine($browser);
 
         return compact('browser', 'version', 'platform', 'engine');
+    }
+
+
+    /**
+     * Determine the browser name and version from the given headers.
+     * Client Hints: prefer full-version list brands, real brand last.
+     * UA fallback: detect iOS tokens and extract version.
+     * Returns an array [$browser, $version].
+     * @return array<string,string> [$browser, $version]
+     */
+    private function browser(): array
+    {
+        // Client Hints: prefer full-version list brands, real brand last
+        $brands = $this->hint['brands_full'] ?? $this->hint['brands'] ?? null;
+        if ($brands) {
+            $preferred = array_reverse($brands, true);
+            foreach ($preferred as $brand => $ver) {
+                if (!preg_match('/^(?:Chromium|Not\s?)?A?Brand$/i', $brand)) {
+                    return [$brand, (string)$ver];
+                }
+            }
+            if (isset($brands['Chromium'])) {
+                return ['Chromium', (string)$brands['Chromium']];
+            }
+        }
+
+        // UA fallback (add iOS tokens)
+        foreach (self::$tokenMap as $token => $label) {
+            if (str_contains($this->uaLower, $token)) {
+                return [$label, $this->extractVersion($token)];
+            }
+        }
+        return ['Unknown', ''];
+    }
+
+
+    /**
+     * Maps a browser to its rendering engine.
+     *
+     * @param string $browser Browser name (case-insensitive)
+     * @return string Engine name (case-sensitive)
+     * @example
+     * <code>
+     * $ua = new UAParser('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36');
+     * $engine = $ua->engine($ua->browser());
+     * var_dump($engine); // Blink
+     * </code>
+     */
+    private function engine(string $browser): string
+    {
+        if (in_array($browser, ['Chrome', 'Edge', 'Brave', 'Vivaldi', 'Yandex Browser', 'Samsung Internet'], true)) {
+            return 'Blink';
+        }
+        return match (true) {
+            str_contains($this->uaLower, 'trident') => 'Trident',
+            str_contains($this->uaLower, 'gecko') && str_contains($this->uaLower, 'firefox') => 'Gecko',
+            str_contains($this->uaLower, 'applewebkit') => 'WebKit',
+            str_contains($this->uaLower, 'presto') => 'Presto',
+            default => 'Unknown',
+        };
+    }
+
+    /**
+     * Extracts a version from the UA string given a token.
+     * Tokens are matched against regex patterns in the static $rx array.
+     * If a match is found, the matched version is returned.
+     * Otherwise, an empty string is returned.
+     *
+     * @param string $token The token to search for in the UA string.
+     * @return string The extracted version or an empty string if no match is found.
+     */
+    private function extractVersion(string $token): string
+    {
+        static $rx = [
+            'crios' => '/crios\/([\d.]+)/i',
+            'fxios' => '/fxios\/([\d.]+)/i',
+            'edg' => '/edg[e|a]?[ /]([\d.]+)/i',
+            'opr' => '/(?:opr|opera)[ /]([\d.]+)/i',
+            'vivaldi' => '/vivaldi[ /]([\d.]+)/i',
+            'brave' => '/brave\/([\d.]+)/i',
+            'samsungbrowser' => '/samsungbrowser\/([\d.]+)/i',
+            'yabrowser' => '/yabrowser\/([\d.]+)/i',
+            'firefox' => '/firefox\/([\d.]+)/i',
+            'chrome' => '/chrome\/([\d.]+)/i',
+            'safari' => '/version\/([\d.]+)/i',
+            'msie' => '/msie ([\d.]+)/i',
+            'trident/7' => '/rv:([\d.]+)/i',
+        ];
+        return isset($rx[$token]) && preg_match($rx[$token], $this->ua, $m)
+            ? $m[1]
+            : '';
     }
 
 
@@ -123,70 +224,6 @@ final class UAParser
 
 
     /**
-     * Determine the browser name and version from the given headers.
-     * Client Hints: prefer full-version list brands, real brand last.
-     * UA fallback: detect iOS tokens and extract version.
-     * Returns an array [$browser, $version].
-     * @return array<string,string> [$browser, $version]
-     */
-    private function browser(): array
-    {
-        // Client Hints: prefer full-version list brands, real brand last
-        $brands = $this->hint['brands_full'] ?? $this->hint['brands'] ?? null;
-        if ($brands) {
-            $preferred = array_reverse($brands, true);
-            foreach ($preferred as $brand => $ver) {
-                if (!preg_match('/^(?:Chromium|Not\s?)?A?Brand$/i', $brand)) {
-                    return [$brand, (string)$ver];
-                }
-            }
-            if (isset($brands['Chromium'])) {
-                return ['Chromium', (string)$brands['Chromium']];
-            }
-        }
-
-        // UA fallback (add iOS tokens)
-        foreach (self::$tokenMap as $token => $label) {
-            if (str_contains($this->uaLower, $token)) {
-                return [$label, $this->extractVersion($token)];
-            }
-        }
-        return ['Unknown', ''];
-    }
-
-    /**
-     * Extracts a version from the UA string given a token.
-     * Tokens are matched against regex patterns in the static $rx array.
-     * If a match is found, the matched version is returned.
-     * Otherwise, an empty string is returned.
-     *
-     * @param string $token The token to search for in the UA string.
-     * @return string The extracted version or an empty string if no match is found.
-     */
-    private function extractVersion(string $token): string
-    {
-        static $rx = [
-            'crios' => '/crios\/([\d.]+)/i',
-            'fxios' => '/fxios\/([\d.]+)/i',
-            'edg' => '/edg[e|a]?[ /]([\d.]+)/i',
-            'opr' => '/(?:opr|opera)[ /]([\d.]+)/i',
-            'vivaldi' => '/vivaldi[ /]([\d.]+)/i',
-            'brave' => '/brave\/([\d.]+)/i',
-            'samsungbrowser' => '/samsungbrowser\/([\d.]+)/i',
-            'yabrowser' => '/yabrowser\/([\d.]+)/i',
-            'firefox' => '/firefox\/([\d.]+)/i',
-            'chrome' => '/chrome\/([\d.]+)/i',
-            'safari' => '/version\/([\d.]+)/i',
-            'msie' => '/msie ([\d.]+)/i',
-            'trident/7' => '/rv:([\d.]+)/i',
-        ];
-        return isset($rx[$token]) && preg_match($rx[$token], $this->ua, $m)
-            ? $m[1]
-            : '';
-    }
-
-
-    /**
      * Detects the client's platform (OS, browser, etc.) and
      * returns a human-readable string.
      *
@@ -229,43 +266,5 @@ final class UAParser
             }
         }
         return 'Unknown';
-    }
-
-
-    /**
-     * Maps a browser to its rendering engine.
-     *
-     * @param string $browser Browser name (case-insensitive)
-     * @return string Engine name (case-sensitive)
-     * @example
-     * <code>
-     * $ua = new UAParser('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36');
-     * $engine = $ua->engine($ua->browser());
-     * var_dump($engine); // Blink
-     * </code>
-     */
-    private function engine(string $browser): string
-    {
-        if (in_array($browser, ['Chrome', 'Edge', 'Brave', 'Vivaldi', 'Yandex Browser', 'Samsung Internet'], true)) {
-            return 'Blink';
-        }
-        return match (true) {
-            str_contains($this->uaLower, 'trident') => 'Trident',
-            str_contains($this->uaLower, 'gecko') && str_contains($this->uaLower, 'firefox') => 'Gecko',
-            str_contains($this->uaLower, 'applewebkit') => 'WebKit',
-            str_contains($this->uaLower, 'presto') => 'Presto',
-            default => 'Unknown',
-        };
-    }
-
-
-    /**
-     * Returns the User-Agent header of the current request.
-     *
-     * @return string the User-Agent header value
-     */
-    public function getUserAgent(): string
-    {
-        return $this->ua;
     }
 }

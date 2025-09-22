@@ -14,14 +14,14 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Support;
 
-use Psr\Log\LoggerInterface;
-use Psr\Log\NullLogger;
 use Infocyph\Webrick\Response\Response;
-use Infocyph\Webrick\Router\Route\Collection;
 use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Kernel\RouterKernel;
 use Infocyph\Webrick\Router\Matching\FusedMatcher;
 use Infocyph\Webrick\Router\Matching\ShardedMatcher;
+use Infocyph\Webrick\Router\Route\Collection;
+use Psr\Log\LoggerInterface;
+use Psr\Log\NullLogger;
 
 /**
  * Utility for managing the router cache for Webrick.

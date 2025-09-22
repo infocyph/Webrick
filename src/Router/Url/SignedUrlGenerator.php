@@ -27,18 +27,17 @@ use InvalidArgumentException;
 class SignedUrlGenerator extends UrlGenerator
 {
     /**
-     * Query parameter name used to carry the URL signature.
-     *
-     * @var string
-     */
-    public const string SIG_PARAM = '_sig';
-
-    /**
      * Query parameter name used to carry the expiry timestamp (UNIX epoch).
      *
      * @var string
      */
     public const string EXPIRES_PARAM = '_exp';
+    /**
+     * Query parameter name used to carry the URL signature.
+     *
+     * @var string
+     */
+    public const string SIG_PARAM = '_sig';
 
     /**
      * Create a signed URL generator.

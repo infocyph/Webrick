@@ -12,6 +12,25 @@ namespace Infocyph\Webrick\Response\Headers;
 final class Language
 {
     /**
+     * Build the Content-Language and Vary headers for the chosen language.
+     *
+     * Returns an array of header tuples suitable for appending to a response:
+     * [
+     *   ['Content-Language', $chosen],
+     *   ['Vary', 'Accept-Language'],
+     * ]
+     *
+     * @param string $chosen The selected language tag (result of negotiate()).
+     * @return array<int, array{string,string}> Array of header name/value pairs.
+     */
+    public static function headers(string $chosen): array
+    {
+        return [
+            ['Content-Language', $chosen],
+            ['Vary', 'Accept-Language'],
+        ];
+    }
+    /**
      * Determine the best matching language from an Accept-Language header.
      *
      * Behaviour:
@@ -59,25 +78,5 @@ final class Language
             }
         }
         return $supported[0];                              // nothing matched – fallback
-    }
-
-    /**
-     * Build the Content-Language and Vary headers for the chosen language.
-     *
-     * Returns an array of header tuples suitable for appending to a response:
-     * [
-     *   ['Content-Language', $chosen],
-     *   ['Vary', 'Accept-Language'],
-     * ]
-     *
-     * @param string $chosen The selected language tag (result of negotiate()).
-     * @return array<int, array{string,string}> Array of header name/value pairs.
-     */
-    public static function headers(string $chosen): array
-    {
-        return [
-            ['Content-Language', $chosen],
-            ['Vary', 'Accept-Language'],
-        ];
     }
 }

@@ -18,8 +18,8 @@ namespace Infocyph\Webrick\Middleware;
 use Closure;
 use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Request\Request;
-use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Response\Headers\SecurityHeaders;
+use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Definition\Attribute\Cors;
 
 /**
@@ -212,95 +212,6 @@ final readonly class CorsAndPoliciesMiddleware
         return $r;
     }
 
-    /**
-     * Decide whether to reflect a concrete origin or use '*'.
-     * Returns [acao|null, wildcardUsed].
-     *
-     * @param string $origin   Origin header value.
-     * @param array<int,string> $allowed Allowed origins.
-     * @param bool   $withCreds Whether credentials are allowed.
-     *
-     * @return array{0:?string,1:bool} Tuple of [ACAO value or null, wildcard used].
-     */
-    private function resolveAllowedOrigin(string $origin, array $allowed, bool $withCreds): array
-    {
-        $origin = trim($origin);
-        if ($origin === '') {
-            return [null, false];
-        }
-
-        $allowAny = ($allowed === ['*']);
-        if ($allowAny) {
-            // With credentials, '*' is illegal ⇒ reflect the Origin
-            if ($withCreds) {
-                return [$origin, false];
-            }
-            return [null, true]; // wildcard ok (no creds)
-        }
-
-        if (in_array($origin, $allowed, true)) {
-            return [$origin, false];
-        }
-
-        return [null, false]; // not allowed
-    }
-
-    /**
-     * Check whether a requested method is allowed by the policy.
-     *
-     * @param string $method   Requested method.
-     * @param string $csvList  CSV list of allowed methods.
-     *
-     * @return bool True if allowed.
-     */
-    private function methodAllowed(string $method, string $csvList): bool
-    {
-        $list = array_map('trim', explode(',', $csvList));
-        return in_array($method, $list, true);
-    }
-
-    /**
-     * Normalize a string|array header configuration to a CSV string.
-     *
-     * @param string|array<int,string> $v
-     *
-     * @return string CSV value.
-     */
-    private function csv(string|array $v): string
-    {
-        if (is_string($v)) {
-            return trim($v);
-        }
-        $v = array_values(array_filter(array_map(static fn ($s) => trim((string)$s), $v), fn ($s) => $s !== ''));
-        return implode(', ', array_unique($v));
-    }
-
-    /**
-     * Whether a header configuration represents a wildcard.
-     *
-     * @param string|array<int,string> $v
-     *
-     * @return bool True when '*' wildcard is configured.
-     */
-    private function isWildcard(string|array $v): bool
-    {
-        return is_string($v) ? trim($v) === '*' : ($v === ['*']);
-    }
-
-    /**
-     * Set a header only if absent.
-     *
-     * @param Response $r
-     * @param string   $name
-     * @param string   $value
-     *
-     * @return Response Response with header ensured.
-     */
-    private function setIfAbsent(Response $r, string $name, string $value): Response
-    {
-        return $r->hasHeader($name) ? $r : $r->withSmartHeader($name, $value);
-    }
-
     /* ───────────────────── Policies (no NEL here) ─────────────────── */
 
     /**
@@ -336,5 +247,94 @@ final readonly class CorsAndPoliciesMiddleware
         }
 
         return $r;
+    }
+
+    /**
+     * Normalize a string|array header configuration to a CSV string.
+     *
+     * @param string|array<int,string> $v
+     *
+     * @return string CSV value.
+     */
+    private function csv(string|array $v): string
+    {
+        if (is_string($v)) {
+            return trim($v);
+        }
+        $v = array_values(array_filter(array_map(static fn ($s) => trim((string)$s), $v), fn ($s) => $s !== ''));
+        return implode(', ', array_unique($v));
+    }
+
+    /**
+     * Whether a header configuration represents a wildcard.
+     *
+     * @param string|array<int,string> $v
+     *
+     * @return bool True when '*' wildcard is configured.
+     */
+    private function isWildcard(string|array $v): bool
+    {
+        return is_string($v) ? trim($v) === '*' : ($v === ['*']);
+    }
+
+    /**
+     * Check whether a requested method is allowed by the policy.
+     *
+     * @param string $method   Requested method.
+     * @param string $csvList  CSV list of allowed methods.
+     *
+     * @return bool True if allowed.
+     */
+    private function methodAllowed(string $method, string $csvList): bool
+    {
+        $list = array_map('trim', explode(',', $csvList));
+        return in_array($method, $list, true);
+    }
+
+    /**
+     * Decide whether to reflect a concrete origin or use '*'.
+     * Returns [acao|null, wildcardUsed].
+     *
+     * @param string $origin   Origin header value.
+     * @param array<int,string> $allowed Allowed origins.
+     * @param bool   $withCreds Whether credentials are allowed.
+     *
+     * @return array{0:?string,1:bool} Tuple of [ACAO value or null, wildcard used].
+     */
+    private function resolveAllowedOrigin(string $origin, array $allowed, bool $withCreds): array
+    {
+        $origin = trim($origin);
+        if ($origin === '') {
+            return [null, false];
+        }
+
+        $allowAny = ($allowed === ['*']);
+        if ($allowAny) {
+            // With credentials, '*' is illegal ⇒ reflect the Origin
+            if ($withCreds) {
+                return [$origin, false];
+            }
+            return [null, true]; // wildcard ok (no creds)
+        }
+
+        if (in_array($origin, $allowed, true)) {
+            return [$origin, false];
+        }
+
+        return [null, false]; // not allowed
+    }
+
+    /**
+     * Set a header only if absent.
+     *
+     * @param Response $r
+     * @param string   $name
+     * @param string   $value
+     *
+     * @return Response Response with header ensured.
+     */
+    private function setIfAbsent(Response $r, string $name, string $value): Response
+    {
+        return $r->hasHeader($name) ? $r : $r->withSmartHeader($name, $value);
     }
 }

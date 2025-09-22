@@ -25,7 +25,7 @@ final class AutoEmitter implements EmitterInterface
         $this->chosen ??= $this->pick($request);
         $this->chosen->emit($response, $request);
     }
-    
+
     /**
      * Choose the best emitter based on the current environment.
      *

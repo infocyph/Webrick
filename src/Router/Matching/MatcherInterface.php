@@ -37,19 +37,14 @@ interface MatcherInterface
     public function add(CompiledRoute $route): void;
 
     /**
-     * Resolve a request method + host + path to a compiled route and variables.
+     * Whether the matcher can boot directly from an existing cache artifact.
      *
-     * @param non-empty-string $method Upper-cased HTTP verb (e.g. "GET").
-     * @param non-empty-string $host   Lower-cased host without port (ASCII).
-     * @param non-empty-string $path   Absolute request path beginning with '/'.
+     * The RouterKernel uses this to decide whether to attempt a cache-based
+     * warm-up or to re-run the registrar to build compiled routes.
      *
-     * @return array{0:CompiledRoute,1:array<string,string>} Tuple of matched
-     *         CompiledRoute and a map of extracted path variables.
-     *
-     * @throws RouteNotFoundException    When no route matches the path/host.
-     * @throws MethodNotAllowedException When a matching path exists but the HTTP verb is not allowed.
+     * @return bool True when a valid cache exists and the matcher can load it.
      */
-    public function match(string $method, string $host, string $path): array;
+    public function canBootFromCache(): bool;
 
     /**
      * Enable persistent caching for the matcher.
@@ -64,16 +59,6 @@ interface MatcherInterface
     public function enableCache(string $cacheLocation): self;
 
     /**
-     * Whether the matcher can boot directly from an existing cache artifact.
-     *
-     * The RouterKernel uses this to decide whether to attempt a cache-based
-     * warm-up or to re-run the registrar to build compiled routes.
-     *
-     * @return bool True when a valid cache exists and the matcher can load it.
-     */
-    public function canBootFromCache(): bool;
-
-    /**
      * Finalize the matcher after all routes have been added.
      *
      * Implementations may perform optimization, serialization or integrity
@@ -83,4 +68,19 @@ interface MatcherInterface
      * @return void
      */
     public function finalize(): void;
+
+    /**
+     * Resolve a request method + host + path to a compiled route and variables.
+     *
+     * @param non-empty-string $method Upper-cased HTTP verb (e.g. "GET").
+     * @param non-empty-string $host   Lower-cased host without port (ASCII).
+     * @param non-empty-string $path   Absolute request path beginning with '/'.
+     *
+     * @return array{0:CompiledRoute,1:array<string,string>} Tuple of matched
+     *         CompiledRoute and a map of extracted path variables.
+     *
+     * @throws RouteNotFoundException    When no route matches the path/host.
+     * @throws MethodNotAllowedException When a matching path exists but the HTTP verb is not allowed.
+     */
+    public function match(string $method, string $host, string $path): array;
 }

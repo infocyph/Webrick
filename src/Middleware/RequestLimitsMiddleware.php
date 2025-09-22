@@ -124,6 +124,32 @@ final readonly class RequestLimitsMiddleware
         return $next($req);
     }
 
+    /**
+     * Convert a php.ini size string (e.g., "8M", "1G") to bytes.
+     *
+     * @param string|false $val Value returned by ini_get().
+     *
+     * @return int Byte count (0 for empty/false).
+     */
+    private static function phpIniBytes(string|false $val): int
+    {
+        if ($val === false) {
+            return 0;
+        }
+        $val = \trim($val);
+        if ($val === '') {
+            return 0;
+        }
+        $unit = \strtolower(substr($val, -1));
+        $num = (int)$val;
+        return match ($unit) {
+            'g' => $num * 1024 * 1024 * 1024,
+            'm' => $num * 1024 * 1024,
+            'k' => $num * 1024,
+            default => (int)$val,
+        };
+    }
+
     /* ───────────────────────── helpers ─────────────────────────── */
 
     /**
@@ -194,32 +220,6 @@ final readonly class RequestLimitsMiddleware
             $count += \count($values);
         }
         return $count;
-    }
-
-    /**
-     * Convert a php.ini size string (e.g., "8M", "1G") to bytes.
-     *
-     * @param string|false $val Value returned by ini_get().
-     *
-     * @return int Byte count (0 for empty/false).
-     */
-    private static function phpIniBytes(string|false $val): int
-    {
-        if ($val === false) {
-            return 0;
-        }
-        $val = \trim($val);
-        if ($val === '') {
-            return 0;
-        }
-        $unit = \strtolower(substr($val, -1));
-        $num = (int)$val;
-        return match ($unit) {
-            'g' => $num * 1024 * 1024 * 1024,
-            'm' => $num * 1024 * 1024,
-            'k' => $num * 1024,
-            default => (int)$val,
-        };
     }
 
     /**
