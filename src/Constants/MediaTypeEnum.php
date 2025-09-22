@@ -105,20 +105,6 @@ enum MediaTypeEnum: string
     }
 
     /**
-     * Determine whether the media type is textual.
-     *
-     * A type is considered textual when it starts with "text/" or equals JSON/XML.
-     *
-     * @return bool True if textual; false otherwise.
-     */
-    public function isTextual(): bool
-    {
-        return str_starts_with($this->value, 'text/')
-            || $this === self::JSON
-            || $this === self::XML;
-    }
-
-    /**
      * Extract the character set from the media type header value.
      *
      * Example:
@@ -139,5 +125,19 @@ enum MediaTypeEnum: string
     public function header(): string
     {
         return $this->value;
+    }
+
+    /**
+     * Determine whether the media type is textual.
+     *
+     * A type is considered textual when it starts with "text/" or equals JSON/XML.
+     *
+     * @return bool True if textual; false otherwise.
+     */
+    public function isTextual(): bool
+    {
+        return str_starts_with($this->value, 'text/')
+            || $this === self::JSON
+            || $this === self::XML;
     }
 }

@@ -95,118 +95,30 @@ enum StatusEnum: int
     case NETWORK_AUTH_REQUIRED = 511;
 
     /**
-     * Get the human-readable reason phrase for this status code.
+     * Check if the given status code is "empty" (no body).
      *
-     * Falls back to a derived phrase from the enum name when not explicitly listed.
+     * If not recognized, checks whether it lies in the 1xx range.
      *
-     * @return string Reason phrase for the status code (empty string if unknown).
-     */
-    public function reason(): string
-    {
-        /* ① Irregular spellings we can’t derive automatically */
-        static $irregular = [
-            self::MULTI_STATUS->value => 'Multi-Status',
-            self::NON_AUTHORITATIVE_INFO->value => 'Non-Authoritative Information',
-            self::IM_A_TEAPOT->value => "I'm a teapot",
-            self::NETWORK_AUTH_REQUIRED->value => 'Network Authentication Required',
-        ];
-
-        /* ② Per-worker memoisation for the regular cases */
-        static $cache = [];         // int code → string phrase
-
-        $code = $this->value;
-
-        // Fast-path hits: irregular table or memo cache
-        if (isset($irregular[$code])) {
-            return $irregular[$code];
-        }
-        if (isset($cache[$code])) {
-            return $cache[$code];
-        }
-
-        /* ③ First time we see this code → derive & memoise */
-        return $cache[$code] = ucwords(
-            strtolower(str_replace('_', ' ', $this->name)),
-        );
-    }
-
-    /**
-     * Return the status code series (1xx, 2xx, 3xx, etc.) as an integer.
-     *
-     * @return int Series of the status code (e.g., 2 for 2xx).
-     */
-    public function series(): int
-    {
-        return intdiv($this->value, 100);
-    }
-
-    /**
-     * Check if the status code is informational (100–199).
-     *
-     * @return bool True for informational; false otherwise.
-     */
-    public function isInformational(): bool
-    {
-        return $this->series() === 1;
-    }
-
-    /**
-     * Check if the status code is success (200–299).
-     *
-     * @return bool True for success; false otherwise.
-     */
-    public function isSuccess(): bool
-    {
-        return $this->series() === 2;
-    }
-
-    /**
-     * Check if the status code is redirect (300–399).
-     *
-     * @return bool True for redirects; false otherwise.
-     */
-    public function isRedirect(): bool
-    {
-        return $this->series() === 3;
-    }
-
-    /**
-     * Check if the status code is client error (400–499).
-     *
-     * @return bool True for client errors; false otherwise.
-     */
-    public function isClientError(): bool
-    {
-        return $this->series() === 4;
-    }
-
-    /**
-     * Check if the status code is server error (500–599).
-     *
-     * @return bool True for server errors; false otherwise.
-     */
-    public function isServerError(): bool
-    {
-        return $this->series() === 5;
-    }
-
-    /**
-     * Check if the response is considered "empty" (no body).
-     *
-     * Empty responses include:
-     * - 1xx (except 101 Switching Protocols)
-     * - 204 No Content
-     * - 205 Reset Content
-     * - 304 Not Modified
+     * @param int $code HTTP status code to check.
      *
      * @return bool True if empty; false otherwise.
      */
-    public function isEmpty(): bool
+    public static function isEmptyCode(int $code): bool
     {
-        return ($this->isInformational() && $this !== self::SWITCHING_PROTOCOLS)
-            || $this === self::NO_CONTENT
-            || $this === self::RESET_CONTENT
-            || $this === self::NOT_MODIFIED;
+        return self::tryFrom($code)?->isEmpty()
+            ?? ($code >= 100 && $code < 200);
+    }
+
+    /**
+     * Get the reason phrase for the given status code.
+     *
+     * @param int $code HTTP status code.
+     *
+     * @return string Reason phrase (empty string if unknown).
+     */
+    public static function text(int $code): string
+    {
+        return self::tryFrom($code)?->reason() ?? '';
     }
 
     /**
@@ -259,6 +171,75 @@ enum StatusEnum: int
     }
 
     /**
+     * Check if the status code is client error (400–499).
+     *
+     * @return bool True for client errors; false otherwise.
+     */
+    public function isClientError(): bool
+    {
+        return $this->series() === 4;
+    }
+
+    /**
+     * Check if the response is considered "empty" (no body).
+     *
+     * Empty responses include:
+     * - 1xx (except 101 Switching Protocols)
+     * - 204 No Content
+     * - 205 Reset Content
+     * - 304 Not Modified
+     *
+     * @return bool True if empty; false otherwise.
+     */
+    public function isEmpty(): bool
+    {
+        return ($this->isInformational() && $this !== self::SWITCHING_PROTOCOLS)
+            || $this === self::NO_CONTENT
+            || $this === self::RESET_CONTENT
+            || $this === self::NOT_MODIFIED;
+    }
+
+    /**
+     * Check if the status code is informational (100–199).
+     *
+     * @return bool True for informational; false otherwise.
+     */
+    public function isInformational(): bool
+    {
+        return $this->series() === 1;
+    }
+
+    /**
+     * Check if the status code is redirect (300–399).
+     *
+     * @return bool True for redirects; false otherwise.
+     */
+    public function isRedirect(): bool
+    {
+        return $this->series() === 3;
+    }
+
+    /**
+     * Check if the status code is server error (500–599).
+     *
+     * @return bool True for server errors; false otherwise.
+     */
+    public function isServerError(): bool
+    {
+        return $this->series() === 5;
+    }
+
+    /**
+     * Check if the status code is success (200–299).
+     *
+     * @return bool True for success; false otherwise.
+     */
+    public function isSuccess(): bool
+    {
+        return $this->series() === 2;
+    }
+
+    /**
      * Whether a Location header is expected (201 Created or any 3xx).
      *
      * @return bool True if Location should be included; false otherwise.
@@ -269,29 +250,48 @@ enum StatusEnum: int
     }
 
     /**
-     * Get the reason phrase for the given status code.
+     * Get the human-readable reason phrase for this status code.
      *
-     * @param int $code HTTP status code.
+     * Falls back to a derived phrase from the enum name when not explicitly listed.
      *
-     * @return string Reason phrase (empty string if unknown).
+     * @return string Reason phrase for the status code (empty string if unknown).
      */
-    public static function text(int $code): string
+    public function reason(): string
     {
-        return self::tryFrom($code)?->reason() ?? '';
+        /* ① Irregular spellings we can’t derive automatically */
+        static $irregular = [
+            self::MULTI_STATUS->value => 'Multi-Status',
+            self::NON_AUTHORITATIVE_INFO->value => 'Non-Authoritative Information',
+            self::IM_A_TEAPOT->value => "I'm a teapot",
+            self::NETWORK_AUTH_REQUIRED->value => 'Network Authentication Required',
+        ];
+
+        /* ② Per-worker memoisation for the regular cases */
+        static $cache = [];         // int code → string phrase
+
+        $code = $this->value;
+
+        // Fast-path hits: irregular table or memo cache
+        if (isset($irregular[$code])) {
+            return $irregular[$code];
+        }
+        if (isset($cache[$code])) {
+            return $cache[$code];
+        }
+
+        /* ③ First time we see this code → derive & memoise */
+        return $cache[$code] = ucwords(
+            strtolower(str_replace('_', ' ', $this->name)),
+        );
     }
 
     /**
-     * Check if the given status code is "empty" (no body).
+     * Return the status code series (1xx, 2xx, 3xx, etc.) as an integer.
      *
-     * If not recognized, checks whether it lies in the 1xx range.
-     *
-     * @param int $code HTTP status code to check.
-     *
-     * @return bool True if empty; false otherwise.
+     * @return int Series of the status code (e.g., 2 for 2xx).
      */
-    public static function isEmptyCode(int $code): bool
+    public function series(): int
     {
-        return self::tryFrom($code)?->isEmpty()
-            ?? ($code >= 100 && $code < 200);
+        return intdiv($this->value, 100);
     }
 }

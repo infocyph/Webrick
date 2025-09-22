@@ -55,23 +55,60 @@ enum HttpMethodEnum: string
     case UNLINK = 'UNLINK';
 
     /**
-     * Determine if the HTTP method is safe (read-only).
+     * Get all supported HTTP methods.
      *
-     * Safe methods are intended only for retrieval and must not have side effects.
+     * The list is cached statically for repeated calls.
      *
-     * @return bool True if the method is safe; false otherwise.
-     *
-     * @see https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/GET
-     * @see https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/HEAD
-     * @see https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/OPTIONS
-     * @see https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/TRACE
+     * @return array<int,self> Ordered list of all enum cases.
      */
-    public function isSafe(): bool
+    public static function all(): array
     {
-        return match ($this) {
-            self::GET, self::HEAD, self::OPTIONS, self::TRACE => true,
-            default => false,
-        };
+        static $cache = null;
+        return $cache ??= array_values(self::cases());
+    }
+
+    /**
+     * Case-insensitive resolution of an HTTP method from a string or exception on failure.
+     *
+     * Equivalent to {@see self::tryFromString()} but throws on unsupported input.
+     *
+     * @param string $verb The HTTP method to resolve.
+     *
+     * @return self The resolved HTTP method.
+     *
+     * @throws \InvalidArgumentException If the method is not supported.
+     */
+    public static function fromString(string $verb): self
+    {
+        return self::tryFromString($verb)
+            ?? throw new \InvalidArgumentException("Unsupported method: {$verb}");
+    }
+
+    /**
+     * Case-insensitive attempt to resolve an HTTP method from a string.
+     *
+     * Equivalent to {@see self::tryFrom()} after normalizing to upper-case.
+     *
+     * @param string $verb The HTTP method to resolve.
+     *
+     * @return self|null The resolved HTTP method, or null if not supported.
+     */
+    public static function tryFromString(string $verb): ?self
+    {
+        return self::tryFrom(strtoupper($verb));
+    }
+
+    /**
+     * Determine if the HTTP method allows a request body (per common practice).
+     *
+     * Note: This reflects widely implemented behavior and interoperability concerns,
+     * not strictly the RFC’s allowance for a message body on any request.
+     *
+     * @return bool True if the method commonly allows a request body; false otherwise.
+     */
+    public function allowsBody(): bool
+    {
+        return !in_array($this, [self::TRACE, self::HEAD, self::DELETE, self::CONNECT], true);
     }
 
     /**
@@ -93,16 +130,23 @@ enum HttpMethodEnum: string
     }
 
     /**
-     * Determine if the HTTP method allows a request body (per common practice).
+     * Determine if the HTTP method is safe (read-only).
      *
-     * Note: This reflects widely implemented behavior and interoperability concerns,
-     * not strictly the RFC’s allowance for a message body on any request.
+     * Safe methods are intended only for retrieval and must not have side effects.
      *
-     * @return bool True if the method commonly allows a request body; false otherwise.
+     * @return bool True if the method is safe; false otherwise.
+     *
+     * @see https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/GET
+     * @see https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/HEAD
+     * @see https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/OPTIONS
+     * @see https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/TRACE
      */
-    public function allowsBody(): bool
+    public function isSafe(): bool
     {
-        return !in_array($this, [self::TRACE, self::HEAD, self::DELETE, self::CONNECT], true);
+        return match ($this) {
+            self::GET, self::HEAD, self::OPTIONS, self::TRACE => true,
+            default => false,
+        };
     }
 
     /**
@@ -117,49 +161,5 @@ enum HttpMethodEnum: string
     public function specAllowsBody(): bool
     {
         return $this !== self::TRACE; // RFC 9110
-    }
-
-    /**
-     * Case-insensitive attempt to resolve an HTTP method from a string.
-     *
-     * Equivalent to {@see self::tryFrom()} after normalizing to upper-case.
-     *
-     * @param string $verb The HTTP method to resolve.
-     *
-     * @return self|null The resolved HTTP method, or null if not supported.
-     */
-    public static function tryFromString(string $verb): ?self
-    {
-        return self::tryFrom(strtoupper($verb));
-    }
-
-    /**
-     * Case-insensitive resolution of an HTTP method from a string or exception on failure.
-     *
-     * Equivalent to {@see self::tryFromString()} but throws on unsupported input.
-     *
-     * @param string $verb The HTTP method to resolve.
-     *
-     * @return self The resolved HTTP method.
-     *
-     * @throws \InvalidArgumentException If the method is not supported.
-     */
-    public static function fromString(string $verb): self
-    {
-        return self::tryFromString($verb)
-            ?? throw new \InvalidArgumentException("Unsupported method: {$verb}");
-    }
-
-    /**
-     * Get all supported HTTP methods.
-     *
-     * The list is cached statically for repeated calls.
-     *
-     * @return array<int,self> Ordered list of all enum cases.
-     */
-    public static function all(): array
-    {
-        static $cache = null;
-        return $cache ??= array_values(self::cases());
     }
 }
