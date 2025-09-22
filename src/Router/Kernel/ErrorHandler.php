@@ -9,7 +9,7 @@ use Throwable;
 use Psr\Log\LoggerInterface;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
-use Infocyph\Webrick\Constants\Status;
+use Infocyph\Webrick\Constants\StatusEnum;
 
 /**
  * Kernel error boundary
@@ -112,7 +112,7 @@ final class ErrorHandler
      */
     private function render(Request $req, Throwable $e, int $status): Response
     {
-        $statusEnum = Status::tryFrom($status) ?? Status::INTERNAL_SERVER_ERROR;
+        $statusEnum = StatusEnum::tryFrom($status) ?? StatusEnum::INTERNAL_SERVER_ERROR;
         $reason = $statusEnum->reason();
 
         $wanted = (string)$req->getAttribute('negotiated.type');
@@ -132,7 +132,7 @@ final class ErrorHandler
             $headers[$this->requestIdHeader] = $rid;
         }
 
-        if ($status === Status::METHOD_NOT_ALLOWED->value) {
+        if ($status === StatusEnum::METHOD_NOT_ALLOWED->value) {
             if ($allow = $this->extractAllow($e)) {
                 $headers['Allow'] = $allow;
             }
@@ -369,7 +369,7 @@ final class ErrorHandler
         }
 
         $code = (int)$e->getCode();
-        return $this->isHttp($code) ? $code : Status::INTERNAL_SERVER_ERROR->value;
+        return $this->isHttp($code) ? $code : StatusEnum::INTERNAL_SERVER_ERROR->value;
     }
 
     /**
@@ -450,8 +450,8 @@ final class ErrorHandler
 
         $level = match (true) {
             $status >= 500 => 'error',
-            $status === Status::NOT_FOUND->value
-            || $status === Status::METHOD_NOT_ALLOWED->value => 'notice',
+            $status === StatusEnum::NOT_FOUND->value
+            || $status === StatusEnum::METHOD_NOT_ALLOWED->value => 'notice',
             default => 'warning',
         };
 
@@ -459,7 +459,7 @@ final class ErrorHandler
             sprintf('[http:%d] %s: %s', $status, $e::class, $e->getMessage()),
             [
                 'status' => $status,
-                'series' => Status::tryFrom($status)?->series(),
+                'series' => StatusEnum::tryFrom($status)?->series(),
                 'method' => strtoupper($req->getMethod()),
                 'path' => (string)$req->getUri()->getPath(),
                 'request_id' => $req->getAttribute('request_id') ?: null,

@@ -2,7 +2,7 @@
 
 namespace Infocyph\Webrick\Request\Psr7;
 
-use Infocyph\Webrick\Constants\Status;
+use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Request\Core\UploadedFile;
 use Infocyph\Webrick\Request\Core\Uri;
@@ -96,7 +96,7 @@ final class HttpFactory
      */
     public function createResponse(int $code = 200, string $reasonPhrase = ''): Response
     {
-        if ($reasonPhrase === '' && ($st = Status::tryFrom($code))) {
+        if ($reasonPhrase === '' && ($st = StatusEnum::tryFrom($code))) {
             $reasonPhrase = $st->reason();
         }
         return new Response($code, new Stream(), [], '1.1', $reasonPhrase);

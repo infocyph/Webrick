@@ -21,7 +21,7 @@ namespace Infocyph\Webrick\Constants;
  * - CDN/cache methods (PURGE, BAN)
  * - WebDAV methods (PROPFIND, MKCOL, etc.)
  */
-enum HttpMethod: string
+enum HttpMethodEnum: string
 {
     /* core */
     case GET = 'GET';

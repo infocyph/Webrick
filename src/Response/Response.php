@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Response;
 
 use Infocyph\InterMix\Remix\MacroMix;
-use Infocyph\Webrick\Constants\Status;
+use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Interfaces\BodyStream;
-use Infocyph\Webrick\Constants\MediaType;
+use Infocyph\Webrick\Constants\MediaTypeEnum;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Request\Support\HeaderBag;
 use Infocyph\Webrick\Request\Core\Stream;
@@ -269,7 +269,7 @@ class Response
      */
     public static function redirect(string $uri, int $status = 302): self
     {
-        $s = Status::tryFrom($status);
+        $s = StatusEnum::tryFrom($status);
         if (!$s || !$s->isRedirect()) {
             throw new \InvalidArgumentException('Redirect status must be a 3xx code.');
         }
@@ -484,7 +484,7 @@ class Response
     ): self {
         $name ??= is_string($file) ? basename($file) : 'inline';
         $stream = $file instanceof Stream ? $file : self::openFileStream($file);
-        $mime ??= MediaType::fromFilename($name)->value;
+        $mime ??= MediaTypeEnum::fromFilename($name)->value;
 
         $defaults = [
             'Content-Type' => $mime,
@@ -629,7 +629,7 @@ class Response
      */
     private static function inferMime(string $name, ?string $explicit): string
     {
-        return $explicit ?? MediaType::fromFilename($name)->value;
+        return $explicit ?? MediaTypeEnum::fromFilename($name)->value;
     }
 
     /**
@@ -926,7 +926,7 @@ class Response
      */
     private static function statusText(int $code): string
     {
-        return Status::text($code) ?? '';
+        return StatusEnum::text($code) ?? '';
     }
 
     /**

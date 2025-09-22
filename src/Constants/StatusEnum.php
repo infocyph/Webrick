@@ -19,7 +19,7 @@ namespace Infocyph\Webrick\Constants;
 /**
  * HTTP status codes as int-backed enum with convenience helpers.
  */
-enum Status: int
+enum StatusEnum: int
 {
     /* 1xx */
     case CONTINUE = 100;

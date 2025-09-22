@@ -20,7 +20,7 @@ namespace Infocyph\Webrick\Constants;
  * Includes commonly used textual, image, and application types. Utility methods
  * support resolution by extension/filename, textual checks, and header formatting.
  */
-enum MediaType: string
+enum MediaTypeEnum: string
 {
     /* ------------ canonical cases ------------ */
     // generic
