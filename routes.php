@@ -49,6 +49,13 @@ Route::get('/', function (): HtmlResponse {
         '/auto-hello'        => 'Auto Hello',
         '/xml-demo'          => 'XML Demo',
 
+        // Attribute-based demo (registered via AttributeRouteLoader)
+        '/attr/hello/Alice'  => 'Attribute routes: AttrDemoController::hello',
+
+        // Encrypted cookie demo
+        '/cookie/set'        => 'Set encrypted cookie',
+        '/cookie/read'       => 'Read encrypted cookie',
+
         // Group demo links (prefix-based, same host)
         '/blog'              => 'Group: blog.index',
         '/blog/hello-world'  => 'Group: blog.show (slug)',
@@ -158,6 +165,24 @@ Route::get('/secure/{id:int}', function (Request $r, $id) {
 
 Route::get('/auto-demo', fn (Request $r) => Response::auto($r, ['now' => time(), 'msg' => 'hello']));
 Route::get('/auto-hello', fn (Request $r) => Response::auto($r, 'Hello world!'));
+
+// Set an encrypted cookie (middleware will encrypt the value transparently)
+Route::get('/cookie/set', function (): Response {
+    $resp = Response::json(['ok' => true, 'note' => 'cookie set (encrypted)']);
+    // If Response has a helper, prefer it; fallback shown below:
+    $cookie = rawurlencode('demo') . '=' . rawurlencode('secret-value')
+        . '; Path=/; HttpOnly; SameSite=Lax';
+    return $resp->withAddedHeader('Set-Cookie', $cookie);
+});
+
+// Read it back (middleware should have decrypted into Request cookies)
+Route::get('/cookie/read', function (Request $r): Response {
+    return Response::json([
+        'cookie_raw'   => $r->getCookieParams(), // decrypted bag
+        'cookie_demo'  => $r->cookie('demo'),
+    ]);
+});
+
 
 /* ------------------------------------------------------------------
  * GROUP EXAMPLES

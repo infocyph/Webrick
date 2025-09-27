@@ -22,6 +22,7 @@ use Infocyph\Webrick\Router\Matching\ShardedMatcher;
 use Infocyph\Webrick\Router\Route\Collection;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
+use Infocyph\Webrick\Router\Definition\Attribute\AttributeRouteLoader;
 
 /**
  * Utility for managing the router cache for Webrick.
@@ -53,6 +54,8 @@ final class RouteCache
      *  - bindUrlServices: callable(Collection $routes): void (optional; if null, a default binder is used)
      *  - logger: LoggerInterface (default NullLogger)
      *  - fallbackAliasesFromRegistrar: bool (default true)
+     *  - attributeDirs: array<string,string> (optional)  // ['App\\Http\\Controllers\\' => '/abs/dir', ...]
+     *  - attributeClasses: string[] (optional)           // ['App\\Foo\\BarController', ...]
      *
      * Returns the sentinel path that proves the cache is hot:
      *  - sharded: <cacheDir>/__root.php
@@ -84,18 +87,45 @@ final class RouteCache
             default => \str_ends_with($cachePath, '.php'),
         };
 
-        $register = $options['register'] ?? null;
-        if (!$register) {
-            $routesFile = (string)($options['routes'] ?? '');
-            if ($routesFile === '') {
-                throw new \InvalidArgumentException("RouteCache::build: provide 'register' callable or 'routes' file.");
-            }
-            $register = static function (Registrar $r) use ($routesFile): void {
-                require $routesFile;
-            };
-        } elseif (!$register instanceof \Closure && !\is_callable($register)) {
+        // ----- registration source -----
+        $userRegister = $options['register'] ?? null;
+        $routesFile = (string)($options['routes'] ?? '');
+
+        if ($userRegister && !$userRegister instanceof \Closure && !\is_callable($userRegister)) {
             throw new \InvalidArgumentException("RouteCache::build: 'register' must be callable.");
         }
+
+        if (!$userRegister && $routesFile === '') {
+            throw new \InvalidArgumentException("RouteCache::build: provide 'register' callable or 'routes' file.");
+        }
+
+        // Pick up attribute discovery options (optional)
+        /** @var array<string,string> $attributeDirs */
+        $attributeDirs = (array)($options['attributeDirs'] ?? []);
+        /** @var string[] $attributeClasses */
+        $attributeClasses = (array)($options['attributeClasses'] ?? []);
+
+        // Compose a single registrar callback that first runs user's routes,
+        // then registers attribute-based routes (dirs and explicit classes).
+        $register = static function (Registrar $r) use (
+            $userRegister,
+            $routesFile,
+            $attributeDirs,
+            $attributeClasses,
+        ): void {
+            if ($userRegister) {
+                ($userRegister)($r);
+            } else {
+                require $routesFile;
+            }
+
+            if ($attributeDirs) {
+                AttributeRouteLoader::registerFromDirs($r, $attributeDirs);
+            }
+            if ($attributeClasses) {
+                AttributeRouteLoader::register($r, $attributeClasses);
+            }
+        };
 
         $signKey = $options['signKey'] ?? null;
         $signedDefaultTtl = (int)($options['signedDefaultTtl'] ?? 900);

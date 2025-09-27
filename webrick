@@ -11,7 +11,6 @@ function out(string $msg): void
 {
     fwrite(STDOUT, $msg);
 }
-
 function err(string $msg): void
 {
     fwrite(STDERR, $msg);
@@ -29,56 +28,81 @@ $longOpts = [
     'ttl::',               // signedDefaultTtl (seconds)
     'alias-fallback::',    // 1|0 — derive aliases from registrar if cache lacks them
     'aggressive::',        // 1|0 — for route:clear (sharded)
+    'attr-dirs::',         // "Ns\\=dir,Other\\=dir2"
+    'attr-classes::',      // "App\\Foo,App\\Bar"
 ];
 
 $usage = <<<TXT
 Webrick CLI
 
 USAGE:
-  webrick route:cache [--matcher=sharded|fused] [--cache=PATH] [--routes=PATH] [--signkey=KEY] [--ttl=900] [--alias-fallback=1|0]
+  webrick route:cache [--matcher=sharded|fused] [--cache=PATH] [--routes=PATH] [--signkey=KEY] [--ttl=900] [--alias-fallback=1|0] [--attr-dirs="Ns\\\\=dir,..."] [--attr-classes="FQCN1,FQCN2"]
   webrick route:clear [--matcher=sharded|fused] [--cache=PATH] [--aggressive=1|0]
 
 NOTES:
 - route:clear keeps the cache directory by default (safe). Use --aggressive=1 to delete the folder.
 - Sharded matcher: --cache is a directory (e.g. ./.route-cache)
 - Fused matcher:   --cache is a file     (e.g. ./.route-cache/__routes.php)
+- Attribute discovery:
+    --attr-dirs     Comma-separated pairs Namespace\\=dir (repeat pairs with commas)
+    --attr-classes  Comma-separated FQCNs
 TXT;
 
-
 switch ($cmd) {
-    case 'route:cache':
-        {
-            $opts = getopt('', $longOpts);
+    case 'route:cache': {
+        $opts = getopt('', $longOpts);
 
-            $cache = $opts['cache'] ?? (__DIR__ . '/.route-cache');
-            $routes = $opts['routes'] ?? (__DIR__ . '/routes.php');
-            $matcher = $opts['matcher'] ?? null;
-            $signKey = $opts['signkey'] ?? null;
-            $ttl = (int)($opts['ttl'] ?? 900);
-            $alias = filter_var($opts['alias-fallback'] ?? '1', FILTER_VALIDATE_BOOL);
+        $cache  = $opts['cache'] ?? (__DIR__ . '/.route-cache');
+        $routes = $opts['routes'] ?? (__DIR__ . '/routes.php');
+        $matcher = $opts['matcher'] ?? null;
+        $signKey = $opts['signkey'] ?? null;
+        $ttl     = (int)($opts['ttl'] ?? 900);
+        $alias   = filter_var($opts['alias-fallback'] ?? '1', FILTER_VALIDATE_BOOL);
 
-            try {
-                $sentinel = RouteCache::build([
-                    'matcher' => $matcher,
-                    'cache' => $cache,
-                    'routes' => $routes,     // or pass 'register' in library usage
-                    'signKey' => $signKey,
-                    'signedDefaultTtl' => $ttl,
-                    'registrarOptions' => [
-                        'autoSlashRedirect' => false,
-                        'exposeUrlServices' => true,
-                    ],
-                    'fallbackAliasesFromRegistrar' => $alias,
-                ]);
-            } catch (\Throwable $e) {
-                err("✖ route:cache failed: {$e->getMessage()}\n");
-                exit(2);
+        // NEW: parse attribute directories
+        $attrDirsRaw = (string)($opts['attr-dirs'] ?? '');
+        $attributeDirs = [];
+        if ($attrDirsRaw !== '') {
+            foreach (array_filter(array_map('trim', explode(',', $attrDirsRaw))) as $pair) {
+                [$ns, $dir] = explode('=', $pair, 2) + [1 => ''];
+                $ns  = trim($ns);
+                $dir = trim($dir);
+                if ($ns !== '' && $dir !== '') {
+                    $attributeDirs[$ns] = $dir;
+                }
             }
-
-            $ok = is_file($sentinel);
-            out(($ok ? "✔" : "✖") . " Route cache ready at: {$sentinel}\n");
-            exit($ok ? 0 : 3);
         }
+
+        // NEW: parse attribute classes
+        $attrClassesRaw = (string)($opts['attr-classes'] ?? '');
+        $attributeClasses = array_values(array_filter(array_map('trim', explode(',', $attrClassesRaw))));
+
+        try {
+            $sentinel = RouteCache::build([
+                'matcher'  => $matcher,
+                'cache'    => $cache,
+                'routes'   => $routes,   // or pass 'register' in library usage
+                'signKey'  => $signKey,
+                'signedDefaultTtl' => $ttl,
+                'registrarOptions' => [
+                    'autoSlashRedirect' => false,
+                    'exposeUrlServices' => true,
+                ],
+                'fallbackAliasesFromRegistrar' => $alias,
+
+                // NEW: forward attribute discovery options
+                'attributeDirs'    => $attributeDirs,
+                'attributeClasses' => $attributeClasses,
+            ]);
+        } catch (\Throwable $e) {
+            err("✖ route:cache failed: {$e->getMessage()}\n");
+            exit(2);
+        }
+
+        $ok = is_file($sentinel);
+        out(($ok ? "✔" : "✖") . " Route cache ready at: {$sentinel}\n");
+        exit($ok ? 0 : 3);
+    }
 
     case 'route:clear': {
         $opts = getopt('', $longOpts);
