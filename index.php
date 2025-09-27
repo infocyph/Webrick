@@ -12,11 +12,11 @@ use Infocyph\Webrick\Middleware\CacheValidatorsMiddleware;
 use Infocyph\Webrick\Middleware\CompressionMiddleware;
 use Infocyph\Webrick\Middleware\CookieEncryptionMiddleware;
 use Infocyph\Webrick\Middleware\CorsAndPoliciesMiddleware;
-use Infocyph\Webrick\Middleware\NormalizeMethodMiddleware;
 use Infocyph\Webrick\Middleware\GatewayHardeningMiddleware;
 use Infocyph\Webrick\Middleware\InputSanitizerMiddleware;
 use Infocyph\Webrick\Middleware\MaintenanceModeMiddleware;
 use Infocyph\Webrick\Middleware\NegotiationMiddleware;
+use Infocyph\Webrick\Middleware\NormalizeMethodMiddleware;
 use Infocyph\Webrick\Middleware\RequestLimitsMiddleware;
 use Infocyph\Webrick\Middleware\ResponseCacheMiddleware;
 use Infocyph\Webrick\Middleware\ResponseLinterMiddleware;
@@ -132,7 +132,7 @@ $enable = [
 // throttle:<max>,<perSeconds>
 MiddlewareAliases::register(
     'throttle',
-    static fn(...$p) => new ThrottleMiddleware((int)($p[0] ?? 60), (int)($p[1] ?? 60)),
+    static fn (...$p) => new ThrottleMiddleware((int)($p[0] ?? 60), (int)($p[1] ?? 60)),
 );
 MiddlewareAliases::register('verifySignedUrl', static function () use ($signUrlSecret) {
     return new VerifySignedUrlMiddleware($signUrlSecret, 5);
