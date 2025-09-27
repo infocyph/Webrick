@@ -20,6 +20,7 @@ final class ContentDisposition
     {
         return self::build('attachment', $filename);
     }
+
     /**
      * Generates a Content-Disposition header value for inline display.
      *

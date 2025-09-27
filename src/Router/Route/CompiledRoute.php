@@ -81,18 +81,18 @@ final class CompiledRoute implements RouteInterface
      * The constructor is intentionally positional and used by fromRoute() and
      * by __set_state when rehydrating from cache blobs.
      *
-     * @param string                 $method     HTTP method (e.g. "GET")
-     * @param string                 $path       Original route path (absolute)
-     * @param callable|Closure|string|array $handler    Route handler descriptor
-     * @param string|null            $domain     Route domain or null (wildcard)
-     * @param array                  $middleware List of middleware descriptors
-     * @param string|null            $name       Route name or null
-     * @param bool                   $dynamic    True when route contains placeholders
-     * @param string                 $regex      Compiled full-route regex (anchored)
-     * @param array                  $variables  List of variable names in order
-     * @param int                    $index      Stable numeric index
-     * @param Cors|null              $corsPolicy Optional CORS attribute instance
-     * @param list<SegmentSpec>      $segments   Parsed segment specs (see SegmentSpec)
+     * @param string $method HTTP method (e.g. "GET")
+     * @param string $path Original route path (absolute)
+     * @param callable|Closure|string|array $handler Route handler descriptor
+     * @param string|null $domain Route domain or null (wildcard)
+     * @param array $middleware List of middleware descriptors
+     * @param string|null $name Route name or null
+     * @param bool $dynamic True when route contains placeholders
+     * @param string $regex Compiled full-route regex (anchored)
+     * @param array $variables List of variable names in order
+     * @param int $index Stable numeric index
+     * @param Cors|null $corsPolicy Optional CORS attribute instance
+     * @param list<SegmentSpec> $segments Parsed segment specs (see SegmentSpec)
      */
     public function __construct(
         private readonly string $method,
@@ -365,8 +365,8 @@ final class CompiledRoute implements RouteInterface
      *    permissive '([^/]+)' and the callable will be invoked at match-time.
      *  - When no constraint is provided, the default "[^/]+" is used.
      *
-     * @param non-empty-string      $name       Placeholder variable name
-     * @param ?non-empty-string     $constraint Constraint token or null
+     * @param non-empty-string $name Placeholder variable name
+     * @param ?non-empty-string $constraint Constraint token or null
      * @return array{0:SegmentSpec,1:string} [segmentSpec, piecePattern]
      */
     private static function buildVarSegment(string $name, ?string $constraint): array
@@ -549,9 +549,9 @@ final class CompiledRoute implements RouteInterface
     /**
      * Helper that assembles constructor positional args for copy-on-write operations.
      *
-     * @param string|null $domain     Optional override for domain
-     * @param array|null  $middleware Optional override for middleware list
-     * @param string|null $name       Optional override for name
+     * @param string|null $domain Optional override for domain
+     * @param array|null $middleware Optional override for middleware list
+     * @param string|null $name Optional override for name
      * @return array Positional constructor argument list matching __construct signature
      */
     private function copyProps(

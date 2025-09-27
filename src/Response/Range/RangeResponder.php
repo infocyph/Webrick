@@ -192,7 +192,7 @@ final readonly class RangeResponder
      *
      * @param mixed $src Seekable resource or Stream
      * @param int|null $limit Optional maximum number of bytes the returned stream should expose
-    ️ * @return ByteRangeStream|Stream Stream exposing the requested window or the full stream
+     * ️ * @return ByteRangeStream|Stream Stream exposing the requested window or the full stream
      */
     private static function wrapSeekable(mixed $src, ?int $limit = null): ByteRangeStream|Stream
     {

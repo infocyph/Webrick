@@ -4,7 +4,7 @@
  * Webrick - HTTP response compression middleware.
  *
  * Performs transparent content-encoding based on Accept-Encoding negotiation:
- * - Negotiates among zstd, brotli, and gzip (configurable preference order).
+ * - Negotiates among zstd, brotli, gzip (and optional deflate) with configurable preference.
  * - Skips compression for small, non-compressible, partial, or streaming responses.
  * - Adds/adjusts Vary and ETag validators based on the chosen encoding strategy.
  *
@@ -39,8 +39,9 @@ final readonly class CompressionMiddleware
     /** encoder → callable (only invoked when extension is loaded) */
     private const ALGO = [
         'br' => 'brotli_compress',   // ext-brotli
-        'zstd' => 'zstd_compress',   // ext-zstd
-        'gzip' => 'gzencode',        // ext-zlib (bundled)
+        'zstd' => 'zstd_compress',     // ext-zstd
+        'gzip' => 'gzencode',          // ext-zlib (bundled)
+        'deflate' => 'gzdeflate',         // ext-zlib (optional; HTTP "deflate")
     ];
 
     /** MIME prefixes we never compress */
@@ -60,14 +61,17 @@ final readonly class CompressionMiddleware
     /**
      * Configure compression thresholds, preference, and ETag behavior.
      *
-     * @param int    $minBytes        Minimum response size to consider encoding.
-     * @param array<int,string> $prefOrder Preferred encoders in order (subset of ['zstd','br','gzip']).
-     * @param string $etagMode        One of ETAG_* constants.
-     * @param int    $gzipLevel       gzip level (zlib).
-     * @param int    $brotliQuality   Brotli quality parameter.
-     * @param int    $zstdLevel       Zstd compression level.
-     * @param string $etagDeriveSalt  Salt used for derive-strong mode.
-     * @param int    $maxBufferBytes  Safety ceiling for in-memory encoding buffer.
+     * @param int $minBytes Minimum response size to consider encoding.
+     * @param array<int,string> $prefOrder Preferred encoders in order (subset of ['zstd','br','gzip','deflate']).
+     * @param string $etagMode One of ETAG_* constants.
+     * @param int $gzipLevel gzip level (zlib).
+     * @param int $brotliQuality Brotli quality parameter.
+     * @param int $zstdLevel Zstd compression level.
+     * @param string $etagDeriveSalt Salt used for derive-strong mode.
+     * @param int $maxBufferBytes Safety ceiling for in-memory encoding buffer.
+     * @param array<int,string> $excludeTypes Extra MIME patterns to skip (e.g., ['application/pdf','image/*']).
+     * @param array<int,string> $onlyTypes Whitelist; if non-empty, only these patterns are compressible.
+     * @param bool $forceAddVary Ensure Vary includes Accept-Encoding when encoding is applied.
      */
     public function __construct(
         private int $minBytes = 1400,
@@ -78,6 +82,9 @@ final readonly class CompressionMiddleware
         private int $zstdLevel = 3,
         private string $etagDeriveSalt = 'enc-v1',
         private int $maxBufferBytes = 8_388_608, // 8 MiB hard ceiling for in-memory re-encode
+        private array $excludeTypes = [],
+        private array $onlyTypes = [],
+        private bool $forceAddVary = true,
     ) {
     }
 
@@ -108,7 +115,9 @@ final readonly class CompressionMiddleware
             return $resp; // encoder failed – rare
         }
 
-        VaryAccumulatorMiddleware::add($req, 'Accept-Encoding');
+        if ($this->forceAddVary) {
+            $req = VaryAccumulatorMiddleware::add($req, 'Accept-Encoding');
+        }
 
         $resp = $this->applyEncoded($resp, $enc, $alg);
         return $this->adjustValidators($req, $resp, $enc, $alg);
@@ -187,8 +196,8 @@ final readonly class CompressionMiddleware
      * Apply body and headers for the encoded response.
      *
      * @param Response $resp Original response.
-     * @param string   $enc  Encoded bytes.
-     * @param string   $alg  Encoding algorithm.
+     * @param string $enc Encoded bytes.
+     * @param string $alg Encoding algorithm.
      *
      * @return Response Response with Content-Encoding and adjusted headers.
      */
@@ -212,7 +221,7 @@ final readonly class CompressionMiddleware
      * Encode raw bytes using the selected algorithm.
      *
      * @param string $raw Raw response bytes.
-     * @param string $alg Algorithm identifier ('gzip','br','zstd').
+     * @param string $alg Algorithm identifier ('gzip','br','zstd','deflate').
      *
      * @return string|false Encoded bytes or false when encoder unavailable/fails.
      */
@@ -226,6 +235,7 @@ final readonly class CompressionMiddleware
             ),
             $alg === 'br' && \function_exists(self::ALGO['br']) => \brotli_compress($raw, $this->brotliQuality),
             $alg === 'zstd' && \function_exists(self::ALGO['zstd']) => \zstd_compress($raw, $this->zstdLevel),
+            $alg === 'deflate' && \function_exists(self::ALGO['deflate']) => \gzdeflate($raw, $this->gzipLevel),
             default => false,
         };
     }
@@ -240,7 +250,7 @@ final readonly class CompressionMiddleware
     private function encodedLevelToken(string $alg): string
     {
         return match ($alg) {
-            'gzip' => (string)$this->gzipLevel,
+            'gzip', 'deflate' => (string)$this->gzipLevel,
             'br' => (string)$this->brotliQuality,
             'zstd' => (string)$this->zstdLevel,
             default => '0',
@@ -251,15 +261,20 @@ final readonly class CompressionMiddleware
 
     /**
      * True when Cache-Control contains no-transform (case-insensitive).
-     *
-     * @param Response $r
-     *
-     * @return bool
      */
     private function hasNoTransform(Response $r): bool
     {
         $cc = strtolower($r->getHeaderLine('Cache-Control'));
         return $cc !== '' && str_contains($cc, 'no-transform');
+    }
+
+    /** True when `$ctype` matches any user-provided onlyTypes pattern. */
+    private function isAllowedByWhitelist(string $ctype): bool
+    {
+        if ($this->onlyTypes === []) {
+            return true; // no whitelist ⇒ allow
+        }
+        return array_any($this->onlyTypes, fn ($pat) => $pat !== '' && $this->mimeMatches($ctype, strtolower($pat)));
     }
 
     /** gzip via gzencode adds an MTIME by default → bytes can vary run-to-run. */
@@ -269,10 +284,44 @@ final readonly class CompressionMiddleware
         return $alg !== 'gzip';
     }
 
-    /** True when `$ctype` starts with any of the NO_COMPRESS prefixes. */
+    /** True when `$ctype` starts with any of the NO_COMPRESS prefixes or matches user excludes. */
     private function isNonCompressible(string $ctype): bool
     {
-        return array_any(self::NO_COMPRESS_PREFIXES, fn ($prefix) => \str_starts_with($ctype, $prefix));
+        // Built-in hard excludes
+        foreach (self::NO_COMPRESS_PREFIXES as $prefix) {
+            if (\str_starts_with($ctype, $prefix)) {
+                return true;
+            }
+        }
+        return array_any($this->excludeTypes, fn ($pat) => $pat !== '' && $this->mimeMatches($ctype, strtolower($pat)));
+    }
+
+    /**
+     * Simple MIME matcher:
+     *  - exact: "application/json"
+     *  - wildcard: "text/*"
+     *  - prefix convenience: "text/" acts like "text/*"
+     */
+    private function mimeMatches(string $mime, string $pattern): bool
+    {
+        $mime = strtolower(trim($mime));
+        $semicolon = strpos($mime, ';');
+        if ($semicolon !== false) {
+            $mime = substr($mime, 0, $semicolon); // strip parameters
+        }
+        $pattern = trim($pattern);
+
+        if ($pattern === '*/*' || $pattern === '*') {
+            return true;
+        }
+        if (str_ends_with($pattern, '/*')) {
+            $prefix = substr($pattern, 0, -1); // keep trailing slash
+            return \str_starts_with($mime, $prefix);
+        }
+        if (str_ends_with($pattern, '/')) {
+            return \str_starts_with($mime, $pattern);
+        }
+        return $mime === $pattern;
     }
 
     /**
@@ -364,16 +413,10 @@ final readonly class CompressionMiddleware
         return [trim($t), $isWeak];
     }
 
-
     /* ───────────────────────── decisions ───────────────────────── */
 
     /**
      * Decide whether the response is eligible and practical to compress.
-     *
-     * @param Request  $req
-     * @param Response $resp
-     *
-     * @return bool True when encoding should be attempted.
      */
     private function shouldCompress(Request $req, Response $resp): bool
     {
@@ -390,7 +433,10 @@ final readonly class CompressionMiddleware
             })(),
             (function () use ($resp): bool {
                 $contentType = strtolower(trim($resp->getHeaderLine('Content-Type')));
-                return $contentType !== '' && $this->isNonCompressible($contentType);
+                if ($contentType === '') {
+                    return false; // unknown ⇒ allow (subject to size)
+                }
+                return $this->isNonCompressible($contentType) || !$this->isAllowedByWhitelist($contentType);
             })() => false,
             default => true,
         };
@@ -398,10 +444,6 @@ final readonly class CompressionMiddleware
 
     /**
      * Strip weak prefix and surrounding quotes from an ETag line.
-     *
-     * @param string $etagLine Raw ETag header line.
-     *
-     * @return string Core opaque tag value (or empty string when absent).
      */
     private function stripWeakQuotes(string $etagLine): string
     {
@@ -421,10 +463,6 @@ final readonly class CompressionMiddleware
 
     /**
      * Compute a short, strong ETag from encoded bytes.
-     *
-     * @param string $bytes Encoded bytes on the wire.
-     *
-     * @return string Strong ETag value with quotes.
      */
     private function strongFromBytes(string $bytes): string
     {

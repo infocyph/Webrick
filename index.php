@@ -15,6 +15,7 @@ use Infocyph\Webrick\Middleware\GatewayHardeningMiddleware;
 use Infocyph\Webrick\Middleware\MaintenanceModeMiddleware;
 use Infocyph\Webrick\Middleware\NegotiationMiddleware;
 use Infocyph\Webrick\Middleware\RequestLimitsMiddleware;
+use Infocyph\Webrick\Middleware\ResponseCacheMiddleware;
 use Infocyph\Webrick\Middleware\ResponseLinterMiddleware;
 use Infocyph\Webrick\Middleware\TelemetryMiddleware;
 use Infocyph\Webrick\Middleware\ThrottleMiddleware;
@@ -104,8 +105,9 @@ $preGlobal = [
     TelemetryMiddleware::class,
     MaintenanceModeMiddleware::class,
     RequestLimitsMiddleware::class,
-    ThrottleMiddleware::class,
+//    ThrottleMiddleware::class,
     NegotiationMiddleware::class,
+    ResponseCacheMiddleware::class,
     CacheValidatorsMiddleware::class,
 ];
 

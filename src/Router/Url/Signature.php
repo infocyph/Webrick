@@ -37,8 +37,8 @@ final class Signature
      * Uses constant-time comparison to mitigate timing attacks.
      *
      * @param string $payload The original payload.
-     * @param string $sig     The expected hex-encoded signature.
-     * @param string $key     Secret key to recompute the HMAC.
+     * @param string $sig The expected hex-encoded signature.
+     * @param string $key Secret key to recompute the HMAC.
      *
      * @return bool True if the signature matches; false otherwise.
      */
@@ -46,11 +46,12 @@ final class Signature
     {
         return \hash_equals(self::make($payload, $key), $sig);
     }
+
     /**
      * Compute an HMAC for the given payload using sha3-256.
      *
      * @param string $payload Arbitrary string to sign (e.g., canonicalized query).
-     * @param string $key     Secret key used for HMAC.
+     * @param string $key Secret key used for HMAC.
      *
      * @return string Hex-encoded HMAC digest.
      */

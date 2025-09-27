@@ -73,8 +73,8 @@ interface MatcherInterface
      * Resolve a request method + host + path to a compiled route and variables.
      *
      * @param non-empty-string $method Upper-cased HTTP verb (e.g. "GET").
-     * @param non-empty-string $host   Lower-cased host without port (ASCII).
-     * @param non-empty-string $path   Absolute request path beginning with '/'.
+     * @param non-empty-string $host Lower-cased host without port (ASCII).
+     * @param non-empty-string $path Absolute request path beginning with '/'.
      *
      * @return array{0:CompiledRoute,1:array<string,string>} Tuple of matched
      *         CompiledRoute and a map of extracted path variables.

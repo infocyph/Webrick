@@ -111,8 +111,8 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
      * static map or dynamic trie depending on whether it is dynamic.
      *
      * @param CompiledRoute $route Compiled route instance to add
-     * @throws \LogicException When attempting to add routes after finalize()
      * @return void
+     * @throws \LogicException When attempting to add routes after finalize()
      */
     public function add(CompiledRoute $route): void
     {
@@ -236,9 +236,9 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
      * @param string $method HTTP method (any case)
      * @param string $host Host header value (expected ASCII/lowercase)
      * @param string $path Request path
-     * @throws MethodNotAllowedException When resource exists but verb not allowed
-     * @throws RouteNotFoundException When no route matches the path/host
      * @return array{0:CompiledRoute,1:array<string,string>} Tuple [route, params]
+     * @throws RouteNotFoundException When no route matches the path/host
+     * @throws MethodNotAllowedException When resource exists but verb not allowed
      */
     public function match(string $method, string $host, string $path): array
     {
@@ -316,8 +316,8 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
      * The cache blob contains a checksum (xxh3) and a timestamp to allow basic
      * integrity checks and identifying stale files.
      *
-     * @throws \RuntimeException When the cache directory cannot be created
      * @return void
+     * @throws \RuntimeException When the cache directory cannot be created
      */
     private function dumpCache(): void
     {
@@ -366,8 +366,8 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
      * @param string $host Canonical host key
      * @param string $verb HTTP verb (uppercased)
      * @param CompiledRoute $r Compiled route being inserted
-     * @throws \LogicException On duplicate insertion of the same verb/path
      * @return void
+     * @throws \LogicException On duplicate insertion of the same verb/path
      */
     private function insertStatic(string $host, string $verb, CompiledRoute $r): void
     {

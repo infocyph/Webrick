@@ -39,10 +39,10 @@ final class InputSanitizerMiddleware
     public const ATTR_U = '__sanitized.uploads';
 
     /**
-     * @param InputSanitizer|null $sanitizer           Custom sanitizer; defaults to InputSanitizer.
-     * @param bool                $touchFormBodies     Sanitize application/x-www-form-urlencoded or multipart bodies.
-     * @param bool                $touchJsonBodies     Sanitize JSON bodies (opt-in).
-     * @param bool                $touchUploadedNames  Sanitize uploaded client filenames/media types (opt-in; requires setters).
+     * @param InputSanitizer|null $sanitizer Custom sanitizer; defaults to InputSanitizer.
+     * @param bool $touchFormBodies Sanitize application/x-www-form-urlencoded or multipart bodies.
+     * @param bool $touchJsonBodies Sanitize JSON bodies (opt-in).
+     * @param bool $touchUploadedNames Sanitize uploaded client filenames/media types (opt-in; requires setters).
      */
     public function __construct(
         private ?InputSanitizer $sanitizer = null,
@@ -56,7 +56,7 @@ final class InputSanitizerMiddleware
     /**
      * Sanitize query/body/uploads as configured and proceed.
      *
-     * @param Request $req  Incoming request.
+     * @param Request $req Incoming request.
      * @param Closure $next Next handler.
      *
      * @return Response Downstream response.

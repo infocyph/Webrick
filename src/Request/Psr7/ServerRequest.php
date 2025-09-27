@@ -95,6 +95,7 @@ class ServerRequest extends Message
 
         $this->buildVariableMap();
     }
+
     /**
      * Magic property isset() for the varMap.
      *
@@ -152,6 +153,7 @@ class ServerRequest extends Message
         $req = self::maybeParseUrlEncodedForNonPost($req, $body);
         return self::attachQueryAndCookies($req, $uri);
     }
+
     /**
      * Returns whether the request object should interpret the '_method' parameter as overriding the HTTP method.
      *
@@ -269,6 +271,7 @@ class ServerRequest extends Message
     {
         return $this->cookie;
     }
+
     /**
      * Return the effective HTTP method used (HEAD/GET/POST/PUT/DELETE/PATCH/TRACE/OPTIONS/REPORT/SEARCH).
      * - HEAD will be transformed to GET.
@@ -521,6 +524,7 @@ class ServerRequest extends Message
     {
         return $this->fetch(new Collection($this->query), $k);
     }
+
     /**
      * Return the raw request body as a string.
      *
@@ -555,7 +559,7 @@ class ServerRequest extends Message
      *
      * @return static New instance with the attribute set
      */
-    public function withAttribute($name, $value): static
+    public function withAttribute(string $name, mixed $value): static
     {
         $cl = clone $this;
         $cl->attributes[$name] = $value;
@@ -586,7 +590,7 @@ class ServerRequest extends Message
      * @param string $method HTTP method (e.g. GET, POST, PUT, DELETE, OPTIONS)
      * @return static
      */
-    public function withMethod($method): static
+    public function withMethod(string $method): static
     {
         $c = clone $this;
         $c->method = strtoupper($method);
@@ -600,7 +604,7 @@ class ServerRequest extends Message
      * @param string $name The attribute name to remove.
      * @return static The cloned request object without the specified attribute.
      */
-    public function withoutAttribute($name): static
+    public function withoutAttribute(string $name): static
     {
         $cl = clone $this;
         unset($cl->attributes[$name]);
@@ -610,11 +614,11 @@ class ServerRequest extends Message
     /**
      * Return an instance with the specified parsed body.
      *
-     * @param array|object|null $data Parsed body data to replace the internal value
+     * @param object|array|null $data Parsed body data to replace the internal value
      * @return static A new instance with the specified parsed body
      * @throws InvalidArgumentException if the parsed body is invalid
      */
-    public function withParsedBody($data): static
+    public function withParsedBody(object|array|null $data): static
     {
         if ($data !== null && !is_array($data) && !is_object($data)) {
             throw new InvalidArgumentException('Parsed body must be array|object|null');
@@ -650,7 +654,7 @@ class ServerRequest extends Message
      * @return static A new instance with the specified request-target.
      * @throws InvalidArgumentException If the request-target contains whitespace.
      */
-    public function withRequestTarget($requestTarget): static
+    public function withRequestTarget(string $requestTarget): static
     {
         if (preg_match('#\s#', $requestTarget)) {
             throw new InvalidArgumentException('Whitespace in request-target');
@@ -684,7 +688,7 @@ class ServerRequest extends Message
      * @param bool $preserveHost If true, the original Host header will be preserved.
      * @return static A new instance with the specified URI.
      */
-    public function withUri(Uri $uri, $preserveHost = false): static
+    public function withUri(Uri $uri, bool $preserveHost = false): static
     {
         $c = clone $this;
         $c->uri = $uri;
@@ -733,6 +737,7 @@ class ServerRequest extends Message
         $proto = (string)($srv['SERVER_PROTOCOL'] ?? '');
         return str_starts_with($proto, 'HTTP/') ? substr($proto, 5) : '1.1';
     }
+
     /**
      * Replaces the request headers with an immutable HeaderBag.
      *
@@ -746,6 +751,7 @@ class ServerRequest extends Message
         $req->headers = $bag->all();   // protected prop on parent; same class context
         return $req;
     }
+
     /**
      * Attempt to parse the body of a non-POST request as URL-encoded
      * form data.

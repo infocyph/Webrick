@@ -24,6 +24,7 @@ final class Utils
     {
         return '"' . substr(hash('xxh3', $payload, false), 0, 16) . '"';
     }
+
     /**
      * Format a UNIX epoch as an RFC-7231 HTTP-date in GMT.
      *

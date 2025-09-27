@@ -35,12 +35,12 @@ final readonly class RequestLimitsMiddleware
     /**
      * Construct the middleware with limit settings.
      *
-     * @param int                 $maxHeaderBytes       Maximum total header bytes; 0 disables the byte check.
-     * @param int                 $maxHeaderCount       Maximum number of header fields; 0 disables the count check
+     * @param int $maxHeaderBytes Maximum total header bytes; 0 disables the byte check.
+     * @param int $maxHeaderCount Maximum number of header fields; 0 disables the count check
      *                                                  (fields counted as each header value line).
-     * @param int|null            $maxBodyBytes         Maximum allowed body bytes; null uses ini_get('post_max_size').
-     * @param array<int,string>   $bodyLimitVerbs       HTTP methods to which the body limit applies (uppercased compare).
-     * @param bool                $violateOnUnknownBody When true and neither Content-Length nor transfer-coding is present,
+     * @param int|null $maxBodyBytes Maximum allowed body bytes; null uses ini_get('post_max_size').
+     * @param array<int,string> $bodyLimitVerbs HTTP methods to which the body limit applies (uppercased compare).
+     * @param bool $violateOnUnknownBody When true and neither Content-Length nor transfer-coding is present,
      *                                                  treat as violation for configured verbs.
      */
     public function __construct(
@@ -60,7 +60,7 @@ final readonly class RequestLimitsMiddleware
      * 1) Enforce header byte size (431).
      * 2) Enforce body size (413) based on Content-Length; do not pre-reject when Transfer-Encoding (e.g., chunked).
      *
-     * @param Request $req  Incoming request.
+     * @param Request $req Incoming request.
      * @param Closure $next Next handler.
      *
      * @return Response Response from next handler or an error response on violation.
@@ -225,14 +225,14 @@ final readonly class RequestLimitsMiddleware
     /**
      * Add "Connection: close" only for HTTP/1.x responses; never for HTTP/2.
      *
-     * @param Request  $req  The incoming request (for protocol detection).
+     * @param Request $req The incoming request (for protocol detection).
      * @param Response $resp The response to augment when applicable.
      *
      * @return Response Response with "Connection: close" for HTTP/1.x; unchanged for HTTP/2.
      */
     private function withConnCloseIfHttp1(Request $req, Response $resp): Response
     {
-        $proto = strtoupper((string)($req->getServerParam('SERVER_PROTOCOL') ?? 'HTTP/1.1'));
+        $proto = strtoupper((string)($req->getServerParams()['SERVER_PROTOCOL'] ?? 'HTTP/1.1'));
         if (\str_starts_with($proto, 'HTTP/1.')) {
             return $resp->withSmartHeader('Connection', 'close');
         }

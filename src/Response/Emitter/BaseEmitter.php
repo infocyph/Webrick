@@ -243,6 +243,7 @@ abstract class BaseEmitter implements EmitterInterface
         $meta = $body->getMetadata();
         return isset($meta['uri']) && is_string($meta['uri']) && str_starts_with($meta['uri'], 'php://temp');
     }
+
     /**
      * Reduces output buffering to a minimum by:
      *  - Ending all ob_*() calls with ob_end_flush()

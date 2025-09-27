@@ -6,7 +6,7 @@
  * Performs Accept/Accept-Charset/Accept-Language negotiation for requests.
  * - Negotiates media type (with early 406 when no compatible type is found).
  * - Negotiates charset when it materially affects wire bytes for the chosen type.
- * - Negotiates locale and sets Content-Language.
+ * - Negotiates locale (multi-source) and sets Content-Language.
  * - Registers appropriate Vary tokens so caches behave correctly.
  * - Ensures Content-Type is present on non-empty responses and appends charset when appropriate.
  *
@@ -22,7 +22,6 @@ use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Request\Http\ContentNegotiator;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Negotiation\ContentTypeNegotiator;
-use Infocyph\Webrick\Response\Negotiation\LocaleNegotiator;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Definition\Attribute\Produces;
 
@@ -38,8 +37,8 @@ final readonly class NegotiationMiddleware
     /**
      * @param array<int,string> $produces Supported media types (e.g., ['+json','application/json','text/html']).
      * @param array<int,string> $charsets Supported charsets (e.g., ['utf-8']).
-     * @param array<int,string> $locales  Supported locales ordered by server preference.
-     * @param string            $localeFallback Fallback locale when no match is found.
+     * @param array<int,string> $locales Supported locales ordered by server preference.
+     * @param string $localeFallback Fallback locale when no match is found.
      */
     public function __construct(
         private array $produces = ['+json', 'application/json', 'text/html'],
@@ -55,10 +54,10 @@ final readonly class NegotiationMiddleware
      * Flow:
      * 1) Determine route-level overrides for produced media types/charsets.
      * 2) Negotiate media type and charset; return early 406 if no compatible type.
-     * 3) Negotiate locale and register Vary when it can affect the result.
+     * 3) Negotiate locale (multi-source) and register Vary based on the source.
      * 4) Pass control to downstream; then ensure Content-Type and set Content-Language.
      *
-     * @param Request $req  Incoming request.
+     * @param Request $req Incoming request.
      * @param Closure $next Next handler.
      *
      * @return Response Response with normalized headers.
@@ -73,7 +72,7 @@ final readonly class NegotiationMiddleware
             return $maybeEarly;
         }
 
-        // 2) Negotiate locale & register Vary if it can affect result
+        // 2) Negotiate locale & register Vary based on source
         $locale = $this->negotiateLocaleRegisterVary($req);
 
         // 3) Stash negotiated choices for controllers
@@ -127,7 +126,7 @@ final readonly class NegotiationMiddleware
      *
      * For JSON types, no charset parameter is appended (UTF-8 by spec).
      *
-     * @param string      $type
+     * @param string $type
      * @param string|null $charset
      *
      * @return string Header value.
@@ -154,8 +153,8 @@ final readonly class NegotiationMiddleware
     /**
      * Ensure Content-Type is present and append charset when appropriate.
      *
-     * @param Response    $resp
-     * @param string      $type
+     * @param Response $resp
+     * @param string $type
      * @param string|null $cset
      *
      * @return Response Normalized response.
@@ -207,22 +206,28 @@ final readonly class NegotiationMiddleware
     /**
      * Negotiate locale and register Vary when the outcome can vary by request.
      *
+     * Uses Request::detectLocale() to consider attr/route/query/cookie/header/default,
+     * and varies only on the headers actually involved.
+     *
      * @param Request $req
      *
      * @return string Selected locale.
      */
     private function negotiateLocaleRegisterVary(Request $req): string
     {
-        [$locale] = LocaleNegotiator::forRequest(
-            $req,
+        // Detect locale with multi-source resolution; keep default order.
+        [$locale, $source] = $req->detectLocale(
             $this->locales ?: [$this->localeFallback],
             $this->localeFallback,
         );
 
-        // Only vary if client sent the header OR server offers > 1 locale
-        $acceptLangPresent = $req->getHeaderLine('Accept-Language') !== '';
-        $multiLocales = \count($this->locales) > 1;
-        VaryAccumulatorMiddleware::addIf($req, $acceptLangPresent || $multiLocales, 'Accept-Language');
+        // Register Vary selectively based on source
+        if ($source === 'header') {
+            $req = VaryAccumulatorMiddleware::add($req, 'Accept-Language');
+        } elseif ($source === 'cookie') {
+            // don’t vary on Cookie for public caches; mark as personalized for your cache/store layer
+            $req = $req->withAttribute('personalized', true);
+        }
 
         return $locale;
     }
@@ -237,21 +242,19 @@ final readonly class NegotiationMiddleware
      */
     private function negotiateTypeAndCharset(Request $req, array $prod, array $char): array
     {
-        // ---------- Media type (delegate to your negotiator) ----------
-        // chooseFromRequest() returns first supported if Accept is empty/*/*, or null on mismatch.
+        // ---------- Media type ----------
         $type = ContentTypeNegotiator::chooseFromRequest($req, $prod);
 
         if ($type === null) {
             // Register Vary before short-circuit 406 so accumulator can write it
-            VaryAccumulatorMiddleware::add($req, 'Accept');
+            $req = VaryAccumulatorMiddleware::add($req, 'Accept');
             if ($req->getHeaderLine('Accept-Charset') !== '' && $this->charsetMattersForAny($prod)) {
-                VaryAccumulatorMiddleware::add($req, 'Accept-Charset');
+                $req = VaryAccumulatorMiddleware::add($req, 'Accept-Charset');
             }
 
             return [
                 '',
                 null,
-                // Response(statusCode, body, headers)
                 new Response(
                     406,
                     new Stream('Not acceptable.'),
@@ -261,19 +264,26 @@ final readonly class NegotiationMiddleware
         }
 
         // We negotiated a type → always vary on Accept
-        VaryAccumulatorMiddleware::add($req, 'Accept');
+        $req = VaryAccumulatorMiddleware::add($req, 'Accept');
 
-        // ---------- Charset (delegate to ContentNegotiator supportsCharset) ----------
+        // ---------- Charset ----------
         $cset = null;
-        $acceptCharset = $req->getHeaderLine('Accept-Charset');
         $typeLower = strtolower($type);
+        $acceptCharset = $req->getHeaderLine('Accept-Charset');
 
         if ($acceptCharset !== '' && $this->charsetMattersFor($typeLower)) {
             $neg = new ContentNegotiator($req->headers());
             $cset = $this->pickCharset($neg, $char);
             if ($cset !== null) {
-                VaryAccumulatorMiddleware::add($req, 'Accept-Charset');
+                $req = VaryAccumulatorMiddleware::add($req, 'Accept-Charset');
             }
+        }
+
+        // Default when charset matters but client didn't specify: prefer UTF-8, else first supported.
+        if ($cset === null && $this->charsetMattersFor($typeLower)) {
+            $lower = array_map('strtolower', $char);
+            $cset = in_array('utf-8', $lower, true) ? 'utf-8' : ($char[0] ?? null);
+            // No Vary on Accept-Charset here; we used a server default.
         }
 
         return [$type, $cset, null];
@@ -284,8 +294,8 @@ final readonly class NegotiationMiddleware
     /**
      * Pick the first supported charset from the provided candidates.
      *
-     * @param ContentNegotiator  $neg        Request negotiator.
-     * @param array<int,string>  $candidates Candidate charset names.
+     * @param ContentNegotiator $neg Request negotiator.
+     * @param array<int,string> $candidates Candidate charset names.
      *
      * @return string|null Selected charset or null.
      */
@@ -327,10 +337,10 @@ final readonly class NegotiationMiddleware
     /**
      * Store negotiated parameters on the request for downstream use.
      *
-     * @param Request     $req
-     * @param string      $type
+     * @param Request $req
+     * @param string $type
      * @param string|null $cset
-     * @param string      $locale
+     * @param string $locale
      *
      * @return Request Request augmented with negotiation attributes.
      */

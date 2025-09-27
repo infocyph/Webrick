@@ -42,6 +42,7 @@ final class LocaleNegotiator
     {
         return self::negotiate($supported, $req->getHeaderLine('Accept-Language'), $fallback);
     }
+
     /**
      * Select a locale from the client's Accept-Language header and produce headers.
      *

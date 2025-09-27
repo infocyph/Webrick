@@ -27,6 +27,7 @@ final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
     private static array $normCache = [];
     /** @var array<string,string[]> */
     private array $map = [];
+
     /**
      * Constructor.
      *
@@ -41,6 +42,7 @@ final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
             $this->set($name, $value);
         }
     }
+
     /**
      * Retrieve all headers.
      *
@@ -60,6 +62,7 @@ final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
     {
         return count($this->map);
     }
+
     /**
      * Retrieves the first value of the specified header.
      *
@@ -73,6 +76,7 @@ final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
     {
         return $this->map[$this->norm($name)][0] ?? null;
     }
+
     /**
      * Retrieves the values of the specified header.
      *
@@ -123,6 +127,7 @@ final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
     {
         return isset($this->map[$this->norm($name)]);
     }
+
     /**
      * Return a comma-concatenated header line (null when header absent).
      *
@@ -182,6 +187,7 @@ final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
     {
         throw new \LogicException('HeaderBag is immutable');
     }
+
     /**
      * Retrieves the value of the specified header.
      *
@@ -289,6 +295,7 @@ final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
     {
         return self::$normCache[$name] ??= ucwords(strtolower($name), '-');
     }
+
     /**
      * Internal helper to set a header.
      *

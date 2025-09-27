@@ -59,11 +59,11 @@ final class Route implements RouteInterface
     /**
      * Create a new route.
      *
-     * @param string                 $method  HTTP method (e.g., GET, POST).
-     * @param string                 $path    Path template (may contain parameters like "{id}").
-     * @param array|string|callable  $handler Route handler specification.
-     * @param string|null            $domain  Optional host/domain constraint.
-     * @param string|null            $name    Optional route name (for URL generation).
+     * @param string $method HTTP method (e.g., GET, POST).
+     * @param string $path Path template (may contain parameters like "{id}").
+     * @param array|string|callable $handler Route handler specification.
+     * @param string|null $domain Optional host/domain constraint.
+     * @param string|null $name Optional route name (for URL generation).
      */
     public function __construct(
         private readonly string $method,

@@ -66,14 +66,14 @@ final class GatewayHardeningMiddleware
     /**
      * Configure gateway hardening knobs and pre-compile host allow-list.
      *
-     * @param string[]   $trustedProxyCidrs     CIDRs considered trusted proxies.
-     * @param string[]   $denyIpCidrs           CIDRs for end-user IPs to block.
-     * @param string[]   $trustedHosts          Host header allow-list (supports '*' wildcard).
-     * @param int|null   $forwardedHeaderMask   Symfony-style mask (e.g., Request::HEADER_X_FORWARDED_FOR | …).
-     * @param bool       $enforceHttps          Force HTTPS (308) when scheme != https.
-     * @param int        $httpsPort             Port used for HTTPS redirection (typically 443).
-     * @param bool       $stripHopByHop         Remove hop-by-hop headers (req + resp).
-     * @param string[]   $redirectAllowedHosts  Absolute redirect targets allowed; empty ⇒ same-origin only.
+     * @param string[] $trustedProxyCidrs CIDRs considered trusted proxies.
+     * @param string[] $denyIpCidrs CIDRs for end-user IPs to block.
+     * @param string[] $trustedHosts Host header allow-list (supports '*' wildcard).
+     * @param int|null $forwardedHeaderMask Symfony-style mask (e.g., Request::HEADER_X_FORWARDED_FOR | …).
+     * @param bool $enforceHttps Force HTTPS (308) when scheme != https.
+     * @param int $httpsPort Port used for HTTPS redirection (typically 443).
+     * @param bool $stripHopByHop Remove hop-by-hop headers (req + resp).
+     * @param string[] $redirectAllowedHosts Absolute redirect targets allowed; empty ⇒ same-origin only.
      */
     public function __construct(
         private readonly array $trustedProxyCidrs = [],
@@ -104,7 +104,7 @@ final class GatewayHardeningMiddleware
      * 5) Optionally strip hop-by-hop headers on request/response.
      * 6) Validate redirects (scheme and origin) before returning.
      *
-     * @param Request $req  Incoming request.
+     * @param Request $req Incoming request.
      * @param Closure $next Next handler.
      *
      * @return Response Hardened response.
@@ -210,7 +210,7 @@ final class GatewayHardeningMiddleware
     /**
      * Determine if an IP matches any of the provided CIDRs.
      *
-     * @param string|null $ip    Candidate IP address.
+     * @param string|null $ip Candidate IP address.
      * @param array<int,string> $cidrs CIDR ranges.
      *
      * @return bool True on match; false otherwise.
@@ -244,7 +244,7 @@ final class GatewayHardeningMiddleware
      * - If $redirectAllowedHosts is empty, enforce same-origin redirects.
      * - Otherwise, require destination host to be in the allow-list.
      *
-     * @param Request  $req  Current request (for same-origin checks).
+     * @param Request $req Current request (for same-origin checks).
      * @param Response $resp Response to validate.
      *
      * @return Response Potentially replaced 400 response on violation, or original response.

@@ -35,9 +35,9 @@ final readonly class VerifySignedUrlMiddleware
     /**
      * Configure signature verification.
      *
-     * @param string        $secret  Secret key shared with the signer.
-     * @param int|string    $leeway  Allowed clock skew for expiry checks (in seconds).
-     * @param bool          $verbose If true, error messages may include extra details (not currently used).
+     * @param string $secret Secret key shared with the signer.
+     * @param int|string $leeway Allowed clock skew for expiry checks (in seconds).
+     * @param bool $verbose If true, error messages may include extra details (not currently used).
      */
     public function __construct(
         private string $secret,
@@ -56,7 +56,7 @@ final readonly class VerifySignedUrlMiddleware
      * 4) On success, delegate to the next middleware/handler.
      *
      * @param Request $request The incoming HTTP request.
-     * @param Closure $next    The next handler in the middleware chain.
+     * @param Closure $next The next handler in the middleware chain.
      *
      * @return mixed A Response on failure or the result of the next handler on success.
      */

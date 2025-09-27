@@ -71,15 +71,15 @@ final class CookieEncryptionMiddleware
     /**
      * Configure cookie encryption and storage settings.
      *
-     * @param string|array<int,string>    $keyOrKeys     32B key or list of 32B keys; index 0 is default KID.
-     * @param string                      $cookiePrefix  Cookie name prefix to process (others pass through).
-     * @param int                         $maxBytes      Max bytes per cookie part (safe headroom under ~4k).
-     * @param CacheItemPoolInterface|null $store         Optional PSR-6 cache for storage fallback.
-     * @param int                         $storeTtl      TTL for server-side stored ciphertext (seconds).
-     * @param bool                        $dropOnDecryptFailure Omit cookie when decrypt/auth fails.
-     * @param bool                        $forceSecure   Enforce Secure attribute on encrypted cookies.
-     * @param bool                        $forceHttpOnly Enforce HttpOnly attribute on encrypted cookies.
-     * @param string|null                 $defaultSameSite Default SameSite value; null to leave unset.
+     * @param string|array<int,string> $keyOrKeys 32B key or list of 32B keys; index 0 is default KID.
+     * @param string $cookiePrefix Cookie name prefix to process (others pass through).
+     * @param int $maxBytes Max bytes per cookie part (safe headroom under ~4k).
+     * @param CacheItemPoolInterface|null $store Optional PSR-6 cache for storage fallback.
+     * @param int $storeTtl TTL for server-side stored ciphertext (seconds).
+     * @param bool $dropOnDecryptFailure Omit cookie when decrypt/auth fails.
+     * @param bool $forceSecure Enforce Secure attribute on encrypted cookies.
+     * @param bool $forceHttpOnly Enforce HttpOnly attribute on encrypted cookies.
+     * @param string|null $defaultSameSite Default SameSite value; null to leave unset.
      *
      * @throws InvalidArgumentException If keys are missing/invalid or maxBytes out of range.
      */
@@ -162,8 +162,8 @@ final class CookieEncryptionMiddleware
      * Build Additional Authenticated Data (AAD) for AES-GCM.
      *
      * @param string $baseName Logical cookie name.
-     * @param int    $kid      Key id.
-     * @param string $mode     Compression mode flag.
+     * @param int $kid Key id.
+     * @param string $mode Compression mode flag.
      *
      * @return string AAD string used for encryption/decryption.
      */
@@ -176,8 +176,8 @@ final class CookieEncryptionMiddleware
     /**
      * Re-apply (and enforce) cookie attributes to the builder.
      *
-     * @param Cookie               $cookie Cookie builder.
-     * @param array<string,bool|string> $attrs  Parsed attributes from original Set-Cookie.
+     * @param Cookie $cookie Cookie builder.
+     * @param array<string,bool|string> $attrs Parsed attributes from original Set-Cookie.
      *
      * @return Cookie Cookie with attributes applied and security defaults enforced.
      */
@@ -292,7 +292,7 @@ final class CookieEncryptionMiddleware
      * Decompress plaintext according to mode.
      *
      * @param string $mode Compression mode flag.
-     * @param string $pt   Raw plaintext (possibly compressed).
+     * @param string $pt Raw plaintext (possibly compressed).
      *
      * @return string|null Decompressed or original plaintext; null for unsupported mode.
      */
@@ -310,7 +310,7 @@ final class CookieEncryptionMiddleware
      * Decrypt a single cookie ciphertext (base64 string).
      *
      * @param string $baseName Logical cookie name (without .pN suffix).
-     * @param string $cipher   Base64 ciphertext or "S:<id>" pointer.
+     * @param string $cipher Base64 ciphertext or "S:<id>" pointer.
      *
      * @return mixed|null Decrypted value or null when authentication fails.
      */
@@ -499,7 +499,7 @@ final class CookieEncryptionMiddleware
      * Compress (best of zstd/brotli/gzip) → AES-256-GCM → base64.
      *
      * @param string $baseName Logical cookie name.
-     * @param string $pt       Plaintext to encrypt.
+     * @param string $pt Plaintext to encrypt.
      *
      * @return string Base64 ciphertext.
      *
@@ -534,7 +534,7 @@ final class CookieEncryptionMiddleware
     /**
      * Split ciphertext into cookie-sized segments or store server-side if too large.
      *
-     * @param string $baseName  Logical cookie name.
+     * @param string $baseName Logical cookie name.
      * @param string $plaintext Plaintext payload.
      *
      * @return array<int,string> 1-based segments.
@@ -593,9 +593,9 @@ final class CookieEncryptionMiddleware
      * Whether a flag-like attribute is present (e.g., Secure/HttpOnly).
      *
      * @param array<string,bool|string> $attrs
-     * @param string                    $flag
+     * @param string $flag
      *
-      * @return bool True when the attribute exists as a valueless flag.
+     * @return bool True when the attribute exists as a valueless flag.
      */
     private function hasFlag(array $attrs, string $flag): bool
     {

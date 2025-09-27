@@ -51,6 +51,7 @@ final class CookieJar
         }
         return $r;
     }
+
     /**
      * Add a raw Set-Cookie line to the jar.
      *

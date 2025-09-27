@@ -187,8 +187,8 @@ final class RequestHeaders
      * Inject Authorization header from PHP_AUTH_* or HTTP_AUTHORIZATION if
      * available (and related fallbacks).
      *
-     * @param array $srv    Server parameters (e.g. $_SERVER)
-     * @param array $hdr    Header bag to populate
+     * @param array $srv Server parameters (e.g. $_SERVER)
+     * @param array $hdr Header bag to populate
      */
     private static function backfillAuthorization(array $srv, array &$out): void
     {
@@ -206,8 +206,8 @@ final class RequestHeaders
     /**
      * Populate Content-* headers from $_SERVER if missing.
      *
-     * @param array $srv    Server parameters (e.g. $_SERVER)
-     * @param array $out    Header bag to populate
+     * @param array $srv Server parameters (e.g. $_SERVER)
+     * @param array $out Header bag to populate
      */
     private static function backfillContentHeaders(array $srv, array &$out): void
     {
@@ -249,7 +249,7 @@ final class RequestHeaders
      * If the value is an array, it is imploded with commas.
      * If the value is a string, it is used as is.
      *
-     * @param array $srv    Server parameters (e.g. $_SERVER)
+     * @param array $srv Server parameters (e.g. $_SERVER)
      * @return array    Header bag
      */
     private static function viaServerFallback(array $srv): array
@@ -339,9 +339,9 @@ final class RequestHeaders
      * Populate Authorization header from HTTP_AUTHORIZATION or REDIRECT_HTTP_AUTHORIZATION if
      * available (and related fallbacks).
      *
-     * @param array $srv    Server parameters (e.g. $_SERVER)
-     * @param array $hdr    Header bag to populate
-     * @param bool $alreadyAdded    Whether an Authorization header has already been added
+     * @param array $srv Server parameters (e.g. $_SERVER)
+     * @param array $hdr Header bag to populate
+     * @param bool $alreadyAdded Whether an Authorization header has already been added
      */
     private function injectFromExplicitAuthorization(array $srv, array &$hdr, bool $alreadyAdded): void
     {
@@ -368,9 +368,9 @@ final class RequestHeaders
      * Populate Authorization header from PHP_AUTH_USER/PHP_AUTH_PW or PHP_AUTH_DIGEST if
      * available (and related fallbacks).
      *
-     * @param array $srv    Server parameters (e.g. $_SERVER)
-     * @param array $hdr    Header bag to populate
-     * @param bool $added   Whether an Authorization header has been added
+     * @param array $srv Server parameters (e.g. $_SERVER)
+     * @param array $hdr Header bag to populate
+     * @param bool $added Whether an Authorization header has been added
      */
     private function injectFromPhpAuth(array $srv, array &$hdr, bool &$added): void
     {

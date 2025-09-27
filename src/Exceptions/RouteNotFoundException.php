@@ -22,10 +22,10 @@ final class RouteNotFoundException extends \RuntimeException
     /**
      * Create a new RouteNotFoundException.
      *
-     * @param string           $verb     The HTTP verb associated with the request (e.g., "GET").
-     * @param string           $path     The requested path (e.g., "/users/1").
-     * @param int              $code     Optional error code.
-     * @param \Throwable|null  $previous Optional previous throwable for chaining.
+     * @param string $verb The HTTP verb associated with the request (e.g., "GET").
+     * @param string $path The requested path (e.g., "/users/1").
+     * @param int $code Optional error code.
+     * @param \Throwable|null $previous Optional previous throwable for chaining.
      */
     public function __construct(
         public readonly string $verb,

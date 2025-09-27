@@ -68,7 +68,7 @@
     },
     "require-dev": {
         "captainhook/captainhook": "^5.25",
-        "laravel/pint": "^1.24",
+        "laravel/pint": "^1.25",
         "pestphp/pest": "^3.8",
         "rector/rector": "^2.1",
         "symfony/var-dumper": "^7.3"

@@ -26,6 +26,7 @@ use RuntimeException;
 class Response
 {
     use MacroMix;
+
     private static ?Collection $routesRef = null;
     private static ?SignedUrlGenerator $signedGen = null;
     private static ?TemporaryUrlGenerator $tempGen = null;

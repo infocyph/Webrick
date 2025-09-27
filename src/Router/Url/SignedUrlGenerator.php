@@ -42,9 +42,9 @@ class SignedUrlGenerator extends UrlGenerator
     /**
      * Create a signed URL generator.
      *
-     * @param string     $baseUri Base URI used when generating absolute URLs.
-     * @param Collection $routes  Route collection for URL resolution.
-     * @param string     $secret  Secret key used to compute HMAC signatures.
+     * @param string $baseUri Base URI used when generating absolute URLs.
+     * @param Collection $routes Route collection for URL resolution.
+     * @param string $secret Secret key used to compute HMAC signatures.
      */
     public function __construct(
         string $baseUri,
@@ -65,11 +65,11 @@ class SignedUrlGenerator extends UrlGenerator
      * 5) Compute signature over the relative URL (path + sorted query).
      * 6) Return the final absolute or relative URL.
      *
-     * @param non-empty-string       $name     Route name.
-     * @param array<string,mixed>    $params   Path parameters for placeholder substitution.
-     * @param array<string,mixed>    $query    Extra query parameters (will be sorted).
-     * @param int|null               $ttl      TTL in seconds; null for no expiry.
-     * @param bool                   $absolute Whether to return an absolute URL.
+     * @param non-empty-string $name Route name.
+     * @param array<string,mixed> $params Path parameters for placeholder substitution.
+     * @param array<string,mixed> $query Extra query parameters (will be sorted).
+     * @param int|null $ttl TTL in seconds; null for no expiry.
+     * @param bool $absolute Whether to return an absolute URL.
      *
      * @return string The signed URL.
      *

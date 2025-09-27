@@ -31,7 +31,7 @@ final class Produces
     /**
      * Construct a Produces attribute instance.
      *
-     * @param string[] $types    Ordered list of media types the route may produce.
+     * @param string[] $types Ordered list of media types the route may produce.
      *                           Examples: ['application/json'], ['text/html', 'application/xhtml+xml']
      * @param string[]|null $charsets Optional list of charsets applicable to the types
      *                                (e.g. ['utf-8']). When null the charset is unspecified

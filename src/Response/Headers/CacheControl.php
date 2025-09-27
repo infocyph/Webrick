@@ -110,6 +110,7 @@ final class CacheControl implements \Stringable
 
         return implode(', ', $out);
     }
+
     /**
      * Merges two Cache-Control header lines into a single canonical line.
      *

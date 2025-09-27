@@ -34,9 +34,9 @@ final class FormSupportMiddleware
     /**
      * Configure form support behavior.
      *
-     * @param string               $overrideHeader Header name for method override (e.g., X-HTTP-Method-Override).
-     * @param bool                 $sanitize       Whether to sanitize form bodies using the shared sanitizer.
-     * @param InputSanitizer|null  $sanitizer      Optional sanitizer; defaults to a new InputSanitizer.
+     * @param string $overrideHeader Header name for method override (e.g., X-HTTP-Method-Override).
+     * @param bool $sanitize Whether to sanitize form bodies using the shared sanitizer.
+     * @param InputSanitizer|null $sanitizer Optional sanitizer; defaults to a new InputSanitizer.
      */
     public function __construct(
         private readonly string $overrideHeader = 'X-HTTP-Method-Override',
@@ -54,7 +54,7 @@ final class FormSupportMiddleware
      * 2) Otherwise apply header-based override first, then _method field if enabled and present.
      * 3) Optionally sanitize the form body if not already sanitized globally.
      *
-     * @param Request $req  Incoming request.
+     * @param Request $req Incoming request.
      * @param Closure $next Next handler.
      *
      * @return Response Downstream response.
@@ -94,7 +94,7 @@ final class FormSupportMiddleware
      * Apply method override from header or, if allowed, from the _method form field.
      *
      * @param Request $req
-     * @param bool    $headerOnly When true, do not consult form field override.
+     * @param bool $headerOnly When true, do not consult form field override.
      *
      * @return Request Possibly modified request with overridden method.
      */

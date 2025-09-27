@@ -110,6 +110,7 @@ final class ConditionalValidator
         }
         return false;
     }
+
     /**
      * Evaluate If-Match pre-condition.
      *
@@ -128,6 +129,7 @@ final class ConditionalValidator
         } // no current tag ⇒ fail
         return !$this->etagEquals($this->etag, $candidates, true);
     }
+
     /**
      * Evaluate If-Unmodified-Since pre-condition.
      *

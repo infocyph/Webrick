@@ -52,8 +52,8 @@ final class RouteGenerator
      * name is considered for substitution; any regex constraint is ignored here
      * and should be enforced at route compilation/matching time.
      *
-     * @param string                          $name   The route name.
-     * @param array<string,int|float|string>  $params Keyed replacements for placeholders.
+     * @param string $name The route name.
+     * @param array<string,int|float|string> $params Keyed replacements for placeholders.
      *
      * @return string The generated path with placeholders substituted.
      *

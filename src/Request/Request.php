@@ -16,6 +16,7 @@ use Stringable;
 class Request extends ServerRequest implements ArrayAccess, JsonSerializable, Stringable
 {
     use MacroMix;
+
     public const HEADER_FORWARDED = 0b10000;
 
     public const HEADER_X_FORWARDED_FOR = 0b00001;
@@ -97,6 +98,7 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
     {
         return self::$trustedHeaderFlags;
     }
+
     /**
      * Sets the trusted proxies and header flags for EndUser.
      *
@@ -189,6 +191,35 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
             $value = $value[$seg];
         }
         return $value ?? $default;
+    }
+
+    /** Resolve a locale from multiple sources; first hit wins. */
+    public function detectLocale(
+        array $supported,
+        string $fallback = 'en',
+        array $sources = ['attr', 'route', 'query', 'cookie', 'header', 'default'],
+    ): array {
+        $supported = array_values(array_unique(array_map(self::normalizeLocale(...), $supported)));
+        $fallback = self::normalizeLocale($fallback);
+
+        foreach ($sources as $src) {
+            $hit = match ($src) {
+                'attr' => $this->resolveLocaleFromAttr($supported),
+                'route' => $this->resolveLocaleFromRoute($supported),
+                'query' => $this->resolveLocaleFromQuery($supported),
+                'cookie' => $this->resolveLocaleFromCookie($supported),
+                'header' => $this->resolveLocaleFromHeader($supported, $fallback),
+                'default' => $fallback,
+                default => null,
+            };
+
+            if ($hit !== null) {
+                // ensure normalization (resolvers already return normalized strings)
+                return [$hit === 'default' ? $fallback : $hit, $src];
+            }
+        }
+
+        return [$fallback, 'default'];
     }
 
     /**
@@ -694,4 +725,74 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
     {
         return $this->expectsXml();
     }
+
+    /** ───── leaf helpers ───── */
+
+    /** Normalize to lowercase BCP47-ish with hyphen, e.g. 'pt_BR' -> 'pt-br'. */
+    private static function normalizeLocale(string $l): string
+    {
+        $l = str_replace('_', '-', trim($l));
+        return strtolower($l);
+    }
+
+    /** Exact match, then primary-subtag fallback, else null. */
+    private function pickLocale(?string $raw, array $supported): ?string
+    {
+        if ($raw === null || $raw === '') {
+            return null;
+        }
+        $cand = self::normalizeLocale($raw);
+        if (in_array($cand, $supported, true)) {
+            return $cand;
+        }
+        $primary = substr($cand, 0, 2);
+        return in_array($primary, $supported, true) ? $primary : null;
+    }
+
+    /** ───── resolvers ───── */
+
+    private function resolveLocaleFromAttr(array $supported): ?string
+    {
+        $val = $this->getAttribute('locale') ?? $this->getAttribute('lang');
+        return is_string($val) ? $this->pickLocale($val, $supported) : null;
+    }
+
+    private function resolveLocaleFromCookie(array $supported): ?string
+    {
+        $val = (string)($this->cookie('locale') ?? $this->cookie('lang') ?? '');
+        return $this->pickLocale($val, $supported);
+    }
+
+    private function resolveLocaleFromHeader(array $supported, string $fallback): ?string
+    {
+        // reuse existing Accept-Language matcher
+        $val = $this->locale($supported, $fallback, true);
+        return $this->pickLocale($val, $supported);
+    }
+
+    private function resolveLocaleFromQuery(array $supported): ?string
+    {
+        $val = (string)($this->query('locale') ?? $this->query('lang') ?? '');
+        return $this->pickLocale($val, $supported);
+    }
+
+    private function resolveLocaleFromRoute(array $supported): ?string
+    {
+        foreach (
+            [
+                $this->getAttribute('route.params'),
+                $this->getAttribute('route'),
+                $this->getAttribute('params'),
+            ] as $bag
+        ) {
+            if (is_array($bag)) {
+                $val = $bag['locale'] ?? $bag['lang'] ?? null;
+                if (is_string($val) && ($hit = $this->pickLocale($val, $supported))) {
+                    return $hit;
+                }
+            }
+        }
+        return null;
+    }
+
 }

@@ -41,15 +41,15 @@ final readonly class ThrottleMiddleware
     /**
      * Configure the throttle middleware.
      *
-     * @param int                               $max                 Allowed requests per window.
-     * @param int                               $window              Window size in seconds.
-     * @param CacheItemPoolInterface|null       $pool                PSR-6 pool (APCu/file fallback by default).
-     * @param bool                              $retryAsDate         Format Retry-After as HTTP-date (true) or seconds (false).
-     * @param Closure(Request):string|null      $identifierResolver  Custom key source (default: client IP).
-     * @param bool                              $emitStandardRateLimit Also emit RateLimit-* (besides X-RateLimit-*).
-     * @param string                            $scope               Logical bucket (e.g., "global", "auth", "login").
-     * @param string                            $costAttribute       Request attribute name used for per-request cost.
-     * @param Closure(Request):bool|null        $bypass              If returns true, request is not throttled.
+     * @param int $max Allowed requests per window.
+     * @param int $window Window size in seconds.
+     * @param CacheItemPoolInterface|null $pool PSR-6 pool (APCu/file fallback by default).
+     * @param bool $retryAsDate Format Retry-After as HTTP-date (true) or seconds (false).
+     * @param Closure(Request):string|null $identifierResolver Custom key source (default: client IP).
+     * @param bool $emitStandardRateLimit Also emit RateLimit-* (besides X-RateLimit-*).
+     * @param string $scope Logical bucket (e.g., "global", "auth", "login").
+     * @param string $costAttribute Request attribute name used for per-request cost.
+     * @param Closure(Request):bool|null $bypass If returns true, request is not throttled.
      */
     public function __construct(
         private int $max = 1,
@@ -75,7 +75,7 @@ final readonly class ThrottleMiddleware
      * 4) If this request would exceed the limit, return 429 with headers.
      * 5) Otherwise increment hits, persist, call next, and attach headers.
      *
-     * @param Request $req  Incoming request.
+     * @param Request $req Incoming request.
      * @param Closure $next Next handler.
      *
      * @return Response Throttled or normal response with rate headers.
@@ -112,9 +112,9 @@ final readonly class ThrottleMiddleware
     /**
      * Attach rate-limit headers to a successful response.
      *
-     * @param Response $resp       Response to augment.
-     * @param int      $remain     Remaining requests in the window.
-     * @param int      $resetEpoch Window reset epoch.
+     * @param Response $resp Response to augment.
+     * @param int $remain Remaining requests in the window.
+     * @param int $resetEpoch Window reset epoch.
      *
      * @return Response Response with rate-limit headers.
      */
@@ -142,7 +142,7 @@ final readonly class ThrottleMiddleware
      * Derive the cache key and reset epoch for the current window.
      *
      * @param Request $req Incoming request.
-     * @param int     $now Anchor timestamp (usually REQUEST_TIME).
+     * @param int $now Anchor timestamp (usually REQUEST_TIME).
      *
      * @return array{0:string,1:int} Tuple of [cacheKey, resetEpoch].
      */
@@ -171,8 +171,8 @@ final readonly class ThrottleMiddleware
     /**
      * Load the current window payload or initialize a new counter.
      *
-     * @param string $key   Cache key.
-     * @param int    $reset Reset epoch for a fresh window.
+     * @param string $key Cache key.
+     * @param int $reset Reset epoch for a fresh window.
      *
      * @return array{hits:int, reset:int} Payload.
      */
@@ -197,7 +197,7 @@ final readonly class ThrottleMiddleware
     /**
      * Persist the updated payload with an expiry aligned to the reset epoch.
      *
-     * @param string               $key     Cache key.
+     * @param string $key Cache key.
      * @param array{hits:int,reset:int} $payload Payload to store.
      *
      * @return void

@@ -26,6 +26,7 @@ interface RouteInterface
      * @return array|string|callable The handler for this route.
      */
     public function getHandler(): array|string|callable;
+
     /**
      * Retrieve the HTTP method (GET, POST, PUT, DELETE, etc.)
      * that this route responds to.

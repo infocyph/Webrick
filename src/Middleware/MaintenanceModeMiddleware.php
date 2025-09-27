@@ -26,8 +26,8 @@ final readonly class MaintenanceModeMiddleware
     /**
      * Configure maintenance toggle and response details.
      *
-     * @param string $file        Absolute path to the "down" file that enables maintenance mode.
-     * @param int    $retryAfter  Seconds clients should wait before retrying.
+     * @param string $file Absolute path to the "down" file that enables maintenance mode.
+     * @param int $retryAfter Seconds clients should wait before retrying.
      * @param string $contentType Content-Type for the maintenance response.
      */
     public function __construct(
@@ -43,7 +43,7 @@ final readonly class MaintenanceModeMiddleware
      * The response body contains the contents of the "down" file when non-empty,
      * or a default message. Retry-After and Content-Type headers are set accordingly.
      *
-     * @param Request $req  Incoming request.
+     * @param Request $req Incoming request.
      * @param Closure $next Next handler in the pipeline.
      *
      * @return Response 503 maintenance response or the downstream response.

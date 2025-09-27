@@ -134,7 +134,7 @@ abstract class AbstractMatcher
      * keys are verbs and values are true.
      *
      * @param array<string,mixed> $map Verb => route-like map (values not inspected)
-     * @param array<string,bool>  $set Map being populated (by reference)
+     * @param array<string,bool> $set Map being populated (by reference)
      * @return void
      */
     protected function addAllowedFromMap(array $map, array &$set): void
@@ -154,7 +154,7 @@ abstract class AbstractMatcher
      * source is an array of route instances.
      *
      * @param array<string,CompiledRoute> $routes Verb => CompiledRoute map
-     * @param array<string,bool>          $set    Map being populated (by reference)
+     * @param array<string,bool> $set Map being populated (by reference)
      * @return void
      */
     protected function addAllowedFromRoutes(array $routes, array &$set): void
@@ -376,8 +376,8 @@ abstract class AbstractMatcher
      * @param CompiledRoute $r Compiled route to insert
      * @param string $verb HTTP verb (uppercased)
      *
-     * @throws \LogicException On duplicate dynamic route insertion.
      * @return void
+     * @throws \LogicException On duplicate dynamic route insertion.
      */
     protected function trieInsert(array &$root, CompiledRoute $r, string $verb): void
     {

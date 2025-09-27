@@ -73,7 +73,7 @@ final readonly class ResponseLinterMiddleware
     /**
      * Run response checks after invoking the next handler.
      *
-     * @param Request $req  Incoming request.
+     * @param Request $req Incoming request.
      * @param Closure $next Next handler.
      *
      * @return Response Possibly unmodified response; exceptions thrown on violations.
@@ -122,8 +122,8 @@ final readonly class ResponseLinterMiddleware
      *
      * Skips check when Transfer-Encoding is present or when length is missing/zero.
      *
-     * @param Response $r   Response to inspect.
-     * @param int      $len Actual body byte length.
+     * @param Response $r Response to inspect.
+     * @param int $len Actual body byte length.
      *
      * @return void
      *
@@ -155,8 +155,8 @@ final readonly class ResponseLinterMiddleware
     /**
      * Ensure non-empty bodies have a Content-Type header.
      *
-     * @param Response $r   Response to inspect.
-     * @param int      $len Body byte length.
+     * @param Response $r Response to inspect.
+     * @param int $len Body byte length.
      *
      * @return void
      *
@@ -172,8 +172,8 @@ final readonly class ResponseLinterMiddleware
     /**
      * Disallow bodies on 204/304 status codes.
      *
-     * @param Response $r   Response to inspect.
-     * @param int      $len Body byte length.
+     * @param Response $r Response to inspect.
+     * @param int $len Body byte length.
      *
      * @return void
      *
@@ -232,8 +232,8 @@ final readonly class ResponseLinterMiddleware
     /**
      * Case-insensitive membership check within a comma-separated header value.
      *
-     * @param string $line         Raw header value (possibly CSV).
-     * @param string $needleLower  Lower-cased token to search for.
+     * @param string $line Raw header value (possibly CSV).
+     * @param string $needleLower Lower-cased token to search for.
      *
      * @return bool True if token is present; false otherwise.
      */

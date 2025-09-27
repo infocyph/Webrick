@@ -30,6 +30,7 @@ final class Language
             ['Vary', 'Accept-Language'],
         ];
     }
+
     /**
      * Determine the best matching language from an Accept-Language header.
      *

@@ -36,10 +36,10 @@ final class Etag
      *   or null on failure (any thrown error/exception is caught).
      *
      * @param BodyStream $stream Seekable stream to hash (position is preserved).
-     * @param string     $salt   Optional salt to include before the content (e.g., normalized query).
-     * @param string     $algo   Hash algorithm name (e.g., 'xxh3', 'sha256'); must be supported by hash_init().
-     * @param int        $hexLen Number of hex characters to include in the final (quoted) ETag.
-     * @param int        $chunk  Chunk size in bytes used when reading the stream.
+     * @param string $salt Optional salt to include before the content (e.g., normalized query).
+     * @param string $algo Hash algorithm name (e.g., 'xxh3', 'sha256'); must be supported by hash_init().
+     * @param int $hexLen Number of hex characters to include in the final (quoted) ETag.
+     * @param int $chunk Chunk size in bytes used when reading the stream.
      *
      * @return string|null Quoted hex digest (truncated) on success; null on error or if not seekable.
      */

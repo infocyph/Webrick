@@ -116,8 +116,8 @@ final class VaryAccumulatorMiddleware
      * Accepts plain tokens or comma-separated lists. Values are stored on the
      * request for later merging by the middleware.
      *
-     * @param Request       $r          The current request (immutable carrier).
-     * @param string        ...$headers One or more header tokens or CSV strings.
+     * @param Request $r The current request (immutable carrier).
+     * @param string ...$headers One or more header tokens or CSV strings.
      *
      * @return Request A new request instance with tokens queued.
      */
@@ -137,9 +137,9 @@ final class VaryAccumulatorMiddleware
     /**
      * Conditionally queue vary tokens, avoiding call-site branching.
      *
-     * @param Request $r          The current request.
-     * @param bool    $when       Whether to add the tokens.
-     * @param string  ...$headers Header tokens or CSV strings to queue when $when is true.
+     * @param Request $r The current request.
+     * @param bool $when Whether to add the tokens.
+     * @param string ...$headers Header tokens or CSV strings to queue when $when is true.
      *
      * @return Request The original request or a new instance with tokens queued.
      */
@@ -163,8 +163,8 @@ final class VaryAccumulatorMiddleware
     /**
      * TEST HELPER: Inspect queued tokens on the request.
      *
-     * @param Request $r           The current request.
-     * @param bool    $normalized  When true, return canonical Title-Case tokens with dedupe.
+     * @param Request $r The current request.
+     * @param bool $normalized When true, return canonical Title-Case tokens with dedupe.
      *
      * @return array<int,string> Token list (possibly normalized).
      */
@@ -212,7 +212,7 @@ final class VaryAccumulatorMiddleware
     /**
      * Merge two token lists, preserving base order and de-duplicating.
      *
-     * @param array<int,string> $base  Existing canonical tokens.
+     * @param array<int,string> $base Existing canonical tokens.
      * @param array<int,string> $extra Additional canonical tokens to append if missing.
      *
      * @return array<int,string> Merged token list.

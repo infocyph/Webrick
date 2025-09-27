@@ -126,8 +126,8 @@ final class SwooleEmitter extends BaseEmitter
 
     /**
      * Extract Swoole\Http.Response from the given Request, if available.
-     * @throws \RuntimeException If no Swoole\Http.Response is found in the Request.
      * @return \Swoole\Http\Response
+     * @throws \RuntimeException If no Swoole\Http.Response is found in the Request.
      */
     private function extractSwooleResponse(?Request $request): \Swoole\Http\Response
     {

@@ -181,7 +181,6 @@ final class UAParser
     }
 
 
-
     /**
      * Parses the Sec-CH-UA* headers from the request.
      *

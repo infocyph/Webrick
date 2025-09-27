@@ -23,11 +23,11 @@ final class MethodNotAllowedException extends \RuntimeException
     /**
      * Create a new MethodNotAllowedException.
      *
-     * @param string                 $verb     The attempted HTTP verb (e.g., "POST").
-     * @param string                 $path     The requested path (e.g., "/users/1").
-     * @param array<int,string>      $allowed  List of allowed HTTP verbs for the path.
-     * @param int                    $code     Optional error code.
-     * @param \Throwable|null        $previous Optional previous throwable for chaining.
+     * @param string $verb The attempted HTTP verb (e.g., "POST").
+     * @param string $path The requested path (e.g., "/users/1").
+     * @param array<int,string> $allowed List of allowed HTTP verbs for the path.
+     * @param int $code Optional error code.
+     * @param \Throwable|null $previous Optional previous throwable for chaining.
      */
     public function __construct(
         public readonly string $verb,

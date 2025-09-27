@@ -29,12 +29,12 @@ final class InputSanitizer
     /**
      * Configure the sanitizer behavior.
      *
-     * @param bool              $emptyToNull       When true, empty strings become null (array mode only).
-     * @param bool              $collapseWs        When true, collapse runs of spaces/tabs to a single space.
-     * @param bool              $normalizeUnicode  When true and ext/intl is available, normalize to NFKC.
-     * @param int|null          $maxBytes          Maximum allowed byte length (truncate if exceeded); null disables.
-     * @param array<int,string> $skipKeys          Exact keys to skip during array sanitization.
-     * @param array<int,string> $skipKeyPatterns   PCRE patterns; matching keys are skipped during array sanitization.
+     * @param bool $emptyToNull When true, empty strings become null (array mode only).
+     * @param bool $collapseWs When true, collapse runs of spaces/tabs to a single space.
+     * @param bool $normalizeUnicode When true and ext/intl is available, normalize to NFKC.
+     * @param int|null $maxBytes Maximum allowed byte length (truncate if exceeded); null disables.
+     * @param array<int,string> $skipKeys Exact keys to skip during array sanitization.
+     * @param array<int,string> $skipKeyPatterns PCRE patterns; matching keys are skipped during array sanitization.
      */
     public function __construct(
         private bool $emptyToNull = true,
