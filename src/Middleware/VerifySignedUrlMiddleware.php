@@ -37,12 +37,10 @@ final readonly class VerifySignedUrlMiddleware
      *
      * @param string $secret Secret key shared with the signer.
      * @param int|string $leeway Allowed clock skew for expiry checks (in seconds).
-     * @param bool $verbose If true, error messages may include extra details (not currently used).
      */
     public function __construct(
         private string $secret,
-        private int|string $leeway = 0,
-        private bool $verbose = false,
+        private int|string $leeway = 0
     ) {
     }
 
