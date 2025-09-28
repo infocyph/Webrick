@@ -3,10 +3,6 @@
 /**
  * Webrick - Router cache builder and clearer.
  *
- * Provides utilities to build (warm) and clear router caches for different matcher
- * implementations (sharded or fused). Accepts flexible options for registration,
- * signing, logging, and cache layout.
- *
  * @package Infocyph\Webrick\Support
  */
 
@@ -15,6 +11,7 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Support;
 
 use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Router\Definition\Attribute\AttributeRouteLoader;
 use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Kernel\RouterKernel;
 use Infocyph\Webrick\Router\Matching\FusedMatcher;
@@ -22,215 +19,282 @@ use Infocyph\Webrick\Router\Matching\ShardedMatcher;
 use Infocyph\Webrick\Router\Route\Collection;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
-use Infocyph\Webrick\Router\Definition\Attribute\AttributeRouteLoader;
 
-/**
- * Utility for managing the router cache for Webrick.
- *
- * Responsibilities:
- * - Build/warm caches for either fused (single file) or sharded (directory) matchers.
- * - Clear caches safely with optional aggressive removal.
- *
- * Notes:
- * - The matcher flavor can be forced via the 'matcher' option or auto-detected
- *   by the format of the 'cache' path.
- * - For sharded mode, the cache target is a directory; for fused mode, it is a file.
- */
 final class RouteCache
 {
+    /* =========================================================================
+     * Public API
+     * ========================================================================= */
+
     /**
      * Build/warm the router cache.
      *
      * Options:
-     *  - matcher: 'sharded'|'fused'|null (auto-detect by cache path if null)
+     *  - matcher: 'sharded'|'fused'|null (auto)
      *  - cache: string  (dir for sharded; file for fused). REQUIRED
      *  - register: callable(Registrar $r): void  (OR 'routes' => 'path/to/routes.php')
      *  - routes: string (routes.php path if you don’t pass 'register')
-     *  - signKey: ?string (for signed URLs; optional)
-     *  - signedDefaultTtl: int (default 900 seconds)
-     *  - registrarOptions: array (passed to registrar)
-     *  - preGlobal: array<class-string>  (optional)
-     *  - postGlobal: array<class-string> (optional)
-     *  - bindUrlServices: callable(Collection $routes): void (optional; if null, a default binder is used)
+     *  - signKey: ?string
+     *  - signedDefaultTtl: int (default 900)
+     *  - registrarOptions: array
+     *  - preGlobal: array<class-string>
+     *  - postGlobal: array<class-string>
+     *  - bindUrlServices: callable(Collection $routes): void
      *  - logger: LoggerInterface (default NullLogger)
      *  - fallbackAliasesFromRegistrar: bool (default true)
-     *  - attributeDirs: array<string,string> (optional)  // ['App\\Http\\Controllers\\' => '/abs/dir', ...]
+     *  - attributeDirs: array<string,string> (optional)  // ['App\\Http\\Controllers\\' => 'app/Http/Controllers', ...]
      *  - attributeClasses: string[] (optional)           // ['App\\Foo\\BarController', ...]
-     *
-     * Returns the sentinel path that proves the cache is hot:
-     *  - sharded: <cacheDir>/__root.php
-     *  - fused:   <cacheFile>
-     *
-     * @param array<string,mixed> $options Build options (see list above).
-     *
-     * @return string Path to the sentinel that indicates a hot cache.
-     *
-     * @throws \InvalidArgumentException If required options are missing or invalid.
      */
     public static function build(array $options): string
     {
-        $logger = $options['logger'] ?? new NullLogger();
-        \assert($logger instanceof LoggerInterface);
+        $logger    = self::getLogger($options);
+        $cachePath = self::requireCachePath($options);
 
-        $cachePath = (string)($options['cache'] ?? '');
-        if ($cachePath === '') {
-            throw new \InvalidArgumentException("RouteCache::build: 'cache' path is required.");
+        $isFused   = self::determineMatcher($options, $cachePath);
+
+        [$userRegister, $routesFile]     = self::extractRegistration($options);
+        [$attrDirs, $attrClasses]        = self::extractAttributeInputs($options);
+        $baseDirForAttr                  = self::baseDirForAttr($routesFile, $userRegister);
+        $register                        = self::composeRegistrar($userRegister, $routesFile, $attrDirs, $attrClasses, $baseDirForAttr);
+
+        $signKey          = $options['signKey'] ?? null;
+        $signedDefaultTtl = (int)($options['signedDefaultTtl'] ?? 900);
+        $regOpts          = (array)($options['registrarOptions'] ?? []);
+        $preGlobal        = (array)($options['preGlobal'] ?? []);
+        $postGlobal       = (array)($options['postGlobal'] ?? []);
+        $fallbackAliases  = (bool)($options['fallbackAliasesFromRegistrar'] ?? true);
+        $bind             = self::getBind($options, $signKey, $signedDefaultTtl);
+
+        $matcher    = $isFused ? FusedMatcher::make() : ShardedMatcher::make();
+        $routeCache = self::normalizeCacheTarget($isFused, $cachePath);
+
+        self::bootKernel(
+            logger: $logger,
+            matcher: $matcher,
+            register: $register,
+            routeCache: $routeCache,
+            regOpts: $regOpts + [
+                'exposeUrlServices' => true,
+                'signKey'           => $signKey,
+                'signedDefaultTtl'  => $signedDefaultTtl,
+            ],
+            preGlobal: $preGlobal,
+            postGlobal: $postGlobal,
+            bind: $bind,
+            fallbackAliases: $fallbackAliases
+        );
+
+        return $isFused
+            ? $routeCache
+            : $routeCache . DIRECTORY_SEPARATOR . '__root.php';
+    }
+
+    /**
+     * Clear the router cache for fused or sharded modes.
+     */
+    public static function clear(array $options): bool
+    {
+        $cachePath = self::requireCachePath($options);
+        $isFused   = self::determineMatcher($options, $cachePath);
+        self::guardDangerousPath($cachePath);
+
+        return $isFused
+            ? self::clearFused($cachePath)
+            : self::clearSharded($cachePath, (bool)($options['aggressive'] ?? false));
+    }
+
+    private static function baseDirForAttr(string $routesFile, ?callable $userRegister): string
+    {
+        // Prefer the directory of routes.php when provided; fallback to CWD for custom registrars.
+        return $routesFile !== '' ? \dirname($routesFile) : (\getcwd() ?: __DIR__);
+    }
+
+    private static function bootKernel(
+        LoggerInterface $logger,
+        object $matcher,
+        callable $register,
+        string $routeCache,
+        array $regOpts,
+        array $preGlobal,
+        array $postGlobal,
+        callable $bind,
+        bool $fallbackAliases
+    ): void {
+        RouterKernel::bootWithRegistrar(
+            log: $logger,
+            matcher: $matcher,
+            register: $register,
+            routeCache: $routeCache,
+            registrarOptions: $regOpts,
+            preGlobal: $preGlobal,
+            postGlobal: $postGlobal,
+            bindUrlServices: $bind,
+            fallbackAliasesFromRegistrar: $fallbackAliases,
+        );
+    }
+
+    private static function clearFused(string $file): bool
+    {
+        return self::rmFile($file);
+    }
+
+    private static function clearSharded(string $cachePath, bool $aggressive): bool
+    {
+        $dir = \rtrim($cachePath, "/\\");
+        if (!\is_dir($dir)) {
+            return false;
         }
 
-        $matcherOpt = $options['matcher'] ?? null;
-        $matcherOpt = $matcherOpt ? \strtolower((string)$matcherOpt) : null;
+        return $aggressive
+            ? self::rrmdir($dir)
+            : self::removeCacheArtifacts($dir);
+    }
 
-        // Heuristic: if path ends with ".php" treat as fused, otherwise sharded.
-        $isFused = match ($matcherOpt) {
-            'fused' => true,
-            'sharded' => false,
-            default => \str_ends_with($cachePath, '.php'),
-        };
+    private static function composeRegistrar(
+        ?callable $userRegister,
+        string $routesFile,
+        array $attrDirs,
+        array $attrClasses,
+        string $baseDirForAttr
+    ): callable {
+        $normalizedAttrDirs = self::normalizeAttributeDirs($baseDirForAttr, $attrDirs);
 
-        // ----- registration source -----
-        $userRegister = $options['register'] ?? null;
-        $routesFile = (string)($options['routes'] ?? '');
-
-        if ($userRegister && !$userRegister instanceof \Closure && !\is_callable($userRegister)) {
-            throw new \InvalidArgumentException("RouteCache::build: 'register' must be callable.");
-        }
-
-        if (!$userRegister && $routesFile === '') {
-            throw new \InvalidArgumentException("RouteCache::build: provide 'register' callable or 'routes' file.");
-        }
-
-        // Pick up attribute discovery options (optional)
-        /** @var array<string,string> $attributeDirs */
-        $attributeDirs = (array)($options['attributeDirs'] ?? []);
-        /** @var string[] $attributeClasses */
-        $attributeClasses = (array)($options['attributeClasses'] ?? []);
-
-        // Compose a single registrar callback that first runs user's routes,
-        // then registers attribute-based routes (dirs and explicit classes).
-        $register = static function (Registrar $r) use (
-            $userRegister,
-            $routesFile,
-            $attributeDirs,
-            $attributeClasses,
-        ): void {
+        return static function (Registrar $r) use ($userRegister, $routesFile, $normalizedAttrDirs, $attrClasses): void {
             if ($userRegister) {
                 ($userRegister)($r);
             } else {
                 require $routesFile;
             }
 
-            if ($attributeDirs) {
-                AttributeRouteLoader::registerFromDirs($r, $attributeDirs);
+            if ($normalizedAttrDirs !== []) {
+                AttributeRouteLoader::registerFromDirs($r, $normalizedAttrDirs);
             }
-            if ($attributeClasses) {
-                AttributeRouteLoader::register($r, $attributeClasses);
+            if ($attrClasses !== []) {
+                AttributeRouteLoader::register($r, $attrClasses);
             }
         };
-
-        $signKey = $options['signKey'] ?? null;
-        $signedDefaultTtl = (int)($options['signedDefaultTtl'] ?? 900);
-        $regOpts = (array)($options['registrarOptions'] ?? []);
-        $preGlobal = (array)($options['preGlobal'] ?? []);
-        $postGlobal = (array)($options['postGlobal'] ?? []);
-        $fallbackAliases = (bool)($options['fallbackAliasesFromRegistrar'] ?? true);
-
-        /** @var null|callable $bind */
-        $bind = $options['bindUrlServices'] ?? null;
-        if (!$bind) {
-            $bind = static function (Collection $routes) use ($signKey, $signedDefaultTtl): void {
-                Response::bindUrlServices($routes, $signKey, $signedDefaultTtl);
-            };
-        }
-
-        $matcher = $isFused ? FusedMatcher::make() : ShardedMatcher::make();
-
-        // Normalize cache target for matcher flavor
-        $routeCache = $isFused
-            ? $cachePath
-            : \rtrim($cachePath, "/\\");
-
-        RouterKernel::bootWithRegistrar(
-            log: $logger,
-            matcher: $matcher,
-            register: $register,
-            routeCache: $routeCache,
-            registrarOptions: $regOpts + [
-                'exposeUrlServices' => true,
-                'signKey' => $signKey,
-                'signedDefaultTtl' => $signedDefaultTtl,
-            ],
-            preGlobal: $preGlobal,
-            postGlobal: $postGlobal,
-            bindUrlServices: $bind,
-            fallbackAliasesFromRegistrar: $fallbackAliases,
-        );
-
-        return $isFused
-            ? $routeCache                                   // fused sentinel is the cache file itself
-            : $routeCache . DIRECTORY_SEPARATOR . '__root.php';
     }
 
-    /**
-     * Clear the router cache for fused or sharded modes.
-     *
-     * Behavior:
-     * - Fused: unlinks the single cache file (if it exists).
-     * - Sharded: by default removes only generated PHP shards and sentinels, preserving
-     *   the directory (and dotfiles like .gitignore). If 'aggressive' is true, removes
-     *   the entire directory recursively.
-     *
-     * @param array<string,mixed> $options Clear options:
-     *   - matcher: 'sharded'|'fused'|null (auto-detect if null)
-     *   - cache: string (REQUIRED; dir for sharded, file for fused)
-     *   - aggressive: bool (default false) — sharded: remove entire dir
-     *
-     * @return bool True if any file or directory was removed; false otherwise.
-     *
-     * @throws \InvalidArgumentException If required options are missing.
-     * @throws \RuntimeException If the provided cache path is considered dangerous.
-     */
-    public static function clear(array $options): bool
+    private static function determineMatcher(array $options, string $cachePath): bool
     {
-        $cachePath = (string)($options['cache'] ?? '');
-        if ($cachePath === '') {
-            throw new \InvalidArgumentException("RouteCache::clear: 'cache' path is required.");
-        }
-
         $matcherOpt = $options['matcher'] ?? null;
         $matcherOpt = $matcherOpt ? \strtolower((string)$matcherOpt) : null;
 
-        $isFused = match ($matcherOpt) {
-            'fused' => true,
+        // return bool: true => fused, false => sharded
+        return match ($matcherOpt) {
+            'fused'   => true,
             'sharded' => false,
-            default => \str_ends_with($cachePath, '.php'),
+            default   => \str_ends_with($cachePath, '.php'),
         };
+    }
 
-        // ✅ SAFE BY DEFAULT: keep directory for sharded caches
-        $aggressive = (bool)($options['aggressive'] ?? false);
+    /**
+     * @return array{0:array<string,string>,1:string[]}
+     */
+    private static function extractAttributeInputs(array $options): array
+    {
+        /** @var array<string,string> $dirs */
+        $dirs = (array)($options['attributeDirs'] ?? []);
+        /** @var string[] $classes */
+        $classes = (array)($options['attributeClasses'] ?? []);
+        return [$dirs, $classes];
+    }
 
-        // Basic guardrails against dangerous targets
+    /**
+     * @return array{0:?callable,1:string} [$userRegister, $routesFile]
+     */
+    private static function extractRegistration(array $options): array
+    {
+        $userRegister = $options['register'] ?? null;
+        $routesFile   = (string)($options['routes'] ?? '');
+
+        if ($userRegister && !$userRegister instanceof \Closure && !\is_callable($userRegister)) {
+            throw new \InvalidArgumentException("RouteCache::build: 'register' must be callable.");
+        }
+        if (!$userRegister && $routesFile === '') {
+            throw new \InvalidArgumentException("RouteCache::build: provide 'register' callable or 'routes' file.");
+        }
+        return [$userRegister, $routesFile];
+    }
+
+    private static function getBind(array $options, ?string $signKey, int $signedDefaultTtl): callable
+    {
+        /** @var null|callable $bind */
+        $bind = $options['bindUrlServices'] ?? null;
+
+        if ($bind) {
+            return $bind;
+        }
+
+        return static function (Collection $routes) use ($signKey, $signedDefaultTtl): void {
+            Response::bindUrlServices($routes, $signKey, $signedDefaultTtl);
+        };
+    }
+
+    /* =========================================================================
+     * Orchestration helpers (build)
+     * ========================================================================= */
+
+    private static function getLogger(array $options): LoggerInterface
+    {
+        $logger = $options['logger'] ?? new NullLogger();
+        \assert($logger instanceof LoggerInterface);
+        return $logger;
+    }
+
+    /* =========================================================================
+     * Orchestration helpers (clear)
+     * ========================================================================= */
+
+    private static function guardDangerousPath(string $cachePath): void
+    {
         $danger = ['/', '\\', '.', '..', ''];
         if (\in_array($cachePath, $danger, true)) {
             throw new \RuntimeException("RouteCache::clear: refusing to operate on risky path '{$cachePath}'.");
         }
+    }
 
-        if ($isFused) {
-            // single cache file
-            return self::rmFile($cachePath);
+    /* =========================================================================
+     * Utilities
+     * ========================================================================= */
+
+    /**
+     * Resolve Namespace => dir map to absolute dirs (relative to $baseDir).
+     *
+     * @param string $baseDir
+     * @param array<string,string> $map
+     * @return array<string,string>
+     */
+    private static function normalizeAttributeDirs(string $baseDir, array $map): array
+    {
+        $out = [];
+        foreach ($map as $ns => $dir) {
+            $ns  = (string)$ns;
+            $dir = (string)$dir;
+
+            if ($ns === '' || $dir === '') {
+                continue;
+            }
+            if (!\str_ends_with($ns, '\\')) {
+                $ns .= '\\';
+            }
+
+            $isAbs = \str_starts_with($dir, DIRECTORY_SEPARATOR)
+                || (bool)\preg_match('#^[A-Za-z]:\\\\#', $dir);
+
+            $abs = $isAbs ? $dir : $baseDir . DIRECTORY_SEPARATOR . $dir;
+            $out[$ns] = $abs;
         }
+        return $out;
+    }
 
-        // sharded = directory of PHP shards + sentinels
-        $dir = \rtrim($cachePath, "/\\");
-        if (!\is_dir($dir)) {
-            return false;
-        }
+    private static function normalizeCacheTarget(bool $isFused, string $cachePath): string
+    {
+        return $isFused ? $cachePath : \rtrim($cachePath, "/\\");
+    }
 
-        if ($aggressive) {
-            // remove directory recursively (dotfiles included) – use with care
-            return self::rrmdir($dir);
-        }
-
-        // Non-aggressive: remove only our cache artifacts, keep folder & dotfiles (.gitignore)
+    private static function removeCacheArtifacts(string $dir): bool
+    {
         $removed = false;
 
         // Known sentinels
@@ -242,35 +306,28 @@ final class RouteCache
         foreach (\glob($dir . DIRECTORY_SEPARATOR . '*.php') ?: [] as $php) {
             $base = \basename($php);
             if ($base === '__root.php' || $base === '__aliases.php') {
-                continue; // already handled
+                continue;
             }
             $removed = self::rmFile($php) || $removed;
         }
 
-        // keep the directory (so .gitignore survives)
         return $removed;
     }
 
-    /**
-     * Remove a single file if it exists.
-     *
-     * @param string $file Absolute or relative path to the file.
-     *
-     * @return bool True if the file existed and was removed; false otherwise.
-     */
+    private static function requireCachePath(array $options): string
+    {
+        $cachePath = (string)($options['cache'] ?? '');
+        if ($cachePath === '') {
+            throw new \InvalidArgumentException("RouteCache: 'cache' path is required.");
+        }
+        return $cachePath;
+    }
+
     private static function rmFile(string $file): bool
     {
         return \is_file($file) && @\unlink($file);
     }
 
-    /**
-     * Recursively remove a directory and all of its contents (including dotfiles).
-     *
-     * @param string $dir Directory path to remove.
-     *
-     * @return bool True on full removal success; false if the directory did not exist
-     *              or if any operation failed.
-     */
     private static function rrmdir(string $dir): bool
     {
         if (!\is_dir($dir)) {
