@@ -13,5 +13,6 @@ routes.php export-ignore
 route_cache_examples.php export-ignore
 .htaccess export-ignore
 .gitattributes export-ignore
+webrick export-ignore
 
 *  text eol=lf

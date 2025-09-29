@@ -20,23 +20,30 @@ use SplFileInfo;
 final class AttributeRouteLoader
 {
     /**
-     * Register routes from a list of annotated controller classes.
+     * Fast path: if you already know the FQCNs, this is the most efficient route.
      *
      * @param Registrar $registrar
      * @param list<class-string> $classes
      */
     public static function register(Registrar $registrar, array $classes): void
     {
+        // de-dup while preserving order
+        $seen = [];
         foreach ($classes as $fqcn) {
+            if (isset($seen[$fqcn])) {
+                continue;
+            }
+            $seen[$fqcn] = true;
             self::registerClass($registrar, $fqcn);
         }
     }
+
     /**
      * Discover classes from PSR-4 roots and register annotated routes.
      *
      * @param Registrar $registrar
      * @param array<string,string> $roots e.g. ['App\\Http\\Controllers\\' => __DIR__.'/app/Http/Controllers']
-     * @param null|callable(\SplFileInfo):bool $filter optional file filter
+     * @param null|callable(\SplFileInfo):bool $filter optional file filter (return true to include the file)
      */
     public static function registerFromDirs(Registrar $registrar, array $roots, ?callable $filter = null): void
     {
@@ -47,6 +54,23 @@ final class AttributeRouteLoader
     }
 
     /**
+     * Convenience filter: only scan files that look like controllers.
+     * Usage: AttributeRouteLoader::registerFromDirs($r, $roots, AttributeRouteLoader::controllerFileFilter());
+     *
+     * @return callable(\SplFileInfo):bool
+     */
+    public static function controllerFileFilter(): callable
+    {
+        return static function (SplFileInfo $f): bool {
+            $name = $f->getFilename();
+            // Typical convention: *Controller.php (still requires PHP extension)
+            return str_ends_with($name, 'Controller.php');
+        };
+    }
+
+    /**
+     * Build per-route options array for Registrar::add().
+     *
      * @return array{name?:string,as?:string,middleware:array,attributes:array}
      */
     private static function buildOptions(Route $rAttr, array $methodMw, ?Produces $prod, ?Cors $cors): array
@@ -89,48 +113,47 @@ final class AttributeRouteLoader
 
             /** @var SplFileInfo $f */
             foreach ($it as $f) {
+                // ① quick rejects
                 if ($f->getExtension() !== 'php') {
                     continue;
                 }
+                $path = $f->getPathname();
+
+                // ② skip vendor trees aggressively (sane default)
+                //    matches ".../vendor/..." on any platform
+                if (preg_match('~(^|[/\\\\])vendor([/\\\\]|$)~', $path) === 1) {
+                    continue;
+                }
+
+                // ③ user-provided filter (e.g., only *Controller.php)
                 if ($filter && !$filter($f)) {
                     continue;
                 }
 
+                // ④ derive FQCN from PSR-4 root
                 $fqcn = self::fqcnFromFile($nsPrefix, $dir, $f);
                 if ($fqcn === null) {
                     continue;
                 }
 
+                // ⑤ try Composer autoload first; if it fails, require the file
                 self::loadClassIfNeeded($f, $fqcn);
                 if (!self::shouldLoadClass($fqcn)) {
                     continue;
                 }
 
                 $rc = new ReflectionClass($fqcn);
-                if (self::hasRouteRelevantAttributes($rc)) {
+
+                // include classes with class-level OR method-level #[Route] attributes
+                if (self::hasRouteRelevantAttributes($rc) || self::hasMethodLevelRoutes($rc)) {
                     $out[] = $fqcn;
                 }
             }
         }
 
+        // de-dup while preserving discovery order
+        $out = array_values(array_unique($out));
         return $out;
-    }
-
-    private static function emitRoutes(
-        Registrar $r,
-        array $methods,
-        string $path,
-        array $handler,
-        array $opts,
-    ): void {
-        foreach ($methods as $verb) {
-            $call = strtolower($verb);
-            if (!method_exists($r, $call)) {
-                // Unknown HTTP verb helper; skip gracefully.
-                continue;
-            }
-            $r->{$call}($path, $handler, $opts);
-        }
     }
 
     private static function fqcnFromFile(string $nsPrefix, string $rootDir, SplFileInfo $f): ?string
@@ -144,6 +167,25 @@ final class AttributeRouteLoader
         return rtrim($nsPrefix, '\\') . '\\' . ltrim($base, '\\');
     }
 
+    /**
+     * Try Composer autoload first; if that fails, include the file directly.
+     */
+    private static function loadClassIfNeeded(SplFileInfo $file, string $fqcn): void
+    {
+        if (!class_exists($fqcn, true)) { // true → allow autoload
+            require_once $file->getPathname();
+        }
+    }
+
+    private static function shouldLoadClass(string $fqcn): bool
+    {
+        if (!class_exists($fqcn, false)) { // already attempted autoload/include
+            return false;
+        }
+        $rc = new ReflectionClass($fqcn);
+        return !($rc->isAbstract() || $rc->isInterface());
+    }
+
     private static function hasRouteRelevantAttributes(ReflectionClass $rc): bool
     {
         return
@@ -152,11 +194,17 @@ final class AttributeRouteLoader
             $rc->getAttributes(Middleware::class) !== [];
     }
 
-    private static function loadClassIfNeeded(SplFileInfo $file, string $fqcn): void
+    /**
+     * Consider a class eligible if ANY public method has a #[Route] attribute.
+     */
+    private static function hasMethodLevelRoutes(ReflectionClass $rc): bool
     {
-        if (!class_exists($fqcn, false)) {
-            require_once $file->getPathname();
+        foreach ($rc->getMethods(ReflectionMethod::IS_PUBLIC) as $rm) {
+            if ($rm->getAttributes(Route::class, ReflectionAttribute::IS_INSTANCEOF) !== []) {
+                return true;
+            }
         }
+        return false;
     }
 
     /** @param ReflectionClass|ReflectionMethod $ref */
@@ -253,12 +301,19 @@ final class AttributeRouteLoader
         }
     }
 
-    private static function shouldLoadClass(string $fqcn): bool
-    {
-        if (!class_exists($fqcn)) {
-            return false;
+    private static function emitRoutes(
+        Registrar $r,
+        array $methods,
+        string $path,
+        array $handler,
+        array $opts,
+    ): void {
+        foreach ($methods as $verb) {
+            $call = strtolower($verb);
+            if (!method_exists($r, $call)) {
+                continue; // skip unknown helpers
+            }
+            $r->{$call}($path, $handler, $opts);
         }
-        $rc = new ReflectionClass($fqcn);
-        return !($rc->isAbstract() || $rc->isInterface());
     }
 }

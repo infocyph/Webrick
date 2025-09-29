@@ -176,16 +176,11 @@ namespace {
 //    };
     $register = static function (Registrar $registrar): void {
         require_once __DIR__ . '/routes.php';
-
-        // 1) Scan your PSR-4 directory for attribute controllers
-        AttributeRouteLoader::registerFromDirs($registrar, [
-            'Infocyph\\Webrick\\Tests\\Fixture\\' => __DIR__ . '/tests/Fixture',
-        ]);
-
-        // 2) Also register the inline controller declared in index.php
-//        AttributeRouteLoader::register($registrar, [
-//            \App\Http\Controllers\AttrDemoController::class,
-//        ]);
+        AttributeRouteLoader::registerFromDirs(
+            $registrar,
+            ['Infocyph\\Webrick\\Tests\\Fixture\\' => __DIR__.'/tests/Fixture'],
+//            AttributeRouteLoader::controllerFileFilter()   // ← scans only *Controller.php
+        );
     };
 
     /* --------------------------------------------------------------------------
