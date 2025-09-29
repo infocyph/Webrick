@@ -40,7 +40,7 @@ final readonly class VerifySignedUrlMiddleware
      */
     public function __construct(
         private string $secret,
-        private int|string $leeway = 0
+        private int|string $leeway = 0,
     ) {
     }
 

@@ -35,7 +35,7 @@ final class RouteCache
         };
 
         $userRegister = $options['register'] ?? null;
-        $routesFile   = (string)($options['routes'] ?? '');
+        $routesFile = (string)($options['routes'] ?? '');
         if ($userRegister && !$userRegister instanceof \Closure && !\is_callable($userRegister)) {
             throw new \InvalidArgumentException("RouteCache::build: 'register' must be callable.");
         }
@@ -66,7 +66,7 @@ final class RouteCache
             $attributeDirs,
             $attributeClasses,
             $logger,
-            $baseDir
+            $baseDir,
         ): void {
             $cwd = getcwd();
             // Temporarily switch to the routes base directory
@@ -97,12 +97,12 @@ final class RouteCache
             }
         };
 
-        $signKey          = $options['signKey'] ?? null;
+        $signKey = $options['signKey'] ?? null;
         $signedDefaultTtl = (int)($options['signedDefaultTtl'] ?? 900);
-        $regOpts          = (array)($options['registrarOptions'] ?? []);
-        $preGlobal        = (array)($options['preGlobal'] ?? []);
-        $postGlobal       = (array)($options['postGlobal'] ?? []);
-        $fallbackAliases  = (bool)($options['fallbackAliasesFromRegistrar'] ?? true);
+        $regOpts = (array)($options['registrarOptions'] ?? []);
+        $preGlobal = (array)($options['preGlobal'] ?? []);
+        $postGlobal = (array)($options['postGlobal'] ?? []);
+        $fallbackAliases = (bool)($options['fallbackAliasesFromRegistrar'] ?? true);
 
         /** @var null|callable(Collection):void $bind */
         $bind = $options['bindUrlServices'] ?? null;
@@ -112,7 +112,7 @@ final class RouteCache
             };
         }
 
-        $matcher    = $isFused ? FusedMatcher::make() : ShardedMatcher::make();
+        $matcher = $isFused ? FusedMatcher::make() : ShardedMatcher::make();
         $routeCache = $isFused ? $cachePath : \rtrim($cachePath, "/\\");
 
         RouterKernel::bootWithRegistrar(
@@ -123,8 +123,8 @@ final class RouteCache
             registrarOptions: $regOpts + [
                 'exposeUrlServices' => false, // we'll bind explicitly
                 'autoSlashRedirect' => (bool)($regOpts['autoSlashRedirect'] ?? false),
-                'signKey'           => $signKey,
-                'signedDefaultTtl'  => $signedDefaultTtl,
+                'signKey' => $signKey,
+                'signedDefaultTtl' => $signedDefaultTtl,
             ],
             preGlobal: $preGlobal,
             postGlobal: $postGlobal,
@@ -189,7 +189,7 @@ final class RouteCache
         $out = [];
         foreach ($dirs as $ns => $dir) {
             $ns = rtrim($ns, '\\') . '\\';
-            $p  = $dir;
+            $p = $dir;
 
             // make absolute if needed
             if (!preg_match('#^([/\\\\]|[A-Za-z]:[/\\\\])#', $p)) {
