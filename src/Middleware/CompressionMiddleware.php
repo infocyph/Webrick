@@ -396,7 +396,13 @@ final readonly class CompressionMiddleware
         return \array_column($parsed, 0);
     }
 
-    /** Returns [value-without-quotes, isWeak]. Blank value means “no ETag present". */
+    /**
+     * Parse an ETag header value into its base value and weakness flag.
+     *
+     * @param string $etagLine Raw ETag header line (may include W/ prefix and quotes).
+     *
+     * @return array{0:string,1:bool} [valueWithoutQuotes, isWeak]. Blank value means “no ETag present”.
+     */
     private function parseEtag(string $etagLine): array
     {
         $t = trim($etagLine);

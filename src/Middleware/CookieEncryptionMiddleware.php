@@ -42,30 +42,55 @@ use RuntimeException;
 
 /**
  * Encrypt and authenticate outbound cookies; decrypt inbound cookies.
+ *
+ * Responsibilities:
+ * - Decrypt inbound prefixed cookies and reassemble chunked payloads.
+ * - Encrypt outbound Set-Cookie values with authenticated encryption and optional compression.
+ * - Split large ciphertexts across multiple cookie parts or store server-side when necessary.
+ * - Enforce secure Set-Cookie attributes and SameSite policies.
  */
 final class CookieEncryptionMiddleware
 {
+    /** Prefix used for server-side cache keys. */
     private const CACHE_PREFIX = 'enc_cookie.';
+
+    /** 1-byte compression flag indicating Brotli. */
     private const MODE_BROTLI = 'b';
+    /** 1-byte compression flag indicating gzip/deflate family. */
     private const MODE_GZIP = 'g';
     /* compression flags (1-byte, ASCII) */
+    /** 1-byte compression flag indicating no compression. */
     private const MODE_NONE = '0';
+    /** Cookie value prefix marking server-side storage indirection. */
     private const MODE_STORE = 'S:';  // server-side storage marker in cookie value
+    /** 1-byte compression flag indicating Zstandard. */
     private const MODE_ZSTD = 'z';
 
     /** versioned cache blob prefix + simple integrity check (pre-b64 sanity) */
     private const STORE_BLOB_V1 = 'C1:';   // "C1:<chk>:<b64cipher>"
+    /** Separator token used within cache blob formatting. */
     private const STORE_SEP = ':';         // separator used in cache blob
 
+    /** Version byte 0x31 for v1 framing. */
     private const V1_BYTE = "1";      // 0x31
+
+    /** Whether brotli functions are available. */
     private static bool $hasBrotli = false;
+    /** Whether gzip/deflate functions are available. */
     private static bool $hasGzip = false;
 
+    /** Whether zstd functions are available. */
     private static bool $hasZstd = false;
 
-    /** @var list<string> 32-byte raw keys (key ring) */
+    /**
+     * @var list<string> 32-byte raw keys (key ring).
+     * Keys are used for AES-256-GCM; index positions are Key IDs (KIDs).
+     */
     private array $keys;
-    /** current encryption key id (index into $keys) */
+
+    /**
+     * @var int Current Key ID (index into $keys) used for new encryptions.
+     */
     private int $kid;
 
     /**
@@ -160,6 +185,9 @@ final class CookieEncryptionMiddleware
 
     /**
      * Build Additional Authenticated Data (AAD) for AES-GCM.
+     *
+     * The AAD binds the logical cookie identity, the key id, and the compression mode,
+     * preventing cross-context substitution.
      *
      * @param string $baseName Logical cookie name.
      * @param int $kid Key id.
@@ -294,7 +322,7 @@ final class CookieEncryptionMiddleware
      * @param string $mode Compression mode flag.
      * @param string $pt Raw plaintext (possibly compressed).
      *
-     * @return string|null Decompressed or original plaintext; null for unsupported mode.
+     * @return string|false|null Decompressed plaintext, original text (no compression), false when decompression fails, or null when unsupported.
      */
     private function decompress(string $mode, string $pt): mixed
     {
@@ -309,10 +337,13 @@ final class CookieEncryptionMiddleware
     /**
      * Decrypt a single cookie ciphertext (base64 string).
      *
+     * Resolves optional server-side indirection, validates framing, tries keys by KID (v1) or ring (legacy),
+     * verifies authentication, and returns the (possibly decompressed) plaintext.
+     *
      * @param string $baseName Logical cookie name (without .pN suffix).
      * @param string $cipher Base64 ciphertext or "S:<id>" pointer.
      *
-     * @return mixed|null Decrypted value or null when authentication fails.
+     * @return mixed|null Decrypted value or null when authentication fails or payload invalid.
      */
     private function decrypt(string $baseName, string $cipher): mixed
     {

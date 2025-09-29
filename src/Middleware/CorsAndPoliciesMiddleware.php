@@ -2,6 +2,19 @@
 
 declare(strict_types=1);
 
+/**
+ * Apply CORS response headers and common security policies (HSTS, CSP, Client Hints, TAO).
+ *
+ * Responsibilities:
+ * - Resolve per-route or global CORS policy and set ACAO/ACAC/ACAH/ACAM/ACEH as appropriate.
+ * - Handle CORS preflight (OPTIONS) with a 204 empty response.
+ * - Apply security headers via `SecurityHeaders::tight()` and optional CSP/Accept-CH/Timing-Allow-Origin.
+ *
+ * Notes:
+ * - When a wildcard origin is used with credentials disabled, ACAO may be "*"; otherwise the request Origin is echoed.
+ * - Adds appropriate Vary headers to requests using `VaryAccumulatorMiddleware` to preserve cache correctness.
+ */
+
 namespace Infocyph\Webrick\Middleware;
 
 use Closure;
@@ -11,8 +24,28 @@ use Infocyph\Webrick\Response\Headers\SecurityHeaders;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Definition\Attribute\Cors;
 
+/**
+ * CORS and security policy middleware.
+ *
+ * Constructor parameters define the default/global policy. Route-level `#[Cors]` attributes
+ * on handlers can override selected fields (origins, methods, headers, etc.).
+ */
 final readonly class CorsAndPoliciesMiddleware
 {
+    /**
+     * @param array<int,string> $origins Allowed origins (exact URLs, "null", wildcard patterns like "https://*.example.com", or ['*']).
+     * @param string $methods CSV list of allowed methods (e.g., "GET, POST, PUT, PATCH, DELETE, OPTIONS").
+     * @param string|array<int,string> $allowHeaders Allowed request headers (CSV or list). Supports '*' when credentials are disabled.
+     * @param string|array<int,string> $exposeHeaders Exposed response headers (CSV or list). Supports '*' when credentials are disabled.
+     * @param int $maxAgeSeconds Preflight cache max age (seconds).
+     * @param bool $allowCredentials Whether to emit ACAC=true (requires non-wildcard origin echo).
+     * @param bool $allowPrivateNetwork Allow Private Network requests on preflight (experimental header).
+     * @param bool $hsts Whether to apply HSTS.
+     * @param bool $hstsIncludeSubdomains IncludeSubDomains flag for HSTS.
+     * @param string|null $csp Content-Security-Policy value (null to skip if already present).
+     * @param array<int,string> $acceptCh Client Hints to request via Accept-CH.
+     * @param array<int,string> $timingAllowOrigins Origins allowed for resource timing (TAO). Use ['*'] for wildcard.
+     */
     public function __construct(
         // CORS
         private array $origins = ['*'],
@@ -50,6 +83,17 @@ final readonly class CorsAndPoliciesMiddleware
     ) {
     }
 
+    /**
+     * Handle the request by applying CORS (including preflight handling) and security policies.
+     *
+     * Flow:
+     * - Resolve policy from route attribute `#[Cors]` (if present) merged with defaults.
+     * - Determine allowed origin and add Vary headers when necessary.
+     * - On OPTIONS: generate 204 with preflight headers only.
+     * - Otherwise: pass downstream and then apply CORS headers and security policies.
+     *
+     * @return Response Final response with CORS and security headers applied.
+     */
     public function __invoke(Request $req, Closure $next): Response
     {
         $policy = [
@@ -106,9 +150,9 @@ final readonly class CorsAndPoliciesMiddleware
     /* ───────────────────────── CORS ───────────────────────── */
 
     /**
-     * Orchestrates CORS header application by delegating to smaller helpers.
+     * Orchestrate CORS header application by delegating to specific helpers.
      *
-     * @param array<string,mixed> $p
+     * @param array<string,mixed> $p Effective policy bag.
      */
     private function applyCors(
         Response $r,
@@ -127,6 +171,14 @@ final readonly class CorsAndPoliciesMiddleware
 
     /* ───────────────────── Policies (no NEL here) ─────────────────── */
 
+    /**
+     * Apply security policies and related headers (HSTS, CSP, Accept-CH, TAO).
+     *
+     * - HSTS: applied via `SecurityHeaders::tight()`, with optional IncludeSubDomains.
+     * - CSP: set if a value is configured and header not already present.
+     * - Accept-CH: include when configured and not already present.
+     * - Timing-Allow-Origin: '*' or CSV of configured origins when not already present.
+     */
     private function applyPolicies(Response $r): Response
     {
         $r = SecurityHeaders::tight($r, hsts: $this->hsts, includeSubs: $this->hstsIncludeSubdomains);
@@ -145,6 +197,8 @@ final readonly class CorsAndPoliciesMiddleware
     }
 
     /**
+     * Normalize an Origin URL into comparable components.
+     *
      * @return array{scheme:string,host:string,port:int,origin:string}
      */
     private function canonicalOrigin(string $origin): array
@@ -164,6 +218,9 @@ final readonly class CorsAndPoliciesMiddleware
 
     /* ───────────────────── Helpers & matchers ─────────────────── */
 
+    /**
+     * Normalize a CSV list or array of strings to a de-duplicated CSV.
+     */
     private function csv(string|array $v): string
     {
         if (is_string($v)) {
@@ -173,11 +230,21 @@ final readonly class CorsAndPoliciesMiddleware
         return implode(', ', array_unique($v));
     }
 
+    /**
+     * True when `$v` denotes wildcard "*" (either as string or single-element array).
+     */
     private function isWildcard(string|array $v): bool
     {
         return is_string($v) ? trim($v) === '*' : ($v === ['*']);
     }
 
+    /**
+     * Match a parsed origin against an allowed pattern.
+     *
+     * Supported patterns:
+     * - Full origin string equality.
+     * - Scheme/host/port with optional wildcard subdomain prefix ("*.example.com").
+     */
     private function matchOriginPattern(array $o, string $pattern): bool
     {
         if (strcasecmp($o['origin'], $pattern) === 0) {
@@ -204,6 +271,9 @@ final readonly class CorsAndPoliciesMiddleware
         return $o['host'] === $ph;
     }
 
+    /**
+     * Check if an HTTP method is allowed by the CSV list.
+     */
     private function methodAllowed(string $method, string $csvList): bool
     {
         $list = array_map('trim', explode(',', $csvList));
@@ -211,7 +281,16 @@ final readonly class CorsAndPoliciesMiddleware
     }
 
     /**
-     * @return array{0:?string,1:bool}
+     * Resolve the allowed origin result for a given request `Origin`.
+     *
+     * Behavior:
+     * - Empty origin returns [null, false] (no ACAO).
+     * - "null" origin allowed only when explicitly present in allowed list.
+     * - Allowed ['*'] returns either echo of origin (with credentials) or wildcard (without credentials).
+     * - Exact match or wildcard subdomain patterns are supported.
+     *
+     * @param array<int,string> $allowed
+     * @return array{0:?string,1:bool} [acaoValueOrNull, usedWildcard]
      */
     private function resolveAllowedOrigin(string $origin, array $allowed, bool $withCreds): array
     {
@@ -249,9 +328,9 @@ final readonly class CorsAndPoliciesMiddleware
     }
 
     /**
-     * ACAO + ACAC
+     * Set ACAO and ACAC when permitted by policy and request context.
      *
-     * @param array<string,mixed> $p
+     * @param array<string,mixed> $p Policy bag.
      */
     private function setAcaoAndCredentials(Response $r, array $p, ?string $acao, bool $wildcard): Response
     {
@@ -268,9 +347,9 @@ final readonly class CorsAndPoliciesMiddleware
     }
 
     /**
-     * ACAH + ACMA (+ ACAPN)
+     * Set ACAH (+ ACMA, and optionally ACAPN on preflight).
      *
-     * @param array<string,mixed> $p
+     * @param array<string,mixed> $p Policy bag.
      */
     private function setAllowHeaders(Response $r, Request $req, array $p, bool $preflight): Response
     {
@@ -298,9 +377,9 @@ final readonly class CorsAndPoliciesMiddleware
     }
 
     /**
-     * ACAM (reflect requested method on preflight when allowed).
+     * Set ACAM (reflect requested method on preflight when allowed).
      *
-     * @param array<string,mixed> $p
+     * @param array<string,mixed> $p Policy bag.
      */
     private function setAllowMethods(Response $r, Request $req, array $p, bool $preflight): Response
     {
@@ -313,9 +392,9 @@ final readonly class CorsAndPoliciesMiddleware
     }
 
     /**
-     * ACEH (supports '*' when credentials are off).
+     * Set ACEH (supports '*' when credentials are disabled).
      *
-     * @param array<string,mixed> $p
+     * @param array<string,mixed> $p Policy bag.
      */
     private function setExposeHeaders(Response $r, array $p): Response
     {
@@ -329,6 +408,9 @@ final readonly class CorsAndPoliciesMiddleware
         return $this->setIfAbsent($r, 'Access-Control-Expose-Headers', $expose);
     }
 
+    /**
+     * Set a header only when absent; otherwise return the response unchanged.
+     */
     private function setIfAbsent(Response $r, string $name, string $value): Response
     {
         return $r->hasHeader($name) ? $r : $r->withSmartHeader($name, $value);
