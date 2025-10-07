@@ -25,6 +25,7 @@ use Infocyph\InterMix\Cache\Cache;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Psr\Cache\CacheItemPoolInterface;
+use Psr\Cache\InvalidArgumentException;
 
 /**
  * Fixed-window throttling with standard headers and flexible configuration.
@@ -132,7 +133,7 @@ final readonly class ThrottleMiddleware
                 ->withSmartHeader('RateLimit-Limit', (string)$this->max)
                 ->withSmartHeader('RateLimit-Remaining', (string)$remain)
                 ->withSmartHeader('RateLimit-Reset', (string)$delta)
-                ->withSmartHeader('RateLimit-Policy', "{$this->max};w={$this->window}");
+                ->withSmartHeader('RateLimit-Policy', "$this->max;w=$this->window");
         }
 
         return $resp;
@@ -154,8 +155,6 @@ final readonly class ThrottleMiddleware
                 ?? $req->getServerParams()['REMOTE_ADDR']
                 ?? 'unknown');
 
-        $bucket = $this->scope;
-
         // ---- fixed-window alignment ----
         // Start of the current window (e.g., 12:00:00, 12:01:00, … for w=60)
         $winStart = intdiv($now, $this->window) * $this->window;
@@ -163,7 +162,7 @@ final readonly class ThrottleMiddleware
 
         // Hard-partition by window to avoid cross-window races
         return [
-            't.' . hash('xxh3', $bucket . '|' . (string)$id . '|' . $winStart, false),
+            't.' . hash('xxh3', $this->scope . '|' . (string)$id . '|' . $winStart, false),
             $reset,
         ];
     }
@@ -175,6 +174,7 @@ final readonly class ThrottleMiddleware
      * @param int $reset Reset epoch for a fresh window.
      *
      * @return array{hits:int, reset:int} Payload.
+     * @throws InvalidArgumentException
      */
     private function load(string $key, int $reset): array
     {
@@ -201,6 +201,7 @@ final readonly class ThrottleMiddleware
      * @param array{hits:int,reset:int} $payload Payload to store.
      *
      * @return void
+     * @throws InvalidArgumentException
      */
     private function persist(string $key, array $payload): void
     {
@@ -250,7 +251,7 @@ final readonly class ThrottleMiddleware
                 ->withSmartHeader('RateLimit-Limit', (string)$this->max)
                 ->withSmartHeader('RateLimit-Remaining', '0')
                 ->withSmartHeader('RateLimit-Reset', (string)$delta)
-                ->withSmartHeader('RateLimit-Policy', "{$this->max};w={$this->window}");
+                ->withSmartHeader('RateLimit-Policy', "$this->max;w=$this->window");
         }
 
         return $resp->withSmartHeader('Server-Timing', 'throttle;dur=0');

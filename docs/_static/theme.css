@@ -1,0 +1,5 @@
+:root { --admonition-font-size: 0.95rem; }
+.rst-content code, .rst-content tt { white-space: pre-wrap; }
+.highlight pre { border-radius: 6px; padding: 0.9rem 1.1rem; }
+.wy-nav-content { max-width: 1100px; }
+.wy-side-nav-search a { font-weight: 700; }
