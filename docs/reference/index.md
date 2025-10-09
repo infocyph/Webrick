@@ -1,4 +1,3 @@
-
 # Reference
 
 Exact APIs, options, and behaviors. Use this section when you know *what* you want but need the precise knobs.
@@ -17,3 +16,13 @@ Exact APIs, options, and behaviors. Use this section when you know *what* you wa
 
 ## Tip
 Pair Reference with **Guides** for end‑to‑end flows (e.g., signed URLs using Response helpers + middleware).
+
+```{toctree}
+:maxdepth: 1
+:caption: Reference
+matcher
+route_cache
+enums
+request
+response
+```

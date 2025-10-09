@@ -1,4 +1,3 @@
-
 # Getting Started
 
 Start here to get a working app quickly, then explore guides and reference.
@@ -42,3 +41,10 @@ Route::get('/', fn() => R::text('Hello Webrick'))->name('home');
 - Add **validators** + **compression** middleware for speed and correctness.
 - Choose **Sharded** or **Fused** matcher based on your deployment style.
 - Jump to **Deployments** to productionize.
+
+```{toctree}
+:maxdepth: 1
+:caption: Getting Started
+:glob:
+*
+```

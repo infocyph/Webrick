@@ -101,3 +101,14 @@ $href = R::temporaryUrlFor('file.download', ['file' => 'report.pdf'], ttl: 900);
 - Keep **route names stable** for durable links.
 - Preserve **query strings** at the proxy (required for signed URLs).
 - Tune **FPM** (pm/max_children) and enable **OPcache**.
+
+```{toctree}
+:maxdepth: 2
+:caption: Contents
+
+getting-started/index
+guides/index
+middleware/index
+deployments/index
+reference/index
+```

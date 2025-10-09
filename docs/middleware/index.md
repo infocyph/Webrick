@@ -1,4 +1,3 @@
-
 # Middleware
 
 Webrick’s pipeline is **pre‑global → handler → post‑global**. Place each middleware where it has the most effect with minimal cost.
@@ -46,3 +45,18 @@ postGlobal: [
 - 406s? Client `Accept` header has no overlap; use `Response::auto()`.
 - Stale content? Confirm validators are attached and clock skew isn’t extreme.
 - Cache poisoning? Ensure `Vary` covers what you negotiate (language, encoding, etc.).
+
+```{toctree}
+:maxdepth: 1
+:caption: Middleware
+cache-validators
+compression
+cookies
+negotiation
+cors-policies
+gateway-hardening
+normalize-method
+throttle
+telemetry
+vary-accumulator
+```

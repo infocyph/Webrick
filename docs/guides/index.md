@@ -1,4 +1,3 @@
-
 # Guides
 
 Practical, copy‑paste friendly walkthroughs that show how to use Webrick’s features in real apps. Each guide mirrors the **actual code paths** and middleware interactions.
@@ -35,3 +34,11 @@ $link = R::temporaryUrlFor('file.download', ['file' => 'report.pdf'], ttl: 900);
 - Double compression: enable **either** Webrick compression **or** proxy gzip/deflate/zstd, not both.
 - Missing `WEBRICK_SIGN_KEY`: signed URL helpers will fail without a key.
 - Attribute discovery: ensure your scan paths are correct and classes are autoloadable.
+
+```{toctree}
+:maxdepth: 1
+:caption: Guides
+urls
+attribute-routes
+responses-and-negotiation
+```

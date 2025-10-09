@@ -1,4 +1,3 @@
-
 # Deployments
 
 Recipes for running Webrick in production across popular stacks. Everything here respects Webrick’s own middleware behaviors.
@@ -24,4 +23,16 @@ Recipes for running Webrick in production across popular stacks. Everything here
 location / {
   try_files $uri /index.php?$query_string;
 }
+```
+
+```{toctree}
+:maxdepth: 1
+:caption: Deployments
+overview
+nginx
+apache
+containers
+kubernetes
+serverless
+troubleshooting
 ```
