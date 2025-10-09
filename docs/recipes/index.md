@@ -8,3 +8,16 @@ Battle-tested snippets for common Webrick tasks. Each recipe is copy–paste-abl
 - [Streaming downloads](./streaming-downloads.md)
 - [CORS per-route override](./cors-per-route.md)
 - [Throttling patterns](./throttling.md)
+
+```{toctree}
+:maxdepth: 2
+:hidden:
+:caption: Recipes
+
+trailing-slash
+head-handling
+etag-conditional
+streaming-downloads
+cors-per-route
+throttling
+```

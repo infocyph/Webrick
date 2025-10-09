@@ -111,5 +111,4 @@ guides/index
 middleware/index
 deployments/index
 reference/index
-quickstart/hello-webrick
 recipes/index
