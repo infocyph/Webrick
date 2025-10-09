@@ -102,6 +102,14 @@ $href = R::temporaryUrlFor('file.download', ['file' => 'report.pdf'], ttl: 900);
 - Tune **FPM** (pm/max_children) and enable **OPcache**.
 
 ```{toctree}
+:maxdepth: 2
 :hidden:
+:caption: Contents
 
-_toc
+getting-started/index
+guides/index
+middleware/index
+deployments/index
+reference/index
+quickstart/hello-webrick
+recipes/index
