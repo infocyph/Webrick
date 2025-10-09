@@ -18,9 +18,14 @@ Exact APIs, options, and behaviors. Use this section when you know *what* you wa
 Pair Reference with **Guides** for end‑to‑end flows (e.g., signed URLs using Response helpers + middleware).
 
 ```{toctree}
-:maxdepth: 1
+:maxdepth: 2
+:hidden:
 :caption: Reference
+
+router
+middleware
 matcher
+route-cache
 route_cache
 enums
 request

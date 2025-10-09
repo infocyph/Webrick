@@ -36,9 +36,20 @@ $link = R::temporaryUrlFor('file.download', ['file' => 'report.pdf'], ttl: 900);
 - Attribute discovery: ensure your scan paths are correct and classes are autoloadable.
 
 ```{toctree}
-:maxdepth: 1
+:maxdepth: 2
+:hidden:
 :caption: Guides
-urls
+
+routing
+groups-and-domains
 attribute-routes
+attributes
+requests
+responses
 responses-and-negotiation
+content-negotiation
+streaming
+cookies
+throttling
+urls
 ```

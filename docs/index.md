@@ -1,4 +1,3 @@
-
 # Webrick Router – Documentation Index
 
 A fast, modern PHP router with production-grade middleware, signed URLs, streaming responses, and route caching.
@@ -104,6 +103,7 @@ $href = R::temporaryUrlFor('file.download', ['file' => 'report.pdf'], ttl: 900);
 
 ```{toctree}
 :maxdepth: 2
+:hidden:
 :caption: Contents
 
 getting-started/index

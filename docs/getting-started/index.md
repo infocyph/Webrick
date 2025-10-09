@@ -43,8 +43,10 @@ Route::get('/', fn() => R::text('Hello Webrick'))->name('home');
 - Jump to **Deployments** to productionize.
 
 ```{toctree}
-:maxdepth: 1
+:maxdepth: 2
+:hidden:
 :caption: Getting Started
-:glob:
-*
+
+installation
+quickstart
 ```

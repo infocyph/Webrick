@@ -47,16 +47,26 @@ postGlobal: [
 - Cache poisoning? Ensure `Vary` covers what you negotiate (language, encoding, etc.).
 
 ```{toctree}
-:maxdepth: 1
+:maxdepth: 2
+:hidden:
 :caption: Middleware
+
+overview
 cache-validators
 compression
+cookie-encryption
 cookies
-negotiation
+cors-and-policies
 cors-policies
 gateway-hardening
+input-sanitizer
+maintenance-mode
+negotiation
 normalize-method
-throttle
+request-limits
+response-cache
+response-linter
 telemetry
+throttle
 vary-accumulator
 ```

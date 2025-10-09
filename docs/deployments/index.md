@@ -26,13 +26,20 @@ location / {
 ```
 
 ```{toctree}
-:maxdepth: 1
+:maxdepth: 2
+:hidden:
 :caption: Deployments
+
 overview
 nginx
 apache
+nginx-apache-fpm
 containers
+containers-and-ci
+php-fpm-tuning
+route-cache-warmup
 kubernetes
 serverless
+vercel-and-serverless
 troubleshooting
 ```
