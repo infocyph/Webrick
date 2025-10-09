@@ -1,3 +1,4 @@
+
 # Route Cache Reference
 
 Deep dive into the structure, build process, and runtime integration of Webrick’s route cache.
@@ -152,3 +153,5 @@ Absolute URLs use host rules (domain groups) or app base URL.
 * [ ] Ship the cache with the artifact; point kernel to the same path
 * [ ] Include attribute routes in the same registration flow (build & runtime)
 * [ ] Keep prod immutable—no runtime rebuilds; use maintenance if ever necessary
+
+rel_path=docs/reference/route-cache.md

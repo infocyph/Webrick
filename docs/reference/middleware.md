@@ -1,3 +1,4 @@
+
 # Middleware API Reference
 
 How to **write**, **configure**, and **compose** middleware in Webrick. Covers lifecycle, interfaces, short-circuiting, and best practices.
@@ -279,3 +280,5 @@ Keep this **documented** for your team; it prevents order-related regressions.
 * [ ] Coordinate with **Vary**, **Cache**, **Compression**, **Validators**
 * [ ] Add thorough unit tests and an integration sanity test for ordering
 
+
+rel_path=docs/reference/middleware.md
