@@ -1,4 +1,3 @@
-
 # Throttle Middleware
 
 Limits request rate using the alias syntax `throttle:<limit>,<seconds>`.

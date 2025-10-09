@@ -1,4 +1,3 @@
-
 # Apache (mod_php or PHP-FPM)
 
 Minimal configuration using `FallbackResource` (Apache 2.4+).

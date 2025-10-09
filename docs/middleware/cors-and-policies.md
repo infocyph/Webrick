@@ -28,7 +28,7 @@ Put it in **post-global** (so it can finalize headers after your handler), typic
 ```php
 $postGlobal = [
   \Infocyph\Webrick\Middleware\CompressionMiddleware::class,
-  \Infocyph\Webrick\Middleware\CorsAndPoliciesMiddleware::class,
+  \Infocyph\Webrick\Middleware\CorsAndCorsAndPoliciesMiddleware::class,
   \Infocyph\Webrick\Middleware\VaryAccumulatorMiddleware::class,
 ];
 ```
@@ -42,7 +42,7 @@ If your middleware short-circuits **preflight OPTIONS** (common), it can also ru
 *(Adapt names to your constructor/options.)*
 
 ```php
-new \Infocyph\Webrick\Middleware\CorsAndPoliciesMiddleware(
+new \Infocyph\Webrick\Middleware\CorsAndCorsAndPoliciesMiddleware(
   cors: [
     'allow_origins'      => ['https://app.example.com', 'https://*.partner.com'], // or ['*'] (no credentials)
     'allow_methods'      => ['GET','POST','PUT','PATCH','DELETE'],

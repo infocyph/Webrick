@@ -1,4 +1,3 @@
-
 # Troubleshooting
 
 ## 403 on signed URLs

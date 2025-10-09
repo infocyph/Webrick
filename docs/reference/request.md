@@ -1,4 +1,3 @@
-
 # Request API Reference
 
 Everything available on `Infocyph\Webrick\Request\Request` passed into your handlers and middleware.
@@ -246,4 +245,3 @@ Route::get('/hello', function (Request $r) {
 * [ ] Use attributes for cross-cutting context (auth, locale, signed)
 * [ ] For large/verified payloads, use `getBodyStream()` instead of buffering
 
-rel_path=docs/reference/request.md

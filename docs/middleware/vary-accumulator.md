@@ -1,4 +1,3 @@
-
 # Vary Accumulator Middleware
 
 Accumulates `Vary` tokens from downstream components (e.g., `Accept-Encoding`, `Accept-Language`) and deduplicates them.

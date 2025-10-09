@@ -1,4 +1,3 @@
-
 # Nginx (Reverse Proxy) + PHP-FPM
 
 A minimal, production‑ready Nginx config when Webrick runs under PHP‑FPM.

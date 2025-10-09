@@ -1,4 +1,3 @@
-
 # Router API Reference
 
 Low-level, definitive reference for registering routes and groups in Webrick.
@@ -261,4 +260,3 @@ Route::group(domain:'admin.example.com', prefix:'/dashboard', namePrefix:'admin.
 * [ ] Consider attribute routes for modular codebases
 * [ ] Prebuild **route cache** for faster boots in prod
 
-rel_path=docs/reference/router.md

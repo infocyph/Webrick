@@ -1,4 +1,3 @@
-
 # Cache Validators Middleware
 
 Handles HTTP conditional requests with `ETag` and `Last-Modified`, and short-circuits when appropriate.

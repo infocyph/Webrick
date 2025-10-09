@@ -11,12 +11,12 @@ This guide shows how to generate and verify signed URLs in Webrick. It matches t
 At boot, enable URL services and configure signing:
 
 ```php
-use Infocyph\Webrick\Router\RouterKernel;
-use Infocyph\Webrick\Router\Matcher\ShardedMatcher;
+use Infocyph\Webrick\Router\Kernel\RouterKernel;
+use Infocyph\Webrick\Router\Matching\ShardedMatcher;
 use Infocyph\Webrick\Response\Response as R;
 
 $kernel = RouterKernel::bootWithRegistrar(
-    new ShardedMatcher(__DIR__.'/var/route-cache'),
+    ShardedMatcher::make(__DIR__.'/var/route-cache'),
     require __DIR__.'/routes.php',
     registrarOptions: [
         'autoSlashRedirect' => true,

@@ -59,7 +59,7 @@ $register = static function (Registrar $registrar) use ($signKey): void {
     $route  = $registrar->facade();
 
     // Simple routes
-    $route::get('/ping', fn() => Response::text('pong'));
+    $route::get('/ping', fn() => Response::plaintext('pong'));
     $route::get('/hello/{name}', function (Request $r, string $name) {
         return Response::json(['hello' => $name, 'prefers' => $r->prefers(['application/json','+json','text/plain'])]);
     })->name('hello');
@@ -121,7 +121,7 @@ Attach the verifier to your protected route:
 ```php
 use Infocyph\Webrick\Middleware\VerifySignedUrlMiddleware;
 
-$route::get('/protected', fn() => Response::text('secret'))
+$route::get('/protected', fn() => Response::plaintext('secret'))
     ->middleware(VerifySignedUrlMiddleware::class);
 ```
 

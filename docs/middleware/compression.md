@@ -1,4 +1,3 @@
-
 # Compression Middleware
 
 Negotiates and encodes responses with `zstd`, `br`, `gzip`, or `deflate` based on the request's `Accept-Encoding`.
@@ -16,7 +15,7 @@ Register it in **post-global** middleware so headers are set by your handler fir
 
 ```php
 $kernel = RouterKernel::bootWithRegistrar(
-    matcher: new ShardedMatcher(__DIR__.'/var/cache/routes'),
+    matcher: ShardedMatcher::make(),
     registrar: require __DIR__.'/routes.php',
     preGlobal: [
         // ...validators, throttle, sanitize...

@@ -26,11 +26,11 @@ composer require infocyph/webrick
 1) **Boot the kernel** with a matcher and registrar:
 
 ```php
-use Infocyph\Webrick\Router\RouterKernel;
-use Infocyph\Webrick\Router\Matcher\ShardedMatcher;
+use Infocyph\Webrick\Router\Kernel\RouterKernel;
+use Infocyph\Webrick\Router\Matching\ShardedMatcher;
 
 $kernel = RouterKernel::bootWithRegistrar(
-    new ShardedMatcher(__DIR__.'/var/route-cache'),
+    ShardedMatcher::make(__DIR__.'/var/route-cache'),
     require __DIR__.'/routes.php',
     registrarOptions: [
         'autoSlashRedirect' => true,
@@ -48,7 +48,7 @@ $kernel = RouterKernel::bootWithRegistrar(
     postGlobal: [
         \Infocyph\Webrick\Middleware\CompressionMiddleware::class,
         \Infocyph\Webrick\Middleware\VaryAccumulatorMiddleware::class,
-        // \Infocyph\Webrick\Middleware\PoliciesMiddleware::class,
+        // \Infocyph\Webrick\Middleware\CorsAndPoliciesMiddleware::class,
     ]
 );
 ```
@@ -59,7 +59,7 @@ $kernel = RouterKernel::bootWithRegistrar(
 use Infocyph\Webrick\Router\Route;
 use Infocyph\Webrick\Response\Response as R;
 
-Route::get('/', fn() => R::text('Hello Webrick'))->name('home');
+Route::get('/', fn() => R::plaintext('Hello Webrick'))->name('home');
 
 // Signed download
 Route::get('/download/{file}', function (string $file) {
@@ -102,13 +102,6 @@ $href = R::temporaryUrlFor('file.download', ['file' => 'report.pdf'], ttl: 900);
 - Tune **FPM** (pm/max_children) and enable **OPcache**.
 
 ```{toctree}
-:maxdepth: 2
 :hidden:
-:caption: Contents
 
-getting-started/index
-guides/index
-middleware/index
-deployments/index
-reference/index
-```
+_toc

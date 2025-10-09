@@ -1,4 +1,3 @@
-
 # Serverless / Edge
 
 Webrick can run in serverless contexts, but mind platform limits.

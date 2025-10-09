@@ -1,4 +1,3 @@
-
 # Gateway Hardening Middleware
 
 Protects the app at the edge of the request pipeline.

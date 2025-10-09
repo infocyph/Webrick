@@ -1,4 +1,3 @@
-
 # Normalize Method Middleware
 
 Normalizes HTTP verbs safely (e.g., `POST` with `_method=PUT`) for clients that cannot send all verbs.

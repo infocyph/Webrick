@@ -8,7 +8,7 @@ Point the registrar to scan your source directory (shown here conceptually—kee
 
 ```php
 // in routes.php (or your registrar file)
-use Infocyph\Webrick\Router\Attributes as A;
+use Infocyph\Webrick\Router\Definition\Attribute as A;
 use Infocyph\Webrick\Router\Route;
 
 // Existing explicit routes…
@@ -23,8 +23,8 @@ Route::get('/', [HomeController::class, 'index'])->name('home');
 ```php
 namespace App\Http\Controller;
 
-use Infocyph\Webrick\Router\Attributes\Get;
-use Infocyph\Webrick\Router\Attributes\Post;
+use Infocyph\Webrick\Router\Definition\Attribute\Get;
+use Infocyph\Webrick\Router\Definition\Attribute\Post;
 use Infocyph\Webrick\Response\Response as R;
 
 final class UserController

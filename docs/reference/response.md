@@ -1,4 +1,3 @@
-
 # Response API Reference
 
 Everything you can return from handlers. Responses are **immutable**: every mutator returns a **new** instance.
@@ -248,7 +247,6 @@ return Response::stream(function () {
 * [ ] Use URL helpers for named/signed/temporary links
 * [ ] Stream wisely; avoid `Content-Length` on streams; favor `attachment()` for big files
 
-rel_path=docs/reference/response.md
 
 
 ---
@@ -265,4 +263,4 @@ $res  = $http->createResponse(204); // empty response
 $txt  = $http->createStream('ok');
 ```
 
-Prefer using `Response::json()`, `Response::text()`, `Response::stream()` etc. in handlers.
+Prefer using `Response::json()`, `Response::plaintext()`, `Response::stream()` etc. in handlers.

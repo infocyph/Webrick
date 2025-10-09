@@ -11,11 +11,11 @@ composer require infocyph/webrick
 ## Boot the kernel
 
 ```php
-use Infocyph\Webrick\Router\RouterKernel;
-use Infocyph\Webrick\Router\Matcher\ShardedMatcher;
+use Infocyph\Webrick\Router\Kernel\RouterKernel;
+use Infocyph\Webrick\Router\Matching\ShardedMatcher;
 
 $kernel = RouterKernel::bootWithRegistrar(
-  new ShardedMatcher(__DIR__.'/var/route-cache'),
+  ShardedMatcher::make(__DIR__.'/var/route-cache'),
   require __DIR__.'/routes.php',
   registrarOptions: [
     'autoSlashRedirect' => true,
@@ -33,7 +33,7 @@ $kernel = RouterKernel::bootWithRegistrar(
 use Infocyph\Webrick\Router\Route;
 use Infocyph\Webrick\Response\Response as R;
 
-Route::get('/', fn() => R::text('Hello Webrick'))->name('home');
+Route::get('/', fn() => R::plaintext('Hello Webrick'))->name('home');
 ```
 
 ## Next steps

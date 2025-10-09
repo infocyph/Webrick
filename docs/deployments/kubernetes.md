@@ -1,4 +1,3 @@
-
 # Kubernetes (Ingress + PHP-FPM Deployment)
 
 High‑level manifests (trim to your cluster standards).

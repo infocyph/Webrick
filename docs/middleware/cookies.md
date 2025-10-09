@@ -1,4 +1,3 @@
-
 # Cookie Encryption Middleware
 
 Encrypts/decrypts cookies using **AES-256-GCM**, with optional compression and chunking for large values.
@@ -17,7 +16,7 @@ Provide a 32-byte raw key (do NOT hex/base64-encode unless the code expects raw 
 define('WEBRICK_COOKIE_KEY', getenv('WEBRICK_COOKIE_KEY'));
 
 $pre = [
-  [\Infocyph\Webrick\Middleware\CookieEncryptMiddleware::class, [
+  [\Infocyph\Webrick\Middleware\CookieEncryptionMiddleware::class, [
       'key' => WEBRICK_COOKIE_KEY,
       'compress' => 'zstd',   // null|'zstd'|'br'|'gzip'
       'rotate' => []          // optionally supply old keys for rotation

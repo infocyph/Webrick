@@ -1,4 +1,3 @@
-
 # Negotiation Middleware
 
 Negotiates media type (and optionally charset and locale) based on `Accept`, `Accept-Charset`, and `Accept-Language`.

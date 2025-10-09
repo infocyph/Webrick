@@ -1,4 +1,3 @@
-
 # Matcher
 
 Webrick provides two production-grade matchers. Choose one per deployment.
@@ -8,10 +7,10 @@ Webrick provides two production-grade matchers. Choose one per deployment.
 **Best for:** many routes, frequent deploys, good OPcache locality, easy partial clears.
 
 ```php
-use Infocyph\Webrick\Router\Matcher\ShardedMatcher;
-use Infocyph\Webrick\Router\RouterKernel;
+use Infocyph\Webrick\Router\Matching\ShardedMatcher;
+use Infocyph\Webrick\Router\Kernel\RouterKernel;
 
-$matcher = new ShardedMatcher(__DIR__.'/var/route-cache'); // directory
+$matcher = ShardedMatcher::make(__DIR__.'/var/route-cache'); // directory
 $kernel  = RouterKernel::bootWithRegistrar(
     matcher: $matcher,
     registrar: require __DIR__.'/routes.php',
@@ -36,7 +35,7 @@ $kernel  = RouterKernel::bootWithRegistrar(
 
 ```php
 use Infocyph\Webrick\Router\Matcher\FusedMatcher;
-use Infocyph\Webrick\Router\RouterKernel;
+use Infocyph\Webrick\Router\Kernel\RouterKernel;
 
 $matcher = new FusedMatcher(__DIR__.'/var/route-cache.php'); // single file
 $kernel  = RouterKernel::bootWithRegistrar(

@@ -5,7 +5,7 @@ The examples reflect the real behavior in the codebase.
 
 ## Auto content negotiation
 
-`Response::auto($data)` inspects the request's `Accept` (and commonly-used `+json` aliases) and chooses:
+`Response::auto($r, $data)` inspects the request's `Accept` (and commonly-used `+json` aliases) and chooses:
 - `application/json` for arrays/objects/scalars
 - `text/plain` for strings
 - falls back to JSON when unsure
@@ -15,7 +15,7 @@ use Infocyph\Webrick\Response\Response as R;
 
 Route::get('/profile', function () {
     $payload = ['id' => 123, 'name' => 'Hasan'];
-    return R::auto($payload); // JSON by default; can also respect charset/locale if configured
+    return R::auto($r, $payload); // JSON by default; can also respect charset/locale if configured
 });
 ```
 

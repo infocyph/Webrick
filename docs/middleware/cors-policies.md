@@ -1,4 +1,3 @@
-
 # CORS & Security Policies Middleware
 
 Emits CORS headers and common security policy headers.

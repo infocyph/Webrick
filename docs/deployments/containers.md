@@ -1,4 +1,3 @@
-
 # Containers (Nginx + PHP-FPM + Supervisor)
 
 A simple Docker Compose snippet for production‑like setups.

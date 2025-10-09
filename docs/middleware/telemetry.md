@@ -1,4 +1,3 @@
-
 # Telemetry Middleware
 
 Captures timing and request/response metadata for observability.
