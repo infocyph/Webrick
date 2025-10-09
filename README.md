@@ -36,8 +36,6 @@ composer require infocyph/webrick
 
 Wire a minimal app end-to-end: front controller → routes → middleware → emit. Then add signed URLs and route caching.
 
-> Full guide: see [`docs/getting-started/quick-start.md`](./docs/getting-started/quick-start.md)
-
 ### Front controller (full-featured)
 
 ```php
@@ -166,8 +164,6 @@ Common tasks with copy-paste-able snippets:
 * CORS per-route override
 * Throttling patterns
 
-See: [`docs/recipes/index.md`](./docs/recipes/index.md)
-
 ---
 
 ## Middleware (built-ins)
@@ -240,7 +236,7 @@ PRs welcome! Please:
 2. Format: `composer format`
 3. Keep examples **copy-paste-able** and docs in sync
 
-See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for details.
+See [`CONTRIBUTING`](./CONTRIBUTING.md) for details.
 
 ---
 
