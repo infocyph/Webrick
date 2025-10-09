@@ -3,7 +3,6 @@
 :hidden:
 :caption: Contents
 
-index
 getting-started/index
 guides/index
 middleware/index

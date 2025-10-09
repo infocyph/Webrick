@@ -71,6 +71,7 @@ autodoc_default_options = {
 }
 napoleon_google_docstring = True
 napoleon_numpy_docstring  = False
+autosectionlabel_prefix_document = True
 
 # Intersphinx: only include inventories that exist
 intersphinx_mapping = {

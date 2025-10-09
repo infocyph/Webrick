@@ -30,6 +30,6 @@ services:
       - app
 ```
 
-### Build tips
+## Build tips
 - Use multi‑stage images to copy vendor + built assets into a slim final image.
 - Enable OPcache/JIT for FPM; tune `pm`, `pm.max_children` per CPU/memory.
