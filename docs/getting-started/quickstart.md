@@ -146,7 +146,7 @@ examples/hello-webrick/
   "name": "infocyph/hello-webrick",
   "type": "project",
   "require": {
-    "php": ">=8.3",
+    "php": ">=8.4",
     "infocyph/webrick": "^1.0"
   },
   "autoload": {

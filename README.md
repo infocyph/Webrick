@@ -215,7 +215,7 @@ See: `docs/deployments/` (Nginx, Apache, Containers/K8s, Serverless, Troubleshoo
 
 ## Versioning & Support Matrix
 
-* PHP: **8.4+** primary target. If you need 8.3, pin an earlier tag/branch.
+* PHP: **8.4+** primary target.
 * SemVer for public APIs. Breaking changes are noted in release notes.
 
 ---
