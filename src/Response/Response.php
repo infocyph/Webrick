@@ -468,12 +468,13 @@ class Response
         string $name,
         array $params = [],
         array $query = [],
+        ?int $ttl = null,
         bool $absolute = false,
     ): string {
         if (!self::$tempGen) {
             throw new \LogicException('TemporaryUrlGenerator not bound (no default TTL provided).');
         }
-        $path = self::$tempGen->temporary($name, $params, $query, null, false);
+        $path = self::$tempGen->temporary($name, $params, $query, $ttl, false);
         return $absolute ? self::withRouteDomain($name, $path) : $path;
     }
 
