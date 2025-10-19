@@ -62,7 +62,7 @@
             "@test:refactor"
         ],
         "git:hook": "captainhook install --only-enabled -nf",
-        "test": "pest",
+        "test": "pest --no-coverage",
         "refactor": "rector process",
         "lint": "pint",
         "webrick": "webrick"
