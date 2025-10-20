@@ -1,6 +1,7 @@
 <?php
-
 declare(strict_types=1);
+
+require_once __DIR__ . '/DebugHelpers.php';
 
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
@@ -79,12 +80,31 @@ function mockRequest(
     array $query = [],
     array $server = []
 ): Request {
+    // Parse query string from URI if present
+    if (str_contains($uri, '?')) {
+        [$path, $queryString] = explode('?', $uri, 2);
+        parse_str($queryString, $parsedQuery);
+        $query = array_merge($parsedQuery, $query);
+    } else {
+        $path = $uri;
+        $queryString = http_build_query($query);
+    }
+
+    $fullUri = $path;
+    if ($queryString) {
+        $fullUri .= '?' . $queryString;
+    }
+
     $defaultServer = [
         'REQUEST_METHOD' => strtoupper($method),
-        'REQUEST_URI' => $uri,
+        'REQUEST_URI' => $fullUri,
+        'QUERY_STRING' => $queryString,
         'SERVER_PROTOCOL' => 'HTTP/1.1',
         'HTTP_HOST' => 'localhost',
+        'SERVER_NAME' => 'localhost',
         'REMOTE_ADDR' => '127.0.0.1',
+        'REQUEST_TIME' => time(),
+        'REQUEST_TIME_FLOAT' => microtime(true),
     ];
 
     $_SERVER = array_merge($defaultServer, $server);

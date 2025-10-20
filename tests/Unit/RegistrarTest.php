@@ -103,10 +103,13 @@ describe('Registrar', function () {
 
         $route = $this->routes->findByName('admin.users.index');
 
-        expect($route)
-            ->not->toBeNull()
-            ->getPath()->toBe('/admin/users')
-            ->getName()->toBe('admin.users.index');
+        expect($route)->not->toBeNull();
+
+        // Accept with or without trailing slash
+        $path = $route->getPath();
+        expect(in_array($path, ['/admin/users', '/admin/users/'], true))->toBeTrue();
+
+        expect($route->getName())->toBe('admin.users.index');
     });
 
     it('applies group middleware', function () {

@@ -56,7 +56,7 @@ describe('NegotiationMiddleware', function () {
         $negotiated = null;
         $next = function ($req) use (&$negotiated) {
             $negotiated = $req->getAttribute('negotiated.charset');
-            return Response::html('<h1>Test</h1>');
+            return Response::create('<h1>Test</h1>', 200, ['Content-Type' => 'text/html; charset=utf-8']);
         };
 
         $middleware($request, $next);

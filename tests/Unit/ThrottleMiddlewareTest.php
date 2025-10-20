@@ -20,6 +20,14 @@ describe('ThrottleMiddleware', function () {
     });
 
     it('allows requests within limit', function () {
+        // Fresh cache and middleware for this test
+        $cache = testCache('throttle-allow-' . uniqid());
+        $middleware = new ThrottleMiddleware(
+            max: 3,
+            window: 60,
+            pool: $cache
+        );
+
         $request = mockRequest('GET', '/test');
         $called = false;
 
@@ -28,7 +36,7 @@ describe('ThrottleMiddleware', function () {
             return Response::json(['ok' => true]);
         };
 
-        $response = ($this->middleware)($request, $next);
+        $response = $middleware($request, $next);
 
         expect($called)->toBeTrue();
         expect($response)->toHaveStatus(200);
@@ -55,18 +63,29 @@ describe('ThrottleMiddleware', function () {
     });
 
     it('respects per-request cost', function () {
-        $request = mockRequest('GET', '/test');
-        $request = $request->withAttribute('rate_cost.thm', 3);
+        // Fresh cache for this test
+        $cache = testCache('throttle-cost-' . uniqid());
+        $middleware = new ThrottleMiddleware(
+            max: 5,
+            window: 60,
+            pool: $cache
+        );
 
+        $request = mockRequest('GET', '/test');
         $next = fn($req) => Response::json(['ok' => true]);
 
-        // First request costs 3, hitting the limit
-        $response1 = ($this->middleware)($request, $next);
+        // Request with cost 2 (total: 2)
+        $request1 = $request->withAttribute('rate_cost.thm', 2);
+        $response1 = $middleware($request1, $next);
         expect($response1)->toHaveStatus(200);
 
-        // Second request should be throttled
-        $response2 = ($this->middleware)($request, $next);
-        expect($response2)->toHaveStatus(429);
+        // Request with cost 2 again (total: 4)
+        $response2 = $middleware($request1, $next);
+        expect($response2)->toHaveStatus(200);
+
+        // Request with cost 2 more (total: 6, exceeds limit of 5)
+        $response3 = $middleware($request1, $next);
+        expect($response3)->toHaveStatus(429);
     });
 
     it('allows bypass via callback', function () {
