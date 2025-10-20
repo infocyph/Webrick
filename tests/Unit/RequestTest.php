@@ -130,10 +130,12 @@ describe('Request', function () {
     });
 
     it('validates input', function () {
-        $request = mockRequest('POST', '/', [], [
+        $_POST = [
             'email' => 'user@example.com',
             'age' => '25',
-        ]);
+        ];
+
+        $request = Request::fromGlobals();
 
         expect($request->has('email'))->toBeTrue();
         expect($request->has('missing'))->toBeFalse();

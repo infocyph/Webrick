@@ -72,6 +72,10 @@ expect()->extend('toHaveJsonBody', function (array $expected) {
 /**
  * Create a mock request with given parameters.
  */
+
+/**
+ * Create a mock request with given parameters.
+ */
 function mockRequest(
     string $method = 'GET',
     string $uri = '/',
@@ -109,17 +113,25 @@ function mockRequest(
 
     $_SERVER = array_merge($defaultServer, $server);
     $_GET = $query;
-
-    if ($body !== null) {
-        if (is_array($body)) {
-            $_POST = $body;
-        }
-    }
+    $_POST = []; // Clear POST data first
 
     $request = Request::fromGlobals();
 
+    // Apply headers
     foreach ($headers as $name => $value) {
         $request = $request->withHeader($name, $value);
+    }
+
+    // Handle body data for POST/PUT/PATCH
+    if ($body !== null && in_array(strtoupper($method), ['POST', 'PUT', 'PATCH'], true)) {
+        if (is_array($body)) {
+            // For arrays, set as parsed body
+            $request = $request->withParsedBody($body);
+        } elseif (is_string($body)) {
+            // For strings, set as stream body
+            $stream = new \Infocyph\Webrick\Request\Core\Stream($body);
+            $request = $request->withBody($stream);
+        }
     }
 
     return $request;
@@ -161,3 +173,18 @@ function captureEmitted(Response $response): array {
         throw $e;
     }
 }
+
+
+
+/*
+|--------------------------------------------------------------------------
+| Error Handler Cleanup (Integration Tests)
+|--------------------------------------------------------------------------
+| RouterKernel sets custom error handlers. We restore defaults after each test.
+*/
+
+uses()->afterEach(function () {
+    // Simply restore default error handlers - no complex logic needed
+    @restore_error_handler();
+    @restore_exception_handler();
+})->in('Integration');

@@ -1,5 +1,9 @@
 <?php
 
+/**
+ * NOTE: These tests are superseded by RealRoutingTest.php and RealMiddlewareTest.php
+ * which use the actual application setup from index.php and routes.php
+ */
 declare(strict_types=1);
 
 use Infocyph\Webrick\Router\Kernel\RouterKernel;
