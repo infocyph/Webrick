@@ -28,7 +28,7 @@ $preGlobal = [
   \Infocyph\Webrick\Middleware\ThrottleMiddleware::class,
   // ...
 ];
-```php
+```
 
 ---
 
@@ -46,7 +46,7 @@ Route::get('/otp', fn()=> 'ok', [
 Route::post('/login', fn()=> 'ok', [
   'middleware' => ['throttle:10,300'], // 10 per 5 minutes
 ]);
-```php
+```
 
 ---
 
@@ -63,7 +63,7 @@ Route::group(
     $api->get('/status', fn()=> ['ok'=>true], 'status');
   }
 );
-```php
+```
 
 Routes can **add** their own per-route throttle on top (becomes stricter).
 
@@ -89,7 +89,7 @@ A successful request includes remaining budget:
 X-RateLimit-Limit: 120
 X-RateLimit-Remaining: 87
 X-RateLimit-Reset: 1738961123
-```php
+```
 
 A throttled request:
 
@@ -97,7 +97,7 @@ A throttled request:
 HTTP/1.1 429 Too Many Requests
 Retry-After: 23
 X-RateLimit-Remaining: 0
-```php
+```
 
 Optionally emit the standard `RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset` as well.
 
@@ -119,7 +119,7 @@ Optionally emit the standard `RateLimit-Limit`, `RateLimit-Remaining`, `RateLimi
 ```bash
 # Hit 6 times quickly against throttle:5,60
 for i in {1..6}; do curl -i http://127.0.0.1:8000/otp; done
-```php
+```
 
 Expect first 5 = 200, 6th = 429 with `Retry-After`.
 
@@ -137,13 +137,13 @@ Route::group(middleware:['throttle:60,60'], callback:function () {
 Route::group(middleware:['auth','throttle:600,60'], callback:function () {
   Route::get('/me', fn()=> ['ok'=>true]);
 });
-```php
+```
 
 ### Endpoint-specific “expensive” operations
 
 ```php
 Route::post('/export', fn()=> 'queued', ['middleware'=>['auth','throttle:3,3600']]);
-```php
+```
 
 ---
 

@@ -57,7 +57,7 @@ src/
 │   └── Controller/          # Actual controllers (optional separation)
 │       ├── UserController.php
 │       └── ProductController.php
-```php
+```
 
 **Option A: Combined** (route + handler in one class)
 ```php
@@ -68,7 +68,7 @@ final class UserRoutes
     #[Get('/users', name: 'users.index')]
     public function index() { /* handler code */ }
 }
-```php
+```
 
 **Option B: Separated** (route class delegates to controller)
 ```php
@@ -83,7 +83,7 @@ final class UserRoutes
         return $this->controller->index($r);
     }
 }
-```php
+```
 
 **Recommendation**: Option A for small-medium apps; Option B for large apps with shared controller logic.
 
@@ -122,7 +122,7 @@ $kernel = RouterKernel::bootWithRegistrar(
     register: $register,
     // ... other options
 );
-```php
+```
 
 ### How It Works
 
@@ -149,7 +149,7 @@ use Infocyph\Webrick\Router\Definition\Attribute\{Get, Post, Put, Patch, Delete,
 #[Head('/path', ...)]
 #[Options('/path', ...)]
 #[Any('/path', ...)]  // Matches all methods
-```php
+```
 
 ### Attribute Parameters
 
@@ -174,7 +174,7 @@ public function showUser(int $id): Response
 {
     // ...
 }
-```php
+```
 
 ---
 
@@ -225,7 +225,7 @@ final class UserRoutes
         return Response::json(['color' => "#{$hex}"]);
     }
 }
-```php
+```
 
 ---
 
@@ -245,7 +245,7 @@ public function download(string $file): Response
 {
     return Response::attachment(__DIR__ . "/files/{$file}");
 }
-```php
+```
 
 ### Class-Level Middleware (Applies to All Routes)
 ```php
@@ -263,7 +263,7 @@ final class UserRoutes
     #[Post('/users', name: 'users.store', middleware: ['admin'])]
     public function store() { /* auth + throttle + admin applied */ }
 }
-```php
+```
 
 ---
 
@@ -284,13 +284,13 @@ Route::group(
         ]);
     }
 );
-```php
+```
 
 **Result**:
 ```php
 // In App\Api\Routes\UserRoutes.php
 #[Get('/users', name: 'users.index')]  // Becomes: GET /api/users, name: api.users.index
-```php
+```
 
 ### Domain Scoping
 ```php
@@ -304,7 +304,7 @@ Route::group(
         ]);
     }
 );
-```php
+```
 
 ---
 
@@ -330,7 +330,7 @@ public function getData(Request $r): Response
     $data = ['items' => [1, 2, 3]];
     return Response::auto($r, $data);  // Negotiates based on Accept header
 }
-```php
+```
 
 ### CORS Per Route
 ```php
@@ -347,7 +347,7 @@ public function publicApi(): Response
 {
     return Response::json(['public' => true]);
 }
-```php
+```
 
 ---
 
@@ -371,7 +371,7 @@ public function users(Request $r): Response
     $version = str_contains($r->getPath(), 'v2') ? 'v2' : 'v1';
     return Response::json(['version' => $version]);
 }
-```php
+```
 
 ### Resource-Style Routes (RESTful)
 ```php
@@ -395,7 +395,7 @@ public function update(int $id) { /* update */ }
 
 #[Delete('/users/{id:int}', name: 'users.destroy')]
 public function destroy(int $id) { /* delete */ }
-```php
+```
 
 ### Dependency Injection in Constructors
 ```php
@@ -414,7 +414,7 @@ final class UserRoutes
         return Response::json($user);
     }
 }
-```php
+```
 
 **Note**: Ensure your DI container instantiates these classes, or use static methods/closures.
 
@@ -446,12 +446,12 @@ RouteCache::build([
 ]);
 
 echo "Route cache built\n";
-```php
+```
 
 **Run in CI**:
 ```bash
 php scripts/build-route-cache.php
-```php
+```
 
 **Benefits**:
 - ✅ Attribute scanning happens once (build time)
@@ -477,7 +477,7 @@ class UserRoutesTest extends TestCase
         $this->assertEquals('application/json', $response->getHeaderLine('Content-Type'));
     }
 }
-```php
+```
 
 ### Integration Test with Kernel
 ```php
@@ -502,7 +502,7 @@ class AttributeRoutingTest extends TestCase
         $this->assertEquals(200, $response->getStatusCode());
     }
 }
-```php
+```
 
 ---
 
@@ -530,7 +530,7 @@ foreach ($files as $file) {
     require_once $file;
     // Check if class exists
 }
-```php
+```
 
 **Checklist**:
 - [ ] Namespace in class matches registered namespace
@@ -562,7 +562,7 @@ MiddlewareAliases::register('auth', fn() => new AuthMiddleware());
 
 // Use exact alias in attribute
 #[Get('/protected', middleware: ['auth'])]  // Not 'Auth' or 'authenticate'
-```php
+```
 
 ### Performance: Slow First Request
 
@@ -571,7 +571,7 @@ MiddlewareAliases::register('auth', fn() => new AuthMiddleware());
 **Fix**: Prebuild route cache:
 ```bash
 php scripts/build-route-cache.php
-```php
+```
 
 Ship `var/cache/routes/` with your deployment.
 
@@ -589,31 +589,31 @@ Ship `var/cache/routes/` with your deployment.
 
    // ❌ Bad: Mixed
    final class Routes { /* users + products + orders */ }
-```php
+```
 
 2. **Use explicit route names**
 ```php
    #[Get('/users/{id:int}', name: 'users.show')]  // ✅ Explicit
    #[Get('/users/{id:int}')]                       // ❌ Auto-generated (brittle)
-```php
+```
 
 3. **Constrain parameters**
 ```php
    #[Get('/users/{id:int}')]     // ✅ Type-safe
    #[Get('/users/{id}')]          // ❌ Accepts anything
-```php
+```
 
 4. **Group related routes**
 ```php
    Route::group(prefix: '/api', callback: fn($r) =>
        AttributeRouteLoader::registerFromDirs($r, [...])
    );
-```php
+```
 
 5. **Prebuild cache in production**
 ```bash
    php scripts/build-route-cache.php  # In CI/CD
-```php
+```
 
 ### ❌ **Don't**
 
@@ -625,7 +625,7 @@ Ship `var/cache/routes/` with your deployment.
 ```php
    public function show($id) { }  // ❌ Weak
    public function show(int $id) { }  // ✅ Strong
-```php
+```
 
 3. **Don't forget to scan in cache build**
    - If attributes aren't in cache, they won't work in production
@@ -657,7 +657,7 @@ Ship `var/cache/routes/` with your deployment.
 Route::get('/users', [UserController::class, 'index'], 'users.index');
 Route::get('/users/{id:int}', [UserController::class, 'show'], 'users.show');
 Route::post('/users', [UserController::class, 'store'], 'users.store');
-```php
+```
 
 ### After (src/Http/Routes/UserRoutes.php)
 ```php
@@ -676,7 +676,7 @@ final class UserRoutes
     #[Post('/users', name: 'users.store')]
     public function store() { /* ... */ }
 }
-```php
+```
 
 ### Register
 ```php
@@ -687,7 +687,7 @@ final class UserRoutes
 AttributeRouteLoader::registerFromDirs($registrar, [
     'App\\Http\\Routes\\' => __DIR__ . '/../src/Http/Routes',
 ]);
-```php
+```
 
 ---
 
@@ -751,7 +751,7 @@ final class ProductRoutes
         return Response::create('', 204);
     }
 }
-```php
+```
 
 ---
 

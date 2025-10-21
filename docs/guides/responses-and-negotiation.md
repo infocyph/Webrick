@@ -23,7 +23,7 @@ Route::get('/profile', function () {
     $payload = ['id' => 123, 'name' => 'Hasan'];
     return R::auto($r, $payload); // JSON by default; can also respect charset/locale if configured
 });
-```php
+```
 
 ## Streaming
 
@@ -37,7 +37,7 @@ Route::get('/stream/logs', function () {
         }
     }, filename: null); // add filename to suggest download
 });
-```php
+```
 
 ## Validators & compression (middleware cooperation)
 
@@ -61,4 +61,4 @@ $factory = new HttpFactory();
 $res = $factory->createResponse(200)->withHeader('X-App', 'Webrick');
 $stream = $factory->createStream('Hello');
 $res = $res->withBody($stream);
-```php
+```

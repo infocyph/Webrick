@@ -20,7 +20,7 @@ Route::post('/echo', function (Request $r) {
         'headers' => $r->getHeaders(),
     ]);
 });
-```php
+```
 
 > You can mix typed route params and a `Request` argument in any order.
 
@@ -33,7 +33,7 @@ $r->getMethod();                 // "GET", "POST", ...
 $r->getUri();                    // PSR-7 style URI or a Router-native Uri object
 $r->getPath();                   // "/users/42"
 $r->getQueryParams();            // ['page' => '2']
-```php
+```
 
 ### Method override (forms)
 
@@ -48,7 +48,7 @@ If you enabled **NormalizeMethodMiddleware**, HTML forms can send `POST` with `_
 ```php
 $r->query('page', 1);            // 1 if missing
 $r->query();                     // all query params
-```php
+```
 
 ### Form-URL-Encoded or Multipart
 
@@ -57,7 +57,7 @@ $r->input('email');              // from body (form fields)
 $r->all();                       // merged input (query + body)
 $r->only(['email','name']);      // convenience filters (if provided)
 $r->except(['_token']);          // exclude keys
-```php
+```
 
 ### JSON
 
@@ -66,7 +66,7 @@ If `Content-Type: application/json`, the request parses JSON and exposes it via 
 ```php
 $r->json();                      // full decoded JSON (array|scalar|null on invalid/empty)
 $r->json('user.id');             // dot-access helper if available, else null
-```php
+```
 
 > If payload can be large, prefer reading only the keys you need.
 
@@ -77,7 +77,7 @@ $r->json('user.id');             // dot-access helper if available, else null
 ```php
 $files = $r->files();            // array-like, keyed by input name
 $avatar = $r->file('avatar');    // UploadedFile-like (tmp path, size, error, clientName, clientType)
-```php
+```
 
 Validate size and extension at upload time; store outside webroot and generate your own filenames.
 
@@ -90,7 +90,7 @@ $r->getHeaders();                // ['content-type'=>['application/json'], ...]
 $r->getHeader('accept');         // ["application/json"]
 $r->getHeaderLine('accept');     // "application/json"
 $r->server('REMOTE_ADDR');       // "203.0.113.10"
-```php
+```
 
 ### Common helpers
 
@@ -106,7 +106,7 @@ If **CookieEncryptionMiddleware** is enabled, decrypted values appear in the req
 ```php
 $r->getCookieParams();           // all cookies (decrypted when enabled)
 $r->cookie('session_id');        // value or null
-```php
+```
 
 > For security, mark auth cookies `HttpOnly; SameSite=...; Secure`.
 
@@ -123,7 +123,7 @@ Route::get('/users/{id:int}', function (Request $r, int $id) {
     $idB = (int)$r->param('id');
     return Response::json(['idA'=>$idA,'idB'=>$idB]);
 });
-```php
+```
 
 ---
 
@@ -135,7 +135,7 @@ Middleware may attach contextual data to the Request:
 $r->getAttributes();             // all attributes
 $r->getAttribute('locale');      // e.g., "en" from negotiation middleware
 $r->getAttribute('signed');      // e.g., true if VerifySignedUrl passed
-```php
+```
 
 You can also set your own attributes in custom middleware to pass state down the pipeline.
 
@@ -148,13 +148,13 @@ If **NegotiationMiddleware** is active, you can read negotiation decisions:
 ```php
 $r->getAttribute('locale');      // resolved locale
 $r->getHeaderLine('accept');     // client's Accept header
-```php
+```
 
 Then produce a response via convenience helpers:
 
 ```php
 Response::auto($r, ['data' => 'value']);   // chooses JSON/text/XML sanely
-```php
+```
 
 ---
 
@@ -165,7 +165,7 @@ For advanced cases (e.g., HMAC verification or NDJSON streams):
 ```php
 $raw = $r->getBody();            // raw string or stream contents
 $stream = $r->getBodyStream();   // stream resource if available
-```php
+```
 
 Avoid reading the entire body into memory for very large uploads; stream/pipe instead when possible.
 
@@ -191,7 +191,7 @@ Route::post('/api/user', function (Request $r) {
     // ... create user
     return Response::json(['ok'=>true], 201);
 });
-```php
+```
 
 ### File upload
 
@@ -205,7 +205,7 @@ Route::post('/upload', function (Request $r) {
     // move_uploaded_file($file->getTmpName(), $destination);
     return Response::json(['ok'=>true]);
 });
-```php
+```
 
 ---
 

@@ -18,13 +18,13 @@ Route::get('/stream', function () {
         return ''; // optional trailer
     });
 });
-```php
+```
 
 **Test it**
 
 ```bash
 curl -N http://127.0.0.1:8000/stream
-```php
+```
 
 > The `-N` flag tells `curl` not to buffer.
 
@@ -42,7 +42,7 @@ Route::get('/numbers.ndjson', function () {
         }
     })->withHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
 });
-```php
+```
 
 ---
 
@@ -62,14 +62,14 @@ Route::get('/events', function () {
       ->withHeader('Cache-Control', 'no-cache')
       ->withHeader('Connection', 'keep-alive');
 });
-```php
+```
 
 Client (browser):
 
 ```js
 const es = new EventSource('/events');
 es.addEventListener('tick', e => console.log('tick', JSON.parse(e.data)));
-```php
+```
 
 ---
 
@@ -94,7 +94,7 @@ Route::get('/download/report', function () {
     })->withHeader('Content-Type', 'text/csv; charset=UTF-8')
       ->withHeader('Content-Disposition', 'attachment; filename="report.csv"');
 });
-```php
+```
 
 > If you’re not transforming, `Response::attachment($path, 'name.csv')` already streams efficiently—prefer that helper.
 
@@ -146,7 +146,7 @@ return Response::stream(function () {
         if ($h) fclose($h);
     }
 });
-```php
+```
 
 If an exception is thrown mid-stream, the connection will close; ensure upstream logs capture the error.
 
@@ -160,7 +160,7 @@ Emit **structured** progress for clients to parse:
 yield json_encode(['stage'=>'prepare']) . "\n";
 yield json_encode(['stage'=>'processing','pct'=>42]) . "\n";
 yield json_encode(['stage'=>'done']) . "\n";
-```php
+```
 
 For browsers, use SSE; for CLIs, newline-delimited JSON.
 

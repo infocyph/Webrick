@@ -10,14 +10,14 @@ Import the helper:
 
 ```php
 use Infocyph\Webrick\Response\Response;
-```php
+```
 
 Return a response from any handler:
 
 ```php
 Route::get('/plain', fn () => Response::plaintext('OK'));
 Route::get('/json',  fn () => Response::json(['ok' => true]));
-```php
+```
 
 Each helper returns an immutable Response; chaining methods returns a **new** instance.
 
@@ -29,7 +29,7 @@ Each helper returns an immutable Response; chaining methods returns a **new** in
 Response::json(['created'=>true], 201);
 Response::plaintext('Not found', 404);
 Response::create('<h1>Hi</h1>', 200, ['Content-Type'=>'text/html; charset=UTF-8']);
-```php
+```
 
 ---
 
@@ -39,7 +39,7 @@ Response::create('<h1>Hi</h1>', 200, ['Content-Type'=>'text/html; charset=UTF-8'
 return Response::json(['ok'=>true])
   ->withHeader('X-Request-Id', 'abc123')
   ->withAddedHeader('Cache-Control', 'no-store');
-```php
+```
 
 > Use `withHeader()` to overwrite, `withAddedHeader()` to append.
 
@@ -53,7 +53,7 @@ Set a cookie via header (keep it explicit so attributes are clear):
 $cookie = rawurlencode('demo') . '=' . rawurlencode('value') .
           '; Path=/; HttpOnly; SameSite=Lax; Secure';
 return Response::json(['ok'=>true])->withAddedHeader('Set-Cookie', $cookie);
-```php
+```
 
 If you enabled **CookieEncryptionMiddleware**, the request side will automatically decrypt.
 
@@ -67,7 +67,7 @@ return Response::json([
   'name'  => 'Hasan',
   'roles' => ['admin','ops'],
 ]);
-```php
+```
 
 * Uses UTF-8 JSON with sane defaults.
 * For large payloads, consider pagination or streaming where appropriate.
@@ -78,7 +78,7 @@ return Response::json([
 
 ```php
 return Response::plaintext("Hello world\n");
-```php
+```
 
 ---
 
@@ -87,12 +87,12 @@ return Response::plaintext("Hello world\n");
 ```php
 $xml = '<note><to>World</to><msg>Hello</msg></note>';
 return Response::create($xml, 200, ['Content-Type' => 'application/xml']);
-```php
+```
 
 ```php
 $html = '<!doctype html><title>OK</title><h1>It works</h1>';
 return Response::create($html, 200, ['Content-Type' => 'text/html; charset=UTF-8']);
-```php
+```
 
 ---
 
@@ -104,7 +104,7 @@ return Response::redirect('/login', 302);
 // With named route
 $url = Response::urlFor('profile.show', ['id'=>7]);
 return Response::redirect($url, 302);
-```php
+```
 
 Absolute vs relative is supported by `Response::urlFor(..., absolute:true)`.
 
@@ -115,7 +115,7 @@ Absolute vs relative is supported by `Response::urlFor(..., absolute:true)`.
 ```php
 $path = __DIR__ . '/../storage/report.csv';
 return Response::attachment($path, 'report.csv');  // sets headers & streams file
-```php
+```
 
 * Validates the file path and sets `Content-Disposition`.
 * Prefer streaming (the helper does) for large files.
@@ -134,7 +134,7 @@ return Response::stream(function () {
   }
   return ''; // optional last chunk
 });
-```php
+```
 
 Tips:
 
@@ -152,7 +152,7 @@ Route::get('/auto-demo', function ($r) {
   $data = ['msg'=>'hello','time'=>time()];
   return Response::auto($r, $data);
 });
-```php
+```
 
 * Looks at `Accept` and (optionally) request attributes injected by negotiation middleware.
 * Keeps your handlers simple when multiple formats are acceptable.
@@ -183,7 +183,7 @@ Keep policy decisions centralized, not per-handler.
 ```php
 return Response::json(['error' => 'Invalid input'], 422)
   ->withHeader('X-Error-Code', 'E_INPUT');
-```php
+```
 
 For generic 500s, prefer a global exception handler that transforms throwables into structured responses (and logs).
 
@@ -256,7 +256,7 @@ return Response::json([
     'error' => 'Service temporarily unavailable',
     'retry_after' => 300
 ], 503)->withHeader('Retry-After', '300');
-```php
+```
 
 ### Status Code Quick Reference
 
@@ -312,7 +312,7 @@ Route::get('/users', function ($r) {
     'links'=> ['next'=>$next],
   ])->withHeader('Cache-Control', 'private, max-age=60');
 }, 'users.index');
-```php
+```
 
 ### Conditional attachment vs inline
 
@@ -326,7 +326,7 @@ Route::get('/report', function ($r) {
     'Content-Type' => 'text/csv; charset=UTF-8',
   ]);
 });
-```php
+```
 
 ---
 

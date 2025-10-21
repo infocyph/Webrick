@@ -16,7 +16,7 @@ Route::get('/cookie/read', function (Request $r) {
         'demo'   => $r->cookie('demo'),   // null if missing
     ]);
 });
-```php
+```
 
 If **CookieEncryptionMiddleware** is enabled, `cookie('name')` returns the **decrypted** value.
 
@@ -34,7 +34,7 @@ Route::get('/cookie/set', function () {
             . '; Path=/; HttpOnly; SameSite=Lax; Secure';
     return Response::json(['ok'=>true])->withAddedHeader('Set-Cookie', $cookie);
 });
-```php
+```
 
 **Attributes you’ll commonly use**
 
@@ -55,7 +55,7 @@ Enable the middleware once (pre-global) and pass a secret key:
 $preGlobal[] = new \Infocyph\Webrick\Middleware\CookieEncryptionMiddleware(
     $_ENV['WEBRICK_COOKIE_KEY'] ?? 'change-me'
 );
-```php
+```
 
 * **Write** cookies as usual (plain).
 * **Read** via `$r->cookie('name')` → decrypted value if that cookie was written encrypted.
@@ -74,7 +74,7 @@ Route::get('/cookie/clear', function () {
     $expired = 'demo=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax';
     return Response::json(['ok'=>true])->withAddedHeader('Set-Cookie', $expired);
 });
-```php
+```
 
 ---
 
@@ -113,7 +113,7 @@ Route::get('/', function (Request $r) {
     $clear = 'flash=; Path=/; Max-Age=0';
     return Response::json(['flash'=>$msg])->withAddedHeader('Set-Cookie', $clear);
 });
-```php
+```
 
 ### Remember-me (hint)
 
@@ -127,32 +127,6 @@ Use a **signed, encrypted** token (not just a user ID). Validate server-side and
 ### Session Cookies with Rotation
 ```php
 // Create session with automatic rotation
-Route::post('/login', function (Request $r) {
-    $email = $r->input('email');
-    $password = $r->input('password');
-
-    // Validate credentials...
-    $user = AuthService::attempt($email, $password);
-
-    if (!$user) {
-        return Response::json(['error' => 'Invalid credentials'], 401);
-    }
-
-    // Generate session ID
-    $sessionId = bin2hex(random_bytes(32));
-
-    // Store session server-side
-    Cache::put("session:{$sessionId}", [
-        'user_id' => $user->id,
-        'created_at' => time(),
-        'ip' => $r->getAttribute('client_ip'),
-        'user_agent' => $r->getHeaderLine('User-Agent')
-    ], 3600);  // 1 hour
-
-    // Set cookie
-    $cookie = 'sess=' . $sessionId
-            . '; Path=/; HttpOnly; Secure; SameSite=### Remember Me (Long-Lived Token)
-```php
 Route::post('/login', function (Request $r) {
     $user = AuthService::attempt($r->input('email'), $r->input('password'));
 
@@ -226,7 +200,7 @@ final class RememberMeMiddleware
         );
     }
 }
-```php
+```
 
 ### Cookie Prefixes for Security
 
@@ -246,7 +220,7 @@ $cookie = '__Secure-sess=' . $sessionId
         . '; Path=/; Secure; HttpOnly; SameSite=Lax; Domain=.example.com';
 
 // Browser enforces these rules and won't accept cookies that violate them
-```php
+```
 
 **Benefits**:
 - Prevents subdomain attacks
@@ -316,7 +290,7 @@ $response = CookieChunker::set(
 );
 
 $value = CookieChunker::get($request, 'large_data');
-```php
+```
 
 ⚠️ **Better Alternative**: Store large data server-side and use a small cookie as a pointer.
 
@@ -328,7 +302,7 @@ Share cookies across subdomains:
 $cookie = 'shared=' . $value
         . '; Path=/; Domain=.example.com; Secure; HttpOnly; SameSite=Lax';
 return $response->withAddedHeader('Set-Cookie', $cookie);
-```php
+```
 
 **Security Considerations**:
 - All subdomains can read/write the cookie
@@ -347,7 +321,7 @@ $cookie = 'normal=' . $value . '; Path=/; Priority=Medium';
 
 // Low priority (evicted first)
 $cookie = 'cache=' . $value . '; Path=/; Priority=Low';
-```php
+```
 
 **Use Cases**:
 - High: Authentication, CSRF tokens
@@ -367,7 +341,7 @@ $cookie = 'sess=' . $id . '; HttpOnly; Secure; SameSite=Strict';
 
 // ❌ Bad (JS can read via document.cookie)
 $cookie = 'sess=' . $id . '; Secure; SameSite=Strict';
-```php
+```
 
 ### 2. Always Use `Secure` in Production
 
@@ -378,7 +352,7 @@ $secure = $_ENV['APP_ENV'] === 'production' ? '; Secure' : '';
 $cookie = 'sess=' . $id . '; HttpOnly; SameSite=Lax' . $secure;
 
 // Or use CookieEncryptionMiddleware with forceSecure: true
-```php
+```
 
 ### 3. Use `SameSite` Appropriately
 
@@ -402,7 +376,7 @@ $cookie = 'sess=' . $id . '; HttpOnly; Secure; SameSite=Lax';
 
 // None (cross-origin embedding)
 $cookie = 'widget_state=' . $state . '; Secure; SameSite=None';
-```php
+```
 
 ### 4. Limit Cookie Scope
 
@@ -419,7 +393,7 @@ $cookie = 'sess=' . $id . '; Path=/; HttpOnly; Secure; SameSite=Lax';
 
 // ⚠️ Risky: Shared across all subdomains
 $cookie = 'sess=' . $id . '; Path=/; Domain=.example.com; HttpOnly; Secure; SameSite=Lax';
-```php
+```
 
 ### 5. Set Appropriate Expiration
 ```php
@@ -431,7 +405,7 @@ $cookie = 'remember=' . $token . '; Path=/; HttpOnly; Secure; SameSite=Lax; Max-
 
 // Short-lived (5 minutes)
 $cookie = 'otp_challenge=' . $challenge . '; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=300';
-```php
+```
 
 ### 6. Validate Cookie Integrity
 ```php
@@ -445,7 +419,7 @@ $session = Cache::get("session:{$sessionId}");
 if ($session && $session['user_id'] === $userId) {
     // ✅ Safe
 }
-```php
+```
 
 ### 7. Rotate Session IDs
 
@@ -468,7 +442,7 @@ Route::post('/change-password', function(Request $r) {
             'sess=' . $newSessionId . '; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=3600'
         );
 });
-```php
+```
 
 ---
 
@@ -506,7 +480,7 @@ class CookieTest extends TestCase
         $this->assertNull($request->cookie('nonexistent'));
     }
 }
-```php
+```
 
 ### Integration Test
 ```bash
@@ -558,7 +532,7 @@ fi
 
 rm -f cookies.txt
 echo "✅ All cookie tests passed"
-```php
+```
 
 ---
 
@@ -596,7 +570,7 @@ if ($_ENV['APP_ENV'] === 'development') {
         'set' => $response->getHeader('Set-Cookie')
     ]));
 }
-```php
+```
 
 
 ---
