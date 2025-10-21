@@ -24,7 +24,7 @@ Route::group(
 
   }
 );
-```
+```php
 
 **Key ideas**
 
@@ -44,7 +44,7 @@ Route::group(prefix:'/api', namePrefix:'api.', callback:function ($api) {
     Route::get('/health', fn()=>['ok'=>true], 'health');  // /api/v1/health, name: api.v1.health
   });
 });
-```
+```php
 
 Resulting child:
 
@@ -65,7 +65,7 @@ Scope a set of routes to a hostname. Useful for separating public site vs API, o
 Route::group(domain:'api.example.com', namePrefix:'api.', prefix:'/v1', callback:function () {
   Route::get('/status', fn()=> ['ok'=>true], 'status');   // https://api.example.com/v1/status
 });
-```
+```php
 
 **Local development**
 
@@ -73,7 +73,7 @@ Route::group(domain:'api.example.com', namePrefix:'api.', prefix:'/v1', callback
 Route::group(domain:'api.localhost', prefix:'/v1', namePrefix:'v1.', callback:function () {
   Route::get('/ping', fn()=> 'pong', 'ping');
 });
-```
+```php
 
 > When generating absolute URLs for domain-scoped routes, set your app’s base URL/host correctly (via server variables or your config) so `Response::urlFor(..., absolute:true)` picks the right host.
 
@@ -92,7 +92,7 @@ Route::group(
     Route::get('/users', fn()=> 'list', 'users.index');  // name: admin.users.index
   }
 );
-```
+```php
 
 ---
 
@@ -111,7 +111,7 @@ Route::group(prefix:'/files', namePrefix:'files.', middleware:['throttle:20,1'],
     'middleware' => ['verifySignedUrl'], // now throttle + verifySignedUrl
   ]);
 });
-```
+```php
 
 ---
 
@@ -138,7 +138,7 @@ Route::group(prefix:'', namePrefix:'web.', callback:function () {
 Route::group(prefix:'/api', namePrefix:'api.', middleware:['throttle:120,1'], callback:function () {
   Route::get('/v1/status', fn()=> ['ok'=>true], 'v1.status');
 });
-```
+```php
 
 ### 2) Versioned API by domain (dev-friendly)
 
@@ -149,7 +149,7 @@ Route::group(domain:'api.localhost', namePrefix:'api.', callback:function () {
     Route::get('/users/{id:int}', fn($id)=>['id'=>$id], 'users.show');
   });
 });
-```
+```php
 
 ---
 
@@ -159,7 +159,7 @@ Use `curl` with the `Host` header to test domain-scoped routes locally:
 
 ```bash
 curl -i -H "Host: api.localhost" http://127.0.0.1:8000/v1/ping
-```
+```php
 
 (If you’re not using virtual hosts, add an entry to `/etc/hosts` or your dev proxy.)
 

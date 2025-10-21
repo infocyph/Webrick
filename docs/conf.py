@@ -5,9 +5,9 @@ from subprocess import Popen, PIPE
 
 # --- Project information -----------------------------------------------------
 project   = "Webrick – PHP Router"
-author    = "A. B. M. Mahmudul Hasan (infocyph)"
+author    = "Infocyph"
 year_now  = datetime.date.today().strftime("%Y")
-copyright = f"2021-{year_now}, infocyph"
+copyright = f"2021-{year_now}"
 
 def get_version() -> str:
     # Prefer RTD version (e.g., 'latest', tag names, or branch)
@@ -101,7 +101,7 @@ html_theme_options = {
 templates_path   = ["_templates"]
 html_static_path = ["_static"]
 html_css_files   = ["theme.css"]
-html_title       = f"Webrick – {version} Docs"
+html_title       = f"Webrick – {version} Documentation"
 html_show_sourcelink = True
 html_show_sphinx    = False
 html_last_updated_fmt = "%Y-%m-%d"

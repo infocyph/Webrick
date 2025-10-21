@@ -32,7 +32,7 @@ R::bindUrlServices(
     signKey: getenv('WEBRICK_SIGN_KEY') ?: 'dev-key-change-me',
     defaultTtl: 300
 );
-```
+```php
 
 ## Defining a named route
 
@@ -44,7 +44,7 @@ Route::get('/download/{file}', function (string $file) {
     // Only return if signature verified (see middleware below)
     return R::attachment(__DIR__.'/files/'.$file);
 })->name('file.download')->middleware(['verifySignedUrl']);
-```
+```php
 
 ## Generating URLs
 
@@ -57,7 +57,7 @@ $signed = R::signedUrlFor('file.download', ['file' => 'report.pdf']);
 
 // Temporary URL (expires in 15 minutes)
 $temp = R::temporaryUrlFor('file.download', ['file' => 'report.pdf'], ttl: 900);
-```
+```php
 
 The `verifySignedUrl` middleware checks the signature and (for temporary URLs) expiry timestamp.
 On failure, it returns `403 Forbidden` with a clear reason (bad signature / expired).
@@ -67,7 +67,7 @@ On failure, it returns `403 Forbidden` with a clear reason (bad signature / expi
 ```bash
 curl -i "$temp"
 # Expect 200 before expiry, 403 after TTL
-```
+```php
 
 
 ---
@@ -85,7 +85,7 @@ curl -i "$temp"
 location / {
     try_files $uri /index.php?$query_string;  # ← Critical: $query_string
 }
-```
+```php
 
 **Apache**:
 ```apache
@@ -93,7 +93,7 @@ RewriteEngine On
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^ index.php [QSA,L]  # ← QSA = Query String Append
-```
+```php
 
 **Test**:
 ```bash
@@ -105,7 +105,7 @@ php -r "require 'vendor/autoload.php'; echo Response::signedUrlFor('test');"
 # Test it preserves query
 curl -v "http://localhost:8000/test?_sig=abc123&foo=bar" 2>&1 | grep "GET /test"
 # Should show: GET /test?_sig=abc123&foo=bar
-```
+```php
 
 ---
 
@@ -121,7 +121,7 @@ $url = Response::signedUrlFor('test');
 
 // Verifier uses different key
 new VerifySignedUrlMiddleware('key-B', leeway: 5);  // ❌ Won't match
-```
+```php
 
 **Fix**: Ensure both use the same key:
 ```php
@@ -132,21 +132,21 @@ Response::bindUrlServices($routes, $signKey, 900);
 
 // Verifier
 new VerifySignedUrlMiddleware($signKey, leeway: 5);
-```
+```php
 
 #### 2. Query Parameters Modified
 
 **Proxy/CDN changed the URL**:
-```
+```php
 Generated:  /download?file=report.pdf&_sig=abc123
 Received:   /download?_sig=abc123&file=report.pdf  # Order changed
-```
+```php
 
 **Fix**: Signature is order-sensitive. Ensure proxies don't reorder parameters:
 ```nginx
 # Nginx: Don't normalize query string
 # (Default behavior preserves order)
-```
+```php
 
 #### 3. URL Encoding Issues
 
@@ -157,7 +157,7 @@ Received:   /download?_sig=abc123&file=report.pdf  # Order changed
 
 // After proxy "normalization"
 /file?name=my+file.pdf&_sig=...  # Space encoding changed
-```
+```php
 
 **Fix**: Use consistent encoding or configure proxy to not touch query strings.
 
@@ -170,7 +170,7 @@ $url = Response::signedUrlFor('download', ['id' => 42]);
 
 // Later, tracking param added manually
 $trackedUrl = $url . '&utm_source=email';  // ❌ Breaks signature
-```
+```php
 
 **Fix**: Add all parameters during generation:
 ```php
@@ -178,7 +178,7 @@ $url = Response::signedUrlFor('download',
     ['id' => 42],
     query: ['utm_source' => 'email']  // ✅ Included in signature
 );
-```
+```php
 
 ---
 
@@ -203,7 +203,7 @@ Route::get('/debug-signed', function (Request $r) {
         'server_timezone' => date_default_timezone_get()
     ]);
 });
-```
+```php
 
 **Clock Skew Fix**:
 ```php
@@ -215,7 +215,7 @@ new VerifySignedUrlMiddleware(
 
 // If generator is 10s ahead and verifier has 30s leeway:
 // URL valid for: TTL + 30s
-```
+```php
 
 **NTP Sync** (production):
 ```bash
@@ -226,7 +226,7 @@ timedatectl status
 apt-get install ntp
 systemctl enable ntp
 systemctl start ntp
-```
+```php
 
 ---
 
@@ -241,7 +241,7 @@ WEBRICK_SIGN_KEY="dev-key-123"
 
 # Production .env (different!)
 WEBRICK_SIGN_KEY="prod-key-456"
-```
+```php
 
 **URLs generated locally won't work in production.**
 
@@ -260,7 +260,7 @@ curl -v http://app-server-1:8000/test?_sig=abc123
 curl -v http://lb.example.com/test?_sig=abc123
 
 # Compare query strings in logs
-```
+```php
 
 **Fix**: Configure load balancer to preserve exact query strings.
 
@@ -272,7 +272,7 @@ $url = Response::signedUrlFor('download', absolute: true);
 
 // User accesses via HTTP (redirected or downgraded)
 // http://example.com/download?_sig=...
-```
+```php
 
 If signature includes the scheme, mismatch will fail.
 
@@ -280,7 +280,7 @@ If signature includes the scheme, mismatch will fail.
 ```php
 // Relative URLs (scheme-agnostic)
 $url = Response::signedUrlFor('download', absolute: false);
-```
+```php
 
 ---
 
@@ -313,7 +313,7 @@ Route::get('/download/{id}', function(int $id) {
         'throttle:10,60'  // Max 10 downloads per minute
     ]
 ]);
-```
+```php
 
 #### 3. Signature Reuse Prevention
 
@@ -343,7 +343,7 @@ Route::post('/delete-account/{id}', function(Request $r, int $id) {
 
     // Proceed with action...
 }, ['middleware' => ['verifySignedUrl']]);
-```
+```php
 
 #### 4. IP Binding (Optional High Security)
 
@@ -369,7 +369,7 @@ Route::get('/sensitive', function(Request $r) {
 
     // Proceed...
 }, ['middleware' => ['verifySignedUrl']]);
-```
+```php
 
 ⚠️ **Caveat**: Breaks for users behind proxies with rotating IPs (mobile networks, corporate).
 
@@ -409,7 +409,7 @@ class SignedUrlTest extends TestCase
         $this->assertEquals(403, $response->getStatusCode());
     }
 }
-```
+```php
 
 #### Integration Test
 ```bash
@@ -450,7 +450,7 @@ else
 fi
 
 echo "✅ All tests passed"
-```
+```php
 
 ---
 
@@ -474,7 +474,7 @@ $urls = [];
 for ($i = 0; $i < 1000; $i++) {
     $urls[] = str_replace('__ID__', $i, $template) . '&_sig=' . $baseSignature;
 }
-```
+```php
 
 ⚠️ **Note**: Above is pseudo-code. Actual implementation must sign the complete URL.
 
@@ -487,7 +487,7 @@ $cacheKey = "signed_url:asset:{$assetId}";
 $url = Cache::remember($cacheKey, 3600, function() use ($assetId) {
     return Response::temporaryUrlFor('cdn.asset', ['id' => $assetId], ttl: 3600);
 });
-```
+```php
 
 ---
 
@@ -510,7 +510,7 @@ if ($signatureInvalid) {
         $alerting->critical('Signature validation spike detected');
     }
 }
-```
+```php
 
 **Metrics to track**:
 - `signed_url_verifications_total{result="success|failure"}`
@@ -524,3 +524,14 @@ if ($signatureInvalid) {
 - Set `signedDefaultTtl` to a sane default (e.g. 5–15 minutes) at boot.
 - If you reverse-proxy, ensure query strings are preserved exactly; signature is query-string sensitive.
 - Prefer `temporaryUrlFor()` for privileged actions (downloads, one-time links) to reduce risk.
+
+
+---
+
+## Related Resources
+
+- [Middleware Reference](../middleware/index.md) - VerifySignedUrlMiddleware details
+- [Routing Guide](./routing.md) - Route naming and parameters
+- [Security Guide](../advanced/security.md) - Security best practices
+- [Responses](./responses.md) - Response helpers and URL generation
+

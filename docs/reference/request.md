@@ -1,247 +1,654 @@
 # Request API Reference
 
-Everything available on `Infocyph\Webrick\Request\Request` passed into your handlers and middleware.
-
-> Types below use PHP-style hints for clarity. Some methods may be aliases; names can be adapted to your exact implementation.
+Complete reference for `Infocyph\Webrick\Request\Request` class.
 
 ---
 
-## Construction & immutability
+## Table of Contents
 
-`Request` is created by the framework and passed to you. Treat it as **immutable**—methods that “set” values typically return a **new** instance (rarely needed in handlers).
+- [Creating Requests](#creating-requests)
+- [HTTP Method](#http-method)
+- [URI & Path](#uri--path)
+- [Query Parameters](#query-parameters)
+- [Headers](#headers)
+- [Body & Input](#body--input)
+- [Files](#files)
+- [Cookies](#cookies)
+- [Attributes](#attributes)
+- [Server Variables](#server-variables)
+- [Client Information](#client-information)
+- [Content Negotiation](#content-negotiation)
+- [PSR-7 Compatibility](#psr-7-compatibility)
 
 ---
 
-## HTTP basics
+## Creating Requests
 
+### From Globals (Standard)
 ```php
-string   getMethod();                 // "GET", "POST", "PUT", ...
-Uri      getUri();                    // PSR-7 style or Router-native
-string   getPath();                   // "/users/42"
-array    getQueryParams();            // ['page'=>'2']
-string   getProtocolVersion();        // "1.1" | "2"
+use Infocyph\Webrick\Request\Request;
+
+$request = Request::createFromGlobals();
 ```
 
-Method override (via `NormalizeMethodMiddleware`) is applied **before** routing.
+**Reads from**:
+- `$_SERVER`
+- `$_GET`
+- `$_POST`
+- `$_COOKIE`
+- `$_FILES`
+- `php://input`
 
----
-
-## Query & input (body)
-
-Unify access to query/form/json:
-
+### Manual Construction
 ```php
-mixed    input(string $key, mixed $default = null);
-array    all();                       // merged query + body (non-file)
-array    query(?string $key = null, mixed $default = null);
-array    json(?string $key = null, mixed $default = null); // parsed JSON (null if absent/invalid)
-bool     has(string $key);
-array    only(array $keys);
-array    except(array $keys);
+$request = Request::create(
+    method: 'GET',
+    uri: '/users/42?page=2',
+    server: ['REMOTE_ADDR' => '203.0.113.10'],
+    headers: ['Authorization' => 'Bearer token'],
+    body: '{"name":"John"}',
+    files: []
+);
 ```
 
-Notes
-
-* `json()` returns decoded data; with a key (supports dot access if implemented).
-* For very large payloads, prefer reading **only** what you need.
-
----
-
-## Files (multipart/form-data)
-
+### From PSR-7
 ```php
-array                files();          // keyed by input name
-?UploadedFile        file(string $name);
-```
+use Psr\Http\Message\ServerRequestInterface;
 
-`UploadedFile` (typical):
-
-```php
-string  getClientFilename();
-string  getClientMediaType();
-int     getSize();
-int     getError();                    // UPLOAD_ERR_*
-string  getTmpName();                  // temp path
+$psrRequest = /* ... */;
+$request = Request::fromPsr7($psrRequest);
 ```
 
 ---
 
-## Headers & server params
+## HTTP Method
 
+### Get Method
 ```php
-array    getHeaders();                 // ['content-type'=>['application/json'], ...]
-array    getHeader(string $name);      // case-insensitive; returns array of values
-string   getHeaderLine(string $name);  // single, comma-joined
-mixed    server(string $key, mixed $default = null); // $_SERVER-like
+$method = $request->getMethod();  // 'GET', 'POST', 'PUT', etc.
 ```
 
-Common helpers (implementation-dependent):
-
+### Check Method
 ```php
-?string  ip();                         // derived from REMOTE_ADDR/X-Forwarded-For (trust proxy!)
-?string  userAgent();
+if ($request->isMethod('POST')) {
+    // Handle POST
+}
+
+// Case-insensitive
+$request->isMethod('get');   // true for GET
+$request->isMethod('POST');  // true for POST
+```
+
+### Common Checks
+```php
+$request->isGet();      // GET request
+$request->isPost();     // POST request
+$request->isPut();      // PUT request
+$request->isPatch();    // PATCH request
+$request->isDelete();   // DELETE request
+$request->isHead();     // HEAD request
+$request->isOptions();  // OPTIONS request
+```
+
+### Method Override
+
+Respects `X-Http-Method-Override` header:
+```
+POST /resource
+X-Http-Method-Override: PUT
+
+// Treated as PUT
+$request->getMethod();  // 'PUT'
+```
+
+---
+
+## URI & Path
+
+### Full URI
+```php
+$uri = $request->getUri();
+// https://example.com:8080/users/42?page=2#section
+```
+
+### Components
+```php
+$scheme = $request->getScheme();        // 'https'
+$host = $request->getHost();            // 'example.com'
+$port = $request->getPort();            // 8080
+$path = $request->getPath();            // '/users/42'
+$queryString = $request->getQueryString();  // 'page=2'
+```
+
+### Path Information
+```php
+$path = $request->getPathInfo();        // '/users/42'
+$basePath = $request->getBasePath();    // '' or '/app' if in subdirectory
+$baseUrl = $request->getBaseUrl();      // 'https://example.com' or 'https://example.com/app'
+```
+
+### URL Building
+```php
+// Full URL
+$url = $request->getSchemeAndHttpHost();  // 'https://example.com:8080'
+
+// With path
+$fullUrl = $request->getUri();  // 'https://example.com:8080/users/42?page=2'
+```
+
+### HTTPS Detection
+```php
+if ($request->isSecure()) {
+    // HTTPS connection
+}
+
+// Respects X-Forwarded-Proto
+```
+
+---
+
+## Query Parameters
+
+### Get All
+```php
+$query = $request->query();
+// ['page' => '2', 'sort' => 'name']
+```
+
+### Get Single
+```php
+$page = $request->query('page');           // '2' or null
+$page = $request->query('page', 1);        // '2' or default 1
+$page = (int) $request->query('page', 1);  // Type cast
+```
+
+### Check Existence
+```php
+if ($request->query->has('filter')) {
+    // Filter parameter exists
+}
+```
+
+### Get Multiple
+```php
+$params = $request->query(['page', 'sort', 'filter']);
+// ['page' => '2', 'sort' => 'name', 'filter' => null]
+```
+
+---
+
+## Headers
+
+### Get All
+```php
+$headers = $request->getHeaders();
+// ['Content-Type' => ['application/json'], 'Accept' => ['*/*']]
+```
+
+### Get Single
+```php
+$contentType = $request->getHeaderLine('Content-Type');
+// 'application/json'
+
+$accept = $request->getHeader('Accept');
+// ['application/json', 'text/html']  (array)
+```
+
+### Case-Insensitive
+```php
+$request->getHeaderLine('content-type');  // Works
+$request->getHeaderLine('Content-Type');  // Works
+$request->getHeaderLine('CONTENT-TYPE');  // Works
+```
+
+### Check Existence
+```php
+if ($request->hasHeader('Authorization')) {
+    $token = $request->getHeaderLine('Authorization');
+}
+```
+
+### Common Headers
+```php
+$contentType = $request->getHeaderLine('Content-Type');
+$accept = $request->getHeaderLine('Accept');
+$userAgent = $request->getHeaderLine('User-Agent');
+$referer = $request->getHeaderLine('Referer');
+$auth = $request->getHeaderLine('Authorization');
+```
+
+---
+
+## Body & Input
+
+### Raw Body
+```php
+$body = $request->getContent();
+// Raw string from php://input
+```
+
+### Parsed Input (Any Method)
+```php
+// Parsed based on Content-Type
+$data = $request->input();
+
+// JSON: Content-Type: application/json
+// Returns associative array
+
+// Form: Content-Type: application/x-www-form-urlencoded
+// Returns associative array
+
+// Multipart: Content-Type: multipart/form-data
+// Returns associative array
+```
+
+### Get Specific Field
+```php
+$name = $request->input('name');              // null if missing
+$name = $request->input('name', 'Guest');     // With default
+```
+
+### Nested Fields
+```php
+// Input: {"user": {"name": "John", "age": 30}}
+$name = $request->input('user.name');  // 'John'
+$age = $request->input('user.age');    // 30
+```
+
+### JSON Input
+```php
+// Content-Type: application/json
+// Body: {"name":"John","email":"john@example.com"}
+
+$json = $request->json();
+// ['name' => 'John', 'email' => 'john@example.com']
+
+$name = $request->json('name');  // 'John'
+```
+
+### POST Data
+```php
+// Only for POST method + form data
+$post = $request->post();           // All POST data
+$value = $request->post('field');   // Single field
+```
+
+### Input Presence
+```php
+if ($request->has('email')) {
+    // Field exists in input
+}
+
+if ($request->filled('email')) {
+    // Field exists and is not empty
+}
+
+// Multiple fields
+if ($request->hasAll(['name', 'email'])) {
+    // All fields exist
+}
+```
+
+### Get Subset
+```php
+// Only these fields
+$data = $request->only(['name', 'email']);
+
+// Everything except these
+$data = $request->except(['password', 'token']);
+```
+
+---
+
+## Files
+
+### Get All Files
+```php
+$files = $request->files();
+// Array of UploadedFileInterface objects
+```
+
+### Get Single File
+```php
+$avatar = $request->file('avatar');
+
+if ($avatar && $avatar->getError() === UPLOAD_ERR_OK) {
+    $avatar->moveTo('/path/to/uploads/' . $avatar->getClientFilename());
+}
+```
+
+### File Properties
+```php
+$file = $request->file('document');
+
+$name = $file->getClientFilename();       // 'document.pdf'
+$size = $file->getSize();                 // 1048576 (bytes)
+$type = $file->getClientMediaType();      // 'application/pdf'
+$error = $file->getError();               // UPLOAD_ERR_OK
+$tmpPath = $file->getStream()->getMetadata('uri');  // Temp file path
+```
+
+### Multiple Files
+```php
+// HTML: <input type="file" name="photos[]" multiple>
+$photos = $request->file('photos');  // Array of files
+
+foreach ($photos as $photo) {
+    if ($photo->getError() === UPLOAD_ERR_OK) {
+        $photo->moveTo('/uploads/' . $photo->getClientFilename());
+    }
+}
 ```
 
 ---
 
 ## Cookies
 
-If `CookieEncryptionMiddleware` is enabled, values are **decrypted** automatically:
-
+### Get All
 ```php
-array    getCookieParams();
-mixed    cookie(string $name, mixed $default = null);
+$cookies = $request->getCookieParams();
+// ['session' => 'abc123', 'theme' => 'dark']
+```
+
+### Get Single
+```php
+$session = $request->cookie('session');           // 'abc123' or null
+$session = $request->cookie('session', 'guest');  // With default
+```
+
+**Note**: If `CookieEncryptionMiddleware` is enabled, values are automatically decrypted.
+
+---
+
+## Attributes
+
+Request attributes store middleware/handler data.
+
+### Set Attribute
+```php
+$request = $request->withAttribute('user_id', 42);
+$request = $request->withAttribute('auth.roles', ['admin', 'editor']);
+```
+
+### Get Attribute
+```php
+$userId = $request->getAttribute('user_id');              // 42 or null
+$userId = $request->getAttribute('user_id', 0);           // With default
+$roles = $request->getAttribute('auth.roles', []);
+```
+
+### Get All Attributes
+```php
+$attributes = $request->getAttributes();
+```
+
+### Common Attributes (Set by Middleware)
+```php
+$request->getAttribute('client_ip');              // Real client IP
+$request->getAttribute('auth.user_id');           // Authenticated user
+$request->getAttribute('negotiated.type');        // Negotiated media type
+$request->getAttribute('locale');                 // Negotiated locale
+$request->getAttribute('trace.trace_id');         // W3C trace ID
+$request->getAttribute('request_id');             // Request ID
 ```
 
 ---
 
-## Route params
+## Server Variables
 
+### Get All
 ```php
-array    getParams();                  // ['id'=>'42', ...]
-mixed    param(string $name, mixed $default = null);
+$server = $request->getServerParams();
 ```
 
-Handlers can also receive params as typed arguments:
-
+### Get Single
 ```php
-function (Request $r, int $id) { /* ... */ }
+$remoteAddr = $request->server('REMOTE_ADDR');
+$scriptName = $request->server('SCRIPT_NAME');
+$requestUri = $request->server('REQUEST_URI');
 ```
 
----
-
-## Attributes (context)
-
-Middleware can stash values on the request:
-
+### Common Variables
 ```php
-mixed    getAttribute(string $key, mixed $default = null);
-array    getAttributes();
-
-// examples set by other middleware:
-$r->getAttribute('route.name');        // "users.show"
-$r->getAttribute('media');             // "application/json" (Negotiation)
-$r->getAttribute('locale');            // "en"
-$r->getAttribute('signed');            // true if VerifySignedUrl passed
-$r->getAttribute('auth.user_id');      // your auth layer
+$request->server('REQUEST_METHOD');     // 'GET'
+$request->server('SERVER_PROTOCOL');    // 'HTTP/1.1'
+$request->server('REMOTE_ADDR');        // '203.0.113.10'
+$request->server('HTTP_HOST');          // 'example.com'
+$request->server('REQUEST_URI');        // '/users/42?page=2'
 ```
 
 ---
 
-## Body access (raw/stream)
+## Client Information
 
+### IP Address
 ```php
-string|StreamInterface  getBody();         // raw contents (string or reads stream)
-StreamInterface         getBodyStream();   // for streaming/HMAC verification
+// Real client IP (respects X-Forwarded-For if proxy trusted)
+$ip = $request->getAttribute('client_ip');
+
+// Direct connection IP
+$ip = $request->server('REMOTE_ADDR');
 ```
 
-Use streams for very large payloads or signature verification.
-
----
-
-## Content type helpers
-
+### User Agent
 ```php
-?string  getContentType();             // "application/json", etc.
-bool     isJson();                     // convenience
-bool     isForm();                     // x-www-form-urlencoded
-bool     isMultipart();                // multipart/form-data
+$userAgent = $request->getHeaderLine('User-Agent');
+// 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)...'
 ```
 
----
-
-## Method shortcuts (if provided)
-
+### Referrer
 ```php
-bool     isGet();
-bool     isPost();
-bool     isPut();
-bool     isPatch();
-bool     isDelete();
-bool     isHead();
-bool     isOptions();
+$referer = $request->getHeaderLine('Referer');
+// 'https://google.com/search?q=...'
 ```
 
----
-
-## Negotiation helpers (if middleware enabled)
-
+### Accept Languages
 ```php
-string   media();                      // resolved media type
-string   locale();                     // resolved locale or default
+$languages = $request->getHeaderLine('Accept-Language');
+// 'en-US,en;q=0.9,es;q=0.8'
+
+// Parsed by NegotiationMiddleware
+$locale = $request->getAttribute('locale');  // 'en'
 ```
 
 ---
 
-## Cloning / mutation (rare in handlers)
+## Content Negotiation
 
-For middleware or advanced cases:
-
+These attributes are set by `NegotiationMiddleware`:
 ```php
-Request  withAttribute(string $key, mixed $value);
-Request  withMethod(string $method);       // NormalizeMethodMiddleware usually does this
-Request  withHeader(string $name, string|array $value);
-Request  withoutHeader(string $name);
-```
+// Best media type match
+$type = $request->getAttribute('negotiated.type');
+// 'application/json'
 
-Prefer using middleware to change requests; handlers should mostly **read**.
+// Best charset match
+$charset = $request->getAttribute('negotiated.charset');
+// 'utf-8'
+
+// Best locale match
+$locale = $request->getAttribute('locale');
+// 'en'
+```
 
 ---
 
-## Examples
+## PSR-7 Compatibility
 
-### Read JSON with fallback to query
+### Immutability
 
+All `with*` methods return new instance:
 ```php
-Route::post('/search', function (Request $r) {
-    $q = $r->json('q') ?? $r->query('q', '');
-    $page = (int)($r->input('page', 1));
-    return Response::json(compact('q','page'));
+$request1 = Request::createFromGlobals();
+$request2 = $request1->withHeader('X-Custom', 'value');
+
+// $request1 unchanged
+// $request2 has the header
+```
+
+### Methods
+```php
+// Immutable modifications
+$request->withMethod('PUT');
+$request->withUri($uri);
+$request->withHeader('X-Custom', 'value');
+$request->withAddedHeader('Accept', 'application/json');
+$request->withoutHeader('X-Debug');
+$request->withBody($stream);
+$request->withAttribute('key', 'value');
+$request->withoutAttribute('key');
+$request->withQueryParams(['page' => 2]);
+$request->withCookieParams(['session' => 'abc']);
+$request->withUploadedFiles($files);
+$request->withParsedBody($data);
+```
+
+---
+
+## Common Patterns
+
+### Extract Route Parameters
+```php
+// In handler (after routing)
+Route::get('/users/{id:int}', function (Request $r, int $id) {
+    // $id is automatically injected
+    return Response::json(['id' => $id]);
 });
 ```
 
-### Get a file and some headers
-
+### Validate Input
 ```php
-Route::post('/avatar', function (Request $r) {
-    $f = $r->file('avatar');
-    if (!$f || $f->getError()) {
-        return Response::json(['error'=>'invalid upload'], 400);
+Route::post('/users', function (Request $r) {
+    $data = $r->input();
+
+    if (!isset($data['email']) || !filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
+        return Response::json(['error' => 'Invalid email'], 400);
     }
-    $ua = $r->getHeaderLine('user-agent');
-    // ...validate + move_uploaded_file($f->getTmpName(), $dest)...
-    return Response::json(['ok'=>true, 'ua'=>$ua]);
+
+    // Process...
 });
 ```
 
-### Attributes from middleware
-
+### Check Authentication
 ```php
-Route::get('/hello', function (Request $r) {
-    $locale = $r->getAttribute('locale') ?? 'en';
-    return Response::json(['locale'=>$locale]);
+Route::get('/profile', function (Request $r) {
+    $userId = $r->getAttribute('auth.user_id');
+
+    if (!$userId) {
+        return Response::json(['error' => 'Not authenticated'], 401);
+    }
+
+    $user = UserRepository::find($userId);
+    return Response::json($user);
+});
+```
+
+### Content Type Branching
+```php
+Route::post('/data', function (Request $r) {
+    $contentType = $r->getHeaderLine('Content-Type');
+
+    if (str_contains($contentType, 'application/json')) {
+        $data = $r->json();
+    } elseif (str_contains($contentType, 'application/x-www-form-urlencoded')) {
+        $data = $r->post();
+    } else {
+        return Response::json(['error' => 'Unsupported media type'], 415);
+    }
+
+    // Process $data...
+});
+```
+
+### Debug Request
+```php
+Route::get('/__debug/request', function (Request $r) {
+    return Response::json([
+        'method' => $r->getMethod(),
+        'uri' => $r->getUri(),
+        'headers' => $r->getHeaders(),
+        'query' => $r->query(),
+        'input' => $r->input(),
+        'cookies' => $r->getCookieParams(),
+        'attributes' => $r->getAttributes(),
+        'server' => $r->getServerParams(),
+    ]);
 });
 ```
 
 ---
 
-## Troubleshooting
+## Method Summary
 
-| Symptom                                         | Likely cause                               | Fix                                                                      |
-| ----------------------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------ |
-| `cookie()` returns null though browser sends it | Encryption key mismatch / middleware order | Ensure `CookieEncryptionMiddleware` runs before reading; keys consistent |
-| Body parsing fails                              | Wrong `Content-Type` or huge payload       | Check headers; increase limits; use streams                              |
-| Route param missing                             | Name mismatch                              | Use `{id:int}` and `function (int $id)` or `$r->param('id')`             |
-| Wrong client IP                                 | Untrusted proxy headers                    | Configure trusted proxies; prefer `REMOTE_ADDR` otherwise                |
-| Mixed encodings                                 | Client sent `charset` ≠ UTF-8              | Normalize/validate; prefer UTF-8 everywhere                              |
+### HTTP Method
+- `getMethod(): string`
+- `isMethod(string $method): bool`
+- `isGet(): bool`
+- `isPost(): bool`
+- `isPut(): bool`
+- `isPatch(): bool`
+- `isDelete(): bool`
+- `isHead(): bool`
+- `isOptions(): bool`
 
----
+### URI
+- `getUri(): string`
+- `getScheme(): string`
+- `getHost(): string`
+- `getPort(): int`
+- `getPath(): string`
+- `getPathInfo(): string`
+- `getQueryString(): string`
+- `getBaseUrl(): string`
+- `getSchemeAndHttpHost(): string`
+- `isSecure(): bool`
 
-## Checklist
+### Query
+- `query(?string $key = null, mixed $default = null): mixed`
+- `getQueryParams(): array`
 
-* [ ] Use `input()/json()/query()` rather than hitting superglobals
-* [ ] Validate and sanitize inputs; keep sanitization middleware lightweight
-* [ ] Read files via `file()` / `files()` and validate size/mime
-* [ ] Use attributes for cross-cutting context (auth, locale, signed)
-* [ ] For large/verified payloads, use `getBodyStream()` instead of buffering
+### Headers
+- `getHeaders(): array`
+- `hasHeader(string $name): bool`
+- `getHeader(string $name): array`
+- `getHeaderLine(string $name): string`
 
+### Body
+- `getContent(): string`
+- `input(?string $key = null, mixed $default = null): mixed`
+- `json(?string $key = null, mixed $default = null): mixed`
+- `post(?string $key = null, mixed $default = null): mixed`
+- `has(string|array $keys): bool`
+- `hasAll(array $keys): bool`
+- `filled(string $key): bool`
+- `only(array $keys): array`
+- `except(array $keys): array`
+
+### Files
+- `files(): array`
+- `file(string $key): ?UploadedFileInterface`
+
+### Cookies
+- `getCookieParams(): array`
+- `cookie(string $key, mixed $default = null): mixed`
+
+### Attributes
+- `getAttributes(): array`
+- `getAttribute(string $name, mixed $default = null): mixed`
+- `withAttribute(string $name, mixed $value): static`
+- `withoutAttribute(string $name): static`
+
+### Server
+- `getServerParams(): array`
+- `server(string $key, mixed $default = null): mixed`
+
+### PSR-7 Compatibility
+- `withMethod(string $method): static`
+- `withUri(UriInterface $uri): static`
+- `withHeader(string $name, $value): static`
+- `withAddedHeader(string $name, $value): static`
+- `withoutHeader(string $name): static`
+- `withBody(StreamInterface $body): static`
+- `withQueryParams(array $query): static`
+- `withCookieParams(array $cookies): static`
+- `withUploadedFiles(array $files): static`
+- `withParsedBody($data): static`

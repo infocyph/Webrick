@@ -1,262 +1,487 @@
 # Router API Reference
 
-Low-level, definitive reference for registering routes and groups in Webrick.
+Complete reference for routing APIs in Webrick.
 
 ---
 
-## Namespace & facade
+## Table of Contents
+
+- [Route Registration](#route-registration)
+- [Route Facade](#route-facade)
+- [HTTP Verb Methods](#http-verb-methods)
+- [Route Groups](#route-groups)
+- [Route Parameters](#route-parameters)
+- [Route Names](#route-names)
+- [Middleware](#middleware)
+- [Domain Routing](#domain-routing)
+- [URL Generation](#url-generation)
+- [Route Caching](#route-caching)
+
+---
+
+## Route Registration
+
+### Using Registrar
+
+```php
+use Infocyph\Webrick\Router\Definition\Registrar;
+
+$register = function (Registrar $r): void {
+    $r->get('/users', [UserController::class, 'index'], 'users.index');
+    $r->post('/users', [UserController::class, 'store'], 'users.store');
+};
+
+$kernel = RouterKernel::bootWithRegistrar(register: $register);
+```
+
+### Using Facade
 
 ```php
 use Infocyph\Webrick\Router\Facade\Router as Route;
-```
 
-You can also use the underlying registrar passed into group callbacks (shown below as `$r`), which exposes the same methods.
+Route::get('/posts', [PostController::class, 'index']);
+Route::post('/posts', [PostController::class, 'store']);
+```
 
 ---
 
-## Terminology
+## Route Facade
 
-* **Path template**: string with optional tokens, e.g. `/users/{id:int}`.
-* **Handler**: `callable` – a closure or `[$class, 'method']`.
-* **Route name**: unique identifier used for URL generation (`users.show`).
-* **Options**: array with keys like `as`, `middleware`, `domain` (see below).
+### Available Methods
+
+```php
+Route::get($path, $handler, $name = null, $options = []);
+Route::post($path, $handler, $name = null, $options = []);
+Route::put($path, $handler, $name = null, $options = []);
+Route::patch($path, $handler, $name = null, $options = []);
+Route::delete($path, $handler, $name = null, $options = []);
+Route::options($path, $handler, $name = null, $options = []);
+Route::head($path, $handler, $name = null, $options = []);
+Route::any($path, $handler, $name = null, $options = []);
+```
+
+### Match Multiple Methods
+
+```php
+Route::match(['GET', 'POST'], '/form', function(Request $r) {
+    if ($r->isGet()) {
+        return Response::html('<form>...</form>');
+    }
+    return Response::json(['submitted' => true]);
+});
+```
 
 ---
 
-## Tokens & constraints
+## HTTP Verb Methods
 
-Inside `{name:constraint}`:
+### GET
 
-* Built-in aliases (common set):
+```php
+Route::get('/users', function() {
+    return Response::json(UserRepository::all());
+});
+```
 
-    * `:int` → `\d+`
-    * `:uuid` → canonical UUID
-    * `:slug` → `[A-Za-z0-9-._]+` (typical)
-    * `:hex` → `[A-Fa-f0-9]+`
-    * `:any` → `[^/]+`
-* Optional segment: `{name:int?}` (handler default should cover nulls).
-* Raw regex: `{name:([A-Z]{2}\d{4})}`.
-* Splat (rest path) pattern: `{path:.*}` (place **last** to avoid shadowing).
+### POST
+
+```php
+Route::post('/users', function(Request $r) {
+    $user = UserRepository::create($r->input());
+    return Response::created($user, "/users/{$user['id']}");
+});
+```
+
+### PUT
+
+```php
+Route::put('/users/{id:int}', function(Request $r, int $id) {
+    $user = UserRepository::update($id, $r->input());
+    return Response::json($user);
+});
+```
+
+### PATCH
+
+```php
+Route::patch('/users/{id:int}', function(Request $r, int $id) {
+    $user = UserRepository::patch($id, $r->input());
+    return Response::json($user);
+});
+```
+
+### DELETE
+
+```php
+Route::delete('/users/{id:int}', function(int $id) {
+    UserRepository::delete($id);
+    return Response::noContent();
+});
+```
+
+### OPTIONS
+
+```php
+Route::options('/api/*', function() {
+    return Response::create('', 200, [
+        'Allow' => 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Methods' => 'GET, POST, PUT, DELETE, OPTIONS'
+    ]);
+});
+```
 
 ---
 
-## Registration methods
+## Route Groups
 
-### HTTP verbs
-
-```php
-Route::get   (string $path, callable|array $handler, string|array|null $nameOrOptions = null): void;
-Route::post  (string $path, callable|array $handler, string|array|null $nameOrOptions = null): void;
-Route::put   (string $path, callable|array $handler, string|array|null $nameOrOptions = null): void;
-Route::patch (string $path, callable|array $handler, string|array|null $nameOrOptions = null): void;
-Route::delete(string $path, callable|array $handler, string|array|null $nameOrOptions = null): void;
-Route::any   (string $path, callable|array $handler, string|array|null $nameOrOptions = null): void;
-```
-
-* `$handler` can be a closure or `[$class, 'method']` (controller).
-* Third param:
-
-    * **string** → route name.
-    * **array** → options (below).
-
-### Multiple methods (match)
-
-If supported:
+### Basic Group
 
 ```php
-Route::match(array $methods, string $path, callable|array $handler, string|array|null $nameOrOptions = null): void;
+Route::group(callback: function() {
+    Route::get('/users', [UserController::class, 'index']);
+    Route::get('/users/{id:int}', [UserController::class, 'show']);
+});
 ```
 
-Use sparingly; prefer explicit methods where possible.
-
-### Resource routes (REST set)
+### Prefix
 
 ```php
-Route::resource(string $name, string $basePath, string $controllerClass): void;
+Route::group(prefix: '/api/v1', callback: function() {
+    // GET /api/v1/users
+    Route::get('/users', [UserController::class, 'index']);
+
+    // GET /api/v1/posts
+    Route::get('/posts', [PostController::class, 'index']);
+});
 ```
 
-Registers conventional routes:
+### Name Prefix
 
-| Action  | Method | Path               | Name            | Controller method |
-| ------- | ------ | ------------------ | --------------- | ----------------- |
-| index   | GET    | `/users`           | `users.index`   | `index()`         |
-| create  | GET    | `/users/create`    | `users.create`  | `create()`        |
-| store   | POST   | `/users`           | `users.store`   | `store()`         |
-| show    | GET    | `/users/{id}`      | `users.show`    | `show($id)`       |
-| edit    | GET    | `/users/{id}/edit` | `users.edit`    | `edit($id)`       |
-| update  | PUT    | `/users/{id}`      | `users.update`  | `update($id)`     |
-| destroy | DELETE | `/users/{id}`      | `users.destroy` | `destroy($id)`    |
+```php
+Route::group(namePrefix: 'admin.', callback: function() {
+    // Name: admin.users.index
+    Route::get('/users', [AdminController::class, 'users'], 'users.index');
 
-(Implement only what you need; others can 404.)
+    // Name: admin.settings
+    Route::get('/settings', [AdminController::class, 'settings'], 'settings');
+});
+```
 
-### Groups
+### Middleware
+
+```php
+Route::group(middleware: ['auth', 'throttle:60,60'], callback: function() {
+    Route::get('/profile', [ProfileController::class, 'show']);
+    Route::put('/profile', [ProfileController::class, 'update']);
+});
+```
+
+### Combined Options
 
 ```php
 Route::group(
-  ?string $prefix = null,
-  ?string $namePrefix = null,
-  array|string|null $middleware = null,
-  ?string $domain = null,
-  callable $callback
-): void;
-```
-
-Inside `$callback`, use either the injected registrar (e.g., `function ($r) { $r->get(...); }`) or the `Route::...` facade.
-
-* **Nesting** is supported. Inner groups inherit and append `prefix` and `namePrefix`; middleware arrays are merged.
-
----
-
-## Options array (per route)
-
-Pass instead of a plain name:
-
-```php
-[
-  'as'         => 'users.show',          // route name
-  'middleware' => ['verifySignedUrl','throttle:5,60'],
-  'domain'     => 'api.example.com',
-]
-```
-
-* `as` (string): route name (will be prefixed by group `namePrefix` if present).
-* `middleware` (string|array): appended to group middleware.
-* `domain` (string): host scoping; prefer group-level for many routes.
-
----
-
-## Ordering & matching rules
-
-* Match order is the **registration order** within the same group scope.
-* Put **static** routes before **dynamic** ones (`/users/new` before `/users/{id:int}`).
-* Place **catch-alls** (`.*`) last inside their scope.
-* Domain-scoped routes match only their host; no conflict with others.
-
----
-
-## Handlers & dependency injection
-
-Handlers may accept:
-
-```php
-function (\Infocyph\Webrick\Request\Request $r, int $id) { /* ... */ }
-```
-
-* Route params inject by **name**; scalars can be type-hinted.
-* You can also inject the `Request` (first or mixed in any position).
-
----
-
-## URL generation (via Response helpers)
-
-Use route **names** to generate URLs:
-
-```php
-use Infocyph\Webrick\Response\Response;
-
-$url = Response::urlFor('users.show', ['id'=>42]);               // /users/42
-$abs = Response::urlFor('users.show', ['id'=>42], absolute:true);// https://host/users/42
-```
-
-Signed / temporary URLs (see `guides/urls.md`) require binding URL services at boot.
-
----
-
-## Attribute routes (alternate registration)
-
-Instead of central files, annotate classes:
-
-```php
-use Infocyph\Webrick\Router\Definition\Attribute\Get;
-
-final class HelloRoutes {
-  #[Get('/hello/{name}', name:'hello')]
-  public function hello(string $name) { /* ... */ }
-}
-```
-
-Discover & register:
-
-```php
-use Infocyph\Webrick\Router\Definition\Attribute\AttributeRouteLoader;
-
-AttributeRouteLoader::registerFromDirs($registrar, [
-  'App\\Http\\Routes\\' => __DIR__.'/../src/Http/Routes',
-]);
-```
-
-You can wrap the loader in a `Route::group(...)` to apply `prefix`, `namePrefix`, and middleware to all discovered routes.
-
----
-
-## Route cache (performance)
-
-Prebuild a **sharded** directory or **fused** file in CI and point the kernel to it at boot:
-
-```php
-$kernel = RouterKernel::bootWithRegistrar(
-  /* ... */,
-  routeCache: __DIR__.'/../var/cache/routes' // or routes.php
+    prefix: '/admin',
+    namePrefix: 'admin.',
+    middleware: ['auth', 'admin'],
+    callback: function() {
+        // GET /admin/users, name: admin.users, middleware: auth, admin
+        Route::get('/users', [AdminController::class, 'users'], 'users');
+    }
 );
 ```
 
-See `deployments/route-cache-warmup.md`.
+### Nested Groups
+
+```php
+Route::group(prefix: '/api', callback: function() {
+    Route::group(prefix: '/v1', callback: function() {
+        // GET /api/v1/users
+        Route::get('/users', [UserController::class, 'index']);
+    });
+
+    Route::group(prefix: '/v2', callback: function() {
+        // GET /api/v2/users
+        Route::get('/users', [UserV2Controller::class, 'index']);
+    });
+});
+```
 
 ---
 
-## Examples
+## Route Parameters
 
-### Basic
+### Required Parameters
 
 ```php
-Route::get('/ping', fn () => 'pong', 'ping');
+Route::get('/users/{id}', function(int $id) {
+    return Response::json(['id' => $id]);
+});
 ```
 
-### Controller method with constraints & middleware
+### Optional Parameters
 
 ```php
-Route::get('/users/{id:int}', [App\Http\Users::class, 'show'], [
-  'as' => 'users.show',
-  'middleware' => ['auth','throttle:60,60'],
+Route::get('/search/{query?}', function(?string $query = null) {
+    return Response::json(['query' => $query ?? 'all']);
+});
+```
+
+### Constrained Parameters
+
+```php
+// Integer constraint
+Route::get('/users/{id:int}', function(int $id) { /* ... */ });
+
+// Slug constraint
+Route::get('/posts/{slug:slug}', function(string $slug) { /* ... */ });
+
+// UUID constraint
+Route::get('/resources/{uuid:uuid}', function(string $uuid) { /* ... */ });
+
+// Hex constraint
+Route::get('/colors/{hex:hex}', function(string $hex) { /* ... */ });
+
+// Custom regex
+Route::get('/codes/{code:[A-Z]{3}}', function(string $code) { /* ... */ });
+```
+
+### Multiple Parameters
+
+```php
+Route::get('/posts/{year:int}/{month:int}/{slug:slug}',
+    function(int $year, int $month, string $slug) {
+        return Response::json([
+            'year' => $year,
+            'month' => $month,
+            'slug' => $slug
+        ]);
+    }
+);
+```
+
+---
+
+## Route Names
+
+### Setting Names
+
+```php
+// Third parameter
+Route::get('/users', [UserController::class, 'index'], 'users.index');
+
+// Via options array
+Route::get('/users', [UserController::class, 'index'], options: [
+    'name' => 'users.index'
 ]);
 ```
 
-### Grouped API v1
+### Checking Route Names
 
 ```php
-Route::group(prefix:'/api', namePrefix:'api.', middleware:['throttle:120,60'], callback:function ($api) {
-  $api->get('/v1/status', fn()=>['ok'=>true], 'v1.status');
-});
-```
-
-### Domain-scoped admin
-
-```php
-Route::group(domain:'admin.example.com', prefix:'/dashboard', namePrefix:'admin.', callback:function () {
-  Route::get('/', fn()=>'home', 'home');
+Route::get('/current-route', function(Request $r) {
+    $name = $r->getAttribute('route.name');
+    return Response::json(['route' => $name]);
 });
 ```
 
 ---
 
-## Troubleshooting
+## Middleware
 
-| Symptom                  | Likely cause                         | Fix                                                                 |
-| ------------------------ | ------------------------------------ | ------------------------------------------------------------------- |
-| 404 on dynamic route     | Constraint too strict / order        | Relax token or place before catch-alls                              |
-| 405 Method Not Allowed   | Path matches different verb          | Register the intended method or allow override via NormalizeMethod  |
-| Wrong URL generated      | Missing/incorrect `name`             | Set `'as' => '...'`; confirm `namePrefix` from groups               |
-| Domain route not hit     | Host mismatch                        | Use group `domain:` or generate **absolute** URLs with correct host |
-| Attribute routes missing | Loader not called or wrong namespace | Register directories and namespaces as in the loader mapping        |
+### Per-Route Middleware
+
+```php
+Route::get('/protected', [SecretController::class, 'index'], options: [
+    'middleware' => ['auth', 'verified']
+]);
+
+// Or using facade shorthand
+Route::get('/protected', [SecretController::class, 'index'])
+    ->middleware(['auth', 'verified']);
+```
+
+### Middleware with Parameters
+
+```php
+Route::post('/api/data', [ApiController::class, 'store'], options: [
+    'middleware' => ['throttle:30,60', 'verifySignedUrl']
+]);
+```
+
+### Group Middleware
+
+```php
+Route::group(middleware: ['auth'], callback: function() {
+    Route::get('/profile', [ProfileController::class, 'show']);
+    Route::put('/profile', [ProfileController::class, 'update']);
+});
+```
 
 ---
 
-## Checklist
+## Domain Routing
 
-* [ ] Name important routes (for URL generation & redirects)
-* [ ] Constrain params (`:int`, `:uuid`, custom regex)
-* [ ] Use groups for shared `prefix`, `namePrefix`, `middleware`, `domain`
-* [ ] Order static before dynamic; catch-alls last
-* [ ] Consider attribute routes for modular codebases
-* [ ] Prebuild **route cache** for faster boots in prod
+### Domain Constraint
 
+```php
+Route::group(domain: 'api.example.com', callback: function() {
+    Route::get('/users', [ApiController::class, 'users']);
+});
+```
+
+### Subdomain Wildcards
+
+```php
+Route::group(domain: '{account}.example.com', callback: function() {
+    Route::get('/', function(string $account) {
+        return Response::json(['account' => $account]);
+    });
+});
+```
+
+### Multiple Domains
+
+```php
+Route::group(domain: 'admin.example.com', callback: function() {
+    Route::get('/dashboard', [AdminController::class, 'dashboard']);
+});
+
+Route::group(domain: 'api.example.com', callback: function() {
+    Route::get('/users', [ApiController::class, 'users']);
+});
+```
+
+---
+
+## URL Generation
+
+### From Named Routes
+
+```php
+// In handler
+$url = Response::urlFor('users.show', ['id' => 42]);
+// '/users/42'
+
+// Absolute URL
+$url = Response::urlFor('users.show', ['id' => 42], absolute: true);
+// 'https://example.com/users/42'
+```
+
+### With Query Parameters
+
+```php
+$url = Response::urlFor('users.index', query: ['page' => 2, 'sort' => 'name']);
+// '/users?page=2&sort=name'
+```
+
+### Signed URLs
+
+```php
+use Infocyph\Webrick\Router\UrlSigner;
+
+$signer = new UrlSigner($signKey);
+$signed = $signer->sign('/download/file.pdf', expiration: 3600);
+// '/download/file.pdf?expires=1234567890&signature=abc123...'
+```
+
+---
+
+## Route Caching
+
+### Build Cache
+
+```php
+use Infocyph\Webrick\Support\RouteCache;
+
+RouteCache::build([
+    'cache' => __DIR__ . '/var/cache/routes',
+    'register' => function($r) {
+        require __DIR__ . '/routes/web.php';
+        require __DIR__ . '/routes/api.php';
+    }
+]);
+```
+
+### Use Cache
+
+```php
+$kernel = RouterKernel::boot([
+    'cache' => __DIR__ . '/var/cache/routes'
+]);
+```
+
+### Clear Cache
+
+```php
+RouteCache::clear(__DIR__ . '/var/cache/routes');
+```
+
+---
+
+## Common Patterns
+
+### RESTful Resource
+
+```php
+Route::get('/posts', [PostController::class, 'index'], 'posts.index');
+Route::get('/posts/create', [PostController::class, 'create'], 'posts.create');
+Route::post('/posts', [PostController::class, 'store'], 'posts.store');
+Route::get('/posts/{id:int}', [PostController::class, 'show'], 'posts.show');
+Route::get('/posts/{id:int}/edit', [PostController::class, 'edit'], 'posts.edit');
+Route::put('/posts/{id:int}', [PostController::class, 'update'], 'posts.update');
+Route::delete('/posts/{id:int}', [PostController::class, 'destroy'], 'posts.destroy');
+```
+
+### API Versioning
+
+```php
+Route::group(prefix: '/api', callback: function() {
+    Route::group(prefix: '/v1', namePrefix: 'v1.', callback: function() {
+        Route::get('/users', [V1\UserController::class, 'index'], 'users');
+    });
+
+    Route::group(prefix: '/v2', namePrefix: 'v2.', callback: function() {
+        Route::get('/users', [V2\UserController::class, 'index'], 'users');
+    });
+});
+```
+
+### Fallback Route
+
+```php
+// Must be last route registered
+Route::any('/{path:.*}', function(string $path) {
+    return Response::json([
+        'error' => 'Not Found',
+        'path' => $path
+    ], 404);
+});
+```
+
+---
+
+## Method Summary
+
+### Registrar
+- `get(string $path, $handler, ?string $name = null): void`
+- `post(string $path, $handler, ?string $name = null): void`
+- `put(string $path, $handler, ?string $name = null): void`
+- `patch(string $path, $handler, ?string $name = null): void`
+- `delete(string $path, $handler, ?string $name = null): void`
+- `options(string $path, $handler, ?string $name = null): void`
+- `head(string $path, $handler, ?string $name = null): void`
+- `any(string $path, $handler, ?string $name = null): void`
+- `match(array $methods, string $path, $handler, ?string $name = null): void`
+- `group(array $options, callable $callback): void`
+
+### Route Facade
+- All Registrar methods
+- Chainable middleware: `->middleware(array $middleware)`
+- Chainable name: `->name(string $name)`
+
+### URL Generation
+- `Response::urlFor(string $name, array $params = [], ?array $query = null, bool $absolute = false): string`
+
+### URL Signing
+- `UrlSigner::sign(string $path, ?int $expiration = null): string`
+- `UrlSigner::verify(string $url): bool`

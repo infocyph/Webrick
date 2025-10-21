@@ -2,6 +2,77 @@
 
 Serve cached responses for safe requests (typically **GET/HEAD**) without running handlers. This middleware provides a fast-path lookup and a coherent invalidation story that plays well with **ETag/Last-Modified** and **Compression**.
 
+
+---
+
+## Configuration
+
+```php
+use Infocyph\Webrick\Middleware\ResponseCacheMiddleware;
+use Psr\SimpleCache\CacheInterface;
+
+$preGlobal[] = new ResponseCacheMiddleware(
+    store: Cache::local('http'),               // PSR-16 simple cache
+    ttlSeconds: 10,                            // Base TTL (micro-cache strategy)
+    includeQuery: true,                        // Include query params in cache key
+    maxBodyBytes: 1_048_576,                   // Max body size to cache (1MB)
+    defaultVary: ['Accept', 'Accept-Language', 'Accept-Encoding'],
+    skipWhenPersonalized: true,                // Don't cache Set-Cookie responses
+    respectResponseCacheControl: true,         // Honor no-store/private directives
+    avoidSetCookie: true                       // Skip caching if Set-Cookie present
+);
+```
+
+### Constructor Parameters
+
+| Parameter                    | Type               | Default                 | Description                                     |
+| ---------------------------- | ------------------ | ----------------------- | ----------------------------------------------- |
+| `store`                      | `CacheInterface`   | *required*              | PSR-16 cache implementation                     |
+| `ttlSeconds`                 | `int`              | `10`                    | Default TTL for cached responses                |
+| `includeQuery`               | `bool`             | `true`                  | Include query string in cache key               |
+| `maxBodyBytes`               | `int`              | `1048576`               | Maximum response body size to cache (bytes)     |
+| `defaultVary`                | `array<string>`    | `['Accept', ...]`       | Default Vary dimensions to include in key       |
+| `skipWhenPersonalized`       | `bool`             | `true`                  | Skip caching if response varies by user         |
+| `respectResponseCacheControl`| `bool`             | `true`                  | Honor Cache-Control directives from response    |
+| `avoidSetCookie`             | `bool`             | `true`                  | Never cache responses with Set-Cookie header    |
+
+---
+
+## How It Keys
+
+Cache key structure:
+```
+{method}|{host}|{path}|{query}|{media}|{charset}|{locale}|{encoding}|{vary_surface}
+```
+
+**Example**:
+```
+GET|example.com|/products/42|sort=price|application/json|utf-8|en|br|Accept:application/json|Accept-Language:en
+```
+
+**Hashed**: Uses fast XXH3 hash to keep key size small:
+```
+http:xxh3:a1b2c3d4e5f6
+```
+
+### What Affects the Key
+
+1. **HTTP Method**: GET, HEAD (others not cached)
+2. **Host + Path**: `/users/42` on `api.example.com`
+3. **Query String** (if `includeQuery: true`): `?page=2&sort=name`
+4. **Negotiated Content**:
+   - Media type: `application/json`
+   - Charset: `utf-8`
+   - Locale: `en`
+   - Encoding: `br` (if cached post-compression)
+5. **Vary Surface**: Actual header values for `Vary` dimensions
+
+**Not Included** (by design):
+- Request headers like `User-Agent`, `Referer`
+- Cookies (unless explicitly added to Vary)
+- Request body
+- Time of request
+
 ---
 
 ## What it does

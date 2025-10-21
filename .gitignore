@@ -11,3 +11,4 @@ docs.txt
 .windsurf
 .phpunit.cache
 *.patch
+patch.php

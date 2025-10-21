@@ -22,7 +22,7 @@ $preGlobal = [
   \Infocyph\Webrick\Middleware\NegotiationMiddleware::class,
   // ...response cache, validators...
 ];
-```
+```php
 
 
 ---
@@ -45,7 +45,7 @@ $preGlobal[] = new NegotiationMiddleware(
     locales: ['en', 'es', 'fr', 'de', 'ja'],  // Supported locales
     localeFallback: 'en'      // Default when no match
 );
-```
+```php
 
 ### Per-Route Media Type Restrictions
 
@@ -86,7 +86,7 @@ public function getData(Request $r): Response {
 
     return Response::json($data);
 }
-```
+```php
 
 ### Content Negotiation Strategies
 
@@ -96,7 +96,7 @@ public function getData(Request $r): Response {
 Route::get('/users/{id}.json', [UserController::class, 'show'], 'users.show.json');
 Route::get('/users/{id}.xml', [UserController::class, 'showXml'], 'users.show.xml');
 Route::get('/users/{id}.html', [UserController::class, 'showHtml'], 'users.show.html');
-```
+```php
 
 **Pros**: Clear, cacheable, no ambiguity
 **Cons**: More routes to maintain
@@ -111,7 +111,7 @@ public function show(Request $r, int $id): Response {
     $user = $this->repo->find($id);
     return Response::auto($r, $user);  // Negotiates
 }
-```
+```php
 
 **Pros**: RESTful, single endpoint
 **Cons**: Harder to cache (need Vary: Accept), clients must set header correctly
@@ -132,7 +132,7 @@ Route::get('/users/{id}', function(Request $r, int $id) {
         default => Response::json(['error' => 'Unsupported format'], 400)
     };
 });
-```
+```php
 
 **Pros**: Simple, URL-based caching
 **Cons**: Non-standard, pollutes query namespace
@@ -152,7 +152,7 @@ Route::get('/auto', function (Request $r) {
   $payload = ['msg'=>'hello', 'time'=>time()];
   return Response::auto($r, $payload);   // JSON by default, or text/XML when appropriate
 });
-```
+```php
 
 What it generally does:
 
@@ -175,7 +175,7 @@ return Response::plaintext("hello\n");
 
 // XML explicitly
 return Response::create('<note>hello</note>', 200, ['Content-Type'=>'application/xml']);
-```
+```php
 
 ---
 
@@ -185,7 +185,7 @@ If your negotiation middleware resolves a locale, it is available as an attribut
 
 ```php
 $locale = $r->getAttribute('locale') ?? 'en';
-```
+```php
 
 Use this to select translations, date formats, or numeric formatting. Keep translation concerns outside the router for separation of concerns.
 
@@ -197,7 +197,7 @@ For APIs, stick to a consistent error envelope regardless of `Accept`; negotiati
 
 ```php
 return Response::json(['error'=>['code'=>'E_INPUT','message'=>'Invalid field']], 422);
-```
+```php
 
 If you need multiple representations (e.g., HTML form errors vs JSON API errors), either:
 
@@ -217,7 +217,7 @@ Example:
 ```php
 return Response::auto($r, ['ok'=>true])
   ->withAddedHeader('Vary', 'Accept, Accept-Language');
-```
+```php
 
 (If you use Vary accumulator middleware, it can append these for you.)
 
@@ -230,7 +230,7 @@ Route::get('/greet/{name}', function (Request $r, string $name) {
   $data = ['greet' => "Hello, {$name}"];
   return Response::auto($r, $data);
 });
-```
+```php
 
 * `curl -H "Accept: application/json" /greet/Hasan` → `{"greet":"Hello, Hasan"}`
 * Browser with generic `Accept` → plain text or JSON depending on defaults

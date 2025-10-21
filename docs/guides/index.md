@@ -12,7 +12,7 @@ Use **Guides** when you want end‑to‑end, working examples. Use **Reference**
 
 ## Quick links
 - 👉 [Signed & Temporary URLs](../guides/urls.md)
-- 👉 [Attribute Routes](../guides/attribute-routes.md)
+- 👉 [Attribute Routes](../guides/attributes.md)
 - 👉 [Responses & Content Negotiation](../guides/responses-and-negotiation.md)
 
 ## Example: sharing a temporary download link
@@ -26,7 +26,7 @@ Route::get('/download/{file}', fn(string $file) => R::attachment(__DIR__.'/files
     ->middleware(['verifySignedUrl']);
 
 $link = R::temporaryUrlFor('file.download', ['file' => 'report.pdf'], ttl: 900);
-```
+```php
 
 **Why it works:** `verifySignedUrl` checks signature + TTL. Keep proxies from altering the query string, or the signature will fail.
 
@@ -52,4 +52,4 @@ streaming
 cookies
 throttling
 urls
-```
+```php

@@ -15,7 +15,7 @@ Route::get('/ping', fn () => 'pong', 'ping');
 
 // JSON
 Route::get('/json', fn () => Response::json(['ok'=>true]), 'json');
-```
+```php
 
 * Signature: `Route::get($path, $handler, ?$nameOrOptions = null)`
 * `$handler` can be a closure or `[$class, 'method']` (see Controllers below).
@@ -33,7 +33,7 @@ Route::delete('/users/{id:int}', fn($id) => "deleted $id");
 
 // Any method (use judiciously)
 Route::any('/debug', fn()=>'ok');
-```
+```php
 
 Tip: If you need method override on forms, enable `NormalizeMethodMiddleware` in pre-globals to honor `_method=PUT|PATCH|DELETE`.
 
@@ -49,7 +49,7 @@ Route::get('/users/{id:int}', fn(int $id) => "user $id");
 
 // Hex color (custom token)
 Route::get('/color/{hex:hex}', fn(string $hex) => Response::json(['hex'=>$hex]));
-```
+```php
 
 ### Supported patterns
 
@@ -66,7 +66,7 @@ Route::get('/color/{hex:hex}', fn(string $hex) => Response::json(['hex'=>$hex]))
 ```php
 // Optional with default in handler
 Route::get('/page/{n:int?}', fn(?int $n = 1) => "page " . ($n ?? 1));
-```
+```php
 
 ---
 
@@ -77,7 +77,7 @@ use App\Http\DemoController;
 
 Route::get('/class/test/{name}', [DemoController::class, 'hello'], 'demo.hello');
 // DemoController::hello(Request $r, string $name): Response
-```
+```php
 
 Keep controller methods **thin**; delegate work to services for testability.
 
@@ -94,7 +94,7 @@ Route::get('/profile/{id:int}', fn($id)=>"profile $id", 'profile.show');
 use Infocyph\Webrick\Response\Response;
 $url = Response::urlFor('profile.show', ['id'=>42]);     // /profile/42
 return Response::redirect($url, 302);
-```
+```php
 
 ---
 
@@ -108,7 +108,7 @@ Route::get('/secure/{id:int}', fn($id)=>"ok $id", [
   'middleware' => ['verifySignedUrl','throttle:5,1'],
   'domain'     => 'api.example.com',  // domain scoping (rarely used directly; prefer groups)
 ]);
-```
+```php
 
 * `as` (string): route name
 * `middleware` (array|string): per-route middleware
@@ -140,7 +140,7 @@ Route::group(
     Route::get('/status', fn()=>['ok'=>true], 'status');
   }
 );
-```
+```php
 
 Nesting groups is supported; inner groups inherit and append prefixes and name prefixes.
 
@@ -155,7 +155,7 @@ use App\Http\UsersController;
 
 Route::resource('users', '/users', UsersController::class);
 // yields users.index/create/store/show/edit/update/destroy named routes
-```
+```php
 
 Implement only the methods you need; others can 404 or be omitted.
 
@@ -166,7 +166,7 @@ Implement only the methods you need; others can 404 or be omitted.
 ```php
 Route::get('/to-json', fn() => Response::redirect(Response::urlFor('json'), 302));
 Route::get('/download', fn() => Response::attachment(__FILE__, 'routes.php'));
-```
+```php
 
 ---
 
@@ -179,7 +179,7 @@ Response::urlFor('profile.show', ['id'=>7], absolute: true);
 // Signed URLs (requires Response::bindUrlServices at boot)
 Response::signedUrlFor('profile.show', ['id'=>7], absolute: false);
 Response::temporaryUrlFor('secure.show', ['id'=>7], query:['dl'=>1], absolute:false, ttl:900);
-```
+```php
 
 Use `verifySignedUrl` middleware on endpoints that require a valid signature.
 
@@ -209,7 +209,7 @@ Use `verifySignedUrl` middleware on endpoints that require a valid signature.
 Route::get('/report/{ym:(\d{4})-(\d{2})}', function (string $ym) {
   return "report for $ym";
 });
-```
+```php
 
 ### Splat (rest-of-path) style
 
@@ -217,7 +217,7 @@ For a simple “rest” capture, define a relaxed pattern:
 
 ```php
 Route::get('/assets/{path:.*}', fn($path) => "you asked: $path");
-```
+```php
 
 > Use sparingly; wide patterns can shadow other routes. Place them last.
 
@@ -248,7 +248,7 @@ Route::any('/api/v{version:\d+}/{path:.*}', function (Request $r, string $versio
         'supported_versions' => ['1', '2']
     ], 400);
 }, 'api.fallback');
-```
+```php
 
 ⚠️ **Important**: Place catch-all routes **last** in your registration order to avoid shadowing specific routes.
 ```php
@@ -259,7 +259,7 @@ Route::get('/assets/{path:.*}', /* catch-all */);           // Generic
 // ❌ Wrong order (catch-all shadows specific)
 Route::get('/assets/{path:.*}', /* catch-all */);           // Catches everything
 Route::get('/assets/special.txt', fn() => 'Never reached'); // Dead code
-```
+```php
 
 
 ---
@@ -272,11 +272,21 @@ Use `curl` for quick smoke tests:
 curl -i http://127.0.0.1:8000/ping
 curl -i http://127.0.0.1:8000/users/42
 curl -i -X POST http://127.0.0.1:8000/echo -d 'x=1&y=2'
-```
+```php
 
 Consider adding a small PHPUnit test that boots your router and asserts status codes, payloads, and headers for critical endpoints.
 
 ---
+
+
+---
+
+## Related Guides
+
+- [Attribute Routes](./attributes.md) - Declare routes with PHP attributes
+- [Groups & Domains](./groups-and-domains.md) - Organize routes with prefixes and domain scoping
+- [Responses](./responses.md) - Response helpers reference
+- [URLs](./urls.md) - Generate and secure URLs
 
 ## Checklist
 

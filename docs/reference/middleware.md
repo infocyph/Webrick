@@ -1,282 +1,647 @@
 # Middleware API Reference
 
-How to **write**, **configure**, and **compose** middleware in Webrick. Covers lifecycle, interfaces, short-circuiting, and best practices.
+Complete reference for creating and using middleware in Webrick.
 
 ---
 
-## Concepts at a glance
+## Table of Contents
 
-* **Pre-global** middleware runs before the route handler.
-* **Post-global** middleware runs after the handler and can transform the response.
-* **Per-route** middleware attaches to specific routes (by name or attribute).
-* Middleware can **short-circuit** (return a `Response` early) or **decorate** (modify request/response and continue).
+- [Middleware Interface](#middleware-interface)
+- [Creating Middleware](#creating-middleware)
+- [Registering Middleware](#registering-middleware)
+- [Middleware Order](#middleware-order)
+- [Request Transformation](#request-transformation)
+- [Response Transformation](#response-transformation)
+- [Short-Circuit Responses](#short-circuit-responses)
+- [Middleware Aliases](#middleware-aliases)
 
 ---
 
-## Interfaces & signatures
+## Middleware Interface
 
-Two styles are typically supported. Pick the one your project uses (both shown for clarity).
-
-### 1) Class with `handle(Request $r, callable $next): Response`
+Middleware must be callable with signature:
 
 ```php
-use Infocyph\Webrick\Request\Request;
-use Infocyph\Webrick\Response\Response;
+function (Request $request, Closure $next): Response
+```
 
-final class ExampleMiddleware
+---
+
+## Creating Middleware
+
+### Closure Middleware
+
+```php
+$middleware = function (Request $r, Closure $next): Response {
+    // Before handler
+    $r = $r->withAttribute('start_time', microtime(true));
+
+    // Call next middleware/handler
+    $response = $next($r);
+
+    // After handler
+    $duration = microtime(true) - $r->getAttribute('start_time');
+    return $response->withHeader('X-Response-Time', $duration . 'ms');
+};
+```
+
+### Class Middleware
+
+```php
+final class LoggingMiddleware
 {
-    public function handle(Request $r, callable $next): Response
+    public function __construct(
+        private LoggerInterface $logger
+    ) {}
+
+    public function __invoke(Request $r, Closure $next): Response
     {
-        // pre logic (read/augment request)
-        if ($r->getHeaderLine('x-block') === '1') {
-            return Response::json(['error'=>'blocked'], 403);
+        $this->logger->info('Request', [
+            'method' => $r->getMethod(),
+            'path' => $r->getPath()
+        ]);
+
+        $response = $next($r);
+
+        $this->logger->info('Response', [
+            'status' => $response->getStatusCode()
+        ]);
+
+        return $response;
+    }
+}
+```
+
+### Invokable Class
+
+```php
+final class AuthMiddleware
+{
+    public function __invoke(Request $r, Closure $next): Response
+    {
+        $token = $r->getHeaderLine('Authorization');
+
+        if (!$this->isValidToken($token)) {
+            return Response::json(['error' => 'Unauthorized'], 401);
         }
 
-        $resp = $next($r); // call next middleware / handler
+        $userId = $this->extractUserId($token);
+        $r = $r->withAttribute('auth.user_id', $userId);
 
-        // post logic (tweak response)
-        return $resp->withAddedHeader('X-Example', '1');
+        return $next($r);
     }
+
+    private function isValidToken(string $token): bool { /* ... */ }
+    private function extractUserId(string $token): int { /* ... */ }
 }
 ```
-
-### 2) PSR-15–style `process(Request $r, RequestHandlerInterface $handler): Response`
-
-```php
-use Psr\Http\Server\MiddlewareInterface;
-use Psr\Http\Server\RequestHandlerInterface;
-
-final class ExampleMiddleware implements MiddlewareInterface
-{
-    public function process(Request $r, RequestHandlerInterface $handler): Response
-    {
-        // pre...
-        $resp = $handler->handle($r);
-        // post...
-        return $resp->withAddedHeader('X-Example', '1');
-    }
-}
-```
-
-> Internally, Webrick adapts to one shape. Stick to the project’s preferred style.
 
 ---
 
-## Registering middleware
+## Registering Middleware
 
-### Global stacks (at boot)
-
-```php
-$preGlobal = [
-  \Infocyph\Webrick\Middleware\GatewayHardeningMiddleware::class,
-  \Infocyph\Webrick\Middleware\TelemetryMiddleware::class,
-  // ...
-];
-
-$postGlobal = [
-  \Infocyph\Webrick\Middleware\CompressionMiddleware::class,
-  \Infocyph\Webrick\Middleware\VaryAccumulatorMiddleware::class,
-];
-```
-
-You may pass **instances** when you need constructor options:
+### Pre-Global (Before Routing)
 
 ```php
-$preGlobal[] = new \Infocyph\Webrick\Middleware\RequestLimitsMiddleware(maxBodyBytes: 1_048_576);
-```
-
-### Per-route
-
-```php
-Route::get('/secure', fn()=>['ok'=>true], [
-  'middleware' => ['verifySignedUrl','throttle:5,60'],
+$kernel = RouterKernel::boot([
+    'preGlobal' => [
+        new GatewayHardeningMiddleware(/* ... */),
+        new TelemetryMiddleware(/* ... */),
+        new ThrottleMiddleware(/* ... */),
+    ]
 ]);
 ```
 
-In **attributes**, provide `middleware:` on the attribute:
+**Use for**:
+- Security checks (IP filtering, host validation)
+- Request logging
+- Rate limiting
+- Early request rejection
+
+### Post-Global (After Routing, Before Handler)
 
 ```php
-#[Get('/attr', name: 'attr.example', middleware: ['throttle:10,60'])]
+$kernel = RouterKernel::boot([
+    'postGlobal' => [
+        new CorsAndPoliciesMiddleware(/* ... */),
+        new NegotiationMiddleware(/* ... */),
+        new ResponseCacheMiddleware(/* ... */),
+    ]
+]);
+```
+
+**Use for**:
+- CORS headers
+- Content negotiation
+- Response caching
+- Compression
+
+### Per-Route
+
+```php
+Route::get('/admin', [AdminController::class, 'index'], options: [
+    'middleware' => ['auth', 'admin']
+]);
 ```
 
 ---
 
-## Pipeline order (rules of thumb)
+## Middleware Order
 
-1. **Hardening & limits** (drop bad/oversized requests)
-2. **Telemetry** (adds IDs for all logs)
-3. **Maintenance** (fast 503 switch)
-4. **Throttle** (cheap denial before heavy work)
-5. **Cookie decrypt** → **Method normalize** → **Input sanitize**
-6. **Negotiation** (decide media/locale)
-7. **Response cache** → **Cache validators** (304/412 short-circuit)
-8. **Handler**
-9. **Compression** → **CORS/Policies** → **Vary accumulator** → **Linter (dev)**
+**Execution flow**:
+
+```
+Request
+  ↓
+Pre-Global Middleware (in order)
+  ↓
+Routing
+  ↓
+Post-Global Middleware (in order)
+  ↓
+Per-Route Middleware (in order)
+  ↓
+Handler
+  ↓
+Per-Route Middleware (reverse order)
+  ↓
+Post-Global Middleware (reverse order)
+  ↓
+Pre-Global Middleware (reverse order)
+  ↓
+Response
+```
+
+**Example**:
+
+```php
+$preGlobal = [A, B, C];
+$postGlobal = [D, E];
+$perRoute = [F, G];
+
+// Execution order:
+// A → B → C → [routing] → D → E → F → G → [handler] → G → F → E → D → C → B → A
+```
 
 ---
 
-## Short-circuiting
+## Request Transformation
 
-Any pre-global middleware may return a `Response` **without** calling `$next($r)`:
+### Add Attributes
 
 ```php
-if (!$authorized) {
-  return Response::json(['error'=>'unauthorized'], 401);
+$middleware = function (Request $r, Closure $next): Response {
+    $r = $r->withAttribute('user_id', 42);
+    $r = $r->withAttribute('roles', ['admin', 'editor']);
+
+    return $next($r);
+};
+```
+
+### Modify Headers
+
+```php
+$middleware = function (Request $r, Closure $next): Response {
+    // Normalize header
+    $auth = $r->getHeaderLine('Authorization');
+    if (str_starts_with($auth, 'bearer ')) {
+        $auth = 'Bearer ' . substr($auth, 7);
+        $r = $r->withHeader('Authorization', $auth);
+    }
+
+    return $next($r);
+};
+```
+
+### Parse Body
+
+```php
+$middleware = function (Request $r, Closure $next): Response {
+    if ($r->getHeaderLine('Content-Type') === 'application/x-msgpack') {
+        $body = $r->getContent();
+        $data = msgpack_unpack($body);
+        $r = $r->withParsedBody($data);
+    }
+
+    return $next($r);
+};
+```
+
+---
+
+## Response Transformation
+
+### Add Headers
+
+```php
+$middleware = function (Request $r, Closure $next): Response {
+    $response = $next($r);
+
+    return $response
+        ->withHeader('X-Content-Type-Options', 'nosniff')
+        ->withHeader('X-Frame-Options', 'DENY');
+};
+```
+
+### Modify Body
+
+```php
+$middleware = function (Request $r, Closure $next): Response {
+    $response = $next($r);
+
+    // Wrap JSON responses
+    if (str_contains($response->getHeaderLine('Content-Type'), 'application/json')) {
+        $body = json_decode((string) $response->getBody(), true);
+        $wrapped = [
+            'success' => true,
+            'data' => $body,
+            'meta' => ['timestamp' => time()]
+        ];
+
+        return Response::json($wrapped, $response->getStatusCode());
+    }
+
+    return $response;
+};
+```
+
+### Compress Response
+
+```php
+$middleware = function (Request $r, Closure $next): Response {
+    $response = $next($r);
+
+    $acceptEncoding = $r->getHeaderLine('Accept-Encoding');
+
+    if (str_contains($acceptEncoding, 'gzip')) {
+        $body = (string) $response->getBody();
+        $compressed = gzencode($body, 6);
+
+        return $response
+            ->withBody(stream_for($compressed))
+            ->withHeader('Content-Encoding', 'gzip')
+            ->withHeader('Content-Length', (string) strlen($compressed));
+    }
+
+    return $response;
+};
+```
+
+---
+
+## Short-Circuit Responses
+
+### Early Return
+
+```php
+final class MaintenanceModeMiddleware
+{
+    public function __invoke(Request $r, Closure $next): Response
+    {
+        if ($this->isInMaintenanceMode()) {
+            return Response::json([
+                'error' => 'Service Unavailable',
+                'message' => 'We are currently performing maintenance'
+            ], 503);
+        }
+
+        return $next($r);
+    }
 }
 ```
 
-* Use for **auth gates**, **maintenance**, **preflight OPTIONS**, **cache hits**, **conditional requests** (304), **rate limits** (429).
-* Post-globals should **not** short-circuit (they run after handler) except for special cases (e.g., CORS preflight handled earlier).
-
----
-
-## Reading & writing context
-
-### Request attributes
-
-Store small, cross-cutting context:
+### Conditional Execution
 
 ```php
-$r = $r->withAttribute('auth.user_id', $userId);
-return $next($r);
-```
+final class CacheMiddleware
+{
+    public function __invoke(Request $r, Closure $next): Response
+    {
+        // Only cache GET/HEAD
+        if (!in_array($r->getMethod(), ['GET', 'HEAD'])) {
+            return $next($r);
+        }
 
-Handlers and later middleware can read via `$request->getAttribute('auth.user_id')`.
+        $cacheKey = $this->getCacheKey($r);
+        $cached = $this->cache->get($cacheKey);
 
-### Vary management
+        if ($cached) {
+            return $cached;  // Short-circuit
+        }
 
-If your middleware changes **representation**, add `Vary` tokens (directly or through the accumulator):
+        $response = $next($r);
+        $this->cache->set($cacheKey, $response, 3600);
 
-```php
-\Infocyph\Webrick\Middleware\VaryAccumulator::add('Accept');
-```
-
----
-
-## Error handling & exceptions
-
-* Throwing an exception bubbles to the framework’s **global error handler**.
-* Include **request/correlation IDs** from Telemetry in logs and (optionally) in response headers.
-* If your middleware can fail due to **user input** (e.g., bad signature), prefer returning a structured 4xx with a machine-readable error code.
-
----
-
-## Performance tips
-
-* Keep middleware **stateless**; inject heavy services via constructor DI.
-* Avoid reading full bodies in pre-globals; rely on **limits** middleware first.
-* For **Compression**, prefer buffering to recompute **strong ETag**; skip for **streams/SSE**.
-* Use **atomic stores** (Redis) for throttles/caches; don’t keep per-worker state that breaks under scaling.
-
----
-
-## Testing middleware
-
-### Unit test with a fake handler
-
-```php
-$mw = new ExampleMiddleware();
-
-$fakeNext = function ($r) { return Response::json(['ok'=>true]); };
-
-$resp = $mw->handle(fakeRequest(headers: ['x-block' => '0']), $fakeNext);
-assert($resp->getHeaderLine('X-Example') === '1');
-```
-
-### Integration test ordering
-
-Spin up the full stack and assert behaviors (e.g., a cached GET bypasses the handler, negotiates content, and compresses once).
-
----
-
-## Common patterns (snippets)
-
-### Caching pre-handler
-
-```php
-final class ResponseCacheMiddleware {
-  public function handle(Request $r, callable $next): Response {
-      if ($hit = $this->cache->get($this->key($r))) {
-          return $hit; // short-circuit
-      }
-      $resp = $next($r);
-      if ($this->isCacheable($resp, $r)) $this->cache->set($this->key($r), $resp, $this->ttl($resp));
-      return $resp;
-  }
-}
-```
-
-### CORS preflight
-
-```php
-if ($r->isOptions() && $r->getHeaderLine('Origin')) {
-    return Response::plaintext('')
-      ->withHeader('Access-Control-Allow-Origin', $origin)
-      ->withHeader('Access-Control-Allow-Methods', 'GET, POST')
-      ->withHeader('Access-Control-Allow-Headers', 'Content-Type')
-      ->withHeader('Access-Control-Max-Age', '600');
-}
-```
-
-### Rate limit (token bucket idea)
-
-```php
-$key = $this->key($r);
-if (!$this->bucket->consume($key, 1)) {
-  return Response::json(['error'=>['code'=>'E_RATE_LIMIT']], 429)
-    ->withHeader('Retry-After', $this->bucket->retryAfter($key));
+        return $response;
+    }
 }
 ```
 
 ---
 
-## Middleware registry (introspection)
+## Middleware Aliases
 
-Many apps expose a debug view of the active stacks:
+### Register Alias
 
-```
-Pre-global:
-  - GatewayHardeningMiddleware
-  - TelemetryMiddleware
-  - RequestLimitsMiddleware
-  - ThrottleMiddleware
-  - CookieEncryptionMiddleware
-  - NormalizeMethodMiddleware
-  - InputSanitizerMiddleware
-  - NegotiationMiddleware
-  - ResponseCacheMiddleware
-  - CacheValidatorsMiddleware
+```php
+use Infocyph\Webrick\Router\Dispatch\MiddlewareAliases;
 
-Post-global:
-  - CompressionMiddleware
-  - CorsAndPoliciesMiddleware
-  - VaryAccumulatorMiddleware
-  - ResponseLinterMiddleware (dev)
+MiddlewareAliases::register('auth', fn() => new AuthMiddleware());
+
+MiddlewareAliases::register('throttle', fn(...$params) => new ThrottleMiddleware(
+    max: (int)($params[0] ?? 60),
+    window: (int)($params[1] ?? 60),
+    pool: Cache::pool('throttle')
+));
 ```
 
-Keep this **documented** for your team; it prevents order-related regressions.
+### Use Alias
+
+```php
+Route::get('/protected', [SecretController::class, 'index'], options: [
+    'middleware' => ['auth', 'throttle:30,60']
+]);
+```
 
 ---
 
-## Troubleshooting
+## Common Patterns
 
-| Symptom                     | Likely cause                    | Fix                                                                        |
-| --------------------------- | ------------------------------- | -------------------------------------------------------------------------- |
-| Double compression          | Edge + app both compress        | Pick one layer; ensure only Compression middleware sets `Content-Encoding` |
-| JSON without `Content-Type` | Handler bypassed helpers        | Use `Response::json()` or set header explicitly; linter can catch          |
-| 304 never returned          | Validators not configured       | Add CacheValidators with a provider or set `ETag`/`Last-Modified`          |
-| Rate limit headers missing  | Error handler replaced response | Ensure middleware writes headers in both pass/deny paths                   |
-| Wrong variant cached        | Missing `Vary` token            | Add `Accept`/`Accept-Encoding` via Vary accumulator                        |
+### Timing Middleware
+
+```php
+final class TimingMiddleware
+{
+    public function __invoke(Request $r, Closure $next): Response
+    {
+        $start = microtime(true);
+
+        $response = $next($r);
+
+        $duration = (microtime(true) - $start) * 1000;  // ms
+
+        return $response->withHeader('X-Response-Time', number_format($duration, 2) . 'ms');
+    }
+}
+```
+
+### Request ID Middleware
+
+```php
+final class RequestIdMiddleware
+{
+    public function __invoke(Request $r, Closure $next): Response
+    {
+        $requestId = $r->getHeaderLine('X-Request-Id') ?: bin2hex(random_bytes(16));
+
+        $r = $r->withAttribute('request_id', $requestId);
+
+        $response = $next($r);
+
+        return $response->withHeader('X-Request-Id', $requestId);
+    }
+}
+```
+
+### Locale Middleware
+
+```php
+final class LocaleMiddleware
+{
+    public function __invoke(Request $r, Closure $next): Response
+    {
+        $locale = $r->query('lang')
+               ?? $r->cookie('locale')
+               ?? $r->getAttribute('locale', 'en');
+
+        $r = $r->withAttribute('locale', $locale);
+
+        $response = $next($r);
+
+        // Set cookie for next request
+        if (!$r->cookie('locale')) {
+            $cookie = "locale={$locale}; Path=/; Max-Age=31536000; SameSite=Lax";
+            $response = $response->withAddedHeader('Set-Cookie', $cookie);
+        }
+
+        return $response;
+    }
+}
+```
+
+### CORS Middleware
+
+```php
+final class SimpleCorsMiddleware
+{
+    public function __invoke(Request $r, Closure $next): Response
+    {
+        // Preflight request
+        if ($r->isOptions()) {
+            return Response::create('', 204, [
+                'Access-Control-Allow-Origin' => '*',
+                'Access-Control-Allow-Methods' => 'GET, POST, PUT, DELETE, OPTIONS',
+                'Access-Control-Allow-Headers' => 'Content-Type, Authorization',
+                'Access-Control-Max-Age' => '3600'
+            ]);
+        }
+
+        $response = $next($r);
+
+        return $response->withHeader('Access-Control-Allow-Origin', '*');
+    }
+}
+```
 
 ---
 
-## Checklist
+## Best Practices
 
-* [ ] Implement middleware using the project’s standard interface
-* [ ] Place it correctly in **pre/post** stacks (order matters)
-* [ ] Short-circuit only when you mean to; return proper status & headers
-* [ ] Use **request attributes** for shared context; avoid globals
-* [ ] Coordinate with **Vary**, **Cache**, **Compression**, **Validators**
-* [ ] Add thorough unit tests and an integration sanity test for ordering
+### ✅ **Do**
 
+1. **Keep middleware focused** (single responsibility)
+   ```php
+   // ✅ Good: One concern
+   final class AuthMiddleware { /* Only auth */ }
 
+   // ❌ Bad: Multiple concerns
+   final class AuthAndLoggingMiddleware { /* Auth + logging */ }
+   ```
+
+2. **Use immutable modifications**
+   ```php
+   $r = $r->withAttribute('key', 'value');  // ✅ Correct
+   $r->setAttribute('key', 'value');        // ❌ Wrong (doesn't exist)
+   ```
+
+3. **Always call $next unless short-circuiting**
+   ```php
+   // ✅ Good
+    return $next($r);
+
+   // ❌ Bad (breaks chain)
+   $next($r);  // Returns nothing
+   ```
+
+4. **Place order-sensitive middleware correctly**
+   ```php
+   // ✅ Correct order
+   $preGlobal = [
+       GatewayHardeningMiddleware::class,  // First: security
+       TelemetryMiddleware::class,         // Then: logging
+       ThrottleMiddleware::class,          // Then: rate limiting
+   ];
+   ```
+
+5. **Use type hints**
+   ```php
+   // ✅ Good
+   public function __invoke(Request $r, Closure $next): Response
+
+   // ❌ Bad
+   public function __invoke($r, $next)
+   ```
+
+### ❌ **Don't**
+
+1. **Don't mutate request/response directly**
+   ```php
+   // ❌ Wrong
+   $r->attributes['key'] = 'value';
+
+   // ✅ Correct
+   $r = $r->withAttribute('key', 'value');
+   ```
+
+2. **Don't catch exceptions without re-throwing**
+   ```php
+   // ❌ Bad (swallows errors)
+   try {
+       return $next($r);
+   } catch (\Throwable $e) {
+       return Response::json(['error' => 'Something went wrong'], 500);
+   }
+
+   // ✅ Good (logs but re-throws)
+   try {
+       return $next($r);
+   } catch (\Throwable $e) {
+       $this->logger->error('Middleware error', ['exception' => $e]);
+       throw $e;
+   }
+   ```
+
+3. **Don't forget to return response**
+   ```php
+   // ❌ Bad
+   public function __invoke(Request $r, Closure $next): Response {
+       $next($r);  // Missing return
+   }
+
+   // ✅ Good
+   public function __invoke(Request $r, Closure $next): Response {
+       return $next($r);
+   }
+   ```
+
+4. **Don't perform heavy operations in every request**
+   ```php
+   // ❌ Bad (slow)
+   public function __invoke(Request $r, Closure $next): Response {
+       $this->rebuildCache();  // Expensive!
+       return $next($r);
+   }
+
+   // ✅ Good (conditional)
+   public function __invoke(Request $r, Closure $next): Response {
+       if ($r->getPath() === '/admin/rebuild-cache') {
+           $this->rebuildCache();
+       }
+       return $next($r);
+   }
+   ```
+
+---
+
+## Testing Middleware
+
+### Unit Test
+
+```php
+use PHPUnit\Framework\TestCase;
+
+class AuthMiddlewareTest extends TestCase
+{
+    public function testRejectsUnauthenticated(): void
+    {
+        $middleware = new AuthMiddleware();
+        $request = Request::create('GET', '/protected');
+        $next = fn() => Response::json(['secret' => 'data']);
+
+        $response = $middleware($request, $next);
+
+        $this->assertEquals(401, $response->getStatusCode());
+    }
+
+    public function testAllowsAuthenticated(): void
+    {
+        $middleware = new AuthMiddleware();
+        $request = Request::create('GET', '/protected', headers: [
+            'Authorization' => 'Bearer valid-token'
+        ]);
+        $next = fn($r) => Response::json(['user_id' => $r->getAttribute('auth.user_id')]);
+
+        $response = $middleware($request, $next);
+
+        $this->assertEquals(200, $response->getStatusCode());
+        $data = json_decode((string) $response->getBody(), true);
+        $this->assertNotNull($data['user_id']);
+    }
+}
+```
+
+### Integration Test
+
+```php
+class MiddlewareStackTest extends TestCase
+{
+    public function testMiddlewareStack(): void
+    {
+        $kernel = RouterKernel::boot([
+            'preGlobal' => [
+                new TimingMiddleware(),
+                new RequestIdMiddleware(),
+            ],
+            'postGlobal' => [
+                new CorsMiddleware(),
+            ]
+        ]);
+
+        $request = Request::create('GET', '/test');
+        $response = $kernel->handle($request);
+
+        $this->assertTrue($response->hasHeader('X-Response-Time'));
+        $this->assertTrue($response->hasHeader('X-Request-Id'));
+        $this->assertTrue($response->hasHeader('Access-Control-Allow-Origin'));
+    }
+}
+```
+
+---
+
+## Summary
+
+**Middleware provides**:
+- ✅ Request/response transformation
+- ✅ Cross-cutting concerns (logging, caching, security)
+- ✅ Composable, reusable logic
+- ✅ Clean separation of concerns
+
+**Key concepts**:
+1. **Callable with (Request, Closure) → Response**
+2. **Three registration points** (pre-global, post-global, per-route)
+3. **Immutable transformations** (PSR-7)
+4. **Can short-circuit** (early return)
+5. **Order matters** (especially security middleware)
+
+**Golden rule**: Each middleware should do one thing well.

@@ -1,5 +1,11 @@
 # Responses & Content Negotiation
 
+
+---
+
+**📖 Note**: This guide focuses on how Response helpers work **with** content negotiation middleware. For comprehensive Response API reference (all helpers, status codes, headers, etc.), see [Response Helpers](./responses.md).
+
+---
 This guide shows how `Response` helpers and the negotiation middleware work together.
 The examples reflect the real behavior in the codebase.
 
@@ -17,7 +23,7 @@ Route::get('/profile', function () {
     $payload = ['id' => 123, 'name' => 'Hasan'];
     return R::auto($r, $payload); // JSON by default; can also respect charset/locale if configured
 });
-```
+```php
 
 ## Streaming
 
@@ -31,7 +37,7 @@ Route::get('/stream/logs', function () {
         }
     }, filename: null); // add filename to suggest download
 });
-```
+```php
 
 ## Validators & compression (middleware cooperation)
 
@@ -55,4 +61,4 @@ $factory = new HttpFactory();
 $res = $factory->createResponse(200)->withHeader('X-App', 'Webrick');
 $stream = $factory->createStream('Hello');
 $res = $res->withBody($stream);
-```
+```php

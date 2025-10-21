@@ -15,9 +15,9 @@ Webrick’s pipeline is **pre‑global → handler → post‑global**. Place ea
 ## Quick links
 - 👉 [Cache Validators](./cache-validators.md)
 - 👉 [Compression](./compression.md)
-- 👉 [Cookies](./cookies.md)
+- 👉 [Cookies](./cookie-encryption.md)
 - 👉 [Negotiation](./negotiation.md)
-- 👉 [CORS & Policies](./cors-policies.md)
+- 👉 [CORS & Policies](./cors-and-policies.md)
 - 👉 [Gateway Hardening](./gateway-hardening.md)
 - 👉 [Normalize Method](./normalize-method.md)
 - 👉 [Throttle](./throttle.md)
