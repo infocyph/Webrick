@@ -202,9 +202,83 @@ Open http://127.0.0.1:8080/ and http://127.0.0.1:8080/api/ping
 - Uses `Response::plaintext()` and `Response::json()` helpers.
 - Swap `run()` to your preferred emitter if your stack requires it.
 
+
 ---
 
-## 4) Next steps
+## 4) Register Middleware Aliases (Required for String Syntax)
+
+Before using string-based middleware like `'throttle:60,60'` or `'verifySignedUrl'`, register them:
+```php
+<?php
+// In your front controller (public/index.php), before booting the kernel
+
+use Infocyph\Webrick\Router\Dispatch\MiddlewareAliases;
+use Infocyph\Webrick\Middleware\ThrottleMiddleware;
+use Infocyph\Webrick\Middleware\VerifySignedUrlMiddleware;
+
+// Register throttle alias with parameter parsing
+MiddlewareAliases::register(
+    'throttle',
+    static fn(...$params) => new ThrottleMiddleware(
+        max: (int)($params[0] ?? 60),      // max requests
+        window: (int)($params[1] ?? 60),   // window in seconds
+        pool: Cache::local('throttle')     // Your cache instance
+    )
+);
+
+// Register signed URL verifier
+MiddlewareAliases::register(
+    'verifySignedUrl',
+    static function () use ($signKey) {
+        return new VerifySignedUrlMiddleware(
+            signKey: $signKey,
+            leeway: 5  // 5-second clock skew tolerance
+        );
+    }
+);
+
+// Now you can use string syntax in routes
+Route::get('/protected', fn() => Response::json(['ok' => true]), [
+    'middleware' => ['verifySignedUrl', 'throttle:30,60']
+]);
+```
+
+**Common Aliases**:
+```php
+// Authentication
+MiddlewareAliases::register('auth', fn() => new AuthMiddleware());
+
+// CORS with specific config
+MiddlewareAliases::register('cors', fn() => new CorsAndPoliciesMiddleware([
+    'allow_origins' => ['https://app.example.com'],
+    'allow_methods' => ['GET', 'POST', 'PUT', 'DELETE'],
+]));
+
+// Custom throttle presets
+MiddlewareAliases::register('throttle.strict', fn() => new ThrottleMiddleware(
+    max: 10, window: 60, pool: Cache::local('throttle')
+));
+
+MiddlewareAliases::register('throttle.relaxed', fn() => new ThrottleMiddleware(
+    max: 1000, window: 60, pool: Cache::local('throttle')
+));
+```
+
+**Without Aliases** (Alternative):
+```php
+// You can also use class instances directly (no alias needed)
+Route::get('/protected', fn() => Response::json(['ok' => true]), [
+    'middleware' => [
+        new VerifySignedUrlMiddleware($signKey, leeway: 5),
+        new ThrottleMiddleware(max: 30, window: 60, pool: $cache)
+    ]
+]);
+```
+
+
+---
+
+## 5) Next steps
 
 - Explore **Guides → Routing, Groups & Domains** for more patterns.
 - See **Middleware** pages for what each pre/post step does.

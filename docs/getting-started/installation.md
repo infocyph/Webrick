@@ -72,3 +72,201 @@ Use your preferred stack. A typical Nginx → PHP‑FPM setup serves static asse
 - Make the **route cache** path (`var/cache/routes` or fused file) writable during deploys.
 
 See **Deployments → Nginx/Apache/PHP‑FPM** for copy‑paste configs and tuning.
+
+
+---
+
+## 5) Troubleshooting Installation
+
+### Common Issues
+
+#### Extension Not Found
+
+**Error**: `PHP Fatal error: Uncaught Error: Call to undefined function zstd_compress()`
+
+**Solution**:
+```bash
+# Install zstd extension
+pecl install zstd
+
+# Enable in php.ini
+echo "extension=zstd.so" >> /etc/php/8.4/cli/php.ini
+echo "extension=zstd.so" >> /etc/php/8.4/fpm/php.ini
+
+# Restart PHP-FPM
+systemctl restart php8.4-fpm
+```
+
+#### Composer Memory Limit
+
+**Error**: `Fatal error: Allowed memory size exhausted`
+
+**Solution**:
+```bash
+# Increase memory limit for this command
+php -d memory_limit=-1 /usr/local/bin/composer install
+```
+
+#### Permission Denied on Cache Directory
+
+**Error**: `Unable to create directory var/cache/routes`
+
+**Solution**:
+```bash
+# Create directory with correct permissions
+mkdir -p var/cache/routes
+chown -R www-data:www-data var/cache
+chmod -R 775 var/cache
+
+# Or for development
+chmod -R 777 var/cache  # ⚠️ Dev only!
+```
+
+#### Autoload Not Working
+
+**Error**: `Class 'Infocyph\Webrick\Router\Kernel\RouterKernel' not found`
+
+**Solution**:
+```bash
+# Regenerate autoload
+composer dump-autoload
+
+# Or reinstall
+rm -rf vendor/
+composer install
+```
+
+#### Route Cache Build Fails
+
+**Error**: `Route cache build failed - check for conflicts`
+
+**Causes**:
+- Duplicate route names
+- Invalid parameter constraints
+- Syntax errors in route files
+
+**Debug**:
+```bash
+# Run with verbose output
+php scripts/build-route-cache.php -vvv
+
+# Check for duplicate names
+grep -r "->name(" routes/ | sort | uniq -d
+
+# Validate route syntax
+php -l routes/web.php
+```
+
+---
+
+## 6) Verify Installation
+
+Create a simple test script:
+```php
+<?php
+// test-install.php
+
+require __DIR__ . '/vendor/autoload.php';
+
+use Infocyph\Webrick\Router\Kernel\RouterKernel;
+use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Response\Response;
+
+echo "Testing Webrick installation...\n\n";
+
+// Test 1: Kernel boots
+try {
+    $kernel = new RouterKernel();
+    echo "✅ Kernel boots successfully\n";
+} catch (Throwable $e) {
+    echo "❌ Kernel boot failed: {$e->getMessage()}\n";
+    exit(1);
+}
+
+// Test 2: Route registration
+try {
+    $kernel->get('/test', fn() => Response::plaintext('OK'));
+    echo "✅ Route registration works\n";
+} catch (Throwable $e) {
+    echo "❌ Route registration failed: {$e->getMessage()}\n";
+    exit(1);
+}
+
+// Test 3: Request handling
+try {
+    $request = Request::create('GET', '/test');
+    $response = $kernel->handle($request);
+
+    if ($response->getStatusCode() === 200 && (string)$response->getBody() === 'OK') {
+        echo "✅ Request handling works\n";
+    } else {
+        echo "❌ Request handling failed: unexpected response\n";
+        exit(1);
+    }
+} catch (Throwable $e) {
+    echo "❌ Request handling failed: {$e->getMessage()}\n";
+    exit(1);
+}
+
+// Test 4: Response helpers
+try {
+    $json = Response::json(['test' => true]);
+    if ($json->getHeaderLine('Content-Type') === 'application/json; charset=UTF-8') {
+        echo "✅ Response helpers work\n";
+    } else {
+        echo "❌ Response helpers failed: wrong content-type\n";
+        exit(1);
+    }
+} catch (Throwable $e) {
+    echo "❌ Response helpers failed: {$e->getMessage()}\n";
+    exit(1);
+}
+
+// Test 5: Compression available
+$compressionAvailable = [];
+if (function_exists('zstd_compress')) {
+    $compressionAvailable[] = 'zstd';
+}
+if (function_exists('brotli_compress')) {
+    $compressionAvailable[] = 'brotli';
+}
+if (function_exists('gzencode')) {
+    $compressionAvailable[] = 'gzip';
+}
+
+if (!empty($compressionAvailable)) {
+    echo "✅ Compression available: " . implode(', ', $compressionAvailable) . "\n";
+} else {
+    echo "⚠️  No compression extensions found (optional)\n";
+}
+
+echo "\n✨ All tests passed! Webrick is ready.\n";
+```
+
+Run the test:
+```bash
+php test-install.php
+```
+
+Expected output:
+```
+Testing Webrick installation...
+
+✅ Kernel boots successfully
+✅ Route registration works
+✅ Request handling works
+✅ Response helpers work
+✅ Compression available: zstd, brotli, gzip
+
+✨ All tests passed! Webrick is ready.
+```
+
+---
+
+## 7) Next Steps
+
+- 📖 Read the [Quick Start Guide](./quickstart.md) for a full example
+- 🚀 Check [Deployments](../deployments/index.md) for production setup
+- 🔧 Review [Middleware](../middleware/index.md) for available components
+- 📚 Explore [Guides](../guides/index.md) for common patterns
+

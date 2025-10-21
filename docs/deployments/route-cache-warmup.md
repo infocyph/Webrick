@@ -31,6 +31,125 @@ var/
    └─ routes/          # sharded cache directory (commit: NO; deploy: YES)
 ```
 
+
+---
+
+## RouteCache API Reference
+
+### Build (Sharded)
+```php
+use Infocyph\Webrick\Support\RouteCache;
+use Psr\Log\NullLogger;
+
+$sentinel = RouteCache::build([
+    'cache'   => __DIR__ . '/../var/cache/routes',  // Directory (auto-detects sharded)
+    'routes'  => __DIR__ . '/../routes/web.php',    // Routes file
+    'matcher' => 'sharded',                          // Optional (auto-detected by path)
+    'signKey' => $signKey,
+    'signedDefaultTtl' => 900,
+    'fallbackAliasesFromRegistrar' => true,
+    'logger' => new NullLogger(),
+    'registrarOptions' => [
+        'autoSlashRedirect' => false,
+        'exposeUrlServices' => true,
+    ],
+    'preGlobal' => [],   // Optional: middleware for warmup validation
+    'postGlobal' => [],
+    'bindUrlServices' => static function (Collection $routes) use ($signKey): void {
+        Response::bindUrlServices($routes, $signKey, 900);
+    }
+]);
+
+echo "Route cache built. Sentinel: {$sentinel}\n";
+```
+
+### Build (Fused)
+```php
+$sentinel = RouteCache::build([
+    'cache'  => __DIR__ . '/../var/cache/routes.php',  // Single file (auto-detects fused)
+    'matcher' => 'fused',                               // Explicit
+    'routes' => __DIR__ . '/../routes/web.php',
+    'signKey' => $signKey,
+    'signedDefaultTtl' => 900,
+    'fallbackAliasesFromRegistrar' => true,
+    'logger' => new NullLogger(),
+    'registrarOptions' => [
+        'autoSlashRedirect' => false,
+        'exposeUrlServices' => true,
+    ],
+]);
+```
+
+### Build with Closure (No routes.php)
+```php
+use Infocyph\Webrick\Router\Definition\Registrar;
+
+$sentinel = RouteCache::build([
+    'cache' => __DIR__ . '/../var/cache/routes',
+    'register' => static function (Registrar $r): void {
+        // Define routes directly
+        $r->get('/ping', fn() => 'pong', 'ping');
+        $r->get('/hello/{name}', fn($req, $name) => Response::json(['hello' => $name]));
+
+        // Or include files
+        require __DIR__ . '/../routes/web.php';
+
+        // Or scan attributes
+        AttributeRouteLoader::registerFromDirs($r, [
+            'App\\Http\\Routes\\' => __DIR__ . '/../src/Http/Routes'
+        ]);
+    },
+    'signKey' => $signKey,
+    'signedDefaultTtl' => 900,
+    'fallbackAliasesFromRegistrar' => true,
+]);
+```
+
+### Clear Cache
+```php
+// Safe clear (keeps directory, removes PHP files)
+$removed = RouteCache::clear([
+    'cache' => __DIR__ . '/../var/cache/routes',
+    'aggressive' => false  // Default: safe mode
+]);
+
+if ($removed) {
+    echo "Cache cleared successfully.\n";
+}
+
+// Aggressive clear (removes entire directory - use with caution)
+$removed = RouteCache::clear([
+    'cache' => __DIR__ . '/../var/cache/routes',
+    'aggressive' => true  // ⚠️ Deletes the whole directory
+]);
+```
+
+**Note**: Aggressive mode is useful in containerized environments where you recreate the directory on each build.
+
+### Validation During Build
+
+The builder validates routes and fails fast on:
+
+- **Duplicate route names**: Two routes with same `name:`
+- **Conflicting paths**: Same path + method with different handlers
+- **Invalid tokens**: Malformed `{param:constraint}` syntax
+- **Ambiguous patterns**: Optional segments that create indistinguishable routes
+
+**Example CI Script**:
+```bash
+#!/bin/bash
+set -e  # Exit on error
+
+echo "Building route cache..."
+php scripts/build-route-cache.php
+
+if [ $? -eq 0 ]; then
+    echo "✅ Route cache built successfully"
+else
+    echo "❌ Route cache build failed - check for conflicts"
+    exit 1
+fi
+```
 Ensure the directory exists and is **readable** by PHP-FPM at runtime. You may let CI precreate and populate it.
 
 ---

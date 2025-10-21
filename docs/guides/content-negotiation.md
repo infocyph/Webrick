@@ -24,6 +24,120 @@ $preGlobal = [
 ];
 ```
 
+
+---
+
+## Configuration
+
+Configure NegotiationMiddleware with supported types and locales:
+```php
+use Infocyph\Webrick\Middleware\NegotiationMiddleware;
+
+$preGlobal[] = new NegotiationMiddleware(
+    produces: [
+        '+json',               // Vendor JSON types (application/vnd.api+json)
+        'application/json',
+        'text/html',
+        'text/plain',
+        'application/xml'
+    ],
+    charsets: ['utf-8'],      // Supported charsets
+    locales: ['en', 'es', 'fr', 'de', 'ja'],  // Supported locales
+    localeFallback: 'en'      // Default when no match
+);
+```
+
+### Per-Route Media Type Restrictions
+
+Use the `#[Produces]` attribute to limit what a route can return:
+```php
+use Infocyph\Webrick\Router\Definition\Attribute\Get;
+use Infocyph\Webrick\Router\Definition\Attribute\Produces;
+
+#[Get('/api/data.xml', name: 'api.data.xml')]
+#[Produces(types: ['application/xml', 'text/xml'])]
+public function getXml(Request $r): Response {
+    $data = '<data><item>1</item><item>2</item></data>';
+    return Response::create($data, 200, [
+        'Content-Type' => 'application/xml; charset=UTF-8'
+    ]);
+}
+
+#[Get('/api/data.json', name: 'api.data.json')]
+#[Produces(types: ['application/json'])]
+public function getJson(Request $r): Response {
+    return Response::json(['items' => [1, 2]]);
+}
+
+// Flexible endpoint (negotiates)
+#[Get('/api/data', name: 'api.data')]
+#[Produces(types: ['application/json', 'application/xml'])]
+public function getData(Request $r): Response {
+    $data = ['items' => [1, 2]];
+
+    $negotiated = $r->getAttribute('negotiated.type');
+
+    if (str_contains($negotiated, 'xml')) {
+        $xml = '<data><item>1</item><item>2</item></data>';
+        return Response::create($xml, 200, [
+            'Content-Type' => 'application/xml; charset=UTF-8'
+        ]);
+    }
+
+    return Response::json($data);
+}
+```
+
+### Content Negotiation Strategies
+
+#### 1. **Extension-Based** (Explicit)
+```php
+// Client explicitly chooses format via extension
+Route::get('/users/{id}.json', [UserController::class, 'show'], 'users.show.json');
+Route::get('/users/{id}.xml', [UserController::class, 'showXml'], 'users.show.xml');
+Route::get('/users/{id}.html', [UserController::class, 'showHtml'], 'users.show.html');
+```
+
+**Pros**: Clear, cacheable, no ambiguity
+**Cons**: More routes to maintain
+
+#### 2. **Accept Header** (Standard)
+```php
+// Single endpoint, negotiates via Accept header
+Route::get('/users/{id}', [UserController::class, 'show'], 'users.show');
+
+// In controller
+public function show(Request $r, int $id): Response {
+    $user = $this->repo->find($id);
+    return Response::auto($r, $user);  // Negotiates
+}
+```
+
+**Pros**: RESTful, single endpoint
+**Cons**: Harder to cache (need Vary: Accept), clients must set header correctly
+
+#### 3. **Query Parameter** (Fallback)
+```php
+Route::get('/users/{id}', function(Request $r, int $id) {
+    $format = $r->query('format', 'json');  // ?format=xml
+    $user = ['id' => $id, 'name' => 'Alice'];
+
+    return match($format) {
+        'xml' => Response::create(
+            '<user><id>' . $id . '</id><name>Alice</name></user>',
+            200,
+            ['Content-Type' => 'application/xml']
+        ),
+        'json' => Response::json($user),
+        default => Response::json(['error' => 'Unsupported format'], 400)
+    };
+});
+```
+
+**Pros**: Simple, URL-based caching
+**Cons**: Non-standard, pollutes query namespace
+
+
 Optional: pass constructor/config to customize supported media types/locales if your middleware supports it.
 
 ---

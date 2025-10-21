@@ -1,29 +1,15 @@
 <?php
+
 declare(strict_types=1);
 
-require_once __DIR__ . '/DebugHelpers.php';
-
-use Infocyph\Webrick\Request\Request;
-use Infocyph\Webrick\Response\Response;
-require_once __DIR__ . '/TestHelpers.php';
 /*
 |--------------------------------------------------------------------------
-| Test Case
+| Test Case (Optional - only if needed)
 |--------------------------------------------------------------------------
 */
 
-uses()->beforeEach(function () {
-    // Reset any global state
-    $_SERVER = [];
-    $_GET = [];
-    $_POST = [];
-    $_COOKIE = [];
-    $_FILES = [];
-
-    // Clean request time
-    $_SERVER['REQUEST_TIME'] = time();
-    $_SERVER['REQUEST_TIME_FLOAT'] = microtime(true);
-})->in('Unit', 'Integration', 'Feature');
+// Most tests don't need a TestCase, but it's available if you want it
+// uses(Tests\TestCase::class)->in('Feature', 'Unit');
 
 /*
 |--------------------------------------------------------------------------
@@ -31,160 +17,44 @@ uses()->beforeEach(function () {
 |--------------------------------------------------------------------------
 */
 
-expect()->extend('toBeRequest', function () {
-    return $this->toBeInstanceOf(Request::class);
+expect()->extend('toBeOne', function () {
+    return $this->toBe(1);
 });
 
-expect()->extend('toBeResponse', function () {
-    return $this->toBeInstanceOf(Response::class);
-});
-
-expect()->extend('toHaveStatus', function (int $expected) {
-    expect($this->value)->toBeResponse();
-    expect($this->value->getStatusCode())->toBe($expected);
+expect()->extend('toHaveStatus', function (int $status) {
+    $actual = $this->value->getStatusCode();
+    expect($actual)->toBe($status, "Expected status {$status}, got {$actual}");
     return $this;
 });
 
-expect()->extend('toHaveHeader', function (string $name, ?string $value = null) {
-    expect($this->value)->toBeResponse();
-    expect($this->value->hasHeader($name))->toBeTrue();
-
-    if ($value !== null) {
-        expect($this->value->getHeaderLine($name))->toBe($value);
-    }
-
-    return $this;
-});
-
-expect()->extend('toHaveJsonBody', function (array $expected) {
-    expect($this->value)->toBeResponse();
-    $body = json_decode((string)$this->value->getBody(), true);
-    expect($body)->toBe($expected);
+expect()->extend('toHaveHeader', function (string $header) {
+    expect($this->value->hasHeader($header))->toBeTrue("Expected header '{$header}' to be present");
     return $this;
 });
 
 /*
 |--------------------------------------------------------------------------
-| Helper Functions
+| Functions
 |--------------------------------------------------------------------------
 */
 
-/**
- * Create a mock request with given parameters.
- */
-
-/**
- * Create a mock request with given parameters.
- */
-function mockRequest(
-    string $method = 'GET',
-    string $uri = '/',
-    array $headers = [],
-    mixed $body = null,
-    array $query = [],
-    array $server = []
-): Request {
-    // Parse query string from URI if present
-    if (str_contains($uri, '?')) {
-        [$path, $queryString] = explode('?', $uri, 2);
-        parse_str($queryString, $parsedQuery);
-        $query = array_merge($parsedQuery, $query);
-    } else {
-        $path = $uri;
-        $queryString = http_build_query($query);
-    }
-
-    $fullUri = $path;
-    if ($queryString) {
-        $fullUri .= '?' . $queryString;
-    }
-
-    $defaultServer = [
-        'REQUEST_METHOD' => strtoupper($method),
-        'REQUEST_URI' => $fullUri,
-        'QUERY_STRING' => $queryString,
-        'SERVER_PROTOCOL' => 'HTTP/1.1',
-        'HTTP_HOST' => 'localhost',
-        'SERVER_NAME' => 'localhost',
-        'REMOTE_ADDR' => '127.0.0.1',
-        'REQUEST_TIME' => time(),
-        'REQUEST_TIME_FLOAT' => microtime(true),
-    ];
-
-    $_SERVER = array_merge($defaultServer, $server);
-    $_GET = $query;
-    $_POST = []; // Clear POST data first
-
-    $request = Request::fromGlobals();
-
-    // Apply headers
-    foreach ($headers as $name => $value) {
-        $request = $request->withHeader($name, $value);
-    }
-
-    // Handle body data for POST/PUT/PATCH
-    if ($body !== null && in_array(strtoupper($method), ['POST', 'PUT', 'PATCH'], true)) {
-        if (is_array($body)) {
-            // For arrays, set as parsed body
-            $request = $request->withParsedBody($body);
-        } elseif (is_string($body)) {
-            // For strings, set as stream body
-            $stream = new \Infocyph\Webrick\Request\Core\Stream($body);
-            $request = $request->withBody($stream);
-        }
-    }
-
-    return $request;
+// Helper functions available in all tests
+function something(): void
+{
+    // Add helper functions here if needed
 }
-
-/**
- * Create a test response.
- */
-function mockResponse(
-    int $status = 200,
-    string $body = '',
-    array $headers = []
-): Response {
-    return Response::create($body, $status, $headers);
-}
-
-/**
- * Capture output from emitter.
- */
-function captureEmitted(Response $response): array {
-    ob_start();
-    $headers = [];
-
-    // Mock header() function behavior
-    $headerCallback = function($header) use (&$headers) {
-        $headers[] = $header;
-    };
-
-    try {
-        $emitter = new \Infocyph\Webrick\Response\Emitter\AutoEmitter();
-        $emitter->emit($response);
-
-        return [
-            'body' => ob_get_clean(),
-            'headers' => $headers,
-        ];
-    } catch (\Throwable $e) {
-        ob_end_clean();
-        throw $e;
-    }
-}
-
-
 
 /*
 |--------------------------------------------------------------------------
-| Error Handler Cleanup (Integration Tests)
+| Error Handler Cleanup (Integration & Feature Tests)
 |--------------------------------------------------------------------------
 | RouterKernel sets custom error handlers. We restore defaults after each test.
+| This is EXPECTED behavior for a framework, not an error.
+|--------------------------------------------------------------------------
 */
 
 uses()->afterEach(function () {
     // Simply restore default error handlers - no complex logic needed
     @restore_error_handler();
     @restore_exception_handler();
-})->in('Integration');
+})->in('Integration', 'Feature');

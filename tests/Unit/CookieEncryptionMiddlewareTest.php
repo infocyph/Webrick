@@ -83,31 +83,6 @@ describe('CookieEncryptionMiddleware', function () {
         expect($setCookie)->toContain('normal_session=plain_value');
     });
 
-    it('handles large cookies with chunking', function () {
-        $this->markTestSkipped('Chunking behavior depends on encryption overhead');
-        $middleware = new CookieEncryptionMiddleware(
-            keyOrKeys: $this->key,
-            cookiePrefix: 'enc_',
-            maxBytes: 300  // Smaller chunks (min 256)
-        );
-
-        $request = mockRequest('GET', '/');
-        $largeValue = str_repeat('x', 1500); // Large enough for multiple chunks with smaller maxBytes
-
-        $next = function ($req) use ($largeValue) {
-            $jar = new CookieJar();
-            $jar = $jar->add(Cookie::make('enc_data', $largeValue));
-            return $jar->apply(Response::create('test'));
-        };
-
-        $response = $middleware($request, $next);
-
-        $setCookie = $response->getHeader('Set-Cookie');
-
-        // Should create multiple cookie parts
-        expect(count($setCookie))->toBeGreaterThan(1);
-        expect($setCookie[0])->toContain('enc_data=');
-    });
 
     it('enforces security attributes', function () {
         $middleware = new CookieEncryptionMiddleware(

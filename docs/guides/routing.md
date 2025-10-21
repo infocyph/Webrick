@@ -221,6 +221,47 @@ Route::get('/assets/{path:.*}', fn($path) => "you asked: $path");
 
 > Use sparingly; wide patterns can shadow other routes. Place them last.
 
+
+
+### Catch-all / Wildcard Routes
+
+Capture the rest of the path with `{param:.*}`:
+```php
+// Serve static files from /assets/*
+Route::get('/assets/{path:.*}', function (Request $r, string $path) {
+    $safePath = basename($path);  // Basic safety
+    $file = __DIR__ . '/../public/assets/' . $safePath;
+
+    if (!is_file($file)) {
+        return Response::plaintext('Not found', 404);
+    }
+
+    return Response::attachment($file, $safePath);
+}, 'assets.serve');
+
+// API fallback for versioned endpoints
+Route::any('/api/v{version:\d+}/{path:.*}', function (Request $r, string $version, string $path) {
+    return Response::json([
+        'error' => 'API version not supported',
+        'requested_version' => $version,
+        'requested_path' => $path,
+        'supported_versions' => ['1', '2']
+    ], 400);
+}, 'api.fallback');
+```
+
+⚠️ **Important**: Place catch-all routes **last** in your registration order to avoid shadowing specific routes.
+```php
+// ✅ Correct order
+Route::get('/assets/special.txt', fn() => 'Special file');  // Specific
+Route::get('/assets/{path:.*}', /* catch-all */);           // Generic
+
+// ❌ Wrong order (catch-all shadows specific)
+Route::get('/assets/{path:.*}', /* catch-all */);           // Catches everything
+Route::get('/assets/special.txt', fn() => 'Never reached'); // Dead code
+```
+
+
 ---
 
 ## Testing your routes

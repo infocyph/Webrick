@@ -62,10 +62,11 @@
             "@test:refactor"
         ],
         "git:hook": "captainhook install --only-enabled -nf",
-        "test": "pest --no-coverage",
+        "test": "pest",
         "refactor": "rector process",
         "lint": "pint",
-        "webrick": "webrick"
+        "webrick": "webrick",
+        "post-autoload-dump": "captainhook install --only-enabled -nf"
     },
     "require-dev": {
         "captainhook/captainhook": "^5.25",

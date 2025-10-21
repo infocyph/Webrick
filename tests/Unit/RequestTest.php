@@ -15,7 +15,7 @@ describe('Request', function () {
         $request = Request::fromGlobals();
 
         expect($request)
-            ->toBeRequest()
+            ->toBeInstanceOf(\Infocyph\Webrick\Request\Request::class)
             ->getMethod()->toBe('GET')
             ->getUri()->getPath()->toBe('/test')
             ->getUri()->getHost()->toBe('example.com');

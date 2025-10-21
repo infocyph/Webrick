@@ -53,7 +53,7 @@ describe('Real Middleware Integration', function () {
 
         // Note: POST/PUT/PATCH requests require proper request body handling
         // which is difficult to mock correctly in tests but works in production
-    })->skip('POST requests require complex setup - validated in production');
+    });
 
     it('handles PUT requests', function () {
         $kernel = createTestKernel();

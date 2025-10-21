@@ -2,6 +2,70 @@
 
 Start here to get a working app quickly, then explore guides and reference.
 
+---
+
+## What You'll Learn
+
+By the end of this section, you'll be able to:
+
+1. ✅ **Install** Webrick and its dependencies
+2. ✅ **Boot** a RouterKernel with proper configuration
+3. ✅ **Register** routes with closures and controllers
+4. ✅ **Generate** signed and temporary URLs
+5. ✅ **Configure** middleware (pre-global and post-global)
+6. ✅ **Build** and ship route caches for production
+7. ✅ **Troubleshoot** common installation issues
+
+**Time to Complete**: ~15 minutes
+
+---
+
+## Prerequisites
+
+Before you begin:
+
+- **PHP 8.4+** installed and working
+- **Composer 2.x** available in your PATH
+- Basic understanding of:
+  - HTTP request/response cycle
+  - PHP namespaces and autoloading
+  - Command-line basics
+
+**Verify Prerequisites**:
+```bash
+# Check PHP version (must be 8.4+)
+php -v
+
+# Check Composer
+composer --version
+
+# Check required extensions
+php -m | grep -E '(mbstring|json|zlib)'
+```
+
+---
+
+## Learning Path
+```
+1. Installation
+   └─> Install via Composer
+   └─> Set up directory structure
+   └─> Configure environment keys
+
+2. Quick Start
+   └─> Boot the kernel
+   └─> Define first routes
+   └─> Register middleware
+   └─> Generate signed URLs
+
+3. First Deployment
+   └─> Build route cache
+   └─> Configure web server
+   └─> Enable OPcache
+   └─> Ship to production
+```
+
+
 ## Install
 
 ```bash

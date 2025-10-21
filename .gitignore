@@ -10,3 +10,4 @@ diffs.txt
 docs.txt
 .windsurf
 .phpunit.cache
+*.patch

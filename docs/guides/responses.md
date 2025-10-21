@@ -187,6 +187,111 @@ return Response::json(['error' => 'Invalid input'], 422)
 
 For generic 500s, prefer a global exception handler that transforms throwables into structured responses (and logs).
 
+
+---
+
+## Custom Status Codes
+
+Use any valid HTTP status code:
+```php
+// 201 Created (with Location header)
+$id = 42;
+$url = Response::urlFor('users.show', ['id' => $id], absolute: true);
+return Response::json(['id' => $id], 201)
+    ->withHeader('Location', $url);
+
+// 204 No Content (empty body for DELETE)
+return Response::create('', 204);
+
+// 206 Partial Content (for Range requests - handled by middleware usually)
+return Response::create($partialContent, 206, [
+    'Content-Range' => "bytes 0-1023/4096",
+    'Content-Length' => '1024'
+]);
+
+// 304 Not Modified (handled by CacheValidatorsMiddleware usually)
+return Response::create('', 304)
+    ->withHeader('ETag', $etag);
+
+// 401 Unauthorized (with WWW-Authenticate)
+return Response::json(['error' => 'Authentication required'], 401)
+    ->withHeader('WWW-Authenticate', 'Bearer realm="api"');
+
+// 403 Forbidden
+return Response::json(['error' => 'Insufficient permissions'], 403);
+
+// 405 Method Not Allowed (with Allow header)
+return Response::json(['error' => 'Method not allowed'], 405)
+    ->withHeader('Allow', 'GET, POST');
+
+// 406 Not Acceptable
+return Response::json(['error' => 'Cannot produce requested format'], 406);
+
+// 410 Gone (for expired/deleted resources)
+return Response::json(['error' => 'Resource no longer available'], 410);
+
+// 418 I'm a teapot (RFC 2324 - Easter egg)
+return Response::plaintext("I'm a teapot", 418);
+
+// 422 Unprocessable Entity (validation errors)
+return Response::json([
+    'error' => 'Validation failed',
+    'errors' => [
+        'email' => ['Email is required', 'Email must be valid'],
+        'password' => ['Password must be at least 8 characters']
+    ]
+], 422);
+
+// 429 Too Many Requests (handled by ThrottleMiddleware usually)
+return Response::json(['error' => 'Rate limit exceeded'], 429)
+    ->withHeader('Retry-After', '60');
+
+// 451 Unavailable For Legal Reasons
+return Response::json([
+    'error' => 'This content is not available in your region'
+], 451);
+
+// 503 Service Unavailable (maintenance mode)
+return Response::json([
+    'error' => 'Service temporarily unavailable',
+    'retry_after' => 300
+], 503)->withHeader('Retry-After', '300');
+```
+
+### Status Code Quick Reference
+
+| Code | Meaning                  | Use Case                               |
+| ---- | ------------------------ | -------------------------------------- |
+| 200  | OK                       | Standard success                       |
+| 201  | Created                  | Resource created (POST)                |
+| 202  | Accepted                 | Async processing started               |
+| 204  | No Content               | Success, no body (DELETE)              |
+| 301  | Moved Permanently        | Resource relocated forever             |
+| 302  | Found                    | Temporary redirect                     |
+| 303  | See Other                | Redirect after POST                    |
+| 304  | Not Modified             | Cached version still valid             |
+| 307  | Temporary Redirect       | Preserve method on redirect            |
+| 308  | Permanent Redirect       | Preserve method, permanent             |
+| 400  | Bad Request              | Invalid syntax/parameters              |
+| 401  | Unauthorized             | Authentication required                |
+| 403  | Forbidden                | Authenticated but not authorized       |
+| 404  | Not Found                | Resource doesn't exist                 |
+| 405  | Method Not Allowed       | Wrong HTTP verb                        |
+| 406  | Not Acceptable           | Can't satisfy Accept header            |
+| 408  | Request Timeout          | Client too slow                        |
+| 409  | Conflict                 | Resource state conflict                |
+| 410  | Gone                     | Resource permanently deleted           |
+| 413  | Payload Too Large        | Body exceeds limit                     |
+| 415  | Unsupported Media Type   | Wrong Content-Type                     |
+| 422  | Unprocessable Entity     | Validation failed                      |
+| 429  | Too Many Requests        | Rate limit exceeded                    |
+| 451  | Unavailable For Legal    | Censored/blocked                       |
+| 500  | Internal Server Error    | Unhandled exception                    |
+| 502  | Bad Gateway              | Upstream error                         |
+| 503  | Service Unavailable      | Maintenance/overload                   |
+| 504  | Gateway Timeout          | Upstream timeout                       |
+
+
 ---
 
 ## Examples

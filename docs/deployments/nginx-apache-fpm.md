@@ -100,6 +100,29 @@ brotli on; brotli_comp_level 5;
 brotli_types text/plain text/css application/javascript application/json application/xml image/svg+xml;
 ```
 
+
+### Avoid Double Compression
+
+**Critical**: If you enable Nginx compression, disable Webrick's CompressionMiddleware:
+```nginx
+# Option A: Compress at Nginx
+gzip on;
+gzip_comp_level 5;
+gzip_types text/plain text/css application/javascript application/json;
+
+# In your app: Remove CompressionMiddleware from $postGlobal
+```
+
+**OR**
+```nginx
+# Option B: Compress at app (recommended for precise ETag control)
+gzip off;
+
+# In your app: Keep CompressionMiddleware in $postGlobal
+```
+
+**Never do both** - results in corrupted responses and broken ETags.
+
 > Do **one** place of compression (edge **or** app) to keep ETags correct.
 
 ---

@@ -12,7 +12,7 @@ describe('Response', function () {
         $response = Response::create('Hello World', 200);
 
         expect($response)
-            ->toBeResponse()
+            ->toBeInstanceOf(\Infocyph\Webrick\Response\Response::class)
             ->getStatusCode()->toBe(200);
 
         expect((string)$response->getBody())->toBe('Hello World');
