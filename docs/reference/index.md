@@ -22,6 +22,7 @@ Pair Reference with **Guides** for end‑to‑end flows (e.g., signed URLs using
 :hidden:
 :caption: Reference
 
+quick-reference
 router
 middleware
 matcher
@@ -30,4 +31,5 @@ route_cache
 enums
 request
 response
+utilities
 ```

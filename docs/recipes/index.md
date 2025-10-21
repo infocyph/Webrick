@@ -50,3 +50,28 @@ Have a useful pattern? Consider contributing! Recipes should be:
 - ✅ Production-ready
 - ✅ Well-commented
 - ✅ Tested
+
+```{toctree}
+:maxdepth: 2
+:hidden:
+:caption: Recipes
+
+api
+authentication
+caching
+cors
+cors-per-route
+error-handling
+etag-conditional
+file-upload
+head-handling
+logging
+pagination
+rate-limiting
+search
+streaming-downloads
+testing
+throttling
+trailing-slash
+webhooks
+```

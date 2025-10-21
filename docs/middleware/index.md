@@ -52,12 +52,11 @@ postGlobal: [
 :caption: Middleware
 
 overview
+aliases
 cache-validators
 compression
 cookie-encryption
-cookies
 cors-and-policies
-cors-policies
 gateway-hardening
 input-sanitizer
 maintenance-mode
