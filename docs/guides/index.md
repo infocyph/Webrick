@@ -26,7 +26,7 @@ Route::get('/download/{file}', fn(string $file) => R::attachment(__DIR__.'/files
     ->middleware(['verifySignedUrl']);
 
 $link = R::temporaryUrlFor('file.download', ['file' => 'report.pdf'], ttl: 900);
-```php
+```
 
 **Why it works:** `verifySignedUrl` checks signature + TTL. Keep proxies from altering the query string, or the signature will fail.
 
@@ -52,4 +52,4 @@ streaming
 cookies
 throttling
 urls
-```php
+
