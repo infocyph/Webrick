@@ -262,16 +262,6 @@ Contributions welcome! Please:
 
 ---
 
-## Security
-
-If you discover a security vulnerability, please email the maintainer privately:
-
-**security@infocyph.com**
-
-Do not open public issues for security concerns.
-
----
-
 ## License
 
 [MIT](./LICENSE) © [Infocyph](https://github.com/infocyph)
