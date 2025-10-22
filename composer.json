@@ -1,6 +1,6 @@
 {
     "name": "infocyph/webrick",
-    "description": "Lightweight Routing library for PHP",
+    "description": "A fast, modern PHP router with production-grade middleware, signed & temporary URLs, smart responses and first-class route caching.",
     "type": "library",
     "license": "MIT",
     "keywords": [
