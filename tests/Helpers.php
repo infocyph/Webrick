@@ -30,7 +30,42 @@ function testRegistrar(array $options = []): Registrar {
         signedDefaultTtl: $opts['signedDefaultTtl']
     );
 }
+/**
+ * Create a mock PSR-7 Request for testing
+ */
+function mockRequest(string $method, string $uri, array $headers = [], array $body = []): \Infocyph\Webrick\Request\Request
+{
+    $_SERVER['REQUEST_METHOD'] = $method;
+    $_SERVER['REQUEST_URI'] = $uri;
+    $_SERVER['REQUEST_TIME'] = time();
+    $_SERVER['REQUEST_TIME_FLOAT'] = microtime(true);
+    $_SERVER['SERVER_PROTOCOL'] = 'HTTP/1.1';
+    $_SERVER['HTTP_HOST'] = 'localhost';
 
+    // Add headers to $_SERVER
+    foreach ($headers as $name => $value) {
+        $key = 'HTTP_' . strtoupper(str_replace('-', '_', $name));
+        $_SERVER[$key] = $value;
+    }
+
+    // Create request from globals
+    $request = \Infocyph\Webrick\Request\Request::fromGlobals();
+
+    // Add body if provided
+    if (!empty($body)) {
+        if ($method === 'POST' || $method === 'PUT' || $method === 'PATCH') {
+            $json = json_encode($body);
+            $stream = new \Infocyph\Webrick\Request\Core\Stream($json);
+            $request = $request->withBody($stream);
+
+            if (!isset($headers['Content-Type'])) {
+                $request = $request->withHeader('Content-Type', 'application/json');
+            }
+        }
+    }
+
+    return $request;
+}
 /**
  * Create a test cache instance.
  */
