@@ -80,6 +80,7 @@ final readonly class ThrottleMiddleware
      * @param Closure $next Next handler.
      *
      * @return Response Throttled or normal response with rate headers.
+     * @throws InvalidArgumentException
      */
     public function __invoke(Request $req, Closure $next): Response
     {
