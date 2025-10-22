@@ -272,18 +272,6 @@ Do not open public issues for security concerns.
 
 ---
 
-## Roadmap
-
-- [x] Route caching (sharded + fused)
-- [x] Signed & temporary URLs
-- [x] 15+ production middleware
-- [x] Attribute routing
-- [ ] OpenTelemetry integration
-- [ ] WebSocket adapter
-- [ ] GraphQL routing helpers
-
----
-
 ## License
 
 [MIT](./LICENSE) © [Infocyph](https://github.com/infocyph)
