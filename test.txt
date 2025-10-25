@@ -1,0 +1,783 @@
+
+   WARN  Tests\Feature\MiddlewareFeaturesTest
+  ! Middleware Features → it handles routes without middleware → Test c… 0.46s  
+  ! Middleware Features → it can use content negotiation middleware → T… 0.04s  
+  ! Middleware Features → it handles locale negotiation → Test code or…  0.01s  
+
+   WARN  Tests\Feature\SignedUrlsTest
+  ! Signed URLs → it generates signed URLs → Test code or tested code r… 0.12s  
+  ! Signed URLs → it generates temporary URLs with expiry → Test code o… 0.04s  
+  ! Signed URLs → it validates signed URL signatures → Test code or tes… 0.01s  
+  ! Signed URLs → it generates invalid signature for tampered URLs → Te… 0.01s  
+  ! Signed URLs → it uses TemporaryUrlGenerator with default TTL → Test… 0.01s  
+  ! Signed URLs → it prevents query parameter injection → Test code or…  0.01s  
+
+   FAIL  Tests\Feature\TelemetryMiddlewareTest
+  ⨯ TelemetryMiddleware - End-to-End Integration → complete request lif… 0.02s  
+  ⨯ TelemetryMiddleware - End-to-End Integration → trace context availa… 0.01s  
+  ⨯ TelemetryMiddleware - End-to-End Integration → distributed tracing…  0.01s  
+
+   WARN  Tests\Integration\ComprehensiveRoutingTest
+  ! Comprehensive Routing Tests → Static Routes → it handles homepage →… 0.02s  
+  ! Comprehensive Routing Tests → Static Routes → it handles /ping endp… 0.01s  
+  ! Comprehensive Routing Tests → Static Routes → it handles /json endp… 0.01s  
+  ! Comprehensive Routing Tests → Static Routes → it handles /redirect…  0.02s  
+  ! Comprehensive Routing Tests → Dynamic Routes with Parameters → it h… 0.01s  
+  ! Comprehensive Routing Tests → Dynamic Routes with Parameters → it h… 0.02s  
+  ! Comprehensive Routing Tests → Constrained Routes → it handles hex c… 0.01s  
+  ! Comprehensive Routing Tests → Constrained Routes → it handles statu… 0.01s  
+  ! Comprehensive Routing Tests → Class-Based Handlers → it handles con… 0.01s  
+  ! Comprehensive Routing Tests → Resource Routes → it handles users.in… 0.01s  
+  ! Comprehensive Routing Tests → Resource Routes → it handles users.sh… 0.01s  
+  ! Comprehensive Routing Tests → Resource Routes → it handles users.cr… 0.01s  
+  ! Comprehensive Routing Tests → Resource Routes → it handles users.ed… 0.01s  
+  ! Comprehensive Routing Tests → Route Groups → it handles blog group…  0.01s  
+  ! Comprehensive Routing Tests → Route Groups → it handles blog post r… 0.01s  
+  ! Comprehensive Routing Tests → Route Groups → it handles admin dashb… 0.07s  
+  ! Comprehensive Routing Tests → XML and Content Types → it handles XM… 0.01s  
+  ! Comprehensive Routing Tests → XML and Content Types → it handles la… 0.01s  
+  ! Comprehensive Routing Tests → Named Routes and Redirects → it handl… 0.01s  
+  ! Comprehensive Routing Tests → Named Routes and Redirects → it handl… 0.01s  
+  ! Comprehensive Routing Tests → Auto Content Negotiation → it handles… 0.01s  
+  ! Comprehensive Routing Tests → Auto Content Negotiation → it handles… 0.01s  
+  ! Comprehensive Routing Tests → 404 and Error Handling → it returns 4… 0.01s  
+  ! Comprehensive Routing Tests → HTTP Methods → it distinguishes betwe… 0.01s  
+
+DEBUG: /ping route
+Status: 200
+Body: "pong"
+
+   WARN  Tests\Integration\DebugTest
+  ! Debug: Check Route Registration → it can create kernel without erro… 0.06s  
+  ! Debug: Check Route Registration → it shows actual response for ping… 0.01s  
+
+   WARN  Tests\Integration\RealMiddlewareTest
+  ! Real Middleware Integration → it executes routes without middleware… 0.01s  
+  ! Real Middleware Integration → it can add middleware when needed → T… 0.01s  
+  ! Real Middleware Integration → it handles POST requests with data →…  0.01s  
+  ! Real Middleware Integration → it handles PUT requests → Test code o… 0.01s  
+
+   WARN  Tests\Integration\RealRoutingTest
+  ! Real Routing Integration → it matches the homepage → Test code or t… 0.01s  
+  ! Real Routing Integration → it matches ping route → Test code or tes… 0.01s  
+  ! Real Routing Integration → it matches dynamic routes with parameter… 0.01s  
+  ! Real Routing Integration → it matches JSON route → Test code or tes… 0.01s  
+  ! Real Routing Integration → it handles redirects → Test code or test… 0.01s  
+  ! Real Routing Integration → it matches constrained routes → Test cod… 0.01s  
+  ! Real Routing Integration → it handles resource routes → Test code o… 0.01s  
+  ! Real Routing Integration → it handles resource show route → Test co… 0.01s  
+  ! Real Routing Integration → it returns 404 for unknown routes → Test… 0.01s  
+  ! Real Routing Integration → it returns 405 for wrong method → Test c… 0.01s  
+
+   WARN  Tests\Integration\SimpleIntegrationTest
+  ! Simple Integration Tests → it can create and use a RouterKernel → T… 0.03s  
+  ! Simple Integration Tests → it routes return 200 OK status → Test co… 0.01s  
+  ! Simple Integration Tests → it returns 404 for non-existent routes →… 0.01s  
+  ! Simple Integration Tests → it handles JSON responses → Test code or… 0.01s  
+  ! Simple Integration Tests → it handles dynamic route parameters → Te… 0.01s  
+  ! Simple Integration Tests → it handles redirects → Test code or test… 0.01s  
+
+   PASS  Tests\Unit\CompressionMiddlewareTest
+  ✓ CompressionMiddleware → it compresses response when accepted         0.02s  
+  ✓ CompressionMiddleware → it skips compression for small responses
+  ✓ CompressionMiddleware → it skips compression for images
+  ✓ CompressionMiddleware → it respects no-transform directive
+  ✓ CompressionMiddleware → it handles ETag with weak-on-encode strategy
+
+   PASS  Tests\Unit\CookieEncryptionMiddlewareTest
+  ✓ CookieEncryptionMiddleware → it encrypts outbound cookies            0.05s  
+  ✓ CookieEncryptionMiddleware → it decrypts inbound cookies
+  ✓ CookieEncryptionMiddleware → it ignores non-prefixed cookies
+  ✓ CookieEncryptionMiddleware → it enforces security attributes         0.01s  
+
+   PASS  Tests\Unit\CorsAndPoliciesMiddlewareTest
+  ✓ CorsAndPoliciesMiddleware → it handles simple CORS request           0.01s  
+  ✓ CorsAndPoliciesMiddleware → it handles preflight request
+  ✓ CorsAndPoliciesMiddleware → it rejects unauthorized origins
+  ✓ CorsAndPoliciesMiddleware → it handles wildcard origins without credentials
+  ✓ CorsAndPoliciesMiddleware → it applies security headers
+  ✓ CorsAndPoliciesMiddleware → it adds Client Hints headers
+
+   PASS  Tests\Unit\InputSanitizerTest
+  ✓ InputSanitizer → it sanitizes XSS in strings                         0.01s  
+  ✓ InputSanitizer → it sanitizes arrays recursively
+  ✓ InputSanitizer → it handles SQL injection attempts
+  ✓ InputSanitizer → it preserves safe HTML entities
+  ✓ InputSanitizer → it trims whitespace
+  ✓ InputSanitizer → it handles null and empty values
+
+   PASS  Tests\Unit\NegotiationMiddlewareTest
+  ✓ NegotiationMiddleware → it negotiates content type
+  ✓ NegotiationMiddleware → it returns 406 for unacceptable type
+  ✓ NegotiationMiddleware → it negotiates charset
+  ✓ NegotiationMiddleware → it negotiates locale
+  ✓ NegotiationMiddleware → it ensures Content-Type header
+  ✓ NegotiationMiddleware → it sets Content-Language header
+
+   PASS  Tests\Unit\RegistrarTest
+  ✓ Registrar → it registers GET routes                                  0.01s  
+  ✓ Registrar → it registers POST routes
+  ✓ Registrar → it registers routes with middleware
+  ✓ Registrar → it registers resource routes
+  ✓ Registrar → it handles route groups
+  ✓ Registrar → it handles nested groups
+  ✓ Registrar → it applies group middleware
+
+   PASS  Tests\Unit\RequestTest
+  ✓ Request → it creates from globals
+  ✓ Request → it can be created with factory methods
+  ✓ Request → it is immutable
+  ✓ Request → it handles query parameters
+  ✓ Request → it handles POST data
+  ✓ Request → it handles JSON body
+  ✓ Request → it detects effective method
+  ✓ Request → it handles cookies
+  ✓ Request → it handles attributes
+  ✓ Request → it prefers content type
+  ✓ Request → it detects locale
+  ✓ Request → it validates input
+
+   PASS  Tests\Unit\ResponseTest
+  ✓ Response → it creates basic responses
+  ✓ Response → it creates JSON responses
+  ✓ Response → it creates redirect responses
+  ✓ Response → it creates empty responses
+  ✓ Response → it creates plaintext responses
+  ✓ Response → it creates HTML responses
+  ✓ Response → it is immutable
+  ✓ Response → it manages headers
+  ✓ Response → it uses smart header addition
+  ✓ Response → it handles streaming responses
+  ✓ Response → it creates download responses                             0.01s  
+  ✓ Response → it handles cache control
+  ✓ Response → it handles cookies
+
+   PASS  Tests\Unit\RouteTest
+  ✓ Route → it creates basic routes                                      0.01s  
+  ✓ Route → it detects dynamic routes
+  ✓ Route → it is immutable
+  ✓ Route → it can add middleware
+  ✓ Route → it can set domain
+  ✓ Route → it generates unique handler fingerprint                      0.01s  
+  ✓ Route → it fingerprints array handlers
+
+   FAIL  Tests\Unit\TelemetryMiddlewareTest
+  ⨯ TelemetryMiddleware - Basic Functionality → adds X-Response-Time he… 0.01s  
+  ⨯ TelemetryMiddleware - Basic Functionality → adds Server-Timing header
+  ⨯ TelemetryMiddleware - Basic Functionality → does not add headers when disabled
+  ⨯ TelemetryMiddleware - Request ID → generates request ID when missing
+  ⨯ TelemetryMiddleware - Request ID → respects existing request ID
+  ⨯ TelemetryMiddleware - Trace Context → generates trace ID when missing
+  ⨯ TelemetryMiddleware - Trace Context → respects incoming traceparent header
+  ⨯ TelemetryMiddleware - Access Logging → logs request with trace context
+  ⨯ TelemetryMiddleware - TraceContext Integration → initializes TraceContext for application use
+  ⨯ TelemetryMiddleware - TraceContext Integration → clears TraceContext after request
+
+   PASS  Tests\Unit\ThrottleMiddlewareTest
+  ✓ ThrottleMiddleware → it allows requests within limit                 0.01s  
+  ✓ ThrottleMiddleware → it blocks requests over limit                   0.01s  
+  ✓ ThrottleMiddleware → it respects per-request cost
+  ✓ ThrottleMiddleware → it allows bypass via callback
+
+   FAIL  Tests\Unit\TraceContextTest
+  ✓ TraceContext - Basic Functionality → returns null when not initialized
+  ⨯ TraceContext - Basic Functionality → initializes and provides trace context
+  ⨯ TraceContext - Basic Functionality → clears context
+  ⨯ TraceContext - All Attributes → provides all trace attributes
+  ⨯ TraceContext - All Attributes → getAll returns complete context
+  ⨯ TraceContext - Formatted Output → getLogContext returns formatted string
+  ⨯ TraceContext - Formatted Output → getLogContext handles missing attributes
+  ⨯ TraceContext - Formatted Output → getLogArray returns only non-null values
+  ⨯ TraceContext - W3C Traceparent → getTraceparent returns valid format
+  ⨯ TraceContext - W3C Traceparent → getTraceparent returns null when incomplete
+  ⨯ TraceContext - W3C Traceparent → getTraceparent uses default flags when missing
+  ⨯ TraceContext - Propagation Headers → getPropagationHeaders returns complete headers
+  ⨯ TraceContext - Propagation Headers → getPropagationHeaders excludes request ID when specified
+  ⨯ TraceContext - Propagation Headers → getPropagationHeaders handles missing attributes
+  ⨯ TraceContext - Mode Detection → isOtelMode returns false in minimal mode
+  ⨯ TraceContext - Mode Detection → isOtelMode returns true in OTel mode
+  ⨯ TraceContext - Sampling → isSampled returns true when flags indicate sampling
+  ⨯ TraceContext - Sampling → isSampled returns false when not sampled
+  ⨯ TraceContext - Sampling → isSampled returns false when flags missing
+  ⨯ TraceContext - Request Access → getRequest returns initialized request
+  ✓ TraceContext - Request Access → getRequest returns null when not initialized
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Feature\TelemetryMiddlewareTest > `Tele…  ArgumentCountError   
+  Too few arguments to function Infocyph\Webrick\Router\Kernel\RouterKernel::__construct(), 0 passed in /app/Webrick/tests/Feature/TelemetryMiddlewareTest.php on line 23 and at least 3 expected
+
+  at src/Router/Kernel/RouterKernel.php:136
+    132▕      * @param ErrorHandler|null $errorHandler Optional custom error handler (defaults created when null)
+    133▕      * @param Closure|null $bindUrlServices Optional callback to bind URL services after warm-up
+    134▕      * @param bool|null $fallbackAliasesFromRegistrar Optional override for alias fallback behaviour
+    135▕      */
+  ➜ 136▕     public function __construct(
+    137▕         private readonly LoggerInterface $log,
+    138▕         MatcherInterface $matcher,
+    139▕         Closure $register,
+    140▕         ?string $routeCache = null,
+
+  1   src/Router/Kernel/RouterKernel.php:136
+  2   tests/Feature/TelemetryMiddlewareTest.php:23
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Feature\TelemetryMiddlewareTest > `Tele…  ArgumentCountError   
+  Too few arguments to function Infocyph\Webrick\Router\Kernel\RouterKernel::__construct(), 0 passed in /app/Webrick/tests/Feature/TelemetryMiddlewareTest.php on line 57 and at least 3 expected
+
+  at src/Router/Kernel/RouterKernel.php:136
+    132▕      * @param ErrorHandler|null $errorHandler Optional custom error handler (defaults created when null)
+    133▕      * @param Closure|null $bindUrlServices Optional callback to bind URL services after warm-up
+    134▕      * @param bool|null $fallbackAliasesFromRegistrar Optional override for alias fallback behaviour
+    135▕      */
+  ➜ 136▕     public function __construct(
+    137▕         private readonly LoggerInterface $log,
+    138▕         MatcherInterface $matcher,
+    139▕         Closure $register,
+    140▕         ?string $routeCache = null,
+
+  1   src/Router/Kernel/RouterKernel.php:136
+  2   tests/Feature/TelemetryMiddlewareTest.php:57
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Feature\TelemetryMiddlewareTest > `Tele…  ArgumentCountError   
+  Too few arguments to function Infocyph\Webrick\Router\Kernel\RouterKernel::__construct(), 0 passed in /app/Webrick/tests/Feature/TelemetryMiddlewareTest.php on line 93 and at least 3 expected
+
+  at src/Router/Kernel/RouterKernel.php:136
+    132▕      * @param ErrorHandler|null $errorHandler Optional custom error handler (defaults created when null)
+    133▕      * @param Closure|null $bindUrlServices Optional callback to bind URL services after warm-up
+    134▕      * @param bool|null $fallbackAliasesFromRegistrar Optional override for alias fallback behaviour
+    135▕      */
+  ➜ 136▕     public function __construct(
+    137▕         private readonly LoggerInterface $log,
+    138▕         MatcherInterface $matcher,
+    139▕         Closure $register,
+    140▕         ?string $routeCache = null,
+
+  1   src/Router/Kernel/RouterKernel.php:136
+  2   tests/Feature/TelemetryMiddlewareTest.php:93
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Unit\TelemetryMiddlewareTest > `TelemetryMiddlew…  Exception   
+  Method Infocyph\Webrick\Request\Request::create does not exist.
+
+  at vendor/infocyph/intermix/src/Remix/MacroMix.php:269
+    265▕      */
+    266▕     private static function process(?object $bind, string $method, array $parameters): mixed
+    267▕     {
+    268▕         if (!static::hasMacro($method)) {
+  ➜ 269▕             throw new Exception(
+    270▕                 sprintf('Method %s::%s does not exist.', static::class, $method),
+    271▕             );
+    272▕         }
+    273▕
+
+      [2m+2 vendor frames [22m
+  3   tests/Unit/TelemetryMiddlewareTest.php:24
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Unit\TelemetryMiddlewareTest > `TelemetryMiddlew…  Exception   
+  Method Infocyph\Webrick\Request\Request::create does not exist.
+
+  at vendor/infocyph/intermix/src/Remix/MacroMix.php:269
+    265▕      */
+    266▕     private static function process(?object $bind, string $method, array $parameters): mixed
+    267▕     {
+    268▕         if (!static::hasMacro($method)) {
+  ➜ 269▕             throw new Exception(
+    270▕                 sprintf('Method %s::%s does not exist.', static::class, $method),
+    271▕             );
+    272▕         }
+    273▕
+
+      [2m+2 vendor frames [22m
+  3   tests/Unit/TelemetryMiddlewareTest.php:36
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Unit\TelemetryMiddlewareTest > `TelemetryMiddlew…  Exception   
+  Method Infocyph\Webrick\Request\Request::create does not exist.
+
+  at vendor/infocyph/intermix/src/Remix/MacroMix.php:269
+    265▕      */
+    266▕     private static function process(?object $bind, string $method, array $parameters): mixed
+    267▕     {
+    268▕         if (!static::hasMacro($method)) {
+  ➜ 269▕             throw new Exception(
+    270▕                 sprintf('Method %s::%s does not exist.', static::class, $method),
+    271▕             );
+    272▕         }
+    273▕
+
+      [2m+2 vendor frames [22m
+  3   tests/Unit/TelemetryMiddlewareTest.php:52
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Unit\TelemetryMiddlewareTest > `TelemetryMiddlew…  Exception   
+  Method Infocyph\Webrick\Request\Request::create does not exist.
+
+  at vendor/infocyph/intermix/src/Remix/MacroMix.php:269
+    265▕      */
+    266▕     private static function process(?object $bind, string $method, array $parameters): mixed
+    267▕     {
+    268▕         if (!static::hasMacro($method)) {
+  ➜ 269▕             throw new Exception(
+    270▕                 sprintf('Method %s::%s does not exist.', static::class, $method),
+    271▕             );
+    272▕         }
+    273▕
+
+      [2m+2 vendor frames [22m
+  3   tests/Unit/TelemetryMiddlewareTest.php:66
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Unit\TelemetryMiddlewareTest > `TelemetryMiddlew…  Exception   
+  Method Infocyph\Webrick\Request\Request::create does not exist.
+
+  at vendor/infocyph/intermix/src/Remix/MacroMix.php:269
+    265▕      */
+    266▕     private static function process(?object $bind, string $method, array $parameters): mixed
+    267▕     {
+    268▕         if (!static::hasMacro($method)) {
+  ➜ 269▕             throw new Exception(
+    270▕                 sprintf('Method %s::%s does not exist.', static::class, $method),
+    271▕             );
+    272▕         }
+    273▕
+
+      [2m+2 vendor frames [22m
+  3   tests/Unit/TelemetryMiddlewareTest.php:85
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Unit\TelemetryMiddlewareTest > `TelemetryMiddlew…  Exception   
+  Method Infocyph\Webrick\Request\Request::create does not exist.
+
+  at vendor/infocyph/intermix/src/Remix/MacroMix.php:269
+    265▕      */
+    266▕     private static function process(?object $bind, string $method, array $parameters): mixed
+    267▕     {
+    268▕         if (!static::hasMacro($method)) {
+  ➜ 269▕             throw new Exception(
+    270▕                 sprintf('Method %s::%s does not exist.', static::class, $method),
+    271▕             );
+    272▕         }
+    273▕
+
+      [2m+2 vendor frames [22m
+  3   tests/Unit/TelemetryMiddlewareTest.php:100
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Unit\TelemetryMiddlewareTest > `TelemetryMiddlew…  Exception   
+  Method Infocyph\Webrick\Request\Request::create does not exist.
+
+  at vendor/infocyph/intermix/src/Remix/MacroMix.php:269
+    265▕      */
+    266▕     private static function process(?object $bind, string $method, array $parameters): mixed
+    267▕     {
+    268▕         if (!static::hasMacro($method)) {
+  ➜ 269▕             throw new Exception(
+    270▕                 sprintf('Method %s::%s does not exist.', static::class, $method),
+    271▕             );
+    272▕         }
+    273▕
+
+      [2m+2 vendor frames [22m
+  3   tests/Unit/TelemetryMiddlewareTest.php:117
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Unit\TelemetryMiddlewareTest > `TelemetryMiddlew…  Exception   
+  Method Infocyph\Webrick\Request\Request::create does not exist.
+
+  at vendor/infocyph/intermix/src/Remix/MacroMix.php:269
+    265▕      */
+    266▕     private static function process(?object $bind, string $method, array $parameters): mixed
+    267▕     {
+    268▕         if (!static::hasMacro($method)) {
+  ➜ 269▕             throw new Exception(
+    270▕                 sprintf('Method %s::%s does not exist.', static::class, $method),
+    271▕             );
+    272▕         }
+    273▕
+
+      [2m+2 vendor frames [22m
+  3   tests/Unit/TelemetryMiddlewareTest.php:137
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Unit\TelemetryMiddlewareTest > `TelemetryMiddlew…  Exception   
+  Method Infocyph\Webrick\Request\Request::create does not exist.
+
+  at vendor/infocyph/intermix/src/Remix/MacroMix.php:269
+    265▕      */
+    266▕     private static function process(?object $bind, string $method, array $parameters): mixed
+    267▕     {
+    268▕         if (!static::hasMacro($method)) {
+  ➜ 269▕             throw new Exception(
+    270▕                 sprintf('Method %s::%s does not exist.', static::class, $method),
+    271▕             );
+    272▕         }
+    273▕
+
+      [2m+2 vendor frames [22m
+  3   tests/Unit/TelemetryMiddlewareTest.php:156
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Unit\TelemetryMiddlewareTest > `TelemetryMiddlew…  Exception   
+  Method Infocyph\Webrick\Request\Request::create does not exist.
+
+  at vendor/infocyph/intermix/src/Remix/MacroMix.php:269
+    265▕      */
+    266▕     private static function process(?object $bind, string $method, array $parameters): mixed
+    267▕     {
+    268▕         if (!static::hasMacro($method)) {
+  ➜ 269▕             throw new Exception(
+    270▕                 sprintf('Method %s::%s does not exist.', static::class, $method),
+    271▕             );
+    272▕         }
+    273▕
+
+      [2m+2 vendor frames [22m
+  3   tests/Unit/TelemetryMiddlewareTest.php:176
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Unit\TraceContextTest > `TraceContext - Basic Fu…  Exception   
+  Method Infocyph\Webrick\Request\Request::create does not exist.
+
+  at vendor/infocyph/intermix/src/Remix/MacroMix.php:269
+    265▕      */
+    266▕     private static function process(?object $bind, string $method, array $parameters): mixed
+    267▕     {
+    268▕         if (!static::hasMacro($method)) {
+  ➜ 269▕             throw new Exception(
+    270▕                 sprintf('Method %s::%s does not exist.', static::class, $method),
+    271▕             );
+    272▕         }
+    273▕
+
+      [2m+2 vendor frames [22m
+  3   tests/Unit/TraceContextTest.php:25
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Unit\TraceContextTest > `TraceContext - Basic Fu…  Exception   
+  Method Infocyph\Webrick\Request\Request::create does not exist.
+
+  at vendor/infocyph/intermix/src/Remix/MacroMix.php:269
+    265▕      */
+    266▕     private static function process(?object $bind, string $method, array $parameters): mixed
+    267▕     {
+    268▕         if (!static::hasMacro($method)) {
+  ➜ 269▕             throw new Exception(
+    270▕                 sprintf('Method %s::%s does not exist.', static::class, $method),
+    271▕             );
+    272▕         }
+    273▕
+
+      [2m+2 vendor frames [22m
+  3   tests/Unit/TraceContextTest.php:39
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Unit\TraceContextTest > `TraceContext - All Attr…  Exception   
+  Method Infocyph\Webrick\Request\Request::create does not exist.
+
+  at vendor/infocyph/intermix/src/Remix/MacroMix.php:269
+    265▕      */
+    266▕     private static function process(?object $bind, string $method, array $parameters): mixed
+    267▕     {
+    268▕         if (!static::hasMacro($method)) {
+  ➜ 269▕             throw new Exception(
+    270▕                 sprintf('Method %s::%s does not exist.', static::class, $method),
+    271▕             );
+    272▕         }
+    273▕
+
+      [2m+2 vendor frames [22m
+  3   tests/Unit/TraceContextTest.php:53
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Unit\TraceContextTest > `TraceContext - All Attr…  Exception   
+  Method Infocyph\Webrick\Request\Request::create does not exist.
+
+  at vendor/infocyph/intermix/src/Remix/MacroMix.php:269
+    265▕      */
+    266▕     private static function process(?object $bind, string $method, array $parameters): mixed
+    267▕     {
+    268▕         if (!static::hasMacro($method)) {
+  ➜ 269▕             throw new Exception(
+    270▕                 sprintf('Method %s::%s does not exist.', static::class, $method),
+    271▕             );
+    272▕         }
+    273▕
+
+      [2m+2 vendor frames [22m
+  3   tests/Unit/TraceContextTest.php:72
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Unit\TraceContextTest > `TraceContext - Formatte…  Exception   
+  Method Infocyph\Webrick\Request\Request::create does not exist.
+
+  at vendor/infocyph/intermix/src/Remix/MacroMix.php:269
+    265▕      */
+    266▕     private static function process(?object $bind, string $method, array $parameters): mixed
+    267▕     {
+    268▕         if (!static::hasMacro($method)) {
+  ➜ 269▕             throw new Exception(
+    270▕                 sprintf('Method %s::%s does not exist.', static::class, $method),
+    271▕             );
+    272▕         }
+    273▕
+
+      [2m+2 vendor frames [22m
+  3   tests/Unit/TraceContextTest.php:92
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Unit\TraceContextTest > `TraceContext - Formatte…  Exception   
+  Method Infocyph\Webrick\Request\Request::create does not exist.
+
+  at vendor/infocyph/intermix/src/Remix/MacroMix.php:269
+    265▕      */
+    266▕     private static function process(?object $bind, string $method, array $parameters): mixed
+    267▕     {
+    268▕         if (!static::hasMacro($method)) {
+  ➜ 269▕             throw new Exception(
+    270▕                 sprintf('Method %s::%s does not exist.', static::class, $method),
+    271▕             );
+    272▕         }
+    273▕
+
+      [2m+2 vendor frames [22m
+  3   tests/Unit/TraceContextTest.php:105
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Unit\TraceContextTest > `TraceContext - Formatte…  Exception   
+  Method Infocyph\Webrick\Request\Request::create does not exist.
+
+  at vendor/infocyph/intermix/src/Remix/MacroMix.php:269
+    265▕      */
+    266▕     private static function process(?object $bind, string $method, array $parameters): mixed
+    267▕     {
+    268▕         if (!static::hasMacro($method)) {
+  ➜ 269▕             throw new Exception(
+    270▕                 sprintf('Method %s::%s does not exist.', static::class, $method),
+    271▕             );
+    272▕         }
+    273▕
+
+      [2m+2 vendor frames [22m
+  3   tests/Unit/TraceContextTest.php:118
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Unit\TraceContextTest > `TraceContext - W3C Trac…  Exception   
+  Method Infocyph\Webrick\Request\Request::create does not exist.
+
+  at vendor/infocyph/intermix/src/Remix/MacroMix.php:269
+    265▕      */
+    266▕     private static function process(?object $bind, string $method, array $parameters): mixed
+    267▕     {
+    268▕         if (!static::hasMacro($method)) {
+  ➜ 269▕             throw new Exception(
+    270▕                 sprintf('Method %s::%s does not exist.', static::class, $method),
+    271▕             );
+    272▕         }
+    273▕
+
+      [2m+2 vendor frames [22m
+  3   tests/Unit/TraceContextTest.php:136
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Unit\TraceContextTest > `TraceContext - W3C Trac…  Exception   
+  Method Infocyph\Webrick\Request\Request::create does not exist.
+
+  at vendor/infocyph/intermix/src/Remix/MacroMix.php:269
+    265▕      */
+    266▕     private static function process(?object $bind, string $method, array $parameters): mixed
+    267▕     {
+    268▕         if (!static::hasMacro($method)) {
+  ➜ 269▕             throw new Exception(
+    270▕                 sprintf('Method %s::%s does not exist.', static::class, $method),
+    271▕             );
+    272▕         }
+    273▕
+
+      [2m+2 vendor frames [22m
+  3   tests/Unit/TraceContextTest.php:150
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Unit\TraceContextTest > `TraceContext - W3C Trac…  Exception   
+  Method Infocyph\Webrick\Request\Request::create does not exist.
+
+  at vendor/infocyph/intermix/src/Remix/MacroMix.php:269
+    265▕      */
+    266▕     private static function process(?object $bind, string $method, array $parameters): mixed
+    267▕     {
+    268▕         if (!static::hasMacro($method)) {
+  ➜ 269▕             throw new Exception(
+    270▕                 sprintf('Method %s::%s does not exist.', static::class, $method),
+    271▕             );
+    272▕         }
+    273▕
+
+      [2m+2 vendor frames [22m
+  3   tests/Unit/TraceContextTest.php:159
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Unit\TraceContextTest > `TraceContext - Propagat…  Exception   
+  Method Infocyph\Webrick\Request\Request::create does not exist.
+
+  at vendor/infocyph/intermix/src/Remix/MacroMix.php:269
+    265▕      */
+    266▕     private static function process(?object $bind, string $method, array $parameters): mixed
+    267▕     {
+    268▕         if (!static::hasMacro($method)) {
+  ➜ 269▕             throw new Exception(
+    270▕                 sprintf('Method %s::%s does not exist.', static::class, $method),
+    271▕             );
+    272▕         }
+    273▕
+
+      [2m+2 vendor frames [22m
+  3   tests/Unit/TraceContextTest.php:173
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Unit\TraceContextTest > `TraceContext - Propagat…  Exception   
+  Method Infocyph\Webrick\Request\Request::create does not exist.
+
+  at vendor/infocyph/intermix/src/Remix/MacroMix.php:269
+    265▕      */
+    266▕     private static function process(?object $bind, string $method, array $parameters): mixed
+    267▕     {
+    268▕         if (!static::hasMacro($method)) {
+  ➜ 269▕             throw new Exception(
+    270▕                 sprintf('Method %s::%s does not exist.', static::class, $method),
+    271▕             );
+    272▕         }
+    273▕
+
+      [2m+2 vendor frames [22m
+  3   tests/Unit/TraceContextTest.php:195
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Unit\TraceContextTest > `TraceContext - Propagat…  Exception   
+  Method Infocyph\Webrick\Request\Request::create does not exist.
+
+  at vendor/infocyph/intermix/src/Remix/MacroMix.php:269
+    265▕      */
+    266▕     private static function process(?object $bind, string $method, array $parameters): mixed
+    267▕     {
+    268▕         if (!static::hasMacro($method)) {
+  ➜ 269▕             throw new Exception(
+    270▕                 sprintf('Method %s::%s does not exist.', static::class, $method),
+    271▕             );
+    272▕         }
+    273▕
+
+      [2m+2 vendor frames [22m
+  3   tests/Unit/TraceContextTest.php:210
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Unit\TraceContextTest > `TraceContext - Mode Det…  Exception   
+  Method Infocyph\Webrick\Request\Request::create does not exist.
+
+  at vendor/infocyph/intermix/src/Remix/MacroMix.php:269
+    265▕      */
+    266▕     private static function process(?object $bind, string $method, array $parameters): mixed
+    267▕     {
+    268▕         if (!static::hasMacro($method)) {
+  ➜ 269▕             throw new Exception(
+    270▕                 sprintf('Method %s::%s does not exist.', static::class, $method),
+    271▕             );
+    272▕         }
+    273▕
+
+      [2m+2 vendor frames [22m
+  3   tests/Unit/TraceContextTest.php:224
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Unit\TraceContextTest > `TraceContext - Mode Det…  Exception   
+  Method Infocyph\Webrick\Request\Request::create does not exist.
+
+  at vendor/infocyph/intermix/src/Remix/MacroMix.php:269
+    265▕      */
+    266▕     private static function process(?object $bind, string $method, array $parameters): mixed
+    267▕     {
+    268▕         if (!static::hasMacro($method)) {
+  ➜ 269▕             throw new Exception(
+    270▕                 sprintf('Method %s::%s does not exist.', static::class, $method),
+    271▕             );
+    272▕         }
+    273▕
+
+      [2m+2 vendor frames [22m
+  3   tests/Unit/TraceContextTest.php:231
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Unit\TraceContextTest > `TraceContext - Sampling…  Exception   
+  Method Infocyph\Webrick\Request\Request::create does not exist.
+
+  at vendor/infocyph/intermix/src/Remix/MacroMix.php:269
+    265▕      */
+    266▕     private static function process(?object $bind, string $method, array $parameters): mixed
+    267▕     {
+    268▕         if (!static::hasMacro($method)) {
+  ➜ 269▕             throw new Exception(
+    270▕                 sprintf('Method %s::%s does not exist.', static::class, $method),
+    271▕             );
+    272▕         }
+    273▕
+
+      [2m+2 vendor frames [22m
+  3   tests/Unit/TraceContextTest.php:240
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Unit\TraceContextTest > `TraceContext - Sampling…  Exception   
+  Method Infocyph\Webrick\Request\Request::create does not exist.
+
+  at vendor/infocyph/intermix/src/Remix/MacroMix.php:269
+    265▕      */
+    266▕     private static function process(?object $bind, string $method, array $parameters): mixed
+    267▕     {
+    268▕         if (!static::hasMacro($method)) {
+  ➜ 269▕             throw new Exception(
+    270▕                 sprintf('Method %s::%s does not exist.', static::class, $method),
+    271▕             );
+    272▕         }
+    273▕
+
+      [2m+2 vendor frames [22m
+  3   tests/Unit/TraceContextTest.php:249
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Unit\TraceContextTest > `TraceContext - Sampling…  Exception   
+  Method Infocyph\Webrick\Request\Request::create does not exist.
+
+  at vendor/infocyph/intermix/src/Remix/MacroMix.php:269
+    265▕      */
+    266▕     private static function process(?object $bind, string $method, array $parameters): mixed
+    267▕     {
+    268▕         if (!static::hasMacro($method)) {
+  ➜ 269▕             throw new Exception(
+    270▕                 sprintf('Method %s::%s does not exist.', static::class, $method),
+    271▕             );
+    272▕         }
+    273▕
+
+      [2m+2 vendor frames [22m
+  3   tests/Unit/TraceContextTest.php:258
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Unit\TraceContextTest > `TraceContext - Request…   Exception   
+  Method Infocyph\Webrick\Request\Request::create does not exist.
+
+  at vendor/infocyph/intermix/src/Remix/MacroMix.php:269
+    265▕      */
+    266▕     private static function process(?object $bind, string $method, array $parameters): mixed
+    267▕     {
+    268▕         if (!static::hasMacro($method)) {
+  ➜ 269▕             throw new Exception(
+    270▕                 sprintf('Method %s::%s does not exist.', static::class, $method),
+    271▕             );
+    272▕         }
+    273▕
+
+      [2m+2 vendor frames [22m
+  3   tests/Unit/TraceContextTest.php:267
+
+
+  Tests:    32 failed, 55 risky, 72 passed (290 assertions)
+  Duration: 3.38s
+

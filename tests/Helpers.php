@@ -6,7 +6,108 @@ use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Route\Collection;
 use Infocyph\InterMix\Cache\Cache;
 use Psr\Log\NullLogger;
+use Psr\Log\LoggerInterface;
+use Psr\Log\LogLevel;
 
+/**
+ * Simple test logger for capturing log messages during tests.
+ */
+class TestLogger implements LoggerInterface
+{
+    public array $records = [];
+
+    public function emergency(string|Stringable $message, array $context = []): void
+    {
+        $this->log(LogLevel::EMERGENCY, $message, $context);
+    }
+
+    public function alert(string|Stringable $message, array $context = []): void
+    {
+        $this->log(LogLevel::ALERT, $message, $context);
+    }
+
+    public function critical(string|Stringable $message, array $context = []): void
+    {
+        $this->log(LogLevel::CRITICAL, $message, $context);
+    }
+
+    public function error(string|Stringable $message, array $context = []): void
+    {
+        $this->log(LogLevel::ERROR, $message, $context);
+    }
+
+    public function warning(string|Stringable $message, array $context = []): void
+    {
+        $this->log(LogLevel::WARNING, $message, $context);
+    }
+
+    public function notice(string|Stringable $message, array $context = []): void
+    {
+        $this->log(LogLevel::NOTICE, $message, $context);
+    }
+
+    public function info(string|Stringable $message, array $context = []): void
+    {
+        $this->log(LogLevel::INFO, $message, $context);
+    }
+
+    public function debug(string|Stringable $message, array $context = []): void
+    {
+        $this->log(LogLevel::DEBUG, $message, $context);
+    }
+
+    public function log($level, string|Stringable $message, array $context = []): void
+    {
+        $this->records[] = [
+            'level' => $level,
+            'message' => (string) $message,
+            'context' => $context,
+        ];
+    }
+
+    public function hasRecords(?string $level = null): bool
+    {
+        if ($level === null) {
+            return !empty($this->records);
+        }
+
+        return !empty(array_filter($this->records, fn($r) => $r['level'] === $level));
+    }
+
+    public function hasInfoRecords(): bool
+    {
+        return $this->hasRecords(LogLevel::INFO);
+    }
+
+    public function hasErrorRecords(): bool
+    {
+        return $this->hasRecords(LogLevel::ERROR);
+    }
+
+    public function hasWarningRecords(): bool
+    {
+        return $this->hasRecords(LogLevel::WARNING);
+    }
+
+    public function hasDebugRecords(): bool
+    {
+        return $this->hasRecords(LogLevel::DEBUG);
+    }
+
+    public function clear(): void
+    {
+        $this->records = [];
+    }
+
+    public function getRecords(?string $level = null): array
+    {
+        if ($level === null) {
+            return $this->records;
+        }
+
+        return array_filter($this->records, fn($r) => $r['level'] === $level);
+    }
+}
 /**
  * Create a test registrar with empty collection.
  */

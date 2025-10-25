@@ -7,15 +7,37 @@ namespace Infocyph\Webrick\Middleware;
 use Closure;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Support\OpenTelemetryHandler;
+use Infocyph\Webrick\Support\TraceContext;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 
 /**
- * Telemetry middleware (pure W3C tracecontext, no OTel).
- * Responsibilities kept the same, but __invoke is simplified by delegation.
+ * Telemetry middleware with W3C Trace Context and optional OpenTelemetry integration.
+ *
+ * Minimal mode (default - zero dependencies):
+ * - W3C Trace Context propagation (traceparent/tracestate)
+ * - Request ID generation and correlation
+ * - Response timing headers (X-Response-Time, Server-Timing)
+ * - Access logging with trace correlation
+ * - Global trace context via TraceContext helper
+ *
+ * OpenTelemetry mode (auto-enabled when SDK is installed):
+ * - Delegates to OpenTelemetryHandler for full span management
+ * - Automatic span creation with semantic conventions
+ * - Span export to Jaeger, Zipkin, OTLP collectors
+ * - Exception recording in spans with stack traces
+ * - Distributed tracing UI visibility
+ *
+ * No configuration needed - automatically detects and uses OpenTelemetry SDK if available.
+ *
+ * @see https://www.w3.org/TR/trace-context/
+ * @see https://opentelemetry.io/docs/specs/semconv/http/
  */
 final readonly class TelemetryMiddleware
 {
+    private bool $otelAvailable;
+
     public function __construct(
         private LoggerInterface $log = new NullLogger(),
         private bool $addXResponseTime = true,
@@ -26,50 +48,53 @@ final readonly class TelemetryMiddleware
         private string $requestIdHeader = 'X-Request-Id',
         private bool $respectExistingRequestId = true,
 
-        // NEL
+        // NEL (Network Error Logging)
         private ?string $nelGroup = null,
         private ?string $nelEndpoint = null,
         private int $nelTtlSeconds = 86400,
         private bool $nelIncludeSubdomains = true,
         private bool $nelCollectSuccesses = false,
 
-        // Tracing (pure W3C; no OTel)
+        // Tracing (W3C + optional OTel)
         private bool $emitTraceIdHeader = true,
         private string $traceIdHeader = 'Trace-Id',
         private bool $respectIncomingTraceparent = true,
         private bool $emitTraceparentHeader = false,
+
+        // OpenTelemetry (auto-detected)
+        private bool $enableOtelIntegration = true,
+        private string $otelServiceName = 'webrick-app',
+        private string $otelServiceVersion = '1.0.0',
     ) {
+        // Auto-detect OpenTelemetry SDK availability
+        $this->otelAvailable = $this->enableOtelIntegration
+            && class_exists('Infocyph\\Webrick\\Support\\OpenTelemetryHandler')
+            && class_exists('OpenTelemetry\\API\\Globals')
+            && class_exists('OpenTelemetry\\API\\Trace\\SpanKind');
     }
 
     public function __invoke(Request $req, Closure $next): Response
     {
-        $startNs = hrtime(true);
+        if ($this->otelAvailable) {
+            return $this->delegateToOtel($req, $next);
+        }
 
-        // 1) Enrich request with trace context & request id
-        [$req, $trace, $requestId] = $this->prepareContext($req);
-
-        // 2) Execute next
-        $resp = $next($req);
-
-        // 3) Compute duration
-        $durMs = (hrtime(true) - $startNs) / 1e6;
-
-        // 4) Decorate response (timing, correlation, nel)
-        $resp = $this->addTimingHeaders($resp, $durMs);
-        $resp = $this->addCorrelationHeaders($resp, $trace, $requestId);
-        $resp = $this->applyNelHeaders($resp);
-
-        // 5) Access log
-        $this->logAccess($req, $resp, $durMs, $trace['span_id'], $trace['trace_id'], $requestId);
-
-        return $resp;
+        return $this->handleMinimal($req, $next);
     }
 
+    /* ======================= Static helpers ======================= */
+
+    /**
+     * Build W3C traceparent header.
+     */
     private static function buildTraceParent(string $traceId, string $spanId, string $flags = '01'): string
     {
         return '00-' . strtolower($traceId) . '-' . strtolower($spanId) . '-' . strtolower($flags);
     }
 
+    /**
+     * Generate random span ID (16 hex chars).
+     */
     private static function generateSpanId(): string
     {
         try {
@@ -79,6 +104,9 @@ final readonly class TelemetryMiddleware
         }
     }
 
+    /**
+     * Generate random trace ID (32 hex chars).
+     */
     private static function generateTraceId(): string
     {
         try {
@@ -88,16 +116,25 @@ final readonly class TelemetryMiddleware
         }
     }
 
+    /**
+     * Validate W3C trace flags (2 hex chars).
+     */
     private static function isValidFlags(string $hex): bool
     {
         return \strlen($hex) === 2 && ctype_xdigit($hex);
     }
 
+    /**
+     * Validate W3C span ID (16 hex chars, non-zero).
+     */
     private static function isValidSpanId(string $hex): bool
     {
         return \strlen($hex) === 16 && ctype_xdigit($hex) && $hex !== str_repeat('0', 16);
     }
 
+    /**
+     * Validate W3C trace ID (32 hex chars, non-zero).
+     */
     private static function isValidTraceId(string $hex): bool
     {
         return \strlen($hex) === 32 && ctype_xdigit($hex) && $hex !== str_repeat('0', 32);
@@ -135,6 +172,9 @@ final readonly class TelemetryMiddleware
         return $resp;
     }
 
+    /**
+     * Add timing headers (X-Response-Time, Server-Timing).
+     */
     private function addTimingHeaders(Response $resp, float $durMs): Response
     {
         if ($this->addXResponseTime) {
@@ -154,6 +194,9 @@ final readonly class TelemetryMiddleware
         return $resp;
     }
 
+    /**
+     * Apply Network Error Logging (NEL) headers.
+     */
     private function applyNelHeaders(Response $resp): Response
     {
         if (!($this->nelGroup && $this->nelEndpoint)) {
@@ -183,8 +226,35 @@ final readonly class TelemetryMiddleware
         return $resp;
     }
 
-    /* ======================= Utilities ======================= */
+    /**
+     * Delegate to OpenTelemetryHandler for full OTel integration.
+     */
+    private function delegateToOtel(Request $req, Closure $next): Response
+    {
+        $handler = new OpenTelemetryHandler(
+            log: $this->log,
+            addXResponseTime: $this->addXResponseTime,
+            addServerTiming: $this->addServerTiming,
+            emitRequestId: $this->emitRequestId,
+            requestIdHeader: $this->requestIdHeader,
+            respectExistingRequestId: $this->respectExistingRequestId,
+            nelGroup: $this->nelGroup,
+            nelEndpoint: $this->nelEndpoint,
+            nelTtlSeconds: $this->nelTtlSeconds,
+            nelIncludeSubdomains: $this->nelIncludeSubdomains,
+            nelCollectSuccesses: $this->nelCollectSuccesses,
+            emitTraceIdHeader: $this->emitTraceIdHeader,
+            traceIdHeader: $this->traceIdHeader,
+            otelServiceName: $this->otelServiceName,
+            otelServiceVersion: $this->otelServiceVersion,
+        );
 
+        return $handler->handle($req, $next);
+    }
+
+    /**
+     * Derive or generate request ID.
+     */
     private function deriveRequestId(Request $req): ?string
     {
         if (!$this->emitRequestId) {
@@ -204,6 +274,8 @@ final readonly class TelemetryMiddleware
     }
 
     /**
+     * Extract W3C Trace Context from incoming request.
+     *
      * @return array{0:string,1:string,2:string,3:string} [traceId, parentSpanId, flags, tracestate]
      */
     private function extractTraceContext(Request $req): array
@@ -229,6 +301,44 @@ final readonly class TelemetryMiddleware
         return [self::generateTraceId(), '0000000000000000', '01', $ts];
     }
 
+    /**
+     * Minimal W3C trace context handling (no OTel SDK required).
+     */
+    private function handleMinimal(Request $req, Closure $next): Response
+    {
+        $startNs = hrtime(true);
+
+        // 1) Enrich request with trace context & request id
+        [$req, $trace, $requestId] = $this->prepareContext($req);
+
+        // 2) Initialize global trace context for application-wide access
+        TraceContext::initialize($req, false);
+
+        try {
+            // 3) Execute next middleware/handler
+            $resp = $next($req);
+
+            // 4) Compute duration
+            $durMs = (hrtime(true) - $startNs) / 1e6;
+
+            // 5) Decorate response (timing, correlation, nel)
+            $resp = $this->addTimingHeaders($resp, $durMs);
+            $resp = $this->addCorrelationHeaders($resp, $trace, $requestId);
+            $resp = $this->applyNelHeaders($resp);
+
+            // 6) Access log
+            $this->logAccess($req, $resp, $durMs, $trace['span_id'], $trace['trace_id'], $requestId);
+
+            return $resp;
+        } finally {
+            // Clean up trace context (important for long-running processes)
+            TraceContext::clear();
+        }
+    }
+
+    /**
+     * Log access with trace correlation.
+     */
     private function logAccess(
         Request $req,
         Response $resp,
@@ -247,7 +357,7 @@ final readonly class TelemetryMiddleware
 
         $this->log->info(
             sprintf(
-                '%s (%s) "%s %s" %d %s %.1fms%s trace=%s span=%s',
+                '%s (%s) "%s %s" %d %s %.1fms%s trace=%s span=%s [w3c]',
                 $ip,
                 $fromProxy,
                 $method,
@@ -261,8 +371,6 @@ final readonly class TelemetryMiddleware
             ),
         );
     }
-
-    /* ======================= Core steps ======================= */
 
     /**
      * Prepare W3C trace context + request id and attach them to the Request.
