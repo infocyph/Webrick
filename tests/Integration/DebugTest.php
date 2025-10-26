@@ -2,8 +2,6 @@
 
 declare(strict_types=1);
 
-
-use Tests\Support\RestoresErrorHandlers;
 require_once __DIR__ . '/../IntegrationBootstrap.php';
 
 describe('Debug: Check Route Registration', function () {

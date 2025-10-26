@@ -55,15 +55,17 @@ describe('Simple Integration Tests', function () {
         expect($response)->toHaveStatus(200);
 
         $body = json_decode((string)$response->getBody(), true);
-        expect($body)->toHaveKey('hello');
-        expect($body['hello'])->toBe('Alice');
+        expect($body)
+            ->toHaveKey('hello')
+            ->and($body['hello'])->toBe('Alice');
     });
 
     it('handles redirects', function () {
         $request = mockRequest('GET', '/redirect');
         $response = $this->kernel->handle($request);
 
-        expect($response->getStatusCode())->toBeIn([302, 301, 307, 308]);
-        expect($response)->toHaveHeader('Location');
+        expect($response->getStatusCode())
+            ->toBeIn([302, 301, 307, 308])
+            ->and($response)->toHaveHeader('Location');
     });
 });

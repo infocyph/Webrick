@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-use Infocyph\Webrick\Response\Response;
-use Infocyph\Webrick\Response\Cookies\CookieJar;
 use Infocyph\Webrick\Response\Cookies\Cookie;
+use Infocyph\Webrick\Response\Cookies\CookieJar;
+use Infocyph\Webrick\Response\Response;
 
 /**
  * Helper to create response with cookies (since Response::withCookie doesn't exist)
@@ -38,7 +38,8 @@ function responseWithCookie(
 /**
  * Helper to create HTML response (since Response::html doesn't exist)
  */
-function htmlResponse(string $html, int $status = 200): Response {
+function htmlResponse(string $html, int $status = 200): Response
+{
     return Response::create($html, $status, [
         'Content-Type' => 'text/html; charset=utf-8'
     ]);

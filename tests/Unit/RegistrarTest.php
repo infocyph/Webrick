@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
+use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Route\Collection;
-use Infocyph\Webrick\Response\Response;
 
 describe('Registrar', function () {
     beforeEach(function () {
@@ -17,7 +17,7 @@ describe('Registrar', function () {
     });
 
     it('registers GET routes', function () {
-        $this->registrar->get('/users', fn() => Response::json([]), 'users.index');
+        $this->registrar->get('/users', fn () => Response::json([]), 'users.index');
 
         $route = $this->routes->findByName('users.index');
 
@@ -29,14 +29,14 @@ describe('Registrar', function () {
     });
 
     it('registers POST routes', function () {
-        $this->registrar->post('/users', fn() => Response::json([]), 'users.store');
+        $this->registrar->post('/users', fn () => Response::json([]), 'users.store');
 
         $route = $this->routes->findByName('users.store');
         expect($route->getMethod())->toBe('POST');
     });
 
     it('registers routes with middleware', function () {
-        $this->registrar->get('/admin', fn() => 'admin', [
+        $this->registrar->get('/admin', fn () => 'admin', [
             'middleware' => ['AuthMiddleware'],
         ]);
 
@@ -55,18 +55,24 @@ describe('Registrar', function () {
         $update = $this->routes->findByName('posts.update');
         $destroy = $this->routes->findByName('posts.destroy');
 
-        expect($index)->not->toBeNull();
-        expect($create)->not->toBeNull();
-        expect($store)->not->toBeNull();
-        expect($show)->not->toBeNull();
-        expect($edit)->not->toBeNull();
-        expect($update)->not->toBeNull();
-        expect($destroy)->not->toBeNull();
-
-        expect($index->getMethod())->toBe('GET');
-        expect($store->getMethod())->toBe('POST');
-        expect($update->getMethod())->toBe('PUT');
-        expect($destroy->getMethod())->toBe('DELETE');
+        expect($index)->not
+            ->toBeNull()
+            ->and($create)->not
+            ->toBeNull()
+            ->and($store)->not
+            ->toBeNull()
+            ->and($show)->not
+            ->toBeNull()
+            ->and($edit)->not
+            ->toBeNull()
+            ->and($update)->not
+            ->toBeNull()
+            ->and($destroy)->not
+            ->toBeNull()
+            ->and($index->getMethod())->toBe('GET')
+            ->and($store->getMethod())->toBe('POST')
+            ->and($update->getMethod())->toBe('PUT')
+            ->and($destroy->getMethod())->toBe('DELETE');
     });
 
     it('handles route groups', function () {
@@ -74,7 +80,7 @@ describe('Registrar', function () {
             prefix: '/api',
             namePrefix: 'api.',
             callback: function (Registrar $r) {
-                $r->get('/users', fn() => 'users', 'users');
+                $r->get('/users', fn () => 'users', 'users');
             }
         );
 
@@ -95,7 +101,7 @@ describe('Registrar', function () {
                     prefix: '/users',
                     namePrefix: 'users.',
                     callback: function (Registrar $r2) {
-                        $r2->get('/', fn() => 'list', 'index');
+                        $r2->get('/', fn () => 'list', 'index');
                     }
                 );
             }
@@ -107,9 +113,9 @@ describe('Registrar', function () {
 
         // Accept with or without trailing slash
         $path = $route->getPath();
-        expect(in_array($path, ['/admin/users', '/admin/users/'], true))->toBeTrue();
-
-        expect($route->getName())->toBe('admin.users.index');
+        expect(in_array($path, ['/admin/users', '/admin/users/'], true))
+            ->toBeTrue()
+            ->and($route->getName())->toBe('admin.users.index');
     });
 
     it('applies group middleware', function () {
@@ -117,7 +123,7 @@ describe('Registrar', function () {
             prefix: '/api',
             middleware: ['ApiMiddleware'],
             callback: function (Registrar $r) {
-                $r->get('/test', fn() => 'test');
+                $r->get('/test', fn () => 'test');
             }
         );
 

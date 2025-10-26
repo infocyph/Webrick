@@ -2,10 +2,9 @@
 
 declare(strict_types=1);
 
-use Infocyph\Webrick\Response\Response;
-use Infocyph\Webrick\Request\Core\Stream;
-use Infocyph\Webrick\Response\Cookies\CookieJar;
 use Infocyph\Webrick\Response\Cookies\Cookie;
+use Infocyph\Webrick\Response\Cookies\CookieJar;
+use Infocyph\Webrick\Response\Response;
 
 describe('Response', function () {
     it('creates basic responses', function () {
@@ -13,9 +12,8 @@ describe('Response', function () {
 
         expect($response)
             ->toBeInstanceOf(\Infocyph\Webrick\Response\Response::class)
-            ->getStatusCode()->toBe(200);
-
-        expect((string)$response->getBody())->toBe('Hello World');
+            ->getStatusCode()->toBe(200)
+            ->and((string)$response->getBody())->toBe('Hello World');
     });
 
     it('creates JSON responses', function () {
@@ -43,8 +41,9 @@ describe('Response', function () {
     it('creates empty responses', function () {
         $response = Response::empty(204);
 
-        expect($response)->toHaveStatus(204);
-        expect((string)$response->getBody())->toBe('');
+        expect($response)
+            ->toHaveStatus(204)
+            ->and((string)$response->getBody())->toBe('');
     });
 
     it('creates plaintext responses', function () {
@@ -59,17 +58,19 @@ describe('Response', function () {
             'Content-Type' => 'text/html; charset=utf-8'
         ]);
 
-        expect($response)->toHaveHeader('Content-Type');
-        expect($response->getHeaderLine('Content-Type'))->toContain('text/html');
+        expect($response)
+            ->toHaveHeader('Content-Type')
+            ->and($response->getHeaderLine('Content-Type'))->toContain('text/html');
     });
 
     it('is immutable', function () {
         $r1 = Response::create('test', 200);
         $r2 = $r1->withStatus(404);
 
-        expect($r1->getStatusCode())->toBe(200);
-        expect($r2->getStatusCode())->toBe(404);
-        expect($r1)->not->toBe($r2);
+        expect($r1->getStatusCode())
+            ->toBe(200)
+            ->and($r2->getStatusCode())->toBe(404)
+            ->and($r1)->not->toBe($r2);
     });
 
     it('manages headers', function () {
@@ -81,8 +82,9 @@ describe('Response', function () {
 
         // Header line separator (no space after comma in PSR-7)
         $line = $response->getHeaderLine('X-Custom');
-        expect($line)->toContain('value1');
-        expect($line)->toContain('value2');
+        expect($line)
+            ->toContain('value1')
+            ->and($line)->toContain('value2');
     });
 
     it('uses smart header addition', function () {
@@ -113,11 +115,12 @@ describe('Response', function () {
 
     it('handles cache control', function () {
         $response = Response::create('test')
-            ->withCache(fn($cc) => $cc->public()->maxAge(3600));
+            ->withCache(fn ($cc) => $cc->public()->maxAge(3600));
 
         $cc = $response->getHeaderLine('Cache-Control');
-        expect($cc)->toContain('public');
-        expect($cc)->toContain('max-age=3600');
+        expect($cc)
+            ->toContain('public')
+            ->and($cc)->toContain('max-age=3600');
     });
 
     it('handles cookies', function () {
@@ -129,7 +132,8 @@ describe('Response', function () {
         $response = $jar->apply($response);
 
         $setCookie = $response->getHeader('Set-Cookie');
-        expect($setCookie)->toHaveCount(1);
-        expect($setCookie[0])->toContain('session=abc123');
+        expect($setCookie)
+            ->toHaveCount(1)
+            ->and($setCookie[0])->toContain('session=abc123');
     });
 });

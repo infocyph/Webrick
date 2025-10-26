@@ -21,12 +21,12 @@ describe('CompressionMiddleware', function () {
             'Accept-Encoding' => 'gzip',
         ]);
 
-        $next = fn($req) => Response::create($body, 200, [
+        $next = fn ($req) => Response::create($body, 200, [
             'Content-Type' => 'text/html',
         ]);
 
         $varyMw = new \Infocyph\Webrick\Middleware\VaryAccumulatorMiddleware();
-        $response = $varyMw($request, fn($r) => $middleware($r, $next));
+        $response = $varyMw($request, fn ($r) => $middleware($r, $next));
 
         expect($response)
             ->toHaveHeader('Content-Encoding', 'gzip')
@@ -43,13 +43,14 @@ describe('CompressionMiddleware', function () {
             'Accept-Encoding' => 'gzip',
         ]);
 
-        $next = fn($req) => Response::create('Small', 200);
+        $next = fn ($req) => Response::create('Small', 200);
 
         $varyMw = new \Infocyph\Webrick\Middleware\VaryAccumulatorMiddleware();
-        $response = $varyMw($request, fn($r) => $middleware($r, $next));
+        $response = $varyMw($request, fn ($r) => $middleware($r, $next));
 
-        expect($response->hasHeader('Content-Encoding'))->toBeFalse();
-        expect((string)$response->getBody())->toBe('Small');
+        expect($response->hasHeader('Content-Encoding'))
+            ->toBeFalse()
+            ->and((string)$response->getBody())->toBe('Small');
     });
 
     it('skips compression for images', function () {
@@ -60,12 +61,12 @@ describe('CompressionMiddleware', function () {
         ]);
 
         $body = str_repeat('x', 2000);
-        $next = fn($req) => Response::create($body, 200, [
+        $next = fn ($req) => Response::create($body, 200, [
             'Content-Type' => 'image/jpeg',
         ]);
 
         $varyMw = new \Infocyph\Webrick\Middleware\VaryAccumulatorMiddleware();
-        $response = $varyMw($request, fn($r) => $middleware($r, $next));
+        $response = $varyMw($request, fn ($r) => $middleware($r, $next));
 
         expect($response->hasHeader('Content-Encoding'))->toBeFalse();
     });
@@ -78,12 +79,12 @@ describe('CompressionMiddleware', function () {
         ]);
 
         $body = str_repeat('Hello World! ', 100);
-        $next = fn($req) => Response::create($body, 200, [
+        $next = fn ($req) => Response::create($body, 200, [
             'Cache-Control' => 'no-transform',
         ]);
 
         $varyMw = new \Infocyph\Webrick\Middleware\VaryAccumulatorMiddleware();
-        $response = $varyMw($request, fn($r) => $middleware($r, $next));
+        $response = $varyMw($request, fn ($r) => $middleware($r, $next));
 
         expect($response->hasHeader('Content-Encoding'))->toBeFalse();
     });
@@ -102,13 +103,13 @@ describe('CompressionMiddleware', function () {
             'Accept-Encoding' => 'gzip',
         ]);
 
-        $next = fn($req) => Response::create($body, 200, [
+        $next = fn ($req) => Response::create($body, 200, [
             'Content-Type' => 'text/html',
             'ETag' => '"abc123"',
         ]);
 
         $varyMw = new \Infocyph\Webrick\Middleware\VaryAccumulatorMiddleware();
-        $response = $varyMw($request, fn($r) => $middleware($r, $next));
+        $response = $varyMw($request, fn ($r) => $middleware($r, $next));
 
         $etag = $response->getHeaderLine('ETag');
         // ETag behavior depends on mode

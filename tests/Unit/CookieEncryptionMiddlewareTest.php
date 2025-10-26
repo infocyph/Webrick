@@ -3,10 +3,10 @@
 declare(strict_types=1);
 
 use Infocyph\Webrick\Middleware\CookieEncryptionMiddleware;
-use Infocyph\Webrick\Response\Response;
-use Infocyph\Webrick\Response\Cookies\CookieJar;
-use Infocyph\Webrick\Response\Cookies\Cookie;
 use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Response\Cookies\Cookie;
+use Infocyph\Webrick\Response\Cookies\CookieJar;
+use Infocyph\Webrick\Response\Response;
 
 describe('CookieEncryptionMiddleware', function () {
     beforeEach(function () {
@@ -29,11 +29,13 @@ describe('CookieEncryptionMiddleware', function () {
         $response = ($this->middleware)($request, $next);
 
         $setCookie = $response->getHeader('Set-Cookie');
-        expect($setCookie)->toHaveCount(1);
+        expect($setCookie)
+            ->toHaveCount(1)
+            ->and($setCookie[0])->not
+            ->toContain('secret_value')
+            ->and($setCookie[0])->toContain('enc_session=');
 
         // Cookie value should be encrypted (not plain text)
-        expect($setCookie[0])->not->toContain('secret_value');
-        expect($setCookie[0])->toContain('enc_session=');
     });
 
     it('decrypts inbound cookies', function () {
@@ -104,9 +106,10 @@ describe('CookieEncryptionMiddleware', function () {
 
         $setCookie = $response->getHeader('Set-Cookie')[0];
 
-        expect($setCookie)->toContain('Secure');
-        expect($setCookie)->toContain('HttpOnly');
+        expect($setCookie)
+            ->toContain('Secure')
+            ->and($setCookie)->toContain('HttpOnly')
+            ->and($setCookie)->toMatch('/SameSite=(Strict|Lax)/');
         // Check that SameSite is set (Strict or Lax)
-        expect($setCookie)->toMatch('/SameSite=(Strict|Lax)/');
     });
 });

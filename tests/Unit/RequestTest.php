@@ -34,20 +34,22 @@ describe('Request', function () {
         $r1 = mockRequest('GET', '/test');
         $r2 = $r1->withMethod('POST');
 
-        expect($r1->getMethod())->toBe('GET');
-        expect($r2->getMethod())->toBe('POST');
-        expect($r1)->not->toBe($r2);
+        expect($r1->getMethod())
+            ->toBe('GET')
+            ->and($r2->getMethod())->toBe('POST')
+            ->and($r1)->not->toBe($r2);
     });
 
     it('handles query parameters', function () {
         $request = mockRequest('GET', '/search?q=test&page=2');
 
         $params = $request->getQueryParams();
-        expect($params)->toBe(['q' => 'test', 'page' => '2']);
+        expect($params)
+            ->toBe(['q' => 'test', 'page' => '2'])
+            ->and($params['q'])->toBe('test')
+            ->and($params['missing'] ?? 'default')->toBe('default');
 
         // Request doesn't have query() method, use getQueryParams()
-        expect($params['q'])->toBe('test');
-        expect($params['missing'] ?? 'default')->toBe('default');
     });
 
     it('handles POST data', function () {
@@ -56,9 +58,10 @@ describe('Request', function () {
 
         $request = Request::fromGlobals();
 
-        expect($request->getParsedBody())->toBe(['name' => 'John', 'age' => '30']);
-        expect($request->input('name'))->toBe('John');
-        expect((int)$request->input('age'))->toBe(30);
+        expect($request->getParsedBody())
+            ->toBe(['name' => 'John', 'age' => '30'])
+            ->and($request->input('name'))->toBe('John')
+            ->and((int)$request->input('age'))->toBe(30);
     });
 
     it('handles JSON body', function () {
@@ -92,9 +95,10 @@ describe('Request', function () {
 
         $request = Request::fromGlobals();
 
-        expect($request->getCookieParams())->toBe(['session' => 'abc123', 'theme' => 'dark']);
-        expect($request->cookie('session'))->toBe('abc123');
-        expect($request->cookie('missing'))->toBeNull();
+        expect($request->getCookieParams())
+            ->toBe(['session' => 'abc123', 'theme' => 'dark'])
+            ->and($request->cookie('session'))->toBe('abc123')
+            ->and($request->cookie('missing'))->toBeNull();
     });
 
     it('handles attributes', function () {
@@ -104,9 +108,10 @@ describe('Request', function () {
             ->withAttribute('user_id', 42)
             ->withAttribute('locale', 'en');
 
-        expect($request->getAttribute('user_id'))->toBe(42);
-        expect($request->getAttribute('locale'))->toBe('en');
-        expect($request->getAttribute('missing', 'default'))->toBe('default');
+        expect($request->getAttribute('user_id'))
+            ->toBe(42)
+            ->and($request->getAttribute('locale'))->toBe('en')
+            ->and($request->getAttribute('missing', 'default'))->toBe('default');
     });
 
     it('prefers content type', function () {
@@ -125,8 +130,9 @@ describe('Request', function () {
 
         [$locale, $source] = $request->detectLocale(['en', 'fr'], 'en');
 
-        expect($locale)->toBe('fr');
-        expect($source)->toBe('header');
+        expect($locale)
+            ->toBe('fr')
+            ->and($source)->toBe('header');
     });
 
     it('validates input', function () {
@@ -137,8 +143,9 @@ describe('Request', function () {
 
         $request = Request::fromGlobals();
 
-        expect($request->has('email'))->toBeTrue();
-        expect($request->has('missing'))->toBeFalse();
-        expect($request->filled('email'))->toBeTrue();
+        expect($request->has('email'))
+            ->toBeTrue()
+            ->and($request->has('missing'))->toBeFalse()
+            ->and($request->filled('email'))->toBeTrue();
     });
 });

@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-use Infocyph\Webrick\Router\Url\SignedUrlGenerator;
-use Infocyph\Webrick\Router\Url\TemporaryUrlGenerator;
-use Infocyph\Webrick\Router\Url\Signature;
+use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Route\Collection;
 use Infocyph\Webrick\Router\Route\Route;
-use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Router\Url\Signature;
+use Infocyph\Webrick\Router\Url\SignedUrlGenerator;
+use Infocyph\Webrick\Router\Url\TemporaryUrlGenerator;
 
 describe('Signed URLs', function () {
     beforeEach(function () {
@@ -15,7 +15,7 @@ describe('Signed URLs', function () {
         $this->routes = new Collection();
 
         // Add test route
-        $route = new Route('GET', '/download/{file}', fn() => Response::plaintext('OK'));
+        $route = new Route('GET', '/download/{file}', fn () => Response::plaintext('OK'));
         $route = $route->withName('download');
         $this->routes->add($route);
 
@@ -35,9 +35,10 @@ describe('Signed URLs', function () {
             absolute: false
         );
 
-        expect($signedUrl)->toContain('_sig=');
-        expect($signedUrl)->toContain('inline=1');
-        expect($signedUrl)->toContain('/download/document.pdf');
+        expect($signedUrl)
+            ->toContain('_sig=')
+            ->and($signedUrl)->toContain('inline=1')
+            ->and($signedUrl)->toContain('/download/document.pdf');
     });
 
     it('generates temporary URLs with expiry', function () {
@@ -49,13 +50,15 @@ describe('Signed URLs', function () {
             absolute: false
         );
 
-        expect($signedUrl)->toContain('_sig=');
-        expect($signedUrl)->toContain('_exp=');
+        expect($signedUrl)
+            ->toContain('_sig=')
+            ->and($signedUrl)->toContain('_exp=');
 
         // Parse expiry timestamp
         parse_str(parse_url($signedUrl, PHP_URL_QUERY), $query);
-        expect((int)$query['_exp'])->toBeGreaterThan(time());
-        expect((int)$query['_exp'])->toBeLessThanOrEqual(time() + 3600);
+        expect((int)$query['_exp'])
+            ->toBeGreaterThan(time())
+            ->and((int)$query['_exp'])->toBeLessThanOrEqual(time() + 3600);
     });
 
     it('validates signed URL signatures', function () {
@@ -126,13 +129,14 @@ describe('Signed URLs', function () {
         parse_str(parse_url($signedUrl, PHP_URL_QUERY), $query);
         $expiry = (int)$query['_exp'];
 
-        expect($expiry)->toBeGreaterThan(time());
-        expect($expiry)->toBeLessThanOrEqual(time() + 900);
+        expect($expiry)
+            ->toBeGreaterThan(time())
+            ->and($expiry)->toBeLessThanOrEqual(time() + 900);
     });
 
     it('prevents query parameter injection', function () {
         // Try to inject reserved parameters
-        expect(fn() => $this->generator->signed(
+        expect(fn () => $this->generator->signed(
             name: 'download',
             params: ['file' => 'test.pdf'],
             query: ['_sig' => 'malicious'],  // Reserved parameter

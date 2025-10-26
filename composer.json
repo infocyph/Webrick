@@ -8,7 +8,11 @@
         "routing",
         "http",
         "web",
-        "framework"
+        "framework",
+        "middleware",
+        "psr-7",
+        "psr-15",
+        "opentelemetry"
     ],
     "authors": [
         {
@@ -36,6 +40,21 @@
         "php": ">=8.4",
         "infocyph/arraykit": "^2.03",
         "infocyph/intermix": "^5.34"
+    },
+    "require-dev": {
+        "captainhook/captainhook": "^5.25",
+        "laravel/pint": "^1.25",
+        "pestphp/pest": "^4.1",
+        "pestphp/pest-plugin-drift": "^4.0",
+        "psr/log": "^3.0",
+        "rector/rector": "^2.2.3",
+        "symfony/var-dumper": "^7.3"
+    },
+    "suggest": {
+        "open-telemetry/sdk": "Full OpenTelemetry tracing with automatic span export (auto-detected by TelemetryMiddleware)",
+        "open-telemetry/exporter-otlp": "Export traces to OpenTelemetry collectors (Jaeger, Zipkin, etc.)",
+        "psr/http-factory": "PSR-17 HTTP factories for framework interoperability",
+        "psr/http-server-middleware": "PSR-15 middleware support"
     },
     "minimum-stability": "stable",
     "prefer-stable": true,
@@ -70,14 +89,6 @@
         "lint": "pint",
         "webrick": "webrick",
         "post-autoload-dump": "captainhook install --only-enabled -nf"
-    },
-    "require-dev": {
-        "captainhook/captainhook": "^5.25",
-        "laravel/pint": "^1.25",
-        "pestphp/pest": "^4.1",
-        "pestphp/pest-plugin-drift": "^4.0",
-        "rector/rector": "^2.2.3",
-        "symfony/var-dumper": "^7.3"
     },
     "bin": [
         "webrick"
