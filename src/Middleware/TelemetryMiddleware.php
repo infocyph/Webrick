@@ -68,7 +68,6 @@ final readonly class TelemetryMiddleware
     ) {
         // Auto-detect OpenTelemetry SDK availability
         $this->otelAvailable = $this->enableOtelIntegration
-            && class_exists('Infocyph\\Webrick\\Support\\OpenTelemetryHandler')
             && class_exists('OpenTelemetry\\API\\Globals')
             && class_exists('OpenTelemetry\\API\\Trace\\SpanKind');
     }
