@@ -42,6 +42,53 @@ Trace-Id: a4c9e2b8f1d3a7e5c2b1f8e3d4a5c6b7
 127.0.0.1 (direct) "GET /api/users" 200 1234 45.2ms id=abc123 trace=def456 span=789xyz [w3c]
 ```
 
+---
+
+## Integration with RouterKernel
+
+### Basic Setup
+
+```php
+use Infocyph\Webrick\Router\Kernel\RouterKernel;
+use Infocyph\Webrick\Router\Matching\ShardedMatcher;
+use Infocyph\Webrick\Middleware\TelemetryMiddleware;
+
+$kernel = RouterKernel::bootWithRegistrar(
+    log: $logger,
+    matcher: ShardedMatcher::make(),
+    register: $register,
+    preGlobal: [
+        TelemetryMiddleware::class,  // Add as first middleware
+        // ... other middleware
+    ]
+);
+```
+
+### With Custom Configuration
+
+```php
+use Infocyph\Webrick\Middleware\TelemetryMiddleware;
+
+$preGlobal = [
+    new TelemetryMiddleware(
+        log: $logger,
+        addXResponseTime: true,
+        addServerTiming: true,
+        emitRequestId: true,
+        emitTraceIdHeader: true,
+        respectIncomingTraceparent: true
+    ),
+    // ... other middleware
+];
+
+$kernel = RouterKernel::bootWithRegistrar(
+    log: $logger,
+    matcher: ShardedMatcher::make(),
+    register: $register,
+    preGlobal: $preGlobal
+);
+```
+
 ### OpenTelemetry Mode (Full Observability)
 
 Install OpenTelemetry SDK:
@@ -76,6 +123,33 @@ $preGlobal = [
 ```
 
 **Plus:** Spans automatically exported to Jaeger/Zipkin/OTLP collectors!
+
+---
+
+## Constructor Reference
+
+```php
+public function __construct(
+    ?LoggerInterface $log = null,              // PSR-3 logger (defaults to NullLogger)
+    bool $addXResponseTime = true,             // Add X-Response-Time header
+    bool $addServerTiming = true,              // Add Server-Timing header
+    bool $emitRequestId = true,                // Generate/emit request IDs
+    string $requestIdHeader = 'X-Request-Id',  // Request ID header name
+    bool $respectExistingRequestId = true,     // Honor incoming request IDs
+    ?string $nelGroup = null,                  // NEL group name (null = disabled)
+    ?string $nelEndpoint = null,               // NEL reporting endpoint
+    int $nelTtlSeconds = 86400,                // NEL policy TTL (seconds)
+    bool $nelIncludeSubdomains = true,         // NEL for subdomains
+    bool $nelCollectSuccesses = false,         // Report successful requests
+    bool $emitTraceIdHeader = true,            // Emit Trace-Id header
+    string $traceIdHeader = 'Trace-Id',        // Trace ID header name
+    bool $respectIncomingTraceparent = true,   // Honor incoming traceparent
+    bool $emitTraceparentHeader = false,       // Emit traceparent header
+    bool $enableOtelIntegration = true,        // Enable OpenTelemetry (auto-detected)
+    ?string $otelServiceName = null,           // Service name in traces
+    ?string $otelServiceVersion = null,        // Service version in traces
+)
+```
 
 ---
 
@@ -671,6 +745,58 @@ $sampler = new ParentBased(
 
 ---
 
+## Disabling Features
+
+### Minimal Overhead Configuration
+
+For maximum performance when you only need basic trace correlation:
+
+```php
+$preGlobal = [
+    new TelemetryMiddleware(
+        log: $logger,
+        addXResponseTime: false,      // No timing header
+        addServerTiming: false,       // No server-timing
+        emitRequestId: false,         // No request ID header
+        emitTraceIdHeader: false,     // No trace header
+        enableOtelIntegration: false  // No OTel overhead
+    )
+];
+```
+
+This configuration:
+- ✅ Still generates trace IDs internally
+- ✅ Still makes TraceContext available
+- ✅ Still logs access with trace correlation
+- ❌ Doesn't emit response headers
+- ❌ Doesn't create OpenTelemetry spans
+
+### Disable Specific Features
+
+```php
+// Disable only timing headers (keep trace context)
+new TelemetryMiddleware(
+    log: $logger,
+    addXResponseTime: false,
+    addServerTiming: false
+)
+
+// Disable Network Error Logging
+new TelemetryMiddleware(
+    log: $logger,
+    nelGroup: null,      // Disables NEL
+    nelEndpoint: null
+)
+
+// Disable request ID propagation (but keep trace IDs)
+new TelemetryMiddleware(
+    log: $logger,
+    emitRequestId: false
+)
+```
+
+---
+
 ## Troubleshooting
 
 ### Check OpenTelemetry Mode
@@ -713,6 +839,36 @@ php -r "var_dump(\OpenTelemetry\API\Globals::tracerProvider());"
 
 ## Best Practices
 
+### 1. Middleware Order (CRITICAL)
+
+**⚠️ ALWAYS place TelemetryMiddleware FIRST or VERY EARLY in preGlobal:**
+
+```php
+// ✅ Correct - Telemetry captures everything
+$preGlobal = [
+    TelemetryMiddleware::class,           // FIRST - captures all timing
+    GatewayHardeningMiddleware::class,
+    MaintenanceModeMiddleware::class,
+    RequestLimitsMiddleware::class,
+    // ... other middleware
+];
+
+// ❌ Wrong - Misses early middleware timing
+$preGlobal = [
+    GatewayHardeningMiddleware::class,
+    MaintenanceModeMiddleware::class,
+    TelemetryMiddleware::class,           // TOO LATE
+];
+```
+
+**Why first?**
+- Starts timing before any other processing
+- Wraps all middleware in try-catch for exception tracking (OTel mode)
+- Initializes TraceContext before other middleware/controllers need it
+- Captures complete request lifecycle in timing headers
+
+### 1. Always Use in preGlobal
+
 ### 1. Always Use in preGlobal
 ```php
 // ✅ Correct - Captures full request lifecycle
@@ -727,7 +883,7 @@ $postGlobal = [
 ];
 ```
 
-### 2. Use TraceContext Everywhere
+### 3. Use TraceContext Everywhere
 ```php
 // ✅ Good - Consistent correlation
 $logger->info('Action', [
@@ -739,7 +895,7 @@ $logger->info('Action', [
 $logger->info('Action', ['user_id' => $userId]);
 ```
 
-### 3. Add Trace Context to SQL Comments
+### 4. Add Trace Context to SQL Comments
 ```php
 // ✅ Good - Queryable in slow query log
 $sql = "/* " . TraceContext::getLogContext() . " */ SELECT * FROM users";
@@ -748,7 +904,7 @@ $sql = "/* " . TraceContext::getLogContext() . " */ SELECT * FROM users";
 $sql = "SELECT * FROM users";
 ```
 
-### 4. Return Trace IDs in Error Responses
+### 5. Return Trace IDs in Error Responses
 ```php
 // ✅ Good - User can report trace ID for support
 return Response::json([
@@ -760,7 +916,7 @@ return Response::json([
 return Response::json(['error' => 'Something went wrong'], 500);
 ```
 
-### 5. Enable OpenTelemetry in Staging/Production
+### 6. Enable OpenTelemetry in Staging/Production
 ```php
 // Development: Minimal mode (faster)
 if ($_ENV['APP_ENV'] === 'development') {
