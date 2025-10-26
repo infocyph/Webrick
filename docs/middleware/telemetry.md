@@ -110,10 +110,13 @@ $tracerProvider = new TracerProvider(
 Globals::registerInitializer(fn() => $tracerProvider);
 ```
 
-Use middleware (same code - auto-detects OpenTelemetry):
+Use middleware (need a simple change):
 ```php
 $preGlobal = [
-    new TelemetryMiddleware($logger),
+    new TelemetryMiddleware(
+    $logger,
+    enableOtelIntegration: true
+    ),
 ];
 ```
 
@@ -145,7 +148,7 @@ public function __construct(
     string $traceIdHeader = 'Trace-Id',        // Trace ID header name
     bool $respectIncomingTraceparent = true,   // Honor incoming traceparent
     bool $emitTraceparentHeader = false,       // Emit traceparent header
-    bool $enableOtelIntegration = true,        // Enable OpenTelemetry (auto-detected)
+    bool $enableOtelIntegration = false,        // Enable OpenTelemetry (auto-detected)
     ?string $otelServiceName = null,           // Service name in traces
     ?string $otelServiceVersion = null,        // Service version in traces
 )
