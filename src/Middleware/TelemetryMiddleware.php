@@ -62,7 +62,7 @@ final readonly class TelemetryMiddleware
         private bool $emitTraceparentHeader = false,
 
         // OpenTelemetry (auto-detected)
-        private bool $enableOtelIntegration = true,
+        private bool $enableOtelIntegration = false,
         private string $otelServiceName = 'webrick-app',
         private string $otelServiceVersion = '1.0.0',
     ) {
