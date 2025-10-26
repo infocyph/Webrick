@@ -18,8 +18,9 @@ describe('Real Routing Integration', function () {
         $request = mockRequest('GET', '/');
         $response = $this->kernel->handle($request);
 
-        expect($response)->toHaveStatus(200);
-        expect($response->getHeaderLine('Content-Type'))->toContain('text/html');
+        expect($response)
+            ->toHaveStatus(200)
+            ->and($response->getHeaderLine('Content-Type'))->toContain('text/html');
 
         $body = (string)$response->getBody();
         expect($body)->toContain('Webrick demo');
@@ -29,8 +30,10 @@ describe('Real Routing Integration', function () {
         $request = mockRequest('GET', '/ping');
         $response = $this->kernel->handle($request);
 
-        expect($response)->toHaveStatus(200);
-        expect((string)$response->getBody())->toBe('"pong"'); // JSON-encoded string
+        expect($response)
+            ->toHaveStatus(200)
+            ->and((string)$response->getBody())->toBe('"pong"');
+        // JSON-encoded string
     });
 
     it('matches dynamic routes with parameters', function () {
@@ -40,16 +43,18 @@ describe('Real Routing Integration', function () {
         expect($response)->toHaveStatus(200);
 
         $body = json_decode((string)$response->getBody(), true);
-        expect($body)->toHaveKey('hello');
-        expect($body['hello'])->toBe('Alice');
+        expect($body)
+            ->toHaveKey('hello')
+            ->and($body['hello'])->toBe('Alice');
     });
 
     it('matches JSON route', function () {
         $request = mockRequest('GET', '/json');
         $response = $this->kernel->handle($request);
 
-        expect($response)->toHaveStatus(200);
-        expect($response->getHeaderLine('Content-Type'))->toContain('application/json');
+        expect($response)
+            ->toHaveStatus(200)
+            ->and($response->getHeaderLine('Content-Type'))->toContain('application/json');
 
         $body = json_decode((string)$response->getBody(), true);
         expect($body)->toHaveKey('memory');
@@ -59,8 +64,9 @@ describe('Real Routing Integration', function () {
         $request = mockRequest('GET', '/redirect');
         $response = $this->kernel->handle($request);
 
-        expect($response)->toHaveStatus(302);
-        expect($response)->toHaveHeader('Location', '/');
+        expect($response)
+            ->toHaveStatus(302)
+            ->and($response)->toHaveHeader('Location', '/');
     });
 
     it('matches constrained routes', function () {
@@ -108,7 +114,8 @@ describe('Real Routing Integration', function () {
         $request = mockRequest('POST', '/ping'); // ping is GET only
         $response = $this->kernel->handle($request);
 
-        expect($response)->toHaveStatus(405);
-        expect($response)->toHaveHeader('Allow');
+        expect($response)
+            ->toHaveStatus(405)
+            ->and($response)->toHaveHeader('Allow');
     });
 });

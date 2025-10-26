@@ -14,8 +14,9 @@ describe('Comprehensive Routing Tests', function () {
     describe('Static Routes', function () {
         it('handles homepage', function () {
             $response = $this->kernel->handle(mockRequest('GET', '/'));
-            expect($response)->toHaveStatus(200);
-            expect($response->getHeaderLine('Content-Type'))->toContain('text/html');
+            expect($response)
+                ->toHaveStatus(200)
+                ->and($response->getHeaderLine('Content-Type'))->toContain('text/html');
         });
 
         it('handles /ping endpoint', function () {
@@ -25,8 +26,9 @@ describe('Comprehensive Routing Tests', function () {
 
         it('handles /json endpoint', function () {
             $response = $this->kernel->handle(mockRequest('GET', '/json'));
-            expect($response)->toHaveStatus(200);
-            expect($response->getHeaderLine('Content-Type'))->toContain('application/json');
+            expect($response)
+                ->toHaveStatus(200)
+                ->and($response->getHeaderLine('Content-Type'))->toContain('application/json');
 
             $body = json_decode((string)$response->getBody(), true);
             expect($body)->toHaveKey('memory');
@@ -34,8 +36,9 @@ describe('Comprehensive Routing Tests', function () {
 
         it('handles /redirect endpoint', function () {
             $response = $this->kernel->handle(mockRequest('GET', '/redirect'));
-            expect($response->getStatusCode())->toBeIn([301, 302, 307, 308]);
-            expect($response)->toHaveHeader('Location');
+            expect($response->getStatusCode())
+                ->toBeIn([301, 302, 307, 308])
+                ->and($response)->toHaveHeader('Location');
         });
     });
 
@@ -45,8 +48,9 @@ describe('Comprehensive Routing Tests', function () {
             expect($response)->toHaveStatus(200);
 
             $body = json_decode((string)$response->getBody(), true);
-            expect($body)->toHaveKey('hello');
-            expect($body['hello'])->toBe('World');
+            expect($body)
+                ->toHaveKey('hello')
+                ->and($body['hello'])->toBe('World');
         });
 
         it('handles different names', function () {
@@ -61,8 +65,9 @@ describe('Comprehensive Routing Tests', function () {
                 $body = json_decode((string)$response->getBody(), true);
 
                 // Just verify we got a response with hello key
-                expect($body)->toHaveKey('hello');
-                expect($body['hello'])->toBeString();
+                expect($body)
+                    ->toHaveKey('hello')
+                    ->and($body['hello'])->toBeString();
             }
         });
     });
@@ -92,8 +97,9 @@ describe('Comprehensive Routing Tests', function () {
             expect($response)->toHaveStatus(200);
 
             $body = json_decode((string)$response->getBody(), true);
-            expect($body)->toHaveKey('handler');
-            expect($body['handler'])->toContain('DemoController');
+            expect($body)
+                ->toHaveKey('handler')
+                ->and($body['handler'])->toContain('DemoController');
         });
     });
 
@@ -147,8 +153,9 @@ describe('Comprehensive Routing Tests', function () {
             expect($response)->toHaveStatus(200);
 
             $body = json_decode((string)$response->getBody(), true);
-            expect($body['section'])->toBe('blog');
-            expect($body['slug'])->toBe('hello-world');
+            expect($body['section'])
+                ->toBe('blog')
+                ->and($body['slug'])->toBe('hello-world');
         });
 
         it('handles admin dashboard', function () {
@@ -163,8 +170,9 @@ describe('Comprehensive Routing Tests', function () {
     describe('XML and Content Types', function () {
         it('handles XML responses', function () {
             $response = $this->kernel->handle(mockRequest('GET', '/xml'));
-            expect($response)->toHaveStatus(200);
-            expect($response->getHeaderLine('Content-Type'))->toContain('xml');
+            expect($response)
+                ->toHaveStatus(200)
+                ->and($response->getHeaderLine('Content-Type'))->toContain('xml');
         });
 
         it('handles lazy JSON generation', function () {
@@ -172,17 +180,19 @@ describe('Comprehensive Routing Tests', function () {
             expect($response)->toHaveStatus(200);
 
             $body = json_decode((string)$response->getBody(), true);
-            expect($body)->toHaveKey('now');
-            expect($body)->toHaveKey('items');
-            expect($body['items'])->toBeArray();
+            expect($body)
+                ->toHaveKey('now')
+                ->and($body)->toHaveKey('items')
+                ->and($body['items'])->toBeArray();
         });
     });
 
     describe('Named Routes and Redirects', function () {
         it('handles named route redirects', function () {
             $response = $this->kernel->handle(mockRequest('GET', '/to-json'));
-            expect($response->getStatusCode())->toBeIn([301, 302, 307, 308]);
-            expect($response)->toHaveHeader('Location');
+            expect($response->getStatusCode())
+                ->toBeIn([301, 302, 307, 308])
+                ->and($response)->toHaveHeader('Location');
         });
 
         it('handles signed URL demo', function () {
@@ -190,8 +200,9 @@ describe('Comprehensive Routing Tests', function () {
             expect($response)->toHaveStatus(200);
 
             $body = json_decode((string)$response->getBody(), true);
-            expect($body)->toHaveKey('rel');
-            expect($body)->toHaveKey('abs');
+            expect($body)
+                ->toHaveKey('rel')
+                ->and($body)->toHaveKey('abs');
         });
     });
 
@@ -201,8 +212,9 @@ describe('Comprehensive Routing Tests', function () {
             expect($response)->toHaveStatus(200);
 
             $body = json_decode((string)$response->getBody(), true);
-            expect($body)->toHaveKey('now');
-            expect($body)->toHaveKey('msg');
+            expect($body)
+                ->toHaveKey('now')
+                ->and($body)->toHaveKey('msg');
         });
 
         it('handles auto text response', function () {

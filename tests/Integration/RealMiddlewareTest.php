@@ -12,15 +12,18 @@ describe('Real Middleware Integration', function () {
     beforeEach(function () {
         $_SERVER['REQUEST_TIME'] = time();
         $_SERVER['REQUEST_TIME_FLOAT'] = microtime(true);
-    });    it('executes routes without middleware', function () {
+    });
+    it('executes routes without middleware', function () {
         // No middleware - just pure routing
         $kernel = createTestKernel();
 
         $request = mockRequest('GET', '/ping');
         $response = $kernel->handle($request);
 
-        expect($response)->toHaveStatus(200);
-        expect((string)$response->getBody())->toBe('"pong"'); // JSON-encoded
+        expect($response)
+            ->toHaveStatus(200)
+            ->and((string)$response->getBody())->toBe('"pong"');
+        // JSON-encoded
     });
 
     it('can add middleware when needed', function () {
@@ -37,8 +40,9 @@ describe('Real Middleware Integration', function () {
 
         $response = $kernel->handle($request);
 
-        expect($response)->toHaveStatus(200);
-        expect($response->getHeaderLine('Content-Type'))->toContain('application/json');
+        expect($response)
+            ->toHaveStatus(200)
+            ->and($response->getHeaderLine('Content-Type'))->toContain('application/json');
     });
 
     it('handles POST requests with data', function () {
@@ -67,9 +71,10 @@ describe('Real Middleware Integration', function () {
         expect($response)->toHaveStatus(200);
 
         $body = json_decode((string)$response->getBody(), true);
-        expect($body['updated'])->toBe('99');
+        expect($body['updated'])
+            ->toBe('99')
+            ->and($body)->toHaveKey('updated')
+            ->and($body['updated'])->toBe('99');
         // Check that response has expected structure
-        expect($body)->toHaveKey('updated');
-        expect($body['updated'])->toBe('99');
     });
 });

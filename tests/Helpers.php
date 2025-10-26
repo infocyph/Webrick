@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
+use Infocyph\InterMix\Cache\Cache;
 use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Route\Collection;
-use Infocyph\InterMix\Cache\Cache;
-use Psr\Log\NullLogger;
 use Psr\Log\LoggerInterface;
 use Psr\Log\LogLevel;
+use Psr\Log\NullLogger;
 
 /**
  * Simple test logger for capturing log messages during tests.
@@ -16,14 +16,14 @@ class TestLogger implements LoggerInterface
 {
     public array $records = [];
 
-    public function emergency(string|Stringable $message, array $context = []): void
-    {
-        $this->log(LogLevel::EMERGENCY, $message, $context);
-    }
-
     public function alert(string|Stringable $message, array $context = []): void
     {
         $this->log(LogLevel::ALERT, $message, $context);
+    }
+
+    public function clear(): void
+    {
+        $this->records = [];
     }
 
     public function critical(string|Stringable $message, array $context = []): void
@@ -31,29 +31,62 @@ class TestLogger implements LoggerInterface
         $this->log(LogLevel::CRITICAL, $message, $context);
     }
 
+    public function debug(string|Stringable $message, array $context = []): void
+    {
+        $this->log(LogLevel::DEBUG, $message, $context);
+    }
+
+    public function emergency(string|Stringable $message, array $context = []): void
+    {
+        $this->log(LogLevel::EMERGENCY, $message, $context);
+    }
+
     public function error(string|Stringable $message, array $context = []): void
     {
         $this->log(LogLevel::ERROR, $message, $context);
     }
 
-    public function warning(string|Stringable $message, array $context = []): void
+    public function getRecords(?string $level = null): array
     {
-        $this->log(LogLevel::WARNING, $message, $context);
+        if ($level === null) {
+            return $this->records;
+        }
+
+        return array_filter($this->records, fn ($r) => $r['level'] === $level);
     }
 
-    public function notice(string|Stringable $message, array $context = []): void
+    public function hasDebugRecords(): bool
     {
-        $this->log(LogLevel::NOTICE, $message, $context);
+        return $this->hasRecords(LogLevel::DEBUG);
+    }
+
+    public function hasErrorRecords(): bool
+    {
+        return $this->hasRecords(LogLevel::ERROR);
+    }
+
+    public function hasInfoRecords(): bool
+    {
+        return $this->hasRecords(LogLevel::INFO);
+    }
+
+    public function hasRecords(?string $level = null): bool
+    {
+        if ($level === null) {
+            return !empty($this->records);
+        }
+
+        return !empty(array_filter($this->records, fn ($r) => $r['level'] === $level));
+    }
+
+    public function hasWarningRecords(): bool
+    {
+        return $this->hasRecords(LogLevel::WARNING);
     }
 
     public function info(string|Stringable $message, array $context = []): void
     {
         $this->log(LogLevel::INFO, $message, $context);
-    }
-
-    public function debug(string|Stringable $message, array $context = []): void
-    {
-        $this->log(LogLevel::DEBUG, $message, $context);
     }
 
     public function log($level, string|Stringable $message, array $context = []): void
@@ -65,53 +98,21 @@ class TestLogger implements LoggerInterface
         ];
     }
 
-    public function hasRecords(?string $level = null): bool
+    public function notice(string|Stringable $message, array $context = []): void
     {
-        if ($level === null) {
-            return !empty($this->records);
-        }
-
-        return !empty(array_filter($this->records, fn($r) => $r['level'] === $level));
+        $this->log(LogLevel::NOTICE, $message, $context);
     }
 
-    public function hasInfoRecords(): bool
+    public function warning(string|Stringable $message, array $context = []): void
     {
-        return $this->hasRecords(LogLevel::INFO);
-    }
-
-    public function hasErrorRecords(): bool
-    {
-        return $this->hasRecords(LogLevel::ERROR);
-    }
-
-    public function hasWarningRecords(): bool
-    {
-        return $this->hasRecords(LogLevel::WARNING);
-    }
-
-    public function hasDebugRecords(): bool
-    {
-        return $this->hasRecords(LogLevel::DEBUG);
-    }
-
-    public function clear(): void
-    {
-        $this->records = [];
-    }
-
-    public function getRecords(?string $level = null): array
-    {
-        if ($level === null) {
-            return $this->records;
-        }
-
-        return array_filter($this->records, fn($r) => $r['level'] === $level);
+        $this->log(LogLevel::WARNING, $message, $context);
     }
 }
 /**
  * Create a test registrar with empty collection.
  */
-function testRegistrar(array $options = []): Registrar {
+function testRegistrar(array $options = []): Registrar
+{
     $routes = new Collection();
 
     $defaults = [
@@ -170,28 +171,32 @@ function mockRequest(string $method, string $uri, array $headers = [], array $bo
 /**
  * Create a test cache instance.
  */
-function testCache(string $namespace = 'test'): Cache {
+function testCache(string $namespace = 'test'): Cache
+{
     return Cache::local(sys_get_temp_dir() . '/webrick-test-' . $namespace);
 }
 
 /**
  * Create a test logger.
  */
-function testLogger(): \Psr\Log\LoggerInterface {
+function testLogger(): \Psr\Log\LoggerInterface
+{
     return new NullLogger();
 }
 
 /**
  * Generate a random 32-byte encryption key.
  */
-function testEncryptionKey(): string {
+function testEncryptionKey(): string
+{
     return random_bytes(32);
 }
 
 /**
  * Clean test cache directory.
  */
-function cleanTestCache(string $path): void {
+function cleanTestCache(string $path): void
+{
     if (!is_dir($path)) {
         return;
     }
@@ -211,5 +216,3 @@ function cleanTestCache(string $path): void {
 
     rmdir($path);
 }
-
-// testKernel() removed - use createTestKernel() from IntegrationBootstrap.php instead

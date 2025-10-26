@@ -16,7 +16,7 @@ describe('CorsAndPoliciesMiddleware', function () {
             'Origin' => 'https://app.example.com',
         ]);
 
-        $next = fn($req) => Response::json(['ok' => true]);
+        $next = fn ($req) => Response::json(['ok' => true]);
 
         $response = $middleware($request, $next);
 
@@ -36,7 +36,7 @@ describe('CorsAndPoliciesMiddleware', function () {
             'Access-Control-Request-Headers' => 'Content-Type',
         ]);
 
-        $next = fn($req) => Response::json(['ok' => true]);
+        $next = fn ($req) => Response::json(['ok' => true]);
 
         $response = $middleware($request, $next);
 
@@ -57,7 +57,7 @@ describe('CorsAndPoliciesMiddleware', function () {
             'Origin' => 'https://evil.com',
         ]);
 
-        $next = fn($req) => Response::json(['ok' => true]);
+        $next = fn ($req) => Response::json(['ok' => true]);
 
         $response = $middleware($request, $next);
 
@@ -75,14 +75,13 @@ describe('CorsAndPoliciesMiddleware', function () {
             'Origin' => 'https://any.com',
         ]);
 
-        $next = fn($req) => Response::json(['ok' => true]);
+        $next = fn ($req) => Response::json(['ok' => true]);
 
         $response = $middleware($request, $next);
 
         expect($response)
-            ->toHaveHeader('Access-Control-Allow-Origin', '*');
-
-        expect($response->hasHeader('Access-Control-Allow-Credentials'))->toBeFalse();
+            ->toHaveHeader('Access-Control-Allow-Origin', '*')
+            ->and($response->hasHeader('Access-Control-Allow-Credentials'))->toBeFalse();
     });
 
     it('applies security headers', function () {
@@ -92,7 +91,7 @@ describe('CorsAndPoliciesMiddleware', function () {
         );
 
         $request = mockRequest('GET', '/');
-        $next = fn($req) => Response::json(['ok' => true]);
+        $next = fn ($req) => Response::json(['ok' => true]);
 
         $response = $middleware($request, $next);
 
@@ -109,7 +108,7 @@ describe('CorsAndPoliciesMiddleware', function () {
         );
 
         $request = mockRequest('GET', '/');
-        $next = fn($req) => Response::json(['ok' => true]);
+        $next = fn ($req) => Response::json(['ok' => true]);
 
         $response = $middleware($request, $next);
 
@@ -117,7 +116,8 @@ describe('CorsAndPoliciesMiddleware', function () {
             ->toHaveHeader('Accept-CH');
 
         $ach = $response->getHeaderLine('Accept-CH');
-        expect($ach)->toContain('Sec-CH-UA');
-        expect($ach)->toContain('Sec-CH-UA-Mobile');
+        expect($ach)
+            ->toContain('Sec-CH-UA')
+            ->and($ach)->toContain('Sec-CH-UA-Mobile');
     });
 });

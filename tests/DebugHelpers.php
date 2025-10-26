@@ -5,7 +5,8 @@
  */
 
 if (!function_exists('debugResponse')) {
-    function debugResponse(\Infocyph\Webrick\Response\Response $response): void {
+    function debugResponse(\Infocyph\Webrick\Response\Response $response): void
+    {
         echo "\n";
         echo "================== RESPONSE DEBUG ==================\n";
         echo "Status: " . $response->getStatusCode() . " " . $response->getReasonPhrase() . "\n";
@@ -22,7 +23,8 @@ if (!function_exists('debugResponse')) {
 }
 
 if (!function_exists('debugRequest')) {
-    function debugRequest(\Infocyph\Webrick\Request\Request $request): void {
+    function debugRequest(\Infocyph\Webrick\Request\Request $request): void
+    {
         echo "\n";
         echo "================== REQUEST DEBUG ===================\n";
         echo "Method: " . $request->getMethod() . "\n";

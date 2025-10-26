@@ -38,15 +38,16 @@ describe('ThrottleMiddleware', function () {
 
         $response = $middleware($request, $next);
 
-        expect($called)->toBeTrue();
-        expect($response)->toHaveStatus(200);
-        expect($response)->toHaveHeader('X-RateLimit-Limit', '3');
-        expect($response)->toHaveHeader('X-RateLimit-Remaining', '2');
+        expect($called)
+            ->toBeTrue()
+            ->and($response)->toHaveStatus(200)
+            ->and($response)->toHaveHeader('X-RateLimit-Limit', '3')
+            ->and($response)->toHaveHeader('X-RateLimit-Remaining', '2');
     });
 
     it('blocks requests over limit', function () {
         $request = mockRequest('GET', '/test');
-        $next = fn($req) => Response::json(['ok' => true]);
+        $next = fn ($req) => Response::json(['ok' => true]);
 
         // Make 3 requests (limit)
         for ($i = 0; $i < 3; $i++) {
@@ -72,7 +73,7 @@ describe('ThrottleMiddleware', function () {
         );
 
         $request = mockRequest('GET', '/test');
-        $next = fn($req) => Response::json(['ok' => true]);
+        $next = fn ($req) => Response::json(['ok' => true]);
 
         // Request with cost 2 (total: 2)
         $request1 = $request->withAttribute('rate_cost.thm', 2);
@@ -93,11 +94,11 @@ describe('ThrottleMiddleware', function () {
             max: 1,
             window: 60,
             pool: $this->cache,
-            bypass: fn($req) => $req->getHeaderLine('X-Admin-Key') === 'secret'
+            bypass: fn ($req) => $req->getHeaderLine('X-Admin-Key') === 'secret'
         );
 
         $request = mockRequest('GET', '/test', ['X-Admin-Key' => 'secret']);
-        $next = fn($req) => Response::json(['ok' => true]);
+        $next = fn ($req) => Response::json(['ok' => true]);
 
         // Should not be throttled even after multiple requests
         for ($i = 0; $i < 5; $i++) {

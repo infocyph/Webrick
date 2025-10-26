@@ -15,8 +15,9 @@ describe('InputSanitizer', function () {
 
         // InputSanitizer normalizes whitespace and special chars
         // For XSS protection, use additional layer like htmlspecialchars
-        expect($clean)->toBeString();
-        expect($clean)->toContain('Hello');
+        expect($clean)
+            ->toBeString()
+            ->and($clean)->toContain('Hello');
     });
 
     it('sanitizes arrays recursively', function () {
@@ -30,9 +31,10 @@ describe('InputSanitizer', function () {
 
         $clean = $this->sanitizer->sanitizeArray($dirty);
 
-        expect($clean['name'])->toBe('John'); // Trimmed
-        expect($clean['bio'])->toContain('Safe');
-        expect($clean['nested']['field'])->toBe('value');
+        expect($clean['name'])
+            ->toBe('John')
+            ->and($clean['bio'])->toContain('Safe')
+            ->and($clean['nested']['field'])->toBe('value'); // Trimmed
     });
 
     it('handles SQL injection attempts', function () {

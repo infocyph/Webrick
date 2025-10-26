@@ -144,86 +144,23 @@ final readonly class OpenTelemetryHandler
     }
 
     /**
-     * Build span name from request (prefer route name over path).
+     * Add correlation headers (trace ID, request ID) to response.
      */
-    private function buildSpanName(Request $req): string
-    {
-        $method = $req->getMethod();
-        $routeName = $req->getAttribute('route.name');
-
-        if ($routeName) {
-            return $method . ' ' . $routeName;
+    private function addCorrelationHeaders(
+        Response $resp,
+        string $traceId,
+        string $spanId,
+        ?string $requestId
+    ): Response {
+        if ($this->emitRequestId && $requestId !== null && !$resp->hasHeader($this->requestIdHeader)) {
+            $resp = $resp->withHeader($this->requestIdHeader, $requestId);
         }
 
-        return $method . ' ' . $req->getPath();
-    }
-
-    /**
-     * Add OpenTelemetry span attributes following semantic conventions.
-     *
-     * @see https://opentelemetry.io/docs/specs/semconv/http/http-spans/
-     */
-    private function addSpanAttributes(object $span, Request $req): void
-    {
-        // HTTP attributes (semantic conventions)
-        $span->setAttribute('http.method', $req->getMethod());
-        $span->setAttribute('http.target', $req->getPath());
-        $span->setAttribute('http.scheme', $req->getUri()->getScheme());
-        $span->setAttribute('http.host', $req->getUri()->getHost());
-
-        // Full URL (optional, can contain sensitive data)
-        $url = (string) $req->getUri();
-        if ($url !== '') {
-            $span->setAttribute('http.url', $url);
+        if ($this->emitTraceIdHeader && !$resp->hasHeader($this->traceIdHeader)) {
+            $resp = $resp->withHeader($this->traceIdHeader, $traceId);
         }
 
-        // User agent
-        $userAgent = $req->getHeaderLine('User-Agent');
-        if ($userAgent !== '') {
-            $span->setAttribute('http.user_agent', $userAgent);
-        }
-
-        // Request content length
-        $contentLength = $req->getHeaderLine('Content-Length');
-        if ($contentLength !== '' && is_numeric($contentLength)) {
-            $span->setAttribute('http.request_content_length', (int) $contentLength);
-        }
-
-        // Network attributes
-        $this->addNetworkAttributes($span, $req);
-
-        // Custom/application attributes
-        $this->addCustomAttributes($span, $req);
-
-        // Server attributes
-        $span->setAttribute('http.server_name', $this->otelServiceName);
-    }
-
-    /**
-     * Add network-related span attributes.
-     */
-    private function addNetworkAttributes(object $span, Request $req): void
-    {
-        // Client IP address
-        $clientIp = $req->getAttribute('client_ip')
-            ?? $req->getServerParams()['REMOTE_ADDR']
-            ?? null;
-
-        if ($clientIp) {
-            $span->setAttribute('net.peer.ip', $clientIp);
-        }
-
-        // Server port
-        $serverPort = $req->getUri()->getPort();
-        if ($serverPort !== null) {
-            $span->setAttribute('net.host.port', $serverPort);
-        }
-
-        // Protocol version
-        $protocolVersion = $req->getProtocolVersion();
-        if ($protocolVersion !== '') {
-            $span->setAttribute('http.flavor', $protocolVersion);
-        }
+        return $resp;
     }
 
     /**
@@ -269,6 +206,33 @@ final readonly class OpenTelemetryHandler
     }
 
     /**
+     * Add network-related span attributes.
+     */
+    private function addNetworkAttributes(object $span, Request $req): void
+    {
+        // Client IP address
+        $clientIp = $req->getAttribute('client_ip')
+            ?? $req->getServerParams()['REMOTE_ADDR']
+            ?? null;
+
+        if ($clientIp) {
+            $span->setAttribute('net.peer.ip', $clientIp);
+        }
+
+        // Server port
+        $serverPort = $req->getUri()->getPort();
+        if ($serverPort !== null) {
+            $span->setAttribute('net.host.port', $serverPort);
+        }
+
+        // Protocol version
+        $protocolVersion = $req->getProtocolVersion();
+        if ($protocolVersion !== '') {
+            $span->setAttribute('http.flavor', $protocolVersion);
+        }
+    }
+
+    /**
      * Add response-related span attributes.
      */
     private function addResponseAttributes(object $span, Response $resp): void
@@ -290,54 +254,44 @@ final readonly class OpenTelemetryHandler
     }
 
     /**
-     * Set span status based on HTTP status code.
+     * Add OpenTelemetry span attributes following semantic conventions.
+     *
+     * @see https://opentelemetry.io/docs/specs/semconv/http/http-spans/
      */
-    private function setSpanStatus(object $span, int $statusCode): void
+    private function addSpanAttributes(object $span, Request $req): void
     {
-        if ($statusCode >= 500) {
-            // 5xx = Server error
-            $span->setStatus(StatusCode::STATUS_ERROR, 'HTTP ' . $statusCode);
-        } elseif ($statusCode >= 400) {
-            // 4xx = Client error (not a span error, but useful to track)
-            $span->setStatus(StatusCode::STATUS_OK);
-            $span->setAttribute('http.status_class', '4xx');
-        } else {
-            // 2xx, 3xx = Success
-            $span->setStatus(StatusCode::STATUS_OK);
-        }
-    }
+        // HTTP attributes (semantic conventions)
+        $span->setAttribute('http.method', $req->getMethod());
+        $span->setAttribute('http.target', $req->getPath());
+        $span->setAttribute('http.scheme', $req->getUri()->getScheme());
+        $span->setAttribute('http.host', $req->getUri()->getHost());
 
-    /**
-     * Convert request headers to carrier format for OTel propagator.
-     */
-    private function headersToCarrier(Request $req): array
-    {
-        $carrier = [];
-        foreach ($req->getHeaders() as $name => $values) {
-            // Propagators expect lowercase header names
-            $carrier[strtolower($name)] = $values[0] ?? '';
-        }
-        return $carrier;
-    }
-
-    /**
-     * Add correlation headers (trace ID, request ID) to response.
-     */
-    private function addCorrelationHeaders(
-        Response $resp,
-        string $traceId,
-        string $spanId,
-        ?string $requestId
-    ): Response {
-        if ($this->emitRequestId && $requestId !== null && !$resp->hasHeader($this->requestIdHeader)) {
-            $resp = $resp->withHeader($this->requestIdHeader, $requestId);
+        // Full URL (optional, can contain sensitive data)
+        $url = (string) $req->getUri();
+        if ($url !== '') {
+            $span->setAttribute('http.url', $url);
         }
 
-        if ($this->emitTraceIdHeader && !$resp->hasHeader($this->traceIdHeader)) {
-            $resp = $resp->withHeader($this->traceIdHeader, $traceId);
+        // User agent
+        $userAgent = $req->getHeaderLine('User-Agent');
+        if ($userAgent !== '') {
+            $span->setAttribute('http.user_agent', $userAgent);
         }
 
-        return $resp;
+        // Request content length
+        $contentLength = $req->getHeaderLine('Content-Length');
+        if ($contentLength !== '' && is_numeric($contentLength)) {
+            $span->setAttribute('http.request_content_length', (int) $contentLength);
+        }
+
+        // Network attributes
+        $this->addNetworkAttributes($span, $req);
+
+        // Custom/application attributes
+        $this->addCustomAttributes($span, $req);
+
+        // Server attributes
+        $span->setAttribute('http.server_name', $this->otelServiceName);
     }
 
     /**
@@ -395,6 +349,21 @@ final readonly class OpenTelemetryHandler
     }
 
     /**
+     * Build span name from request (prefer route name over path).
+     */
+    private function buildSpanName(Request $req): string
+    {
+        $method = $req->getMethod();
+        $routeName = $req->getAttribute('route.name');
+
+        if ($routeName) {
+            return $method . ' ' . $routeName;
+        }
+
+        return $method . ' ' . $req->getPath();
+    }
+
+    /**
      * Derive or generate request ID.
      */
     private function deriveRequestId(Request $req): ?string
@@ -413,6 +382,19 @@ final readonly class OpenTelemetryHandler
         } catch (\Throwable) {
             return str_replace('.', '', uniqid('', true));
         }
+    }
+
+    /**
+     * Convert request headers to carrier format for OTel propagator.
+     */
+    private function headersToCarrier(Request $req): array
+    {
+        $carrier = [];
+        foreach ($req->getHeaders() as $name => $values) {
+            // Propagators expect lowercase header names
+            $carrier[strtolower($name)] = $values[0] ?? '';
+        }
+        return $carrier;
     }
 
     /**
@@ -449,5 +431,23 @@ final readonly class OpenTelemetryHandler
                 $spanId,
             ),
         );
+    }
+
+    /**
+     * Set span status based on HTTP status code.
+     */
+    private function setSpanStatus(object $span, int $statusCode): void
+    {
+        if ($statusCode >= 500) {
+            // 5xx = Server error
+            $span->setStatus(StatusCode::STATUS_ERROR, 'HTTP ' . $statusCode);
+        } elseif ($statusCode >= 400) {
+            // 4xx = Client error (not a span error, but useful to track)
+            $span->setStatus(StatusCode::STATUS_OK);
+            $span->setAttribute('http.status_class', '4xx');
+        } else {
+            // 2xx, 3xx = Success
+            $span->setStatus(StatusCode::STATUS_OK);
+        }
     }
 }

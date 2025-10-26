@@ -27,8 +27,9 @@ describe('Middleware Features', function () {
             'Accept' => 'application/json',
         ]));
 
-        expect($response)->toHaveStatus(200);
-        expect($response->getHeaderLine('Content-Type'))->toContain('application/json');
+        expect($response)
+            ->toHaveStatus(200)
+            ->and($response->getHeaderLine('Content-Type'))->toContain('application/json');
     });
 
     it('handles locale negotiation', function () {

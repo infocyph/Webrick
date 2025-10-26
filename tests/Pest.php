@@ -100,6 +100,9 @@ expect()->extend('toHaveServerTimingHeader', function () {
 /**
  * Create a mock request with trace attributes.
  */
+/**
+ * Create a mock request with trace attributes.
+ */
 function mockRequestWithTrace(
     string $method = 'GET',
     string $uri = '/',
@@ -108,7 +111,7 @@ function mockRequestWithTrace(
     ?string $requestId = null,
     array $headers = []
 ): Infocyph\Webrick\Request\Request {
-    $request = Infocyph\Webrick\Request\Request::create($method, $uri, headers: $headers);
+    $request = mockRequest($method, $uri, $headers);
 
     if ($traceId) {
         $request = $request->withAttribute('trace.trace_id', $traceId);
@@ -128,9 +131,10 @@ function mockRequestWithTrace(
  */
 function assertHasTelemetryHeaders(Infocyph\Webrick\Response\Response $response): void
 {
-    expect($response->hasHeader('X-Response-Time'))->toBeTrue('Expected X-Response-Time header');
-    expect($response->hasHeader('X-Request-Id'))->toBeTrue('Expected X-Request-Id header');
-    expect($response->hasHeader('Trace-Id'))->toBeTrue('Expected Trace-Id header');
+    expect($response->hasHeader('X-Response-Time'))
+        ->toBeTrue('Expected X-Response-Time header')
+        ->and($response->hasHeader('X-Request-Id'))->toBeTrue('Expected X-Request-Id header')
+        ->and($response->hasHeader('Trace-Id'))->toBeTrue('Expected Trace-Id header');
 }
 
 /**
@@ -184,9 +188,11 @@ function buildTraceparent(string $traceId, string $spanId, string $flags = '01')
  */
 function assertTraceContextInitialized(): void
 {
-    expect(TraceContext::isAvailable())->toBeTrue('TraceContext should be initialized');
-    expect(TraceContext::getTraceId())->not->toBeNull('Trace ID should not be null');
-    expect(TraceContext::getSpanId())->not->toBeNull('Span ID should not be null');
+    expect(TraceContext::isAvailable())
+        ->toBeTrue('TraceContext should be initialized')
+        ->and(TraceContext::getTraceId())->not
+        ->toBeNull('Trace ID should not be null')
+        ->and(TraceContext::getSpanId())->not->toBeNull('Span ID should not be null');
 }
 
 /**
@@ -194,9 +200,10 @@ function assertTraceContextInitialized(): void
  */
 function assertTraceContextCleared(): void
 {
-    expect(TraceContext::isAvailable())->toBeFalse('TraceContext should be cleared');
-    expect(TraceContext::getTraceId())->toBeNull('Trace ID should be null');
-    expect(TraceContext::getSpanId())->toBeNull('Span ID should be null');
+    expect(TraceContext::isAvailable())
+        ->toBeFalse('TraceContext should be cleared')
+        ->and(TraceContext::getTraceId())->toBeNull('Trace ID should be null')
+        ->and(TraceContext::getSpanId())->toBeNull('Span ID should be null');
 }
 
 /*
