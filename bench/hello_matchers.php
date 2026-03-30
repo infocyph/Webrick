@@ -12,6 +12,8 @@ use Infocyph\Webrick\Router\Matching\MatcherInterface;
 use Infocyph\Webrick\Router\Matching\ShardedMatcher;
 use Infocyph\Webrick\Router\Route\Collection;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
+use Infocyph\Webrick\Support\RouteCache;
+use Psr\Log\NullLogger;
 
 require dirname(__DIR__) . '/vendor/autoload.php';
 
@@ -47,6 +49,7 @@ if ($cacheOnly && $memoryOnly) {
  * @var array<int, array{
  *   key:string,
  *   title:string,
+ *   register:callable(Registrar):void,
  *   routes:list<CompiledRoute>
  * }>
  */
@@ -54,12 +57,22 @@ $routeSets = [
     [
         'key' => 'index-routes',
         'title' => 'Index routes.php (+ attribute routes)',
-        'routes' => buildIndexCompiledRoutes(),
+        'register' => static function (Registrar $r): void {
+            registerIndexRoutes($r);
+        },
+        'routes' => buildCompiledRoutes(static function (Registrar $r): void {
+            registerIndexRoutes($r);
+        }),
     ],
     [
         'key' => 'route-cache-example',
         'title' => 'RouteCache example closure routes',
-        'routes' => buildRouteCacheExampleCompiledRoutes(),
+        'register' => static function (Registrar $r): void {
+            registerRouteCacheExampleRoutes($r);
+        },
+        'routes' => buildCompiledRoutes(static function (Registrar $r): void {
+            registerRouteCacheExampleRoutes($r);
+        }),
     ],
 ];
 
@@ -78,6 +91,7 @@ $modes = match (true) {
  *   host:string,
  *   path:string,
  *   route_count:int,
+ *   register:callable(Registrar):void,
  *   routes:list<CompiledRoute>,
  *   assertHit:callable(array):bool
  * }>
@@ -94,6 +108,7 @@ foreach ($routeSets as $routeSet) {
         'host' => 'localhost',
         'path' => '/ping',
         'route_count' => $routeCount,
+        'register' => $routeSet['register'],
         'routes' => $routes,
         'assertHit' => static function (array $hit): bool {
             return isset($hit[0]) && $hit[0]->getPath() === '/ping' && (($hit[1] ?? []) === []);
@@ -107,6 +122,7 @@ foreach ($routeSets as $routeSet) {
         'host' => 'localhost',
         'path' => '/hello/benchmark',
         'route_count' => $routeCount,
+        'register' => $routeSet['register'],
         'routes' => $routes,
         'assertHit' => static function (array $hit): bool {
             return isset($hit[0], $hit[1]['name'])
@@ -124,6 +140,7 @@ $scenarios[] = [
     'host' => 'api.localhost',
     'path' => '/v1/users/7',
     'route_count' => \count($indexRouteSet['routes']),
+    'register' => $indexRouteSet['register'],
     'routes' => $indexRouteSet['routes'],
     'assertHit' => static function (array $hit): bool {
         return isset($hit[0], $hit[1]['id'])
@@ -145,6 +162,7 @@ echo "  ops/s  = iterations / elapsed_seconds for one timed round (higher is bet
 echo "  ns/op  = elapsed_nanoseconds / iterations for one timed round (lower is better).\n";
 echo "  best   = fastest round.\n";
 echo "  avg    = mean across all rounds.\n";
+echo "  cache-hot mode prebuilds cache artifacts via RouteCache::build() before timing.\n";
 echo "Route sets:\n";
 foreach ($routeSets as $set) {
     echo "  - {$set['title']}: " . \count($set['routes']) . " compiled routes\n";
@@ -166,12 +184,18 @@ foreach ($modes as $modeLabel => $useCache) {
         $results[] = benchMatcher(
             'Fused',
             static function () use ($scenario, $useCache, $cacheRoot): MatcherInterface {
+                $cachePath = $cacheRoot . DIRECTORY_SEPARATOR . $scenario['key'] . '.fused.php';
+                if ($useCache) {
+                    buildBenchmarkCache('fused', $cachePath, $scenario['register']);
+                }
+
                 $m = FusedMatcher::make();
                 if ($useCache) {
-                    $m->enableCache($cacheRoot . DIRECTORY_SEPARATOR . $scenario['key'] . '.fused.php');
-                }
-                foreach ($scenario['routes'] as $route) {
-                    $m->add($route);
+                    $m->enableCache($cachePath);
+                } else {
+                    foreach ($scenario['routes'] as $route) {
+                        $m->add($route);
+                    }
                 }
                 $m->finalize();
                 return $m;
@@ -188,12 +212,18 @@ foreach ($modes as $modeLabel => $useCache) {
         $results[] = benchMatcher(
             'Sharded',
             static function () use ($scenario, $useCache, $cacheRoot): MatcherInterface {
+                $cachePath = $cacheRoot . DIRECTORY_SEPARATOR . $scenario['key'] . '-sharded';
+                if ($useCache) {
+                    buildBenchmarkCache('sharded', $cachePath, $scenario['register']);
+                }
+
                 $m = ShardedMatcher::make();
                 if ($useCache) {
-                    $m->enableCache($cacheRoot . DIRECTORY_SEPARATOR . $scenario['key'] . '-sharded');
-                }
-                foreach ($scenario['routes'] as $route) {
-                    $m->add($route);
+                    $m->enableCache($cachePath);
+                } else {
+                    foreach ($scenario['routes'] as $route) {
+                        $m->add($route);
+                    }
                 }
                 $m->finalize();
                 return $m;
@@ -210,12 +240,18 @@ foreach ($modes as $modeLabel => $useCache) {
         $results[] = benchMatcher(
             'Generated',
             static function () use ($scenario, $useCache, $cacheRoot): MatcherInterface {
+                $cachePath = $cacheRoot . DIRECTORY_SEPARATOR . $scenario['key'] . '.generated.php';
+                if ($useCache) {
+                    buildBenchmarkCache('generated', $cachePath, $scenario['register']);
+                }
+
                 $m = GeneratedMatcher::make();
                 if ($useCache) {
-                    $m->enableCache($cacheRoot . DIRECTORY_SEPARATOR . $scenario['key'] . '.generated.php');
-                }
-                foreach ($scenario['routes'] as $route) {
-                    $m->add($route);
+                    $m->enableCache($cachePath);
+                } else {
+                    foreach ($scenario['routes'] as $route) {
+                        $m->add($route);
+                    }
                 }
                 $m->finalize();
                 return $m;
@@ -315,17 +351,60 @@ function benchMatcher(
 }
 
 /**
- * Build compiled routes from project `routes.php` and attribute fixtures.
+ * Build matcher cache artifacts for benchmark cache-hot mode.
  *
+ * @param 'fused'|'sharded'|'generated' $matcher
+ * @param callable(Registrar):void $register
+ */
+function buildBenchmarkCache(string $matcher, string $cachePath, callable $register): void
+{
+    RouteCache::build([
+        'matcher' => $matcher,
+        'cache' => $cachePath,
+        'register' => $register,
+        'signKey' => 'bench-sign-key',
+        'signedDefaultTtl' => 900,
+        'fallbackAliasesFromRegistrar' => true,
+        'logger' => new NullLogger(),
+        'registrarOptions' => [
+            'autoSlashRedirect' => false,
+            'exposeUrlServices' => false,
+        ],
+    ]);
+}
+
+/**
+ * Compile routes from a registration callback.
+ *
+ * @param callable(Registrar):void $register
  * @return list<CompiledRoute>
  */
-function buildIndexCompiledRoutes(): array
+function buildCompiledRoutes(callable $register): array
 {
-    static $compiled = null;
-    if (\is_array($compiled)) {
-        return $compiled;
-    }
+    $routes = new Collection();
+    $registrar = new Registrar(
+        routes: $routes,
+        autoSlashRedirect: false,
+        exposeUrlServices: false,
+        signKey: 'bench-sign-key',
+        signedDefaultTtl: 900,
+    );
 
+    $register($registrar);
+
+    /** @var list<CompiledRoute> $all */
+    $all = $routes->compile()->all();
+    if ($all === []) {
+        throw new RuntimeException('Failed to build benchmark route set.');
+    }
+    return $all;
+}
+
+/**
+ * Registration callback for project `routes.php` + attribute fixture routes.
+ */
+function registerIndexRoutes(Registrar $registrar): void
+{
     MiddlewareAliases::reset();
     MiddlewareAliases::register(
         'throttle',
@@ -336,17 +415,8 @@ function buildIndexCompiledRoutes(): array
         static fn (...$_params): string => \Infocyph\Webrick\Middleware\VerifySignedUrlMiddleware::class,
     );
 
-    $routes = new Collection();
-    $signUrlSecret = 'bench-sign-key';
-    $registrar = new Registrar(
-        routes: $routes,
-        autoSlashRedirect: false,
-        exposeUrlServices: false,
-        signKey: $signUrlSecret,
-        signedDefaultTtl: 900,
-    );
-
     Router::setInstance($registrar);
+    $signUrlSecret = 'bench-sign-key';
     require dirname(__DIR__) . '/routes.php';
 
     $fixtureDir = dirname(__DIR__) . '/tests/Fixture';
@@ -356,50 +426,15 @@ function buildIndexCompiledRoutes(): array
             ['Infocyph\\Webrick\\Tests\\Fixture\\' => $fixtureDir],
         );
     }
-
-    /** @var list<CompiledRoute> $all */
-    $all = $routes->compile()->all();
-    if ($all === []) {
-        throw new RuntimeException('Failed to build benchmark route set from routes.php.');
-    }
-    $compiled = $all;
-
-    return $compiled;
 }
 
 /**
- * Build compiled routes matching the closure example in route_cache_examples.php.
- *
- * @return list<CompiledRoute>
+ * Registration callback that mirrors route-cache closure demo routes.
  */
-function buildRouteCacheExampleCompiledRoutes(): array
+function registerRouteCacheExampleRoutes(Registrar $registrar): void
 {
-    static $compiled = null;
-    if (\is_array($compiled)) {
-        return $compiled;
-    }
-
-    $routes = new Collection();
-    $registrar = new Registrar(
-        routes: $routes,
-        autoSlashRedirect: false,
-        exposeUrlServices: false,
-    );
-
-    $register = static function (Registrar $r): void {
-        $r->get('/ping', static fn (): string => 'pong', 'ping');
-        $r->get('/hello/{name}', static fn ($req, $name): string => (string)$name, 'hello');
-    };
-    $register($registrar);
-
-    /** @var list<CompiledRoute> $all */
-    $all = $routes->compile()->all();
-    if ($all === []) {
-        throw new RuntimeException('Failed to build benchmark route set from route cache closure example.');
-    }
-    $compiled = $all;
-
-    return $compiled;
+    $registrar->get('/ping', static fn (): string => 'pong', 'ping');
+    $registrar->get('/hello/{name}', static fn ($req, $name): string => (string)$name, 'hello');
 }
 
 /**

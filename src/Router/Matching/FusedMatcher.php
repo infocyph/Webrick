@@ -60,27 +60,6 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
     private bool $cacheLoaded = false;
 
     /**
-     * Last observed cache file stamp ("mtime:size") for staleness checks.
-     *
-     * @var string|null
-     */
-    private ?string $cacheStamp = null;
-
-    /**
-     * Interval between file-stamp checks in nanoseconds.
-     *
-     * @var int
-     */
-    private int $cacheStampCheckIntervalNs = 1_000_000_000;
-
-    /**
-     * Next monotonic timestamp (ns) when cache staleness check is allowed.
-     *
-     * @var int
-     */
-    private int $cacheStampNextCheckNs = 0;
-
-    /**
      * Whether cache file writing is explicitly enabled (tooling-only path).
      *
      * @var bool
@@ -177,7 +156,6 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
     public function aliasIndex(): array
     {
         if ($this->cacheEnabled) {
-            $this->refreshCacheIfStale();
             if (!$this->cacheLoaded && \is_file($this->cacheFile)) {
                 $this->loadCacheBlob();
             }
@@ -259,8 +237,6 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
             $this->hosts = [];
             $this->alias = [];
             $this->cacheLoaded = false;
-            $this->cacheStamp = null;
-            $this->cacheStampNextCheckNs = 0;
         }
         $this->finalized = true;
     }
@@ -290,8 +266,6 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
     public function match(string $method, string $host, string $path): array
     {
         if ($this->cacheEnabled) {
-            $this->refreshCacheIfStale();
-
             if (!$this->cacheLoaded && \is_file($this->cacheFile)) {
                 $this->loadCacheBlob();
             }
@@ -387,7 +361,6 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
             @\unlink($tmp);
             throw new \RuntimeException("Failed to move cache file into place {$this->cacheFile}");
         }
-        $this->cacheStamp = $this->fileStamp($this->cacheFile);
 
         if ($this->shouldWarmOpcache()) {
             @\opcache_compile_file($this->cacheFile);
@@ -452,8 +425,6 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         $this->hosts = $blob[self::H_DATA] ?? [];
         $this->alias = $blob[self::H_ALIAS] ?? [];
         $this->cacheLoaded = true;
-        $this->cacheStamp = $this->fileStamp($this->cacheFile);
-        $this->cacheStampNextCheckNs = \hrtime(true) + $this->cacheStampCheckIntervalNs;
 
         if ($this->shouldWarmOpcache()) {
             @\opcache_compile_file($this->cacheFile);
@@ -516,30 +487,4 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         return null;
     }
 
-    /**
-     * Invalidate hydrated cache tables when the backing file changed on disk.
-     *
-     * @return void
-     */
-    private function refreshCacheIfStale(): void
-    {
-        if (!$this->cacheLoaded) {
-            return;
-        }
-
-        $now = \hrtime(true);
-        if ($now < $this->cacheStampNextCheckNs) {
-            return;
-        }
-        $this->cacheStampNextCheckNs = $now + $this->cacheStampCheckIntervalNs;
-
-        $stamp = $this->fileStamp($this->cacheFile);
-        if ($stamp === null || $stamp !== $this->cacheStamp) {
-            $this->hosts = [];
-            $this->alias = [];
-            $this->cacheLoaded = false;
-            $this->cacheStamp = null;
-            $this->cacheStampNextCheckNs = 0;
-        }
-    }
 }

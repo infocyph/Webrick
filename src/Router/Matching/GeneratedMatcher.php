@@ -45,21 +45,6 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
     private bool $cacheLoaded = false;
 
     /**
-     * Last observed file stamp for staleness checks.
-     */
-    private ?string $cacheStamp = null;
-
-    /**
-     * Staleness check interval in ns.
-     */
-    private int $cacheStampCheckIntervalNs = 1_000_000_000;
-
-    /**
-     * Next monotonic timestamp (ns) when staleness check is allowed.
-     */
-    private int $cacheStampNextCheckNs = 0;
-
-    /**
      * Whether cache file writing is explicitly enabled (tooling-only path).
      */
     private bool $cacheWriteEnabled = false;
@@ -126,7 +111,6 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
     public function aliasIndex(): array
     {
         if ($this->cacheEnabled) {
-            $this->refreshCacheIfStale();
             if (!$this->cacheLoaded && \is_file($this->cacheFile)) {
                 $this->loadCacheBlob();
             }
@@ -176,8 +160,6 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
                 $this->guard = [];
                 $this->compiledFn = null;
                 $this->cacheLoaded = false;
-                $this->cacheStamp = null;
-                $this->cacheStampNextCheckNs = 0;
             } elseif ($this->compiledFn === null) {
                 // No cache file available: keep runtime path purely in-memory.
                 $this->compiledFn = $this->compileClosureFromCode($this->buildMatcherCode());
@@ -196,7 +178,6 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         $path = ($path === '' ? '/' : $path);
 
         if ($this->cacheEnabled) {
-            $this->refreshCacheIfStale();
             if (!$this->cacheLoaded && \is_file($this->cacheFile)) {
                 $this->loadCacheBlob();
             }
@@ -335,7 +316,6 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
             . "];\n";
 
         $this->writeAtomicPhpFile($this->cacheFile, $php);
-        $this->cacheStamp = $this->fileStamp($this->cacheFile);
 
         if ($this->shouldWarmOpcache()) {
             @\opcache_compile_file($this->cacheFile);
@@ -372,8 +352,6 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         $this->compiledFn = $fn;
         $this->alias = $blob[self::H_ALIAS] ?? [];
         $this->cacheLoaded = true;
-        $this->cacheStamp = $this->fileStamp($this->cacheFile);
-        $this->cacheStampNextCheckNs = \hrtime(true) + $this->cacheStampCheckIntervalNs;
     }
 
     /**
@@ -436,31 +414,6 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         }
 
         return [$routeExprs, $hosts];
-    }
-
-    /**
-     * Invalidate compiled closure when generated cache file changed.
-     */
-    private function refreshCacheIfStale(): void
-    {
-        if (!$this->cacheLoaded) {
-            return;
-        }
-
-        $now = \hrtime(true);
-        if ($now < $this->cacheStampNextCheckNs) {
-            return;
-        }
-        $this->cacheStampNextCheckNs = $now + $this->cacheStampCheckIntervalNs;
-
-        $stamp = $this->fileStamp($this->cacheFile);
-        if ($stamp === null || $stamp !== $this->cacheStamp) {
-            $this->compiledFn = null;
-            $this->cacheLoaded = false;
-            $this->cacheStamp = null;
-            $this->cacheStampNextCheckNs = 0;
-            $this->alias = [];
-        }
     }
 
     /**

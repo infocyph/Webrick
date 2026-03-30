@@ -83,20 +83,6 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
      */
     private ?bool $aliasLoaded = null; // null = not attempted; true/false after load
 
-    /**
-     * Next monotonic timestamp (ns) when alias file staleness check is allowed.
-     *
-     * @var int
-     */
-    private int $aliasNextCheckNs = 0;
-
-    /**
-     * Last observed alias file stamp ("mtime:size") when loaded from cache.
-     *
-     * @var string|null
-     */
-    private ?string $aliasStamp = null;
-
     /*──────────── state ────────────*/
 
     /**
@@ -144,13 +130,6 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     private bool $finalized = false;
 
     /**
-     * Next monotonic timestamp (ns) when each shard file may be restated.
-     *
-     * @var array<string,int>
-     */
-    private array $loadedFileNextCheckNs = [];
-
-    /**
      * Cache of loaded shard arrays keyed by absolute file path.
      *
      * Value is the array returned from the required shard file, or null when
@@ -159,13 +138,6 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
      * @var array<string, array|null>
      */
     private array $loadedFiles = [];
-
-    /**
-     * Last observed file stamps for loaded shard files.
-     *
-     * @var array<string,string>
-     */
-    private array $loadedFileStamps = [];
 
     /**
      * In-memory shards used in dev-mode: memGroups[host][bucket] => group array|null.
@@ -182,13 +154,6 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
      * @var array<string, array<string, array<string, bool>>>
      */
     private array $pathGuard = [];
-
-    /**
-     * Interval between file-stamp checks in nanoseconds.
-     *
-     * @var int
-     */
-    private int $staleCheckIntervalNs = 1_000_000_000;
 
     /**
      * Private constructor to enforce factory usage.
@@ -263,28 +228,12 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
 
         $file = $this->aliasFilePath();
         if ($this->aliasLoaded === true) {
-            $now = \hrtime(true);
-            if ($now < $this->aliasNextCheckNs) {
-                return $this->alias;
-            }
-            $this->aliasNextCheckNs = $now + $this->staleCheckIntervalNs;
-
-            $stamp = $this->fileStamp($file);
-            if ($stamp !== null && $stamp === $this->aliasStamp) {
-                return $this->alias;
-            }
-
-            // stale or removed; force reload path below
-            $this->aliasLoaded = null;
-            $this->aliasStamp = null;
-            $this->aliasNextCheckNs = 0;
+            return $this->alias;
         }
 
         if (!\is_file($file)) {
             // No alias file (e.g., cache not dumped) → fall back to memory
             $this->aliasLoaded = false;
-            $this->aliasStamp = null;
-            $this->aliasNextCheckNs = 0;
             return $this->alias;
         }
 
@@ -306,8 +255,6 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
 
         $this->alias = $blob[self::H_DATA] ?? [];
         $this->aliasLoaded = true;
-        $this->aliasStamp = $this->fileStamp($file);
-        $this->aliasNextCheckNs = \hrtime(true) + $this->staleCheckIntervalNs;
 
         if ($this->shouldWarmOpcache()) {
             @\opcache_compile_file($file);
@@ -387,11 +334,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             $this->bucketMap = [];
             $this->alias = [];
             $this->loadedFiles = [];
-            $this->loadedFileStamps = [];
-            $this->loadedFileNextCheckNs = [];
             $this->aliasLoaded = null;
-            $this->aliasStamp = null;
-            $this->aliasNextCheckNs = 0;
         }
         $this->cacheReadable = $this->cacheEnabled && \is_file($sentinel);
         $this->finalized = true;
@@ -700,24 +643,11 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     private function loadGroupFromCache(string $hostKey, string $bucket): ?array
     {
         $file = $this->shardFilePath($hostKey, $bucket);
-        $stamp = null;
-
         if (\array_key_exists($file, $this->loadedFiles)) {
-            if (!$this->shouldRestatLoadedFile($file)) {
-                return $this->loadedFiles[$file];
-            }
-
-            $stamp = $this->fileStamp($file);
-            $known = $this->loadedFileStamps[$file] ?? '';
-            if (($stamp ?? '') === $known) {
-                return $this->loadedFiles[$file];
-            }
+            return $this->loadedFiles[$file];
         }
 
-        $stamp ??= $this->fileStamp($file);
-        if ($stamp === null || !\is_file($file)) {
-            $this->loadedFileStamps[$file] = '';
-            $this->loadedFileNextCheckNs[$file] = \hrtime(true) + $this->staleCheckIntervalNs;
+        if (!\is_file($file)) {
             return $this->loadedFiles[$file] = null;
         }
 
@@ -737,8 +667,6 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             }
         }
 
-        $this->loadedFileStamps[$file] = $stamp;
-        $this->loadedFileNextCheckNs[$file] = \hrtime(true) + $this->staleCheckIntervalNs;
         return $this->loadedFiles[$file] = $blob[self::H_DATA];
     }
 
@@ -822,24 +750,6 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             : $this->sanitizeForFilename($hostKey) . '.' . $bucketSafe . '.php';
 
         return $this->cacheDir . DIRECTORY_SEPARATOR . $name;
-    }
-
-    /**
-     * Decide whether a loaded shard file should be restated for staleness.
-     *
-     * @param string $file Absolute cache file path.
-     * @return bool True when a new stat check should be performed.
-     */
-    private function shouldRestatLoadedFile(string $file): bool
-    {
-        $now = \hrtime(true);
-        $next = $this->loadedFileNextCheckNs[$file] ?? 0;
-        if ($now < $next) {
-            return false;
-        }
-
-        $this->loadedFileNextCheckNs[$file] = $now + $this->staleCheckIntervalNs;
-        return true;
     }
 
     /**
