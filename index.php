@@ -1,8 +1,25 @@
 <?php
 
 /**
- * index.php – ultra-light Webrick demo
+ * index.php – ultra-light Webrick demo (runtime matcher switch)
+ *
  * Run: php -S localhost:8000 index.php
+ *
+ * Matcher selection:
+ * - Default matcher: `sharded`
+ * - Optional runtime override via HTTP header (default: `X-Webrick-Matcher`)
+ * - Supported values: `sharded`, `fused`, `generated`
+ *
+ * Optional header-key protection:
+ * - If `WEBRICK_MATCHER_KEY` is set, request must also send
+ *   `X-Webrick-Matcher-Key: <same value>` (header name configurable).
+ * - In non-prod (`APP_ENV != prod`) matcher override is always allowed.
+ *
+ * Environment knobs:
+ * - `WEBRICK_MATCHER_DEFAULT` (default: `sharded`)
+ * - `WEBRICK_MATCHER_HEADER` (default: `X-Webrick-Matcher`)
+ * - `WEBRICK_MATCHER_KEY_HEADER` (default: `X-Webrick-Matcher-Key`)
+ * - `WEBRICK_MATCHER_KEY` (optional shared secret for matcher override)
  */
 declare(strict_types=1);
 
@@ -33,6 +50,10 @@ namespace {
     use Infocyph\Webrick\Router\Definition\Registrar;
     use Infocyph\Webrick\Router\Dispatch\MiddlewareAliases;
     use Infocyph\Webrick\Router\Kernel\RouterKernel;
+    use Infocyph\Webrick\Router\Matching\FusedMatcher;
+    use Infocyph\Webrick\Router\Matching\GeneratedMatcher;
+    use Infocyph\Webrick\Router\Matching\MatcherInterface;
+    use Infocyph\Webrick\Router\Matching\ShardedMatcher;
     use Infocyph\Webrick\Router\Route\Collection;
     use Psr\Log\NullLogger;
 
@@ -131,6 +152,52 @@ namespace {
         'input_sanitizer' => true,  // set true if you want global scalar sanitization
     ];
 
+    // Runtime matcher switching (header driven).
+    $matcherDefault = \strtolower(
+        (string)($_ENV['WEBRICK_MATCHER_DEFAULT'] ?? \getenv('WEBRICK_MATCHER_DEFAULT') ?? 'sharded'),
+    );
+    $matcherHeaderName = (string)($_ENV['WEBRICK_MATCHER_HEADER'] ?? \getenv('WEBRICK_MATCHER_HEADER') ?? 'X-Webrick-Matcher');
+    $matcherKeyHeaderName = (string)($_ENV['WEBRICK_MATCHER_KEY_HEADER'] ?? \getenv('WEBRICK_MATCHER_KEY_HEADER') ?? 'X-Webrick-Matcher-Key');
+    $matcherKey = (string)($_ENV['WEBRICK_MATCHER_KEY'] ?? \getenv('WEBRICK_MATCHER_KEY') ?? '');
+    $allowedMatchers = ['sharded', 'fused', 'generated'];
+    if (!\in_array($matcherDefault, $allowedMatchers, true)) {
+        $matcherDefault = 'sharded';
+    }
+
+    $readHeader = static function (string $header): ?string {
+        $serverKey = 'HTTP_' . \str_replace('-', '_', \strtoupper(\trim($header)));
+        if (!isset($_SERVER[$serverKey])) {
+            return null;
+        }
+        $v = \trim((string)$_SERVER[$serverKey]);
+        return $v === '' ? null : $v;
+    };
+
+    $requestedMatcher = \strtolower((string)($readHeader($matcherHeaderName) ?? ''));
+    $providedKey = (string)($readHeader($matcherKeyHeaderName) ?? '');
+    $overrideAllowed = $requestedMatcher !== ''
+        && (
+            $dev
+            || $matcherKey === ''
+            || \hash_equals($matcherKey, $providedKey)
+        );
+    $selectedMatcher = ($overrideAllowed && \in_array($requestedMatcher, $allowedMatchers, true))
+        ? $requestedMatcher
+        : $matcherDefault;
+
+    /** @var MatcherInterface $matcher */
+    $matcher = match ($selectedMatcher) {
+        'fused' => FusedMatcher::make(),
+        'generated' => GeneratedMatcher::make(),
+        default => ShardedMatcher::make(),
+    };
+
+    $routeCachePath = match ($selectedMatcher) {
+        'fused' => __DIR__ . '/.route-cache/__routes.php',
+        'generated' => __DIR__ . '/.route-cache/__generated.php',
+        default => __DIR__ . '/.route-cache',
+    };
+
     /* --------------------------------------------------------------------------
      * Middleware aliases (string-based), e.g. 'throttle:60,60'
      * ----------------------------------------------------------------------- */
@@ -184,15 +251,13 @@ namespace {
     };
 
     /* --------------------------------------------------------------------------
-     * 3) Boot the router kernel (Option B)
+     * 3) Boot the router kernel (header-selectable matcher backend)
      * ----------------------------------------------------------------------- */
-
-    // A) ShardedMatcher (segment-dir cache)
     $kernel = RouterKernel::bootWithRegistrar(
         log: $logger,
-        matcher: Infocyph\Webrick\Router\Matching\ShardedMatcher::make(),
+        matcher: $matcher,
         register: $register,
-        routeCache: __DIR__ . '/.route-cache',
+        routeCache: $routeCachePath,
         registrarOptions: [
             'autoSlashRedirect' => false,
             'exposeUrlServices' => true,
@@ -207,26 +272,6 @@ namespace {
         // leave true while validating your cache’s __aliases.php
         fallbackAliasesFromRegistrar: true,
     );
-
-    // B) FusedMatcher (single-file cache)
-    // $kernel = RouterKernel::bootWithRegistrar(
-    //     log: $logger,
-    //     matcher: Infocyph\Webrick\Router\Matching\FusedMatcher::make(),
-    //     register: $register,
-    //     routeCache: __DIR__ . '/.route-cache/__routes.php',
-    //     registrarOptions: [
-    //         'autoSlashRedirect' => false,
-    //         'exposeUrlServices' => true,
-    //         'signKey'           => $signUrlSecret,
-    //         'signedDefaultTtl'  => 900,
-    //     ],
-    //     preGlobal: $preGlobal,
-    //     postGlobal: $postGlobal,
-    //     bindUrlServices: static function (Collection $routes) use ($signUrlSecret): void {
-    //         Response::bindUrlServices($routes, $signUrlSecret, 900);
-    //     },
-    //     fallbackAliasesFromRegistrar: true
-    // );
 
     /* --------------------------------------------------------------------------
      * 4) Handle & emit

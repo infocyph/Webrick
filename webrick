@@ -78,12 +78,12 @@ $usage = <<<TXT
     Webrick CLI (no-getopt)
 
     USAGE:
-      webrick route:cache  --matcher=sharded|fused --cache=PATH --routes=PATH [--signkey=KEY] [--ttl=900] [--alias-fallback=1|0] [--attr-dirs="Ns\\\\=dir,..."] [--attr-classes="FQCN1,FQCN2"] [--verbose=1]
-      webrick route:clear  --matcher=sharded|fused --cache=PATH [--aggressive=1|0]
+      webrick route:cache  --matcher=sharded|fused|generated --cache=PATH --routes=PATH [--signkey=KEY] [--ttl=900] [--alias-fallback=1|0] [--attr-dirs="Ns\\\\=dir,..."] [--attr-classes="FQCN1,FQCN2"] [--verbose=1]
+      webrick route:clear  --matcher=sharded|fused|generated --cache=PATH [--aggressive=1|0]
 
     NOTES:
     - Sharded matcher: --cache is a directory (e.g. ./.route-cache)
-    - Fused matcher:   --cache is a file     (e.g. ./.route-cache/__routes.php)
+    - Fused/Generated: --cache is a file     (e.g. ./.route-cache/__routes.php)
     - Composer usage:  composer run webrick -- route:cache --cache=.route-cache ...
     TXT;
 

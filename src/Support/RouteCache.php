@@ -9,6 +9,7 @@ use Infocyph\Webrick\Router\Definition\Attribute\AttributeRouteLoader;
 use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Kernel\RouterKernel;
 use Infocyph\Webrick\Router\Matching\FusedMatcher;
+use Infocyph\Webrick\Router\Matching\GeneratedMatcher;
 use Infocyph\Webrick\Router\Matching\ShardedMatcher;
 use Infocyph\Webrick\Router\Route\Collection;
 use Psr\Log\LoggerInterface;
@@ -28,11 +29,19 @@ final class RouteCache
 
         $matcherOpt = $options['matcher'] ?? null;
         $matcherOpt = $matcherOpt ? \strtolower((string)$matcherOpt) : null;
-        $isFused = match ($matcherOpt) {
-            'fused' => true,
-            'sharded' => false,
-            default => \str_ends_with($cachePath, '.php'),
+        $mode = match ($matcherOpt) {
+            'fused' => 'fused',
+            'sharded' => 'sharded',
+            'generated' => 'generated',
+            default => \str_ends_with($cachePath, '.php') ? 'fused' : 'sharded',
         };
+
+        $matcher = match ($mode) {
+            'generated' => GeneratedMatcher::make(),
+            'fused' => FusedMatcher::make(),
+            default => ShardedMatcher::make(),
+        };
+        $routeCache = ($mode === 'sharded') ? \rtrim($cachePath, "/\\") : $cachePath;
 
         $userRegister = $options['register'] ?? null;
         $routesFile = (string)($options['routes'] ?? '');
@@ -112,9 +121,6 @@ final class RouteCache
             };
         }
 
-        $matcher = $isFused ? FusedMatcher::make() : ShardedMatcher::make();
-        $routeCache = $isFused ? $cachePath : \rtrim($cachePath, "/\\");
-
         RouterKernel::bootWithRegistrar(
             log: $logger,
             matcher: $matcher,
@@ -132,7 +138,7 @@ final class RouteCache
             fallbackAliasesFromRegistrar: $fallbackAliases,
         );
 
-        return $isFused ? $routeCache : $routeCache . DIRECTORY_SEPARATOR . '__root.php';
+        return ($mode === 'sharded') ? $routeCache . DIRECTORY_SEPARATOR . '__root.php' : $routeCache;
     }
 
     public static function clear(array $options): bool
@@ -143,10 +149,11 @@ final class RouteCache
         }
         $matcherOpt = $options['matcher'] ?? null;
         $matcherOpt = $matcherOpt ? \strtolower((string)$matcherOpt) : null;
-        $isFused = match ($matcherOpt) {
-            'fused' => true,
-            'sharded' => false,
-            default => \str_ends_with($cachePath, '.php'),
+        $mode = match ($matcherOpt) {
+            'fused' => 'fused',
+            'sharded' => 'sharded',
+            'generated' => 'generated',
+            default => \str_ends_with($cachePath, '.php') ? 'fused' : 'sharded',
         };
 
         $aggressive = (bool)($options['aggressive'] ?? false);
@@ -156,7 +163,7 @@ final class RouteCache
             throw new \RuntimeException("RouteCache::clear: refusing to operate on risky path '{$cachePath}'.");
         }
 
-        if ($isFused) {
+        if ($mode !== 'sharded') {
             return self::rmFile($cachePath);
         }
 

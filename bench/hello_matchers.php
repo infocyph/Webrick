@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Infocyph\Webrick\Router\Matching\FusedMatcher;
+use Infocyph\Webrick\Router\Matching\GeneratedMatcher;
 use Infocyph\Webrick\Router\Matching\MatcherInterface;
 use Infocyph\Webrick\Router\Matching\ShardedMatcher;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
@@ -164,24 +165,47 @@ foreach ($modes as $modeLabel => $useCache) {
             assertHit: $scenario['assertHit'],
         );
 
-        echo "\nScenario: {$scenario['title']} ({$scenario['method']} {$scenario['host']} {$scenario['path']})\n";
-        echo str_pad('Matcher', 12)
-            . str_pad('Best ops/s', 18)
-            . str_pad('Avg ops/s', 18)
-            . str_pad('Best ns/op', 16)
-            . "Rounds(ms)\n";
+        $results[] = benchMatcher(
+            'Generated',
+            static function () use ($scenario, $useCache, $cacheRoot): MatcherInterface {
+                $m = GeneratedMatcher::make();
+                if ($useCache) {
+                    $m->enableCache($cacheRoot . DIRECTORY_SEPARATOR . $scenario['key'] . '.generated.php');
+                }
+                foreach ($scenario['routes'] as $route) {
+                    $m->add($route);
+                }
+                $m->finalize();
+                return $m;
+            },
+            $iterations,
+            $rounds,
+            $warmup,
+            method: $scenario['method'],
+            host: $scenario['host'],
+            path: $scenario['path'],
+            assertHit: $scenario['assertHit'],
+        );
 
+        echo "\nScenario: {$scenario['title']} ({$scenario['method']} {$scenario['host']} {$scenario['path']})\n";
+
+        $tableRows = [];
         foreach ($results as $row) {
-            $roundsMs = implode(', ', array_map(
-                static fn (float $ns): string => number_format($ns / 1_000_000, 2),
-                $row['rounds_ns'],
-            ));
-            echo str_pad($row['name'], 12)
-                . str_pad(number_format($row['best_ops_s'], 2), 18)
-                . str_pad(number_format($row['avg_ops_s'], 2), 18)
-                . str_pad(number_format($row['best_ns_op'], 2), 16)
-                . $roundsMs . "\n";
+            $tableRows[] = [
+                $row['name'],
+                number_format($row['best_ops_s'], 2),
+                number_format($row['avg_ops_s'], 2),
+                number_format($row['best_ns_op'], 2),
+                implode(', ', array_map(
+                    static fn (float $ns): string => number_format($ns / 1_000_000, 2),
+                    $row['rounds_ns'],
+                )),
+            ];
         }
+        printTable(
+            ['Matcher', 'Best ops/s', 'Avg ops/s', 'Best ns/op', 'Rounds (ms)'],
+            $tableRows,
+        );
 
         usort($results, static fn (array $a, array $b): int => $b['best_ops_s'] <=> $a['best_ops_s']);
         $winner = $results[0];
@@ -277,4 +301,45 @@ function rrmdir(string $dir): void
     }
 
     @rmdir($dir);
+}
+
+/**
+ * Render an ASCII table with auto-sized columns.
+ *
+ * @param list<string> $headers
+ * @param list<list<string>> $rows
+ */
+function printTable(array $headers, array $rows): void
+{
+    $widths = array_map(static fn (string $h): int => strlen($h), $headers);
+
+    foreach ($rows as $row) {
+        foreach ($row as $i => $cell) {
+            $len = strlen($cell);
+            if ($len > $widths[$i]) {
+                $widths[$i] = $len;
+            }
+        }
+    }
+
+    $sep = '+';
+    foreach ($widths as $w) {
+        $sep .= str_repeat('-', $w + 2) . '+';
+    }
+
+    echo $sep . "\n";
+    echo '|';
+    foreach ($headers as $i => $h) {
+        echo ' ' . str_pad($h, $widths[$i], ' ', STR_PAD_RIGHT) . ' |';
+    }
+    echo "\n" . $sep . "\n";
+
+    foreach ($rows as $row) {
+        echo '|';
+        foreach ($row as $i => $cell) {
+            echo ' ' . str_pad($cell, $widths[$i], ' ', STR_PAD_RIGHT) . ' |';
+        }
+        echo "\n";
+    }
+    echo $sep . "\n";
 }
