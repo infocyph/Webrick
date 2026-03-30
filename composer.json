@@ -85,6 +85,7 @@
         ],
         "git:hook": "captainhook install --only-enabled -nf",
         "test": "@php vendor/bin/pest",
+        "bench:hello": "@php bench/hello_matchers.php",
         "refactor": "@php vendor/bin/rector process",
         "lint": "@php vendor/bin/pint",
         "webrick": "webrick",
