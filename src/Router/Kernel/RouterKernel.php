@@ -433,7 +433,10 @@ final class RouterKernel
      */
     private function matchRoute(Request $req): array
     {
-        $method = \strtoupper($req->getMethod());
+        // Respect method overrides for routing while preserving explicit HEAD routes.
+        $rawMethod = \strtoupper($req->getMethod());
+        $effectiveMethod = \strtoupper($req->getEffectiveMethod());
+        $method = ($rawMethod === 'HEAD') ? 'HEAD' : $effectiveMethod;
         $uri = $req->getUri();
         $host = self::normaliseHost($uri->getHost());
         $path = $uri->getPath() ?: '/';
@@ -502,7 +505,17 @@ final class RouterKernel
         if ($this->bindUrlServices) {
             ($this->bindUrlServices)($aliasOnly);
         } else {
-            Response::bindUrlServices($aliasOnly, null, null);
+            $signKey = $this->registrarOptions['signKey'] ?? null;
+            if (!\is_string($signKey) || $signKey === '') {
+                $signKey = null;
+            }
+
+            $ttlRaw = $this->registrarOptions['signedDefaultTtl'] ?? null;
+            $defaultTtl = \is_int($ttlRaw)
+                ? $ttlRaw
+                : (\is_string($ttlRaw) && $ttlRaw !== '' ? (int)$ttlRaw : null);
+
+            Response::bindUrlServices($aliasOnly, $signKey, $defaultTtl);
         }
 
         $this->log->info('[router] route table ready (hot cache)', [

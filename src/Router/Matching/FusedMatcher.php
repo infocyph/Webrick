@@ -268,7 +268,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
             $this->cacheLoaded = true;
 
             // Warm opcache for the cache file if available.
-            if (\function_exists('opcache_compile_file')) {
+            if ($this->shouldWarmOpcache()) {
                 @\opcache_compile_file($this->cacheFile);
             }
         }
@@ -337,11 +337,16 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
             . "];\n";
 
         $tmp = $this->cacheFile . '.' . \uniqid('', true) . '.tmp';
-        \file_put_contents($tmp, $php, \LOCK_EX);
+        if (\file_put_contents($tmp, $php, \LOCK_EX) === false) {
+            throw new \RuntimeException("Failed to write cache temp file {$tmp}");
+        }
         @\chmod($tmp, 0664);
-        @\rename($tmp, $this->cacheFile);
+        if (!@\rename($tmp, $this->cacheFile)) {
+            @\unlink($tmp);
+            throw new \RuntimeException("Failed to move cache file into place {$this->cacheFile}");
+        }
 
-        if (\function_exists('opcache_compile_file')) {
+        if ($this->shouldWarmOpcache()) {
             @\opcache_compile_file($this->cacheFile);
         }
     }

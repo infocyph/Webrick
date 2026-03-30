@@ -3,11 +3,25 @@
 declare(strict_types=1);
 
 use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Router\Definition\Registrar;
+use Infocyph\Webrick\Router\Kernel\RouterKernel;
+use Infocyph\Webrick\Router\Matching\ShardedMatcher;
 use Infocyph\Webrick\Router\Route\Collection;
 use Infocyph\Webrick\Router\Route\Route;
 use Infocyph\Webrick\Router\Url\Signature;
 use Infocyph\Webrick\Router\Url\SignedUrlGenerator;
 use Infocyph\Webrick\Router\Url\TemporaryUrlGenerator;
+use Psr\Log\NullLogger;
+
+if (!class_exists('SignedUrlCacheController', false)) {
+    final readonly class SignedUrlCacheController
+    {
+        public static function handle(): Response
+        {
+            return Response::plaintext('ok');
+        }
+    }
+}
 
 describe('Signed URLs', function () {
     beforeEach(function () {
@@ -143,5 +157,68 @@ describe('Signed URLs', function () {
             ttl: null,
             absolute: false
         ))->toThrow(InvalidArgumentException::class);
+    });
+
+    it('rejects baseUri when query or fragment is present', function () {
+        expect(fn () => new TemporaryUrlGenerator(
+            baseUri: 'https://example.com?x=1',
+            routes: $this->routes,
+            secret: $this->secret,
+            defaultTtl: 900
+        ))->toThrow(InvalidArgumentException::class);
+
+        expect(fn () => new TemporaryUrlGenerator(
+            baseUri: 'https://example.com#frag',
+            routes: $this->routes,
+            secret: $this->secret,
+            defaultTtl: 900
+        ))->toThrow(InvalidArgumentException::class);
+    });
+
+    it('keeps signed URL helpers bound after hot-cache boot', function () {
+        Response::resetUrlServices();
+
+        $cacheDir = \sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'webrick-route-cache-' . \bin2hex(\random_bytes(6));
+        $secret = 'hot-cache-sign-secret';
+        $register = static function (Registrar $r): void {
+            $r->get('/download/{file}', [SignedUrlCacheController::class, 'handle'], 'download');
+        };
+
+        try {
+            RouterKernel::bootWithRegistrar(
+                log: new NullLogger(),
+                matcher: ShardedMatcher::make(),
+                register: $register,
+                routeCache: $cacheDir,
+                registrarOptions: [
+                    'autoSlashRedirect' => false,
+                    'exposeUrlServices' => true,
+                    'signKey' => $secret,
+                    'signedDefaultTtl' => 300,
+                ],
+            );
+
+            expect(Response::signedUrlFor('download', ['file' => 'cold.txt']))
+                ->toContain('_sig=');
+
+            RouterKernel::bootWithRegistrar(
+                log: new NullLogger(),
+                matcher: ShardedMatcher::make(),
+                register: $register,
+                routeCache: $cacheDir,
+                registrarOptions: [
+                    'autoSlashRedirect' => false,
+                    'exposeUrlServices' => true,
+                    'signKey' => $secret,
+                    'signedDefaultTtl' => 300,
+                ],
+            );
+
+            expect(Response::signedUrlFor('download', ['file' => 'hot.txt']))
+                ->toContain('_sig=');
+        } finally {
+            cleanTestCache($cacheDir);
+            Response::resetUrlServices();
+        }
     });
 });

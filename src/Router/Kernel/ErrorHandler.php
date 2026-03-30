@@ -64,9 +64,9 @@ final class ErrorHandler
      */
     public function handle(Request $req, callable $core): Response
     {
-        $prev = null;
+        $installedPhpErrorHandler = false;
         if ($this->capturePhpErrors) {
-            $prev = set_error_handler(
+            set_error_handler(
                 function (int $severity, string $message, ?string $file = null, ?int $line = null): bool {
                     // Respect error suppression (@) by honouring error_reporting mask.
                     if (!(error_reporting() & $severity)) {
@@ -75,6 +75,7 @@ final class ErrorHandler
                     throw new ErrorException($message, 0, $severity, $file ?? 'unknown', $line ?? 0);
                 },
             );
+            $installedPhpErrorHandler = true;
         }
 
         try {
@@ -85,9 +86,9 @@ final class ErrorHandler
             $this->log($e, $req, $status);
             return $resp;
         } finally {
-            if ($this->capturePhpErrors) {
-                // Restore previous error handler to avoid global side-effects.
-                set_error_handler($prev);
+            if ($installedPhpErrorHandler) {
+                // Pop our handler so the previous stack is restored exactly.
+                restore_error_handler();
             }
         }
     }

@@ -108,7 +108,10 @@ final class Dispatcher
         array $vars,
     ): Response {
         // Attach route parameters for downstream consumers.
-        $request = $request->withAttribute('route_params', $vars);
+        $request = $request
+            ->withAttribute('route_params', $vars)
+            ->withAttribute('route.params', $vars)
+            ->withAttribute('params', $vars);
 
         // If the compiled route carries a CORS policy, attach it to the request.
         if (method_exists($route, 'getCorsPolicy') && $corsPolicy = $route->getCorsPolicy()) {

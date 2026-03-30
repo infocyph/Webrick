@@ -52,6 +52,21 @@ describe('Request', function () {
         // Request doesn't have query() method, use getQueryParams()
     });
 
+    it('keeps data and all caches in sync after immutable mutations', function () {
+        $request = Request::fake(query: ['q' => 'old'], post: ['name' => 'first']);
+
+        expect($request->data('q'))->toBe('old')
+            ->and($request->all()['name'])->toBe('first');
+
+        $request2 = $request->withQueryParams(['q' => 'new']);
+        expect($request2->data('q'))->toBe('new')
+            ->and($request->data('q'))->toBe('old');
+
+        $request3 = $request2->withParsedBody(['name' => 'second']);
+        expect($request3->data('name'))->toBe('second')
+            ->and($request3->all()['name'])->toBe('second');
+    });
+
     it('handles POST data', function () {
         $_SERVER['REQUEST_METHOD'] = 'POST';
         $_POST = ['name' => 'John', 'age' => '30'];

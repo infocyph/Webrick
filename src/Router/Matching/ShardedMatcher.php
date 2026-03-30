@@ -83,6 +83,17 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
      */
     private ?bool $aliasLoaded = null; // null = not attempted; true/false after load
 
+    /*──────────── state ────────────*/
+
+    /**
+     * Build-time bucket map used by dev-mode and cache dump.
+     *
+     * Shape: bucket => method => list<CompiledRoute>
+     *
+     * @var array<string, array<string, list<CompiledRoute>>>
+     */
+    private array $bucketMap = [];
+
     /**
      * Path to cache directory when caching is enabled. Empty when caching is off.
      *
@@ -130,17 +141,6 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
      */
     private array $pathGuard = [];
 
-    /*──────────── state ────────────*/
-
-    /**
-     * Build-time prefix map used to group routes for shard output.
-     *
-     * Shape: prefix => method => list<CompiledRoute>
-     *
-     * @var array<string, array<string, list<CompiledRoute>>>
-     */
-    private array $prefixMap = [];
-
     /**
      * Private constructor to enforce factory usage.
      */
@@ -165,7 +165,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     /**
      * Register a compiled route with the matcher.
      *
-     * The route is grouped by its literal prefix and method for later shard
+     * The route is grouped by shard bucket and method for later shard
      * emission. Duplicate host+method+path entries are rejected.
      *
      * @param CompiledRoute $route Compiled route instance.
@@ -180,14 +180,14 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
 
         $host = $this->canonicalRouteHost($route->getDomain());
         $method = \strtoupper($route->getMethod());
-        $prefix = $this->extractPrefix($route);
+        $bucket = $this->fileKeyForPath($route->getPath());
 
         if (isset($this->pathGuard[$host][$method][$route->getPath()])) {
             throw new \LogicException("Duplicate route {$method} {$host}{$route->getPath()}");
         }
         $this->pathGuard[$host][$method][$route->getPath()] = true;
 
-        $this->prefixMap[$prefix][$method][] = $route;
+        $this->bucketMap[$bucket][$method][] = $route;
 
         // capture alias for dev-mode and for later cache dump
         if (($name = $route->getName()) !== null && $name !== '') {
@@ -239,7 +239,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         $this->alias = $blob[self::H_DATA] ?? [];
         $this->aliasLoaded = true;
 
-        if (\function_exists('opcache_compile_file')) {
+        if ($this->shouldWarmOpcache()) {
             @\opcache_compile_file($file);
         }
 
@@ -296,7 +296,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             $this->dumpCacheFiles();     // writes all shards
             $this->dumpAliasFile();      // writes __aliases.php
             // free build-time memory
-            $this->prefixMap = [];
+            $this->bucketMap = [];
             $this->alias = [];
         }
         $this->finalized = true;
@@ -449,12 +449,9 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             . "    '" . self::H_DATA . "' => " . $this->exportArray($payload) . ",\n"
             . "];\n";
 
-        $tmp = $file . '.' . \uniqid('', true) . '.tmp';
-        \file_put_contents($tmp, $php, \LOCK_EX);
-        @\chmod($tmp, 0664);
-        @\rename($tmp, $file);
+        $this->writeAtomicPhpFile($file, $php);
 
-        if (\function_exists('opcache_compile_file')) {
+        if ($this->shouldWarmOpcache()) {
             @\opcache_compile_file($file);
         }
     }
@@ -462,7 +459,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     /*──────────── cache dump (per-host *and* per-bucket) ───────────*/
 
     /**
-     * Produce and write all shard files based on the build-time prefix map.
+     * Produce and write all shard files based on the build-time bucket map.
      *
      * Resulting structure: $shards[host][bucket] = ['static'=>..., 'trie'=>...]
      *
@@ -472,10 +469,9 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     {
         // $shards[host][bucket] = ['static'=>[path][verb]=Route, 'trie'=>node]
         $shards = [];
-        foreach ($this->prefixMap as $_prefix => $byMethod) {
+        foreach ($this->bucketMap as $bucket => $byMethod) {
             foreach ($byMethod as $verb => $routes) {
                 foreach ($routes as $r) {
-                    $bucket = $this->fileKeyForPath($r->getPath());
                     $hostKey = $this->canonicalRouteHost($r->getDomain());
 
                     $shards[$hostKey][$bucket] ??= [self::K_STATIC => [], self::K_TRIE => $this->newNode()];
@@ -503,29 +499,6 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
 
     /*──────────── build-time helpers ───────────*/
 
-    /**
-     * Extract the literal prefix for a route based on its leading literal segments.
-     *
-     * Examples:
-     *  - '/users/{id}'   => '/users'
-     *  - '/about'        => '/about'
-     *  - '/'             => '/'
-     *
-     * @param CompiledRoute $r
-     * @return string Prefix beginning with '/'
-     */
-    private function extractPrefix(CompiledRoute $r): string
-    {
-        $parts = [];
-        foreach ($r->getSegments() as $s) {
-            if ($s['type'] !== 'lit') {
-                break;
-            }
-            $parts[] = $s['val'];
-        }
-        return '/' . \implode('/', $parts);
-    }
-
     /*──────────── path→bucket key ────────────*/
 
     /**
@@ -547,20 +520,16 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     }
 
     /**
-     * Iterate all (verb, route) pairs contained in the build-time prefix map for a bucket.
+     * Iterate all (verb, route) pairs contained in the build-time bucket map.
      *
      * @param string $bucket
      * @return \Generator<array{0:string,1:CompiledRoute}>
      */
     private function iterShardRoutes(string $bucket): \Generator
     {
-        foreach ($this->prefixMap as $byMethod) {
-            foreach ($byMethod as $verb => $routes) {
-                foreach ($routes as $r) {
-                    if ($this->fileKeyForPath($r->getPath()) === $bucket) {
-                        yield [$verb, $r];
-                    }
-                }
+        foreach (($this->bucketMap[$bucket] ?? []) as $verb => $routes) {
+            foreach ($routes as $r) {
+                yield [$verb, $r];
             }
         }
     }
@@ -758,6 +727,27 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     }
 
     /**
+     * Atomically write a PHP cache file and fail loudly on IO errors.
+     *
+     * @param string $file
+     * @param string $php
+     * @return void
+     */
+    private function writeAtomicPhpFile(string $file, string $php): void
+    {
+        $tmp = $file . '.' . \uniqid('', true) . '.tmp';
+        if (\file_put_contents($tmp, $php, \LOCK_EX) === false) {
+            throw new \RuntimeException("Failed to write cache temp file {$tmp}");
+        }
+        @\chmod($tmp, 0664);
+
+        if (!@\rename($tmp, $file)) {
+            @\unlink($tmp);
+            throw new \RuntimeException("Failed to move cache file into place {$file}");
+        }
+    }
+
+    /**
      * Serialize and write a single shard file.
      *
      * @param string $hostKey Canonical host key or '*' for wildcard
@@ -778,12 +768,9 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             . "    '" . self::H_TS . "'  => " . \var_export(date(DATE_ATOM), true) . ",\n"
             . "    '" . self::H_DATA . "' => " . $this->exportArray($payload) . ",\n"
             . "];\n";
-        $tmp = $file . '.' . \uniqid('', true) . '.tmp';
-        \file_put_contents($tmp, $php, \LOCK_EX);
-        @\chmod($tmp, 0664);
-        @\rename($tmp, $file);
+        $this->writeAtomicPhpFile($file, $php);
 
-        if (\function_exists('opcache_compile_file')) {
+        if ($this->shouldWarmOpcache()) {
             @\opcache_compile_file($file);
         }
     }

@@ -19,11 +19,11 @@ class ServerRequest extends Message
     /** @var array<string,mixed> */
     private array $attributes = [];
     private bool $checkEnv = false;
-    private array $cookie = [];
+    private array $cookie;
     private ?string $effectiveMethod = null;
     private ?UploadedFileCollection $filesColl = null;
     private ?array $filesHydrated = null;
-    private array $filesSpec = [];
+    private array $filesSpec;
 
     /* runtime caches */
     private ?RequestHeaders $hdrFacade = null;
@@ -32,12 +32,12 @@ class ServerRequest extends Message
 
     /** @var null|array|object */
     private null|array|object $parsed;
-    private array $query = [];
+    private array $query;
     private ?string $rawBody = null;
 
     private ?string $requestTarget = null;
 
-    private array $server = [];
+    private array $server;
     private Uri $uri;
 
     /* variable-order map */
@@ -122,6 +122,19 @@ class ServerRequest extends Message
     public function __isset(string $key): bool
     {
         return $this->__get($key) !== null;
+    }
+
+    /**
+     * Disallow dynamic property writes to preserve request immutability.
+     *
+     * @param string $name Property name
+     * @param mixed $value Attempted value
+     * @return void
+     * @throws InvalidArgumentException Always; request objects are immutable.
+     */
+    public function __set(string $name, mixed $value): void
+    {
+        throw new InvalidArgumentException('Request is immutable');
     }
 
     /**
@@ -580,6 +593,8 @@ class ServerRequest extends Message
     {
         $cl = clone $this;
         $cl->cookie = $cookies;
+        $cl->varMap = null;
+        $cl->checkEnv = false;
         $cl->buildVariableMap();
         return $cl;
     }
@@ -625,6 +640,9 @@ class ServerRequest extends Message
         }
         $cl = clone $this;
         $cl->parsed = $data;
+        $cl->varMap = null;
+        $cl->checkEnv = false;
+        $cl->effectiveMethod = null;
         $cl->buildVariableMap();
         return $cl;
     }
@@ -643,6 +661,8 @@ class ServerRequest extends Message
     {
         $cl = clone $this;
         $cl->query = $query;
+        $cl->varMap = null;
+        $cl->checkEnv = false;
         $cl->buildVariableMap();
         return $cl;
     }

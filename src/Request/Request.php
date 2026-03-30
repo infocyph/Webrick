@@ -726,6 +726,59 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
         return $this->expectsXml();
     }
 
+    /**
+     * Return an instance with updated cookies and reset derived caches.
+     *
+     * @param array $cookies
+     * @return static
+     */
+    public function withCookieParams(array $cookies): static
+    {
+        $cl = parent::withCookieParams($cookies);
+        $cl->resetDerivedCaches();
+        return $cl;
+    }
+
+    /**
+     * Return an instance with updated parsed body and reset derived caches.
+     *
+     * @param object|array|null $data
+     * @return static
+     */
+    public function withParsedBody(object|array|null $data): static
+    {
+        $cl = parent::withParsedBody($data);
+        $cl->resetDerivedCaches();
+        return $cl;
+    }
+
+    /**
+     * Return an instance with updated query parameters and reset derived caches.
+     *
+     * @param array $query
+     * @return static
+     */
+    public function withQueryParams(array $query): static
+    {
+        $cl = parent::withQueryParams($query);
+        $cl->resetDerivedCaches();
+        return $cl;
+    }
+
+    /**
+     * Return an instance with updated URI and reset path/locale caches.
+     *
+     * @param Uri $uri
+     * @param bool $preserveHost
+     * @return static
+     */
+    public function withUri(Uri $uri, bool $preserveHost = false): static
+    {
+        $cl = parent::withUri($uri, $preserveHost);
+        $cl->resetDerivedCaches();
+        return $cl;
+    }
+
     /** ───── leaf helpers ───── */
 
     /** Normalize to lowercase BCP47-ish with hyphen, e.g. 'pt_BR' -> 'pt-br'. */
@@ -747,6 +800,16 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
         }
         $primary = substr($cand, 0, 2);
         return in_array($primary, $supported, true) ? $primary : null;
+    }
+
+    /**
+     * Reset per-instance derived caches after immutable mutations.
+     */
+    private function resetDerivedCaches(): void
+    {
+        $this->cachedAll = null;
+        $this->cachedLocale = null;
+        $this->cachedSegments = null;
     }
 
     /** ───── resolvers ───── */

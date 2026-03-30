@@ -357,6 +357,19 @@ class Response
     }
 
     /**
+     * Clear all bound URL generation services.
+     *
+     * Useful in long-running workers/tests to avoid leaking static state.
+     */
+    public static function resetUrlServices(): void
+    {
+        self::$routesRef = null;
+        self::$urlGen = null;
+        self::$signedGen = null;
+        self::$tempGen = null;
+    }
+
+    /**
      * Build a signed URL for a named route.
      *
      * @param string $name Route name

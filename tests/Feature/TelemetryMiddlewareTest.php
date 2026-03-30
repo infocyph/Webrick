@@ -41,7 +41,45 @@ afterEach(function () {
 });
 
 describe('TelemetryMiddleware - End-to-End Integration', function () {
-    test('complete request lifecycle with telemetry')->skip('Debugging needed - returns 500');
+    test('complete request lifecycle with telemetry', function () {
+        $kernel = RouterKernel::bootWithRegistrar(
+            log: new NullLogger(),
+            matcher: ShardedMatcher::make(),
+            register: function ($registrar) {
+                Route::get('/api/lifecycle', function () {
+                    return Response::json([
+                        'trace_id' => TraceContext::getTraceId(),
+                        'span_id' => TraceContext::getSpanId(),
+                        'request_id' => TraceContext::getRequestId(),
+                    ]);
+                });
+            },
+            routeCache: $this->cacheDir,
+            preGlobal: [
+                new TelemetryMiddleware(
+                    log: $this->logger,
+                    addXResponseTime: true,
+                    addServerTiming: true,
+                    emitRequestId: true,
+                    emitTraceIdHeader: true,
+                ),
+            ],
+        );
+
+        $request = mockRequest('GET', '/api/lifecycle');
+        $response = $kernel->handle($request);
+        $data = json_decode((string)$response->getBody(), true);
+
+        expect($response->getStatusCode())->toBe(200)
+            ->and($response->hasHeader('X-Response-Time'))->toBeTrue()
+            ->and($response->hasHeader('Server-Timing'))->toBeTrue()
+            ->and($response->hasHeader('X-Request-Id'))->toBeTrue()
+            ->and($response->hasHeader('Trace-Id'))->toBeTrue()
+            ->and($data['trace_id'])->toBeString()
+            ->and($data['span_id'])->toBeString()
+            ->and($data['request_id'])->toBeString()
+            ->and(TraceContext::isAvailable())->toBeFalse();
+    });
 
     test('trace context available in controllers', function () {
         $kernel = RouterKernel::bootWithRegistrar(

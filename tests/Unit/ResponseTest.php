@@ -5,6 +5,8 @@ declare(strict_types=1);
 use Infocyph\Webrick\Response\Cookies\Cookie;
 use Infocyph\Webrick\Response\Cookies\CookieJar;
 use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Router\Route\Collection;
+use Infocyph\Webrick\Router\Route\Route;
 
 describe('Response', function () {
     it('creates basic responses', function () {
@@ -135,5 +137,19 @@ describe('Response', function () {
         expect($setCookie)
             ->toHaveCount(1)
             ->and($setCookie[0])->toContain('session=abc123');
+    });
+
+    it('can reset bound URL services', function () {
+        $routes = new Collection();
+        $route = (new Route('GET', '/users/{id}', fn () => Response::noContent()))
+            ->withName('users.show');
+        $routes->add($route);
+
+        Response::bindUrlServices($routes, 'test-sign-key', 60);
+        expect(Response::urlFor('users.show', ['id' => 7]))->toBe('/users/7');
+
+        Response::resetUrlServices();
+        expect(fn () => Response::urlFor('users.show', ['id' => 7]))
+            ->toThrow(\LogicException::class);
     });
 });

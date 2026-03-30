@@ -120,9 +120,7 @@ final class Registry
 
         if (isset(self::$regexValidators[$key])) {
             $rule = self::$regexValidators[$key];
-            $delim = $rule[0];
-            $inner = trim($rule, $delim);
-            $inner = ltrim(rtrim($inner, '$'), '^') ?: '[^/]+';
+            $inner = self::regexInner($rule);
             return ['regex' => $inner];
         }
 
@@ -203,6 +201,90 @@ final class Registry
      */
     private static function isRegex(string $rule): bool
     {
-        return $rule !== '' && $rule[0] === $rule[-1] && str_contains($rule, '^');
+        return self::splitDelimitedRegex($rule) !== null;
+    }
+
+    /**
+     * Convert a delimited regex rule into an embeddable inner regex.
+     *
+     * The returned pattern is suitable for embedding in route patterns.
+     * Delimiters are removed, start/end anchors are stripped and modifiers
+     * are preserved via an inline modifier group.
+     *
+     * @param string $rule Delimited PCRE rule (e.g. '/^foo$/i')
+     * @return string Inner embeddable regex fragment
+     * @throws InvalidArgumentException When the regex cannot be parsed
+     */
+    private static function regexInner(string $rule): string
+    {
+        $parts = self::splitDelimitedRegex($rule);
+        if ($parts === null) {
+            throw new InvalidArgumentException("Invalid regex rule '{$rule}'.");
+        }
+
+        [$inner, $mods] = $parts;
+
+        if (str_starts_with($inner, '^')) {
+            $inner = substr($inner, 1);
+        }
+        if (str_ends_with($inner, '$') && !str_ends_with($inner, '\\$')) {
+            $inner = substr($inner, 0, -1);
+        }
+        if ($inner === '') {
+            $inner = '[^/]+';
+        }
+
+        if ($mods !== '') {
+            $inner = '(?' . $mods . ':' . $inner . ')';
+        }
+
+        return $inner;
+    }
+
+    /**
+     * Parse a delimited PCRE string into [inner, modifiers].
+     *
+     * @param string $rule Candidate delimited regex
+     * @return array{0:string,1:string}|null
+     */
+    private static function splitDelimitedRegex(string $rule): ?array
+    {
+        $len = strlen($rule);
+        if ($len < 3) {
+            return null;
+        }
+
+        $delim = $rule[0];
+        if (ctype_alnum($delim) || ctype_space($delim) || $delim === '\\') {
+            return null;
+        }
+
+        $end = null;
+        for ($i = 1; $i < $len; $i++) {
+            if ($rule[$i] !== $delim) {
+                continue;
+            }
+
+            $slashes = 0;
+            for ($j = $i - 1; $j >= 0 && $rule[$j] === '\\'; $j--) {
+                $slashes++;
+            }
+            if (($slashes % 2) === 0) {
+                $end = $i;
+                break;
+            }
+        }
+
+        if ($end === null || $end === 1) {
+            return null;
+        }
+
+        $mods = substr($rule, $end + 1);
+        if ($mods !== '' && !preg_match('/^[A-Za-z]+$/', $mods)) {
+            return null;
+        }
+
+        $inner = substr($rule, 1, $end - 1);
+        return [$inner, $mods];
     }
 }

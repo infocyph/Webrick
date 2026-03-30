@@ -12,3 +12,4 @@ git-story_media
 .phpunit.cache
 *.patch
 patch.php
+.route-cache-*

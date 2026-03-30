@@ -217,18 +217,3 @@ function assertTraceContextCleared(): void
 uses()->afterEach(function () {
     TraceContext::clear();
 })->in('Unit', 'Feature', 'Integration');
-
-/*
-|--------------------------------------------------------------------------
-| Error Handler Cleanup (Integration & Feature Tests)
-|--------------------------------------------------------------------------
-| RouterKernel sets custom error handlers. We restore defaults after each test.
-| This is EXPECTED behavior for a framework, not an error.
-|--------------------------------------------------------------------------
-*/
-
-uses()->afterEach(function () {
-    // Simply restore default error handlers - no complex logic needed
-    @restore_error_handler();
-    @restore_exception_handler();
-})->in('Integration', 'Feature');
