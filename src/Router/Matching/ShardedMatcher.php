@@ -83,6 +83,20 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
      */
     private ?bool $aliasLoaded = null; // null = not attempted; true/false after load
 
+    /**
+     * Next monotonic timestamp (ns) when alias file staleness check is allowed.
+     *
+     * @var int
+     */
+    private int $aliasNextCheckNs = 0;
+
+    /**
+     * Last observed alias file stamp ("mtime:size") when loaded from cache.
+     *
+     * @var string|null
+     */
+    private ?string $aliasStamp = null;
+
     /*──────────── state ────────────*/
 
     /**
@@ -116,6 +130,13 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     private bool $finalized = false;
 
     /**
+     * Next monotonic timestamp (ns) when each shard file may be restated.
+     *
+     * @var array<string,int>
+     */
+    private array $loadedFileNextCheckNs = [];
+
+    /**
      * Cache of loaded shard arrays keyed by absolute file path.
      *
      * Value is the array returned from the required shard file, or null when
@@ -124,6 +145,13 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
      * @var array<string, array|null>
      */
     private array $loadedFiles = [];
+
+    /**
+     * Last observed file stamps for loaded shard files.
+     *
+     * @var array<string,string>
+     */
+    private array $loadedFileStamps = [];
 
     /**
      * In-memory shards used in dev-mode: memGroups[host][bucket] => group array|null.
@@ -140,6 +168,13 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
      * @var array<string, array<string, array<string, bool>>>
      */
     private array $pathGuard = [];
+
+    /**
+     * Interval between file-stamp checks in nanoseconds.
+     *
+     * @var int
+     */
+    private int $staleCheckIntervalNs = 1_000_000_000;
 
     /**
      * Private constructor to enforce factory usage.
@@ -212,32 +247,53 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             return $this->alias;
         }
 
+        $file = $this->aliasFilePath();
         if ($this->aliasLoaded === true) {
-            return $this->alias;
+            $now = \hrtime(true);
+            if ($now < $this->aliasNextCheckNs) {
+                return $this->alias;
+            }
+            $this->aliasNextCheckNs = $now + $this->staleCheckIntervalNs;
+
+            $stamp = $this->fileStamp($file);
+            if ($stamp !== null && $stamp === $this->aliasStamp) {
+                return $this->alias;
+            }
+
+            // stale or removed; force reload path below
+            $this->aliasLoaded = null;
+            $this->aliasStamp = null;
+            $this->aliasNextCheckNs = 0;
         }
 
-        $file = $this->aliasFilePath();
         if (!\is_file($file)) {
             // No alias file (e.g., cache not dumped) → fall back to memory
             $this->aliasLoaded = false;
+            $this->aliasStamp = null;
+            $this->aliasNextCheckNs = 0;
             return $this->alias;
         }
 
-        /** @var array{_hash:string,_data:array<string,array{0:string,1:?string}>} $blob */
+        /** @var array{_hash?:string,_data?:array<string,array{0:string,1:?string}>} $blob */
         $blob = require $file;
 
-        if (!isset($blob[self::H_HASH], $blob[self::H_DATA])) {
-            throw new \RuntimeException("Alias cache file {$file} missing Hash.");
+        if (!isset($blob[self::H_DATA])) {
+            throw new \RuntimeException("Alias cache file {$file} missing data payload.");
         }
         if ($this->verifyCacheOnLoad) {
-            $calc = \hash('xxh3', \json_encode($blob[self::H_DATA], \JSON_THROW_ON_ERROR));
-            if (!\hash_equals($blob[self::H_HASH], $calc)) {
+            if (!isset($blob[self::H_HASH])) {
+                throw new \RuntimeException("Alias cache file {$file} missing Hash.");
+            }
+            $calc = $this->computeAliasHash($blob[self::H_DATA]);
+            if (!\hash_equals((string)$blob[self::H_HASH], $calc)) {
                 throw new \RuntimeException("Alias cache hash mismatch ({$file}).");
             }
         }
 
         $this->alias = $blob[self::H_DATA] ?? [];
         $this->aliasLoaded = true;
+        $this->aliasStamp = $this->fileStamp($file);
+        $this->aliasNextCheckNs = \hrtime(true) + $this->staleCheckIntervalNs;
 
         if ($this->shouldWarmOpcache()) {
             @\opcache_compile_file($file);
@@ -298,6 +354,12 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             // free build-time memory
             $this->bucketMap = [];
             $this->alias = [];
+            $this->loadedFiles = [];
+            $this->loadedFileStamps = [];
+            $this->loadedFileNextCheckNs = [];
+            $this->aliasLoaded = null;
+            $this->aliasStamp = null;
+            $this->aliasNextCheckNs = 0;
         }
         $this->finalized = true;
     }
@@ -347,10 +409,11 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         }
 
         // ② dynamic trie (host then wildcard)
-        if ($hit = $this->tryDynamic($grpHost, $method, $path, $allowedSet)) {
+        $segments = $this->explodePath($path);
+        if ($hit = $this->tryDynamic($grpHost, $method, $segments, $allowedSet)) {
             return $hit;
         }
-        if ($hit = $this->tryDynamic($grpAny, $method, $path, $allowedSet)) {
+        if ($hit = $this->tryDynamic($grpAny, $method, $segments, $allowedSet)) {
             return $hit;
         }
 
@@ -425,6 +488,28 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         return $group;
     }
 
+    /**
+     * Compute deterministic hash for alias cache payload.
+     *
+     * @param array<string,array{0:string,1:?string}> $payload Alias payload.
+     * @return string xxh3 fingerprint.
+     */
+    private function computeAliasHash(array $payload): string
+    {
+        return \hash('xxh3', $this->exportArray($payload));
+    }
+
+    /**
+     * Compute deterministic hash for shard payload.
+     *
+     * @param array $payload Shard payload.
+     * @return string xxh3 fingerprint.
+     */
+    private function computeShardHash(array $payload): string
+    {
+        return \hash('xxh3', $this->exportArray($payload));
+    }
+
     /*──────────── alias cache dump ────────────*/
 
     /**
@@ -441,7 +526,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         }
 
         $payload = $this->alias;
-        $crc = \hash('xxh3', \json_encode($payload, \JSON_THROW_ON_ERROR));
+        $crc = $this->computeAliasHash($payload);
 
         $php = "<?php\nreturn [\n"
             . "    '" . self::H_HASH . "' => " . \var_export($crc, true) . ",\n"
@@ -564,26 +649,45 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     private function loadGroupFromCache(string $hostKey, string $bucket): ?array
     {
         $file = $this->shardFilePath($hostKey, $bucket);
-        if (isset($this->loadedFiles[$file])) {
-            return $this->loadedFiles[$file];
+        $stamp = null;
+
+        if (\array_key_exists($file, $this->loadedFiles)) {
+            if (!$this->shouldRestatLoadedFile($file)) {
+                return $this->loadedFiles[$file];
+            }
+
+            $stamp = $this->fileStamp($file);
+            $known = $this->loadedFileStamps[$file] ?? '';
+            if (($stamp ?? '') === $known) {
+                return $this->loadedFiles[$file];
+            }
         }
-        if (!\is_file($file)) {
+
+        $stamp ??= $this->fileStamp($file);
+        if ($stamp === null || !\is_file($file)) {
+            $this->loadedFileStamps[$file] = '';
+            $this->loadedFileNextCheckNs[$file] = \hrtime(true) + $this->staleCheckIntervalNs;
             return $this->loadedFiles[$file] = null;
         }
 
-        /** @var array{_hash:string,_data:array} $blob */
+        /** @var array{_hash?:string,_data?:array} $blob */
         $blob = require $file;
 
-        if (!isset($blob[self::H_HASH], $blob[self::H_DATA])) {
-            throw new \RuntimeException("Cache file {$file} missing Hash.");
+        if (!isset($blob[self::H_DATA])) {
+            throw new \RuntimeException("Cache file {$file} missing data payload.");
         }
         if ($this->verifyCacheOnLoad) {
-            $calc = \hash('xxh3', \json_encode($blob[self::H_DATA], \JSON_THROW_ON_ERROR));
-            if (!\hash_equals($blob[self::H_HASH], $calc)) {
+            if (!isset($blob[self::H_HASH])) {
+                throw new \RuntimeException("Cache file {$file} missing Hash.");
+            }
+            $calc = $this->computeShardHash($blob[self::H_DATA]);
+            if (!\hash_equals((string)$blob[self::H_HASH], $calc)) {
                 throw new \RuntimeException("Cache hash mismatch ($file).");
             }
         }
 
+        $this->loadedFileStamps[$file] = $stamp;
+        $this->loadedFileNextCheckNs[$file] = \hrtime(true) + $this->staleCheckIntervalNs;
         return $this->loadedFiles[$file] = $blob[self::H_DATA];
     }
 
@@ -670,15 +774,33 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     }
 
     /**
+     * Decide whether a loaded shard file should be restated for staleness.
+     *
+     * @param string $file Absolute cache file path.
+     * @return bool True when a new stat check should be performed.
+     */
+    private function shouldRestatLoadedFile(string $file): bool
+    {
+        $now = \hrtime(true);
+        $next = $this->loadedFileNextCheckNs[$file] ?? 0;
+        if ($now < $next) {
+            return false;
+        }
+
+        $this->loadedFileNextCheckNs[$file] = $now + $this->staleCheckIntervalNs;
+        return true;
+    }
+
+    /**
      * Try dynamic trie descent for a preloaded group.
      *
      * @param array|null $group Group payload (or null when absent)
      * @param string $method Uppercased HTTP method
-     * @param string $path Request path
+     * @param list<string> $segments Pre-split request path segments
      * @param array<string,bool> $allowedSet Accumulator for allowed verbs (by-ref)
      * @return array{0:CompiledRoute,1:array<string,string>}|null Match tuple or null
      */
-    private function tryDynamic(?array $group, string $method, string $path, array &$allowedSet): ?array
+    private function tryDynamic(?array $group, string $method, array $segments, array &$allowedSet): ?array
     {
         if ($group === null) {
             return null;
@@ -690,7 +812,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
 
         $hit = null;
         $params = [];
-        if ($this->trieWalkNode($root, $this->explodePath($path), 0, $method, $params, $allowedSet, $hit)) {
+        if ($this->trieWalkNode($root, $segments, 0, $method, $params, $allowedSet, $hit)) {
             return $hit;
         }
         return null;
@@ -762,7 +884,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         if (!\is_dir($d = \dirname($file)) && !@\mkdir($d, 0775, true) && !\is_dir($d)) {
             throw new \RuntimeException("Failed to create cache dir {$d}");
         }
-        $crc = \hash('xxh3', \json_encode($payload, \JSON_THROW_ON_ERROR));
+        $crc = $this->computeShardHash($payload);
         $php = "<?php\nreturn [\n"
             . "    '" . self::H_HASH . "' => " . \var_export($crc, true) . ",\n"
             . "    '" . self::H_TS . "'  => " . \var_export(date(DATE_ATOM), true) . ",\n"

@@ -295,6 +295,31 @@ abstract class AbstractMatcher
     }
 
     /**
+     * Build a lightweight file stamp used for cache staleness checks.
+     *
+     * Format: "<mtime>:<size>" where both parts are decimal integers.
+     * Returns null when the file does not exist or metadata cannot be read.
+     *
+     * @param string $file Absolute/relative file path.
+     * @return string|null File stamp or null when unavailable.
+     */
+    protected function fileStamp(string $file): ?string
+    {
+        \clearstatcache(true, $file);
+        $mtime = @\filemtime($file);
+        if ($mtime === false) {
+            return null;
+        }
+
+        $size = @\filesize($file);
+        if ($size === false) {
+            $size = 0;
+        }
+
+        return (string)$mtime . ':' . (string)$size;
+    }
+
+    /**
      * Detect whether the given handler contains a Closure element.
      *
      * Returns true when:
@@ -527,8 +552,8 @@ abstract class AbstractMatcher
         if (!empty($p['call'])) {
             /** @var callable-string $fn */
             $fn = $p['call'];
-            // direct call (expects a string argument)
-            return (bool)\call_user_func($fn, $piece);
+            // Direct invocation is faster than call_user_func for callable-strings.
+            return (bool)$fn($piece);
         }
         return false;
     }

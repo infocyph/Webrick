@@ -20,24 +20,28 @@ class ServerRequest extends Message
     private array $attributes = [];
     private bool $checkEnv = false;
     private array $cookie;
+
+    /* runtime caches */
+    private ?Collection $cookieCol = null;
     private ?string $effectiveMethod = null;
     private ?UploadedFileCollection $filesColl = null;
     private ?array $filesHydrated = null;
     private array $filesSpec;
-
-    /* runtime caches */
     private ?RequestHeaders $hdrFacade = null;
     private ?Collection $jsonCol = null;
     private string $method;
 
     /** @var null|array|object */
     private null|array|object $parsed;
+    private ?Collection $postCol = null;
     private array $query;
+    private ?Collection $queryCol = null;
     private ?string $rawBody = null;
 
     private ?string $requestTarget = null;
 
     private array $server;
+    private ?Collection $serverCol = null;
     private Uri $uri;
 
     /* variable-order map */
@@ -197,7 +201,7 @@ class ServerRequest extends Message
      */
     public function cookie(?string $k = null): mixed
     {
-        return $this->fetch(new Collection($this->cookie), $k);
+        return $this->fetch($this->cookieCollection(), $k);
     }
 
     /**
@@ -521,8 +525,7 @@ class ServerRequest extends Message
      */
     public function post(?string $k = null): mixed
     {
-        $col = new Collection(is_array($this->parsed) ? $this->parsed : []);
-        return $this->fetch($col, $k);
+        return $this->fetch($this->postCollection(), $k);
     }
 
     /**
@@ -535,7 +538,7 @@ class ServerRequest extends Message
      */
     public function query(?string $k = null): mixed
     {
-        return $this->fetch(new Collection($this->query), $k);
+        return $this->fetch($this->queryCollection(), $k);
     }
 
     /**
@@ -561,7 +564,7 @@ class ServerRequest extends Message
      */
     public function server(?string $k = null): mixed
     {
-        return $this->fetch(new Collection($this->server), $k);
+        return $this->fetch($this->serverCollection(), $k);
     }
 
     /**
@@ -580,6 +583,25 @@ class ServerRequest extends Message
     }
 
     /**
+     * Create a new instance with multiple attributes applied in a single clone.
+     *
+     * @param array<string,mixed> $attributes Attribute bag to merge.
+     * @return static New instance with attributes set.
+     */
+    public function withAttributes(array $attributes): static
+    {
+        if ($attributes === []) {
+            return $this;
+        }
+
+        $cl = clone $this;
+        foreach ($attributes as $name => $value) {
+            $cl->attributes[(string)$name] = $value;
+        }
+        return $cl;
+    }
+
+    /**
      * Return an instance with the specified cookies.
      *
      * This method MUST be implemented in such a way as to retain the
@@ -593,6 +615,7 @@ class ServerRequest extends Message
     {
         $cl = clone $this;
         $cl->cookie = $cookies;
+        $cl->cookieCol = null;
         $cl->varMap = null;
         $cl->checkEnv = false;
         $cl->buildVariableMap();
@@ -640,6 +663,9 @@ class ServerRequest extends Message
         }
         $cl = clone $this;
         $cl->parsed = $data;
+        $cl->postCol = null;
+        $cl->jsonCol = null;
+        $cl->xmlCol = null;
         $cl->varMap = null;
         $cl->checkEnv = false;
         $cl->effectiveMethod = null;
@@ -661,6 +687,7 @@ class ServerRequest extends Message
     {
         $cl = clone $this;
         $cl->query = $query;
+        $cl->queryCol = null;
         $cl->varMap = null;
         $cl->checkEnv = false;
         $cl->buildVariableMap();
@@ -921,6 +948,14 @@ class ServerRequest extends Message
     }
 
     /**
+     * Get or build cookie collection cache.
+     */
+    private function cookieCollection(): Collection
+    {
+        return $this->cookieCol ??= new Collection($this->cookie);
+    }
+
+    /**
      * Determines the order of variables for the lifetime of the PHP process.
      * Reads 'variables_order' and 'request_order' from ini_get() and returns an array
      * of characters that represent the order of variables (G: GET, P: POST, C: COOKIE, S: SERVER, E: ENV).
@@ -1009,5 +1044,29 @@ class ServerRequest extends Message
         }
 
         return null;
+    }
+
+    /**
+     * Get or build parsed-body collection cache.
+     */
+    private function postCollection(): Collection
+    {
+        return $this->postCol ??= new Collection(is_array($this->parsed) ? $this->parsed : []);
+    }
+
+    /**
+     * Get or build query collection cache.
+     */
+    private function queryCollection(): Collection
+    {
+        return $this->queryCol ??= new Collection($this->query);
+    }
+
+    /**
+     * Get or build server params collection cache.
+     */
+    private function serverCollection(): Collection
+    {
+        return $this->serverCol ??= new Collection($this->server);
     }
 }

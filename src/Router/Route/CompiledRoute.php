@@ -430,35 +430,6 @@ final class CompiledRoute implements RouteInterface
     }
 
     /**
-     * Extract the placeholder name and optional constraint from a raw placeholder.
-     *
-     * @param string $raw Raw placeholder like "{id:\d+}"
-     * @return array{0:non-empty-string,1:?non-empty-string} [name, constraint|null]
-     */
-    private static function extractPlaceholder(string $raw): array
-    {
-        static $phRe = '/^\{([A-Za-z_]\w*)(?::([^}]+))?}$/';
-        \preg_match($phRe, $raw, $m);
-        /** @var non-empty-string $name */
-        $name = (string)($m[1] ?? '');
-        /** @var ?non-empty-string $constraint */
-        $constraint = isset($m[2]) && $m[2] !== '' ? (string)$m[2] : null;
-        return [$name, $constraint];
-    }
-
-    /**
-     * Determine whether a raw segment is a placeholder of the form {name[:constraint]}.
-     *
-     * @param string $raw Segment text
-     * @return bool True when segment is a placeholder
-     */
-    private static function isPlaceholder(string $raw): bool
-    {
-        static $phRe = '/^\{([A-Za-z_]\w*)(?::([^}]+))?}$/';
-        return (bool)\preg_match($phRe, $raw);
-    }
-
-    /**
      * Parse a dynamic path containing placeholders into regex and segment specs.
      *
      * @param string $path Dynamic route path
@@ -477,8 +448,8 @@ final class CompiledRoute implements RouteInterface
                 continue;
             }
 
-            if (self::isPlaceholder($raw)) {
-                [$name, $constraint] = self::extractPlaceholder($raw);
+            if (($placeholder = self::parsePlaceholder($raw)) !== null) {
+                [$name, $constraint] = $placeholder;
                 $vars[] = $name;
 
                 [$segSpec, $pieceRegex] = self::buildVarSegment($name, $constraint);
@@ -516,6 +487,30 @@ final class CompiledRoute implements RouteInterface
         return \str_contains($path, '{')
             ? self::parseDynamicPath($path)
             : self::parseStaticPath($path);
+    }
+
+    /**
+     * Parse "{name[:constraint]}" placeholder syntax in one regex pass.
+     *
+     * @param string $raw Segment text.
+     * @return array{0:non-empty-string,1:?non-empty-string}|null [name,constraint] or null when not placeholder.
+     */
+    private static function parsePlaceholder(string $raw): ?array
+    {
+        static $phRe = '/^\{([A-Za-z_]\w*)(?::([^}]+))?}$/';
+        if (\preg_match($phRe, $raw, $m) !== 1) {
+            return null;
+        }
+
+        /** @var non-empty-string $name */
+        $name = (string)($m[1] ?? '');
+        if ($name === '') {
+            return null;
+        }
+
+        /** @var ?non-empty-string $constraint */
+        $constraint = isset($m[2]) && $m[2] !== '' ? (string)$m[2] : null;
+        return [$name, $constraint];
     }
 
     /**

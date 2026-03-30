@@ -62,6 +62,27 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
     private bool $cacheLoaded = false;
 
     /**
+     * Last observed cache file stamp ("mtime:size") for staleness checks.
+     *
+     * @var string|null
+     */
+    private ?string $cacheStamp = null;
+
+    /**
+     * Interval between file-stamp checks in nanoseconds.
+     *
+     * @var int
+     */
+    private int $cacheStampCheckIntervalNs = 1_000_000_000;
+
+    /**
+     * Next monotonic timestamp (ns) when cache staleness check is allowed.
+     *
+     * @var int
+     */
+    private int $cacheStampNextCheckNs = 0;
+
+    /**
      * Whether the matcher has been finalized (no further route additions allowed).
      *
      * @var bool
@@ -150,13 +171,11 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
      */
     public function aliasIndex(): array
     {
-        // Ensure the lazy cache load occurred if caching is enabled
-        if ($this->cacheEnabled && !$this->cacheLoaded && \is_file($this->cacheFile)) {
-            /** @var array{_data:array,_alias?:array<string,array{0:string,1:?string}>} $blob */
-            $blob = require $this->cacheFile;
-            $this->alias = $blob[self::H_ALIAS] ?? $this->alias;
-            $this->hosts = $this->hosts ?: ($blob[self::H_DATA] ?? []);
-            $this->cacheLoaded = true;
+        if ($this->cacheEnabled) {
+            $this->refreshCacheIfStale();
+            if (!$this->cacheLoaded && \is_file($this->cacheFile)) {
+                $this->loadCacheBlob();
+            }
         }
         return $this->alias;
     }
@@ -213,6 +232,8 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
             $this->hosts = [];
             $this->alias = [];
             $this->cacheLoaded = false;
+            $this->cacheStamp = null;
+            $this->cacheStampNextCheckNs = 0;
         }
         $this->finalized = true;
     }
@@ -242,34 +263,15 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
      */
     public function match(string $method, string $host, string $path): array
     {
-        /* Lazy-load single-file cache if enabled and not yet loaded. */
-        if ($this->cacheEnabled && !$this->cacheLoaded) {
-            if (!\is_file($this->cacheFile)) {
-                // No cache present — cannot resolve routes in this mode.
-                throw new RouteNotFoundException($method, $path);
-            }
+        if ($this->cacheEnabled) {
+            $this->refreshCacheIfStale();
 
-            /** @var array{_hash:string,_data:array,_alias?:array<string,array{0:string,1:?string}>} $blob */
-            $blob = require $this->cacheFile;
-
-            if ($this->verifyCacheOnLoad) {
-                if (!isset($blob[self::H_HASH], $blob[self::H_DATA])) {
-                    throw new \RuntimeException('Route cache missing Hash.');
+            if (!$this->cacheLoaded) {
+                if (!\is_file($this->cacheFile)) {
+                    // No cache present — cannot resolve routes in this mode.
+                    throw new RouteNotFoundException($method, $path);
                 }
-                $calc = \hash('xxh3', \json_encode($blob[self::H_DATA], \JSON_THROW_ON_ERROR));
-                if (!\hash_equals($blob[self::H_HASH], $calc)) {
-                    throw new \RuntimeException('Route cache Hash mismatch.');
-                }
-            }
-
-            // Hydrate internal structures from the blob.
-            $this->hosts = $blob[self::H_DATA] ?? [];
-            $this->alias = $blob[self::H_ALIAS] ?? [];
-            $this->cacheLoaded = true;
-
-            // Warm opcache for the cache file if available.
-            if ($this->shouldWarmOpcache()) {
-                @\opcache_compile_file($this->cacheFile);
+                $this->loadCacheBlob();
             }
         }
 
@@ -308,6 +310,23 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         return $idx[$name] ?? null;
     }
 
+    /**
+     * Compute a deterministic hash for cache verification.
+     *
+     * Uses exported PHP payload text to avoid json_encode() object-loss semantics.
+     *
+     * @param array $hosts Host routing table payload.
+     * @param array $alias Alias map payload.
+     * @return string xxh3 fingerprint.
+     */
+    private function computeCacheHash(array $hosts, array $alias): string
+    {
+        return \hash('xxh3', $this->exportArray([
+            self::H_DATA => $hosts,
+            self::H_ALIAS => $alias,
+        ]));
+    }
+
     /*──────────── cache export (single file) ────────────*/
 
     /**
@@ -327,13 +346,14 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         }
 
         $payloadHosts = $this->hosts;
-        $crc = \hash('xxh3', \json_encode($payloadHosts, \JSON_THROW_ON_ERROR));
+        $payloadAlias = $this->alias;
+        $crc = $this->computeCacheHash($payloadHosts, $payloadAlias);
 
         $php = "<?php\nreturn [\n"
             . "    '" . self::H_HASH . "'  => " . \var_export($crc, true) . ",\n"
             . "    '" . self::H_TS . "'  => " . \var_export(date(DATE_ATOM), true) . ",\n"
             . "    '" . self::H_DATA . "' => " . $this->exportArray($payloadHosts) . ",\n"
-            . "    '" . self::H_ALIAS . "' => " . $this->exportArray($this->alias) . ",\n"
+            . "    '" . self::H_ALIAS . "' => " . $this->exportArray($payloadAlias) . ",\n"
             . "];\n";
 
         $tmp = $this->cacheFile . '.' . \uniqid('', true) . '.tmp';
@@ -345,6 +365,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
             @\unlink($tmp);
             throw new \RuntimeException("Failed to move cache file into place {$this->cacheFile}");
         }
+        $this->cacheStamp = $this->fileStamp($this->cacheFile);
 
         if ($this->shouldWarmOpcache()) {
             @\opcache_compile_file($this->cacheFile);
@@ -383,6 +404,38 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
             throw new \LogicException("Duplicate route {$verb} {$host}{$path}");
         }
         $table[$path][$verb] = $r;
+    }
+
+    /**
+     * Load and hydrate matcher tables from the cache file.
+     *
+     * @return void
+     * @throws \RuntimeException When verification is enabled and cache hash is invalid.
+     */
+    private function loadCacheBlob(): void
+    {
+        /** @var array{_hash?:string,_data?:array,_alias?:array<string,array{0:string,1:?string}>} $blob */
+        $blob = require $this->cacheFile;
+
+        if ($this->verifyCacheOnLoad) {
+            if (!isset($blob[self::H_HASH], $blob[self::H_DATA])) {
+                throw new \RuntimeException('Route cache missing Hash.');
+            }
+            $calc = $this->computeCacheHash($blob[self::H_DATA], $blob[self::H_ALIAS] ?? []);
+            if (!\hash_equals((string)$blob[self::H_HASH], $calc)) {
+                throw new \RuntimeException('Route cache Hash mismatch.');
+            }
+        }
+
+        $this->hosts = $blob[self::H_DATA] ?? [];
+        $this->alias = $blob[self::H_ALIAS] ?? [];
+        $this->cacheLoaded = true;
+        $this->cacheStamp = $this->fileStamp($this->cacheFile);
+        $this->cacheStampNextCheckNs = \hrtime(true) + $this->cacheStampCheckIntervalNs;
+
+        if ($this->shouldWarmOpcache()) {
+            @\opcache_compile_file($this->cacheFile);
+        }
     }
 
     /**
@@ -439,5 +492,32 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
             }
         }
         return null;
+    }
+
+    /**
+     * Invalidate hydrated cache tables when the backing file changed on disk.
+     *
+     * @return void
+     */
+    private function refreshCacheIfStale(): void
+    {
+        if (!$this->cacheLoaded) {
+            return;
+        }
+
+        $now = \hrtime(true);
+        if ($now < $this->cacheStampNextCheckNs) {
+            return;
+        }
+        $this->cacheStampNextCheckNs = $now + $this->cacheStampCheckIntervalNs;
+
+        $stamp = $this->fileStamp($this->cacheFile);
+        if ($stamp === null || $stamp !== $this->cacheStamp) {
+            $this->hosts = [];
+            $this->alias = [];
+            $this->cacheLoaded = false;
+            $this->cacheStamp = null;
+            $this->cacheStampNextCheckNs = 0;
+        }
     }
 }
