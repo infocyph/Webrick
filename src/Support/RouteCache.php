@@ -41,6 +41,9 @@ final class RouteCache
             'fused' => FusedMatcher::make(),
             default => ShardedMatcher::make(),
         };
+        if (\method_exists($matcher, 'enableCacheWrite')) {
+            $matcher->enableCacheWrite(true);
+        }
         $routeCache = ($mode === 'sharded') ? \rtrim($cachePath, "/\\") : $cachePath;
 
         $userRegister = $options['register'] ?? null;

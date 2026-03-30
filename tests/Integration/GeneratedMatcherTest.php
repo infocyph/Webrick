@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
 use Infocyph\Webrick\Exceptions\RouteNotFoundException;
+use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Matching\GeneratedMatcher;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 use Infocyph\Webrick\Router\Route\Route;
+use Infocyph\Webrick\Support\RouteCache;
 
 test('GeneratedMatcher matches static and dynamic routes', function (): void {
     $matcher = GeneratedMatcher::make();
@@ -43,15 +45,18 @@ test('GeneratedMatcher boots from generated cache file', function (): void {
     $file = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'webrick-generated-' . uniqid('', true) . '.php';
 
     try {
-        $route = CompiledRoute::fromRoute(
-            (new Route('GET', '/hello', static fn (): string => 'ok'))
-                ->withDomain('example.com')
-                ->withName('hello.route'),
-        );
-
-        $writer = GeneratedMatcher::make()->enableCache($file);
-        $writer->add($route);
-        $writer->finalize();
+        RouteCache::build([
+            'matcher' => 'generated',
+            'cache' => $file,
+            'register' => static function (Registrar $r): void {
+                $r->group(
+                    domain: 'example.com',
+                    callback: static function (Registrar $g): void {
+                        $g->get('/hello', static fn (): string => 'ok', 'hello.route');
+                    },
+                );
+            },
+        ]);
 
         expect(is_file($file))->toBeTrue();
 
@@ -67,4 +72,3 @@ test('GeneratedMatcher boots from generated cache file', function (): void {
         @unlink($file);
     }
 });
-

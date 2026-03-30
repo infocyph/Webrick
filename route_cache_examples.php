@@ -1,9 +1,9 @@
 <?php
 
 /**
- * examples/route_cache_examples.php
+ * route_cache_examples.php (project root)
  *
- * Run: php examples/route_cache_examples.php
+ * Run: php route_cache_examples.php
  */
 declare(strict_types=1);
 
@@ -18,13 +18,13 @@ use Psr\Log\NullLogger;
 // ----------------------------------------------------------------------------------
 // Common inputs (tweak as you like)
 // ----------------------------------------------------------------------------------
-$routesFile = __DIR__ . '/../routes.php';
+$routesFile = __DIR__ . '/routes.php';
 
 // Sharded cache: a directory that holds many small PHP shards + sentinels
-$shardedDir = __DIR__ . '/../.route-cache';
+$shardedDir = __DIR__ . '/.route-cache';
 
 // Fused cache: a single PHP file
-$fusedFile = __DIR__ . '/../.route-cache/__routes.php';
+$fusedFile = __DIR__ . '/.route-cache/__routes.php';
 
 // Optional signed URL secret + ttl
 $signKey = getenv('WEBRICK_SIGN_KEY') ?: 'dev-sign-key';

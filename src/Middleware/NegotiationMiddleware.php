@@ -67,13 +67,13 @@ final readonly class NegotiationMiddleware
         [$prod, $char] = $this->resolveRouteOverrides($req);
 
         // 1) Negotiate type & charset (with early 406)
-        [$type, $cset, $maybeEarly] = $this->negotiateTypeAndCharset($req, $prod, $char);
+        [$req, $type, $cset, $maybeEarly] = $this->negotiateTypeAndCharset($req, $prod, $char);
         if ($maybeEarly instanceof Response) {
             return $maybeEarly;
         }
 
         // 2) Negotiate locale & register Vary based on source
-        $locale = $this->negotiateLocaleRegisterVary($req);
+        [$req, $locale] = $this->negotiateLocaleRegisterVary($req);
 
         // 3) Stash negotiated choices for controllers
         $req = $this->stashChoices($req, $type, $cset, $locale);
@@ -211,9 +211,9 @@ final readonly class NegotiationMiddleware
      *
      * @param Request $req
      *
-     * @return string Selected locale.
+     * @return array{0:Request,1:string} Updated request + selected locale.
      */
-    private function negotiateLocaleRegisterVary(Request $req): string
+    private function negotiateLocaleRegisterVary(Request $req): array
     {
         // Detect locale with multi-source resolution; keep default order.
         [$locale, $source] = $req->detectLocale(
@@ -229,7 +229,7 @@ final readonly class NegotiationMiddleware
             $req = $req->withAttribute('personalized', true);
         }
 
-        return $locale;
+        return [$req, $locale];
     }
 
     /**
@@ -238,7 +238,7 @@ final readonly class NegotiationMiddleware
      * @param string[] $prod Supported media types.
      * @param string[] $char Supported charsets.
      *
-     * @return array{0: string, 1: ?string, 2: ?Response} [type, charset, earlyResponse]
+     * @return array{0: Request, 1: string, 2: ?string, 3: ?Response} [request, type, charset, earlyResponse]
      */
     private function negotiateTypeAndCharset(Request $req, array $prod, array $char): array
     {
@@ -248,19 +248,19 @@ final readonly class NegotiationMiddleware
         if ($type === null) {
             // Register Vary before short-circuit 406 so accumulator can write it
             $req = VaryAccumulatorMiddleware::add($req, 'Accept');
+            $early = new Response(
+                406,
+                new Stream('Not acceptable.'),
+                ['Content-Type' => 'text/plain; charset=utf-8'],
+            );
+            $early = $early->withSmartHeader('Vary', 'Accept');
+
             if ($req->getHeaderLine('Accept-Charset') !== '' && $this->charsetMattersForAny($prod)) {
                 $req = VaryAccumulatorMiddleware::add($req, 'Accept-Charset');
+                $early = $early->withSmartHeader('Vary', 'Accept-Charset');
             }
 
-            return [
-                '',
-                null,
-                new Response(
-                    406,
-                    new Stream('Not acceptable.'),
-                    ['Content-Type' => 'text/plain; charset=utf-8'],
-                ),
-            ];
+            return [$req, '', null, $early];
         }
 
         // We negotiated a type → always vary on Accept
@@ -286,7 +286,7 @@ final readonly class NegotiationMiddleware
             // No Vary on Accept-Charset here; we used a server default.
         }
 
-        return [$type, $cset, null];
+        return [$req, $type, $cset, null];
     }
 
     /* ───────────────────────── leaf helpers ───────────────────────── */

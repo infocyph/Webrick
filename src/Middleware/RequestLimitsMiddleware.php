@@ -19,6 +19,7 @@ namespace Infocyph\Webrick\Middleware;
 use Closure;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
+use InvalidArgumentException;
 
 /**
  * Apply request caps for headers (bytes and field count) and body size.
@@ -50,6 +51,15 @@ final readonly class RequestLimitsMiddleware
         private array $bodyLimitVerbs = ['POST', 'PUT', 'PATCH', 'DELETE'],
         private bool $violateOnUnknownBody = true,
     ) {
+        if ($this->maxHeaderBytes < 0) {
+            throw new InvalidArgumentException('maxHeaderBytes must be >= 0.');
+        }
+        if ($this->maxHeaderCount < 0) {
+            throw new InvalidArgumentException('maxHeaderCount must be >= 0.');
+        }
+        if ($this->maxBodyBytes !== null && $this->maxBodyBytes < 0) {
+            throw new InvalidArgumentException('maxBodyBytes must be >= 0 when provided.');
+        }
     }
 
     /**
@@ -109,7 +119,11 @@ final readonly class RequestLimitsMiddleware
                 // Length unknown up front (chunked/other coding) → do not 413 pre-emptively.
                 // Let downstream read/stream and enforce limits there if needed.
             } elseif ($cl !== '') {
-                $len = (int)$cl;
+                $len = $this->parseContentLength($cl);
+                if ($len === null) {
+                    $resp = Response::plaintext('Invalid Content-Length header.', 400);
+                    return $this->withConnCloseIfHttp1($req, $resp);
+                }
                 if ($len > $limit) {
                     $resp = Response::plaintext('Payload exceeds maximum allowed size.', 413);
                     return $this->withConnCloseIfHttp1($req, $resp);
@@ -148,6 +162,22 @@ final readonly class RequestLimitsMiddleware
             'k' => $num * 1024,
             default => (int)$val,
         };
+    }
+
+    /**
+     * Parse Content-Length as a strict non-negative integer.
+     *
+     * Returns null for invalid grammar; returns PHP_INT_MAX when numeric but out of platform range.
+     */
+    private function parseContentLength(string $raw): ?int
+    {
+        $raw = trim($raw);
+        if ($raw === '' || !ctype_digit($raw)) {
+            return null;
+        }
+
+        $value = filter_var($raw, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
+        return $value === false ? PHP_INT_MAX : (int)$value;
     }
 
     /* ───────────────────────── helpers ─────────────────────────── */

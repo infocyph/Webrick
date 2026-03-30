@@ -97,6 +97,25 @@ final class ResponseCacheMiddleware
         return $resp;
     }
 
+    /**
+     * Canonicalize a header token to Title-Case for deterministic keying.
+     */
+    private function canonicalHeaderToken(string $token): string
+    {
+        $token = trim($token);
+        if ($token === '') {
+            return '';
+        }
+
+        return implode(
+            '-',
+            array_map(
+                static fn (string $part): string => $part === '' ? '' : ucfirst(strtolower($part)),
+                explode('-', $token),
+            ),
+        );
+    }
+
     private function computeTtl(Response $resp): int
     {
         $ttl = max(0, (int)$this->ttlSeconds);
@@ -178,17 +197,8 @@ final class ResponseCacheMiddleware
             }
         }
 
-        // Prefer accumulator-provided pairs; tiny fallback to default headers present on the request.
-        /** @var array<string,string> $pairs */
-        $pairs = (array)$req->getAttribute('vary.pairs');
-        if ($pairs === []) {
-            foreach ($this->defaultVary as $name) {
-                $line = $req->getHeaderLine($name);
-                if ($line !== '') {
-                    $pairs[$name] = $line;
-                }
-            }
-        }
+        // Prefer accumulator-provided pairs/tokens; fallback to configured default vary surface.
+        $pairs = $this->resolveVaryPairs($req);
 
         // Deterministic order for header surface.
         if ($pairs) {
@@ -253,6 +263,50 @@ final class ResponseCacheMiddleware
             }
         }
         return $out;
+    }
+
+    /**
+     * Resolve request header/value pairs that participate in cache variance.
+     *
+     * Sources (in priority order):
+     * - Explicit precomputed `vary.pairs` attribute (if supplied by caller).
+     * - Pending vary tokens (`__vary_tokens`) registered by VaryAccumulatorMiddleware::add().
+     * - Fallback configured default vary headers when neither attribute is present.
+     *
+     * @return array<string,string>
+     */
+    private function resolveVaryPairs(Request $req): array
+    {
+        /** @var array<string,string> $pairs */
+        $pairs = (array)$req->getAttribute('vary.pairs');
+        if ($pairs !== []) {
+            return $pairs;
+        }
+
+        // Internal token queue used by VaryAccumulatorMiddleware.
+        $tokens = $req->getAttribute('__vary_tokens');
+        if (\is_array($tokens) && $tokens !== []) {
+            foreach ($tokens as $token) {
+                $name = $this->canonicalHeaderToken((string)$token);
+                if ($name === '') {
+                    continue;
+                }
+                // Keep empty values too (absence is a valid cache variant).
+                $pairs[$name] = $req->getHeaderLine($name);
+            }
+            if ($pairs !== []) {
+                return $pairs;
+            }
+        }
+
+        foreach ($this->defaultVary as $name) {
+            $line = $req->getHeaderLine($name);
+            if ($line !== '') {
+                $pairs[$name] = $line;
+            }
+        }
+
+        return $pairs;
     }
 
     private function unpack(array $data): Response

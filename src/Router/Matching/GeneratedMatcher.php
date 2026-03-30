@@ -16,7 +16,8 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
  * into a closure. The generated code uses bucketed switch blocks for static
  * and dynamic path checks per host to minimize runtime structure walking.
  *
- * Cache mode stores generated matcher source in a PHP file and lazy-loads it.
+ * Cache mode loads generated matcher source from a PHP file when present.
+ * Cache file generation is explicitly enabled only by route-cache tooling.
  * In-memory mode builds the closure directly during finalize().
  */
 final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
@@ -57,6 +58,11 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
      * Next monotonic timestamp (ns) when staleness check is allowed.
      */
     private int $cacheStampNextCheckNs = 0;
+
+    /**
+     * Whether cache file writing is explicitly enabled (tooling-only path).
+     */
+    private bool $cacheWriteEnabled = false;
 
     /**
      * Compiled generated matcher closure.
@@ -140,6 +146,17 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         return $this;
     }
 
+    /**
+     * Explicitly allow cache-file writes from finalize().
+     *
+     * This is intentionally opt-in and should only be used by route-cache tooling.
+     */
+    public function enableCacheWrite(bool $enable = true): self
+    {
+        $this->cacheWriteEnabled = $enable;
+        return $this;
+    }
+
     public function finalize(): void
     {
         if ($this->finalized) {
@@ -147,16 +164,24 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         }
 
         if ($this->cacheEnabled) {
-            if (!\is_file($this->cacheFile) && $this->hostRoutes !== []) {
+            $cacheFileExists = \is_file($this->cacheFile);
+            if (!$cacheFileExists && $this->cacheWriteEnabled && $this->hostRoutes !== []) {
                 $this->dumpCache();
+                $cacheFileExists = true;
             }
-            // Free route tables in cache mode; compiled closure is loaded lazily.
-            $this->hostRoutes = [];
-            $this->guard = [];
-            $this->compiledFn = null;
-            $this->cacheLoaded = false;
-            $this->cacheStamp = null;
-            $this->cacheStampNextCheckNs = 0;
+
+            if ($cacheFileExists) {
+                // Cache boot mode: load lazily from file.
+                $this->hostRoutes = [];
+                $this->guard = [];
+                $this->compiledFn = null;
+                $this->cacheLoaded = false;
+                $this->cacheStamp = null;
+                $this->cacheStampNextCheckNs = 0;
+            } elseif ($this->compiledFn === null) {
+                // No cache file available: keep runtime path purely in-memory.
+                $this->compiledFn = $this->compileClosureFromCode($this->buildMatcherCode());
+            }
         } elseif ($this->compiledFn === null) {
             $this->compiledFn = $this->compileClosureFromCode($this->buildMatcherCode());
         }
@@ -172,13 +197,12 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
 
         if ($this->cacheEnabled) {
             $this->refreshCacheIfStale();
-            if (!$this->cacheLoaded) {
-                if (!\is_file($this->cacheFile)) {
-                    throw new RouteNotFoundException($verb, $path);
-                }
+            if (!$this->cacheLoaded && \is_file($this->cacheFile)) {
                 $this->loadCacheBlob();
             }
-        } elseif ($this->compiledFn === null) {
+        }
+
+        if ($this->compiledFn === null) {
             $this->compiledFn = $this->compileClosureFromCode($this->buildMatcherCode());
         }
 

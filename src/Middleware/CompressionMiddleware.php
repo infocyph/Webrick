@@ -426,26 +426,33 @@ final readonly class CompressionMiddleware
      */
     private function shouldCompress(Request $req, Response $resp): bool
     {
-        return match (true) {
-            $resp->isStreaming(),
-            in_array($resp->getStatusCode(), [204, 304, 206], true),
-            strtoupper($req->getMethod()) === 'HEAD',
-            $resp->hasHeader('Content-Encoding'),
-            $resp->hasHeader('Content-Range'),
-            $this->hasNoTransform($resp),
-            (function () use ($resp): bool {
-                $length = StreamUtil::byteLength($resp->getBody(), $this->minBytes);
-                return $length < $this->minBytes || $length > $this->maxBufferBytes;
-            })(),
-            (function () use ($resp): bool {
-                $contentType = strtolower(trim($resp->getHeaderLine('Content-Type')));
-                if ($contentType === '') {
-                    return false; // unknown ⇒ allow (subject to size)
-                }
-                return $this->isNonCompressible($contentType) || !$this->isAllowedByWhitelist($contentType);
-            })() => false,
-            default => true,
-        };
+        if ($resp->isStreaming()) {
+            return false;
+        }
+        if (in_array($resp->getStatusCode(), [204, 304, 206], true)) {
+            return false;
+        }
+        if (strtoupper($req->getMethod()) === 'HEAD') {
+            return false;
+        }
+        if ($resp->hasHeader('Content-Encoding') || $resp->hasHeader('Content-Range')) {
+            return false;
+        }
+        if ($this->hasNoTransform($resp)) {
+            return false;
+        }
+
+        $length = StreamUtil::byteLength($resp->getBody(), $this->minBytes);
+        if ($length < $this->minBytes || $length > $this->maxBufferBytes) {
+            return false;
+        }
+
+        $contentType = strtolower(trim($resp->getHeaderLine('Content-Type')));
+        if ($contentType !== '' && ($this->isNonCompressible($contentType) || !$this->isAllowedByWhitelist($contentType))) {
+            return false;
+        }
+
+        return true;
     }
 
     /**

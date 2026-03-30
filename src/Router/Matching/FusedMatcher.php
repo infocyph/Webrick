@@ -20,13 +20,11 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
  *  - Accept compiled routes and insert them into the appropriate bucket.
  *  - Provide match(method, host, path) to return a matched CompiledRoute and
  *    extracted parameters or throw the appropriate routing exception.
- *  - Optionally emit a single-file PHP cache blob and lazily reload it on
- *    first match when cache is enabled.
+ *  - Lazily reload a single-file PHP cache blob on first match when cache is enabled.
  *
  * Notes:
- *  - When cache is enabled this class will write a single PHP file in
- *    finalize() and subsequently free in-memory tables to reduce resident
- *    memory; the file is lazily loaded on first match or alias access.
+ *  - Cache files are loaded when present; cache generation is explicitly
+ *    enabled only by dedicated cache tooling.
  *  - The matcher enforces that no routes are added after finalize() is called.
  *
  * @package Infocyph\Webrick\Router\Matching
@@ -81,6 +79,13 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
      * @var int
      */
     private int $cacheStampNextCheckNs = 0;
+
+    /**
+     * Whether cache file writing is explicitly enabled (tooling-only path).
+     *
+     * @var bool
+     */
+    private bool $cacheWriteEnabled = false;
 
     /**
      * Whether the matcher has been finalized (no further route additions allowed).
@@ -194,8 +199,12 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
     /**
      * Enable single-file cache output and set the target file path.
      *
-     * The matcher will attempt to write the cache in finalize() if routes have
-     * been added and the target file is absent.
+     * Runtime behavior:
+     *  - if the file exists it can be loaded for cache-boot;
+     *  - if the file does not exist matcher continues using in-memory routes.
+     *
+     * Cache file generation is disabled by default and must be explicitly enabled
+     * through cache tooling.
      *
      * @param string $cacheLocation Path to the output cache file
      * @return self Fluent self for chaining
@@ -208,13 +217,26 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
     }
 
     /**
+     * Explicitly allow cache-file writes from finalize().
+     *
+     * This is intentionally opt-in and should only be used by route-cache tooling.
+     *
+     * @param bool $enable
+     * @return self
+     */
+    public function enableCacheWrite(bool $enable = true): self
+    {
+        $this->cacheWriteEnabled = $enable;
+        return $this;
+    }
+
+    /**
      * Finalize the matcher.
      *
      * Behavior:
-     *  - If caching is enabled and the single-file cache does not exist but the
-     *    in-memory hosts table is populated, the cache file will be written.
-     *  - When the cache is written the in-memory tables are cleared to allow
-     *    lazy reload from the cache file later.
+     *  - In normal runtime mode, this only seals the matcher.
+     *  - In tooling mode (cache-write explicitly enabled), this may write the
+     *    cache file and clear in-memory tables.
      *
      * This method is idempotent.
      *
@@ -225,8 +247,13 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         if ($this->finalized) {
             return;
         }
-        // Write cache only if table is built and file is absent
-        if ($this->cacheEnabled && !\is_file($this->cacheFile) && $this->hosts !== []) {
+        // Cache writing is tooling-only and explicitly enabled.
+        if (
+            $this->cacheEnabled
+            && $this->cacheWriteEnabled
+            && !\is_file($this->cacheFile)
+            && $this->hosts !== []
+        ) {
             $this->dumpCache();
             // Free memory; tables will be lazy-loaded on first match()
             $this->hosts = [];
@@ -245,8 +272,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
      *
      * Lazy cache behaviour:
      *  - If caching is enabled and cache wasn't loaded, attempt to require the
-     *    cache file and hydrate internal tables. If the file is missing a
-     *    RouteNotFoundException is thrown early.
+     *    cache file and hydrate internal tables when the file exists.
      *
      * Matching order:
      *  1. Static table for host then wildcard '*'
@@ -266,11 +292,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         if ($this->cacheEnabled) {
             $this->refreshCacheIfStale();
 
-            if (!$this->cacheLoaded) {
-                if (!\is_file($this->cacheFile)) {
-                    // No cache present — cannot resolve routes in this mode.
-                    throw new RouteNotFoundException($method, $path);
-                }
+            if (!$this->cacheLoaded && \is_file($this->cacheFile)) {
                 $this->loadCacheBlob();
             }
         }

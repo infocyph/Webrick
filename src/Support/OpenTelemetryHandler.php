@@ -75,6 +75,7 @@ final readonly class OpenTelemetryHandler
 
         // Start server span
         $span = $tracer->spanBuilder($spanName)
+            ->setParent($context)
             ->setSpanKind(SpanKind::KIND_SERVER)
             ->setStartTimestamp($startNs)
             ->startSpan();
@@ -262,7 +263,7 @@ final readonly class OpenTelemetryHandler
     {
         // HTTP attributes (semantic conventions)
         $span->setAttribute('http.method', $req->getMethod());
-        $span->setAttribute('http.target', $req->getPath());
+        $span->setAttribute('http.target', $req->getUri()->getPath() ?: '/');
         $span->setAttribute('http.scheme', $req->getUri()->getScheme());
         $span->setAttribute('http.host', $req->getUri()->getHost());
 
@@ -360,7 +361,7 @@ final readonly class OpenTelemetryHandler
             return $method . ' ' . $routeName;
         }
 
-        return $method . ' ' . $req->getPath();
+        return $method . ' ' . ($req->getUri()->getPath() ?: '/');
     }
 
     /**

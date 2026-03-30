@@ -24,6 +24,7 @@ use DateTimeImmutable;
 use Infocyph\InterMix\Cache\Cache;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
+use InvalidArgumentException as InvalidConfigException;
 use Psr\Cache\CacheItemPoolInterface;
 use Psr\Cache\InvalidArgumentException;
 
@@ -63,6 +64,19 @@ final readonly class ThrottleMiddleware
         private string $costAttribute = 'rate_cost.thm',
         private ?Closure $bypass = null,
     ) {
+        if ($this->max < 1) {
+            throw new InvalidConfigException('max must be >= 1.');
+        }
+        if ($this->window < 1) {
+            throw new InvalidConfigException('window must be >= 1 second.');
+        }
+        if ($this->scope === '') {
+            throw new InvalidConfigException('scope must be a non-empty string.');
+        }
+        if ($this->costAttribute === '') {
+            throw new InvalidConfigException('costAttribute must be a non-empty string.');
+        }
+
         $this->pool = $pool ?? Cache::local($_SERVER['DOCUMENT_ROOT'] . '.thm');
     }
 

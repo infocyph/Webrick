@@ -12,7 +12,7 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
  *
  * Matcher implementation that shards compiled routes into many small cache files
  * (per-host and per-path-prefix). During build-time routes are collected into
- * an in-memory prefix map; on finalize() these are written into multiple PHP
+ * an in-memory bucket map; dedicated tooling can persist those into multiple PHP
  * shard files plus an alias file. At runtime the matcher loads at most two
  * shard files (the requested host bucket and the wildcard) to resolve a match.
  *
@@ -121,6 +121,20 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
      * @var bool
      */
     private bool $cacheEnabled = false;
+
+    /**
+     * Whether runtime should prefer loading shard files over in-memory groups.
+     *
+     * @var bool
+     */
+    private bool $cacheReadable = false;
+
+    /**
+     * Whether cache file writing is explicitly enabled (tooling-only path).
+     *
+     * @var bool
+     */
+    private bool $cacheWriteEnabled = false;
 
     /**
      * Whether the matcher has been finalized (no further route additions allowed).
@@ -243,7 +257,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
      */
     public function aliasIndex(): array
     {
-        if (!$this->cacheEnabled) {
+        if (!$this->cacheEnabled || !$this->cacheReadable) {
             return $this->alias;
         }
 
@@ -326,6 +340,21 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     {
         $this->cacheEnabled = true;
         $this->cacheDir = \rtrim($cacheLocation, '/\\');
+        $this->cacheReadable = false;
+        return $this;
+    }
+
+    /**
+     * Explicitly allow cache-file writes from finalize().
+     *
+     * This is intentionally opt-in and should only be used by route-cache tooling.
+     *
+     * @param bool $enable
+     * @return self
+     */
+    public function enableCacheWrite(bool $enable = true): self
+    {
+        $this->cacheWriteEnabled = $enable;
         return $this;
     }
 
@@ -333,8 +362,11 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
      * Finalize the matcher and emit shard files when caching is enabled.
      *
      * Behavior:
-     *  - Writes shard files and alias file only once if cache does not exist.
-     *  - Frees build-time in-memory maps after successful dump.
+     *  - In normal runtime mode, this only seals matcher state and chooses
+     *    whether runtime should load from cache files (when they already exist)
+     *    or from in-memory groups.
+     *  - In tooling mode (cache-write explicitly enabled), it writes shard and
+     *    alias files and frees build-time in-memory maps.
      *
      * This method is idempotent.
      *
@@ -346,9 +378,9 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         if ($this->finalized) {
             return;
         }
-        // Cold-dump only once; check wildcard root shard as sentinel.
+        // Cold-dump only when explicitly enabled; check wildcard root shard as sentinel.
         $sentinel = $this->shardFilePath('*', self::SHARD_ROOT);
-        if ($this->cacheEnabled && !\file_exists($sentinel)) {
+        if ($this->cacheEnabled && $this->cacheWriteEnabled && !\file_exists($sentinel)) {
             $this->dumpCacheFiles();     // writes all shards
             $this->dumpAliasFile();      // writes __aliases.php
             // free build-time memory
@@ -361,6 +393,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             $this->aliasStamp = null;
             $this->aliasNextCheckNs = 0;
         }
+        $this->cacheReadable = $this->cacheEnabled && \is_file($sentinel);
         $this->finalized = true;
     }
 
@@ -389,35 +422,53 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         [$method, $host, $path] = $this->normalizeRequest($method, $host, $path);
         $bucket = $this->fileKeyForPath($path);
 
-        // Load per-host + wildcard groups (two tiny files max)
+        // Load host group first. Wildcard group stays lazy, but precedence remains:
+        // host static -> wildcard static -> host dynamic -> wildcard dynamic.
         $grpHost = $this->loadGroupFor($host, $bucket);
-        $grpAny = ($host === '*') ? null : $this->loadGroupFor('*', $bucket);
-
-        if ($grpHost === null && $grpAny === null) {
-            throw new RouteNotFoundException($method, $path);
-        }
+        $grpAny = null;
+        $wildcardLoaded = false;
+        $hasCandidateGroup = ($grpHost !== null);
 
         /** @var array<string,bool> $allowedSet */
         $allowedSet = [];
 
-        // ① static (host then wildcard)
+        // ① host static
         if ($hit = $this->tryStatic($grpHost, $method, $path, $allowedSet)) {
             return $hit;
         }
-        if ($hit = $this->tryStatic($grpAny, $method, $path, $allowedSet)) {
-            return $hit;
+
+        // ② wildcard static (lazy load wildcard only after host-static miss)
+        if ($host !== '*') {
+            $grpAny = $this->loadGroupFor('*', $bucket);
+            $wildcardLoaded = true;
+            $hasCandidateGroup = $hasCandidateGroup || ($grpAny !== null);
+
+            if ($hit = $this->tryStatic($grpAny, $method, $path, $allowedSet)) {
+                return $hit;
+            }
         }
 
-        // ② dynamic trie (host then wildcard)
+        // ③ host dynamic trie
         $segments = $this->explodePath($path);
         if ($hit = $this->tryDynamic($grpHost, $method, $segments, $allowedSet)) {
             return $hit;
         }
-        if ($hit = $this->tryDynamic($grpAny, $method, $segments, $allowedSet)) {
-            return $hit;
+
+        // ④ wildcard dynamic trie
+        if ($host !== '*') {
+            if (!$wildcardLoaded) {
+                $grpAny = $this->loadGroupFor('*', $bucket);
+                $hasCandidateGroup = $hasCandidateGroup || ($grpAny !== null);
+            }
+            if ($hit = $this->tryDynamic($grpAny, $method, $segments, $allowedSet)) {
+                return $hit;
+            }
         }
 
-        // ③ verdict
+        // ⑤ verdict
+        if (!$hasCandidateGroup) {
+            throw new RouteNotFoundException($method, $path);
+        }
         if ($allowedSet !== []) {
             throw new MethodNotAllowedException($method, $path, \array_keys($allowedSet));
         }
@@ -630,7 +681,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
      */
     private function loadGroupFor(string $hostKey, string $bucket): ?array
     {
-        if ($this->cacheEnabled) {
+        if ($this->cacheReadable) {
             return $this->loadGroupFromCache($hostKey, $bucket);
         }
         return $this->buildDevGroupOnce($hostKey, $bucket);

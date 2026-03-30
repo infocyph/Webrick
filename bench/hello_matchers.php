@@ -2,17 +2,21 @@
 
 declare(strict_types=1);
 
+use Infocyph\Webrick\Router\Definition\Attribute\AttributeRouteLoader;
+use Infocyph\Webrick\Router\Definition\Registrar;
+use Infocyph\Webrick\Router\Dispatch\MiddlewareAliases;
+use Infocyph\Webrick\Router\Facade\Router;
 use Infocyph\Webrick\Router\Matching\FusedMatcher;
 use Infocyph\Webrick\Router\Matching\GeneratedMatcher;
 use Infocyph\Webrick\Router\Matching\MatcherInterface;
 use Infocyph\Webrick\Router\Matching\ShardedMatcher;
+use Infocyph\Webrick\Router\Route\Collection;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
-use Infocyph\Webrick\Router\Route\Route;
 
 require dirname(__DIR__) . '/vendor/autoload.php';
 
 /**
- * Small routing hot-path benchmark for hello-world style routes.
+ * Small matcher hot-path benchmark using project route sets.
  *
  * Usage examples:
  *   php bench/hello_matchers.php
@@ -39,6 +43,26 @@ if ($cacheOnly && $memoryOnly) {
     exit(2);
 }
 
+/**
+ * @var array<int, array{
+ *   key:string,
+ *   title:string,
+ *   routes:list<CompiledRoute>
+ * }>
+ */
+$routeSets = [
+    [
+        'key' => 'index-routes',
+        'title' => 'Index routes.php (+ attribute routes)',
+        'routes' => buildIndexCompiledRoutes(),
+    ],
+    [
+        'key' => 'route-cache-example',
+        'title' => 'RouteCache example closure routes',
+        'routes' => buildRouteCacheExampleCompiledRoutes(),
+    ],
+];
+
 /** @var array<string,bool> $modes label => useCache */
 $modes = match (true) {
     $cacheOnly => ['cache-hot' => true],
@@ -53,45 +77,59 @@ $modes = match (true) {
  *   method:string,
  *   host:string,
  *   path:string,
+ *   route_count:int,
  *   routes:list<CompiledRoute>,
  *   assertHit:callable(array):bool
  * }>
  */
-$scenarios = [
-    [
-        'key' => 'static',
-        'title' => 'Static Route',
+$scenarios = [];
+foreach ($routeSets as $routeSet) {
+    $routes = $routeSet['routes'];
+    $routeCount = \count($routes);
+
+    $scenarios[] = [
+        'key' => $routeSet['key'] . '-static',
+        'title' => $routeSet['title'] . ' - Static /ping',
         'method' => 'GET',
-        'host' => 'example.com',
-        'path' => '/hello',
-        'routes' => [
-            CompiledRoute::fromRoute(
-                (new Route('GET', '/hello', static fn (): string => 'hello'))
-                    ->withDomain('example.com'),
-            ),
-        ],
+        'host' => 'localhost',
+        'path' => '/ping',
+        'route_count' => $routeCount,
+        'routes' => $routes,
         'assertHit' => static function (array $hit): bool {
-            return isset($hit[0]) && $hit[0]->getPath() === '/hello' && (($hit[1] ?? []) === []);
+            return isset($hit[0]) && $hit[0]->getPath() === '/ping' && (($hit[1] ?? []) === []);
         },
-    ],
-    [
-        'key' => 'dynamic',
-        'title' => 'Dynamic Route',
+    ];
+
+    $scenarios[] = [
+        'key' => $routeSet['key'] . '-dynamic',
+        'title' => $routeSet['title'] . ' - Dynamic /hello/{name}',
         'method' => 'GET',
-        'host' => 'example.com',
+        'host' => 'localhost',
         'path' => '/hello/benchmark',
-        'routes' => [
-            CompiledRoute::fromRoute(
-                (new Route('GET', '/hello/{name}', static fn (): string => 'hello'))
-                    ->withDomain('example.com'),
-            ),
-        ],
+        'route_count' => $routeCount,
+        'routes' => $routes,
         'assertHit' => static function (array $hit): bool {
             return isset($hit[0], $hit[1]['name'])
                 && $hit[0]->getPath() === '/hello/{name}'
                 && $hit[1]['name'] === 'benchmark';
         },
-    ],
+    ];
+}
+
+$indexRouteSet = $routeSets[0];
+$scenarios[] = [
+    'key' => $indexRouteSet['key'] . '-domain-dynamic',
+    'title' => $indexRouteSet['title'] . ' - Domain dynamic /v1/users/{id:int}',
+    'method' => 'GET',
+    'host' => 'api.localhost',
+    'path' => '/v1/users/7',
+    'route_count' => \count($indexRouteSet['routes']),
+    'routes' => $indexRouteSet['routes'],
+    'assertHit' => static function (array $hit): bool {
+        return isset($hit[0], $hit[1]['id'])
+            && $hit[0]->getPath() === '/v1/users/{id:int}'
+            && $hit[1]['id'] === '7';
+    },
 ];
 
 echo "Webrick Matcher Benchmark\n";
@@ -103,10 +141,14 @@ if (extension_loaded('xdebug')) {
 }
 echo "\n";
 echo "Metric notes:\n";
-echo "  ops/s  = successful match operations per second (higher is better).\n";
-echo "  ns/op  = nanoseconds spent per single match operation (lower is better).\n";
+echo "  ops/s  = iterations / elapsed_seconds for one timed round (higher is better).\n";
+echo "  ns/op  = elapsed_nanoseconds / iterations for one timed round (lower is better).\n";
 echo "  best   = fastest round.\n";
 echo "  avg    = mean across all rounds.\n";
+echo "Route sets:\n";
+foreach ($routeSets as $set) {
+    echo "  - {$set['title']}: " . \count($set['routes']) . " compiled routes\n";
+}
 
 foreach ($modes as $modeLabel => $useCache) {
     $cacheRoot = null;
@@ -188,6 +230,7 @@ foreach ($modes as $modeLabel => $useCache) {
         );
 
         echo "\nScenario: {$scenario['title']} ({$scenario['method']} {$scenario['host']} {$scenario['path']})\n";
+        echo "Routes in matcher: {$scenario['route_count']}\n";
 
         $tableRows = [];
         foreach ($results as $row) {
@@ -196,14 +239,11 @@ foreach ($modes as $modeLabel => $useCache) {
                 number_format($row['best_ops_s'], 2),
                 number_format($row['avg_ops_s'], 2),
                 number_format($row['best_ns_op'], 2),
-                implode(', ', array_map(
-                    static fn (float $ns): string => number_format($ns / 1_000_000, 2),
-                    $row['rounds_ns'],
-                )),
+                number_format($row['avg_ns_op'], 2),
             ];
         }
         printTable(
-            ['Matcher', 'Best ops/s', 'Avg ops/s', 'Best ns/op', 'Rounds (ms)'],
+            ['Matcher', 'Best ops/s', 'Avg ops/s', 'Best ns/op', 'Avg ns/op'],
             $tableRows,
         );
 
@@ -223,7 +263,7 @@ foreach ($modes as $modeLabel => $useCache) {
  *   best_ops_s:float,
  *   avg_ops_s:float,
  *   best_ns_op:float,
- *   rounds_ns:list<float>
+ *   avg_ns_op:float
  * }
  */
 function benchMatcher(
@@ -270,8 +310,96 @@ function benchMatcher(
         'best_ops_s' => $bestOpsS,
         'avg_ops_s' => $avgOpsS,
         'best_ns_op' => $bestNs / $iterations,
-        'rounds_ns' => $roundNs,
+        'avg_ns_op' => $avgNs / $iterations,
     ];
+}
+
+/**
+ * Build compiled routes from project `routes.php` and attribute fixtures.
+ *
+ * @return list<CompiledRoute>
+ */
+function buildIndexCompiledRoutes(): array
+{
+    static $compiled = null;
+    if (\is_array($compiled)) {
+        return $compiled;
+    }
+
+    MiddlewareAliases::reset();
+    MiddlewareAliases::register(
+        'throttle',
+        static fn (...$_params): string => \Infocyph\Webrick\Middleware\ThrottleMiddleware::class,
+    );
+    MiddlewareAliases::register(
+        'verifySignedUrl',
+        static fn (...$_params): string => \Infocyph\Webrick\Middleware\VerifySignedUrlMiddleware::class,
+    );
+
+    $routes = new Collection();
+    $signUrlSecret = 'bench-sign-key';
+    $registrar = new Registrar(
+        routes: $routes,
+        autoSlashRedirect: false,
+        exposeUrlServices: false,
+        signKey: $signUrlSecret,
+        signedDefaultTtl: 900,
+    );
+
+    Router::setInstance($registrar);
+    require dirname(__DIR__) . '/routes.php';
+
+    $fixtureDir = dirname(__DIR__) . '/tests/Fixture';
+    if (\is_dir($fixtureDir)) {
+        AttributeRouteLoader::registerFromDirs(
+            $registrar,
+            ['Infocyph\\Webrick\\Tests\\Fixture\\' => $fixtureDir],
+        );
+    }
+
+    /** @var list<CompiledRoute> $all */
+    $all = $routes->compile()->all();
+    if ($all === []) {
+        throw new RuntimeException('Failed to build benchmark route set from routes.php.');
+    }
+    $compiled = $all;
+
+    return $compiled;
+}
+
+/**
+ * Build compiled routes matching the closure example in route_cache_examples.php.
+ *
+ * @return list<CompiledRoute>
+ */
+function buildRouteCacheExampleCompiledRoutes(): array
+{
+    static $compiled = null;
+    if (\is_array($compiled)) {
+        return $compiled;
+    }
+
+    $routes = new Collection();
+    $registrar = new Registrar(
+        routes: $routes,
+        autoSlashRedirect: false,
+        exposeUrlServices: false,
+    );
+
+    $register = static function (Registrar $r): void {
+        $r->get('/ping', static fn (): string => 'pong', 'ping');
+        $r->get('/hello/{name}', static fn ($req, $name): string => (string)$name, 'hello');
+    };
+    $register($registrar);
+
+    /** @var list<CompiledRoute> $all */
+    $all = $routes->compile()->all();
+    if ($all === []) {
+        throw new RuntimeException('Failed to build benchmark route set from route cache closure example.');
+    }
+    $compiled = $all;
+
+    return $compiled;
 }
 
 /**

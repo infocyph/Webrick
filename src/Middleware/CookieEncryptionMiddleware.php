@@ -420,7 +420,11 @@ final class CookieEncryptionMiddleware
                 $this->aad($baseName, (int)$useKid, $mode),   // AAD binds name+kid+mode
             );
             if ($pt !== false) {
-                return $this->decompress($mode, $pt);
+                $decoded = $this->decompress($mode, $pt);
+                if ($decoded === false || $decoded === null) {
+                    continue;
+                }
+                return $decoded;
             }
         }
 
@@ -455,11 +459,11 @@ final class CookieEncryptionMiddleware
             ksort($parts);
             $cipher = implode('', $parts);
             $plain = $this->decrypt($base, $cipher);
-            if ($plain === null && $this->dropOnDecryptFailure) {
+            if (($plain === null || $plain === false) && $this->dropOnDecryptFailure) {
                 // fail closed: omit the cookie entirely
                 continue;
             }
-            $out[$base] = $plain;
+            $out[$base] = ($plain === false) ? null : $plain;
         }
 
         return $out;
