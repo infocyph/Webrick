@@ -48,6 +48,7 @@ if ($cacheOnly && $memoryOnly) {
 /**
  * @var array<int, array{
  *   key:string,
+ *   label:string,
  *   title:string,
  *   register:callable(Registrar):void,
  *   routes:list<CompiledRoute>
@@ -56,6 +57,7 @@ if ($cacheOnly && $memoryOnly) {
 $routeSets = [
     [
         'key' => 'index-routes',
+        'label' => 'index',
         'title' => 'Index routes.php (+ attribute routes)',
         'register' => static function (Registrar $r): void {
             registerIndexRoutes($r);
@@ -66,6 +68,7 @@ $routeSets = [
     ],
     [
         'key' => 'route-cache-example',
+        'label' => 'route-cache',
         'title' => 'RouteCache example closure routes',
         'register' => static function (Registrar $r): void {
             registerRouteCacheExampleRoutes($r);
@@ -86,6 +89,8 @@ $modes = match (true) {
 /**
  * @var array<int, array{
  *   key:string,
+ *   route_set:string,
+ *   case:string,
  *   title:string,
  *   method:string,
  *   host:string,
@@ -103,6 +108,8 @@ foreach ($routeSets as $routeSet) {
 
     $scenarios[] = [
         'key' => $routeSet['key'] . '-static',
+        'route_set' => $routeSet['label'],
+        'case' => 'static',
         'title' => $routeSet['title'] . ' - Static /ping',
         'method' => 'GET',
         'host' => 'localhost',
@@ -117,6 +124,8 @@ foreach ($routeSets as $routeSet) {
 
     $scenarios[] = [
         'key' => $routeSet['key'] . '-dynamic',
+        'route_set' => $routeSet['label'],
+        'case' => 'dynamic',
         'title' => $routeSet['title'] . ' - Dynamic /hello/{name}',
         'method' => 'GET',
         'host' => 'localhost',
@@ -135,6 +144,8 @@ foreach ($routeSets as $routeSet) {
 $indexRouteSet = $routeSets[0];
 $scenarios[] = [
     'key' => $indexRouteSet['key'] . '-domain-dynamic',
+    'route_set' => $indexRouteSet['label'],
+    'case' => 'domain-dynamic',
     'title' => $indexRouteSet['title'] . ' - Domain dynamic /v1/users/{id:int}',
     'method' => 'GET',
     'host' => 'api.localhost',
@@ -168,6 +179,9 @@ foreach ($routeSets as $set) {
     echo "  - {$set['title']}: " . \count($set['routes']) . " compiled routes\n";
 }
 
+/** @var list<list<string>> $summaryRows */
+$summaryRows = [];
+
 foreach ($modes as $modeLabel => $useCache) {
     $cacheRoot = null;
     if ($useCache) {
@@ -176,9 +190,6 @@ foreach ($modes as $modeLabel => $useCache) {
             @mkdir($cacheRoot, 0775, true);
         }
     }
-
-    echo "\n=== Mode: {$modeLabel} ===\n";
-
     foreach ($scenarios as $scenario) {
         $results = [];
         $results[] = benchMatcher(
@@ -190,34 +201,6 @@ foreach ($modes as $modeLabel => $useCache) {
                 }
 
                 $m = FusedMatcher::make();
-                if ($useCache) {
-                    $m->enableCache($cachePath);
-                } else {
-                    foreach ($scenario['routes'] as $route) {
-                        $m->add($route);
-                    }
-                }
-                $m->finalize();
-                return $m;
-            },
-            $iterations,
-            $rounds,
-            $warmup,
-            method: $scenario['method'],
-            host: $scenario['host'],
-            path: $scenario['path'],
-            assertHit: $scenario['assertHit'],
-        );
-
-        $results[] = benchMatcher(
-            'Sharded',
-            static function () use ($scenario, $useCache, $cacheRoot): MatcherInterface {
-                $cachePath = $cacheRoot . DIRECTORY_SEPARATOR . $scenario['key'] . '-sharded';
-                if ($useCache) {
-                    buildBenchmarkCache('sharded', $cachePath, $scenario['register']);
-                }
-
-                $m = ShardedMatcher::make();
                 if ($useCache) {
                     $m->enableCache($cachePath);
                 } else {
@@ -265,33 +248,72 @@ foreach ($modes as $modeLabel => $useCache) {
             assertHit: $scenario['assertHit'],
         );
 
-        echo "\nScenario: {$scenario['title']} ({$scenario['method']} {$scenario['host']} {$scenario['path']})\n";
-        echo "Routes in matcher: {$scenario['route_count']}\n";
+        $results[] = benchMatcher(
+            'Sharded',
+            static function () use ($scenario, $useCache, $cacheRoot): MatcherInterface {
+                $cachePath = $cacheRoot . DIRECTORY_SEPARATOR . $scenario['key'] . '-sharded';
+                if ($useCache) {
+                    buildBenchmarkCache('sharded', $cachePath, $scenario['register']);
+                }
 
-        $tableRows = [];
-        foreach ($results as $row) {
-            $tableRows[] = [
-                $row['name'],
-                number_format($row['best_ops_s'], 2),
-                number_format($row['avg_ops_s'], 2),
-                number_format($row['best_ns_op'], 2),
-                number_format($row['avg_ns_op'], 2),
-            ];
-        }
-        printTable(
-            ['Matcher', 'Best ops/s', 'Avg ops/s', 'Best ns/op', 'Avg ns/op'],
-            $tableRows,
+                $m = ShardedMatcher::make();
+                if ($useCache) {
+                    $m->enableCache($cachePath);
+                } else {
+                    foreach ($scenario['routes'] as $route) {
+                        $m->add($route);
+                    }
+                }
+                $m->finalize();
+                return $m;
+            },
+            $iterations,
+            $rounds,
+            $warmup,
+            method: $scenario['method'],
+            host: $scenario['host'],
+            path: $scenario['path'],
+            assertHit: $scenario['assertHit'],
         );
+
+        /** @var array<string, array{
+         *   name:string,
+         *   best_ops_s:float,
+         *   avg_ops_s:float,
+         *   best_ns_op:float,
+         *   avg_ns_op:float
+         * }> $byName
+         */
+        $byName = [];
+        foreach ($results as $row) {
+            $byName[strtolower($row['name'])] = $row;
+        }
 
         usort($results, static fn (array $a, array $b): int => $b['best_ops_s'] <=> $a['best_ops_s']);
         $winner = $results[0];
-        echo "Winner: {$winner['name']} (" . number_format($winner['best_ops_s'], 2) . " ops/s)\n";
+
+        $summaryRows[] = [
+            $modeLabel,
+            $scenario['route_set'],
+            $scenario['case'],
+            "{$scenario['method']} {$scenario['host']} {$scenario['path']}",
+            formatMetricCell($byName['fused'] ?? null),
+            formatMetricCell($byName['generated'] ?? null),
+            formatMetricCell($byName['sharded'] ?? null),
+            $winner['name'],
+        ];
     }
 
     if ($useCache && $cacheRoot !== null) {
         rrmdir($cacheRoot);
     }
 }
+
+echo "\n";
+printTable(
+    ['Mode', 'Route Set', 'Case', 'Request', 'Fused', 'Generated', 'Sharded', 'Winner'],
+    $summaryRows,
+);
 
 /**
  * @return array{
@@ -348,6 +370,24 @@ function benchMatcher(
         'best_ns_op' => $bestNs / $iterations,
         'avg_ns_op' => $avgNs / $iterations,
     ];
+}
+
+/**
+ * @param array{
+ *   name:string,
+ *   best_ops_s:float,
+ *   avg_ops_s:float,
+ *   best_ns_op:float,
+ *   avg_ns_op:float
+ * }|null $row
+ */
+function formatMetricCell(?array $row): string
+{
+    if ($row === null) {
+        return '-';
+    }
+
+    return number_format($row['best_ops_s'], 2) . ' ops/s (' . number_format($row['best_ns_op'], 2) . ' ns/op)';
 }
 
 /**
