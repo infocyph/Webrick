@@ -122,22 +122,16 @@ echo "   -> removed something? " . ($removed5 ? 'yes' : 'no') . "\n";
 echo "   -> directory still there? " . (is_dir($shardedDir) ? 'yes' : 'no') . "\n\n";
 
 // ----------------------------------------------------------------------------------
-// 6) SHARDED: CLEAR (AGGRESSIVE) → removes the entire directory (⚠️ dangerous in repos)
+// 6) SHARDED: CLEAR (AGGRESSIVE) → removes cache artifacts recursively, keeps root .gitignore
 // ----------------------------------------------------------------------------------
-echo "6) SHARDED clear (AGGRESSIVE) – will remove the whole directory\n";
+echo "6) SHARDED clear (AGGRESSIVE) – recursive purge, preserves root .gitignore\n";
 $removed6 = RouteCache::clear([
     'matcher' => 'sharded',
     'cache' => $shardedDir,
-    'aggressive' => true, // nukes the folder; only when you really want to
+    'aggressive' => true,
 ]);
-echo "   -> removed dir? " . ($removed6 ? 'yes' : 'no') . "\n";
+echo "   -> removed artifacts? " . ($removed6 ? 'yes' : 'no') . "\n";
 echo "   -> directory exists? " . (is_dir($shardedDir) ? 'yes' : 'no') . "\n\n";
-
-// Re-create an empty dir to keep later examples clean
-@mkdir($shardedDir, 0777, true);
-if (!is_dir($shardedDir)) {
-    echo "   -> could not recreate {$shardedDir}\n\n";
-}
 
 // ----------------------------------------------------------------------------------
 // 7) FUSED: CLEAR → deletes the single fused cache file

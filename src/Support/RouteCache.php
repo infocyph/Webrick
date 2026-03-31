@@ -176,7 +176,7 @@ final class RouteCache
         }
 
         if ($aggressive) {
-            return self::rrmdir($dir);
+            return self::clearDirPreservingGitignore($dir);
         }
 
         $removed = false;
@@ -191,6 +191,50 @@ final class RouteCache
             $removed = self::rmFile($php) || $removed;
         }
         return $removed;
+    }
+
+    private static function clearDirPreservingGitignore(string $dir): bool
+    {
+        if (!\is_dir($dir)) {
+            return false;
+        }
+
+        $removed = false;
+        $ok = true;
+        $root = \str_replace('\\', '/', \rtrim($dir, "/\\"));
+
+        $it = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::CHILD_FIRST,
+        );
+
+        foreach ($it as $path) {
+            $pathname = $path->getPathname();
+
+            if ($path->isDir()) {
+                if (@\rmdir($pathname)) {
+                    $removed = true;
+                } else {
+                    $ok = false;
+                }
+                continue;
+            }
+
+            $normalizedPath = \str_replace('\\', '/', $pathname);
+            $isRootGitignore = \basename($normalizedPath) === '.gitignore'
+                && \dirname($normalizedPath) === $root;
+            if ($isRootGitignore) {
+                continue;
+            }
+
+            if (@\unlink($pathname)) {
+                $removed = true;
+            } else {
+                $ok = false;
+            }
+        }
+
+        return $ok && $removed;
     }
 
     /** @param array<string,string> $dirs */
@@ -219,21 +263,5 @@ final class RouteCache
     private static function rmFile(string $file): bool
     {
         return \is_file($file) && @\unlink($file);
-    }
-
-    private static function rrmdir(string $dir): bool
-    {
-        if (!\is_dir($dir)) {
-            return false;
-        }
-        $ok = true;
-        $it = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS),
-            \RecursiveIteratorIterator::CHILD_FIRST,
-        );
-        foreach ($it as $path) {
-            $ok = ($path->isDir() ? @\rmdir($path->getPathname()) : @\unlink($path->getPathname())) && $ok;
-        }
-        return @\rmdir($dir) && $ok;
     }
 }

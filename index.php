@@ -20,10 +20,21 @@
  * - `WEBRICK_MATCHER_HEADER` (default: `X-Webrick-Matcher`)
  * - `WEBRICK_MATCHER_KEY_HEADER` (default: `X-Webrick-Matcher-Key`)
  * - `WEBRICK_MATCHER_KEY` (optional shared secret for matcher override)
+ *
+ * Generate Route Cache (after clearing):
+ * /webrick route:clear --matcher=sharded   --cache=.route-cache --aggressive=1
+ * ./webrick route:clear --matcher=fused     --cache=.route-cache/__routes.php
+ * ./webrick route:clear --matcher=generated --cache=.route-cache/__generated.php
+ *
+ * ./webrick route:cache --matcher=sharded   --cache=.route-cache --routes=routes.php
+ * ./webrick route:cache --matcher=fused     --cache=.route-cache/__routes.php --routes=routes.php
+ * ./webrick route:cache --matcher=generated --cache=.route-cache/__generated.php --routes=routes.php
+ *
  */
 declare(strict_types=1);
 
 namespace {
+    $_ENV['WEBRICK_MATCHER_DEFAULT'] = 'fused'; // sharded/fused/generated;
 
     require __DIR__ . '/vendor/autoload.php';
 
@@ -116,6 +127,7 @@ namespace {
     $logger = new NullLogger();
     $env = $_ENV['APP_ENV'] ?? getenv('APP_ENV') ?? 'prod';
     $dev = ($env !== 'prod');
+    $matcherDefaultEnv = (string)($_ENV['WEBRICK_MATCHER_DEFAULT'] ?? \getenv('WEBRICK_MATCHER_DEFAULT') ?? 'sharded');
     $signUrlSecret = 'hog';
     $keyForCookie = 'tvcYp7XwEZaqpSItOyDgKql/xgqONToDogJ0Psxk/Lc=';
     $keyForCookie = (static function (string $k): string {
@@ -154,7 +166,7 @@ namespace {
 
     // Runtime matcher switching (header driven).
     $matcherDefault = \strtolower(
-        (string)($_ENV['WEBRICK_MATCHER_DEFAULT'] ?? \getenv('WEBRICK_MATCHER_DEFAULT') ?? 'sharded'),
+        $matcherDefaultEnv,
     );
     $matcherHeaderName = (string)($_ENV['WEBRICK_MATCHER_HEADER'] ?? \getenv('WEBRICK_MATCHER_HEADER') ?? 'X-Webrick-Matcher');
     $matcherKeyHeaderName = (string)($_ENV['WEBRICK_MATCHER_KEY_HEADER'] ?? \getenv('WEBRICK_MATCHER_KEY_HEADER') ?? 'X-Webrick-Matcher-Key');

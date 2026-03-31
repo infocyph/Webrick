@@ -148,7 +148,12 @@ Route::get('/signed-demo', fn () => Response::json([
 
 // 1) Generate a signed URL (relative) and redirect to it
 Route::get('/make-signed/{id:int}', function ($id) {
-    $signed = Response::temporaryUrlFor('secure.show', ['id' => $id], ['dl' => 1], false);
+    $signed = Response::temporaryUrlFor(
+        name: 'secure.show',
+        params: ['id' => $id],
+        query: ['dl' => 1],
+        absolute: false,
+    );
     return Response::redirect($signed, 302);
 }, [
     'as' => 'make.signed',

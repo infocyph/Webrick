@@ -84,6 +84,7 @@ $usage = <<<TXT
     NOTES:
     - Sharded matcher: --cache is a directory (e.g. ./.route-cache)
     - Fused/Generated: --cache is a file     (e.g. ./.route-cache/__routes.php)
+    - Sharded clear --aggressive=1 purges cache artifacts recursively but preserves root .gitignore
     - Composer usage:  composer run webrick -- route:cache --cache=.route-cache ...
     TXT;
 
