@@ -181,18 +181,74 @@ foreach ($routeSets as $set) {
 
 /** @var list<list<string>> $summaryRows */
 $summaryRows = [];
+$totalScenarioRuns = \count($modes) * \count($scenarios);
+$totalMatcherTasks = $totalScenarioRuns * 3;
+$scenarioRunNo = 0;
+$completedMatcherTasks = 0;
+
+progress("Planned runs: {$totalScenarioRuns} scenarios, {$totalMatcherTasks} matcher tasks.");
 
 foreach ($modes as $modeLabel => $useCache) {
+    progress("Starting mode '{$modeLabel}' (" . ($useCache ? 'cache-hot' : 'in-memory') . ').');
     $cacheRoot = null;
     if ($useCache) {
-        $cacheRoot = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'webrick-bench-' . getmypid() . '-' . uniqid('', true);
-        if (!is_dir($cacheRoot)) {
-            @mkdir($cacheRoot, 0775, true);
+        $cacheRoot = dirname(__DIR__) . DIRECTORY_SEPARATOR . '.route-cache'
+            . DIRECTORY_SEPARATOR . 'bench-' . getmypid() . '-' . uniqid('', true);
+        if (!is_dir($cacheRoot) && !@mkdir($cacheRoot, 0775, true) && !is_dir($cacheRoot)) {
+            throw new RuntimeException("Failed to create benchmark cache directory: {$cacheRoot}");
         }
+        progress("Cache root: {$cacheRoot}");
     }
     foreach ($scenarios as $scenario) {
+        $scenarioRunNo++;
+        $requestLabel = "{$scenario['method']} {$scenario['host']} {$scenario['path']}";
+        progress("Scenario {$scenarioRunNo}/{$totalScenarioRuns}: {$modeLabel} | {$scenario['route_set']} | {$requestLabel}");
+
+        $runMatcher = static function (string $matcherName, callable $factory) use (
+            &$completedMatcherTasks,
+            $totalMatcherTasks,
+            $iterations,
+            $rounds,
+            $warmup,
+            $scenario,
+            $modeLabel,
+            $requestLabel,
+        ): array {
+            $taskNo = $completedMatcherTasks + 1;
+            progress("Task {$taskNo}/{$totalMatcherTasks}: {$matcherName} setup");
+
+            $result = benchMatcher(
+                $matcherName,
+                $factory,
+                $iterations,
+                $rounds,
+                $warmup,
+                method: $scenario['method'],
+                host: $scenario['host'],
+                path: $scenario['path'],
+                assertHit: $scenario['assertHit'],
+                progress: static function (string $message) use ($taskNo, $totalMatcherTasks, $matcherName, $modeLabel, $requestLabel): void {
+                    progress("Task {$taskNo}/{$totalMatcherTasks}: {$modeLabel} | {$matcherName} | {$requestLabel} -> {$message}");
+                },
+            );
+
+            $completedMatcherTasks++;
+            progress(
+                sprintf(
+                    'Task %d/%d: %s done (best %.2f ops/s, %.2f ns/op)',
+                    $completedMatcherTasks,
+                    $totalMatcherTasks,
+                    $matcherName,
+                    $result['best_ops_s'],
+                    $result['best_ns_op'],
+                ),
+            );
+
+            return $result;
+        };
+
         $results = [];
-        $results[] = benchMatcher(
+        $results[] = $runMatcher(
             'Fused',
             static function () use ($scenario, $useCache, $cacheRoot): MatcherInterface {
                 $cachePath = $cacheRoot . DIRECTORY_SEPARATOR . $scenario['key'] . '.fused.php';
@@ -211,16 +267,9 @@ foreach ($modes as $modeLabel => $useCache) {
                 $m->finalize();
                 return $m;
             },
-            $iterations,
-            $rounds,
-            $warmup,
-            method: $scenario['method'],
-            host: $scenario['host'],
-            path: $scenario['path'],
-            assertHit: $scenario['assertHit'],
         );
 
-        $results[] = benchMatcher(
+        $results[] = $runMatcher(
             'Generated',
             static function () use ($scenario, $useCache, $cacheRoot): MatcherInterface {
                 $cachePath = $cacheRoot . DIRECTORY_SEPARATOR . $scenario['key'] . '.generated.php';
@@ -239,16 +288,9 @@ foreach ($modes as $modeLabel => $useCache) {
                 $m->finalize();
                 return $m;
             },
-            $iterations,
-            $rounds,
-            $warmup,
-            method: $scenario['method'],
-            host: $scenario['host'],
-            path: $scenario['path'],
-            assertHit: $scenario['assertHit'],
         );
 
-        $results[] = benchMatcher(
+        $results[] = $runMatcher(
             'Sharded',
             static function () use ($scenario, $useCache, $cacheRoot): MatcherInterface {
                 $cachePath = $cacheRoot . DIRECTORY_SEPARATOR . $scenario['key'] . '-sharded';
@@ -267,13 +309,6 @@ foreach ($modes as $modeLabel => $useCache) {
                 $m->finalize();
                 return $m;
             },
-            $iterations,
-            $rounds,
-            $warmup,
-            method: $scenario['method'],
-            host: $scenario['host'],
-            path: $scenario['path'],
-            assertHit: $scenario['assertHit'],
         );
 
         /** @var array<string, array{
@@ -306,6 +341,7 @@ foreach ($modes as $modeLabel => $useCache) {
 
     if ($useCache && $cacheRoot !== null) {
         rrmdir($cacheRoot);
+        progress("Cleaned cache root: {$cacheRoot}");
     }
 }
 
@@ -314,6 +350,15 @@ printTable(
     ['Mode', 'Route Set', 'Case', 'Request', 'Fused', 'Generated', 'Sharded', 'Winner'],
     $summaryRows,
 );
+
+function progress(string $message): void
+{
+    echo '[progress] ' . $message . PHP_EOL;
+    if (\function_exists('ob_get_level') && \ob_get_level() > 0) {
+        @\ob_flush();
+    }
+    @flush();
+}
 
 /**
  * @return array{
@@ -334,17 +379,28 @@ function benchMatcher(
     string $host,
     string $path,
     callable $assertHit,
+    ?callable $progress = null,
 ): array {
+    if ($progress !== null) {
+        $progress('building matcher');
+    }
     /** @var MatcherInterface $matcher */
     $matcher = $factory();
 
     // Warm up internals/JIT/opcache-backed file loads before timed rounds.
+    if ($progress !== null && $warmup > 0) {
+        $progress("warmup ({$warmup} iterations)");
+    }
     for ($i = 0; $i < $warmup; $i++) {
         $matcher->match($method, $host, $path);
     }
 
     $roundNs = [];
     for ($r = 0; $r < $rounds; $r++) {
+        if ($progress !== null) {
+            $progress('timed round ' . ($r + 1) . '/' . $rounds);
+        }
+
         $start = hrtime(true);
         $last = null;
         for ($i = 0; $i < $iterations; $i++) {
@@ -362,6 +418,10 @@ function benchMatcher(
     $avgNs = array_sum($roundNs) / count($roundNs);
     $bestOpsS = ($iterations * 1_000_000_000.0) / $bestNs;
     $avgOpsS = ($iterations * 1_000_000_000.0) / $avgNs;
+
+    if ($progress !== null) {
+        $progress('finished timing');
+    }
 
     return [
         'name' => $name,
@@ -459,8 +519,16 @@ function registerIndexRoutes(Registrar $registrar): void
     $signUrlSecret = 'bench-sign-key';
     require dirname(__DIR__) . '/routes.php';
 
-    $fixtureDir = dirname(__DIR__) . '/tests/Fixture';
-    if (\is_dir($fixtureDir)) {
+    $fixtureDirs = [
+        dirname(__DIR__) . '/tests/Fixture',
+        dirname(__DIR__) . '/tests/Fixtures',
+    ];
+
+    foreach ($fixtureDirs as $fixtureDir) {
+        if (!\is_dir($fixtureDir)) {
+            continue;
+        }
+
         AttributeRouteLoader::registerFromDirs(
             $registrar,
             ['Infocyph\\Webrick\\Tests\\Fixture\\' => $fixtureDir],

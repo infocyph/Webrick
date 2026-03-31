@@ -243,11 +243,22 @@ namespace {
     //    };
     $register = static function (Registrar $registrar): void {
         require_once __DIR__ . '/routes.php';
-        AttributeRouteLoader::registerFromDirs(
-            $registrar,
-            ['Infocyph\\Webrick\\Tests\\Fixture\\' => __DIR__.'/tests/Fixture'],
-            //            AttributeRouteLoader::controllerFileFilter()   // ← scans only *Controller.php
-        );
+        $fixtureDirs = [
+            __DIR__ . '/tests/Fixture',
+            __DIR__ . '/tests/Fixtures',
+        ];
+
+        foreach ($fixtureDirs as $fixtureDir) {
+            if (!is_dir($fixtureDir)) {
+                continue;
+            }
+
+            AttributeRouteLoader::registerFromDirs(
+                $registrar,
+                ['Infocyph\\Webrick\\Tests\\Fixture\\' => $fixtureDir],
+                //            AttributeRouteLoader::controllerFileFilter()   // ← scans only *Controller.php
+            );
+        }
     };
 
     /* --------------------------------------------------------------------------
