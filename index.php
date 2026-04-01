@@ -22,7 +22,7 @@
  * - `WEBRICK_MATCHER_KEY` (optional shared secret for matcher override)
  *
  * Generate Route Cache (after clearing):
- * /webrick route:clear --matcher=sharded   --cache=.route-cache --aggressive=1
+ * ./webrick route:clear --matcher=sharded   --cache=.route-cache --aggressive=1
  * ./webrick route:clear --matcher=fused     --cache=.route-cache/__routes.php
  * ./webrick route:clear --matcher=generated --cache=.route-cache/__generated.php
  *
@@ -34,7 +34,7 @@
 declare(strict_types=1);
 
 namespace {
-    $_ENV['WEBRICK_MATCHER_DEFAULT'] = 'fused'; // sharded/fused/generated;
+    $_ENV['WEBRICK_MATCHER_DEFAULT'] = 'generated'; // sharded/fused/generated;
 
     require __DIR__ . '/vendor/autoload.php';
 
@@ -228,7 +228,7 @@ namespace {
         TelemetryMiddleware::class,
         MaintenanceModeMiddleware::class,
         RequestLimitsMiddleware::class,
-        ThrottleMiddleware::class,
+//        ThrottleMiddleware::class,
         $enable['cookie_encryption'] ? new CookieEncryptionMiddleware($keyForCookie) : null,
         $enable['normalize_method'] ? NormalizeMethodMiddleware::class : null,
         $enable['input_sanitizer'] ? InputSanitizerMiddleware::class : null,
