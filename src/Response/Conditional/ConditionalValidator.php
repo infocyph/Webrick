@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Response\Conditional;
 
+use Infocyph\Webrick\Constants\HttpMethodEnum;
+use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Request\Request;
 
 /**
@@ -17,8 +19,8 @@ use Infocyph\Webrick\Request\Request;
 final class ConditionalValidator
 {
     /* result codes */
-    private const int HTTP_NOT_MODIFIED = 304;
-    private const int HTTP_PRECONDITION = 412;
+    private const int HTTP_NOT_MODIFIED = StatusEnum::NOT_MODIFIED->value;
+    private const int HTTP_PRECONDITION = StatusEnum::PRECONDITION_FAILED->value;
 
     public function __construct(
         private readonly ?string $etag = null,
@@ -159,7 +161,8 @@ final class ConditionalValidator
      */
     private function hitsIfModSince(Request $req): bool
     {
-        if (!in_array($req->getMethod(), ['GET', 'HEAD'], true)) {
+        $method = HttpMethodEnum::normalize($req->getMethod());
+        if ($method !== HttpMethodEnum::GET->value && $method !== HttpMethodEnum::HEAD->value) {
             return false;
         }
         if ($req->getHeaderLine('If-None-Match') !== '') {
@@ -185,7 +188,8 @@ final class ConditionalValidator
      */
     private function hitsIfNoneMatch(Request $req): bool
     {
-        if (!in_array($req->getMethod(), ['GET', 'HEAD'], true)) {
+        $method = HttpMethodEnum::normalize($req->getMethod());
+        if ($method !== HttpMethodEnum::GET->value && $method !== HttpMethodEnum::HEAD->value) {
             return false;
         }
         $candidates = $this->tokenize($req->getHeaderLine('If-None-Match'));

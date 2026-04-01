@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Infocyph\Webrick\Constants\HttpMethodEnum;
+use Infocyph\Webrick\Constants\MatcherModeEnum;
 use Infocyph\Webrick\Router\Definition\Attribute\AttributeRouteLoader;
 use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Dispatch\MiddlewareAliases;
@@ -111,7 +113,7 @@ foreach ($routeSets as $routeSet) {
         'route_set' => $routeSet['label'],
         'case' => 'static',
         'title' => $routeSet['title'] . ' - Static /ping',
-        'method' => 'GET',
+        'method' => HttpMethodEnum::GET->value,
         'host' => 'localhost',
         'path' => '/ping',
         'route_count' => $routeCount,
@@ -127,7 +129,7 @@ foreach ($routeSets as $routeSet) {
         'route_set' => $routeSet['label'],
         'case' => 'dynamic',
         'title' => $routeSet['title'] . ' - Dynamic /hello/{name}',
-        'method' => 'GET',
+        'method' => HttpMethodEnum::GET->value,
         'host' => 'localhost',
         'path' => '/hello/benchmark',
         'route_count' => $routeCount,
@@ -147,7 +149,7 @@ $scenarios[] = [
     'route_set' => $indexRouteSet['label'],
     'case' => 'domain-dynamic',
     'title' => $indexRouteSet['title'] . ' - Domain dynamic /v1/users/{id:int}',
-    'method' => 'GET',
+    'method' => HttpMethodEnum::GET->value,
     'host' => 'api.localhost',
     'path' => '/v1/users/7',
     'route_count' => \count($indexRouteSet['routes']),
@@ -253,7 +255,7 @@ foreach ($modes as $modeLabel => $useCache) {
             static function () use ($scenario, $useCache, $cacheRoot): MatcherInterface {
                 $cachePath = $cacheRoot . DIRECTORY_SEPARATOR . $scenario['key'] . '.fused.php';
                 if ($useCache) {
-                    buildBenchmarkCache('fused', $cachePath, $scenario['register']);
+                    buildBenchmarkCache(MatcherModeEnum::FUSED->value, $cachePath, $scenario['register']);
                 }
 
                 $m = FusedMatcher::make();
@@ -274,7 +276,7 @@ foreach ($modes as $modeLabel => $useCache) {
             static function () use ($scenario, $useCache, $cacheRoot): MatcherInterface {
                 $cachePath = $cacheRoot . DIRECTORY_SEPARATOR . $scenario['key'] . '.generated.php';
                 if ($useCache) {
-                    buildBenchmarkCache('generated', $cachePath, $scenario['register']);
+                    buildBenchmarkCache(MatcherModeEnum::GENERATED->value, $cachePath, $scenario['register']);
                 }
 
                 $m = GeneratedMatcher::make();
@@ -295,7 +297,7 @@ foreach ($modes as $modeLabel => $useCache) {
             static function () use ($scenario, $useCache, $cacheRoot): MatcherInterface {
                 $cachePath = $cacheRoot . DIRECTORY_SEPARATOR . $scenario['key'] . '-sharded';
                 if ($useCache) {
-                    buildBenchmarkCache('sharded', $cachePath, $scenario['register']);
+                    buildBenchmarkCache(MatcherModeEnum::SHARDED->value, $cachePath, $scenario['register']);
                 }
 
                 $m = ShardedMatcher::make();
@@ -332,9 +334,9 @@ foreach ($modes as $modeLabel => $useCache) {
             $scenario['route_set'],
             $scenario['case'],
             "{$scenario['method']} {$scenario['host']} {$scenario['path']}",
-            formatMetricCell($byName['fused'] ?? null),
-            formatMetricCell($byName['generated'] ?? null),
-            formatMetricCell($byName['sharded'] ?? null),
+            formatMetricCell($byName[MatcherModeEnum::FUSED->value] ?? null),
+            formatMetricCell($byName[MatcherModeEnum::GENERATED->value] ?? null),
+            formatMetricCell($byName[MatcherModeEnum::SHARDED->value] ?? null),
             $winner['name'],
         ];
     }
@@ -453,7 +455,7 @@ function formatMetricCell(?array $row): string
 /**
  * Build matcher cache artifacts for benchmark cache-hot mode.
  *
- * @param 'fused'|'sharded'|'generated' $matcher
+ * @param string $matcher One of MatcherModeEnum::values().
  * @param callable(Registrar):void $register
  */
 function buildBenchmarkCache(string $matcher, string $cachePath, callable $register): void

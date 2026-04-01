@@ -17,6 +17,8 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Middleware;
 
 use Closure;
+use Infocyph\Webrick\Constants\HttpMethodEnum;
+use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use InvalidArgumentException;
@@ -48,7 +50,12 @@ final readonly class RequestLimitsMiddleware
         private int $maxHeaderBytes = 8192,
         private int $maxHeaderCount = 100,
         private ?int $maxBodyBytes = null,
-        private array $bodyLimitVerbs = ['POST', 'PUT', 'PATCH', 'DELETE'],
+        private array $bodyLimitVerbs = [
+            HttpMethodEnum::POST->value,
+            HttpMethodEnum::PUT->value,
+            HttpMethodEnum::PATCH->value,
+            HttpMethodEnum::DELETE->value,
+        ],
         private bool $violateOnUnknownBody = true,
     ) {
         if ($this->maxHeaderBytes < 0) {
@@ -81,7 +88,7 @@ final readonly class RequestLimitsMiddleware
         if ($this->maxHeaderCount > 0) {
             $fields = $this->totalHeaderFields($req);
             if ($fields > $this->maxHeaderCount) {
-                $resp = Response::plaintext('Too many header fields', 431);
+                $resp = Response::plaintext('Too many header fields', StatusEnum::REQUEST_HEADER_FIELDS_TOO_LARGE->value);
                 return $this->withConnCloseIfHttp1($req, $resp);
             }
         }
@@ -90,14 +97,14 @@ final readonly class RequestLimitsMiddleware
         if ($this->maxHeaderBytes > 0) {
             $hdrBytes = $this->totalHeaderBytes($req);
             if ($hdrBytes > $this->maxHeaderBytes) {
-                $resp = Response::plaintext('Request headers too large', 431);
+                $resp = Response::plaintext('Request headers too large', StatusEnum::REQUEST_HEADER_FIELDS_TOO_LARGE->value);
                 return $this->withConnCloseIfHttp1($req, $resp);
             }
         }
 
         /* ── 2) body size → 413 (by Content-Length; don't pre-reject chunked) ─ */
         $limit = $this->resolveBodyLimit();
-        if ($limit > 0 && \in_array(\strtoupper($req->getMethod()), $this->bodyLimitVerbs, true)) {
+        if ($limit > 0 && \in_array(HttpMethodEnum::normalize($req->getMethod()), $this->bodyLimitVerbs, true)) {
             $cl = trim($req->getHeaderLine('Content-Length'));
 
             // Detect presence of a transfer-coding (e.g., "chunked").
@@ -121,16 +128,19 @@ final readonly class RequestLimitsMiddleware
             } elseif ($cl !== '') {
                 $len = $this->parseContentLength($cl);
                 if ($len === null) {
-                    $resp = Response::plaintext('Invalid Content-Length header.', 400);
+                    $resp = Response::plaintext('Invalid Content-Length header.', StatusEnum::BAD_REQUEST->value);
                     return $this->withConnCloseIfHttp1($req, $resp);
                 }
                 if ($len > $limit) {
-                    $resp = Response::plaintext('Payload exceeds maximum allowed size.', 413);
+                    $resp = Response::plaintext(
+                        'Payload exceeds maximum allowed size.',
+                        StatusEnum::PAYLOAD_TOO_LARGE->value,
+                    );
                     return $this->withConnCloseIfHttp1($req, $resp);
                 }
             } elseif ($this->violateOnUnknownBody) {
                 // No Content-Length and no transfer-coding ⇒ treat as violation (conservative).
-                $resp = Response::plaintext('Payload exceeds maximum allowed size.', 413);
+                $resp = Response::plaintext('Payload exceeds maximum allowed size.', StatusEnum::PAYLOAD_TOO_LARGE->value);
                 return $this->withConnCloseIfHttp1($req, $resp);
             }
         }

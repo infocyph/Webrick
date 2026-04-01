@@ -17,6 +17,7 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Middleware;
 
 use Closure;
+use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Support\StreamUtil;
@@ -185,7 +186,7 @@ final readonly class ResponseLinterMiddleware
             return;
         }
         $code = $r->getStatusCode();
-        if ($code === 204 || $code === 304) {
+        if (\in_array($code, [StatusEnum::NO_CONTENT->value, StatusEnum::NOT_MODIFIED->value], true)) {
             throw new RuntimeException("Linter: body not allowed on {$code}");
         }
     }

@@ -22,6 +22,7 @@ namespace Infocyph\Webrick\Middleware;
 use Closure;
 use DateTimeImmutable;
 use Infocyph\InterMix\Cache\Cache;
+use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use InvalidArgumentException as InvalidConfigException;
@@ -255,7 +256,7 @@ final readonly class ThrottleMiddleware
             ? gmdate('D, d M Y H:i:s', $resetEpoch) . ' GMT'
             : (string)$delta;
 
-        $resp = Response::plaintext('Too Many Requests', 429)
+        $resp = Response::plaintext('Too Many Requests', StatusEnum::TOO_MANY_REQUESTS->value)
             ->withSmartHeader('Retry-After', $retry)
             ->withSmartHeader('X-RateLimit-Limit', (string)$this->max)
             ->withSmartHeader('X-RateLimit-Remaining', '0')

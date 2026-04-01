@@ -23,36 +23,36 @@ namespace Infocyph\Webrick\Constants;
  */
 enum HttpMethodEnum: string
 {
+    case BAN = 'BAN';
+    case CONNECT = 'CONNECT';
+    case COPY = 'COPY';
+    case DELETE = 'DELETE';
     /* core */
     case GET = 'GET';
     case HEAD = 'HEAD';
-    case POST = 'POST';
-    case PUT = 'PUT';
-    case DELETE = 'DELETE';
-    case OPTIONS = 'OPTIONS';
-    case TRACE = 'TRACE';
-    case CONNECT = 'CONNECT';
-    case PATCH = 'PATCH';
 
-    /* CDN / cache */
-    case PURGE = 'PURGE';
-    case BAN = 'BAN';
+    /* extras */
+    case LINK = 'LINK';
+    case LOCK = 'LOCK';
+    case MKCALENDAR = 'MKCALENDAR';
+    case MKCOL = 'MKCOL';
+    case MOVE = 'MOVE';
+    case OPTIONS = 'OPTIONS';
+    case PATCH = 'PATCH';
+    case POST = 'POST';
 
     /* WebDAV */
     case PROPFIND = 'PROPFIND';
     case PROPPATCH = 'PROPPATCH';
-    case MKCOL = 'MKCOL';
-    case COPY = 'COPY';
-    case MOVE = 'MOVE';
-    case LOCK = 'LOCK';
-    case UNLOCK = 'UNLOCK';
-    case REPORT = 'REPORT';
-    case MKCALENDAR = 'MKCALENDAR';
-    case SEARCH = 'SEARCH';
 
-    /* extras */
-    case LINK = 'LINK';
+    /* CDN / cache */
+    case PURGE = 'PURGE';
+    case PUT = 'PUT';
+    case REPORT = 'REPORT';
+    case SEARCH = 'SEARCH';
+    case TRACE = 'TRACE';
     case UNLINK = 'UNLINK';
+    case UNLOCK = 'UNLOCK';
 
     /**
      * Get all supported HTTP methods.
@@ -82,6 +82,18 @@ enum HttpMethodEnum: string
     {
         return self::tryFromString($verb)
             ?? throw new \InvalidArgumentException("Unsupported method: {$verb}");
+    }
+
+    /**
+     * Normalize an HTTP verb to a canonical uppercase value.
+     *
+     * Known verbs are normalized via enum cases; unknown custom verbs are
+     * uppercased and returned as-is.
+     */
+    public static function normalize(string $verb): string
+    {
+        $candidate = strtoupper(trim($verb));
+        return self::tryFrom($candidate)?->value ?? $candidate;
     }
 
     /**

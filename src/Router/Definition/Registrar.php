@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Router\Definition;
 
 use Closure;
+use Infocyph\Webrick\Constants\HttpMethodEnum;
+use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Interfaces\RouteInterface;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Dispatch\MiddlewareAliases;
@@ -30,7 +32,7 @@ final readonly class Registrar
         private ?int $signedDefaultTtl = null,
     ) {
         if ($this->exposeUrlServices) {
-            Response::bindUrlServices($this->routes, $this->signKey, $this->signedDefaultTtl);
+            Router::bindUrlServices($this->routes, $this->signKey, $this->signedDefaultTtl);
         }
     }
 
@@ -52,7 +54,7 @@ final readonly class Registrar
         array|string|callable $handler,
         string|array|null $nameOrOpts = null,
     ): RouteInterface {
-        return $this->add('DELETE', $path, $handler, $nameOrOpts);
+        return $this->add(HttpMethodEnum::DELETE->value, $path, $handler, $nameOrOpts);
     }
 
     public function get(
@@ -60,7 +62,7 @@ final readonly class Registrar
         array|string|callable $handler,
         string|array|null $nameOrOpts = null,
     ): RouteInterface {
-        return $this->add('GET', $path, $handler, $nameOrOpts);
+        return $this->add(HttpMethodEnum::GET->value, $path, $handler, $nameOrOpts);
     }
 
     /* -----------------------------------------------------------------
@@ -105,7 +107,7 @@ final readonly class Registrar
         array|string|callable $handler,
         string|array|null $nameOrOpts = null,
     ): RouteInterface {
-        return $this->add('HEAD', $path, $handler, $nameOrOpts);
+        return $this->add(HttpMethodEnum::HEAD->value, $path, $handler, $nameOrOpts);
     }
 
     public function options(
@@ -113,7 +115,7 @@ final readonly class Registrar
         array|string|callable $handler,
         string|array|null $nameOrOpts = null,
     ): RouteInterface {
-        return $this->add('OPTIONS', $path, $handler, $nameOrOpts);
+        return $this->add(HttpMethodEnum::OPTIONS->value, $path, $handler, $nameOrOpts);
     }
 
     public function patch(
@@ -121,7 +123,7 @@ final readonly class Registrar
         array|string|callable $handler,
         string|array|null $nameOrOpts = null,
     ): RouteInterface {
-        return $this->add('PATCH', $path, $handler, $nameOrOpts);
+        return $this->add(HttpMethodEnum::PATCH->value, $path, $handler, $nameOrOpts);
     }
 
     public function post(
@@ -129,7 +131,7 @@ final readonly class Registrar
         array|string|callable $handler,
         string|array|null $nameOrOpts = null,
     ): RouteInterface {
-        return $this->add('POST', $path, $handler, $nameOrOpts);
+        return $this->add(HttpMethodEnum::POST->value, $path, $handler, $nameOrOpts);
     }
 
     public function put(
@@ -137,7 +139,7 @@ final readonly class Registrar
         array|string|callable $handler,
         string|array|null $nameOrOpts = null,
     ): RouteInterface {
-        return $this->add('PUT', $path, $handler, $nameOrOpts);
+        return $this->add(HttpMethodEnum::PUT->value, $path, $handler, $nameOrOpts);
     }
 
     /* -----------------------------------------------------------------
@@ -215,14 +217,14 @@ final readonly class Registrar
     private function buildResourceSpec(string $param, string $patchAction): array
     {
         return [
-            ['GET', '', 'index', 'index', true],
-            ['GET', '/create', 'create', 'create', true],
-            ['POST', '', 'store', 'store', true],
-            ['GET', '/{' . $param . '}', 'show', 'show', true],
-            ['GET', '/{' . $param . '}/edit', 'edit', 'edit', true],
-            ['PUT', '/{' . $param . '}', 'update', 'update', true],
-            ['PATCH', '/{' . $param . '}', $patchAction, $patchAction, $patchAction !== 'update'],
-            ['DELETE', '/{' . $param . '}', 'destroy', 'destroy', true],
+            [HttpMethodEnum::GET->value, '', 'index', 'index', true],
+            [HttpMethodEnum::GET->value, '/create', 'create', 'create', true],
+            [HttpMethodEnum::POST->value, '', 'store', 'store', true],
+            [HttpMethodEnum::GET->value, '/{' . $param . '}', 'show', 'show', true],
+            [HttpMethodEnum::GET->value, '/{' . $param . '}/edit', 'edit', 'edit', true],
+            [HttpMethodEnum::PUT->value, '/{' . $param . '}', 'update', 'update', true],
+            [HttpMethodEnum::PATCH->value, '/{' . $param . '}', $patchAction, $patchAction, $patchAction !== 'update'],
+            [HttpMethodEnum::DELETE->value, '/{' . $param . '}', 'destroy', 'destroy', true],
         ];
     }
 
@@ -287,12 +289,16 @@ final readonly class Registrar
 
     private function maybeRegisterSlashVariant(string $verb, string $fullPath): void
     {
-        if (!$this->autoSlashRedirect || $verb !== 'GET' || str_contains($fullPath, '{')) {
+        if (!$this->autoSlashRedirect || $verb !== HttpMethodEnum::GET->value || str_contains($fullPath, '{')) {
             return;
         }
         $alt = str_ends_with($fullPath, '/') ? rtrim($fullPath, '/') : $fullPath . '/';
         $this->routes->add(
-            new Route('GET', $alt, static fn () => Response::redirect($fullPath, 308)),
+            new Route(
+                HttpMethodEnum::GET->value,
+                $alt,
+                static fn () => Response::redirect($fullPath, StatusEnum::PERMANENT_REDIRECT->value),
+            ),
         );
     }
 

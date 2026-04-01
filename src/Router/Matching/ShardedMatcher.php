@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router\Matching;
 
+use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Exceptions\{MethodNotAllowedException, RouteNotFoundException};
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 
@@ -193,7 +194,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         }
 
         $host = $this->canonicalRouteHost($route->getDomain());
-        $method = \strtoupper($route->getMethod());
+        $method = HttpMethodEnum::normalize($route->getMethod());
         $bucket = $this->fileKeyForPath($route->getPath());
 
         if (isset($this->pathGuard[$host][$method][$route->getPath()])) {

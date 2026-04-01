@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Infocyph\Webrick\Constants\MediaTypeEnum;
+use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Middleware\ThrottleMiddleware;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Payloads\HtmlResponse;
@@ -81,8 +83,8 @@ Route::get('/ping', fn () => 'pong', 'ping');
 
 Route::get('/hello/{name}', fn (Request $r, $name) => Response::json(['hello' => $name]));
 Route::get('/json', fn () => Response::json(['memory' => memory_get_usage(true)]), 'json');
-Route::get('/redirect', fn () => Response::redirect('/', 302));
-Route::get('/download', fn () => Response::attachment(__FILE__, 'index.php'));
+Route::get('/redirect', fn () => Response::redirect('/', StatusEnum::FOUND->value));
+Route::get('/download', fn (Request $r) => Response::rangedDownload($r, __FILE__, 'index.php'));
 
 Route::get('/color/{color:hex}', fn (Request $r, $hex) => Response::json(['you sent hex' => $hex]));
 
@@ -114,13 +116,13 @@ Route::get('/locale', fn (Request $r) => Response::json(['locale' => $r->getAttr
 
 Route::get('/xml', fn () => Response::create(
     "<note><to>You</to><from>Me</from><msg>Hello</msg></note>",
-    200,
-    ['Content-Type' => 'application/xml'],
+    StatusEnum::OK->value,
+    ['Content-Type' => MediaTypeEnum::XML->value],
 ));
 Route::get('/xml-demo', fn () => Response::create(
     "<note><to>You</to><from>Me</from><msg>Hello</msg></note>",
-    200,
-    ['Content-Type' => 'application/xml'],
+    StatusEnum::OK->value,
+    ['Content-Type' => MediaTypeEnum::XML->value],
 ));
 
 Route::get('/status/{code}', fn (Request $r, $code) => Response::plaintext("Status: $code", (int)$code));
@@ -138,23 +140,26 @@ Route::get('/json/slow', function (): Response {
 Route::resource('users', '/users', UsersController::class);
 
 /* ---- redirects using aliases ---- */
-Route::get('/to-json', fn () => Response::redirect(Response::urlFor('json'), 302));
-Route::get('/to-user-42', fn () => Response::redirect(Response::urlFor('users.show', ['id' => 42], absolute: true), 302));
+Route::get('/to-json', fn () => Response::redirect(Route::urlFor('json'), StatusEnum::FOUND->value));
+Route::get('/to-user-42', fn () => Response::redirect(
+    Route::urlFor('users.show', ['id' => 42], absolute: true),
+    StatusEnum::FOUND->value,
+));
 
 Route::get('/signed-demo', fn () => Response::json([
-    'rel' => Response::signedUrlFor('users.show', ['id' => 42]),
-    'abs' => Response::signedUrlFor('users.show', ['id' => 42], absolute: true),
+    'rel' => Route::signedUrlFor('users.show', ['id' => 42]),
+    'abs' => Route::signedUrlFor('users.show', ['id' => 42], absolute: true),
 ]));
 
 // 1) Generate a signed URL (relative) and redirect to it
 Route::get('/make-signed/{id:int}', function ($id) {
-    $signed = Response::temporaryUrlFor(
+    $signed = Route::temporaryUrlFor(
         name: 'secure.show',
         params: ['id' => $id],
         query: ['dl' => 1],
         absolute: false,
     );
-    return Response::redirect($signed, 302);
+    return Response::redirect($signed, StatusEnum::FOUND->value);
 }, [
     'as' => 'make.signed',
     'middleware' => [ 'throttle:2,1' ],

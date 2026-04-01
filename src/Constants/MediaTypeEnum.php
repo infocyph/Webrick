@@ -22,25 +22,28 @@ namespace Infocyph\Webrick\Constants;
  */
 enum MediaTypeEnum: string
 {
+    case AVIF = 'image/avif';
+    case CSV = 'text/csv; charset=utf-8';
+    case FORM_URLENCODED = 'application/x-www-form-urlencoded';
+    case GIF = 'image/gif';
+    case HTML = 'text/html; charset=utf-8';
+    case JAVASCRIPT = 'text/javascript';          // or 'application/javascript' if you prefer
+    case JPEG = 'image/jpeg';
+    case JSON = 'application/json';
+    case MANIFEST_JSON = 'application/manifest+json';
+    case MULTIPART_FORM_DATA = 'multipart/form-data';
+    case NDJSON = 'application/x-ndjson';
     /* ------------ canonical cases ------------ */
     // generic
     case OCTET = 'application/octet-stream';
-    case HTML = 'text/html; charset=utf-8';
-    case PLAIN = 'text/plain; charset=utf-8';
-    case CSV = 'text/csv; charset=utf-8';
-    case JSON = 'application/json';
-    case XML = 'application/xml';
-    case JPEG = 'image/jpeg';
-    case PNG = 'image/png';
-    case GIF = 'image/gif';
-    case WEBP = 'image/webp';
-    case SVG = 'image/svg+xml';
-    case AVIF = 'image/avif';
     case PDF = 'application/pdf';
-    case JAVASCRIPT = 'text/javascript';          // or 'application/javascript' if you prefer
-    case MANIFEST_JSON = 'application/manifest+json';
+    case PLAIN = 'text/plain; charset=utf-8';
+    case PNG = 'image/png';
+    case PROBLEM_JSON = 'application/problem+json';
+    case SVG = 'image/svg+xml';
     case WASM = 'application/wasm';
-    case NDJSON = 'application/x-ndjson';
+    case WEBP = 'image/webp';
+    case XML = 'application/xml';
 
     /**
      * Resolve a MediaType enum case from a file extension.
@@ -105,6 +108,24 @@ enum MediaTypeEnum: string
     }
 
     /**
+     * Whether the given media type is JSON or structured-suffix +json.
+     */
+    public static function isJsonLike(string $type): bool
+    {
+        $base = strtolower(trim(explode(';', $type, 2)[0]));
+        return $base === self::JSON->base() || str_ends_with($base, '+json');
+    }
+
+    /**
+     * Get the media type without parameters (e.g. "text/html").
+     */
+    public function base(): string
+    {
+        $parts = explode(';', $this->value, 2);
+        return strtolower(trim($parts[0]));
+    }
+
+    /**
      * Extract the character set from the media type header value.
      *
      * Example:
@@ -136,7 +157,7 @@ enum MediaTypeEnum: string
      */
     public function isTextual(): bool
     {
-        return str_starts_with($this->value, 'text/')
+        return str_starts_with($this->base(), 'text/')
             || $this === self::JSON
             || $this === self::XML;
     }

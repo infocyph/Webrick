@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Router\Matching;
 
 use Closure;
+use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
 use Infocyph\Webrick\Exceptions\RouteNotFoundException;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
@@ -94,7 +95,7 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         }
 
         $host = $this->canonicalRouteHost($route->getDomain());
-        $verb = \strtoupper($route->getMethod());
+        $verb = HttpMethodEnum::normalize($route->getMethod());
         $path = $route->getPath();
 
         if (isset($this->guard[$host][$verb][$path])) {
@@ -379,7 +380,7 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
                 }
 
                 $idx = $routeIds[$objId];
-                $verb = \strtoupper($r->getMethod());
+                $verb = HttpMethodEnum::normalize($r->getMethod());
 
                 if (!$r->isDynamic()) {
                     $static[$r->getPath()][$verb] = $idx;
@@ -535,20 +536,20 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
             $code .= $indent . "        return ['hit' => \$routes[{$idx}], 'params' => \$params, 'allowed' => []];\n";
         }
 
-        if (!isset($verbs['HEAD']) && isset($verbs['GET'])) {
-            $getIdx = $verbs['GET'];
-            $code .= $indent . "    case 'HEAD':\n";
+        if (!isset($verbs[HttpMethodEnum::HEAD->value]) && isset($verbs[HttpMethodEnum::GET->value])) {
+            $getIdx = $verbs[HttpMethodEnum::GET->value];
+            $code .= $indent . "    case " . \var_export(HttpMethodEnum::HEAD->value, true) . ":\n";
             $code .= $indent . "        return ['hit' => \$routes[{$getIdx}], 'params' => \$params, 'allowed' => []];\n";
         }
 
-        $code .= $indent . "    case 'OPTIONS':\n";
+        $code .= $indent . "    case " . \var_export(HttpMethodEnum::OPTIONS->value, true) . ":\n";
         $code .= $indent . "        return ['hit' => \$routes[{$firstIdx}], 'params' => \$params, 'allowed' => []];\n";
         $code .= $indent . "    default:\n";
         foreach ($verbs as $method => $_idx) {
             $code .= $indent . "        \$allowed[" . \var_export($method, true) . "] = true;\n";
         }
-        if (isset($verbs['GET'])) {
-            $code .= $indent . "        \$allowed['HEAD'] = true;\n";
+        if (isset($verbs[HttpMethodEnum::GET->value])) {
+            $code .= $indent . "        \$allowed[" . \var_export(HttpMethodEnum::HEAD->value, true) . "] = true;\n";
         }
         $code .= $indent . "        break;\n";
         $code .= $indent . "}\n";

@@ -21,6 +21,8 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Middleware;
 
 use Closure;
+use Infocyph\Webrick\Constants\HttpMethodEnum;
+use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
@@ -136,8 +138,8 @@ final readonly class CompressionMiddleware
     private function adjustValidators(Request $req, Response $resp, string $encodedBytes, string $alg): Response
     {
         // Only manipulate ETag for GET/HEAD responses
-        $m = strtoupper($req->getMethod());
-        if ($m !== 'GET' && $m !== 'HEAD') {
+        $m = HttpMethodEnum::normalize($req->getMethod());
+        if ($m !== HttpMethodEnum::GET->value && $m !== HttpMethodEnum::HEAD->value) {
             return $resp;
         }
 
@@ -429,10 +431,14 @@ final readonly class CompressionMiddleware
         if ($resp->isStreaming()) {
             return false;
         }
-        if (in_array($resp->getStatusCode(), [204, 304, 206], true)) {
+        if (in_array($resp->getStatusCode(), [
+            StatusEnum::NO_CONTENT->value,
+            StatusEnum::NOT_MODIFIED->value,
+            StatusEnum::PARTIAL_CONTENT->value,
+        ], true)) {
             return false;
         }
-        if (strtoupper($req->getMethod()) === 'HEAD') {
+        if (HttpMethodEnum::normalize($req->getMethod()) === HttpMethodEnum::HEAD->value) {
             return false;
         }
         if ($resp->hasHeader('Content-Encoding') || $resp->hasHeader('Content-Range')) {

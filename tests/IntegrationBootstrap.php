@@ -11,6 +11,7 @@ declare(strict_types=1);
  */
 
 use Infocyph\Webrick\Router\Definition\Registrar;
+use Infocyph\Webrick\Router\Facade\Router as Route;
 use Infocyph\Webrick\Router\Kernel\RouterKernel;
 use Infocyph\Webrick\Router\Matching\FusedMatcher;
 use Infocyph\Webrick\Router\Route\Collection;
@@ -104,7 +105,7 @@ function createTestKernel(array $extraMiddleware = []): RouterKernel
         preGlobal: $preGlobal,
         postGlobal: [],
         bindUrlServices: function (Collection $routes) use ($signUrlSecret): void {
-            Response::bindUrlServices($routes, $signUrlSecret, 900);
+            Route::bindUrlServices($routes, $signUrlSecret, 900);
         },
         fallbackAliasesFromRegistrar: true,
     );

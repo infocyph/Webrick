@@ -13,6 +13,8 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Support;
 
+use Infocyph\Webrick\Constants\MediaTypeEnum;
+
 /**
  * Utility helpers for HTTP concerns.
  *
@@ -40,7 +42,7 @@ final class HttpUtils
             return false;
         }
         $mime = strtolower(strtok($contentType, ';') ?: '');
-        return $mime === 'application/x-www-form-urlencoded'
-            || $mime === 'multipart/form-data';
+        return $mime === MediaTypeEnum::FORM_URLENCODED->base()
+            || $mime === MediaTypeEnum::MULTIPART_FORM_DATA->base();
     }
 }

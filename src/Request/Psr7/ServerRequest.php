@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Request\Psr7;
 
 use Infocyph\ArrayKit\Collection\Collection;
+use Infocyph\Webrick\Constants\HttpMethodEnum;
+use Infocyph\Webrick\Constants\MediaTypeEnum;
 use Infocyph\Webrick\Request\Core\{Message, Stream, UploadedFile, UploadedFileCollection, Uri};
 use Infocyph\Webrick\Request\Http\RequestHeaders;
 use Infocyph\Webrick\Support\HttpUtils;
@@ -13,7 +15,17 @@ use InvalidArgumentException;
 class ServerRequest extends Message
 {
     /* Valid verbs */
-    private const array VALID = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS', 'CONNECT', 'TRACE'];
+    private const array VALID = [
+        HttpMethodEnum::GET->value,
+        HttpMethodEnum::POST->value,
+        HttpMethodEnum::PUT->value,
+        HttpMethodEnum::DELETE->value,
+        HttpMethodEnum::PATCH->value,
+        HttpMethodEnum::HEAD->value,
+        HttpMethodEnum::OPTIONS->value,
+        HttpMethodEnum::CONNECT->value,
+        HttpMethodEnum::TRACE->value,
+    ];
     private static bool $methodParamOverride = false;
 
     /** @var array<string,mixed> */
@@ -78,7 +90,7 @@ class ServerRequest extends Message
     ) {
         parent::__construct($headers, $body, $httpVer);
 
-        $this->method = strtoupper($method);
+        $this->method = HttpMethodEnum::normalize($method);
         $this->uri = $uri instanceof Uri ? $uri : new Uri($uri);
         $this->server = $server;
         $this->parsed = $parsed;
@@ -156,7 +168,7 @@ class ServerRequest extends Message
 
         // build request (headers re-imported once below)
         $req = new static(
-            $srv['REQUEST_METHOD'] ?? 'GET',
+            HttpMethodEnum::normalize((string)($srv['REQUEST_METHOD'] ?? HttpMethodEnum::GET->value)),
             $uri,
             $srv,
             $headers,
@@ -303,13 +315,13 @@ class ServerRequest extends Message
         if ($this->effectiveMethod) {
             return $this->effectiveMethod;
         }
-        $verb = strtoupper($this->method);
+        $verb = HttpMethodEnum::normalize($this->method);
         if (!in_array($verb, self::VALID, true)) {
             return $this->effectiveMethod = $verb;          // REPORT / SEARCH …
         }
         return $this->effectiveMethod = match ($verb) {
-            'HEAD' => 'GET',
-            'POST' => $this->methodOverride() ?? 'POST',
+            HttpMethodEnum::HEAD->value => HttpMethodEnum::GET->value,
+            HttpMethodEnum::POST->value => $this->methodOverride() ?? HttpMethodEnum::POST->value,
             default => $verb
         };
     }
@@ -631,7 +643,7 @@ class ServerRequest extends Message
     public function withMethod(string $method): static
     {
         $c = clone $this;
-        $c->method = strtoupper($method);
+        $c->method = HttpMethodEnum::normalize($method);
         $c->effectiveMethod = null;
         return $c;
     }
@@ -813,8 +825,8 @@ class ServerRequest extends Message
     private static function maybeParseUrlEncodedForNonPost(self $req, Stream $body): self
     {
         if (
-            in_array($req->method, ['PUT', 'PATCH', 'DELETE'], true) &&
-            str_contains(strtolower($req->getHeaderLine('Content-Type')), 'application/x-www-form-urlencoded')
+            in_array($req->method, [HttpMethodEnum::PUT->value, HttpMethodEnum::PATCH->value, HttpMethodEnum::DELETE->value], true) &&
+            str_contains(strtolower($req->getHeaderLine('Content-Type')), MediaTypeEnum::FORM_URLENCODED->value)
         ) {
             parse_str((string)$body, $form);
             $req = $req->withParsedBody($form);
@@ -1009,7 +1021,7 @@ class ServerRequest extends Message
      */
     private function isFormPost(): bool
     {
-        if (strtoupper($this->method) !== 'POST') {
+        if (HttpMethodEnum::normalize($this->method) !== HttpMethodEnum::POST->value) {
             return false;
         }
         return HttpUtils::isFormContentType($this->getHeaderLine('Content-Type'));
@@ -1033,13 +1045,13 @@ class ServerRequest extends Message
             ?: $this->getHeaderLine('HTTP-Method-Override');
 
         if ($hdr !== '') {
-            $cand = strtoupper($hdr);
+            $cand = HttpMethodEnum::normalize($hdr);
             return in_array($cand, self::VALID, true) ? $cand : null;
         }
 
         // 2) Form parameter `_method` is gated + only for POST form submissions
         if (self::$methodParamOverride && $this->isFormPost()) {
-            $cand = strtoupper((string)$this->post('_method'));
+            $cand = HttpMethodEnum::normalize((string)$this->post('_method'));
             return in_array($cand, self::VALID, true) ? $cand : null;
         }
 

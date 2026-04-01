@@ -8,6 +8,10 @@ use Closure;
 use Infocyph\InterMix\DI\Support\ReflectionResource;
 use Infocyph\Webrick\Interfaces\RouteInterface;
 use Infocyph\Webrick\Router\Definition\Registrar;
+use Infocyph\Webrick\Router\Route\Collection;
+use Infocyph\Webrick\Router\Url\RouteGenerator;
+use Infocyph\Webrick\Router\Url\SignedUrlGenerator;
+use Infocyph\Webrick\Router\Url\TemporaryUrlGenerator;
 use RuntimeException;
 
 /**
@@ -42,6 +46,10 @@ final class Router
      * @readonly
      */
     private static ?Registrar $instance = null;
+    private static ?RouteGenerator $routeGen = null;
+    private static ?Collection $routesRef = null;
+    private static ?SignedUrlGenerator $signedGen = null;
+    private static ?TemporaryUrlGenerator $tempGen = null;
 
     /**
      * Private constructor to prevent instantiation — façade is static-only.
@@ -77,6 +85,27 @@ final class Router
             );
         }
         return $router->$method(...$args);
+    }
+
+    /**
+     * Bind URL generation services to the Route facade.
+     */
+    public static function bindUrlServices(
+        Collection $routes,
+        ?string $signKey = null,
+        ?int $defaultTtl = null,
+    ): void {
+        self::$routesRef = $routes;
+        self::$routeGen = new RouteGenerator('', $routes);
+        self::$signedGen = null;
+        self::$tempGen = null;
+
+        if ($signKey !== null && $signKey !== '') {
+            self::$signedGen = new SignedUrlGenerator('', $routes, $signKey);
+            if ($defaultTtl !== null) {
+                self::$tempGen = new TemporaryUrlGenerator('', $routes, $signKey, $defaultTtl);
+            }
+        }
     }
 
     /**
@@ -227,6 +256,18 @@ final class Router
     public static function reset(): void
     {
         self::$instance = null;
+        self::resetUrlServices();
+    }
+
+    /**
+     * Reset URL generation services (useful for tests/workers).
+     */
+    public static function resetUrlServices(): void
+    {
+        self::$routesRef = null;
+        self::$routeGen = null;
+        self::$signedGen = null;
+        self::$tempGen = null;
     }
 
     /**
@@ -261,6 +302,56 @@ final class Router
     }
 
     /**
+     * Generate signed URL for named route.
+     */
+    public static function signedUrlFor(
+        string $name,
+        array $params = [],
+        array $query = [],
+        ?int $ttl = null,
+        bool $absolute = false,
+    ): string {
+        self::assertSignedBound();
+
+        $path = $ttl === null
+            ? self::$signedGen->signed($name, $params, $query, null, false)
+            : self::$signedGen->signed($name, $params, $query, max(1, (int)$ttl), false);
+
+        return $absolute ? self::withRouteDomain($name, $path) : $path;
+    }
+
+    /**
+     * Generate temporary signed URL for named route.
+     */
+    public static function temporaryUrlFor(
+        string $name,
+        array $params = [],
+        array $query = [],
+        ?int $ttl = null,
+        bool $absolute = false,
+    ): string {
+        if (!self::$tempGen) {
+            throw new \LogicException('TemporaryUrlGenerator not bound (no default TTL provided).');
+        }
+        $path = self::$tempGen->temporary($name, $params, $query, $ttl, false);
+        return $absolute ? self::withRouteDomain($name, $path) : $path;
+    }
+
+    /**
+     * Generate URL for named route.
+     */
+    public static function urlFor(
+        string $name,
+        array $params = [],
+        array $query = [],
+        bool $absolute = false,
+    ): string {
+        self::assertUrlBound();
+        $path = self::$routeGen->route($name, $params, $query, false);
+        return $absolute ? self::withRouteDomain($name, $path) : $path;
+    }
+
+    /**
      * Temporarily swap the façade instance while executing a callback.
      *
      * The previous instance is restored after $callback completes (even on
@@ -286,6 +377,20 @@ final class Router
         }
     }
 
+    private static function assertSignedBound(): void
+    {
+        if (!self::$signedGen || !self::$routesRef) {
+            throw new \LogicException('Signed URL service not bound. Provide $signKey to Registrar.');
+        }
+    }
+
+    private static function assertUrlBound(): void
+    {
+        if (!self::$routeGen || !self::$routesRef) {
+            throw new \LogicException('URL services not bound. Enable via Registrar constructor.');
+        }
+    }
+
     /**
      * Return the bound Registrar instance or throw if none is set.
      *
@@ -296,5 +401,15 @@ final class Router
     {
         return self::$instance
             ?? throw new RuntimeException('Router façade used before a concrete instance was set.');
+    }
+
+    /**
+     * Prefix a generated path with the route domain when available.
+     */
+    private static function withRouteDomain(string $name, string $path): string
+    {
+        $domain = self::$routesRef?->findByName($name)?->getDomain();
+
+        return ($domain && $domain !== '*') ? ('//' . $domain . $path) : $path;
     }
 }

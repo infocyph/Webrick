@@ -7,7 +7,7 @@
         "rector.php"
     ],
     "notName": [
-        "*Enum.php"
+        "StatusEnum.php"
     ],
     "rules": {
         "ordered_imports": {

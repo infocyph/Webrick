@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Response\Payloads;
 
+use Infocyph\Webrick\Constants\MediaTypeEnum;
+use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Response\Response;
 
@@ -29,11 +31,11 @@ final class HtmlResponse extends Response
      */
     public function __construct(
         string $html,
-        int $status = 200,
+        int $status = StatusEnum::OK->value,
         array $headers = [],
         string $charset = 'utf-8',
     ) {
-        $headers += ['Content-Type' => "text/html; charset={$charset}"];
+        $headers += ['Content-Type' => MediaTypeEnum::HTML->base() . "; charset={$charset}"];
         parent::__construct($status, new Stream($html), $headers);
     }
 }

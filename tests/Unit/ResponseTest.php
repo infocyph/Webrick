@@ -5,6 +5,8 @@ declare(strict_types=1);
 use Infocyph\Webrick\Response\Cookies\Cookie;
 use Infocyph\Webrick\Response\Cookies\CookieJar;
 use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Router\Facade\Router as RouteFacade;
 use Infocyph\Webrick\Router\Route\Collection;
 use Infocyph\Webrick\Router\Route\Route;
 
@@ -115,6 +117,26 @@ describe('Response', function () {
             ->toHaveHeader('Content-Type', 'application/octet-stream');
     });
 
+    it('serves ranged downloads', function () {
+        $req = Request::fake(headers: ['Range' => 'bytes=0-9'], uri: '/download');
+        $response = Response::rangedDownload($req, __FILE__, 'response-test.php', 'text/plain');
+
+        expect($response)
+            ->toHaveStatus(206)
+            ->toHaveHeader('Accept-Ranges', 'bytes')
+            ->and($response->getHeaderLine('Content-Range'))->toContain('bytes 0-9/')
+            ->and($response->getHeaderLine('Content-Length'))->toBe('10');
+    });
+
+    it('returns 416 for unsatisfiable ranges', function () {
+        $req = Request::fake(headers: ['Range' => 'bytes=999999-1000000'], uri: '/download');
+        $response = Response::rangedDownload($req, __FILE__, 'response-test.php', 'text/plain');
+
+        expect($response)
+            ->toHaveStatus(416)
+            ->and($response->getHeaderLine('Content-Range'))->toContain('bytes */');
+    });
+
     it('handles cache control', function () {
         $response = Response::create('test')
             ->withCache(fn ($cc) => $cc->public()->maxAge(3600));
@@ -145,11 +167,28 @@ describe('Response', function () {
             ->withName('users.show');
         $routes->add($route);
 
-        Response::bindUrlServices($routes, 'test-sign-key', 60);
-        expect(Response::urlFor('users.show', ['id' => 7]))->toBe('/users/7');
+        RouteFacade::bindUrlServices($routes, 'test-sign-key', 60);
+        expect(RouteFacade::urlFor('users.show', ['id' => 7]))->toBe('/users/7');
 
-        Response::resetUrlServices();
-        expect(fn () => Response::urlFor('users.show', ['id' => 7]))
+        RouteFacade::resetUrlServices();
+        expect(fn () => RouteFacade::urlFor('users.show', ['id' => 7]))
             ->toThrow(\LogicException::class);
+    });
+
+    it('supports global route() helper', function () {
+        $routes = new Collection();
+        $route = (new Route('GET', '/users/{id}', fn () => Response::noContent()))
+            ->withName('users.show');
+        $routes->add($route);
+
+        RouteFacade::bindUrlServices($routes, 'test-sign-key', 60);
+
+        expect(route('users.show', ['id' => 7]))->toBe('/users/7')
+            ->and(route('users.show', ['id' => 7], ['tab' => 'profile']))->toBe('/users/7?tab=profile');
+    });
+
+    it('throws when view factory is not bound', function () {
+        expect(fn () => Response::view('home', [], 200, [], 'utf-8', '__missing_view_factory__'))
+            ->toThrow(\RuntimeException::class);
     });
 });

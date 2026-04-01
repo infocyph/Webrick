@@ -5,6 +5,8 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Response\Emitter;
 
+use Infocyph\Webrick\Constants\HttpMethodEnum;
+use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Interfaces\BodyStream;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
@@ -81,8 +83,9 @@ abstract class BaseEmitter implements EmitterInterface
     protected function allowsBodyForCurrentRequest(Response $response): bool
     {
         $code = $response->getStatusCode();
-        $method = (string)($this->serverVar('REQUEST_METHOD') ?? 'GET');
-        return !in_array($code, [204, 304], true) && strtoupper($method) !== 'HEAD';
+        $method = HttpMethodEnum::normalize((string)($this->serverVar('REQUEST_METHOD') ?? HttpMethodEnum::GET->value));
+        return !\in_array($code, [StatusEnum::NO_CONTENT->value, StatusEnum::NOT_MODIFIED->value], true)
+            && $method !== HttpMethodEnum::HEAD->value;
     }
 
     /**
@@ -379,11 +382,13 @@ abstract class BaseEmitter implements EmitterInterface
      */
     protected function shouldEmitBody(Response $response, ?Request $request = null): bool
     {
-        if (in_array($response->getStatusCode(), [204, 304], true)) {
+        if (\in_array($response->getStatusCode(), [StatusEnum::NO_CONTENT->value, StatusEnum::NOT_MODIFIED->value], true)) {
             return false;
         }
-        $method = $request?->getMethod() ?? ($this->serverVar('REQUEST_METHOD') ?? 'GET');
-        return strtoupper($method) !== 'HEAD';
+        $method = HttpMethodEnum::normalize(
+            (string)($request?->getMethod() ?? ($this->serverVar('REQUEST_METHOD') ?? HttpMethodEnum::GET->value)),
+        );
+        return $method !== HttpMethodEnum::HEAD->value;
     }
 
     /**

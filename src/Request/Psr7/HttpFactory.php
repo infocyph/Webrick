@@ -1,7 +1,10 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Infocyph\Webrick\Request\Psr7;
 
+use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Request\Core\UploadedFile;
@@ -20,9 +23,13 @@ final class HttpFactory
      * @param array $serverParams The server parameters, typically from $_SERVER.
      * @return Request A new Request object.
      */
-    public function createRequest(string $method, $uri, array $serverParams = []): Request
+    public function createRequest(string $method, Uri|string $uri, array $serverParams = []): Request
     {
-        return new Request($method, $uri instanceof Uri ? $uri : new Uri((string)$uri), $serverParams);
+        return new Request(
+            HttpMethodEnum::normalize($method),
+            $uri instanceof Uri ? $uri : new Uri((string)$uri),
+            $serverParams,
+        );
     }
 
     /**
@@ -35,7 +42,7 @@ final class HttpFactory
      * @param string $reasonPhrase The reason phrase for the status code.
      * @return Response A new Response object.
      */
-    public function createResponse(int $code = 200, string $reasonPhrase = ''): Response
+    public function createResponse(int $code = StatusEnum::OK->value, string $reasonPhrase = ''): Response
     {
         if ($reasonPhrase === '' && ($st = StatusEnum::tryFrom($code))) {
             $reasonPhrase = $st->reason();
@@ -79,6 +86,9 @@ final class HttpFactory
      */
     public function createStreamFromResource($resource): Stream
     {
+        if (!\is_resource($resource)) {
+            throw new RuntimeException('createStreamFromResource() expects a valid resource');
+        }
         return new Stream($resource);
     }
 

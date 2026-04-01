@@ -9,8 +9,10 @@ declare(strict_types=1);
 
 require __DIR__ . '/vendor/autoload.php';
 
+use Infocyph\Webrick\Constants\MatcherModeEnum;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Definition\Registrar;
+use Infocyph\Webrick\Router\Facade\Router;
 use Infocyph\Webrick\Router\Route\Collection;
 use Infocyph\Webrick\Support\RouteCache;
 use Psr\Log\NullLogger;
@@ -58,7 +60,7 @@ echo "   -> sentinel: {$sentinel1}\n\n";
 // ----------------------------------------------------------------------------------
 echo "2) SHARDED build (closure registrar, alias-fallback=FALSE, ttl=300)\n";
 $sentinel2 = RouteCache::build([
-    'matcher' => 'sharded',   // explicit
+    'matcher' => MatcherModeEnum::SHARDED->value,   // explicit
     'cache' => $shardedDir,
     // Supply your own registration logic instead of routes.php:
     'register' => static function (Registrar $r): void {
@@ -93,7 +95,7 @@ echo "   -> sentinel: {$sentinel3}\n\n";
 // ----------------------------------------------------------------------------------
 echo "4) FUSED build (explicit matcher, custom bindUrlServices)\n";
 $sentinel4 = RouteCache::build([
-    'matcher' => 'fused',
+    'matcher' => MatcherModeEnum::FUSED->value,
     'cache' => $fusedFile,
     'routes' => $routesFile,
     'signKey' => $signKey,
@@ -101,8 +103,8 @@ $sentinel4 = RouteCache::build([
     // If you want to override the default binder:
     'bindUrlServices' => static function (Collection $routes) use ($signKey): void {
         // You can customize how URL services are bound for signed/temporary URLs:
-        // (This mirrors Response::bindUrlServices but could inject different defaults.)
-        Response::bindUrlServices($routes, $signKey, 600);
+        // (This mirrors Router::bindUrlServices but could inject different defaults.)
+        Router::bindUrlServices($routes, $signKey, 600);
     },
     'logger' => $logger,
     'fallbackAliasesFromRegistrar' => true,
@@ -126,7 +128,7 @@ echo "   -> directory still there? " . (is_dir($shardedDir) ? 'yes' : 'no') . "\
 // ----------------------------------------------------------------------------------
 echo "6) SHARDED clear (AGGRESSIVE) – recursive purge, preserves root .gitignore\n";
 $removed6 = RouteCache::clear([
-    'matcher' => 'sharded',
+    'matcher' => MatcherModeEnum::SHARDED->value,
     'cache' => $shardedDir,
     'aggressive' => true,
 ]);
@@ -144,7 +146,7 @@ RouteCache::build([
     'signKey' => $signKey,
 ]);
 $removed7 = RouteCache::clear([
-    'matcher' => 'fused',   // explicit, but would be auto-detected by .php suffix
+    'matcher' => MatcherModeEnum::FUSED->value,   // explicit, but would be auto-detected by .php suffix
     'cache' => $fusedFile,
 ]);
 echo "   -> removed file? " . ($removed7 ? 'yes' : 'no') . "\n";
@@ -155,7 +157,7 @@ echo "   -> file exists? " . (is_file($fusedFile) ? 'yes' : 'no') . "\n\n";
 // ----------------------------------------------------------------------------------
 echo "8) SHARDED build (kitchen sink)\n";
 $sentinel8 = RouteCache::build([
-    'matcher' => 'sharded',
+    'matcher' => MatcherModeEnum::SHARDED->value,
     'cache' => $shardedDir,
     'routes' => $routesFile,
     'signKey' => $signKey,

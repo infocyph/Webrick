@@ -18,6 +18,8 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Middleware;
 
 use Closure;
+use Infocyph\Webrick\Constants\HttpMethodEnum;
+use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Headers\SecurityHeaders;
@@ -125,7 +127,7 @@ final readonly class CorsAndPoliciesMiddleware
             $req = VaryAccumulatorMiddleware::add($req, 'Origin');
         }
 
-        if ($req->getMethod() === 'OPTIONS') {
+        if (HttpMethodEnum::normalize($req->getMethod()) === HttpMethodEnum::OPTIONS->value) {
             $req = VaryAccumulatorMiddleware::add(
                 $req,
                 'Access-Control-Request-Method',
@@ -137,7 +139,7 @@ final readonly class CorsAndPoliciesMiddleware
                 'Access-Control-Request-Private-Network',
             );
 
-            $resp = new Response(204, new Stream(''));
+            $resp = new Response(StatusEnum::NO_CONTENT->value, new Stream(''));
             $resp = $this->applyCors($resp, $req, $policy, $acao, $usedWildcard, true);
             return $this->applyPolicies($resp);
         }

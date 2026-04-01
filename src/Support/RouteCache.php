@@ -4,9 +4,10 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Support;
 
-use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Constants\MatcherModeEnum;
 use Infocyph\Webrick\Router\Definition\Attribute\AttributeRouteLoader;
 use Infocyph\Webrick\Router\Definition\Registrar;
+use Infocyph\Webrick\Router\Facade\Router;
 use Infocyph\Webrick\Router\Kernel\RouterKernel;
 use Infocyph\Webrick\Router\Matching\FusedMatcher;
 use Infocyph\Webrick\Router\Matching\GeneratedMatcher;
@@ -27,24 +28,20 @@ final class RouteCache
             throw new \InvalidArgumentException("RouteCache::build: 'cache' path is required.");
         }
 
-        $matcherOpt = $options['matcher'] ?? null;
-        $matcherOpt = $matcherOpt ? \strtolower((string)$matcherOpt) : null;
-        $mode = match ($matcherOpt) {
-            'fused' => 'fused',
-            'sharded' => 'sharded',
-            'generated' => 'generated',
-            default => \str_ends_with($cachePath, '.php') ? 'fused' : 'sharded',
-        };
+        $mode = MatcherModeEnum::fromInput(
+            isset($options['matcher']) ? (string)$options['matcher'] : null,
+            $cachePath,
+        );
 
         $matcher = match ($mode) {
-            'generated' => GeneratedMatcher::make(),
-            'fused' => FusedMatcher::make(),
+            MatcherModeEnum::GENERATED => GeneratedMatcher::make(),
+            MatcherModeEnum::FUSED => FusedMatcher::make(),
             default => ShardedMatcher::make(),
         };
         if (\method_exists($matcher, 'enableCacheWrite')) {
             $matcher->enableCacheWrite(true);
         }
-        $routeCache = ($mode === 'sharded') ? \rtrim($cachePath, "/\\") : $cachePath;
+        $routeCache = ($mode === MatcherModeEnum::SHARDED) ? \rtrim($cachePath, "/\\") : $cachePath;
 
         $userRegister = $options['register'] ?? null;
         $routesFile = (string)($options['routes'] ?? '');
@@ -120,7 +117,7 @@ final class RouteCache
         $bind = $options['bindUrlServices'] ?? null;
         if (!$bind) {
             $bind = static function (Collection $routes) use ($signKey, $signedDefaultTtl): void {
-                Response::bindUrlServices($routes, $signKey, $signedDefaultTtl);
+                Router::bindUrlServices($routes, $signKey, $signedDefaultTtl);
             };
         }
 
@@ -141,7 +138,7 @@ final class RouteCache
             fallbackAliasesFromRegistrar: $fallbackAliases,
         );
 
-        return ($mode === 'sharded') ? $routeCache . DIRECTORY_SEPARATOR . '__root.php' : $routeCache;
+        return ($mode === MatcherModeEnum::SHARDED) ? $routeCache . DIRECTORY_SEPARATOR . '__root.php' : $routeCache;
     }
 
     public static function clear(array $options): bool
@@ -150,14 +147,10 @@ final class RouteCache
         if ($cachePath === '') {
             throw new \InvalidArgumentException("RouteCache::clear: 'cache' path is required.");
         }
-        $matcherOpt = $options['matcher'] ?? null;
-        $matcherOpt = $matcherOpt ? \strtolower((string)$matcherOpt) : null;
-        $mode = match ($matcherOpt) {
-            'fused' => 'fused',
-            'sharded' => 'sharded',
-            'generated' => 'generated',
-            default => \str_ends_with($cachePath, '.php') ? 'fused' : 'sharded',
-        };
+        $mode = MatcherModeEnum::fromInput(
+            isset($options['matcher']) ? (string)$options['matcher'] : null,
+            $cachePath,
+        );
 
         $aggressive = (bool)($options['aggressive'] ?? false);
 
@@ -166,7 +159,7 @@ final class RouteCache
             throw new \RuntimeException("RouteCache::clear: refusing to operate on risky path '{$cachePath}'.");
         }
 
-        if ($mode !== 'sharded') {
+        if ($mode !== MatcherModeEnum::SHARDED) {
             return self::rmFile($cachePath);
         }
 

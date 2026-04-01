@@ -18,6 +18,7 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Middleware;
 
 use Closure;
+use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 
@@ -90,7 +91,7 @@ final class VaryAccumulatorMiddleware
             $tokens = self::merge($tokens, ['Origin']);
 
             // Preflight: vary on Access-Control-Request-Method/Headers when present
-            if (strtoupper($req->getMethod()) === 'OPTIONS') {
+            if (HttpMethodEnum::normalize($req->getMethod()) === HttpMethodEnum::OPTIONS->value) {
                 if ($req->getHeaderLine('Access-Control-Request-Method') !== '') {
                     $tokens = self::merge($tokens, ['Access-Control-Request-Method']);
                 }

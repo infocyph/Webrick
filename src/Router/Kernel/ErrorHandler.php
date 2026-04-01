@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Router\Kernel;
 
 use ErrorException;
+use Infocyph\Webrick\Constants\HttpMethodEnum;
+use Infocyph\Webrick\Constants\MediaTypeEnum;
 use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
@@ -126,12 +128,12 @@ final class ErrorHandler
         sort($list, SORT_STRING);
 
         // Ensure HEAD is present whenever GET exists and HEAD was not explicitly given.
-        if (in_array('GET', $list, true) && !in_array('HEAD', $list, true)) {
-            $list[] = 'HEAD';
+        if (in_array(HttpMethodEnum::GET->value, $list, true) && !in_array(HttpMethodEnum::HEAD->value, $list, true)) {
+            $list[] = HttpMethodEnum::HEAD->value;
         }
         // Always include OPTIONS for method discovery convenience.
-        if (!in_array('OPTIONS', $list, true)) {
-            $list[] = 'OPTIONS';
+        if (!in_array(HttpMethodEnum::OPTIONS->value, $list, true)) {
+            $list[] = HttpMethodEnum::OPTIONS->value;
         }
         return implode(', ', $list);
     }
@@ -193,7 +195,7 @@ final class ErrorHandler
      */
     private function isHttp(int $code): bool
     {
-        return $code >= 400 && $code <= 599;
+        return StatusEnum::isErrorCode($code);
     }
 
     /**
@@ -218,8 +220,9 @@ final class ErrorHandler
             return;
         }
 
+        $statusCase = StatusEnum::tryFrom($status);
         $level = match (true) {
-            $status >= 500 => 'error',
+            $statusCase?->isServerError() ?? StatusEnum::isServerErrorCode($status) => 'error',
             $status === StatusEnum::NOT_FOUND->value
             || $status === StatusEnum::METHOD_NOT_ALLOWED->value => 'notice',
             default => 'warning',
@@ -230,7 +233,7 @@ final class ErrorHandler
             [
                 'status' => $status,
                 'series' => StatusEnum::tryFrom($status)?->series(),
-                'method' => strtoupper($req->getMethod()),
+                'method' => HttpMethodEnum::normalize($req->getMethod()),
                 'path' => (string)$req->getUri()->getPath(),
                 'request_id' => $req->getAttribute('request_id') ?: null,
                 'exception' => $e,
@@ -250,19 +253,19 @@ final class ErrorHandler
     private function pickType(string $accept): string
     {
         $accept = strtolower($accept);
-        if (str_contains($accept, 'application/problem+json')) {
-            return 'application/problem+json';
+        if (str_contains($accept, MediaTypeEnum::PROBLEM_JSON->value)) {
+            return MediaTypeEnum::PROBLEM_JSON->value;
         }
-        if (str_contains($accept, 'application/json')) {
-            return 'application/json';
+        if (str_contains($accept, MediaTypeEnum::JSON->base()) || str_contains($accept, '+json')) {
+            return MediaTypeEnum::JSON->base();
         }
-        if (str_contains($accept, 'text/html')) {
-            return 'text/html';
+        if (str_contains($accept, MediaTypeEnum::HTML->base())) {
+            return MediaTypeEnum::HTML->base();
         }
-        if (str_contains($accept, 'application/xml') || str_contains($accept, 'text/xml')) {
-            return 'application/xml';
+        if (str_contains($accept, MediaTypeEnum::XML->base()) || str_contains($accept, 'text/xml')) {
+            return MediaTypeEnum::XML->base();
         }
-        return 'text/plain';
+        return MediaTypeEnum::PLAIN->base();
     }
 
     /* ──────────────────────── render ──────────────────────── */
@@ -312,7 +315,7 @@ final class ErrorHandler
         }
 
         // HEAD must not include a body regardless of status.
-        if (strtoupper($req->getMethod()) === 'HEAD') {
+        if (HttpMethodEnum::normalize($req->getMethod()) === HttpMethodEnum::HEAD->value) {
             return Response::empty($status, $headers);
         }
 
@@ -325,7 +328,7 @@ final class ErrorHandler
         }
 
         switch ($wanted) {
-            case 'application/problem+json':
+            case MediaTypeEnum::PROBLEM_JSON->value:
                 {
                     $payload = [
                         'type' => 'about:blank',
@@ -344,7 +347,7 @@ final class ErrorHandler
                             'trace' => explode("\n", $e->getTraceAsString()),
                         ];
                     }
-                    $headers['Content-Type'] = 'application/problem+json';
+                    $headers['Content-Type'] = MediaTypeEnum::PROBLEM_JSON->value;
                     $json = json_encode(
                         $payload,
                         JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE | JSON_UNESCAPED_SLASHES,
@@ -352,7 +355,7 @@ final class ErrorHandler
                     return Response::create($json === false ? '{}' : $json, $status, $headers);
                 }
 
-            case 'application/json':
+            case MediaTypeEnum::JSON->value:
                 {
                     $payload = [
                         'error' => $msg,
@@ -372,19 +375,19 @@ final class ErrorHandler
                     return Response::json($payload, $status, $headers);
                 }
 
-            case 'application/xml':
+            case MediaTypeEnum::XML->value:
             case 'text/xml':
-                $headers['Content-Type'] = 'application/xml';
+                $headers['Content-Type'] = MediaTypeEnum::XML->value;
                 $xml = $this->xmlError($status, $reason, $msg, (string)$rid, $e);
                 return Response::create($xml, $status, $headers);
 
-            case 'text/html':
-                $headers['Content-Type'] = 'text/html; charset=utf-8';
+            case MediaTypeEnum::HTML->base():
+                $headers['Content-Type'] = MediaTypeEnum::HTML->value;
                 $html = $this->htmlError($status, $reason, $msg, (string)$rid, $e);
                 return Response::create($html, $status, $headers);
 
             default:
-                $headers['Content-Type'] = 'text/plain; charset=utf-8';
+                $headers['Content-Type'] = MediaTypeEnum::PLAIN->value;
                 $lines = ["{$status} {$reason}", $msg];
                 if ($rid) {
                     $lines[] = "Request-Id: {$rid}";

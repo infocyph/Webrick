@@ -17,6 +17,7 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Middleware;
 
 use Closure;
+use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Url\Signature;
@@ -64,7 +65,7 @@ final readonly class VerifySignedUrlMiddleware
         $qs = $request->getQueryParams();
         $sig = $qs[SignedUrlGenerator::SIG_PARAM] ?? '';
         if (!is_string($sig) || $sig === '') {
-            return Response::plaintext('Missing signature', 400);
+            return Response::plaintext('Missing signature', StatusEnum::BAD_REQUEST->value);
         }
         unset($qs[SignedUrlGenerator::SIG_PARAM]);
 
@@ -72,7 +73,7 @@ final readonly class VerifySignedUrlMiddleware
         if (isset($qs[SignedUrlGenerator::EXPIRES_PARAM])) {
             $exp = (int)$qs[SignedUrlGenerator::EXPIRES_PARAM];
             if (time() > $exp + $this->leeway) {
-                return Response::plaintext('URL expired', 410);
+                return Response::plaintext('URL expired', StatusEnum::GONE->value);
             }
         }
 
@@ -91,7 +92,7 @@ final readonly class VerifySignedUrlMiddleware
 
         // 4) verify signature
         if (!Signature::check($payload, $sig, $this->secret)) {
-            return Response::plaintext('Invalid signature', 403);
+            return Response::plaintext('Invalid signature', StatusEnum::FORBIDDEN->value);
         }
 
         // 5) hand off to the next middleware/controller

@@ -18,6 +18,8 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Middleware;
 
 use Closure;
+use Infocyph\Webrick\Constants\MediaTypeEnum;
+use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Request\Http\ContentNegotiator;
 use Infocyph\Webrick\Request\Request;
@@ -34,6 +36,16 @@ use Infocyph\Webrick\Router\Definition\Attribute\Produces;
  */
 final readonly class NegotiationMiddleware
 {
+    /** @var array<int,string> */
+    private array $charsets;
+
+    private string $localeFallback;
+
+    /** @var array<int,string> */
+    private array $locales;
+    /** @var array<int,string> */
+    private array $produces;
+
     /**
      * @param array<int,string> $produces Supported media types (e.g., ['+json','application/json','text/html']).
      * @param array<int,string> $charsets Supported charsets (e.g., ['utf-8']).
@@ -41,11 +53,17 @@ final readonly class NegotiationMiddleware
      * @param string $localeFallback Fallback locale when no match is found.
      */
     public function __construct(
-        private array $produces = ['+json', 'application/json', 'text/html'],
-        private array $charsets = ['utf-8'],
-        private array $locales = ['en'],
-        private string $localeFallback = 'en',
+        array $produces = [],
+        array $charsets = ['utf-8'],
+        array $locales = ['en'],
+        string $localeFallback = 'en',
     ) {
+        $this->produces = $produces !== []
+            ? $produces
+            : ['+json', MediaTypeEnum::JSON->value, MediaTypeEnum::HTML->base()];
+        $this->charsets = $charsets;
+        $this->locales = $locales;
+        $this->localeFallback = $localeFallback;
     }
 
     /**
@@ -162,7 +180,7 @@ final readonly class NegotiationMiddleware
     private function ensureContentType(Response $resp, string $type, ?string $cset): Response
     {
         $code = $resp->getStatusCode();
-        if ($code === 204 || $code === 304) {
+        if (\in_array($code, [StatusEnum::NO_CONTENT->value, StatusEnum::NOT_MODIFIED->value], true)) {
             return $resp;
         }
 
@@ -200,7 +218,7 @@ final readonly class NegotiationMiddleware
      */
     private function isJson(string $typeLower): bool
     {
-        return str_starts_with($typeLower, 'application/json') || str_ends_with($typeLower, '+json');
+        return MediaTypeEnum::isJsonLike($typeLower);
     }
 
     /**
@@ -249,9 +267,9 @@ final readonly class NegotiationMiddleware
             // Register Vary before short-circuit 406 so accumulator can write it
             $req = VaryAccumulatorMiddleware::add($req, 'Accept');
             $early = new Response(
-                406,
+                StatusEnum::NOT_ACCEPTABLE->value,
                 new Stream('Not acceptable.'),
-                ['Content-Type' => 'text/plain; charset=utf-8'],
+                ['Content-Type' => MediaTypeEnum::PLAIN->value],
             );
             $early = $early->withSmartHeader('Vary', 'Accept');
 

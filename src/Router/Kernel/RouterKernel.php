@@ -6,6 +6,8 @@ namespace Infocyph\Webrick\Router\Kernel;
 
 use Closure;
 use Infocyph\InterMix\DI\Invoker;
+use Infocyph\Webrick\Constants\HttpMethodEnum;
+use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Exceptions\{MethodNotAllowedException, RouteNotFoundException};
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
@@ -172,8 +174,8 @@ final class RouterKernel
             capturePhpErrors: true,
             requestIdHeader: 'X-Request-Id',
             exceptionMap: [
-                RouteNotFoundException::class => 404,
-                MethodNotAllowedException::class => 405,
+                RouteNotFoundException::class => StatusEnum::NOT_FOUND->value,
+                MethodNotAllowedException::class => StatusEnum::METHOD_NOT_ALLOWED->value,
             ],
         );
     }
@@ -394,7 +396,7 @@ final class RouterKernel
                 continue;
             }
 
-            $r = new Route('GET', $path, static fn () => Response::noContent());
+            $r = new Route(HttpMethodEnum::GET->value, $path, static fn () => Response::noContent());
             $r = $r->withName($name);
             if (\is_string($domain) && $domain !== '') {
                 $r = $r->withDomain($domain);
@@ -434,9 +436,9 @@ final class RouterKernel
     private function matchRoute(Request $req): array
     {
         // Respect method overrides for routing while preserving explicit HEAD routes.
-        $rawMethod = \strtoupper($req->getMethod());
-        $effectiveMethod = \strtoupper($req->getEffectiveMethod());
-        $method = ($rawMethod === 'HEAD') ? 'HEAD' : $effectiveMethod;
+        $rawMethod = HttpMethodEnum::normalize($req->getMethod());
+        $effectiveMethod = HttpMethodEnum::normalize($req->getEffectiveMethod());
+        $method = ($rawMethod === HttpMethodEnum::HEAD->value) ? HttpMethodEnum::HEAD->value : $effectiveMethod;
         $uri = $req->getUri();
         $host = self::normaliseHost($uri->getHost());
         $path = $uri->getPath() ?: '/';
@@ -515,7 +517,7 @@ final class RouterKernel
                 ? $ttlRaw
                 : (\is_string($ttlRaw) && $ttlRaw !== '' ? (int)$ttlRaw : null);
 
-            Response::bindUrlServices($aliasOnly, $signKey, $defaultTtl);
+            Router::bindUrlServices($aliasOnly, $signKey, $defaultTtl);
         }
 
         $this->log->info('[router] route table ready (hot cache)', [

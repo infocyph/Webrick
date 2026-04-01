@@ -3,6 +3,7 @@
 
 declare(strict_types=1);
 
+use Infocyph\Webrick\Constants\MatcherModeEnum;
 use Infocyph\Webrick\Support\RouteCache;
 use Psr\Log\NullLogger;
 
@@ -73,13 +74,14 @@ function parse_argv(array $argv): array
 $parsed = parse_argv($_SERVER['argv'] ?? []);
 $cmd = $parsed['cmd'];
 $opts = $parsed['opts'];
+$matcherValues = implode('|', MatcherModeEnum::values());
 
 $usage = <<<TXT
     Webrick CLI (no-getopt)
 
     USAGE:
-      webrick route:cache  --matcher=sharded|fused|generated --cache=PATH --routes=PATH [--signkey=KEY] [--ttl=900] [--alias-fallback=1|0] [--attr-dirs="Ns\\\\=dir,..."] [--attr-classes="FQCN1,FQCN2"] [--verbose=1]
-      webrick route:clear  --matcher=sharded|fused|generated --cache=PATH [--aggressive=1|0]
+      webrick route:cache  --matcher={$matcherValues} --cache=PATH --routes=PATH [--signkey=KEY] [--ttl=900] [--alias-fallback=1|0] [--attr-dirs="Ns\\\\=dir,..."] [--attr-classes="FQCN1,FQCN2"] [--verbose=1]
+      webrick route:clear  --matcher={$matcherValues} --cache=PATH [--aggressive=1|0]
 
     NOTES:
     - Sharded matcher: --cache is a directory (e.g. ./.route-cache)
@@ -90,86 +92,94 @@ $usage = <<<TXT
 
 switch ($cmd) {
     case 'route:cache':
-    {
-        $cache = (string)($opts['cache'] ?? (__DIR__ . '/.route-cache'));
-        $routes = (string)($opts['routes'] ?? (__DIR__ . '/routes.php'));
-        $matcher = isset($opts['matcher']) ? (string)$opts['matcher'] : null;
-        $signKey = isset($opts['signkey']) ? (string)$opts['signkey'] : null;
-        $ttl = (int)($opts['ttl'] ?? 900);
-        $alias = filter_var((string)($opts['alias-fallback'] ?? '1'), FILTER_VALIDATE_BOOL);
-        $verbose = filter_var((string)($opts['verbose'] ?? '0'), FILTER_VALIDATE_BOOL);
+        {
+            $cache = (string)($opts['cache'] ?? (__DIR__ . '/.route-cache'));
+            $routes = (string)($opts['routes'] ?? (__DIR__ . '/routes.php'));
+            $matcher = isset($opts['matcher']) ? strtolower((string)$opts['matcher']) : null;
+            if ($matcher !== null && !in_array($matcher, MatcherModeEnum::values(), true)) {
+                err("✖ invalid matcher '{$matcher}'. allowed: " . implode(', ', MatcherModeEnum::values()) . "\n");
+                exit(2);
+            }
+            $signKey = isset($opts['signkey']) ? (string)$opts['signkey'] : null;
+            $ttl = (int)($opts['ttl'] ?? 900);
+            $alias = filter_var((string)($opts['alias-fallback'] ?? '1'), FILTER_VALIDATE_BOOL);
+            $verbose = filter_var((string)($opts['verbose'] ?? '0'), FILTER_VALIDATE_BOOL);
 
-        // --attr-dirs: "Ns\\=dir,Other\\=dir2"
-        $attributeDirs = [];
-        if (!empty($opts['attr-dirs'])) {
-            $raw = (string)$opts['attr-dirs'];
-            foreach (array_filter(array_map('trim', explode(',', $raw))) as $pair) {
-                [$ns, $dir] = explode('=', $pair, 2) + [1 => ''];
-                if ($ns !== '' && $dir !== '') {
-                    $attributeDirs[$ns] = $dir;
+            // --attr-dirs: "Ns\\=dir,Other\\=dir2"
+            $attributeDirs = [];
+            if (!empty($opts['attr-dirs'])) {
+                $raw = (string)$opts['attr-dirs'];
+                foreach (array_filter(array_map('trim', explode(',', $raw))) as $pair) {
+                    [$ns, $dir] = explode('=', $pair, 2) + [1 => ''];
+                    if ($ns !== '' && $dir !== '') {
+                        $attributeDirs[$ns] = $dir;
+                    }
                 }
             }
-        }
 
-        // --attr-classes: "A\\B\\C, X\\Y\\Z"
-        $attributeClasses = [];
-        if (!empty($opts['attr-classes'])) {
-            $attributeClasses = array_values(
-                array_filter(array_map('trim', explode(',', (string)$opts['attr-classes']))),
-            );
-        }
+            // --attr-classes: "A\\B\\C, X\\Y\\Z"
+            $attributeClasses = [];
+            if (!empty($opts['attr-classes'])) {
+                $attributeClasses = array_values(
+                    array_filter(array_map('trim', explode(',', (string)$opts['attr-classes']))),
+                );
+            }
 
-        if ($verbose) {
-            out("CMD: route:cache\n");
-            out("OPTS: " . json_encode($opts, JSON_UNESCAPED_SLASHES) . "\n");
-        }
+            if ($verbose) {
+                out("CMD: route:cache\n");
+                out("OPTS: " . json_encode($opts, JSON_UNESCAPED_SLASHES) . "\n");
+            }
 
-        try {
-            $sentinel = RouteCache::build([
-                'matcher' => $matcher,
-                'cache' => $cache,
-                'routes' => $routes,
-                'signKey' => $signKey,
-                'signedDefaultTtl' => $ttl,
-                'registrarOptions' => [
-                    'autoSlashRedirect' => false,
-                    'exposeUrlServices' => true,
-                ],
-                'fallbackAliasesFromRegistrar' => $alias,
-                'attributeDirs' => $attributeDirs,
-                'attributeClasses' => $attributeClasses,
-                'logger' => new NullLogger(),
-            ]);
-        } catch (\Throwable $e) {
-            err("✖ route:cache failed: {$e->getMessage()}\n");
-            exit(2);
-        }
+            try {
+                $sentinel = RouteCache::build([
+                    'matcher' => $matcher,
+                    'cache' => $cache,
+                    'routes' => $routes,
+                    'signKey' => $signKey,
+                    'signedDefaultTtl' => $ttl,
+                    'registrarOptions' => [
+                        'autoSlashRedirect' => false,
+                        'exposeUrlServices' => true,
+                    ],
+                    'fallbackAliasesFromRegistrar' => $alias,
+                    'attributeDirs' => $attributeDirs,
+                    'attributeClasses' => $attributeClasses,
+                    'logger' => new NullLogger(),
+                ]);
+            } catch (\Throwable $e) {
+                err("✖ route:cache failed: {$e->getMessage()}\n");
+                exit(2);
+            }
 
-        $ok = is_file($sentinel);
-        out(($ok ? "✔" : "✖") . " Route cache ready at: {$sentinel}\n");
-        exit($ok ? 0 : 3);
-    }
+            $ok = is_file($sentinel);
+            out(($ok ? "✔" : "✖") . " Route cache ready at: {$sentinel}\n");
+            exit($ok ? 0 : 3);
+        }
 
     case 'route:clear':
-    {
-        $cache = (string)($opts['cache'] ?? (__DIR__ . '/.route-cache'));
-        $matcher = isset($opts['matcher']) ? (string)$opts['matcher'] : null;
-        $aggressive = filter_var((string)($opts['aggressive'] ?? '0'), FILTER_VALIDATE_BOOL);
+        {
+            $cache = (string)($opts['cache'] ?? (__DIR__ . '/.route-cache'));
+            $matcher = isset($opts['matcher']) ? strtolower((string)$opts['matcher']) : null;
+            if ($matcher !== null && !in_array($matcher, MatcherModeEnum::values(), true)) {
+                err("✖ invalid matcher '{$matcher}'. allowed: " . implode(', ', MatcherModeEnum::values()) . "\n");
+                exit(4);
+            }
+            $aggressive = filter_var((string)($opts['aggressive'] ?? '0'), FILTER_VALIDATE_BOOL);
 
-        try {
-            $removed = RouteCache::clear([
-                'matcher' => $matcher,
-                'cache' => $cache,
-                'aggressive' => $aggressive,
-            ]);
-        } catch (\Throwable $e) {
-            err("✖ route:clear failed: {$e->getMessage()}\n");
-            exit(4);
+            try {
+                $removed = RouteCache::clear([
+                    'matcher' => $matcher,
+                    'cache' => $cache,
+                    'aggressive' => $aggressive,
+                ]);
+            } catch (\Throwable $e) {
+                err("✖ route:clear failed: {$e->getMessage()}\n");
+                exit(4);
+            }
+
+            out($removed ? "✔ Route cache cleared: {$cache}\n" : "ℹ Nothing to clear at: {$cache}\n");
+            exit(0);
         }
-
-        out($removed ? "✔ Route cache cleared: {$cache}\n" : "ℹ Nothing to clear at: {$cache}\n");
-        exit(0);
-    }
 
     default:
         out($usage . PHP_EOL);

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Definition\Registrar;
+use Infocyph\Webrick\Router\Facade\Router as RouteFacade;
 use Infocyph\Webrick\Router\Kernel\RouterKernel;
 use Infocyph\Webrick\Router\Matching\ShardedMatcher;
 use Infocyph\Webrick\Router\Route\Collection;
@@ -176,7 +177,7 @@ describe('Signed URLs', function () {
     });
 
     it('keeps signed URL helpers bound after hot-cache boot', function () {
-        Response::resetUrlServices();
+        RouteFacade::resetUrlServices();
 
         $cacheDir = \sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'webrick-route-cache-' . \bin2hex(\random_bytes(6));
         $secret = 'hot-cache-sign-secret';
@@ -198,7 +199,7 @@ describe('Signed URLs', function () {
                 ],
             );
 
-            expect(Response::signedUrlFor('download', ['file' => 'cold.txt']))
+            expect(RouteFacade::signedUrlFor('download', ['file' => 'cold.txt']))
                 ->toContain('_sig=');
 
             RouterKernel::bootWithRegistrar(
@@ -214,11 +215,11 @@ describe('Signed URLs', function () {
                 ],
             );
 
-            expect(Response::signedUrlFor('download', ['file' => 'hot.txt']))
+            expect(RouteFacade::signedUrlFor('download', ['file' => 'hot.txt']))
                 ->toContain('_sig=');
         } finally {
             cleanTestCache($cacheDir);
-            Response::resetUrlServices();
+            RouteFacade::resetUrlServices();
         }
     });
 });

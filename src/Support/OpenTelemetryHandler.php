@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Support;
 
 use Closure;
+use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use OpenTelemetry\API\Globals;
@@ -439,10 +440,11 @@ final readonly class OpenTelemetryHandler
      */
     private function setSpanStatus(object $span, int $statusCode): void
     {
-        if ($statusCode >= 500) {
+        $series = StatusEnum::tryFrom($statusCode)?->series() ?? intdiv($statusCode, 100);
+        if ($series === 5) {
             // 5xx = Server error
             $span->setStatus(StatusCode::STATUS_ERROR, 'HTTP ' . $statusCode);
-        } elseif ($statusCode >= 400) {
+        } elseif ($series === 4) {
             // 4xx = Client error (not a span error, but useful to track)
             $span->setStatus(StatusCode::STATUS_OK);
             $span->setAttribute('http.status_class', '4xx');

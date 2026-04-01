@@ -20,6 +20,7 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Middleware;
 
 use Closure;
+use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Request\Http\EndUser;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Request\Support\IpCidr;
@@ -232,7 +233,7 @@ final class GatewayHardeningMiddleware
     {
         $clientIp = $this->endUser?->ip(); // honors trusted proxy headers
         if ($clientIp && $this->cidrHit($clientIp, $this->denyIpCidrs)) {
-            return Response::plaintext("Forbidden – $clientIp is not allowed.", 403);
+            return Response::plaintext("Forbidden – $clientIp is not allowed.", StatusEnum::FORBIDDEN->value);
         }
         return null;
     }
@@ -262,7 +263,7 @@ final class GatewayHardeningMiddleware
         if ($scheme !== null && $scheme !== '') {
             $scheme = strtolower($scheme);
             if ($scheme !== 'http' && $scheme !== 'https') {
-                return Response::json(['error' => 'Invalid redirect scheme'], 400);
+                return Response::json(['error' => 'Invalid redirect scheme'], StatusEnum::BAD_REQUEST->value);
             }
         }
 
@@ -275,10 +276,10 @@ final class GatewayHardeningMiddleware
             // Same-origin only when no explicit allow-list
             $current = $req->getUri()->getHost();
             if (!self::equalsIgnoreCase($host, $current)) {
-                return Response::json(['error' => 'Open redirect blocked'], 400);
+                return Response::json(['error' => 'Open redirect blocked'], StatusEnum::BAD_REQUEST->value);
             }
         } elseif (!in_array($host, $this->redirectAllowedHosts, true)) {
-            return Response::json(['error' => 'Open redirect blocked'], 400);
+            return Response::json(['error' => 'Open redirect blocked'], StatusEnum::BAD_REQUEST->value);
         }
 
         return $resp;
@@ -336,7 +337,7 @@ final class GatewayHardeningMiddleware
         }
         $port = ($this->httpsPort === 443) ? null : $this->httpsPort; // avoid :443 in Location
         $target = $uri->withScheme('https')->withPort($port);
-        return Response::redirect((string)$target, 308);
+        return Response::redirect((string)$target, StatusEnum::PERMANENT_REDIRECT->value);
     }
 
     /* ───────────── step helpers ───────────── */
@@ -358,12 +359,12 @@ final class GatewayHardeningMiddleware
 
         // Treat empty Host as invalid when enforcing an allow-list
         if ($host === '') {
-            return Response::plaintext('Missing or empty Host header.', 400);
+            return Response::plaintext('Missing or empty Host header.', StatusEnum::BAD_REQUEST->value);
         }
 
         return $this->matchesHost($host)
             ? null
-            : Response::plaintext('Untrusted Host header.', 400);
+            : Response::plaintext('Untrusted Host header.', StatusEnum::BAD_REQUEST->value);
     }
 
     /**

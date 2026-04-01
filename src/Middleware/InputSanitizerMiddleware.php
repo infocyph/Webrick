@@ -15,6 +15,7 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Middleware;
 
 use Closure;
+use Infocyph\Webrick\Constants\MediaTypeEnum;
 use Infocyph\Webrick\Request\Core\UploadedFile;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
@@ -208,7 +209,7 @@ final class InputSanitizerMiddleware
     {
         $mime = strtolower(strtok($ctype, ';') ?: '');
         $isForm = HttpUtils::isFormContentType($ctype);
-        $isJson = str_starts_with($mime, 'application/json');
+        $isJson = str_starts_with($mime, MediaTypeEnum::JSON->base());
 
         return ($isForm && $this->touchFormBodies) || ($isJson && $this->touchJsonBodies);
     }

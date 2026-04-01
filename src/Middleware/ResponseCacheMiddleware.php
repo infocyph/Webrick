@@ -6,6 +6,8 @@ namespace Infocyph\Webrick\Middleware;
 
 use Closure;
 use Infocyph\InterMix\Cache\Cache;
+use Infocyph\Webrick\Constants\HttpMethodEnum;
+use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
@@ -55,9 +57,9 @@ final class ResponseCacheMiddleware
     public function __invoke(Request $req, Closure $next): Response
     {
         // Cache only safe, idempotent reads.
-        $method = strtoupper($req->getMethod());
-        $isGet = $method === 'GET';
-        $isHead = $method === 'HEAD';
+        $method = HttpMethodEnum::normalize($req->getMethod());
+        $isGet = $method === HttpMethodEnum::GET->value;
+        $isHead = $method === HttpMethodEnum::HEAD->value;
         if (!$isGet && !$isHead) {
             return $next($req);
         }
@@ -159,7 +161,18 @@ final class ResponseCacheMiddleware
         }
 
         // Status whitelist (RFC 9111-ish + practical micro-cache picks).
-        $okStatuses = [200, 203, 204, 301, 308, 404, 405, 410, 414, 451];
+        $okStatuses = [
+            StatusEnum::OK->value,
+            StatusEnum::NON_AUTHORITATIVE_INFO->value,
+            StatusEnum::NO_CONTENT->value,
+            StatusEnum::MOVED_PERMANENTLY->value,
+            StatusEnum::PERMANENT_REDIRECT->value,
+            StatusEnum::NOT_FOUND->value,
+            StatusEnum::METHOD_NOT_ALLOWED->value,
+            StatusEnum::GONE->value,
+            StatusEnum::URI_TOO_LONG->value,
+            StatusEnum::UNAVAILABLE_FOR_LEGAL_REASONS->value,
+        ];
         if (!in_array($resp->getStatusCode(), $okStatuses, true)) {
             return false;
         }
@@ -211,7 +224,7 @@ final class ResponseCacheMiddleware
 
         // Build a compact, delimiter-safe buffer (NUL separators).
         $nul = "\0";
-        $buf = strtoupper($req->getMethod()) . $nul
+        $buf = HttpMethodEnum::normalize($req->getMethod()) . $nul
             . $host . $nul
             . $path . $nul
             . $query . $nul
@@ -314,7 +327,7 @@ final class ResponseCacheMiddleware
         // Normalize headers to plain array<string,string|string[]>
         $headers = $data['h'] ?? [];
         return new Response(
-            (int)($data['s'] ?? 200),
+            (int)($data['s'] ?? StatusEnum::OK->value),
             new Stream((string)($data['b'] ?? '')),
             $headers,
             (string)($data['pv'] ?? '1.1'),

@@ -6,6 +6,7 @@ namespace Infocyph\Webrick\Router\Matching;
 
 use Closure;
 use Infocyph\InterMix\Serializer\ValueSerializer;
+use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 
 /**
@@ -142,8 +143,8 @@ abstract class AbstractMatcher
         foreach ($map as $verb => $_route) {
             $set[$verb] = true;
         }
-        if (isset($map['GET'])) {
-            $set['HEAD'] = true;
+        if (isset($map[HttpMethodEnum::GET->value])) {
+            $set[HttpMethodEnum::HEAD->value] = true;
         }
     }
 
@@ -162,8 +163,8 @@ abstract class AbstractMatcher
         foreach ($routes as $verb => $_route) {
             $set[$verb] = true;
         }
-        if (isset($routes['GET'])) {
-            $set['HEAD'] = true;
+        if (isset($routes[HttpMethodEnum::GET->value])) {
+            $set[HttpMethodEnum::HEAD->value] = true;
         }
     }
 
@@ -376,7 +377,7 @@ abstract class AbstractMatcher
      */
     protected function pickVerbRoute(array $buckets, string $verb): ?CompiledRoute
     {
-        if ($verb === 'OPTIONS' && $buckets) {
+        if ($verb === HttpMethodEnum::OPTIONS->value && $buckets) {
             /** @var ?CompiledRoute $first */
             $first = \reset($buckets);
             return $first instanceof CompiledRoute ? $first : null;
@@ -384,8 +385,8 @@ abstract class AbstractMatcher
         if (isset($buckets[$verb])) {
             return $buckets[$verb];
         }
-        if ($verb === 'HEAD' && isset($buckets['GET'])) {
-            return $buckets['GET'];
+        if ($verb === HttpMethodEnum::HEAD->value && isset($buckets[HttpMethodEnum::GET->value])) {
+            return $buckets[HttpMethodEnum::GET->value];
         }
         return null;
     }

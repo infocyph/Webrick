@@ -16,10 +16,8 @@ use Infocyph\Webrick\Response\Headers\ContentDisposition;
 use Infocyph\Webrick\Response\Internal\LazyJsonStream;
 use Infocyph\Webrick\Response\Internal\Utils;
 use Infocyph\Webrick\Response\Negotiation\ContentTypeNegotiator;
-use Infocyph\Webrick\Router\Route\Collection;
-use Infocyph\Webrick\Router\Url\SignedUrlGenerator;
-use Infocyph\Webrick\Router\Url\TemporaryUrlGenerator;
-use Infocyph\Webrick\Router\Url\UrlGenerator;
+use Infocyph\Webrick\Response\Range\RangeResponder;
+use Infocyph\Webrick\Response\View\ViewFactoryInterface;
 use JsonSerializable;
 use RuntimeException;
 
@@ -27,10 +25,6 @@ class Response
 {
     use MacroMix;
 
-    private static ?Collection $routesRef = null;
-    private static ?SignedUrlGenerator $signedGen = null;
-    private static ?TemporaryUrlGenerator $tempGen = null;
-    private static ?UrlGenerator $urlGen = null;
     private BodyStream $body;
 
     private HeaderBag $headers;
@@ -59,7 +53,7 @@ class Response
      * @param string|null $reasonPhrase Optional reason phrase
      */
     public function __construct(
-        private int $statusCode = 200,
+        private int $statusCode = StatusEnum::OK->value,
         BodyStream|string|null $body = null,
         array $headers = [],
         private string $protocolVersion = '1.1',
@@ -98,7 +92,7 @@ class Response
         self::putIfAbsent($defaults, 'Last-Modified', self::formatHttpDate($mtime), $headers);
         self::putIfAbsent($defaults, 'ETag', self::etagFromMeta($size, $mtime, $name), $headers);
 
-        return new self(200, $stream, $defaults + $headers);
+        return new self(StatusEnum::OK->value, $stream, $defaults + $headers);
     }
 
     /**
@@ -119,21 +113,23 @@ class Response
     public static function auto(
         Request $r,
         callable|array|object|string|int|float|bool|null $data,
-        int $status = 200,
+        int $status = StatusEnum::OK->value,
         array $headers = [],
         int $flags = JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE,
         int $depth = 512,
     ): self {
         // Ask the request which of these it prefers (client Accept order wins).
-        $want = ContentTypeNegotiator::chooseFromRequest($r, ['application/json', '+json', 'text/plain'])
-            ?? 'application/json';
+        $want = ContentTypeNegotiator::chooseFromRequest(
+            $r,
+            [MediaTypeEnum::JSON->base(), '+json', MediaTypeEnum::PLAIN->base()],
+        ) ?? MediaTypeEnum::JSON->base();
 
         // JSON path (recognize vendor/structured +json)
-        if ($want === 'application/json' || str_ends_with($want, '+json')) {
+        if (MediaTypeEnum::isJsonLike($want)) {
             $resp = self::json($data, $status, $headers, $flags, $depth);
 
             // Preserve the negotiated +json type (e.g., application/vnd.api+json)
-            if ($want !== 'application/json') {
+            if ($want !== MediaTypeEnum::JSON->base()) {
                 // JSON:API and many +json types prefer no charset parameter.
                 return $resp->withHeader('Content-Type', $want);
             }
@@ -151,34 +147,8 @@ class Response
         if ($json === false) {
             throw new \RuntimeException('JSON encode error: ' . \json_last_error_msg());
         }
-        $headers = ['Content-Type' => $headers['Content-Type'] ?? 'text/plain; charset=utf-8'] + $headers;
+        $headers = ['Content-Type' => $headers['Content-Type'] ?? MediaTypeEnum::PLAIN->value] + $headers;
         return new self($status, new Stream($json), $headers);
-    }
-
-    /**
-     * One-time binding for URL generation services used by helper methods.
-     *
-     * - Binds route collection and optional signed/temporary URL generators.
-     *
-     * @param Collection $routes Route collection
-     * @param string|null $signKey Optional signing key for signed URLs
-     * @param int|null $defaultTtl Optional default TTL for temporary URLs
-     * @return void
-     */
-    public static function bindUrlServices(
-        Collection $routes,
-        ?string $signKey = null,
-        ?int $defaultTtl = null,
-    ): void {
-        self::$routesRef = $routes;
-        self::$urlGen = new UrlGenerator('', $routes);
-
-        if ($signKey !== null && $signKey !== '') {
-            self::$signedGen = new SignedUrlGenerator('', $routes, $signKey);
-            if ($defaultTtl !== null) {
-                self::$tempGen = new TemporaryUrlGenerator('', $routes, $signKey, $defaultTtl);
-            }
-        }
     }
 
     /**
@@ -189,7 +159,7 @@ class Response
      * @param array $headers Additional headers
      * @return self New Response
      */
-    public static function create(string $content = '', int $status = 200, array $headers = []): self
+    public static function create(string $content = '', int $status = StatusEnum::OK->value, array $headers = []): self
     {
         return new self($status, $content, $headers);
     }
@@ -259,7 +229,7 @@ class Response
         if ($stream->getSize() !== null && !isset($headers['Content-Length'])) {
             $defaults['Content-Length'] = (string)$stream->getSize();
         }
-        return new self(200, $stream, $defaults + $headers);
+        return new self(StatusEnum::OK->value, $stream, $defaults + $headers);
     }
 
     /**
@@ -279,12 +249,12 @@ class Response
      */
     public static function json(
         callable|array|object|string $data,
-        int $status = 200,
+        int $status = StatusEnum::OK->value,
         array $headers = [],
         int $flags = JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE,
         int $depth = 512,
     ): self {
-        $headers += ['Content-Type' => 'application/json; charset=utf-8'];
+        $headers += ['Content-Type' => MediaTypeEnum::JSON->base() . '; charset=utf-8'];
 
         if (!\is_callable($data) && !$data instanceof JsonSerializable) {
             $json = \json_encode($data, $flags, $depth);
@@ -308,7 +278,7 @@ class Response
      */
     public static function noContent(array $headers = []): self
     {
-        return self::empty(204, $headers);
+        return self::empty(StatusEnum::NO_CONTENT->value, $headers);
     }
 
     /* --------------------------------------------------------------
@@ -325,10 +295,54 @@ class Response
      * @param array $headers Additional headers
      * @return self Plaintext Response
      */
-    public static function plaintext(string $msg, int $code = 400, array $headers = []): self
+    public static function plaintext(string $msg, int $code = StatusEnum::BAD_REQUEST->value, array $headers = []): self
     {
-        $headers = ['Content-Type' => $headers['Content-Type'] ?? 'text/plain; charset=utf-8'] + $headers;
+        $headers = ['Content-Type' => $headers['Content-Type'] ?? MediaTypeEnum::PLAIN->value] + $headers;
         return new self($code, new Stream($msg), $headers);
+    }
+
+    /**
+     * Serve a local downloadable file with byte-range support.
+     *
+     * @param Request $req Incoming request
+     * @param string $absolutePath Absolute file path
+     * @param string|null $name Download filename
+     * @param string|null $mime Optional MIME type
+     * @param array<string,string> $headers Additional headers
+     * @return self
+     */
+    public static function rangedDownload(
+        Request $req,
+        string $absolutePath,
+        ?string $name = null,
+        ?string $mime = null,
+        array $headers = [],
+    ): self {
+        $name ??= \basename($absolutePath);
+        $headers += [
+            'Content-Disposition' => ContentDisposition::attachment($name),
+        ];
+        return self::rangedFile($req, $absolutePath, $mime, $headers);
+    }
+
+    /**
+     * Serve a local file with byte-range support (200/206/416).
+     *
+     * @param Request $req Incoming request
+     * @param string $absolutePath Absolute file path
+     * @param string|null $mime Optional MIME type
+     * @param array<string,string> $headers Additional headers
+     * @return self
+     */
+    public static function rangedFile(
+        Request $req,
+        string $absolutePath,
+        ?string $mime = null,
+        array $headers = [],
+    ): self {
+        $name = \basename($absolutePath);
+        $mediaType = $mime ?? MediaTypeEnum::fromFilename($name)->value;
+        return RangeResponder::forFile($req, $absolutePath, $mediaType, $headers);
     }
 
     /**
@@ -342,7 +356,7 @@ class Response
      * @return self Redirect Response
      * @throws \InvalidArgumentException When $status is not a 3xx code
      */
-    public static function redirect(string $uri, int $status = 302): self
+    public static function redirect(string $uri, int $status = StatusEnum::FOUND->value): self
     {
         $s = StatusEnum::tryFrom($status);
         if (!$s || !$s->isRedirect()) {
@@ -354,45 +368,6 @@ class Response
             ->withHeader('Cache-Control', 'no-store')
             ->withoutHeader('Content-Type')
             ->withoutHeader('Content-Length');
-    }
-
-    /**
-     * Clear all bound URL generation services.
-     *
-     * Useful in long-running workers/tests to avoid leaking static state.
-     */
-    public static function resetUrlServices(): void
-    {
-        self::$routesRef = null;
-        self::$urlGen = null;
-        self::$signedGen = null;
-        self::$tempGen = null;
-    }
-
-    /**
-     * Build a signed URL for a named route.
-     *
-     * @param string $name Route name
-     * @param array $params Route parameters
-     * @param array $query Query parameters
-     * @param int|null $ttl Optional TTL in seconds
-     * @param bool $absolute Whether to return an absolute URL
-     * @return string Signed URL
-     */
-    public static function signedUrlFor(
-        string $name,
-        array $params = [],
-        array $query = [],
-        ?int $ttl = null,
-        bool $absolute = false,
-    ): string {
-        self::assertSignedBound();
-
-        $path = $ttl === null
-            ? self::$signedGen->signed($name, $params, $query, null, false)
-            : self::$signedGen->signed($name, $params, $query, max(1, (int)$ttl), false);
-
-        return $absolute ? self::withRouteDomain($name, $path) : $path;
     }
 
     /* --------------------------------------------------------------
@@ -413,7 +388,7 @@ class Response
      */
     public static function stream(
         callable|iterable $producer,
-        int $status = 200,
+        int $status = StatusEnum::OK->value,
         array $headers = [],
     ): self {
         unset($headers['Content-Length'], $headers['content-length']);
@@ -443,7 +418,7 @@ class Response
     public static function streamDownload(
         string|Stream $file,
         ?string $name = null,
-        string $mime = 'application/octet-stream',
+        string $mime = MediaTypeEnum::OCTET->value,
         array $headers = [],
     ): self {
         if (\is_string($file)) {
@@ -464,53 +439,47 @@ class Response
             $headers['Content-Length'] = (string)$len;
         }
 
-        return new self(200, $stream, $headers);
+        return new self(StatusEnum::OK->value, $stream, $headers);
     }
 
     /**
-     * Build a temporary (time-limited) URL for a named route.
+     * Render a view using the configured view factory and return an HTML response.
      *
-     * @param string $name Route name
-     * @param array $params Route parameters
-     * @param array $query Query parameters
-     * @param bool $absolute Whether to return an absolute URL
-     * @return string Temporary URL
-     * @throws \LogicException When temporary URL generator is not bound
+     * @param string $view Template name
+     * @param array<string,mixed> $data Template payload
+     * @param int $status HTTP status code
+     * @param array<string,string> $headers Additional headers
+     * @param string|null $charset Charset for Content-Type
+     * @param string $factoryId Container key for the view factory binding
+     * @return self
      */
-    public static function temporaryUrlFor(
-        string $name,
-        array $params = [],
-        array $query = [],
-        ?int $ttl = null,
-        bool $absolute = false,
-    ): string {
-        if (!self::$tempGen) {
-            throw new \LogicException('TemporaryUrlGenerator not bound (no default TTL provided).');
+    public static function view(
+        string $view,
+        array $data = [],
+        int $status = StatusEnum::OK->value,
+        array $headers = [],
+        ?string $charset = 'utf-8',
+        string $factoryId = ViewFactoryInterface::class,
+    ): self {
+        $container = \Infocyph\InterMix\DI\Container::instance('intermix');
+        if (!$container->has($factoryId)) {
+            throw new RuntimeException("No view factory bound for {$factoryId}");
         }
-        $path = self::$tempGen->temporary($name, $params, $query, $ttl, false);
-        return $absolute ? self::withRouteDomain($name, $path) : $path;
-    }
 
-    /* ───────────────── URL helpers you call from handlers ───────────── */
+        $factory = $container->get($factoryId);
+        if (!$factory instanceof ViewFactoryInterface) {
+            throw new RuntimeException("View factory '{$factoryId}' must implement " . ViewFactoryInterface::class);
+        }
 
-    /**
-     * Build a URL for a named route.
-     *
-     * @param string $name Route name
-     * @param array $params Route parameters
-     * @param array $query Query parameters
-     * @param bool $absolute Whether to return an absolute URL
-     * @return string Generated URL
-     */
-    public static function urlFor(
-        string $name,
-        array $params = [],
-        array $query = [],
-        bool $absolute = false,
-    ): string {
-        self::assertUrlBound();
-        $path = self::$urlGen->urlFor($name, $params, $query, false);
-        return $absolute ? self::withRouteDomain($name, $path) : $path;
+        $html = $factory->render($view, $data);
+
+        if ($charset !== null && $charset !== '') {
+            $headers += ['Content-Type' => MediaTypeEnum::HTML->base() . "; charset={$charset}"];
+        } else {
+            $headers += ['Content-Type' => MediaTypeEnum::HTML->base()];
+        }
+
+        return new self($status, new Stream($html), $headers);
     }
 
     /**
@@ -735,33 +704,7 @@ class Response
         );
     }
 
-    /**
-     * Assert that Signed URL services have been bound.
-     *
-     * @return void
-     * @throws \LogicException When signed URL services are not bound
-     */
-    private static function assertSignedBound(): void
-    {
-        if (!self::$signedGen || !self::$routesRef) {
-            throw new \LogicException('Signed URL service not bound. Provide $signKey to Registrar.');
-        }
-    }
-
     /* ───────────────── private helpers ───────────────── */
-
-    /**
-     * Assert that URL services have been bound.
-     *
-     * @return void
-     * @throws \LogicException When URL services are not bound
-     */
-    private static function assertUrlBound(): void
-    {
-        if (!self::$urlGen || !self::$routesRef) {
-            throw new \LogicException('URL services not bound. Enable via Registrar constructor.');
-        }
-    }
 
     /**
      * Base headers used for downloads.
@@ -943,34 +886,6 @@ class Response
     private static function streamFor(string|Stream $file): Stream
     {
         return $file instanceof Stream ? $file : self::openFileStream($file);
-    }
-
-    /**
-     * Prefix a generated path with the route's domain when available.
-     *
-     * Returns a protocol-relative absolute path when the route has a specific
-     * domain, otherwise returns the original path.
-     *
-     * @param string $name Route name
-     * @param string $path Generated path
-     * @return string Possibly domain-prefixed path
-     */
-    private static function withRouteDomain(string $name, string $path): string
-    {
-        $domain = null;
-
-        if (self::$routesRef) {
-            // Prefer alias-aware accessor if your Collection supplies it
-            if (method_exists(self::$routesRef, 'domainForName')) {
-                /** @phpstan-ignore-next-line (duck typing) */
-                $domain = self::$routesRef->domainForName($name);
-            } else {
-                $route = self::$routesRef->findByName($name);
-                $domain = $route?->getDomain();
-            }
-        }
-
-        return ($domain && $domain !== '*') ? ('//' . $domain . $path) : $path;
     }
 
     /**

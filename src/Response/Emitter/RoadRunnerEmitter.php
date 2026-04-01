@@ -5,6 +5,8 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Response\Emitter;
 
+use Infocyph\Webrick\Constants\HttpMethodEnum;
+use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 
@@ -34,8 +36,9 @@ final class RoadRunnerEmitter implements EmitterInterface
 
         $status = $response->getStatusCode();
         $headers = $response->getHeaders();
-        $method = strtoupper($request?->getMethod() ?? 'GET');
-        $noBody = in_array($status, [204, 304], true) || $method === 'HEAD';
+        $method = HttpMethodEnum::normalize((string)($request?->getMethod() ?? HttpMethodEnum::GET->value));
+        $noBody = \in_array($status, [StatusEnum::NO_CONTENT->value, StatusEnum::NOT_MODIFIED->value], true)
+            || $method === HttpMethodEnum::HEAD->value;
 
         if ($response->isStreaming()) {
             $fn = $response->getProducer();

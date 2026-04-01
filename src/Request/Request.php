@@ -6,6 +6,7 @@ namespace Infocyph\Webrick\Request;
 
 use ArrayAccess;
 use Infocyph\InterMix\Remix\MacroMix;
+use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Request\Core\Uri;
 use Infocyph\Webrick\Request\Http\{ContentNegotiator, Csrf, EndUser};
 use Infocyph\Webrick\Request\Psr7\ServerRequest;
@@ -65,7 +66,7 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
         array $query = [],
         array $post = [],
         array $headers = [],
-        string $method = 'GET',
+        string $method = HttpMethodEnum::GET->value,
         string $uri = '/',
     ): self {
         return new self($method, Uri::from($uri), $_SERVER, $headers)
@@ -389,7 +390,8 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
      */
     public function isMethod(string|array $verbs): bool
     {
-        return in_array($this->getEffectiveMethod(), array_map('strtoupper', (array)$verbs), true);
+        $normalized = array_map(HttpMethodEnum::normalize(...), (array)$verbs);
+        return in_array(HttpMethodEnum::normalize($this->getEffectiveMethod()), $normalized, true);
     }
 
     /**

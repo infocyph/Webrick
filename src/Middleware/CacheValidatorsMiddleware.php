@@ -21,6 +21,8 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Middleware;
 
 use Closure;
+use Infocyph\Webrick\Constants\HttpMethodEnum;
+use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Request\Core\Uri;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Conditional\ConditionalValidator;
@@ -317,7 +319,7 @@ final class CacheValidatorsMiddleware
      */
     private function isAutoEtagEligible(Response $r): bool
     {
-        if ($r->getStatusCode() !== 200) {
+        if ($r->getStatusCode() !== StatusEnum::OK->value) {
             return false;
         }
         $b = $r->getBody();
@@ -333,8 +335,8 @@ final class CacheValidatorsMiddleware
      */
     private function isGetOrHead(Request $req): bool
     {
-        $m = strtoupper($req->getMethod());
-        return $m === 'GET' || $m === 'HEAD';
+        $m = HttpMethodEnum::normalize($req->getMethod());
+        return $m === HttpMethodEnum::GET->value || $m === HttpMethodEnum::HEAD->value;
     }
 
     /**
@@ -392,7 +394,9 @@ final class CacheValidatorsMiddleware
         }
 
         // RFC 7232: Non-GET/HEAD with If-None-Match → 412 instead of 304
-        $status = (!$isGetHead && ($result->http ?? 0) === 304) ? 412 : ($result->http ?? 412);
+        $status = (!$isGetHead && ($result->http ?? 0) === StatusEnum::NOT_MODIFIED->value)
+            ? StatusEnum::PRECONDITION_FAILED->value
+            : ($result->http ?? StatusEnum::PRECONDITION_FAILED->value);
         return Response::empty($status, $result->headers ?? []);
     }
 

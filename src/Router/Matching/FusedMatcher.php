@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router\Matching;
 
+use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Exceptions\{MethodNotAllowedException, RouteNotFoundException};
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 
@@ -126,7 +127,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         }
 
         $host = $this->canonicalRouteHost($route->getDomain());
-        $verb = \strtoupper($route->getMethod());
+        $verb = HttpMethodEnum::normalize($route->getMethod());
 
         // Ensure host bucket exists with both static and trie slots.
         $this->hosts[$host] ??= [self::K_STATIC => [], self::K_TRIE => $this->newNode()];

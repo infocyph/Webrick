@@ -5,6 +5,8 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Response\Emitter;
 
+use Infocyph\Webrick\Constants\HttpMethodEnum;
+use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 
@@ -32,8 +34,11 @@ final class WorkermanEmitter implements EmitterInterface
                 }
             }
             // Respect HEAD / no-body statuses
-            $method = strtoupper($request?->getMethod() ?? 'GET');
-            if (in_array($response->getStatusCode(), [204, 304], true) || $method === 'HEAD') {
+            $method = HttpMethodEnum::normalize((string)($request?->getMethod() ?? HttpMethodEnum::GET->value));
+            if (
+                in_array($response->getStatusCode(), [StatusEnum::NO_CONTENT->value, StatusEnum::NOT_MODIFIED->value], true)
+                || $method === HttpMethodEnum::HEAD->value
+            ) {
                 $wmResp->end('');
                 return;
             }
@@ -47,8 +52,9 @@ final class WorkermanEmitter implements EmitterInterface
             $status = $response->getStatusCode() . ' ' . $response->getReasonPhrase();
             $ver = $response->getProtocolVersion();
 
-            $method = strtoupper($request?->getMethod() ?? 'GET');
-            $noBody = in_array($response->getStatusCode(), [204, 304], true) || $method === 'HEAD';
+            $method = HttpMethodEnum::normalize((string)($request?->getMethod() ?? HttpMethodEnum::GET->value));
+            $noBody = in_array($response->getStatusCode(), [StatusEnum::NO_CONTENT->value, StatusEnum::NOT_MODIFIED->value], true)
+                || $method === HttpMethodEnum::HEAD->value;
 
             $bodyStr = $noBody ? '' : (string)$response->getBody();
 

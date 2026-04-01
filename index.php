@@ -34,10 +34,13 @@
 declare(strict_types=1);
 
 namespace {
-    $_ENV['WEBRICK_MATCHER_DEFAULT'] = 'generated'; // sharded/fused/generated;
+    $_ENV['WEBRICK_MATCHER_DEFAULT'] = \Infocyph\Webrick\Constants\MatcherModeEnum::SHARDED->value; // sharded/fused/generated;
 
     require __DIR__ . '/vendor/autoload.php';
 
+    use Infocyph\Webrick\Constants\MatcherModeEnum;
+    use Infocyph\Webrick\Constants\MediaTypeEnum;
+    use Infocyph\Webrick\Constants\StatusEnum;
     use Infocyph\Webrick\Middleware\CacheValidatorsMiddleware;
     use Infocyph\Webrick\Middleware\CompressionMiddleware;
     use Infocyph\Webrick\Middleware\CookieEncryptionMiddleware;
@@ -60,6 +63,7 @@ namespace {
     use Infocyph\Webrick\Router\Definition\Attribute\AttributeRouteLoader;
     use Infocyph\Webrick\Router\Definition\Registrar;
     use Infocyph\Webrick\Router\Dispatch\MiddlewareAliases;
+    use Infocyph\Webrick\Router\Facade\Router as Route;
     use Infocyph\Webrick\Router\Kernel\RouterKernel;
     use Infocyph\Webrick\Router\Matching\FusedMatcher;
     use Infocyph\Webrick\Router\Matching\GeneratedMatcher;
@@ -74,7 +78,7 @@ namespace {
         {
             return Response::json([
                 'handler' => 'DemoController::hello',
-                'prefers' => $request->prefers(['application/json', '+json', 'text/plain']),
+                'prefers' => $request->prefers([MediaTypeEnum::JSON->base(), '+json', MediaTypeEnum::PLAIN->base()]),
                 'hello' => $name,
                 'request' => $request->all(),
                 'server' => $request->server(),
@@ -112,7 +116,7 @@ namespace {
 
         public function store(Request $r): Response
         {
-            return Response::json(['action' => 'store', 'data' => $r->all()], 201);
+            return Response::json(['action' => 'store', 'data' => $r->all()], StatusEnum::CREATED->value);
         }
 
         public function update(Request $r, string $id): Response
@@ -127,7 +131,9 @@ namespace {
     $logger = new NullLogger();
     $env = $_ENV['APP_ENV'] ?? getenv('APP_ENV') ?? 'prod';
     $dev = ($env !== 'prod');
-    $matcherDefaultEnv = (string)($_ENV['WEBRICK_MATCHER_DEFAULT'] ?? \getenv('WEBRICK_MATCHER_DEFAULT') ?? 'sharded');
+    $matcherDefaultEnv = (string)($_ENV['WEBRICK_MATCHER_DEFAULT']
+        ?? \getenv('WEBRICK_MATCHER_DEFAULT')
+        ?? MatcherModeEnum::SHARDED->value);
     $signUrlSecret = 'hog';
     $keyForCookie = 'tvcYp7XwEZaqpSItOyDgKql/xgqONToDogJ0Psxk/Lc=';
     $keyForCookie = (static function (string $k): string {
@@ -171,9 +177,9 @@ namespace {
     $matcherHeaderName = (string)($_ENV['WEBRICK_MATCHER_HEADER'] ?? \getenv('WEBRICK_MATCHER_HEADER') ?? 'X-Webrick-Matcher');
     $matcherKeyHeaderName = (string)($_ENV['WEBRICK_MATCHER_KEY_HEADER'] ?? \getenv('WEBRICK_MATCHER_KEY_HEADER') ?? 'X-Webrick-Matcher-Key');
     $matcherKey = (string)($_ENV['WEBRICK_MATCHER_KEY'] ?? \getenv('WEBRICK_MATCHER_KEY') ?? '');
-    $allowedMatchers = ['sharded', 'fused', 'generated'];
+    $allowedMatchers = MatcherModeEnum::values();
     if (!\in_array($matcherDefault, $allowedMatchers, true)) {
-        $matcherDefault = 'sharded';
+        $matcherDefault = MatcherModeEnum::SHARDED->value;
     }
 
     $readHeader = static function (string $header): ?string {
@@ -199,14 +205,14 @@ namespace {
 
     /** @var MatcherInterface $matcher */
     $matcher = match ($selectedMatcher) {
-        'fused' => FusedMatcher::make(),
-        'generated' => GeneratedMatcher::make(),
+        MatcherModeEnum::FUSED->value => FusedMatcher::make(),
+        MatcherModeEnum::GENERATED->value => GeneratedMatcher::make(),
         default => ShardedMatcher::make(),
     };
 
     $routeCachePath = match ($selectedMatcher) {
-        'fused' => __DIR__ . '/.route-cache/__routes.php',
-        'generated' => __DIR__ . '/.route-cache/__generated.php',
+        MatcherModeEnum::FUSED->value => __DIR__ . '/.route-cache/__routes.php',
+        MatcherModeEnum::GENERATED->value => __DIR__ . '/.route-cache/__generated.php',
         default => __DIR__ . '/.route-cache',
     };
 
@@ -290,7 +296,7 @@ namespace {
         preGlobal: $preGlobal,
         postGlobal: $postGlobal,
         bindUrlServices: static function (Collection $routes) use ($signUrlSecret): void {
-            Response::bindUrlServices($routes, $signUrlSecret, 900);
+            Route::bindUrlServices($routes, $signUrlSecret, 900);
         },
         // leave true while validating your cache’s __aliases.php
         fallbackAliasesFromRegistrar: true,

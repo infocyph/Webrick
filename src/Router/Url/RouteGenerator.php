@@ -13,65 +13,37 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router\Url;
 
-use Infocyph\Webrick\Router\Route\CompiledRoute;
+use Infocyph\Webrick\Router\Route\Collection;
 
 /**
- * Generate URLs from named compiled routes.
+ * Generate URLs for named routes.
  *
- * Responsibilities:
- * - Keep a map of route-name → CompiledRoute.
- * - Generate a URL path by substituting named parameters into placeholders.
+ * Thin wrapper around UrlGenerator kept for route-oriented naming.
  */
 final class RouteGenerator
 {
-    /**
-     * Map of route names to their compiled definitions.
-     *
-     * @var array<string,CompiledRoute>
-     */
-    private array $named = [];
+    private UrlGenerator $urlGenerator;
 
-    /**
-     * Add a compiled route if it has a non-empty name.
-     *
-     * @param CompiledRoute $route Route to register (stored only if named).
-     *
-     * @return void
-     */
-    public function add(CompiledRoute $route): void
+    public function __construct(string $baseUri, Collection $routes)
     {
-        if ($name = $route->getName()) {
-            $this->named[$name] = $route;
-        }
+        $this->urlGenerator = new UrlGenerator(\rtrim($baseUri, '/'), $routes);
     }
 
     /**
-     * Generate a URL path for a named route by substituting parameters.
+     * Generate a route URL with optional query and absolute mode.
      *
-     * Placeholders take the form "{name}" or "{name:regex}". Only the parameter
-     * name is considered for substitution; any regex constraint is ignored here
-     * and should be enforced at route compilation/matching time.
-     *
-     * @param string $name The route name.
-     * @param array<string,int|float|string> $params Keyed replacements for placeholders.
-     *
-     * @return string The generated path with placeholders substituted.
-     *
-     * @throws \InvalidArgumentException If the route name is unknown or a required
-     *                                   parameter is missing.
+     * @param string $name Route name
+     * @param array<string,scalar|null> $params Route params
+     * @param array<string,scalar|array|null> $query Query params
+     * @param bool $absolute Whether to include base URI
+     * @return string
      */
-    public function generate(string $name, array $params = []): string
-    {
-        $r = $this->named[$name]
-            ?? throw new \InvalidArgumentException("No route named $name");
-
-        $path = $r->getPath();
-        return preg_replace_callback(
-            '/\{([A-Za-z_]\w*)(?::[^}]+)?}/',
-            fn ($m)
-                => $params[$m[1]]
-                ?? throw new \InvalidArgumentException("Missing “{$m[1]}” for $name"),
-            $path,
-        );
+    public function route(
+        string $name,
+        array $params = [],
+        array $query = [],
+        bool $absolute = false,
+    ): string {
+        return $this->urlGenerator->urlFor($name, $params, $query, $absolute);
     }
 }

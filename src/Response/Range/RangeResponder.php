@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Response\Range;
 
+use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Headers\Range as SimpleRange;
@@ -43,7 +44,7 @@ final readonly class RangeResponder
         // TOCTOU-safe: open first; if it fails, bail out cleanly
         $fp = @fopen($absolutePath, 'rb');
         if ($fp === false) {
-            return new Response(404);
+            return new Response(StatusEnum::NOT_FOUND->value);
         }
 
         $stat = fstat($fp) ?: [];
@@ -107,7 +108,7 @@ final readonly class RangeResponder
                 'Content-Length' => '0',
             ];
 
-            return new Response(416, new Stream(''), $headers);
+            return new Response(StatusEnum::RANGE_NOT_SATISFIABLE->value, new Stream(''), $headers);
         }
 
         // 200 – full body when no Range OR multi-range (unsupported → fallback)
@@ -124,7 +125,7 @@ final readonly class RangeResponder
             } elseif ($req?->getAttribute('range_dropped')) {
                 $headers['X-Range-Dropped'] = '1';
             }
-            return new Response(200, self::wrapSeekable($source), $headers);
+            return new Response(StatusEnum::OK->value, self::wrapSeekable($source), $headers);
         }
 
         // 206 – single byte range (unchanged)
@@ -142,7 +143,7 @@ final readonly class RangeResponder
         if (self::isSeekable($source)) {
             $headers += ['Accept-Ranges' => 'bytes'];
         }
-        return new Response(206, self::wrapSeekable($source, $length), $headers);
+        return new Response(StatusEnum::PARTIAL_CONTENT->value, self::wrapSeekable($source, $length), $headers);
     }
 
     /**
