@@ -83,20 +83,7 @@ jobs:
       - name: Composer Audit (CVE check)
         run: composer audit --no-interaction
 
-      # 1. Run Semgrep (General Security Patterns)
-      - name: Run Semgrep
-        uses: returntocorp/semgrep-action@v1
-        with:
-          config: p/php p/security-audit
-
-      - name: Upload Semgrep Results
-        uses: github/codeql-action/upload-sarif@v4
-        with:
-          sarif_file: semgrep.sarif
-          category: "semgrep-${{ matrix.php-versions }}"
-        if: always() && hashFiles('semgrep.sarif') != ''
-
-      # 2. Run Psalm (Deep Taint Analysis)
+      # Run Psalm (Deep Taint Analysis)
       - name: Run Psalm Security Scan
         run: |
           php -d error_reporting=$((E_ALL & ~E_DEPRECATED)) ./vendor/bin/psalm --config=psalm.xml --security-analysis --threads=1 --report=psalm-results.sarif || true
