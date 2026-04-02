@@ -52,15 +52,12 @@ jobs:
       - name: Install dependencies
         run: composer install --no-interaction --prefer-dist --optimize-autoloader
 
-      - name: Package Audit
-        run: composer audit
-
       - name: Test
         run: composer tests
 
   analyze:
     needs: prepare
-    name: Security Analysis (CodeQL) - PHP ${{ matrix.php-versions }}
+    name: Security Analysis - PHP ${{ matrix.php-versions }}
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -80,18 +77,33 @@ jobs:
           php-version: ${{ matrix.php-versions }}
           tools: composer:v2
 
-      - name: Resolve dependencies from composer.json (ephemeral lock)
-        run: composer update --no-install --no-interaction --prefer-dist --no-progress
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
 
       - name: Composer Audit (CVE check)
-        run: composer audit --locked --no-interaction
+        run: composer audit --no-interaction
 
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4
+      # 1. Run Semgrep (General Security Patterns)
+      - name: Run Semgrep
+        uses: returntocorp/semgrep-action@v1
         with:
-          languages: 'php'
+          config: p/php p/owasp-top-10
+          generateSarif: "1"
 
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v4
+      - name: Upload Semgrep Results
+        uses: github/codeql-action/upload-sarif@v3
         with:
-          category: "/language:php/php-${{ matrix.php-versions }}"
+          sarif_file: semgrep.sarif
+          category: "semgrep-${{ matrix.php-versions }}"
+        if: always()
+
+      # 2. Run Psalm (Deep Taint Analysis)
+      - name: Run Psalm Security Scan
+        run: ./vendor/bin/psalm --security-analysis --report=psalm-results.sarif
+
+      - name: Upload Psalm Results
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: psalm-results.sarif
+          category: "psalm-${{ matrix.php-versions }}"
+        if: always()
