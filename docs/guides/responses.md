@@ -15,7 +15,7 @@ use Infocyph\Webrick\Response\Response;
 Return a response from any handler:
 
 ```php
-Route::get('/plain', fn () => Response::plaintext('OK'));
+Route::get('/plain', fn () => Response::plaintext('OK', 200));
 Route::get('/json',  fn () => Response::json(['ok' => true]));
 ```
 
@@ -77,7 +77,7 @@ return Response::json([
 ## Text
 
 ```php
-return Response::plaintext("Hello world\n");
+return Response::plaintext("Hello world\n", 200);
 ```
 
 ---
@@ -102,11 +102,11 @@ return Response::create($html, 200, ['Content-Type' => 'text/html; charset=UTF-8
 return Response::redirect('/login', 302);
 
 // With named route
-$url = Response::urlFor('profile.show', ['id'=>7]);
+$url = Route::urlFor('profile.show', ['id'=>7]);
 return Response::redirect($url, 302);
 ```
 
-Absolute vs relative is supported by `Response::urlFor(..., absolute:true)`.
+Absolute vs relative is supported by `Route::urlFor(..., absolute:true)`.
 
 ---
 
@@ -196,7 +196,7 @@ Use any valid HTTP status code:
 ```php
 // 201 Created (with Location header)
 $id = 42;
-$url = Response::urlFor('users.show', ['id' => $id], absolute: true);
+$url = Route::urlFor('users.show', ['id' => $id], absolute: true);
 return Response::json(['id' => $id], 201)
     ->withHeader('Location', $url);
 
@@ -303,7 +303,7 @@ Route::get('/users', function ($r) {
   $page = (int)($r->query('page', 1));
   $per  = 10;
   $data = [/* ... fetch ... */];
-  $next = Response::urlFor('users.index', ['page'=>$page+1]);
+  $next = Route::urlFor('users.index', ['page'=>$page+1]);
 
   return Response::json([
     'page' => $page,
@@ -337,4 +337,3 @@ Route::get('/report', function ($r) {
 * [ ] Add headers immutably (`withHeader`, `withAddedHeader`)
 * [ ] Prefer streaming for large or long-running responses
 * [ ] Let middleware manage ETags/compression/CORS consistently
-

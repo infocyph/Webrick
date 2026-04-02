@@ -36,13 +36,13 @@ $response = Response::create('Content', 200, [
 ]);
 ```
 
-### From Body
+### From Stream
 ```php
 $body = fopen('php://memory', 'r+');
 fwrite($body, 'Content');
 rewind($body);
 
-$response = Response::fromBody($body, 200);
+$response = new Response(200, new \Infocyph\Webrick\Http\Stream($body));
 ```
 
 ---
@@ -162,21 +162,21 @@ $response = Response::json($data, 200, JSON_PRETTY_PRINT);
 
 ### Plain Text
 ```php
-$response = Response::plaintext('Hello World');
+$response = Response::plaintext('Hello World', 200);
 // Content-Type: text/plain; charset=utf-8
 ```
 
 ### HTML
 ```php
 $html = '<html><body><h1>Hello</h1></body></html>';
-$response = Response::html($html);
+$response = Response::create($html, 200, ['Content-Type' => 'text/html; charset=UTF-8']);
 // Content-Type: text/html; charset=utf-8
 ```
 
 ### XML
 ```php
 $xml = '<?xml version="1.0"?><root><item>value</item></root>';
-$response = Response::xml($xml);
+$response = Response::create($xml, 200, ['Content-Type' => 'application/xml']);
 // Content-Type: application/xml
 ```
 
@@ -205,7 +205,7 @@ $response = Response::noContent();
 ### Created
 ```php
 $resource = ['id' => 42, 'name' => 'New User'];
-$response = Response::created($resource, '/users/42');
+$response = Response::json($resource, 201)->withHeader('Location', '/users/42');
 // 201 Created
 // Location: /users/42
 // Body: {"id":42,"name":"New User"}
@@ -213,7 +213,7 @@ $response = Response::created($resource, '/users/42');
 
 ### Accepted
 ```php
-$response = Response::accepted(['job_id' => 'abc123']);
+$response = Response::json(['job_id' => 'abc123'], 202);
 // 202 Accepted
 ```
 
@@ -249,7 +249,7 @@ $response = Response::redirect('/moved', 308);
 ### Named Route Redirect
 ```php
 // Using route name
-$response = Response::redirectToRoute('users.show', ['id' => 42]);
+$response = Response::redirect(Route::urlFor('users.show', ['id' => 42]));
 // Resolves to: /users/42
 ```
 
@@ -271,7 +271,7 @@ $response = Response::download('/path/to/file.pdf', 'report-2024.pdf');
 ### Inline Display
 ```php
 // Display in browser (not download)
-$response = Response::file('/path/to/image.jpg');
+$response = Response::inline('/path/to/image.jpg');
 // Content-Disposition: inline; filename="image.jpg"
 // Content-Type: image/jpeg
 ```
@@ -415,7 +415,9 @@ $accept = $request->getHeaderLine('Accept');
 if (str_contains($accept, 'application/json')) {
     return Response::json($data);
 } elseif (str_contains($accept, 'text/html')) {
-    return Response::html($this->render('template', $data));
+    return Response::create($this->render('template', $data), 200, [
+        'Content-Type' => 'text/html; charset=UTF-8'
+    ]);
 } else {
     return Response::plaintext(print_r($data, true));
 }
@@ -469,7 +471,7 @@ return Response::json($data)
 ### Security Headers
 
 ```php
-return Response::html($html)
+return Response::create($html, 200, ['Content-Type' => 'text/html; charset=UTF-8'])
     ->withHeader('X-Content-Type-Options', 'nosniff')
     ->withHeader('X-Frame-Options', 'DENY')
     ->withHeader('X-XSS-Protection', '1; mode=block')

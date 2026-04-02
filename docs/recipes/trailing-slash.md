@@ -26,5 +26,5 @@ $router->use(function (Request $req, callable $next) {
 });
 
 // Now define routes without trailing slashes
-$router->get('/about', fn() => Response::plaintext('About'));
+$router->get('/about', fn() => Response::plaintext('About', 200));
 ```

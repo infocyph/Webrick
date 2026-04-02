@@ -28,7 +28,7 @@ api/
 vercel.json
 composer.json
 vendor/
-var/cache/routes/     # prebuilt (checked into artifact)
+.route-cache/     # prebuilt (checked into artifact)
 ```
 
 ### `vercel.json` (example)
@@ -52,13 +52,13 @@ var/cache/routes/     # prebuilt (checked into artifact)
 
 ### Front controller tweaks
 
-* Do **not** write caches at runtime—**read** from `var/cache/routes/` if present.
+* Do **not** write caches at runtime—**read** from `.route-cache/` if present.
 * Put ephemeral files in `sys_get_temp_dir()` when absolutely necessary.
 
 ```php
 $kernel = RouterKernel::bootWithRegistrar(
   /* ... */
-  routeCache: __DIR__ . '/../var/cache/routes', // shipped with artifact
+  routeCache: __DIR__ . '/../.route-cache', // shipped with artifact
   /* ... */
 );
 ```

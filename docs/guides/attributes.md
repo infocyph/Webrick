@@ -100,6 +100,9 @@ In your front controller or route builder:
 
 use Infocyph\Webrick\Router\Definition\Attribute\AttributeRouteLoader;
 use Infocyph\Webrick\Router\Definition\Registrar;
+use Infocyph\Webrick\Router\Kernel\RouterKernel;
+use Infocyph\Webrick\Router\Matching\ShardedMatcher;
+use Psr\Log\NullLogger;
 
 $register = static function (Registrar $registrar): void {
     // Option 1: Explicit directory scanning
@@ -119,8 +122,10 @@ $register = static function (Registrar $registrar): void {
 };
 
 $kernel = RouterKernel::bootWithRegistrar(
+    log: new NullLogger(),
+    matcher: ShardedMatcher::make(__DIR__ . '/../.route-cache'),
     register: $register,
-    // ... other options
+    routeCache: __DIR__ . '/../.route-cache',
 );
 ```
 
@@ -360,7 +365,7 @@ public function publicApi(): Response
 #[Get('/')]
 public function home(): Response
 {
-    return Response::plaintext('Home');
+    return Response::plaintext('Home', 200);
 }
 
 // Versioned endpoints
@@ -424,12 +429,12 @@ final class UserRoutes
 
 ### Build Cache (CI/Production)
 ```php
-// scripts/build-route-cache.php
+// scripts/webrick-route-cache.php
 
 use Infocyph\Webrick\Support\RouteCache;
 
 RouteCache::build([
-    'cache' => __DIR__ . '/../var/cache/routes',
+    'cache' => __DIR__ . '/../.route-cache',
     'register' => static function ($registrar): void {
         // Include attribute directories in cache build
         AttributeRouteLoader::registerFromDirs($registrar, [
@@ -450,7 +455,7 @@ echo "Route cache built\n";
 
 **Run in CI**:
 ```bash
-php scripts/build-route-cache.php
+php webrick route:cache --cache=.route-cache --routes=routes.php
 ```
 
 **Benefits**:
@@ -487,7 +492,12 @@ class AttributeRoutingTest extends TestCase
 
     protected function setUp(): void
     {
+        $logger = new NullLogger();
+        $matcher = ShardedMatcher::make(__DIR__ . '/../.route-cache-test');
+
         $this->kernel = RouterKernel::bootWithRegistrar(
+            log: $logger,
+            matcher: $matcher,
             register: fn($r) => AttributeRouteLoader::registerFromDirs($r, [
                 'App\\Http\\Routes\\' => __DIR__ . '/../src/Http/Routes',
             ])
@@ -496,7 +506,7 @@ class AttributeRoutingTest extends TestCase
 
     public function testAttributeRouteResponds(): void
     {
-        $request = Request::create('GET', '/users/42');
+        $request = Request::fake(method: 'GET', uri: '/users/42');
         $response = $this->kernel->handle($request);
 
         $this->assertEquals(200, $response->getStatusCode());
@@ -570,10 +580,10 @@ MiddlewareAliases::register('auth', fn() => new AuthMiddleware());
 
 **Fix**: Prebuild route cache:
 ```bash
-php scripts/build-route-cache.php
+php webrick route:cache --cache=.route-cache --routes=routes.php
 ```
 
-Ship `var/cache/routes/` with your deployment.
+Ship `.route-cache/` with your deployment.
 
 ---
 
@@ -612,7 +622,7 @@ Ship `var/cache/routes/` with your deployment.
 
 5. **Prebuild cache in production**
 ```bash
-   php scripts/build-route-cache.php  # In CI/CD
+   php webrick route:cache --cache=.route-cache --routes=routes.php  # In CI/CD
 ```
 
 ### ❌ **Don't**
@@ -730,7 +740,7 @@ final class ProductRoutes
         $data = $r->json();
         $product = $this->repo->create($data);
 
-        $url = Response::urlFor('products.show', ['id' => $product['id']], absolute: true);
+        $url = Route::urlFor('products.show', ['id' => $product['id']], absolute: true);
 
         return Response::json($product, 201)
             ->withHeader('Location', $url);

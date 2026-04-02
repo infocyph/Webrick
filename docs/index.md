@@ -9,7 +9,7 @@ These docs are aligned exactly to the codebase.
 - **Signed & temporary URLs**: First-class helpers + verifier middleware.
 - **Middleware pipeline**: Pre/post globals for gateway hardening, negotiation, validators, compression, CORS/policies, telemetry, throttling, etc.
 - **Smart responses**: JSON/text auto negotiation, streaming, attachments, downloads.
-- **Route cache**: Sharded (directory) or Fused (single-file) builders.
+- **Route cache**: Sharded (directory), Fused (single-file), or Generated matcher modes.
 - **PSR interop**: Optional PSR-7 factory to build Request/Response/Stream.
 
 ## Requirements & Install
@@ -28,10 +28,12 @@ composer require infocyph/webrick
 ```php
 use Infocyph\Webrick\Router\Kernel\RouterKernel;
 use Infocyph\Webrick\Router\Matching\ShardedMatcher;
+use Psr\Log\NullLogger;
 
 $kernel = RouterKernel::bootWithRegistrar(
-    ShardedMatcher::make(__DIR__.'/var/route-cache'),
-    require __DIR__.'/routes.php',
+    log: new NullLogger(),
+    matcher: ShardedMatcher::make(__DIR__.'/.route-cache'),
+    register: require __DIR__.'/routes.php',
     registrarOptions: [
         'autoSlashRedirect' => true,
         'exposeUrlServices' => true,
@@ -75,7 +77,7 @@ Route::group(['prefix' => '/api', 'middleware' => ['throttle:60,60']], function 
 3) **Generate a temporary signed link**:
 
 ```php
-$href = R::temporaryUrlFor('file.download', ['file' => 'report.pdf'], ttl: 900);
+$href = Route::temporaryUrlFor('file.download', ['file' => 'report.pdf'], ttl: 900);
 ```
 
 ## Documentation Map
@@ -91,7 +93,7 @@ $href = R::temporaryUrlFor('file.download', ['file' => 'report.pdf'], ttl: 900);
 - **Deployments**
   - Nginx, Apache, Containers, Kubernetes, Serverless, Troubleshooting
 - **Reference**
-  - Matcher (Sharded vs Fused), Route Cache, Enums, Request/Response (with PSR-7 factory notes)
+  - Matcher (Sharded vs Fused vs Generated), Route Cache, Enums, Request/Response (with PSR-7 factory notes)
 
 ## Tips for Production
 

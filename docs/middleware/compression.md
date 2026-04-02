@@ -15,8 +15,9 @@ Register it in **post-global** middleware so headers are set by your handler fir
 
 ```php
 $kernel = RouterKernel::bootWithRegistrar(
+    log: new NullLogger(),
     matcher: ShardedMatcher::make(),
-    registrar: require __DIR__.'/routes.php',
+    register: require __DIR__.'/routes.php',
     preGlobal: [
         // ...validators, throttle, sanitize...
     ],

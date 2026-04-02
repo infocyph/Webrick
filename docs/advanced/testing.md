@@ -119,9 +119,11 @@ class ThrottleMiddlewareTest extends TestCase
 
     private function createRequest(string $path, string $ip = '203.0.113.10'): Request
     {
-        return Request::create('GET', $path, server: [
-            'REMOTE_ADDR' => $ip
-        ]);
+        return Request::fake(
+            headers: ['X-Forwarded-For' => $ip],
+            method: 'GET',
+            uri: $path,
+        );
     }
 }
 ```
@@ -136,8 +138,11 @@ class ThrottleMiddlewareTest extends TestCase
 
 use PHPUnit\Framework\TestCase;
 use Infocyph\Webrick\Router\Kernel\RouterKernel;
+use Infocyph\Webrick\Router\Matching\ShardedMatcher;
+use Infocyph\Webrick\Router\Route;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
+use Psr\Log\NullLogger;
 
 class SignedUrlTest extends TestCase
 {
@@ -148,6 +153,7 @@ class SignedUrlTest extends TestCase
     {
         // Boot kernel with test configuration
         $this->kernel = RouterKernel::bootWithRegistrar(
+            log: new NullLogger(),
             matcher: ShardedMatcher::make('/tmp/test-route-cache'),
             register: function($r) {
                 $r->get('/secure/resource', fn() => Response::json(['secret' => 'data']), 'secure.resource')
@@ -160,12 +166,12 @@ class SignedUrlTest extends TestCase
             ]
         );
 
-        Response::bindUrlServices($this->kernel->routes(), $this->signKey, 900);
+        Route::bindUrlServices($this->kernel->routes(), $this->signKey, 900);
     }
 
     public function testUnsignedUrlRejected(): void
     {
-        $request = Request::create('GET', '/secure/resource');
+        $request = Request::fake(method: 'GET', uri: '/secure/resource');
         $response = $this->kernel->handle($request);
 
         $this->assertEquals(400, $response->getStatusCode());
@@ -176,9 +182,9 @@ class SignedUrlTest extends TestCase
     public function testValidSignedUrlAllowed(): void
     {
         // Generate signed URL
-        $url = Response::signedUrlFor('secure.resource');
+        $url = Route::signedUrlFor('secure.resource');
 
-        $request = Request::create('GET', $url);
+        $request = Request::fake(method: 'GET', uri: $url);
         $response = $this->kernel->handle($request);
 
         $this->assertEquals(200, $response->getStatusCode());
@@ -188,12 +194,12 @@ class SignedUrlTest extends TestCase
 
     public function testTamperedSignatureRejected(): void
     {
-        $url = Response::signedUrlFor('secure.resource');
+        $url = Route::signedUrlFor('secure.resource');
 
         // Tamper with signature
         $tampered = preg_replace('/_sig=[^&]+/', '_sig=invalid', $url);
 
-        $request = Request::create('GET', $tampered);
+        $request = Request::fake(method: 'GET', uri: $tampered);
         $response = $this->kernel->handle($request);
 
         $this->assertEquals(403, $response->getStatusCode());
@@ -201,10 +207,11 @@ class SignedUrlTest extends TestCase
 
     public function testExpiredTemporaryUrl(): void
     {
-        // Create URL that expires immediately
-        $url = Response::temporaryUrlFor('secure.resource', ttl: -10);
+        // Create URL that expires almost immediately
+        $url = Route::temporaryUrlFor('secure.resource', ttl: 1);
+        sleep(2);
 
-        $request = Request::create('GET', $url);
+        $request = Request::fake(method: 'GET', uri: $url);
         $response = $this->kernel->handle($request);
 
         $this->assertEquals(410, $response->getStatusCode());  // Gone
@@ -212,11 +219,12 @@ class SignedUrlTest extends TestCase
 
     public function testLeewayAllowsClockSkew(): void
     {
-        // Create URL that expired 3 seconds ago
-        $url = Response::temporaryUrlFor('secure.resource', ttl: -3);
+        // Create URL with short TTL
+        $url = Route::temporaryUrlFor('secure.resource', ttl: 1);
+        sleep(2);
 
         // But middleware has 5-second leeway
-        $request = Request::create('GET', $url);
+        $request = Request::fake(method: 'GET', uri: $url);
         $response = $this->kernel->handle($request);
 
         $this->assertEquals(200, $response->getStatusCode());
@@ -241,9 +249,11 @@ class MiddlewareStackTest extends TestCase
             VaryAccumulatorMiddleware::class
         ]);
 
-        $request = Request::create('GET', '/api/test', headers: [
-            'Accept-Encoding' => 'gzip, br'
-        ]);
+        $request = Request::fake(
+            headers: ['Accept-Encoding' => 'gzip, br'],
+            method: 'GET',
+            uri: '/api/test',
+        );
 
         $response = $kernel->handle($request);
 
@@ -258,16 +268,18 @@ class MiddlewareStackTest extends TestCase
         ]);
 
         // First request
-        $request1 = Request::create('GET', '/api/users/1');
+        $request1 = Request::fake(method: 'GET', uri: '/api/users/1');
         $response1 = $kernel->handle($request1);
         $etag = $response1->getHeaderLine('ETag');
 
         $this->assertNotEmpty($etag);
 
         // Second request with If-None-Match
-        $request2 = Request::create('GET', '/api/users/1', headers: [
-            'If-None-Match' => $etag
-        ]);
+        $request2 = Request::fake(
+            headers: ['If-None-Match' => $etag],
+            method: 'GET',
+            uri: '/api/users/1',
+        );
         $response2 = $kernel->handle($request2);
 
         $this->assertEquals(304, $response2->getStatusCode());
@@ -287,7 +299,7 @@ class MiddlewareStackTest extends TestCase
             return Response::json(['ok' => true]);
         };
 
-        $req = Request::create('GET', '/test');
+        $req = Request::fake(method: 'GET', uri: '/test');
 
         // First request - handler called
         $kernel->handle($req);
@@ -406,7 +418,7 @@ class RoutingBenchmark extends TestCase
         $start = microtime(true);
 
         for ($i = 0; $i < $iterations; $i++) {
-            $request = Request::create('GET', "/users/{$i}");
+            $request = Request::fake(method: 'GET', uri: "/users/{$i}");
             $kernel->handle($request);
         }
 
@@ -444,7 +456,7 @@ class RoutingBenchmark extends TestCase
     private function benchmarkKernel(array $middleware, int $iterations = 1000): float
     {
         $kernel = $this->bootKernelWithMiddleware($middleware);
-        $request = Request::create('GET', '/ping');
+        $request = Request::fake(method: 'GET', uri: '/ping');
 
         $start = microtime(true);
         for ($i = 0; $i < $iterations; $i++) {

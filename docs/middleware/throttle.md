@@ -272,7 +272,7 @@ class ThrottleTest extends TestCase
         $cache = new InMemoryCache();
         $throttle = new ThrottleMiddleware(max: 3, window: 60, pool: $cache);
 
-        $req = Request::create('GET', '/test');
+        $req = Request::fake(method: 'GET', uri: '/test');
         $next = fn($r) => Response::json(['ok' => true]);
 
         // First 3 should pass

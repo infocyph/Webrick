@@ -77,10 +77,12 @@ composer require infocyph/webrick
 ```php
 use Infocyph\Webrick\Router\Kernel\RouterKernel;
 use Infocyph\Webrick\Router\Matching\ShardedMatcher;
+use Psr\Log\NullLogger;
 
 $kernel = RouterKernel::bootWithRegistrar(
-  ShardedMatcher::make(__DIR__.'/var/route-cache'),
-  require __DIR__.'/routes.php',
+  log: new NullLogger(),
+  matcher: ShardedMatcher::make(__DIR__.'/.route-cache'),
+  register: require __DIR__.'/routes.php',
   registrarOptions: [
     'autoSlashRedirect' => true,
     'exposeUrlServices' => true,
@@ -103,7 +105,7 @@ Route::get('/', fn() => R::plaintext('Hello Webrick'))->name('home');
 ## Next steps
 - Enable **signed URLs** and add the `verifySignedUrl` middleware for downloads/one‑time actions.
 - Add **validators** + **compression** middleware for speed and correctness.
-- Choose **Sharded** or **Fused** matcher based on your deployment style.
+- Choose **Sharded**, **Fused**, or **Generated** matcher based on your deployment style.
 - Jump to **Deployments** to productionize.
 
 ```{toctree}

@@ -409,8 +409,10 @@ Route::get('/dashboard', function() use ($view) {
     $stats = $view->render('partials/stats', ['user' => $user], ttl: 300);
     $posts = PostRepository::latest();
 
-    return Response::html(
-        $view->render('dashboard', ['stats' => $stats, 'posts' => $posts])
+    return Response::create(
+        $view->render('dashboard', ['stats' => $stats, 'posts' => $posts]),
+        200,
+        ['Content-Type' => 'text/html; charset=UTF-8']
     );
 });
 ```

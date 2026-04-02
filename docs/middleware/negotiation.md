@@ -112,7 +112,7 @@ Route::get('/greeting', function (Request $r) {
         'de' => 'Guten Tag'
     ];
 
-    return Response::plaintext($greetings[$locale] ?? $greetings['en']);
+    return Response::plaintext($greetings[$locale] ?? $greetings['en'], 200);
 });
 ```
 

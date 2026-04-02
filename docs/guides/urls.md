@@ -3,7 +3,7 @@
 This guide shows how to generate and verify signed URLs in Webrick. It matches the actual code surface:
 
 - URL services are bound at boot time.
-- Helpers live on `Infocyph\Webrick\Response\Response` as `urlFor()`, `signedUrlFor()`, and `temporaryUrlFor()`.
+- Helpers live on `Infocyph\Webrick\Router\Route` as `urlFor()`, `signedUrlFor()`, and `temporaryUrlFor()`.
 - Verification is done via the middleware alias `verifySignedUrl`.
 
 ## Prerequisites
@@ -12,15 +12,17 @@ At boot, enable URL services and configure signing:
 
 ```php
 use Infocyph\Webrick\Router\Kernel\RouterKernel;
+use Infocyph\Webrick\Router\Route;
 use Infocyph\Webrick\Router\Matching\ShardedMatcher;
-use Infocyph\Webrick\Response\Response as R;
+use Psr\Log\NullLogger;
 
 $kernel = RouterKernel::bootWithRegistrar(
-    ShardedMatcher::make(__DIR__.'/var/route-cache'),
-    require __DIR__.'/routes.php',
+    log: new NullLogger(),
+    matcher: ShardedMatcher::make(__DIR__.'/.route-cache'),
+    register: require __DIR__.'/routes.php',
     registrarOptions: [
         'autoSlashRedirect' => true,
-        'exposeUrlServices' => true,                  // <- exposes urlFor/signedUrlFor on Response
+        'exposeUrlServices' => true,                  // <- exposes urlFor/signedUrlFor on Route facade
         'signKey'          => getenv('WEBRICK_SIGN_KEY') ?: 'dev-key-change-me',
         'signedDefaultTtl' => 300,                    // seconds; used by temporaryUrlFor when TTL omitted
         'fallbackAliasesFromRegistrar' => true,
@@ -28,9 +30,10 @@ $kernel = RouterKernel::bootWithRegistrar(
 );
 
 // Optional explicit bind (if not using registrar options)
-R::bindUrlServices(
-    signKey: getenv('WEBRICK_SIGN_KEY') ?: 'dev-key-change-me',
-    defaultTtl: 300
+Route::bindUrlServices(
+    $routes,
+    getenv('WEBRICK_SIGN_KEY') ?: 'dev-key-change-me',
+    300
 );
 ```
 
@@ -50,13 +53,13 @@ Route::get('/download/{file}', function (string $file) {
 
 ```php
 // Plain URL for a named route (substitute params)
-$url = R::urlFor('file.download', ['file' => 'report.pdf']);
+$url = Route::urlFor('file.download', ['file' => 'report.pdf']);
 
 // Signed URL (no expiry)
-$signed = R::signedUrlFor('file.download', ['file' => 'report.pdf']);
+$signed = Route::signedUrlFor('file.download', ['file' => 'report.pdf']);
 
 // Temporary URL (expires in 15 minutes)
-$temp = R::temporaryUrlFor('file.download', ['file' => 'report.pdf'], ttl: 900);
+$temp = Route::temporaryUrlFor('file.download', ['file' => 'report.pdf'], ttl: 900);
 ```
 
 The `verifySignedUrl` middleware checks the signature and (for temporary URLs) expiry timestamp.
@@ -98,7 +101,7 @@ RewriteRule ^ index.php [QSA,L]  # ← QSA = Query String Append
 **Test**:
 ```bash
 # Generate signed URL
-php -r "require 'vendor/autoload.php'; echo Response::signedUrlFor('test');"
+php -r "require 'vendor/autoload.php'; echo Route::signedUrlFor('test');"
 
 # Output: /test?_sig=abc123...
 
@@ -116,8 +119,8 @@ curl -v "http://localhost:8000/test?_sig=abc123&foo=bar" 2>&1 | grep "GET /test"
 #### 1. Key Mismatch
 ```php
 // Generator uses one key
-Response::bindUrlServices($routes, 'key-A', 900);
-$url = Response::signedUrlFor('test');
+Route::bindUrlServices($routes, 'key-A', 900);
+$url = Route::signedUrlFor('test');
 
 // Verifier uses different key
 new VerifySignedUrlMiddleware('key-B', leeway: 5);  // ❌ Won't match
@@ -128,7 +131,7 @@ new VerifySignedUrlMiddleware('key-B', leeway: 5);  // ❌ Won't match
 $signKey = $_ENV['WEBRICK_SIGN_KEY'] ?? 'dev-key';
 
 // Generator
-Response::bindUrlServices($routes, $signKey, 900);
+Route::bindUrlServices($routes, $signKey, 900);
 
 // Verifier
 new VerifySignedUrlMiddleware($signKey, leeway: 5);
@@ -165,7 +168,7 @@ Received:   /download?_sig=abc123&file=report.pdf  # Order changed
 
 **Someone added parameters after generation**:
 ```php
-$url = Response::signedUrlFor('download', ['id' => 42]);
+$url = Route::signedUrlFor('download', ['id' => 42]);
 // /download?id=42&_sig=abc123
 
 // Later, tracking param added manually
@@ -174,7 +177,7 @@ $trackedUrl = $url . '&utm_source=email';  // ❌ Breaks signature
 
 **Fix**: Add all parameters during generation:
 ```php
-$url = Response::signedUrlFor('download',
+$url = Route::signedUrlFor('download',
     ['id' => 42],
     query: ['utm_source' => 'email']  // ✅ Included in signature
 );
@@ -267,7 +270,7 @@ curl -v http://lb.example.com/test?_sig=abc123
 #### 3. HTTPS/HTTP Scheme Mismatch
 ```php
 // Generated with absolute URL (HTTPS)
-$url = Response::signedUrlFor('download', absolute: true);
+$url = Route::signedUrlFor('download', absolute: true);
 // https://example.com/download?_sig=...
 
 // User accesses via HTTP (redirected or downgraded)
@@ -279,7 +282,7 @@ If signature includes the scheme, mismatch will fail.
 **Fix**: Generate relative URLs or ensure consistent HTTPS enforcement:
 ```php
 // Relative URLs (scheme-agnostic)
-$url = Response::signedUrlFor('download', absolute: false);
+$url = Route::signedUrlFor('download', absolute: false);
 ```
 
 ---
@@ -321,7 +324,7 @@ For **one-time actions** (delete, transfer funds), use additional nonce:
 ```php
 // Generate with nonce
 $nonce = bin2hex(random_bytes(16));
-$url = Response::temporaryUrlFor('delete-account',
+$url = Route::temporaryUrlFor('delete-account',
     ['id' => $userId],
     query: ['nonce' => $nonce],
     ttl: 300
@@ -352,7 +355,7 @@ Bind signature to requester's IP:
 // Custom signed URL with IP
 function signedUrlWithIp(string $routeName, array $params = []): string {
     $ip = request()->getAttribute('client_ip');
-    $base = Response::signedUrlFor($routeName, $params);
+    $base = Route::signedUrlFor($routeName, $params);
 
     // Add IP to query (included in signature)
     return $base . '&ip=' . urlencode($ip);
@@ -386,12 +389,12 @@ class SignedUrlTest extends TestCase
     public function testValidSignatureAccepted(): void
     {
         $key = 'test-key';
-        Response::bindUrlServices($routes, $key, 900);
+        Route::bindUrlServices($routes, $key, 900);
 
-        $url = Response::signedUrlFor('test');
+        $url = Route::signedUrlFor('test');
 
         $middleware = new VerifySignedUrlMiddleware($key, leeway: 5);
-        $request = Request::create('GET', $url);
+        $request = Request::fake(method: 'GET', uri: $url);
 
         $response = $middleware($request, fn($r) => Response::json(['ok' => true]));
 
@@ -400,10 +403,10 @@ class SignedUrlTest extends TestCase
 
     public function testTamperedSignatureRejected(): void
     {
-        $url = Response::signedUrlFor('test');
+        $url = Route::signedUrlFor('test');
         $tampered = preg_replace('/_sig=[^&]+/', '_sig=invalid', $url);
 
-        $request = Request::create('GET', $tampered);
+        $request = Request::fake(method: 'GET', uri: $tampered);
         $response = $middleware($request, fn($r) => Response::json(['ok' => true]));
 
         $this->assertEquals(403, $response->getStatusCode());
@@ -425,7 +428,7 @@ echo "Testing signed URLs..."
 # Generate signed URL (requires PHP script or API endpoint)
 SIGNED_URL=$(php -r "
 require 'vendor/autoload.php';
-echo Response::signedUrlFor('test.route');
+echo Route::signedUrlFor('test.route');
 ")
 
 echo "Generated: $SIGNED_URL"
@@ -463,11 +466,11 @@ HMAC-SHA256 is fast (~0.01ms per signature), but avoid generating thousands in a
 // ❌ Slow: Generate 1000 signed URLs
 $urls = [];
 for ($i = 0; $i < 1000; $i++) {
-    $urls[] = Response::signedUrlFor('item', ['id' => $i]);
+    $urls[] = Route::signedUrlFor('item', ['id' => $i]);
 }
 
 // ✅ Better: Generate base URL once, vary only params
-$template = Response::urlFor('item', ['id' => '__ID__']);
+$template = Route::urlFor('item', ['id' => '__ID__']);
 $baseSignature = hash_hmac('sha256', $template, $signKey);
 
 $urls = [];
@@ -485,7 +488,7 @@ For **public, static resources** (CDN assets), you can cache signed URLs:
 $cacheKey = "signed_url:asset:{$assetId}";
 
 $url = Cache::remember($cacheKey, 3600, function() use ($assetId) {
-    return Response::temporaryUrlFor('cdn.asset', ['id' => $assetId], ttl: 3600);
+    return Route::temporaryUrlFor('cdn.asset', ['id' => $assetId], ttl: 3600);
 });
 ```
 
@@ -533,5 +536,5 @@ if ($signatureInvalid) {
 - [Middleware Reference](../middleware/index.md) - VerifySignedUrlMiddleware details
 - [Routing Guide](./routing.md) - Route naming and parameters
 - [Security Guide](../advanced/security.md) - Security best practices
-- [Responses](./responses.md) - Response helpers and URL generation
-
+- [Responses](./responses.md) - Response payload helpers
+- [Router Reference](../reference/router.md) - Route URL generation APIs

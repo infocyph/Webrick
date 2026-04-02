@@ -17,7 +17,7 @@ A fast, modern PHP router with production-grade middleware, signed & temporary U
 - **🔒 Signed URLs** – Built-in URL signing with expiration and verification middleware
 - **⚙️ Production middleware** – 15+ battle-tested middleware for security, caching, compression, CORS
 - **📦 Smart responses** – Auto content negotiation, streaming, downloads, JSON helpers
-- **💾 Route caching** – Sharded or fused cache for instant cold starts
+- **💾 Route caching** – Sharded, fused, or generated matcher modes
 - **🔌 Sudo PSR-compatible** – Works with PSR-7/15/17 ecosystems
 
 > **Requirements:** PHP 8.4+ | Production-ready with OPcache + route caching
@@ -43,7 +43,7 @@ require __DIR__ . '/../vendor/autoload.php';
 
 $router = new RouterKernel();
 
-$router->get('/', fn() => Response::plaintext('Hello Webrick!'));
+$router->get('/', fn() => Response::plaintext('Hello Webrick!', 200));
 $router->get('/api/users/{id:int}', fn($r, int $id) => 
     Response::json(['id' => $id, 'name' => 'John Doe'])
 );
@@ -56,9 +56,14 @@ $router->run();
 <?php
 use Infocyph\Webrick\Router\Kernel\RouterKernel;
 use Infocyph\Webrick\Router\Definition\Registrar;
+use Infocyph\Webrick\Router\Matching\ShardedMatcher;
+use Infocyph\Webrick\Router\Route;
 use Infocyph\Webrick\Response\Response;
+use Psr\Log\NullLogger;
 
 $kernel = RouterKernel::bootWithRegistrar(
+    log: new NullLogger(),
+    matcher: ShardedMatcher::make(__DIR__ . '/../.route-cache'),
     register: function (Registrar $r) {
         $route = $r->facade();
         
@@ -68,7 +73,7 @@ $kernel = RouterKernel::bootWithRegistrar(
         $route::get('/protected', fn() => Response::json(['secret' => 'data']))
             ->middleware(['auth', 'verifySignedUrl']);
     },
-    routeCache: __DIR__ . '/../var/cache/routes',
+    routeCache: __DIR__ . '/../.route-cache',
     preGlobal: [
         \Infocyph\Webrick\Middleware\GatewayHardeningMiddleware::class,
         \Infocyph\Webrick\Middleware\ThrottleMiddleware::class,
@@ -81,7 +86,7 @@ $kernel = RouterKernel::bootWithRegistrar(
 );
 
 (new \Infocyph\Webrick\Response\Emitter\AutoEmitter())->emit(
-    $kernel->handle(\Infocyph\Webrick\Request\Request::capture())
+    $kernel->handle(\Infocyph\Webrick\Request\Request::fromGlobals())
 );
 ```
 
@@ -100,15 +105,15 @@ $route::get('/users/{id:int}', $handler, 'users.show');
 $route::post('/users', $handler, 'users.store');
 
 // Generate URLs
-$url = Response::urlFor('users.show', ['id' => 42]); // /users/42
-$absolute = Response::urlFor('users.show', ['id' => 42], absolute: true);
+$url = Route::urlFor('users.show', ['id' => 42]); // /users/42
+$absolute = Route::urlFor('users.show', ['id' => 42], absolute: true);
 ```
 
 ### Signed URLs (Tamper-Proof)
 ```php
 // Generate signed URL
-$signed = Response::signedUrlFor('download', ['file' => 'report.pdf']);
-$temp = Response::temporaryUrlFor('download', ['file' => 'doc.pdf'], 3600); // 1 hour
+$signed = Route::signedUrlFor('download', ['file' => 'report.pdf']);
+$temp = Route::temporaryUrlFor('download', ['file' => 'doc.pdf'], ttl: 3600); // 1 hour
 
 // Protect route
 $route::get('/download/{file}', $handler)
@@ -161,7 +166,7 @@ Response::stream(function() {
 
 // Redirects
 Response::redirect('/login');
-Response::redirectToRoute('users.show', ['id' => 42]);
+Response::redirect(Route::urlFor('users.show', ['id' => 42]));
 ```
 
 ---
@@ -190,7 +195,7 @@ Response::redirectToRoute('users.show', ['id' => 42]);
 
 ### Getting Started
 - [Installation & Setup](https://docs.infocyph.com/projects/webrick/en/latest/getting-started/installation.html)
-- [Quick Start Guide](https://docs.infocyph.com/projects/webrick/en/latest/getting-started/quick-start.html)
+- [Quick Start Guide](https://docs.infocyph.com/projects/webrick/en/latest/getting-started/quickstart.html)
 - [Basic Routing](https://docs.infocyph.com/projects/webrick/en/latest/guides/routing.html)
 
 ### Guides
@@ -199,7 +204,7 @@ Response::redirectToRoute('users.show', ['id' => 42]);
 - [Responses](https://docs.infocyph.com/projects/webrick/en/latest/guides/responses.html) – JSON, redirects, downloads, streaming
 - [Middleware](https://docs.infocyph.com/projects/webrick/en/latest/middleware/) – Using and creating middleware
 - [Signed URLs](https://docs.infocyph.com/projects/webrick/en/latest/guides/urls.html) – Secure, expiring URLs
-- [Route Caching](https://docs.infocyph.com/projects/webrick/en/latest/advanced/route-caching.html) – Production optimization
+- [Route Caching](https://docs.infocyph.com/projects/webrick/en/latest/deployments/route-cache-warmup.html) – Production optimization
 
 ### Recipes
 - [JWT Authentication](https://docs.infocyph.com/projects/webrick/en/latest/recipes/authentication.html)
@@ -211,7 +216,7 @@ Response::redirectToRoute('users.show', ['id' => 42]);
 ### Deployment
 - [Nginx Configuration](https://docs.infocyph.com/projects/webrick/en/latest/deployments/nginx.html)
 - [Docker & Kubernetes](https://docs.infocyph.com/projects/webrick/en/latest/deployments/containers.html)
-- [Performance Tuning](https://docs.infocyph.com/projects/webrick/en/latest/deployments/tuning.html)
+- [Performance Tuning](https://docs.infocyph.com/projects/webrick/en/latest/deployments/php-fpm-tuning.html)
 
 ---
 
@@ -220,7 +225,7 @@ Response::redirectToRoute('users.show', ['id' => 42]);
 **Route Caching** dramatically improves cold-start performance:
 ```bash
 # Build route cache (run in CI/deployment)
-php bin/build-route-cache.php
+php webrick route:cache --cache=.route-cache --routes=routes.php
 
 # Result: ~100ms faster first request
 ```
@@ -240,11 +245,13 @@ php bin/build-route-cache.php
 # Run tests
 composer test
 
-# Code formatting
-composer format
+# Lint + refactor + security
+composer lint
+composer refactor
+composer security:scan
 
-# Static analysis
-composer analyse
+# Full local suite
+composer tests
 ```
 
 ---
@@ -255,7 +262,7 @@ Contributions welcome! Please:
 
 1. Fork and create a feature branch
 2. Write tests for new features
-3. Run `composer test` and `composer format`
+3. Run `composer test`, `composer lint`, and `composer security:scan`
 4. Submit a PR with clear description
 
 [Contributing Guide →](./CONTRIBUTING.md)

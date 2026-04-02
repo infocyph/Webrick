@@ -14,6 +14,7 @@ Two modes:
 
 * **Sharded (directory)** – multiple small PHP files.
 * **Fused (single file)** – one big PHP file.
+* **Generated (in-memory)** – no cache artifact files.
 
 ---
 
@@ -30,7 +31,7 @@ Example builder (recap):
 use Infocyph\Webrick\Support\RouteCache;
 
 RouteCache::build([
-  'cache'   => __DIR__ . '/../var/cache/routes', // or routes.php
+  'cache'   => __DIR__ . '/../.route-cache', // sharded directory
   'routes'  => __DIR__ . '/../routes/web.php',
   'registrarOptions' => [
     'exposeUrlServices' => true,
@@ -52,6 +53,8 @@ RouteCache::build([
 
 Default to **sharded** unless your app is very small.
 
+Use **generated** only when you intentionally want no route-cache artifacts.
+
 ---
 
 ## Runtime wiring
@@ -59,9 +62,16 @@ Default to **sharded** unless your app is very small.
 At kernel boot, point to the cache:
 
 ```php
+use Infocyph\Webrick\Router\Kernel\RouterKernel;
+use Infocyph\Webrick\Router\Matching\ShardedMatcher;
+use Psr\Log\NullLogger;
+
 $kernel = RouterKernel::bootWithRegistrar(
-  // ...
-  routeCache: __DIR__ . '/../var/cache/routes' // directory or .php file
+  log: new NullLogger(),
+  matcher: ShardedMatcher::make(__DIR__ . '/../.route-cache'),
+  register: require __DIR__ . '/../routes.php',
+  routeCache: __DIR__ . '/../.route-cache', // sharded directory
+  // routeCache: __DIR__ . '/../.route-cache/__routes.php', // fused file
 );
 ```
 
@@ -108,7 +118,7 @@ Treat these as **compile-time** failures rather than runtime surprises.
 When `exposeUrlServices` is enabled during build, the cache also stores **reverse templates**:
 
 ```php
-Response::urlFor('users.show', ['id'=>42]);
+Route::urlFor('users.show', ['id'=>42]);
 // uses cached template "/users/{id}" and escapes/joins quickly
 ```
 
@@ -139,7 +149,7 @@ Absolute URLs use host rules (domain groups) or app base URL.
 | ---------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------ |
 | Boot fails with “cache version mismatch” | Code & cache out of sync                    | Rebuild cache in CI with the current code; redeploy                            |
 | Route missing in prod                    | Attribute loader wasn’t called during build | Ensure `$register` closure calls the attribute loader                          |
-| Stale route still matched                | Old artifact deployed                       | Verify release artifact includes fresh `var/cache/routes`; reload FPM          |
+| Stale route still matched                | Old artifact deployed                       | Verify release artifact includes fresh `.route-cache`; reload FPM          |
 | Dev builds fine, CI fails                | Different PHP/extension set                 | Align PHP versions/exts between CI and prod; lock composer platform            |
 | URL generation throws                    | Name not in cache                           | Ensure route is named (`'as' => '...')`; rebuild with `exposeUrlServices:true` |
 
@@ -152,4 +162,3 @@ Absolute URLs use host rules (domain groups) or app base URL.
 * [ ] Ship the cache with the artifact; point kernel to the same path
 * [ ] Include attribute routes in the same registration flow (build & runtime)
 * [ ] Keep prod immutable—no runtime rebuilds; use maintenance if ever necessary
-

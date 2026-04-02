@@ -471,9 +471,11 @@ class CookieTest extends TestCase
 
     public function testReadsCookieFromRequest(): void
     {
-        $request = Request::create('GET', '/', server: [
-            'HTTP_COOKIE' => 'sess=abc123; theme=dark'
-        ]);
+        $request = Request::fake(
+            headers: ['Cookie' => 'sess=abc123; theme=dark'],
+            method: 'GET',
+            uri: '/',
+        );
 
         $this->assertEquals('abc123', $request->cookie('sess'));
         $this->assertEquals('dark', $request->cookie('theme'));
@@ -592,4 +594,3 @@ if ($_ENV['APP_ENV'] === 'development') {
 - [Security Guide](../advanced/security.md) - OWASP Top 10 and cookie security
 - [Requests](./requests.md) - Reading cookies from requests
 - [Responses](./responses.md) - Setting cookies on responses
-

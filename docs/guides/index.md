@@ -18,14 +18,14 @@ Use **Guides** when you want end‑to‑end, working examples. Use **Reference**
 ## Example: sharing a temporary download link
 
 ```php
-use Infocyph\Webrick\Response\Response as R;
 use Infocyph\Webrick\Router\Route;
+use Infocyph\Webrick\Response\Response as R;
 
 Route::get('/download/{file}', fn(string $file) => R::attachment(__DIR__.'/files/'.$file))
     ->name('file.download')
     ->middleware(['verifySignedUrl']);
 
-$link = R::temporaryUrlFor('file.download', ['file' => 'report.pdf'], ttl: 900);
+$link = Route::temporaryUrlFor('file.download', ['file' => 'report.pdf'], ttl: 900);
 ```
 
 **Why it works:** `verifySignedUrl` checks signature + TTL. Keep proxies from altering the query string, or the signature will fail.

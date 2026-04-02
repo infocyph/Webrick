@@ -7,7 +7,7 @@ Wire a minimal app end‑to‑end: front controller → routes → middleware �
 
 * Installed via Composer: `composer require infocyph/webrick`
 * PHP 8.4+, Composer autoloading
-* A writable cache directory (e.g., `var/cache/routes`)
+* A writable cache directory (e.g., `.route-cache`)
   :::
 
 ---
@@ -24,6 +24,7 @@ use Infocyph\Webrick\Response\Emitter\AutoEmitter;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Kernel\RouterKernel;
+use Infocyph\Webrick\Router\Route;
 use Infocyph\Webrick\Router\Route\Collection;
 use Psr\Log\NullLogger;
 
@@ -59,7 +60,7 @@ $register = static function (Registrar $registrar) use ($signKey): void {
     $route  = $registrar->facade();
 
     // Simple routes
-    $route::get('/ping', fn() => Response::plaintext('pong'));
+    $route::get('/ping', fn() => Response::plaintext('pong', 200));
     $route::get('/hello/{name}', function (Request $r, string $name) {
         return Response::json(['hello' => $name, 'prefers' => $r->prefers(['application/json','+json','text/plain'])]);
     })->name('hello');
@@ -82,7 +83,7 @@ $kernel = RouterKernel::bootWithRegistrar(
     log: new NullLogger(),
     matcher: Infocyph\Webrick\Router\Matching\ShardedMatcher::make(),
     register: $register,
-    routeCache: __DIR__ . '/../var/cache/routes',
+    routeCache: __DIR__ . '/../.route-cache',
     registrarOptions: [
         'autoSlashRedirect' => false,
         'exposeUrlServices' => true,
@@ -92,16 +93,16 @@ $kernel = RouterKernel::bootWithRegistrar(
     preGlobal: $preGlobal,
     postGlobal: $postGlobal,
     bindUrlServices: static function (Collection $routes) use ($signKey, $defaultTtl): void {
-        Response::bindUrlServices($routes, $signKey, $defaultTtl);
+        Route::bindUrlServices($routes, $signKey, $defaultTtl);
     },
     // Keep true initially to fall back to live aliases if cache is incomplete
     fallbackAliasesFromRegistrar: true,
 );
 
-(new AutoEmitter())->emit($kernel->handle(Request::capture()));
+(new AutoEmitter())->emit($kernel->handle(Request::fromGlobals()));
 ```
 
-> To switch to a **single‑file fused cache**, use `Matching\FusedMatcher::make()` and set `routeCache` to a file (e.g., `.../var/cache/routes/__routes.php`).
+> To switch to a **single‑file fused cache**, use `Matching\FusedMatcher::make()` and set `routeCache` to a file (e.g., `.../.route-cache/__routes.php`).
 
 ---
 
@@ -111,9 +112,9 @@ Once `exposeUrlServices` is enabled (or you bound them manually via `bindUrlServ
 
 ```php
 // Inside a route handler:
-$url        = Response::urlFor('download');
-$signedUrl  = Response::signedUrlFor('protected');           // permanent signature
-$tempUrl    = Response::temporaryUrlFor('protected', 900);   // TTL 900s
+$url        = Route::urlFor('download');
+$signedUrl  = Route::signedUrlFor('protected');           // permanent signature
+$tempUrl    = Route::temporaryUrlFor('protected', ttl: 900);   // TTL 900s
 ```
 
 Attach the verifier to your protected route:
@@ -121,7 +122,7 @@ Attach the verifier to your protected route:
 ```php
 use Infocyph\Webrick\Middleware\VerifySignedUrlMiddleware;
 
-$route::get('/protected', fn() => Response::plaintext('secret'))
+$route::get('/protected', fn() => Response::plaintext('secret', 200))
     ->middleware(VerifySignedUrlMiddleware::class);
 ```
 
@@ -164,29 +165,34 @@ examples/hello-webrick/
 declare(strict_types=1);
 
 use Infocyph\Webrick\Router\Kernel\RouterKernel;
+use Infocyph\Webrick\Router\Matching\ShardedMatcher;
+use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Response\Emitter\AutoEmitter;
 use Infocyph\Webrick\Response\Response;
+use Psr\Log\NullLogger;
 
 require __DIR__ . '/../vendor/autoload.php';
 
-$router = new RouterKernel();
+$kernel = RouterKernel::bootWithRegistrar(
+    log: new NullLogger(),
+    matcher: ShardedMatcher::make(),
+    register: static function (Registrar $r): void {
+        $route = $r->facade();
 
-// GET / → plaintext hello
-$router->get('/', function (Request $req) {
-    return Response::plaintext('Hello Webrick!');
-});
+        // GET / → plaintext hello
+        $route::get('/', fn (Request $req) => Response::plaintext('Hello Webrick!', 200));
 
-// GET /api/ping → JSON
-$router->get('/api/ping', function (Request $req) {
-    return Response::json([
-        'ok' => true,
-        'message' => 'pong',
-        'time' => gmdate('c'),
-    ]);
-});
+        // GET /api/ping → JSON
+        $route::get('/api/ping', fn (Request $req) => Response::json([
+            'ok' => true,
+            'message' => 'pong',
+            'time' => gmdate('c'),
+        ]));
+    },
+);
 
-// Dispatch
-$router->run();
+(new AutoEmitter())->emit($kernel->handle(Request::fromGlobals()));
 ```
 
 ### Run locally

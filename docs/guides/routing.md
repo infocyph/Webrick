@@ -31,8 +31,9 @@ Route::put('/users/{id:int}', fn($id) => "updated $id");
 Route::patch('/users/{id:int}', fn($id) => "patched $id");
 Route::delete('/users/{id:int}', fn($id) => "deleted $id");
 
-// Any method (use judiciously)
-Route::any('/debug', fn()=>'ok');
+// Multi-method endpoint (register each method explicitly)
+Route::get('/debug', fn() => 'ok');
+Route::post('/debug', fn() => 'ok');
 ```
 
 Tip: If you need method override on forms, enable `NormalizeMethodMiddleware` in pre-globals to honor `_method=PUT|PATCH|DELETE`.
@@ -92,7 +93,7 @@ Route::get('/profile/{id:int}', fn($id)=>"profile $id", 'profile.show');
 
 // Later
 use Infocyph\Webrick\Response\Response;
-$url = Response::urlFor('profile.show', ['id'=>42]);     // /profile/42
+$url = Route::urlFor('profile.show', ['id'=>42]);     // /profile/42
 return Response::redirect($url, 302);
 ```
 
@@ -164,7 +165,7 @@ Implement only the methods you need; others can 404 or be omitted.
 ## Redirects & downloads
 
 ```php
-Route::get('/to-json', fn() => Response::redirect(Response::urlFor('json'), 302));
+Route::get('/to-json', fn() => Response::redirect(Route::urlFor('json'), 302));
 Route::get('/download', fn() => Response::attachment(__FILE__, 'routes.php'));
 ```
 
@@ -174,11 +175,11 @@ Route::get('/download', fn() => Response::attachment(__FILE__, 'routes.php'));
 
 ```php
 // Absolute URL
-Response::urlFor('profile.show', ['id'=>7], absolute: true);
+Route::urlFor('profile.show', ['id'=>7], absolute: true);
 
-// Signed URLs (requires Response::bindUrlServices at boot)
-Response::signedUrlFor('profile.show', ['id'=>7], absolute: false);
-Response::temporaryUrlFor('secure.show', ['id'=>7], query:['dl'=>1], absolute:false, ttl:900);
+// Signed URLs (requires Route::bindUrlServices at boot)
+Route::signedUrlFor('profile.show', ['id'=>7], absolute: false);
+Route::temporaryUrlFor('secure.show', ['id'=>7], query:['dl'=>1], absolute:false, ttl:900);
 ```
 
 Use `verifySignedUrl` middleware on endpoints that require a valid signature.
@@ -240,7 +241,7 @@ Route::get('/assets/{path:.*}', function (Request $r, string $path) {
 }, 'assets.serve');
 
 // API fallback for versioned endpoints
-Route::any('/api/v{version:\d+}/{path:.*}', function (Request $r, string $version, string $path) {
+Route::get('/api/v{version:\d+}/{path:.*}', function (Request $r, string $version, string $path) {
     return Response::json([
         'error' => 'API version not supported',
         'requested_version' => $version,
@@ -293,6 +294,5 @@ Consider adding a small PHPUnit test that boots your router and asserts status c
 * [ ] Name important routes
 * [ ] Constrain parameters (`:int`, `:uuid`, `:hex`)
 * [ ] Group related routes with `prefix`/`namePrefix` and shared middleware
-* [ ] Generate URLs via `Response::urlFor()` (and `signedUrlFor()` / `temporaryUrlFor()` if needed)
+* [ ] Generate URLs via `Route::urlFor()` (and `signedUrlFor()` / `temporaryUrlFor()` if needed)
 * [ ] Order static before dynamic; keep catch-alls last
-
