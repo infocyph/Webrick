@@ -88,8 +88,6 @@ jobs:
         uses: returntocorp/semgrep-action@v1
         with:
           config: p/php p/security-audit
-          generateSarif: true
-          sarif_file: semgrep.sarif
 
       - name: Upload Semgrep Results
         uses: github/codeql-action/upload-sarif@v4
