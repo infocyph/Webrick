@@ -69,7 +69,7 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
         string $method = HttpMethodEnum::GET->value,
         string $uri = '/',
     ): self {
-        return new self($method, Uri::from($uri), $_SERVER, $headers)
+        return new static(HttpMethodEnum::normalize($method), Uri::from($uri), $_SERVER, $headers)
             ->withQueryParams($query)
             ->withParsedBody($post);
     }

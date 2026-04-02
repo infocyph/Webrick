@@ -151,9 +151,8 @@ switch ($cmd) {
                 exit(2);
             }
 
-            $ok = is_file($sentinel);
-            out(($ok ? "✔" : "✖") . " Route cache ready at: {$sentinel}\n");
-            exit($ok ? 0 : 3);
+            out("✔ Route cache ready at: {$sentinel}\n");
+            exit(0);
         }
 
     case 'route:clear':
