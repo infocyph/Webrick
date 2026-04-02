@@ -261,11 +261,7 @@ final class CacheValidatorsMiddleware
      */
     private static function scriptMtime(): ?int
     {
-        $file = (string)($_SERVER['SCRIPT_FILENAME'] ?? __FILE__);
-        if (!is_file($file)) {
-            return null;
-        }
-        $mt = filemtime($file);
+        $mt = filemtime(__FILE__);
         return $mt === false ? null : $mt;
     }
 
