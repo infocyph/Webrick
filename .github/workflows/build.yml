@@ -31,7 +31,7 @@ jobs:
         php-versions: ${{ fromJson(needs.prepare.outputs.php_versions) }}
         dependency-version: ${{ fromJson(needs.prepare.outputs.dependency_versions) }}
 
-    name: PHP ${{ matrix.php-versions }} - ${{ matrix.operating-system }} - ${{ matrix.dependency-version }}
+    name: Code Analysis - PHP ${{ matrix.php-versions }} - ${{ matrix.dependency-version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -88,23 +88,25 @@ jobs:
         uses: returntocorp/semgrep-action@v1
         with:
           config: p/php p/security-audit
-          generateSarif: "1"
+          generateSarif: true
+          sarif_file: semgrep.sarif
 
       - name: Upload Semgrep Results
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: semgrep.sarif
           category: "semgrep-${{ matrix.php-versions }}"
-        if: always()
+        if: always() && hashFiles('semgrep.sarif') != ''
 
       # 2. Run Psalm (Deep Taint Analysis)
       - name: Run Psalm Security Scan
-        run: ./vendor/bin/psalm --security-analysis --report=psalm-results.sarif
+        run: |
+          php -d error_reporting=$((E_ALL & ~E_DEPRECATED)) ./vendor/bin/psalm --config=psalm.xml --security-analysis --threads=1 --report=psalm-results.sarif || true
         continue-on-error: true
 
       - name: Upload Psalm Results
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: psalm-results.sarif
           category: "psalm-${{ matrix.php-versions }}"
-        if: always()
+        if: always() && hashFiles('psalm-results.sarif') != ''
