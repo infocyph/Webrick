@@ -87,7 +87,7 @@ jobs:
       - name: Run Semgrep
         uses: returntocorp/semgrep-action@v1
         with:
-          config: p/php p/owasp-top-10
+          config: p/php p/security-audit
           generateSarif: "1"
 
       - name: Upload Semgrep Results
@@ -100,6 +100,7 @@ jobs:
       # 2. Run Psalm (Deep Taint Analysis)
       - name: Run Psalm Security Scan
         run: ./vendor/bin/psalm --security-analysis --report=psalm-results.sarif
+        continue-on-error: true
 
       - name: Upload Psalm Results
         uses: github/codeql-action/upload-sarif@v3

@@ -48,7 +48,8 @@
         "pestphp/pest-plugin-drift": "^4.0",
         "psr/log": "^3.0",
         "rector/rector": "^2.2.3",
-        "symfony/var-dumper": "^7.3 || ^8.0"
+        "symfony/var-dumper": "^7.3 || ^8.0",
+        "vimeo/psalm": "^6.16"
     },
     "suggest": {
         "open-telemetry/sdk": "Full OpenTelemetry tracing with automatic span export (auto-detected by TelemetryMiddleware)",
