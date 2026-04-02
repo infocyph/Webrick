@@ -31,7 +31,7 @@ jobs:
         php-versions: ${{ fromJson(needs.prepare.outputs.php_versions) }}
         dependency-version: ${{ fromJson(needs.prepare.outputs.dependency_versions) }}
 
-    name: PHP ${{ matrix.php-versions }} - ${{ matrix.operating-system }} - ${{ matrix.dependency-version }}
+    name: Code Analysis - PHP ${{ matrix.php-versions }} - ${{ matrix.dependency-version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
