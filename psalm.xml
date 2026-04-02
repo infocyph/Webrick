@@ -5,9 +5,6 @@
     xsi:schemaLocation="https://getpsalm.org/schema/config vendor/vimeo/psalm/config.xsd"
     errorLevel="3"
     cacheDirectory=".psalm-cache"
-    reportMixedIssues="false"
-    findUnusedVariables="false"
-    findUnusedCode="false"
 >
     <projectFiles>
         <directory name="src" />
@@ -32,14 +29,6 @@
 
         <!-- HIGH SECURITY ISSUES -->
         <TaintedSSRF errorLevel="info" />
-
-        <!-- Suppress non-security type issues -->
-        <MissingReturnType errorLevel="suppress" />
-        <MissingParamType errorLevel="suppress" />
-        <PropertyNotSetInConstructor errorLevel="suppress" />
-        <MixedArgument errorLevel="suppress" />
-        <UnusedParam errorLevel="suppress" />
-        <UnusedVariable errorLevel="suppress" />
     </issueHandlers>
 
 </psalm>

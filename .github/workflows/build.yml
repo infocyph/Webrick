@@ -49,8 +49,8 @@ jobs:
       - name: Validate Composer
         run: composer validate --strict
 
-      - name: Install dependencies
-        run: composer install --no-interaction --prefer-dist --optimize-autoloader
+      - name: Resolve dependencies (${{ matrix.dependency-version }})
+        run: composer update --no-interaction --prefer-dist --no-progress --${{ matrix.dependency-version }}
 
       - name: Test
         run: composer tests

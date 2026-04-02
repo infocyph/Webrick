@@ -14,5 +14,8 @@ route_cache_examples.php export-ignore
 .htaccess export-ignore
 .gitattributes export-ignore
 webrick export-ignore
+psalm.xml export-ignore
+pest.xml export-ignore
+AGENTS.md export-ignore
 
 *  text eol=lf
