@@ -89,13 +89,14 @@ jobs:
         with:
           config: p/php p/security-audit
           generateSarif: true
+          sarif_file: semgrep.sarif
 
       - name: Upload Semgrep Results
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: semgrep.sarif
           category: "semgrep-${{ matrix.php-versions }}"
-        if: always()
+        if: always() && hashFiles('semgrep.sarif') != ''
 
       # 2. Run Psalm (Deep Taint Analysis)
       - name: Run Psalm Security Scan
@@ -108,4 +109,4 @@ jobs:
         with:
           sarif_file: psalm-results.sarif
           category: "psalm-${{ matrix.php-versions }}"
-        if: always()
+        if: always() && hashFiles('psalm-results.sarif') != ''
