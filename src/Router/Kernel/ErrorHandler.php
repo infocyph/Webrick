@@ -96,6 +96,22 @@ final class ErrorHandler
     }
 
     /**
+     * Build debug-safe exception metadata for response payloads.
+     *
+     * Trace data is intentionally excluded from API/plaintext bodies to reduce
+     * accidental disclosure of internals and avoid propagating tainted content.
+     *
+     * @return array{exception: class-string<Throwable>, file: string}
+     */
+    private function debugMeta(Throwable $e): array
+    {
+        return [
+            'exception' => $e::class,
+            'file' => $e->getFile() . ':' . $e->getLine(),
+        ];
+    }
+
+    /**
      * Extract an Allow header value from a Throwable representing method constraints.
      *
      * Supports:
@@ -341,11 +357,7 @@ final class ErrorHandler
                         $payload['request_id'] = (string)$rid;
                     }
                     if ($this->debug) {
-                        $payload += [
-                            'exception' => $e::class,
-                            'file' => $e->getFile() . ':' . $e->getLine(),
-                            'trace' => explode("\n", $e->getTraceAsString()),
-                        ];
+                        $payload += $this->debugMeta($e);
                     }
                     $headers['Content-Type'] = MediaTypeEnum::PROBLEM_JSON->value;
                     $json = json_encode(
@@ -366,11 +378,7 @@ final class ErrorHandler
                         $payload['request_id'] = (string)$rid;
                     }
                     if ($this->debug) {
-                        $payload += [
-                            'exception' => $e::class,
-                            'file' => $e->getFile() . ':' . $e->getLine(),
-                            'trace' => explode("\n", $e->getTraceAsString()),
-                        ];
+                        $payload += $this->debugMeta($e);
                     }
                     return Response::json($payload, $status, $headers);
                 }
@@ -395,7 +403,6 @@ final class ErrorHandler
                 if ($this->debug) {
                     $lines[] = $e::class;
                     $lines[] = $e->getFile() . ':' . $e->getLine();
-                    $lines[] = $e->getTraceAsString();
                 }
                 return Response::plaintext(implode("\n", $lines), $status, $headers);
         }

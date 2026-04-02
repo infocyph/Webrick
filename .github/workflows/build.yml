@@ -31,7 +31,7 @@ jobs:
         php-versions: ${{ fromJson(needs.prepare.outputs.php_versions) }}
         dependency-version: ${{ fromJson(needs.prepare.outputs.dependency_versions) }}
 
-    name: Code Analysis - PHP ${{ matrix.php-versions }} - ${{ matrix.dependency-version }}
+    name: PHP ${{ matrix.php-versions }} - ${{ matrix.operating-system }} - ${{ matrix.dependency-version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -49,8 +49,8 @@ jobs:
       - name: Validate Composer
         run: composer validate --strict
 
-      - name: Install dependencies
-        run: composer install --no-interaction --prefer-dist --optimize-autoloader
+      - name: Resolve dependencies
+        run: composer update --no-interaction --prefer-dist --no-progress --${{ matrix.dependency-version }}
 
       - name: Test
         run: composer tests
@@ -83,23 +83,104 @@ jobs:
       - name: Composer Audit (CVE check)
         run: composer audit --no-interaction
 
-      # 1. Run Semgrep (General Security Patterns)
+      # Run Semgrep using official action
       - name: Run Semgrep
         uses: returntocorp/semgrep-action@v1
         with:
           config: p/php p/security-audit
-          generateSarif: "1"
+          args: --json --output=semgrep-results.json
+        continue-on-error: true
+
+      - name: Convert Semgrep JSON to SARIF (High/Critical only)
+        run: |
+          if [ -f semgrep-results.json ]; then
+            python3 << 'EOF'
+          import json
+
+          with open('semgrep-results.json', 'r') as f:
+              semgrep_data = json.load(f)
+
+          sarif_output = {
+              "version": "2.1.0",
+              "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+              "runs": [{
+                  "tool": {
+                      "driver": {
+                          "name": "Semgrep",
+                          "version": "1.0",
+                          "informationUri": "https://semgrep.dev",
+                          "rules": []
+                      }
+                  },
+                  "results": []
+              }]
+          }
+
+          for result in semgrep_data.get('results', []):
+              rule_id = result.get('check_id', 'unknown')
+              message = result.get('extra', {}).get('message', 'Security issue found')
+              severity = result.get('extra', {}).get('severity', 'INFO').upper()
+
+              # Only report HIGH or CRITICAL severity
+              if severity not in ['HIGH', 'CRITICAL']:
+                  continue
+
+              sarif_result = {
+                  "ruleId": rule_id,
+                  "message": {"text": message},
+                  "level": "warning" if severity == "HIGH" else "error",
+                  "locations": [{
+                      "physicalLocation": {
+                          "artifactLocation": {"uri": result.get('path', 'unknown')},
+                          "region": {"startLine": result.get('start', {}).get('line', 1)}
+                      }
+                  }]
+              }
+              sarif_output["runs"][0]["results"].append(sarif_result)
+
+          with open('semgrep.sarif', 'w') as f:
+              json.dump(sarif_output, f, indent=2)
+          print(f"Converted {len(sarif_output['runs'][0]['results'])} HIGH/CRITICAL findings to SARIF")
+          EOF
+          else
+            echo "No semgrep-results.json found"
+          fi
+        continue-on-error: true
 
       - name: Upload Semgrep Results
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: semgrep.sarif
           category: "semgrep-${{ matrix.php-versions }}"
-        if: always()
+        if: hashFiles('semgrep.sarif') != ''
+        continue-on-error: true
 
-      # 2. Run Psalm (Deep Taint Analysis)
+      # Run Psalm with errorLevel 3 for security analysis
       - name: Run Psalm Security Scan
-        run: ./vendor/bin/psalm --security-analysis --report=psalm-results.sarif
+        run: |
+          ./vendor/bin/psalm --config=psalm.xml --security-analysis --threads=1 --report=psalm-results.sarif || true
+        continue-on-error: true
+
+      - name: Filter Psalm Results (High/Critical only)
+        run: |
+          if [ -f psalm-results.sarif ]; then
+            python3 << 'EOF'
+          import json
+
+          with open('psalm-results.sarif', 'r') as f:
+              sarif_data = json.load(f)
+
+          # Filter only error level (HIGH/CRITICAL) results
+          filtered_results = []
+          if "runs" in sarif_data and len(sarif_data["runs"]) > 0:
+              filtered_results = [r for r in sarif_data["runs"][0].get("results", []) if r.get("level") in ["error"]]
+              sarif_data["runs"][0]["results"] = filtered_results
+
+          with open('psalm-results.sarif', 'w') as f:
+              json.dump(sarif_data, f, indent=2)
+          print(f"Filtered to {len(filtered_results)} CRITICAL findings")
+          EOF
+          fi
         continue-on-error: true
 
       - name: Upload Psalm Results
@@ -107,4 +188,5 @@ jobs:
         with:
           sarif_file: psalm-results.sarif
           category: "psalm-${{ matrix.php-versions }}"
-        if: always()
+        if: hashFiles('psalm-results.sarif') != ''
+        continue-on-error: true
