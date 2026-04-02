@@ -23,16 +23,16 @@ require dirname(__DIR__) . '/vendor/autoload.php';
  * Small matcher hot-path benchmark using project route sets.
  *
  * Usage examples:
- *   php bench/hello_matchers.php
- *   php bench/hello_matchers.php --iters=1000000 --rounds=8 --warmup=50000
- *   php bench/hello_matchers.php --cache   (cache-only)
- *   php bench/hello_matchers.php --memory  (memory-only)
+ *   php benchmark/hello_matchers.php
+ *   php benchmark/hello_matchers.php --iters=1000000 --rounds=8 --warmup=50000
+ *   php benchmark/hello_matchers.php --cache   (cache-only)
+ *   php benchmark/hello_matchers.php --memory  (memory-only)
  */
 
 $opts = getopt('', ['iters::', 'rounds::', 'warmup::', 'cache', 'memory', 'help']);
 
 if (isset($opts['help'])) {
-    echo "Usage: php bench/hello_matchers.php [--iters=500000] [--rounds=5] [--warmup=20000] [--cache] [--memory]\n";
+    echo "Usage: php benchmark/hello_matchers.php [--iters=500000] [--rounds=5] [--warmup=20000] [--cache] [--memory]\n";
     exit(0);
 }
 
@@ -188,10 +188,9 @@ $totalMatcherTasks = $totalScenarioRuns * 3;
 $scenarioRunNo = 0;
 $completedMatcherTasks = 0;
 
-progress("Planned runs: {$totalScenarioRuns} scenarios, {$totalMatcherTasks} matcher tasks.");
+progressPercent(0, $totalMatcherTasks);
 
 foreach ($modes as $modeLabel => $useCache) {
-    progress("Starting mode '{$modeLabel}' (" . ($useCache ? 'cache-hot' : 'in-memory') . ').');
     $cacheRoot = null;
     if ($useCache) {
         $cacheRoot = dirname(__DIR__) . DIRECTORY_SEPARATOR . '.route-cache'
@@ -199,12 +198,9 @@ foreach ($modes as $modeLabel => $useCache) {
         if (!is_dir($cacheRoot) && !@mkdir($cacheRoot, 0775, true) && !is_dir($cacheRoot)) {
             throw new RuntimeException("Failed to create benchmark cache directory: {$cacheRoot}");
         }
-        progress("Cache root: {$cacheRoot}");
     }
     foreach ($scenarios as $scenario) {
         $scenarioRunNo++;
-        $requestLabel = "{$scenario['method']} {$scenario['host']} {$scenario['path']}";
-        progress("Scenario {$scenarioRunNo}/{$totalScenarioRuns}: {$modeLabel} | {$scenario['route_set']} | {$requestLabel}");
 
         $runMatcher = static function (string $matcherName, callable $factory) use (
             &$completedMatcherTasks,
@@ -213,12 +209,7 @@ foreach ($modes as $modeLabel => $useCache) {
             $rounds,
             $warmup,
             $scenario,
-            $modeLabel,
-            $requestLabel,
         ): array {
-            $taskNo = $completedMatcherTasks + 1;
-            progress("Task {$taskNo}/{$totalMatcherTasks}: {$matcherName} setup");
-
             $result = benchMatcher(
                 $matcherName,
                 $factory,
@@ -229,22 +220,10 @@ foreach ($modes as $modeLabel => $useCache) {
                 host: $scenario['host'],
                 path: $scenario['path'],
                 assertHit: $scenario['assertHit'],
-                progress: static function (string $message) use ($taskNo, $totalMatcherTasks, $matcherName, $modeLabel, $requestLabel): void {
-                    progress("Task {$taskNo}/{$totalMatcherTasks}: {$modeLabel} | {$matcherName} | {$requestLabel} -> {$message}");
-                },
             );
 
             $completedMatcherTasks++;
-            progress(
-                sprintf(
-                    'Task %d/%d: %s done (best %.2f ops/s, %.2f ns/op)',
-                    $completedMatcherTasks,
-                    $totalMatcherTasks,
-                    $matcherName,
-                    $result['best_ops_s'],
-                    $result['best_ns_op'],
-                ),
-            );
+            progressPercent($completedMatcherTasks, $totalMatcherTasks);
 
             return $result;
         };
@@ -343,19 +322,55 @@ foreach ($modes as $modeLabel => $useCache) {
 
     if ($useCache && $cacheRoot !== null) {
         rrmdir($cacheRoot);
-        progress("Cleaned cache root: {$cacheRoot}");
     }
 }
 
+progressPercent($totalMatcherTasks, $totalMatcherTasks, true);
 echo "\n";
 printTable(
     ['Mode', 'Route Set', 'Case', 'Request', 'Fused', 'Generated', 'Sharded', 'Winner'],
     $summaryRows,
 );
 
-function progress(string $message): void
+function progressPercent(int $completed, int $total, bool $forceNewline = false): void
 {
-    echo '[progress] ' . $message . PHP_EOL;
+    static $isTty = null;
+    static $active = false;
+    static $lastWidth = 0;
+    static $lastPercent = -1;
+
+    $total = max(1, $total);
+    $percent = (int) floor(($completed / $total) * 100);
+    $percent = max(0, min(100, $percent));
+    if ($isTty === null) {
+        $isTty = function_exists('stream_isatty') ? stream_isatty(STDOUT) : false;
+    }
+    if ($percent === $lastPercent) {
+        if ($forceNewline && $isTty && $lastWidth > 0) {
+            echo PHP_EOL;
+            $lastWidth = 0;
+        }
+        return;
+    }
+
+    $text = '[progress] ' . $percent . '%';
+
+    if ($isTty) {
+        $len = strlen($text);
+        $pad = $lastWidth > $len ? str_repeat(' ', $lastWidth - $len) : '';
+        echo "\r" . $text . $pad;
+        $lastWidth = max($lastWidth, $len);
+        $active = true;
+        if ($forceNewline) {
+            echo PHP_EOL;
+            $active = false;
+            $lastWidth = 0;
+        }
+    } else {
+        echo $text . PHP_EOL;
+    }
+    $lastPercent = $percent;
+
     if (\function_exists('ob_get_level') && \ob_get_level() > 0) {
         @\ob_flush();
     }
