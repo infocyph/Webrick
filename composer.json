@@ -39,16 +39,16 @@
     "require": {
         "php": ">=8.4",
         "infocyph/arraykit": "^2.03",
-        "infocyph/intermix": "^5.35"
+        "infocyph/intermix": "^6.0",
+        "psr/log": "^3.0.2"
     },
     "require-dev": {
-        "captainhook/captainhook": "^5.29",
+        "captainhook/captainhook": "^5.29.2",
         "laravel/pint": "^1.29",
-        "pestphp/pest": "^4.4",
+        "pestphp/pest": "^4.4.3",
         "pestphp/pest-plugin-drift": "^4.1",
-        "psr/log": "^3.0",
-        "rector/rector": "^2.3",
-        "symfony/var-dumper": "^7.3 || ^8.0",
+        "rector/rector": "^2.3.9",
+        "symfony/var-dumper": "^7.3 || ^8.0.8",
         "vimeo/psalm": "^6.16"
     },
     "suggest": {
@@ -69,7 +69,7 @@
     },
     "scripts": {
         "test:code": "@php vendor/bin/pest --parallel --processes=10",
-        "test:security": "@php vendor/bin/psalm --security-analysis --show-info=false --no-progress --threads=1",
+        "test:security": "@php vendor/bin/psalm --config=psalm.xml --security-analysis --show-info=false --no-progress --threads=1",
         "test:refactor": "@php vendor/bin/rector process --dry-run",
         "test:lint": "@php vendor/bin/pint --test",
         "test:hook": [

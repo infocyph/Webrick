@@ -86,7 +86,6 @@ $kernel  = RouterKernel::bootWithRegistrar(
 - **Large apps** → start with **ShardedMatcher** for graceful hot/warm behavior.
 - **Simple services / serverless** → **FusedMatcher** reduces filesystem chatter.
 - **No filesystem cache requirement** → **GeneratedMatcher**.
-- Default matcher mode can also be set with `WEBRICK_MATCHER_DEFAULT` (`sharded|fused|generated`).
 
 ## Use Cases By Matcher
 
