@@ -82,7 +82,15 @@ $kernel = RouterKernel::bootWithRegistrar(
     registrarOptions: [
         'exposeUrlServices' => true,
         'signKey' => $_ENV['WEBRICK_SIGN_KEY'] ?? 'change-me',
-    ]
+    ],
+    // Optional: InterMix module wiring + tagged globals
+    serviceProviders: [
+        App\Providers\AuthProvider::class,
+        App\Providers\CacheProvider::class,
+    ],
+    preGlobalTags: ['webrick.middleware.pre'],
+    postGlobalTags: ['webrick.middleware.post'],
+    requestScopeEnabled: true,
 );
 
 (new \Infocyph\Webrick\Response\Emitter\AutoEmitter())->emit(

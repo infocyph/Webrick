@@ -16,6 +16,7 @@ Complete reference for routing APIs in Webrick.
 - [Domain Routing](#domain-routing)
 - [URL Generation](#url-generation)
 - [Route Caching](#route-caching)
+- [Kernel DI Integration](#kernel-di-integration)
 
 ---
 
@@ -41,6 +42,41 @@ $kernel = RouterKernel::bootWithRegistrar(
     routeCache: __DIR__ . '/.route-cache',
 );
 ```
+
+---
+
+## Kernel DI Integration
+
+`RouterKernel::bootWithRegistrar()` can be wired directly with InterMix features:
+
+```php
+use Infocyph\InterMix\DI\Container;
+use Infocyph\InterMix\DI\Invoker;
+use App\Providers\AuthProvider;
+use App\Providers\CacheProvider;
+
+$container = Container::instance('intermix');
+$invoker = Invoker::with($container);
+
+$kernel = RouterKernel::bootWithRegistrar(
+    log: new NullLogger(),
+    matcher: ShardedMatcher::make(__DIR__ . '/.route-cache'),
+    register: $register,
+    invoker: $invoker,                         // or container: $container
+    serviceProviders: [
+        AuthProvider::class,
+        CacheProvider::class,
+    ],
+    preGlobalTags: ['webrick.middleware.pre'],
+    postGlobalTags: ['webrick.middleware.post'],
+    requestScopeEnabled: true,                 // enterScope/leaveScope per handle()
+);
+```
+
+Notes:
+- Tagged middleware are appended after explicit `preGlobal` / `postGlobal`.
+- `requestScopeEnabled` binds `Request::class` as scoped for each request lifecycle.
+- `Response::view()` uses the same `intermix` container path as kernel DI by default.
 
 ### Using Facade
 

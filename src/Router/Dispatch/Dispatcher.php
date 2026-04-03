@@ -11,10 +11,8 @@ declare(strict_types=1);
  *    applying route-level overrides when classes/aliases collide.
  *  - Supports middleware alias strings (e.g. "throttle:60,60") via
  *    MiddlewareAliases and resolves them lazily.
- *  - Avoids eager DI instantiation of middleware classes; instantiation or
- *    resolution is deferred to call-time to prevent container/closure issues.
- *
- * This file contains only documentation updates; no behavioural changes are made.
+ *  - Resolves middleware classes through InterMix so constructor DI/lifetimes
+ *    are respected while still deferring resolution to call-time.
  *
  * @package Infocyph\Webrick\Router\Dispatch
  */
@@ -23,6 +21,8 @@ namespace Infocyph\Webrick\Router\Dispatch;
 
 use Closure;
 use Infocyph\InterMix\DI\Invoker;
+use Infocyph\InterMix\DI\Invoker\GenericCall;
+use Infocyph\InterMix\DI\Invoker\InjectedCall;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
@@ -121,8 +121,41 @@ final class Dispatcher
         $invoker = $this->invoker;
 
         // Final handler closure: invoke the route handler via Invoker and normalize to Response.
-        $final = static function (Request $req) use ($route, $vars, $invoker): Response {
-            $result = $invoker->invoke($route->getHandler(), $vars);
+        $final = static function (Request $req) use ($route, $invoker): Response {
+            $handler = $route->getHandler();
+            $routeVars = $req->getAttribute('route_params', []);
+            if (!\is_array($routeVars)) {
+                $routeVars = [];
+            }
+            // Keep route vars first so numeric fallback mapping for untyped
+            // parameters remains stable, then add request for cache key variance.
+            $callArgs = $routeVars + ['request' => $req];
+
+            // Avoid stale return-value reuse on class-method handlers by invoking
+            // the method against a resolved instance callable per request.
+            if (\is_array($handler)
+                && \count($handler) === 2
+                && \is_string($handler[0])
+                && \is_string($handler[1])
+            ) {
+                $result = $invoker->make(
+                    $handler[0],
+                    method: $handler[1],
+                    methodArgs: $callArgs,
+                );
+            } elseif (\is_string($handler) && (\str_contains($handler, '::') || \str_contains($handler, '@'))) {
+                [$class, $method] = \str_contains($handler, '::')
+                    ? \explode('::', $handler, 2)
+                    : \explode('@', $handler, 2);
+
+                if ($class !== '' && $method !== '' && \class_exists($class)) {
+                    $result = $invoker->make($class, method: $method, methodArgs: $callArgs);
+                } else {
+                    $result = $invoker->invoke($handler, $callArgs);
+                }
+            } else {
+                $result = $invoker->invoke($handler, $callArgs);
+            }
 
             // Normalize non-Response results into a JSON response.
             return $result instanceof Response ? $result : Response::json($result);
@@ -190,18 +223,19 @@ final class Dispatcher
                 continue;
             }
 
-            // Class string — instantiate lazily (single instance per process) and require __invoke.
+            // Class string — resolve via InterMix (constructor DI + container lifetime).
             if (\is_string($mw)) {
                 if (!\class_exists($mw)) {
                     throw new InvalidArgumentException("Middleware class '{$mw}' not found.");
                 }
-                $out[] = static function (Request $req, callable $next) use ($mw): Response {
-                    static $instance = null;         // one per process
-                    $instance ??= new $mw();         // avoid using DI container here
+                $out[] = function (Request $req, callable $next) use ($mw): Response {
+                    $instance = $this->instantiateClassViaInterMix($mw);
                     if (!\is_callable($instance)) {
                         throw new InvalidArgumentException("Middleware {$mw} must be invokable (__invoke).");
                     }
-                    return $instance($req, $next);
+
+                    $callable = $instance(...);
+                    return $callable($req, $next);
                 };
                 continue;
             }
@@ -225,6 +259,26 @@ final class Dispatcher
         }
 
         return $out;
+    }
+
+    /**
+     * Check whether a class can be safely constructed with zero arguments.
+     */
+    private function canInstantiateWithoutArguments(string $class): bool
+    {
+        $ref = new \ReflectionClass($class);
+        $ctor = $ref->getConstructor();
+        if ($ctor === null) {
+            return true;
+        }
+
+        foreach ($ctor->getParameters() as $param) {
+            if (!$param->isOptional()) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /* ---------------------------------------------------------------------
@@ -341,6 +395,49 @@ final class Dispatcher
         return $out;
     }
 
+    /**
+     * Build a class instance via InterMix without auto-invoking __invoke.
+     *
+     * InterMix's generic class make/callable paths may auto-call __invoke for
+     * invokable classes. For middleware we only want constructor DI here.
+     *
+     * @param class-string $class
+     * @return object
+     */
+    private function instantiateClassViaInterMix(string $class): object
+    {
+        try {
+            $resolver = $this->invoker->getContainer()->getCurrentResolver();
+            $settled = match (true) {
+                $resolver instanceof InjectedCall => $resolver->classSettler($class, '__webrick_noop__', true),
+                $resolver instanceof GenericCall => $resolver->classSettler($class, '__webrick_noop__'),
+                default => throw new InvalidArgumentException(
+                    \sprintf('Unsupported InterMix resolver type: %s', $resolver::class),
+                ),
+            };
+
+            $instance = \is_array($settled) ? ($settled['instance'] ?? null) : null;
+            if (\is_object($instance)) {
+                return $instance;
+            }
+        } catch (\Throwable $e) {
+            // Some middleware constructors intentionally rely on optional
+            // interface-typed params with scalar defaults. Fall back to
+            // argument-less construction when that is valid.
+            if ($this->canInstantiateWithoutArguments($class)) {
+                return new $class();
+            }
+
+            throw new InvalidArgumentException("Failed to instantiate middleware class '{$class}'.", 0, $e);
+        }
+
+        if ($this->canInstantiateWithoutArguments($class)) {
+            return new $class();
+        }
+
+        throw new InvalidArgumentException("Failed to instantiate middleware class '{$class}'.");
+    }
+
     /* -------------------- alias helpers -------------------- */
 
     /**
@@ -403,18 +500,22 @@ final class Dispatcher
      */
     private function wrapAliasStringAsMiddleware(string $alias): callable
     {
-        return static function (Request $req, Closure $next) use ($alias): Response {
+        return function (Request $req, Closure $next) use ($alias): Response {
             static $resolved = null; // cached resolution per-process
             $resolved ??= MiddlewareAliases::resolveString($alias);
 
             if (\is_string($resolved)) {
-                // Resolved to a class-string → instantiate lazily and require __invoke.
-                static $obj = null;
-                $obj ??= new $resolved();
-                if (!\is_callable($obj)) {
+                if (!\class_exists($resolved)) {
+                    throw new InvalidArgumentException("Middleware class '{$resolved}' not found.");
+                }
+
+                $instance = $this->instantiateClassViaInterMix($resolved);
+                if (!\is_callable($instance)) {
                     throw new InvalidArgumentException("Middleware {$resolved} must be invokable (__invoke).");
                 }
-                return $obj($req, $next);
+
+                $callable = $instance(...);
+                return $callable($req, $next);
             }
 
             if (\is_object($resolved)) {

@@ -5,7 +5,11 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Router\Kernel;
 
 use Closure;
+use Infocyph\InterMix\DI\Container;
 use Infocyph\InterMix\DI\Invoker;
+use Infocyph\InterMix\DI\Support\LifetimeEnum;
+use Infocyph\InterMix\DI\Support\ServiceProviderInterface;
+use Infocyph\InterMix\Exceptions\ContainerException;
 use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Exceptions\{MethodNotAllowedException, RouteNotFoundException};
@@ -80,11 +84,7 @@ final class RouterKernel
      */
     private bool $fallbackAliasesFromRegistrar = true;
 
-    /**
-     * Shared DI invoker used for handler/middleware invocation.
-     *
-     * @var Invoker
-     */
+    /** DI invoker used for handler/middleware invocation. */
     private Invoker $invoker;
 
     /**
@@ -93,6 +93,10 @@ final class RouterKernel
      * @var MatcherInterface
      */
     private MatcherInterface $matcher;
+    /** @var array<int, string> */
+    private array $postGlobalTags = ['webrick.middleware.post'];
+    /** @var array<int, string> */
+    private array $preGlobalTags = ['webrick.middleware.pre'];
 
     /**
      * User-provided route registration callback executed on cold-path warm-up.
@@ -109,6 +113,10 @@ final class RouterKernel
      * @var array<string,mixed>
      */
     private array $registrarOptions;
+    /** Whether to wrap each request in a DI scope lifecycle. */
+    private bool $requestScopeEnabled = true;
+    /** Monotonic counter for per-request scope names. */
+    private int $requestScopeSeq = 0;
 
     /**
      * Path to route cache. Can be a directory (sharded mode) or file (fused mode).
@@ -117,6 +125,8 @@ final class RouterKernel
      * @var string|null
      */
     private ?string $routeCache;
+    /** @var array<int, string|ServiceProviderInterface> */
+    private array $serviceProviders = [];
 
     /**
      * Construct the RouterKernel.
@@ -134,6 +144,12 @@ final class RouterKernel
      * @param ErrorHandler|null $errorHandler Optional custom error handler (defaults created when null)
      * @param Closure|null $bindUrlServices Optional callback to bind URL services after warm-up
      * @param bool|null $fallbackAliasesFromRegistrar Optional override for alias fallback behaviour
+     * @param array<int, string|ServiceProviderInterface> $serviceProviders InterMix service providers to import at boot
+     * @param array<int, string> $preGlobalTags Container tags auto-appended to preGlobal middleware
+     * @param array<int, string> $postGlobalTags Container tags auto-appended to postGlobal middleware
+     * @param bool $requestScopeEnabled Whether to wrap handle() in enterScope/leaveScope lifecycle
+     * @param Container|null $container Optional container to use for kernel DI
+     * @param Invoker|null $invoker Optional invoker to use for kernel DI
      */
     public function __construct(
         private readonly LoggerInterface $log,
@@ -147,19 +163,35 @@ final class RouterKernel
         ?ErrorHandler $errorHandler = null,
         ?Closure $bindUrlServices = null,
         ?bool $fallbackAliasesFromRegistrar = null,
+        array $serviceProviders = [],
+        array $preGlobalTags = ['webrick.middleware.pre'],
+        array $postGlobalTags = ['webrick.middleware.post'],
+        bool $requestScopeEnabled = true,
+        ?Container $container = null,
+        ?Invoker $invoker = null,
     ) {
         $this->routeCache = ($routeCache !== '' ? $routeCache : null);
         $this->bindUrlServices = $bindUrlServices;
         $this->register = $register;
         $this->registrarOptions = $registrarOptions;
         $this->matcher = $matcher;
+        $this->requestScopeEnabled = $requestScopeEnabled;
+        $this->serviceProviders = $serviceProviders;
+        $this->preGlobalTags = $preGlobalTags;
+        $this->postGlobalTags = $postGlobalTags;
         if ($fallbackAliasesFromRegistrar !== null) {
             $this->fallbackAliasesFromRegistrar = $fallbackAliasesFromRegistrar;
         }
 
+        // Keep kernel DI and Response::view() on the same container alias.
+        $this->invoker = $invoker ?? Invoker::with($container ?? Container::instance('intermix'));
+        $this->importServiceProviders();
+
         $this->warm();
 
-        $this->invoker = Invoker::shared();
+        $preGlobal = $this->mergeTaggedGlobals($preGlobal, $this->preGlobalTags);
+        $postGlobal = $this->mergeTaggedGlobals($postGlobal, $this->postGlobalTags);
+
         // Globals are now resolved/applied inside Dispatcher
         $this->dispatcher = new Dispatcher(
             invoker: $this->invoker,
@@ -198,6 +230,12 @@ final class RouterKernel
      * @param ErrorHandler|null $errorHandler Optional error handler override
      * @param Closure|null $bindUrlServices Optional callback to bind URL services
      * @param bool|null $fallbackAliasesFromRegistrar Optional alias fallback behaviour override
+     * @param array<int, string|ServiceProviderInterface> $serviceProviders InterMix service providers to import at boot
+     * @param array<int, string> $preGlobalTags Container tags auto-appended to preGlobal middleware
+     * @param array<int, string> $postGlobalTags Container tags auto-appended to postGlobal middleware
+     * @param bool $requestScopeEnabled Whether to wrap handle() in enterScope/leaveScope lifecycle
+     * @param Container|null $container Optional container to use for kernel DI
+     * @param Invoker|null $invoker Optional invoker to use for kernel DI
      * @return self Configured RouterKernel instance
      */
     public static function bootWithRegistrar(
@@ -212,6 +250,12 @@ final class RouterKernel
         ?ErrorHandler $errorHandler = null,
         ?Closure $bindUrlServices = null,
         ?bool $fallbackAliasesFromRegistrar = null,
+        array $serviceProviders = [],
+        array $preGlobalTags = ['webrick.middleware.pre'],
+        array $postGlobalTags = ['webrick.middleware.post'],
+        bool $requestScopeEnabled = true,
+        ?Container $container = null,
+        ?Invoker $invoker = null,
     ): self {
         $normalizedCache = ($routeCache !== null && $routeCache !== '') ? $routeCache : null;
         if ($normalizedCache !== null && \method_exists($matcher, 'enableCache')) {
@@ -230,6 +274,12 @@ final class RouterKernel
             errorHandler: $errorHandler,
             bindUrlServices: $bindUrlServices,
             fallbackAliasesFromRegistrar: $fallbackAliasesFromRegistrar,
+            serviceProviders: $serviceProviders,
+            preGlobalTags: $preGlobalTags,
+            postGlobalTags: $postGlobalTags,
+            requestScopeEnabled: $requestScopeEnabled,
+            container: $container,
+            invoker: $invoker,
         );
     }
 
@@ -246,14 +296,23 @@ final class RouterKernel
     public function handle(?Request $request = null): Response
     {
         $request ??= Request::fromGlobals();
-        $this->invoker->getContainer()->definitions()->bind(Request::class, $request);
-
         $runner = function (Request $req): Response {
             [$route, $vars] = $this->matchRoute($req);
             return $this->dispatcher->dispatch($route, $req, $vars);
         };
 
-        return $this->errorHandler->handle($request, $runner);
+        $container = $this->invoker->getContainer();
+
+        if (!$this->requestScopeEnabled) {
+            $container->definitions()->bind(Request::class, $request, LifetimeEnum::Singleton);
+            return $this->errorHandler->handle($request, $runner);
+        }
+
+        $scope = 'webrick.request.' . (++$this->requestScopeSeq);
+        return $container->withinScope($scope, function (Container $scoped) use ($request, $runner): Response {
+            $scoped->definitions()->bind(Request::class, $request, LifetimeEnum::Scoped);
+            return $this->errorHandler->handle($request, $runner);
+        });
     }
 
     /**
@@ -413,6 +472,23 @@ final class RouterKernel
     }
 
     /**
+     * Import configured service providers into the kernel container.
+     *
+     * @throws ContainerException
+     */
+    private function importServiceProviders(): void
+    {
+        if ($this->serviceProviders === []) {
+            return;
+        }
+
+        $registration = $this->invoker->getContainer()->registration();
+        foreach ($this->serviceProviders as $provider) {
+            $registration->import($provider);
+        }
+    }
+
+    /**
      * Validate the alias blob structure returned from requireAliasBlob().
      *
      * Expected shape: array with key '_data' whose value is an array.
@@ -443,6 +519,46 @@ final class RouterKernel
         $host = self::normaliseHost($uri->getHost());
         $path = $uri->getPath() ?: '/';
         return $this->matcher->match($method, $host, $path);
+    }
+
+    /**
+     * Append tagged middleware entries from the container to an explicit list.
+     *
+     * @param array<int,mixed> $explicit
+     * @param array<int,string> $tags
+     * @return array<int,mixed>
+     */
+    private function mergeTaggedGlobals(array $explicit, array $tags): array
+    {
+        if ($tags === []) {
+            return $explicit;
+        }
+
+        $tagged = [];
+        $container = $this->invoker->getContainer();
+        $repository = $container->getRepository();
+        $definitions = $repository->getFunctionReference();
+
+        foreach ($tags as $tag) {
+            if (!\is_string($tag) || $tag === '') {
+                continue;
+            }
+
+            try {
+                foreach ($repository->getIdsByTag($tag) as $id) {
+                    if (\array_key_exists($id, $definitions)) {
+                        $tagged[] = $definitions[$id];
+                    }
+                }
+            } catch (\Throwable $e) {
+                $this->log->warning('[router] unable to resolve tagged middleware', [
+                    'tag' => $tag,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return [...$explicit, ...$tagged];
     }
 
     /**

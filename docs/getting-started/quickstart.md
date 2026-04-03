@@ -102,6 +102,23 @@ $kernel = RouterKernel::bootWithRegistrar(
 (new AutoEmitter())->emit($kernel->handle(Request::fromGlobals()));
 ```
 
+Optional InterMix-first wiring in the same bootstrap call:
+
+```php
+$kernel = RouterKernel::bootWithRegistrar(
+    // ... existing options
+    serviceProviders: [
+        App\Providers\AuthProvider::class,
+        App\Providers\CacheProvider::class,
+    ],
+    preGlobalTags: ['webrick.middleware.pre'],
+    postGlobalTags: ['webrick.middleware.post'],
+    requestScopeEnabled: true, // per-request enterScope/leaveScope
+);
+```
+
+`preGlobalTags` / `postGlobalTags` append tagged middleware from InterMix definitions.
+
 > To switch to a **single‑file fused cache**, use `Matching\FusedMatcher::make()` and set `routeCache` to a file (e.g., `.../.route-cache/__routes.php`).
 
 ---
