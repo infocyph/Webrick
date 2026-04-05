@@ -107,59 +107,8 @@ final class Dispatcher
         Request $request,
         array $vars,
     ): Response {
-        // Attach route metadata using a single clone.
-        $attrs = [
-            'route_params' => $vars,
-            'route.params' => $vars,
-            'params' => $vars,
-        ];
-        if (method_exists($route, 'getCorsPolicy') && $corsPolicy = $route->getCorsPolicy()) {
-            $attrs['cors_policy'] = $corsPolicy;
-        }
-        $request = $request->withAttributes($attrs);
-
-        $invoker = $this->invoker;
-
-        // Final handler closure: invoke the route handler via Invoker and normalize to Response.
-        $final = static function (Request $req) use ($route, $invoker): Response {
-            $handler = $route->getHandler();
-            $routeVars = $req->getAttribute('route_params', []);
-            if (!\is_array($routeVars)) {
-                $routeVars = [];
-            }
-            // Keep route vars first so numeric fallback mapping for untyped
-            // parameters remains stable, then add request for cache key variance.
-            $callArgs = $routeVars + ['request' => $req];
-
-            // Avoid stale return-value reuse on class-method handlers by invoking
-            // the method against a resolved instance callable per request.
-            if (\is_array($handler)
-                && \count($handler) === 2
-                && \is_string($handler[0])
-                && \is_string($handler[1])
-            ) {
-                $result = $invoker->make(
-                    $handler[0],
-                    method: $handler[1],
-                    methodArgs: $callArgs,
-                );
-            } elseif (\is_string($handler) && (\str_contains($handler, '::') || \str_contains($handler, '@'))) {
-                [$class, $method] = \str_contains($handler, '::')
-                    ? \explode('::', $handler, 2)
-                    : \explode('@', $handler, 2);
-
-                if ($class !== '' && $method !== '' && \class_exists($class)) {
-                    $result = $invoker->make($class, method: $method, methodArgs: $callArgs);
-                } else {
-                    $result = $invoker->invoke($handler, $callArgs);
-                }
-            } else {
-                $result = $invoker->invoke($handler, $callArgs);
-            }
-
-            // Normalize non-Response results into a JSON response.
-            return $result instanceof Response ? $result : Response::json($result);
-        };
+        $request = $this->attachRouteAttributes($route, $request, $vars);
+        $final = $this->buildFinalHandler($route);
 
         $routeId = $route->getIndex();
 
@@ -196,6 +145,66 @@ final class Dispatcher
     }
 
     /**
+     * @param array<string,mixed> $vars
+     */
+    private function attachRouteAttributes(CompiledRoute $route, Request $request, array $vars): Request
+    {
+        $attrs = [
+            'route_params' => $vars,
+            'route.params' => $vars,
+            'params' => $vars,
+        ];
+        if (\method_exists($route, 'getCorsPolicy')) {
+            $corsPolicy = $route->getCorsPolicy();
+            if ($corsPolicy) {
+                $attrs['cors_policy'] = $corsPolicy;
+            }
+        }
+
+        return $request->withAttributes($attrs);
+    }
+
+    /**
+     * @return Closure(Request):Response
+     */
+    private function buildFinalHandler(CompiledRoute $route): Closure
+    {
+        return function (Request $req) use ($route): Response {
+            $routeVars = $req->getAttribute('route_params', []);
+            if (!\is_array($routeVars)) {
+                $routeVars = [];
+            }
+
+            $callArgs = $routeVars + ['request' => $req];
+            $result = $this->invokeRouteHandler($route->getHandler(), $callArgs);
+            return $result instanceof Response ? $result : Response::json($result);
+        };
+    }
+
+    private function buildInvokableFromEntry(mixed $mw): callable
+    {
+        if ($this->isDirectMiddlewareCallable($mw)) {
+            return $mw(...);
+        }
+
+        if (\is_string($mw) && $this->looksLikeAliasString($mw)) {
+            return $this->wrapAliasStringAsMiddleware($mw);
+        }
+
+        if (\is_string($mw)) {
+            return $this->wrapClassStringAsMiddleware($mw);
+        }
+
+        if (\is_object($mw)) {
+            return $this->wrapObjectAsMiddleware($mw);
+        }
+
+        throw new InvalidArgumentException(
+            \sprintf('Unsupported middleware entry of type %s', \gettype($mw)),
+        );
+    }
+
+    /**
      * Turn a raw list (class|object|callable|alias string) into invokable middleware callables.
      *
      * Each returned callable conforms to: function(Request $req, callable $next): Response
@@ -211,51 +220,7 @@ final class Dispatcher
         $out = [];
 
         foreach ($list as $mw) {
-            // Already a callable (but not a string) — use variadic wrapper to preserve signature.
-            if (\is_callable($mw) && !\is_string($mw)) {
-                $out[] = $mw(...);
-                continue;
-            }
-
-            // Alias string like "throttle:60,60" — wrap into a lazily-resolved middleware.
-            if (\is_string($mw) && $this->looksLikeAliasString($mw)) {
-                $out[] = $this->wrapAliasStringAsMiddleware($mw);
-                continue;
-            }
-
-            // Class string — resolve via InterMix (constructor DI + container lifetime).
-            if (\is_string($mw)) {
-                if (!\class_exists($mw)) {
-                    throw new InvalidArgumentException("Middleware class '{$mw}' not found.");
-                }
-                $out[] = function (Request $req, callable $next) use ($mw): Response {
-                    $instance = $this->instantiateClassViaInterMix($mw);
-                    if (!\is_callable($instance)) {
-                        throw new InvalidArgumentException("Middleware {$mw} must be invokable (__invoke).");
-                    }
-
-                    $callable = $instance(...);
-                    return $callable($req, $next);
-                };
-                continue;
-            }
-
-            // Object instance — must be invokable.
-            if (\is_object($mw)) {
-                if (!\is_callable($mw)) {
-                    throw new InvalidArgumentException(
-                        \sprintf('Middleware object %s is not invokable', $mw::class),
-                    );
-                }
-                // Preserve object invocation semantics.
-                $out[] = static fn (Request $req, Closure $next) => $mw($req, $next);
-                continue;
-            }
-
-            // Anything else is unsupported.
-            throw new InvalidArgumentException(
-                \sprintf('Unsupported middleware entry of type %s', \gettype($mw)),
-            );
+            $out[] = $this->buildInvokableFromEntry($mw);
         }
 
         return $out;
@@ -347,50 +312,9 @@ final class Dispatcher
     {
         $out = [];
         foreach ($globals as $mw) {
-            // class-string
-            if (\is_string($mw) && \class_exists($mw)) {
-                if (isset($routeClasses[$mw])) {
-                    continue;
-                }
+            if ($this->shouldKeepGlobalEntry($mw, $routeClasses)) {
                 $out[] = $mw;
-                continue;
             }
-
-            // object instance
-            if (\is_object($mw)) {
-                if (isset($routeClasses[$mw::class])) {
-                    continue;
-                }
-                $out[] = $mw;
-                continue;
-            }
-
-            // callable (non-string)
-            if (\is_callable($mw) && !\is_string($mw)) {
-                $out[] = $mw;
-                continue;
-            }
-
-            // alias string like "throttle:60,60"
-            if (\is_string($mw) && $this->looksLikeAliasString($mw)) {
-                $cls = $this->aliasStringClass($mw); // null if resolver returns plain callable
-                if ($cls !== null && isset($routeClasses[$cls])) {
-                    // Route overrides this global alias.
-                    continue;
-                }
-                $out[] = $mw;
-                continue;
-            }
-
-            // plain string that is not a recognised alias or class
-            if (\is_string($mw)) {
-                throw new InvalidArgumentException("Middleware class or alias '{$mw}' not found.");
-            }
-
-            // Any other type is unsupported.
-            throw new InvalidArgumentException(
-                \sprintf('Unsupported middleware entry of type %s', \gettype($mw)),
-            );
         }
         return $out;
     }
@@ -438,6 +362,38 @@ final class Dispatcher
         throw new InvalidArgumentException("Failed to instantiate middleware class '{$class}'.");
     }
 
+    /**
+     * @param array<string,mixed> $callArgs
+     */
+    private function invokeRouteHandler(mixed $handler, array $callArgs): mixed
+    {
+        if ($this->isClassMethodArrayHandler($handler)) {
+            return $this->invoker->make($handler[0], method: $handler[1], methodArgs: $callArgs);
+        }
+
+        if (\is_string($handler)) {
+            $resolved = $this->parseClassMethodStringHandler($handler);
+            if ($resolved !== null) {
+                return $this->invoker->make($resolved[0], method: $resolved[1], methodArgs: $callArgs);
+            }
+        }
+
+        return $this->invoker->invoke($handler, $callArgs);
+    }
+
+    private function isClassMethodArrayHandler(mixed $handler): bool
+    {
+        return \is_array($handler)
+            && \count($handler) === 2
+            && \is_string($handler[0])
+            && \is_string($handler[1]);
+    }
+
+    private function isDirectMiddlewareCallable(mixed $mw): bool
+    {
+        return \is_callable($mw) && !\is_string($mw);
+    }
+
     /* -------------------- alias helpers -------------------- */
 
     /**
@@ -459,6 +415,26 @@ final class Dispatcher
         $name = \strtolower(\trim(\explode(':', $s, 2)[0] ?? ''));
 
         return $name !== '' && MiddlewareAliases::has($name);
+    }
+
+    /**
+     * @return array{0:string,1:string}|null
+     */
+    private function parseClassMethodStringHandler(string $handler): ?array
+    {
+        if (!\str_contains($handler, '::') && !\str_contains($handler, '@')) {
+            return null;
+        }
+
+        [$class, $method] = \str_contains($handler, '::')
+            ? \explode('::', $handler, 2)
+            : \explode('@', $handler, 2);
+
+        if ($class === '' || $method === '' || !\class_exists($class)) {
+            return null;
+        }
+
+        return [$class, $method];
     }
 
     /**
@@ -485,6 +461,37 @@ final class Dispatcher
             }
         }
         return $set;
+    }
+
+    /**
+     * @param array<string,true> $routeClasses
+     */
+    private function shouldKeepGlobalEntry(mixed $mw, array $routeClasses): bool
+    {
+        if (\is_string($mw) && \class_exists($mw)) {
+            return !isset($routeClasses[$mw]);
+        }
+
+        if (\is_object($mw)) {
+            return !isset($routeClasses[$mw::class]);
+        }
+
+        if ($this->isDirectMiddlewareCallable($mw)) {
+            return true;
+        }
+
+        if (\is_string($mw) && $this->looksLikeAliasString($mw)) {
+            $cls = $this->aliasStringClass($mw);
+            return $cls === null || !isset($routeClasses[$cls]);
+        }
+
+        if (\is_string($mw)) {
+            throw new InvalidArgumentException("Middleware class or alias '{$mw}' not found.");
+        }
+
+        throw new InvalidArgumentException(
+            \sprintf('Unsupported middleware entry of type %s', \gettype($mw)),
+        );
     }
 
     /**
@@ -534,5 +541,33 @@ final class Dispatcher
 
             throw new InvalidArgumentException("Failed to resolve middleware alias '{$alias}'.");
         };
+    }
+
+    private function wrapClassStringAsMiddleware(string $mw): callable
+    {
+        if (!\class_exists($mw)) {
+            throw new InvalidArgumentException("Middleware class '{$mw}' not found.");
+        }
+
+        return function (Request $req, callable $next) use ($mw): Response {
+            $instance = $this->instantiateClassViaInterMix($mw);
+            if (!\is_callable($instance)) {
+                throw new InvalidArgumentException("Middleware {$mw} must be invokable (__invoke).");
+            }
+
+            $callable = $instance(...);
+            return $callable($req, $next);
+        };
+    }
+
+    private function wrapObjectAsMiddleware(object $mw): callable
+    {
+        if (!\is_callable($mw)) {
+            throw new InvalidArgumentException(
+                \sprintf('Middleware object %s is not invokable', $mw::class),
+            );
+        }
+
+        return static fn (Request $req, Closure $next) => $mw($req, $next);
     }
 }

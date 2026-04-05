@@ -328,6 +328,74 @@ final class CacheControl implements \Stringable
         return $this->with('stale-while-revalidate', $s);
     }
 
+    /**
+     * @param list<string> $parts
+     * @param array<string,string|null> $ext
+     */
+    private static function appendExtensionTokens(array &$parts, array $ext): void
+    {
+        if ($ext === []) {
+            return;
+        }
+
+        ksort($ext);
+        foreach ($ext as $k => $v) {
+            $parts[] = $v === null ? $k : "{$k}={$v}";
+        }
+    }
+
+    /**
+     * @param list<string> $parts
+     * @param array<string,true> $fields
+     */
+    private static function appendFieldToken(array &$parts, bool $enabled, string $name, array $fields): void
+    {
+        if ($enabled) {
+            $parts[] = self::renderFieldToken($name, $fields);
+        }
+    }
+
+    /**
+     * @param list<string> $parts
+     */
+    private static function appendFlagToken(array &$parts, bool $enabled, string $token): void
+    {
+        if ($enabled) {
+            $parts[] = $token;
+        }
+    }
+
+    /**
+     * @param list<string> $parts
+     * @param array{max-age:?int,s-maxage:?int,stale-while-revalidate:?int,stale-if-error:?int} $nums
+     */
+    private static function appendNumericTokens(array &$parts, array $nums): void
+    {
+        foreach (self::NUM_TOKENS as $k => $_) {
+            $v = $nums[$k];
+            if ($v !== null) {
+                $parts[] = $k . '=' . $v;
+            }
+        }
+    }
+
+    /**
+     * @param list<string> $parts
+     * @param array{public:bool,private:bool} $privacy
+     * @param array{no-cache:array<string,true>,private:array<string,true>} $fields
+     */
+    private static function appendPrivacyToken(array &$parts, array $privacy, array $fields): void
+    {
+        if ($privacy['private']) {
+            $parts[] = self::renderFieldToken('private', $fields['private']);
+            return;
+        }
+
+        if ($privacy['public']) {
+            $parts[] = 'public';
+        }
+    }
+
 
     /**
      * Applies the rules of the no-store directive on the Cache-Control model.
@@ -341,6 +409,56 @@ final class CacheControl implements \Stringable
                 $base['nums'][$n] = null;
             }
             $base['bools']['immutable'] = false;
+        }
+    }
+
+    /**
+     * @return array{
+     *   bools: array{
+     *     no-store:bool, no-cache:bool, no-transform:bool, must-revalidate:bool, proxy-revalidate:bool, immutable:bool
+     *   },
+     *   privacy: array{ public:bool, private:bool },
+     *   nums: array{ max-age:?int, s-maxage:?int, stale-while-revalidate:?int, stale-if-error:?int },
+     *   fields: array{ no-cache: array<string,true>, private: array<string,true> },
+     *   ext: array<string,string|null>
+     * }
+     */
+    private static function emptyModel(): array
+    {
+        return [
+            'bools' => [
+                'no-store' => false,
+                'no-cache' => false,
+                'no-transform' => false,
+                'must-revalidate' => false,
+                'proxy-revalidate' => false,
+                'immutable' => false,
+            ],
+            'privacy' => ['public' => false, 'private' => false],
+            'nums' => [
+                'max-age' => null,
+                's-maxage' => null,
+                'stale-while-revalidate' => null,
+                'stale-if-error' => null,
+            ],
+            'fields' => ['no-cache' => [], 'private' => []],
+            'ext' => [],
+        ];
+    }
+
+    private static function ingestBareToken(array &$m, string $k): void
+    {
+        if (isset(self::PRIVACY_TOKENS[$k])) {
+            $m['privacy'][$k] = true;
+            return;
+        }
+        if (isset(self::BOOL_TOKENS[$k])) {
+            $m['bools'][$k] = true;
+            return;
+        }
+
+        if (!\array_key_exists($k, $m['ext'])) {
+            $m['ext'][$k] = null;
         }
     }
 
@@ -360,6 +478,52 @@ final class CacheControl implements \Stringable
             if ($f !== '') {
                 $dst[$f] = true;
             }
+        }
+    }
+
+    private static function ingestModelToken(array &$m, string $raw): void
+    {
+        $tok = \trim($raw);
+        if ($tok === '') {
+            return;
+        }
+
+        $eq = \strpos($tok, '=');
+        if ($eq === false) {
+            self::ingestBareToken($m, \strtolower($tok));
+            return;
+        }
+
+        $k = \strtolower(\trim(\substr($tok, 0, $eq)));
+        $v = \trim(\trim(\substr($tok, $eq + 1)), "\"'");
+        self::ingestValuedToken($m, $k, $v);
+    }
+
+    private static function ingestValuedToken(array &$m, string $k, string $v): void
+    {
+        if (isset(self::NUM_TOKENS[$k])) {
+            $num = self::toIntOrNull($v);
+            $m['nums'][$k] = self::minInt($m['nums'][$k], $num);
+            return;
+        }
+
+        if (isset(self::FIELD_TOKENS[$k]) && $v !== '') {
+            $m['bools'][$k] = true;
+            self::ingestCsvFields($m['fields'][$k], $v);
+            return;
+        }
+
+        if (isset(self::PRIVACY_TOKENS[$k])) {
+            $m['privacy'][$k] = true;
+            return;
+        }
+        if (isset(self::BOOL_TOKENS[$k])) {
+            $m['bools'][$k] = true;
+            return;
+        }
+
+        if (!\array_key_exists($k, $m['ext'])) {
+            $m['ext'][$k] = $v;
         }
     }
 
@@ -475,44 +639,16 @@ final class CacheControl implements \Stringable
     {
         $parts = [];
 
-        if ($m['bools']['no-store']) {
-            $parts[] = 'no-store';
-        }
-        if ($m['bools']['no-cache']) {
-            $parts[] = self::renderFieldToken('no-cache', $m['fields']['no-cache']);
-        }
-        if ($m['privacy']['private']) {
-            $parts[] = self::renderFieldToken('private', $m['fields']['private']);
-        }
-        if ($m['privacy']['public'] && !$m['privacy']['private']) {
-            $parts[] = 'public';
-        }
-        if ($m['bools']['no-transform']) {
-            $parts[] = 'no-transform';
-        }
-        if ($m['bools']['must-revalidate']) {
-            $parts[] = 'must-revalidate';
-        }
-        if ($m['bools']['proxy-revalidate']) {
-            $parts[] = 'proxy-revalidate';
-        }
-        if ($m['bools']['immutable']) {
-            $parts[] = 'immutable';
+        self::appendFlagToken($parts, (bool)$m['bools']['no-store'], 'no-store');
+        self::appendFieldToken($parts, (bool)$m['bools']['no-cache'], 'no-cache', $m['fields']['no-cache']);
+        self::appendPrivacyToken($parts, $m['privacy'], $m['fields']);
+
+        foreach (['no-transform', 'must-revalidate', 'proxy-revalidate', 'immutable'] as $token) {
+            self::appendFlagToken($parts, (bool)$m['bools'][$token], $token);
         }
 
-        foreach (self::NUM_TOKENS as $k => $_) {
-            $v = $m['nums'][$k];
-            if ($v !== null) {
-                $parts[] = $k . '=' . $v;
-            }
-        }
-
-        if ($m['ext'] !== []) {
-            ksort($m['ext']);
-            foreach ($m['ext'] as $k => $v) {
-                $parts[] = $v === null ? $k : "$k=$v";
-            }
-        }
+        self::appendNumericTokens($parts, $m['nums']);
+        self::appendExtensionTokens($parts, $m['ext']);
 
         return implode(', ', $parts);
     }
@@ -558,73 +694,13 @@ final class CacheControl implements \Stringable
      */
     private static function parseModel(string $line): array
     {
-        $m = [
-            'bools' => [
-                'no-store' => false,
-                'no-cache' => false,
-                'no-transform' => false,
-                'must-revalidate' => false,
-                'proxy-revalidate' => false,
-                'immutable' => false,
-            ],
-            'privacy' => ['public' => false, 'private' => false],
-            'nums' => [
-                'max-age' => null,
-                's-maxage' => null,
-                'stale-while-revalidate' => null,
-                'stale-if-error' => null,
-            ],
-            'fields' => ['no-cache' => [], 'private' => []],
-            'ext' => [],
-        ];
+        $m = self::emptyModel();
         if ($line === '') {
             return $m;
         }
 
         foreach (self::splitCsvRespectingQuotes($line) as $raw) {
-            $tok = trim($raw);
-            if ($tok === '') {
-                continue;
-            }
-
-            $eq = strpos($tok, '=');
-            if ($eq === false) {
-                $k = strtolower($tok);
-                if (isset(self::PRIVACY_TOKENS[$k])) {
-                    $m['privacy'][$k] = true;
-                } elseif (isset(self::BOOL_TOKENS[$k])) {
-                    $m['bools'][$k] = true;
-                } else {
-                    // extension flag without value
-                    if (!array_key_exists($k, $m['ext'])) {
-                        $m['ext'][$k] = null;
-                    }
-                }
-                continue;
-            }
-
-            $k = strtolower(trim(substr($tok, 0, $eq)));
-            $vRaw = trim(substr($tok, $eq + 1));
-            $v = trim($vRaw, "\"'");
-
-            if (isset(self::NUM_TOKENS[$k])) {
-                $num = self::toIntOrNull($v);
-                $m['nums'][$k] = self::minInt($m['nums'][$k], $num);
-            } elseif (isset(self::FIELD_TOKENS[$k]) && $v !== '') {
-                $m['bools'][$k] = true; // e.g., no-cache, private
-                self::ingestCsvFields($m['fields'][$k], $v);
-            } elseif (isset(self::BOOL_TOKENS[$k]) || isset(self::PRIVACY_TOKENS[$k])) {
-                // boolean with ignored value (rare)
-                if (isset(self::PRIVACY_TOKENS[$k])) {
-                    $m['privacy'][$k] = true;
-                } else {
-                    $m['bools'][$k] = true;
-                }
-            } else {
-                if (!array_key_exists($k, $m['ext'])) {
-                    $m['ext'][$k] = $v;
-                } // keep first; incoming may override
-            }
+            self::ingestModelToken($m, $raw);
         }
 
         return $m;

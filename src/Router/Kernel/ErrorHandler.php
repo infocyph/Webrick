@@ -96,6 +96,32 @@ final class ErrorHandler
     }
 
     /**
+     * @return array<string,string>
+     */
+    private function buildRenderHeaders(Request $req, Throwable $e, int $status): array
+    {
+        $headers = [
+            'Cache-Control' => 'no-store',
+            'X-Content-Type-Options' => 'nosniff',
+            'Vary' => 'Accept',
+        ];
+
+        $rid = $this->resolveRequestId($req);
+        if ($rid !== '') {
+            $headers[$this->requestIdHeader] = $rid;
+        }
+
+        if ($status === StatusEnum::METHOD_NOT_ALLOWED->value) {
+            $allow = $this->extractAllow($e);
+            if ($allow !== null && $allow !== '') {
+                $headers['Allow'] = $allow;
+            }
+        }
+
+        return $headers;
+    }
+
+    /**
      * Build debug-safe exception metadata for response payloads.
      *
      * Trace data is intentionally excluded from API/plaintext bodies to reduce
@@ -306,31 +332,10 @@ final class ErrorHandler
     {
         $statusEnum = StatusEnum::tryFrom($status) ?? StatusEnum::INTERNAL_SERVER_ERROR;
         $reason = $statusEnum->reason();
+        $wanted = $this->resolveRenderType($req);
+        $headers = $this->buildRenderHeaders($req, $e, $status);
+        $rid = $this->resolveRequestId($req);
 
-        $wanted = (string)$req->getAttribute('negotiated.type');
-        if ($wanted === '') {
-            $accept = strtolower($req->getHeaderLine('Accept'));
-            $wanted = $this->pickType($accept);
-        }
-
-        $headers = [
-            'Cache-Control' => 'no-store',
-            'X-Content-Type-Options' => 'nosniff',
-            'Vary' => 'Accept',
-        ];
-
-        $rid = $req->getAttribute('request_id') ?: $req->getHeaderLine($this->requestIdHeader);
-        if (is_string($rid) && $rid !== '') {
-            $headers[$this->requestIdHeader] = $rid;
-        }
-
-        if ($status === StatusEnum::METHOD_NOT_ALLOWED->value) {
-            if ($allow = $this->extractAllow($e)) {
-                $headers['Allow'] = $allow;
-            }
-        }
-
-        // HEAD must not include a body regardless of status.
         if (HttpMethodEnum::normalize($req->getMethod()) === HttpMethodEnum::HEAD->value) {
             return Response::empty($status, $headers);
         }
@@ -338,74 +343,156 @@ final class ErrorHandler
         $public = $reason;
         $msg = $this->debug ? ($e->getMessage() ?: $public) : $public;
 
-        // Some status codes (e.g. 204, 304) do not allow bodies.
         if (!$statusEnum->allowsBody()) {
             return Response::empty($status, $headers);
         }
 
+        return $this->renderByType(
+            $wanted,
+            $req,
+            $e,
+            $status,
+            $reason,
+            $msg,
+            $rid,
+            $headers,
+        );
+    }
+
+    /**
+     * @param array<string,string> $headers
+     */
+    private function renderByType(
+        string $wanted,
+        Request $req,
+        Throwable $e,
+        int $status,
+        string $reason,
+        string $msg,
+        string $rid,
+        array $headers,
+    ): Response {
         switch ($wanted) {
             case MediaTypeEnum::PROBLEM_JSON->value:
-                {
-                    $payload = [
-                        'type' => 'about:blank',
-                        'title' => $reason,
-                        'status' => $status,
-                        'detail' => $msg,
-                        'instance' => (string)$req->getUri()->getPath(),
-                    ];
-                    if ($rid) {
-                        $payload['request_id'] = (string)$rid;
-                    }
-                    if ($this->debug) {
-                        $payload += $this->debugMeta($e);
-                    }
-                    $headers['Content-Type'] = MediaTypeEnum::PROBLEM_JSON->value;
-                    $json = json_encode(
-                        $payload,
-                        JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE | JSON_UNESCAPED_SLASHES,
-                    );
-                    return Response::create($json === false ? '{}' : $json, $status, $headers);
-                }
+                return $this->renderProblemJson($req, $e, $status, $reason, $msg, $rid, $headers);
 
             case MediaTypeEnum::JSON->value:
-                {
-                    $payload = [
-                        'error' => $msg,
-                        'code' => $status,
-                        'reason' => $reason,
-                    ];
-                    if ($rid) {
-                        $payload['request_id'] = (string)$rid;
-                    }
-                    if ($this->debug) {
-                        $payload += $this->debugMeta($e);
-                    }
-                    return Response::json($payload, $status, $headers);
-                }
+                return $this->renderJson($e, $status, $reason, $msg, $rid, $headers);
 
             case MediaTypeEnum::XML->value:
             case 'text/xml':
                 $headers['Content-Type'] = MediaTypeEnum::XML->value;
-                $xml = $this->xmlError($status, $reason, $msg, (string)$rid, $e);
+                $xml = $this->xmlError($status, $reason, $msg, $rid, $e);
                 return Response::create($xml, $status, $headers);
 
             case MediaTypeEnum::HTML->base():
                 $headers['Content-Type'] = MediaTypeEnum::HTML->value;
-                $html = $this->htmlError($status, $reason, $msg, (string)$rid, $e);
+                $html = $this->htmlError($status, $reason, $msg, $rid, $e);
                 return Response::create($html, $status, $headers);
 
             default:
-                $headers['Content-Type'] = MediaTypeEnum::PLAIN->value;
-                $lines = ["{$status} {$reason}", $msg];
-                if ($rid) {
-                    $lines[] = "Request-Id: {$rid}";
-                }
-                if ($this->debug) {
-                    $lines[] = $e::class;
-                    $lines[] = $e->getFile() . ':' . $e->getLine();
-                }
-                return Response::plaintext(implode("\n", $lines), $status, $headers);
+                return $this->renderPlain($e, $status, $reason, $msg, $rid, $headers);
         }
+    }
+
+    /**
+     * @param array<string,string> $headers
+     */
+    private function renderJson(
+        Throwable $e,
+        int $status,
+        string $reason,
+        string $msg,
+        string $rid,
+        array $headers,
+    ): Response {
+        $payload = [
+            'error' => $msg,
+            'code' => $status,
+            'reason' => $reason,
+        ];
+        if ($rid !== '') {
+            $payload['request_id'] = $rid;
+        }
+        if ($this->debug) {
+            $payload += $this->debugMeta($e);
+        }
+        return Response::json($payload, $status, $headers);
+    }
+
+    /**
+     * @param array<string,string> $headers
+     */
+    private function renderPlain(
+        Throwable $e,
+        int $status,
+        string $reason,
+        string $msg,
+        string $rid,
+        array $headers,
+    ): Response {
+        $headers['Content-Type'] = MediaTypeEnum::PLAIN->value;
+        $lines = ["{$status} {$reason}", $msg];
+        if ($rid !== '') {
+            $lines[] = "Request-Id: {$rid}";
+        }
+        if ($this->debug) {
+            $lines[] = $e::class;
+            $lines[] = $e->getFile() . ':' . $e->getLine();
+        }
+
+        return Response::plaintext(implode("\n", $lines), $status, $headers);
+    }
+
+    /**
+     * @param array<string,string> $headers
+     */
+    private function renderProblemJson(
+        Request $req,
+        Throwable $e,
+        int $status,
+        string $reason,
+        string $msg,
+        string $rid,
+        array $headers,
+    ): Response {
+        $payload = [
+            'type' => 'about:blank',
+            'title' => $reason,
+            'status' => $status,
+            'detail' => $msg,
+            'instance' => (string)$req->getUri()->getPath(),
+        ];
+        if ($rid !== '') {
+            $payload['request_id'] = $rid;
+        }
+        if ($this->debug) {
+            $payload += $this->debugMeta($e);
+        }
+
+        $headers['Content-Type'] = MediaTypeEnum::PROBLEM_JSON->value;
+        $json = \json_encode(
+            $payload,
+            JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE | JSON_UNESCAPED_SLASHES,
+        );
+        return Response::create($json === false ? '{}' : $json, $status, $headers);
+    }
+
+    private function resolveRenderType(Request $req): string
+    {
+        $wanted = (string)$req->getAttribute('negotiated.type');
+        if ($wanted !== '') {
+            return $wanted;
+        }
+
+        $accept = strtolower($req->getHeaderLine('Accept'));
+        return $this->pickType($accept);
+    }
+
+    private function resolveRequestId(Request $req): string
+    {
+        $rid = $req->getAttribute('request_id') ?: $req->getHeaderLine($this->requestIdHeader);
+        return \is_string($rid) ? $rid : '';
     }
 
     /* ───────────────────── status + logging ───────────────────── */

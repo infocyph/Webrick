@@ -59,47 +59,11 @@ final class VaryAccumulatorMiddleware
     {
         $resp = $next($req);
 
-        // If downstream already declared Vary: * then nothing to do.
         if (self::hasStar($resp->getHeaderLine('Vary'))) {
             return $resp;
         }
 
-        // Start with downstream tokens (if any)
-        $tokens = self::normalize(self::splitTokens($resp->getHeaderLine('Vary')));
-
-        // Merge explicitly registered tokens from the request
-        $pending = $req->getAttribute(self::ATTR);
-        if (is_array($pending) && $pending !== []) {
-            $tokens = self::merge($tokens, self::normalize($pending));
-        }
-
-        // ── Auto-infer from final response ─────────────────────────
-
-        // Encoding implies Accept-Encoding variance
-        if ($resp->hasHeader('Content-Encoding')) {
-            $tokens = self::merge($tokens, ['Accept-Encoding']);
-        }
-
-        // If we declare a content language, we likely varied by Accept-Language
-        if ($resp->hasHeader('Content-Language')) {
-            $tokens = self::merge($tokens, ['Accept-Language']);
-        }
-
-        // CORS: if ACAO is reflected (not "*"), vary by Origin (and preflight headers for OPTIONS)
-        $acao = trim($resp->getHeaderLine('Access-Control-Allow-Origin'));
-        if ($acao !== '' && $acao !== '*') {
-            $tokens = self::merge($tokens, ['Origin']);
-
-            // Preflight: vary on Access-Control-Request-Method/Headers when present
-            if (HttpMethodEnum::normalize($req->getMethod()) === HttpMethodEnum::OPTIONS->value) {
-                if ($req->getHeaderLine('Access-Control-Request-Method') !== '') {
-                    $tokens = self::merge($tokens, ['Access-Control-Request-Method']);
-                }
-                if ($req->getHeaderLine('Access-Control-Request-Headers') !== '') {
-                    $tokens = self::merge($tokens, ['Access-Control-Request-Headers']);
-                }
-            }
-        }
+        $tokens = $this->collectMergedTokens($req, $resp);
 
         if ($tokens === []) {
             return $resp->getHeaderLine('Vary') === '' ? $resp : $resp->withoutHeader('Vary');
@@ -275,5 +239,54 @@ final class VaryAccumulatorMiddleware
             }
         }
         return $out;
+    }
+
+    /**
+     * @return array<int,string>
+     */
+    private function collectMergedTokens(Request $req, Response $resp): array
+    {
+        $tokens = self::normalize(self::splitTokens($resp->getHeaderLine('Vary')));
+
+        $pending = $req->getAttribute(self::ATTR);
+        if (\is_array($pending) && $pending !== []) {
+            $tokens = self::merge($tokens, self::normalize($pending));
+        }
+
+        return self::merge($tokens, $this->inferAutoTokens($req, $resp));
+    }
+
+    /**
+     * @return array<int,string>
+     */
+    private function inferAutoTokens(Request $req, Response $resp): array
+    {
+        $tokens = [];
+
+        if ($resp->hasHeader('Content-Encoding')) {
+            $tokens[] = 'Accept-Encoding';
+        }
+        if ($resp->hasHeader('Content-Language')) {
+            $tokens[] = 'Accept-Language';
+        }
+
+        $acao = trim($resp->getHeaderLine('Access-Control-Allow-Origin'));
+        if ($acao === '' || $acao === '*') {
+            return $tokens;
+        }
+
+        $tokens[] = 'Origin';
+        if (HttpMethodEnum::normalize($req->getMethod()) !== HttpMethodEnum::OPTIONS->value) {
+            return $tokens;
+        }
+
+        if ($req->getHeaderLine('Access-Control-Request-Method') !== '') {
+            $tokens[] = 'Access-Control-Request-Method';
+        }
+        if ($req->getHeaderLine('Access-Control-Request-Headers') !== '') {
+            $tokens[] = 'Access-Control-Request-Headers';
+        }
+
+        return $tokens;
     }
 }

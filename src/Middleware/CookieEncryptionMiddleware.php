@@ -211,7 +211,33 @@ final class CookieEncryptionMiddleware
      */
     private function applyAttrs(Cookie $cookie, array $attrs): Cookie
     {
-        // original attrs (best effort)
+        $cookie = $this->applyPathDomainAndExpiryAttrs($cookie, $attrs);
+        $cookie = $this->applySameSiteAttr($cookie, $attrs);
+        return $this->applySecurityAttrs($cookie, $attrs);
+    }
+
+    /**
+     * @param array<string,bool|string> $attrs
+     */
+    private function applyHttpOnlyAttr(Cookie $cookie, array $attrs): Cookie
+    {
+        if (!method_exists($cookie, 'httpOnly')) {
+            return $cookie;
+        }
+
+        $hasHttpOnly = (isset($attrs['httponly']) && $attrs['httponly'] === true) || $this->hasFlag($attrs, 'httponly');
+        if ($this->forceHttpOnly || $hasHttpOnly) {
+            return $cookie->httpOnly();
+        }
+
+        return $cookie;
+    }
+
+    /**
+     * @param array<string,bool|string> $attrs
+     */
+    private function applyPathDomainAndExpiryAttrs(Cookie $cookie, array $attrs): Cookie
+    {
         if (isset($attrs['path']) && method_exists($cookie, 'path')) {
             $cookie = $cookie->path($attrs['path']);
         }
@@ -222,33 +248,57 @@ final class CookieEncryptionMiddleware
             $cookie = $cookie->maxAge((int)$attrs['max-age']);
         }
         if (isset($attrs['expires']) && method_exists($cookie, 'expires')) {
-            $ts = strtotime($attrs['expires']);
+            $ts = strtotime((string)$attrs['expires']);
             if ($ts !== false) {
-                $cookie = $cookie->expires(new DateTimeImmutable("@$ts"));
+                $cookie = $cookie->expires(new DateTimeImmutable("@{$ts}"));
             }
-        }
-        if (isset($attrs['samesite']) && method_exists($cookie, 'sameSite')) {
-            $cookie = $cookie->sameSite($attrs['samesite']);
-        } elseif ($this->defaultSameSite !== null && method_exists($cookie, 'sameSite')) {
-            $cookie = $cookie->sameSite($this->defaultSameSite);
-        }
-
-        $hasSecure = (isset($attrs['secure']) && $attrs['secure'] === true) || $this->hasFlag($attrs, 'secure');
-        $hasHttpOnly = (isset($attrs['httponly']) && $attrs['httponly'] === true) || $this->hasFlag($attrs, 'httponly');
-
-        if (($this->forceSecure || $this->isSameSiteNone($attrs)) && method_exists($cookie, 'secure')) {
-            $cookie = $cookie->secure();
-        } elseif ($hasSecure && method_exists($cookie, 'secure')) {
-            $cookie = $cookie->secure();
-        }
-
-        if ($this->forceHttpOnly && method_exists($cookie, 'httpOnly')) {
-            $cookie = $cookie->httpOnly();
-        } elseif ($hasHttpOnly && method_exists($cookie, 'httpOnly')) {
-            $cookie = $cookie->httpOnly();
         }
 
         return $cookie;
+    }
+
+    /**
+     * @param array<string,bool|string> $attrs
+     */
+    private function applySameSiteAttr(Cookie $cookie, array $attrs): Cookie
+    {
+        if (!method_exists($cookie, 'sameSite')) {
+            return $cookie;
+        }
+
+        if (isset($attrs['samesite'])) {
+            return $cookie->sameSite((string)$attrs['samesite']);
+        }
+
+        return $this->defaultSameSite !== null
+            ? $cookie->sameSite($this->defaultSameSite)
+            : $cookie;
+    }
+
+    /**
+     * @param array<string,bool|string> $attrs
+     */
+    private function applySecureAttr(Cookie $cookie, array $attrs): Cookie
+    {
+        if (!method_exists($cookie, 'secure')) {
+            return $cookie;
+        }
+
+        $hasSecure = (isset($attrs['secure']) && $attrs['secure'] === true) || $this->hasFlag($attrs, 'secure');
+        if ($this->forceSecure || $this->isSameSiteNone($attrs) || $hasSecure) {
+            return $cookie->secure();
+        }
+
+        return $cookie;
+    }
+
+    /**
+     * @param array<string,bool|string> $attrs
+     */
+    private function applySecurityAttrs(Cookie $cookie, array $attrs): Cookie
+    {
+        $cookie = $this->applySecureAttr($cookie, $attrs);
+        return $this->applyHttpOnlyAttr($cookie, $attrs);
     }
 
     /**
@@ -347,88 +397,21 @@ final class CookieEncryptionMiddleware
      */
     private function decrypt(string $baseName, string $cipher): mixed
     {
-        // server-side store indirection
-        if (str_starts_with($cipher, self::MODE_STORE)) {
-            $stored = $this->fromStore(substr($cipher, 2));
-            if (!is_string($stored)) {
-                return null;
-            }
-
-            // New format: "C1:<chk>:<b64cipher>"
-            if (str_starts_with($stored, self::STORE_BLOB_V1)) {
-                $decoded = $this->decodeCacheBlobV1($stored);
-                if ($decoded === null) {
-                    return null; // checksum/prefix invalid or malformed
-                }
-                $cipher = $decoded; // validated base64 ciphertext string
-            } else {
-                // Back-compat: pre-V1 cache could contain either ciphertext (base64) or plaintext.
-                $maybeRaw = base64_decode($stored, true);
-                if ($maybeRaw === false) {
-                    // Legacy plaintext path — return as-is.
-                    return $stored;
-                }
-                $cipher = $stored; // legacy cached ciphertext (no version/checksum)
-            }
+        $resolved = $this->resolveCipherInput($cipher);
+        if ($resolved['hasPlain']) {
+            return $resolved['plain'];
         }
 
-        $raw = base64_decode($cipher, true);
-        if ($raw === false) {
+        if (!\is_string($resolved['cipher'])) {
             return null;
         }
 
-        // v1 or legacy?
-        $off = 0;
-        $isV1 = (isset($raw[0]) && $raw[0] === self::V1_BYTE);
-        if ($isV1) {
-            $off = 1;
-        }
-
-        $mode = $raw[$off] ?? null;
-        $off += 1;
-        $kid = $isV1 ? (ord($raw[$off] ?? "\x00")) : null;
-        $off += $isV1 ? 1 : 0;
-
-        $iv = substr($raw, $off, 12);
-        $off += 12;
-        $tag = substr($raw, $off, 16);
-        $off += 16;
-        $ct = substr($raw, $off);
-
-        if ($mode === null || strlen($iv) !== 12 || strlen($tag) !== 16) {
+        $frame = $this->parseCipherFrame($resolved['cipher']);
+        if ($frame === null) {
             return null;
         }
 
-        // pick key by KID (v1) or try ring (legacy/no kid)
-        $keysToTry = [];
-        if ($kid !== null && isset($this->keys[$kid])) {
-            $keysToTry[] = [$kid, $this->keys[$kid]];
-        } else {
-            foreach ($this->keys as $i => $k) {
-                $keysToTry[] = [$i, $k];
-            }
-        }
-
-        foreach ($keysToTry as [$useKid, $key]) {
-            $pt = openssl_decrypt(
-                $ct,
-                'aes-256-gcm',
-                $key,
-                OPENSSL_RAW_DATA,
-                $iv,
-                $tag,
-                $this->aad($baseName, (int)$useKid, $mode),   // AAD binds name+kid+mode
-            );
-            if ($pt !== false) {
-                $decoded = $this->decompress($mode, $pt);
-                if ($decoded === false || $decoded === null) {
-                    continue;
-                }
-                return $decoded;
-            }
-        }
-
-        return null; // auth failed with all keys
+        return $this->decryptFrame($baseName, $frame);
     }
 
     /* ───────────── decrypt path ───────────── */
@@ -467,6 +450,60 @@ final class CookieEncryptionMiddleware
         }
 
         return $out;
+    }
+
+    private function decryptAndDecompress(
+        string $baseName,
+        string $mode,
+        int $kid,
+        string $key,
+        string $iv,
+        string $tag,
+        string $ct,
+    ): mixed {
+        $pt = \openssl_decrypt(
+            $ct,
+            'aes-256-gcm',
+            $key,
+            OPENSSL_RAW_DATA,
+            $iv,
+            $tag,
+            $this->aad($baseName, $kid, $mode),
+        );
+
+        if ($pt === false) {
+            return null;
+        }
+
+        $decoded = $this->decompress($mode, $pt);
+        if ($decoded === false || $decoded === null) {
+            return null;
+        }
+
+        return $decoded;
+    }
+
+    /**
+     * @param array{mode:string,kid:?int,iv:string,tag:string,ct:string} $frame
+     */
+    private function decryptFrame(string $baseName, array $frame): mixed
+    {
+        foreach ($this->keysToTry($frame['kid']) as [$useKid, $key]) {
+            $decoded = $this->decryptAndDecompress(
+                $baseName,
+                $frame['mode'],
+                (int)$useKid,
+                (string)$key,
+                $frame['iv'],
+                $frame['tag'],
+                $frame['ct'],
+            );
+            if ($decoded !== null) {
+                return $decoded;
+            }
+        }
+
+        return null;
     }
 
     /* ───────────── cache blob helpers ───────────── */
@@ -652,6 +689,69 @@ final class CookieEncryptionMiddleware
         return strcasecmp((string)$attrs['samesite'], 'none') === 0;
     }
 
+    /**
+     * @return list<array{0:int,1:string}>
+     */
+    private function keysToTry(?int $kid): array
+    {
+        if ($kid !== null && isset($this->keys[$kid])) {
+            return [[$kid, $this->keys[$kid]]];
+        }
+
+        $keys = [];
+        foreach ($this->keys as $i => $k) {
+            $keys[] = [$i, $k];
+        }
+
+        return $keys;
+    }
+
+    /**
+     * @return array{mode:string,kid:?int,iv:string,tag:string,ct:string}|null
+     */
+    private function parseCipherFrame(string $cipher): ?array
+    {
+        $raw = \base64_decode($cipher, true);
+        if ($raw === false) {
+            return null;
+        }
+
+        $off = 0;
+        $isV1 = isset($raw[0]) && $raw[0] === self::V1_BYTE;
+        if ($isV1) {
+            $off = 1;
+        }
+
+        $mode = $raw[$off] ?? null;
+        if (!\is_string($mode) || $mode === '') {
+            return null;
+        }
+        $off += 1;
+
+        $kid = null;
+        if ($isV1) {
+            $kidByte = $raw[$off] ?? "\x00";
+            $kid = \ord($kidByte);
+            $off += 1;
+        }
+
+        $iv = \substr($raw, $off, 12);
+        $off += 12;
+        $tag = \substr($raw, $off, 16);
+        $off += 16;
+        if (\strlen($iv) !== 12 || \strlen($tag) !== 16) {
+            return null;
+        }
+
+        return [
+            'mode' => $mode,
+            'kid' => $kid,
+            'iv' => $iv,
+            'tag' => $tag,
+            'ct' => \substr($raw, $off),
+        ];
+    }
+
     /* ───────────── helpers ───────────── */
 
     /**
@@ -681,5 +781,31 @@ final class CookieEncryptionMiddleware
             $attrs[$k] = $v;
         }
         return [trim($name), $value, $attrs];
+    }
+
+    /**
+     * @return array{cipher:?string,plain:mixed,hasPlain:bool}
+     */
+    private function resolveCipherInput(string $cipher): array
+    {
+        if (!\str_starts_with($cipher, self::MODE_STORE)) {
+            return ['cipher' => $cipher, 'plain' => null, 'hasPlain' => false];
+        }
+
+        $stored = $this->fromStore(\substr($cipher, 2));
+        if (!\is_string($stored)) {
+            return ['cipher' => null, 'plain' => null, 'hasPlain' => false];
+        }
+
+        if (\str_starts_with($stored, self::STORE_BLOB_V1)) {
+            $decoded = $this->decodeCacheBlobV1($stored);
+            return ['cipher' => $decoded, 'plain' => null, 'hasPlain' => false];
+        }
+
+        if (\base64_decode($stored, true) === false) {
+            return ['cipher' => null, 'plain' => $stored, 'hasPlain' => true];
+        }
+
+        return ['cipher' => $stored, 'plain' => null, 'hasPlain' => false];
     }
 }

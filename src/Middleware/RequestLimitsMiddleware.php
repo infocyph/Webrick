@@ -84,65 +84,19 @@ final readonly class RequestLimitsMiddleware
      */
     public function __invoke(Request $req, Closure $next): Response
     {
-        /* ── 0) header fields count → 431 ───────────────────────── */
-        if ($this->maxHeaderCount > 0) {
-            $fields = $this->totalHeaderFields($req);
-            if ($fields > $this->maxHeaderCount) {
-                $resp = Response::plaintext('Too many header fields', StatusEnum::REQUEST_HEADER_FIELDS_TOO_LARGE->value);
-                return $this->withConnCloseIfHttp1($req, $resp);
-            }
+        $resp = $this->rejectForHeaderFieldCount($req);
+        if ($resp !== null) {
+            return $resp;
         }
 
-        /* ── 1) headers total size → 431 ────────────────────────── */
-        if ($this->maxHeaderBytes > 0) {
-            $hdrBytes = $this->totalHeaderBytes($req);
-            if ($hdrBytes > $this->maxHeaderBytes) {
-                $resp = Response::plaintext('Request headers too large', StatusEnum::REQUEST_HEADER_FIELDS_TOO_LARGE->value);
-                return $this->withConnCloseIfHttp1($req, $resp);
-            }
+        $resp = $this->rejectForHeaderBytes($req);
+        if ($resp !== null) {
+            return $resp;
         }
 
-        /* ── 2) body size → 413 (by Content-Length; don't pre-reject chunked) ─ */
-        $limit = $this->resolveBodyLimit();
-        if ($limit > 0 && \in_array(HttpMethodEnum::normalize($req->getMethod()), $this->bodyLimitVerbs, true)) {
-            $cl = trim($req->getHeaderLine('Content-Length'));
-
-            // Detect presence of a transfer-coding (e.g., "chunked").
-            // Per RFC, HTTP/2 may legitimately send "TE: trailers" which is NOT a transfer-coding;
-            // ignore that token for this purpose.
-            $teLine = strtolower($req->getHeaderLine('Transfer-Encoding'));
-            $hasTransferCoding = false;
-            if ($teLine !== '') {
-                foreach (explode(',', $teLine) as $tok) {
-                    $tok = trim($tok);
-                    if ($tok !== '' && $tok !== 'identity' && $tok !== 'trailers') {
-                        $hasTransferCoding = true; // e.g., "chunked"
-                        break;
-                    }
-                }
-            }
-
-            if ($hasTransferCoding) {
-                // Length unknown up front (chunked/other coding) → do not 413 pre-emptively.
-                // Let downstream read/stream and enforce limits there if needed.
-            } elseif ($cl !== '') {
-                $len = $this->parseContentLength($cl);
-                if ($len === null) {
-                    $resp = Response::plaintext('Invalid Content-Length header.', StatusEnum::BAD_REQUEST->value);
-                    return $this->withConnCloseIfHttp1($req, $resp);
-                }
-                if ($len > $limit) {
-                    $resp = Response::plaintext(
-                        'Payload exceeds maximum allowed size.',
-                        StatusEnum::PAYLOAD_TOO_LARGE->value,
-                    );
-                    return $this->withConnCloseIfHttp1($req, $resp);
-                }
-            } elseif ($this->violateOnUnknownBody) {
-                // No Content-Length and no transfer-coding ⇒ treat as violation (conservative).
-                $resp = Response::plaintext('Payload exceeds maximum allowed size.', StatusEnum::PAYLOAD_TOO_LARGE->value);
-                return $this->withConnCloseIfHttp1($req, $resp);
-            }
+        $resp = $this->rejectForBodyLimit($req);
+        if ($resp !== null) {
+            return $resp;
         }
 
         return $next($req);
@@ -174,6 +128,28 @@ final readonly class RequestLimitsMiddleware
         };
     }
 
+    private function appliesBodyLimitToMethod(Request $req): bool
+    {
+        return \in_array(HttpMethodEnum::normalize($req->getMethod()), $this->bodyLimitVerbs, true);
+    }
+
+    private function hasTransferCoding(Request $req): bool
+    {
+        $teLine = \strtolower($req->getHeaderLine('Transfer-Encoding'));
+        if ($teLine === '') {
+            return false;
+        }
+
+        foreach (\explode(',', $teLine) as $tok) {
+            $tok = \trim($tok);
+            if ($tok !== '' && $tok !== 'identity' && $tok !== 'trailers') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /**
      * Parse Content-Length as a strict non-negative integer.
      *
@@ -188,6 +164,70 @@ final readonly class RequestLimitsMiddleware
 
         $value = filter_var($raw, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
         return $value === false ? PHP_INT_MAX : (int)$value;
+    }
+
+    private function payloadTooLargeResponse(Request $req): Response
+    {
+        $resp = Response::plaintext(
+            'Payload exceeds maximum allowed size.',
+            StatusEnum::PAYLOAD_TOO_LARGE->value,
+        );
+        return $this->withConnCloseIfHttp1($req, $resp);
+    }
+
+    private function rejectForBodyLimit(Request $req): ?Response
+    {
+        $limit = $this->resolveBodyLimit();
+        if ($limit <= 0 || !$this->appliesBodyLimitToMethod($req)) {
+            return null;
+        }
+
+        if ($this->hasTransferCoding($req)) {
+            return null;
+        }
+
+        $cl = trim($req->getHeaderLine('Content-Length'));
+        if ($cl === '') {
+            return $this->violateOnUnknownBody
+                ? $this->payloadTooLargeResponse($req)
+                : null;
+        }
+
+        $len = $this->parseContentLength($cl);
+        if ($len === null) {
+            $resp = Response::plaintext('Invalid Content-Length header.', StatusEnum::BAD_REQUEST->value);
+            return $this->withConnCloseIfHttp1($req, $resp);
+        }
+
+        return $len > $limit ? $this->payloadTooLargeResponse($req) : null;
+    }
+
+    private function rejectForHeaderBytes(Request $req): ?Response
+    {
+        if ($this->maxHeaderBytes <= 0) {
+            return null;
+        }
+
+        if ($this->totalHeaderBytes($req) <= $this->maxHeaderBytes) {
+            return null;
+        }
+
+        $resp = Response::plaintext('Request headers too large', StatusEnum::REQUEST_HEADER_FIELDS_TOO_LARGE->value);
+        return $this->withConnCloseIfHttp1($req, $resp);
+    }
+
+    private function rejectForHeaderFieldCount(Request $req): ?Response
+    {
+        if ($this->maxHeaderCount <= 0) {
+            return null;
+        }
+
+        if ($this->totalHeaderFields($req) <= $this->maxHeaderCount) {
+            return null;
+        }
+
+        $resp = Response::plaintext('Too many header fields', StatusEnum::REQUEST_HEADER_FIELDS_TOO_LARGE->value);
+        return $this->withConnCloseIfHttp1($req, $resp);
     }
 
     /* ───────────────────────── helpers ─────────────────────────── */
