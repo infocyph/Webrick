@@ -38,7 +38,7 @@
     },
     "require": {
         "php": ">=8.4",
-        "infocyph/arraykit": "^2.03",
+        "infocyph/arraykit": "^2.03 || ^3.0",
         "infocyph/intermix": "^5.35"
     },
     "require-dev": {
