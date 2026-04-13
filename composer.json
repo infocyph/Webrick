@@ -39,7 +39,7 @@
     "require": {
         "php": ">=8.4",
         "infocyph/arraykit": "^2.03",
-        "infocyph/intermix": "^5.35"
+        "infocyph/intermix": "^5.35 || ^7.0"
     },
     "require-dev": {
         "captainhook/captainhook": "^5.29",
