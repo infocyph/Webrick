@@ -6,8 +6,6 @@
  * Thrown when an HTTP request targets a path/verb combination that does not
  * resolve to any registered route. Carries the attempted verb and requested
  * path to aid error handling and diagnostics.
- *
- * @package Infocyph\Webrick\Exceptions
  */
 
 declare(strict_types=1);

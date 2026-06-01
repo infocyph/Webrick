@@ -38,9 +38,6 @@ abstract class BaseEmitter implements EmitterInterface
      * of at most {@see CHUNK_SIZE} bytes until the stream is exhausted.
      *
      * If the response body is not a stream, it will be emitted in its entirety.
-     *
-     * @param Response $response
-     * @param null|Request $request
      */
     public function emit(Response $response, ?Request $request = null): void
     {
@@ -52,18 +49,21 @@ abstract class BaseEmitter implements EmitterInterface
 
         if (!$this->shouldEmitBody($response, $request)) {
             $this->finish();
+
             return;
         }
 
         if ($isStreaming) {
             $this->emitStreaming($response);
             $this->finish();
+
             return;
         }
 
         if ($this->isSmallTempStream($body, $size)) {
             $this->emitSmall($body);
             $this->finish();
+
             return;
         }
 
@@ -83,7 +83,8 @@ abstract class BaseEmitter implements EmitterInterface
     protected function allowsBodyForCurrentRequest(Response $response): bool
     {
         $code = $response->getStatusCode();
-        $method = HttpMethodEnum::normalize((string)($this->serverVar('REQUEST_METHOD') ?? HttpMethodEnum::GET->value));
+        $method = HttpMethodEnum::normalize((string) ($this->serverVar('REQUEST_METHOD') ?? HttpMethodEnum::GET->value));
+
         return !\in_array($code, [StatusEnum::NO_CONTENT->value, StatusEnum::NOT_MODIFIED->value], true)
             && $method !== HttpMethodEnum::HEAD->value;
     }
@@ -127,7 +128,7 @@ abstract class BaseEmitter implements EmitterInterface
         if ($body->isSeekable()) {
             $body->rewind();
         }
-        $this->write((string)$body);
+        $this->write((string) $body);
     }
 
     /**
@@ -160,10 +161,11 @@ abstract class BaseEmitter implements EmitterInterface
                     break;
                 }
             }
+
             return;
         }
 
-        $this->write((string)$out);
+        $this->write((string) $out);
     }
 
     /**
@@ -171,15 +173,14 @@ abstract class BaseEmitter implements EmitterInterface
      *
      * @param Response $response The response to filter headers from
      * @param bool $isHttp2 Whether the response is being sent over HTTP/2
-     *
      * @return \Generator<array{0:string, 1:string}> A generator that yields headers to send
      */
     protected function filteredHeaderIterator(Response $response, bool $isHttp2): \Generator
     {
         foreach ($response->getHeaders() as $name => $values) {
-            $lname = strtolower($name);
+            $lname = strtolower((string) $name);
             foreach ($values as $v) {
-                $value = (string)$v;
+                $value = (string) $v;
                 if ($this->shouldSendHeader($lname, $value, $isHttp2)) {
                     yield [$name, $value];
                 }
@@ -198,15 +199,18 @@ abstract class BaseEmitter implements EmitterInterface
     protected function finish(): void
     {
         if (\function_exists('fastcgi_finish_request')) {
-            @fastcgi_finish_request();
+            fastcgi_finish_request();
+
             return;
         }
         if (\function_exists('litespeed_finish_request')) {
-            @litespeed_finish_request();
+            litespeed_finish_request();
+
             return;
         }
         if (\function_exists('frankenphp_finish_request')) {
-            @frankenphp_finish_request();
+            frankenphp_finish_request();
+
             return;
         }
     }
@@ -244,6 +248,7 @@ abstract class BaseEmitter implements EmitterInterface
             return false;
         }
         $meta = $body->getMetadata();
+
         return isset($meta['uri']) && is_string($meta['uri']) && str_starts_with($meta['uri'], 'php://temp');
     }
 
@@ -258,9 +263,9 @@ abstract class BaseEmitter implements EmitterInterface
     protected function reduceOutputBuffering(): void
     {
         while (ob_get_level() > 0) {
-            @ob_end_flush();
+            ob_end_flush();
         }
-        @ob_implicit_flush(true);
+        ob_implicit_flush(true);
     }
 
     /**
@@ -282,7 +287,6 @@ abstract class BaseEmitter implements EmitterInterface
      * If the response body is allowed and the emitter wants to send the response body chunked,
      * sets the Transfer-Encoding: chunked header.
      *
-     * @param Response $response
      * @param int|null $size the known size of the response body, or null if unknown
      * @param bool $isStreaming whether the response body is a streaming resource
      */
@@ -307,10 +311,10 @@ abstract class BaseEmitter implements EmitterInterface
 
         // Content-Length if known and allowed
         if (
-            $allowsBody && !$isStreaming && $size !== null &&
-            !$response->hasHeader('Content-Length')
+            $allowsBody && !$isStreaming && $size !== null
+            && !$response->hasHeader('Content-Length')
         ) {
-            $this->sendRawHeader('Content-Length', (string)$size);
+            $this->sendRawHeader('Content-Length', (string) $size);
         }
 
         // Transfer-Encoding: chunked — opt-in only in emitters that need it.
@@ -325,9 +329,6 @@ abstract class BaseEmitter implements EmitterInterface
      * This method is a low-level output method that should only be used by
      * advanced users who know what they are doing. Most users should use
      * the higher-level `withHeader()` method instead.
-     *
-     * @param string $name
-     * @param string $value
      */
     protected function sendRawHeader(string $name, string $value): void
     {
@@ -338,17 +339,19 @@ abstract class BaseEmitter implements EmitterInterface
      * Returns the HTTP protocol version of the current request.
      *
      * Fallback value is 'HTTP/1.1' if the $_SERVER['SERVER_PROTOCOL'] is not set.
+     *
      * @return string The HTTP protocol version of the current request.
      */
     protected function serverProtocol(): string
     {
-        return (string)($_SERVER['SERVER_PROTOCOL'] ?? 'HTTP/1.1');
+        return (string) ($_SERVER['SERVER_PROTOCOL'] ?? 'HTTP/1.1');
     }
 
     /**
      * Retrieves a value from the $_SERVER superglobal.
      *
      * If `$name` is `null`, returns the entire $_SERVER array.
+     *
      * @param string|null $name The key to retrieve from $_SERVER.
      * @return mixed The value associated with the key or the entire $_SERVER array if `$name` is `null`.
      */
@@ -363,8 +366,6 @@ abstract class BaseEmitter implements EmitterInterface
      * This method is a low-level response method that should only be used by
      * advanced users who know what they are doing. Most users should use
      * the higher-level `withStatus()` method instead.
-     *
-     * @param int $code
      */
     protected function setStatusCode(int $code): void
     {
@@ -386,8 +387,9 @@ abstract class BaseEmitter implements EmitterInterface
             return false;
         }
         $method = HttpMethodEnum::normalize(
-            (string)($request?->getMethod() ?? ($this->serverVar('REQUEST_METHOD') ?? HttpMethodEnum::GET->value)),
+            (string) ($request?->getMethod() ?? ($this->serverVar('REQUEST_METHOD') ?? HttpMethodEnum::GET->value)),
         );
+
         return $method !== HttpMethodEnum::HEAD->value;
     }
 
@@ -414,6 +416,7 @@ abstract class BaseEmitter implements EmitterInterface
         if ($lowerName === 'te' && strtolower(trim($value)) !== 'trailers') {
             return false;
         }
+
         return true;
     }
 
@@ -448,6 +451,6 @@ abstract class BaseEmitter implements EmitterInterface
      */
     protected function write(string $chunk): void
     {
-        echo $chunk;
+        file_put_contents('php://output', $chunk, FILE_APPEND);
     }
 }

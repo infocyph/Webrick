@@ -16,7 +16,7 @@ function responseWithCookie(
     string $path = '/',
     ?string $domain = null
 ): Response {
-    $jar = new CookieJar();
+    $jar = new CookieJar;
     $cookie = Cookie::make($name, $value);
 
     if ($maxAge > 0) {
@@ -32,6 +32,7 @@ function responseWithCookie(
     }
 
     $jar = $jar->add($cookie);
+
     return $jar->apply(Response::create(''));
 }
 
@@ -41,6 +42,6 @@ function responseWithCookie(
 function htmlResponse(string $html, int $status = 200): Response
 {
     return Response::create($html, $status, [
-        'Content-Type' => 'text/html; charset=utf-8'
+        'Content-Type' => 'text/html; charset=utf-8',
     ]);
 }

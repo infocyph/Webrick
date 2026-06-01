@@ -15,18 +15,15 @@ use Traversable;
  */
 final class UploadedFileCollection implements ArrayAccess, Countable, IteratorAggregate
 {
-    /** @var array<string, UploadedFile|UploadedFile[]> */
-    private array $bag;
-
     /**
      * Constructs a new UploadedFileCollection.
      *
-     * @param array<string,UploadedFile|UploadedFile[]> $files An associative array of uploaded files.
-     *   Key is the name of the field, value is either an UploadedFile or an array of UploadedFile objects.
+     * @param array<string, UploadedFile|UploadedFile[]> $bag An associative array of uploaded files.
+     *                                                        Key is the name of the field, value is either an UploadedFile or an array of UploadedFile objects.
      */
-    public function __construct(array $files = [])
+    public function __construct(private array $bag = [])
     {
-        $this->bag = $files; // assume already normalised
+        // assume already normalised
     }
 
     /**
@@ -41,8 +38,6 @@ final class UploadedFileCollection implements ArrayAccess, Countable, IteratorAg
 
     /**
      * Returns the number of uploaded files in the collection.
-     *
-     * @return int
      */
     public function count(): int
     {

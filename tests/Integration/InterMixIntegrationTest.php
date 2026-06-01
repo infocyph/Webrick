@@ -15,7 +15,7 @@ use Infocyph\Webrick\Router\Matching\FusedMatcher;
 use Psr\Container\ContainerInterface;
 use Psr\Log\NullLogger;
 
-if (!class_exists('InterMixFreshController', false)) {
+if (! class_exists('InterMixFreshController', false)) {
     final readonly class InterMixFreshController
     {
         public function hello(string $name): Response
@@ -25,68 +25,60 @@ if (!class_exists('InterMixFreshController', false)) {
     }
 }
 
-if (!class_exists('InterMixMiddlewareDependency', false)) {
+if (! class_exists('InterMixMiddlewareDependency', false)) {
     final readonly class InterMixMiddlewareDependency
     {
-        public function __construct(public string $marker)
-        {
-        }
+        public function __construct(public string $marker) {}
     }
 }
 
-if (!class_exists('InterMixNeedsDiMiddleware', false)) {
+if (! class_exists('InterMixNeedsDiMiddleware', false)) {
     final readonly class InterMixNeedsDiMiddleware
     {
-        public function __construct(private InterMixMiddlewareDependency $dep)
-        {
-        }
+        public function __construct(private InterMixMiddlewareDependency $dep) {}
 
-        public function __invoke(Request $request, \Closure $next): Response
+        public function __invoke(Request $request, Closure $next): Response
         {
             return $next($request)->withHeader('X-DI-Marker', $this->dep->marker);
         }
     }
 }
 
-if (!class_exists('InterMixProvidedService', false)) {
+if (! class_exists('InterMixProvidedService', false)) {
     final readonly class InterMixProvidedService
     {
-        public function __construct(public string $value)
-        {
-        }
+        public function __construct(public string $value) {}
     }
 }
 
-if (!class_exists('InterMixScopedMarker', false)) {
+if (! class_exists('InterMixScopedMarker', false)) {
     final readonly class InterMixScopedMarker
     {
-        public function __construct(public string $id)
-        {
-        }
+        public function __construct(public string $id) {}
     }
 }
 
-if (!class_exists('InterMixTaggedPreMiddleware', false)) {
+if (! class_exists('InterMixTaggedPreMiddleware', false)) {
     final readonly class InterMixTaggedPreMiddleware
     {
-        public function __invoke(Request $request, \Closure $next): Response
+        public function __invoke(Request $request, Closure $next): Response
         {
             return $next($request)->withHeader('X-Tagged-Pre', 'yes');
         }
     }
 }
 
-if (!class_exists('InterMixTaggedPostMiddleware', false)) {
+if (! class_exists('InterMixTaggedPostMiddleware', false)) {
     final readonly class InterMixTaggedPostMiddleware
     {
-        public function __invoke(Request $request, \Closure $next): Response
+        public function __invoke(Request $request, Closure $next): Response
         {
             return $next($request)->withHeader('X-Tagged-Post', 'yes');
         }
     }
 }
 
-if (!class_exists('InterMixTestProvider', false)) {
+if (! class_exists('InterMixTestProvider', false)) {
     final readonly class InterMixTestProvider implements ServiceProviderInterface
     {
         public function register(Container $container): void
@@ -121,9 +113,9 @@ if (!class_exists('InterMixTestProvider', false)) {
 }
 
 /**
- * @param array<string,mixed> $options
+ * @param  array<string,mixed>  $options
  */
-function intermixKernelForTest(\Closure $register, array $preGlobal = [], array $options = []): RouterKernel
+function intermixKernelForTest(Closure $register, array $preGlobal = [], array $options = []): RouterKernel
 {
     $defaults = [
         'serviceProviders' => [],
@@ -136,7 +128,7 @@ function intermixKernelForTest(\Closure $register, array $preGlobal = [], array 
     $opts = $options + $defaults;
 
     return RouterKernel::bootWithRegistrar(
-        log: new NullLogger(),
+        log: new NullLogger,
         matcher: FusedMatcher::make(),
         register: $register,
         routeCache: null,
@@ -173,8 +165,8 @@ describe('InterMix integration', function () {
         $r1 = $kernel->handle(mockRequest('GET', '/class/rest/Alice'));
         $r2 = $kernel->handle(mockRequest('GET', '/class/rest/Bob'));
 
-        $b1 = json_decode((string)$r1->getBody(), true);
-        $b2 = json_decode((string)$r2->getBody(), true);
+        $b1 = json_decode((string) $r1->getBody(), true);
+        $b2 = json_decode((string) $r2->getBody(), true);
 
         expect($r1)->not->toBe($r2)
             ->and($b1['hello'] ?? null)->toBe('Alice')
@@ -231,16 +223,17 @@ describe('InterMix integration', function () {
     it('uses the same container for route DI and Response::view', function () {
         $kernel = intermixKernelForTest(static function (Registrar $r): void {
             $r->get('/view', static function (ContainerInterface $container): Response {
-                if (!$container instanceof Container) {
+                if (! $container instanceof Container) {
                     throw new RuntimeException('Expected InterMix container instance.');
                 }
 
                 $container->definitions()->bind(
                     ViewFactoryInterface::class,
-                    new class implements ViewFactoryInterface {
+                    new class implements ViewFactoryInterface
+                    {
                         public function render(string $view, array $data = []): string
                         {
-                            return "<h1>{$view}: " . ($data['name'] ?? 'n/a') . '</h1>';
+                            return "<h1>{$view}: ".($data['name'] ?? 'n/a').'</h1>';
                         }
                     },
                     LifetimeEnum::Singleton,
@@ -254,7 +247,7 @@ describe('InterMix integration', function () {
 
         expect($response)
             ->toHaveStatus(200)
-            ->and((string)$response->getBody())->toContain('hello: Ada');
+            ->and((string) $response->getBody())->toContain('hello: Ada');
     });
 
     it('imports service providers during kernel boot', function () {
@@ -270,7 +263,7 @@ describe('InterMix integration', function () {
         );
 
         $response = $kernel->handle(mockRequest('GET', '/provider'));
-        $body = json_decode((string)$response->getBody(), true);
+        $body = json_decode((string) $response->getBody(), true);
 
         expect($response)
             ->toHaveStatus(200)
@@ -312,8 +305,8 @@ describe('InterMix integration', function () {
         $r1 = $kernel->handle(mockRequest('GET', '/scope'));
         $r2 = $kernel->handle(mockRequest('GET', '/scope'));
 
-        $b1 = json_decode((string)$r1->getBody(), true);
-        $b2 = json_decode((string)$r2->getBody(), true);
+        $b1 = json_decode((string) $r1->getBody(), true);
+        $b2 = json_decode((string) $r2->getBody(), true);
 
         expect($r1)->toHaveStatus(200)
             ->and($r2)->toHaveStatus(200)

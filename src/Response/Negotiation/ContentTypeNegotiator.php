@@ -60,6 +60,7 @@ final class ContentTypeNegotiator
         }
 
         $neg = new ContentNegotiator($headers);
+
         return $neg->preferred($supported) ?? null;
     }
 }

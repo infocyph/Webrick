@@ -8,8 +8,6 @@
  * - Optionally enforces expiry with configurable leeway.
  * - Reconstructs the canonical payload (path + sorted query) and verifies the HMAC.
  * - Returns an appropriate plaintext Response on failure; delegates to next on success.
- *
- * @package Infocyph\Webrick\Middleware
  */
 
 declare(strict_types=1);
@@ -42,8 +40,7 @@ final readonly class VerifySignedUrlMiddleware
     public function __construct(
         private string $secret,
         private int|string $leeway = 0,
-    ) {
-    }
+    ) {}
 
     /**
      * Verify the request's signed URL and optionally its expiration.
@@ -55,11 +52,10 @@ final readonly class VerifySignedUrlMiddleware
      * 4) On success, delegate to the next middleware/handler.
      *
      * @param Request $request The incoming HTTP request.
-     * @param Closure $next The next handler in the middleware chain.
-     *
-     * @return mixed A Response on failure or the result of the next handler on success.
+     * @param Closure(Request):Response $next
+     * @return Response A Response on failure or the next handler's response on success.
      */
-    public function __invoke(Request $request, Closure $next)
+    public function __invoke(Request $request, Closure $next): Response
     {
         // 1) pull query and signature, then remove _sig
         $qs = $request->getQueryParams();
@@ -71,8 +67,13 @@ final readonly class VerifySignedUrlMiddleware
 
         // 2) expiry check (if present)
         if (isset($qs[SignedUrlGenerator::EXPIRES_PARAM])) {
-            $exp = (int)$qs[SignedUrlGenerator::EXPIRES_PARAM];
-            if (time() > $exp + $this->leeway) {
+            $expRaw = $qs[SignedUrlGenerator::EXPIRES_PARAM];
+            if (!is_scalar($expRaw) || !is_numeric((string) $expRaw)) {
+                return Response::plaintext('Invalid expiration', StatusEnum::BAD_REQUEST->value);
+            }
+            $exp = (int) $expRaw;
+            $leeway = is_numeric((string) $this->leeway) ? (int) $this->leeway : 0;
+            if (time() > ($exp + $leeway)) {
                 return Response::plaintext('URL expired', StatusEnum::GONE->value);
             }
         }

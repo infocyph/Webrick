@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-
 use Infocyph\Webrick\Middleware\NegotiationMiddleware;
 use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Router\Kernel\RouterKernel;
 
-require_once __DIR__ . '/../IntegrationBootstrap.php';
+require_once __DIR__.'/../IntegrationBootstrap.php';
 
 describe('Real Middleware Integration', function () {
     beforeEach(function () {
@@ -22,7 +22,7 @@ describe('Real Middleware Integration', function () {
 
         expect($response)
             ->toHaveStatus(200)
-            ->and((string)$response->getBody())->toBe('"pong"');
+            ->and((string) $response->getBody())->toBe('"pong"');
         // JSON-encoded
     });
 
@@ -53,7 +53,7 @@ describe('Real Middleware Integration', function () {
         $kernel = createTestKernel();
 
         // Just verify the kernel works - actual POST handling is tested in production
-        expect($kernel)->toBeInstanceOf(\Infocyph\Webrick\Router\Kernel\RouterKernel::class);
+        expect($kernel)->toBeInstanceOf(RouterKernel::class);
 
         // Note: POST/PUT/PATCH requests require proper request body handling
         // which is difficult to mock correctly in tests but works in production
@@ -70,7 +70,7 @@ describe('Real Middleware Integration', function () {
 
         expect($response)->toHaveStatus(200);
 
-        $body = json_decode((string)$response->getBody(), true);
+        $body = json_decode((string) $response->getBody(), true);
         expect($body['updated'])
             ->toBe('99')
             ->and($body)->toHaveKey('updated')

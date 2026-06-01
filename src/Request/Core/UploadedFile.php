@@ -17,14 +17,10 @@ use RuntimeException;
  */
 final class UploadedFile
 {
-    private readonly ?string $clientName;
-    private readonly ?string $clientType;
     private readonly int $err;
 
-    private readonly ?int $size;
-
     private bool $moved = false;
-    /** @var string|Stream */
+
     private string|Stream $src;
 
     /**
@@ -37,14 +33,14 @@ final class UploadedFile
      * @param string|null $clientType Client-provided MIME type
      *
      * @throws InvalidArgumentException If the source is neither a filepath nor a StreamInterface,
-     *                           or if the error code is invalid.
+     *                                  or if the error code is invalid.
      */
     public function __construct(
         string|Stream $src,
-        ?int $size = null,
+        private readonly ?int $size = null,
         int $err = UPLOAD_ERR_OK,
-        ?string $clientName = null,
-        ?string $clientType = null,
+        private readonly ?string $clientName = null,
+        private readonly ?string $clientType = null,
     ) {
         if (!is_string($src) && !$src instanceof Stream) {
             throw new InvalidArgumentException('Source must be filepath or StreamInterface');
@@ -54,10 +50,7 @@ final class UploadedFile
         }
 
         $this->src = $src;
-        $this->size = $size;
         $this->err = $err;
-        $this->clientName = $clientName;
-        $this->clientType = $clientType;
     }
 
     /**
@@ -78,7 +71,6 @@ final class UploadedFile
      *   - 'type': null
      *
      * @param array $spec $_FILES-style specification array
-     * @return self
      */
     public static function fromSpec(array $spec): self
     {
@@ -121,7 +113,7 @@ final class UploadedFile
      * Return the error code associated with the uploaded file.
      *
      * @return int The error code associated with the uploaded file.
-     *              One of the UPLOAD_ERR_* constants.
+     *             One of the UPLOAD_ERR_* constants.
      *
      * @see https://www.php.net/manual/en/features.file-upload.errors.php
      */
@@ -147,6 +139,7 @@ final class UploadedFile
         if (is_string($this->src) && is_file($this->src)) {
             return filesize($this->src) ?: null;
         }
+
         return $this->src instanceof Stream
             ? $this->src->getSize()
             : null;
@@ -156,15 +149,15 @@ final class UploadedFile
      * Return a PSR-7 Stream for the uploaded file.
      *
      * @return Stream A PSR-7 Stream representing the uploaded file.
-     * @throws RuntimeException If the uploaded file cannot be opened.
      *
+     * @throws RuntimeException If the uploaded file cannot be opened.
      */
     public function getStream(): Stream
     {
         $this->assertOkAndNotMoved();
 
         if (is_string($this->src)) {
-            $h = @fopen($this->src, 'rb');
+            $h = fopen($this->src, 'rb');
             if ($h === false) {
                 throw new RuntimeException("Cannot open uploaded file: {$this->src}");
             }
@@ -192,7 +185,7 @@ final class UploadedFile
     {
         $this->assertOkAndNotMoved();
         $this->assertTarget($targetPath);
-        $this->ensureDir(dirname($targetPath));
+        $this->ensureDir(dirname((string) $targetPath));
 
         if (is_string($this->src)) {
             $ok = is_uploaded_file($this->src)

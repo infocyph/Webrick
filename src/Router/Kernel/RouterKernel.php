@@ -12,14 +12,17 @@ use Infocyph\InterMix\DI\Support\ServiceProviderInterface;
 use Infocyph\InterMix\Exceptions\ContainerException;
 use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Constants\StatusEnum;
-use Infocyph\Webrick\Exceptions\{MethodNotAllowedException, RouteNotFoundException};
+use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
+use Infocyph\Webrick\Exceptions\RouteNotFoundException;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Dispatch\Dispatcher;
 use Infocyph\Webrick\Router\Facade\Router;
 use Infocyph\Webrick\Router\Matching\MatcherInterface;
-use Infocyph\Webrick\Router\Route\{Collection, CompiledRoute, Route};
+use Infocyph\Webrick\Router\Route\Collection;
+use Infocyph\Webrick\Router\Route\CompiledRoute;
+use Infocyph\Webrick\Router\Route\Route;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -41,8 +44,6 @@ use Psr\Log\LoggerInterface;
  * Instances are constructed with telemetry (PSR-3 logger), a matcher and a
  * registration callback and may be created via the static bootWithRegistrar
  * helper which will enable matcher caching when supported.
- *
- * @package Infocyph\Webrick\Router\Kernel
  */
 final class RouterKernel
 {
@@ -50,83 +51,36 @@ final class RouterKernel
      * Canonical alias filename stored alongside route cache. Kept private and
      * constant to allow consistent file lookup across cache modes.
      */
-    private const F_ALIASES = '__aliases.php';
-
-    /**
-     * Optional callback used to bind URL services (Response helpers) after warm-up.
-     *
-     * Signature: function(Collection $routes): void
-     *
-     * @var Closure|null
-     */
-    private ?Closure $bindUrlServices;
+    private const string F_ALIASES = '__aliases.php';
 
     /**
      * Dispatcher responsible for composing and executing middleware pipelines.
-     *
-     * @var Dispatcher
      */
-    private Dispatcher $dispatcher;
+    private readonly Dispatcher $dispatcher;
 
     /**
      * Error boundary used for request handling.
-     *
-     * @var ErrorHandler
      */
-    private ErrorHandler $errorHandler;
+    private readonly ErrorHandler $errorHandler;
+
+    /** DI invoker used for handler/middleware invocation. */
+    private readonly Invoker $invoker;
+
+    /**
+     * Path to route cache. Can be a directory (sharded mode) or file (fused mode).
+     * When null route caching is disabled.
+     */
+    private readonly ?string $routeCache;
 
     /**
      * When true and an alias cache yields zero entries, the kernel will run the
      * registrar solely to build aliases while leaving the matcher (route table)
      * untouched. Default true.
-     *
-     * @var bool
      */
     private bool $fallbackAliasesFromRegistrar = true;
 
-    /** DI invoker used for handler/middleware invocation. */
-    private Invoker $invoker;
-
-    /**
-     * Matcher implementation used to add compiled routes and perform request matching.
-     *
-     * @var MatcherInterface
-     */
-    private MatcherInterface $matcher;
-    /** @var array<int, string> */
-    private array $postGlobalTags = ['webrick.middleware.post'];
-    /** @var array<int, string> */
-    private array $preGlobalTags = ['webrick.middleware.pre'];
-
-    /**
-     * User-provided route registration callback executed on cold-path warm-up.
-     *
-     * Signature: function(Registrar $r): void
-     *
-     * @var Closure
-     */
-    private Closure $register;
-
-    /**
-     * Options forwarded to Registrar when building routes via the registrar path.
-     *
-     * @var array<string,mixed>
-     */
-    private array $registrarOptions;
-    /** Whether to wrap each request in a DI scope lifecycle. */
-    private bool $requestScopeEnabled = true;
     /** Monotonic counter for per-request scope names. */
     private int $requestScopeSeq = 0;
-
-    /**
-     * Path to route cache. Can be a directory (sharded mode) or file (fused mode).
-     * When null route caching is disabled.
-     *
-     * @var string|null
-     */
-    private ?string $routeCache;
-    /** @var array<int, string|ServiceProviderInterface> */
-    private array $serviceProviders = [];
 
     /**
      * Construct the RouterKernel.
@@ -153,32 +107,40 @@ final class RouterKernel
      */
     public function __construct(
         private readonly LoggerInterface $log,
-        MatcherInterface $matcher,
-        Closure $register,
+        /**
+         * Matcher implementation used to add compiled routes and perform request matching.
+         */
+        private readonly MatcherInterface $matcher,
+        /**
+         * User-provided route registration callback executed on cold-path warm-up.
+         *
+         * Signature: function(Registrar $r): void
+         */
+        private readonly Closure $register,
         ?string $routeCache = null,
-        array $registrarOptions = [],
+        /**
+         * Options forwarded to Registrar when building routes via the registrar path.
+         */
+        private array $registrarOptions = [],
         array $preGlobal = [],
         array $postGlobal = [],
         bool $invokerOnMiddleware = false,
         ?ErrorHandler $errorHandler = null,
-        ?Closure $bindUrlServices = null,
+        /**
+         * Optional callback used to bind URL services (Response helpers) after warm-up.
+         *
+         * Signature: function(Collection $routes): void
+         */
+        private readonly ?Closure $bindUrlServices = null,
         ?bool $fallbackAliasesFromRegistrar = null,
-        array $serviceProviders = [],
-        array $preGlobalTags = ['webrick.middleware.pre'],
-        array $postGlobalTags = ['webrick.middleware.post'],
-        bool $requestScopeEnabled = true,
+        private readonly array $serviceProviders = [],
+        private readonly array $preGlobalTags = ['webrick.middleware.pre'],
+        private readonly array $postGlobalTags = ['webrick.middleware.post'],
+        private readonly bool $requestScopeEnabled = true,
         ?Container $container = null,
         ?Invoker $invoker = null,
     ) {
         $this->routeCache = ($routeCache !== '' ? $routeCache : null);
-        $this->bindUrlServices = $bindUrlServices;
-        $this->register = $register;
-        $this->registrarOptions = $registrarOptions;
-        $this->matcher = $matcher;
-        $this->requestScopeEnabled = $requestScopeEnabled;
-        $this->serviceProviders = $serviceProviders;
-        $this->preGlobalTags = $preGlobalTags;
-        $this->postGlobalTags = $postGlobalTags;
         if ($fallbackAliasesFromRegistrar !== null) {
             $this->fallbackAliasesFromRegistrar = $fallbackAliasesFromRegistrar;
         }
@@ -196,8 +158,8 @@ final class RouterKernel
         $this->dispatcher = new Dispatcher(
             invoker: $this->invoker,
             useInvoker: $invokerOnMiddleware,
-            preGlobal: $preGlobal,
-            postGlobal: $postGlobal,
+            preGlobalRaw: $preGlobal,
+            postGlobalRaw: $postGlobal,
         );
 
         $this->errorHandler = $errorHandler ?? new ErrorHandler(
@@ -219,8 +181,6 @@ final class RouterKernel
      * This factory will call Matcher::enableCache when the matcher supports it
      * and a non-empty cache location is supplied.
      *
-     * @param LoggerInterface $log
-     * @param MatcherInterface $matcher
      * @param Closure $register Registrar callback
      * @param string|null $routeCache Cache location (directory or file) or null
      * @param array<string,mixed> $registrarOptions Options forwarded to Registrar
@@ -298,6 +258,7 @@ final class RouterKernel
         $request ??= Request::fromGlobals();
         $runner = function (Request $req): Response {
             [$route, $vars] = $this->matchRoute($req);
+
             return $this->dispatcher->dispatch($route, $req, $vars);
         };
 
@@ -305,12 +266,15 @@ final class RouterKernel
 
         if (!$this->requestScopeEnabled) {
             $container->definitions()->bind(Request::class, $request, LifetimeEnum::Singleton);
+
             return $this->errorHandler->handle($request, $runner);
         }
 
         $scope = 'webrick.request.' . (++$this->requestScopeSeq);
+
         return $container->withinScope($scope, function (Container $scoped) use ($request, $runner): Response {
             $scoped->definitions()->bind(Request::class, $request, LifetimeEnum::Scoped);
+
             return $this->errorHandler->handle($request, $runner);
         });
     }
@@ -326,6 +290,7 @@ final class RouterKernel
      *
      * @param string $raw Raw Host header value
      * @return string Normalized ASCII host name
+     *
      * @throws \InvalidArgumentException When the Host is illegal, invalid IDN, or contains non-ASCII bytes
      */
     private static function normaliseHost(string $raw): string
@@ -336,7 +301,7 @@ final class RouterKernel
         $host = \strtolower(\rtrim($raw, '.'));
 
         if (\function_exists('idn_to_ascii') && !\str_contains($host, 'xn--')) {
-            $ascii = @\idn_to_ascii($host, \IDNA_DEFAULT, \INTL_IDNA_VARIANT_UTS46);
+            $ascii = \idn_to_ascii($host, \IDNA_DEFAULT, \INTL_IDNA_VARIANT_UTS46);
             if ($ascii === false) {
                 throw new \InvalidArgumentException('Invalid IDN host name.');
             }
@@ -345,6 +310,7 @@ final class RouterKernel
         if (!\preg_match('/^[\x21-\x7E]+$/', $host)) {
             throw new \InvalidArgumentException('Host contains non-ASCII bytes.');
         }
+
         return $host;
     }
 
@@ -366,9 +332,9 @@ final class RouterKernel
      * otherwise the alias file is placed in the same directory as the given file.
      *
      * @param string $cacheLocation Directory or file path used for route cache
-     * @return string|null Resolved alias file path or null when $cacheLocation is null/empty
+     * @return string Resolved alias file path or null when $cacheLocation is null/empty
      */
-    private function aliasFilePath(string $cacheLocation): ?string
+    private function aliasFilePath(string $cacheLocation): string
     {
         return (
             \is_dir($cacheLocation)
@@ -390,15 +356,15 @@ final class RouterKernel
         $routes = new Collection();
 
         $opts = $this->registrarOptions + [
-                'autoSlashRedirect' => false,
-                'exposeUrlServices' => false, // bind explicitly later
-                'signKey' => null,
-                'signedDefaultTtl' => null,
-            ];
+            'autoSlashRedirect' => false,
+            'exposeUrlServices' => false, // bind explicitly later
+            'signKey' => null,
+            'signedDefaultTtl' => null,
+        ];
 
         $registrar = new Registrar(
             routes: $routes,
-            autoSlashRedirect: (bool)$opts['autoSlashRedirect'],
+            autoSlashRedirect: (bool) $opts['autoSlashRedirect'],
             exposeUrlServices: false,
             signKey: $opts['signKey'],
             signedDefaultTtl: $opts['signedDefaultTtl'],
@@ -430,6 +396,7 @@ final class RouterKernel
             $this->log->warning('[router] alias cache file not found; URL helpers may be limited', [
                 'cache' => $cacheLocation,
             ]);
+
             return 0;
         }
 
@@ -438,6 +405,7 @@ final class RouterKernel
             $this->log->warning('[router] alias cache has unexpected format; URL helpers may be limited', [
                 'file' => $aliasFile,
             ]);
+
             return 0;
         }
 
@@ -455,11 +423,12 @@ final class RouterKernel
                 continue;
             }
 
-            $r = new Route(HttpMethodEnum::GET->value, $path, static fn () => Response::noContent());
+            $r = new Route(HttpMethodEnum::GET->value, $path, static fn() => Response::noContent());
             $r = $r->withName($name);
             if (\is_string($domain) && $domain !== '') {
                 $r = $r->withDomain($domain);
             }
+
             try {
                 $dst->add($r);
                 $added++;
@@ -468,6 +437,7 @@ final class RouterKernel
         }
 
         $this->log->info('[router] alias cache hydrated', ['file' => $aliasFile, 'count' => $added]);
+
         return $added;
     }
 
@@ -506,7 +476,6 @@ final class RouterKernel
      *
      * Returns a two-element tuple: [CompiledRoute, array<string,mixed> vars].
      *
-     * @param Request $req
      * @return array{0:CompiledRoute,1:array<string,mixed>} Tuple of matched compiled route and extracted variables
      */
     private function matchRoute(Request $req): array
@@ -518,6 +487,7 @@ final class RouterKernel
         $uri = $req->getUri();
         $host = self::normaliseHost($uri->getHost());
         $path = $uri->getPath() ?: '/';
+
         return $this->matcher->match($method, $host, $path);
     }
 
@@ -581,18 +551,16 @@ final class RouterKernel
     /* -----------------------------------------------------------------
      * Warm-up / cache priming helpers
      * ----------------------------------------------------------------- */
-
     /**
      * Warm the router state either from cache or by invoking the registrar.
      *
      * Chooses cache path when the matcher indicates cache-boot support.
-     *
-     * @return void
      */
     private function warm(): void
     {
         if ($this->matcher->canBootFromCache()) {
             $this->warmFromCache();
+
             return;
         }
         $this->warmFromRegistrar();
@@ -602,8 +570,6 @@ final class RouterKernel
      * Warm from matcher cache: finalize matcher, hydrate alias-only collection
      * if available, or optionally run registrar to build aliases when cache is
      * empty. Binds URL helpers after alias hydration.
-     *
-     * @return void
      */
     private function warmFromCache(): void
     {
@@ -631,7 +597,7 @@ final class RouterKernel
             $ttlRaw = $this->registrarOptions['signedDefaultTtl'] ?? null;
             $defaultTtl = \is_int($ttlRaw)
                 ? $ttlRaw
-                : (\is_string($ttlRaw) && $ttlRaw !== '' ? (int)$ttlRaw : null);
+                : (\is_string($ttlRaw) && $ttlRaw !== '' ? (int) $ttlRaw : null);
 
             Router::bindUrlServices($aliasOnly, $signKey, $defaultTtl);
         }
@@ -651,7 +617,6 @@ final class RouterKernel
      * configured options, executes the user registration callback, compiles the
      * routes and populates the matcher. It also binds URL services when requested.
      *
-     * @return void
      * @throws \RuntimeException When registration produces an empty compiled route table
      */
     private function warmFromRegistrar(): void
@@ -659,16 +624,16 @@ final class RouterKernel
         $routes = new Collection();
 
         $opts = $this->registrarOptions + [
-                'autoSlashRedirect' => false,
-                'exposeUrlServices' => false,
-                'signKey' => null,
-                'signedDefaultTtl' => null,
-            ];
+            'autoSlashRedirect' => false,
+            'exposeUrlServices' => false,
+            'signKey' => null,
+            'signedDefaultTtl' => null,
+        ];
 
         $registrar = new Registrar(
             routes: $routes,
-            autoSlashRedirect: (bool)$opts['autoSlashRedirect'],
-            exposeUrlServices: (bool)$opts['exposeUrlServices'],
+            autoSlashRedirect: (bool) $opts['autoSlashRedirect'],
+            exposeUrlServices: (bool) $opts['exposeUrlServices'],
             signKey: $opts['signKey'],
             signedDefaultTtl: $opts['signedDefaultTtl'],
         );

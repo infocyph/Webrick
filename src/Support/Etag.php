@@ -5,8 +5,6 @@
  *
  * Provides utilities for generating strong ETags from response body streams, with
  * optional salting and chunked hashing for memory efficiency.
- *
- * @package Infocyph\Webrick\Support
  */
 
 declare(strict_types=1);
@@ -40,7 +38,6 @@ final class Etag
      * @param string $algo Hash algorithm name (e.g., 'xxh3', 'sha256'); must be supported by hash_init().
      * @param int $hexLen Number of hex characters to include in the final (quoted) ETag.
      * @param int $chunk Chunk size in bytes used when reading the stream.
-     *
      * @return string|null Quoted hex digest (truncated) on success; null on error or if not seekable.
      */
     public static function fromStream(
@@ -53,6 +50,7 @@ final class Etag
         if (!$stream->isSeekable()) {
             return null;
         }
+
         try {
             $pos = $stream->tell();
             $stream->seek(0);
@@ -71,6 +69,7 @@ final class Etag
             $hex = hash_final($ctx);
 
             $stream->seek($pos);
+
             return '"' . substr($hex, 0, $hexLen) . '"';
         } catch (\Throwable) {
             return null;

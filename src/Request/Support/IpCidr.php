@@ -37,6 +37,7 @@ final class IpCidr
 
     /**
      * Check if an IPv4 address matches a CIDR.
+     *
      * @param string $ip The IPv4 address to check.
      * @param string $cidr The CIDR to check against.
      * @return bool Whether the address matches the CIDR.
@@ -44,10 +45,10 @@ final class IpCidr
     private static function v4(string $ip, string $cidr): bool
     {
         [$subnet, $mask] = (str_contains($cidr, '/')) ? explode('/', $cidr, 2) : [$cidr, 32];
-        $mask = (int)$mask;
+        $mask = (int) $mask;
 
-        $ipBin = @inet_pton($ip);
-        $netBin = @inet_pton($subnet);
+        $ipBin = inet_pton($ip);
+        $netBin = inet_pton($subnet);
         if ($ipBin === false || $netBin === false || strlen($ipBin) !== 4) {
             return false;
         }
@@ -61,12 +62,13 @@ final class IpCidr
             return true;
         }
         $bitmask = chr(0xFF << (8 - $rem));
+
         return (ord($ipBin[$bytes]) & ord($bitmask)) === (ord($netBin[$bytes]) & ord($bitmask));
     }
 
-
     /**
      * Check if an IPv6 address matches a CIDR.
+     *
      * @param string $ip The IPv6 address to check.
      * @param string $cidr The CIDR to check against.
      * @return bool Whether the address matches the CIDR.
@@ -74,7 +76,7 @@ final class IpCidr
     private static function v6(string $ip, string $cidr): bool
     {
         [$subnet, $mask] = strpos($cidr, '/') ? explode('/', $cidr, 2) : [$cidr, 128];
-        $mask = (int)$mask;
+        $mask = (int) $mask;
         $ipBin = inet_pton($ip);
         $netBin = inet_pton($subnet);
         if ($ipBin === false || $netBin === false) {
@@ -87,6 +89,7 @@ final class IpCidr
             $bitmask = 0xFF << (8 - ($mask % 8));
             $same = (ord($ipBin[$bytes]) & $bitmask) === (ord($netBin[$bytes]) & $bitmask);
         }
+
         return $same;
     }
 }

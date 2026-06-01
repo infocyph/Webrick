@@ -16,12 +16,12 @@ describe('ThrottleMiddleware', function () {
     });
 
     afterEach(function () {
-        cleanTestCache(sys_get_temp_dir() . '/webrick-test-throttle');
+        cleanTestCache(sys_get_temp_dir().'/webrick-test-throttle');
     });
 
     it('allows requests within limit', function () {
         // Fresh cache and middleware for this test
-        $cache = testCache('throttle-allow-' . uniqid());
+        $cache = testCache('throttle-allow-'.uniqid());
         $middleware = new ThrottleMiddleware(
             max: 3,
             window: 60,
@@ -31,8 +31,9 @@ describe('ThrottleMiddleware', function () {
         $request = mockRequest('GET', '/test');
         $called = false;
 
-        $next = function ($req) use (&$called) {
+        $next = function () use (&$called) {
             $called = true;
+
             return Response::json(['ok' => true]);
         };
 
@@ -47,7 +48,7 @@ describe('ThrottleMiddleware', function () {
 
     it('blocks requests over limit', function () {
         $request = mockRequest('GET', '/test');
-        $next = fn ($req) => Response::json(['ok' => true]);
+        $next = fn () => Response::json(['ok' => true]);
 
         // Make 3 requests (limit)
         for ($i = 0; $i < 3; $i++) {
@@ -65,7 +66,7 @@ describe('ThrottleMiddleware', function () {
 
     it('respects per-request cost', function () {
         // Fresh cache for this test
-        $cache = testCache('throttle-cost-' . uniqid());
+        $cache = testCache('throttle-cost-'.uniqid());
         $middleware = new ThrottleMiddleware(
             max: 5,
             window: 60,
@@ -73,7 +74,7 @@ describe('ThrottleMiddleware', function () {
         );
 
         $request = mockRequest('GET', '/test');
-        $next = fn ($req) => Response::json(['ok' => true]);
+        $next = fn () => Response::json(['ok' => true]);
 
         // Request with cost 2 (total: 2)
         $request1 = $request->withAttribute('rate_cost.thm', 2);
@@ -98,7 +99,7 @@ describe('ThrottleMiddleware', function () {
         );
 
         $request = mockRequest('GET', '/test', ['X-Admin-Key' => 'secret']);
-        $next = fn ($req) => Response::json(['ok' => true]);
+        $next = fn () => Response::json(['ok' => true]);
 
         // Should not be throttled even after multiple requests
         for ($i = 0; $i < 5; $i++) {

@@ -17,7 +17,7 @@ use Infocyph\Webrick\Request\Support\IpCidr;
 final class EndUser
 {
     /* ----------------------------------------------------------------------- */
-    private const LEGACY_IP_HEADERS = [
+    private const array LEGACY_IP_HEADERS = [
         'HTTP_X_FORWARDED_FOR',
         'HTTP_CLIENT_IP',
         'HTTP_CF_CONNECTING_IP',
@@ -33,10 +33,12 @@ final class EndUser
         'HTTP_X_ORACLE_CLIENT_IP',
         'HTTP_X_STACKPATH_EDGE_IP',
     ];
+
     private static array $trustedGlobal = [];                    // CIDR strings
 
     /* ----------------------------------------------------------------------- */
     private ?string $cachedNoProxy = null;
+
     private ?string $cachedViaProxy = null;
 
     /**
@@ -48,15 +50,13 @@ final class EndUser
     public function __construct(
         private readonly Request $req,
         private readonly array $extraTrusted = [],
-    ) {
-    }
+    ) {}
 
     /**
      * Creates a new EndUser instance from the given Request.
      *
      * @param Request $r The request to get the end-user from.
      * @param array $cidrs Extra trusted proxies (CIDR strings).
-     * @return self
      */
     public static function from(Request $r, array $cidrs = []): self
     {
@@ -112,7 +112,6 @@ final class EndUser
 
         return $wrap ? '[' . \inet_ntop($masked) . ']' : \inet_ntop($masked);
     }
-
 
     /**
      * Return the public IP of the client that is not behind a trusted proxy.
@@ -183,6 +182,7 @@ final class EndUser
                 break;
             }
         }
+
         return $this->cachedViaProxy = $this->ipNoProxy();     // fallback
     }
 
@@ -195,8 +195,6 @@ final class EndUser
      *   - platform: the platform name (e.g. Windows, macOS, Linux)
      *   - engine: the rendering engine name (e.g. Blink, Gecko, WebKit)
      *   - raw: the raw User-Agent string
-     *
-     * @return array
      */
     public function parseUserAgent(): array
     {
@@ -247,7 +245,7 @@ final class EndUser
     {
         return array_any(
             array_merge(self::$trustedGlobal, $this->extraTrusted),
-            fn ($cidr) => IpCidr::match($ip, $cidr),
+            fn($cidr) => IpCidr::match($ip, $cidr),
         );
     }
 
@@ -255,6 +253,7 @@ final class EndUser
      * Parses the Forwarded header (if present) and returns an array of IP addresses.
      * The order of the IP addresses is the same as in the header.
      * If the header is not present, returns an empty array.
+     *
      * @return array An array of IP addresses.
      */
     private function parseForwarded(): array
@@ -267,6 +266,7 @@ final class EndUser
             return [];
         }
         preg_match_all('/for="?\[?([A-F0-9:.]+)/i', $h, $m);
+
         return $m[1] ?? [];
     }
 
@@ -286,10 +286,12 @@ final class EndUser
             if (empty($srv[$hdr])) {
                 continue;
             }
+
             return $hdr === 'HTTP_X_FORWARDED_FOR'
-                ? array_map('trim', explode(',', (string)$srv[$hdr]))
-                : [trim((string)$srv[$hdr])];
+                ? array_map(trim(...), explode(',', (string) $srv[$hdr]))
+                : [trim((string) $srv[$hdr])];
         }
+
         return [];
     }
 }

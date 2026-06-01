@@ -5,8 +5,6 @@
  *
  * Builds URL strings with an appended HMAC signature and optional expiry parameter.
  * The signature is computed deterministically over the final relative URL (path + sorted query).
- *
- * @package Infocyph\Webrick\Router\Url
  */
 
 declare(strict_types=1);
@@ -28,14 +26,11 @@ class SignedUrlGenerator extends UrlGenerator
 {
     /**
      * Query parameter name used to carry the expiry timestamp (UNIX epoch).
-     *
-     * @var string
      */
     public const string EXPIRES_PARAM = '_exp';
+
     /**
      * Query parameter name used to carry the URL signature.
-     *
-     * @var string
      */
     public const string SIG_PARAM = '_sig';
 
@@ -70,7 +65,6 @@ class SignedUrlGenerator extends UrlGenerator
      * @param array<string,mixed> $query Extra query parameters (will be sorted).
      * @param int|null $ttl TTL in seconds; null for no expiry.
      * @param bool $absolute Whether to return an absolute URL.
-     *
      * @return string The signed URL.
      *
      * @throws InvalidArgumentException If reserved parameters are present, or if TTL is invalid.

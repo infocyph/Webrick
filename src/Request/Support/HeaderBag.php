@@ -22,9 +22,10 @@ use Traversable;
  *
  * @psalm-type HeaderValues = string|string[]
  */
-final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
+final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
 {
     private static array $normCache = [];
+
     /** @var array<string,string[]> */
     private array $map = [];
 
@@ -147,7 +148,7 @@ final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
      */
     public function offsetExists(mixed $offset): bool
     {
-        return $this->has((string)$offset);
+        return $this->has((string) $offset);
     }
 
     /**
@@ -158,7 +159,7 @@ final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
      */
     public function offsetGet(mixed $offset): mixed
     {
-        return $this->get((string)$offset);
+        return $this->get((string) $offset);
     }
 
     /**
@@ -196,7 +197,6 @@ final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
      * If the header has multiple values, returns an array of those values.
      *
      * @param string $name Case-insensitive header name
-     * @return string|array|null
      */
     public function value(string $name): string|array|null
     {
@@ -204,6 +204,7 @@ final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
         if ($all === []) {
             return null;
         }
+
         return count($all) === 1 ? $all[0] : $all;
     }
 
@@ -218,6 +219,7 @@ final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
     {
         $x = clone $this;
         $x->set($name, $value);
+
         return $x;
     }
 
@@ -238,8 +240,9 @@ final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
         $x = clone $this;
         $x->map[$norm] = array_merge(
             $x->map[$norm] ?? [],
-            is_array($value) ? array_values($value) : [(string)$value],
+            is_array($value) ? array_values($value) : [$value],
         );
+
         return $x;
     }
 
@@ -253,6 +256,7 @@ final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
     {
         $x = clone $this;
         unset($x->map[$this->norm($name)]);
+
         return $x;
     }
 
@@ -266,7 +270,6 @@ final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
      *
      * @param string $name Case-insensitive header name
      * @param string $value New header value
-     * @return static
      */
     public function withSmart(string $name, string $value): self
     {

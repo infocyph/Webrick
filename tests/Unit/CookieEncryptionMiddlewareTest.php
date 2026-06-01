@@ -20,9 +20,10 @@ describe('CookieEncryptionMiddleware', function () {
     it('encrypts outbound cookies', function () {
         $request = mockRequest('GET', '/');
 
-        $next = function ($req) {
-            $jar = new CookieJar();
+        $next = function () {
+            $jar = new CookieJar;
             $jar = $jar->add(Cookie::make('enc_session', 'secret_value'));
+
             return $jar->apply(Response::create('test'));
         };
 
@@ -41,9 +42,10 @@ describe('CookieEncryptionMiddleware', function () {
     it('decrypts inbound cookies', function () {
         // First, encrypt a cookie
         $request1 = mockRequest('GET', '/');
-        $next1 = function ($req) {
-            $jar = new CookieJar();
+        $next1 = function () {
+            $jar = new CookieJar;
             $jar = $jar->add(Cookie::make('enc_session', 'my_secret'));
+
             return $jar->apply(Response::create('test'));
         };
         $response1 = ($this->middleware)($request1, $next1);
@@ -60,6 +62,7 @@ describe('CookieEncryptionMiddleware', function () {
         $decrypted = null;
         $next2 = function ($req) use (&$decrypted) {
             $decrypted = $req->cookie('enc_session');
+
             return Response::create('ok');
         };
 
@@ -71,9 +74,10 @@ describe('CookieEncryptionMiddleware', function () {
     it('ignores non-prefixed cookies', function () {
         $request = mockRequest('GET', '/');
 
-        $next = function ($req) {
-            $jar = new CookieJar();
+        $next = function () {
+            $jar = new CookieJar;
             $jar = $jar->add(Cookie::make('normal_session', 'plain_value'));
+
             return $jar->apply(Response::create('test'));
         };
 
@@ -85,7 +89,6 @@ describe('CookieEncryptionMiddleware', function () {
         expect($setCookie)->toContain('normal_session=plain_value');
     });
 
-
     it('enforces security attributes', function () {
         $middleware = new CookieEncryptionMiddleware(
             keyOrKeys: $this->key,
@@ -96,9 +99,10 @@ describe('CookieEncryptionMiddleware', function () {
         );
 
         $request = mockRequest('GET', '/');
-        $next = function ($req) {
-            $jar = new CookieJar();
+        $next = function () {
+            $jar = new CookieJar;
             $jar = $jar->add(Cookie::make('enc_session', 'value'));
+
             return $jar->apply(Response::create('test'));
         };
 

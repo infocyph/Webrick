@@ -2,8 +2,6 @@
 
 /**
  * Webrick - Stream utility functions
- *
- * @package Infocyph\Webrick\Support
  */
 
 declare(strict_types=1);
@@ -41,8 +39,10 @@ final class StreamUtil
             $data = $s->getContents(); // reads from current position
             $len = \strlen($data);
             $s->seek($pos);
+
             return $len;
         }
+
         return $fallback;
     }
 }

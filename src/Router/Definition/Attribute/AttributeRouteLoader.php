@@ -23,12 +23,13 @@ final class AttributeRouteLoader
      * Convenience filter: only scan files that look like controllers.
      * Usage: AttributeRouteLoader::registerFromDirs($r, $roots, AttributeRouteLoader::controllerFileFilter());
      *
-     * @return callable(\SplFileInfo):bool
+     * @return callable(SplFileInfo):bool
      */
     public static function controllerFileFilter(): callable
     {
         return static function (SplFileInfo $f): bool {
             $name = $f->getFilename();
+
             // Typical convention: *Controller.php (still requires PHP extension)
             return str_ends_with($name, 'Controller.php');
         };
@@ -37,7 +38,6 @@ final class AttributeRouteLoader
     /**
      * Fast path: if you already know the FQCNs, this is the most efficient route.
      *
-     * @param Registrar $registrar
      * @param list<class-string> $classes
      */
     public static function register(Registrar $registrar, array $classes): void
@@ -56,9 +56,8 @@ final class AttributeRouteLoader
     /**
      * Discover classes from PSR-4 roots and register annotated routes.
      *
-     * @param Registrar $registrar
      * @param array<string,string> $roots e.g. ['App\\Http\\Controllers\\' => __DIR__.'/app/Http/Controllers']
-     * @param null|callable(\SplFileInfo):bool $filter optional file filter (return true to include the file)
+     * @param null|callable(SplFileInfo):bool $filter optional file filter (return true to include the file)
      */
     public static function registerFromDirs(Registrar $registrar, array $roots, ?callable $filter = null): void
     {
@@ -94,7 +93,7 @@ final class AttributeRouteLoader
 
     /**
      * @param array<string,string> $roots
-     * @param null|callable(\SplFileInfo):bool $filter
+     * @param null|callable(SplFileInfo):bool $filter
      * @return list<class-string>
      */
     private static function collectAnnotatedClasses(array $roots, ?callable $filter): array
@@ -153,6 +152,7 @@ final class AttributeRouteLoader
 
         // de-dup while preserving discovery order
         $out = array_values(array_unique($out));
+
         return $out;
     }
 
@@ -164,7 +164,7 @@ final class AttributeRouteLoader
         array $opts,
     ): void {
         foreach ($methods as $verb) {
-            $call = strtolower($verb);
+            $call = strtolower((string) $verb);
             if (!method_exists($r, $call)) {
                 continue; // skip unknown helpers
             }
@@ -180,6 +180,7 @@ final class AttributeRouteLoader
         }
 
         $base = str_replace(DIRECTORY_SEPARATOR, '\\', substr($rel, 0, -4));
+
         return rtrim($nsPrefix, '\\') . '\\' . ltrim($base, '\\');
     }
 
@@ -190,16 +191,16 @@ final class AttributeRouteLoader
     {
         return array_any(
             $rc->getMethods(ReflectionMethod::IS_PUBLIC),
-            fn ($rm) => $rm->getAttributes(Route::class, ReflectionAttribute::IS_INSTANCEOF) !== [],
+            fn($rm) => $rm->getAttributes(Route::class, ReflectionAttribute::IS_INSTANCEOF) !== [],
         );
     }
 
     private static function hasRouteRelevantAttributes(ReflectionClass $rc): bool
     {
         return
-            $rc->getAttributes(Route::class) !== [] ||
-            $rc->getAttributes(Group::class) !== [] ||
-            $rc->getAttributes(Middleware::class) !== [];
+            $rc->getAttributes(Route::class) !== []
+            || $rc->getAttributes(Group::class) !== []
+            || $rc->getAttributes(Middleware::class) !== [];
     }
 
     /**
@@ -216,6 +217,7 @@ final class AttributeRouteLoader
     private static function readCors(object $ref): ?Cors
     {
         $a = $ref->getAttributes(Cors::class, ReflectionAttribute::IS_INSTANCEOF)[0] ?? null;
+
         return $a ? $a->newInstance() : null;
     }
 
@@ -230,6 +232,7 @@ final class AttributeRouteLoader
         }
         /** @var Group $g */
         $g = $a->newInstance();
+
         return [$g->prefix ?: '', $g->domain, $g->middleware, $g->name ?: ''];
     }
 
@@ -242,6 +245,7 @@ final class AttributeRouteLoader
             $m = $a->newInstance();
             array_push($out, ...$m->stack);
         }
+
         return $out;
     }
 
@@ -249,6 +253,7 @@ final class AttributeRouteLoader
     private static function readProduces(object $ref): ?Produces
     {
         $a = $ref->getAttributes(Produces::class, ReflectionAttribute::IS_INSTANCEOF)[0] ?? null;
+
         return $a ? $a->newInstance() : null;
     }
 
@@ -297,7 +302,7 @@ final class AttributeRouteLoader
             foreach ($routeAttrs as $attr) {
                 /** @var Route $rAttr */
                 $rAttr = $attr->newInstance();
-                $methods = array_map('strtoupper', (array)$rAttr->method);
+                $methods = array_map(strtoupper(...), (array) $rAttr->method);
                 $opts = self::buildOptions($rAttr, $methodMw, $methProd, $methCors);
                 $handler = [$fqcn, $rm->getName()];
 
@@ -312,6 +317,7 @@ final class AttributeRouteLoader
             return false;
         }
         $rc = new ReflectionClass($fqcn);
+
         return !($rc->isAbstract() || $rc->isInterface());
     }
 }

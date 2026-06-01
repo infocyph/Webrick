@@ -85,7 +85,7 @@ final readonly class Registrar
         );
 
         $childScope = $this->scope
-            ->withPrefix((string)$prefix)
+            ->withPrefix((string) $prefix)
             ->withDomain(is_string($domain) ? $domain : null)
             ->withMiddleware(is_array($middleware) ? $middleware : [])
             ->withNamePrefix(is_string($namePrefix) ? $namePrefix : '');
@@ -163,7 +163,7 @@ final readonly class Registrar
                 ? ($mwAll !== [] ? ['middleware' => $mwAll] : null)
                 : ['as' => $routeName, 'middleware' => $mwAll];
 
-            $method = strtolower($http);
+            $method = strtolower((string) $http);
             $this->{$method}($path, [$ctrl, $action], $nameOrOpt);
         }
     }
@@ -233,6 +233,7 @@ final readonly class Registrar
     private function computeFullPath(string $path): string
     {
         $fullPrefix = ltrim($this->scope->getPrefix(), '/');
+
         return '/' . ltrim($fullPrefix . '/' . ltrim($path, '/'), '/');
     }
 
@@ -262,7 +263,7 @@ final readonly class Registrar
 
             if ($aliases !== []) {
                 $aliases = array_map(
-                    static fn (string $a) => $namePrefix . $a,
+                    static fn(string $a) => $namePrefix . $a,
                     $aliases,
                 );
             }
@@ -279,6 +280,7 @@ final readonly class Registrar
         if ($except !== null && in_array($key, $except, true)) {
             return false;
         }
+
         return true;
     }
 
@@ -297,7 +299,7 @@ final readonly class Registrar
             new Route(
                 HttpMethodEnum::GET->value,
                 $alt,
-                static fn () => Response::redirect($fullPath, StatusEnum::PERMANENT_REDIRECT->value),
+                static fn() => Response::redirect($fullPath, StatusEnum::PERMANENT_REDIRECT->value),
             ),
         );
     }
@@ -405,7 +407,7 @@ final readonly class Registrar
 
         $aliasesRaw = $nameOrOpts['aliases'] ?? ($nameOrOpts['alias'] ?? []);
         $aliases = is_array($aliasesRaw) ? $aliasesRaw : [$aliasesRaw];
-        $aliases = array_values(array_filter(array_map('strval', $aliases), static fn ($s) => $s !== ''));
+        $aliases = array_values(array_filter(array_map(strval(...), $aliases), static fn($s) => $s !== ''));
 
         $attrs = $nameOrOpts['attributes'] ?? [];
         if (!is_array($attrs)) {
@@ -422,14 +424,14 @@ final readonly class Registrar
         }
 
         [$name, $paramStr] = explode(':', $s, 2) + [1 => null];
-        $key = strtolower(trim($name));
+        $key = strtolower(trim((string) $name));
 
         if ($key === '' || !MiddlewareAliases::has($key)) {
             return null;
         }
 
         $params = ($paramStr !== null && $paramStr !== '')
-            ? array_map('trim', explode(',', $paramStr))
+            ? array_map(trim(...), explode(',', $paramStr))
             : [];
 
         return ['__alias' => true, 'key' => $key, 'params' => $params];
@@ -443,6 +445,7 @@ final readonly class Registrar
         $names = (isset($opts['names']) && is_array($opts['names'])) ? $opts['names'] : [];
         $mwAll = (isset($opts['middleware']) && is_array($opts['middleware'])) ? $opts['middleware'] : [];
         $patchAction = is_string($opts['patch_action'] ?? null) ? $opts['patch_action'] : 'update';
+
         return [$param, $only, $except, $names, $mwAll, $patchAction];
     }
 
@@ -459,17 +462,18 @@ final readonly class Registrar
         $out = [];
         foreach ($list as $item) {
             if (is_array($item) && ($item['__alias'] ?? false) === true) {
-                $key = (string)$item['key'];
+                $key = (string) $item['key'];
                 $params = $item['params'] ?? [];
                 $s = $key;
                 if ($params !== []) {
-                    $s .= ':' . implode(',', array_map(static fn ($v) => (string)$v, $params));
+                    $s .= ':' . implode(',', array_map(static fn($v) => (string) $v, $params));
                 }
                 $out[] = MiddlewareAliases::resolveString($s);
             } else {
                 $out[] = $item;
             }
         }
+
         return $out;
     }
 }

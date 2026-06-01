@@ -42,7 +42,7 @@ test('GeneratedMatcher matches static and dynamic routes', function (): void {
 });
 
 test('GeneratedMatcher boots from generated cache file', function (): void {
-    $file = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'webrick-generated-' . uniqid('', true) . '.php';
+    $file = sys_get_temp_dir().DIRECTORY_SEPARATOR.'webrick-generated-'.uniqid('', true).'.php';
 
     try {
         RouteCache::build([
@@ -69,6 +69,6 @@ test('GeneratedMatcher boots from generated cache file', function (): void {
             ->and($params)->toBe([])
             ->and($reader->resolveAlias('hello.route'))->toBe(['/hello', 'example.com']);
     } finally {
-        @unlink($file);
+        unlink($file);
     }
 });

@@ -32,8 +32,6 @@ use RuntimeException;
  * Usage:
  *   Router::setInstance($registrar);
  *   Router::get('/ping', fn () => 'pong', 'ping');
- *
- * @package Infocyph\Webrick\Router\Facade
  */
 final class Router
 {
@@ -42,23 +40,24 @@ final class Router
      *
      * When null the façade has not been initialised and calls will throw.
      *
-     * @var Registrar|null
      * @readonly
      */
     private static ?Registrar $instance = null;
+
     private static ?RouteGenerator $routeGen = null;
+
     private static ?Collection $routesRef = null;
+
     private static ?SignedUrlGenerator $signedGen = null;
+
     private static ?TemporaryUrlGenerator $tempGen = null;
 
     /**
      * Private constructor to prevent instantiation — façade is static-only.
      */
-    private function __construct()
-    {
-    }
+    private function __construct() {}
 
-    /*──────────── fallback ────────────*/
+    /* ──────────── fallback ──────────── */
 
     /**
      * Dynamic fallback to forward any undeclared static calls to the Registrar.
@@ -70,6 +69,7 @@ final class Router
      * @param string $method Method name being called statically
      * @param array $args Positional arguments passed to the method
      * @return mixed The underlying Registrar method return value
+     *
      * @throws RuntimeException When the concrete Registrar does not implement the method
      */
     public static function __callStatic(string $method, array $args): mixed
@@ -84,6 +84,7 @@ final class Router
                 ),
             );
         }
+
         return $router->$method(...$args);
     }
 
@@ -110,11 +111,6 @@ final class Router
 
     /**
      * Register a DELETE route via the bound Registrar.
-     *
-     * @param string $path
-     * @param array|string|callable $handler
-     * @param string|array|null $nameOrOpts
-     * @return RouteInterface
      */
     public static function delete(
         string $path,
@@ -124,7 +120,7 @@ final class Router
         return self::getInstance()->delete($path, $handler, $nameOrOpts);
     }
 
-    /*──────────── explicit accessors (typed, IDE-friendly) ────────────*/
+    /* ──────────── explicit accessors (typed, IDE-friendly) ──────────── */
 
     /**
      * Register a GET route via the bound Registrar.
@@ -153,7 +149,6 @@ final class Router
      * @param array|Closure $middleware Middleware list or closure
      * @param string|Closure|null $namePrefix Name prefix or closure
      * @param Closure|null $callback Callback used to declare nested routes
-     * @return void
      */
     public static function group(
         array|string|null $prefix = null,
@@ -167,11 +162,6 @@ final class Router
 
     /**
      * Register a HEAD route via the bound Registrar.
-     *
-     * @param string $path
-     * @param array|string|callable $handler
-     * @param string|array|null $nameOrOpts
-     * @return RouteInterface
      */
     public static function head(
         string $path,
@@ -183,11 +173,6 @@ final class Router
 
     /**
      * Register an OPTIONS route via the bound Registrar.
-     *
-     * @param string $path
-     * @param array|string|callable $handler
-     * @param string|array|null $nameOrOpts
-     * @return RouteInterface
      */
     public static function options(
         string $path,
@@ -199,11 +184,6 @@ final class Router
 
     /**
      * Register a PATCH route via the bound Registrar.
-     *
-     * @param string $path
-     * @param array|string|callable $handler
-     * @param string|array|null $nameOrOpts
-     * @return RouteInterface
      */
     public static function patch(
         string $path,
@@ -215,11 +195,6 @@ final class Router
 
     /**
      * Register a POST route via the bound Registrar.
-     *
-     * @param string $path
-     * @param array|string|callable $handler
-     * @param string|array|null $nameOrOpts
-     * @return RouteInterface
      */
     public static function post(
         string $path,
@@ -231,11 +206,6 @@ final class Router
 
     /**
      * Register a PUT route via the bound Registrar.
-     *
-     * @param string $path
-     * @param array|string|callable $handler
-     * @param string|array|null $nameOrOpts
-     * @return RouteInterface
      */
     public static function put(
         string $path,
@@ -279,22 +249,19 @@ final class Router
      * @param string $prefix URL prefix for the resource (e.g. "/users")
      * @param string $controller Controller class name or callable representation
      * @param array $opts Optional configuration forwarded to Registrar::resource
-     * @return void
      */
     public static function resource(string $name, string $prefix, string $controller, array $opts = []): void
     {
         self::getInstance()->resource($name, $prefix, $controller, $opts);
     }
 
-    /*──────────── lifecycle ────────────*/
-
+    /* ──────────── lifecycle ──────────── */
     /**
      * Bind a concrete Registrar instance to the façade.
      *
      * Subsequent static calls are forwarded to this instance.
      *
      * @param Registrar $router Registrar to bind
-     * @return void
      */
     public static function setInstance(Registrar $router): void
     {
@@ -315,7 +282,7 @@ final class Router
 
         $path = $ttl === null
             ? self::$signedGen->signed($name, $params, $query, null, false)
-            : self::$signedGen->signed($name, $params, $query, max(1, (int)$ttl), false);
+            : self::$signedGen->signed($name, $params, $query, max(1, $ttl), false);
 
         return $absolute ? self::withRouteDomain($name, $path) : $path;
     }
@@ -334,6 +301,7 @@ final class Router
             throw new \LogicException('TemporaryUrlGenerator not bound (no default TTL provided).');
         }
         $path = self::$tempGen->temporary($name, $params, $query, $ttl, false);
+
         return $absolute ? self::withRouteDomain($name, $path) : $path;
     }
 
@@ -348,6 +316,7 @@ final class Router
     ): string {
         self::assertUrlBound();
         $path = self::$routeGen->route($name, $params, $query, false);
+
         return $absolute ? self::withRouteDomain($name, $path) : $path;
     }
 
@@ -366,8 +335,10 @@ final class Router
     {
         $prev = self::$instance;
         self::$instance = $router;
+
         try {
             $ref = ReflectionResource::getFunctionReflection($callback);
+
             return $ref->getNumberOfParameters() > 0
                 ? $callback($router)
                 : $callback();
@@ -394,7 +365,6 @@ final class Router
     /**
      * Return the bound Registrar instance or throw if none is set.
      *
-     * @return Registrar
      * @throws RuntimeException When the façade is used before a Registrar is set
      */
     private static function getInstance(): Registrar

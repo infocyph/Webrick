@@ -5,8 +5,6 @@
  *
  * Provides helpers to compute and verify HMAC-based signatures for URL payloads,
  * using a modern cryptographic hash (sha3-256) and constant-time comparison.
- *
- * @package Infocyph\Webrick\Router\Url
  */
 
 declare(strict_types=1);
@@ -27,9 +25,7 @@ final class Signature
     /**
      * Prevent instantiation; use static methods only.
      */
-    private function __construct()
-    {
-    }
+    private function __construct() {}
 
     /**
      * Verify that the provided signature matches the computed HMAC.
@@ -39,7 +35,6 @@ final class Signature
      * @param string $payload The original payload.
      * @param string $sig The expected hex-encoded signature.
      * @param string $key Secret key to recompute the HMAC.
-     *
      * @return bool True if the signature matches; false otherwise.
      */
     public static function check(string $payload, string $sig, string $key): bool
@@ -52,7 +47,6 @@ final class Signature
      *
      * @param string $payload Arbitrary string to sign (e.g., canonicalized query).
      * @param string $key Secret key used for HMAC.
-     *
      * @return string Hex-encoded HMAC digest.
      */
     public static function make(string $payload, string $key): string

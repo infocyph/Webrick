@@ -29,12 +29,11 @@
  * ./webrick route:cache --matcher=sharded   --cache=.route-cache --routes=routes.php
  * ./webrick route:cache --matcher=fused     --cache=.route-cache/__routes.php --routes=routes.php
  * ./webrick route:cache --matcher=generated --cache=.route-cache/__generated.php --routes=routes.php
- *
  */
 declare(strict_types=1);
 
 namespace {
-    $_ENV['WEBRICK_MATCHER_DEFAULT'] = \Infocyph\Webrick\Constants\MatcherModeEnum::SHARDED->value; // sharded/fused/generated;
+    $_ENV['WEBRICK_MATCHER_DEFAULT'] = 'sharded'; // sharded/fused/generated
 
     require __DIR__ . '/vendor/autoload.php';
 
@@ -67,7 +66,6 @@ namespace {
     use Infocyph\Webrick\Router\Kernel\RouterKernel;
     use Infocyph\Webrick\Router\Matching\FusedMatcher;
     use Infocyph\Webrick\Router\Matching\GeneratedMatcher;
-    use Infocyph\Webrick\Router\Matching\MatcherInterface;
     use Infocyph\Webrick\Router\Matching\ShardedMatcher;
     use Infocyph\Webrick\Router\Route\Collection;
     use Psr\Log\NullLogger;
@@ -129,11 +127,13 @@ namespace {
      * 1) App config
      * ----------------------------------------------------------------------- */
     $logger = new NullLogger();
-    $env = $_ENV['APP_ENV'] ?? getenv('APP_ENV') ?? 'prod';
+    $envRaw = \getenv('APP_ENV');
+    $env = (\is_string($envRaw) && $envRaw !== '') ? $envRaw : 'prod';
     $dev = ($env !== 'prod');
-    $matcherDefaultEnv = (string)($_ENV['WEBRICK_MATCHER_DEFAULT']
-        ?? \getenv('WEBRICK_MATCHER_DEFAULT')
-        ?? MatcherModeEnum::SHARDED->value);
+    $matcherDefaultEnvRaw = \getenv('WEBRICK_MATCHER_DEFAULT');
+    $matcherDefaultEnv = (\is_string($matcherDefaultEnvRaw) && $matcherDefaultEnvRaw !== '')
+        ? $matcherDefaultEnvRaw
+        : MatcherModeEnum::SHARDED->value;
     $signUrlSecret = 'hog';
     $keyForCookie = 'tvcYp7XwEZaqpSItOyDgKql/xgqONToDogJ0Psxk/Lc=';
     $keyForCookie = (static function (string $k): string {
@@ -145,16 +145,13 @@ namespace {
         return match (true) {
             // base64 (commonly 44 chars incl. == padding)
             preg_match('#^[A-Za-z0-9+/]{43}=#', $k) === 1
-            || preg_match('#^[A-Za-z0-9+/]{44}$#', $k) === 1
-            => base64_decode($k, true) ?: '',
+            || preg_match('#^[A-Za-z0-9+/]{44}$#', $k) === 1 => base64_decode($k, true) ?: '',
 
             // hex → raw
-            ctype_xdigit($k) && strlen($k) === 64
-            => hex2bin($k) ?: '',
+            ctype_xdigit($k) && strlen($k) === 64 => hex2bin($k) ?: '',
 
             // length match
-            strlen($k) === 32
-            => $k,
+            strlen($k) === 32 => $k,
 
             // raw (binary-safe envs)
             default => throw new RuntimeException('Invalid COOKIE_KEY: must decode to exactly 32 bytes.'),
@@ -164,19 +161,36 @@ namespace {
     );
 
     // 🔧 feature toggles for the three middlewares
+    $envBool = static function (string $key, bool $default): bool {
+        $raw = \getenv($key);
+        if (!\is_string($raw) || $raw === '') {
+            return $default;
+        }
+
+        $parsed = \filter_var($raw, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE);
+
+        return $parsed ?? $default;
+    };
     $enable = [
-        'cookie_encryption' => true,  // set true if you actually store sensitive data in cookies
-        'normalize_method' => true,  //
-        'input_sanitizer' => true,  // set true if you want global scalar sanitization
+        'cookie_encryption' => $envBool('WEBRICK_ENABLE_COOKIE_ENCRYPTION', true),
+        'normalize_method' => $envBool('WEBRICK_ENABLE_NORMALIZE_METHOD', true),
+        'input_sanitizer' => $envBool('WEBRICK_ENABLE_INPUT_SANITIZER', true),
     ];
 
     // Runtime matcher switching (header driven).
     $matcherDefault = \strtolower(
         $matcherDefaultEnv,
     );
-    $matcherHeaderName = (string)($_ENV['WEBRICK_MATCHER_HEADER'] ?? \getenv('WEBRICK_MATCHER_HEADER') ?? 'X-Webrick-Matcher');
-    $matcherKeyHeaderName = (string)($_ENV['WEBRICK_MATCHER_KEY_HEADER'] ?? \getenv('WEBRICK_MATCHER_KEY_HEADER') ?? 'X-Webrick-Matcher-Key');
-    $matcherKey = (string)($_ENV['WEBRICK_MATCHER_KEY'] ?? \getenv('WEBRICK_MATCHER_KEY') ?? '');
+    $matcherHeaderRaw = \getenv('WEBRICK_MATCHER_HEADER');
+    $matcherHeaderName = (\is_string($matcherHeaderRaw) && $matcherHeaderRaw !== '')
+        ? $matcherHeaderRaw
+        : 'X-Webrick-Matcher';
+    $matcherKeyHeaderRaw = \getenv('WEBRICK_MATCHER_KEY_HEADER');
+    $matcherKeyHeaderName = (\is_string($matcherKeyHeaderRaw) && $matcherKeyHeaderRaw !== '')
+        ? $matcherKeyHeaderRaw
+        : 'X-Webrick-Matcher-Key';
+    $matcherKeyRaw = \getenv('WEBRICK_MATCHER_KEY');
+    $matcherKey = \is_string($matcherKeyRaw) ? $matcherKeyRaw : '';
     $allowedMatchers = MatcherModeEnum::values();
     if (!\in_array($matcherDefault, $allowedMatchers, true)) {
         $matcherDefault = MatcherModeEnum::SHARDED->value;
@@ -187,12 +201,21 @@ namespace {
         if (!isset($_SERVER[$serverKey])) {
             return null;
         }
-        $v = \trim((string)$_SERVER[$serverKey]);
+        $raw = $_SERVER[$serverKey];
+        if (\is_array($raw)) {
+            return null;
+        }
+        if (!\is_scalar($raw) && !($raw instanceof Stringable)) {
+            return null;
+        }
+
+        $v = \trim((string) $raw);
+
         return $v === '' ? null : $v;
     };
 
-    $requestedMatcher = \strtolower((string)($readHeader($matcherHeaderName) ?? ''));
-    $providedKey = (string)($readHeader($matcherKeyHeaderName) ?? '');
+    $requestedMatcher = \strtolower($readHeader($matcherHeaderName) ?? '');
+    $providedKey = $readHeader($matcherKeyHeaderName) ?? '';
     $overrideAllowed = $requestedMatcher !== ''
         && (
             $dev
@@ -203,7 +226,6 @@ namespace {
         ? $requestedMatcher
         : $matcherDefault;
 
-    /** @var MatcherInterface $matcher */
     $matcher = match ($selectedMatcher) {
         MatcherModeEnum::FUSED->value => FusedMatcher::make(),
         MatcherModeEnum::GENERATED->value => GeneratedMatcher::make(),
@@ -222,26 +244,37 @@ namespace {
     // throttle:<max>,<perSeconds>
     MiddlewareAliases::register(
         'throttle',
-        static fn (...$p) => new ThrottleMiddleware((int)($p[0] ?? 60), (int)($p[1] ?? 60)),
+        static function (...$p): ThrottleMiddleware {
+            $maxRaw = $p[0] ?? 60;
+            $windowRaw = $p[1] ?? 60;
+
+            $max = \is_numeric($maxRaw) ? (int) $maxRaw : 60;
+            $window = \is_numeric($windowRaw) ? (int) $windowRaw : 60;
+
+            return new ThrottleMiddleware($max, $window);
+        },
     );
-    MiddlewareAliases::register('verifySignedUrl', static function () use ($signUrlSecret) {
-        return new VerifySignedUrlMiddleware($signUrlSecret, 5);
-    });
+    MiddlewareAliases::register('verifySignedUrl', static fn() => new VerifySignedUrlMiddleware($signUrlSecret, 5));
 
     /* Pre-route (global) middleware – order matters */
-    $preGlobal = array_filter([
+    $preGlobal = [
         GatewayHardeningMiddleware::class,
         TelemetryMiddleware::class,
         MaintenanceModeMiddleware::class,
         RequestLimitsMiddleware::class,
-//        ThrottleMiddleware::class,
-        $enable['cookie_encryption'] ? new CookieEncryptionMiddleware($keyForCookie) : null,
-        $enable['normalize_method'] ? NormalizeMethodMiddleware::class : null,
-        $enable['input_sanitizer'] ? InputSanitizerMiddleware::class : null,
         NegotiationMiddleware::class,
         ResponseCacheMiddleware::class,
         CacheValidatorsMiddleware::class,
-    ]);
+    ];
+    if ($enable['cookie_encryption']) {
+        $preGlobal[] = new CookieEncryptionMiddleware($keyForCookie);
+    }
+    if ($enable['normalize_method']) {
+        $preGlobal[] = NormalizeMethodMiddleware::class;
+    }
+    if ($enable['input_sanitizer']) {
+        $preGlobal[] = InputSanitizerMiddleware::class;
+    }
 
     /* Post-controller (global) middleware */
     $postGlobal = [

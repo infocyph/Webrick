@@ -29,8 +29,7 @@ final readonly class Range
         public int $start,
         public int $end,
         public int $length,
-    ) {
-    }
+    ) {}
 
     /**
      * Parse a Range header and return a Range object for the first satisfiable byte-range.
@@ -61,27 +60,29 @@ final readonly class Range
 
         /* ---------- suffix range  bytes=-N  ---------------------------- */
         if ($rawStart === '') {
-            $len = (int)$rawEnd;
+            $len = (int) $rawEnd;
             if ($len <= 0) {
                 return null;
             }
 
             $start = max(0, $resourceLen - $len);
+
             return new self($start, $resourceLen - 1, $resourceLen);
         }
 
-        $start = (int)$rawStart;
+        $start = (int) $rawStart;
 
         /* ---------- open range  bytes=N-  ------------------------------ */
         if ($rawEnd === '' || $rawEnd === null) {
             if ($start >= $resourceLen) {
                 return null;
             }
+
             return new self($start, $resourceLen - 1, $resourceLen);
         }
 
         /* ---------- explicit range  bytes=N-M  ------------------------- */
-        $end = (int)$rawEnd;
+        $end = (int) $rawEnd;
 
         if ($start > $end || $end >= $resourceLen) {
             return null;

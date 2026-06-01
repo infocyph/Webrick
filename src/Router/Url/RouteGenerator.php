@@ -5,8 +5,6 @@
  *
  * Generates URLs for named routes by interpolating path parameters using
  * compiled route metadata. Stores only routes that provide a non-empty name.
- *
- * @package Infocyph\Webrick\Router\Url
  */
 
 declare(strict_types=1);
@@ -20,7 +18,7 @@ use Infocyph\Webrick\Router\Route\Collection;
  *
  * Thin wrapper around UrlGenerator kept for route-oriented naming.
  */
-final class RouteGenerator
+final readonly class RouteGenerator
 {
     private UrlGenerator $urlGenerator;
 
@@ -36,7 +34,6 @@ final class RouteGenerator
      * @param array<string,scalar|null> $params Route params
      * @param array<string,scalar|array|null> $query Query params
      * @param bool $absolute Whether to include base URI
-     * @return string
      */
     public function route(
         string $name,

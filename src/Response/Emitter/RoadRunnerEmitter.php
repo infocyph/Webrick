@@ -23,8 +23,6 @@ final class RoadRunnerEmitter implements EmitterInterface
      * Requires Request attribute 'roadrunner.respond' (callable):
      *   function (int $status, array $headers, string|iterable $body): void
      *
-     * @param Response $response
-     * @param null|Request $request
      * @throws \RuntimeException
      */
     public function emit(Response $response, ?Request $request = null): void
@@ -36,7 +34,7 @@ final class RoadRunnerEmitter implements EmitterInterface
 
         $status = $response->getStatusCode();
         $headers = $response->getHeaders();
-        $method = HttpMethodEnum::normalize((string)($request?->getMethod() ?? HttpMethodEnum::GET->value));
+        $method = HttpMethodEnum::normalize((string) ($request?->getMethod() ?? HttpMethodEnum::GET->value));
         $noBody = \in_array($status, [StatusEnum::NO_CONTENT->value, StatusEnum::NOT_MODIFIED->value], true)
             || $method === HttpMethodEnum::HEAD->value;
 
@@ -45,9 +43,10 @@ final class RoadRunnerEmitter implements EmitterInterface
             $out = $fn ? $fn() : [];
             // Respect HEAD / no-body statuses by responding with an empty payload
             $respond($status, $headers, $noBody ? '' : $out);
+
             return;
         }
 
-        $respond($status, $headers, $noBody ? '' : (string)$response->getBody());
+        $respond($status, $headers, $noBody ? '' : (string) $response->getBody());
     }
 }

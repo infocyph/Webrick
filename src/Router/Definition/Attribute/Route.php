@@ -58,6 +58,6 @@ final readonly class Route
         /** @var list<class-string|object> */
         public array $middleware = [],
     ) {
-        $this->method = (array)$method;  // normalise early
+        $this->method = (array) $method;  // normalise early
     }
 }

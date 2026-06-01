@@ -6,9 +6,11 @@ namespace Infocyph\Webrick\Response\Headers;
 
 final class HeaderPolicy
 {
-    public const MERGE_TOKENS = 2;
-    public const MULTI_LINE = 1;
-    public const SINGLE = 0;
+    public const int MERGE_TOKENS = 2;
+
+    public const int MULTI_LINE = 1;
+
+    public const int SINGLE = 0;
 
     /** @var array<string,int> lowercase-header => policy */
     private static array $map = [
@@ -27,15 +29,12 @@ final class HeaderPolicy
         'cache-control' => self::MERGE_TOKENS,
     ];
 
-
     /**
      * Private constructor to prevent instantiation.
      *
      * The class provides only static helpers; creating an instance is not intended.
      */
-    private function __construct()
-    {
-    }
+    private function __construct() {}
 
     /**
      * Return the merge policy for a header name.
@@ -53,9 +52,7 @@ final class HeaderPolicy
     }
 
     /* ---------------- NEW: central merge for CSV headers ---------------- */
-
     // Infocyph\Webrick\Response\Headers\HeaderPolicy
-
     /**
      * Merge two comma-separated header values into a canonical representation.
      *
@@ -67,9 +64,9 @@ final class HeaderPolicy
      * @param string $name Header name (used to select special-case logic)
      * @param string $existing Current header value (may be empty)
      * @param string $incoming New header value to merge in
-     * @return string|array Merged header string, or other canonical form returned by special cases
+     * @return string Merged header string, or other canonical form returned by special cases
      */
-    public static function mergeCsv(string $name, string $existing, string $incoming): string|array
+    public static function mergeCsv(string $name, string $existing, string $incoming): string
     {
         if ($existing === '') {
             return implode(', ', self::normalizeCsv($incoming));
@@ -90,6 +87,7 @@ final class HeaderPolicy
                 }
             }
         }
+
         return implode(', ', $out);
     }
 
@@ -101,7 +99,6 @@ final class HeaderPolicy
      *
      * @param string $header Header name to register (case-insensitive)
      * @param int $policy One of the HeaderPolicy::* constants
-     * @return void
      */
     public static function register(string $header, int $policy): void
     {
@@ -119,13 +116,13 @@ final class HeaderPolicy
      */
     private static function normalizeCsv(string $csv): array
     {
-        $toks = array_map('trim', explode(',', $csv));
-        $toks = array_values(array_filter($toks, fn ($t) => $t !== ''));
+        $toks = array_map(trim(...), explode(',', $csv));
+        $toks = array_values(array_filter($toks, fn($t) => $t !== ''));
+
         // Title-Case typical header tokens (Accept-Encoding, Origin, etc.)
         return array_map(static function (string $t): string {
-            $parts = array_map(function ($part) {
-                return $part === '' ? '' : ucfirst(strtolower($part));
-            }, explode('-', $t));
+            $parts = array_map(fn($part) => $part === '' ? '' : ucfirst(strtolower($part)), explode('-', $t));
+
             return implode('-', $parts ?? []);
         }, $toks);
     }

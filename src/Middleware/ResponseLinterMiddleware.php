@@ -8,8 +8,6 @@
  *
  * Recommended order (dev/test only):
  *   … → Compression → CorsAndPolicies → VaryAccumulator → ResponseLinter
- *
- * @package Infocyph\Webrick\Middleware
  */
 
 declare(strict_types=1);
@@ -36,16 +34,18 @@ use RuntimeException;
 final readonly class ResponseLinterMiddleware
 {
     /** bit-flags */
-    public const BODY_REQUIRES_CTYPE = 0b00001;
-    public const COMPRESSED_NEEDS_VARY = 0b00100;       // Content-Encoding ⇒ Vary: Accept-Encoding
-    public const CONTENT_LENGTH_MATCH = 0b10000;        // Content-Length must match actual bytes (when knowable)
-    public const ETAG_WEAK_WHEN_ENCODING = 0b01000;     // Content-Encoding ⇒ ETag MUST be weak
-    public const NO_BODY_STATUSES = 0b00010;            // 204/304 must have empty body
+    public const int BODY_REQUIRES_CTYPE = 0b00001;
+
+    public const int COMPRESSED_NEEDS_VARY = 0b00100;       // Content-Encoding ⇒ Vary: Accept-Encoding
+
+    public const int CONTENT_LENGTH_MATCH = 0b10000;        // Content-Length must match actual bytes (when knowable)
+
+    public const int ETAG_WEAK_WHEN_ENCODING = 0b01000;     // Content-Encoding ⇒ ETag MUST be weak
+
+    public const int NO_BODY_STATUSES = 0b00010;            // 204/304 must have empty body
 
     /**
      * Enabled checks bitmask.
-     *
-     * @var int
      */
     private int $checks;
 
@@ -75,8 +75,7 @@ final readonly class ResponseLinterMiddleware
      * Run response checks after invoking the next handler.
      *
      * @param Request $req Incoming request.
-     * @param Closure $next Next handler.
-     *
+     * @param Closure(Request):Response $next
      * @return Response Possibly unmodified response; exceptions thrown on violations.
      *
      * @throws RuntimeException If any enabled check fails.
@@ -126,8 +125,6 @@ final readonly class ResponseLinterMiddleware
      * @param Response $r Response to inspect.
      * @param int $len Actual body byte length.
      *
-     * @return void
-     *
      * @throws RuntimeException If Content-Length is numeric and mismatches $len.
      */
     private function assertContentLengthMatches(Response $r, int $len): void
@@ -140,11 +137,11 @@ final readonly class ResponseLinterMiddleware
         if ($cl === '' || $len === 0) {
             return;
         }
-        if (ctype_digit($cl) && (int)$cl !== $len) {
+        if (ctype_digit($cl) && (int) $cl !== $len) {
             throw new RuntimeException(
                 sprintf(
                     'Linter: Content-Length (%d) does not match body bytes (%d)',
-                    (int)$cl,
+                    (int) $cl,
                     $len,
                 ),
             );
@@ -152,14 +149,11 @@ final readonly class ResponseLinterMiddleware
     }
 
     /* ───────────────────────── helpers ───────────────────────── */
-
     /**
      * Ensure non-empty bodies have a Content-Type header.
      *
      * @param Response $r Response to inspect.
      * @param int $len Body byte length.
-     *
-     * @return void
      *
      * @throws RuntimeException If len > 0 and Content-Type is missing.
      */
@@ -175,8 +169,6 @@ final readonly class ResponseLinterMiddleware
      *
      * @param Response $r Response to inspect.
      * @param int $len Body byte length.
-     *
-     * @return void
      *
      * @throws RuntimeException If a body is present for 204 or 304 responses.
      */
@@ -196,8 +188,6 @@ final readonly class ResponseLinterMiddleware
      *
      * @param Response $r Response to inspect.
      *
-     * @return void
-     *
      * @throws RuntimeException If Content-Encoding is set but Vary lacks Accept-Encoding.
      */
     private function assertVaryOnCompressed(Response $r): void
@@ -214,8 +204,6 @@ final readonly class ResponseLinterMiddleware
      * Enforce weak ETag when Content-Encoding is present.
      *
      * @param Response $r Response to inspect.
-     *
-     * @return void
      *
      * @throws RuntimeException If a strong ETag is used with Content-Encoding.
      */
@@ -235,7 +223,6 @@ final readonly class ResponseLinterMiddleware
      *
      * @param string $line Raw header value (possibly CSV).
      * @param string $needleLower Lower-cased token to search for.
-     *
      * @return bool True if token is present; false otherwise.
      */
     private function lineHasToken(string $line, string $needleLower): bool
@@ -243,6 +230,7 @@ final readonly class ResponseLinterMiddleware
         if ($line === '') {
             return false;
         }
-        return array_any(explode(',', $line), fn ($tok) => \strtolower(trim($tok)) === $needleLower);
+
+        return array_any(explode(',', $line), fn($tok) => \strtolower(trim((string) $tok)) === $needleLower);
     }
 }

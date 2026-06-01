@@ -6,7 +6,7 @@ use Infocyph\Webrick\Support\InputSanitizer;
 
 describe('InputSanitizer', function () {
     beforeEach(function () {
-        $this->sanitizer = new InputSanitizer();
+        $this->sanitizer = new InputSanitizer;
     });
 
     it('sanitizes XSS in strings', function () {

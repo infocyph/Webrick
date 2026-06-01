@@ -7,16 +7,24 @@ namespace Infocyph\Webrick\Request\Core;
 use Infocyph\Webrick\Request\Request;
 use InvalidArgumentException;
 
-final class Uri
+final class Uri implements \Stringable
 {
     private static array $asciiCache = [];
+
     private string $fragment;
+
     private string $host;
+
     private string $pass;
+
     private string $path;
+
     private ?int $port;
+
     private string $query;
+
     private string $scheme;
+
     private string $user;
 
     /**
@@ -27,6 +35,7 @@ final class Uri
      * needed for the Uri object.
      *
      * @param string $uri The string to parse into a Uri object.
+     *
      * @throws InvalidArgumentException If the given string is not a valid URI.
      */
     public function __construct(string $uri = '')
@@ -41,6 +50,7 @@ final class Uri
             $this->path = '/';
             $this->query = '';
             $this->fragment = '';
+
             return;
         }
 
@@ -101,6 +111,7 @@ final class Uri
         if ($this->fragment !== '') {
             $uri .= '#' . $this->fragment;
         }
+
         return $uri;
     }
 
@@ -198,6 +209,7 @@ final class Uri
         if ($this->port !== null) {
             $auth .= ':' . $this->port;
         }
+
         return $auth;
     }
 
@@ -279,8 +291,8 @@ final class Uri
      */
     public function getUserInfo(): string
     {
-        return $this->user === '' ? '' :
-            ($this->pass === '' ? $this->user : "{$this->user}:{$this->pass}");
+        return $this->user === '' ? ''
+            : ($this->pass === '' ? $this->user : "{$this->user}:{$this->pass}");
     }
 
     /**
@@ -300,6 +312,7 @@ final class Uri
         }
         $clone = clone $this;
         $clone->fragment = $fragment;
+
         return $clone;
     }
 
@@ -308,9 +321,6 @@ final class Uri
      *
      * If the given host is empty, the host is omitted from the URI.
      * If the given host is the same as the current host, the original Uri is returned.
-     *
-     * @param string $host
-     * @return Uri
      */
     public function withHost(string $host): Uri
     {
@@ -320,6 +330,7 @@ final class Uri
         }
         $clone = clone $this;
         $clone->host = $host;
+
         return $clone;
     }
 
@@ -340,6 +351,7 @@ final class Uri
         }
         $clone = clone $this;
         $clone->path = $path;
+
         return $clone;
     }
 
@@ -348,8 +360,6 @@ final class Uri
      * If the given port is the same as the default port for the current scheme,
      * the port is omitted from the URI.
      *
-     * @param int|null $port
-     * @return Uri
      * @throws InvalidArgumentException if the port is invalid (< 1 or > 65535)
      */
     public function withPort(?int $port): Uri
@@ -362,6 +372,7 @@ final class Uri
         }
         $clone = clone $this;
         $clone->port = $port === $this->defaultPort($this->scheme) ? null : $port;
+
         return $clone;
     }
 
@@ -382,6 +393,7 @@ final class Uri
         }
         $clone = clone $this;
         $clone->query = $query;
+
         return $clone;
     }
 
@@ -407,6 +419,7 @@ final class Uri
         if ($clone->port === $clone->defaultPort($scheme)) {
             $clone->port = null;
         }
+
         return $clone;
     }
 
@@ -415,10 +428,6 @@ final class Uri
      *
      * If the given user information is the same as the current user information,
      * the original Uri is returned.
-     *
-     * @param string $user
-     * @param string|null $password
-     * @return Uri
      */
     public function withUserInfo(string $user, ?string $password = null): Uri
     {
@@ -428,6 +437,7 @@ final class Uri
         $clone = clone $this;
         $clone->user = $user;
         $clone->pass = $password ?? '';
+
         return $clone;
     }
 
@@ -448,6 +458,7 @@ final class Uri
         if ($port !== null && $default !== null && $port === $default) {
             $port = null;
         }
+
         return $scheme . '://' . $host . ($port ? ":{$port}" : '') . $reqUri;
     }
 
@@ -464,9 +475,10 @@ final class Uri
         // Forwarded: by=...;for=...;host=example.com:8443;proto=https
         if ((Request::getProxyHeaderFlags() & Request::HEADER_FORWARDED) !== 0) {
             if (!empty($s['HTTP_FORWARDED'])) {
-                $first = explode(',', (string)$s['HTTP_FORWARDED'])[0];
+                $first = explode(',', (string) $s['HTTP_FORWARDED'])[0];
                 if (preg_match('/host=(?:"([^"]+)"|([^;,\s]+))/i', $first, $m)) {
                     $hp = $m[1] !== '' ? $m[1] : trim($m[2]);
+
                     return self::splitHostPort($hp);
                 }
             }
@@ -475,7 +487,8 @@ final class Uri
         // X-Forwarded-Host: a.example, b.example
         if ((Request::getProxyHeaderFlags() & Request::HEADER_X_FORWARDED_HOST) !== 0) {
             if (!empty($s['HTTP_X_FORWARDED_HOST'])) {
-                $first = trim(explode(',', (string)$s['HTTP_X_FORWARDED_HOST'])[0]);
+                $first = trim(explode(',', (string) $s['HTTP_X_FORWARDED_HOST'])[0]);
+
                 return self::splitHostPort($first);
             }
         }
@@ -506,12 +519,13 @@ final class Uri
             // Complement with X-Forwarded-Port if allowed and not present
             if ($p === null && (Request::getProxyHeaderFlags() & Request::HEADER_X_FORWARDED_PORT) !== 0) {
                 if (!empty($s['HTTP_X_FORWARDED_PORT'])) {
-                    $first = (int)trim(explode(',', (string)$s['HTTP_X_FORWARDED_PORT'])[0]);
+                    $first = (int) trim(explode(',', (string) $s['HTTP_X_FORWARDED_PORT'])[0]);
                     if ($first > 0 && $first <= 65535) {
                         $p = $first;
                     }
                 }
             }
+
             return [$h, $p];
         }
 
@@ -520,11 +534,11 @@ final class Uri
         [$host, $port] = self::splitHostPort($rawHost);
 
         if ($port === null && !empty($s['SERVER_PORT'])) {
-            $port = (int)$s['SERVER_PORT'];
+            $port = (int) $s['SERVER_PORT'];
         }
+
         return [$host, $port];
     }
-
 
     /**
      * Retrieves the request URI from the given server parameters.
@@ -559,6 +573,7 @@ final class Uri
         if ($p = self::protoFromXForwarded($s)) {
             return $p;
         }
+
         return self::protoFromServer($s);
     }
 
@@ -584,7 +599,8 @@ final class Uri
      */
     private static function normPort(string $p): ?int
     {
-        $i = (int)$p;
+        $i = (int) $p;
+
         return ($i > 0 && $i <= 65535) ? $i : null;
     }
 
@@ -602,15 +618,17 @@ final class Uri
         if ((Request::getProxyHeaderFlags() & Request::HEADER_FORWARDED) === 0) {
             return null;
         }
-        $line = (string)($s['HTTP_FORWARDED'] ?? '');
+        $line = (string) ($s['HTTP_FORWARDED'] ?? '');
         if ($line === '') {
             return null;
         }
         $first = explode(',', $line)[0];
         if (preg_match('/proto="?([a-z]+)"?/i', $first, $m)) {
             $p = strtolower($m[1]);
+
             return ($p === 'https' || $p === 'http') ? $p : null;
         }
+
         return null;
     }
 
@@ -627,11 +645,11 @@ final class Uri
      */
     private static function protoFromServer(array $s): string
     {
-        $https =
-            (!empty($s['HTTPS']) && strtolower((string)$s['HTTPS']) === 'on')
+        $https
+            = (!empty($s['HTTPS']) && strtolower((string) $s['HTTPS']) === 'on')
             || (strtolower($s['REQUEST_SCHEME'] ?? '') === 'https')
             || (strtolower($s['HTTP_FRONT_END_HTTPS'] ?? '') === 'on')
-            || ((int)($s['SERVER_PORT'] ?? 0) === 443);
+            || ((int) ($s['SERVER_PORT'] ?? 0) === 443);
 
         return $https ? 'https' : 'http';
     }
@@ -648,7 +666,8 @@ final class Uri
         if ((Request::getProxyHeaderFlags() & Request::HEADER_X_FORWARDED_PROTO) === 0) {
             return null;
         }
-        $first = strtolower(trim(explode(',', (string)($s['HTTP_X_FORWARDED_PROTO'] ?? ''))[0]));
+        $first = strtolower(trim(explode(',', (string) ($s['HTTP_X_FORWARDED_PROTO'] ?? ''))[0]));
+
         return $first === 'https' ? 'https' : ($first === 'http' ? 'http' : null);
     }
 
@@ -677,8 +696,10 @@ final class Uri
             if (preg_match('/^\[(?<host>[^\]]+)\](?::(?<port>\d{1,5}))?$/', $v, $m)) {
                 $host = '[' . $m['host'] . ']';
                 $port = isset($m['port']) ? self::normPort($m['port']) : null;
+
                 return [$host, $port];
             }
+
             // malformed → keep as host (don’t invent a port)
             return [$v, null];
         }
@@ -686,6 +707,7 @@ final class Uri
         // 2) Non-IPv6 (no brackets). Treat as "host[:port]" only when there is exactly one colon and a numeric port.
         if (preg_match('/^(?<host>[^:]+):(?<port>\d{1,5})$/', $v, $m)) {
             $port = self::normPort($m['port']);
+
             return [$m['host'], $port];
         }
 
@@ -704,6 +726,7 @@ final class Uri
      *
      * @param string $host The host name to convert.
      * @return string The ASCII-compatible host name.
+     *
      * @throws InvalidArgumentException If the host name cannot be converted to an ASCII-compatible string.
      */
     private function asciiHost(string $host): string
@@ -725,6 +748,7 @@ final class Uri
             if ($ascii === false) {
                 throw new InvalidArgumentException("Invalid host: {$host}");
             }
+
             return self::$asciiCache[$host] = strtolower($ascii);
         }
 
@@ -742,7 +766,7 @@ final class Uri
         return match ($scheme) {
             'http' => 80,
             'https' => 443,
-            default => null
+            default => null,
         };
     }
 
@@ -771,9 +795,9 @@ final class Uri
     {
         do {
             $old = $path;
-            $path = preg_replace('#(/\.?/)#', '/', $path);        // "/./" or "//"
-            $path = preg_replace('#/(?!\.\.)[^/]+/\.\./#', '/', $path); // "x/../"
-            $path = preg_replace('#^/\.\.(?=/|$)#', '/', $path);  // leading "/../"
+            $path = preg_replace('#(/\.?/)#', '/', (string) $path);        // "/./" or "//"
+            $path = preg_replace('#/(?!\.\.)[^/]+/\.\./#', '/', (string) $path); // "x/../"
+            $path = preg_replace('#^/\.\.(?=/|$)#', '/', (string) $path);  // leading "/../"
         } while ($path !== $old);
 
         return $path === '' ? '/' : $path;

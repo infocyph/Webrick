@@ -18,9 +18,7 @@ final class SecurityHeaders
     /**
      * Prevent instantiation — this class exposes only static helper methods.
      */
-    private function __construct()
-    {
-    }
+    private function __construct() {}
 
     /**
      * Apply Strict-Transport-Security if the header is not already present.
@@ -35,6 +33,7 @@ final class SecurityHeaders
     public static function hsts(Response $r, bool $includeSub = true): Response
     {
         $val = 'max-age=31536000' . ($includeSub ? '; includeSubDomains' : '');
+
         return self::setIfAbsent($r, 'Strict-Transport-Security', $val);
     }
 
@@ -74,7 +73,7 @@ final class SecurityHeaders
         // Tunables (keep your current defaults)
         string $referrer = 'no-referrer-when-downgrade',
         string $xfo = 'SAMEORIGIN',
-        string $permissions = "camera=(), geolocation=(), microphone=()",
+        string $permissions = 'camera=(), geolocation=(), microphone=()',
     ): Response {
         // core, non-clobbering defaults
         $r = self::setIfAbsent($r, 'X-Content-Type-Options', 'nosniff');
@@ -99,6 +98,7 @@ final class SecurityHeaders
         // HSTS (non-clobbering)
         $httpsish = (($_SERVER['HTTPS'] ?? '') === 'on' || ($_SERVER['HTTPS'] ?? '') === '1')
             || (strtolower($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
+
         return $hsts && $httpsish ? self::hsts($r, $includeSubs) : $r;
     }
 

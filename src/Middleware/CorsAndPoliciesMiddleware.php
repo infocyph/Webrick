@@ -67,7 +67,7 @@ final readonly class CorsAndPoliciesMiddleware
         private bool $allowCredentials = true,
         private bool $allowPrivateNetwork = false,
 
-        // Security / Policies
+        // Hardening / policy headers
         private bool $hsts = true,
         private bool $hstsIncludeSubdomains = true,
         private ?string $csp = "default-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self';",
@@ -82,8 +82,7 @@ final readonly class CorsAndPoliciesMiddleware
             'Sec-CH-UA-Full-Version',
         ],
         private array $timingAllowOrigins = [],
-    ) {
-    }
+    ) {}
 
     /**
      * Handle the request by applying CORS (including preflight handling) and security policies.
@@ -94,6 +93,7 @@ final readonly class CorsAndPoliciesMiddleware
      * - On OPTIONS: generate 204 with preflight headers only.
      * - Otherwise: pass downstream and then apply CORS headers and security policies.
      *
+     * @param Closure(Request):Response $next
      * @return Response Final response with CORS and security headers applied.
      */
     public function __invoke(Request $req, Closure $next): Response
@@ -119,6 +119,7 @@ final readonly class CorsAndPoliciesMiddleware
             $policy['allowCredentials'] = $route->allowCredentials ?? $policy['allowCredentials'];
             $policy['allowPrivateNetwork'] = $route->allowPrivateNetwork ?? $policy['allowPrivateNetwork'];
         }
+        $policy = $this->normalizePolicy($policy);
 
         $origin = $req->getHeaderLine('Origin');
         [$acao, $usedWildcard] = $this->resolveAllowedOrigin($origin, $policy['origins'], $policy['allowCredentials']);
@@ -141,11 +142,13 @@ final readonly class CorsAndPoliciesMiddleware
 
             $resp = new Response(StatusEnum::NO_CONTENT->value, new Stream(''));
             $resp = $this->applyCors($resp, $req, $policy, $acao, $usedWildcard, true);
+
             return $this->applyPolicies($resp);
         }
 
         $resp = $next($req);
         $resp = $this->applyCors($resp, $req, $policy, $acao, $usedWildcard, false);
+
         return $this->applyPolicies($resp);
     }
 
@@ -154,7 +157,15 @@ final readonly class CorsAndPoliciesMiddleware
     /**
      * Orchestrate CORS header application by delegating to specific helpers.
      *
-     * @param array<string,mixed> $p Effective policy bag.
+     * @param array{
+     *   origins:list<string>,
+     *   methods:string,
+     *   allowHeaders:string|list<string>,
+     *   exposeHeaders:string|list<string>,
+     *   maxAgeSeconds:int,
+     *   allowCredentials:bool,
+     *   allowPrivateNetwork:bool
+     * } $p Effective policy bag.
      */
     private function applyCors(
         Response $r,
@@ -168,6 +179,7 @@ final readonly class CorsAndPoliciesMiddleware
         $r = $this->setAllowMethods($r, $req, $p, $preflight);
         $r = $this->setAllowHeaders($r, $req, $p, $preflight);
         $r = $this->setExposeHeaders($r, $p);
+
         return $r;
     }
 
@@ -195,6 +207,7 @@ final readonly class CorsAndPoliciesMiddleware
             $tao = $this->timingAllowOrigins === ['*'] ? '*' : implode(', ', $this->timingAllowOrigins);
             $r = $r->withSmartHeader('Timing-Allow-Origin', $tao);
         }
+
         return $r;
     }
 
@@ -222,22 +235,39 @@ final readonly class CorsAndPoliciesMiddleware
 
     /**
      * Normalize a CSV list or array of strings to a de-duplicated CSV.
+     *
+     * @param string|array<int,string> $v
      */
     private function csv(string|array $v): string
     {
         if (is_string($v)) {
             return trim($v);
         }
-        $v = array_values(array_filter(array_map(static fn ($s) => trim((string)$s), $v), fn ($s) => $s !== ''));
+        $v = array_values(
+            array_filter(
+                array_map(
+                    trim(...),
+                    $v,
+                ),
+                static fn(string $s): bool => $s !== '',
+            ),
+        );
+
         return implode(', ', array_unique($v));
     }
 
     /**
      * True when `$v` denotes wildcard "*" (either as string or single-element array).
+     *
+     * @param string|array<int,string> $v
      */
     private function isWildcard(string|array $v): bool
     {
-        return is_string($v) ? trim($v) === '*' : ($v === ['*']);
+        if (is_string($v)) {
+            return trim($v) === '*';
+        }
+
+        return $this->normalizeList($v) === ['*'];
     }
 
     /**
@@ -246,6 +276,8 @@ final readonly class CorsAndPoliciesMiddleware
      * Supported patterns:
      * - Full origin string equality.
      * - Scheme/host/port with optional wildcard subdomain prefix ("*.example.com").
+     *
+     * @param array{scheme:string,host:string,port:int,origin:string} $o
      */
     private function matchOriginPattern(array $o, string $pattern): bool
     {
@@ -261,12 +293,13 @@ final readonly class CorsAndPoliciesMiddleware
         if ($ps === '' || $ph === '' || $ps !== $o['scheme']) {
             return false;
         }
-        if ($pt !== null && (int)$pt !== (int)$o['port']) {
+        if (is_int($pt) && $pt !== $o['port']) {
             return false;
         }
 
         if (str_starts_with($ph, '*.')) {
             $suffix = substr($ph, 2);
+
             return $o['host'] === $suffix || str_ends_with($o['host'], '.' . $suffix);
         }
 
@@ -278,8 +311,59 @@ final readonly class CorsAndPoliciesMiddleware
      */
     private function methodAllowed(string $method, string $csvList): bool
     {
-        $list = array_map('trim', explode(',', $csvList));
+        $list = array_map(trim(...), explode(',', $csvList));
+
         return in_array($method, $list, true);
+    }
+
+    /**
+     * @param array<int|string,mixed> $value
+     * @return list<string>
+     */
+    private function normalizeList(array $value): array
+    {
+        return array_values(
+            array_filter(
+                array_map(
+                    static fn(mixed $item): string => is_string($item) ? trim($item) : '',
+                    $value,
+                ),
+                static fn(string $item): bool => $item !== '',
+            ),
+        );
+    }
+
+    /**
+     * @param array<string,mixed> $policy
+     * @return array{
+     *   origins:list<string>,
+     *   methods:string,
+     *   allowHeaders:string|list<string>,
+     *   exposeHeaders:string|list<string>,
+     *   maxAgeSeconds:int,
+     *   allowCredentials:bool,
+     *   allowPrivateNetwork:bool
+     * }
+     */
+    private function normalizePolicy(array $policy): array
+    {
+        $origins = $policy['origins'] ?? ['*'];
+        $methods = $policy['methods'] ?? $this->methods;
+        $allowHeaders = $policy['allowHeaders'] ?? $this->allowHeaders;
+        $exposeHeaders = $policy['exposeHeaders'] ?? $this->exposeHeaders;
+        $maxAgeSeconds = $policy['maxAgeSeconds'] ?? $this->maxAgeSeconds;
+        $allowCredentials = $policy['allowCredentials'] ?? $this->allowCredentials;
+        $allowPrivateNetwork = $policy['allowPrivateNetwork'] ?? $this->allowPrivateNetwork;
+
+        return [
+            'origins' => is_array($origins) ? $this->normalizeList($origins) : ['*'],
+            'methods' => is_string($methods) ? $methods : $this->methods,
+            'allowHeaders' => is_string($allowHeaders) ? $allowHeaders : $this->normalizeList((array) $allowHeaders),
+            'exposeHeaders' => is_string($exposeHeaders) ? $exposeHeaders : $this->normalizeList((array) $exposeHeaders),
+            'maxAgeSeconds' => is_int($maxAgeSeconds) ? $maxAgeSeconds : $this->maxAgeSeconds,
+            'allowCredentials' => is_bool($allowCredentials) ? $allowCredentials : $this->allowCredentials,
+            'allowPrivateNetwork' => is_bool($allowPrivateNetwork) ? $allowPrivateNetwork : $this->allowPrivateNetwork,
+        ];
     }
 
     /**
@@ -291,7 +375,7 @@ final readonly class CorsAndPoliciesMiddleware
      * - Allowed ['*'] returns either echo of origin (with credentials) or wildcard (without credentials).
      * - Exact match or wildcard subdomain patterns are supported.
      *
-     * @param array<int,string> $allowed
+     * @param list<string> $allowed
      * @return array{0:?string,1:bool} [acaoValueOrNull, usedWildcard]
      */
     private function resolveAllowedOrigin(string $origin, array $allowed, bool $withCreds): array
@@ -304,9 +388,10 @@ final readonly class CorsAndPoliciesMiddleware
         if ($origin === 'null') {
             $allowsNull = array_reduce(
                 $allowed,
-                static fn (bool $c, string $p) => $c || strtolower(trim($p)) === 'null',
+                static fn(bool $c, string $p) => $c || strtolower(trim($p)) === 'null',
                 false,
             );
+
             return $allowsNull ? ['null', false] : [null, false];
         }
 
@@ -332,7 +417,15 @@ final readonly class CorsAndPoliciesMiddleware
     /**
      * Set ACAO and ACAC when permitted by policy and request context.
      *
-     * @param array<string,mixed> $p Policy bag.
+     * @param array{
+     *   origins:list<string>,
+     *   methods:string,
+     *   allowHeaders:string|list<string>,
+     *   exposeHeaders:string|list<string>,
+     *   maxAgeSeconds:int,
+     *   allowCredentials:bool,
+     *   allowPrivateNetwork:bool
+     * } $p Policy bag.
      */
     private function setAcaoAndCredentials(Response $r, array $p, ?string $acao, bool $wildcard): Response
     {
@@ -345,13 +438,22 @@ final readonly class CorsAndPoliciesMiddleware
         if ($p['allowCredentials'] && !$wildcard && $acao !== null) {
             $r = $this->setIfAbsent($r, 'Access-Control-Allow-Credentials', 'true');
         }
+
         return $r;
     }
 
     /**
      * Set ACAH (+ ACMA, and optionally ACAPN on preflight).
      *
-     * @param array<string,mixed> $p Policy bag.
+     * @param array{
+     *   origins:list<string>,
+     *   methods:string,
+     *   allowHeaders:string|list<string>,
+     *   exposeHeaders:string|list<string>,
+     *   maxAgeSeconds:int,
+     *   allowCredentials:bool,
+     *   allowPrivateNetwork:bool
+     * } $p Policy bag.
      */
     private function setAllowHeaders(Response $r, Request $req, array $p, bool $preflight): Response
     {
@@ -359,16 +461,18 @@ final readonly class CorsAndPoliciesMiddleware
         if ($preflight) {
             $requested = $req->getHeaderLine('Access-Control-Request-Headers');
             if ($requested !== '' && $this->isWildcard($p['allowHeaders'])) {
-                $reqList = array_filter(array_map(static fn ($h) => strtolower(trim($h)), explode(',', $requested)));
+                $reqList = array_filter(
+                    array_map(static fn(string $h): string => strtolower(trim($h)), explode(',', $requested)),
+                );
                 $requestedNormalized = implode(', ', array_unique($reqList));
                 $r = $this->setIfAbsent($r, 'Access-Control-Allow-Headers', $requestedNormalized);
             } else {
                 $r = $this->setIfAbsent($r, 'Access-Control-Allow-Headers', strtolower($allowHeadersCsv));
             }
-            $r = $this->setIfAbsent($r, 'Access-Control-Max-Age', (string)$p['maxAgeSeconds']);
+            $r = $this->setIfAbsent($r, 'Access-Control-Max-Age', (string) $p['maxAgeSeconds']);
 
-            if ($p['allowPrivateNetwork'] &&
-                strtolower($req->getHeaderLine('Access-Control-Request-Private-Network')) === 'true') {
+            if ($p['allowPrivateNetwork']
+                && strtolower($req->getHeaderLine('Access-Control-Request-Private-Network')) === 'true') {
                 $r = $this->setIfAbsent($r, 'Access-Control-Allow-Private-Network', 'true');
             }
         } else {
@@ -381,7 +485,15 @@ final readonly class CorsAndPoliciesMiddleware
     /**
      * Set ACAM (reflect requested method on preflight when allowed).
      *
-     * @param array<string,mixed> $p Policy bag.
+     * @param array{
+     *   origins:list<string>,
+     *   methods:string,
+     *   allowHeaders:string|list<string>,
+     *   exposeHeaders:string|list<string>,
+     *   maxAgeSeconds:int,
+     *   allowCredentials:bool,
+     *   allowPrivateNetwork:bool
+     * } $p Policy bag.
      */
     private function setAllowMethods(Response $r, Request $req, array $p, bool $preflight): Response
     {
@@ -390,13 +502,22 @@ final readonly class CorsAndPoliciesMiddleware
         if ($preflight && $reqMethod !== '' && $this->methodAllowed($reqMethod, $methods)) {
             $methods = $reqMethod;
         }
+
         return $this->setIfAbsent($r, 'Access-Control-Allow-Methods', $methods);
     }
 
     /**
      * Set ACEH (supports '*' when credentials are disabled).
      *
-     * @param array<string,mixed> $p Policy bag.
+     * @param array{
+     *   origins:list<string>,
+     *   methods:string,
+     *   allowHeaders:string|list<string>,
+     *   exposeHeaders:string|list<string>,
+     *   maxAgeSeconds:int,
+     *   allowCredentials:bool,
+     *   allowPrivateNetwork:bool
+     * } $p Policy bag.
      */
     private function setExposeHeaders(Response $r, array $p): Response
     {
@@ -407,6 +528,7 @@ final readonly class CorsAndPoliciesMiddleware
         if (!$p['allowCredentials'] && $this->isWildcard($p['exposeHeaders'])) {
             return $this->setIfAbsent($r, 'Access-Control-Expose-Headers', '*');
         }
+
         return $this->setIfAbsent($r, 'Access-Control-Expose-Headers', $expose);
     }
 

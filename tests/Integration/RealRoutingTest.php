@@ -2,10 +2,9 @@
 
 declare(strict_types=1);
 
-
 use Infocyph\Webrick\Response\Response;
 
-require_once __DIR__ . '/../IntegrationBootstrap.php';
+require_once __DIR__.'/../IntegrationBootstrap.php';
 
 describe('Real Routing Integration', function () {
     beforeEach(function () {
@@ -14,7 +13,8 @@ describe('Real Routing Integration', function () {
 
         // Create kernel with real routes from routes.php
         $this->kernel = createTestKernel();
-    });    it('matches the homepage', function () {
+    });
+    it('matches the homepage', function () {
         $request = mockRequest('GET', '/');
         $response = $this->kernel->handle($request);
 
@@ -22,7 +22,7 @@ describe('Real Routing Integration', function () {
             ->toHaveStatus(200)
             ->and($response->getHeaderLine('Content-Type'))->toContain('text/html');
 
-        $body = (string)$response->getBody();
+        $body = (string) $response->getBody();
         expect($body)->toContain('Webrick demo');
     });
 
@@ -32,7 +32,7 @@ describe('Real Routing Integration', function () {
 
         expect($response)
             ->toHaveStatus(200)
-            ->and((string)$response->getBody())->toBe('"pong"');
+            ->and((string) $response->getBody())->toBe('"pong"');
         // JSON-encoded string
     });
 
@@ -42,7 +42,7 @@ describe('Real Routing Integration', function () {
 
         expect($response)->toHaveStatus(200);
 
-        $body = json_decode((string)$response->getBody(), true);
+        $body = json_decode((string) $response->getBody(), true);
         expect($body)
             ->toHaveKey('hello')
             ->and($body['hello'])->toBe('Alice');
@@ -56,7 +56,7 @@ describe('Real Routing Integration', function () {
             ->toHaveStatus(200)
             ->and($response->getHeaderLine('Content-Type'))->toContain('application/json');
 
-        $body = json_decode((string)$response->getBody(), true);
+        $body = json_decode((string) $response->getBody(), true);
         expect($body)->toHaveKey('memory');
     });
 
@@ -75,7 +75,7 @@ describe('Real Routing Integration', function () {
 
         expect($response)->toHaveStatus(200);
 
-        $body = json_decode((string)$response->getBody(), true);
+        $body = json_decode((string) $response->getBody(), true);
         expect($body['you sent hex'])->toBe('ff00ff');
     });
 
@@ -85,7 +85,7 @@ describe('Real Routing Integration', function () {
 
         expect($response)->toHaveStatus(200);
 
-        $body = json_decode((string)$response->getBody(), true);
+        $body = json_decode((string) $response->getBody(), true);
         // Note: The route matcher might be matching /users/{id} with empty id
         // This is expected behavior - we're testing that routing works
         expect($body)->toHaveKey('action');
@@ -97,7 +97,7 @@ describe('Real Routing Integration', function () {
 
         expect($response)->toHaveStatus(200);
 
-        $body = json_decode((string)$response->getBody(), true);
+        $body = json_decode((string) $response->getBody(), true);
         // Just verify we got a valid JSON response with an action
         expect($body)->toHaveKey('action');
         // The exact action may vary based on route matching implementation

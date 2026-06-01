@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
-use Infocyph\InterMix\Cache\Cache;
+use Infocyph\CacheLayer\Cache\Cache;
+use Infocyph\Webrick\Request\Core\Stream;
+use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Route\Collection;
 use Psr\Log\LoggerInterface;
@@ -73,10 +75,10 @@ class TestLogger implements LoggerInterface
     public function hasRecords(?string $level = null): bool
     {
         if ($level === null) {
-            return !empty($this->records);
+            return ! empty($this->records);
         }
 
-        return !empty(array_filter($this->records, fn ($r) => $r['level'] === $level));
+        return ! empty(array_filter($this->records, fn ($r) => $r['level'] === $level));
     }
 
     public function hasWarningRecords(): bool
@@ -113,7 +115,7 @@ class TestLogger implements LoggerInterface
  */
 function testRegistrar(array $options = []): Registrar
 {
-    $routes = new Collection();
+    $routes = new Collection;
 
     $defaults = [
         'autoSlashRedirect' => false,
@@ -135,7 +137,7 @@ function testRegistrar(array $options = []): Registrar
 /**
  * Create a mock PSR-7 Request for testing
  */
-function mockRequest(string $method, string $uri, array $headers = [], array $body = []): \Infocyph\Webrick\Request\Request
+function mockRequest(string $method, string $uri, array $headers = [], array $body = []): Request
 {
     $_SERVER['REQUEST_METHOD'] = $method;
     $_SERVER['REQUEST_URI'] = $uri;
@@ -146,21 +148,21 @@ function mockRequest(string $method, string $uri, array $headers = [], array $bo
 
     // Add headers to $_SERVER
     foreach ($headers as $name => $value) {
-        $key = 'HTTP_' . strtoupper(str_replace('-', '_', $name));
+        $key = 'HTTP_'.strtoupper(str_replace('-', '_', $name));
         $_SERVER[$key] = $value;
     }
 
     // Create request from globals
-    $request = \Infocyph\Webrick\Request\Request::fromGlobals();
+    $request = Request::fromGlobals();
 
     // Add body if provided
-    if (!empty($body)) {
+    if (! empty($body)) {
         if ($method === 'POST' || $method === 'PUT' || $method === 'PATCH') {
             $json = json_encode($body);
-            $stream = new \Infocyph\Webrick\Request\Core\Stream($json);
+            $stream = new Stream($json);
             $request = $request->withBody($stream);
 
-            if (!isset($headers['Content-Type'])) {
+            if (! isset($headers['Content-Type'])) {
                 $request = $request->withHeader('Content-Type', 'application/json');
             }
         }
@@ -173,15 +175,15 @@ function mockRequest(string $method, string $uri, array $headers = [], array $bo
  */
 function testCache(string $namespace = 'test'): Cache
 {
-    return Cache::local(sys_get_temp_dir() . '/webrick-test-' . $namespace);
+    return Cache::local(sys_get_temp_dir().'/webrick-test-'.$namespace);
 }
 
 /**
  * Create a test logger.
  */
-function testLogger(): \Psr\Log\LoggerInterface
+function testLogger(): LoggerInterface
 {
-    return new NullLogger();
+    return new NullLogger;
 }
 
 /**
@@ -197,7 +199,7 @@ function testEncryptionKey(): string
  */
 function cleanTestCache(string $path): void
 {
-    if (!is_dir($path)) {
+    if (! is_dir($path)) {
         return;
     }
 

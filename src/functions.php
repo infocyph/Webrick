@@ -10,9 +10,8 @@ if (!\function_exists('route')) {
      *
      * @param string $name Route name
      * @param array<string,scalar|null> $params Route parameters
-     * @param array<string,scalar|array|null> $query Query string parameters
+     * @param array<string,mixed> $query Query string parameters
      * @param bool $absolute Whether to generate absolute URL (domain-aware when available)
-     * @return string
      */
     function route(
         string $name,

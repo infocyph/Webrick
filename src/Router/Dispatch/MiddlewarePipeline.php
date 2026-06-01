@@ -38,17 +38,25 @@ use UnexpectedValueException;
  *
  * @psalm-immutable
  *
- * @package Infocyph\Webrick\Router\Dispatch
  * @author Infocyph
  */
 final class MiddlewarePipeline
 {
     /**
-     * DI invoker used to call middleware and handlers when $useInvoker is true.
+     * Composed pipeline closure that accepts a Request and returns a Response.
      *
-     * @var Invoker
+     * Built once in the constructor for per-request reuse.
+     *
+     * @var Closure(Request):Response
      */
-    private Invoker $invoker;
+    private readonly Closure $pipeline;
+
+    /**
+     * Middleware stack in execution order (first executed -> first element).
+     *
+     * @var list<Middleware>
+     */
+    private readonly array $stack;
 
     /**
      * Final handler callable executed after all middleware.
@@ -59,28 +67,6 @@ final class MiddlewarePipeline
      * @var FinalHandler
      */
     private $lastHandler;
-
-    /**
-     * Composed pipeline closure that accepts a Request and returns a Response.
-     *
-     * Built once in the constructor for per-request reuse.
-     *
-     * @var Closure(Request):Response
-     */
-    private Closure $pipeline;
-    /**
-     * Middleware stack in execution order (first executed -> first element).
-     *
-     * @var list<Middleware>
-     */
-    private array $stack;
-
-    /**
-     * Whether to dispatch middleware/handler via the Invoker (DI/autowiring).
-     *
-     * @var bool
-     */
-    private bool $useInvoker;
 
     /**
      * Construct the pipeline executor.
@@ -95,7 +81,13 @@ final class MiddlewarePipeline
      *
      * @throws InvalidArgumentException If any entry in $stack is not callable.
      */
-    public function __construct(array $stack, callable $last, Invoker $invoker, bool $useInvoker = true)
+    public function __construct(array $stack, callable $last, /**
+     * DI invoker used to call middleware and handlers when $useInvoker is true.
+     */
+        private readonly Invoker $invoker, /**
+     * Whether to dispatch middleware/handler via the Invoker (DI/autowiring).
+     */
+        private readonly bool $useInvoker = true)
     {
         foreach ($stack as $mw) {
             if (!\is_callable($mw)) {
@@ -107,8 +99,6 @@ final class MiddlewarePipeline
 
         $this->stack = $stack;
         $this->lastHandler = $last;
-        $this->useInvoker = $useInvoker;
-        $this->invoker = $invoker;
         $this->pipeline = $this->compose();
     }
 
@@ -145,11 +135,13 @@ final class MiddlewarePipeline
     private static function assertResponse(mixed $res, string $source): Response
     {
         if (!$res instanceof Response) {
-            $type = \is_object($res) ? $res::class : \gettype($res);
+            $type = get_debug_type($res);
+
             throw new UnexpectedValueException(
                 sprintf('%s returned %s; expected %s', $source, $type, Response::class),
             );
         }
+
         return $res;
     }
 
@@ -164,7 +156,7 @@ final class MiddlewarePipeline
     private static function describe(mixed $mw): string
     {
         return \is_object($mw) ? $mw::class
-            : (\is_array($mw) ? 'callable[]' : (string)\gettype($mw));
+            : (\is_array($mw) ? 'callable[]' : (string) \gettype($mw));
     }
 
     /* -------------------------------------------------------------------------

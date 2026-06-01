@@ -20,15 +20,12 @@ final class Csrf
      * Size of the raw random string (in **bytes**).
      * 32 bytes → 64-hex-char plain token, 128-char masked token.
      */
-    private const TOKEN_BYTES = 32;
-
+    private const int TOKEN_BYTES = 32;
 
     /**
      * Private constructor to prevent instantiation of this class.
      */
-    private function __construct()
-    {
-    }
+    private function __construct() {}
 
     /**
      * Returns a masked CSRF token (128 hex chars) that contains the following components:
@@ -84,7 +81,7 @@ final class Csrf
         $maskedLen = $hexLen * 2;           // 128
 
         // Masked token → verify HMAC(mask · stored)
-        if (\strlen($sent) === $maskedLen && \strlen($stored) === $hexLen) {
+        if (\strlen($sent) === $maskedLen && \strlen((string) $stored) === $hexLen) {
             $mask = \substr($sent, 0, $hexLen);
             $hashed = \substr($sent, $hexLen);
 
@@ -129,17 +126,17 @@ final class Csrf
         // 2) Form field wins over query param
         $body = $req->getParsedBody();
         if (\is_array($body) && ($body['_token'] ?? '') !== '') {
-            return (string)$body['_token'];
+            return (string) $body['_token'];
         }
 
         \parse_str($req->getUri()->getQuery(), $q);
         if (($q['_token'] ?? '') !== '') {
-            return (string)$q['_token'];
+            return (string) $q['_token'];
         }
 
         // 3) Cookie
         $cookie = $req->getCookieParams()['XSRF-TOKEN'] ?? null;
 
-        return $cookie !== '' ? (string)$cookie : null;
+        return $cookie !== '' ? (string) $cookie : null;
     }
 }

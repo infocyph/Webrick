@@ -6,8 +6,6 @@
  * Represents a single HTTP route as produced by the Registrar, including its HTTP
  * method, path template, handler specification, optional domain/name, CORS policy,
  * and middleware stack. Provides immutable "with*" methods for safe modifications.
- *
- * @package Infocyph\Webrick\Router\Route
  */
 
 /* src/Router/Route/Route.php */
@@ -28,27 +26,15 @@ final class Route implements RouteInterface
 {
     /**
      * One-time, stable fingerprint for the handler, used for fast lookups.
-     *
-     * @var string
      */
     private readonly string $handlerId;
 
     /** @var Cors|null The route-specific CORS policy. */
     private ?Cors $corsPolicy = null;
 
-    /**
-     * Handler specification accepted by the router.
-     *
-     * Examples:
-     * - "functionName"
-     * - ["ClassName", "method"]
-     * - [$object, "method"]
-     * - invokable object instance
-     * - Closure
-     *
-     * @var array|string|callable
-     */
-    private $handler;
+    /** @var array{0:object|class-string,1:string}|string|callable */
+    private mixed $handler;
+
     /**
      * Middleware to apply for this route.
      *
@@ -61,7 +47,7 @@ final class Route implements RouteInterface
      *
      * @param string $method HTTP method (e.g., GET, POST).
      * @param string $path Path template (may contain parameters like "{id}").
-     * @param array|string|callable $handler Route handler specification.
+     * @param array{0:object|class-string,1:string}|string|callable $handler Route handler specification.
      * @param string|null $domain Optional host/domain constraint.
      * @param string|null $name Optional route name (for URL generation).
      */
@@ -87,24 +73,32 @@ final class Route implements RouteInterface
      * - Invokable object → "<Class>::__invoke"
      * - Closure → "closure@<uniqueId>"
      *
-     * @param array|string|callable $h Handler specification.
-     *
+     * @param array{0:object|class-string,1:string}|string|callable $h Handler specification.
      * @return string Stable identifier for hashing and lookups.
      */
     public static function fingerprint(array|string|callable $h): string
     {
-        return match (true) {
-            \is_string($h) => $h,                //  "function"  or  "Cls::method"
-            \is_array($h) => (is_object($h[0]) ? $h[0]::class : $h[0]) . '::' . $h[1],
-            \is_object($h) && !($h instanceof \Closure) => $h::class . '::__invoke',
-            default => 'closure@' . \spl_object_id($h),
-        };
+        if (\is_string($h)) {
+            return $h;
+        }
+
+        if (\is_array($h)) {
+            $target = $h[0];
+            $method = $h[1];
+            $targetClass = \is_object($target) ? $target::class : $target;
+
+            return $targetClass . '::' . $method;
+        }
+
+        if ($h instanceof \Closure) {
+            return 'closure@' . \spl_object_id($h);
+        }
+
+        return \is_object($h) ? $h::class . '::__invoke' : 'callable';
     }
 
     /**
      * Get the route-specific CORS policy.
-     *
-     * @return Cors|null
      */
     public function getCorsPolicy(): ?Cors
     {
@@ -113,8 +107,6 @@ final class Route implements RouteInterface
 
     /**
      * Get the domain constraint, if any.
-     *
-     * @return string|null
      */
     public function getDomain(): ?string
     {
@@ -123,8 +115,6 @@ final class Route implements RouteInterface
 
     /**
      * Get the handler specification.
-     *
-     * @return array|string|callable
      */
     public function getHandler(): array|string|callable
     {
@@ -133,8 +123,6 @@ final class Route implements RouteInterface
 
     /**
      * Fast, stable identifier for the handler (used by collections).
-     *
-     * @return string
      */
     public function getHandlerId(): string
     {
@@ -142,11 +130,8 @@ final class Route implements RouteInterface
     }
 
     /* ---------------------------------------------------------- getters */
-
     /**
      * Get the HTTP method.
-     *
-     * @return string
      */
     public function getMethod(): string
     {
@@ -175,8 +160,6 @@ final class Route implements RouteInterface
 
     /**
      * Get the route name, if any.
-     *
-     * @return string|null
      */
     public function getName(): ?string
     {
@@ -185,8 +168,6 @@ final class Route implements RouteInterface
 
     /**
      * Get the route path template.
-     *
-     * @return string
      */
     public function getPath(): string
     {
@@ -195,8 +176,6 @@ final class Route implements RouteInterface
 
     /**
      * Whether the path contains dynamic parameters (e.g., "{id}").
-     *
-     * @return bool
      */
     public function isDynamic(): bool
     {
@@ -205,31 +184,24 @@ final class Route implements RouteInterface
 
     /**
      * Return a copy with a route-specific CORS policy.
-     *
-     * @param Cors $policy
-     *
-     * @return self
      */
     public function withCorsPolicy(Cors $policy): self
     {
         $clone = clone $this;
         $clone->corsPolicy = $policy;
+
         return $clone;
     }
 
     /* ---------------------------------------------------------- immutable setters (carry id unchanged) */
-
     /**
      * Return a copy with the given domain constraint.
-     *
-     * @param string|null $domain
-     *
-     * @return self
      */
     public function withDomain(?string $domain): self
     {
         $clone = clone $this;
         $clone->domain = $domain;
+
         return $clone;
     }
 
@@ -239,8 +211,6 @@ final class Route implements RouteInterface
      * No-op if the provided list is empty.
      *
      * @param list<class-string|object> $middleware
-     *
-     * @return self
      */
     public function withMiddleware(array $middleware): self
     {
@@ -250,20 +220,18 @@ final class Route implements RouteInterface
 
         $clone = clone $this;
         $clone->middleware = [...$clone->middleware, ...$middleware];
+
         return $clone;
     }
 
     /**
      * Return a copy with a new route name.
-     *
-     * @param string $name
-     *
-     * @return self
      */
     public function withName(string $name): self
     {
         $clone = clone $this;
         $clone->name = $name;
+
         return $clone;
     }
 }

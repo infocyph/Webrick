@@ -6,7 +6,6 @@ namespace Infocyph\Webrick\Router\Constraint;
 
 use InvalidArgumentException;
 
-#[\AllowDynamicProperties(false)]
 /**
  * Central registry of named route segment constraints.
  *
@@ -72,15 +71,14 @@ final class Registry
 
     /** @var array<string,callable-string> Mapping of constraint name => callable (function name or static method string) */
     private static array $callableValidators = self::BUILTIN_CALLABLE;
+
     /** @var array<string,string> Mapping of constraint name => PCRE-delimited regex */
     private static array $regexValidators = self::BUILTIN_REGEX;
 
     /**
      * Private constructor to prevent instantiation — Registry is static-only.
      */
-    private function __construct()
-    {
-    }
+    private function __construct() {}
 
     /**
      * Backwards-compatible accessor for regex-only users.
@@ -90,6 +88,7 @@ final class Registry
      *
      * @param string $name Constraint name
      * @return string Inner regex fragment
+     *
      * @throws InvalidArgumentException When the named constraint is not a regex
      */
     public static function buildPattern(string $name): string
@@ -98,6 +97,7 @@ final class Registry
         if (!isset($spec['regex'])) {
             throw new InvalidArgumentException("Constraint '$name' is callable, not a regex.");
         }
+
         return $spec['regex'];
     }
 
@@ -112,6 +112,7 @@ final class Registry
      *
      * @param string $name Constraint name
      * @return array<string,string> Validator specification
+     *
      * @throws InvalidArgumentException When no constraint with the given name exists
      */
     public static function getValidatorSpec(string $name): array
@@ -121,6 +122,7 @@ final class Registry
         if (isset(self::$regexValidators[$key])) {
             $rule = self::$regexValidators[$key];
             $inner = self::regexInner($rule);
+
             return ['regex' => $inner];
         }
 
@@ -143,6 +145,7 @@ final class Registry
     public static function isBoolString(string $s): bool
     {
         $t = strtolower($s);
+
         return $t === 'true' || $t === 'false' || $t === '0' || $t === '1';
     }
 
@@ -158,7 +161,7 @@ final class Registry
      *
      * @param string $name Constraint name
      * @param string $rule PCRE-delimited regex or callable-string
-     * @return void
+     *
      * @throws InvalidArgumentException When the name already exists or the rule is invalid
      */
     public static function register(string $name, string $rule): void
@@ -170,16 +173,18 @@ final class Registry
         }
 
         if (self::isRegex($rule)) {
-            if (@preg_match($rule, '') === false) {
+            if (preg_match($rule, '') === false) {
                 throw new InvalidArgumentException("Invalid PCRE for constraint '$name'.");
             }
             self::$regexValidators[$key] = $rule;
+
             return;
         }
 
         if (\is_callable($rule)) {
             /** @var callable-string $rule */
             self::$callableValidators[$key] = $rule;
+
             return;
         }
 
@@ -188,7 +193,7 @@ final class Registry
         );
     }
 
-    /*──── helpers -------------------------------------------------------*/
+    /* ──── helpers ------------------------------------------------------- */
 
     /**
      * Quick heuristic to detect whether a rule string is a delimited regex.
@@ -213,6 +218,7 @@ final class Registry
      *
      * @param string $rule Delimited PCRE rule (e.g. '/^foo$/i')
      * @return string Inner embeddable regex fragment
+     *
      * @throws InvalidArgumentException When the regex cannot be parsed
      */
     private static function regexInner(string $rule): string
@@ -271,6 +277,7 @@ final class Registry
             }
             if (($slashes % 2) === 0) {
                 $end = $i;
+
                 break;
             }
         }
@@ -285,6 +292,7 @@ final class Registry
         }
 
         $inner = substr($rule, 1, $end - 1);
+
         return [$inner, $mods];
     }
 }

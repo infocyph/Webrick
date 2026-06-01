@@ -42,6 +42,5 @@ final readonly class Group
         /** @var list<class-string|object> */
         public array $middleware = [],
         public string $name = '',
-    ) {
-    }
+    ) {}
 }

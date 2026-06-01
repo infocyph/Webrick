@@ -18,6 +18,7 @@ describe('NegotiationMiddleware', function () {
         $negotiated = null;
         $next = function ($req) use (&$negotiated) {
             $negotiated = $req->getAttribute('negotiated.type');
+
             return Response::json(['ok' => true]);
         };
 
@@ -35,7 +36,7 @@ describe('NegotiationMiddleware', function () {
             'Accept' => 'text/xml',  // Not supported
         ]);
 
-        $next = fn ($req) => Response::json(['ok' => true]);
+        $next = fn () => Response::json(['ok' => true]);
 
         $response = $middleware($request, $next);
 
@@ -56,6 +57,7 @@ describe('NegotiationMiddleware', function () {
         $negotiated = null;
         $next = function ($req) use (&$negotiated) {
             $negotiated = $req->getAttribute('negotiated.charset');
+
             return Response::create('<h1>Test</h1>', 200, ['Content-Type' => 'text/html; charset=utf-8']);
         };
 
@@ -76,6 +78,7 @@ describe('NegotiationMiddleware', function () {
         $locale = null;
         $next = function ($req) use (&$locale) {
             $locale = $req->getAttribute('locale');
+
             return Response::json(['ok' => true]);
         };
 
@@ -93,7 +96,7 @@ describe('NegotiationMiddleware', function () {
             'Accept' => 'application/json',
         ]);
 
-        $next = fn ($req) => Response::create('{"ok":true}', 200);
+        $next = fn () => Response::create('{"ok":true}', 200);
 
         $response = $middleware($request, $next);
 
@@ -109,7 +112,7 @@ describe('NegotiationMiddleware', function () {
             'Accept-Language' => 'fr',
         ]);
 
-        $next = fn ($req) => Response::json(['ok' => true]);
+        $next = fn () => Response::json(['ok' => true]);
 
         $response = $middleware($request, $next);
 

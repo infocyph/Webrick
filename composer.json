@@ -1,8 +1,8 @@
 {
     "name": "infocyph/webrick",
     "description": "A fast, modern PHP router with production-grade middleware, signed & temporary URLs, smart responses and first-class route caching.",
-    "type": "library",
     "license": "MIT",
+    "type": "library",
     "keywords": [
         "router",
         "routing",
@@ -20,13 +20,31 @@
             "email": "abmmhasan@gmail.com"
         }
     ],
+    "require": {
+        "php": ">=8.4",
+        "infocyph/arraykit": "^4.2",
+        "infocyph/cachelayer": "^1.2",
+        "infocyph/intermix": "^7.2",
+        "psr/log": "^3.0.2"
+    },
+    "require-dev": {
+        "infocyph/phpforge": "dev-main"
+    },
+    "suggest": {
+        "open-telemetry/exporter-otlp": "Export traces to OpenTelemetry collectors (Jaeger, Zipkin, etc.)",
+        "open-telemetry/sdk": "Full OpenTelemetry tracing with automatic span export (auto-detected by TelemetryMiddleware)",
+        "psr/http-factory": "PSR-17 HTTP factories for framework interoperability",
+        "psr/http-server-middleware": "PSR-15 middleware support"
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true,
     "autoload": {
-        "files": [
-            "src/functions.php"
-        ],
         "psr-4": {
             "Infocyph\\Webrick\\": "src/"
-        }
+        },
+        "files": [
+            "src/functions.php"
+        ]
     },
     "autoload-dev": {
         "psr-4": {
@@ -36,61 +54,21 @@
             "tests/Helpers.php"
         ]
     },
-    "require": {
-        "php": ">=8.4",
-        "infocyph/arraykit": "^3.0",
-        "infocyph/intermix": "^6.0",
-        "psr/log": "^3.0.2"
-    },
-    "require-dev": {
-        "captainhook/captainhook": "^5.29.2",
-        "laravel/pint": "^1.29",
-        "pestphp/pest": "^4.4.3",
-        "pestphp/pest-plugin-drift": "^4.1",
-        "rector/rector": "^2.3.9",
-        "symfony/var-dumper": "^7.3 || ^8.0.8",
-        "tomasvotruba/cognitive-complexity": "^1.1",
-        "vimeo/psalm": "^6.16"
-    },
-    "suggest": {
-        "open-telemetry/sdk": "Full OpenTelemetry tracing with automatic span export (auto-detected by TelemetryMiddleware)",
-        "open-telemetry/exporter-otlp": "Export traces to OpenTelemetry collectors (Jaeger, Zipkin, etc.)",
-        "psr/http-factory": "PSR-17 HTTP factories for framework interoperability",
-        "psr/http-server-middleware": "PSR-15 middleware support"
-    },
-    "minimum-stability": "stable",
-    "prefer-stable": true,
-    "config": {
-        "sort-packages": true,
-        "optimize-autoloader": true,
-        "allow-plugins": {
-            "pestphp/pest-plugin": true,
-            "pestphp/pest-plugin-drift": true
-        }
-    },
-    "scripts": {
-        "test:code": "@php vendor/bin/pest --parallel --processes=10",
-        "test:security": "@php vendor/bin/psalm --config=psalm.xml --security-analysis --show-info=false --no-progress --threads=1",
-        "test:static": "@php vendor/bin/phpstan analyse --configuration=phpstan.neon.dist --memory-limit=1G --no-progress",
-        "test:refactor": "@php vendor/bin/rector process --dry-run",
-        "test:lint": "@php vendor/bin/pint --test",
-        "tests": [
-            "@test:code",
-            "@test:lint",
-            "@test:static",
-            "@test:refactor",
-            "@test:security"
-        ],
-        "git:hook": "@php vendor/bin/captainhook install --only-enabled -nf",
-        "test": "@php vendor/bin/pest",
-        "benchmark": "@php benchmark/hello_matchers.php",
-        "refactor": "@php vendor/bin/rector process",
-        "lint": "@php vendor/bin/pint",
-        "security:scan": "@test:security",
-        "webrick": "webrick",
-        "post-autoload-dump": "@php vendor/bin/captainhook install --only-enabled -nf"
-    },
     "bin": [
         "webrick"
-    ]
+    ],
+    "config": {
+        "allow-plugins": {
+            "ergebnis/composer-normalize": true,
+            "infocyph/phpforge": true,
+            "pestphp/pest-plugin": true,
+            "pestphp/pest-plugin-drift": true
+        },
+        "optimize-autoloader": true,
+        "sort-packages": true
+    },
+    "scripts": {
+        "benchmark": "@php benchmark/hello_matchers.php",
+        "webrick": "webrick"
+    }
 }

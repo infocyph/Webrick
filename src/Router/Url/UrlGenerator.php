@@ -21,12 +21,7 @@ class UrlGenerator
     /**
      * The base URI to prepend for absolute URLs.
      */
-    private string $baseUri;
-
-    /**
-     * Collection of registered routes.
-     */
-    private Collection $routes;
+    private readonly string $baseUri;
 
     /**
      * Initializes the URL generator with base URI and route collection.
@@ -34,11 +29,10 @@ class UrlGenerator
      * @param string $baseUri Base URI (typically empty string as domains are handled elsewhere)
      * @param Collection $routes Collection of registered routes
      */
-    public function __construct(string $baseUri, Collection $routes)
+    public function __construct(string $baseUri, private readonly Collection $routes)
     {
         // Strip any trailing slash so we can always do "$baseUri . '/' . ltrim(path)"
         $this->baseUri = rtrim($baseUri, '/');
-        $this->routes = $routes;
     }
 
     /**
@@ -49,6 +43,7 @@ class UrlGenerator
      * @param array<string,scalar|array|null> $query Query string parameters
      * @param bool $absolute Whether to generate an absolute URL
      * @return string Generated URL
+     *
      * @throws InvalidArgumentException If no route is found for the handler
      */
     public function action(
@@ -63,6 +58,7 @@ class UrlGenerator
         }
 
         $path = $this->substitute($route->getPath(), $params);
+
         return $this->build($path, $query, $absolute);
     }
 
@@ -94,6 +90,7 @@ class UrlGenerator
      * @param array<string,scalar|array|null> $query Query string parameters
      * @param bool $absolute Whether to generate an absolute URL
      * @return string Generated URL
+     *
      * @throws InvalidArgumentException If the named route is not found
      */
     public function urlFor(
@@ -108,6 +105,7 @@ class UrlGenerator
         }
 
         $path = $this->substitute($route->getPath(), $params);
+
         return $this->build($path, $query, $absolute);
     }
 
@@ -148,6 +146,7 @@ class UrlGenerator
      * @param string $template URL template with {param} or {param:type} placeholders
      * @param array<string,scalar|null> $params Parameter values
      * @return string URL with placeholders replaced
+     *
      * @throws InvalidArgumentException If parameters are missing or invalid
      */
     private function substitute(string $template, array $params): string
@@ -157,7 +156,7 @@ class UrlGenerator
             return $template;
         }
 
-        $result = (string)preg_replace_callback(
+        $result = (string) preg_replace_callback(
             '/\{([A-Za-z_]\w*)(?::[^}]+)?}/',
             function (array $m) use ($template, $params): string {
                 $key = $m[1];
@@ -176,7 +175,7 @@ class UrlGenerator
                 }
 
                 // Treat null as empty string
-                return rawurlencode((string)$val);
+                return rawurlencode((string) $val);
             },
             $template,
         );

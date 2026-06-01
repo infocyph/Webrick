@@ -29,6 +29,7 @@ final class Vary implements \Stringable
             return '*';
         }
         $names = array_map(self::canonicalHeader(...), array_keys($this->tokens));
+
         return implode(', ', $names);
     }
 
@@ -51,10 +52,12 @@ final class Vary implements \Stringable
             }
             if ($t === '*') {
                 $v->tokens = ['*' => true];
+
                 break; // "*" must not be combined with others
             }
             $v->tokens[$t] = true;
         }
+
         return $v;
     }
 
@@ -92,6 +95,7 @@ final class Vary implements \Stringable
             if ($h === '*') {
                 // "*" overrides everything else
                 $x->tokens = ['*' => true];
+
                 return $x;
             }
             if (!isset($x->tokens['*'])) {
@@ -121,6 +125,7 @@ final class Vary implements \Stringable
             }
             unset($x->tokens[$h]);
         }
+
         return $x;
     }
 

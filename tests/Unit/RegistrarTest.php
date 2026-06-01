@@ -8,7 +8,7 @@ use Infocyph\Webrick\Router\Route\Collection;
 
 describe('Registrar', function () {
     beforeEach(function () {
-        $this->routes = new Collection();
+        $this->routes = new Collection;
         $this->registrar = new Registrar(
             routes: $this->routes,
             autoSlashRedirect: false,

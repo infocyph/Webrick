@@ -18,21 +18,17 @@ use RuntimeException;
  */
 final class LazyJsonStream implements BodyStream
 {
-    private int $depth;
-
-    private int $flags;
     private ?Stream $inner = null;   // real stream after first use
+
     /** @var callable|JsonSerializable */
     private $source;
 
     /**
      * @param callable|JsonSerializable $source
      */
-    public function __construct(mixed $source, int $flags, int $depth)
+    public function __construct(mixed $source, private readonly int $flags, private readonly int $depth)
     {
         $this->source = $source;
-        $this->flags = $flags;
-        $this->depth = $depth;
     }
 
     /* -------------------------------------------------- proxy layer */
@@ -47,15 +43,14 @@ final class LazyJsonStream implements BodyStream
     public function __toString(): string
     {
         $this->boot();
-        return (string)$this->inner;
+
+        return (string) $this->inner;
     }
 
     /**
      * Close the underlying stream resource.
      *
      * Ensures the stream is initialized before delegating to the inner stream.
-     *
-     * @return void
      */
     public function close(): void
     {
@@ -74,6 +69,7 @@ final class LazyJsonStream implements BodyStream
     public function detach(): mixed
     {
         $this->boot();
+
         return $this->inner->detach();
     }
 
@@ -85,6 +81,7 @@ final class LazyJsonStream implements BodyStream
     public function eof(): bool
     {
         $this->boot();
+
         return $this->inner->eof();
     }
 
@@ -96,6 +93,7 @@ final class LazyJsonStream implements BodyStream
     public function getContents(): string
     {
         $this->boot();
+
         return $this->inner->getContents();
     }
 
@@ -111,6 +109,7 @@ final class LazyJsonStream implements BodyStream
     public function getMetadata(?string $key = null): mixed
     {
         $this->boot();
+
         return $this->inner->getMetadata($key);
     }
 
@@ -122,6 +121,7 @@ final class LazyJsonStream implements BodyStream
     public function getSize(): ?int
     {
         $this->boot();
+
         return $this->inner->getSize();
     }
 
@@ -133,6 +133,7 @@ final class LazyJsonStream implements BodyStream
     public function isReadable(): bool
     {
         $this->boot();
+
         return $this->inner->isReadable();
     }
 
@@ -144,6 +145,7 @@ final class LazyJsonStream implements BodyStream
     public function isSeekable(): bool
     {
         $this->boot();
+
         return $this->inner->isSeekable();
     }
 
@@ -155,6 +157,7 @@ final class LazyJsonStream implements BodyStream
     public function isWritable(): bool
     {
         $this->boot();
+
         return $this->inner->isWritable();
     }
 
@@ -167,13 +170,12 @@ final class LazyJsonStream implements BodyStream
     public function read(int $length): string
     {
         $this->boot();
+
         return $this->inner->read($length);
     }
 
     /**
      * Rewind the stream pointer to the beginning.
-     *
-     * @return void
      */
     public function rewind(): void
     {
@@ -188,7 +190,6 @@ final class LazyJsonStream implements BodyStream
      *
      * @param int $offset Byte offset to seek to
      * @param int $whence SEEK_SET, SEEK_CUR or SEEK_END
-     * @return void
      */
     public function seek(int $offset, int $whence = SEEK_SET): void
     {
@@ -204,6 +205,7 @@ final class LazyJsonStream implements BodyStream
     public function tell(): int
     {
         $this->boot();
+
         return $this->inner->tell();
     }
 
@@ -219,11 +221,11 @@ final class LazyJsonStream implements BodyStream
     public function write(string $string): int
     {
         $this->boot();
+
         return $this->inner->write($string);
     }
 
     /* -------------------------------------------------- lazy bootstrap */
-
     /**
      * Initialize the internal Stream by JSON-encoding the source on first use.
      *
@@ -234,7 +236,6 @@ final class LazyJsonStream implements BodyStream
      * After successful encoding an internal Stream instance is created and stored
      * in $this->inner for all subsequent calls.
      *
-     * @return void
      * @throws RuntimeException When json_encode() fails
      */
     private function boot(): void

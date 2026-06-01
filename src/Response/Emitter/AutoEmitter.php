@@ -16,9 +16,6 @@ final class AutoEmitter implements EmitterInterface
      * Auto-detect the best emitter for the current environment and emit the response.
      * If an emitter is chosen, it will be cached for future calls.
      * If no emitter matches, null is returned.
-     *
-     * @param Response $response
-     * @param Request|null $request
      */
     public function emit(Response $response, ?Request $request = null): void
     {
@@ -31,13 +28,11 @@ final class AutoEmitter implements EmitterInterface
      *
      * If an emitter is chosen, it will be cached for future calls.
      * If no emitter matches, null is returned.
-     *
-     * @return null|EmitterInterface
      */
-    private function pick(?Request $request): ?EmitterInterface
+    private function pick(?Request $request): EmitterInterface
     {
         // Optional explicit override via env var (e.g., WEBRICK_EMITTER=swoole|roadrunner|workerman|frankenphp|lsapi|unit|fpm|cli|default)
-        $override = strtolower((string)(\getenv('WEBRICK_EMITTER') ?: ''));
+        $override = strtolower((string) (\getenv('WEBRICK_EMITTER') ?: ''));
         if ($override !== '') {
             return match ($override) {
                 'swoole' => new SwooleEmitter(),
@@ -52,7 +47,7 @@ final class AutoEmitter implements EmitterInterface
             };
         }
 
-        $serverSoftware = strtolower((string)($_SERVER['SERVER_SOFTWARE'] ?? ''));
+        $serverSoftware = strtolower((string) ($_SERVER['SERVER_SOFTWARE'] ?? ''));
 
         return match (true) {
             // Async servers (prefer explicit per-request handle extraction)
@@ -67,8 +62,8 @@ final class AutoEmitter implements EmitterInterface
             // Sync servers / special SAPIs
             \function_exists('frankenphp_is_worker') && \frankenphp_is_worker() => new FrankenPhpEmitter(),
             \PHP_SAPI === 'litespeed' || \function_exists('litespeed_finish_request') => new LsapiEmitter(),
-            \function_exists('fastcgi_finish_request') && $serverSoftware !== '' &&
-            \str_contains($serverSoftware, 'unit') => new UnitEmitter(),
+            \function_exists('fastcgi_finish_request') && $serverSoftware !== ''
+            && \str_contains($serverSoftware, 'unit') => new UnitEmitter(),
             \PHP_SAPI === 'fpm-fcgi' || \function_exists('fastcgi_finish_request') => new FpmEmitter(),
 
             // CLI/testing fallback

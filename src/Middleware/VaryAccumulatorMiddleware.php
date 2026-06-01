@@ -9,8 +9,6 @@
  *   auto-inferred tokens (e.g., from CORS, content encoding/language).
  * - It canonicalizes tokens to Title-Case, dedupes case-insensitively, and
  *   removes the Vary header entirely if the final token list is empty.
- *
- * @package Infocyph\Webrick\Middleware
  */
 
 declare(strict_types=1);
@@ -35,10 +33,8 @@ final class VaryAccumulatorMiddleware
 {
     /**
      * Request attribute key used to carry queued vary tokens.
-     *
-     * @var string
      */
-    private const ATTR = '__vary_tokens';
+    private const string ATTR = '__vary_tokens';
 
     /**
      * Merge tokens from downstream Vary header, queued tokens, and auto-inference.
@@ -51,8 +47,7 @@ final class VaryAccumulatorMiddleware
      * - If the final list is empty, remove Vary; else set the canonicalized list.
      *
      * @param Request $req Incoming request.
-     * @param Closure $next Next middleware/controller.
-     *
+     * @param Closure(Request):Response $next
      * @return Response The updated response with a canonical Vary header.
      */
     public function __invoke(Request $req, Closure $next): Response
@@ -70,6 +65,7 @@ final class VaryAccumulatorMiddleware
         }
 
         $final = implode(', ', $tokens);
+
         return $final === $resp->getHeaderLine('Vary')
             ? $resp
             : $resp->withHeader('Vary', $final);
@@ -83,12 +79,12 @@ final class VaryAccumulatorMiddleware
      *
      * @param Request $r The current request (immutable carrier).
      * @param string ...$headers One or more header tokens or CSV strings.
-     *
      * @return Request A new request instance with tokens queued.
      */
     public static function add(Request $r, string ...$headers): Request
     {
-        $added = $r->getAttribute(self::ATTR) ?? [];
+        $pending = $r->getAttribute(self::ATTR);
+        $added = self::coerceTokens($pending);
         foreach ($headers as $h) {
             foreach (self::splitTokens($h) as $tok) {
                 if ($tok !== '') {
@@ -96,6 +92,7 @@ final class VaryAccumulatorMiddleware
                 }
             }
         }
+
         return $r->withAttribute(self::ATTR, $added);
     }
 
@@ -105,7 +102,6 @@ final class VaryAccumulatorMiddleware
      * @param Request $r The current request.
      * @param bool $when Whether to add the tokens.
      * @param string ...$headers Header tokens or CSV strings to queue when $when is true.
-     *
      * @return Request The original request or a new instance with tokens queued.
      */
     public static function addIf(Request $r, bool $when, string ...$headers): Request
@@ -117,7 +113,6 @@ final class VaryAccumulatorMiddleware
      * TEST HELPER: Clear any queued vary tokens on the request.
      *
      * @param Request $r The current request.
-     *
      * @return Request A new request with an empty token list.
      */
     public static function clear(Request $r): Request
@@ -130,15 +125,15 @@ final class VaryAccumulatorMiddleware
      *
      * @param Request $r The current request.
      * @param bool $normalized When true, return canonical Title-Case tokens with dedupe.
-     *
      * @return array<int,string> Token list (possibly normalized).
      */
     public static function peek(Request $r, bool $normalized = true): array
     {
-        $pending = $r->getAttribute(self::ATTR);
-        if (!is_array($pending) || $pending === []) {
+        $pending = self::coerceTokens($r->getAttribute(self::ATTR));
+        if ($pending === []) {
             return [];
         }
+
         return $normalized ? self::normalize($pending) : $pending;
     }
 
@@ -146,7 +141,6 @@ final class VaryAccumulatorMiddleware
      * Canonicalize a header name to Title-Case (e.g., "accept-encoding" → "Accept-Encoding").
      *
      * @param string $t Raw header token.
-     *
      * @return string Canonical Title-Case token or empty string if input is blank.
      */
     private static function canonical(string $t): string
@@ -156,22 +150,41 @@ final class VaryAccumulatorMiddleware
             return '';
         }
         $parts = array_map(
-            static fn (string $p) => $p === '' ? '' : ucfirst(strtolower($p)),
+            static fn(string $p) => $p === '' ? '' : ucfirst(strtolower($p)),
             explode('-', $t),
         );
+
         return implode('-', $parts);
+    }
+
+    /**
+     * @return array<int,string>
+     */
+    private static function coerceTokens(mixed $value): array
+    {
+        if (!\is_array($value)) {
+            return [];
+        }
+
+        $tokens = [];
+        foreach ($value as $item) {
+            if (\is_string($item) && $item !== '') {
+                $tokens[] = $item;
+            }
+        }
+
+        return $tokens;
     }
 
     /**
      * Check whether the Vary line contains a bare star (*).
      *
      * @param string $line Vary header value.
-     *
      * @return bool True if "*" appears as a token; false otherwise.
      */
     private static function hasStar(string $line): bool
     {
-        return array_any(self::splitTokens($line), fn ($t) => $t === '*');
+        return array_any(self::splitTokens($line), fn($t) => $t === '*');
     }
 
     /**
@@ -179,12 +192,11 @@ final class VaryAccumulatorMiddleware
      *
      * @param array<int,string> $base Existing canonical tokens.
      * @param array<int,string> $extra Additional canonical tokens to append if missing.
-     *
      * @return array<int,string> Merged token list.
      */
     private static function merge(array $base, array $extra): array
     {
-        $keys = array_fill_keys(array_map('strtolower', $base), true);
+        $keys = array_fill_keys(array_map(strtolower(...), $base), true);
         foreach ($extra as $t) {
             $k = strtolower($t);
             if (!isset($keys[$k])) {
@@ -192,6 +204,7 @@ final class VaryAccumulatorMiddleware
                 $base[] = $t;
             }
         }
+
         return $base;
     }
 
@@ -199,7 +212,6 @@ final class VaryAccumulatorMiddleware
      * Normalize tokens by canonicalizing to Title-Case and de-duplicating case-insensitively.
      *
      * @param array<int,string> $tokens Input tokens.
-     *
      * @return array<int,string> Canonicalized, deduped tokens.
      */
     private static function normalize(array $tokens): array
@@ -214,6 +226,7 @@ final class VaryAccumulatorMiddleware
                 $out[] = $norm;
             }
         }
+
         return $out;
     }
 
@@ -223,7 +236,6 @@ final class VaryAccumulatorMiddleware
      * Split a comma-separated header list into trimmed tokens.
      *
      * @param string $line Raw header line string.
-     *
      * @return array<int,string> Token list (empty when $line is empty).
      */
     private static function splitTokens(string $line): array
@@ -238,6 +250,7 @@ final class VaryAccumulatorMiddleware
                 $out[] = $t;
             }
         }
+
         return $out;
     }
 
@@ -248,8 +261,8 @@ final class VaryAccumulatorMiddleware
     {
         $tokens = self::normalize(self::splitTokens($resp->getHeaderLine('Vary')));
 
-        $pending = $req->getAttribute(self::ATTR);
-        if (\is_array($pending) && $pending !== []) {
+        $pending = self::coerceTokens($req->getAttribute(self::ATTR));
+        if ($pending !== []) {
             $tokens = self::merge($tokens, self::normalize($pending));
         }
 

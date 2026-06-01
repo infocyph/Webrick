@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Infocyph\Webrick\Response\Range;
 
 use Infocyph\Webrick\Interfaces\BodyStream;
@@ -8,21 +10,14 @@ use RuntimeException;
 
 final class ByteRangeStream implements BodyStream
 {
-    private Stream $base;
-    private int $remaining;
-
     /**
      * Create a read-only windowed stream that exposes at most $limit bytes
      * from the provided base Stream.
      *
      * @param Stream $base Underlying stream to read from.
-     * @param int $limit Maximum number of bytes available to reads from this wrapper.
+     * @param int $remaining Maximum number of bytes available to reads from this wrapper.
      */
-    public function __construct(Stream $base, int $limit)
-    {
-        $this->base = $base;
-        $this->remaining = $limit;
-    }
+    public function __construct(private readonly Stream $base, private int $remaining) {}
 
     /* -------- PSR-7: forwarding with minimal overrides -------- */
 
@@ -37,13 +32,12 @@ final class ByteRangeStream implements BodyStream
     public function __toString(): string
     {
         $this->rewind();
+
         return $this->getContents();
     }
 
     /**
      * Close the underlying stream.
-     *
-     * @return void
      */
     public function close(): void
     {
@@ -86,6 +80,7 @@ final class ByteRangeStream implements BodyStream
         $data = $this->base->getContents();
         $data = substr($data, 0, $this->remaining);
         $this->remaining -= strlen($data);
+
         return $data;
     }
 
@@ -109,9 +104,9 @@ final class ByteRangeStream implements BodyStream
      * Note: this reports the remaining quota, not the total size of the
      * underlying stream resource.
      *
-     * @return int|null Remaining bytes available to read, or null if unknown
+     * @return int Remaining bytes available to read, or null if unknown
      */
-    public function getSize(): ?int
+    public function getSize(): int
     {
         return $this->remaining;
     }
@@ -164,13 +159,13 @@ final class ByteRangeStream implements BodyStream
         $chunk = $this->base->read($length);
 
         $this->remaining -= strlen($chunk);
+
         return $chunk;
     }
 
     /**
      * Rewind the underlying stream to the start.
      *
-     * @return void
      * @throws RuntimeException If the underlying stream is not seekable.
      */
     public function rewind(): void
@@ -186,7 +181,7 @@ final class ByteRangeStream implements BodyStream
      *
      * @param int $offset Byte offset to seek to on the underlying stream.
      * @param int $whence One of SEEK_SET, SEEK_CUR or SEEK_END.
-     * @return void
+     *
      * @throws RuntimeException If the underlying stream is not seekable.
      */
     public function seek(int $offset, int $whence = SEEK_SET): void
@@ -215,6 +210,7 @@ final class ByteRangeStream implements BodyStream
      *
      * @param string $string Ignored
      * @return int Never returns; always throws
+     *
      * @throws RuntimeException Always thrown because the stream is read-only
      */
     public function write(string $string): int

@@ -22,30 +22,34 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
  *
  * It does not implement a matching algorithm itself but provides reusable
  * primitives to build and traverse route tries and to export compiled routes.
- *
- * @package Infocyph\Webrick\Router\Matching
  */
 abstract class AbstractMatcher
 {
     protected const F_ALIASES = '__aliases.php';
+
     protected const H_ALIAS = '_alias';
+
     protected const H_DATA = '_data';
 
     /* Header / cache blob keys */
     protected const H_HASH = '_hash';
+
     protected const H_TS = '_ts';
+
     protected const K_CHILDREN = 'children';
+
     protected const K_PARAM = 'param';
+
     protected const K_ROUTES = 'routes';
+
     /* Shared node keys used in trie structures */
     protected const K_STATIC = 'static';
+
     protected const K_TRIE = 'trie';
 
     /**
      * When true the matcher will perform an integrity verification when loading
      * caches. Default false.
-     *
-     * @var bool
      */
     protected bool $verifyCacheOnLoad = false;
 
@@ -69,6 +73,7 @@ abstract class AbstractMatcher
     public function verifyCacheOnLoad(bool $enable = true): static
     {
         $this->verifyCacheOnLoad = $enable;
+
         return $this;
     }
 
@@ -85,6 +90,7 @@ abstract class AbstractMatcher
     protected function &trieLiteralChild(array &$node, string $seg): array
     {
         $node[self::K_CHILDREN][$seg] ??= $this->newNode();
+
         return $node[self::K_CHILDREN][$seg];
     }
 
@@ -114,8 +120,9 @@ abstract class AbstractMatcher
                 $cur['name'] !== $spec['name']
                 || ($cur[$ruleKey] ?? null) !== ($spec[$ruleKey] ?? null)
             ) {
-                throw new \LogicException("Conflicting placeholders at same depth");
+                throw new \LogicException('Conflicting placeholders at same depth');
             }
+
             return $node[self::K_PARAM]['node'];
         }
 
@@ -125,6 +132,7 @@ abstract class AbstractMatcher
             'call' => $spec['call'] ?? null,
             'node' => $this->newNode(),
         ];
+
         return $node[self::K_PARAM]['node'];
     }
 
@@ -136,7 +144,6 @@ abstract class AbstractMatcher
      *
      * @param array<string,mixed> $map Verb => route-like map (values not inspected)
      * @param array<string,bool> $set Map being populated (by reference)
-     * @return void
      */
     protected function addAllowedFromMap(array $map, array &$set): void
     {
@@ -156,7 +163,6 @@ abstract class AbstractMatcher
      *
      * @param array<string,CompiledRoute> $routes Verb => CompiledRoute map
      * @param array<string,bool> $set Map being populated (by reference)
-     * @return void
      */
     protected function addAllowedFromRoutes(array $routes, array &$set): void
     {
@@ -168,7 +174,7 @@ abstract class AbstractMatcher
         }
     }
 
-    /*──────────────────── canonical host (mirrors RouterKernel rules) ────────────────────*/
+    /* ──────────────────── canonical host (mirrors RouterKernel rules) ──────────────────── */
 
     /**
      * Normalise a host name for internal route storage/lookup.
@@ -196,7 +202,7 @@ abstract class AbstractMatcher
             throw new \InvalidArgumentException("Illegal host name: {$raw}");
         }
         if (\function_exists('idn_to_ascii') && !\str_contains($host, 'xn--')) {
-            $ascii = @\idn_to_ascii($host, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
+            $ascii = \idn_to_ascii($host, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
             if ($ascii === false) {
                 throw new \InvalidArgumentException("Invalid IDN host name: {$raw}");
             }
@@ -205,6 +211,7 @@ abstract class AbstractMatcher
         if (!\preg_match('/^[\x21-\x7E]+$/', $host)) {
             throw new \InvalidArgumentException("Host contains non-ASCII bytes: {$raw}");
         }
+
         return $host;
     }
 
@@ -219,10 +226,11 @@ abstract class AbstractMatcher
     protected function explodePath(string $p): array
     {
         $t = \trim($p, '/');
+
         return $t === '' ? [] : \explode('/', $t);
     }
 
-    /*──────────────────── export helpers ────────────────────*/
+    /* ──────────────────── export helpers ──────────────────── */
 
     /**
      * Export an array into a PHP source-like formatted string (used for caches).
@@ -243,7 +251,8 @@ abstract class AbstractMatcher
             $out .= \is_array($v) ? $this->exportArray($v, $depth + 1) : $this->exportValue($v, $depth + 1);
             $out .= ",\n";
         }
-        return $indent . \rtrim($out, ",\n") . "\n" . $indent . "]";
+
+        return $indent . \rtrim($out, ",\n") . "\n" . $indent . ']';
     }
 
     /**
@@ -274,6 +283,7 @@ abstract class AbstractMatcher
                 . \var_export($r->getSegments(), true)
                 . ')';
         }
+
         return '\\' . ValueSerializer::class
             . '::unserialize(' . \var_export(ValueSerializer::serialize($r), true) . ')';
     }
@@ -307,17 +317,17 @@ abstract class AbstractMatcher
     protected function fileStamp(string $file): ?string
     {
         \clearstatcache(true, $file);
-        $mtime = @\filemtime($file);
+        $mtime = \filemtime($file);
         if ($mtime === false) {
             return null;
         }
 
-        $size = @\filesize($file);
+        $size = \filesize($file);
         if ($size === false) {
             $size = 0;
         }
 
-        return (string)$mtime . ':' . (string)$size;
+        return $mtime . ':' . $size;
     }
 
     /**
@@ -349,7 +359,7 @@ abstract class AbstractMatcher
             && ($n[self::K_ROUTES] ?? []) === [];
     }
 
-    /*──────────────────── trie helpers ────────────────────*/
+    /* ──────────────────── trie helpers ──────────────────── */
 
     /**
      * Create a new empty trie node with standard slot keys.
@@ -361,7 +371,7 @@ abstract class AbstractMatcher
         return [self::K_CHILDREN => [], self::K_PARAM => null, self::K_ROUTES => []];
     }
 
-    /*──────────────────── verb selection + allowed-set helpers ────────────────────*/
+    /* ──────────────────── verb selection + allowed-set helpers ──────────────────── */
 
     /**
      * Select the appropriate CompiledRoute for the requested HTTP verb.
@@ -380,6 +390,7 @@ abstract class AbstractMatcher
         if ($verb === HttpMethodEnum::OPTIONS->value && $buckets) {
             /** @var ?CompiledRoute $first */
             $first = \reset($buckets);
+
             return $first instanceof CompiledRoute ? $first : null;
         }
         if (isset($buckets[$verb])) {
@@ -388,6 +399,7 @@ abstract class AbstractMatcher
         if ($verb === HttpMethodEnum::HEAD->value && isset($buckets[HttpMethodEnum::GET->value])) {
             return $buckets[HttpMethodEnum::GET->value];
         }
+
         return null;
     }
 
@@ -403,17 +415,17 @@ abstract class AbstractMatcher
             return false;
         }
 
-        if (\filter_var((string)\ini_get('opcache.enable'), \FILTER_VALIDATE_BOOL) !== true) {
+        if (\filter_var((string) \ini_get('opcache.enable'), \FILTER_VALIDATE_BOOL) !== true) {
             return false;
         }
 
         if (\PHP_SAPI === 'cli' || \PHP_SAPI === 'phpdbg') {
-            if (\filter_var((string)\ini_get('opcache.enable_cli'), \FILTER_VALIDATE_BOOL) !== true) {
+            if (\filter_var((string) \ini_get('opcache.enable_cli'), \FILTER_VALIDATE_BOOL) !== true) {
                 return false;
             }
         }
 
-        if (\function_exists('opcache_get_status') && @\opcache_get_status(false) === false) {
+        if (\function_exists('opcache_get_status') && \opcache_get_status(false) === false) {
             return false;
         }
 
@@ -431,7 +443,6 @@ abstract class AbstractMatcher
      * @param CompiledRoute $r Compiled route to insert
      * @param string $verb HTTP verb (uppercased)
      *
-     * @return void
      * @throws \LogicException On duplicate dynamic route insertion.
      */
     protected function trieInsert(array &$root, CompiledRoute $r, string $verb): void
@@ -481,19 +492,21 @@ abstract class AbstractMatcher
             $routes = $node[self::K_ROUTES] ?? [];
             if ($r = $this->pickVerbRoute($routes, $verb)) {
                 $hit = [$r, $params];
+
                 return true;
             }
             if ($routes) {
                 $this->addAllowedFromRoutes($routes, $allowedSet);
             }
+
             return false;
         }
 
         $piece = $seg[$i];
 
         // literal branch — prefer exact literal matches first
-        if (isset($node[self::K_CHILDREN][$piece]) &&
-            $this->trieWalkNode($node[self::K_CHILDREN][$piece], $seg, $i + 1, $verb, $params, $allowedSet, $hit)) {
+        if (isset($node[self::K_CHILDREN][$piece])
+            && $this->trieWalkNode($node[self::K_CHILDREN][$piece], $seg, $i + 1, $verb, $params, $allowedSet, $hit)) {
             return true;
         }
 
@@ -513,7 +526,7 @@ abstract class AbstractMatcher
         return false;
     }
 
-    /*──────────────────── helpers (rule + matching) ────────────────────*/
+    /* ──────────────────── helpers (rule + matching) ──────────────────── */
 
     /**
      * Return which rule key ('regex' or 'call') the parameter spec contains.
@@ -531,6 +544,7 @@ abstract class AbstractMatcher
         if (isset($spec['call'])) {
             return 'call';
         }
+
         throw new \LogicException('Param spec missing both regex and call.');
     }
 
@@ -553,9 +567,11 @@ abstract class AbstractMatcher
         if (!empty($p['call'])) {
             /** @var callable-string $fn */
             $fn = $p['call'];
+
             // Direct invocation is faster than call_user_func for callable-strings.
-            return (bool)$fn($piece);
+            return (bool) $fn($piece);
         }
+
         return false;
     }
 }

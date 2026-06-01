@@ -10,19 +10,18 @@ describe('Constraint Registry', function () {
 
         expect($spec)->toHaveKey('regex');
 
-        $regex = '#\A' . $spec['regex'] . '\z#D';
+        $regex = '#\A'.$spec['regex'].'\z#D';
         expect(\preg_match($regex, '550e8400-e29b-41d4-a716-446655440000'))->toBe(1);
     });
 
     it('accepts custom delimited regex with modifiers', function () {
-        $name = 'custom_ci_' . \bin2hex(\random_bytes(4));
+        $name = 'custom_ci_'.\bin2hex(\random_bytes(4));
         Registry::register($name, '/^foo$/i');
 
         $spec = Registry::getValidatorSpec($name);
-        $regex = '#\A' . $spec['regex'] . '\z#D';
+        $regex = '#\A'.$spec['regex'].'\z#D';
 
         expect(\preg_match($regex, 'FOO'))->toBe(1)
             ->and(\preg_match($regex, 'bar'))->toBe(0);
     });
 });
-

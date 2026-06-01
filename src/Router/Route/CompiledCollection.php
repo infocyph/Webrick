@@ -19,7 +19,6 @@ use Traversable;
  *  - Hold an ordered, immutable list of CompiledRoute objects.
  *  - Provide iteration and array-like access via all() and IteratorAggregate.
  *
- * @package Infocyph\Webrick\Router\Route
  *
  * @implements IteratorAggregate<int, CompiledRoute>
  */
@@ -35,8 +34,7 @@ final readonly class CompiledCollection implements IteratorAggregate
     public function __construct(
         /** @param list<CompiledRoute> $routes Ordered CompiledRoute list. */
         private array $routes,
-    ) {
-    }
+    ) {}
 
     /**
      * Return the underlying ordered list of CompiledRoute objects.

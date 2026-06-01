@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Response;
 
+use Infocyph\InterMix\DI\Container;
 use Infocyph\InterMix\Remix\MacroMix;
 use Infocyph\Webrick\Constants\MediaTypeEnum;
 use Infocyph\Webrick\Constants\StatusEnum;
@@ -108,6 +109,7 @@ class Response
      * @param int $flags json_encode flags
      * @param int $depth json_encode depth
      * @return self Response chosen by negotiation
+     *
      * @throws RuntimeException When eager JSON encoding fails
      */
     public static function auto(
@@ -133,21 +135,23 @@ class Response
                 // JSON:API and many +json types prefer no charset parameter.
                 return $resp->withHeader('Content-Type', $want);
             }
+
             return $resp;
         }
 
         // Plain text path
         if (is_string($data) || is_scalar($data) || $data === null) {
-            return self::plaintext((string)$data, $status, $headers);
+            return self::plaintext((string) $data, $status, $headers);
         }
 
         // Complex payload but client prefers text: serialize to JSON string as text/plain
-        $payload = $data instanceof \JsonSerializable ? $data->jsonSerialize() : $data;
+        $payload = $data instanceof JsonSerializable ? $data->jsonSerialize() : $data;
         $json = \json_encode($payload, $flags, $depth);
         if ($json === false) {
-            throw new \RuntimeException('JSON encode error: ' . \json_last_error_msg());
+            throw new RuntimeException('JSON encode error: ' . \json_last_error_msg());
         }
         $headers = ['Content-Type' => $headers['Content-Type'] ?? MediaTypeEnum::PLAIN->value] + $headers;
+
         return new self($status, new Stream($json), $headers);
     }
 
@@ -182,6 +186,7 @@ class Response
         if ($name === null) {
             $name = is_string($file) ? basename($file) : 'download';
         }
+
         return self::attachment($file, $name, $mime, $headers);
     }
 
@@ -198,6 +203,7 @@ class Response
         foreach ($headers as $name => $value) {
             $resp = $resp->withHeader($name, $value);
         }
+
         return $resp;
     }
 
@@ -227,8 +233,9 @@ class Response
             'Content-Disposition' => ContentDisposition::inline($name),
         ];
         if ($stream->getSize() !== null && !isset($headers['Content-Length'])) {
-            $defaults['Content-Length'] = (string)$stream->getSize();
+            $defaults['Content-Length'] = (string) $stream->getSize();
         }
+
         return new self(StatusEnum::OK->value, $stream, $defaults + $headers);
     }
 
@@ -245,6 +252,7 @@ class Response
      * @param int $flags json_encode flags
      * @param int $depth json_encode depth
      * @return self JSON Response
+     *
      * @throws RuntimeException When json_encode fails for eager encoding
      */
     public static function json(
@@ -267,6 +275,7 @@ class Response
         }
 
         $stream = new LazyJsonStream($data, $flags, $depth);
+
         return new self($status, $stream, $headers);
     }
 
@@ -298,6 +307,7 @@ class Response
     public static function plaintext(string $msg, int $code = StatusEnum::BAD_REQUEST->value, array $headers = []): self
     {
         $headers = ['Content-Type' => $headers['Content-Type'] ?? MediaTypeEnum::PLAIN->value] + $headers;
+
         return new self($code, new Stream($msg), $headers);
     }
 
@@ -309,7 +319,6 @@ class Response
      * @param string|null $name Download filename
      * @param string|null $mime Optional MIME type
      * @param array<string,string> $headers Additional headers
-     * @return self
      */
     public static function rangedDownload(
         Request $req,
@@ -322,6 +331,7 @@ class Response
         $headers += [
             'Content-Disposition' => ContentDisposition::attachment($name),
         ];
+
         return self::rangedFile($req, $absolutePath, $mime, $headers);
     }
 
@@ -332,7 +342,6 @@ class Response
      * @param string $absolutePath Absolute file path
      * @param string|null $mime Optional MIME type
      * @param array<string,string> $headers Additional headers
-     * @return self
      */
     public static function rangedFile(
         Request $req,
@@ -342,6 +351,7 @@ class Response
     ): self {
         $name = \basename($absolutePath);
         $mediaType = $mime ?? MediaTypeEnum::fromFilename($name)->value;
+
         return RangeResponder::forFile($req, $absolutePath, $mediaType, $headers);
     }
 
@@ -354,6 +364,7 @@ class Response
      * @param string $uri Target URI
      * @param int $status Redirect status (3xx)
      * @return self Redirect Response
+     *
      * @throws \InvalidArgumentException When $status is not a 3xx code
      */
     public static function redirect(string $uri, int $status = StatusEnum::FOUND->value): self
@@ -394,12 +405,13 @@ class Response
         unset($headers['Content-Length'], $headers['content-length']);
 
         $headers = [
-                'Cache-Control' => $headers['Cache-Control'] ?? 'no-store',
-                'X-Accel-Buffering' => $headers['X-Accel-Buffering'] ?? 'no',
-            ] + $headers;
+            'Cache-Control' => $headers['Cache-Control'] ?? 'no-store',
+            'X-Accel-Buffering' => $headers['X-Accel-Buffering'] ?? 'no',
+        ] + $headers;
 
         $resp = new self($status, new Stream(''), $headers);
         $resp->producer = self::normalizeProducer($producer);
+
         return $resp;
     }
 
@@ -423,7 +435,7 @@ class Response
     ): self {
         if (\is_string($file)) {
             $stream = self::openFileStream($file);
-            $len = @filesize($file) ?: null;
+            $len = filesize($file) ?: null;
             $name ??= \basename($file);
         } else {
             $stream = $file;
@@ -436,7 +448,7 @@ class Response
             'Content-Disposition' => ContentDisposition::attachment($name),
         ];
         if ($len !== null) {
-            $headers['Content-Length'] = (string)$len;
+            $headers['Content-Length'] = (string) $len;
         }
 
         return new self(StatusEnum::OK->value, $stream, $headers);
@@ -451,7 +463,6 @@ class Response
      * @param array<string,string> $headers Additional headers
      * @param string|null $charset Charset for Content-Type
      * @param string $factoryId Container key for the view factory binding
-     * @return self
      */
     public static function view(
         string $view,
@@ -461,7 +472,7 @@ class Response
         ?string $charset = 'utf-8',
         string $factoryId = ViewFactoryInterface::class,
     ): self {
-        $container = \Infocyph\InterMix\DI\Container::instance('intermix');
+        $container = Container::instance('intermix');
         if (!$container->has($factoryId)) {
             throw new RuntimeException("No view factory bound for {$factoryId}");
         }
@@ -621,6 +632,7 @@ class Response
     {
         $x = $this->copy(body: $b);
         $x->producer = null;
+
         return $x;
     }
 
@@ -633,7 +645,8 @@ class Response
     public function withCache(\Closure $edit): self
     {
         $cc = $edit($this->cache());
-        return $this->withHeader('Cache-Control', (string)$cc);
+
+        return $this->withHeader('Cache-Control', (string) $cc);
     }
 
     /**
@@ -667,7 +680,7 @@ class Response
      */
     public function withProtocolVersion($v): self
     {
-        return $this->copy(protocolVersion: (string)$v);
+        return $this->copy(protocolVersion: (string) $v);
     }
 
     /**
@@ -690,14 +703,16 @@ class Response
      * @param mixed $code New status code
      * @param string $reasonPhrase Optional reason phrase
      * @return self New Response instance
+     *
      * @throws RuntimeException When the status code is out of range
      */
     public function withStatus($code, $reasonPhrase = ''): self
     {
-        $code = (int)$code;
+        $code = (int) $code;
         if ($code < 100 || $code > 599) {
             throw new RuntimeException("Invalid HTTP status: {$code}");
         }
+
         return $this->copy(
             statusCode: $code,
             reasonPhrase: $reasonPhrase !== '' ? $reasonPhrase : self::statusText($code),
@@ -732,7 +747,8 @@ class Response
     private static function chooseLength(string|Stream $file, Stream $stream, ?int $fsSize): ?string
     {
         $len = is_string($file) ? $fsSize : ($stream->getSize() ?? null);
-        return $len !== null ? (string)$len : null;
+
+        return $len !== null ? (string) $len : null;
     }
 
     /**
@@ -749,6 +765,7 @@ class Response
             return null;
         }
         $seed = ($size ?? -1) . '|' . ($mtime ?? -1) . '|' . $name;
+
         return Utils::generateEtag($seed);
     }
 
@@ -786,8 +803,9 @@ class Response
         if (!is_string($file)) {
             return [null, null];
         }
-        $size = @filesize($file) ?: null;
-        $mtime = @filemtime($file) ?: null;
+        $size = filesize($file) ?: null;
+        $mtime = filemtime($file) ?: null;
+
         return [$size, $mtime];
     }
 
@@ -802,9 +820,10 @@ class Response
     private static function mtimeFromStream(Stream $stream): ?int
     {
         $uri = $stream->getMetadata('uri');
-        if (is_string($uri) && $uri !== '' && @is_file($uri)) {
-            return @filemtime($uri) ?: null;
+        if (is_string($uri) && $uri !== '' && is_file($uri)) {
+            return filemtime($uri) ?: null;
         }
+
         return null;
     }
 
@@ -818,7 +837,7 @@ class Response
     private static function normalizeProducer(callable|iterable $producer): \Closure
     {
         if (is_iterable($producer)) {
-            return static fn () => $producer;
+            return static fn() => $producer;
         }
 
         return static function () use ($producer) {
@@ -826,6 +845,7 @@ class Response
             if ($out instanceof \Generator || is_iterable($out)) {
                 return $out;
             }
+
             return $out === null ? [] : [$out];
         };
     }
@@ -835,14 +855,16 @@ class Response
      *
      * @param string $file Path to open
      * @return Stream Stream wrapping the opened resource
+     *
      * @throws RuntimeException When the file cannot be opened
      */
     private static function openFileStream(string $file): Stream
     {
-        $h = @fopen($file, 'rb');
+        $h = fopen($file, 'rb');
         if ($h === false) {
             throw new RuntimeException("Unable to open file for download: {$file}");
         }
+
         return new Stream($h);
     }
 
@@ -853,7 +875,6 @@ class Response
      * @param string $name Header name
      * @param string|null $value Value to set when present
      * @param array $caller Original caller headers to check
-     * @return void
      */
     private static function putIfAbsent(array &$target, string $name, ?string $value, array $caller): void
     {
@@ -911,6 +932,7 @@ class Response
         $x->body = $body ?? $this->body;
         $x->protocolVersion = $protocolVersion ?? $this->protocolVersion;
         $x->reasonPhrase = $reasonPhrase ?? $this->reasonPhrase;
+
         return $x;
     }
 }

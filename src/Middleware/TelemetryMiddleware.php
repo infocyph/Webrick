@@ -72,6 +72,9 @@ final readonly class TelemetryMiddleware
             && class_exists('OpenTelemetry\\API\\Trace\\SpanKind');
     }
 
+    /**
+     * @param Closure(Request):Response $next
+     */
     public function __invoke(Request $req, Closure $next): Response
     {
         if ($this->otelAvailable) {
@@ -182,12 +185,7 @@ final readonly class TelemetryMiddleware
 
         if ($this->addServerTiming) {
             $metric = sprintf('app;dur=%.1f', $durMs);
-            if (method_exists($resp, 'withSmartHeader')) {
-                $resp = $resp->withSmartHeader('Server-Timing', $metric);
-            } else {
-                $existing = $resp->getHeaderLine('Server-Timing');
-                $resp = $resp->withHeader('Server-Timing', $existing === '' ? $metric : ($existing . ', ' . $metric));
-            }
+            $resp = $resp->withSmartHeader('Server-Timing', $metric);
         }
 
         return $resp;
@@ -227,6 +225,8 @@ final readonly class TelemetryMiddleware
 
     /**
      * Delegate to OpenTelemetryHandler for full OTel integration.
+     *
+     * @param Closure(Request):Response $next
      */
     private function delegateToOtel(Request $req, Closure $next): Response
     {
@@ -302,6 +302,8 @@ final readonly class TelemetryMiddleware
 
     /**
      * Minimal W3C trace context handling (no OTel SDK required).
+     *
+     * @param Closure(Request):Response $next
      */
     private function handleMinimal(Request $req, Closure $next): Response
     {
@@ -346,8 +348,12 @@ final readonly class TelemetryMiddleware
         string $traceId,
         ?string $requestId,
     ): void {
-        $ip = $req->getAttribute('client_ip') ?? $req->getServerParams()['REMOTE_ADDR'] ?? '-';
-        $fromProxy = $req->getAttribute('is_trusted_proxy') ? 'proxy' : 'direct';
+        $clientIp = $req->getAttribute('client_ip');
+        $remoteAddr = $req->getServerParams()['REMOTE_ADDR'] ?? null;
+        $ip = \is_string($clientIp)
+            ? $clientIp
+            : (\is_string($remoteAddr) ? $remoteAddr : '-');
+        $fromProxy = $req->getAttribute('is_trusted_proxy') === true ? 'proxy' : 'direct';
         $method = $req->getMethod();
         $path = $req->getUri()->getPath() ?: '/';
         $code = $resp->getStatusCode();
@@ -362,7 +368,7 @@ final readonly class TelemetryMiddleware
                 $method,
                 $path,
                 $code,
-                (string)$len,
+                (string) $len,
                 $durMs,
                 $requestId ? " id={$requestId}" : '',
                 $traceId,

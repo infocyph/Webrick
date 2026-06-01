@@ -13,13 +13,13 @@ final class FpmEmitter extends BaseEmitter
      * For FPM under HTTP/1.1, this is a no-op.
      * For other SAPIs, this is the last chance to flush any data.
      */
+    #[\Override]
     protected function finish(): void
     {
         if (\function_exists('fastcgi_finish_request')) {
-            @fastcgi_finish_request();
+            fastcgi_finish_request();
         }
     }
-
 
     /**
      * Determine if the emitter wants to send the response body chunked.
@@ -34,6 +34,7 @@ final class FpmEmitter extends BaseEmitter
      *
      * @return bool true if the emitter wants to send the response body chunked, false otherwise.
      */
+    #[\Override]
     protected function wantsChunked(
         bool $isHttp11,
         bool $allowsBody,

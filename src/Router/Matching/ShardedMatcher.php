@@ -5,7 +5,8 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Router\Matching;
 
 use Infocyph\Webrick\Constants\HttpMethodEnum;
-use Infocyph\Webrick\Exceptions\{MethodNotAllowedException, RouteNotFoundException};
+use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
+use Infocyph\Webrick\Exceptions\RouteNotFoundException;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 
 /**
@@ -27,16 +28,13 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
  *  - When cache is disabled the matcher operates in "dev" mode and keeps
  *    shards in memory for every request without writing files.
  *  - The matcher enforces no further route additions after finalize() is called.
- *
- * @package Infocyph\Webrick\Router\Matching
  */
-#[\AllowDynamicProperties(false)]
 final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
 {
     /**
      * Special bucket name representing the root ('/') shard.
      */
-    private const SHARD_ROOT = '__root';
+    private const string SHARD_ROOT = '__root';
 
     /**
      * Windows reserved base names that should not be used as filesystem basenames.
@@ -45,7 +43,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
      *
      * @var list<string>
      */
-    private const WIN_RESERVED = [
+    private const array WIN_RESERVED = [
         'CON',
         'PRN',
         'AUX',
@@ -79,12 +77,10 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
 
     /**
      * Whether alias file was loaded (null = not attempted, true/false after load).
-     *
-     * @var bool|null
      */
     private ?bool $aliasLoaded = null; // null = not attempted; true/false after load
 
-    /*──────────── state ────────────*/
+    /* ──────────── state ──────────── */
 
     /**
      * Build-time bucket map used by dev-mode and cache dump.
@@ -97,36 +93,26 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
 
     /**
      * Path to cache directory when caching is enabled. Empty when caching is off.
-     *
-     * @var string
      */
     private string $cacheDir = '';
 
     /**
      * Whether multi-file caching has been enabled.
-     *
-     * @var bool
      */
     private bool $cacheEnabled = false;
 
     /**
      * Whether runtime should prefer loading shard files over in-memory groups.
-     *
-     * @var bool
      */
     private bool $cacheReadable = false;
 
     /**
      * Whether cache file writing is explicitly enabled (tooling-only path).
-     *
-     * @var bool
      */
     private bool $cacheWriteEnabled = false;
 
     /**
      * Whether the matcher has been finalized (no further route additions allowed).
-     *
-     * @var bool
      */
     private bool $finalized = false;
 
@@ -159,24 +145,18 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     /**
      * Private constructor to enforce factory usage.
      */
-    private function __construct()
-    {
-    }
+    private function __construct() {}
 
-    /*──────────── factory/config ────────────*/
-
+    /* ──────────── factory/config ──────────── */
     /**
      * Create a new ShardedMatcher instance.
-     *
-     * @return self
      */
     public static function make(): self
     {
         return new self();
     }
 
-    /*──────────── registration ────────────*/
-
+    /* ──────────── registration ──────────── */
     /**
      * Register a compiled route with the matcher.
      *
@@ -184,7 +164,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
      * emission. Duplicate host+method+path entries are rejected.
      *
      * @param CompiledRoute $route Compiled route instance.
-     * @return void
+     *
      * @throws \LogicException When attempting to add routes after finalize() or when a duplicate is detected.
      */
     public function add(CompiledRoute $route): void
@@ -210,7 +190,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         }
     }
 
-    /*──────────── alias helpers (public API) ────────────*/
+    /* ──────────── alias helpers (public API) ──────────── */
 
     /**
      * Get the alias index mapping name => [path, domain].
@@ -219,6 +199,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
      * Cached mode: lazy-loads __aliases.php on first call.
      *
      * @return array<string, array{0:string,1:?string}>
+     *
      * @throws \RuntimeException When alias cache format is invalid or hash mismatches (when verify enabled)
      */
     public function aliasIndex(): array
@@ -235,6 +216,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         if (!\is_file($file)) {
             // No alias file (e.g., cache not dumped) → fall back to memory
             $this->aliasLoaded = false;
+
             return $this->alias;
         }
 
@@ -249,7 +231,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
                 throw new \RuntimeException("Alias cache file {$file} missing Hash.");
             }
             $calc = $this->computeAliasHash($blob[self::H_DATA]);
-            if (!\hash_equals((string)$blob[self::H_HASH], $calc)) {
+            if (!\hash_equals($blob[self::H_HASH], $calc)) {
                 throw new \RuntimeException("Alias cache hash mismatch ({$file}).");
             }
         }
@@ -258,7 +240,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         $this->aliasLoaded = true;
 
         if ($this->shouldWarmOpcache()) {
-            @\opcache_compile_file($file);
+            \opcache_compile_file($file);
         }
 
         return $this->alias;
@@ -272,6 +254,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
      *
      * @return bool True when cache is enabled and sentinel shard file exists.
      */
+    #[\Override]
     public function canBootFromCache(): bool
     {
         // Sentinel is wildcard root shard; alias file will be lazy-loaded.
@@ -289,6 +272,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         $this->cacheEnabled = true;
         $this->cacheDir = \rtrim($cacheLocation, '/\\');
         $this->cacheReadable = false;
+
         return $this;
     }
 
@@ -296,13 +280,11 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
      * Explicitly allow cache-file writes from finalize().
      *
      * This is intentionally opt-in and should only be used by route-cache tooling.
-     *
-     * @param bool $enable
-     * @return self
      */
     public function enableCacheWrite(bool $enable = true): self
     {
         $this->cacheWriteEnabled = $enable;
+
         return $this;
     }
 
@@ -318,7 +300,6 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
      *
      * This method is idempotent.
      *
-     * @return void
      * @throws \RuntimeException When cache directory cannot be created or files cannot be written.
      */
     public function finalize(): void
@@ -341,7 +322,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         $this->finalized = true;
     }
 
-    /*──────────── runtime match ────────────*/
+    /* ──────────── runtime match ──────────── */
 
     /**
      * Match an incoming request method/host/path to a compiled route and params.
@@ -358,6 +339,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
      * @param string $host Host header value (lower-cased ASCII expected)
      * @param string $path Request path
      * @return array{0:CompiledRoute,1:array<string,string>} Tuple [route, params]
+     *
      * @throws MethodNotAllowedException When resource exists but verb not allowed
      * @throws RouteNotFoundException When no route matches the path/host
      */
@@ -416,6 +398,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         if ($allowedSet !== []) {
             throw new MethodNotAllowedException($method, $path, \array_keys($allowedSet));
         }
+
         throw new RouteNotFoundException($method, $path);
     }
 
@@ -428,6 +411,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     public function resolveAlias(string $name): ?array
     {
         $idx = $this->aliasIndex();
+
         return $idx[$name] ?? null;
     }
 
@@ -446,8 +430,6 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
      *
      * The built group has keys K_STATIC and K_TRIE or null when empty.
      *
-     * @param string $hostKey
-     * @param string $bucket
      * @return array|null Group or null when empty
      */
     private function buildDevGroupOnce(string $hostKey, string $bucket): ?array
@@ -480,6 +462,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             : [self::K_STATIC => $static, self::K_TRIE => $trie];
 
         $this->memGroups[$hostKey][$bucket] = $group;
+
         return $group;
     }
 
@@ -505,18 +488,16 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         return \hash('xxh3', $this->exportArray($payload));
     }
 
-    /*──────────── alias cache dump ────────────*/
-
+    /* ──────────── alias cache dump ──────────── */
     /**
      * Dump the alias index into the canonical __aliases.php file.
      *
-     * @return void
      * @throws \RuntimeException When cache directory cannot be created or file write fails.
      */
     private function dumpAliasFile(): void
     {
         $file = $this->aliasFilePath();
-        if (!\is_dir($d = \dirname($file)) && !@\mkdir($d, 0775, true) && !\is_dir($d)) {
+        if (!\is_dir($d = \dirname($file)) && !\mkdir($d, 0775, true) && !\is_dir($d)) {
             throw new \RuntimeException("Failed to create cache dir {$d}");
         }
 
@@ -532,18 +513,15 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         $this->writeAtomicPhpFile($file, $php);
 
         if ($this->shouldWarmOpcache()) {
-            @\opcache_compile_file($file);
+            \opcache_compile_file($file);
         }
     }
 
-    /*──────────── cache dump (per-host *and* per-bucket) ───────────*/
-
+    /* ──────────── cache dump (per-host *and* per-bucket) ─────────── */
     /**
      * Produce and write all shard files based on the build-time bucket map.
      *
      * Resulting structure: $shards[host][bucket] = ['static'=>..., 'trie'=>...]
-     *
-     * @return void
      */
     private function dumpCacheFiles(): void
     {
@@ -577,9 +555,9 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         $this->writeShard('*', self::SHARD_ROOT, $shards['*'][self::SHARD_ROOT]);
     }
 
-    /*──────────── build-time helpers ───────────*/
+    /* ──────────── build-time helpers ─────────── */
 
-    /*──────────── path→bucket key ────────────*/
+    /* ──────────── path→bucket key ──────────── */
 
     /**
      * Compute the shard bucket key for a given path.
@@ -596,13 +574,13 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         }
         $p = $path[0] === '/' ? \substr($path, 1) : $path;
         $pos = \strpos($p, '/');
+
         return $pos === false ? $p : \substr($p, 0, $pos);
     }
 
     /**
      * Iterate all (verb, route) pairs contained in the build-time bucket map.
      *
-     * @param string $bucket
      * @return \Generator<array{0:string,1:CompiledRoute}>
      */
     private function iterShardRoutes(string $bucket): \Generator
@@ -614,7 +592,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         }
     }
 
-    /*──────────── runtime shard loading ────────────*/
+    /* ──────────── runtime shard loading ──────────── */
 
     /**
      * Load a group (hostKey + bucket) either from cache files or build in-memory for dev.
@@ -628,6 +606,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         if ($this->cacheReadable) {
             return $this->loadGroupFromCache($hostKey, $bucket);
         }
+
         return $this->buildDevGroupOnce($hostKey, $bucket);
     }
 
@@ -636,9 +615,8 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
      *
      * Expects the shard file to return an array with keys H_HASH and H_DATA.
      *
-     * @param string $hostKey
-     * @param string $bucket
      * @return array|null Loaded group data or null when file missing
+     *
      * @throws \RuntimeException When cache file format is invalid or hash mismatches (when verify enabled)
      */
     private function loadGroupFromCache(string $hostKey, string $bucket): ?array
@@ -663,7 +641,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
                 throw new \RuntimeException("Cache file {$file} missing Hash.");
             }
             $calc = $this->computeShardHash($blob[self::H_DATA]);
-            if (!\hash_equals((string)$blob[self::H_HASH], $calc)) {
+            if (!\hash_equals($blob[self::H_HASH], $calc)) {
                 throw new \RuntimeException("Cache hash mismatch ($file).");
             }
         }
@@ -671,14 +649,10 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         return $this->loadedFiles[$file] = $blob[self::H_DATA];
     }
 
-    /*──────────────────────── match helpers ─────────────────*/
-
+    /* ──────────────────────── match helpers ───────────────── */
     /**
      * Normalize incoming request tuple.
      *
-     * @param string $method
-     * @param string $host
-     * @param string $path
      * @return array{0:string,1:string,2:string} Normalized [METHOD, hostOrWildcard, path]
      */
     private function normalizeRequest(string $method, string $host, string $path): array
@@ -777,6 +751,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         if ($this->trieWalkNode($root, $segments, 0, $method, $params, $allowedSet, $hit)) {
             return $hit;
         }
+
         return null;
     }
 
@@ -807,15 +782,12 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             return [$r, []];
         }
         $this->addAllowedFromMap($map, $allowedSet);
+
         return null;
     }
 
     /**
      * Atomically write a PHP cache file and fail loudly on IO errors.
-     *
-     * @param string $file
-     * @param string $php
-     * @return void
      */
     private function writeAtomicPhpFile(string $file, string $php): void
     {
@@ -823,10 +795,11 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         if (\file_put_contents($tmp, $php, \LOCK_EX) === false) {
             throw new \RuntimeException("Failed to write cache temp file {$tmp}");
         }
-        @\chmod($tmp, 0664);
+        \chmod($tmp, 0664);
 
-        if (!@\rename($tmp, $file)) {
-            @\unlink($tmp);
+        if (!\rename($tmp, $file)) {
+            \unlink($tmp);
+
             throw new \RuntimeException("Failed to move cache file into place {$file}");
         }
     }
@@ -837,13 +810,13 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
      * @param string $hostKey Canonical host key or '*' for wildcard
      * @param string $bucket Bucket name for the shard
      * @param array $payload Data payload to export into PHP array form
-     * @return void
+     *
      * @throws \RuntimeException When the cache directory cannot be created.
      */
     private function writeShard(string $hostKey, string $bucket, array $payload): void
     {
         $file = $this->shardFilePath($hostKey, $bucket);
-        if (!\is_dir($d = \dirname($file)) && !@\mkdir($d, 0775, true) && !\is_dir($d)) {
+        if (!\is_dir($d = \dirname($file)) && !\mkdir($d, 0775, true) && !\is_dir($d)) {
             throw new \RuntimeException("Failed to create cache dir {$d}");
         }
         $crc = $this->computeShardHash($payload);
@@ -855,7 +828,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         $this->writeAtomicPhpFile($file, $php);
 
         if ($this->shouldWarmOpcache()) {
-            @\opcache_compile_file($file);
+            \opcache_compile_file($file);
         }
     }
 }

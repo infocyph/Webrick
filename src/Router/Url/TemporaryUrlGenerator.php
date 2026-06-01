@@ -12,7 +12,7 @@ use InvalidArgumentException;
  */
 final class TemporaryUrlGenerator extends SignedUrlGenerator
 {
-    private int $defaultTtl;
+    private readonly int $defaultTtl;
 
     /**
      * @param string $baseUri e.g. "https://api.example.com"
@@ -56,8 +56,6 @@ final class TemporaryUrlGenerator extends SignedUrlGenerator
      * @param array<string,mixed> $query Additional query parameters
      * @param int|null $ttl Override TTL in seconds
      * @param bool $absolute Prepend baseUri?
-     *
-     * @return string
      */
     public function temporary(
         string $name,

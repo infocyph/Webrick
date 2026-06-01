@@ -14,7 +14,7 @@ use Infocyph\Webrick\Router\Url\SignedUrlGenerator;
 use Infocyph\Webrick\Router\Url\TemporaryUrlGenerator;
 use Psr\Log\NullLogger;
 
-if (!class_exists('SignedUrlCacheController', false)) {
+if (! class_exists('SignedUrlCacheController', false)) {
     final readonly class SignedUrlCacheController
     {
         public static function handle(): Response
@@ -27,7 +27,7 @@ if (!class_exists('SignedUrlCacheController', false)) {
 describe('Signed URLs', function () {
     beforeEach(function () {
         $this->secret = 'test-secret-key-32-bytes-long!!';
-        $this->routes = new Collection();
+        $this->routes = new Collection;
 
         // Add test route
         $route = new Route('GET', '/download/{file}', fn () => Response::plaintext('OK'));
@@ -71,9 +71,9 @@ describe('Signed URLs', function () {
 
         // Parse expiry timestamp
         parse_str(parse_url($signedUrl, PHP_URL_QUERY), $query);
-        expect((int)$query['_exp'])
+        expect((int) $query['_exp'])
             ->toBeGreaterThan(time())
-            ->and((int)$query['_exp'])->toBeLessThanOrEqual(time() + 3600);
+            ->and((int) $query['_exp'])->toBeLessThanOrEqual(time() + 3600);
     });
 
     it('validates signed URL signatures', function () {
@@ -95,7 +95,7 @@ describe('Signed URLs', function () {
         ksort($query);
         $payload = $path;
         if ($query) {
-            $payload .= '?' . http_build_query($query, '', '&', PHP_QUERY_RFC3986);
+            $payload .= '?'.http_build_query($query, '', '&', PHP_QUERY_RFC3986);
         }
 
         // Verify signature
@@ -142,7 +142,7 @@ describe('Signed URLs', function () {
 
         // Verify it uses default TTL
         parse_str(parse_url($signedUrl, PHP_URL_QUERY), $query);
-        $expiry = (int)$query['_exp'];
+        $expiry = (int) $query['_exp'];
 
         expect($expiry)
             ->toBeGreaterThan(time())
@@ -179,7 +179,7 @@ describe('Signed URLs', function () {
     it('keeps signed URL helpers bound after hot-cache boot', function () {
         RouteFacade::resetUrlServices();
 
-        $cacheDir = \sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'webrick-route-cache-' . \bin2hex(\random_bytes(6));
+        $cacheDir = \sys_get_temp_dir().DIRECTORY_SEPARATOR.'webrick-route-cache-'.\bin2hex(\random_bytes(6));
         $secret = 'hot-cache-sign-secret';
         $register = static function (Registrar $r): void {
             $r->get('/download/{file}', [SignedUrlCacheController::class, 'handle'], 'download');
@@ -187,7 +187,7 @@ describe('Signed URLs', function () {
 
         try {
             RouterKernel::bootWithRegistrar(
-                log: new NullLogger(),
+                log: new NullLogger,
                 matcher: ShardedMatcher::make(),
                 register: $register,
                 routeCache: $cacheDir,
@@ -203,7 +203,7 @@ describe('Signed URLs', function () {
                 ->toContain('_sig=');
 
             RouterKernel::bootWithRegistrar(
-                log: new NullLogger(),
+                log: new NullLogger,
                 matcher: ShardedMatcher::make(),
                 register: $register,
                 routeCache: $cacheDir,

@@ -11,7 +11,6 @@ use Infocyph\Webrick\Response\Response;
 final class SwooleEmitter extends BaseEmitter
 {
     private ?\Swoole\Http\Response $sw = null;
-    private bool $wrote = false;
 
     /**
      * Emits the response to the current IO target.
@@ -19,6 +18,7 @@ final class SwooleEmitter extends BaseEmitter
      * calls the parent's emit method with the extracted response and the
      * current request.
      */
+    #[\Override]
     public function emit(Response $response, ?Request $request = null): void
     {
         $this->sw = $this->extractSwooleResponse($request);
@@ -30,6 +30,7 @@ final class SwooleEmitter extends BaseEmitter
      * If the response was sent in chunks, ensure that the response
      * is properly terminated with no payload.
      */
+    #[\Override]
     protected function finish(): void
     {
         if ($this->sw && method_exists($this->sw, 'end')) {
@@ -42,6 +43,7 @@ final class SwooleEmitter extends BaseEmitter
      * Swoole writes immediately when ->flush() is called.
      * Do not assume that calling ->flush() will delay the output in any way.
      */
+    #[\Override]
     protected function flush(): void
     { /* Swoole writes immediately */
     }
@@ -50,6 +52,7 @@ final class SwooleEmitter extends BaseEmitter
      * Always returns false, as SwooleEmitter does not buffer headers.
      * Therefore, `headersAlreadySent()` will always return false.
      */
+    #[\Override]
     protected function headersAlreadySent(): bool
     {
         return false;
@@ -58,6 +61,7 @@ final class SwooleEmitter extends BaseEmitter
     /**
      * No-op. SwooleEmitter does not buffer headers, so this call has no effect.
      */
+    #[\Override]
     protected function removePoweredByHeader(): void
     { /* noop */
     }
@@ -70,6 +74,7 @@ final class SwooleEmitter extends BaseEmitter
      *
      * Swoole will not buffer the header, so this call will have immediate effect.
      */
+    #[\Override]
     protected function sendRawHeader(string $name, string $value): void
     {
         $this->sw?->header($name, $value);
@@ -82,6 +87,7 @@ final class SwooleEmitter extends BaseEmitter
      * emit TE: chunked headers. This allows the emitter to safely filter
      * headers as if it were an HTTP/2 emitter.
      */
+    #[\Override]
     protected function serverProtocol(): string
     {
         // Swoole handles framing; treat as H2 for safe header filtering
@@ -93,6 +99,7 @@ final class SwooleEmitter extends BaseEmitter
      *
      * Does not have any effect on other emitters.
      */
+    #[\Override]
     protected function setStatusCode(int $code): void
     {
         $this->sw?->status($code);
@@ -102,6 +109,7 @@ final class SwooleEmitter extends BaseEmitter
      * SwooleEmitter will never emit TE: chunked as it handles HTTP/1.1
      * framing internally. This method always returns false.
      */
+    #[\Override]
     protected function wantsChunked(
         bool $isHttp11,
         bool $allowsBody,
@@ -109,6 +117,8 @@ final class SwooleEmitter extends BaseEmitter
         bool $isStreaming,
         ?int $size,
     ): bool {
+        unset($isHttp11, $allowsBody, $response, $isStreaming, $size);
+
         // Never emit TE: chunked — Swoole handles framing internally
         return false;
     }
@@ -118,15 +128,15 @@ final class SwooleEmitter extends BaseEmitter
      *
      * If the response has been fully buffered, this call will have no effect.
      */
+    #[\Override]
     protected function write(string $chunk): void
     {
-        $this->wrote = true;
         $this->sw?->write($chunk);
     }
 
     /**
      * Extract Swoole\Http.Response from the given Request, if available.
-     * @return \Swoole\Http\Response
+     *
      * @throws \RuntimeException If no Swoole\Http.Response is found in the Request.
      */
     private function extractSwooleResponse(?Request $request): \Swoole\Http\Response
@@ -135,6 +145,7 @@ final class SwooleEmitter extends BaseEmitter
         if ($res instanceof \Swoole\Http\Response) {
             return $res;
         }
+
         throw new \RuntimeException(
             'SwooleEmitter requires Request attribute "swoole.response" (Swoole\Http\Response).',
         );

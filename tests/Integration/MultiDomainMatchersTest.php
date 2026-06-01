@@ -26,6 +26,7 @@ test('matchers isolate same path by domain and fall back to wildcard', function 
         if ($domain !== null) {
             $r = $r->withDomain($domain);
         }
+
         return CompiledRoute::fromRoute($r);
     };
 
@@ -60,4 +61,3 @@ test('matchers isolate same path by domain and fall back to wildcard', function 
     expect(fn () => $matcher->match('GET', 'b.example.com', '/only-a'))
         ->toThrow(RouteNotFoundException::class);
 })->with('matcherFactories');
-

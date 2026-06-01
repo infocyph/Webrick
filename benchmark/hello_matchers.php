@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Constants\MatcherModeEnum;
+use Infocyph\Webrick\Middleware\ThrottleMiddleware;
+use Infocyph\Webrick\Middleware\VerifySignedUrlMiddleware;
 use Infocyph\Webrick\Router\Definition\Attribute\AttributeRouteLoader;
 use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Dispatch\MiddlewareAliases;
@@ -19,6 +21,11 @@ use Psr\Log\NullLogger;
 
 require dirname(__DIR__) . '/vendor/autoload.php';
 
+function out(string $text): void
+{
+    file_put_contents('php://stdout', $text, FILE_APPEND);
+}
+
 /**
  * Small matcher hot-path benchmark using project route sets.
  *
@@ -28,23 +35,24 @@ require dirname(__DIR__) . '/vendor/autoload.php';
  *   php benchmark/hello_matchers.php --cache   (cache-only)
  *   php benchmark/hello_matchers.php --memory  (memory-only)
  */
-
 $opts = getopt('', ['iters::', 'rounds::', 'warmup::', 'cache', 'memory', 'help']);
 
 if (isset($opts['help'])) {
-    echo "Usage: php benchmark/hello_matchers.php [--iters=500000] [--rounds=5] [--warmup=20000] [--cache] [--memory]\n";
-    exit(0);
+    out("Usage: php benchmark/hello_matchers.php [--iters=500000] [--rounds=5] [--warmup=20000] [--cache] [--memory]\n");
+
+    return;
 }
 
-$iterations = max(1, (int)($opts['iters'] ?? 500000));
-$rounds = max(1, (int)($opts['rounds'] ?? 5));
-$warmup = max(0, (int)($opts['warmup'] ?? 20000));
+$iterations = max(1, (int) ($opts['iters'] ?? 500000));
+$rounds = max(1, (int) ($opts['rounds'] ?? 5));
+$warmup = max(0, (int) ($opts['warmup'] ?? 20000));
 $cacheOnly = isset($opts['cache']);
 $memoryOnly = isset($opts['memory']);
 
 if ($cacheOnly && $memoryOnly) {
     fwrite(STDERR, "Choose either --cache or --memory, not both.\n");
-    exit(2);
+
+    return;
 }
 
 /**
@@ -89,6 +97,20 @@ $modes = match (true) {
 };
 
 /**
+ * @phpstan-type Scenario array{
+ *   key:string,
+ *   route_set:string,
+ *   case:string,
+ *   title:string,
+ *   method:string,
+ *   host:string,
+ *   path:string,
+ *   route_count:int,
+ *   register:callable(Registrar):void,
+ *   routes:list<CompiledRoute>,
+ *   assertHit:callable(array{0:CompiledRoute,1:array<string,string>}):bool
+ * }
+ *
  * @var array<int, array{
  *   key:string,
  *   route_set:string,
@@ -100,7 +122,7 @@ $modes = match (true) {
  *   route_count:int,
  *   register:callable(Registrar):void,
  *   routes:list<CompiledRoute>,
- *   assertHit:callable(array):bool
+ *   assertHit:callable(array{0:CompiledRoute,1:array<string,string>}):bool
  * }>
  */
 $scenarios = [];
@@ -119,9 +141,10 @@ foreach ($routeSets as $routeSet) {
         'route_count' => $routeCount,
         'register' => $routeSet['register'],
         'routes' => $routes,
-        'assertHit' => static function (array $hit): bool {
-            return isset($hit[0]) && $hit[0]->getPath() === '/ping' && (($hit[1] ?? []) === []);
-        },
+        'assertHit' => static fn(array $hit): bool => isset($hit[0])
+            && $hit[0] instanceof CompiledRoute
+            && $hit[0]->getPath() === '/ping'
+            && (($hit[1] ?? []) === []),
     ];
 
     $scenarios[] = [
@@ -135,11 +158,12 @@ foreach ($routeSets as $routeSet) {
         'route_count' => $routeCount,
         'register' => $routeSet['register'],
         'routes' => $routes,
-        'assertHit' => static function (array $hit): bool {
-            return isset($hit[0], $hit[1]['name'])
-                && $hit[0]->getPath() === '/hello/{name}'
-                && $hit[1]['name'] === 'benchmark';
-        },
+        'assertHit' => static fn(array $hit): bool => isset($hit[0])
+            && $hit[0] instanceof CompiledRoute
+            && \is_array($hit[1] ?? null)
+            && isset($hit[1]['name'])
+            && $hit[0]->getPath() === '/hello/{name}'
+            && $hit[1]['name'] === 'benchmark',
     ];
 }
 
@@ -155,30 +179,31 @@ $scenarios[] = [
     'route_count' => \count($indexRouteSet['routes']),
     'register' => $indexRouteSet['register'],
     'routes' => $indexRouteSet['routes'],
-    'assertHit' => static function (array $hit): bool {
-        return isset($hit[0], $hit[1]['id'])
-            && $hit[0]->getPath() === '/v1/users/{id:int}'
-            && $hit[1]['id'] === '7';
-    },
+    'assertHit' => static fn(array $hit): bool => isset($hit[0])
+        && $hit[0] instanceof CompiledRoute
+        && \is_array($hit[1] ?? null)
+        && isset($hit[1]['id'])
+        && $hit[0]->getPath() === '/v1/users/{id:int}'
+        && $hit[1]['id'] === '7',
 ];
 
-echo "Webrick Matcher Benchmark\n";
-echo "Modes: " . implode(', ', array_keys($modes)) . "\n";
-echo "Iterations/round: {$iterations}, rounds: {$rounds}, warmup: {$warmup}\n";
-echo "PHP: " . PHP_VERSION . ' (' . PHP_SAPI . ")\n";
+out("Webrick Matcher Benchmark\n");
+out('Modes: ' . implode(', ', array_keys($modes)) . "\n");
+out("Iterations/round: {$iterations}, rounds: {$rounds}, warmup: {$warmup}\n");
+out('PHP: ' . PHP_VERSION . ' (' . PHP_SAPI . ")\n");
 if (extension_loaded('xdebug')) {
-    echo "Warning: xdebug loaded; scores will be slower.\n";
+    out("Warning: xdebug loaded; scores will be slower.\n");
 }
-echo "\n";
-echo "Metric notes:\n";
-echo "  ops/s  = iterations / elapsed_seconds for one timed round (higher is better).\n";
-echo "  ns/op  = elapsed_nanoseconds / iterations for one timed round (lower is better).\n";
-echo "  best   = fastest round.\n";
-echo "  avg    = mean across all rounds.\n";
-echo "  cache-hot mode prebuilds cache artifacts via RouteCache::build() before timing.\n";
-echo "Route sets:\n";
+out("\n");
+out("Metric notes:\n");
+out("  ops/s  = iterations / elapsed_seconds for one timed round (higher is better).\n");
+out("  ns/op  = elapsed_nanoseconds / iterations for one timed round (lower is better).\n");
+out("  best   = fastest round.\n");
+out("  avg    = mean across all rounds.\n");
+out("  cache-hot mode prebuilds cache artifacts via RouteCache::build() before timing.\n");
+out("Route sets:\n");
 foreach ($routeSets as $set) {
-    echo "  - {$set['title']}: " . \count($set['routes']) . " compiled routes\n";
+    out("  - {$set['title']}: " . \count($set['routes']) . " compiled routes\n");
 }
 
 /** @var list<list<string>> $summaryRows */
@@ -188,6 +213,7 @@ $totalMatcherTasks = $totalScenarioRuns * 3;
 $scenarioRunNo = 0;
 $completedMatcherTasks = 0;
 
+out("\n");
 progressPercent(0, $totalMatcherTasks);
 
 foreach ($modes as $modeLabel => $useCache) {
@@ -195,7 +221,7 @@ foreach ($modes as $modeLabel => $useCache) {
     if ($useCache) {
         $cacheRoot = dirname(__DIR__) . DIRECTORY_SEPARATOR . '.route-cache'
             . DIRECTORY_SEPARATOR . 'bench-' . getmypid() . '-' . uniqid('', true);
-        if (!is_dir($cacheRoot) && !@mkdir($cacheRoot, 0775, true) && !is_dir($cacheRoot)) {
+        if (!is_dir($cacheRoot) && !mkdir($cacheRoot, 0775, true) && !is_dir($cacheRoot)) {
             throw new RuntimeException("Failed to create benchmark cache directory: {$cacheRoot}");
         }
     }
@@ -246,6 +272,7 @@ foreach ($modes as $modeLabel => $useCache) {
                     }
                 }
                 $m->finalize();
+
                 return $m;
             },
         );
@@ -267,6 +294,7 @@ foreach ($modes as $modeLabel => $useCache) {
                     }
                 }
                 $m->finalize();
+
                 return $m;
             },
         );
@@ -288,6 +316,7 @@ foreach ($modes as $modeLabel => $useCache) {
                     }
                 }
                 $m->finalize();
+
                 return $m;
             },
         );
@@ -305,7 +334,7 @@ foreach ($modes as $modeLabel => $useCache) {
             $byName[strtolower($row['name'])] = $row;
         }
 
-        usort($results, static fn (array $a, array $b): int => $b['best_ops_s'] <=> $a['best_ops_s']);
+        usort($results, static fn(array $a, array $b): int => $b['best_ops_s'] <=> $a['best_ops_s']);
         $winner = $results[0];
 
         $summaryRows[] = [
@@ -320,13 +349,13 @@ foreach ($modes as $modeLabel => $useCache) {
         ];
     }
 
-    if ($useCache && $cacheRoot !== null) {
+    if ($useCache) {
         rrmdir($cacheRoot);
     }
 }
 
 progressPercent($totalMatcherTasks, $totalMatcherTasks, true);
-echo "\n";
+out("\n");
 printTable(
     ['Mode', 'Route Set', 'Case', 'Request', 'Fused', 'Generated', 'Sharded', 'Winner'],
     $summaryRows,
@@ -334,47 +363,29 @@ printTable(
 
 function progressPercent(int $completed, int $total, bool $forceNewline = false): void
 {
-    static $isTty = null;
-    static $active = false;
-    static $lastWidth = 0;
     static $lastPercent = -1;
-
+    if (!\is_int($lastPercent)) {
+        $lastPercent = -1;
+    }
     $total = max(1, $total);
     $percent = (int) floor(($completed / $total) * 100);
     $percent = max(0, min(100, $percent));
-    if ($isTty === null) {
-        $isTty = function_exists('stream_isatty') ? stream_isatty(STDOUT) : false;
-    }
+
     if ($percent === $lastPercent) {
-        if ($forceNewline && $isTty && $lastWidth > 0) {
-            echo PHP_EOL;
-            $lastWidth = 0;
+        if ($forceNewline) {
+            out(PHP_EOL);
         }
+
         return;
     }
 
-    $text = '[progress] ' . $percent . '%';
-
-    if ($isTty) {
-        $len = strlen($text);
-        $pad = $lastWidth > $len ? str_repeat(' ', $lastWidth - $len) : '';
-        echo "\r" . $text . $pad;
-        $lastWidth = max($lastWidth, $len);
-        $active = true;
-        if ($forceNewline) {
-            echo PHP_EOL;
-            $active = false;
-            $lastWidth = 0;
-        }
-    } else {
-        echo $text . PHP_EOL;
-    }
+    out("\r[progress] " . $percent . '%' . PHP_EOL);
     $lastPercent = $percent;
 
     if (\function_exists('ob_get_level') && \ob_get_level() > 0) {
-        @\ob_flush();
+        \ob_flush();
     }
-    @flush();
+    flush();
 }
 
 /**
@@ -398,6 +409,11 @@ function benchMatcher(
     callable $assertHit,
     ?callable $progress = null,
 ): array {
+    $rounds = max(1, $rounds);
+    if ($method === '' || $host === '' || $path === '') {
+        throw new RuntimeException('Benchmark matcher inputs must be non-empty.');
+    }
+
     if ($progress !== null) {
         $progress('building matcher');
     }
@@ -423,7 +439,7 @@ function benchMatcher(
         for ($i = 0; $i < $iterations; $i++) {
             $last = $matcher->match($method, $host, $path);
         }
-        $elapsed = (float)(hrtime(true) - $start);
+        $elapsed = (float) (hrtime(true) - $start);
         $roundNs[] = $elapsed;
 
         if (!is_array($last) || !$assertHit($last)) {
@@ -514,6 +530,7 @@ function buildCompiledRoutes(callable $register): array
     if ($all === []) {
         throw new RuntimeException('Failed to build benchmark route set.');
     }
+
     return $all;
 }
 
@@ -525,11 +542,19 @@ function registerIndexRoutes(Registrar $registrar): void
     MiddlewareAliases::reset();
     MiddlewareAliases::register(
         'throttle',
-        static fn (...$_params): string => \Infocyph\Webrick\Middleware\ThrottleMiddleware::class,
+        static function (...$_params): string {
+            unset($_params);
+
+            return ThrottleMiddleware::class;
+        },
     );
     MiddlewareAliases::register(
         'verifySignedUrl',
-        static fn (...$_params): string => \Infocyph\Webrick\Middleware\VerifySignedUrlMiddleware::class,
+        static function (...$_params): string {
+            unset($_params);
+
+            return VerifySignedUrlMiddleware::class;
+        },
     );
 
     Router::setInstance($registrar);
@@ -558,8 +583,12 @@ function registerIndexRoutes(Registrar $registrar): void
  */
 function registerRouteCacheExampleRoutes(Registrar $registrar): void
 {
-    $registrar->get('/ping', static fn (): string => 'pong', 'ping');
-    $registrar->get('/hello/{name}', static fn ($req, $name): string => (string)$name, 'hello');
+    $registrar->get('/ping', static fn(): string => 'pong', 'ping');
+    $registrar->get('/hello/{name}', static function ($req, string $name): string {
+        unset($req);
+
+        return $name;
+    }, 'hello');
 }
 
 /**
@@ -583,12 +612,13 @@ function rrmdir(string $dir): void
         $path = $dir . DIRECTORY_SEPARATOR . $item;
         if (is_dir($path)) {
             rrmdir($path);
+
             continue;
         }
-        @unlink($path);
+        unlink($path);
     }
 
-    @rmdir($dir);
+    rmdir($dir);
 }
 
 /**
@@ -599,7 +629,7 @@ function rrmdir(string $dir): void
  */
 function printTable(array $headers, array $rows): void
 {
-    $widths = array_map(static fn (string $h): int => strlen($h), $headers);
+    $widths = array_map(strlen(...), $headers);
 
     foreach ($rows as $row) {
         foreach ($row as $i => $cell) {
@@ -615,19 +645,19 @@ function printTable(array $headers, array $rows): void
         $sep .= str_repeat('-', $w + 2) . '+';
     }
 
-    echo $sep . "\n";
-    echo '|';
+    out($sep . "\n");
+    out('|');
     foreach ($headers as $i => $h) {
-        echo ' ' . str_pad($h, $widths[$i], ' ', STR_PAD_RIGHT) . ' |';
+        out(' ' . str_pad($h, $widths[$i], ' ', STR_PAD_RIGHT) . ' |');
     }
-    echo "\n" . $sep . "\n";
+    out("\n" . $sep . "\n");
 
     foreach ($rows as $row) {
-        echo '|';
+        out('|');
         foreach ($row as $i => $cell) {
-            echo ' ' . str_pad($cell, $widths[$i], ' ', STR_PAD_RIGHT) . ' |';
+            out(' ' . str_pad($cell, $widths[$i], ' ', STR_PAD_RIGHT) . ' |');
         }
-        echo "\n";
+        out("\n");
     }
-    echo $sep . "\n";
+    out($sep . "\n");
 }

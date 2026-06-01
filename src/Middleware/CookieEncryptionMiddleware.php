@@ -20,8 +20,6 @@
  * - Optional server-side storage pointer uses the cookie value "S:<id>".
  *   The cache blob format (v1) is "C1:<8-hex-chk>:<base64-ciphertext>" where
  *   chk = first 8 hex chars of sha3-256 over the base64 ciphertext.
- *
- * @package Infocyph\Webrick\Middleware
  */
 
 declare(strict_types=1);
@@ -29,7 +27,6 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Middleware;
 
 use Closure;
-use DateTimeImmutable;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Cookies\Cookie;
 use Infocyph\Webrick\Response\Cookies\CookieJar;
@@ -52,44 +49,52 @@ use RuntimeException;
 final class CookieEncryptionMiddleware
 {
     /** Prefix used for server-side cache keys. */
-    private const CACHE_PREFIX = 'enc_cookie.';
+    private const string CACHE_PREFIX = 'enc_cookie.';
 
     /** 1-byte compression flag indicating Brotli. */
-    private const MODE_BROTLI = 'b';
+    private const string MODE_BROTLI = 'b';
+
     /** 1-byte compression flag indicating gzip/deflate family. */
-    private const MODE_GZIP = 'g';
+    private const string MODE_GZIP = 'g';
+
     /* compression flags (1-byte, ASCII) */
     /** 1-byte compression flag indicating no compression. */
-    private const MODE_NONE = '0';
+    private const string MODE_NONE = '0';
+
     /** Cookie value prefix marking server-side storage indirection. */
-    private const MODE_STORE = 'S:';  // server-side storage marker in cookie value
+    private const string MODE_STORE = 'S:';  // server-side storage marker in cookie value
+
     /** 1-byte compression flag indicating Zstandard. */
-    private const MODE_ZSTD = 'z';
+    private const string MODE_ZSTD = 'z';
 
     /** versioned cache blob prefix + simple integrity check (pre-b64 sanity) */
-    private const STORE_BLOB_V1 = 'C1:';   // "C1:<chk>:<b64cipher>"
+    private const string STORE_BLOB_V1 = 'C1:';   // "C1:<chk>:<b64cipher>"
+
     /** Separator token used within cache blob formatting. */
-    private const STORE_SEP = ':';         // separator used in cache blob
+    private const string STORE_SEP = ':';         // separator used in cache blob
 
     /** Version byte 0x31 for v1 framing. */
-    private const V1_BYTE = "1";      // 0x31
+    private const string V1_BYTE = '1';      // 0x31
 
     /** Whether brotli functions are available. */
     private static bool $hasBrotli = false;
+
     /** Whether gzip/deflate functions are available. */
     private static bool $hasGzip = false;
 
     /** Whether zstd functions are available. */
     private static bool $hasZstd = false;
 
+    private readonly CookieAttributeApplier $cookieAttributeApplier;
+
     /**
      * @var list<string> 32-byte raw keys (key ring).
-     * Keys are used for AES-256-GCM; index positions are Key IDs (KIDs).
+     *                   Keys are used for AES-256-GCM; index positions are Key IDs (KIDs).
      */
     private array $keys;
 
     /**
-     * @var int Current Key ID (index into $keys) used for new encryptions.
+     * @var int Current Key ID (index into) used for new encryptions.
      */
     private int $kid;
 
@@ -110,15 +115,15 @@ final class CookieEncryptionMiddleware
      */
     public function __construct(
         string|array $keyOrKeys,                  // 32B key or list of 32B keys (key[0] is default)
-        private string $cookiePrefix = 'enc_',
-        private int $maxBytes = 3_800,            // per cookie part, safe headroom under ~4k
-        private ?CacheItemPoolInterface $store = null,
-        private int $storeTtl = 86_400,           // seconds
+        private readonly string $cookiePrefix = 'enc_',
+        private readonly int $maxBytes = 3_800,            // per cookie part, safe headroom under ~4k
+        private readonly ?CacheItemPoolInterface $store = null,
+        private readonly int $storeTtl = 86_400,           // seconds
         // hardening / ergonomics
-        private bool $dropOnDecryptFailure = true,
-        private bool $forceSecure = true,
-        private bool $forceHttpOnly = true,
-        private ?string $defaultSameSite = 'Lax', // null = don’t set; 'None' requires Secure (we’ll enforce)
+        private readonly bool $dropOnDecryptFailure = true,
+        private readonly bool $forceSecure = true,
+        private readonly bool $forceHttpOnly = true,
+        private readonly ?string $defaultSameSite = 'Lax', // null = don’t set; 'None' requires Secure (we’ll enforce)
     ) {
         // normalize keys
         $this->keys = is_array($keyOrKeys) ? array_values($keyOrKeys) : [$keyOrKeys];
@@ -129,6 +134,9 @@ final class CookieEncryptionMiddleware
             if (strlen($k) !== 32) {
                 throw new InvalidArgumentException("Key #$i must be 32 bytes (AES-256).");
             }
+        }
+        if (\count($this->keys) > 256) {
+            throw new InvalidArgumentException('At most 256 keys are supported.');
         }
         $this->kid = 0;
 
@@ -142,16 +150,20 @@ final class CookieEncryptionMiddleware
             self::$hasBrotli = function_exists('brotli_compress');
             self::$hasGzip = function_exists('gzdeflate');
         }
+
+        $this->cookieAttributeApplier = new CookieAttributeApplier(
+            forceSecure: $this->forceSecure,
+            forceHttpOnly: $this->forceHttpOnly,
+            defaultSameSite: $this->defaultSameSite,
+        );
     }
 
     /* ───────────── pipeline ───────────── */
-
     /**
      * Decrypt inbound cookies before handling; encrypt outbound Set-Cookie headers after.
      *
-     * @param Request $req
-     * @param Closure $next
      *
+     * @param Closure(Request):Response $next
      * @return Response Response with encrypted Set-Cookie headers.
      */
     public function __invoke(Request $req, Closure $next): Response
@@ -170,8 +182,6 @@ final class CookieEncryptionMiddleware
      * Rotate the active encryption key by index.
      *
      * @param int $kid Key index (0..count-1).
-     *
-     * @return void
      *
      * @throws InvalidArgumentException When the index is unknown.
      */
@@ -192,7 +202,6 @@ final class CookieEncryptionMiddleware
      * @param string $baseName Logical cookie name.
      * @param int $kid Key id.
      * @param string $mode Compression mode flag.
-     *
      * @return string AAD string used for encryption/decryption.
      */
     private function aad(string $baseName, int $kid, string $mode): string
@@ -202,110 +211,9 @@ final class CookieEncryptionMiddleware
     }
 
     /**
-     * Re-apply (and enforce) cookie attributes to the builder.
-     *
-     * @param Cookie $cookie Cookie builder.
-     * @param array<string,bool|string> $attrs Parsed attributes from original Set-Cookie.
-     *
-     * @return Cookie Cookie with attributes applied and security defaults enforced.
-     */
-    private function applyAttrs(Cookie $cookie, array $attrs): Cookie
-    {
-        $cookie = $this->applyPathDomainAndExpiryAttrs($cookie, $attrs);
-        $cookie = $this->applySameSiteAttr($cookie, $attrs);
-        return $this->applySecurityAttrs($cookie, $attrs);
-    }
-
-    /**
-     * @param array<string,bool|string> $attrs
-     */
-    private function applyHttpOnlyAttr(Cookie $cookie, array $attrs): Cookie
-    {
-        if (!method_exists($cookie, 'httpOnly')) {
-            return $cookie;
-        }
-
-        $hasHttpOnly = (isset($attrs['httponly']) && $attrs['httponly'] === true) || $this->hasFlag($attrs, 'httponly');
-        if ($this->forceHttpOnly || $hasHttpOnly) {
-            return $cookie->httpOnly();
-        }
-
-        return $cookie;
-    }
-
-    /**
-     * @param array<string,bool|string> $attrs
-     */
-    private function applyPathDomainAndExpiryAttrs(Cookie $cookie, array $attrs): Cookie
-    {
-        if (isset($attrs['path']) && method_exists($cookie, 'path')) {
-            $cookie = $cookie->path($attrs['path']);
-        }
-        if (isset($attrs['domain']) && method_exists($cookie, 'domain')) {
-            $cookie = $cookie->domain($attrs['domain']);
-        }
-        if (isset($attrs['max-age']) && method_exists($cookie, 'maxAge')) {
-            $cookie = $cookie->maxAge((int)$attrs['max-age']);
-        }
-        if (isset($attrs['expires']) && method_exists($cookie, 'expires')) {
-            $ts = strtotime((string)$attrs['expires']);
-            if ($ts !== false) {
-                $cookie = $cookie->expires(new DateTimeImmutable("@{$ts}"));
-            }
-        }
-
-        return $cookie;
-    }
-
-    /**
-     * @param array<string,bool|string> $attrs
-     */
-    private function applySameSiteAttr(Cookie $cookie, array $attrs): Cookie
-    {
-        if (!method_exists($cookie, 'sameSite')) {
-            return $cookie;
-        }
-
-        if (isset($attrs['samesite'])) {
-            return $cookie->sameSite((string)$attrs['samesite']);
-        }
-
-        return $this->defaultSameSite !== null
-            ? $cookie->sameSite($this->defaultSameSite)
-            : $cookie;
-    }
-
-    /**
-     * @param array<string,bool|string> $attrs
-     */
-    private function applySecureAttr(Cookie $cookie, array $attrs): Cookie
-    {
-        if (!method_exists($cookie, 'secure')) {
-            return $cookie;
-        }
-
-        $hasSecure = (isset($attrs['secure']) && $attrs['secure'] === true) || $this->hasFlag($attrs, 'secure');
-        if ($this->forceSecure || $this->isSameSiteNone($attrs) || $hasSecure) {
-            return $cookie->secure();
-        }
-
-        return $cookie;
-    }
-
-    /**
-     * @param array<string,bool|string> $attrs
-     */
-    private function applySecurityAttrs(Cookie $cookie, array $attrs): Cookie
-    {
-        $cookie = $this->applySecureAttr($cookie, $attrs);
-        return $this->applyHttpOnlyAttr($cookie, $attrs);
-    }
-
-    /**
      * Choose best compression among zstd, brotli, gzip, or none.
      *
      * @param string $pt Plaintext.
-     *
      * @return array{0:string,1:string} [payload, mode]
      */
     private function bestCompress(string $pt): array
@@ -333,7 +241,6 @@ final class CookieEncryptionMiddleware
      * Decode and validate a v1 cache blob ("C1:<chk>:<b64cipher>").
      *
      * @param string $blob The cache blob.
-     *
      * @return string|null The base64 ciphertext string on success; null on failure.
      */
     private function decodeCacheBlobV1(string $blob): ?string
@@ -371,15 +278,14 @@ final class CookieEncryptionMiddleware
      *
      * @param string $mode Compression mode flag.
      * @param string $pt Raw plaintext (possibly compressed).
-     *
      * @return string|false|null Decompressed plaintext, original text (no compression), false when decompression fails, or null when unsupported.
      */
     private function decompress(string $mode, string $pt): mixed
     {
         return match ($mode) {
-            self::MODE_ZSTD => self::$hasZstd ? @zstd_uncompress($pt) : null,
-            self::MODE_BROTLI => self::$hasBrotli ? @brotli_uncompress($pt) : null,
-            self::MODE_GZIP => @gzinflate($pt),
+            self::MODE_ZSTD => self::$hasZstd ? zstd_uncompress($pt) : null,
+            self::MODE_BROTLI => self::$hasBrotli ? brotli_uncompress($pt) : null,
+            self::MODE_GZIP => gzinflate($pt),
             default => $pt,
         };
     }
@@ -392,7 +298,6 @@ final class CookieEncryptionMiddleware
      *
      * @param string $baseName Logical cookie name (without .pN suffix).
      * @param string $cipher Base64 ciphertext or "S:<id>" pointer.
-     *
      * @return mixed|null Decrypted value or null when authentication fails or payload invalid.
      */
     private function decrypt(string $baseName, string $cipher): mixed
@@ -419,9 +324,8 @@ final class CookieEncryptionMiddleware
     /**
      * Decrypt all cookies with the configured prefix and reassemble chunked values.
      *
-     * @param array<string,string> $cookies Incoming cookie map.
-     *
-     * @return array<string,mixed> Cookie map with decrypted values (others pass through).
+     * @param array<mixed,mixed> $cookies Incoming cookie map.
+     * @return array<mixed,mixed> Cookie map with decrypted values (others pass through).
      */
     private function decryptAll(array $cookies): array
     {
@@ -429,12 +333,16 @@ final class CookieEncryptionMiddleware
         $out = $assemblies = [];
 
         foreach ($cookies as $name => $val) {
-            if (!preg_match($rx, $name, $m)) {
+            if (!\is_string($val)) {
+                continue;
+            }
+            if (!preg_match($rx, (string) $name, $m)) {
                 $out[$name] = $val; // not an encrypted cookie
+
                 continue;
             }
             $base = $m[1];                     // e.g., enc_session
-            $idx = (int)($m[2] ?? 1);
+            $idx = (int) ($m[2] ?? 1);
             $assemblies[$base][$idx] = $val;
         }
 
@@ -492,8 +400,8 @@ final class CookieEncryptionMiddleware
             $decoded = $this->decryptAndDecompress(
                 $baseName,
                 $frame['mode'],
-                (int)$useKid,
-                (string)$key,
+                (int) $useKid,
+                (string) $key,
                 $frame['iv'],
                 $frame['tag'],
                 $frame['ct'],
@@ -512,12 +420,12 @@ final class CookieEncryptionMiddleware
      * Build v1 cache blob "C1:<8-hex-chk>:<b64cipher>".
      *
      * @param string $b64Cipher Base64 ciphertext.
-     *
      * @return string Encoded cache blob.
      */
     private function encodeCacheBlobV1(string $b64Cipher): string
     {
         $chk = substr(hash('sha3-256', $b64Cipher), 0, 8);
+
         return self::STORE_BLOB_V1 . $chk . self::STORE_SEP . $b64Cipher;
     }
 
@@ -527,7 +435,6 @@ final class CookieEncryptionMiddleware
      * Replace Set-Cookie headers with encrypted equivalents for matching names.
      *
      * @param Response $resp Outgoing response.
-     *
      * @return Response Response with updated Set-Cookie headers.
      */
     private function encryptAll(Response $resp): Response
@@ -540,25 +447,32 @@ final class CookieEncryptionMiddleware
         $jar = new CookieJar();
 
         foreach ($set as $line) {
+            if (!\is_string($line)) {
+                continue;
+            }
             $parts = $this->parseSetCookie($line);
             if ($parts === null) {
                 // keep verbatim if we can’t parse
                 $jar = $jar->raw($line);
+
                 continue;
             }
 
-            [$name, $value, $attrs] = $parts;
+            $name = $parts['name'];
+            $value = $parts['value'];
+            $attrs = $parts['attrs'];
 
             // Only encrypt our prefix
             if (!str_starts_with($name, $this->cookiePrefix)) {
                 $jar = $jar->raw($line);
+
                 continue;
             }
 
-            foreach ($this->encryptSegments($name, rawurldecode((string)$value)) as $i => $seg) {
+            foreach ($this->encryptSegments($name, rawurldecode($value)) as $i => $seg) {
                 $cname = $i === 1 ? $name : "{$name}.p{$i}";
                 $cookie = Cookie::make($cname, $seg);
-                $cookie = $this->applyAttrs($cookie, $attrs);
+                $cookie = $this->cookieAttributeApplier->apply($cookie, $attrs);
                 $jar = $jar->add($cookie);
             }
         }
@@ -572,7 +486,6 @@ final class CookieEncryptionMiddleware
      *
      * @param string $baseName Logical cookie name.
      * @param string $pt Plaintext to encrypt.
-     *
      * @return string Base64 ciphertext.
      *
      * @throws RandomException
@@ -599,7 +512,8 @@ final class CookieEncryptionMiddleware
         }
 
         // v1 framing: '1' | MODE | KID | IV | TAG | CT
-        $raw = self::V1_BYTE . $mode . chr($this->kid) . $iv . $tag . $ct;
+        $raw = self::V1_BYTE . $mode . chr($this->kidByte()) . $iv . $tag . $ct;
+
         return base64_encode($raw);
     }
 
@@ -608,7 +522,6 @@ final class CookieEncryptionMiddleware
      *
      * @param string $baseName Logical cookie name.
      * @param string $plaintext Plaintext payload.
-     *
      * @return array<int,string> 1-based segments.
      *
      * @throws RandomException
@@ -636,12 +549,13 @@ final class CookieEncryptionMiddleware
             $item = $this->store->getItem(self::CACHE_PREFIX . $id);
             $item->set($this->encodeCacheBlobV1($cipher))->expiresAfter($this->storeTtl);
             $this->store->save($item);
+
             return [1 => self::MODE_STORE . $id];
         }
 
         throw new LengthException(
-            'Encrypted cookie exceeds safe size even after chunking; ' .
-            'enable server-side storage or reduce payload.',
+            'Encrypted cookie exceeds safe size even after chunking; '
+            . 'enable server-side storage or reduce payload.',
         );
     }
 
@@ -649,7 +563,6 @@ final class CookieEncryptionMiddleware
      * Fetch a stored ciphertext/cache blob by id.
      *
      * @param string $id Storage key id (hex).
-     *
      * @return mixed|null Stored payload or null when not found.
      */
     private function fromStore(string $id): mixed
@@ -658,35 +571,8 @@ final class CookieEncryptionMiddleware
             return null;
         }
         $item = $this->store->getItem(self::CACHE_PREFIX . $id);
+
         return $item->isHit() ? $item->get() : null;
-    }
-
-    /**
-     * Whether a flag-like attribute is present (e.g., Secure/HttpOnly).
-     *
-     * @param array<string,bool|string> $attrs
-     * @param string $flag
-     *
-     * @return bool True when the attribute exists as a valueless flag.
-     */
-    private function hasFlag(array $attrs, string $flag): bool
-    {
-        return array_any($attrs, fn ($v, $k) => $k === $flag && $v === true);
-    }
-
-    /**
-     * Whether attributes indicate SameSite=None.
-     *
-     * @param array<string,bool|string> $attrs
-     *
-     * @return bool True when SameSite=None is configured.
-     */
-    private function isSameSiteNone(array $attrs): bool
-    {
-        if (!isset($attrs['samesite'])) {
-            return false;
-        }
-        return strcasecmp((string)$attrs['samesite'], 'none') === 0;
     }
 
     /**
@@ -707,6 +593,18 @@ final class CookieEncryptionMiddleware
     }
 
     /**
+     * @return int<0,255>
+     */
+    private function kidByte(): int
+    {
+        if ($this->kid < 0 || $this->kid > 255) {
+            throw new RuntimeException('Key id must be within byte range.');
+        }
+
+        return $this->kid;
+    }
+
+    /**
      * @return array{mode:string,kid:?int,iv:string,tag:string,ct:string}|null
      */
     private function parseCipherFrame(string $cipher): ?array
@@ -723,7 +621,7 @@ final class CookieEncryptionMiddleware
         }
 
         $mode = $raw[$off] ?? null;
-        if (!\is_string($mode) || $mode === '') {
+        if (!\is_string($mode)) {
             return null;
         }
         $off += 1;
@@ -758,15 +656,14 @@ final class CookieEncryptionMiddleware
      * Minimal Set-Cookie parser.
      *
      * @param string $line Raw Set-Cookie line.
-     *
      * @return array{name:string, value:string, attrs:array<string,bool|string>}|null
-     *               Returns [name, value, attrs[]] or null when unparseable.
-     *               Value is raw (still urlencoded per RFC).
+     *                                                                                Returns [name, value, attrs[]] or null when unparseable.
+     *                                                                                Value is raw (still urlencoded per RFC).
      */
     private function parseSetCookie(string $line): ?array
     {
-        $chunks = array_map('trim', explode(';', $line));
-        if ($chunks === [] || !str_contains($chunks[0], '=')) {
+        $chunks = array_map(trim(...), explode(';', $line));
+        if (!str_contains($chunks[0], '=')) {
             return null;
         }
         [$name, $value] = explode('=', $chunks[0], 2);
@@ -780,7 +677,8 @@ final class CookieEncryptionMiddleware
             $v = isset($kv[1]) ? trim($kv[1]) : true;
             $attrs[$k] = $v;
         }
-        return [trim($name), $value, $attrs];
+
+        return ['name' => trim($name), 'value' => $value, 'attrs' => $attrs];
     }
 
     /**
@@ -799,6 +697,7 @@ final class CookieEncryptionMiddleware
 
         if (\str_starts_with($stored, self::STORE_BLOB_V1)) {
             $decoded = $this->decodeCacheBlobV1($stored);
+
             return ['cipher' => $decoded, 'plain' => null, 'hasPlain' => false];
         }
 

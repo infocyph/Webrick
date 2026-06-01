@@ -33,6 +33,7 @@ use Psr\Log\NullLogger;
  * - Network Error Logging (NEL) support
  *
  * @internal Used by TelemetryMiddleware when OTel SDK is detected
+ *
  * @see https://opentelemetry.io/docs/specs/semconv/http/
  * @see https://www.w3.org/TR/trace-context/
  */
@@ -54,8 +55,7 @@ final readonly class OpenTelemetryHandler
         private string $traceIdHeader = 'Trace-Id',
         private string $otelServiceName = 'webrick-app',
         private string $otelServiceVersion = '1.0.0',
-    ) {
-    }
+    ) {}
 
     /**
      * Handle request with full OpenTelemetry span management.
@@ -118,7 +118,7 @@ final readonly class OpenTelemetryHandler
             $resp = $this->addTimingHeaders($resp, $durMs);
 
             // Add correlation headers
-            $resp = $this->addCorrelationHeaders($resp, $traceId, $spanId, $requestId);
+            $resp = $this->addCorrelationHeaders($resp, $traceId, $requestId);
 
             // Apply NEL headers if configured
             $resp = $this->applyNelHeaders($resp);
@@ -151,8 +151,7 @@ final readonly class OpenTelemetryHandler
     private function addCorrelationHeaders(
         Response $resp,
         string $traceId,
-        string $spanId,
-        ?string $requestId
+        ?string $requestId,
     ): Response {
         if ($this->emitRequestId && $requestId !== null && !$resp->hasHeader($this->requestIdHeader)) {
             $resp = $resp->withHeader($this->requestIdHeader, $requestId);
@@ -394,8 +393,9 @@ final readonly class OpenTelemetryHandler
         $carrier = [];
         foreach ($req->getHeaders() as $name => $values) {
             // Propagators expect lowercase header names
-            $carrier[strtolower($name)] = $values[0] ?? '';
+            $carrier[strtolower((string) $name)] = $values[0] ?? '';
         }
+
         return $carrier;
     }
 
@@ -426,7 +426,7 @@ final readonly class OpenTelemetryHandler
                 $method,
                 $path,
                 $code,
-                (string)$len,
+                (string) $len,
                 $durMs,
                 $requestId ? " id={$requestId}" : '',
                 $traceId,

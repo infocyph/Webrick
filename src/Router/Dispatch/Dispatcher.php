@@ -13,8 +13,6 @@ declare(strict_types=1);
  *    MiddlewareAliases and resolves them lazily.
  *  - Resolves middleware classes through InterMix so constructor DI/lifetimes
  *    are respected while still deferring resolution to call-time.
- *
- * @package Infocyph\Webrick\Router\Dispatch
  */
 
 namespace Infocyph\Webrick\Router\Dispatch;
@@ -52,42 +50,31 @@ final class Dispatcher
     private array $pipelines = [];
 
     /**
-     * Raw global "post" middleware entries (same shapes as preGlobalRaw).
-     *
-     * @var array<class-string|object|callable|string>
-     */
-    private array $postGlobalRaw;
-
-    /**
-     * Raw global "pre" middleware entries.
-     *
-     * Entries may be:
-     *  - class-string (e.g. SomeMiddleware::class)
-     *  - instantiated middleware object (object)
-     *  - callable (non-string)
-     *  - alias string (e.g. 'throttle:60,60')
-     *
-     * @var array<class-string|object|callable|string>
-     */
-    private array $preGlobalRaw;
-
-    /**
      * Construct the Dispatcher.
      *
      * @param Invoker $invoker DI invoker used to call handlers and for optional injection
      * @param bool $useInvoker Whether to use the invoker when invoking middleware/handlers
-     * @param array<class-string|object|callable|string> $preGlobal Prepend global middleware list
-     * @param array<class-string|object|callable|string> $postGlobal Append global middleware list
+     * @param array<class-string|object|callable|string> $preGlobalRaw Prepend global middleware list
+     * @param array<class-string|object|callable|string> $postGlobalRaw Append global middleware list
      */
     public function __construct(
         private readonly Invoker $invoker,
         private readonly bool $useInvoker = true,
-        array $preGlobal = [],
-        array $postGlobal = [],
-    ) {
-        $this->preGlobalRaw = $preGlobal;
-        $this->postGlobalRaw = $postGlobal;
-    }
+        /**
+         * Raw global "pre" middleware entries.
+         *
+         * Entries may be:
+         *  - class-string (e.g. SomeMiddleware::class)
+         *  - instantiated middleware object (object)
+         *  - callable(non-string)
+         *  - alias string (e.g. 'throttle:60,60')
+         */
+        private readonly array $preGlobalRaw = [],
+        /**
+         * Raw global "post" middleware entries (same shapes as preGlobalRaw).
+         */
+        private readonly array $postGlobalRaw = [],
+    ) {}
 
     /**
      * Dispatch a compiled route with a request and extracted route variables.
@@ -177,6 +164,7 @@ final class Dispatcher
 
             $callArgs = $routeVars + ['request' => $req];
             $result = $this->invokeRouteHandler($route->getHandler(), $callArgs);
+
             return $result instanceof Response ? $result : Response::json($result);
         };
     }
@@ -237,13 +225,7 @@ final class Dispatcher
             return true;
         }
 
-        foreach ($ctor->getParameters() as $param) {
-            if (!$param->isOptional()) {
-                return false;
-            }
-        }
-
-        return true;
+        return array_all($ctor->getParameters(), fn($param) => $param->isOptional());
     }
 
     /* ---------------------------------------------------------------------
@@ -316,6 +298,7 @@ final class Dispatcher
                 $out[] = $mw;
             }
         }
+
         return $out;
     }
 
@@ -326,7 +309,6 @@ final class Dispatcher
      * invokable classes. For middleware we only want constructor DI here.
      *
      * @param class-string $class
-     * @return object
      */
     private function instantiateClassViaInterMix(string $class): object
     {
@@ -460,6 +442,7 @@ final class Dispatcher
                 $set[$mw::class] = true;
             }
         }
+
         return $set;
     }
 
@@ -482,6 +465,7 @@ final class Dispatcher
 
         if (\is_string($mw) && $this->looksLikeAliasString($mw)) {
             $cls = $this->aliasStringClass($mw);
+
             return $cls === null || !isset($routeClasses[$cls]);
         }
 
@@ -522,15 +506,17 @@ final class Dispatcher
                 }
 
                 $callable = $instance(...);
+
                 return $callable($req, $next);
             }
 
             if (\is_object($resolved)) {
                 if (!\is_callable($resolved)) {
                     throw new InvalidArgumentException(
-                        "Resolved middleware object (" . $resolved::class . ') is not invokable.',
+                        'Resolved middleware object (' . $resolved::class . ') is not invokable.',
                     );
                 }
+
                 return $resolved($req, $next);
             }
 
@@ -556,6 +542,7 @@ final class Dispatcher
             }
 
             $callable = $instance(...);
+
             return $callable($req, $next);
         };
     }
@@ -568,6 +555,6 @@ final class Dispatcher
             );
         }
 
-        return static fn (Request $req, Closure $next) => $mw($req, $next);
+        return static fn(Request $req, Closure $next) => $mw($req, $next);
     }
 }

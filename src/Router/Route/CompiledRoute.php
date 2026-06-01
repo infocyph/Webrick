@@ -13,14 +13,12 @@
  * This file aims to be safe for export into generated PHP cache blobs and
  * supports __set_state for rehydration.
  *
- * @package Infocyph\Webrick\Router\Route
  * @author  Generated
  */
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router\Route;
 
-use Closure;
 use Infocyph\Webrick\Interfaces\RouteInterface;
 use Infocyph\Webrick\Router\Constraint\Registry as ConstraintRegistry;
 use Infocyph\Webrick\Router\Definition\Attribute\Cors;
@@ -30,7 +28,6 @@ use Infocyph\Webrick\Router\Definition\Attribute\Cors;
  *   array{type:'lit',val:string}|
  *   array{type:'var',name:string,regex:string}|
  *   array{type:'var',name:string,call:callable-string}
- *
  * @psalm-type MiddlewareList = list<class-string|object>
  *
  * Final, immutable compiled route used by matchers and cache writers.
@@ -45,35 +42,20 @@ use Infocyph\Webrick\Router\Definition\Attribute\Cors;
  *  - Instances are intended to be PHP-exportable; closures inside handlers are
  *    treated specially by matchers when producing cache blobs.
  */
-#[\AllowDynamicProperties(false)]
 final class CompiledRoute implements RouteInterface
 {
-    /*──────────────────────── static ordinal ───────────────────────*/
-
+    /* ──────────────────────── static ordinal ─────────────────────── */
     /**
      * Monotonic index assigned to each compiled route (used for stable ordering).
-     *
-     * @var int
      */
     private static int $autoIdx = 0;
 
-    /*──────────────────────── ctor state ───────────────────────────*/
+    /* ──────────────────────── ctor state ─────────────────────────── */
 
-    /**
-     * Handler descriptor for the route.
-     *
-     * Can be a Closure, callable array, class-string or other callable form.
-     *
-     * @var callable|class-string|array
-     */
-    private mixed $handler;
+    /** @var array{0:object|class-string,1:string}|string|callable */
+    private readonly mixed $handler;
 
-    /**
-     * Segment descriptors produced while parsing the route path.
-     *
-     * @var list<SegmentSpec>
-     */
-    private array $segments;
+    private readonly string $handlerId;
 
     /**
      * Construct a compiled route.
@@ -83,13 +65,13 @@ final class CompiledRoute implements RouteInterface
      *
      * @param string $method HTTP method (e.g. "GET")
      * @param string $path Original route path (absolute)
-     * @param callable|Closure|string|array $handler Route handler descriptor
+     * @param array{0:object|class-string,1:string}|string|callable $handler Route handler descriptor
      * @param string|null $domain Route domain or null (wildcard)
-     * @param array $middleware List of middleware descriptors
+     * @param MiddlewareList $middleware List of middleware descriptors
      * @param string|null $name Route name or null
      * @param bool $dynamic True when route contains placeholders
      * @param string $regex Compiled full-route regex (anchored)
-     * @param array $variables List of variable names in order
+     * @param list<string> $variables List of variable names in order
      * @param int $index Stable numeric index
      * @param Cors|null $corsPolicy Optional CORS attribute instance
      * @param list<SegmentSpec> $segments Parsed segment specs (see SegmentSpec)
@@ -97,7 +79,7 @@ final class CompiledRoute implements RouteInterface
     public function __construct(
         private readonly string $method,
         private readonly string $path,
-        callable|Closure|string|array $handler,
+        array|string|callable $handler,
         private readonly ?string $domain,
         private readonly array $middleware,
         private readonly ?string $name,
@@ -106,19 +88,34 @@ final class CompiledRoute implements RouteInterface
         private readonly array $variables,
         private readonly int $index,
         private readonly ?Cors $corsPolicy,
-        array $segments,
+        /**
+         * Segment descriptors produced while parsing the route path.
+         */
+        private readonly array $segments,
     ) {
-        // Preserve provided handler/segments as-is; closures are not bound/cloned.
-        $this->handler = $handler;   // no binding / cloning
-        $this->segments = $segments;
+        $this->handler = $handler;
+        $this->handlerId = Route::fingerprint($handler);
     }
 
-    /*──────────────────── accessors ───────────────────*/
+    /* ──────────────────── accessors ─────────────────── */
 
     /**
      * Rehydrate instance from exported state (used by var_export/__set_state patterns).
      *
-     * @param array $data Positional arguments matching the constructor parameters
+     * @param array{
+     *   0:string,
+     *   1:string,
+     *   2:array{0:object|class-string,1:string}|string|callable,
+     *   3:?string,
+     *   4:list<class-string|object>,
+     *   5:?string,
+     *   6:bool,
+     *   7:string,
+     *   8:list<string>,
+     *   9:int,
+     *   10:?Cors,
+     *   11:list<SegmentSpec>
+     * } $data Positional arguments matching the constructor parameters
      * @return self Reconstructed CompiledRoute
      */
     public static function __set_state(array $data): self
@@ -126,7 +123,7 @@ final class CompiledRoute implements RouteInterface
         return new self(...$data);
     }
 
-    /*──────────────────── factory (compile-once) ───────────────────*/
+    /* ──────────────────── factory (compile-once) ─────────────────── */
 
     /**
      * Create a CompiledRoute from a RouteInterface instance.
@@ -141,9 +138,14 @@ final class CompiledRoute implements RouteInterface
     {
         [$regex, $vars, $dynamic, $segments] = self::parsePath($route->getPath());
 
-        // Support both new (getMiddlewares) and legacy (getMiddleware) APIs.
-        $mw = $route->getMiddlewares() ?? $route->getMiddleware();
-        $cors = \method_exists($route, 'getCorsPolicy') ? $route->getCorsPolicy() : null;
+        $mw = $route->getMiddlewares();
+        $cors = null;
+        if (\method_exists($route, 'getCorsPolicy')) {
+            $maybeCors = $route->getCorsPolicy();
+            if ($maybeCors instanceof Cors) {
+                $cors = $maybeCors;
+            }
+        }
 
         return new self(
             method: $route->getMethod(),
@@ -184,11 +186,16 @@ final class CompiledRoute implements RouteInterface
     /**
      * Get the handler descriptor.
      *
-     * @return callable|array|string Handler callable, array descriptor, or class-string
+     * @return array{0:object|class-string,1:string}|string|callable Handler callable, array descriptor, or class-string
      */
     public function getHandler(): callable|array|string
     {
         return $this->handler;
+    }
+
+    public function getHandlerId(): string
+    {
+        return $this->handlerId;
     }
 
     /**
@@ -214,7 +221,7 @@ final class CompiledRoute implements RouteInterface
     /**
      * Backwards-compatible alias for getMiddlewares().
      *
-     * @return array Middleware list
+     * @return MiddlewareList Middleware list
      */
     public function getMiddleware(): array
     {
@@ -224,7 +231,7 @@ final class CompiledRoute implements RouteInterface
     /**
      * Get the middleware descriptors for the route.
      *
-     * @return array Middleware list (preserves original descriptor forms)
+     * @return MiddlewareList Middleware list (preserves original descriptor forms)
      */
     public function getMiddlewares(): array
     {
@@ -288,7 +295,7 @@ final class CompiledRoute implements RouteInterface
     /**
      * List of variable names in the order they appear in the path.
      *
-     * @return list<non-empty-string> Variable names
+     * @return list<string> Variable names
      */
     public function getVariables(): array
     {
@@ -305,7 +312,7 @@ final class CompiledRoute implements RouteInterface
         return $this->dynamic;
     }
 
-    /*──────────────────── functional immutators ────────────────────*/
+    /* ──────────────────── functional immutators ──────────────────── */
 
     /**
      * Return a copy of this CompiledRoute with the given domain.
@@ -377,6 +384,7 @@ final class CompiledRoute implements RouteInterface
             if (isset($spec['regex'])) {
                 // regex provides inner body (no anchors) — wrap for segment validation
                 $inner = $spec['regex']; // inner body, no anchors
+
                 return [
                     ['type' => 'var', 'name' => $name, 'regex' => "#\\A{$inner}\\z#D"],
                     "({$inner})",
@@ -385,6 +393,7 @@ final class CompiledRoute implements RouteInterface
 
             /** @var callable-string $call */
             $call = $spec['callable'];
+
             // Callable constraints are deferred to runtime; pattern remains permissive.
             return [
                 ['type' => 'var', 'name' => $name, 'call' => $call],
@@ -394,12 +403,12 @@ final class CompiledRoute implements RouteInterface
 
         // No constraint → default segment matcher.
         return [
-            ['type' => 'var', 'name' => $name, 'regex' => "#\\A[^/]+\\z#D"],
+            ['type' => 'var', 'name' => $name, 'regex' => '#\\A[^/]+\\z#D'],
             '([^/]+)',
         ];
     }
 
-    /*──────────── small utilities & splits ────────────*/
+    /* ──────────── small utilities & splits ──────────── */
 
     /**
      * Convert a static path into a list of literal segment specs.
@@ -415,6 +424,7 @@ final class CompiledRoute implements RouteInterface
                 $segments[] = ['type' => 'lit', 'val' => $seg];
             }
         }
+
         return $segments;
     }
 
@@ -455,6 +465,7 @@ final class CompiledRoute implements RouteInterface
                 [$segSpec, $pieceRegex] = self::buildVarSegment($name, $constraint);
                 $segments[] = $segSpec;
                 $patternBuf[] = $pieceRegex; // capture group for variable segment
+
                 continue;
             }
 
@@ -465,10 +476,10 @@ final class CompiledRoute implements RouteInterface
 
         $pattern = self::buildAnchoredPattern($patternBuf);
 
-        return [$pattern, $vars, /*dynamic*/ true, $segments];
+        return [$pattern, $vars, /* dynamic */ true, $segments];
     }
 
-    /*────────────  path-pattern compilation  ───────────────────────*/
+    /* ────────────  path-pattern compilation  ─────────────────────── */
 
     /**
      * Parse a path into either a static or dynamic compiled form.
@@ -498,18 +509,19 @@ final class CompiledRoute implements RouteInterface
     private static function parsePlaceholder(string $raw): ?array
     {
         static $phRe = '/^\{([A-Za-z_]\w*)(?::([^}]+))?}$/';
+        if (!\is_string($phRe)) {
+            return null;
+        }
         if (\preg_match($phRe, $raw, $m) !== 1) {
             return null;
         }
 
         /** @var non-empty-string $name */
-        $name = (string)($m[1] ?? '');
-        if ($name === '') {
-            return null;
-        }
+        $name = $m[1];
 
         /** @var ?non-empty-string $constraint */
-        $constraint = isset($m[2]) && $m[2] !== '' ? (string)$m[2] : null;
+        $constraint = isset($m[2]) && $m[2] !== '' ? $m[2] : null;
+
         return [$name, $constraint];
     }
 
@@ -525,7 +537,7 @@ final class CompiledRoute implements RouteInterface
 
         $pattern = '#\A' . ($path === '/' ? '/' : self::quoteIfNeeded($path)) . '\z#D';
 
-        return [$pattern, /*vars*/ [], /*dynamic*/ false, $segments];
+        return [$pattern, /* vars */ [], /* dynamic */ false, $segments];
     }
 
     /**
@@ -539,15 +551,28 @@ final class CompiledRoute implements RouteInterface
         return \strpbrk($s, '^$.[]|()?*+{}\\') !== false ? \preg_quote($s, '#') : $s;
     }
 
-    /*──────────────────── private helpers ──────────────────────────*/
+    /* ──────────────────── private helpers ────────────────────────── */
 
     /**
      * Helper that assembles constructor positional args for copy-on-write operations.
      *
      * @param string|null $domain Optional override for domain
-     * @param array|null $middleware Optional override for middleware list
+     * @param MiddlewareList|null $middleware Optional override for middleware list
      * @param string|null $name Optional override for name
-     * @return array Positional constructor argument list matching __construct signature
+     * @return array{
+     *   0:string,
+     *   1:string,
+     *   2:array{0:object|class-string,1:string}|string|callable,
+     *   3:?string,
+     *   4:list<class-string|object>,
+     *   5:?string,
+     *   6:bool,
+     *   7:string,
+     *   8:list<string>,
+     *   9:int,
+     *   10:?Cors,
+     *   11:list<SegmentSpec>
+     * } Positional constructor argument list matching __construct signature
      */
     private function copyProps(
         ?string $domain = null,

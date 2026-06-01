@@ -16,17 +16,17 @@ use Infocyph\Webrick\Request\Request;
  * – No IO; it only inspects request headers against metadata
  *   you provide (ETag / last-modified Unix-epoch).
  */
-final class ConditionalValidator
+final readonly class ConditionalValidator
 {
     /* result codes */
     private const int HTTP_NOT_MODIFIED = StatusEnum::NOT_MODIFIED->value;
+
     private const int HTTP_PRECONDITION = StatusEnum::PRECONDITION_FAILED->value;
 
     public function __construct(
-        private readonly ?string $etag = null,
-        private readonly ?int $lastModified = null,
-    ) {
-    }
+        private ?string $etag = null,
+        private ?int $lastModified = null,
+    ) {}
 
     public function evaluate(Request $req): Outcome
     {
@@ -38,6 +38,7 @@ final class ConditionalValidator
         if ($this->hitsIfNoneMatch($req) || $this->hitsIfModSince($req)) {
             return new Outcome(Outcome::HIT, self::HTTP_NOT_MODIFIED, $echo);
         }
+
         return new Outcome(Outcome::PASS, 0, $echo);
     }
 
@@ -62,6 +63,7 @@ final class ConditionalValidator
             return $this->etagEquals($this->etag, $ifRange, true);
         }
         $date = $this->parseDate($ifRange);
+
         return $date !== null && $this->lastModified !== null && $this->lastModified <= $date;
     }
 
@@ -81,6 +83,7 @@ final class ConditionalValidator
         if ($this->lastModified) {
             $h['Last-Modified'] = gmdate('D, d M Y H:i:s', $this->lastModified) . ' GMT';
         }
+
         return $h;
     }
 
@@ -90,7 +93,7 @@ final class ConditionalValidator
      * @param string $current The current ETag to compare against.
      * @param array|string $candidates The list of candidate ETags to compare with.
      * @param bool $strong Whether to perform a strong comparison (exact match)
-     *     or a weak comparison (ignoring W/ prefix and ignoring case).
+     *                     or a weak comparison (ignoring W/ prefix and ignoring case).
      * @return bool True if the current ETag matches one of the candidate ETags, false otherwise.
      */
     private function etagEquals(string $current, array|string $candidates, bool $strong): bool
@@ -98,18 +101,19 @@ final class ConditionalValidator
         if ($candidates === '*') {
             return true;
         }
-        $candidates = (array)$candidates;
+        $candidates = (array) $candidates;
         foreach ($candidates as $cand) {
             if ($strong) {
                 if ($cand === $current) {
                     return true;
                 }
             } else {
-                if (ltrim($cand, 'W/') === ltrim($current, 'W/')) {
+                if (ltrim((string) $cand, 'W/') === ltrim($current, 'W/')) {
                     return true;               // weak match allowed
                 }
             }
         }
+
         return false;
     }
 
@@ -118,7 +122,7 @@ final class ConditionalValidator
      *
      * @param Request $req The request to evaluate preconditions against
      * @return bool Whether the request has a valid If-Match header
-     *     and the resource does not match any of the candidates.
+     *              and the resource does not match any of the candidates.
      */
     private function failsIfMatch(Request $req): bool
     {
@@ -129,6 +133,7 @@ final class ConditionalValidator
         if ($this->etag === null) {
             return true;
         } // no current tag ⇒ fail
+
         return !$this->etagEquals($this->etag, $candidates, true);
     }
 
@@ -137,7 +142,7 @@ final class ConditionalValidator
      *
      * @param Request $req The request to evaluate preconditions against
      * @return bool Whether the request has a valid If-Unmodified-Since header
-     *     and the resource has been modified since then.
+     *              and the resource has been modified since then.
      */
     private function failsIfUnmodSince(Request $req): bool
     {
@@ -145,6 +150,7 @@ final class ConditionalValidator
             return false;
         }
         $since = $this->parseDate($req->getHeaderLine('If-Unmodified-Since'));
+
         return $since !== null && $this->lastModified > $since;
     }
 
@@ -157,7 +163,7 @@ final class ConditionalValidator
      *
      * @param Request $req The request to evaluate.
      * @return bool Whether the request has a valid If-Modified-Since header
-     *     and the resource has not been modified since then.
+     *              and the resource has not been modified since then.
      */
     private function hitsIfModSince(Request $req): bool
     {
@@ -172,6 +178,7 @@ final class ConditionalValidator
             return false;
         }
         $since = $this->parseDate($req->getHeaderLine('If-Modified-Since'));
+
         return $since !== null && $this->lastModified <= $since;
     }
 
@@ -184,7 +191,7 @@ final class ConditionalValidator
      *
      * @param Request $req The request to evaluate.
      * @return bool Whether the request has a valid If-None-Match header
-     *     and the resource has the same ETag as one of the candidates.
+     *              and the resource has the same ETag as one of the candidates.
      */
     private function hitsIfNoneMatch(Request $req): bool
     {
@@ -193,6 +200,7 @@ final class ConditionalValidator
             return false;
         }
         $candidates = $this->tokenize($req->getHeaderLine('If-None-Match'));
+
         return $candidates !== null
             && $this->etag !== null
             && $this->etagEquals($this->etag, $candidates, false);
@@ -221,6 +229,6 @@ final class ConditionalValidator
      */
     private function tokenize(string $list): ?array
     {
-        return $list === '' ? null : array_map('trim', explode(',', $list));
+        return $list === '' ? null : array_map(trim(...), explode(',', $list));
     }
 }

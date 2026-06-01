@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-
 /**
  * Integration Test Bootstrap
  *
@@ -10,20 +9,23 @@ declare(strict_types=1);
  * using the same configuration as index.php but in a test-friendly way.
  */
 
+use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Facade\Router as Route;
 use Infocyph\Webrick\Router\Kernel\RouterKernel;
 use Infocyph\Webrick\Router\Matching\FusedMatcher;
 use Infocyph\Webrick\Router\Route\Collection;
-use Infocyph\Webrick\Response\Response;
 use Psr\Log\NullLogger;
 
 // Declare controllers in global namespace for routes.php
-if (!class_exists('DemoController', false)) {
+if (! class_exists('DemoController', false)) {
     final readonly class DemoController
     {
-        public function hello(\Infocyph\Webrick\Request\Request $request, string $name): Response
+        public function hello(Request $request, string $name): Response
         {
+            unset($request);
+
             return Response::json([
                 'handler' => 'DemoController::hello',
                 'hello' => $name,
@@ -33,7 +35,7 @@ if (!class_exists('DemoController', false)) {
     }
 }
 
-if (!class_exists('UsersController', false)) {
+if (! class_exists('UsersController', false)) {
     final readonly class UsersController
     {
         public function create(): Response
@@ -61,12 +63,12 @@ if (!class_exists('UsersController', false)) {
             return Response::json(['action' => 'show', 'id' => $id]);
         }
 
-        public function store(\Infocyph\Webrick\Request\Request $r): Response
+        public function store(Request $r): Response
         {
             return Response::json(['action' => 'store', 'data' => $r->all()], 201);
         }
 
-        public function update(\Infocyph\Webrick\Request\Request $r, string $id): Response
+        public function update(Request $r, string $id): Response
         {
             return Response::json(['action' => 'update', 'id' => $id, 'data' => $r->all()]);
         }
@@ -78,13 +80,15 @@ if (!class_exists('UsersController', false)) {
  */
 function createTestKernel(array $extraMiddleware = []): RouterKernel
 {
-    $logger = new NullLogger();
+    $logger = new NullLogger;
     $signUrlSecret = 'test-secret-key-for-integration-tests';
 
     // Registration callback - load actual routes
     $register = function (Registrar $registrar) {
+        unset($registrar);
+
         // Load the same routes as the real app
-        require __DIR__ . '/../routes.php';
+        require __DIR__.'/../routes.php';
     };
 
     // NO global middleware by default - tests should be simple

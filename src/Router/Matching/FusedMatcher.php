@@ -5,7 +5,8 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Router\Matching;
 
 use Infocyph\Webrick\Constants\HttpMethodEnum;
-use Infocyph\Webrick\Exceptions\{MethodNotAllowedException, RouteNotFoundException};
+use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
+use Infocyph\Webrick\Exceptions\RouteNotFoundException;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 
 /**
@@ -27,8 +28,6 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
  *  - Cache files are loaded when present; cache generation is explicitly
  *    enabled only by dedicated cache tooling.
  *  - The matcher enforces that no routes are added after finalize() is called.
- *
- * @package Infocyph\Webrick\Router\Matching
  */
 final class FusedMatcher extends AbstractMatcher implements MatcherInterface
 {
@@ -41,38 +40,29 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
 
     /**
      * Whether single-file caching has been enabled.
-     *
-     * @var bool
      */
     private bool $cacheEnabled = false;
 
     /**
      * Path to the single-file cache when caching is enabled.
-     *
-     * @var string
      */
     private string $cacheFile = '';
 
     /**
      * Whether the cache file has been loaded into memory (lazy load).
-     *
-     * @var bool
      */
     private bool $cacheLoaded = false;
 
     /**
      * Whether cache file writing is explicitly enabled (tooling-only path).
-     *
-     * @var bool
      */
     private bool $cacheWriteEnabled = false;
 
     /**
      * Whether the matcher has been finalized (no further route additions allowed).
-     *
-     * @var bool
      */
     private bool $finalized = false;
+
     /**
      * Host-bucket data structure.
      *
@@ -92,24 +82,18 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
     /**
      * Private constructor to enforce factory creation.
      */
-    private function __construct()
-    {
-    }
+    private function __construct() {}
 
-    /*──────────── factory/config ────────────*/
-
+    /* ──────────── factory/config ──────────── */
     /**
      * Create a new FusedMatcher instance.
-     *
-     * @return self
      */
     public static function make(): self
     {
         return new self();
     }
 
-    /*──────────── registration ────────────*/
-
+    /* ──────────── registration ──────────── */
     /**
      * Add a CompiledRoute to the matcher.
      *
@@ -117,7 +101,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
      * static map or dynamic trie depending on whether it is dynamic.
      *
      * @param CompiledRoute $route Compiled route instance to add
-     * @return void
+     *
      * @throws \LogicException When attempting to add routes after finalize()
      */
     public function add(CompiledRoute $route): void
@@ -144,7 +128,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         }
     }
 
-    /*──────────── alias accessors ────────────*/
+    /* ──────────── alias accessors ──────────── */
 
     /**
      * Return the alias index mapping name => [path, domain].
@@ -161,6 +145,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
                 $this->loadCacheBlob();
             }
         }
+
         return $this->alias;
     }
 
@@ -170,6 +155,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
      *
      * @return bool True when cache is enabled and the cache file exists
      */
+    #[\Override]
     public function canBootFromCache(): bool
     {
         return $this->cacheEnabled && \is_file($this->cacheFile);
@@ -192,6 +178,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
     {
         $this->cacheEnabled = true;
         $this->cacheFile = $cacheLocation;
+
         return $this;
     }
 
@@ -199,13 +186,11 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
      * Explicitly allow cache-file writes from finalize().
      *
      * This is intentionally opt-in and should only be used by route-cache tooling.
-     *
-     * @param bool $enable
-     * @return self
      */
     public function enableCacheWrite(bool $enable = true): self
     {
         $this->cacheWriteEnabled = $enable;
+
         return $this;
     }
 
@@ -218,8 +203,6 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
      *    cache file and clear in-memory tables.
      *
      * This method is idempotent.
-     *
-     * @return void
      */
     public function finalize(): void
     {
@@ -242,7 +225,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         $this->finalized = true;
     }
 
-    /*──────────── runtime match ────────────*/
+    /* ──────────── runtime match ──────────── */
 
     /**
      * Match an incoming request method/host/path to a compiled route.
@@ -261,6 +244,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
      * @param string $host Host header value (expected ASCII/lowercase)
      * @param string $path Request path
      * @return array{0:CompiledRoute,1:array<string,string>} Tuple [route, params]
+     *
      * @throws RouteNotFoundException When no route matches the path/host
      * @throws MethodNotAllowedException When resource exists but verb not allowed
      */
@@ -292,6 +276,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         if ($allowedSet !== []) {
             throw new MethodNotAllowedException($verb, $path, \array_keys($allowedSet));
         }
+
         throw new RouteNotFoundException($verb, $path);
     }
 
@@ -304,6 +289,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
     public function resolveAlias(string $name): ?array
     {
         $idx = $this->aliasIndex();
+
         return $idx[$name] ?? null;
     }
 
@@ -324,21 +310,19 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         ]));
     }
 
-    /*──────────── cache export (single file) ────────────*/
-
+    /* ──────────── cache export (single file) ──────────── */
     /**
      * Dump the in-memory host and alias tables into the configured cache file.
      *
      * The cache blob contains a checksum (xxh3) and a timestamp to allow basic
      * integrity checks and identifying stale files.
      *
-     * @return void
      * @throws \RuntimeException When the cache directory cannot be created
      */
     private function dumpCache(): void
     {
         $dir = \dirname($this->cacheFile);
-        if (!\is_dir($dir) && !@\mkdir($dir, 0775, true) && !\is_dir($dir)) {
+        if (!\is_dir($dir) && !\mkdir($dir, 0775, true) && !\is_dir($dir)) {
             throw new \RuntimeException("Cannot create cache dir {$dir}");
         }
 
@@ -357,14 +341,15 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         if (\file_put_contents($tmp, $php, \LOCK_EX) === false) {
             throw new \RuntimeException("Failed to write cache temp file {$tmp}");
         }
-        @\chmod($tmp, 0664);
-        if (!@\rename($tmp, $this->cacheFile)) {
-            @\unlink($tmp);
+        \chmod($tmp, 0664);
+        if (!\rename($tmp, $this->cacheFile)) {
+            \unlink($tmp);
+
             throw new \RuntimeException("Failed to move cache file into place {$this->cacheFile}");
         }
 
         if ($this->shouldWarmOpcache()) {
-            @\opcache_compile_file($this->cacheFile);
+            \opcache_compile_file($this->cacheFile);
         }
     }
 
@@ -374,7 +359,6 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
      * @param string $host Canonical host key
      * @param string $verb HTTP verb (uppercased)
      * @param CompiledRoute $r Compiled dynamic route
-     * @return void
      */
     private function insertDynamic(string $host, string $verb, CompiledRoute $r): void
     {
@@ -388,7 +372,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
      * @param string $host Canonical host key
      * @param string $verb HTTP verb (uppercased)
      * @param CompiledRoute $r Compiled route being inserted
-     * @return void
+     *
      * @throws \LogicException On duplicate insertion of the same verb/path
      */
     private function insertStatic(string $host, string $verb, CompiledRoute $r): void
@@ -405,7 +389,6 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
     /**
      * Load and hydrate matcher tables from the cache file.
      *
-     * @return void
      * @throws \RuntimeException When verification is enabled and cache hash is invalid.
      */
     private function loadCacheBlob(): void
@@ -418,7 +401,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
                 throw new \RuntimeException('Route cache missing Hash.');
             }
             $calc = $this->computeCacheHash($blob[self::H_DATA], $blob[self::H_ALIAS] ?? []);
-            if (!\hash_equals((string)$blob[self::H_HASH], $calc)) {
+            if (!\hash_equals($blob[self::H_HASH], $calc)) {
                 throw new \RuntimeException('Route cache Hash mismatch.');
             }
         }
@@ -428,7 +411,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         $this->cacheLoaded = true;
 
         if ($this->shouldWarmOpcache()) {
-            @\opcache_compile_file($this->cacheFile);
+            \opcache_compile_file($this->cacheFile);
         }
     }
 
@@ -458,6 +441,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
 
             $this->addAllowedFromMap($map, $allowedSet);
         }
+
         return null;
     }
 
@@ -485,7 +469,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
                 return $hit; // [$route, $params]
             }
         }
+
         return null;
     }
-
 }
