@@ -60,9 +60,9 @@ class SignedUrlGenerator extends UrlGenerator
      * 5) Compute signature over the relative URL (path + sorted query).
      * 6) Return the final absolute or relative URL.
      *
-     * @param non-empty-string $name Route name.
-     * @param array<string,mixed> $params Path parameters for placeholder substitution.
-     * @param array<string,mixed> $query Extra query parameters (will be sorted).
+     * @param string $name Route name.
+     * @param array<string,bool|float|int|string|null> $params Path parameters for placeholder substitution.
+     * @param array<string,array<int|string,mixed>|bool|float|int|string|null> $query Extra query parameters (will be sorted).
      * @param int|null $ttl TTL in seconds; null for no expiry.
      * @param bool $absolute Whether to return an absolute URL.
      * @return string The signed URL.
@@ -76,6 +76,10 @@ class SignedUrlGenerator extends UrlGenerator
         ?int $ttl = null,
         bool $absolute = true,
     ): string {
+        if ($name === '') {
+            throw new InvalidArgumentException('Route name must not be empty.');
+        }
+
         // 1) Disallow any pre-existing reserved params (signature or expiry)
         if (
             array_key_exists(self::SIG_PARAM, $query)
@@ -100,6 +104,9 @@ class SignedUrlGenerator extends UrlGenerator
 
         // 4) Build the relative path (no query)
         $relativePath = parent::urlFor($name, $params, [], false);
+        if ($relativePath === '') {
+            throw new InvalidArgumentException('Resolved route path must not be empty.');
+        }
 
         // 5) Compute HMAC and append it
         $query[self::SIG_PARAM] = Signature::make(parent::to($relativePath, $query, false), $this->secret);

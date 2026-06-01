@@ -28,7 +28,7 @@ use Infocyph\Webrick\Router\Definition\Attribute\Cors;
  *   array{type:'lit',val:string}|
  *   array{type:'var',name:string,regex:string}|
  *   array{type:'var',name:string,call:callable-string}
- * @psalm-type MiddlewareList = list<class-string|object>
+ * @psalm-type MiddlewareList = list<string|object>
  *
  * Final, immutable compiled route used by matchers and cache writers.
  *
@@ -44,6 +44,8 @@ use Infocyph\Webrick\Router\Definition\Attribute\Cors;
  */
 final class CompiledRoute implements RouteInterface
 {
+    use RouteCoreAccessors;
+
     /* ──────────────────────── static ordinal ─────────────────────── */
     /**
      * Monotonic index assigned to each compiled route (used for stable ordering).
@@ -52,7 +54,7 @@ final class CompiledRoute implements RouteInterface
 
     /* ──────────────────────── ctor state ─────────────────────────── */
 
-    /** @var array{0:object|class-string,1:string}|string|callable */
+    /** @var array{0:object|string,1:string}|string|callable */
     private readonly mixed $handler;
 
     private readonly string $handlerId;
@@ -65,7 +67,7 @@ final class CompiledRoute implements RouteInterface
      *
      * @param string $method HTTP method (e.g. "GET")
      * @param string $path Original route path (absolute)
-     * @param array{0:object|class-string,1:string}|string|callable $handler Route handler descriptor
+     * @param array{0:object|string,1:string}|string|callable $handler Route handler descriptor
      * @param string|null $domain Route domain or null (wildcard)
      * @param MiddlewareList $middleware List of middleware descriptors
      * @param string|null $name Route name or null
@@ -105,9 +107,9 @@ final class CompiledRoute implements RouteInterface
      * @param array{
      *   0:string,
      *   1:string,
-     *   2:array{0:object|class-string,1:string}|string|callable,
+     *   2:array{0:object|string,1:string}|string|callable,
      *   3:?string,
-     *   4:list<class-string|object>,
+     *   4:list<string|object>,
      *   5:?string,
      *   6:bool,
      *   7:string,
@@ -174,31 +176,6 @@ final class CompiledRoute implements RouteInterface
     }
 
     /**
-     * Get the route domain, if any.
-     *
-     * @return string|null Domain string or null when none specified
-     */
-    public function getDomain(): ?string
-    {
-        return $this->domain;
-    }
-
-    /**
-     * Get the handler descriptor.
-     *
-     * @return array{0:object|class-string,1:string}|string|callable Handler callable, array descriptor, or class-string
-     */
-    public function getHandler(): callable|array|string
-    {
-        return $this->handler;
-    }
-
-    public function getHandlerId(): string
-    {
-        return $this->handlerId;
-    }
-
-    /**
      * Stable numeric index assigned at creation time.
      *
      * @return int Monotonic index
@@ -206,56 +183,6 @@ final class CompiledRoute implements RouteInterface
     public function getIndex(): int
     {
         return $this->index;
-    }
-
-    /**
-     * Get the HTTP method for this route.
-     *
-     * @return string Uppercased HTTP verb (e.g. "GET")
-     */
-    public function getMethod(): string
-    {
-        return $this->method;
-    }
-
-    /**
-     * Backwards-compatible alias for getMiddlewares().
-     *
-     * @return MiddlewareList Middleware list
-     */
-    public function getMiddleware(): array
-    {
-        return $this->middleware;
-    } // BC
-
-    /**
-     * Get the middleware descriptors for the route.
-     *
-     * @return MiddlewareList Middleware list (preserves original descriptor forms)
-     */
-    public function getMiddlewares(): array
-    {
-        return $this->middleware;
-    }
-
-    /**
-     * Get the primary route name.
-     *
-     * @return string|null Route name or null when unnamed
-     */
-    public function getName(): ?string
-    {
-        return $this->name;
-    }
-
-    /**
-     * Get the original route path.
-     *
-     * @return string Absolute route path (e.g. '/users/{id}')
-     */
-    public function getPath(): string
-    {
-        return $this->path;
     }
 
     /**
@@ -562,9 +489,9 @@ final class CompiledRoute implements RouteInterface
      * @return array{
      *   0:string,
      *   1:string,
-     *   2:array{0:object|class-string,1:string}|string|callable,
+     *   2:array{0:object|string,1:string}|string|callable,
      *   3:?string,
-     *   4:list<class-string|object>,
+     *   4:list<string|object>,
      *   5:?string,
      *   6:bool,
      *   7:string,

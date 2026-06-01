@@ -16,7 +16,7 @@ interface RouteInterface
     public function getDomain(): ?string;
 
     /**
-     * @return array{0:object|class-string,1:string}|string|callable
+     * @return array{0:object|string,1:string}|string|callable
      */
     public function getHandler(): array|string|callable;
 
@@ -36,7 +36,7 @@ interface RouteInterface
     /**
      * BC alias for getMiddlewares().
      *
-     * @return list<class-string|object>
+     * @return list<string|object>
      */
     public function getMiddleware(): array;
 
@@ -46,7 +46,7 @@ interface RouteInterface
      * This can be an empty array if the route does not have any middlewares,
      * or an array containing the middlewares of the route.
      *
-     * @return list<class-string|object> The middlewares of this route.
+     * @return list<string|object> The middlewares of this route.
      */
     public function getMiddlewares(): array;
 
@@ -81,7 +81,7 @@ interface RouteInterface
      *
      * The route will have the middlewares of the original route, plus the given middlewares.
      *
-     * @param list<class-string|object> $extra The middlewares to add to the route.
+     * @param list<string|object> $extra The middlewares to add to the route.
      * @return self A new instance of the route with the given middlewares.
      */
     public function withMiddleware(array $extra): self;

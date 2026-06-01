@@ -18,20 +18,10 @@ namespace Infocyph\Webrick\Router\Definition;
  * applied consistently.
  *
  *
- * @psalm-type MiddlewareList = list<class-string|object>
+ * @psalm-type MiddlewareList = list<string|object>
  */
 final readonly class GroupScope
 {
-    /**
-     * Prefix applied to routes within this scope.
-     *
-     * Always normalized to have a leading slash, no trailing slash and no
-     * duplicate path separators (e.g. "/api/v1").
-     *
-     * This value is provided via constructor promotion and is read-only.
-     *
-     * @var string
-     */
     public function __construct(
         /**
          * Normalized path prefix (leading slash, no trailing slash).

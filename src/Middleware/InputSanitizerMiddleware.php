@@ -90,7 +90,7 @@ final readonly class InputSanitizerMiddleware
 
         if (is_array($body) && $this->shouldTouchBody($ctype)) {
             $req = $req
-                ->withParsedBody($this->sanitizer->sanitizeArray($body))
+                ->withParsedBody($this->stringKeyMap($this->sanitizer->sanitizeArray($body)))
                 ->withAttribute(self::ATTR_F, true);
         }
 
@@ -113,11 +113,33 @@ final readonly class InputSanitizerMiddleware
         $q = $req->getQueryParams();
         if ($q) {
             $req = $req
-                ->withQueryParams($this->sanitizer->sanitizeArray($q))
+                ->withQueryParams($this->stringKeyMap($this->sanitizer->sanitizeArray($q)))
                 ->withAttribute(self::ATTR_Q, true);
         }
 
         return $req;
+    }
+
+    private function sanitizeUploadedFileNode(mixed $node): mixed
+    {
+        if (is_array($node)) {
+            foreach ($node as $key => $value) {
+                $node[$key] = $this->sanitizeUploadedFileNode($value);
+            }
+
+            return $node;
+        }
+
+        if (!$node instanceof UploadedFile) {
+            return $node;
+        }
+
+        $name = $node->getClientFilename();
+        $type = $node->getClientMediaType();
+        $name !== null ? $this->sanitizer->sanitizeString($name) : null;
+        $type !== null ? $this->sanitizer->sanitizeString($type) : null;
+
+        return $node;
     }
 
     /**
@@ -126,36 +148,13 @@ final readonly class InputSanitizerMiddleware
      * Best-effort: only applies when UploadedFile implementation exposes immutable
      * setters (withClientFilename / withClientMediaType).
      *
-     * @param array<int|string,mixed> $files Uploaded files structure.
-     * @return array<int|string,mixed> Sanitized files structure.
+     * @param array<string, mixed> $files Uploaded files structure.
+     * @return array<string, mixed> Sanitized files structure.
      */
     private function sanitizeUploadedFilesRecursive(array $files): array
     {
         foreach ($files as $k => $f) {
-            if (is_array($f)) {
-                $files[$k] = $this->sanitizeUploadedFilesRecursive($f);
-
-                continue;
-            }
-            if (!$f instanceof UploadedFile) {
-                // Unknown structure – leave as-is
-                continue;
-            }
-
-            $name = $f->getClientFilename();
-            $type = $f->getClientMediaType();
-
-            $newName = $name !== null ? $this->sanitizer->sanitizeString($name) : null;
-            $newType = $type !== null ? $this->sanitizer->sanitizeString($type) : null;
-
-            // UploadedFile has no metadata mutators; keep object unchanged.
-            if ($newName !== $name || $newType !== $type) {
-                $files[$k] = $f;
-
-                continue;
-            }
-
-            $files[$k] = $f;
+            $files[$k] = $this->sanitizeUploadedFileNode($f);
         }
 
         return $files;
@@ -205,5 +204,23 @@ final readonly class InputSanitizerMiddleware
         $isJson = str_starts_with($mime, MediaTypeEnum::JSON->base());
 
         return ($isForm && $this->touchFormBodies) || ($isJson && $this->touchJsonBodies);
+    }
+
+    /**
+     * @param array<mixed> $input
+     * @return array<string, mixed>
+     */
+    private function stringKeyMap(array $input): array
+    {
+        $result = [];
+        foreach ($input as $key => $value) {
+            if (!is_string($key)) {
+                continue;
+            }
+
+            $result[$key] = $value;
+        }
+
+        return $result;
     }
 }

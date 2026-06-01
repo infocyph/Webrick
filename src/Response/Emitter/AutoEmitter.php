@@ -32,7 +32,8 @@ final class AutoEmitter implements EmitterInterface
     private function pick(?Request $request): EmitterInterface
     {
         // Optional explicit override via env var (e.g., WEBRICK_EMITTER=swoole|roadrunner|workerman|frankenphp|lsapi|unit|fpm|cli|default)
-        $override = strtolower((string) (\getenv('WEBRICK_EMITTER') ?: ''));
+        $overrideRaw = \getenv('WEBRICK_EMITTER');
+        $override = \is_string($overrideRaw) ? strtolower($overrideRaw) : '';
         if ($override !== '') {
             return match ($override) {
                 'swoole' => new SwooleEmitter(),
@@ -47,7 +48,8 @@ final class AutoEmitter implements EmitterInterface
             };
         }
 
-        $serverSoftware = strtolower((string) ($_SERVER['SERVER_SOFTWARE'] ?? ''));
+        $serverSoftwareRaw = $_SERVER['SERVER_SOFTWARE'] ?? null;
+        $serverSoftware = \is_string($serverSoftwareRaw) ? strtolower($serverSoftwareRaw) : '';
 
         return match (true) {
             // Async servers (prefer explicit per-request handle extraction)

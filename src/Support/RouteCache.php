@@ -18,6 +18,9 @@ use Psr\Log\NullLogger;
 
 final class RouteCache
 {
+    /**
+     * @param array<string, mixed> $options
+     */
     public static function build(array $options): string
     {
         $logger = self::resolveBuildLogger($options);
@@ -25,17 +28,15 @@ final class RouteCache
         [$mode, $matcher, $routeCache] = self::resolveBuildMatcher($options, $cachePath);
 
         $userRegister = $options['register'] ?? null;
-        $routesFile = (string) ($options['routes'] ?? '');
+        $routesFile = self::stringOption($options, 'routes');
         self::validateBuildRegisterInputs($userRegister, $routesFile);
 
-        /** @var array<string,string> $attributeDirs */
         $attributeDirs = self::normalizeAttributeDirs(
-            (array) ($options['attributeDirs'] ?? []),
+            self::stringMapOption($options, 'attributeDirs'),
             getcwd() ?: __DIR__,
             $logger,
         );
-        /** @var string[] $attributeClasses */
-        $attributeClasses = \array_values(\array_filter(\array_map(trim(...), (array) ($options['attributeClasses'] ?? []))));
+        $attributeClasses = self::classListOption($options, 'attributeClasses');
 
         $baseDir = self::resolveBuildBaseDir($routesFile);
         $register = self::makeBuildRegisterClosure(
@@ -47,11 +48,11 @@ final class RouteCache
             $baseDir,
         );
 
-        $signKey = $options['signKey'] ?? null;
-        $signedDefaultTtl = (int) ($options['signedDefaultTtl'] ?? 900);
-        $regOpts = (array) ($options['registrarOptions'] ?? []);
-        $preGlobal = (array) ($options['preGlobal'] ?? []);
-        $postGlobal = (array) ($options['postGlobal'] ?? []);
+        $signKey = self::nullableStringOption($options, 'signKey');
+        $signedDefaultTtl = self::intOption($options, 'signedDefaultTtl', 900);
+        $regOpts = self::assocArrayOption($options, 'registrarOptions');
+        $preGlobal = self::listOption($options, 'preGlobal');
+        $postGlobal = self::listOption($options, 'postGlobal');
         $fallbackAliases = (bool) ($options['fallbackAliasesFromRegistrar'] ?? true);
         $bind = self::resolveBindUrlServices($options, $signKey, $signedDefaultTtl);
 
@@ -75,14 +76,17 @@ final class RouteCache
         return ($mode === MatcherModeEnum::SHARDED) ? $routeCache . DIRECTORY_SEPARATOR . '__root.php' : $routeCache;
     }
 
+    /**
+     * @param array<string, mixed> $options
+     */
     public static function clear(array $options): bool
     {
-        $cachePath = (string) ($options['cache'] ?? '');
+        $cachePath = self::stringOption($options, 'cache');
         if ($cachePath === '') {
             throw new \InvalidArgumentException("RouteCache::clear: 'cache' path is required.");
         }
         $mode = MatcherModeEnum::fromInput(
-            isset($options['matcher']) ? (string) $options['matcher'] : null,
+            self::nullableStringOption($options, 'matcher'),
             $cachePath,
         );
 
@@ -121,6 +125,55 @@ final class RouteCache
         return $removed;
     }
 
+    /**
+     * @param array<string, mixed> $options
+     * @return array<string, mixed>
+     */
+    private static function assocArrayOption(array $options, string $key): array
+    {
+        $value = $options[$key] ?? [];
+        if (!\is_array($value)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($value as $mapKey => $mapValue) {
+            if (!\is_string($mapKey)) {
+                continue;
+            }
+            $out[$mapKey] = $mapValue;
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param array<string, mixed> $options
+     * @return list<class-string>
+     */
+    private static function classListOption(array $options, string $key): array
+    {
+        $value = $options[$key] ?? [];
+        if (!\is_array($value)) {
+            return [];
+        }
+
+        $classes = [];
+        foreach ($value as $className) {
+            if (!\is_string($className)) {
+                continue;
+            }
+            $className = \trim($className);
+            if ($className === '') {
+                continue;
+            }
+            /** @var class-string $className */
+            $classes[] = $className;
+        }
+
+        return $classes;
+    }
+
     private static function clearDirPreservingGitignore(string $dir): bool
     {
         if (!\is_dir($dir)) {
@@ -137,38 +190,80 @@ final class RouteCache
         );
 
         foreach ($it as $path) {
-            $pathname = $path->getPathname();
-
-            if ($path->isDir()) {
-                if (\rmdir($pathname)) {
-                    $removed = true;
-                } else {
-                    $ok = false;
-                }
-
-                continue;
-            }
-
-            $normalizedPath = \str_replace('\\', '/', $pathname);
-            $isRootGitignore = \basename($normalizedPath) === '.gitignore'
-                && \dirname($normalizedPath) === $root;
-            if ($isRootGitignore) {
-                continue;
-            }
-
-            if (\unlink($pathname)) {
-                $removed = true;
-            } else {
+            if (!$path instanceof \SplFileInfo) {
                 $ok = false;
+
+                continue;
             }
+            [$entryOk, $entryRemoved] = self::clearEntry($path, $root);
+            $ok = $ok && $entryOk;
+            $removed = $removed || $entryRemoved;
         }
 
         return $ok && $removed;
     }
 
     /**
-     * @param array<string,string> $attributeDirs
-     * @param string[] $attributeClasses
+     * @return array{0: bool, 1: bool}
+     */
+    private static function clearEntry(\SplFileInfo $path, string $root): array
+    {
+        $pathname = $path->getPathname();
+        if ($path->isDir()) {
+            $deletedDir = self::removeDirectory($pathname);
+
+            return [$deletedDir, $deletedDir];
+        }
+        if (self::isRootGitignore($pathname, $root)) {
+            return [true, false];
+        }
+
+        $deleted = \unlink($pathname);
+
+        return [$deleted, $deleted];
+    }
+
+    /**
+     * @param array<string, mixed> $options
+     */
+    private static function intOption(array $options, string $key, int $default): int
+    {
+        $value = $options[$key] ?? null;
+        if (\is_int($value)) {
+            return $value;
+        }
+        if (\is_string($value) && $value !== '' && \is_numeric($value)) {
+            return (int) $value;
+        }
+
+        return $default;
+    }
+
+    private static function isRootGitignore(string $path, string $root): bool
+    {
+        $normalizedPath = \str_replace('\\', '/', $path);
+
+        return \basename($normalizedPath) === '.gitignore'
+            && \dirname($normalizedPath) === $root;
+    }
+
+    /**
+     * @param array<string, mixed> $options
+     * @return list<mixed>
+     */
+    private static function listOption(array $options, string $key): array
+    {
+        $value = $options[$key] ?? [];
+        if (!\is_array($value)) {
+            return [];
+        }
+
+        return \array_values($value);
+    }
+
+    /**
+     * @param array<string, string> $attributeDirs
+     * @param list<class-string> $attributeClasses
      */
     private static function makeBuildRegisterClosure(
         mixed $userRegister,
@@ -193,6 +288,9 @@ final class RouteCache
 
             try {
                 if ($userRegister) {
+                    if (!\is_callable($userRegister)) {
+                        throw new \InvalidArgumentException("RouteCache::build: 'register' must be callable.");
+                    }
                     ($userRegister)($r);
                 } else {
                     /** @psalm-suppress UnresolvableInclude */
@@ -213,7 +311,10 @@ final class RouteCache
         };
     }
 
-    /** @param array<string,string> $dirs */
+    /**
+     * @param array<string,string> $dirs
+     * @return array<string, string>
+     */
     private static function normalizeAttributeDirs(array $dirs, string $cwd, LoggerInterface $log): array
     {
         $out = [];
@@ -239,14 +340,35 @@ final class RouteCache
     }
 
     /**
-     * @return callable(Collection):void
+     * @param array<string, mixed> $options
      */
-    private static function resolveBindUrlServices(array $options, mixed $signKey, int $signedDefaultTtl): callable
+    private static function nullableStringOption(array $options, string $key): ?string
+    {
+        $value = $options[$key] ?? null;
+        if (\is_string($value)) {
+            return $value;
+        }
+
+        return null;
+    }
+
+    private static function removeDirectory(string $path): bool
+    {
+        return \rmdir($path);
+    }
+
+    /**
+     * @param array<string, mixed> $options
+     * @return \Closure(Collection):void
+     */
+    private static function resolveBindUrlServices(array $options, ?string $signKey, int $signedDefaultTtl): \Closure
     {
         /** @var null|callable(Collection):void $bind */
         $bind = $options['bindUrlServices'] ?? null;
         if ($bind !== null) {
-            return $bind;
+            return static function (Collection $routes) use ($bind): void {
+                $bind($routes);
+            };
         }
 
         return static function (Collection $routes) use ($signKey, $signedDefaultTtl): void {
@@ -269,9 +391,12 @@ final class RouteCache
         return $baseDir;
     }
 
+    /**
+     * @param array<string, mixed> $options
+     */
     private static function resolveBuildCachePath(array $options): string
     {
-        $cachePath = (string) ($options['cache'] ?? '');
+        $cachePath = self::stringOption($options, 'cache');
         if ($cachePath === '') {
             throw new \InvalidArgumentException("RouteCache::build: 'cache' path is required.");
         }
@@ -279,21 +404,27 @@ final class RouteCache
         return $cachePath;
     }
 
+    /**
+     * @param array<string, mixed> $options
+     */
     private static function resolveBuildLogger(array $options): LoggerInterface
     {
-        $logger = $options['logger'] ?? new NullLogger();
-        \assert($logger instanceof LoggerInterface);
+        $logger = $options['logger'] ?? null;
+        if ($logger instanceof LoggerInterface) {
+            return $logger;
+        }
 
-        return $logger;
+        return new NullLogger();
     }
 
     /**
+     * @param array<string, mixed> $options
      * @return array{0:MatcherModeEnum,1:FusedMatcher|GeneratedMatcher|ShardedMatcher,2:string}
      */
     private static function resolveBuildMatcher(array $options, string $cachePath): array
     {
         $mode = MatcherModeEnum::fromInput(
-            isset($options['matcher']) ? (string) $options['matcher'] : null,
+            self::nullableStringOption($options, 'matcher'),
             $cachePath,
         );
         $matcher = match ($mode) {
@@ -301,9 +432,7 @@ final class RouteCache
             MatcherModeEnum::FUSED => FusedMatcher::make(),
             default => ShardedMatcher::make(),
         };
-        if (\method_exists($matcher, 'enableCacheWrite')) {
-            $matcher->enableCacheWrite(true);
-        }
+        $matcher->enableCacheWrite(true);
 
         $routeCache = ($mode === MatcherModeEnum::SHARDED) ? \rtrim($cachePath, '/\\') : $cachePath;
 
@@ -313,6 +442,38 @@ final class RouteCache
     private static function rmFile(string $file): bool
     {
         return \is_file($file) && \unlink($file);
+    }
+
+    /**
+     * @param array<string, mixed> $options
+     * @return array<string, string>
+     */
+    private static function stringMapOption(array $options, string $key): array
+    {
+        $value = $options[$key] ?? [];
+        if (!\is_array($value)) {
+            return [];
+        }
+
+        $map = [];
+        foreach ($value as $mapKey => $mapValue) {
+            if (!\is_string($mapKey) || !\is_string($mapValue)) {
+                continue;
+            }
+            $map[$mapKey] = $mapValue;
+        }
+
+        return $map;
+    }
+
+    /**
+     * @param array<string, mixed> $options
+     */
+    private static function stringOption(array $options, string $key): string
+    {
+        $value = $options[$key] ?? '';
+
+        return \is_scalar($value) ? (string) $value : '';
     }
 
     private static function validateBuildRegisterInputs(mixed $userRegister, string $routesFile): void

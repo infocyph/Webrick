@@ -175,6 +175,10 @@ function mockRequest(string $method, string $uri, array $headers = [], array $bo
  */
 function testCache(string $namespace = 'test'): Cache
 {
+    if (\PHP_OS_FAMILY === 'Windows' && !\extension_loaded('apcu')) {
+        return Cache::memory('webrick-test-'.$namespace);
+    }
+
     return Cache::local(sys_get_temp_dir().'/webrick-test-'.$namespace);
 }
 

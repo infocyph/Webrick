@@ -74,11 +74,13 @@ final readonly class ThrottleMiddleware
             throw new InvalidConfigException('costAttribute must be a non-empty string.');
         }
 
-        $documentRoot = $_SERVER['DOCUMENT_ROOT'] ?? '';
-        $cacheBase = \is_string($documentRoot) && $documentRoot !== ''
-            ? $documentRoot
-            : \sys_get_temp_dir() . '/webrick';
-        $this->pool = $pool ?? Cache::local($cacheBase . '.thm');
+        if ($pool !== null) {
+            $this->pool = $pool;
+
+            return;
+        }
+
+        $this->pool = $this->buildDefaultPool();
     }
 
     /**
@@ -152,6 +154,21 @@ final readonly class ThrottleMiddleware
         }
 
         return $resp;
+    }
+
+    private function buildDefaultPool(): CacheItemPoolInterface
+    {
+        // Windows reports directory permissions differently than POSIX; file-mode checks can false-positive.
+        if (\PHP_OS_FAMILY === 'Windows' && !\extension_loaded('apcu')) {
+            return Cache::memory('webrick.thm');
+        }
+
+        $documentRoot = $_SERVER['DOCUMENT_ROOT'] ?? '';
+        $cacheBase = \is_string($documentRoot) && $documentRoot !== ''
+            ? $documentRoot
+            : \sys_get_temp_dir() . '/webrick';
+
+        return Cache::local($cacheBase . '.thm');
     }
 
     /**

@@ -6,29 +6,31 @@ namespace Infocyph\Webrick\Response\Internal;
 
 use Infocyph\Webrick\Interfaces\BodyStream;
 use Infocyph\Webrick\Request\Core\Stream;
+use InvalidArgumentException;
 use JsonSerializable;
 use RuntimeException;
 
 /**
  * Stream wrapper that defers json_encode() until the first read / cast.
  *
- * Accepts either a callable returning any value or a JsonSerializable.
+ * Accepts a JsonSerializable payload producer.
  * Once encoded, it replaces itself with an internal Stream instance and
  * transparently proxies every subsequent StreamInterface call.
  */
 final class LazyJsonStream implements BodyStream
 {
-    private ?Stream $inner = null;   // real stream after first use
+    /** @var int<1, max> */
+    private readonly int $depth;
 
-    /** @var callable|JsonSerializable */
-    private $source;
+    private ?Stream $inner = null;
 
-    /**
-     * @param callable|JsonSerializable $source
-     */
-    public function __construct(mixed $source, private readonly int $flags, private readonly int $depth)
+    public function __construct(private readonly JsonSerializable $source, private readonly int $flags, int $depth)
     {
-        $this->source = $source;
+        if ($depth < 1) {
+            throw new InvalidArgumentException('JSON depth must be at least 1.');
+        }
+
+        $this->depth = $depth;
     }
 
     /* -------------------------------------------------- proxy layer */
@@ -54,8 +56,7 @@ final class LazyJsonStream implements BodyStream
      */
     public function close(): void
     {
-        $this->boot();
-        $this->inner->close();
+        $this->stream()->close();
     }
 
     /**
@@ -68,9 +69,7 @@ final class LazyJsonStream implements BodyStream
      */
     public function detach(): mixed
     {
-        $this->boot();
-
-        return $this->inner->detach();
+        return $this->stream()->detach();
     }
 
     /**
@@ -80,9 +79,7 @@ final class LazyJsonStream implements BodyStream
      */
     public function eof(): bool
     {
-        $this->boot();
-
-        return $this->inner->eof();
+        return $this->stream()->eof();
     }
 
     /**
@@ -92,9 +89,7 @@ final class LazyJsonStream implements BodyStream
      */
     public function getContents(): string
     {
-        $this->boot();
-
-        return $this->inner->getContents();
+        return $this->stream()->getContents();
     }
 
     /**
@@ -108,9 +103,7 @@ final class LazyJsonStream implements BodyStream
      */
     public function getMetadata(?string $key = null): mixed
     {
-        $this->boot();
-
-        return $this->inner->getMetadata($key);
+        return $this->stream()->getMetadata($key);
     }
 
     /**
@@ -120,9 +113,7 @@ final class LazyJsonStream implements BodyStream
      */
     public function getSize(): ?int
     {
-        $this->boot();
-
-        return $this->inner->getSize();
+        return $this->stream()->getSize();
     }
 
     /**
@@ -132,9 +123,7 @@ final class LazyJsonStream implements BodyStream
      */
     public function isReadable(): bool
     {
-        $this->boot();
-
-        return $this->inner->isReadable();
+        return $this->stream()->isReadable();
     }
 
     /**
@@ -144,9 +133,7 @@ final class LazyJsonStream implements BodyStream
      */
     public function isSeekable(): bool
     {
-        $this->boot();
-
-        return $this->inner->isSeekable();
+        return $this->stream()->isSeekable();
     }
 
     /**
@@ -156,9 +143,7 @@ final class LazyJsonStream implements BodyStream
      */
     public function isWritable(): bool
     {
-        $this->boot();
-
-        return $this->inner->isWritable();
+        return $this->stream()->isWritable();
     }
 
     /**
@@ -169,9 +154,7 @@ final class LazyJsonStream implements BodyStream
      */
     public function read(int $length): string
     {
-        $this->boot();
-
-        return $this->inner->read($length);
+        return $this->stream()->read($length);
     }
 
     /**
@@ -179,8 +162,7 @@ final class LazyJsonStream implements BodyStream
      */
     public function rewind(): void
     {
-        $this->boot();
-        $this->inner->rewind();
+        $this->stream()->rewind();
     }
 
     /**
@@ -193,8 +175,7 @@ final class LazyJsonStream implements BodyStream
      */
     public function seek(int $offset, int $whence = SEEK_SET): void
     {
-        $this->boot();
-        $this->inner->seek($offset, $whence);
+        $this->stream()->seek($offset, $whence);
     }
 
     /**
@@ -204,9 +185,7 @@ final class LazyJsonStream implements BodyStream
      */
     public function tell(): int
     {
-        $this->boot();
-
-        return $this->inner->tell();
+        return $this->stream()->tell();
     }
 
     /**
@@ -220,16 +199,13 @@ final class LazyJsonStream implements BodyStream
      */
     public function write(string $string): int
     {
-        $this->boot();
-
-        return $this->inner->write($string);
+        return $this->stream()->write($string);
     }
 
     /* -------------------------------------------------- lazy bootstrap */
     /**
      * Initialize the internal Stream by JSON-encoding the source on first use.
      *
-     * - If $this->source is callable it will be invoked to obtain the value to encode.
      * - If $this->source implements JsonSerializable its jsonSerialize() result is used.
      * - On JSON encoding failure a RuntimeException is thrown.
      *
@@ -244,14 +220,22 @@ final class LazyJsonStream implements BodyStream
             return;
         }
 
-        $payload = \is_callable($this->source)
-            ? ($this->source)()
-            : $this->source->jsonSerialize();
+        $payload = $this->source->jsonSerialize();
 
         $json = \json_encode($payload, $this->flags, $this->depth);
         if ($json === false) {
             throw new RuntimeException('JSON encode error: ' . \json_last_error_msg());
         }
         $this->inner = new Stream($json);
+    }
+
+    private function stream(): Stream
+    {
+        $this->boot();
+        if ($this->inner === null) {
+            throw new RuntimeException('LazyJsonStream failed to initialize.');
+        }
+
+        return $this->inner;
     }
 }

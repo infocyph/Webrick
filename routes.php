@@ -37,7 +37,7 @@ Route::get('/', function (): HtmlResponse {
         '/locale' => 'Show negotiated locale',
         '/xml' => 'XML payload (charset-aware)',
         '/status/418' => 'Status echo (I’m a teapot)',
-        '/json/slow' => 'Lazy JSON via callable',
+        '/json/slow' => 'Lazy JSON via JsonSerializable',
 
         // Resource & alias-redirect demos
         '/users' => 'Resource: users.index',
@@ -134,10 +134,18 @@ Route::get('/status/{code}', function (Request $r, string $code): Response {
     return Response::plaintext("Status: $code", (int) $code);
 });
 
-Route::get('/json/slow', fn(): Response => Response::json(fn() => [
-    'now' => time(),
-    'items' => array_map(fn($i) => ['n' => $i, 'v' => bin2hex(random_bytes(4))], range(1, 100)),
-]));
+Route::get('/json/slow', fn(): Response => Response::json(new class implements JsonSerializable {
+    /**
+     * @return array{now:int,items:list<array{n:int,v:string}>}
+     */
+    public function jsonSerialize(): array
+    {
+        return [
+            'now' => time(),
+            'items' => array_map(fn($i) => ['n' => $i, 'v' => bin2hex(random_bytes(4))], range(1, 100)),
+        ];
+    }
+}));
 
 /* ---- resource routes (Laravel-ish) ---- */
 Route::resource('users', '/users', UsersController::class);

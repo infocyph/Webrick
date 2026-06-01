@@ -74,7 +74,7 @@ final class MiddlewarePipeline
      * Validates that each $stack element is callable and composes the pipeline
      * Closure once for reuse.
      *
-     * @param list<Middleware> $stack Ordered list of middleware callables.
+     * @param list<mixed> $stack Ordered list of middleware callables.
      * @param FinalHandler $last Terminal handler callable executed after middleware.
      * @param Invoker $invoker DI invoker used when $useInvoker is enabled.
      * @param bool $useInvoker When true, use $invoker to invoke middleware and final handler.
@@ -97,7 +97,9 @@ final class MiddlewarePipeline
             }
         }
 
-        $this->stack = $stack;
+        /** @var list<Middleware> $validated */
+        $validated = $stack;
+        $this->stack = $validated;
         $this->lastHandler = $last;
         $this->pipeline = $this->compose();
     }
@@ -145,6 +147,23 @@ final class MiddlewarePipeline
         return $res;
     }
 
+    private static function callMiddleware(
+        Invoker $invoker,
+        bool $useInvoker,
+        callable $mw,
+        Request $req,
+        Closure $next,
+    ): mixed {
+        if ($useInvoker) {
+            return $invoker->invoke($mw, [
+                'request' => $req,
+                'next' => $next,
+            ]);
+        }
+
+        return $mw($req, $next);
+    }
+
     /**
      * Describe a middleware item for diagnostics.
      *
@@ -187,6 +206,39 @@ final class MiddlewarePipeline
         return $next;
     }
 
+    private function resolveMiddlewareString(string $mw): callable
+    {
+        if (\str_contains($mw, '::')) {
+            if (!\is_callable($mw)) {
+                throw new InvalidArgumentException(\sprintf('Middleware [%s] is not callable', $mw));
+            }
+
+            return \Closure::fromCallable($mw);
+        }
+
+        if (!\function_exists($mw)) {
+            throw new InvalidArgumentException(\sprintf('Middleware function [%s] not found', $mw));
+        }
+
+        return \Closure::fromCallable($mw);
+    }
+
+    private function resolveMiddlewareTarget(callable|string $mw): callable
+    {
+        /** @var array<string, callable> $memo */
+        static $memo = [];
+
+        if (!\is_string($mw)) {
+            return $mw;
+        }
+
+        if (!isset($memo[$mw])) {
+            $memo[$mw] = $this->resolveMiddlewareString($mw);
+        }
+
+        return $memo[$mw];
+    }
+
     /**
      * Wrap a single middleware item around the provided $next Closure.
      *
@@ -203,33 +255,13 @@ final class MiddlewarePipeline
      * @param callable|string $mw Middleware callable or string descriptor.
      * @param Closure(Request):Response $next Next handler in the pipeline.
      * @return Closure(Request):Response Middleware wrapper closure.
-     *
-     * @throws UnexpectedValueException If the middleware or the downstream handler
-     *                                  returns a non-Response value.
      */
     private function wrap(callable|string $mw, Closure $next): Closure
     {
-        /* ── Closure / "function" / "Class::method" / callable[] ─────── */
-        // Per-process memoization for string descriptors (e.g. "Cls::method").
-        static $memo = [];                          // per-process cache for "Cls::method"/function names
+        $mw = $this->resolveMiddlewareTarget($mw);
+        $tag = self::describe($mw);
         $invoker = $this->invoker;
         $useInvoker = $this->useInvoker;
-
-        /**
-         * Resolve **once**:
-         *   • plain function name -> keep as-is (Invoker can still call it)
-         *   • "Cls::method"        -> bind & memoise Closure via callable bound expansion
-         *   • [Obj,'meth']         -> already bound; keep directly
-         */
-        if (\is_string($mw)) {
-            $mw = $memo[$mw] ??= (
-                str_contains($mw, '::')
-                ? $mw(...)          // bind once via first-class callable expression
-                : $mw               // plain function name
-            );
-        }
-
-        $tag = self::describe($mw);                 // cheap after memo
 
         /**
          * Final trampoline for this middleware.
@@ -239,12 +271,7 @@ final class MiddlewarePipeline
          * Otherwise the middleware is called directly with ($req, $next).
          */
         return static function (Request $req) use ($invoker, $mw, $next, $tag, $useInvoker): Response {
-            $res = $useInvoker
-                ? $invoker->invoke($mw, [
-                    'request' => $req,
-                    'next' => $next, // named for autowiring
-                ])
-                : $mw($req, $next);
+            $res = self::callMiddleware($invoker, $useInvoker, $mw, $req, $next);
 
             return self::assertResponse($res, $tag);
         };
@@ -259,8 +286,6 @@ final class MiddlewarePipeline
      *
      * @param callable $handler Terminal handler callable.
      * @return Closure(Request):Response Closure that executes the handler and returns a Response.
-     *
-     * @throws UnexpectedValueException If the handler returns a non-Response value.
      */
     private function wrapFinal(callable $handler): Closure
     {
@@ -269,7 +294,7 @@ final class MiddlewarePipeline
 
         return static function (Request $req) use ($handler, $useInvoker, $invoker): Response {
             $res = $useInvoker
-                ? $invoker->invoke($handler)
+                ? $invoker->invoke($handler, ['request' => $req])
                 : $handler($req);
 
             return self::assertResponse($res, 'Final handler');

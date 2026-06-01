@@ -21,8 +21,6 @@ final class UploadedFile
 
     private bool $moved = false;
 
-    private string|Stream $src;
-
     /**
      * Constructs a new UploadedFile value object.
      *
@@ -36,20 +34,15 @@ final class UploadedFile
      *                                  or if the error code is invalid.
      */
     public function __construct(
-        string|Stream $src,
+        private string|Stream $src,
         private readonly ?int $size = null,
         int $err = UPLOAD_ERR_OK,
         private readonly ?string $clientName = null,
         private readonly ?string $clientType = null,
     ) {
-        if (!is_string($src) && !$src instanceof Stream) {
-            throw new InvalidArgumentException('Source must be filepath or StreamInterface');
-        }
         if ($err < 0 || $err > 8) {
             throw new InvalidArgumentException('Invalid upload error code');
         }
-
-        $this->src = $src;
         $this->err = $err;
     }
 
@@ -70,16 +63,28 @@ final class UploadedFile
      *   - 'name': null
      *   - 'type': null
      *
-     * @param array $spec $_FILES-style specification array
+     * @param array{
+     *   tmp_name?: string,
+     *   size?: int|null,
+     *   error?: int,
+     *   name?: string|null,
+     *   type?: string|null
+     * } $spec $_FILES-style specification array
      */
     public static function fromSpec(array $spec): self
     {
+        $tmpName = \is_string($spec['tmp_name'] ?? null) ? $spec['tmp_name'] : '';
+        $size = \is_int($spec['size'] ?? null) ? $spec['size'] : null;
+        $error = \is_int($spec['error'] ?? null) ? $spec['error'] : UPLOAD_ERR_NO_FILE;
+        $name = \is_string($spec['name'] ?? null) ? $spec['name'] : null;
+        $type = \is_string($spec['type'] ?? null) ? $spec['type'] : null;
+
         return new self(
-            $spec['tmp_name'] ?? '',
-            $spec['size'] ?? null,
-            $spec['error'] ?? UPLOAD_ERR_NO_FILE,
-            $spec['name'] ?? null,
-            $spec['type'] ?? null,
+            $tmpName,
+            $size,
+            $error,
+            $name,
+            $type,
         );
     }
 
@@ -181,11 +186,11 @@ final class UploadedFile
      *
      * @throws RuntimeException if the move fails for any reason.
      */
-    public function moveTo($targetPath): void
+    public function moveTo(string $targetPath): void
     {
         $this->assertOkAndNotMoved();
         $this->assertTarget($targetPath);
-        $this->ensureDir(dirname((string) $targetPath));
+        $this->ensureDir(dirname($targetPath));
 
         if (is_string($this->src)) {
             $ok = is_uploaded_file($this->src)
@@ -199,8 +204,11 @@ final class UploadedFile
                 $this->src->rewind();
             }
             $in = $this->src->detach();
+            if (!\is_resource($in)) {
+                throw new RuntimeException('Uploaded stream handle is detached.');
+            }
             $out = fopen($targetPath, 'wb');
-            if (!$out) {
+            if (!\is_resource($out)) {
                 throw new RuntimeException("Cannot write to {$targetPath}");
             }
             stream_copy_to_stream($in, $out);

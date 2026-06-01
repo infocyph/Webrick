@@ -20,7 +20,7 @@ final class HttpFactory
      *
      * @param string $method The HTTP method (e.g. GET, POST, PUT, DELETE).
      * @param Uri|string $uri The URI of the request as a string or Uri object.
-     * @param array $serverParams The server parameters, typically from $_SERVER.
+     * @param array<string, mixed> $serverParams The server parameters, typically from $_SERVER.
      * @return Request A new Request object.
      */
     public function createRequest(string $method, Uri|string $uri, array $serverParams = []): Request

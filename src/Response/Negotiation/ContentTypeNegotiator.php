@@ -54,7 +54,7 @@ final class ContentTypeNegotiator
             return null;
         }
 
-        $accept = $headers->all()->getHeaderLine('Accept') ?? '';
+        $accept = $headers->all()->getHeaderLine('Accept');
         if ($accept === '' || $accept === '*/*') {
             return $first; // conventional default
         }

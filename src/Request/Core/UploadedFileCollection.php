@@ -12,14 +12,17 @@ use Traversable;
 /**
  * Thin immutable wrapper so we never expose naked arrays.
  * Implements Countable, ArrayAccess, IteratorAggregate.
+ *
+ * @implements ArrayAccess<string, UploadedFile|array<mixed>>
+ * @implements IteratorAggregate<string, UploadedFile|array<mixed>>
  */
 final class UploadedFileCollection implements ArrayAccess, Countable, IteratorAggregate
 {
     /**
      * Constructs a new UploadedFileCollection.
      *
-     * @param array<string, UploadedFile|UploadedFile[]> $bag An associative array of uploaded files.
-     *                                                        Key is the name of the field, value is either an UploadedFile or an array of UploadedFile objects.
+     * @param array<string, UploadedFile|array<mixed>> $bag An associative array of uploaded files.
+     *                                                      Key is the name of the field, value is either an UploadedFile or nested uploaded-file arrays.
      */
     public function __construct(private array $bag = [])
     {
@@ -29,7 +32,7 @@ final class UploadedFileCollection implements ArrayAccess, Countable, IteratorAg
     /**
      * Returns all uploaded files in the collection.
      *
-     * @return array<string, UploadedFile|UploadedFile[]> An associative array of all uploaded files.
+     * @return array<string, UploadedFile|array<mixed>> An associative array of all uploaded files.
      */
     public function all(): array
     {
@@ -50,9 +53,9 @@ final class UploadedFileCollection implements ArrayAccess, Countable, IteratorAg
      * Returns null if the key does not exist in the collection.
      *
      * @param string $k Key (name) of the uploaded file to retrieve
-     * @return UploadedFile|null UploadedFile instance if found, null otherwise
+     * @return UploadedFile|array<mixed>|null UploadedFile value if found, null otherwise
      */
-    public function get(string $k): mixed
+    public function get(string $k): UploadedFile|array|null
     {
         return $this->bag[$k] ?? null;
     }
@@ -64,7 +67,7 @@ final class UploadedFileCollection implements ArrayAccess, Countable, IteratorAg
      * yielding each uploaded file as a key-value pair where the key is the name of
      * the uploaded file and the value is the UploadedFile instance.
      *
-     * @return Traversable The iterator for the collection.
+     * @return Traversable<string, UploadedFile|array<mixed>> The iterator for the collection.
      */
     public function getIterator(): Traversable
     {
@@ -90,6 +93,10 @@ final class UploadedFileCollection implements ArrayAccess, Countable, IteratorAg
      */
     public function offsetExists(mixed $offset): bool
     {
+        if (!\is_string($offset)) {
+            return false;
+        }
+
         return isset($this->bag[$offset]);
     }
 
@@ -101,6 +108,10 @@ final class UploadedFileCollection implements ArrayAccess, Countable, IteratorAg
      */
     public function offsetGet(mixed $offset): mixed
     {
+        if (!\is_string($offset)) {
+            return null;
+        }
+
         return $this->bag[$offset] ?? null;
     }
 

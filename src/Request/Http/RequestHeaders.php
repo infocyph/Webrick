@@ -16,16 +16,32 @@ use Infocyph\Webrick\Request\Support\HeaderBag;
  *  • can extract headers directly from $_SERVER (portable, fast)
  *
  * ZERO allocations on hot path – heavy parsing happens lazily.
+ *
+ * @phpstan-type HeaderMap array<string, list<string>>
+ * @phpstan-type AcceptMap array<string, list<string>>
+ * @phpstan-type ContentMeta array{type:?string, charset:?string, length:?int, md5:string}
+ * @phpstan-type DepRange array{unit:string, span:list<string>}
+ * @phpstan-type DepMeta array{
+ *   if_match:list<string>,
+ *   if_none_match:list<string>,
+ *   if_modified_since:?int,
+ *   if_unmodified_since:?int,
+ *   prefer_safe:bool,
+ *   range:DepRange|null
+ * }
  */
 final class RequestHeaders
 {
-    private ?array $accept = null;    // parsed Accept*
+    /** @var AcceptMap|null parsed Accept* */
+    private ?array $accept = null;
 
     private ?HeaderBag $all = null;   // raw + auth fallbacks
 
-    private ?array $content = null;   // Content-Type/Length/MD5
+    /** @var ContentMeta|null Content-Type/Length/MD5 */
+    private ?array $content = null;
 
-    private ?array $dep = null;       // If-*, Range, Prefer
+    /** @var DepMeta|null If-*, Range, Prefer */
+    private ?array $dep = null;
 
     public function __construct(private readonly Request|ServerRequest $req) {}
 
@@ -41,8 +57,8 @@ final class RequestHeaders
      * It also backfills Content-* headers and Authorization header
      * from relevant $_SERVER keys.
      *
-     * @param array $srv Server parameters (e.g. $_SERVER)
-     * @return array Header bag in PSR-7 format: name => string[]
+     * @param array<string, mixed> $srv Server parameters (e.g. $_SERVER)
+     * @return HeaderMap Header bag in PSR-7 format: name => string[]
      */
     public static function extractFromServer(array $srv): array
     {
@@ -61,7 +77,7 @@ final class RequestHeaders
      *
      * @param string $key [optional] The name of the Accept* header to retrieve.
      *                    If null, returns all parsed Accept* headers.
-     * @return array An array of parsed Accept* headers.
+     * @return ($key is null ? AcceptMap : list<string>) An array of parsed Accept* headers.
      */
     public function accept(?string $key = null): array
     {
@@ -75,7 +91,11 @@ final class RequestHeaders
             $this->accept = $map;
         }
 
-        return $key ? ($this->accept[$key] ?? []) : $this->accept;
+        if ($key === null) {
+            return $this->accept;
+        }
+
+        return $this->accept[$key] ?? [];
     }
 
     /**
@@ -97,7 +117,7 @@ final class RequestHeaders
         // Copy PSR-7 headers (values already arrays). Defensive fallback if empty.
         $hdr = $this->req->getHeaders();
         if ($hdr === []) {
-            $hdr = self::extractFromServer($this->req->getServerParams());
+            $hdr = self::extractFromServer($this->serverParams());
         }
 
         $this->injectAuthorisation($hdr);
@@ -114,6 +134,8 @@ final class RequestHeaders
      * - charset: Content-Type charset parameter value (e.g. utf-8)
      * - length: Content-Length header value as an integer
      * - md5: Content-Md5 header value as a lowercase string
+     *
+     * @return ContentMeta
      */
     public function content(): array
     {
@@ -145,9 +167,9 @@ final class RequestHeaders
      *     • Range: ['unit' => 'bytes', 'span' => [int, int, …]]
      *
      * @param string|null $key If specified, returns the value for that key.
-     * @return array Dependency information
+     * @return DepMeta|list<string>|int|bool|DepRange Dependency information
      */
-    public function dependency(?string $key = null): array
+    public function dependency(?string $key = null): mixed
     {
         if ($this->dep !== null) {
             return $key ? ($this->dep[$key] ?? []) : $this->dep;
@@ -168,7 +190,7 @@ final class RequestHeaders
 
         if ($rangeLine !== '') {
             [$unit, $span] = array_pad(explode('=', str_replace(' ', '', $rangeLine), 2), 2, '');
-            $dep['range'] = $unit ? ['unit' => $unit, 'span' => explode(',', $span)] : null;
+            $dep['range'] = $unit !== '' ? ['unit' => $unit, 'span' => explode(',', $span)] : null;
         }
 
         $this->dep = $dep;
@@ -180,7 +202,8 @@ final class RequestHeaders
      * Inject Authorization header from PHP_AUTH_* or HTTP_AUTHORIZATION if
      * available (and related fallbacks).
      *
-     * @param array $srv Server parameters (e.g. $_SERVER)
+     * @param array<string, mixed> $srv Server parameters (e.g. $_SERVER)
+     * @param HeaderMap $out
      */
     private static function backfillAuthorization(array $srv, array &$out): void
     {
@@ -188,17 +211,21 @@ final class RequestHeaders
             return;
         }
         if (isset($srv['HTTP_AUTHORIZATION'])) {
-            $out['Authorization'] = [(string) $srv['HTTP_AUTHORIZATION']];
+            if (\is_string($srv['HTTP_AUTHORIZATION'])) {
+                $out['Authorization'] = [$srv['HTTP_AUTHORIZATION']];
+            }
         } elseif (isset($srv['REDIRECT_HTTP_AUTHORIZATION'])) {
-            $out['Authorization'] = [(string) $srv['REDIRECT_HTTP_AUTHORIZATION']];
+            if (\is_string($srv['REDIRECT_HTTP_AUTHORIZATION'])) {
+                $out['Authorization'] = [$srv['REDIRECT_HTTP_AUTHORIZATION']];
+            }
         }
     }
 
     /**
      * Populate Content-* headers from $_SERVER if missing.
      *
-     * @param array $srv Server parameters (e.g. $_SERVER)
-     * @param array $out Header bag to populate
+     * @param array<string, mixed> $srv Server parameters (e.g. $_SERVER)
+     * @param HeaderMap $out Header bag to populate
      */
     private static function backfillContentHeaders(array $srv, array &$out): void
     {
@@ -209,8 +236,8 @@ final class RequestHeaders
                 'CONTENT_MD5' => 'Content-Md5',
             ] as $sk => $hn
         ) {
-            if (isset($srv[$sk]) && !isset($out[$hn])) {
-                $out[$hn] = [(string) $srv[$sk]];
+            if (isset($srv[$sk]) && !isset($out[$hn]) && \is_string($srv[$sk])) {
+                $out[$hn] = [$srv[$sk]];
             }
         }
     }
@@ -222,11 +249,32 @@ final class RequestHeaders
      * If the value is an array, it is converted to an array of strings.
      * If the value is a string, it is wrapped in an array.
      *
-     * @return array Header bag
+     * @return HeaderMap Header bag
      */
     private static function viaGetAllHeaders(): array
     {
-        return array_map(fn($val) => \is_array($val) ? \array_values($val) : [(string) $val], \getallheaders());
+        $out = [];
+        foreach (\getallheaders() as $name => $value) {
+            if (!\is_string($name)) {
+                continue;
+            }
+            if (\is_array($value)) {
+                $vals = [];
+                foreach ($value as $item) {
+                    if (\is_string($item)) {
+                        $vals[] = $item;
+                    }
+                }
+                $out[$name] = $vals;
+
+                continue;
+            }
+            if (\is_string($value)) {
+                $out[$name] = [$value];
+            }
+        }
+
+        return $out;
     }
 
     /**
@@ -237,23 +285,36 @@ final class RequestHeaders
      * If the value is an array, it is imploded with commas.
      * If the value is a string, it is used as is.
      *
-     * @param array $srv Server parameters (e.g. $_SERVER)
-     * @return array Header bag
+     * @param array<string, mixed> $srv Server parameters (e.g. $_SERVER)
+     * @return HeaderMap Header bag
      */
     private static function viaServerFallback(array $srv): array
     {
         $out = [];
         foreach ($srv as $k => $v) {
-            if (!str_starts_with((string) $k, 'HTTP_')) {
+            if (!str_starts_with($k, 'HTTP_')) {
                 continue;
             }
             // HTTP_ACCEPT_ENCODING → Accept-Encoding
             $name = \str_replace(
                 ' ',
                 '-',
-                \ucwords(\strtolower(\strtr(\substr((string) $k, 5), '_', ' '))),
+                \ucwords(\strtolower(\strtr(\substr($k, 5), '_', ' '))),
             );
-            $out[$name] = [\is_array($v) ? \implode(',', $v) : (string) $v];
+            if (\is_array($v)) {
+                $parts = [];
+                foreach ($v as $item) {
+                    if (\is_string($item)) {
+                        $parts[] = $item;
+                    }
+                }
+                $out[$name] = [\implode(',', $parts)];
+
+                continue;
+            }
+            if (\is_string($v)) {
+                $out[$name] = [$v];
+            }
         }
 
         return $out;
@@ -264,11 +325,11 @@ final class RequestHeaders
      * containing a Basic auth credential.
      *
      * @param string $line The Authorization header containing the Basic credential.
-     * @param array $hdr The header bag to populate with PHP_AUTH_* values.
+     * @param HeaderMap $hdr The header bag to populate with PHP_AUTH_* values.
      */
     private function backfillPhpAuthFromBasicHeader(string $line, array &$hdr): void
     {
-        $cred = \base64_decode(\substr($line, 6));
+        $cred = \base64_decode(\substr($line, 6), true);
         if ($cred === false || !\str_contains($cred, ':')) {
             return;
         }
@@ -286,11 +347,20 @@ final class RequestHeaders
      *   • Delimiters are commas (",") or whitespace characters (one or more).
      *
      * @param string $v Input string to split
-     * @return array Resulting array of strings
+     * @return list<string> Resulting array of strings
      */
     private function csv(string $v): array
     {
-        return $v === '' ? [] : preg_split('/\s*,\s*/', $v);
+        if ($v === '') {
+            return [];
+        }
+
+        $parts = \preg_split('/\s*,\s*/', $v);
+        if (!\is_array($parts)) {
+            return [];
+        }
+
+        return $parts;
     }
 
     /**
@@ -310,11 +380,11 @@ final class RequestHeaders
      * Inject Authorization header from PHP_AUTH_* or HTTP_AUTHORIZATION if
      * available (and related fallbacks).
      *
-     * @param array $hdr Header bag to populate
+     * @param HeaderMap $hdr Header bag to populate
      */
     private function injectAuthorisation(array &$hdr): void
     {
-        $srv = $this->req->getServerParams();
+        $srv = $this->serverParams();
         $added = false;
 
         $this->injectFromPhpAuth($srv, $hdr, $added);
@@ -325,8 +395,8 @@ final class RequestHeaders
      * Populate Authorization header from HTTP_AUTHORIZATION or REDIRECT_HTTP_AUTHORIZATION if
      * available (and related fallbacks).
      *
-     * @param array $srv Server parameters (e.g. $_SERVER)
-     * @param array $hdr Header bag to populate
+     * @param array<string, mixed> $srv Server parameters (e.g. $_SERVER)
+     * @param HeaderMap $hdr Header bag to populate
      * @param bool $alreadyAdded Whether an Authorization header has already been added
      */
     private function injectFromExplicitAuthorization(array $srv, array &$hdr, bool $alreadyAdded): void
@@ -338,14 +408,14 @@ final class RequestHeaders
             ?? $srv['REDIRECT_HTTP_AUTHORIZATION']
             ?? null;
 
-        if (!$line) {
+        if (!\is_string($line) || $line === '') {
             return;
         }
 
         $hdr['Authorization'] ??= [$line];
 
         // also back-fill PHP_AUTH_* for Basic (helps downstream libs)
-        if (\str_starts_with(\strtolower((string) $line), 'basic ')) {
+        if (\str_starts_with(\strtolower($line), 'basic ')) {
             $this->backfillPhpAuthFromBasicHeader($line, $hdr);
         }
     }
@@ -354,21 +424,24 @@ final class RequestHeaders
      * Populate Authorization header from PHP_AUTH_USER/PHP_AUTH_PW or PHP_AUTH_DIGEST if
      * available (and related fallbacks).
      *
-     * @param array $srv Server parameters (e.g. $_SERVER)
-     * @param array $hdr Header bag to populate
+     * @param array<string, mixed> $srv Server parameters (e.g. $_SERVER)
+     * @param HeaderMap $hdr Header bag to populate
      * @param bool $added Whether an Authorization header has been added
      */
     private function injectFromPhpAuth(array $srv, array &$hdr, bool &$added): void
     {
-        if (!empty($srv['PHP_AUTH_USER']) && !isset($hdr['Authorization'])) {
+        $user = $srv['PHP_AUTH_USER'] ?? null;
+        if (\is_string($user) && $user !== '' && !isset($hdr['Authorization'])) {
             $pw = $srv['PHP_AUTH_PW'] ?? '';
-            $hdr['Authorization'] = ['Basic ' . base64_encode($srv['PHP_AUTH_USER'] . ':' . $pw)];
+            $pw = \is_string($pw) ? $pw : '';
+            $hdr['Authorization'] = ['Basic ' . \base64_encode($user . ':' . $pw)];
             $added = true;
 
             return;
         }
-        if (!empty($srv['PHP_AUTH_DIGEST'])) {
-            $hdr['Authorization'] = [$srv['PHP_AUTH_DIGEST']];
+        $digest = $srv['PHP_AUTH_DIGEST'] ?? null;
+        if (\is_string($digest) && $digest !== '') {
+            $hdr['Authorization'] = [$digest];
             $added = true;
         }
     }
@@ -380,7 +453,7 @@ final class RequestHeaders
      * If two MIME types have the same q parameter, the one with the least number of wildcards is placed first.
      *
      * @param string $raw The Accept* header string
-     * @return array An array of acceptable MIME types
+     * @return list<string> An array of acceptable MIME types
      */
     private function parseAccept(string $raw): array
     {
@@ -401,8 +474,21 @@ final class RequestHeaders
             $parsed[] = ['mime' => $mime, 'q' => $qVal, 'wild' => $wild];
         }
 
-        usort($parsed, fn($a, $b) => [$b['q'], $a['wild']] <=> [$a['q'], $b['wild']]);
+        usort(
+            $parsed,
+            static fn(array $a, array $b): int => [$b['q'], $a['wild']] <=> [$a['q'], $b['wild']],
+        );
 
         return array_column($parsed, 'mime');
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function serverParams(): array
+    {
+        $params = $this->req->getServerParams();
+
+        return \array_filter($params, static fn(string $key): bool => $key !== '', \ARRAY_FILTER_USE_KEY);
     }
 }

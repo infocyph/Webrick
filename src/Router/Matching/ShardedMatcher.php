@@ -28,6 +28,11 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
  *  - When cache is disabled the matcher operates in "dev" mode and keeps
  *    shards in memory for every request without writing files.
  *  - The matcher enforces no further route additions after finalize() is called.
+ *
+ * @phpstan-type AliasIndex array<string, array{0:string,1:?string}>
+ * @phpstan-type VerbRouteMap array<string, CompiledRoute>
+ * @phpstan-type StaticBucket array<string, VerbRouteMap>
+ * @phpstan-type Group array{static: StaticBucket, trie: array<string,mixed>}
  */
 final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
 {
@@ -71,7 +76,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     /**
      * Alias index (name => [path, domain]) collected at build-time or loaded from alias cache.
      *
-     * @var array<string, array{0:string,1:?string}>
+     * @var AliasIndex
      */
     private array $alias = [];
 
@@ -122,14 +127,14 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
      * Value is the array returned from the required shard file, or null when
      * the file exists but contains no data for the requested group.
      *
-     * @var array<string, array|null>
+     * @var array<string, Group|null>
      */
     private array $loadedFiles = [];
 
     /**
      * In-memory shards used in dev-mode: memGroups[host][bucket] => group array|null.
      *
-     * @var array<string, array<string, array|null>>
+     * @var array<string, array<string, Group|null>>
      */
     private array $memGroups = [];
 
@@ -175,7 +180,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
 
         $host = $this->canonicalRouteHost($route->getDomain());
         $method = HttpMethodEnum::normalize($route->getMethod());
-        $bucket = $this->fileKeyForPath($route->getPath());
+        $bucket = ShardedMatcherSupport::fileKeyForPath($route->getPath(), self::SHARD_ROOT);
 
         if (isset($this->pathGuard[$host][$method][$route->getPath()])) {
             throw new \LogicException("Duplicate route {$method} {$host}{$route->getPath()}");
@@ -220,7 +225,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             return $this->alias;
         }
 
-        /** @var array{_hash?:string,_data?:array<string,array{0:string,1:?string}>} $blob */
+        /** @var array{_hash?:string,_data?:AliasIndex} $blob */
         $blob = require $file;
 
         if (!isset($blob[self::H_DATA])) {
@@ -236,7 +241,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             }
         }
 
-        $this->alias = $blob[self::H_DATA] ?? [];
+        $this->alias = $blob[self::H_DATA];
         $this->aliasLoaded = true;
 
         if ($this->shouldWarmOpcache()) {
@@ -258,7 +263,12 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     public function canBootFromCache(): bool
     {
         // Sentinel is wildcard root shard; alias file will be lazy-loaded.
-        return $this->cacheEnabled && \is_file($this->shardFilePath('*', self::SHARD_ROOT));
+        return $this->cacheEnabled && \is_file(ShardedMatcherSupport::shardFilePath(
+            $this->cacheDir,
+            '*',
+            self::SHARD_ROOT,
+            self::WIN_RESERVED,
+        ));
     }
 
     /**
@@ -308,7 +318,12 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             return;
         }
         // Cold-dump only when explicitly enabled; check wildcard root shard as sentinel.
-        $sentinel = $this->shardFilePath('*', self::SHARD_ROOT);
+        $sentinel = ShardedMatcherSupport::shardFilePath(
+            $this->cacheDir,
+            '*',
+            self::SHARD_ROOT,
+            self::WIN_RESERVED,
+        );
         if ($this->cacheEnabled && $this->cacheWriteEnabled && !\file_exists($sentinel)) {
             $this->dumpCacheFiles();     // writes all shards
             $this->dumpAliasFile();      // writes __aliases.php
@@ -345,61 +360,38 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
      */
     public function match(string $method, string $host, string $path): array
     {
-        [$method, $host, $path] = $this->normalizeRequest($method, $host, $path);
-        $bucket = $this->fileKeyForPath($path);
+        $tryStatic = function (?array $group, string $httpMethod, string $requestPath): array {
+            $allowed = [];
+            $normalizedGroup = $group === null ? null : ShardedMatcherSupport::normalizeGroup($group);
+            $hit = $this->tryStatic($normalizedGroup, $httpMethod, $requestPath, $allowed);
 
-        // Load host group first. Wildcard group stays lazy, but precedence remains:
-        // host static -> wildcard static -> host dynamic -> wildcard dynamic.
-        $grpHost = $this->loadGroupFor($host, $bucket);
-        $grpAny = null;
-        $wildcardLoaded = false;
-        $hasCandidateGroup = ($grpHost !== null);
-
-        /** @var array<string,bool> $allowedSet */
-        $allowedSet = [];
-
-        // ① host static
-        if ($hit = $this->tryStatic($grpHost, $method, $path, $allowedSet)) {
-            return $hit;
-        }
-
-        // ② wildcard static (lazy load wildcard only after host-static miss)
-        if ($host !== '*') {
-            $grpAny = $this->loadGroupFor('*', $bucket);
-            $wildcardLoaded = true;
-            $hasCandidateGroup = $hasCandidateGroup || ($grpAny !== null);
-
-            if ($hit = $this->tryStatic($grpAny, $method, $path, $allowedSet)) {
-                return $hit;
+            return ['hit' => $hit, 'allowed' => $allowed];
+        };
+        $tryDynamic = function (?array $group, string $httpMethod, array $segments): array {
+            $allowed = [];
+            $normalizedGroup = $group === null ? null : ShardedMatcherSupport::normalizeGroup($group);
+            $segmentList = [];
+            foreach ($segments as $segment) {
+                if (\is_string($segment)) {
+                    $segmentList[] = $segment;
+                }
             }
-        }
+            $hit = $this->tryDynamic($normalizedGroup, $httpMethod, $segmentList, $allowed);
 
-        // ③ host dynamic trie
-        $segments = $this->explodePath($path);
-        if ($hit = $this->tryDynamic($grpHost, $method, $segments, $allowedSet)) {
-            return $hit;
-        }
+            return ['hit' => $hit, 'allowed' => $allowed];
+        };
 
-        // ④ wildcard dynamic trie
-        if ($host !== '*') {
-            if (!$wildcardLoaded) {
-                $grpAny = $this->loadGroupFor('*', $bucket);
-                $hasCandidateGroup = $hasCandidateGroup || ($grpAny !== null);
-            }
-            if ($hit = $this->tryDynamic($grpAny, $method, $segments, $allowedSet)) {
-                return $hit;
-            }
-        }
-
-        // ⑤ verdict
-        if (!$hasCandidateGroup) {
-            throw new RouteNotFoundException($method, $path);
-        }
-        if ($allowedSet !== []) {
-            throw new MethodNotAllowedException($method, $path, \array_keys($allowedSet));
-        }
-
-        throw new RouteNotFoundException($method, $path);
+        return ShardedMatcherRuntimeSupport::match(
+            $method,
+            $host,
+            $path,
+            ShardedMatcherSupport::normalizeRequest(...),
+            fn(string $requestPath): string => ShardedMatcherSupport::fileKeyForPath($requestPath, self::SHARD_ROOT),
+            $this->loadGroupFor(...),
+            $tryStatic,
+            $this->explodePath(...),
+            $tryDynamic,
+        );
     }
 
     /**
@@ -416,13 +408,33 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     }
 
     /**
+     * @param array<string, array<string, Group>> $shards
+     */
+    private function accumulateShardRoute(array &$shards, string $bucket, string $verb, CompiledRoute $route): void
+    {
+        $hostKey = $this->canonicalRouteHost($route->getDomain());
+        $shards[$hostKey][$bucket] ??= [self::K_STATIC => [], self::K_TRIE => $this->newNode()];
+
+        if ($route->isDynamic()) {
+            /** @var array<string,mixed> $trie */
+            $trie = &$shards[$hostKey][$bucket][self::K_TRIE];
+            $this->trieInsert($trie, $route, $verb);
+
+            return;
+        }
+
+        $path = $route->getPath();
+        $shards[$hostKey][$bucket][self::K_STATIC][$path][$verb] = $route;
+    }
+
+    /**
      * Compute the canonical alias file path inside the configured cache directory.
      *
      * @return string Path to __aliases.php
      */
     private function aliasFilePath(): string
     {
-        return $this->cacheDir . DIRECTORY_SEPARATOR . self::F_ALIASES;
+        return ShardedMatcherSupport::aliasFilePath($this->cacheDir, self::F_ALIASES);
     }
 
     /**
@@ -430,14 +442,11 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
      *
      * The built group has keys K_STATIC and K_TRIE or null when empty.
      *
-     * @return array|null Group or null when empty
+     * @return Group|null Group or null when empty
      */
     private function buildDevGroupOnce(string $hostKey, string $bucket): ?array
     {
-        if (isset($this->memGroups[$hostKey][$bucket]) || \array_key_exists(
-            $bucket,
-            $this->memGroups[$hostKey] ?? [],
-        )) {
+        if (isset($this->memGroups[$hostKey]) && \array_key_exists($bucket, $this->memGroups[$hostKey])) {
             return $this->memGroups[$hostKey][$bucket];
         }
 
@@ -480,7 +489,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     /**
      * Compute deterministic hash for shard payload.
      *
-     * @param array $payload Shard payload.
+     * @param Group $payload Shard payload.
      * @return string xxh3 fingerprint.
      */
     private function computeShardHash(array $payload): string
@@ -510,7 +519,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             . "    '" . self::H_DATA . "' => " . $this->exportArray($payload) . ",\n"
             . "];\n";
 
-        $this->writeAtomicPhpFile($file, $php);
+        ShardedMatcherSupport::writeAtomicPhpFile($file, $php);
 
         if ($this->shouldWarmOpcache()) {
             \opcache_compile_file($file);
@@ -525,21 +534,12 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
      */
     private function dumpCacheFiles(): void
     {
-        // $shards[host][bucket] = ['static'=>[path][verb]=Route, 'trie'=>node]
+        /** @var array<string, array<string, Group>> $shards */
         $shards = [];
         foreach ($this->bucketMap as $bucket => $byMethod) {
             foreach ($byMethod as $verb => $routes) {
                 foreach ($routes as $r) {
-                    $hostKey = $this->canonicalRouteHost($r->getDomain());
-
-                    $shards[$hostKey][$bucket] ??= [self::K_STATIC => [], self::K_TRIE => $this->newNode()];
-
-                    if ($r->isDynamic()) {
-                        $this->trieInsert($shards[$hostKey][$bucket][self::K_TRIE], $r, $verb);
-                    } else {
-                        $p = $r->getPath();
-                        $shards[$hostKey][$bucket][self::K_STATIC][$p][$verb] = $r;
-                    }
+                    $this->accumulateShardRoute($shards, $bucket, $verb, $r);
                 }
             }
         }
@@ -556,27 +556,6 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     }
 
     /* ──────────── build-time helpers ─────────── */
-
-    /* ──────────── path→bucket key ──────────── */
-
-    /**
-     * Compute the shard bucket key for a given path.
-     *
-     * Root path maps to SHARD_ROOT. Otherwise the first segment is used.
-     *
-     * @param string $path Request path
-     * @return string Bucket key
-     */
-    private function fileKeyForPath(string $path): string
-    {
-        if ($path === '/' || $path === '') {
-            return self::SHARD_ROOT;
-        }
-        $p = $path[0] === '/' ? \substr($path, 1) : $path;
-        $pos = \strpos($p, '/');
-
-        return $pos === false ? $p : \substr($p, 0, $pos);
-    }
 
     /**
      * Iterate all (verb, route) pairs contained in the build-time bucket map.
@@ -599,7 +578,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
      *
      * @param string $hostKey Canonical host key or '*'
      * @param string $bucket Bucket key
-     * @return array|null Group payload or null when no data exists
+     * @return Group|null Group payload or null when no data exists
      */
     private function loadGroupFor(string $hostKey, string $bucket): ?array
     {
@@ -615,13 +594,13 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
      *
      * Expects the shard file to return an array with keys H_HASH and H_DATA.
      *
-     * @return array|null Loaded group data or null when file missing
+     * @return Group|null Loaded group data or null when file missing
      *
      * @throws \RuntimeException When cache file format is invalid or hash mismatches (when verify enabled)
      */
     private function loadGroupFromCache(string $hostKey, string $bucket): ?array
     {
-        $file = $this->shardFilePath($hostKey, $bucket);
+        $file = ShardedMatcherSupport::shardFilePath($this->cacheDir, $hostKey, $bucket, self::WIN_RESERVED);
         if (\array_key_exists($file, $this->loadedFiles)) {
             return $this->loadedFiles[$file];
         }
@@ -630,7 +609,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             return $this->loadedFiles[$file] = null;
         }
 
-        /** @var array{_hash?:string,_data?:array} $blob */
+        /** @var array{_hash?:string,_data?:mixed} $blob */
         $blob = require $file;
 
         if (!isset($blob[self::H_DATA])) {
@@ -640,97 +619,21 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             if (!isset($blob[self::H_HASH])) {
                 throw new \RuntimeException("Cache file {$file} missing Hash.");
             }
-            $calc = $this->computeShardHash($blob[self::H_DATA]);
+            $calc = $this->computeShardHash(ShardedMatcherSupport::normalizeGroup($blob[self::H_DATA]));
             if (!\hash_equals($blob[self::H_HASH], $calc)) {
                 throw new \RuntimeException("Cache hash mismatch ($file).");
             }
         }
 
-        return $this->loadedFiles[$file] = $blob[self::H_DATA];
+        return $this->loadedFiles[$file] = ShardedMatcherSupport::normalizeGroup($blob[self::H_DATA]);
     }
 
     /* ──────────────────────── match helpers ───────────────── */
-    /**
-     * Normalize incoming request tuple.
-     *
-     * @return array{0:string,1:string,2:string} Normalized [METHOD, hostOrWildcard, path]
-     */
-    private function normalizeRequest(string $method, string $host, string $path): array
-    {
-        return [\strtoupper($method), \strtolower($host ?: '*'), ($path === '' ? '/' : $path)];
-    }
-
-    /**
-     * Fast ASCII-only filename sanitizer.
-     *
-     * Replaces runs of invalid characters with underscores, trims leading dots
-     * and trailing spaces/dots, ensures non-empty output and avoids Windows
-     * reserved basenames by prefixing an underscore when necessary.
-     *
-     * @param string $s Input string to sanitise
-     * @return string Sanitised filename-safe string
-     */
-    private function sanitizeForFilename(string $s): string
-    {
-        $out = '';
-        $prevUnderscore = false;
-        $len = \strlen($s);
-
-        for ($i = 0; $i < $len; $i++) {
-            $ch = $s[$i];
-            $o = \ord($ch);
-
-            $isAlphaNum = ($o >= 48 && $o <= 57) || ($o >= 65 && $o <= 90) || ($o >= 97 && $o <= 122);
-            if ($isAlphaNum || $ch === '.' || $ch === '_' || $ch === '-') {
-                $out .= $ch;
-                $prevUnderscore = false;
-            } else {
-                if (!$prevUnderscore) {
-                    $out .= '_';
-                    $prevUnderscore = true;
-                }
-            }
-        }
-
-        // avoid leading dot / Windows trailing dot or space
-        $out = \ltrim($out, '.');
-        $out = \rtrim($out, ' .');
-
-        if ($out === '') {
-            $out = '_';
-        }
-
-        // avoid Windows reserved basenames
-        if (\in_array(\strtoupper($out), self::WIN_RESERVED, true)) {
-            $out = '_' . $out;
-        }
-
-        return $out;
-    }
-
-    /**
-     * Compute the shard file path for a given hostKey and bucket.
-     *
-     * HostKey '*' maps to bucketSafe.php, otherwise hostKey.bucketSafe.php.
-     *
-     * @param string $hostKey Canonical host key or '*'
-     * @param string $bucket Bucket name
-     * @return string Absolute/relative file path inside $this->cacheDir
-     */
-    private function shardFilePath(string $hostKey, string $bucket): string
-    {
-        $bucketSafe = $this->sanitizeForFilename($bucket);
-        $name = ($hostKey === '*')
-            ? $bucketSafe . '.php'
-            : $this->sanitizeForFilename($hostKey) . '.' . $bucketSafe . '.php';
-
-        return $this->cacheDir . DIRECTORY_SEPARATOR . $name;
-    }
 
     /**
      * Try dynamic trie descent for a preloaded group.
      *
-     * @param array|null $group Group payload (or null when absent)
+     * @param Group|null $group Group payload (or null when absent)
      * @param string $method Uppercased HTTP method
      * @param list<string> $segments Pre-split request path segments
      * @param array<string,bool> $allowedSet Accumulator for allowed verbs (by-ref)
@@ -741,8 +644,8 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         if ($group === null) {
             return null;
         }
-        $root = $group[self::K_TRIE] ?? null;
-        if (!$root) {
+        $root = $group[self::K_TRIE];
+        if ($root === []) {
             return null;
         }
 
@@ -761,7 +664,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
      * On success returns [$route, []] (no params). When a path exists but
      * the verb does not match this method populates $allowedSet.
      *
-     * @param array|null $group Group payload (or null when absent)
+     * @param Group|null $group Group payload (or null when absent)
      * @param string $method Uppercased HTTP method
      * @param string $path Request path
      * @param array<string,bool> $allowedSet Accumulator for allowed verbs (by-ref)
@@ -772,8 +675,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         if ($group === null) {
             return null;
         }
-        /** @var array<string,array<string,CompiledRoute>> $static */
-        $static = $group[self::K_STATIC] ?? [];
+        $static = $group[self::K_STATIC];
         $map = $static[$path] ?? null;
         if ($map === null) {
             return null;
@@ -787,35 +689,17 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     }
 
     /**
-     * Atomically write a PHP cache file and fail loudly on IO errors.
-     */
-    private function writeAtomicPhpFile(string $file, string $php): void
-    {
-        $tmp = $file . '.' . \uniqid('', true) . '.tmp';
-        if (\file_put_contents($tmp, $php, \LOCK_EX) === false) {
-            throw new \RuntimeException("Failed to write cache temp file {$tmp}");
-        }
-        \chmod($tmp, 0664);
-
-        if (!\rename($tmp, $file)) {
-            \unlink($tmp);
-
-            throw new \RuntimeException("Failed to move cache file into place {$file}");
-        }
-    }
-
-    /**
      * Serialize and write a single shard file.
      *
      * @param string $hostKey Canonical host key or '*' for wildcard
      * @param string $bucket Bucket name for the shard
-     * @param array $payload Data payload to export into PHP array form
+     * @param Group $payload Data payload to export into PHP array form
      *
      * @throws \RuntimeException When the cache directory cannot be created.
      */
     private function writeShard(string $hostKey, string $bucket, array $payload): void
     {
-        $file = $this->shardFilePath($hostKey, $bucket);
+        $file = ShardedMatcherSupport::shardFilePath($this->cacheDir, $hostKey, $bucket, self::WIN_RESERVED);
         if (!\is_dir($d = \dirname($file)) && !\mkdir($d, 0775, true) && !\is_dir($d)) {
             throw new \RuntimeException("Failed to create cache dir {$d}");
         }
@@ -825,7 +709,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             . "    '" . self::H_TS . "'  => " . \var_export(date(DATE_ATOM), true) . ",\n"
             . "    '" . self::H_DATA . "' => " . $this->exportArray($payload) . ",\n"
             . "];\n";
-        $this->writeAtomicPhpFile($file, $php);
+        ShardedMatcherSupport::writeAtomicPhpFile($file, $php);
 
         if ($this->shouldWarmOpcache()) {
             \opcache_compile_file($file);

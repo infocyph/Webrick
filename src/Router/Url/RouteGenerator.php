@@ -12,6 +12,7 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Router\Url;
 
 use Infocyph\Webrick\Router\Route\Collection;
+use InvalidArgumentException;
 
 /**
  * Generate URLs for named routes.
@@ -32,7 +33,7 @@ final readonly class RouteGenerator
      *
      * @param string $name Route name
      * @param array<string,scalar|null> $params Route params
-     * @param array<string,scalar|array|null> $query Query params
+     * @param array<string,array<int|string,mixed>|bool|float|int|string|null> $query Query params
      * @param bool $absolute Whether to include base URI
      */
     public function route(
@@ -41,6 +42,10 @@ final readonly class RouteGenerator
         array $query = [],
         bool $absolute = false,
     ): string {
+        if ($name === '') {
+            throw new InvalidArgumentException('Route name must not be empty.');
+        }
+
         return $this->urlGenerator->urlFor($name, $params, $query, $absolute);
     }
 }

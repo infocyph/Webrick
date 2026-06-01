@@ -15,6 +15,9 @@ use InvalidArgumentException;
  * - Controller/action references
  * - Arbitrary paths with query parameters
  * - Relative and absolute URL generation
+ *
+ * @phpstan-type RouteParam bool|float|int|string|null
+ * @phpstan-type QueryValue array<int|string,mixed>|bool|float|int|string|null
  */
 class UrlGenerator
 {
@@ -39,8 +42,8 @@ class UrlGenerator
      * Build a URL by handler reference.
      *
      * @param callable|string $handler Callable or "Class::method" string
-     * @param array<string,scalar|null> $params Route parameters
-     * @param array<string,scalar|array|null> $query Query string parameters
+     * @param array<string,RouteParam> $params Route parameters
+     * @param array<string,QueryValue> $query Query string parameters
      * @param bool $absolute Whether to generate an absolute URL
      * @return string Generated URL
      *
@@ -65,8 +68,8 @@ class UrlGenerator
     /**
      * Build a URL to an arbitrary path.
      *
-     * @param non-empty-string $path URL path (leading slash optional)
-     * @param array<string,scalar|array|null> $query Query string parameters
+     * @param string $path URL path (leading slash optional)
+     * @param array<string,QueryValue> $query Query string parameters
      * @param bool $absolute Whether to generate an absolute URL
      * @return string Generated URL
      */
@@ -85,9 +88,9 @@ class UrlGenerator
     /**
      * Build a URL for a named route.
      *
-     * @param non-empty-string $name Name of the route
-     * @param array<string,scalar|null> $params Route parameter values
-     * @param array<string,scalar|array|null> $query Query string parameters
+     * @param string $name Name of the route
+     * @param array<string,RouteParam> $params Route parameter values
+     * @param array<string,QueryValue> $query Query string parameters
      * @param bool $absolute Whether to generate an absolute URL
      * @return string Generated URL
      *
@@ -99,6 +102,10 @@ class UrlGenerator
         array $query = [],
         bool $absolute = false,
     ): string {
+        if ($name === '') {
+            throw new InvalidArgumentException('Route name must not be empty.');
+        }
+
         $route = $this->routes->findByName($name);
         if ($route === null) {
             throw new InvalidArgumentException("Route '{$name}' not found.");
@@ -113,7 +120,7 @@ class UrlGenerator
      * Constructs the final URL from path, query parameters, and base URI.
      *
      * @param string $path URL path
-     * @param array<string,scalar|array|null> $query Query parameters
+     * @param array<string,QueryValue> $query Query parameters
      * @param bool $absolute Whether to include the base URI
      * @return string The fully constructed URL
      */
@@ -144,7 +151,7 @@ class UrlGenerator
      * Replaces placeholders in the URL template with encoded parameter values.
      *
      * @param string $template URL template with {param} or {param:type} placeholders
-     * @param array<string,scalar|null> $params Parameter values
+     * @param array<string,mixed> $params Parameter values
      * @return string URL with placeholders replaced
      *
      * @throws InvalidArgumentException If parameters are missing or invalid

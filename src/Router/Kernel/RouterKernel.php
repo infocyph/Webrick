@@ -153,6 +153,8 @@ final class RouterKernel
 
         $preGlobal = $this->mergeTaggedGlobals($preGlobal, $this->preGlobalTags);
         $postGlobal = $this->mergeTaggedGlobals($postGlobal, $this->postGlobalTags);
+        $preGlobal = $this->normalizeMiddlewareEntries($preGlobal);
+        $postGlobal = $this->normalizeMiddlewareEntries($postGlobal);
 
         // Globals are now resolved/applied inside Dispatcher
         $this->dispatcher = new Dispatcher(
@@ -218,7 +220,7 @@ final class RouterKernel
         ?Invoker $invoker = null,
     ): self {
         $normalizedCache = ($routeCache !== null && $routeCache !== '') ? $routeCache : null;
-        if ($normalizedCache !== null && \method_exists($matcher, 'enableCache')) {
+        if ($normalizedCache !== null) {
             $matcher->enableCache($normalizedCache);
         }
 
@@ -272,11 +274,16 @@ final class RouterKernel
 
         $scope = 'webrick.request.' . (++$this->requestScopeSeq);
 
-        return $container->withinScope($scope, function (Container $scoped) use ($request, $runner): Response {
+        $result = $container->withinScope($scope, function (Container $scoped) use ($request, $runner): Response {
             $scoped->definitions()->bind(Request::class, $request, LifetimeEnum::Scoped);
 
             return $this->errorHandler->handle($request, $runner);
         });
+        if (!$result instanceof Response) {
+            throw new \RuntimeException('Request scope callback must return Response.');
+        }
+
+        return $result;
     }
 
     /**
@@ -366,8 +373,8 @@ final class RouterKernel
             routes: $routes,
             autoSlashRedirect: (bool) $opts['autoSlashRedirect'],
             exposeUrlServices: false,
-            signKey: $opts['signKey'],
-            signedDefaultTtl: $opts['signedDefaultTtl'],
+            signKey: $this->normalizeSignKey($opts['signKey'] ?? null),
+            signedDefaultTtl: $this->normalizeSignedDefaultTtl($opts['signedDefaultTtl'] ?? null),
         );
 
         // Let user add routes – matcher is NOT touched in this path.
@@ -376,6 +383,41 @@ final class RouterKernel
 
         // We only need the name/path map for URL helpers.
         return $routes;
+    }
+
+    /**
+     * Validate the alias blob structure returned from requireAliasBlob().
+     *
+     * Expected shape: array with key '_data' whose value is an array.
+     *
+     * @param mixed $blob Value returned from included alias file
+     * @return bool True when $blob is an array and contains an array under '_data'
+     */
+    /**
+     * @return array<string, array{0:string,1:?string}>|null
+     */
+    private function extractAliasPairs(mixed $blob): ?array
+    {
+        if (!\is_array($blob) || !\is_array($blob['_data'] ?? null)) {
+            return null;
+        }
+
+        $pairs = [];
+        foreach ($blob['_data'] as $name => $tuple) {
+            if (!\is_string($name) || !\is_array($tuple)) {
+                continue;
+            }
+
+            $path = $tuple[0] ?? null;
+            $domain = $tuple[1] ?? null;
+            if (!\is_string($path)) {
+                continue;
+            }
+
+            $pairs[$name] = [$path, \is_string($domain) ? $domain : null];
+        }
+
+        return $pairs;
     }
 
     /**
@@ -401,7 +443,8 @@ final class RouterKernel
         }
 
         $blob = $this->requireAliasBlob($aliasFile);
-        if (!$this->isValidAliasBlob($blob)) {
+        $pairs = $this->extractAliasPairs($blob);
+        if ($pairs === null) {
             $this->log->warning('[router] alias cache has unexpected format; URL helpers may be limited', [
                 'file' => $aliasFile,
             ]);
@@ -409,17 +452,14 @@ final class RouterKernel
             return 0;
         }
 
-        /** @var array<string, array{0:string,1:?string}> $pairs */
-        $pairs = $blob['_data'];
-
         $added = 0;
         foreach ($pairs as $name => $tuple) {
-            if (!\is_string($name) || $name === '' || !\is_array($tuple)) {
+            if ($name === '') {
                 continue;
             }
-            $path = $tuple[0] ?? null;
-            $domain = $tuple[1] ?? null;
-            if (!\is_string($path) || $path === '') {
+            $path = $tuple[0];
+            $domain = $tuple[1];
+            if ($path === '') {
                 continue;
             }
 
@@ -459,19 +499,6 @@ final class RouterKernel
     }
 
     /**
-     * Validate the alias blob structure returned from requireAliasBlob().
-     *
-     * Expected shape: array with key '_data' whose value is an array.
-     *
-     * @param mixed $blob Value returned from included alias file
-     * @return bool True when $blob is an array and contains an array under '_data'
-     */
-    private function isValidAliasBlob(mixed $blob): bool
-    {
-        return \is_array($blob) && isset($blob['_data']) && \is_array($blob['_data']);
-    }
-
-    /**
      * Match the incoming request to a compiled route using the matcher.
      *
      * Returns a two-element tuple: [CompiledRoute, array<string,mixed> vars].
@@ -487,6 +514,10 @@ final class RouterKernel
         $uri = $req->getUri();
         $host = self::normaliseHost($uri->getHost());
         $path = $uri->getPath() ?: '/';
+
+        if ($method === '' || $host === '') {
+            throw new \RuntimeException('Method and host must be non-empty for matcher.');
+        }
 
         return $this->matcher->match($method, $host, $path);
     }
@@ -510,7 +541,7 @@ final class RouterKernel
         $definitions = $repository->getFunctionReference();
 
         foreach ($tags as $tag) {
-            if (!\is_string($tag) || $tag === '') {
+            if ($tag === '') {
                 continue;
             }
 
@@ -529,6 +560,44 @@ final class RouterKernel
         }
 
         return [...$explicit, ...$tagged];
+    }
+
+    /**
+     * @param array<int,mixed> $entries
+     * @return array<int,callable|object|string>
+     */
+    private function normalizeMiddlewareEntries(array $entries): array
+    {
+        $normalized = [];
+        foreach ($entries as $entry) {
+            if (\is_string($entry) || \is_object($entry) || (\is_callable($entry) && !\is_string($entry))) {
+                $normalized[] = $entry;
+            }
+        }
+
+        return $normalized;
+    }
+
+    private function normalizeSignedDefaultTtl(mixed $value): ?int
+    {
+        if (\is_int($value)) {
+            return $value;
+        }
+
+        if (\is_string($value) && $value !== '') {
+            return (int) $value;
+        }
+
+        return null;
+    }
+
+    private function normalizeSignKey(mixed $value): ?string
+    {
+        if (!\is_string($value) || $value === '') {
+            return null;
+        }
+
+        return $value;
     }
 
     /**
@@ -634,8 +703,8 @@ final class RouterKernel
             routes: $routes,
             autoSlashRedirect: (bool) $opts['autoSlashRedirect'],
             exposeUrlServices: (bool) $opts['exposeUrlServices'],
-            signKey: $opts['signKey'],
-            signedDefaultTtl: $opts['signedDefaultTtl'],
+            signKey: $this->normalizeSignKey($opts['signKey'] ?? null),
+            signedDefaultTtl: $this->normalizeSignedDefaultTtl($opts['signedDefaultTtl'] ?? null),
         );
         Router::setInstance($registrar);
         ($this->register)($registrar);
@@ -656,7 +725,7 @@ final class RouterKernel
         $this->log->info('[router] route table ready', [
             'count' => \count($compiled),
             'matcher' => $this->matcher::class,
-            'cache' => \method_exists($this->matcher, 'enableCache'),
+            'cache' => $this->routeCache !== null,
             'mode' => 'compiled',
         ]);
     }

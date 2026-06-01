@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Request\Core;
 
-use Infocyph\Webrick\Request\Request;
 use InvalidArgumentException;
 
 final class Uri implements \Stringable
 {
+    /**
+     * @var array<string, string>
+     */
     private static array $asciiCache = [];
 
     private string $fragment;
@@ -133,14 +135,14 @@ final class Uri implements \Stringable
      * if configured, and returns a Uri object that reflects the best available
      * information about the client.
      *
-     * @param array $srv The server parameters, typically from $_SERVER.
+     * @param array<string, mixed> $srv The server parameters, typically from $_SERVER.
      * @return self A new Uri object.
      */
     public static function fromServerParams(array $srv): self
     {
-        $scheme = self::detectScheme($srv);          // 'http' | 'https'
-        [$host, $port] = self::detectHostPort($srv); // honors proxy flags
-        $uri = self::detectRequestUri($srv);
+        $scheme = UriServerParams::detectScheme($srv);          // 'http' | 'https'
+        [$host, $port] = UriServerParams::detectHostPort($srv); // honors proxy flags
+        $uri = UriServerParams::detectRequestUri($srv);
 
         return new self(self::buildFullUrl($scheme, $host, $port, $uri));
     }
@@ -166,6 +168,11 @@ final class Uri implements \Stringable
 
         // Manual split is ~2× faster than parse_str() + ksort() for hot paths
         $pairs = preg_split('/[&;]+/', $qs, -1, PREG_SPLIT_NO_EMPTY);
+        if ($pairs === false) {
+            return '';
+        }
+
+        /** @var array<string, list<string>> $bucket */
         $bucket = [];
 
         foreach ($pairs as $p) {
@@ -463,121 +470,6 @@ final class Uri implements \Stringable
     }
 
     /**
-     * Returns [host, port|null] parsed from Forwarded or X-Forwarded-Host
-     * headers. If no headers are present, returns null.
-     *
-     * @see https://tools.ietf.org/html/rfc7239#section-5.3
-     * @see https://tools.ietf.org/html/rfc7239#section-5.5
-     * @see https://tools.ietf.org/html/rfc7239#section-5.5.2
-     */
-    private static function detectForwardedHost(array $s): ?array
-    {
-        // Forwarded: by=...;for=...;host=example.com:8443;proto=https
-        if ((Request::getProxyHeaderFlags() & Request::HEADER_FORWARDED) !== 0) {
-            if (!empty($s['HTTP_FORWARDED'])) {
-                $first = explode(',', (string) $s['HTTP_FORWARDED'])[0];
-                if (preg_match('/host=(?:"([^"]+)"|([^;,\s]+))/i', $first, $m)) {
-                    $hp = $m[1] !== '' ? $m[1] : trim($m[2]);
-
-                    return self::splitHostPort($hp);
-                }
-            }
-        }
-
-        // X-Forwarded-Host: a.example, b.example
-        if ((Request::getProxyHeaderFlags() & Request::HEADER_X_FORWARDED_HOST) !== 0) {
-            if (!empty($s['HTTP_X_FORWARDED_HOST'])) {
-                $first = trim(explode(',', (string) $s['HTTP_X_FORWARDED_HOST'])[0]);
-
-                return self::splitHostPort($first);
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * Detects the host and port from server parameters, considering proxy headers if configured.
-     *
-     * The detection follows this order of precedence:
-     * 1. RFC 7239 Forwarded header (host parameter)
-     * 2. X-Forwarded-Host header
-     * 3. Direct socket view (HTTP_HOST or SERVER_NAME and SERVER_PORT)
-     *
-     * If the port is not specified in the host headers, it may be supplemented
-     * by the X-Forwarded-Port header if allowed by proxy header flags.
-     *
-     * @param array $s The server parameters, typically from $_SERVER.
-     * @return array An array containing the detected host and port (host, port|null).
-     */
-    private static function detectHostPort(array $s): array
-    {
-        // 1) RFC 7239 Forwarded: host="example.com:8443"
-        if ($fp = self::detectForwardedHost($s)) {
-            [$h, $p] = $fp;
-
-            // Complement with X-Forwarded-Port if allowed and not present
-            if ($p === null && (Request::getProxyHeaderFlags() & Request::HEADER_X_FORWARDED_PORT) !== 0) {
-                if (!empty($s['HTTP_X_FORWARDED_PORT'])) {
-                    $first = (int) trim(explode(',', (string) $s['HTTP_X_FORWARDED_PORT'])[0]);
-                    if ($first > 0 && $first <= 65535) {
-                        $p = $first;
-                    }
-                }
-            }
-
-            return [$h, $p];
-        }
-
-        // 2) Direct socket view
-        $rawHost = $s['HTTP_HOST'] ?? $s['SERVER_NAME'] ?? 'localhost';
-        [$host, $port] = self::splitHostPort($rawHost);
-
-        if ($port === null && !empty($s['SERVER_PORT'])) {
-            $port = (int) $s['SERVER_PORT'];
-        }
-
-        return [$host, $port];
-    }
-
-    /**
-     * Retrieves the request URI from the given server parameters.
-     *
-     * Returns the value of the 'REQUEST_URI' key in the given server parameters, or
-     * a single forward slash character ('/') if the key is not present.
-     *
-     * @param array $s The server parameters.
-     * @return string The request URI.
-     */
-    private static function detectRequestUri(array $s): string
-    {
-        return $s['REQUEST_URI'] ?? '/';
-    }
-
-    /**
-     * Detects the scheme (http or https) from server parameters, considering proxy headers if configured.
-     *
-     * The detection follows this order of precedence:
-     * 1. RFC 7239 Forwarded header (proto parameter)
-     * 2. X-Forwarded-Proto header
-     * 3. Direct socket view (HTTPS, REQUEST_SCHEME, HTTP_FRONT_END_HTTPS, SERVER_PORT)
-     *
-     * @param array $s The server parameters, typically from $_SERVER.
-     * @return string The detected scheme, either 'http' or 'https'.
-     */
-    private static function detectScheme(array $s): string
-    {
-        if ($p = self::protoFromForwarded($s)) {
-            return $p;
-        }
-        if ($p = self::protoFromXForwarded($s)) {
-            return $p;
-        }
-
-        return self::protoFromServer($s);
-    }
-
-    /**
      * Returns the default port number for the given scheme.
      *
      * @param string $scheme The scheme to get the default port for.
@@ -586,133 +478,6 @@ final class Uri implements \Stringable
     private static function getDefaultPortForScheme(string $scheme): ?int
     {
         return $scheme === 'https' ? 443 : ($scheme === 'http' ? 80 : null);
-    }
-
-    /**
-     * Normalizes a port number string to an integer.
-     *
-     * @param string $p the port number string
-     * @return int|null the normalized port number, or null if invalid
-     *
-     * The port number is only considered valid if it is a positive integer
-     * between 1 and 65535, inclusive.
-     */
-    private static function normPort(string $p): ?int
-    {
-        $i = (int) $p;
-
-        return ($i > 0 && $i <= 65535) ? $i : null;
-    }
-
-    /**
-     * Detects the protocol (http or https) from the Forwarded header.
-     *
-     * If the Forwarded header is present and has a "proto" parameter,
-     * returns the protocol. Otherwise, returns null.
-     *
-     * @param array $s The server parameters, typically from $_SERVER.
-     * @return string|null The protocol (http or https) or null if not present.
-     */
-    private static function protoFromForwarded(array $s): ?string
-    {
-        if ((Request::getProxyHeaderFlags() & Request::HEADER_FORWARDED) === 0) {
-            return null;
-        }
-        $line = (string) ($s['HTTP_FORWARDED'] ?? '');
-        if ($line === '') {
-            return null;
-        }
-        $first = explode(',', $line)[0];
-        if (preg_match('/proto="?([a-z]+)"?/i', $first, $m)) {
-            $p = strtolower($m[1]);
-
-            return ($p === 'https' || $p === 'http') ? $p : null;
-        }
-
-        return null;
-    }
-
-    /**
-     * Detects the protocol from the server parameters.
-     * The detection follows this order of precedence:
-     * 1. $_SERVER['HTTPS'] (on/off)
-     * 2. $_SERVER['REQUEST_SCHEME'] (https/http)
-     * 3. $_SERVER['HTTP_FRONT_END_HTTPS'] (on/off)
-     * 4. $_SERVER['SERVER_PORT'] (443 implies https)
-     *
-     * @param array $s The server parameters, typically from $_SERVER.
-     * @return string The detected protocol, either 'http' or 'https'.
-     */
-    private static function protoFromServer(array $s): string
-    {
-        $https
-            = (!empty($s['HTTPS']) && strtolower((string) $s['HTTPS']) === 'on')
-            || (strtolower($s['REQUEST_SCHEME'] ?? '') === 'https')
-            || (strtolower($s['HTTP_FRONT_END_HTTPS'] ?? '') === 'on')
-            || ((int) ($s['SERVER_PORT'] ?? 0) === 443);
-
-        return $https ? 'https' : 'http';
-    }
-
-    /**
-     * Detects the protocol from the X-Forwarded-Proto header.
-     * Returns one of 'http', 'https' or null.
-     *
-     * @param array $s The server parameters, typically from $_SERVER.
-     * @return string|null The detected protocol, or null if not present.
-     */
-    private static function protoFromXForwarded(array $s): ?string
-    {
-        if ((Request::getProxyHeaderFlags() & Request::HEADER_X_FORWARDED_PROTO) === 0) {
-            return null;
-        }
-        $first = strtolower(trim(explode(',', (string) ($s['HTTP_X_FORWARDED_PROTO'] ?? ''))[0]));
-
-        return $first === 'https' ? 'https' : ($first === 'http' ? 'http' : null);
-    }
-
-    /**
-     * Splits a host string into host and port components.
-     *
-     * Given a hostname (or IP address) optionally followed by a colon and a port number,
-     * returns an array with two elements: the hostname (or IP address) and the port number.
-     *
-     * Examples:
-     *   - "[::1]"    => ["[::1]", null]
-     *   - "[::1]:8443" => ["[::1]", 8443]
-     *   - "example.com" => ["example.com", null]
-     *   - "example.com:8443" => ["example.com", 8443]
-     *   - "example.com:foo" => ["example.com:foo", null]
-     */
-    private static function splitHostPort(string $v): array
-    {
-        $v = trim($v);
-        if ($v === '') {
-            return ['', null];
-        }
-
-        // 1) Bracketed IPv6: "[::1]" or "[::1]:8443"
-        if ($v[0] === '[') {
-            if (preg_match('/^\[(?<host>[^\]]+)\](?::(?<port>\d{1,5}))?$/', $v, $m)) {
-                $host = '[' . $m['host'] . ']';
-                $port = isset($m['port']) ? self::normPort($m['port']) : null;
-
-                return [$host, $port];
-            }
-
-            // malformed → keep as host (don’t invent a port)
-            return [$v, null];
-        }
-
-        // 2) Non-IPv6 (no brackets). Treat as "host[:port]" only when there is exactly one colon and a numeric port.
-        if (preg_match('/^(?<host>[^:]+):(?<port>\d{1,5})$/', $v, $m)) {
-            $port = self::normPort($m['port']);
-
-            return [$m['host'], $port];
-        }
-
-        // Multiple colons (unbracketed IPv6) or no port suffix → host only.
-        return [$v, null];
     }
 
     /**
@@ -749,10 +514,16 @@ final class Uri implements \Stringable
                 throw new InvalidArgumentException("Invalid host: {$host}");
             }
 
-            return self::$asciiCache[$host] = strtolower($ascii);
+            $asciiLower = strtolower($ascii);
+            self::$asciiCache[$host] = $asciiLower;
+
+            return $asciiLower;
         }
 
-        return self::$asciiCache[$host] = strtolower($host); // intl not loaded
+        $hostLower = strtolower($host);
+        self::$asciiCache[$host] = $hostLower;
+
+        return $hostLower; // intl not loaded
     }
 
     /**
@@ -795,9 +566,9 @@ final class Uri implements \Stringable
     {
         do {
             $old = $path;
-            $path = preg_replace('#(/\.?/)#', '/', (string) $path);        // "/./" or "//"
-            $path = preg_replace('#/(?!\.\.)[^/]+/\.\./#', '/', (string) $path); // "x/../"
-            $path = preg_replace('#^/\.\.(?=/|$)#', '/', (string) $path);  // leading "/../"
+            $path = preg_replace('#(/\.?/)#', '/', $path) ?? $old;        // "/./" or "//"
+            $path = preg_replace('#/(?!\.\.)[^/]+/\.\./#', '/', $path) ?? $old; // "x/../"
+            $path = preg_replace('#^/\.\.(?=/|$)#', '/', $path) ?? $old;  // leading "/../"
         } while ($path !== $old);
 
         return $path === '' ? '/' : $path;

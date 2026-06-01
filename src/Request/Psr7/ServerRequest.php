@@ -38,6 +38,7 @@ class ServerRequest extends Message
 
     private bool $checkEnv = false;
 
+    /** @var array<string, mixed> */
     private array $cookie;
 
     /* runtime caches */
@@ -47,8 +48,10 @@ class ServerRequest extends Message
 
     private ?UploadedFileCollection $filesColl = null;
 
+    /** @var array<string, UploadedFile|array<mixed>>|null */
     private ?array $filesHydrated = null;
 
+    /** @var array<string, mixed> */
     private array $filesSpec;
 
     private ?RequestHeaders $hdrFacade = null;
@@ -59,6 +62,7 @@ class ServerRequest extends Message
 
     private ?Collection $postCol = null;
 
+    /** @var array<string, mixed> */
     private array $query;
 
     private ?Collection $queryCol = null;
@@ -70,6 +74,7 @@ class ServerRequest extends Message
     private Uri $uri;
 
     /* variable-order map */
+    /** @var array<string, mixed>|null */
     private ?array $varMap = null;
 
     private ?Collection $xmlCol = null;
@@ -83,12 +88,12 @@ class ServerRequest extends Message
      *
      * @param string $method The HTTP method (e.g. GET, POST, etc.)
      * @param Uri|string $uri The URI object or a string that can be parsed into a URI object.
-     * @param array $server Server parameters (e.g. $_SERVER)
-     * @param array $headers Headers (e.g. $_SERVER['HTTP_*'])
+     * @param array<string, mixed> $server Server parameters (e.g. $_SERVER)
+     * @param array<string, string|list<string>> $headers Headers (e.g. $_SERVER['HTTP_*'])
      * @param Stream $body The request body as a Stream object.
      * @param string $httpVer The HTTP protocol version (e.g. "1.1")
-     * @param null|array|object $parsed The parsed request body (e.g. JSON, XML, etc.)
-     * @param array $files The $_FILES superglobal array.
+     * @param array<string, mixed>|object|null $parsed The parsed request body (e.g. JSON, XML, etc.)
+     * @param array<string, mixed> $files The $_FILES superglobal array.
      * @param string|null $requestTarget The request target (e.g. "index.php").
      */
     public function __construct(
@@ -102,15 +107,15 @@ class ServerRequest extends Message
         array $files = [],
         private ?string $requestTarget = null,
     ) {
-        parent::__construct($headers, $body, $httpVer);
+        parent::__construct(ServerRequestHeaderNormalizer::normalize($headers), $body, $httpVer);
 
         $this->method = HttpMethodEnum::normalize($method);
         $this->uri = $uri instanceof Uri ? $uri : new Uri($uri);
-        $this->filesSpec = $files ?: $_FILES;
+        $this->filesSpec = $files !== [] ? $files : self::mixedMap($_FILES);
 
         /* copies of super-globals */
-        $this->cookie = $_COOKIE;
-        $this->query = $_GET;
+        $this->cookie = self::mixedMap($_COOKIE);
+        $this->query = self::mixedMap($_GET);
 
         /* Host header fallback */
         if (!$this->hasHeader('Host') && $this->uri->getHost() !== '') {
@@ -131,7 +136,7 @@ class ServerRequest extends Message
      */
     public function __get(string $key): mixed
     {
-        if (array_key_exists($key, $this->varMap)) {
+        if (\array_key_exists($key, $this->varMap ?? [])) {
             return $this->varMap[$key];
         }
         if ($this->checkEnv && ($e = getenv($key)) !== false) {
@@ -168,26 +173,26 @@ class ServerRequest extends Message
     /**
      * Create a new ServerRequest object from $_SERVER superglobal.
      *
-     * @return static A new ServerRequest object.
+     * @return self A new ServerRequest object.
      */
-    public static function createFromGlobals(): static
+    public static function createFromGlobals(): self
     {
-        $srv = $_SERVER;
+        $srv = self::serverMap($_SERVER);
         $uri = Uri::fromServerParams($srv);
         $body = self::openInputStream();
         $httpVer = self::detectHttpVersion($srv);
         $headers = RequestHeaders::extractFromServer($srv);
 
         // build request (headers re-imported once below)
-        $req = new static(
-            HttpMethodEnum::normalize((string) ($srv['REQUEST_METHOD'] ?? HttpMethodEnum::GET->value)),
+        $req = new self(
+            HttpMethodEnum::normalize(self::serverString($srv, 'REQUEST_METHOD', HttpMethodEnum::GET->value)),
             $uri,
             $srv,
             $headers,
             $body,
             $httpVer,
-            $_POST,
-            self::normaliseFiles($_FILES),
+            self::mixedMap($_POST),
+            UploadedFilesNormalizer::normalise(self::mixedMap($_FILES)),
         );
 
         $req = self::importHeadersOnce($req);
@@ -259,13 +264,15 @@ class ServerRequest extends Message
      * Otherwise, returns the uploaded file associated with the given key.
      *
      * @param string|null $key Key of the uploaded file to retrieve, or null to get all uploaded files.
-     * @return UploadedFile|array|null UploadedFile instance if found, null otherwise, or an associative array of all uploaded files if `$key` is null.
+     * @return UploadedFile|array<mixed>|null UploadedFile instance if found, null otherwise, or all uploaded files if `$key` is null.
      */
     public function file(?string $key = null): UploadedFile|array|null
     {
         $coll = $this->files();
 
-        return $key === null ? $coll->all() : $coll->get($key);
+        $result = $key === null ? $coll->all() : $coll->get($key);
+
+        return \is_array($result) || $result instanceof UploadedFile ? $result : null;
     }
 
     /**
@@ -295,7 +302,7 @@ class ServerRequest extends Message
     /**
      * Retrieves the attributes associated with the request.
      *
-     * @return array A key-value map of attributes
+     * @return array<string, mixed> A key-value map of attributes
      */
     public function getAttributes(): array
     {
@@ -308,7 +315,7 @@ class ServerRequest extends Message
      * Returns cookies sent in the request.
      * The data IS NOT filtered in any way.
      *
-     * @return array Cookies as an associative array.
+     * @return array<string, mixed> Cookies as an associative array.
      */
     public function getCookieParams(): array
     {
@@ -362,6 +369,7 @@ class ServerRequest extends Message
      *
      * @return array|null|object The parsed body of the request
      */
+    /** @return array<mixed>|object|null */
     public function getParsedBody(): array|object|null
     {
         return $this->parsed;
@@ -373,7 +381,7 @@ class ServerRequest extends Message
      * This method returns the query string parameters as an associative array.
      * The array keys are the parameter names, and the array values are the parameter values.
      *
-     * @return array The query string parameters as an associative array.
+     * @return array<string, mixed> The query string parameters as an associative array.
      */
     public function getQueryParams(): array
     {
@@ -406,7 +414,7 @@ class ServerRequest extends Message
      *
      * If the instance does not wrap a specific request instance, this method MUST return an empty array.
      *
-     * @return array A copy of the $_SERVER values.
+     * @return array<string, mixed> A copy of the $_SERVER values.
      *
      * @see https://www.php.net/manual/en/reserved.variables.server.php
      */
@@ -425,7 +433,7 @@ class ServerRequest extends Message
      * This method is immutable, meaning it will always return the same
      * array of uploaded files.
      *
-     * @return array<string, UploadedFile> An array of uploaded files.
+     * @return array<string, UploadedFile|array<mixed>> An array of uploaded files.
      */
     public function getUploadedFiles(): array
     {
@@ -433,7 +441,7 @@ class ServerRequest extends Message
             return $this->filesHydrated;
         }
 
-        return $this->filesHydrated = self::normaliseFiles($this->filesSpec);
+        return $this->filesHydrated = UploadedFilesNormalizer::normalise($this->filesSpec);
     }
 
     /**
@@ -485,7 +493,7 @@ class ServerRequest extends Message
         $hdr = $this->server('HTTP_X_REQUESTED_WITH')
             ?: $this->getHeaderLine('X-Requested-With');
 
-        return $hdr !== null && strcasecmp((string) $hdr, 'xmlhttprequest') === 0;
+        return \is_string($hdr) && strcasecmp($hdr, 'xmlhttprequest') === 0;
     }
 
     /**
@@ -533,7 +541,8 @@ class ServerRequest extends Message
                     'SimpleXMLElement',
                     LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING,
                 ) ?: null;
-                $arr = $xml ? json_decode(json_encode($xml), true) : [];
+                $encoded = $xml ? json_encode($xml) : false;
+                $arr = \is_string($encoded) ? json_decode($encoded, true) : [];
                 $this->xmlCol = new Collection((array) $arr);
             } else {
                 $this->xmlCol = new Collection([]);
@@ -637,7 +646,7 @@ class ServerRequest extends Message
      * immutability of the message, and MUST return an instance that has the
      * updated cookies.
      *
-     * @param array $cookies The cookies as an associative array.
+     * @param array<string, mixed> $cookies The cookies as an associative array.
      */
     public function withCookieParams(array $cookies): static
     {
@@ -682,16 +691,13 @@ class ServerRequest extends Message
     /**
      * Return an instance with the specified parsed body.
      *
-     * @param object|array|null $data Parsed body data to replace the internal value
+     * @param object|array<string, mixed>|null $data Parsed body data to replace the internal value
      * @return static A new instance with the specified parsed body
      *
      * @throws InvalidArgumentException if the parsed body is invalid
      */
     public function withParsedBody(object|array|null $data): static
     {
-        if ($data !== null && !is_array($data) && !is_object($data)) {
-            throw new InvalidArgumentException('Parsed body must be array|object|null');
-        }
         $cl = clone $this;
         $cl->parsed = $data;
         $cl->postCol = null;
@@ -712,7 +718,7 @@ class ServerRequest extends Message
      * immutability of the message, and MUST return an instance that has the
      * updated query string.
      *
-     * @param array $query The query string as an associative array.
+     * @param array<string, mixed> $query The query string as an associative array.
      */
     public function withQueryParams(array $query): static
     {
@@ -750,7 +756,7 @@ class ServerRequest extends Message
      *
      * Does not mutate the current instance.
      *
-     * @param array $uploadedFiles $_FILES-style specification array.
+     * @param array<string, mixed> $uploadedFiles $_FILES-style specification array.
      */
     public function withUploadedFiles(array $uploadedFiles): static
     {
@@ -796,8 +802,8 @@ class ServerRequest extends Message
         parse_str($uri->getQuery(), $qs);
 
         return $req
-            ->withQueryParams($qs)
-            ->withCookieParams($_COOKIE);
+            ->withQueryParams(self::mixedMap($qs))
+            ->withCookieParams(self::mixedMap($_COOKIE));
     }
 
     /**
@@ -812,12 +818,12 @@ class ServerRequest extends Message
      * Otherwise, it returns the version part of the SERVER_PROTOCOL key,
      * which is the substring starting from the 5th character of the key value.
      *
-     * @param array $srv The server parameters, typically from $_SERVER.
+     * @param array<string, mixed> $srv The server parameters, typically from $_SERVER.
      * @return string The detected HTTP protocol version.
      */
     private static function detectHttpVersion(array $srv): string
     {
-        $proto = (string) ($srv['SERVER_PROTOCOL'] ?? '');
+        $proto = self::serverString($srv, 'SERVER_PROTOCOL');
 
         return str_starts_with($proto, 'HTTP/') ? substr($proto, 5) : '1.1';
     }
@@ -855,48 +861,24 @@ class ServerRequest extends Message
             && str_contains(strtolower($req->getHeaderLine('Content-Type')), MediaTypeEnum::FORM_URLENCODED->value)
         ) {
             parse_str((string) $body, $form);
-            $req = $req->withParsedBody($form);
+            $req = $req->withParsedBody(self::mixedMap($form));
         }
 
         return $req;
     }
 
     /**
-     * Normalises an array of file specs into an array of UploadedFile objects.
-     *
-     * The input array is expected to have the same structure as $_FILES.
-     *
-     * This function recursively unwinds nested arrays of file specs into an array of UploadedFile objects.
-     * If a part is already an instance of UploadedFile, it is passed through unchanged.
-     * If a part is a nested array, it is recursively unwound.
-     * Otherwise, a new UploadedFile object is created from the part.
-     *
-     * @return array An array of UploadedFile objects, keyed by the name of the file field.
+     * @param array<mixed> $value
+     * @return array<string, mixed>
      */
-    private static function normaliseFiles(array $spec): array
+    private static function mixedMap(array $value): array
     {
-        if ($spec === []) {
-            return [];
-        }
         $out = [];
-        foreach ($spec as $name => $part) {
-            if ($part instanceof UploadedFile) {
-                $out[$name] = $part;
-
+        foreach ($value as $key => $item) {
+            if (!\is_string($key)) {
                 continue;
             }
-            if (is_array($part['tmp_name'])) {                 // nested array (multi upload)
-                $out[$name] = self::unwindNestedFiles($part);
-
-                continue;
-            }
-            $out[$name] = new UploadedFile(
-                $part['tmp_name'],
-                $part['size'] ?? null,
-                $part['error'] ?? 0,
-                $part['name'] ?? null,
-                $part['type'] ?? null,
-            );
+            $out[$key] = $item;
         }
 
         return $out;
@@ -921,30 +903,30 @@ class ServerRequest extends Message
     }
 
     /**
-     * Recursively unwinds an array of file specs into an array of UploadedFile objects.
-     *
-     * The input array is expected to have the same structure as $_FILES.
-     *
-     * @param array $bag An array of file specs, the same structure as $_FILES.
-     * @return array An array of UploadedFile objects.
+     * @param array<mixed> $server
+     * @return array<string, mixed>
      */
-    private static function unwindNestedFiles(array $bag): array
+    private static function serverMap(array $server): array
     {
         $out = [];
-        foreach ($bag['tmp_name'] as $idx => $_) {
-            $spec = [
-                'tmp_name' => $bag['tmp_name'][$idx],
-                'size' => $bag['size'][$idx],
-                'error' => $bag['error'][$idx],
-                'name' => $bag['name'][$idx],
-                'type' => $bag['type'][$idx],
-            ];
-            $out[$idx] = is_array($spec['tmp_name'])
-                ? self::unwindNestedFiles($spec)               // deeper level
-                : new UploadedFile(...$spec);
+        foreach ($server as $key => $value) {
+            if (!\is_string($key)) {
+                continue;
+            }
+            $out[$key] = $value;
         }
 
         return $out;
+    }
+
+    /**
+     * @param array<string, mixed> $server
+     */
+    private static function serverString(array $server, string $key, string $default = ''): string
+    {
+        $value = $server[$key] ?? null;
+
+        return \is_string($value) ? $value : $default;
     }
 
     /**
@@ -965,13 +947,14 @@ class ServerRequest extends Message
         }
 
         /** Cache the resolved order for the lifetime of the PHP process */
+        /** @var list<string>|null $SEQ */
         static $SEQ = null;
         $seq = $SEQ ??= $this->determineVariableOrder();
 
         // Hot-path source table (no ENV yet – handled inline)
         $src = [
             'G' => $this->query,
-            'P' => is_array($this->parsed) ? $this->parsed : [],
+            'P' => \is_array($this->parsed) ? self::mixedMap($this->parsed) : [],
             'C' => $this->cookie,
             'S' => $this->server,
         ];
@@ -979,7 +962,7 @@ class ServerRequest extends Message
         $map = [];
         foreach ($seq as $ch) {
             if ($ch === 'E') {           // defer $_ENV until really requested
-                $map += $_ENV;
+                $map += self::mixedMap($_ENV);
 
                 continue;
             }
@@ -1008,6 +991,9 @@ class ServerRequest extends Message
      * If 'request_order' is not set, defaults to an empty string.
      * If 'request_order' contains any of G, P, C, the corresponding characters are removed from the order.
      * The remaining characters from 'request_order' are inserted at the position of E in the order.
+     */
+    /**
+     * @return list<string>
      */
     private function determineVariableOrder(): array
     {
@@ -1085,7 +1071,11 @@ class ServerRequest extends Message
 
         // 2) Form parameter `_method` is gated + only for POST form submissions
         if (self::$methodParamOverride && $this->isFormPost()) {
-            $cand = HttpMethodEnum::normalize((string) $this->post('_method'));
+            $override = $this->post('_method');
+            if (!\is_string($override)) {
+                return null;
+            }
+            $cand = HttpMethodEnum::normalize($override);
 
             return in_array($cand, self::VALID, true) ? $cand : null;
         }

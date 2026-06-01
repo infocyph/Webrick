@@ -70,16 +70,26 @@ final class AttributeRouteLoader
     /**
      * Build per-route options array for Registrar::add().
      *
-     * @return array{name?:string,as?:string,middleware:array,attributes:array}
+     * @param list<class-string|object> $methodMw
+     * @return array{
+     *   as?:non-empty-string,
+     *   middleware:list<class-string|object>,
+     *   attributes:array{produces?:Produces,cors?:Cors}
+     * }
      */
     private static function buildOptions(Route $rAttr, array $methodMw, ?Produces $prod, ?Cors $cors): array
     {
+        $attributes = [];
+        if ($prod instanceof Produces) {
+            $attributes['produces'] = $prod;
+        }
+        if ($cors instanceof Cors) {
+            $attributes['cors'] = $cors;
+        }
+
         $opts = [
             'middleware' => $methodMw,
-            'attributes' => array_filter([
-                'produces' => $prod,
-                'cors' => $cors,
-            ]),
+            'attributes' => $attributes,
         ];
 
         if ($rAttr->name !== null && $rAttr->name !== '') {
@@ -112,40 +122,22 @@ final class AttributeRouteLoader
 
             /** @var SplFileInfo $f */
             foreach ($it as $f) {
-                // ① quick rejects
-                if ($f->getExtension() !== 'php') {
-                    continue;
-                }
-                $path = $f->getPathname();
-
-                // ② skip vendor trees aggressively (sane default)
-                //    matches ".../vendor/..." on any platform
-                if (preg_match('~(^|[/\\\\])vendor([/\\\\]|$)~', $path) === 1) {
+                if (self::shouldSkipFile($f, $filter)) {
                     continue;
                 }
 
-                // ③ user-provided filter (e.g., only *Controller.php)
-                if ($filter && !$filter($f)) {
-                    continue;
-                }
-
-                // ④ derive FQCN from PSR-4 root
                 $fqcn = self::fqcnFromFile($nsPrefix, $dir, $f);
-                if ($fqcn === null) {
-                    continue;
-                }
-
-                // ⑤ try Composer autoload first; if it fails, require the file
                 self::loadClassIfNeeded($f, $fqcn);
-                if (!self::shouldLoadClass($fqcn)) {
+                $resolvedClass = self::resolveConcreteClass($fqcn);
+                if ($resolvedClass === null) {
                     continue;
                 }
 
-                $rc = new ReflectionClass($fqcn);
+                $rc = new ReflectionClass($resolvedClass);
 
                 // include classes with class-level OR method-level #[Route] attributes
                 if (self::hasRouteRelevantAttributes($rc) || self::hasMethodLevelRoutes($rc)) {
-                    $out[] = $fqcn;
+                    $out[] = $resolvedClass;
                 }
             }
         }
@@ -156,6 +148,15 @@ final class AttributeRouteLoader
         return $out;
     }
 
+    /**
+     * @param list<string> $methods
+     * @param array{0:class-string,1:non-empty-string} $handler
+     * @param array{
+     *   as?:non-empty-string,
+     *   middleware:list<class-string|object>,
+     *   attributes:array{produces?:Produces,cors?:Cors}
+     * } $opts
+     */
     private static function emitRoutes(
         Registrar $r,
         array $methods,
@@ -164,21 +165,17 @@ final class AttributeRouteLoader
         array $opts,
     ): void {
         foreach ($methods as $verb) {
-            $call = strtolower((string) $verb);
+            $call = strtolower($verb);
             if (!method_exists($r, $call)) {
-                continue; // skip unknown helpers
+                continue;
             }
             $r->{$call}($path, $handler, $opts);
         }
     }
 
-    private static function fqcnFromFile(string $nsPrefix, string $rootDir, SplFileInfo $f): ?string
+    private static function fqcnFromFile(string $nsPrefix, string $rootDir, SplFileInfo $f): string
     {
         $rel = substr($f->getPathname(), strlen($rootDir) + 1);
-        if ($rel === false) {
-            return null;
-        }
-
         $base = str_replace(DIRECTORY_SEPARATOR, '\\', substr($rel, 0, -4));
 
         return rtrim($nsPrefix, '\\') . '\\' . ltrim($base, '\\');
@@ -187,6 +184,7 @@ final class AttributeRouteLoader
     /**
      * Consider a class eligible if ANY public method has a #[Route] attribute.
      */
+    /** @param ReflectionClass<object> $rc */
     private static function hasMethodLevelRoutes(ReflectionClass $rc): bool
     {
         return array_any(
@@ -195,6 +193,7 @@ final class AttributeRouteLoader
         );
     }
 
+    /** @param ReflectionClass<object> $rc */
     private static function hasRouteRelevantAttributes(ReflectionClass $rc): bool
     {
         return
@@ -213,8 +212,8 @@ final class AttributeRouteLoader
         }
     }
 
-    /** @param ReflectionClass|ReflectionMethod $ref */
-    private static function readCors(object $ref): ?Cors
+    /** @param ReflectionClass<object>|ReflectionMethod $ref */
+    private static function readCors(ReflectionClass|ReflectionMethod $ref): ?Cors
     {
         $a = $ref->getAttributes(Cors::class, ReflectionAttribute::IS_INSTANCEOF)[0] ?? null;
 
@@ -223,7 +222,10 @@ final class AttributeRouteLoader
 
     /* ───────────────────────────── Attribute readers ────────────────────────── */
 
-    /** @return array{0:string,1:?string,2:list<class-string|object>,3:string} */
+    /**
+     * @param ReflectionClass<object> $rc
+     * @return array{0:string,1:?string,2:list<class-string|object>,3:string}
+     */
     private static function readGroup(ReflectionClass $rc): array
     {
         $a = $rc->getAttributes(Group::class, ReflectionAttribute::IS_INSTANCEOF)[0] ?? null;
@@ -236,8 +238,11 @@ final class AttributeRouteLoader
         return [$g->prefix ?: '', $g->domain, $g->middleware, $g->name ?: ''];
     }
 
-    /** @param ReflectionClass|ReflectionMethod $ref @return list<class-string|object> */
-    private static function readMiddlewares(object $ref): array
+    /**
+     * @param ReflectionClass<object>|ReflectionMethod $ref
+     * @return list<class-string|object>
+     */
+    private static function readMiddlewares(ReflectionClass|ReflectionMethod $ref): array
     {
         $out = [];
         foreach ($ref->getAttributes(Middleware::class, ReflectionAttribute::IS_INSTANCEOF) as $a) {
@@ -249,8 +254,8 @@ final class AttributeRouteLoader
         return $out;
     }
 
-    /** @param ReflectionClass|ReflectionMethod $ref */
-    private static function readProduces(object $ref): ?Produces
+    /** @param ReflectionClass<object>|ReflectionMethod $ref */
+    private static function readProduces(ReflectionClass|ReflectionMethod $ref): ?Produces
     {
         $a = $ref->getAttributes(Produces::class, ReflectionAttribute::IS_INSTANCEOF)[0] ?? null;
 
@@ -259,6 +264,7 @@ final class AttributeRouteLoader
 
     /* ───────────────────────────── Registration ─────────────────────────────── */
 
+    /** @param class-string $fqcn */
     private static function registerClass(Registrar $registrar, string $fqcn): void
     {
         $rc = new ReflectionClass($fqcn);
@@ -273,7 +279,7 @@ final class AttributeRouteLoader
             [
                 'prefix' => $grpPrefix,
                 'domain' => $grpDomain,
-                'middleware' => array_values(array_filter([...$grpMw, ...$classMw])),
+                'middleware' => [...$grpMw, ...$classMw],
                 'name' => $grpName,
             ],
             function (Registrar $r) use ($rc, $fqcn, $classProd, $classCors) {
@@ -282,6 +288,10 @@ final class AttributeRouteLoader
         );
     }
 
+    /**
+     * @param ReflectionClass<object> $rc
+     * @param class-string $fqcn
+     */
     private static function registerPublicMethods(
         Registrar $r,
         ReflectionClass $rc,
@@ -302,8 +312,9 @@ final class AttributeRouteLoader
             foreach ($routeAttrs as $attr) {
                 /** @var Route $rAttr */
                 $rAttr = $attr->newInstance();
-                $methods = array_map(strtoupper(...), (array) $rAttr->method);
+                $methods = array_values(array_map(strtoupper(...), (array) $rAttr->method));
                 $opts = self::buildOptions($rAttr, $methodMw, $methProd, $methCors);
+                /** @var array{0:class-string,1:non-empty-string} $handler */
                 $handler = [$fqcn, $rm->getName()];
 
                 self::emitRoutes($r, $methods, $rAttr->path, $handler, $opts);
@@ -311,13 +322,32 @@ final class AttributeRouteLoader
         }
     }
 
-    private static function shouldLoadClass(string $fqcn): bool
+    /**
+     * @return class-string|null
+     */
+    private static function resolveConcreteClass(string $fqcn): ?string
     {
-        if (!class_exists($fqcn, false)) { // already attempted autoload/include
-            return false;
+        if (!class_exists($fqcn, false)) {
+            return null;
         }
-        $rc = new ReflectionClass($fqcn);
+        /** @var class-string $resolved */
+        $resolved = $fqcn;
+        $rc = new ReflectionClass($resolved);
 
-        return !($rc->isAbstract() || $rc->isInterface());
+        return $rc->isAbstract() || $rc->isInterface() ? null : $resolved;
+    }
+
+    /** @param null|callable(SplFileInfo):bool $filter */
+    private static function shouldSkipFile(SplFileInfo $file, ?callable $filter): bool
+    {
+        if ($file->getExtension() !== 'php') {
+            return true;
+        }
+
+        if (preg_match('~(^|[/\\\\])vendor([/\\\\]|$)~', $file->getPathname()) === 1) {
+            return true;
+        }
+
+        return $filter !== null && !$filter($file);
     }
 }

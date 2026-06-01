@@ -83,7 +83,7 @@ abstract class BaseEmitter implements EmitterInterface
     protected function allowsBodyForCurrentRequest(Response $response): bool
     {
         $code = $response->getStatusCode();
-        $method = HttpMethodEnum::normalize((string) ($this->serverVar('REQUEST_METHOD') ?? HttpMethodEnum::GET->value));
+        $method = HttpMethodEnum::normalize($this->serverString('REQUEST_METHOD', HttpMethodEnum::GET->value));
 
         return !\in_array($code, [StatusEnum::NO_CONTENT->value, StatusEnum::NOT_MODIFIED->value], true)
             && $method !== HttpMethodEnum::HEAD->value;
@@ -152,20 +152,12 @@ abstract class BaseEmitter implements EmitterInterface
         $out = $fn ? $fn() : [];
 
         if ($out instanceof \Generator || is_iterable($out)) {
-            foreach ($out as $chunk) {
-                if ($chunk !== '') {
-                    $this->write($chunk);
-                }
-                $this->flush();
-                if (\function_exists('connection_aborted') && connection_aborted()) {
-                    break;
-                }
-            }
+            $this->emitIterableOutput($out);
 
             return;
         }
 
-        $this->write((string) $out);
+        $this->emitScalarOutput($out);
     }
 
     /**
@@ -178,9 +170,9 @@ abstract class BaseEmitter implements EmitterInterface
     protected function filteredHeaderIterator(Response $response, bool $isHttp2): \Generator
     {
         foreach ($response->getHeaders() as $name => $values) {
-            $lname = strtolower((string) $name);
+            $lname = strtolower($name);
             foreach ($values as $v) {
-                $value = (string) $v;
+                $value = $v;
                 if ($this->shouldSendHeader($lname, $value, $isHttp2)) {
                     yield [$name, $value];
                 }
@@ -248,8 +240,12 @@ abstract class BaseEmitter implements EmitterInterface
             return false;
         }
         $meta = $body->getMetadata();
+        if (!\is_array($meta)) {
+            return false;
+        }
+        $uri = $meta['uri'] ?? null;
 
-        return isset($meta['uri']) && is_string($meta['uri']) && str_starts_with($meta['uri'], 'php://temp');
+        return \is_string($uri) && str_starts_with($uri, 'php://temp');
     }
 
     /**
@@ -344,15 +340,20 @@ abstract class BaseEmitter implements EmitterInterface
      */
     protected function serverProtocol(): string
     {
-        return (string) ($_SERVER['SERVER_PROTOCOL'] ?? 'HTTP/1.1');
+        return $this->serverString('SERVER_PROTOCOL', 'HTTP/1.1');
+    }
+
+    protected function serverString(string $name, string $default = ''): string
+    {
+        $value = $this->serverVar($name);
+
+        return \is_string($value) ? $value : $default;
     }
 
     /**
      * Retrieves a value from the $_SERVER superglobal.
      *
-     * If `$name` is `null`, returns the entire $_SERVER array.
-     *
-     * @param string|null $name The key to retrieve from $_SERVER.
+     * @param string $name The key to retrieve from $_SERVER.
      * @return mixed The value associated with the key or the entire $_SERVER array if `$name` is `null`.
      */
     protected function serverVar(string $name): mixed
@@ -386,9 +387,11 @@ abstract class BaseEmitter implements EmitterInterface
         if (\in_array($response->getStatusCode(), [StatusEnum::NO_CONTENT->value, StatusEnum::NOT_MODIFIED->value], true)) {
             return false;
         }
-        $method = HttpMethodEnum::normalize(
-            (string) ($request?->getMethod() ?? ($this->serverVar('REQUEST_METHOD') ?? HttpMethodEnum::GET->value)),
-        );
+        $methodFromRequest = $request?->getMethod();
+        if (!\is_string($methodFromRequest) || $methodFromRequest === '') {
+            $methodFromRequest = $this->serverString('REQUEST_METHOD', HttpMethodEnum::GET->value);
+        }
+        $method = HttpMethodEnum::normalize($methodFromRequest);
 
         return $method !== HttpMethodEnum::HEAD->value;
     }
@@ -452,5 +455,36 @@ abstract class BaseEmitter implements EmitterInterface
     protected function write(string $chunk): void
     {
         file_put_contents('php://output', $chunk, FILE_APPEND);
+    }
+
+    /**
+     * @param iterable<mixed> $out
+     */
+    private function emitIterableOutput(iterable $out): void
+    {
+        foreach ($out as $chunk) {
+            $this->emitScalarOutput($chunk);
+            $this->flush();
+            if (\function_exists('connection_aborted') && connection_aborted()) {
+                break;
+            }
+        }
+    }
+
+    private function emitScalarOutput(mixed $out): void
+    {
+        if (\is_string($out)) {
+            if ($out !== '') {
+                $this->write($out);
+            }
+
+            return;
+        }
+        if (\is_scalar($out)) {
+            $asString = (string) $out;
+            if ($asString !== '') {
+                $this->write($asString);
+            }
+        }
     }
 }

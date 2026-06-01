@@ -133,8 +133,10 @@ final readonly class RangeResponder
         $length = $range->length();
         if ($source instanceof Stream) {
             $source->seek($range->start);
-        } else {
+        } elseif (is_resource($source)) {
             fseek($source, $range->start);
+        } else {
+            throw new \RuntimeException('Range source must be a Stream or seekable resource.');
         }
         $headers += [
             'Content-Range' => $range->contentRange(),
@@ -181,7 +183,7 @@ final readonly class RangeResponder
     {
         return $src instanceof Stream
             ? $src->isSeekable()
-            : (is_resource($src) && (stream_get_meta_data($src)['seekable'] ?? false));
+            : (is_resource($src) && stream_get_meta_data($src)['seekable']);
     }
 
     /* ─────────────────────────── internals ───────────────────────────── */

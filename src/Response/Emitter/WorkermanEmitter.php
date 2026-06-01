@@ -22,13 +22,17 @@ final class WorkermanEmitter implements EmitterInterface
      */
     public function emit(Response $response, ?Request $request = null): void
     {
-        $wmResp = $request?->getAttribute('workerman.response');
-        if ($wmResp && method_exists($wmResp, 'withStatus') && $this->emitViaNativeResponse($wmResp, $response, $request)) {
+        if ($request === null) {
+            throw new \RuntimeException('WorkermanEmitter requires a Request instance.');
+        }
+
+        $wmResp = $request->getAttribute('workerman.response');
+        if (is_object($wmResp) && method_exists($wmResp, 'withStatus') && $this->emitViaNativeResponse($wmResp, $response, $request)) {
             return;
         }
 
-        $conn = $request?->getAttribute('workerman.connection');
-        if ($conn && method_exists($conn, 'send') && $this->emitViaConnection($conn, $response, $request)) {
+        $conn = $request->getAttribute('workerman.connection');
+        if (is_object($conn) && method_exists($conn, 'send') && $this->emitViaConnection($conn, $response, $request)) {
             return;
         }
 
@@ -37,10 +41,14 @@ final class WorkermanEmitter implements EmitterInterface
         );
     }
 
-    private function emitViaConnection(mixed $conn, Response $response, ?Request $request): bool
+    private function emitViaConnection(object $conn, Response $response, ?Request $request): bool
     {
+        if (!is_callable([$conn, 'send'])) {
+            return false;
+        }
+
         $bodyStr = $this->shouldEmitEmptyBody($response, $request) ? '' : (string) $response->getBody();
-        $headers = $this->withContentLength($response->getHeaders(), $bodyStr);
+        $headers = $this->withContentLength($this->normalizeHeaders($response->getHeaders()), $bodyStr);
 
         $status = $response->getStatusCode() . ' ' . $response->getReasonPhrase();
         $buf = "HTTP/{$response->getProtocolVersion()} {$status}\r\n";
@@ -51,24 +59,77 @@ final class WorkermanEmitter implements EmitterInterface
         }
         $buf .= "\r\n" . $bodyStr;
 
-        $conn->send($buf);
+        call_user_func([$conn, 'send'], $buf);
 
         return true;
     }
 
-    private function emitViaNativeResponse(mixed $wmResp, Response $response, ?Request $request): bool
+    private function emitViaNativeResponse(object $wmResp, Response $response, ?Request $request): bool
     {
-        $wmResp = $wmResp->withStatus($response->getStatusCode());
-        foreach ($response->getHeaders() as $n => $vals) {
+        if (!is_callable([$wmResp, 'withStatus']) || !is_callable([$wmResp, 'end'])) {
+            return false;
+        }
+
+        $next = call_user_func([$wmResp, 'withStatus'], $response->getStatusCode());
+        if (!is_object($next)) {
+            return false;
+        }
+        $wmResp = $next;
+        foreach ($this->normalizeHeaders($response->getHeaders()) as $n => $vals) {
             foreach ($vals as $v) {
-                $wmResp = $wmResp->withHeader($n, (string) $v);
+                if (!is_callable([$wmResp, 'withHeader'])) {
+                    return false;
+                }
+
+                $next = call_user_func([$wmResp, 'withHeader'], $n, $v);
+                if (!is_object($next)) {
+                    return false;
+                }
+                $wmResp = $next;
             }
         }
 
         $body = $this->shouldEmitEmptyBody($response, $request) ? '' : (string) $response->getBody();
-        $wmResp->end($body);
+        new \ReflectionMethod($wmResp, 'end')->invoke($wmResp, $body);
 
         return true;
+    }
+
+    /**
+     * @param array<mixed> $headers
+     * @return array<string, array<int, string>>
+     */
+    private function normalizeHeaders(array $headers): array
+    {
+        $out = [];
+        foreach ($headers as $name => $values) {
+            if (!is_string($name)) {
+                continue;
+            }
+
+            if (is_string($values)) {
+                $out[$name] = [$values];
+
+                continue;
+            }
+
+            if (!is_array($values)) {
+                continue;
+            }
+
+            $normalizedValues = [];
+            foreach ($values as $value) {
+                if (!is_string($value)) {
+                    continue;
+                }
+
+                $normalizedValues[] = $value;
+            }
+
+            $out[$name] = $normalizedValues;
+        }
+
+        return $out;
     }
 
     private function shouldEmitEmptyBody(Response $response, ?Request $request): bool

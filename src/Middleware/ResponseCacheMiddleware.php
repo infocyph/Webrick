@@ -54,7 +54,7 @@ final readonly class ResponseCacheMiddleware
         private bool $respectResponseCacheControl = true,
         private bool $avoidSetCookie = true,
     ) {
-        $this->store = $store ?? Cache::local('http');
+        $this->store = $store ?? $this->buildDefaultStore();
     }
 
     /**
@@ -124,6 +124,16 @@ final readonly class ResponseCacheMiddleware
         }
 
         return $pairs;
+    }
+
+    private function buildDefaultStore(): CacheInterface
+    {
+        // Windows reports directory modes differently than POSIX; prefer memory cache without APCu.
+        if (\PHP_OS_FAMILY === 'Windows' && !\extension_loaded('apcu')) {
+            return Cache::memory('http');
+        }
+
+        return Cache::local('http');
     }
 
     /**
@@ -307,7 +317,7 @@ final readonly class ResponseCacheMiddleware
     }
 
     /**
-     * @return array<string,array<int,string>>
+     * @return array<string, list<string>>
      */
     private function normalizeHeaders(mixed $value): array
     {
@@ -345,7 +355,7 @@ final readonly class ResponseCacheMiddleware
     /**
      * @return array{
      *   s:int,
-     *   h:array<string,array<int,string>>,
+     *   h:array<string,list<string>>,
      *   b:string,
      *   pv:string,
      *   rp:string

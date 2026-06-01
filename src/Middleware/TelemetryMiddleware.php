@@ -8,6 +8,7 @@ use Closure;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Support\OpenTelemetryHandler;
+use Infocyph\Webrick\Support\TelemetrySupport;
 use Infocyph\Webrick\Support\TraceContext;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
@@ -149,13 +150,15 @@ final readonly class TelemetryMiddleware
      */
     private function addCorrelationHeaders(Response $resp, array $trace, ?string $requestId): Response
     {
-        if ($this->emitRequestId && $requestId !== null && !$resp->hasHeader($this->requestIdHeader)) {
-            $resp = $resp->withHeader($this->requestIdHeader, $requestId);
-        }
-
-        if ($this->emitTraceIdHeader && !$resp->hasHeader($this->traceIdHeader)) {
-            $resp = $resp->withHeader($this->traceIdHeader, $trace['trace_id']);
-        }
+        $resp = TelemetrySupport::addCorrelationHeaders(
+            $resp,
+            $this->emitRequestId,
+            $this->requestIdHeader,
+            $requestId,
+            $this->emitTraceIdHeader,
+            $this->traceIdHeader,
+            $trace['trace_id'],
+        );
 
         if ($this->emitTraceparentHeader && !$resp->hasHeader('traceparent')) {
             $resp = $resp->withHeader(
@@ -179,16 +182,7 @@ final readonly class TelemetryMiddleware
      */
     private function addTimingHeaders(Response $resp, float $durMs): Response
     {
-        if ($this->addXResponseTime) {
-            $resp = $resp->withHeader('X-Response-Time', sprintf('%.1fms', $durMs));
-        }
-
-        if ($this->addServerTiming) {
-            $metric = sprintf('app;dur=%.1f', $durMs);
-            $resp = $resp->withSmartHeader('Server-Timing', $metric);
-        }
-
-        return $resp;
+        return TelemetrySupport::addTimingHeaders($resp, $this->addXResponseTime, $this->addServerTiming, $durMs);
     }
 
     /**
@@ -196,31 +190,14 @@ final readonly class TelemetryMiddleware
      */
     private function applyNelHeaders(Response $resp): Response
     {
-        if (!($this->nelGroup && $this->nelEndpoint)) {
-            return $resp;
-        }
-
-        if (!$resp->hasHeader('NEL')) {
-            $nel = [
-                'group' => $this->nelGroup,
-                'max_age' => $this->nelTtlSeconds,
-                'include_subdomains' => $this->nelIncludeSubdomains,
-                'success_fraction' => $this->nelCollectSuccesses ? 1.0 : 0.0,
-                'failure_fraction' => 1.0,
-            ];
-            $resp = $resp->withHeader('NEL', json_encode($nel, JSON_THROW_ON_ERROR));
-        }
-
-        if (!$resp->hasHeader('Report-To')) {
-            $reportTo = [
-                'group' => $this->nelGroup,
-                'max_age' => $this->nelTtlSeconds,
-                'endpoints' => [['url' => $this->nelEndpoint]],
-            ];
-            $resp = $resp->withHeader('Report-To', json_encode($reportTo, JSON_THROW_ON_ERROR));
-        }
-
-        return $resp;
+        return TelemetrySupport::applyNelHeaders(
+            $resp,
+            $this->nelGroup,
+            $this->nelEndpoint,
+            $this->nelTtlSeconds,
+            $this->nelIncludeSubdomains,
+            $this->nelCollectSuccesses,
+        );
     }
 
     /**
@@ -256,20 +233,12 @@ final readonly class TelemetryMiddleware
      */
     private function deriveRequestId(Request $req): ?string
     {
-        if (!$this->emitRequestId) {
-            return null;
-        }
-
-        $incoming = trim($req->getHeaderLine($this->requestIdHeader));
-        if ($incoming !== '' && $this->respectExistingRequestId) {
-            return $incoming;
-        }
-
-        try {
-            return bin2hex(random_bytes(16)); // 32 hex chars
-        } catch (\Throwable) {
-            return str_replace('.', '', uniqid('', true));
-        }
+        return TelemetrySupport::deriveRequestId(
+            $req,
+            $this->emitRequestId,
+            $this->requestIdHeader,
+            $this->respectExistingRequestId,
+        );
     }
 
     /**
@@ -348,32 +317,15 @@ final readonly class TelemetryMiddleware
         string $traceId,
         ?string $requestId,
     ): void {
-        $clientIp = $req->getAttribute('client_ip');
-        $remoteAddr = $req->getServerParams()['REMOTE_ADDR'] ?? null;
-        $ip = \is_string($clientIp)
-            ? $clientIp
-            : (\is_string($remoteAddr) ? $remoteAddr : '-');
-        $fromProxy = $req->getAttribute('is_trusted_proxy') === true ? 'proxy' : 'direct';
-        $method = $req->getMethod();
-        $path = $req->getUri()->getPath() ?: '/';
-        $code = $resp->getStatusCode();
-        $lenHeader = $resp->getHeaderLine('Content-Length');
-        $len = $lenHeader !== '' ? $lenHeader : ($resp->getBody()->getSize() ?? '-');
-
-        $this->log->info(
-            sprintf(
-                '%s (%s) "%s %s" %d %s %.1fms%s trace=%s span=%s [w3c]',
-                $ip,
-                $fromProxy,
-                $method,
-                $path,
-                $code,
-                (string) $len,
-                $durMs,
-                $requestId ? " id={$requestId}" : '',
-                $traceId,
-                $spanId,
-            ),
+        TelemetrySupport::logAccess(
+            $this->log,
+            $req,
+            $resp,
+            $durMs,
+            $spanId,
+            $traceId,
+            $requestId,
+            'w3c',
         );
     }
 

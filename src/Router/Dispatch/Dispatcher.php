@@ -25,6 +25,7 @@ use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 use InvalidArgumentException;
+use JsonSerializable;
 
 /**
  * Dispatches a CompiledRoute and composes the middleware pipeline.
@@ -131,6 +132,15 @@ final class Dispatcher
         return null;
     }
 
+    private function assertMiddlewareResponse(mixed $result, string $source): Response
+    {
+        if (!$result instanceof Response) {
+            throw new InvalidArgumentException("Middleware {$source} must return Response.");
+        }
+
+        return $result;
+    }
+
     /**
      * @param array<string,mixed> $vars
      */
@@ -141,11 +151,9 @@ final class Dispatcher
             'route.params' => $vars,
             'params' => $vars,
         ];
-        if (\method_exists($route, 'getCorsPolicy')) {
-            $corsPolicy = $route->getCorsPolicy();
-            if ($corsPolicy) {
-                $attrs['cors_policy'] = $corsPolicy;
-            }
+        $corsPolicy = $route->getCorsPolicy();
+        if ($corsPolicy) {
+            $attrs['cors_policy'] = $corsPolicy;
         }
 
         return $request->withAttributes($attrs);
@@ -157,22 +165,19 @@ final class Dispatcher
     private function buildFinalHandler(CompiledRoute $route): Closure
     {
         return function (Request $req) use ($route): Response {
-            $routeVars = $req->getAttribute('route_params', []);
-            if (!\is_array($routeVars)) {
-                $routeVars = [];
-            }
+            $routeVars = $this->normalizeCallArgs($req->getAttribute('route_params', []));
 
             $callArgs = $routeVars + ['request' => $req];
             $result = $this->invokeRouteHandler($route->getHandler(), $callArgs);
 
-            return $result instanceof Response ? $result : Response::json($result);
+            return $result instanceof Response ? $result : Response::json($this->normalizeJsonPayload($result));
         };
     }
 
     private function buildInvokableFromEntry(mixed $mw): callable
     {
-        if ($this->isDirectMiddlewareCallable($mw)) {
-            return $mw(...);
+        if (\is_callable($mw) && !\is_string($mw)) {
+            return \Closure::fromCallable($mw);
         }
 
         if (\is_string($mw) && $this->looksLikeAliasString($mw)) {
@@ -217,6 +222,9 @@ final class Dispatcher
     /**
      * Check whether a class can be safely constructed with zero arguments.
      */
+    /**
+     * @param class-string $class
+     */
     private function canInstantiateWithoutArguments(string $class): bool
     {
         $ref = new \ReflectionClass($class);
@@ -226,6 +234,24 @@ final class Dispatcher
         }
 
         return array_all($ctor->getParameters(), fn($param) => $param->isOptional());
+    }
+
+    /**
+     * @return array{0:class-string,1:string}|null
+     */
+    private function classMethodArrayHandler(mixed $handler): ?array
+    {
+        if (
+            !\is_array($handler)
+            || \count($handler) !== 2
+            || !\is_string($handler[0])
+            || !\is_string($handler[1])
+            || !\class_exists($handler[0])
+        ) {
+            return null;
+        }
+
+        return [$handler[0], $handler[1]];
     }
 
     /* ---------------------------------------------------------------------
@@ -314,15 +340,17 @@ final class Dispatcher
     {
         try {
             $resolver = $this->invoker->getContainer()->getCurrentResolver();
-            $settled = match (true) {
-                $resolver instanceof InjectedCall => $resolver->classSettler($class, '__webrick_noop__', true),
-                $resolver instanceof GenericCall => $resolver->classSettler($class, '__webrick_noop__'),
-                default => throw new InvalidArgumentException(
+            if ($resolver instanceof InjectedCall) {
+                $settled = $resolver->classSettler($class, '__webrick_noop__', true);
+            } elseif ($resolver instanceof GenericCall) {
+                $settled = $resolver->classSettler($class, '__webrick_noop__');
+            } else {
+                throw new InvalidArgumentException(
                     \sprintf('Unsupported InterMix resolver type: %s', $resolver::class),
-                ),
-            };
+                );
+            }
 
-            $instance = \is_array($settled) ? ($settled['instance'] ?? null) : null;
+            $instance = $settled['instance'] ?? null;
             if (\is_object($instance)) {
                 return $instance;
             }
@@ -349,8 +377,9 @@ final class Dispatcher
      */
     private function invokeRouteHandler(mixed $handler, array $callArgs): mixed
     {
-        if ($this->isClassMethodArrayHandler($handler)) {
-            return $this->invoker->make($handler[0], method: $handler[1], methodArgs: $callArgs);
+        $classMethod = $this->classMethodArrayHandler($handler);
+        if ($classMethod !== null) {
+            return $this->invoker->make($classMethod[0], method: $classMethod[1], methodArgs: $callArgs);
         }
 
         if (\is_string($handler)) {
@@ -360,15 +389,11 @@ final class Dispatcher
             }
         }
 
-        return $this->invoker->invoke($handler, $callArgs);
-    }
+        if (!\is_callable($handler)) {
+            throw new InvalidArgumentException('Route handler is not callable.');
+        }
 
-    private function isClassMethodArrayHandler(mixed $handler): bool
-    {
-        return \is_array($handler)
-            && \count($handler) === 2
-            && \is_string($handler[0])
-            && \is_string($handler[1]);
+        return $this->invoker->invoke($handler, $callArgs);
     }
 
     private function isDirectMiddlewareCallable(mixed $mw): bool
@@ -394,13 +419,58 @@ final class Dispatcher
             return false;
         } // it's a class-string, not an alias
 
-        $name = \strtolower(\trim(\explode(':', $s, 2)[0] ?? ''));
+        $name = \strtolower(\trim(\explode(':', $s, 2)[0]));
 
         return $name !== '' && MiddlewareAliases::has($name);
     }
 
     /**
-     * @return array{0:string,1:string}|null
+     * @return array<string,mixed>
+     */
+    private function normalizeCallArgs(mixed $value): array
+    {
+        if (!\is_array($value)) {
+            return [];
+        }
+
+        $normalized = [];
+        foreach ($value as $k => $v) {
+            if (\is_string($k)) {
+                $normalized[$k] = $v;
+            }
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * @return array<string,mixed>|bool|float|int|JsonSerializable|string|null
+     */
+    private function normalizeJsonPayload(mixed $value): array|bool|float|int|JsonSerializable|string|null
+    {
+        if (\is_array($value)) {
+            return $this->normalizeCallArgs($value);
+        }
+
+        if ($value instanceof JsonSerializable) {
+            return $value;
+        }
+
+        if (
+            $value === null
+            || \is_bool($value)
+            || \is_float($value)
+            || \is_int($value)
+            || \is_string($value)
+        ) {
+            return $value;
+        }
+
+        return \get_debug_type($value);
+    }
+
+    /**
+     * @return array{0:class-string,1:string}|null
      */
     private function parseClassMethodStringHandler(string $handler): ?array
     {
@@ -486,8 +556,6 @@ final class Dispatcher
      *
      * @param string $alias Alias specification
      * @return callable(Request, Closure(Request):Response):Response Middleware wrapper callable
-     *
-     * @throws InvalidArgumentException When resolved middleware is not invokable
      */
     private function wrapAliasStringAsMiddleware(string $alias): callable
     {
@@ -507,7 +575,7 @@ final class Dispatcher
 
                 $callable = $instance(...);
 
-                return $callable($req, $next);
+                return $this->assertMiddlewareResponse($callable($req, $next), $resolved);
             }
 
             if (\is_object($resolved)) {
@@ -517,12 +585,12 @@ final class Dispatcher
                     );
                 }
 
-                return $resolved($req, $next);
+                return $this->assertMiddlewareResponse($resolved($req, $next), $resolved::class);
             }
 
             // Callable (closure or function) — invoke directly.
             if (\is_callable($resolved)) {
-                return $resolved($req, $next);
+                return $this->assertMiddlewareResponse($resolved($req, $next), $alias);
             }
 
             throw new InvalidArgumentException("Failed to resolve middleware alias '{$alias}'.");
@@ -543,7 +611,7 @@ final class Dispatcher
 
             $callable = $instance(...);
 
-            return $callable($req, $next);
+            return $this->assertMiddlewareResponse($callable($req, $next), $mw);
         };
     }
 
@@ -555,6 +623,6 @@ final class Dispatcher
             );
         }
 
-        return static fn(Request $req, Closure $next) => $mw($req, $next);
+        return fn(Request $req, Closure $next): Response => $this->assertMiddlewareResponse($mw($req, $next), $mw::class);
     }
 }

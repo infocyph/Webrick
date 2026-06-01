@@ -20,10 +20,12 @@ use Infocyph\Webrick\Router\Definition\Attribute\Cors;
 /**
  * Declarative route definition produced by the Registrar.
  *
- * @psalm-type MiddlewareList = list<class-string|object>
+ * @psalm-type MiddlewareList = list<string|object>
  */
 final class Route implements RouteInterface
 {
+    use RouteCoreAccessors;
+
     /**
      * One-time, stable fingerprint for the handler, used for fast lookups.
      */
@@ -32,7 +34,7 @@ final class Route implements RouteInterface
     /** @var Cors|null The route-specific CORS policy. */
     private ?Cors $corsPolicy = null;
 
-    /** @var array{0:object|class-string,1:string}|string|callable */
+    /** @var array{0:object|string,1:string}|string|callable */
     private mixed $handler;
 
     /**
@@ -47,7 +49,7 @@ final class Route implements RouteInterface
      *
      * @param string $method HTTP method (e.g., GET, POST).
      * @param string $path Path template (may contain parameters like "{id}").
-     * @param array{0:object|class-string,1:string}|string|callable $handler Route handler specification.
+     * @param array{0:object|string,1:string}|string|callable $handler Route handler specification.
      * @param string|null $domain Optional host/domain constraint.
      * @param string|null $name Optional route name (for URL generation).
      */
@@ -73,7 +75,7 @@ final class Route implements RouteInterface
      * - Invokable object → "<Class>::__invoke"
      * - Closure → "closure@<uniqueId>"
      *
-     * @param array{0:object|class-string,1:string}|string|callable $h Handler specification.
+     * @param array{0:object|string,1:string}|string|callable $h Handler specification.
      * @return string Stable identifier for hashing and lookups.
      */
     public static function fingerprint(array|string|callable $h): string
@@ -103,75 +105,6 @@ final class Route implements RouteInterface
     public function getCorsPolicy(): ?Cors
     {
         return $this->corsPolicy;
-    }
-
-    /**
-     * Get the domain constraint, if any.
-     */
-    public function getDomain(): ?string
-    {
-        return $this->domain;
-    }
-
-    /**
-     * Get the handler specification.
-     */
-    public function getHandler(): array|string|callable
-    {
-        return $this->handler;
-    }
-
-    /**
-     * Fast, stable identifier for the handler (used by collections).
-     */
-    public function getHandlerId(): string
-    {
-        return $this->handlerId;
-    }
-
-    /* ---------------------------------------------------------- getters */
-    /**
-     * Get the HTTP method.
-     */
-    public function getMethod(): string
-    {
-        return $this->method;
-    }
-
-    /**
-     * Alias of getMiddlewares().
-     *
-     * @return list<class-string|object>
-     */
-    public function getMiddleware(): array
-    {
-        return $this->middleware;
-    }
-
-    /**
-     * Get the middleware stack.
-     *
-     * @return list<class-string|object>
-     */
-    public function getMiddlewares(): array
-    {
-        return $this->middleware;
-    }
-
-    /**
-     * Get the route name, if any.
-     */
-    public function getName(): ?string
-    {
-        return $this->name;
-    }
-
-    /**
-     * Get the route path template.
-     */
-    public function getPath(): string
-    {
-        return $this->path;
     }
 
     /**
@@ -210,7 +143,7 @@ final class Route implements RouteInterface
      *
      * No-op if the provided list is empty.
      *
-     * @param list<class-string|object> $middleware
+     * @param list<string|object> $middleware
      */
     public function withMiddleware(array $middleware): self
     {

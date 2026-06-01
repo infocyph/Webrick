@@ -25,16 +25,9 @@ use Traversable;
 final readonly class CompiledCollection implements IteratorAggregate
 {
     /**
-     * Ordered list of compiled routes.
-     *
-     * This property is readonly and populated via constructor promotion.
-     *
-     * @var list<CompiledRoute>
+     * @param list<CompiledRoute> $routes Ordered CompiledRoute list.
      */
-    public function __construct(
-        /** @param list<CompiledRoute> $routes Ordered CompiledRoute list. */
-        private array $routes,
-    ) {}
+    public function __construct(private array $routes) {}
 
     /**
      * Return the underlying ordered list of CompiledRoute objects.
@@ -59,6 +52,9 @@ final readonly class CompiledCollection implements IteratorAggregate
      */
     public function getIterator(): Traversable
     {
-        return new \ArrayIterator($this->routes);
+        /** @var \ArrayIterator<int, CompiledRoute> $iterator */
+        $iterator = new \ArrayIterator($this->routes);
+
+        return $iterator;
     }
 }

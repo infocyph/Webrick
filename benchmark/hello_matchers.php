@@ -126,45 +126,42 @@ $modes = match (true) {
  * }>
  */
 $scenarios = [];
-foreach ($routeSets as $routeSet) {
-    $routes = $routeSet['routes'];
-    $routeCount = \count($routes);
-
-    $scenarios[] = [
-        'key' => $routeSet['key'] . '-static',
-        'route_set' => $routeSet['label'],
+$scenarioTemplates = [
+    [
+        'suffix' => 'static',
         'case' => 'static',
-        'title' => $routeSet['title'] . ' - Static /ping',
+        'title' => 'Static /ping',
         'method' => HttpMethodEnum::GET->value,
         'host' => 'localhost',
         'path' => '/ping',
-        'route_count' => $routeCount,
-        'register' => $routeSet['register'],
-        'routes' => $routes,
         'assertHit' => static fn(array $hit): bool => isset($hit[0])
             && $hit[0] instanceof CompiledRoute
             && $hit[0]->getPath() === '/ping'
             && (($hit[1] ?? []) === []),
-    ];
-
-    $scenarios[] = [
-        'key' => $routeSet['key'] . '-dynamic',
-        'route_set' => $routeSet['label'],
+    ],
+    [
+        'suffix' => 'dynamic',
         'case' => 'dynamic',
-        'title' => $routeSet['title'] . ' - Dynamic /hello/{name}',
+        'title' => 'Dynamic /hello/{name}',
         'method' => HttpMethodEnum::GET->value,
         'host' => 'localhost',
         'path' => '/hello/benchmark',
-        'route_count' => $routeCount,
-        'register' => $routeSet['register'],
-        'routes' => $routes,
         'assertHit' => static fn(array $hit): bool => isset($hit[0])
             && $hit[0] instanceof CompiledRoute
             && \is_array($hit[1] ?? null)
             && isset($hit[1]['name'])
             && $hit[0]->getPath() === '/hello/{name}'
             && $hit[1]['name'] === 'benchmark',
-    ];
+    ],
+];
+
+foreach ($routeSets as $routeSet) {
+    $routes = $routeSet['routes'];
+    $routeCount = \count($routes);
+
+    foreach ($scenarioTemplates as $template) {
+        $scenarios[] = makeScenario($routeSet, $template, $routes, $routeCount);
+    }
 }
 
 $indexRouteSet = $routeSets[0];
@@ -216,11 +213,33 @@ $completedMatcherTasks = 0;
 out("\n");
 progressPercent(0, $totalMatcherTasks);
 
+$matcherSpecs = [
+    [
+        'name' => 'Fused',
+        'mode' => MatcherModeEnum::FUSED->value,
+        'cache_suffix' => '.fused.php',
+        'factory' => FusedMatcher::make(...),
+    ],
+    [
+        'name' => 'Generated',
+        'mode' => MatcherModeEnum::GENERATED->value,
+        'cache_suffix' => '.generated.php',
+        'factory' => GeneratedMatcher::make(...),
+    ],
+    [
+        'name' => 'Sharded',
+        'mode' => MatcherModeEnum::SHARDED->value,
+        'cache_suffix' => '-sharded',
+        'factory' => ShardedMatcher::make(...),
+    ],
+];
+
 foreach ($modes as $modeLabel => $useCache) {
     $cacheRoot = null;
+    $cacheNamespace = null;
     if ($useCache) {
-        $cacheRoot = dirname(__DIR__) . DIRECTORY_SEPARATOR . '.route-cache'
-            . DIRECTORY_SEPARATOR . 'bench-' . getmypid() . '-' . uniqid('', true);
+        $cacheRoot = dirname(__DIR__) . DIRECTORY_SEPARATOR . '.route-cache';
+        $cacheNamespace = 'bench-' . getmypid() . '-' . uniqid('', true);
         if (!is_dir($cacheRoot) && !mkdir($cacheRoot, 0775, true) && !is_dir($cacheRoot)) {
             throw new RuntimeException("Failed to create benchmark cache directory: {$cacheRoot}");
         }
@@ -228,98 +247,21 @@ foreach ($modes as $modeLabel => $useCache) {
     foreach ($scenarios as $scenario) {
         $scenarioRunNo++;
 
-        $runMatcher = static function (string $matcherName, callable $factory) use (
-            &$completedMatcherTasks,
-            $totalMatcherTasks,
-            $iterations,
-            $rounds,
-            $warmup,
-            $scenario,
-        ): array {
-            $result = benchMatcher(
-                $matcherName,
-                $factory,
+        $results = [];
+        foreach ($matcherSpecs as $spec) {
+            $results[] = runScenarioMatcher(
+                $spec,
+                $scenario,
+                $useCache,
+                $cacheRoot,
+                $cacheNamespace,
                 $iterations,
                 $rounds,
                 $warmup,
-                method: $scenario['method'],
-                host: $scenario['host'],
-                path: $scenario['path'],
-                assertHit: $scenario['assertHit'],
+                $completedMatcherTasks,
+                $totalMatcherTasks,
             );
-
-            $completedMatcherTasks++;
-            progressPercent($completedMatcherTasks, $totalMatcherTasks);
-
-            return $result;
-        };
-
-        $results = [];
-        $results[] = $runMatcher(
-            'Fused',
-            static function () use ($scenario, $useCache, $cacheRoot): MatcherInterface {
-                $cachePath = $cacheRoot . DIRECTORY_SEPARATOR . $scenario['key'] . '.fused.php';
-                if ($useCache) {
-                    buildBenchmarkCache(MatcherModeEnum::FUSED->value, $cachePath, $scenario['register']);
-                }
-
-                $m = FusedMatcher::make();
-                if ($useCache) {
-                    $m->enableCache($cachePath);
-                } else {
-                    foreach ($scenario['routes'] as $route) {
-                        $m->add($route);
-                    }
-                }
-                $m->finalize();
-
-                return $m;
-            },
-        );
-
-        $results[] = $runMatcher(
-            'Generated',
-            static function () use ($scenario, $useCache, $cacheRoot): MatcherInterface {
-                $cachePath = $cacheRoot . DIRECTORY_SEPARATOR . $scenario['key'] . '.generated.php';
-                if ($useCache) {
-                    buildBenchmarkCache(MatcherModeEnum::GENERATED->value, $cachePath, $scenario['register']);
-                }
-
-                $m = GeneratedMatcher::make();
-                if ($useCache) {
-                    $m->enableCache($cachePath);
-                } else {
-                    foreach ($scenario['routes'] as $route) {
-                        $m->add($route);
-                    }
-                }
-                $m->finalize();
-
-                return $m;
-            },
-        );
-
-        $results[] = $runMatcher(
-            'Sharded',
-            static function () use ($scenario, $useCache, $cacheRoot): MatcherInterface {
-                $cachePath = $cacheRoot . DIRECTORY_SEPARATOR . $scenario['key'] . '-sharded';
-                if ($useCache) {
-                    buildBenchmarkCache(MatcherModeEnum::SHARDED->value, $cachePath, $scenario['register']);
-                }
-
-                $m = ShardedMatcher::make();
-                if ($useCache) {
-                    $m->enableCache($cachePath);
-                } else {
-                    foreach ($scenario['routes'] as $route) {
-                        $m->add($route);
-                    }
-                }
-                $m->finalize();
-
-                return $m;
-            },
-        );
+        }
 
         /** @var array<string, array{
          *   name:string,
@@ -349,9 +291,6 @@ foreach ($modes as $modeLabel => $useCache) {
         ];
     }
 
-    if ($useCache) {
-        rrmdir($cacheRoot);
-    }
 }
 
 progressPercent($totalMatcherTasks, $totalMatcherTasks, true);
@@ -379,13 +318,155 @@ function progressPercent(int $completed, int $total, bool $forceNewline = false)
         return;
     }
 
-    out("\r[progress] " . $percent . '%' . PHP_EOL);
+    out("\r[progress] " . $percent . '%');
     $lastPercent = $percent;
+
+    if ($forceNewline) {
+        out(PHP_EOL);
+    }
 
     if (\function_exists('ob_get_level') && \ob_get_level() > 0) {
         \ob_flush();
     }
     flush();
+}
+
+/**
+ * @param array{
+ *   key:string,
+ *   label:string,
+ *   title:string,
+ *   register:callable(Registrar):void
+ * } $routeSet
+ * @param array{
+ *   suffix:string,
+ *   case:string,
+ *   title:string,
+ *   method:string,
+ *   host:string,
+ *   path:string,
+ *   assertHit:callable(array{0:CompiledRoute,1:array<string,string>}):bool
+ * } $template
+ * @param list<CompiledRoute> $routes
+ * @return array{
+ *   key:string,
+ *   route_set:string,
+ *   case:string,
+ *   title:string,
+ *   method:string,
+ *   host:string,
+ *   path:string,
+ *   route_count:int,
+ *   register:callable(Registrar):void,
+ *   routes:list<CompiledRoute>,
+ *   assertHit:callable(array{0:CompiledRoute,1:array<string,string>}):bool
+ * }
+ */
+function makeScenario(array $routeSet, array $template, array $routes, int $routeCount): array
+{
+    return [
+        'key' => $routeSet['key'] . '-' . $template['suffix'],
+        'route_set' => $routeSet['label'],
+        'case' => $template['case'],
+        'title' => $routeSet['title'] . ' - ' . $template['title'],
+        'method' => $template['method'],
+        'host' => $template['host'],
+        'path' => $template['path'],
+        'route_count' => $routeCount,
+        'register' => $routeSet['register'],
+        'routes' => $routes,
+        'assertHit' => $template['assertHit'],
+    ];
+}
+
+/**
+ * @param array{
+ *   name:string,
+ *   mode:string,
+ *   cache_suffix:string,
+ *   factory:callable():MatcherInterface
+ * } $spec
+ * @param array{
+ *   key:string,
+ *   route_set:string,
+ *   case:string,
+ *   title:string,
+ *   method:string,
+ *   host:string,
+ *   path:string,
+ *   route_count:int,
+ *   register:callable(Registrar):void,
+ *   routes:list<CompiledRoute>,
+ *   assertHit:callable(array{0:CompiledRoute,1:array<string,string>}):bool
+ * } $scenario
+ * @return array{
+ *   name:string,
+ *   best_ops_s:float,
+ *   avg_ops_s:float,
+ *   best_ns_op:float,
+ *   avg_ns_op:float
+ * }
+ */
+function runScenarioMatcher(
+    array $spec,
+    array $scenario,
+    bool $useCache,
+    ?string $cacheRoot,
+    ?string $cacheNamespace,
+    int $iterations,
+    int $rounds,
+    int $warmup,
+    int &$completedMatcherTasks,
+    int $totalMatcherTasks,
+): array {
+    $cachePath = '';
+    if ($useCache) {
+        $cachePath = $cacheRoot
+            . DIRECTORY_SEPARATOR
+            . $cacheNamespace
+            . '-'
+            . $scenario['key']
+            . $spec['cache_suffix'];
+    }
+
+    try {
+        $result = benchMatcher(
+            $spec['name'],
+            static function () use ($scenario, $useCache, $cachePath, $spec): MatcherInterface {
+                if ($useCache) {
+                    buildBenchmarkCache($spec['mode'], $cachePath, $scenario['register']);
+                }
+
+                $matcher = ($spec['factory'])();
+                if ($useCache) {
+                    $matcher->enableCache($cachePath);
+                } else {
+                    foreach ($scenario['routes'] as $route) {
+                        $matcher->add($route);
+                    }
+                }
+                $matcher->finalize();
+
+                return $matcher;
+            },
+            $iterations,
+            $rounds,
+            $warmup,
+            method: $scenario['method'],
+            host: $scenario['host'],
+            path: $scenario['path'],
+            assertHit: $scenario['assertHit'],
+        );
+    } finally {
+        if ($useCache) {
+            clearBenchmarkCache($spec['mode'], $cachePath);
+        }
+    }
+
+    $completedMatcherTasks++;
+    progressPercent($completedMatcherTasks, $totalMatcherTasks);
+
+    return $result;
 }
 
 /**
@@ -506,6 +587,22 @@ function buildBenchmarkCache(string $matcher, string $cachePath, callable $regis
     ]);
 }
 
+function clearBenchmarkCache(string $matcher, string $cachePath): void
+{
+    RouteCache::clear([
+        'matcher' => $matcher,
+        'cache' => $cachePath,
+        'aggressive' => true,
+    ]);
+
+    if ($matcher === MatcherModeEnum::SHARDED->value && is_dir($cachePath)) {
+        $entries = scandir($cachePath);
+        if (is_array($entries) && $entries === ['.', '..']) {
+            rmdir($cachePath);
+        }
+    }
+}
+
 /**
  * Compile routes from a registration callback.
  *
@@ -589,36 +686,6 @@ function registerRouteCacheExampleRoutes(Registrar $registrar): void
 
         return $name;
     }, 'hello');
-}
-
-/**
- * Best-effort recursive directory cleanup for temporary benchmark cache.
- */
-function rrmdir(string $dir): void
-{
-    if (!is_dir($dir)) {
-        return;
-    }
-
-    $items = scandir($dir);
-    if (!is_array($items)) {
-        return;
-    }
-
-    foreach ($items as $item) {
-        if ($item === '.' || $item === '..') {
-            continue;
-        }
-        $path = $dir . DIRECTORY_SEPARATOR . $item;
-        if (is_dir($path)) {
-            rrmdir($path);
-
-            continue;
-        }
-        unlink($path);
-    }
-
-    rmdir($dir);
 }
 
 /**

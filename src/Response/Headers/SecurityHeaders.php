@@ -96,8 +96,12 @@ final class SecurityHeaders
         }
 
         // HSTS (non-clobbering)
-        $httpsish = (($_SERVER['HTTPS'] ?? '') === 'on' || ($_SERVER['HTTPS'] ?? '') === '1')
-            || (strtolower($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
+        $https = $_SERVER['HTTPS'] ?? null;
+        $forwardedProto = $_SERVER['HTTP_X_FORWARDED_PROTO'] ?? null;
+        $httpsValue = is_string($https) ? $https : '';
+        $forwardedProtoValue = is_string($forwardedProto) ? strtolower($forwardedProto) : '';
+        $httpsish = ($httpsValue === 'on' || $httpsValue === '1')
+            || ($forwardedProtoValue === 'https');
 
         return $hsts && $httpsish ? self::hsts($r, $includeSubs) : $r;
     }

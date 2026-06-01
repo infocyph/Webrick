@@ -33,7 +33,7 @@ final class SwooleEmitter extends BaseEmitter
     #[\Override]
     protected function finish(): void
     {
-        if ($this->sw && method_exists($this->sw, 'end')) {
+        if ($this->sw) {
             // If chunks were written via ->write(), end with no payload.
             $this->sw->end();
         }

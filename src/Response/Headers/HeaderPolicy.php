@@ -123,7 +123,7 @@ final class HeaderPolicy
         return array_map(static function (string $t): string {
             $parts = array_map(fn($part) => $part === '' ? '' : ucfirst(strtolower($part)), explode('-', $t));
 
-            return implode('-', $parts ?? []);
+            return implode('-', $parts);
         }, $toks);
     }
 }

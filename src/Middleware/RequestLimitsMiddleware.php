@@ -216,30 +216,31 @@ final readonly class RequestLimitsMiddleware
 
     private function rejectForHeaderBytes(Request $req): ?Response
     {
-        if ($this->maxHeaderBytes <= 0) {
-            return null;
-        }
-
-        if ($this->totalHeaderBytes($req) <= $this->maxHeaderBytes) {
-            return null;
-        }
-
-        $resp = Response::plaintext('Request headers too large', StatusEnum::REQUEST_HEADER_FIELDS_TOO_LARGE->value);
-
-        return $this->withConnCloseIfHttp1($req, $resp);
+        return $this->rejectIfLimitExceeded(
+            $req,
+            $this->maxHeaderBytes,
+            $this->totalHeaderBytes($req),
+            'Request headers too large',
+        );
     }
 
     private function rejectForHeaderFieldCount(Request $req): ?Response
     {
-        if ($this->maxHeaderCount <= 0) {
+        return $this->rejectIfLimitExceeded(
+            $req,
+            $this->maxHeaderCount,
+            $this->totalHeaderFields($req),
+            'Too many header fields',
+        );
+    }
+
+    private function rejectIfLimitExceeded(Request $req, int $limit, int $current, string $message): ?Response
+    {
+        if ($limit <= 0 || $current <= $limit) {
             return null;
         }
 
-        if ($this->totalHeaderFields($req) <= $this->maxHeaderCount) {
-            return null;
-        }
-
-        $resp = Response::plaintext('Too many header fields', StatusEnum::REQUEST_HEADER_FIELDS_TOO_LARGE->value);
+        $resp = Response::plaintext($message, StatusEnum::REQUEST_HEADER_FIELDS_TOO_LARGE->value);
 
         return $this->withConnCloseIfHttp1($req, $resp);
     }
@@ -273,16 +274,10 @@ final readonly class RequestLimitsMiddleware
     private function totalHeaderBytes(Request $r): int
     {
         $sum = 0;
-        $all = $r->getHeaders(); // supports both map or flat list forms
+        $all = $r->getHeaders();
 
         foreach ($all as $name => $val) {
-            if (\is_int($name)) {
-                // flat list of raw header lines
-                $sum += $this->headerValueLength($val);
-
-                continue;
-            }
-            $values = \is_array($val) ? $val : [$val];
+            $values = $val;
             foreach ($values as $v) {
                 $sum += \strlen($name) + 2 + $this->headerValueLength($v); // "Name: value"
             }
@@ -305,14 +300,7 @@ final readonly class RequestLimitsMiddleware
         $all = $r->getHeaders();
 
         $count = 0;
-        foreach ($all as $name => $val) {
-            if (\is_int($name)) {
-                // flat list (raw lines)
-                $count++;
-
-                continue;
-            }
-            $values = \is_array($val) ? $val : [$val];
+        foreach ($all as $values) {
             $count += \count($values);
         }
 

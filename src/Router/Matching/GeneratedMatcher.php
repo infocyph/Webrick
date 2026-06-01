@@ -20,13 +20,26 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
  * Cache mode loads generated matcher source from a PHP file when present.
  * Cache file generation is explicitly enabled only by route-cache tooling.
  * In-memory mode builds the closure directly during finalize().
+ *
+ * @phpstan-type AliasIndex array<string, array{0:string,1:?string}>
+ * @phpstan-type SegmentLit array{type:'lit',val:string}
+ * @phpstan-type SegmentVar array{type:'var',name:string,regex?:string,call?:callable-string}
+ * @phpstan-type SegmentSpec SegmentLit|SegmentVar
+ * @phpstan-type ParamRef array{0:string,1:int}
+ * @phpstan-type DynamicEntry array{segments:list<SegmentSpec>,params:list<ParamRef>,verbs:array<string,int>}
+ * @phpstan-type DynamicTmp array<int,array<string,DynamicEntry>>
+ * @phpstan-type DynamicBuckets array<int,list<DynamicEntry>>
+ * @phpstan-type HostGen array{static:array<string,array<string,int>>,dynamic:DynamicBuckets}
+ * @phpstan-type HostsGen array<string,HostGen>
  */
 final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
 {
+    use MatcherCacheLifecycleTrait;
+
     /**
      * Route alias index: name => [path, domain|null].
      *
-     * @var array<string,array{0:string,1:?string}>
+     * @var AliasIndex
      */
     private array $alias = [];
 
@@ -107,43 +120,6 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         }
     }
 
-    public function aliasIndex(): array
-    {
-        if ($this->cacheEnabled) {
-            if (!$this->cacheLoaded && \is_file($this->cacheFile)) {
-                $this->loadCacheBlob();
-            }
-        }
-
-        return $this->alias;
-    }
-
-    #[\Override]
-    public function canBootFromCache(): bool
-    {
-        return $this->cacheEnabled && \is_file($this->cacheFile);
-    }
-
-    public function enableCache(string $cacheLocation): self
-    {
-        $this->cacheEnabled = true;
-        $this->cacheFile = $cacheLocation;
-
-        return $this;
-    }
-
-    /**
-     * Explicitly allow cache-file writes from finalize().
-     *
-     * This is intentionally opt-in and should only be used by route-cache tooling.
-     */
-    public function enableCacheWrite(bool $enable = true): self
-    {
-        $this->cacheWriteEnabled = $enable;
-
-        return $this;
-    }
-
     public function finalize(): void
     {
         if ($this->finalized) {
@@ -211,11 +187,11 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
     }
 
     /**
-     * @param array<int,array<string,array{segments:array,params:list<array{0:string,1:int}>,verbs:array<string,int>}>> $dynamicTmp
+     * @param DynamicTmp $dynamicTmp
      */
     private function appendDynamicGenerationRoute(array &$dynamicTmp, CompiledRoute $route, string $verb, int $idx): void
     {
-        $segments = $route->getSegments();
+        $segments = $this->normalizeSegments($route->getSegments());
         $segCount = \count($segments);
         $key = $route->getPath();
 
@@ -323,30 +299,25 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
 
     private function ensureCompiledMatcher(): Closure
     {
-        if ($this->cacheEnabled && !$this->cacheLoaded && \is_file($this->cacheFile)) {
-            $this->loadCacheBlob();
-        }
+        $this->ensureCacheLoaded();
 
         if ($this->compiledFn === null) {
             $this->compiledFn = $this->compileClosureFromCode($this->buildMatcherCode());
-        }
-        if (!$this->compiledFn instanceof Closure) {
-            throw new \RuntimeException('Generated matcher not initialized.');
         }
 
         return $this->compiledFn;
     }
 
     /**
-     * @param array<int,array{type:string,name?:string,val?:string,regex?:string,call?:callable}> $segments
-     * @return list<array{0:string,1:int}>
+     * @param list<SegmentSpec> $segments
+     * @return list<ParamRef>
      */
     private function extractDynamicParams(array $segments): array
     {
         $params = [];
         foreach ($segments as $i => $part) {
-            if (($part['type'] ?? '') === 'var') {
-                $params[] = [(string) $part['name'], $i];
+            if ($part['type'] === 'var') {
+                $params[] = [$part['name'], $i];
             }
         }
 
@@ -354,8 +325,8 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
     }
 
     /**
-     * @param array<int,array<string,array{segments:array,params:list<array{0:string,1:int}>,verbs:array<string,int>}>> $dynamicTmp
-     * @return array<int,list<array{segments:array,params:list<array{0:string,1:int}>,verbs:array<string,int>}>>
+     * @param DynamicTmp $dynamicTmp
+     * @return DynamicBuckets
      */
     private function finalizeDynamicGenerationBuckets(array $dynamicTmp): array
     {
@@ -428,11 +399,52 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
     }
 
     /**
+     * @return list<SegmentSpec>
+     */
+    private function normalizeSegments(mixed $segments): array
+    {
+        if (!\is_array($segments)) {
+            return [];
+        }
+
+        $normalized = [];
+        foreach ($segments as $segment) {
+            if (!\is_array($segment) || !\is_string($segment['type'] ?? null)) {
+                continue;
+            }
+
+            if ($segment['type'] === 'lit' && \is_string($segment['val'] ?? null)) {
+                $normalized[] = ['type' => 'lit', 'val' => $segment['val']];
+
+                continue;
+            }
+
+            if ($segment['type'] !== 'var' || !\is_string($segment['name'] ?? null)) {
+                continue;
+            }
+
+            $entry = ['type' => 'var', 'name' => $segment['name']];
+            if (\is_string($segment['regex'] ?? null)) {
+                $entry['regex'] = $segment['regex'];
+            }
+
+            $call = $segment['call'] ?? null;
+            if (\is_string($call) && \is_callable($call)) {
+                $entry['call'] = $call;
+            }
+
+            $normalized[] = $entry;
+        }
+
+        return $normalized;
+    }
+
+    /**
      * Build generation data structures:
      *  - route expressions map
      *  - host buckets containing static and dynamic maps.
      *
-     * @return array{0:array<int,string>,1:array<string,array{static:array,dynamic:array}>}
+     * @return array{0:array<int,string>,1:HostsGen}
      */
     private function prepareGenerationData(): array
     {
@@ -451,7 +463,7 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
      * @param list<CompiledRoute> $routes
      * @param array<int,string> $routeExprs
      * @param array<int,int> $routeIds
-     * @return array{static:array<string,array<string,int>>,dynamic:array<int,list<array{segments:array,params:array,verbs:array<string,int>}>>}
+     * @return HostGen
      */
     private function prepareHostGenerationData(array $routes, array &$routeExprs, array &$routeIds): array
     {
@@ -478,7 +490,7 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
     }
 
     /**
-     * @param array{segments:array,params:list<array{0:string,1:int}>,verbs:array<string,int>} $entry
+     * @param DynamicEntry $entry
      */
     private function renderDynamicEntry(array $entry, string $indent): string
     {
@@ -489,32 +501,11 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
     }
 
     /**
-     * @param array<int,array{type:string,name?:string,val?:string,regex?:string,call?:callable}> $segments
+     * @param list<SegmentSpec> $segments
      */
     private function renderDynamicEntryCondition(array $segments, string $indent): string
     {
-        $checks = [];
-        foreach ($segments as $i => $part) {
-            if (($part['type'] ?? '') === 'lit') {
-                $checks[] = "(\$segments[{$i}] ?? null) === " . \var_export($part['val'], true);
-
-                continue;
-            }
-
-            if (isset($part['regex'])) {
-                $checks[] = '\\preg_match(' . \var_export($part['regex'], true) . ", (string)(\$segments[{$i}] ?? '')) === 1";
-
-                continue;
-            }
-
-            if (isset($part['call'])) {
-                $checks[] = '\\call_user_func(' . \var_export($part['call'], true) . ", (string)(\$segments[{$i}] ?? ''))";
-            }
-        }
-
-        return $checks === []
-            ? 'true'
-            : \implode(" &&\n" . $indent . '            ', $checks);
+        return GeneratedMatcherRenderSupport::renderDynamicEntryCondition($segments, $indent);
     }
 
     /**
@@ -537,7 +528,7 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
     /**
      * Render dynamic segment-count switches for a host bucket.
      *
-     * @param array<int,list<array{segments:array,params:array,verbs:array<string,int>}>> $dynamic
+     * @param DynamicBuckets $dynamic
      */
     private function renderDynamicSwitch(array $dynamic, string $indent): string
     {
@@ -562,7 +553,7 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
     /**
      * Render host-level switch block.
      *
-     * @param array<string,array{static:array,dynamic:array}> $hosts
+     * @param HostsGen $hosts
      */
     private function renderHostSwitch(array $hosts): string
     {
@@ -610,31 +601,7 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
      */
     private function renderVerbDispatch(array $verbs, string $indent): string
     {
-        $firstIdx = (int) \reset($verbs);
-        $code = $indent . "switch (\$verb) {\n";
-        foreach ($verbs as $method => $idx) {
-            $code .= $indent . '    case ' . \var_export($method, true) . ":\n";
-            $code .= $indent . "        return ['hit' => \$routes[{$idx}], 'params' => \$params, 'allowed' => []];\n";
-        }
-
-        if (!isset($verbs[HttpMethodEnum::HEAD->value]) && isset($verbs[HttpMethodEnum::GET->value])) {
-            $getIdx = $verbs[HttpMethodEnum::GET->value];
-            $code .= $indent . '    case ' . \var_export(HttpMethodEnum::HEAD->value, true) . ":\n";
-            $code .= $indent . "        return ['hit' => \$routes[{$getIdx}], 'params' => \$params, 'allowed' => []];\n";
-        }
-
-        $code .= $indent . '    case ' . \var_export(HttpMethodEnum::OPTIONS->value, true) . ":\n";
-        $code .= $indent . "        return ['hit' => \$routes[{$firstIdx}], 'params' => \$params, 'allowed' => []];\n";
-        $code .= $indent . "    default:\n";
-        foreach ($verbs as $method => $_idx) {
-            $code .= $indent . '        $allowed[' . \var_export($method, true) . "] = true;\n";
-        }
-        if (isset($verbs[HttpMethodEnum::GET->value])) {
-            $code .= $indent . '        $allowed[' . \var_export(HttpMethodEnum::HEAD->value, true) . "] = true;\n";
-        }
-        $code .= $indent . "        break;\n";
-
-        return $code . ($indent . "}\n");
+        return GeneratedMatcherRenderSupport::renderVerbDispatch($verbs, $indent);
     }
 
     /**

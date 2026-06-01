@@ -135,7 +135,13 @@ final class MiddlewareAliases
             ? array_map(trim(...), explode(',', $paramStr))
             : [];
 
-        // Call variadic factory and return whatever it produces.
-        return (self::$map[$key])(...$params);
+        $resolved = (self::$map[$key])(...$params);
+        if (\is_string($resolved) || \is_object($resolved) || \is_callable($resolved)) {
+            return $resolved;
+        }
+
+        throw new \UnexpectedValueException(
+            \sprintf('Middleware alias "%s" resolved to unsupported type %s', $key, \get_debug_type($resolved)),
+        );
     }
 }

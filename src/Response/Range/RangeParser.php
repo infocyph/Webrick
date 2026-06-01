@@ -35,6 +35,15 @@ final class RangeParser
      */
     public static function parse(string $raw, int $resourceLen): ?SimpleRange
     {
+        if ($resourceLen < 1) {
+            return null;
+        }
+
+        $raw = trim($raw);
+        if ($raw === '') {
+            return null;
+        }
+
         return SimpleRange::parse($raw, $resourceLen);
     }
 }

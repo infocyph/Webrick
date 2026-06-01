@@ -72,10 +72,11 @@ final readonly class ConditionalValidator
      *
      * If the ETag or Last-Modified were set, adds them to the response.
      *
-     * @return array The metadata headers used to evaluate the preconditions
+     * @return array<string, string> The metadata headers used to evaluate the preconditions
      */
     private function buildEchoHeaders(): array
     {
+        /** @var array<string, string> $h */
         $h = [];
         if ($this->etag) {
             $h['ETag'] = $this->etag;
@@ -91,7 +92,7 @@ final readonly class ConditionalValidator
      * Compares a current ETag against a list of candidate ETags (RFC 9110 § 8.8.3).
      *
      * @param string $current The current ETag to compare against.
-     * @param array|string $candidates The list of candidate ETags to compare with.
+     * @param list<string>|string $candidates The list of candidate ETags to compare with.
      * @param bool $strong Whether to perform a strong comparison (exact match)
      *                     or a weak comparison (ignoring W/ prefix and ignoring case).
      * @return bool True if the current ETag matches one of the candidate ETags, false otherwise.
@@ -101,14 +102,14 @@ final readonly class ConditionalValidator
         if ($candidates === '*') {
             return true;
         }
-        $candidates = (array) $candidates;
-        foreach ($candidates as $cand) {
+        $tokens = is_array($candidates) ? $candidates : [$candidates];
+        foreach ($tokens as $cand) {
             if ($strong) {
                 if ($cand === $current) {
                     return true;
                 }
             } else {
-                if (ltrim((string) $cand, 'W/') === ltrim($current, 'W/')) {
+                if (ltrim($cand, 'W/') === ltrim($current, 'W/')) {
                     return true;               // weak match allowed
                 }
             }
@@ -225,7 +226,7 @@ final readonly class ConditionalValidator
      * If the list is empty, returns null.
      *
      * @param string $list The list of strings to tokenize.
-     * @return array|null The tokenized list of strings, or null if the list is empty.
+     * @return list<string>|null The tokenized list of strings, or null if the list is empty.
      */
     private function tokenize(string $list): ?array
     {

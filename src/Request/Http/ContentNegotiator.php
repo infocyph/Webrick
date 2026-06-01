@@ -14,13 +14,16 @@ namespace Infocyph\Webrick\Request\Http;
  */
 final readonly class ContentNegotiator
 {
-    /** @var string[] quality-sorted by RequestHeaders */
+    /** @var list<string> quality-sorted by RequestHeaders */
     private array $accept;        // Accept
 
+    /** @var list<string> */
     private array $charsets;      // Accept-Charset
 
+    /** @var list<string> */
     private array $encodings;     // Accept-Encoding
 
+    /** @var list<string> */
     private array $languages;     // Accept-Language
 
     /**
@@ -30,11 +33,11 @@ final readonly class ContentNegotiator
      */
     public function __construct(RequestHeaders $hdr)
     {
-        $m = $hdr->accept();          // map<string,string[]>
-        $this->accept = $m['Accept'] ?? ['*/*'];
-        $this->encodings = $m['Accept-Encoding'] ?? [];
-        $this->charsets = $m['Accept-Charset'] ?? [];
-        $this->languages = $m['Accept-Language'] ?? [];
+        $accept = $hdr->accept('Accept');
+        $this->accept = $accept === [] ? ['*/*'] : $accept;
+        $this->encodings = $hdr->accept('Accept-Encoding');
+        $this->charsets = $hdr->accept('Accept-Charset');
+        $this->languages = $hdr->accept('Accept-Language');
     }
 
     /**

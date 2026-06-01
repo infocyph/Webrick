@@ -324,19 +324,22 @@ final class CookieEncryptionMiddleware
     /**
      * Decrypt all cookies with the configured prefix and reassemble chunked values.
      *
-     * @param array<mixed,mixed> $cookies Incoming cookie map.
-     * @return array<mixed,mixed> Cookie map with decrypted values (others pass through).
+     * @param array<string, mixed> $cookies Incoming cookie map.
+     * @return array<string, mixed> Cookie map with decrypted values (others pass through).
      */
     private function decryptAll(array $cookies): array
     {
         $rx = '/^(' . preg_quote($this->cookiePrefix, '/') . '[^.]+)(?:\.p(\d+))?$/';
-        $out = $assemblies = [];
+        /** @var array<string, mixed> $out */
+        $out = [];
+        /** @var array<string, array<int, string>> $assemblies */
+        $assemblies = [];
 
         foreach ($cookies as $name => $val) {
             if (!\is_string($val)) {
                 continue;
             }
-            if (!preg_match($rx, (string) $name, $m)) {
+            if (!preg_match($rx, $name, $m)) {
                 $out[$name] = $val; // not an encrypted cookie
 
                 continue;
@@ -447,9 +450,6 @@ final class CookieEncryptionMiddleware
         $jar = new CookieJar();
 
         foreach ($set as $line) {
-            if (!\is_string($line)) {
-                continue;
-            }
             $parts = $this->parseSetCookie($line);
             if ($parts === null) {
                 // keep verbatim if we can’t parse

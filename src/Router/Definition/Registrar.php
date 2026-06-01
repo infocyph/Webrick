@@ -9,17 +9,43 @@ use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Interfaces\RouteInterface;
 use Infocyph\Webrick\Response\Response;
-use Infocyph\Webrick\Router\Dispatch\MiddlewareAliases;
+use Infocyph\Webrick\Router\Definition\Attribute\Cors;
+use Infocyph\Webrick\Router\Definition\Attribute\Produces;
 use Infocyph\Webrick\Router\Facade\Router;
 use Infocyph\Webrick\Router\Route\Collection;
 use Infocyph\Webrick\Router\Route\CompiledCollection;
 use Infocyph\Webrick\Router\Route\Route;
-use InvalidArgumentException;
 
 /**
  * Registrar
  *
  * Fluent, immutable builder used to declare routes and groups.
+ *
+ * @phpstan-type MiddlewareEntry string|object
+ * @phpstan-type RawMiddlewareEntry string|object
+ * @phpstan-type RawMiddlewareList list<RawMiddlewareEntry>
+ * @phpstan-type MiddlewareList list<MiddlewareEntry>
+ * @phpstan-type HandlerArray array{0:string|object,1:string}
+ * @phpstan-type RouteHandler HandlerArray|string|callable
+ * @phpstan-type RouteAttributes array{produces?:Produces,cors?:Cors}
+ * @phpstan-type RouteOptions array{
+ *   name?:mixed,
+ *   as?:mixed,
+ *   middleware?:mixed,
+ *   aliases?:mixed,
+ *   alias?:mixed,
+ *   attributes?:mixed
+ * }
+ * @phpstan-type AliasSpec array{__alias:true,key:non-empty-string,params:list<string>}
+ * @phpstan-type ResolvedMiddlewareEntry MiddlewareEntry|callable|string|AliasSpec
+ * @phpstan-type ResourceSpecRow array{0:string,1:string,2:string,3:string,4:bool}
+ * @phpstan-type GroupInput array{
+ *   prefix?:mixed,
+ *   domain?:mixed,
+ *   middleware?:mixed,
+ *   name?:mixed,
+ *   as?:mixed
+ * }
  */
 final readonly class Registrar
 {
@@ -49,26 +75,38 @@ final readonly class Registrar
      *  HTTP verb helpers
      * ----------------------------------------------------------------*/
 
+    /**
+     * @param RouteHandler $handler
+     * @param string|RouteOptions|null $nameOrOpts
+     */
     public function delete(
         string $path,
         array|string|callable $handler,
         string|array|null $nameOrOpts = null,
     ): RouteInterface {
-        return $this->add(HttpMethodEnum::DELETE->value, $path, $handler, $nameOrOpts);
+        return $this->verb(HttpMethodEnum::DELETE, $path, $handler, $nameOrOpts);
     }
 
+    /**
+     * @param RouteHandler $handler
+     * @param string|RouteOptions|null $nameOrOpts
+     */
     public function get(
         string $path,
         array|string|callable $handler,
         string|array|null $nameOrOpts = null,
     ): RouteInterface {
-        return $this->add(HttpMethodEnum::GET->value, $path, $handler, $nameOrOpts);
+        return $this->verb(HttpMethodEnum::GET, $path, $handler, $nameOrOpts);
     }
 
     /* -----------------------------------------------------------------
      *  Grouping
      * ----------------------------------------------------------------*/
-
+    /**
+     * @param string|GroupInput|null $prefix
+     * @param string|GroupInput|Closure|null $domain
+     * @param list<mixed>|Closure $middleware
+     */
     public function group(
         array|string|null $prefix = null,
         string|array|Closure|null $domain = null,
@@ -84,11 +122,15 @@ final readonly class Registrar
             $callback,
         );
 
+        $scopeMiddleware = $this->resolveAliasMiddleware(
+            $this->mergeMiddlewareWithAliasOverrides([], $middleware),
+        );
+
         $childScope = $this->scope
-            ->withPrefix((string) $prefix)
-            ->withDomain(is_string($domain) ? $domain : null)
-            ->withMiddleware(is_array($middleware) ? $middleware : [])
-            ->withNamePrefix(is_string($namePrefix) ? $namePrefix : '');
+            ->withPrefix($prefix ?? '')
+            ->withDomain($domain)
+            ->withMiddleware($scopeMiddleware)
+            ->withNamePrefix($namePrefix ?? '');
 
         $child = new self(
             $this->routes,
@@ -102,50 +144,71 @@ final readonly class Registrar
         Router::withScopedInstance($child, $callback);
     }
 
+    /**
+     * @param RouteHandler $handler
+     * @param string|RouteOptions|null $nameOrOpts
+     */
     public function head(
         string $path,
         array|string|callable $handler,
         string|array|null $nameOrOpts = null,
     ): RouteInterface {
-        return $this->add(HttpMethodEnum::HEAD->value, $path, $handler, $nameOrOpts);
+        return $this->verb(HttpMethodEnum::HEAD, $path, $handler, $nameOrOpts);
     }
 
+    /**
+     * @param RouteHandler $handler
+     * @param string|RouteOptions|null $nameOrOpts
+     */
     public function options(
         string $path,
         array|string|callable $handler,
         string|array|null $nameOrOpts = null,
     ): RouteInterface {
-        return $this->add(HttpMethodEnum::OPTIONS->value, $path, $handler, $nameOrOpts);
+        return $this->verb(HttpMethodEnum::OPTIONS, $path, $handler, $nameOrOpts);
     }
 
+    /**
+     * @param RouteHandler $handler
+     * @param string|RouteOptions|null $nameOrOpts
+     */
     public function patch(
         string $path,
         array|string|callable $handler,
         string|array|null $nameOrOpts = null,
     ): RouteInterface {
-        return $this->add(HttpMethodEnum::PATCH->value, $path, $handler, $nameOrOpts);
+        return $this->verb(HttpMethodEnum::PATCH, $path, $handler, $nameOrOpts);
     }
 
+    /**
+     * @param RouteHandler $handler
+     * @param string|RouteOptions|null $nameOrOpts
+     */
     public function post(
         string $path,
         array|string|callable $handler,
         string|array|null $nameOrOpts = null,
     ): RouteInterface {
-        return $this->add(HttpMethodEnum::POST->value, $path, $handler, $nameOrOpts);
+        return $this->verb(HttpMethodEnum::POST, $path, $handler, $nameOrOpts);
     }
 
+    /**
+     * @param RouteHandler $handler
+     * @param string|RouteOptions|null $nameOrOpts
+     */
     public function put(
         string $path,
         array|string|callable $handler,
         string|array|null $nameOrOpts = null,
     ): RouteInterface {
-        return $this->add(HttpMethodEnum::PUT->value, $path, $handler, $nameOrOpts);
+        return $this->verb(HttpMethodEnum::PUT, $path, $handler, $nameOrOpts);
     }
 
     /* -----------------------------------------------------------------
      *  Resource helper (Laravel-ish)
      * ----------------------------------------------------------------*/
 
+    /** @param array<string,mixed> $opts */
     public function resource(string $name, string $prefix, string $ctrl, array $opts = []): void
     {
         [$param, $only, $except, $names, $mwAll, $patchAction] = $this->parseResourceOptions($opts);
@@ -163,7 +226,7 @@ final readonly class Registrar
                 ? ($mwAll !== [] ? ['middleware' => $mwAll] : null)
                 : ['as' => $routeName, 'middleware' => $mwAll];
 
-            $method = strtolower((string) $http);
+            $method = strtolower($http);
             $this->{$method}($path, [$ctrl, $action], $nameOrOpt);
         }
     }
@@ -172,6 +235,10 @@ final readonly class Registrar
      *  Core registration (refactored)
      * ----------------------------------------------------------------*/
 
+    /**
+     * @param RouteHandler $handler
+     * @param string|RouteOptions|null $nameOrOpts
+     */
     private function add(
         string $verb,
         string $path,
@@ -193,18 +260,16 @@ final readonly class Registrar
         return $route;
     }
 
+    /** @param RouteAttributes $attributes */
     private function applyPerCallOptions(Route $route, ?string $name, array $attributes): Route
     {
         if ($name !== null && $name !== '') {
             $route = $route->withName($name);
         }
 
-        if (!empty($attributes)) {
-            if (method_exists($route, 'withAttributes')) {
-                $route = $route->withAttributes($attributes);
-            } elseif (method_exists($route, 'withMeta')) {
-                $route = $route->withMeta($attributes);
-            }
+        $cors = $attributes['cors'] ?? null;
+        if ($cors instanceof Cors) {
+            $route = $route->withCorsPolicy($cors);
         }
 
         return $route;
@@ -214,6 +279,7 @@ final readonly class Registrar
      *  Resource internals
      * ----------------------------------------------------------------*/
 
+    /** @return list<ResourceSpecRow> */
     private function buildResourceSpec(string $param, string $patchAction): array
     {
         return [
@@ -241,6 +307,10 @@ final readonly class Registrar
      * Apply scope domain, merge+resolve middleware, and prepend name/aliases with group prefix.
      * NOTE: $aliases is passed by reference so we can mutate the list in-place.
      */
+    /**
+     * @param RawMiddlewareList $extraMw
+     * @param list<string> $aliases
+     */
     private function decorateWithScope(Route $route, array $extraMw, array &$aliases): Route
     {
         // Domain
@@ -249,7 +319,7 @@ final readonly class Registrar
         }
 
         // Middleware (group + route, with alias overrides → resolved)
-        $groupMw = $this->scope->getMiddleware() ?? [];
+        $groupMw = $this->scope->getMiddleware();
         $merged = $this->mergeMiddlewareWithAliasOverrides($groupMw, $extraMw);
         $resolved = $this->resolveAliasMiddleware($merged);
         if ($resolved !== []) {
@@ -262,16 +332,17 @@ final readonly class Registrar
             $route = $route->withName($namePrefix . $baseName);
 
             if ($aliases !== []) {
-                $aliases = array_map(
-                    static fn(string $a) => $namePrefix . $a,
-                    $aliases,
-                );
+                $aliases = array_map(static fn(string $a): string => $namePrefix . $a, $aliases);
             }
         }
 
         return $route;
     }
 
+    /**
+     * @param list<string>|null $only
+     * @param list<string>|null $except
+     */
     private function includeResourceKey(string $key, ?array $only, ?array $except): bool
     {
         if ($only !== null && !in_array($key, $only, true)) {
@@ -284,6 +355,7 @@ final readonly class Registrar
         return true;
     }
 
+    /** @param RouteHandler $handler */
     private function instantiateRoute(string $verb, string $fullPath, array|string|callable $handler): Route
     {
         return new Route($verb, $fullPath, $handler);
@@ -307,37 +379,31 @@ final readonly class Registrar
     /**
      * Merge group + route middleware arrays with alias override semantics.
      */
+    /**
+     * @param RawMiddlewareList $group
+     * @param RawMiddlewareList $route
+     * @return list<RawMiddlewareEntry|AliasSpec>
+     */
     private function mergeMiddlewareWithAliasOverrides(array $group, array $route): array
     {
-        $result = [];
-        $aliasPos = []; // aliasKey => index in $result
-
-        $push = function (mixed $mw) use (&$result, &$aliasPos): void {
-            if (is_string($mw) && ($spec = $this->parseAliasSpec($mw))) {
-                if (isset($aliasPos[$spec['key']])) {
-                    unset($result[$aliasPos[$spec['key']]]);
-                }
-                $result[] = $spec;
-                $aliasPos[$spec['key']] = array_key_last($result);
-            } else {
-                $result[] = $mw;
-            }
-        };
-
-        foreach ($group as $mw) {
-            $push($mw);
-        }
-        foreach ($route as $mw) {
-            $push($mw);
-        }
-
-        return array_values($result);
+        return RegistrarSupport::mergeMiddlewareWithAliasOverrides($group, $route);
     }
 
     /* -----------------------------------------------------------------
      *  Group helpers
      * ----------------------------------------------------------------*/
-
+    /**
+     * @param string|GroupInput|null $prefix
+     * @param string|GroupInput|Closure|null $domain
+     * @param list<mixed>|Closure $middleware
+     * @return array{
+     *   0:?string,
+     *   1:?string,
+     *   2:RawMiddlewareList,
+     *   3:?string,
+     *   4:Closure
+     * }
+     */
     private function normalizeGroupInputs(
         array|string|null $prefix,
         string|array|Closure|null $domain,
@@ -345,39 +411,7 @@ final readonly class Registrar
         string|Closure|null $namePrefix,
         ?Closure $callback,
     ): array {
-        if (is_array($prefix)) {
-            $opts = $prefix;
-            $callback = $domain instanceof Closure ? $domain : $callback;
-            $prefix = $opts['prefix'] ?? null;
-            $domain = $opts['domain'] ?? null;
-            $middleware = $opts['middleware'] ?? [];
-            $namePrefix = $opts['name'] ?? $opts['as'] ?? null;
-        }
-
-        if ($domain instanceof Closure && $callback === null) {
-            $callback = $domain;
-            $domain = null;
-        }
-        if ($middleware instanceof Closure && $callback === null) {
-            $callback = $middleware;
-            $middleware = [];
-        }
-        if ($namePrefix instanceof Closure && $callback === null) {
-            $callback = $namePrefix;
-            $namePrefix = null;
-        }
-
-        if (!$callback instanceof Closure) {
-            throw new InvalidArgumentException('A group callback Closure is required.');
-        }
-
-        return [
-            $prefix,
-            $domain,
-            is_array($middleware) ? $middleware : [],
-            is_string($namePrefix) ? $namePrefix : null,
-            $callback,
-        ];
+        return RegistrarGroupSupport::normalizeGroupInputs($prefix, $domain, $middleware, $namePrefix, $callback);
     }
 
     /* -----------------------------------------------------------------
@@ -387,68 +421,32 @@ final readonly class Registrar
     /**
      * Normalize name/options array into canonical tuple.
      * Returned: [name|null, extraMiddleware:list, aliases:list, attributes:array]
+     *
+     * @param string|RouteOptions|null $nameOrOpts
+     * @return array{0:?string,1:RawMiddlewareList,2:list<string>,3:RouteAttributes}
      */
     private function normalizeOptions(string|array|null $nameOrOpts): array
     {
-        if ($nameOrOpts === null) {
-            return [null, [], [], []];
-        }
-
-        if (is_string($nameOrOpts)) {
-            return [$nameOrOpts, [], [], []];
-        }
-
-        $name = $nameOrOpts['name'] ?? $nameOrOpts['as'] ?? null;
-
-        $mw = $nameOrOpts['middleware'] ?? [];
-        if (!is_array($mw)) {
-            $mw = [];
-        }
-
-        $aliasesRaw = $nameOrOpts['aliases'] ?? ($nameOrOpts['alias'] ?? []);
-        $aliases = is_array($aliasesRaw) ? $aliasesRaw : [$aliasesRaw];
-        $aliases = array_values(array_filter(array_map(strval(...), $aliases), static fn($s) => $s !== ''));
-
-        $attrs = $nameOrOpts['attributes'] ?? [];
-        if (!is_array($attrs)) {
-            $attrs = [];
-        }
-
-        return [$name, $mw, $aliases, $attrs];
+        return RegistrarSupport::normalizeOptions($nameOrOpts);
     }
 
-    private function parseAliasSpec(string $s): ?array
-    {
-        if (class_exists($s)) {
-            return null;
-        }
-
-        [$name, $paramStr] = explode(':', $s, 2) + [1 => null];
-        $key = strtolower(trim((string) $name));
-
-        if ($key === '' || !MiddlewareAliases::has($key)) {
-            return null;
-        }
-
-        $params = ($paramStr !== null && $paramStr !== '')
-            ? array_map(trim(...), explode(',', $paramStr))
-            : [];
-
-        return ['__alias' => true, 'key' => $key, 'params' => $params];
-    }
-
+    /**
+     * @param array<string,mixed> $opts
+     * @return array{
+     *   0:string,
+     *   1:list<string>|null,
+     *   2:list<string>|null,
+     *   3:array<string,string>,
+     *   4:RawMiddlewareList,
+     *   5:string
+     * }
+     */
     private function parseResourceOptions(array $opts): array
     {
-        $param = is_string($opts['param'] ?? null) ? $opts['param'] : 'id';
-        $only = (isset($opts['only']) && is_array($opts['only'])) ? $opts['only'] : null;
-        $except = (isset($opts['except']) && is_array($opts['except'])) ? $opts['except'] : null;
-        $names = (isset($opts['names']) && is_array($opts['names'])) ? $opts['names'] : [];
-        $mwAll = (isset($opts['middleware']) && is_array($opts['middleware'])) ? $opts['middleware'] : [];
-        $patchAction = is_string($opts['patch_action'] ?? null) ? $opts['patch_action'] : 'update';
-
-        return [$param, $only, $except, $names, $mwAll, $patchAction];
+        return RegistrarSupport::parseResourceOptions($opts);
     }
 
+    /** @param list<string> $aliases */
     private function registerRouteAndAliases(Route $route, array $aliases): void
     {
         $this->routes->add($route);
@@ -457,23 +455,25 @@ final readonly class Registrar
         }
     }
 
+    /**
+     * @param list<RawMiddlewareEntry|AliasSpec> $list
+     * @return MiddlewareList
+     */
     private function resolveAliasMiddleware(array $list): array
     {
-        $out = [];
-        foreach ($list as $item) {
-            if (is_array($item) && ($item['__alias'] ?? false) === true) {
-                $key = (string) $item['key'];
-                $params = $item['params'] ?? [];
-                $s = $key;
-                if ($params !== []) {
-                    $s .= ':' . implode(',', array_map(static fn($v) => (string) $v, $params));
-                }
-                $out[] = MiddlewareAliases::resolveString($s);
-            } else {
-                $out[] = $item;
-            }
-        }
+        return RegistrarSupport::resolveAliasMiddleware($list);
+    }
 
-        return $out;
+    /**
+     * @param RouteHandler $handler
+     * @param string|RouteOptions|null $nameOrOpts
+     */
+    private function verb(
+        HttpMethodEnum $method,
+        string $path,
+        array|string|callable $handler,
+        string|array|null $nameOrOpts = null,
+    ): RouteInterface {
+        return $this->add($method->value, $path, $handler, $nameOrOpts);
     }
 }

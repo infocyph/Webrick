@@ -88,7 +88,8 @@ final class GatewayHardeningMiddleware
         private readonly array $redirectAllowedHosts = [],
     ) {
         // ① Configure trusted proxies & which forwarded headers to honor
-        Request::setTrustedProxies($this->trustedProxyCidrs, $forwardedHeaderMask);
+        $trustedProxyCidrs = array_values($this->trustedProxyCidrs);
+        Request::setTrustedProxies($trustedProxyCidrs, $forwardedHeaderMask);
 
         // ② Compile/resolve host allow-list (static cache)
         $this->allowAllHosts = ($this->trustedHosts === ['*']);

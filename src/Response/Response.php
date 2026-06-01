@@ -30,13 +30,7 @@ class Response
 
     private HeaderBag $headers;
 
-    /**
-     * When non-null, the response is a live stream. The callable MUST return
-     * an iterable<string> (e.g., a Generator yielding string chunks) OR a
-     * single string for one-shot writes.
-     *
-     * @var null|\Closure(): iterable<string>|string
-     */
+    /** @var null|\Closure(): (iterable<string>|string) */
     private ?\Closure $producer = null;
 
     /**
@@ -49,7 +43,7 @@ class Response
      *
      * @param int $statusCode HTTP status code (default 200)
      * @param BodyStream|string|null $body Body stream or string content
-     * @param array $headers Initial headers (name => value)
+     * @param array<string, string|list<string>> $headers Initial headers (name => value)
      * @param string $protocolVersion HTTP protocol version
      * @param string|null $reasonPhrase Optional reason phrase
      */
@@ -60,7 +54,7 @@ class Response
         private string $protocolVersion = '1.1',
         private ?string $reasonPhrase = null,
     ) {
-        $this->headers = new HeaderBag($headers);
+        $this->headers = new HeaderBag(self::headerMap($headers));
         $this->body = $body instanceof BodyStream ? $body : new Stream($body ?? '');
         $this->reasonPhrase ??= self::statusText($this->statusCode);
     }
@@ -73,7 +67,7 @@ class Response
      * @param string|Stream $file File path or Stream
      * @param string $name Filename provided to client
      * @param string|null $mime Optional MIME type
-     * @param array $headers Additional headers
+     * @param array<string, string|list<string>> $headers Additional headers
      * @return self Attachment Response
      */
     public static function attachment(
@@ -93,7 +87,7 @@ class Response
         self::putIfAbsent($defaults, 'Last-Modified', self::formatHttpDate($mtime), $headers);
         self::putIfAbsent($defaults, 'ETag', self::etagFromMeta($size, $mtime, $name), $headers);
 
-        return new self(StatusEnum::OK->value, $stream, $defaults + $headers);
+        return new self(StatusEnum::OK->value, $stream, self::headerMap($defaults + $headers));
     }
 
     /**
@@ -103,18 +97,18 @@ class Response
      * - Returns JSON, plaintext, or JSON-as-plain depending on client preference.
      *
      * @param Request $r Request object to inspect Accept preferences
-     * @param callable|array|object|string|int|float|bool|null $data Payload to serialize
+     * @param array<string, mixed>|JsonSerializable|string|int|float|bool|null $data Payload to serialize
      * @param int $status HTTP status
-     * @param array $headers Additional headers
+     * @param array<string, string|list<string>> $headers Additional headers
      * @param int $flags json_encode flags
-     * @param int $depth json_encode depth
+     * @param int<1, max> $depth json_encode depth
      * @return self Response chosen by negotiation
      *
      * @throws RuntimeException When eager JSON encoding fails
      */
     public static function auto(
         Request $r,
-        callable|array|object|string|int|float|bool|null $data,
+        JsonSerializable|array|string|int|float|bool|null $data,
         int $status = StatusEnum::OK->value,
         array $headers = [],
         int $flags = JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE,
@@ -128,7 +122,8 @@ class Response
 
         // JSON path (recognize vendor/structured +json)
         if (MediaTypeEnum::isJsonLike($want)) {
-            $resp = self::json($data, $status, $headers, $flags, $depth);
+            $jsonData = is_array($data) ? self::mixedMap($data) : $data;
+            $resp = self::json($jsonData, $status, $headers, $flags, $depth);
 
             // Preserve the negotiated +json type (e.g., application/vnd.api+json)
             if ($want !== MediaTypeEnum::JSON->base()) {
@@ -160,7 +155,7 @@ class Response
      *
      * @param string $content Body content
      * @param int $status HTTP status
-     * @param array $headers Additional headers
+     * @param array<string, string|list<string>> $headers Additional headers
      * @return self New Response
      */
     public static function create(string $content = '', int $status = StatusEnum::OK->value, array $headers = []): self
@@ -173,7 +168,7 @@ class Response
      *
      * @param string|Stream $file File path or Stream
      * @param string|null $name Optional filename
-     * @param array $headers Additional headers
+     * @param array<string, string|list<string>> $headers Additional headers
      * @param string|null $mime Optional MIME type
      * @return self Download response
      */
@@ -194,13 +189,13 @@ class Response
      * Create an empty response with Content-Length: 0.
      *
      * @param int $code HTTP status code
-     * @param array $headers Additional headers
+     * @param array<string, string|list<string>> $headers Additional headers
      * @return self Response with empty body
      */
     public static function empty(int $code, array $headers = []): self
     {
         $resp = new self($code, new Stream(''), ['Content-Length' => '0']);
-        foreach ($headers as $name => $value) {
+        foreach (self::headerMap($headers) as $name => $value) {
             $resp = $resp->withHeader($name, $value);
         }
 
@@ -215,7 +210,7 @@ class Response
      * @param string|Stream $file File path or Stream
      * @param string|null $name Suggested filename
      * @param string|null $mime Optional MIME type
-     * @param array $headers Additional headers
+     * @param array<string, string|list<string>> $headers Additional headers
      * @return self Inline response
      */
     public static function inline(
@@ -246,17 +241,17 @@ class Response
      * - Uses LazyJsonStream for deferred encoding when appropriate.
      * - Ensures Content-Type application/json; charset=utf-8 by default.
      *
-     * @param callable|array|object|string $data Data or callable/JsonSerializable
+     * @param array<string, mixed>|JsonSerializable|string|int|float|bool|null $data Data or lazy JsonSerializable
      * @param int $status HTTP status
-     * @param array $headers Additional headers
+     * @param array<string, string|list<string>> $headers Additional headers
      * @param int $flags json_encode flags
-     * @param int $depth json_encode depth
+     * @param int<1, max> $depth json_encode depth
      * @return self JSON Response
      *
      * @throws RuntimeException When json_encode fails for eager encoding
      */
     public static function json(
-        callable|array|object|string $data,
+        JsonSerializable|array|string|int|float|bool|null $data,
         int $status = StatusEnum::OK->value,
         array $headers = [],
         int $flags = JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE,
@@ -264,25 +259,24 @@ class Response
     ): self {
         $headers += ['Content-Type' => MediaTypeEnum::JSON->base() . '; charset=utf-8'];
 
-        if (!\is_callable($data) && !$data instanceof JsonSerializable) {
-            $json = \json_encode($data, $flags, $depth);
-            if ($json === false) {
-                throw new RuntimeException('JSON encode error: ' . \json_last_error_msg());
-            }
-            if (\strlen($json) <= 32 * 1024) {
-                return new self($status, new Stream($json), $headers);
-            }
+        if ($data instanceof JsonSerializable) {
+            $stream = new LazyJsonStream($data, $flags, $depth);
+
+            return new self($status, $stream, $headers);
         }
 
-        $stream = new LazyJsonStream($data, $flags, $depth);
+        $json = \json_encode($data, $flags, $depth);
+        if ($json === false) {
+            throw new RuntimeException('JSON encode error: ' . \json_last_error_msg());
+        }
 
-        return new self($status, $stream, $headers);
+        return new self($status, new Stream($json), $headers);
     }
 
     /**
      * Create a 204 No Content response.
      *
-     * @param array $headers Additional headers
+     * @param array<string, string|list<string>> $headers Additional headers
      * @return self 204 Response with Content-Length: 0
      */
     public static function noContent(array $headers = []): self
@@ -301,7 +295,7 @@ class Response
      *
      * @param string $msg Body text
      * @param int $code HTTP status code
-     * @param array $headers Additional headers
+     * @param array<string, string|list<string>> $headers Additional headers
      * @return self Plaintext Response
      */
     public static function plaintext(string $msg, int $code = StatusEnum::BAD_REQUEST->value, array $headers = []): self
@@ -392,9 +386,9 @@ class Response
      * - Sets conservative caching and buffering defaults suitable for streams.
      * - $producer may be a callable that yields strings or an iterable of strings.
      *
-     * @param callable|iterable $producer Callable returning iterable|string or an iterable of chunks
+     * @param callable(): (iterable<string>|string)|iterable<string> $producer Callable returning iterable|string or an iterable of chunks
      * @param int $status HTTP status code
-     * @param array $headers Initial headers
+     * @param array<string, string|list<string>> $headers Initial headers
      * @return self Streaming Response instance
      */
     public static function stream(
@@ -424,7 +418,7 @@ class Response
      * @param string|Stream $file Filename or Stream
      * @param string|null $name Suggested filename
      * @param string $mime MIME type
-     * @param array $headers Additional headers
+     * @param array<string, string|list<string>> $headers Additional headers
      * @return self Streaming download response
      */
     public static function streamDownload(
@@ -517,9 +511,9 @@ class Response
      * Retrieve a header's values as an array.
      *
      * @param string $n Header name
-     * @return array Header values
+     * @return list<string> Header values
      */
-    public function getHeader($n): array
+    public function getHeader(string $n): array
     {
         return $this->headers->get($n);
     }
@@ -530,7 +524,7 @@ class Response
      * @param string $n Header name
      * @return string Header line
      */
-    public function getHeaderLine($n): string
+    public function getHeaderLine(string $n): string
     {
         return $this->headers->getHeaderLine($n);
     }
@@ -538,7 +532,7 @@ class Response
     /**
      * Return all response headers as an associative array.
      *
-     * @return array Header map
+     * @return array<string, list<string>> Header map
      */
     public function getHeaders(): array
     {
@@ -548,7 +542,7 @@ class Response
     /**
      * Get the attached producer closure.
      *
-     * @return null|\Closure(): iterable<string>|string The normalized producer or null
+     * @return null|\Closure(): (iterable<string>|string) The normalized producer or null
      */
     public function getProducer(): ?\Closure
     {
@@ -595,7 +589,7 @@ class Response
      * @param string $n Header name
      * @return bool True when present
      */
-    public function hasHeader($n): bool
+    public function hasHeader(string $n): bool
     {
         return $this->headers->has($n);
     }
@@ -614,10 +608,10 @@ class Response
      * Return a copy with an additional header value appended.
      *
      * @param string $n Header name
-     * @param string|array $v Header value(s)
+     * @param string|array<int, string> $v Header value(s)
      * @return self New Response instance
      */
-    public function withAddedHeader($n, $v): self
+    public function withAddedHeader(string $n, string|array $v): self
     {
         return $this->copy(headers: $this->headers->withAdded($n, $v));
     }
@@ -645,6 +639,9 @@ class Response
     public function withCache(\Closure $edit): self
     {
         $cc = $edit($this->cache());
+        if (!$cc instanceof CacheControl) {
+            throw new RuntimeException('withCache() closure must return CacheControl.');
+        }
 
         return $this->withHeader('Cache-Control', (string) $cc);
     }
@@ -653,10 +650,10 @@ class Response
      * Return a copy with the specified header replaced.
      *
      * @param string $n Header name
-     * @param string|array $v Header value(s)
+     * @param string|array<int, string> $v Header value(s)
      * @return self New Response instance
      */
-    public function withHeader($n, $v): self
+    public function withHeader(string $n, string|array $v): self
     {
         return $this->copy(headers: $this->headers->with($n, $v));
     }
@@ -667,7 +664,7 @@ class Response
      * @param string $n Header name
      * @return self New Response instance
      */
-    public function withoutHeader($n): self
+    public function withoutHeader(string $n): self
     {
         return $this->copy(headers: $this->headers->without($n));
     }
@@ -675,12 +672,12 @@ class Response
     /**
      * Return a copy with the provided protocol version.
      *
-     * @param mixed $v Protocol version
+     * @param string $v Protocol version
      * @return self New Response instance
      */
-    public function withProtocolVersion($v): self
+    public function withProtocolVersion(string $v): self
     {
-        return $this->copy(protocolVersion: (string) $v);
+        return $this->copy(protocolVersion: $v);
     }
 
     /**
@@ -700,15 +697,14 @@ class Response
      *
      * - Validates the status value is within 100..599.
      *
-     * @param mixed $code New status code
+     * @param int $code New status code
      * @param string $reasonPhrase Optional reason phrase
      * @return self New Response instance
      *
      * @throws RuntimeException When the status code is out of range
      */
-    public function withStatus($code, $reasonPhrase = ''): self
+    public function withStatus(int $code, string $reasonPhrase = ''): self
     {
-        $code = (int) $code;
         if ($code < 100 || $code > 599) {
             throw new RuntimeException("Invalid HTTP status: {$code}");
         }
@@ -726,7 +722,7 @@ class Response
      *
      * @param string $name Filename
      * @param string $mime MIME type
-     * @return array Base header map
+     * @return array<string, string> Base header map
      */
     private static function baseDownloadHeaders(string $name, string $mime): array
     {
@@ -781,6 +777,42 @@ class Response
     }
 
     /**
+     * @param array<mixed> $headers
+     * @return array<string, string|list<string>>
+     */
+    private static function headerMap(array $headers): array
+    {
+        $out = [];
+        foreach ($headers as $name => $value) {
+            if (!is_string($name)) {
+                continue;
+            }
+
+            if (is_string($value)) {
+                $out[$name] = $value;
+
+                continue;
+            }
+
+            if (!is_array($value)) {
+                continue;
+            }
+
+            $vals = [];
+            foreach ($value as $item) {
+                if (!is_string($item)) {
+                    continue;
+                }
+                $vals[] = $item;
+            }
+
+            $out[$name] = $vals;
+        }
+
+        return $out;
+    }
+
+    /**
      * Infer a MIME type for a filename, falling back to explicit value.
      *
      * @param string $name Filename
@@ -809,6 +841,23 @@ class Response
         return [$size, $mtime];
     }
 
+    /**
+     * @param array<mixed> $value
+     * @return array<string, mixed>
+     */
+    private static function mixedMap(array $value): array
+    {
+        $out = [];
+        foreach ($value as $key => $item) {
+            if (!is_string($key)) {
+                continue;
+            }
+            $out[$key] = $item;
+        }
+
+        return $out;
+    }
+
     /* -------------------------------------------------------------- */
 
     /**
@@ -831,7 +880,7 @@ class Response
      * Normalize a producer value into a closure that consistently returns
      * either an iterable of strings or a single string.
      *
-     * @param callable|iterable $producer Callable or iterable to normalize
+     * @param callable(): (iterable<string>|string)|iterable<string> $producer Callable or iterable to normalize
      * @return \Closure Normalized producer closure
      */
     private static function normalizeProducer(callable|iterable $producer): \Closure
@@ -846,7 +895,7 @@ class Response
                 return $out;
             }
 
-            return $out === null ? [] : [$out];
+            return [$out];
         };
     }
 
@@ -871,10 +920,10 @@ class Response
     /**
      * Helper to set a default header value only when caller did not supply it.
      *
-     * @param array &$target Default header map to mutate
+     * @param array<string, string> &$target Default header map to mutate
      * @param string $name Header name
      * @param string|null $value Value to set when present
-     * @param array $caller Original caller headers to check
+     * @param array<string, string|list<string>> $caller Original caller headers to check
      */
     private static function putIfAbsent(array &$target, string $name, ?string $value, array $caller): void
     {
@@ -891,7 +940,7 @@ class Response
      */
     private static function statusText(int $code): string
     {
-        return StatusEnum::text($code) ?? '';
+        return StatusEnum::text($code);
     }
 
     /* --------------------------------------------------------------

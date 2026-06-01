@@ -51,9 +51,9 @@ final class TemporaryUrlGenerator extends SignedUrlGenerator
      *
      * If you don’t supply `$ttl`, it falls back to `$this->defaultTtl`.
      *
-     * @param non-empty-string $name Route name
-     * @param array<string,mixed> $params Path parameters
-     * @param array<string,mixed> $query Additional query parameters
+     * @param string $name Route name
+     * @param array<string,bool|float|int|string|null> $params Path parameters
+     * @param array<string,array<int|string,mixed>|bool|float|int|string|null> $query Additional query parameters
      * @param int|null $ttl Override TTL in seconds
      * @param bool $absolute Prepend baseUri?
      */

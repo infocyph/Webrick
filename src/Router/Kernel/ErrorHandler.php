@@ -165,7 +165,13 @@ final readonly class ErrorHandler
             return null;
         }
 
-        $list = array_unique(array_map(strtoupper(...), (array) $list));
+        $upper = [];
+        foreach ((array) $list as $method) {
+            if (\is_string($method) && $method !== '') {
+                $upper[] = \strtoupper($method);
+            }
+        }
+        $list = \array_values(\array_unique($upper));
         sort($list, SORT_STRING);
 
         // Ensure HEAD is present whenever GET exists and HEAD was not explicitly given.
@@ -281,6 +287,17 @@ final readonly class ErrorHandler
                 'exception' => $e,
             ],
         );
+    }
+
+    private function mappedExceptionStatus(Throwable $e): ?int
+    {
+        foreach ($this->exceptionMap as $cls => $code) {
+            if ($e instanceof $cls && $this->isHttp($code)) {
+                return $code;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -485,8 +502,8 @@ final readonly class ErrorHandler
 
     private function resolveRenderType(Request $req): string
     {
-        $wanted = (string) $req->getAttribute('negotiated.type');
-        if ($wanted !== '') {
+        $wanted = $req->getAttribute('negotiated.type');
+        if (\is_string($wanted) && $wanted !== '') {
             return $wanted;
         }
 
@@ -519,25 +536,58 @@ final readonly class ErrorHandler
      */
     private function resolveStatus(Throwable $e): int
     {
-        foreach ($this->exceptionMap as $cls => $code) {
-            if ($e instanceof $cls && $this->isHttp($code)) {
-                return $code;
-            }
+        $mapped = $this->mappedExceptionStatus($e);
+        if ($mapped !== null) {
+            return $mapped;
         }
 
-        if (method_exists($e, 'getStatusCode')) {
-            $sc = (int) $e->getStatusCode();
-            if ($this->isHttp($sc)) {
-                return $sc;
-            }
+        $methodStatus = $this->statusFromThrowableMethod($e);
+        if ($methodStatus !== null) {
+            return $methodStatus;
         }
-        if (property_exists($e, 'status') && $this->isHttp((int) $e->status)) {
-            return (int) $e->status;
+
+        $propertyStatus = $this->statusFromThrowableProperty($e);
+        if ($propertyStatus !== null) {
+            return $propertyStatus;
         }
 
         $code = (int) $e->getCode();
 
         return $this->isHttp($code) ? $code : StatusEnum::INTERNAL_SERVER_ERROR->value;
+    }
+
+    private function statusFromRaw(mixed $raw): ?int
+    {
+        if (\is_int($raw) && $this->isHttp($raw)) {
+            return $raw;
+        }
+
+        if (\is_string($raw) && $raw !== '') {
+            $parsed = (int) $raw;
+            if ($this->isHttp($parsed)) {
+                return $parsed;
+            }
+        }
+
+        return null;
+    }
+
+    private function statusFromThrowableMethod(Throwable $e): ?int
+    {
+        if (!\method_exists($e, 'getStatusCode')) {
+            return null;
+        }
+
+        return $this->statusFromRaw($e->getStatusCode());
+    }
+
+    private function statusFromThrowableProperty(Throwable $e): ?int
+    {
+        if (!\property_exists($e, 'status')) {
+            return null;
+        }
+
+        return $this->statusFromRaw($e->status);
     }
 
     /**

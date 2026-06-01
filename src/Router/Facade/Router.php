@@ -32,6 +32,24 @@ use RuntimeException;
  * Usage:
  *   Router::setInstance($registrar);
  *   Router::get('/ping', fn () => 'pong', 'ping');
+ *
+ * @phpstan-type HandlerArray array{0:string|object,1:string}
+ * @phpstan-type RouteHandler HandlerArray|string|callable
+ * @phpstan-type RouteOptions array{
+ *   name?:mixed,
+ *   as?:mixed,
+ *   middleware?:mixed,
+ *   aliases?:mixed,
+ *   alias?:mixed,
+ *   attributes?:mixed
+ * }
+ * @phpstan-type GroupOptions array{
+ *   prefix?:mixed,
+ *   domain?:mixed,
+ *   middleware?:mixed,
+ *   name?:mixed,
+ *   as?:mixed
+ * }
  */
 final class Router
 {
@@ -39,8 +57,6 @@ final class Router
      * Concrete Registrar instance used by the façade.
      *
      * When null the façade has not been initialised and calls will throw.
-     *
-     * @readonly
      */
     private static ?Registrar $instance = null;
 
@@ -67,7 +83,7 @@ final class Router
      * concrete Registrar a RuntimeException is thrown.
      *
      * @param string $method Method name being called statically
-     * @param array $args Positional arguments passed to the method
+     * @param list<mixed> $args Positional arguments passed to the method
      * @return mixed The underlying Registrar method return value
      *
      * @throws RuntimeException When the concrete Registrar does not implement the method
@@ -111,13 +127,16 @@ final class Router
 
     /**
      * Register a DELETE route via the bound Registrar.
+     *
+     * @param RouteHandler $handler
+     * @param string|RouteOptions|null $nameOrOpts
      */
     public static function delete(
         string $path,
         array|string|callable $handler,
         string|array|null $nameOrOpts = null,
     ): RouteInterface {
-        return self::getInstance()->delete($path, $handler, $nameOrOpts);
+        return self::verb('delete', $path, $handler, $nameOrOpts);
     }
 
     /* ──────────── explicit accessors (typed, IDE-friendly) ──────────── */
@@ -126,8 +145,8 @@ final class Router
      * Register a GET route via the bound Registrar.
      *
      * @param string $path Route path template
-     * @param array|string|callable $handler Handler (callable or controller descriptor)
-     * @param string|array|null $nameOrOpts Optional route name or options array
+     * @param RouteHandler $handler Handler (callable or controller descriptor)
+     * @param string|RouteOptions|null $nameOrOpts Optional route name or options array
      * @return RouteInterface Registered route DTO
      */
     public static function get(
@@ -135,7 +154,7 @@ final class Router
         array|string|callable $handler,
         string|array|null $nameOrOpts = null,
     ): RouteInterface {
-        return self::getInstance()->get($path, $handler, $nameOrOpts);
+        return self::verb('get', $path, $handler, $nameOrOpts);
     }
 
     /**
@@ -144,9 +163,9 @@ final class Router
      * Accepts both positional and associative (Laravel-style) arguments and
      * supports the callback styles that Registrar::group accepts.
      *
-     * @param array|string|null $prefix Path prefix or options array
-     * @param string|array|Closure|null $domain Domain constraint or closure
-     * @param array|Closure $middleware Middleware list or closure
+     * @param string|GroupOptions|null $prefix Path prefix or options array
+     * @param string|GroupOptions|Closure|null $domain Domain constraint or closure
+     * @param list<mixed>|Closure $middleware Middleware list or closure
      * @param string|Closure|null $namePrefix Name prefix or closure
      * @param Closure|null $callback Callback used to declare nested routes
      */
@@ -162,57 +181,72 @@ final class Router
 
     /**
      * Register a HEAD route via the bound Registrar.
+     *
+     * @param RouteHandler $handler
+     * @param string|RouteOptions|null $nameOrOpts
      */
     public static function head(
         string $path,
         array|string|callable $handler,
         string|array|null $nameOrOpts = null,
     ): RouteInterface {
-        return self::getInstance()->head($path, $handler, $nameOrOpts);
+        return self::verb('head', $path, $handler, $nameOrOpts);
     }
 
     /**
      * Register an OPTIONS route via the bound Registrar.
+     *
+     * @param RouteHandler $handler
+     * @param string|RouteOptions|null $nameOrOpts
      */
     public static function options(
         string $path,
         array|string|callable $handler,
         string|array|null $nameOrOpts = null,
     ): RouteInterface {
-        return self::getInstance()->options($path, $handler, $nameOrOpts);
+        return self::verb('options', $path, $handler, $nameOrOpts);
     }
 
     /**
      * Register a PATCH route via the bound Registrar.
+     *
+     * @param RouteHandler $handler
+     * @param string|RouteOptions|null $nameOrOpts
      */
     public static function patch(
         string $path,
         array|string|callable $handler,
         string|array|null $nameOrOpts = null,
     ): RouteInterface {
-        return self::getInstance()->patch($path, $handler, $nameOrOpts);
+        return self::verb('patch', $path, $handler, $nameOrOpts);
     }
 
     /**
      * Register a POST route via the bound Registrar.
+     *
+     * @param RouteHandler $handler
+     * @param string|RouteOptions|null $nameOrOpts
      */
     public static function post(
         string $path,
         array|string|callable $handler,
         string|array|null $nameOrOpts = null,
     ): RouteInterface {
-        return self::getInstance()->post($path, $handler, $nameOrOpts);
+        return self::verb('post', $path, $handler, $nameOrOpts);
     }
 
     /**
      * Register a PUT route via the bound Registrar.
+     *
+     * @param RouteHandler $handler
+     * @param string|RouteOptions|null $nameOrOpts
      */
     public static function put(
         string $path,
         array|string|callable $handler,
         string|array|null $nameOrOpts = null,
     ): RouteInterface {
-        return self::getInstance()->put($path, $handler, $nameOrOpts);
+        return self::verb('put', $path, $handler, $nameOrOpts);
     }
 
     /**
@@ -248,7 +282,7 @@ final class Router
      * @param string $name Resource base name used for route naming
      * @param string $prefix URL prefix for the resource (e.g. "/users")
      * @param string $controller Controller class name or callable representation
-     * @param array $opts Optional configuration forwarded to Registrar::resource
+     * @param array<string,mixed> $opts Optional configuration forwarded to Registrar::resource
      */
     public static function resource(string $name, string $prefix, string $controller, array $opts = []): void
     {
@@ -270,6 +304,9 @@ final class Router
 
     /**
      * Generate signed URL for named route.
+     *
+     * @param array<string,mixed> $params
+     * @param array<string,mixed> $query
      */
     public static function signedUrlFor(
         string $name,
@@ -278,17 +315,23 @@ final class Router
         ?int $ttl = null,
         bool $absolute = false,
     ): string {
-        self::assertSignedBound();
+        self::assertRouteName($name);
+        $signed = self::requireSignedGenerator();
+        $normalizedParams = self::normalizeRouteParams($params);
+        $normalizedQuery = self::normalizeRouteQuery($query);
 
         $path = $ttl === null
-            ? self::$signedGen->signed($name, $params, $query, null, false)
-            : self::$signedGen->signed($name, $params, $query, max(1, $ttl), false);
+            ? $signed->signed($name, $normalizedParams, $normalizedQuery, null, false)
+            : $signed->signed($name, $normalizedParams, $normalizedQuery, max(1, $ttl), false);
 
-        return $absolute ? self::withRouteDomain($name, $path) : $path;
+        return self::finalizeGeneratedPath($name, $path, $absolute);
     }
 
     /**
      * Generate temporary signed URL for named route.
+     *
+     * @param array<string,mixed> $params
+     * @param array<string,mixed> $query
      */
     public static function temporaryUrlFor(
         string $name,
@@ -297,16 +340,18 @@ final class Router
         ?int $ttl = null,
         bool $absolute = false,
     ): string {
-        if (!self::$tempGen) {
-            throw new \LogicException('TemporaryUrlGenerator not bound (no default TTL provided).');
-        }
-        $path = self::$tempGen->temporary($name, $params, $query, $ttl, false);
+        self::assertRouteName($name);
+        $temp = self::requireTemporaryGenerator();
+        $path = $temp->temporary($name, self::normalizeRouteParams($params), self::normalizeRouteQuery($query), $ttl, false);
 
-        return $absolute ? self::withRouteDomain($name, $path) : $path;
+        return self::finalizeGeneratedPath($name, $path, $absolute);
     }
 
     /**
      * Generate URL for named route.
+     *
+     * @param array<string,mixed> $params
+     * @param array<string,mixed> $query
      */
     public static function urlFor(
         string $name,
@@ -314,10 +359,11 @@ final class Router
         array $query = [],
         bool $absolute = false,
     ): string {
-        self::assertUrlBound();
-        $path = self::$routeGen->route($name, $params, $query, false);
+        self::assertRouteName($name);
+        $routeGen = self::requireRouteGenerator();
+        $path = $routeGen->route($name, self::normalizeRouteParams($params), self::normalizeRouteQuery($query), false);
 
-        return $absolute ? self::withRouteDomain($name, $path) : $path;
+        return self::finalizeGeneratedPath($name, $path, $absolute);
     }
 
     /**
@@ -348,6 +394,13 @@ final class Router
         }
     }
 
+    private static function assertRouteName(string $name): void
+    {
+        if ($name === '') {
+            throw new \InvalidArgumentException('Route name must be non-empty.');
+        }
+    }
+
     private static function assertSignedBound(): void
     {
         if (!self::$signedGen || !self::$routesRef) {
@@ -362,6 +415,11 @@ final class Router
         }
     }
 
+    private static function finalizeGeneratedPath(string $name, string $path, bool $absolute): string
+    {
+        return $absolute ? self::withRouteDomain($name, $path) : $path;
+    }
+
     /**
      * Return the bound Registrar instance or throw if none is set.
      *
@@ -371,6 +429,119 @@ final class Router
     {
         return self::$instance
             ?? throw new RuntimeException('Router façade used before a concrete instance was set.');
+    }
+
+    /**
+     * @param array<int,mixed>|string|callable $handler
+     * @return RouteHandler
+     */
+    private static function normalizeHandler(array|string|callable $handler): array|string|callable
+    {
+        if (is_array($handler)) {
+            if (
+                count($handler) !== 2
+                || (!is_string($handler[0]) && !is_object($handler[0]))
+                || !is_string($handler[1])
+            ) {
+                throw new \InvalidArgumentException('Array handler must be [class-or-object, method].');
+            }
+
+            return [$handler[0], $handler[1]];
+        }
+
+        return $handler;
+    }
+
+    /**
+     * @param array<string,mixed> $params
+     * @return array<string,bool|float|int|string|null>
+     */
+    private static function normalizeRouteParams(array $params): array
+    {
+        $normalized = [];
+        foreach ($params as $key => $value) {
+            $normalized[$key] = self::normalizeScalarValue($value);
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * @param array<string,mixed> $query
+     * @return array<string,array<mixed>|bool|float|int|string|null>
+     */
+    private static function normalizeRouteQuery(array $query): array
+    {
+        $normalized = [];
+        foreach ($query as $key => $value) {
+            if (is_array($value)) {
+                $normalized[$key] = $value;
+
+                continue;
+            }
+            $normalized[$key] = self::normalizeScalarValue($value);
+        }
+
+        return $normalized;
+    }
+
+    private static function normalizeScalarValue(mixed $value): bool|float|int|string|null
+    {
+        if (is_bool($value) || is_float($value) || is_int($value) || is_string($value) || $value === null) {
+            return $value;
+        }
+
+        return $value instanceof \Stringable ? (string) $value : null;
+    }
+
+    private static function requireRouteGenerator(): RouteGenerator
+    {
+        self::assertUrlBound();
+
+        return self::$routeGen
+            ?? throw new \LogicException('URL services not bound. Enable via Registrar constructor.');
+    }
+
+    private static function requireSignedGenerator(): SignedUrlGenerator
+    {
+        self::assertSignedBound();
+
+        return self::$signedGen
+            ?? throw new \LogicException('Signed URL service not bound. Provide $signKey to Registrar.');
+    }
+
+    private static function requireTemporaryGenerator(): TemporaryUrlGenerator
+    {
+        if (!self::$tempGen) {
+            throw new \LogicException('TemporaryUrlGenerator not bound (no default TTL provided).');
+        }
+
+        return self::$tempGen;
+    }
+
+    /**
+     * @param RouteHandler $handler
+     * @param string|RouteOptions|null $nameOrOpts
+     */
+    private static function verb(
+        string $verb,
+        string $path,
+        array|string|callable $handler,
+        string|array|null $nameOrOpts = null,
+    ): RouteInterface {
+        $router = self::getInstance();
+        $normalized = self::normalizeHandler($handler);
+
+        return match ($verb) {
+            'delete' => $router->delete($path, $normalized, $nameOrOpts),
+            'get' => $router->get($path, $normalized, $nameOrOpts),
+            'head' => $router->head($path, $normalized, $nameOrOpts),
+            'options' => $router->options($path, $normalized, $nameOrOpts),
+            'patch' => $router->patch($path, $normalized, $nameOrOpts),
+            'post' => $router->post($path, $normalized, $nameOrOpts),
+            'put' => $router->put($path, $normalized, $nameOrOpts),
+            default => throw new RuntimeException("Unsupported HTTP verb '{$verb}' in Router facade."),
+        };
     }
 
     /**
