@@ -2,10 +2,13 @@
 
 A modern PHP router with route caching, signed URLs, production middleware, and response helpers.
 
-[![Security & Standards](https://github.com/infocyph/Webrick/actions/workflows/build.yml/badge.svg)](https://github.com/infocyph/Webrick/actions/workflows/build.yml)
-![Packagist Downloads](https://img.shields.io/packagist/dt/infocyph/Webrick?color=green&link=https%3A%2F%2Fpackagist.org%2Fpackages%2Finfocyph%2Fwebrick)
+[![Security & Standards](https://github.com/infocyph/Webrick/actions/workflows/security-standards.yml/badge.svg)](https://github.com/infocyph/Webrick/actions/workflows/security-standards.yml)
+![Packagist Downloads](https://img.shields.io/packagist/dt/infocyph/webrick?color=green\&link=https%3A%2F%2Fpackagist.org%2Fpackages%2Finfocyph%2Fwebrick)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 ![Packagist Version](https://img.shields.io/packagist/v/infocyph/webrick)
+![Packagist PHP Version](https://img.shields.io/packagist/dependency-v/infocyph/webrick/php)
+![GitHub Code Size](https://img.shields.io/github/languages/code-size/infocyph/Webrick)
+[![Documentation](https://img.shields.io/badge/Documentation-Webrick-blue?logo=readthedocs&logoColor=white)](https://docs.infocyph.com/projects/Webrick/en/latest/)
 
 ## Highlights
 
@@ -47,7 +50,7 @@ require __DIR__ . '/vendor/autoload.php';
 
 $kernel = RouterKernel::bootWithRegistrar(
     log: new NullLogger(),
-    matcher: ShardedMatcher::make(__DIR__ . '/.route-cache'),
+    matcher: ShardedMatcher::make(),
     register: static function (Registrar $registrar): void {
         unset($registrar);
 
@@ -111,7 +114,7 @@ MiddlewareAliases::register(
 
 $kernel = RouterKernel::bootWithRegistrar(
     log: new NullLogger(),
-    matcher: ShardedMatcher::make(__DIR__ . '/.route-cache'),
+    matcher: ShardedMatcher::make(),
     register: static function (Registrar $registrar): void {
         unset($registrar);
 
@@ -148,6 +151,7 @@ $kernel = RouterKernel::bootWithRegistrar(
 ## URL Generation
 
 ```php
+use DateTimeImmutable;
 use Infocyph\Webrick\Router\Facade\Router as Route;
 use Infocyph\Webrick\Router\Url\SignedUrlConfig;
 
@@ -180,25 +184,18 @@ Clear them when needed:
 php ./webrick route:clear --matcher=sharded --cache=.route-cache
 ```
 
-## Quality Commands
+## Security
 
-```bash
-composer ic:doctor
-composer ic:list-config
-composer ic:tests:details
-composer ic:ci
-```
+Protected by [PHPForge](https://github.com/infocyph/PHPForge) — an automated quality and security gate for PHP projects.
 
-`composer ic:process` is the fixer pipeline. In some sandboxed environments Rector fix mode may be blocked by local socket restrictions; `composer ic:test:refactor` and `composer ic:ci` still validate the dry-run path.
+---
 
-## Documentation
-
-- Full docs: https://docs.infocyph.com/projects/webrick/en/latest/
-- Getting Started: https://docs.infocyph.com/projects/webrick/en/latest/getting-started/index.html
-- Routing guide: https://docs.infocyph.com/projects/webrick/en/latest/guides/routing.html
-- Signed URLs guide: https://docs.infocyph.com/projects/webrick/en/latest/guides/urls.html
-- Route cache reference: https://docs.infocyph.com/projects/webrick/en/latest/reference/route-cache.html
-
-## License
-
-MIT
+<div align="center">
+  <sub><strong>Made with ❤️ for the PHP community</strong></sub><br />
+  <sub><a href="LICENSE">MIT Licensed</a></sub><br />
+  <a href="https://docs.infocyph.com/projects/Webrick/en/latest/">Documentation</a> •
+  <a href="SECURITY.md">Security</a> •
+  <a href="CODE_OF_CONDUCT.md">Code of Conduct</a> •
+  <a href="CONTRIBUTING.md">Contributing</a> •
+  <a href="https://github.com/infocyph/Webrick/issues">Report | Request | Suggest</a>
+</div>
