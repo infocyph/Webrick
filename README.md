@@ -8,7 +8,7 @@ A modern PHP router with route caching, signed URLs, production middleware, and 
 ![Packagist Version](https://img.shields.io/packagist/v/infocyph/webrick)
 ![Packagist PHP Version](https://img.shields.io/packagist/dependency-v/infocyph/webrick/php)
 ![GitHub Code Size](https://img.shields.io/github/languages/code-size/infocyph/Webrick)
-[![Documentation](https://img.shields.io/badge/Documentation-Webrick-blue?logo=readthedocs&logoColor=white)](https://docs.infocyph.com/projects/Webrick/en/latest/)
+[![Documentation](https://img.shields.io/badge/Documentation-Webrick-blue?logo=readthedocs&logoColor=white)](https://docs.infocyph.com/projects/webrick/en/latest/)
 
 ## Highlights
 
@@ -193,7 +193,7 @@ Protected by [PHPForge](https://github.com/infocyph/PHPForge) — an automated q
 <div align="center">
   <sub><strong>Made with ❤️ for the PHP community</strong></sub><br />
   <sub><a href="LICENSE">MIT Licensed</a></sub><br />
-  <a href="https://docs.infocyph.com/projects/Webrick/en/latest/">Documentation</a> •
+  <a href="https://docs.infocyph.com/projects/webrick/en/latest/">Documentation</a> •
   <a href="SECURITY.md">Security</a> •
   <a href="CODE_OF_CONDUCT.md">Code of Conduct</a> •
   <a href="CONTRIBUTING.md">Contributing</a> •
