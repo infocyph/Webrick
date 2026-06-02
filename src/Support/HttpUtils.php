@@ -5,8 +5,6 @@
  *
  * Provides small, focused helpers for HTTP-related tasks, such as checking common
  * Content-Type values for classic HTML form submissions.
- *
- * @package Infocyph\Webrick\Support
  */
 
 declare(strict_types=1);
@@ -33,7 +31,6 @@ final class HttpUtils
      * The check is case-insensitive and ignores any parameters (e.g., boundary, charset).
      *
      * @param string $contentType The Content-Type header value, possibly with parameters.
-     *
      * @return bool True if the content type is a classic form type; false otherwise.
      */
     public static function isFormContentType(string $contentType): bool
@@ -42,6 +39,7 @@ final class HttpUtils
             return false;
         }
         $mime = strtolower(strtok($contentType, ';') ?: '');
+
         return $mime === MediaTypeEnum::FORM_URLENCODED->base()
             || $mime === MediaTypeEnum::MULTIPART_FORM_DATA->base();
     }

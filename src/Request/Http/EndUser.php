@@ -17,7 +17,7 @@ use Infocyph\Webrick\Request\Support\IpCidr;
 final class EndUser
 {
     /* ----------------------------------------------------------------------- */
-    private const LEGACY_IP_HEADERS = [
+    private const array LEGACY_IP_HEADERS = [
         'HTTP_X_FORWARDED_FOR',
         'HTTP_CLIENT_IP',
         'HTTP_CF_CONNECTING_IP',
@@ -33,30 +33,31 @@ final class EndUser
         'HTTP_X_ORACLE_CLIENT_IP',
         'HTTP_X_STACKPATH_EDGE_IP',
     ];
-    private static array $trustedGlobal = [];                    // CIDR strings
+
+    /** @var list<string> CIDR strings */
+    private static array $trustedGlobal = [];
 
     /* ----------------------------------------------------------------------- */
     private ?string $cachedNoProxy = null;
+
     private ?string $cachedViaProxy = null;
 
     /**
      * Creates a new EndUser instance from the given Request.
      *
      * @param Request $req The request to get the end-user from.
-     * @param array $extraTrusted Extra trusted proxies (CIDR strings).
+     * @param list<string> $extraTrusted Extra trusted proxies (CIDR strings).
      */
     public function __construct(
         private readonly Request $req,
         private readonly array $extraTrusted = [],
-    ) {
-    }
+    ) {}
 
     /**
      * Creates a new EndUser instance from the given Request.
      *
      * @param Request $r The request to get the end-user from.
-     * @param array $cidrs Extra trusted proxies (CIDR strings).
-     * @return self
+     * @param list<string> $cidrs Extra trusted proxies (CIDR strings).
      */
     public static function from(Request $r, array $cidrs = []): self
     {
@@ -70,7 +71,7 @@ final class EndUser
      * the client's IP address. The list is global and applies to all
      * EndUser objects.
      *
-     * @param array $cidrs An array of IP addresses or CIDR ranges.
+     * @param list<string> $cidrs An array of IP addresses or CIDR ranges.
      */
     public static function setTrustedProxies(array $cidrs): void
     {
@@ -91,28 +92,11 @@ final class EndUser
      */
     public function anonymize(string $ip): string
     {
-        $wrap = str_starts_with($ip, '[') && str_ends_with($ip, ']');
-        $ip = $wrap ? substr($ip, 1, -1) : $ip;
+        [$plainIp, $wrapped] = self::normalizeIpToken($ip);
+        $maskedIp = self::maskedIp($plainIp) ?? $plainIp;
 
-        // Strip zone identifiers (e.g., "%eth0" or "%25eth0" in bracketed URIs)
-        if (false !== $pos = strpos($ip, '%')) {
-            $ip = substr($ip, 0, $pos);
-        }
-
-        $bin = \inet_pton($ip);
-        if ($bin === false) {
-            return $wrap ? '[' . $ip . ']' : $ip;
-        }
-
-        $mask = strlen($bin) === 4
-            ? \inet_pton('255.255.255.0')                 // /24
-            : \inet_pton('ffff:ffff:ffff:ffff:0:0:0:0');  // /64
-
-        $masked = $bin & $mask;
-
-        return $wrap ? '[' . \inet_ntop($masked) . ']' : \inet_ntop($masked);
+        return $wrapped ? '[' . $maskedIp . ']' : $maskedIp;
     }
-
 
     /**
      * Return the public IP of the client that is not behind a trusted proxy.
@@ -147,9 +131,18 @@ final class EndUser
             return $this->cachedNoProxy;
         }
 
-        $ip = \PHP_SAPI === 'cli'
-            ? gethostbyname(gethostname())
-            : ($this->req->getServerParams()['REMOTE_ADDR'] ?? null);
+        $ip = null;
+        if (\PHP_SAPI === 'cli') {
+            $hostname = \gethostname();
+            if ($hostname !== false) {
+                $ip = \gethostbyname($hostname);
+            }
+        } else {
+            $remote = $this->req->getServerParams()['REMOTE_ADDR'] ?? null;
+            if (\is_string($remote)) {
+                $ip = $remote;
+            }
+        }
 
         return $this->cachedNoProxy = \filter_var($ip, \FILTER_VALIDATE_IP) ?: null;
     }
@@ -169,8 +162,14 @@ final class EndUser
             return $this->cachedViaProxy;
         }
 
-        $chain = $this->parseForwarded() ?: $this->parseLegacyForwarded();
-        $chain[] = $this->ipNoProxy();                         // last hop
+        $chain = $this->parseForwarded();
+        if ($chain === []) {
+            $chain = $this->parseLegacyForwarded();
+        }
+        $lastHop = $this->ipNoProxy();
+        if ($lastHop !== null) {
+            $chain[] = $lastHop; // last hop
+        }
 
         foreach ($chain as $ip) {
             if (!$ip) {
@@ -183,6 +182,7 @@ final class EndUser
                 break;
             }
         }
+
         return $this->cachedViaProxy = $this->ipNoProxy();     // fallback
     }
 
@@ -195,13 +195,17 @@ final class EndUser
      *   - platform: the platform name (e.g. Windows, macOS, Linux)
      *   - engine: the rendering engine name (e.g. Blink, Gecko, WebKit)
      *   - raw: the raw User-Agent string
-     *
-     * @return array
+     * @return array<string, string>
      */
     public function parseUserAgent(): array
     {
-        return new UAParser($this->req)->parse()
-            + ['raw' => $this->userAgent() ?? ''];        // keep raw for logs
+        $parsed = new UAParser($this->req)->parse();
+        $out = ['raw' => $this->userAgent() ?? ''];
+        foreach ($parsed as $key => $value) {
+            $out[$key] = $value;
+        }
+
+        return $out; // keep raw for logs
     }
 
     /**
@@ -212,6 +216,40 @@ final class EndUser
     public function userAgent(): ?string
     {
         return $this->req->getHeaderLine('User-Agent') ?: null;
+    }
+
+    private static function maskedIp(string $ip): ?string
+    {
+        $bin = \inet_pton($ip);
+        if ($bin === false) {
+            return null;
+        }
+
+        $mask = \strlen($bin) === 4
+            ? \inet_pton('255.255.255.0')
+            : \inet_pton('ffff:ffff:ffff:ffff:0:0:0:0');
+        if (!\is_string($mask)) {
+            return null;
+        }
+
+        $masked = \inet_ntop($bin & $mask);
+
+        return \is_string($masked) ? $masked : null;
+    }
+
+    /**
+     * @return array{0: string, 1: bool}
+     */
+    private static function normalizeIpToken(string $ip): array
+    {
+        $wrapped = \str_starts_with($ip, '[') && \str_ends_with($ip, ']');
+        $plainIp = $wrapped ? \substr($ip, 1, -1) : $ip;
+        $zonePos = \strpos($plainIp, '%');
+        if ($zonePos !== false) {
+            $plainIp = \substr($plainIp, 0, $zonePos);
+        }
+
+        return [$plainIp, $wrapped];
     }
 
     /**
@@ -247,7 +285,7 @@ final class EndUser
     {
         return array_any(
             array_merge(self::$trustedGlobal, $this->extraTrusted),
-            fn ($cidr) => IpCidr::match($ip, $cidr),
+            static fn(string $cidr): bool => IpCidr::match($ip, $cidr),
         );
     }
 
@@ -255,7 +293,8 @@ final class EndUser
      * Parses the Forwarded header (if present) and returns an array of IP addresses.
      * The order of the IP addresses is the same as in the header.
      * If the header is not present, returns an empty array.
-     * @return array An array of IP addresses.
+     *
+     * @return list<string> An array of IP addresses.
      */
     private function parseForwarded(): array
     {
@@ -266,15 +305,18 @@ final class EndUser
         if ($h === '') {
             return [];
         }
-        preg_match_all('/for="?\[?([A-F0-9:.]+)/i', $h, $m);
-        return $m[1] ?? [];
+        if (\preg_match_all('/for="?\[?([A-F0-9:.]+)/i', $h, $m) === false) {
+            return [];
+        }
+
+        return $m[1];
     }
 
     /**
      * Parses legacy IP headers (X-Forwarded-For, Forwarded, Client-IP, etc.).
      * Returns an array of IP addresses (in the order they appear in the headers).
      *
-     * @return array An array of IP addresses.
+     * @return list<string> An array of IP addresses.
      */
     private function parseLegacyForwarded(): array
     {
@@ -283,13 +325,16 @@ final class EndUser
         }
         $srv = $this->req->getServerParams();
         foreach (self::LEGACY_IP_HEADERS as $hdr) {
-            if (empty($srv[$hdr])) {
+            $value = $srv[$hdr] ?? null;
+            if (!\is_string($value) || $value === '') {
                 continue;
             }
+
             return $hdr === 'HTTP_X_FORWARDED_FOR'
-                ? array_map('trim', explode(',', (string)$srv[$hdr]))
-                : [trim((string)$srv[$hdr])];
+                ? array_map(trim(...), explode(',', $value))
+                : [trim($value)];
         }
+
         return [];
     }
 }

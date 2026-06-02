@@ -2,9 +2,12 @@
 
 declare(strict_types=1);
 
-use Infocyph\InterMix\Cache\Cache;
+use Infocyph\CacheLayer\Cache\Cache;
+use Infocyph\Webrick\Request\Core\Stream;
+use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Route\Collection;
+use Infocyph\Webrick\Router\Url\SignedUrlConfig;
 use Psr\Log\LoggerInterface;
 use Psr\Log\LogLevel;
 use Psr\Log\NullLogger;
@@ -52,7 +55,7 @@ class TestLogger implements LoggerInterface
             return $this->records;
         }
 
-        return array_filter($this->records, fn ($r) => $r['level'] === $level);
+        return array_filter($this->records, fn($r) => $r['level'] === $level);
     }
 
     public function hasDebugRecords(): bool
@@ -76,7 +79,7 @@ class TestLogger implements LoggerInterface
             return !empty($this->records);
         }
 
-        return !empty(array_filter($this->records, fn ($r) => $r['level'] === $level));
+        return !empty(array_filter($this->records, fn($r) => $r['level'] === $level));
     }
 
     public function hasWarningRecords(): bool
@@ -120,6 +123,8 @@ function testRegistrar(array $options = []): Registrar
         'exposeUrlServices' => false,
         'signKey' => null,
         'signedDefaultTtl' => null,
+        'signedUrlConfig' => null,
+        'urlBaseUri' => '',
     ];
 
     $opts = array_merge($defaults, $options);
@@ -129,13 +134,17 @@ function testRegistrar(array $options = []): Registrar
         autoSlashRedirect: $opts['autoSlashRedirect'],
         exposeUrlServices: $opts['exposeUrlServices'],
         signKey: $opts['signKey'],
-        signedDefaultTtl: $opts['signedDefaultTtl']
+        signedDefaultTtl: $opts['signedDefaultTtl'],
+        signedUrlConfig: $opts['signedUrlConfig'] instanceof SignedUrlConfig
+            ? $opts['signedUrlConfig']
+            : null,
+        urlBaseUri: is_string($opts['urlBaseUri']) ? $opts['urlBaseUri'] : '',
     );
 }
 /**
  * Create a mock PSR-7 Request for testing
  */
-function mockRequest(string $method, string $uri, array $headers = [], array $body = []): \Infocyph\Webrick\Request\Request
+function mockRequest(string $method, string $uri, array $headers = [], array $body = []): Request
 {
     $_SERVER['REQUEST_METHOD'] = $method;
     $_SERVER['REQUEST_URI'] = $uri;
@@ -151,13 +160,13 @@ function mockRequest(string $method, string $uri, array $headers = [], array $bo
     }
 
     // Create request from globals
-    $request = \Infocyph\Webrick\Request\Request::fromGlobals();
+    $request = Request::fromGlobals();
 
     // Add body if provided
     if (!empty($body)) {
         if ($method === 'POST' || $method === 'PUT' || $method === 'PATCH') {
             $json = json_encode($body);
-            $stream = new \Infocyph\Webrick\Request\Core\Stream($json);
+            $stream = new Stream($json);
             $request = $request->withBody($stream);
 
             if (!isset($headers['Content-Type'])) {
@@ -173,13 +182,17 @@ function mockRequest(string $method, string $uri, array $headers = [], array $bo
  */
 function testCache(string $namespace = 'test'): Cache
 {
+    if (\PHP_OS_FAMILY === 'Windows' && !\extension_loaded('apcu')) {
+        return Cache::memory('webrick-test-' . $namespace);
+    }
+
     return Cache::local(sys_get_temp_dir() . '/webrick-test-' . $namespace);
 }
 
 /**
  * Create a test logger.
  */
-function testLogger(): \Psr\Log\LoggerInterface
+function testLogger(): LoggerInterface
 {
     return new NullLogger();
 }
@@ -203,7 +216,7 @@ function cleanTestCache(string $path): void
 
     $files = new RecursiveIteratorIterator(
         new RecursiveDirectoryIterator($path, RecursiveDirectoryIterator::SKIP_DOTS),
-        RecursiveIteratorIterator::CHILD_FIRST
+        RecursiveIteratorIterator::CHILD_FIRST,
     );
 
     foreach ($files as $file) {

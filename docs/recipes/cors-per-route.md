@@ -1,32 +1,27 @@
 # CORS per-route override
 
-Use a default CORS middleware, then override **per route** for special cases.
+Apply a global CORS policy, then override specific routes with a route-level middleware instance.
 
 ```php
-<?php
-
-use Infocyph\Webrick\Router\Kernel\RouterKernel;
-use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Middleware\CorsAndPoliciesMiddleware;
 use Infocyph\Webrick\Response\Response;
-use Infocyph\Webrick\Middleware\CorsAndPoliciesMiddleware as CORS;
+use Infocyph\Webrick\Router\Facade\Router as Route;
 
-$router = new RouterKernel();
+$preGlobal = [
+    new CorsAndPoliciesMiddleware([
+        'allow_origin' => ['https://app.example.com'],
+        'allow_methods' => ['GET', 'POST', 'OPTIONS'],
+        'allow_headers' => ['Content-Type', 'Authorization'],
+        'max_age' => 600,
+    ]),
+];
 
-// Global default
-$router->use(new CORS([
-    'allow_origin' => ['https://app.example.com'],
-    'allow_methods' => ['GET', 'POST', 'OPTIONS'],
-    'allow_headers' => ['Content-Type', 'Authorization'],
-    'max_age' => 600,
-]));
-
-// Route-level override
-$router->get('/public/metrics', function () {
-    return Response::json(['uptime' => 12345]);
-})->with(new CORS([
-    'allow_origin' => ['*'],
-    'allow_methods' => ['GET', 'OPTIONS'],
-    'allow_headers' => ['*'],
-    'max_age' => 60,
-]));
+Route::get('/public/metrics', fn() => Response::json(['uptime' => 12345]), [
+    'middleware' => [new CorsAndPoliciesMiddleware([
+        'allow_origin' => ['*'],
+        'allow_methods' => ['GET', 'OPTIONS'],
+        'allow_headers' => ['*'],
+        'max_age' => 60,
+    ])],
+]);
 ```

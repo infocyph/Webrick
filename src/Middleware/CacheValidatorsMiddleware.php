@@ -66,8 +66,7 @@ final class CacheValidatorsMiddleware
         private readonly bool $autoEtagWhenMissing = true,
         private readonly bool $includeQueryInEtag = true,
         private readonly int $autoEtagMinSize = 2048,
-    ) {
-    }
+    ) {}
 
     /**
      * Handle the request, applying conditional logic and validator management.
@@ -83,6 +82,7 @@ final class CacheValidatorsMiddleware
      * - May mutate request headers (drop Range).
      * - May mutate response headers (cache-control, ETag, validator headers).
      *
+     * @param Closure(Request):Response $next
      * @return Response Final response (possibly short-circuited)
      */
     public function __invoke(Request $req, Closure $next): Response
@@ -93,8 +93,9 @@ final class CacheValidatorsMiddleware
         [$validator, $result] = $this->evaluatePreconditionsWithProvider($req);
 
         // 2) Early exit on 304/412
-        if ($resp = $this->maybeShortCircuit($result, $isGetHead)) {
-            return $resp;
+        $shortCircuit = $this->maybeShortCircuit($result, $isGetHead);
+        if ($shortCircuit !== null) {
+            return $shortCircuit;
         }
 
         // 3) Drop stale Range for GET/HEAD
@@ -106,12 +107,14 @@ final class CacheValidatorsMiddleware
         // 4.5) If upstream marked the request as personalized (e.g., locale from cookie),
         //      ensure the response is not publicly cacheable. Do NOT add Vary: Cookie.
         if ($req->getAttribute('personalized')) {
-            $resp = $resp->withCache(fn ($cc) => $cc->private()->noTransform());
+            $resp = $resp->withCache(
+                fn(\Infocyph\Webrick\Response\Headers\CacheControl $cc) => $cc->private(),
+            );
         }
 
         // 5) Post: ensure validators + maybe auto-ETag (GET/HEAD only)
         if ($isGetHead) {
-            $resp = $this->ensureValidatorHeaders($resp, $result->headers ?? []);
+            $resp = $this->ensureValidatorHeaders($resp, $result->headers);
             $resp = $this->maybeAttachAutoEtag($resp, $req);
         }
 
@@ -122,7 +125,7 @@ final class CacheValidatorsMiddleware
      * Set a process-wide default metadata provider.
      *
      * @param null|Closure(Request): array{0:string|null,1:int|null} $provider
-     *   Provider returning [etag, lastModifiedTimestamp]
+     *                                                                         Provider returning [etag, lastModifiedTimestamp]
      */
     public static function setDefaultMetaProvider(?Closure $provider): void
     {
@@ -144,11 +147,13 @@ final class CacheValidatorsMiddleware
             }
             if ($seg === '..') {
                 array_pop($parts);
+
                 continue;
             }
             $parts[] = $seg;
         }
         $out = implode('/', $parts);
+
         return $isAbs ? '/' . $out : $out;
     }
 
@@ -159,7 +164,12 @@ final class CacheValidatorsMiddleware
      */
     private static function docRoot(): ?string
     {
-        $dr = (string)($_SERVER['DOCUMENT_ROOT'] ?? '');
+        $raw = $_SERVER['DOCUMENT_ROOT'] ?? '';
+        if (!\is_string($raw)) {
+            return null;
+        }
+        $dr = $raw;
+
         return $dr !== '' ? $dr : null;
     }
 
@@ -174,6 +184,7 @@ final class CacheValidatorsMiddleware
     private static function etagForFile(int $size, int $mtime, string $realPath): string
     {
         $seed = $size . '|' . $mtime . '|' . basename($realPath);
+
         return '"' . substr(hash('xxh3', $seed, false), 0, 16) . '"';
     }
 
@@ -193,6 +204,7 @@ final class CacheValidatorsMiddleware
             if ($info = self::resolveFileUnderDocroot($docRoot, $path)) {
                 [$real, $size, $mtime] = $info;
                 $etag = self::etagForFile($size, $mtime, $real);
+
                 return [$etag, $mtime];
             }
         }
@@ -213,13 +225,14 @@ final class CacheValidatorsMiddleware
         if (PHP_OS_FAMILY === 'Windows') {
             $p = strtolower($p);
         }
+
         return rtrim($p, '/');
     }
 
     /**
      * Resolve a requested path to a readable file under the given document root.
      *
-     * Security:
+     * Safety notes:
      * - Decodes percent-encoding and collapses dot segments to prevent traversal.
      * - Verifies the resolved realpath remains within the document root.
      *
@@ -229,7 +242,7 @@ final class CacheValidatorsMiddleware
     {
         $decoded = rawurldecode($path);
         $norm = self::collapseDotSegments($decoded);
-        $rel = ltrim($norm, "/\\");
+        $rel = ltrim($norm, '/\\');
         $cand = $rel === '' ? $docRoot : ($docRoot . DIRECTORY_SEPARATOR . $rel);
 
         $real = realpath($cand);
@@ -251,7 +264,7 @@ final class CacheValidatorsMiddleware
             return null;
         }
 
-        return [$real, (int)$size, (int)$mtime];
+        return [$real, $size, $mtime];
     }
 
     /**
@@ -262,6 +275,7 @@ final class CacheValidatorsMiddleware
     private static function scriptMtime(): ?int
     {
         $mt = filemtime(__FILE__);
+
         return $mt === false ? null : $mt;
     }
 
@@ -274,7 +288,7 @@ final class CacheValidatorsMiddleware
      */
     private static function syntheticEtag(string $path, ?int $scriptMtime): string
     {
-        return '"' . substr(hash('xxh3', 'fallback|' . $path . '|' . (string)$scriptMtime, false), 0, 16) . '"';
+        return '"' . substr(hash('xxh3', 'fallback|' . $path . '|' . $scriptMtime, false), 0, 16) . '"';
     }
 
     /**
@@ -285,23 +299,25 @@ final class CacheValidatorsMiddleware
     private function ensureValidatorHeaders(Response $resp, array $headers): Response
     {
         foreach ($headers as $h => $v) {
-            if ($v !== null && !$resp->hasHeader($h)) {
+            if (!$resp->hasHeader($h)) {
                 $resp = $resp->withHeader($h, $v);
             }
         }
+
         return $resp;
     }
 
     /**
      * Compute validator metadata using the resolved provider and evaluate request preconditions.
      *
-     * @return array{0:ConditionalValidator,1:object} [validator, evaluationResult]
+     * @return array{0:ConditionalValidator,1:Outcome} [validator, evaluationResult]
      */
     private function evaluatePreconditionsWithProvider(Request $req): array
     {
         [$etag, $lm] = $this->resolveProvider()($req);
         $validator = new ConditionalValidator($etag, $lm);
         $result = $validator->evaluate($req);
+
         return [$validator, $result];
     }
 
@@ -323,6 +339,7 @@ final class CacheValidatorsMiddleware
             return false;
         }
         $size = $b->getSize();
+
         return !($size !== null && $size < $this->autoEtagMinSize);
     }
 
@@ -332,6 +349,7 @@ final class CacheValidatorsMiddleware
     private function isGetOrHead(Request $req): bool
     {
         $m = HttpMethodEnum::normalize($req->getMethod());
+
         return $m === HttpMethodEnum::GET->value || $m === HttpMethodEnum::HEAD->value;
     }
 
@@ -357,6 +375,7 @@ final class CacheValidatorsMiddleware
         if (($computed = Etag::fromStream($resp->getBody(), $qs)) !== null) {
             $resp = $resp->withHeader('ETag', $computed);
         }
+
         return $resp;
     }
 
@@ -370,6 +389,7 @@ final class CacheValidatorsMiddleware
         if (!$isGetHead || !$req->hasHeader('Range')) {
             return $req;
         }
+
         return $validator->isRangeFresh($req)
             ? $req
             : $req->withoutHeader('Range')->withAttribute('range_dropped', true);
@@ -383,17 +403,18 @@ final class CacheValidatorsMiddleware
      *
      * @return Response|null 304/412 response or null to continue pipeline
      */
-    private function maybeShortCircuit(object $result, bool $isGetHead): ?Response
+    private function maybeShortCircuit(Outcome $result, bool $isGetHead): ?Response
     {
-        if (($result->state ?? null) === Outcome::PASS) {
+        if ($result->state === Outcome::PASS) {
             return null;
         }
 
         // RFC 7232: Non-GET/HEAD with If-None-Match → 412 instead of 304
-        $status = (!$isGetHead && ($result->http ?? 0) === StatusEnum::NOT_MODIFIED->value)
+        $status = (!$isGetHead && $result->http === StatusEnum::NOT_MODIFIED->value)
             ? StatusEnum::PRECONDITION_FAILED->value
-            : ($result->http ?? StatusEnum::PRECONDITION_FAILED->value);
-        return Response::empty($status, $result->headers ?? []);
+            : $result->http;
+
+        return Response::empty($status, $result->headers);
     }
 
     /**
@@ -409,6 +430,7 @@ final class CacheValidatorsMiddleware
         if (self::$defaultProvider instanceof Closure) {
             return self::$defaultProvider;
         }
+
         return self::fallbackMetaProvider(...);
     }
 }

@@ -12,12 +12,18 @@ namespace Infocyph\Webrick\Request\Http;
  * $mime = $neg->preferred(['application/json', '+json']);
  * ```
  */
-final class ContentNegotiator
+final readonly class ContentNegotiator
 {
-    /** @var string[] quality-sorted by RequestHeaders */
+    /** @var list<string> quality-sorted by RequestHeaders */
     private array $accept;        // Accept
+
+    /** @var list<string> */
     private array $charsets;      // Accept-Charset
+
+    /** @var list<string> */
     private array $encodings;     // Accept-Encoding
+
+    /** @var list<string> */
     private array $languages;     // Accept-Language
 
     /**
@@ -27,18 +33,16 @@ final class ContentNegotiator
      */
     public function __construct(RequestHeaders $hdr)
     {
-        $m = $hdr->accept();          // map<string,string[]>
-        $this->accept = $m['Accept'] ?? ['*/*'];
-        $this->encodings = $m['Accept-Encoding'] ?? [];
-        $this->charsets = $m['Accept-Charset'] ?? [];
-        $this->languages = $m['Accept-Language'] ?? [];
+        $accept = $hdr->accept('Accept');
+        $this->accept = $accept === [] ? ['*/*'] : $accept;
+        $this->encodings = $hdr->accept('Accept-Encoding');
+        $this->charsets = $hdr->accept('Accept-Charset');
+        $this->languages = $hdr->accept('Accept-Language');
     }
 
     /**
      * Return true if the client prefers to receive responses with ISO-8859-1 (Latin-1) encoding.
      * False otherwise.
-     *
-     * @return bool
      */
     public function acceptsLatin1(): bool
     {
@@ -48,8 +52,6 @@ final class ContentNegotiator
     /**
      * Return true if the client prefers to receive responses with UTF-8 encoding.
      * False otherwise.
-     *
-     * @return bool
      */
     public function acceptsUtf8(): bool
     {
@@ -60,13 +62,12 @@ final class ContentNegotiator
      * Find the best match from a list of candidates.
      *
      * @param string[] $candidates
-     * @return string|null
      */
     public function preferred(array $candidates): ?string
     {
         return array_find(
             $this->accept,
-            fn ($have) => array_any($candidates, fn ($want) => $this->matches($want, $have)),
+            fn($have) => array_any($candidates, fn($want) => $this->matches($want, $have)),
         );
     }
 
@@ -75,7 +76,6 @@ final class ContentNegotiator
      * False if not supported.
      *
      * @param string $cs the character set to check, e.g. 'utf-8', 'iso-8859-1'
-     * @return bool
      */
     public function supportsCharset(string $cs): bool
     {
@@ -89,7 +89,6 @@ final class ContentNegotiator
      * False if not supported.
      *
      * @param string $enc the encoding to check, e.g. 'gzip', 'br', 'identity'
-     * @return bool
      */
     public function supportsEncoding(string $enc): bool
     {
@@ -103,7 +102,6 @@ final class ContentNegotiator
      * False if not supported.
      *
      * @param string $lang the language to check, e.g. 'en', 'fr', 'bn-BD'
-     * @return bool
      */
     public function supportsLanguage(string $lang): bool
     {
@@ -115,8 +113,6 @@ final class ContentNegotiator
     /**
      * True if the client prefers to receive responses with Brotli encoding.
      * False otherwise.
-     *
-     * @return bool
      */
     public function wantsBrotli(): bool
     {
@@ -126,8 +122,6 @@ final class ContentNegotiator
     /**
      * True if the client prefers to receive responses with gzip encoding.
      * False otherwise.
-     *
-     * @return bool
      */
     public function wantsGzip(): bool
     {
@@ -137,8 +131,6 @@ final class ContentNegotiator
     /**
      * True if the client prefers to receive responses with Zstd encoding.
      * False otherwise.
-     *
-     * @return bool
      */
     public function wantsZstd(): bool
     {
@@ -190,6 +182,7 @@ final class ContentNegotiator
         // accept-side vendor suffix: application/*+json
         if (preg_match('#^([^/]+)/\*?\+([^;]+)$#', $have, $m)) {
             [$type, $suffix] = [$m[1], $m[2]];
+
             return preg_match("#^{$type}/[^+]+\+{$suffix}$#", $want) === 1;
         }
 

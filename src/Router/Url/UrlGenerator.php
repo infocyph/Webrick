@@ -4,52 +4,79 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router\Url;
 
+use DateTimeInterface;
+use Infocyph\Webrick\Interfaces\RouteInterface;
 use Infocyph\Webrick\Router\Route\Collection;
 use InvalidArgumentException;
+use LogicException;
 
 /**
  * Generates URLs for named routes, controller actions, and arbitrary paths.
  *
- * This class provides a fluent interface for generating URLs with support for:
- * - Named routes with parameters
- * - Controller/action references
- * - Arbitrary paths with query parameters
- * - Relative and absolute URL generation
+ * @phpstan-type RouteParam bool|float|int|string|null
+ * @phpstan-type QueryValue array<int|string,mixed>|bool|float|int|string|null
  */
 class UrlGenerator
 {
-    /**
-     * The base URI to prepend for absolute URLs.
-     */
-    private string $baseUri;
+    public const string EXPIRES_PARAM = SignedUrlConfig::DEFAULT_EXPIRY_PARAM;
+
+    public const string SIG_PARAM = SignedUrlConfig::DEFAULT_SIGNATURE_PARAM;
+
+    private readonly string $basePass;
+
+    private readonly ?int $basePort;
+
+    private readonly string $baseScheme;
+
+    private readonly string $baseUri;
+
+    private readonly string $baseUser;
+
+    private readonly ?SignedUrlConfig $signedConfig;
 
     /**
-     * Collection of registered routes.
+     * @param string $baseUri Base URI used for absolute URL generation.
      */
-    private Collection $routes;
+    public function __construct(
+        string $baseUri,
+        private readonly Collection $routes,
+        ?string $secret = null,
+        ?int $defaultTtl = null,
+        ?SignedUrlConfig $signedConfig = null,
+    ) {
+        $parts = \parse_url($baseUri);
+        if ($parts === false || isset($parts['query']) || isset($parts['fragment'])) {
+            throw new InvalidArgumentException('baseUri must not contain query or fragment components');
+        }
 
-    /**
-     * Initializes the URL generator with base URI and route collection.
-     *
-     * @param string $baseUri Base URI (typically empty string as domains are handled elsewhere)
-     * @param Collection $routes Collection of registered routes
-     */
-    public function __construct(string $baseUri, Collection $routes)
-    {
-        // Strip any trailing slash so we can always do "$baseUri . '/' . ltrim(path)"
-        $this->baseUri = rtrim($baseUri, '/');
-        $this->routes = $routes;
+        $this->baseUri = \rtrim($baseUri, '/');
+        $this->baseScheme = \strtolower((string) ($parts['scheme'] ?? ''));
+        $this->baseUser = (string) ($parts['user'] ?? '');
+        $this->basePass = (string) ($parts['pass'] ?? '');
+        $this->basePort = $parts['port'] ?? null;
+        $this->signedConfig = SignedUrlConfig::mergeLegacy($signedConfig, $secret, $defaultTtl);
+    }
+
+    public static function checkSignature(
+        string $payload,
+        string $sig,
+        string $key,
+        string $algorithm = SignedUrlConfig::DEFAULT_ALGORITHM,
+    ): bool {
+        return \hash_equals(self::makeSignature($payload, $key, $algorithm), $sig);
+    }
+
+    public static function makeSignature(
+        string $payload,
+        string $key,
+        string $algorithm = SignedUrlConfig::DEFAULT_ALGORITHM,
+    ): string {
+        return \hash_hmac($algorithm, $payload, $key);
     }
 
     /**
-     * Build a URL by handler reference.
-     *
-     * @param callable|string $handler Callable or "Class::method" string
-     * @param array<string,scalar|null> $params Route parameters
-     * @param array<string,scalar|array|null> $query Query string parameters
-     * @param bool $absolute Whether to generate an absolute URL
-     * @return string Generated URL
-     * @throws InvalidArgumentException If no route is found for the handler
+     * @param array<string,RouteParam> $params
+     * @param array<string,QueryValue> $query
      */
     public function action(
         callable|string $handler,
@@ -63,38 +90,102 @@ class UrlGenerator
         }
 
         $path = $this->substitute($route->getPath(), $params);
-        return $this->build($path, $query, $absolute);
+
+        return $this->buildResolvedPath($path, $query, $absolute, $route->getDomain());
+    }
+
+    public function getBaseUri(): string
+    {
+        return $this->baseUri;
+    }
+
+    public function getSignedConfig(): ?SignedUrlConfig
+    {
+        return $this->signedConfig;
     }
 
     /**
-     * Build a URL to an arbitrary path.
-     *
-     * @param non-empty-string $path URL path (leading slash optional)
-     * @param array<string,scalar|array|null> $query Query string parameters
-     * @param bool $absolute Whether to generate an absolute URL
-     * @return string Generated URL
+     * @param array<string,RouteParam> $params
+     * @param array<string,QueryValue> $query
      */
-    public function to(
-        string $path,
+    public function signed(
+        string $name,
+        array $params = [],
         array $query = [],
-        bool $absolute = false,
+        ?int $ttl = null,
+        bool $absolute = true,
+        ?string $payloadMode = null,
     ): string {
-        return $this->build($path, $query, $absolute);
+        $route = $this->requireNamedRoute($name);
+        $expiresAt = $ttl === null ? null : \time() + $this->normalizePositiveInt($ttl, 'ttl');
+
+        return $this->signResolvedPath(
+            path: $this->substitute($route->getPath(), $params),
+            query: $query,
+            expiresAt: $expiresAt,
+            absolute: $absolute,
+            payloadMode: $payloadMode,
+            routeDomain: $route->getDomain(),
+        );
     }
 
-    /* -----------------------------------------------------------------
-     *  Public API  (defaults to RELATIVE)
-     * ----------------------------------------------------------------*/
+    /**
+     * @param array<string,RouteParam> $params
+     * @param array<string,QueryValue> $query
+     */
+    public function temporary(
+        string $name,
+        array $params = [],
+        array $query = [],
+        ?int $ttl = null,
+        bool $absolute = true,
+        ?string $payloadMode = null,
+    ): string {
+        return $this->signed(
+            name: $name,
+            params: $params,
+            query: $query,
+            ttl: $ttl ?? $this->requireDefaultTtl(),
+            absolute: $absolute,
+            payloadMode: $payloadMode,
+        );
+    }
 
     /**
-     * Build a URL for a named route.
-     *
-     * @param non-empty-string $name Name of the route
-     * @param array<string,scalar|null> $params Route parameter values
-     * @param array<string,scalar|array|null> $query Query string parameters
-     * @param bool $absolute Whether to generate an absolute URL
-     * @return string Generated URL
-     * @throws InvalidArgumentException If the named route is not found
+     * @param array<string,RouteParam> $params
+     * @param array<string,QueryValue> $query
+     */
+    public function temporaryUntil(
+        string $name,
+        DateTimeInterface|int $expiresAt,
+        array $params = [],
+        array $query = [],
+        bool $absolute = true,
+        ?string $payloadMode = null,
+    ): string {
+        $route = $this->requireNamedRoute($name);
+
+        return $this->signResolvedPath(
+            path: $this->substitute($route->getPath(), $params),
+            query: $query,
+            expiresAt: $this->normalizeExpiryTimestamp($expiresAt),
+            absolute: $absolute,
+            payloadMode: $payloadMode,
+            routeDomain: $route->getDomain(),
+        );
+    }
+
+    /**
+     * @param array<string,QueryValue> $query
+     */
+    public function to(string $path, array $query = [], bool $absolute = false): string
+    {
+        return $this->buildResolvedPath($path, $query, $absolute);
+    }
+
+    /**
+     * @param array<string,RouteParam> $params
+     * @param array<string,QueryValue> $query
      */
     public function urlFor(
         string $name,
@@ -102,90 +193,333 @@ class UrlGenerator
         array $query = [],
         bool $absolute = false,
     ): string {
+        $route = $this->requireNamedRoute($name);
+        $path = $this->substitute($route->getPath(), $params);
+
+        return $this->buildResolvedPath($path, $query, $absolute, $route->getDomain());
+    }
+
+    /**
+     * @param array<string,QueryValue> $query
+     */
+    private function appendQueryString(string $uri, array $query): string
+    {
+        if ($query === []) {
+            return $uri;
+        }
+
+        return $uri . '?' . \http_build_query($query, '', '&', \PHP_QUERY_RFC3986);
+    }
+
+    private function assertNoQueryOrFragment(string $value, string $field): void
+    {
+        $parts = \parse_url($value);
+        if ($parts === false) {
+            throw new InvalidArgumentException("{$field} must be a valid path or URI.");
+        }
+
+        if (isset($parts['query']) || isset($parts['fragment'])) {
+            throw new InvalidArgumentException("{$field} must not contain query or fragment components.");
+        }
+    }
+
+    /**
+     * @param array<string,QueryValue> $query
+     */
+    private function assertQueryHasNoReservedParameters(array $query, SignedUrlConfig $config): void
+    {
+        if (
+            \array_key_exists($config->signatureParam, $query)
+            || \array_key_exists($config->expiryParam, $query)
+        ) {
+            throw new InvalidArgumentException(
+                "Query may not contain reserved parameters '"
+                . $config->signatureParam
+                . "' or '"
+                . $config->expiryParam
+                . "'.",
+            );
+        }
+    }
+
+    private function buildAbsolutePayloadTarget(string $path, ?string $routeDomain): string
+    {
+        $target = $this->isAbsoluteUri($path)
+            ? $path
+            : $this->buildAbsoluteUri($path, $routeDomain);
+
+        if (!$this->isConcreteAbsoluteUri($target)) {
+            throw new LogicException('Absolute signed URLs require a concrete absolute base URI or route domain.');
+        }
+
+        return $target;
+    }
+
+    private function buildAbsoluteUri(string $path, ?string $routeDomain = null): string
+    {
+        if ($this->isAbsoluteUri($path) || \str_starts_with($path, '//')) {
+            return $path;
+        }
+
+        $normalizedPath = $this->normalizePath($path);
+
+        if ($routeDomain === null || $routeDomain === '' || $routeDomain === '*') {
+            return ($this->baseUri !== '' ? $this->baseUri : '') . $normalizedPath;
+        }
+
+        if ($this->isAbsoluteUri($routeDomain) || \str_starts_with($routeDomain, '//')) {
+            return \rtrim($routeDomain, '/') . $normalizedPath;
+        }
+
+        if ($this->baseScheme === '') {
+            return '//' . $routeDomain . $normalizedPath;
+        }
+
+        return $this->baseScheme
+            . '://'
+            . $this->formatUserInfo()
+            . $routeDomain
+            . $this->formatPort()
+            . $normalizedPath;
+    }
+
+    /**
+     * @param array<string,QueryValue> $query
+     */
+    private function buildResolvedPath(
+        string $path,
+        array $query,
+        bool $absolute,
+        ?string $routeDomain = null,
+    ): string {
+        $target = $absolute
+            ? $this->buildAbsoluteUri($path, $routeDomain)
+            : $this->normalizePath($path);
+
+        return $this->appendQueryString($target, $query);
+    }
+
+    /**
+     * @param array<string,QueryValue> $query
+     */
+    private function buildSignaturePayload(
+        string $path,
+        array $query,
+        string $payloadMode,
+        ?string $routeDomain,
+    ): string {
+        $target = $payloadMode === SignedUrlConfig::MODE_ABSOLUTE
+            ? $this->buildAbsolutePayloadTarget($path, $routeDomain)
+            : $this->extractRelativePath($path);
+
+        return $this->appendQueryString($target, $query);
+    }
+
+    /**
+     * @param array<string,QueryValue> $query
+     * @return array<string,QueryValue>
+     */
+    private function canonicalizeQuery(array $query): array
+    {
+        \ksort($query);
+
+        return $query;
+    }
+
+    private function extractRelativePath(string $path): string
+    {
+        if (!$this->isAbsoluteUri($path) && !\str_starts_with($path, '//')) {
+            return $this->normalizePath($path);
+        }
+
+        $parts = \parse_url($path);
+        if ($parts === false) {
+            throw new InvalidArgumentException('Signed URL path must be a valid URI or path.');
+        }
+
+        $relativePath = (string) ($parts['path'] ?? '/');
+        if ($relativePath === '' || $relativePath[0] !== '/') {
+            $relativePath = '/' . \ltrim($relativePath, '/');
+        }
+
+        return $relativePath;
+    }
+
+    private function formatPort(): string
+    {
+        return $this->basePort === null ? '' : ':' . $this->basePort;
+    }
+
+    private function formatUserInfo(): string
+    {
+        if ($this->baseUser === '') {
+            return '';
+        }
+
+        return $this->baseUser . ($this->basePass !== '' ? ':' . $this->basePass : '') . '@';
+    }
+
+    private function isAbsoluteUri(string $value): bool
+    {
+        return \preg_match('/^[A-Za-z][A-Za-z0-9+.-]*:\/\//', $value) === 1;
+    }
+
+    private function isConcreteAbsoluteUri(string $value): bool
+    {
+        $parts = \parse_url($value);
+        if ($parts === false) {
+            return false;
+        }
+
+        return \is_string($parts['scheme'] ?? null)
+            && $parts['scheme'] !== ''
+            && \is_string($parts['host'] ?? null)
+            && $parts['host'] !== '';
+    }
+
+    private function normalizeExpiryTimestamp(DateTimeInterface|int $expiresAt): int
+    {
+        if ($expiresAt instanceof DateTimeInterface) {
+            $expiresAt = $expiresAt->getTimestamp();
+        }
+
+        return $this->normalizePositiveInt($expiresAt, 'expiresAt');
+    }
+
+    private function normalizePath(string $path): string
+    {
+        if ($this->routes->hasPath($path)) {
+            return $path;
+        }
+
+        return '/' . \ltrim($path, '/');
+    }
+
+    private function normalizePositiveInt(int $value, string $field): int
+    {
+        if ($value < 1) {
+            throw new InvalidArgumentException("{$field} must be a positive integer.");
+        }
+
+        return $value;
+    }
+
+    private function requireDefaultTtl(): int
+    {
+        $config = $this->requireSignedConfig();
+        if ($config->defaultTtl === null) {
+            throw new LogicException('Temporary URL generation requires a default TTL.');
+        }
+
+        return $config->defaultTtl;
+    }
+
+    private function requireGenerationKey(): string
+    {
+        $config = $this->requireSignedConfig();
+        if ($config->generationKey === null) {
+            throw new LogicException('Signed URL generation requires a configured key.');
+        }
+
+        return $config->generationKey;
+    }
+
+    private function requireNamedRoute(string $name): RouteInterface
+    {
+        if ($name === '') {
+            throw new InvalidArgumentException('Route name must not be empty.');
+        }
+
         $route = $this->routes->findByName($name);
         if ($route === null) {
             throw new InvalidArgumentException("Route '{$name}' not found.");
         }
 
-        $path = $this->substitute($route->getPath(), $params);
-        return $this->build($path, $query, $absolute);
+        return $route;
+    }
+
+    private function requireSignedConfig(): SignedUrlConfig
+    {
+        return $this->signedConfig
+            ?? throw new LogicException('Signed URL generation requires a configured signing profile.');
+    }
+
+    private function resolvePayloadMode(?string $payloadMode, SignedUrlConfig $config): string
+    {
+        if ($payloadMode === null) {
+            return $config->payloadMode;
+        }
+
+        return new SignedUrlConfig(payloadMode: $payloadMode)->payloadMode;
     }
 
     /**
-     * Constructs the final URL from path, query parameters, and base URI.
-     *
-     * @param string $path URL path
-     * @param array<string,scalar|array|null> $query Query parameters
-     * @param bool $absolute Whether to include the base URI
-     * @return string The fully constructed URL
+     * @param array<string,QueryValue> $query
      */
-    private function build(string $path, array $query, bool $absolute): string
-    {
-        // If the path exists verbatim in the route table, trust it.
-        if ($this->routes->hasPath($path)) {
-            $uri = $absolute
-                ? $this->baseUri . $path
-                : $path;
-        } else {
-            $uri = ($absolute ? $this->baseUri : '') . '/' . ltrim($path, '/');
+    private function signResolvedPath(
+        string $path,
+        array $query,
+        ?int $expiresAt,
+        bool $absolute,
+        ?string $payloadMode,
+        ?string $routeDomain = null,
+    ): string {
+        $config = $this->requireSignedConfig();
+        $this->assertNoQueryOrFragment($path, 'path');
+        $this->assertQueryHasNoReservedParameters($query, $config);
+
+        $signedQuery = $this->canonicalizeQuery($query);
+        if ($expiresAt !== null) {
+            $signedQuery[$config->expiryParam] = $expiresAt;
+            $signedQuery = $this->canonicalizeQuery($signedQuery);
         }
 
-        if ($query === []) {
-            return $uri;
-        }
+        $resolvedPayloadMode = $this->resolvePayloadMode($payloadMode, $config);
+        $signedQuery[$config->signatureParam] = self::makeSignature(
+            $this->buildSignaturePayload($path, $signedQuery, $resolvedPayloadMode, $routeDomain),
+            $this->requireGenerationKey(),
+            $config->algorithm,
+        );
 
-        // RFC3986 encoding:
-        return $uri . '?' . http_build_query($query, '', '&', PHP_QUERY_RFC3986);
+        return $this->buildResolvedPath($path, $signedQuery, $absolute, $routeDomain);
     }
-
-    /* -----------------------------------------------------------------
-     *  Internals
-     * ----------------------------------------------------------------*/
 
     /**
      * Replaces placeholders in the URL template with encoded parameter values.
      *
      * @param string $template URL template with {param} or {param:type} placeholders
-     * @param array<string,scalar|null> $params Parameter values
-     * @return string URL with placeholders replaced
-     * @throws InvalidArgumentException If parameters are missing or invalid
+     * @param array<string,mixed> $params Parameter values
      */
     private function substitute(string $template, array $params): string
     {
-        // Fast path: no placeholders?
-        if (!str_contains($template, '{')) {
+        if (!\str_contains($template, '{')) {
             return $template;
         }
 
-        $result = (string)preg_replace_callback(
+        $result = (string) \preg_replace_callback(
             '/\{([A-Za-z_]\w*)(?::[^}]+)?}/',
-            function (array $m) use ($template, $params): string {
-                $key = $m[1];
-
-                if (!array_key_exists($key, $params)) {
+            function (array $matches) use ($template, $params): string {
+                $key = $matches[1];
+                if (!\array_key_exists($key, $params)) {
                     throw new InvalidArgumentException(
                         "Missing parameter '{$key}' for URL template '{$template}'.",
                     );
                 }
 
-                $val = $params[$key];
-                if (!is_scalar($val) && $val !== null) {
+                $value = $params[$key];
+                if (!\is_scalar($value) && $value !== null) {
                     throw new InvalidArgumentException(
-                        "Parameter '{$key}' must be scalar or null; got " . gettype($val),
+                        "Parameter '{$key}' must be scalar or null; got " . \gettype($value),
                     );
                 }
 
-                // Treat null as empty string
-                return rawurlencode((string)$val);
+                return \rawurlencode((string) $value);
             },
             $template,
         );
 
-        // If anything like "{foo}" remains, we weren't given a param
-        if (preg_match('/\{[A-Za-z_]\w*(?::[^}]+)?}/', $result)) {
-            throw new InvalidArgumentException(
-                "Unable to resolve all placeholders in '{$template}'.",
-            );
+        if (\preg_match('/\{[A-Za-z_]\w*(?::[^}]+)?}/', $result) === 1) {
+            throw new InvalidArgumentException("Unable to resolve all placeholders in '{$template}'.");
         }
 
         return $result;

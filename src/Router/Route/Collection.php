@@ -23,7 +23,7 @@ use Traversable;
  *  - Build phase: collection is mutable and indices are kept up-to-date.
  *  - Freeze phase: compile() produces a CompiledCollection and prevents further mutation.
  *
- * @package Infocyph\Webrick\Router\Route
+ * @implements IteratorAggregate<int, RouteInterface>
  */
 final class Collection implements IteratorAggregate
 {
@@ -70,28 +70,22 @@ final class Collection implements IteratorAggregate
 
     /**
      * Cached compiled representation returned by compile().
-     *
-     * @var CompiledCollection|null
      */
     private ?CompiledCollection $compiled = null;
 
     /* ---------------------------------------------------------------------
      *  State flags
      * ------------------------------------------------------------------ */
-
     /**
      * True when the collection has changed since the last compile().
-     *
-     * @var bool
      */
     private bool $dirty = false;
 
     /**
      * True after compile() has been called; further mutation is prohibited.
-     *
-     * @var bool
      */
     private bool $frozen = false;
+
     /**
      * Ordered list of routes in registration order.
      *
@@ -102,7 +96,6 @@ final class Collection implements IteratorAggregate
     /* ---------------------------------------------------------------------
      *  Core mutators  (disabled after ->compile())
      * ------------------------------------------------------------------ */
-
     /**
      * Add a route to the collection and update indices.
      *
@@ -113,7 +106,7 @@ final class Collection implements IteratorAggregate
      *    primary name or alias.
      *
      * @param RouteInterface $route Route instance to add.
-     * @return void
+     *
      * @throws LogicException When route primary name conflicts with existing name/alias.
      */
     public function add(RouteInterface $route): void
@@ -146,7 +139,7 @@ final class Collection implements IteratorAggregate
      *
      * @param RouteInterface $route Target route the alias will reference.
      * @param string $alias Alias string to register (trimmed).
-     * @return void
+     *
      * @throws LogicException When alias is empty or conflicts with existing names/aliases.
      */
     public function addAlias(RouteInterface $route, string $alias): void
@@ -181,12 +174,11 @@ final class Collection implements IteratorAggregate
      *
      * @param RouteInterface $route Target route.
      * @param string[] $aliases List of alias strings.
-     * @return void
      */
     public function addAliases(RouteInterface $route, array $aliases): void
     {
         foreach ($aliases as $a) {
-            $this->addAlias($route, (string)$a);
+            $this->addAlias($route, (string) $a);
         }
     }
 
@@ -239,8 +231,6 @@ final class Collection implements IteratorAggregate
 
     /**
      * Clear the entire collection and reset indices.
-     *
-     * @return void
      */
     public function clear(): void
     {
@@ -274,7 +264,7 @@ final class Collection implements IteratorAggregate
         }
 
         $compiledRoutes = array_map(
-            static fn (RouteInterface $r): CompiledRoute => CompiledRoute::fromRoute($r),
+            CompiledRoute::fromRoute(...),
             $this->routes,
         );
 
@@ -287,8 +277,6 @@ final class Collection implements IteratorAggregate
 
     /**
      * Whether the collection has uncompiled changes.
-     *
-     * @return bool
      */
     public function dirty(): bool
     {
@@ -304,6 +292,7 @@ final class Collection implements IteratorAggregate
     public function findAllByHandler(callable|string $handler): array
     {
         $id = Route::fingerprint($handler);
+
         return $this->byHandler[$id] ?? [];
     }
 
@@ -316,6 +305,7 @@ final class Collection implements IteratorAggregate
     public function findByHandler(callable|string $handler): ?RouteInterface
     {
         $id = Route::fingerprint($handler); // helper in Route class
+
         return $this->byHandler[$id][0] ?? null;
     }
 
@@ -329,12 +319,8 @@ final class Collection implements IteratorAggregate
      */
     public function findByName(string $name): ?RouteInterface
     {
-        // primary name first
-        if (isset($this->byName[$name])) {
-            return $this->byName[$name];
-        }
         // then alias map
-        return $this->aliases[$name] ?? null;
+        return $this->byName[$name] ?? $this->aliases[$name] ?? null;
     }
 
     /**
@@ -355,6 +341,9 @@ final class Collection implements IteratorAggregate
      * Return an iterator over the registered routes (preserves registration order).
      *
      * @return Traversable|ArrayIterator<RouteInterface>
+     */
+    /**
+     * @return Traversable<int, RouteInterface>
      */
     public function getIterator(): Traversable
     {
@@ -381,6 +370,7 @@ final class Collection implements IteratorAggregate
     public function nameDomain(string $name): ?string
     {
         $r = $this->findByName($name);
+
         return $r?->getDomain();
     }
 
@@ -393,6 +383,7 @@ final class Collection implements IteratorAggregate
     public function namePath(string $name): ?string
     {
         $r = $this->findByName($name);
+
         return $r?->getPath();
     }
 
@@ -405,7 +396,6 @@ final class Collection implements IteratorAggregate
      *  - Purges aliases that pointed to the removed route.
      *
      * @param RouteInterface $route Route to remove.
-     * @return void
      */
     public function remove(RouteInterface $route): void
     {
@@ -413,7 +403,7 @@ final class Collection implements IteratorAggregate
 
         // remove from the ordered list
         $this->routes = array_values(
-            array_filter($this->routes, static fn ($r) => $r !== $route),
+            array_filter($this->routes, static fn($r) => $r !== $route),
         );
 
         // rebuild primary indices from remaining routes
@@ -439,13 +429,13 @@ final class Collection implements IteratorAggregate
     public function resolveAlias(string $name): ?array
     {
         $idx = $this->aliasIndex();
+
         return $idx[$name] ?? null;
     }
 
     /**
      * Assert the collection is in a mutable (pre-compile) state.
      *
-     * @return void
      * @throws LogicException When the collection has been frozen via compile().
      */
     private function assertMutable(): void
@@ -458,13 +448,11 @@ final class Collection implements IteratorAggregate
     /* ---------------------------------------------------------------------
      *  Internals
      * ------------------------------------------------------------------ */
-
     /**
      * Rebuild primary indices (name, handler, path) from the current routes list.
      *
      * Also prunes aliases that reference missing routes or conflict with primary names.
      *
-     * @return void
      * @throws LogicException When duplicate primary names are discovered during rebuild.
      */
     private function rebuildIndices(): void

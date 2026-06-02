@@ -13,6 +13,7 @@ final class CookieJar
 {
     /** @var array<string,Cookie> */
     private array $cookies = [];
+
     /** @var string[] raw Set-Cookie lines to pass through unchanged */
     private array $raw = [];
 
@@ -28,6 +29,7 @@ final class CookieJar
     {
         $x = clone $this;
         $x->cookies[$c->name] = $c;
+
         return $x;
     }
 
@@ -47,8 +49,9 @@ final class CookieJar
             $r = $r->withAddedHeader('Set-Cookie', $line);
         }
         foreach ($this->cookies as $c) {
-            $r = $r->withAddedHeader('Set-Cookie', (string)$c);
+            $r = $r->withAddedHeader('Set-Cookie', (string) $c);
         }
+
         return $r;
     }
 
@@ -61,12 +64,12 @@ final class CookieJar
      * Note that raw lines are added before any {@see Cookie} objects when applying to a Response.
      *
      * @param string $line The raw Set-Cookie line to add.
-     * @return self
      */
     public function raw(string $line): self
     {
         $x = clone $this;
         $x->raw[] = $line;
+
         return $x;
     }
 
@@ -75,7 +78,6 @@ final class CookieJar
      * This method is a shortcut for adding a cookie with an expired timestamp.
      *
      * @param string $name The name of the cookie to remove.
-     * @return self
      */
     public function remove(string $name): self
     {

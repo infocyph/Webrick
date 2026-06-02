@@ -21,6 +21,9 @@ use Infocyph\Webrick\Response\Response;
  */
 final class NormalizeMethodMiddleware
 {
+    /**
+     * @param Closure(Request):Response $next
+     */
     public function __invoke(Request $req, Closure $next): Response
     {
         return $next($req->withMethod($req->getEffectiveMethod()));

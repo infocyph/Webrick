@@ -6,8 +6,6 @@
  * Sanitizes incoming query parameters, form bodies, optional JSON bodies, and
  * optional uploaded file metadata (client name/type). Designed to be idempotent
  * using request attributes to avoid re-sanitization.
- *
- * @package Infocyph\Webrick\Middleware
  */
 
 declare(strict_types=1);
@@ -30,14 +28,18 @@ use Infocyph\Webrick\Support\InputSanitizer;
  * - Form/JSON bodies sanitized based on Content-Type and constructor flags (ATTR_F).
  * - Uploaded file metadata (client filename/media type) sanitized best-effort (ATTR_U).
  */
-final class InputSanitizerMiddleware
+final readonly class InputSanitizerMiddleware
 {
     /** Request attribute: form/json body sanitized. */
-    public const ATTR_F = '__sanitized.form';
+    public const string ATTR_F = '__sanitized.form';
+
     /** Request attribute: query sanitized. */
-    public const ATTR_Q = '__sanitized.query';
+    public const string ATTR_Q = '__sanitized.query';
+
     /** Request attribute: uploads sanitized. */
-    public const ATTR_U = '__sanitized.uploads';
+    public const string ATTR_U = '__sanitized.uploads';
+
+    private InputSanitizer $sanitizer;
 
     /**
      * @param InputSanitizer|null $sanitizer Custom sanitizer; defaults to InputSanitizer.
@@ -46,20 +48,19 @@ final class InputSanitizerMiddleware
      * @param bool $touchUploadedNames Sanitize uploaded client filenames/media types (opt-in; requires setters).
      */
     public function __construct(
-        private ?InputSanitizer $sanitizer = null,
-        private readonly bool $touchFormBodies = true,
-        private readonly bool $touchJsonBodies = false,   // opt-in
-        private readonly bool $touchUploadedNames = false, // opt-in (best-effort; requires setters)
+        ?InputSanitizer $sanitizer = null,
+        private bool $touchFormBodies = true,
+        private bool $touchJsonBodies = false,   // opt-in
+        private bool $touchUploadedNames = false, // opt-in (best-effort; requires setters)
     ) {
-        $this->sanitizer ??= new InputSanitizer();
+        $this->sanitizer = $sanitizer ?? new InputSanitizer();
     }
 
     /**
      * Sanitize query/body/uploads as configured and proceed.
      *
      * @param Request $req Incoming request.
-     * @param Closure $next Next handler.
-     *
+     * @param Closure(Request):Response $next
      * @return Response Downstream response.
      */
     public function __invoke(Request $req, Closure $next): Response
@@ -72,11 +73,9 @@ final class InputSanitizerMiddleware
     }
 
     /* ───────────────────────── body ────────────────────────── */
-
     /**
      * Sanitize form or JSON body according to content type and flags.
      *
-     * @param Request $req
      *
      * @return Request Possibly augmented request.
      */
@@ -91,7 +90,7 @@ final class InputSanitizerMiddleware
 
         if (is_array($body) && $this->shouldTouchBody($ctype)) {
             $req = $req
-                ->withParsedBody($this->sanitizer->sanitizeArray($body))
+                ->withParsedBody($this->stringKeyMap($this->sanitizer->sanitizeArray($body)))
                 ->withAttribute(self::ATTR_F, true);
         }
 
@@ -99,11 +98,9 @@ final class InputSanitizerMiddleware
     }
 
     /* ───────────────────────── query ───────────────────────── */
-
     /**
      * Sanitize query parameters if not already processed.
      *
-     * @param Request $req
      *
      * @return Request Possibly augmented request.
      */
@@ -116,11 +113,33 @@ final class InputSanitizerMiddleware
         $q = $req->getQueryParams();
         if ($q) {
             $req = $req
-                ->withQueryParams($this->sanitizer->sanitizeArray($q))
+                ->withQueryParams($this->stringKeyMap($this->sanitizer->sanitizeArray($q)))
                 ->withAttribute(self::ATTR_Q, true);
         }
 
         return $req;
+    }
+
+    private function sanitizeUploadedFileNode(mixed $node): mixed
+    {
+        if (is_array($node)) {
+            foreach ($node as $key => $value) {
+                $node[$key] = $this->sanitizeUploadedFileNode($value);
+            }
+
+            return $node;
+        }
+
+        if (!$node instanceof UploadedFile) {
+            return $node;
+        }
+
+        $name = $node->getClientFilename();
+        $type = $node->getClientMediaType();
+        $name !== null ? $this->sanitizer->sanitizeString($name) : null;
+        $type !== null ? $this->sanitizer->sanitizeString($type) : null;
+
+        return $node;
     }
 
     /**
@@ -129,51 +148,25 @@ final class InputSanitizerMiddleware
      * Best-effort: only applies when UploadedFile implementation exposes immutable
      * setters (withClientFilename / withClientMediaType).
      *
-     * @param array<int|string,mixed> $files Uploaded files structure.
-     *
-     * @return array<int|string,mixed> Sanitized files structure.
+     * @param array<string, mixed> $files Uploaded files structure.
+     * @return array<string, mixed> Sanitized files structure.
      */
     private function sanitizeUploadedFilesRecursive(array $files): array
     {
         foreach ($files as $k => $f) {
-            if (is_array($f)) {
-                $files[$k] = $this->sanitizeUploadedFilesRecursive($f);
-                continue;
-            }
-            if (!$f instanceof UploadedFile) {
-                // Unknown structure – leave as-is
-                continue;
-            }
-
-            $name = $f->getClientFilename();
-            $type = $f->getClientMediaType();
-
-            $newName = $name !== null ? $this->sanitizer->sanitizeString($name) : null;
-            $newType = $type !== null ? $this->sanitizer->sanitizeString($type) : null;
-
-            // Only set if changed and the method exists on the implementation.
-            if ($newName !== $name && method_exists($f, 'withClientFilename')) {
-                $f = $f->withClientFilename($newName);
-            }
-            if ($newType !== $type && method_exists($f, 'withClientMediaType')) {
-                $f = $f->withClientMediaType($newType);
-            }
-
-            $files[$k] = $f;
+            $files[$k] = $this->sanitizeUploadedFileNode($f);
         }
 
         return $files;
     }
 
     /* ─────────────────────── uploads (opt-in) ─────────────────────── */
-
     /**
      * Sanitize uploaded file metadata (client filename/media type) best-effort.
      *
      * Applies only if enabled and not previously processed. Recurses to handle
      * nested uploaded files arrays.
      *
-     * @param Request $req
      *
      * @return Request Possibly augmented request.
      */
@@ -202,7 +195,6 @@ final class InputSanitizerMiddleware
      * Determine if the body should be sanitized based on content type and flags.
      *
      * @param string $ctype Raw Content-Type header.
-     *
      * @return bool True when body sanitization is enabled for this request.
      */
     private function shouldTouchBody(string $ctype): bool
@@ -212,5 +204,23 @@ final class InputSanitizerMiddleware
         $isJson = str_starts_with($mime, MediaTypeEnum::JSON->base());
 
         return ($isForm && $this->touchFormBodies) || ($isJson && $this->touchJsonBodies);
+    }
+
+    /**
+     * @param array<mixed> $input
+     * @return array<string, mixed>
+     */
+    private function stringKeyMap(array $input): array
+    {
+        $result = [];
+        foreach ($input as $key => $value) {
+            if (!is_string($key)) {
+                continue;
+            }
+
+            $result[$key] = $value;
+        }
+
+        return $result;
     }
 }

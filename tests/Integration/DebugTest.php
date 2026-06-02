@@ -1,8 +1,9 @@
 <?php
 
 declare(strict_types=1);
+use Infocyph\Webrick\Router\Kernel\RouterKernel;
 
-require_once __DIR__ . '/../IntegrationBootstrap.php';
+require_once __DIR__.'/../IntegrationBootstrap.php';
 
 describe('Debug: Check Route Registration', function () {
     it('can create kernel without errors', function () {
@@ -10,7 +11,7 @@ describe('Debug: Check Route Registration', function () {
         $_SERVER['REQUEST_TIME_FLOAT'] = microtime(true);
 
         $kernel = createTestKernel();
-        expect($kernel)->toBeInstanceOf(\Infocyph\Webrick\Router\Kernel\RouterKernel::class);
+        expect($kernel)->toBeInstanceOf(RouterKernel::class);
     });
 
     it('shows actual response for ping route', function () {
@@ -21,13 +22,13 @@ describe('Debug: Check Route Registration', function () {
         $request = mockRequest('GET', '/ping');
         $response = $kernel->handle($request);
 
-        echo "\n";
-        echo "DEBUG: /ping route\n";
-        echo "Status: " . $response->getStatusCode() . "\n";
-        echo "Body: " . (string)$response->getBody() . "\n";
+        file_put_contents('php://stdout', "\n", FILE_APPEND);
+        file_put_contents('php://stdout', "DEBUG: /ping route\n", FILE_APPEND);
+        file_put_contents('php://stdout', 'Status: '.$response->getStatusCode()."\n", FILE_APPEND);
+        file_put_contents('php://stdout', 'Body: '.(string) $response->getBody()."\n", FILE_APPEND);
 
         if ($response->hasHeader('Location')) {
-            echo "Location: " . $response->getHeaderLine('Location') . "\n";
+            file_put_contents('php://stdout', 'Location: '.$response->getHeaderLine('Location')."\n", FILE_APPEND);
         }
 
         // The test should pass regardless

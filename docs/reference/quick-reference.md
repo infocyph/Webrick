@@ -51,10 +51,10 @@ Response::json(['id' => 42]);
 Response::json(['error' => 'Not found'], 404);
 
 // Text
-Response::plaintext('Hello World');
+Response::plaintext('Hello World', 200);
 
 // HTML
-Response::html('<h1>Title</h1>');
+Response::create('<h1>Title</h1>', 200, ['Content-Type' => 'text/html; charset=UTF-8']);
 
 // Empty
 Response::noContent();              // 204
@@ -62,7 +62,7 @@ Response::noContent();              // 204
 // Redirect
 Response::redirect('/login');
 Response::redirect('/new-url', 301);
-Response::redirectToRoute('users.show', ['id' => 42]);
+Response::redirect(Route::urlFor('users.show', ['id' => 42]));
 
 // Download
 Response::download('/path/to/file.pdf');
@@ -85,7 +85,7 @@ $response->getStatusCode();
 ```php
 // Basic
 Route::get('/users', fn() => Response::json([]));
-Route::post('/users', fn(Request $r) => Response::created($r->input()));
+Route::post('/users', fn(Request $r) => Response::json($r->input(), 201));
 Route::put('/users/{id:int}', fn(int $id) => Response::json(['id' => $id]));
 Route::delete('/users/{id:int}', fn(int $id) => Response::noContent());
 
@@ -93,7 +93,7 @@ Route::delete('/users/{id:int}', fn(int $id) => Response::noContent());
 Route::get('/users/{id:int}', $handler, 'users.show');
 
 // With middleware
-Route::get('/admin', $handler, options: ['middleware' => ['auth', 'admin']]);
+Route::get('/admin', $handler, ['middleware' => ['auth', 'admin']]);
 
 // Groups
 Route::group(prefix: '/api', middleware: ['throttle:60,60'], callback: function() {
@@ -133,7 +133,7 @@ final class AuthMiddleware {
 MiddlewareAliases::register('auth', fn() => new AuthMiddleware());
 
 // Use
-Route::get('/protected', $handler, options: ['middleware' => ['auth']]);
+Route::get('/protected', $handler, ['middleware' => ['auth']]);
 ```
 
 ---
@@ -142,15 +142,15 @@ Route::get('/protected', $handler, options: ['middleware' => ['auth']]);
 
 ```php
 // From named route
-$url = Response::urlFor('users.show', ['id' => 42]);
+$url = Route::urlFor('users.show', ['id' => 42]);
 // '/users/42'
 
 // Absolute
-$url = Response::urlFor('users.show', ['id' => 42], absolute: true);
+$url = Route::urlFor('users.show', ['id' => 42], absolute: true);
 // 'https://example.com/users/42'
 
 // With query
-$url = Response::urlFor('users.index', query: ['page' => 2]);
+$url = Route::urlFor('users.index', query: ['page' => 2]);
 // '/users?page=2'
 ```
 
@@ -159,17 +159,11 @@ $url = Response::urlFor('users.index', query: ['page' => 2]);
 ## Signed URLs
 
 ```php
-use Infocyph\Webrick\Router\UrlSigner;
-
-$signer = new UrlSigner($signKey);
-
 // Sign
-$signed = $signer->sign('/download/file.pdf', expiration: 3600);
+$signed = Route::signedUrlFor('download.file', ['file' => 'report.pdf']);
 
-// Verify
-if ($signer->verify($request->getUri())) {
-    // Valid
-}
+// Temporary
+$temp = Route::temporaryUrlFor('download.file', ['file' => 'report.pdf'], ttl: 3600);
 ```
 
 ---
@@ -214,7 +208,7 @@ Route::post('/upload', function(Request $r) {
     $filename = bin2hex(random_bytes(16)) . '.' . pathinfo($file->getClientFilename(), PATHINFO_EXTENSION);
     $file->moveTo('/uploads/' . $filename);
 
-    return Response::created(['filename' => $filename]);
+    return Response::json(['filename' => $filename], 201);
 });
 ```
 

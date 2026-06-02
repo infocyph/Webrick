@@ -19,8 +19,8 @@ use Attribute;
  *
  * @property-read string[] $origins Allowed origins (exact origin strings or '*')
  * @property-read string|null $methods Comma-separated allowed methods (e.g. "GET,POST") or null to defer
- * @property-read string|array|null $headers Allowed request headers or null to defer
- * @property-read string|array|null $exposeHeaders Exposed response headers or null to defer
+ * @property-read string|list<string>|null $headers Allowed request headers or null to defer
+ * @property-read string|list<string>|null $exposeHeaders Exposed response headers or null to defer
  * @property-read int|null $maxAgeSeconds Seconds to advertise in Access-Control-Max-Age or null to defer
  * @property-read bool|null $allowCredentials Whether to allow credentials (Access-Control-Allow-Credentials)
  * @property-read bool|null $allowPrivateNetwork Whether to allow private-network preflight
@@ -49,8 +49,8 @@ final readonly class Cors
      *
      * @param string[] $origins Allowed origins (exact strings or '*')
      * @param string|null $methods Optional comma-separated allowed methods
-     * @param string|array|null $headers Optional allowed request headers
-     * @param string|array|null $exposeHeaders Optional exposed response headers
+     * @param string|list<string>|null $headers Optional allowed request headers
+     * @param string|list<string>|null $exposeHeaders Optional exposed response headers
      * @param int|null $maxAgeSeconds Optional Access-Control-Max-Age in seconds
      * @param bool|null $allowCredentials Optional flag for Access-Control-Allow-Credentials
      * @param bool|null $allowPrivateNetwork Optional flag for Access-Control-Allow-Private-Network
@@ -58,11 +58,12 @@ final readonly class Cors
     public function __construct(
         public array $origins,
         public ?string $methods = null,
+        /** @var string|list<string>|null */
         public string|array|null $headers = null,
+        /** @var string|list<string>|null */
         public string|array|null $exposeHeaders = null,
         public ?int $maxAgeSeconds = null,
         public ?bool $allowCredentials = null,
         public ?bool $allowPrivateNetwork = null,
-    ) {
-    }
+    ) {}
 }

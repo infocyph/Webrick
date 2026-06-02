@@ -4,7 +4,9 @@ namespace Infocyph\Webrick\Tests\Fixture;
 
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
-use Infocyph\Webrick\Router\Definition\Attribute\{Group, Produces, Route};
+use Infocyph\Webrick\Router\Definition\Attribute\Group;
+use Infocyph\Webrick\Router\Definition\Attribute\Produces;
+use Infocyph\Webrick\Router\Definition\Attribute\Route;
 
 #[Group(prefix: '/attr', name: 'attr.')]
 final class AttrDemoController
@@ -13,6 +15,8 @@ final class AttrDemoController
     #[Produces(types: ['application/json'])]
     public function hello(Request $r, string $name)
     {
+        unset($r);
+
         return Response::json(['hello' => $name]);
     }
 }

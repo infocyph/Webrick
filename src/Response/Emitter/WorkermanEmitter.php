@@ -18,67 +18,148 @@ final class WorkermanEmitter implements EmitterInterface
      * 1. Native Workerman HTTP Response object path
      * 2. TcpConnection path — build raw HTTP envelope
      *
-     * @param Response $response
-     * @param Request|null $request
      * @throws \RuntimeException
      */
     public function emit(Response $response, ?Request $request = null): void
     {
-        // 1) Native Workerman HTTP Response object path
-        $wmResp = $request?->getAttribute('workerman.response');
-        if ($wmResp && method_exists($wmResp, 'withStatus')) {
-            $wmResp = $wmResp->withStatus($response->getStatusCode());
-            foreach ($response->getHeaders() as $n => $vals) {
-                foreach ($vals as $v) {
-                    $wmResp = $wmResp->withHeader($n, (string)$v);
-                }
-            }
-            // Respect HEAD / no-body statuses
-            $method = HttpMethodEnum::normalize((string)($request?->getMethod() ?? HttpMethodEnum::GET->value));
-            if (
-                in_array($response->getStatusCode(), [StatusEnum::NO_CONTENT->value, StatusEnum::NOT_MODIFIED->value], true)
-                || $method === HttpMethodEnum::HEAD->value
-            ) {
-                $wmResp->end('');
-                return;
-            }
-            $wmResp->end((string)$response->getBody());
+        if ($request === null) {
+            throw new \RuntimeException('WorkermanEmitter requires a Request instance.');
+        }
+
+        $wmResp = $request->getAttribute('workerman.response');
+        if (is_object($wmResp) && method_exists($wmResp, 'withStatus') && $this->emitViaNativeResponse($wmResp, $response, $request)) {
             return;
         }
 
-        // 2) TcpConnection path — build raw HTTP envelope
-        $conn = $request?->getAttribute('workerman.connection');
-        if ($conn && method_exists($conn, 'send')) {
-            $status = $response->getStatusCode() . ' ' . $response->getReasonPhrase();
-            $ver = $response->getProtocolVersion();
-
-            $method = HttpMethodEnum::normalize((string)($request?->getMethod() ?? HttpMethodEnum::GET->value));
-            $noBody = in_array($response->getStatusCode(), [StatusEnum::NO_CONTENT->value, StatusEnum::NOT_MODIFIED->value], true)
-                || $method === HttpMethodEnum::HEAD->value;
-
-            $bodyStr = $noBody ? '' : (string)$response->getBody();
-
-            // Ensure Content-Length present
-            $headers = $response->getHeaders();
-            $hasCL = array_any($headers, fn ($_vals, $hn) => strtolower((string)$hn) === 'content-length');
-            if (!$hasCL) {
-                $headers['Content-Length'] = [(string)\strlen($bodyStr)];
-            }
-
-            // Build envelope
-            $buf = "HTTP/{$ver} {$status}\r\n";
-            foreach ($headers as $n => $vals) {
-                foreach ($vals as $v) {
-                    $buf .= "{$n}: {$v}\r\n";
-                }
-            }
-            $buf .= "\r\n" . $bodyStr;
-            $conn->send($buf);
+        $conn = $request->getAttribute('workerman.connection');
+        if (is_object($conn) && method_exists($conn, 'send') && $this->emitViaConnection($conn, $response, $request)) {
             return;
         }
 
         throw new \RuntimeException(
             'WorkermanEmitter requires "workerman.response" or "workerman.connection" attribute.',
         );
+    }
+
+    private function emitViaConnection(object $conn, Response $response, ?Request $request): bool
+    {
+        if (!is_callable([$conn, 'send'])) {
+            return false;
+        }
+
+        $bodyStr = $this->shouldEmitEmptyBody($response, $request) ? '' : (string) $response->getBody();
+        $headers = $this->withContentLength($this->normalizeHeaders($response->getHeaders()), $bodyStr);
+
+        $status = $response->getStatusCode() . ' ' . $response->getReasonPhrase();
+        $buf = "HTTP/{$response->getProtocolVersion()} {$status}\r\n";
+        foreach ($headers as $n => $vals) {
+            foreach ($vals as $v) {
+                $buf .= "{$n}: {$v}\r\n";
+            }
+        }
+        $buf .= "\r\n" . $bodyStr;
+
+        call_user_func([$conn, 'send'], $buf);
+
+        return true;
+    }
+
+    private function emitViaNativeResponse(object $wmResp, Response $response, ?Request $request): bool
+    {
+        if (!is_callable([$wmResp, 'withStatus']) || !is_callable([$wmResp, 'end'])) {
+            return false;
+        }
+
+        $next = call_user_func([$wmResp, 'withStatus'], $response->getStatusCode());
+        if (!is_object($next)) {
+            return false;
+        }
+        $wmResp = $next;
+        foreach ($this->normalizeHeaders($response->getHeaders()) as $n => $vals) {
+            foreach ($vals as $v) {
+                if (!is_callable([$wmResp, 'withHeader'])) {
+                    return false;
+                }
+
+                $next = call_user_func([$wmResp, 'withHeader'], $n, $v);
+                if (!is_object($next)) {
+                    return false;
+                }
+                $wmResp = $next;
+            }
+        }
+
+        $body = $this->shouldEmitEmptyBody($response, $request) ? '' : (string) $response->getBody();
+        new \ReflectionMethod($wmResp, 'end')->invoke($wmResp, $body);
+
+        return true;
+    }
+
+    /**
+     * @param array<mixed> $headers
+     * @return array<string, array<int, string>>
+     */
+    private function normalizeHeaders(array $headers): array
+    {
+        $out = [];
+        foreach ($headers as $name => $values) {
+            if (!is_string($name)) {
+                continue;
+            }
+
+            if (is_string($values)) {
+                $out[$name] = [$values];
+
+                continue;
+            }
+
+            if (!is_array($values)) {
+                continue;
+            }
+
+            $normalizedValues = [];
+            foreach ($values as $value) {
+                if (!is_string($value)) {
+                    continue;
+                }
+
+                $normalizedValues[] = $value;
+            }
+
+            $out[$name] = $normalizedValues;
+        }
+
+        return $out;
+    }
+
+    private function shouldEmitEmptyBody(Response $response, ?Request $request): bool
+    {
+        $method = HttpMethodEnum::normalize((string) ($request?->getMethod() ?? HttpMethodEnum::GET->value));
+        if ($method === HttpMethodEnum::HEAD->value) {
+            return true;
+        }
+
+        return \in_array(
+            $response->getStatusCode(),
+            [StatusEnum::NO_CONTENT->value, StatusEnum::NOT_MODIFIED->value],
+            true,
+        );
+    }
+
+    /**
+     * @param array<string,array<int,string>> $headers
+     * @return array<string,array<int,string>>
+     */
+    private function withContentLength(array $headers, string $body): array
+    {
+        $hasCL = array_any(
+            $headers,
+            static fn(array $vals, string|int $hn): bool => $vals !== [] && \strtolower((string) $hn) === 'content-length',
+        );
+        if (!$hasCL) {
+            $headers['Content-Length'] = [(string) \strlen($body)];
+        }
+
+        return $headers;
     }
 }

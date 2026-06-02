@@ -19,8 +19,6 @@ declare(strict_types=1);
  *
  * The registry is global and static; resolution functions are intentionally simple
  * and synchronous to support middleware pipeline construction in the router.
- *
- * @package Infocyph\Webrick\Router\Dispatch
  */
 
 namespace Infocyph\Webrick\Router\Dispatch;
@@ -68,7 +66,6 @@ final class MiddlewareAliases
      *
      * @param string $alias Lower-case alias label (case-insensitive)
      * @param callable|string $factoryOrClass Callable factory or middleware class-string
-     * @return void
      */
     public static function register(string $alias, callable|string $factoryOrClass): void
     {
@@ -76,13 +73,12 @@ final class MiddlewareAliases
 
         if (is_string($factoryOrClass)) {
             $class = $factoryOrClass;
-            $factoryOrClass = static function (...$params) use ($class) {
+            $factoryOrClass
                 // If params were provided, construct now (route-specific instance).
                 // If no params, return class-string so the pipeline can memoize it.
-                return ($params !== [])
-                    ? new $class(...$params)
-                    : $class;
-            };
+                = (static fn(...$params) => ($params !== [])
+                ? new $class(...$params)
+                : $class);
         }
 
         self::$map[$alias] = $factoryOrClass;
@@ -129,17 +125,23 @@ final class MiddlewareAliases
         }
 
         [$name, $paramStr] = explode(':', $maybeAlias, 2) + [1 => null];
-        $key = strtolower($name);
+        $key = strtolower((string) $name);
 
         if (!isset(self::$map[$key])) {
             return $maybeAlias; // not our alias
         }
 
         $params = ($paramStr !== null && $paramStr !== '')
-            ? array_map('trim', explode(',', $paramStr))
+            ? array_map(trim(...), explode(',', $paramStr))
             : [];
 
-        // Call variadic factory and return whatever it produces.
-        return (self::$map[$key])(...$params);
+        $resolved = (self::$map[$key])(...$params);
+        if (\is_string($resolved) || \is_object($resolved) || \is_callable($resolved)) {
+            return $resolved;
+        }
+
+        throw new \UnexpectedValueException(
+            \sprintf('Middleware alias "%s" resolved to unsupported type %s', $key, \get_debug_type($resolved)),
+        );
     }
 }

@@ -23,20 +23,22 @@ final class RoadRunnerEmitter implements EmitterInterface
      * Requires Request attribute 'roadrunner.respond' (callable):
      *   function (int $status, array $headers, string|iterable $body): void
      *
-     * @param Response $response
-     * @param null|Request $request
      * @throws \RuntimeException
      */
     public function emit(Response $response, ?Request $request = null): void
     {
-        $respond = $request?->getAttribute('roadrunner.respond');
+        if ($request === null) {
+            throw new \RuntimeException('RoadRunnerEmitter requires a Request instance.');
+        }
+
+        $respond = $request->getAttribute('roadrunner.respond');
         if (!\is_callable($respond)) {
             throw new \RuntimeException('RoadRunnerEmitter requires Request attribute "roadrunner.respond" callable.');
         }
 
         $status = $response->getStatusCode();
         $headers = $response->getHeaders();
-        $method = HttpMethodEnum::normalize((string)($request?->getMethod() ?? HttpMethodEnum::GET->value));
+        $method = HttpMethodEnum::normalize($request->getMethod());
         $noBody = \in_array($status, [StatusEnum::NO_CONTENT->value, StatusEnum::NOT_MODIFIED->value], true)
             || $method === HttpMethodEnum::HEAD->value;
 
@@ -45,9 +47,10 @@ final class RoadRunnerEmitter implements EmitterInterface
             $out = $fn ? $fn() : [];
             // Respect HEAD / no-body statuses by responding with an empty payload
             $respond($status, $headers, $noBody ? '' : $out);
+
             return;
         }
 
-        $respond($status, $headers, $noBody ? '' : (string)$response->getBody());
+        $respond($status, $headers, $noBody ? '' : (string) $response->getBody());
     }
 }

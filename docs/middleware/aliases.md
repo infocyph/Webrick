@@ -63,6 +63,9 @@ MiddlewareAliases::register(
 );
 ```
 
+Class-string middleware (direct or alias-resolved) are instantiated through
+InterMix, so constructor DI and container lifetimes are honored.
+
 ---
 
 ## Common Aliases

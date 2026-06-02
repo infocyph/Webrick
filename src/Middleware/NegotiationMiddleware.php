@@ -9,8 +9,6 @@
  * - Negotiates locale (multi-source) and sets Content-Language.
  * - Registers appropriate Vary tokens so caches behave correctly.
  * - Ensures Content-Type is present on non-empty responses and appends charset when appropriate.
- *
- * @package Infocyph\Webrick\Middleware
  */
 
 declare(strict_types=1);
@@ -37,13 +35,6 @@ use Infocyph\Webrick\Router\Definition\Attribute\Produces;
 final readonly class NegotiationMiddleware
 {
     /** @var array<int,string> */
-    private array $charsets;
-
-    private string $localeFallback;
-
-    /** @var array<int,string> */
-    private array $locales;
-    /** @var array<int,string> */
     private array $produces;
 
     /**
@@ -54,16 +45,13 @@ final readonly class NegotiationMiddleware
      */
     public function __construct(
         array $produces = [],
-        array $charsets = ['utf-8'],
-        array $locales = ['en'],
-        string $localeFallback = 'en',
+        private array $charsets = ['utf-8'],
+        private array $locales = ['en'],
+        private string $localeFallback = 'en',
     ) {
         $this->produces = $produces !== []
             ? $produces
             : ['+json', MediaTypeEnum::JSON->value, MediaTypeEnum::HTML->base()];
-        $this->charsets = $charsets;
-        $this->locales = $locales;
-        $this->localeFallback = $localeFallback;
     }
 
     /**
@@ -76,8 +64,7 @@ final readonly class NegotiationMiddleware
      * 4) Pass control to downstream; then ensure Content-Type and set Content-Language.
      *
      * @param Request $req Incoming request.
-     * @param Closure $next Next handler.
-     *
+     * @param Closure(Request):Response $next
      * @return Response Response with normalized headers.
      */
     public function __invoke(Request $req, Closure $next): Response
@@ -112,7 +99,6 @@ final readonly class NegotiationMiddleware
      * JSON is excluded since the spec fixes UTF-8.
      *
      * @param string $typeLower Lower-cased media type.
-     *
      * @return bool True when charset matters for this type.
      */
     private function charsetMattersFor(string $typeLower): bool
@@ -130,13 +116,15 @@ final readonly class NegotiationMiddleware
     /**
      * Conservative check used for 406 short-circuit Vary decision.
      *
-     * @param array<int,string> $types
-     *
+     * @param array<string> $types
      * @return bool True if any type would have charset significance.
      */
     private function charsetMattersForAny(array $types): bool
     {
-        return array_any($types, fn ($t) => $this->charsetMattersFor(strtolower($t)));
+        return array_any(
+            $types,
+            fn(string $t): bool => $this->charsetMattersFor(strtolower($t)),
+        );
     }
 
     /**
@@ -144,8 +132,6 @@ final readonly class NegotiationMiddleware
      *
      * For JSON types, no charset parameter is appended (UTF-8 by spec).
      *
-     * @param string $type
-     * @param string|null $charset
      *
      * @return string Header value.
      */
@@ -159,11 +145,11 @@ final readonly class NegotiationMiddleware
             return $type; // controller already set params
         }
 
-        $needsCs =
-            str_starts_with($typeLower, 'text/') ||
-            str_contains($typeLower, 'xml') ||
-            $typeLower === 'application/javascript' ||
-            $typeLower === 'text/javascript';
+        $needsCs
+            = str_starts_with($typeLower, 'text/')
+            || str_contains($typeLower, 'xml')
+            || $typeLower === 'application/javascript'
+            || $typeLower === 'text/javascript';
 
         return ($needsCs && $charset) ? "{$type}; charset={$charset}" : $type;
     }
@@ -171,9 +157,6 @@ final readonly class NegotiationMiddleware
     /**
      * Ensure Content-Type is present and append charset when appropriate.
      *
-     * @param Response $resp
-     * @param string $type
-     * @param string|null $cset
      *
      * @return Response Normalized response.
      */
@@ -213,7 +196,6 @@ final readonly class NegotiationMiddleware
      * Identify JSON media types (including structured suffix).
      *
      * @param string $typeLower Lower-cased media type.
-     *
      * @return bool True if JSON or +json.
      */
     private function isJson(string $typeLower): bool
@@ -227,7 +209,6 @@ final readonly class NegotiationMiddleware
      * Uses Request::detectLocale() to consider attr/route/query/cookie/header/default,
      * and varies only on the headers actually involved.
      *
-     * @param Request $req
      *
      * @return array{0:Request,1:string} Updated request + selected locale.
      */
@@ -238,6 +219,7 @@ final readonly class NegotiationMiddleware
             $this->locales ?: [$this->localeFallback],
             $this->localeFallback,
         );
+        $locale = $locale !== '' ? $locale : $this->localeFallback;
 
         // Register Vary selectively based on source
         if ($source === 'header') {
@@ -255,7 +237,6 @@ final readonly class NegotiationMiddleware
      *
      * @param string[] $prod Supported media types.
      * @param string[] $char Supported charsets.
-     *
      * @return array{0: Request, 1: string, 2: ?string, 3: ?Response} [request, type, charset, earlyResponse]
      */
     private function negotiateTypeAndCharset(Request $req, array $prod, array $char): array
@@ -299,7 +280,7 @@ final readonly class NegotiationMiddleware
 
         // Default when charset matters but client didn't specify: prefer UTF-8, else first supported.
         if ($cset === null && $this->charsetMattersFor($typeLower)) {
-            $lower = array_map('strtolower', $char);
+            $lower = array_map(strtolower(...), $char);
             $cset = in_array('utf-8', $lower, true) ? 'utf-8' : ($char[0] ?? null);
             // No Vary on Accept-Charset here; we used a server default.
         }
@@ -313,8 +294,7 @@ final readonly class NegotiationMiddleware
      * Pick the first supported charset from the provided candidates.
      *
      * @param ContentNegotiator $neg Request negotiator.
-     * @param array<int,string> $candidates Candidate charset names.
-     *
+     * @param array<string> $candidates Candidate charset names.
      * @return string|null Selected charset or null.
      */
     private function pickCharset(ContentNegotiator $neg, array $candidates): ?string
@@ -324,15 +304,14 @@ final readonly class NegotiationMiddleware
                 return $cs;
             }
         }
+
         return null;
     }
 
     /* ───────────────────────── orchestration helpers ───────────────────────── */
-
     /**
      * Read route-level overrides for produces/charsets from a Produces attribute.
      *
-     * @param Request $req
      *
      * @return array{0: string[], 1: string[]} Tuple of [produces, charsets].
      */
@@ -349,16 +328,13 @@ final readonly class NegotiationMiddleware
                 $char = $attr->charsets;
             }
         }
+
         return [$prod, $char];
     }
 
     /**
      * Store negotiated parameters on the request for downstream use.
      *
-     * @param Request $req
-     * @param string $type
-     * @param string|null $cset
-     * @param string $locale
      *
      * @return Request Request augmented with negotiation attributes.
      */

@@ -20,8 +20,6 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
  * The interface is intentionally minimal — routing is always performed via
  * match() so concrete implementations may expose additional helper methods
  * without affecting the kernel's usage.
- *
- * @package Infocyph\Webrick\Router\Matching
  */
 interface MatcherInterface
 {
@@ -32,7 +30,6 @@ interface MatcherInterface
      * structures so subsequent match() calls can locate it.
      *
      * @param CompiledRoute $route Compiled route instance to register.
-     * @return void
      */
     public function add(CompiledRoute $route): void;
 
@@ -64,8 +61,6 @@ interface MatcherInterface
      * Implementations may perform optimization, serialization or integrity
      * checks in this step. The method should be idempotent and safe to call
      * multiple times.
-     *
-     * @return void
      */
     public function finalize(): void;
 
@@ -75,11 +70,10 @@ interface MatcherInterface
      * @param non-empty-string $method Upper-cased HTTP verb (e.g. "GET").
      * @param non-empty-string $host Lower-cased host without port (ASCII).
      * @param non-empty-string $path Absolute request path beginning with '/'.
-     *
      * @return array{0:CompiledRoute,1:array<string,string>} Tuple of matched
-     *         CompiledRoute and a map of extracted path variables.
+     *                                                       CompiledRoute and a map of extracted path variables.
      *
-     * @throws RouteNotFoundException    When no route matches the path/host.
+     * @throws RouteNotFoundException When no route matches the path/host.
      * @throws MethodNotAllowedException When a matching path exists but the HTTP verb is not allowed.
      */
     public function match(string $method, string $host, string $path): array;

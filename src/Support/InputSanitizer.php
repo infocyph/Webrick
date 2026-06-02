@@ -6,8 +6,6 @@
  * Provides helpers to sanitize user-provided strings and nested arrays by trimming,
  * removing control and zero‑width characters, optionally collapsing whitespace,
  * normalizing Unicode, and enforcing byte limits.
- *
- * @package Infocyph\Webrick\Support
  */
 
 declare(strict_types=1);
@@ -24,7 +22,7 @@ namespace Infocyph\Webrick\Support;
  * - Enforce an optional maximum byte length (UTF‑8 aware via mb_strcut when present).
  * - Allow excluding specific keys (exact or regex) when sanitizing arrays.
  */
-final class InputSanitizer
+final readonly class InputSanitizer
 {
     /**
      * Configure the sanitizer behavior.
@@ -43,8 +41,7 @@ final class InputSanitizer
         private ?int $maxBytes = null,
         private array $skipKeys = [],
         private array $skipKeyPatterns = [],
-    ) {
-    }
+    ) {}
 
     /**
      * Recursively sanitize a (possibly nested) array payload.
@@ -53,17 +50,17 @@ final class InputSanitizer
      * - Converts empty sanitized strings to null when $emptyToNull is true.
      *
      * @param array<mixed> $data Input array to sanitize (modified copy is returned).
-     *
      * @return array<mixed> The sanitized array.
      */
     public function sanitizeArray(array $data): array
     {
         foreach ($data as $k => $v) {
-            if ($this->shouldSkipKey((string)$k)) {
+            if ($this->shouldSkipKey((string) $k)) {
                 continue;
             }
             if (is_array($v)) {
                 $data[$k] = $this->sanitizeArray($v);
+
                 continue;
             }
             if (is_string($v)) {
@@ -74,6 +71,7 @@ final class InputSanitizer
                 $data[$k] = $san;
             }
         }
+
         return $data;
     }
 
@@ -88,7 +86,6 @@ final class InputSanitizer
      * 5) Optionally truncate to $maxBytes (UTF‑8 aware when mb_strcut exists).
      *
      * @param string $s Input string.
-     *
      * @return string The sanitized string.
      */
     public function sanitizeString(string $s): string
@@ -124,7 +121,6 @@ final class InputSanitizer
      * - Any pattern in $skipKeyPatterns matches the key (PCRE; invalid patterns are ignored).
      *
      * @param string $key The array key to test.
-     *
      * @return bool True when the key should be skipped.
      */
     private function shouldSkipKey(string $key): bool
@@ -132,6 +128,7 @@ final class InputSanitizer
         if (in_array($key, $this->skipKeys, true)) {
             return true;
         }
-        return array_any($this->skipKeyPatterns, fn ($rx) => $rx !== '' && @preg_match($rx, $key) === 1);
+
+        return array_any($this->skipKeyPatterns, fn($rx) => $rx !== '' && preg_match($rx, $key) === 1);
     }
 }

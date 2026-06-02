@@ -16,6 +16,7 @@ Complete reference for routing APIs in Webrick.
 - [Domain Routing](#domain-routing)
 - [URL Generation](#url-generation)
 - [Route Caching](#route-caching)
+- [Kernel DI Integration](#kernel-di-integration)
 
 ---
 
@@ -25,14 +26,57 @@ Complete reference for routing APIs in Webrick.
 
 ```php
 use Infocyph\Webrick\Router\Definition\Registrar;
+use Infocyph\Webrick\Router\Matching\ShardedMatcher;
+use Infocyph\Webrick\Router\Kernel\RouterKernel;
+use Psr\Log\NullLogger;
 
 $register = function (Registrar $r): void {
     $r->get('/users', [UserController::class, 'index'], 'users.index');
     $r->post('/users', [UserController::class, 'store'], 'users.store');
 };
 
-$kernel = RouterKernel::bootWithRegistrar(register: $register);
+$kernel = RouterKernel::bootWithRegistrar(
+    log: new NullLogger(),
+    matcher: ShardedMatcher::make(__DIR__ . '/.route-cache'),
+    register: $register,
+    routeCache: __DIR__ . '/.route-cache',
+);
 ```
+
+---
+
+## Kernel DI Integration
+
+`RouterKernel::bootWithRegistrar()` can be wired directly with InterMix features:
+
+```php
+use Infocyph\InterMix\DI\Container;
+use Infocyph\InterMix\DI\Invoker;
+use App\Providers\AuthProvider;
+use App\Providers\CacheProvider;
+
+$container = Container::instance('intermix');
+$invoker = Invoker::with($container);
+
+$kernel = RouterKernel::bootWithRegistrar(
+    log: new NullLogger(),
+    matcher: ShardedMatcher::make(__DIR__ . '/.route-cache'),
+    register: $register,
+    invoker: $invoker,                         // or container: $container
+    serviceProviders: [
+        AuthProvider::class,
+        CacheProvider::class,
+    ],
+    preGlobalTags: ['webrick.middleware.pre'],
+    postGlobalTags: ['webrick.middleware.post'],
+    requestScopeEnabled: true,                 // enterScope/leaveScope per handle()
+);
+```
+
+Notes:
+- Tagged middleware are appended after explicit `preGlobal` / `postGlobal`.
+- `requestScopeEnabled` binds `Request::class` as scoped for each request lifecycle.
+- `Response::view()` uses the same `intermix` container path as kernel DI by default.
 
 ### Using Facade
 
@@ -50,25 +94,22 @@ Route::post('/posts', [PostController::class, 'store']);
 ### Available Methods
 
 ```php
-Route::get($path, $handler, $name = null, $options = []);
-Route::post($path, $handler, $name = null, $options = []);
-Route::put($path, $handler, $name = null, $options = []);
-Route::patch($path, $handler, $name = null, $options = []);
-Route::delete($path, $handler, $name = null, $options = []);
-Route::options($path, $handler, $name = null, $options = []);
-Route::head($path, $handler, $name = null, $options = []);
-Route::any($path, $handler, $name = null, $options = []);
+Route::get($path, $handler, $nameOrOpts = null);
+Route::post($path, $handler, $nameOrOpts = null);
+Route::put($path, $handler, $nameOrOpts = null);
+Route::patch($path, $handler, $nameOrOpts = null);
+Route::delete($path, $handler, $nameOrOpts = null);
+Route::options($path, $handler, $nameOrOpts = null);
+Route::head($path, $handler, $nameOrOpts = null);
 ```
 
-### Match Multiple Methods
+### Multi-Method Endpoints
 
 ```php
-Route::match(['GET', 'POST'], '/form', function(Request $r) {
-    if ($r->isGet()) {
-        return Response::html('<form>...</form>');
-    }
-    return Response::json(['submitted' => true]);
-});
+Route::get('/form', fn() => Response::create('<form>...</form>', 200, [
+    'Content-Type' => 'text/html; charset=UTF-8'
+]));
+Route::post('/form', fn(Request $r) => Response::json(['submitted' => true]));
 ```
 
 ---
@@ -88,7 +129,8 @@ Route::get('/users', function() {
 ```php
 Route::post('/users', function(Request $r) {
     $user = UserRepository::create($r->input());
-    return Response::created($user, "/users/{$user['id']}");
+    return Response::json($user, 201)
+        ->withHeader('Location', "/users/{$user['id']}");
 });
 ```
 
@@ -270,7 +312,7 @@ Route::get('/posts/{year:int}/{month:int}/{slug:slug}',
 Route::get('/users', [UserController::class, 'index'], 'users.index');
 
 // Via options array
-Route::get('/users', [UserController::class, 'index'], options: [
+Route::get('/users', [UserController::class, 'index'], [
     'name' => 'users.index'
 ]);
 ```
@@ -291,19 +333,19 @@ Route::get('/current-route', function(Request $r) {
 ### Per-Route Middleware
 
 ```php
-Route::get('/protected', [SecretController::class, 'index'], options: [
+Route::get('/protected', [SecretController::class, 'index'], [
     'middleware' => ['auth', 'verified']
 ]);
 
 // Or using facade shorthand
 Route::get('/protected', [SecretController::class, 'index'])
-    ->middleware(['auth', 'verified']);
+    ->withMiddleware(['auth', 'verified']);
 ```
 
 ### Middleware with Parameters
 
 ```php
-Route::post('/api/data', [ApiController::class, 'store'], options: [
+Route::post('/api/data', [ApiController::class, 'store'], [
     'middleware' => ['throttle:30,60', 'verifySignedUrl']
 ]);
 ```
@@ -359,29 +401,26 @@ Route::group(domain: 'api.example.com', callback: function() {
 
 ```php
 // In handler
-$url = Response::urlFor('users.show', ['id' => 42]);
+$url = Route::urlFor('users.show', ['id' => 42]);
 // '/users/42'
 
 // Absolute URL
-$url = Response::urlFor('users.show', ['id' => 42], absolute: true);
+$url = Route::urlFor('users.show', ['id' => 42], absolute: true);
 // 'https://example.com/users/42'
 ```
 
 ### With Query Parameters
 
 ```php
-$url = Response::urlFor('users.index', query: ['page' => 2, 'sort' => 'name']);
+$url = Route::urlFor('users.index', query: ['page' => 2, 'sort' => 'name']);
 // '/users?page=2&sort=name'
 ```
 
 ### Signed URLs
 
 ```php
-use Infocyph\Webrick\Router\UrlSigner;
-
-$signer = new UrlSigner($signKey);
-$signed = $signer->sign('/download/file.pdf', expiration: 3600);
-// '/download/file.pdf?expires=1234567890&signature=abc123...'
+$signed = Route::signedUrlFor('download', ['file' => 'report.pdf']);
+$temp = Route::temporaryUrlFor('download', ['file' => 'report.pdf'], ttl: 3600);
 ```
 
 ---
@@ -394,7 +433,7 @@ $signed = $signer->sign('/download/file.pdf', expiration: 3600);
 use Infocyph\Webrick\Support\RouteCache;
 
 RouteCache::build([
-    'cache' => __DIR__ . '/var/cache/routes',
+    'cache' => __DIR__ . '/.route-cache',
     'register' => function($r) {
         require __DIR__ . '/routes/web.php';
         require __DIR__ . '/routes/api.php';
@@ -405,15 +444,24 @@ RouteCache::build([
 ### Use Cache
 
 ```php
-$kernel = RouterKernel::boot([
-    'cache' => __DIR__ . '/var/cache/routes'
-]);
+$kernel = RouterKernel::bootWithRegistrar(
+    log: new \Psr\Log\NullLogger(),
+    matcher: \Infocyph\Webrick\Router\Matching\ShardedMatcher::make(__DIR__ . '/.route-cache'),
+    register: static function (\Infocyph\Webrick\Router\Definition\Registrar $registrar): void {
+        unset($registrar);
+        require __DIR__ . '/routes.php';
+    },
+    routeCache: __DIR__ . '/.route-cache',
+);
 ```
 
 ### Clear Cache
 
 ```php
-RouteCache::clear(__DIR__ . '/var/cache/routes');
+RouteCache::clear([
+    'matcher' => 'sharded',
+    'cache' => __DIR__ . '/.route-cache',
+]);
 ```
 
 ---
@@ -450,7 +498,7 @@ Route::group(prefix: '/api', callback: function() {
 
 ```php
 // Must be last route registered
-Route::any('/{path:.*}', function(string $path) {
+Route::get('/{path:.*}', function(string $path) {
     return Response::json([
         'error' => 'Not Found',
         'path' => $path
@@ -463,25 +511,24 @@ Route::any('/{path:.*}', function(string $path) {
 ## Method Summary
 
 ### Registrar
-- `get(string $path, $handler, ?string $name = null): void`
-- `post(string $path, $handler, ?string $name = null): void`
-- `put(string $path, $handler, ?string $name = null): void`
-- `patch(string $path, $handler, ?string $name = null): void`
-- `delete(string $path, $handler, ?string $name = null): void`
-- `options(string $path, $handler, ?string $name = null): void`
-- `head(string $path, $handler, ?string $name = null): void`
-- `any(string $path, $handler, ?string $name = null): void`
-- `match(array $methods, string $path, $handler, ?string $name = null): void`
-- `group(array $options, callable $callback): void`
+- `get(string $path, array|string|callable $handler, string|array|null $nameOrOpts = null): RouteInterface`
+- `post(string $path, array|string|callable $handler, string|array|null $nameOrOpts = null): RouteInterface`
+- `put(string $path, array|string|callable $handler, string|array|null $nameOrOpts = null): RouteInterface`
+- `patch(string $path, array|string|callable $handler, string|array|null $nameOrOpts = null): RouteInterface`
+- `delete(string $path, array|string|callable $handler, string|array|null $nameOrOpts = null): RouteInterface`
+- `options(string $path, array|string|callable $handler, string|array|null $nameOrOpts = null): RouteInterface`
+- `head(string $path, array|string|callable $handler, string|array|null $nameOrOpts = null): RouteInterface`
+- `group(array|string|null $prefix = null, string|array|Closure|null $domain = null, array|Closure $middleware = [], string|Closure|null $namePrefix = null, ?Closure $callback = null): void`
 
 ### Route Facade
 - All Registrar methods
-- Chainable middleware: `->middleware(array $middleware)`
-- Chainable name: `->name(string $name)`
+- Chainable middleware: `->withMiddleware(array $middleware)`
+- Chainable name: `->withName(string $name)`
 
 ### URL Generation
-- `Response::urlFor(string $name, array $params = [], ?array $query = null, bool $absolute = false): string`
+- `Route::urlFor(string $name, array $params = [], array $query = [], bool $absolute = false): string`
 
 ### URL Signing
-- `UrlSigner::sign(string $path, ?int $expiration = null): string`
-- `UrlSigner::verify(string $url): bool`
+- `Route::signedUrlFor(string $name, array $params = [], array $query = [], ?int $ttl = null, bool $absolute = false, ?string $payloadMode = null): string`
+- `Route::temporaryUrlFor(string $name, array $params = [], array $query = [], ?int $ttl = null, bool $absolute = false, ?string $payloadMode = null): string`
+- `Route::temporaryUrlUntil(string $name, DateTimeInterface|int $expiresAt, array $params = [], array $query = [], bool $absolute = false, ?string $payloadMode = null): string`

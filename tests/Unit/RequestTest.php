@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Request\Request;
 
 describe('Request', function () {
@@ -15,7 +16,7 @@ describe('Request', function () {
         $request = Request::fromGlobals();
 
         expect($request)
-            ->toBeInstanceOf(\Infocyph\Webrick\Request\Request::class)
+            ->toBeInstanceOf(Request::class)
             ->getMethod()->toBe('GET')
             ->getUri()->getPath()->toBe('/test')
             ->getUri()->getHost()->toBe('example.com');
@@ -76,7 +77,7 @@ describe('Request', function () {
         expect($request->getParsedBody())
             ->toBe(['name' => 'John', 'age' => '30'])
             ->and($request->input('name'))->toBe('John')
-            ->and((int)$request->input('age'))->toBe(30);
+            ->and((int) $request->input('age'))->toBe(30);
     });
 
     it('handles JSON body', function () {
@@ -86,11 +87,11 @@ describe('Request', function () {
             'Content-Type' => 'application/json',
         ]);
 
-        $stream = new \Infocyph\Webrick\Request\Core\Stream($json);
+        $stream = new Stream($json);
         $request = $request->withBody($stream);
 
         // Request doesn't auto-parse JSON, that's done by middleware
-        $body = json_decode((string)$request->getBody(), true);
+        $body = json_decode((string) $request->getBody(), true);
         expect($body)->toBe(['key' => 'value']);
     });
 

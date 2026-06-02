@@ -69,7 +69,7 @@ Use your preferred stack. A typical Nginx → PHP‑FPM setup serves static asse
 
 - Ensure your front controller (e.g., `public/index.php`) receives all non‑existing paths.
 - Do **not** enable double compression at the edge if you use Webrick’s **CompressionMiddleware**.
-- Make the **route cache** path (`var/cache/routes` or fused file) writable during deploys.
+- Make the **route cache** path (`.route-cache` or fused file) writable during deploys.
 
 See **Deployments → Nginx/Apache/PHP‑FPM** for copy‑paste configs and tuning.
 
@@ -109,17 +109,17 @@ php -d memory_limit=-1 /usr/local/bin/composer install
 
 #### Permission Denied on Cache Directory
 
-**Error**: `Unable to create directory var/cache/routes`
+**Error**: `Unable to create directory .route-cache`
 
 **Solution**:
 ```bash
 # Create directory with correct permissions
-mkdir -p var/cache/routes
-chown -R www-data:www-data var/cache
-chmod -R 775 var/cache
+mkdir -p .route-cache
+chown -R www-data:www-data .route-cache
+chmod -R 775 .route-cache
 
 # Or for development
-chmod -R 777 var/cache  # ⚠️ Dev only!
+chmod -R 777 .route-cache  # ⚠️ Dev only!
 ```
 
 #### Autoload Not Working
@@ -148,13 +148,13 @@ composer install
 **Debug**:
 ```bash
 # Run with verbose output
-php scripts/build-route-cache.php -vvv
+php ./webrick route:cache --cache=.route-cache --routes=routes.php
 
 # Check for duplicate names
-grep -r "->name(" routes/ | sort | uniq -d
+grep -r "->withName(" routes/ | sort | uniq -d
 
 # Validate route syntax
-php -l routes/web.php
+php -l routes.php
 ```
 
 ---
@@ -169,32 +169,39 @@ Create a simple test script:
 require __DIR__ . '/vendor/autoload.php';
 
 use Infocyph\Webrick\Router\Kernel\RouterKernel;
+use Infocyph\Webrick\Router\Definition\Registrar;
+use Infocyph\Webrick\Router\Matching\ShardedMatcher;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
+use Psr\Log\NullLogger;
 
 echo "Testing Webrick installation...\n\n";
 
 // Test 1: Kernel boots
 try {
-    $kernel = new RouterKernel();
+    $kernel = RouterKernel::bootWithRegistrar(
+        log: new NullLogger(),
+        matcher: ShardedMatcher::make(__DIR__ . '/.route-cache'),
+        register: static function (Registrar $r): void {
+            unset($r);
+
+            \Infocyph\Webrick\Router\Facade\Router::get(
+                '/test',
+                fn() => Response::plaintext('OK', 200),
+            );
+        },
+    );
     echo "✅ Kernel boots successfully\n";
 } catch (Throwable $e) {
     echo "❌ Kernel boot failed: {$e->getMessage()}\n";
     exit(1);
 }
 
-// Test 2: Route registration
-try {
-    $kernel->get('/test', fn() => Response::plaintext('OK'));
-    echo "✅ Route registration works\n";
-} catch (Throwable $e) {
-    echo "❌ Route registration failed: {$e->getMessage()}\n";
-    exit(1);
-}
+echo "✅ Route registration works\n";
 
 // Test 3: Request handling
 try {
-    $request = Request::create('GET', '/test');
+    $request = Request::fake(method: 'GET', uri: '/test');
     $response = $kernel->handle($request);
 
     if ($response->getStatusCode() === 200 && (string)$response->getBody() === 'OK') {
@@ -269,4 +276,3 @@ Testing Webrick installation...
 - 🚀 Check [Deployments](../deployments/index.md) for production setup
 - 🔧 Review [Middleware](../middleware/index.md) for available components
 - 📚 Explore [Guides](../guides/index.md) for common patterns
-

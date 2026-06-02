@@ -11,8 +11,6 @@
  * - Guards outgoing redirects to avoid open-redirect vulnerabilities.
  *
  * Caches compiled host allow-list patterns per process for performance.
- *
- * @package Infocyph\Webrick\Middleware
  */
 
 declare(strict_types=1);
@@ -43,7 +41,7 @@ use Infocyph\Webrick\Response\Response;
 final class GatewayHardeningMiddleware
 {
     /** Hop-by-hop header names (lower-case) */
-    private const HOP_BY_HOP = [
+    private const array HOP_BY_HOP = [
         'connection',
         'keep-alive',
         'proxy-authenticate',
@@ -55,13 +53,16 @@ final class GatewayHardeningMiddleware
     ];
 
     /** per-process cache: key = sha1(json_encode($trustedHosts)), value = list of compiled regex */
+    /** @var array<string,list<string>> */
     private static array $hostRegexCache = [];
+
     private bool $allowAllHosts = false;
 
     /** EndUser instance for the current request (set in __invoke) */
     private ?EndUser $endUser = null;
 
     /** compiled regex list for this instance (populated from static cache) */
+    /** @var list<string> */
     private array $hostRegex = [];
 
     /**
@@ -87,7 +88,8 @@ final class GatewayHardeningMiddleware
         private readonly array $redirectAllowedHosts = [],
     ) {
         // ① Configure trusted proxies & which forwarded headers to honor
-        Request::setTrustedProxies($this->trustedProxyCidrs, $forwardedHeaderMask);
+        $trustedProxyCidrs = array_values($this->trustedProxyCidrs);
+        Request::setTrustedProxies($trustedProxyCidrs, $forwardedHeaderMask);
 
         // ② Compile/resolve host allow-list (static cache)
         $this->allowAllHosts = ($this->trustedHosts === ['*']);
@@ -106,8 +108,7 @@ final class GatewayHardeningMiddleware
      * 6) Validate redirects (scheme and origin) before returning.
      *
      * @param Request $req Incoming request.
-     * @param Closure $next Next handler.
-     *
+     * @param Closure(Request):Response $next
      * @return Response Hardened response.
      */
     public function __invoke(Request $req, Closure $next): Response
@@ -153,8 +154,7 @@ final class GatewayHardeningMiddleware
     /**
      * Compile trusted host patterns to case-insensitive regexes (cached per process).
      *
-     * @param array<int,string> $trustedHosts Host allow-list patterns.
-     *
+     * @param array<string> $trustedHosts Host allow-list patterns.
      * @return list<string> Compiled regexes for this allow-list (cached per process).
      */
     private static function compileHostRegex(array $trustedHosts): array
@@ -162,7 +162,9 @@ final class GatewayHardeningMiddleware
         if ($trustedHosts === [] || $trustedHosts === ['*']) {
             return []; // caller uses $this->allowAllHosts to short-circuit
         }
-        $key = hash('xxh3', json_encode(array_values($trustedHosts), JSON_THROW_ON_ERROR));
+        $trustedHosts = array_values($trustedHosts);
+        $encoded = json_encode($trustedHosts, JSON_THROW_ON_ERROR);
+        $key = hash('xxh3', $encoded);
         if (!isset(self::$hostRegexCache[$key])) {
             $compiled = [];
             foreach ($trustedHosts as $p) {
@@ -171,18 +173,13 @@ final class GatewayHardeningMiddleware
             }
             self::$hostRegexCache[$key] = $compiled;
         }
+
         return self::$hostRegexCache[$key];
     }
 
     /* ───────────── general helpers ───────────── */
-
     /**
      * Case-insensitive string equality.
-     *
-     * @param string $a
-     * @param string $b
-     *
-     * @return bool
      */
     private static function equalsIgnoreCase(string $a, string $b): bool
     {
@@ -192,7 +189,6 @@ final class GatewayHardeningMiddleware
     /**
      * Attach network-related request attributes for downstream consumers.
      *
-     * @param Request $req
      *
      * @return Request Request carrying client/peer/flag attributes.
      */
@@ -212,8 +208,7 @@ final class GatewayHardeningMiddleware
      * Determine if an IP matches any of the provided CIDRs.
      *
      * @param string|null $ip Candidate IP address.
-     * @param array<int,string> $cidrs CIDR ranges.
-     *
+     * @param array<string> $cidrs CIDR ranges.
      * @return bool True on match; false otherwise.
      */
     private function cidrHit(?string $ip, array $cidrs): bool
@@ -221,7 +216,8 @@ final class GatewayHardeningMiddleware
         if ($ip === null || $cidrs === []) {
             return false;
         }
-        return array_any($cidrs, fn ($cidr) => IpCidr::match($ip, $cidr));
+
+        return array_any($cidrs, fn($cidr) => IpCidr::match($ip, $cidr));
     }
 
     /**
@@ -235,6 +231,7 @@ final class GatewayHardeningMiddleware
         if ($clientIp && $this->cidrHit($clientIp, $this->denyIpCidrs)) {
             return Response::plaintext("Forbidden – $clientIp is not allowed.", StatusEnum::FORBIDDEN->value);
         }
+
         return null;
     }
 
@@ -247,7 +244,6 @@ final class GatewayHardeningMiddleware
      *
      * @param Request $req Current request (for same-origin checks).
      * @param Response $resp Response to validate.
-     *
      * @return Response Potentially replaced 400 response on violation, or original response.
      */
     private function guardRedirects(Request $req, Response $resp): Response
@@ -261,6 +257,9 @@ final class GatewayHardeningMiddleware
         // Only allow http/https schemes (block javascript:, data:, file:, etc.)
         $scheme = parse_url($loc, PHP_URL_SCHEME);
         if ($scheme !== null && $scheme !== '') {
+            if (!\is_string($scheme)) {
+                return Response::json(['error' => 'Invalid redirect scheme'], StatusEnum::BAD_REQUEST->value);
+            }
             $scheme = strtolower($scheme);
             if ($scheme !== 'http' && $scheme !== 'https') {
                 return Response::json(['error' => 'Invalid redirect scheme'], StatusEnum::BAD_REQUEST->value);
@@ -288,20 +287,18 @@ final class GatewayHardeningMiddleware
     /**
      * Check if a host matches any compiled allow-list pattern.
      *
-     * @param string $host
      *
      * @return bool True when host is allowed.
      */
     private function matchesHost(string $host): bool
     {
-        return array_any($this->hostRegex, fn ($rx) => preg_match($rx, $host));
+        return array_any($this->hostRegex, fn(string $rx): bool => preg_match($rx, $host) === 1);
     }
 
     /**
      * Parse a Connection header line into lower-cased tokens.
      *
      * @param string $line Raw Connection header value.
-     *
      * @return array<int,string> Tokens (lower-cased), empty when header missing.
      */
     private function parseConnectionTokens(string $line): array
@@ -316,13 +313,13 @@ final class GatewayHardeningMiddleware
                 $out[] = $t;
             }
         }
+
         return $out;
     }
 
     /**
      * Enforce HTTPS by redirecting to https:// with optional port.
      *
-     * @param Request $req
      *
      * @return Response|null 308 redirect response; null if already HTTPS or disabled.
      */
@@ -337,15 +334,14 @@ final class GatewayHardeningMiddleware
         }
         $port = ($this->httpsPort === 443) ? null : $this->httpsPort; // avoid :443 in Location
         $target = $uri->withScheme('https')->withPort($port);
-        return Response::redirect((string)$target, StatusEnum::PERMANENT_REDIRECT->value);
+
+        return Response::redirect((string) $target, StatusEnum::PERMANENT_REDIRECT->value);
     }
 
     /* ───────────── step helpers ───────────── */
-
     /**
      * Enforce Host allow-list; reject requests with untrusted/empty Host.
      *
-     * @param Request $req
      *
      * @return Response|null 400 response on rejection; null when allowed.
      */
@@ -370,7 +366,6 @@ final class GatewayHardeningMiddleware
     /**
      * Remove hop-by-hop headers from the request (Connection tokens + known list).
      *
-     * @param Request $r
      *
      * @return Request Request without hop-by-hop headers.
      */
@@ -382,13 +377,13 @@ final class GatewayHardeningMiddleware
                 $r = $r->withoutHeader($h);
             }
         }
+
         return $r;
     }
 
     /**
      * Remove hop-by-hop headers from the response (Connection tokens + known list).
      *
-     * @param Response $r
      *
      * @return Response Response without hop-by-hop headers.
      */
@@ -400,6 +395,7 @@ final class GatewayHardeningMiddleware
                 $r = $r->withoutHeader($h);
             }
         }
+
         return $r;
     }
 }

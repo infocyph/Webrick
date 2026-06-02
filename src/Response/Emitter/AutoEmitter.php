@@ -1,6 +1,5 @@
 <?php
 
-// src/Response/Emitter/AutoEmitter.php
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Response\Emitter;
@@ -16,9 +15,6 @@ final class AutoEmitter implements EmitterInterface
      * Auto-detect the best emitter for the current environment and emit the response.
      * If an emitter is chosen, it will be cached for future calls.
      * If no emitter matches, null is returned.
-     *
-     * @param Response $response
-     * @param Request|null $request
      */
     public function emit(Response $response, ?Request $request = null): void
     {
@@ -31,28 +27,27 @@ final class AutoEmitter implements EmitterInterface
      *
      * If an emitter is chosen, it will be cached for future calls.
      * If no emitter matches, null is returned.
-     *
-     * @return null|EmitterInterface
      */
-    private function pick(?Request $request): ?EmitterInterface
+    private function pick(?Request $request): EmitterInterface
     {
         // Optional explicit override via env var (e.g., WEBRICK_EMITTER=swoole|roadrunner|workerman|frankenphp|lsapi|unit|fpm|cli|default)
-        $override = strtolower((string)(\getenv('WEBRICK_EMITTER') ?: ''));
+        $overrideRaw = \getenv('WEBRICK_EMITTER');
+        $override = \is_string($overrideRaw) ? strtolower($overrideRaw) : '';
         if ($override !== '') {
             return match ($override) {
                 'swoole' => new SwooleEmitter(),
                 'roadrunner' => new RoadRunnerEmitter(),
                 'workerman' => new WorkermanEmitter(),
-                'frankenphp' => new FrankenPhpEmitter(),
-                'lsapi' => new LsapiEmitter(),
-                'unit' => new UnitEmitter(),
-                'fpm' => new FpmEmitter(),
+                'frankenphp' => new DefaultEmitter(DefaultEmitter::FINISH_FRANKENPHP),
+                'lsapi' => new DefaultEmitter(DefaultEmitter::FINISH_LITESPEED),
+                'unit', 'fpm' => new DefaultEmitter(DefaultEmitter::FINISH_FASTCGI, true),
                 'cli' => new CliEmitter(),
                 default => new DefaultEmitter(),
             };
         }
 
-        $serverSoftware = strtolower((string)($_SERVER['SERVER_SOFTWARE'] ?? ''));
+        $serverSoftwareRaw = $_SERVER['SERVER_SOFTWARE'] ?? null;
+        $serverSoftware = \is_string($serverSoftwareRaw) ? strtolower($serverSoftwareRaw) : '';
 
         return match (true) {
             // Async servers (prefer explicit per-request handle extraction)
@@ -65,11 +60,18 @@ final class AutoEmitter implements EmitterInterface
                 || $request?->getAttribute('workerman.connection')) => new WorkermanEmitter(),
 
             // Sync servers / special SAPIs
-            \function_exists('frankenphp_is_worker') && \frankenphp_is_worker() => new FrankenPhpEmitter(),
-            \PHP_SAPI === 'litespeed' || \function_exists('litespeed_finish_request') => new LsapiEmitter(),
-            \function_exists('fastcgi_finish_request') && $serverSoftware !== '' &&
-            \str_contains($serverSoftware, 'unit') => new UnitEmitter(),
-            \PHP_SAPI === 'fpm-fcgi' || \function_exists('fastcgi_finish_request') => new FpmEmitter(),
+            \function_exists('frankenphp_is_worker') && \frankenphp_is_worker() => new DefaultEmitter(
+                DefaultEmitter::FINISH_FRANKENPHP,
+            ),
+            \PHP_SAPI === 'litespeed' || \function_exists('litespeed_finish_request') => new DefaultEmitter(
+                DefaultEmitter::FINISH_LITESPEED,
+            ),
+            \function_exists('fastcgi_finish_request') && $serverSoftware !== ''
+            && \str_contains($serverSoftware, 'unit') => new DefaultEmitter(DefaultEmitter::FINISH_FASTCGI, true),
+            \PHP_SAPI === 'fpm-fcgi' || \function_exists('fastcgi_finish_request') => new DefaultEmitter(
+                DefaultEmitter::FINISH_FASTCGI,
+                true,
+            ),
 
             // CLI/testing fallback
             \in_array(\PHP_SAPI, ['cli', 'phpdbg'], true) => new CliEmitter(),

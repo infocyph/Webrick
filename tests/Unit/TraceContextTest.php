@@ -152,7 +152,7 @@ describe('TraceContext - W3C Traceparent', function () {
 
         expect($traceparent)
             ->toMatch('/^00-[a-f0-9]{32}-[a-f0-9]{16}-[a-f0-9]{2}$/')
-            ->and($traceparent)->toBe('00-' . str_repeat('a', 32) . '-' . str_repeat('b', 16) . '-01');
+            ->and($traceparent)->toBe('00-'.str_repeat('a', 32).'-'.str_repeat('b', 16).'-01');
     });
 
     test('getTraceparent returns null when incomplete', function () {
@@ -195,7 +195,7 @@ describe('TraceContext - Propagation Headers', function () {
             ->and($headers)->toHaveKey('tracestate')
             ->and($headers)->toHaveKey('X-Trace-Id')
             ->and($headers)->toHaveKey('X-Request-Id')
-            ->and($headers['traceparent'])->toBe('00-' . str_repeat('a', 32) . '-' . str_repeat('b', 16) . '-01')
+            ->and($headers['traceparent'])->toBe('00-'.str_repeat('a', 32).'-'.str_repeat('b', 16).'-01')
             ->and($headers['tracestate'])->toBe('congo=test')
             ->and($headers['X-Trace-Id'])->toBe(str_repeat('a', 32))
             ->and($headers['X-Request-Id'])->toBe('req123');

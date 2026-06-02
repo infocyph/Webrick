@@ -7,8 +7,6 @@
  * requested path. Carries the attempted verb, the requested path, and the
  * list of allowed verbs for convenient handling (e.g., generating 405 responses
  * and Allow headers).
- *
- * @package Infocyph\Webrick\Exceptions
  */
 
 declare(strict_types=1);

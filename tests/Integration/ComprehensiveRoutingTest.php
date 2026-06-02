@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-require_once __DIR__ . '/../IntegrationBootstrap.php';
+require_once __DIR__.'/../IntegrationBootstrap.php';
 
 describe('Comprehensive Routing Tests', function () {
     beforeEach(function () {
@@ -30,7 +30,7 @@ describe('Comprehensive Routing Tests', function () {
                 ->toHaveStatus(200)
                 ->and($response->getHeaderLine('Content-Type'))->toContain('application/json');
 
-            $body = json_decode((string)$response->getBody(), true);
+            $body = json_decode((string) $response->getBody(), true);
             expect($body)->toHaveKey('memory');
         });
 
@@ -47,7 +47,7 @@ describe('Comprehensive Routing Tests', function () {
             $response = $this->kernel->handle(mockRequest('GET', '/hello/World'));
             expect($response)->toHaveStatus(200);
 
-            $body = json_decode((string)$response->getBody(), true);
+            $body = json_decode((string) $response->getBody(), true);
             expect($body)
                 ->toHaveKey('hello')
                 ->and($body['hello'])->toBe('World');
@@ -62,7 +62,7 @@ describe('Comprehensive Routing Tests', function () {
                 $_SERVER['REQUEST_TIME_FLOAT'] = microtime(true);
 
                 $response = $this->kernel->handle(mockRequest('GET', "/hello/{$name}"));
-                $body = json_decode((string)$response->getBody(), true);
+                $body = json_decode((string) $response->getBody(), true);
 
                 // Just verify we got a response with hello key
                 expect($body)
@@ -77,7 +77,7 @@ describe('Comprehensive Routing Tests', function () {
             $response = $this->kernel->handle(mockRequest('GET', '/color/ff00ff'));
             expect($response)->toHaveStatus(200);
 
-            $body = json_decode((string)$response->getBody(), true);
+            $body = json_decode((string) $response->getBody(), true);
             expect($body)->toHaveKey('you sent hex');
         });
 
@@ -96,7 +96,7 @@ describe('Comprehensive Routing Tests', function () {
             $response = $this->kernel->handle(mockRequest('GET', '/class/test/John'));
             expect($response)->toHaveStatus(200);
 
-            $body = json_decode((string)$response->getBody(), true);
+            $body = json_decode((string) $response->getBody(), true);
             expect($body)
                 ->toHaveKey('handler')
                 ->and($body['handler'])->toContain('DemoController');
@@ -108,7 +108,7 @@ describe('Comprehensive Routing Tests', function () {
             $response = $this->kernel->handle(mockRequest('GET', '/users'));
             expect($response)->toHaveStatus(200);
 
-            $body = json_decode((string)$response->getBody(), true);
+            $body = json_decode((string) $response->getBody(), true);
             expect($body)->toHaveKey('action');
         });
 
@@ -116,7 +116,7 @@ describe('Comprehensive Routing Tests', function () {
             $response = $this->kernel->handle(mockRequest('GET', '/users/42'));
             expect($response)->toHaveStatus(200);
 
-            $body = json_decode((string)$response->getBody(), true);
+            $body = json_decode((string) $response->getBody(), true);
             expect($body)->toHaveKey('action');
         });
 
@@ -124,7 +124,7 @@ describe('Comprehensive Routing Tests', function () {
             $response = $this->kernel->handle(mockRequest('GET', '/users/create'));
             expect($response)->toHaveStatus(200);
 
-            $body = json_decode((string)$response->getBody(), true);
+            $body = json_decode((string) $response->getBody(), true);
             // Just verify we got an action, routing might vary
             expect($body)->toHaveKey('action');
         });
@@ -133,7 +133,7 @@ describe('Comprehensive Routing Tests', function () {
             $response = $this->kernel->handle(mockRequest('GET', '/users/42/edit'));
             expect($response)->toHaveStatus(200);
 
-            $body = json_decode((string)$response->getBody(), true);
+            $body = json_decode((string) $response->getBody(), true);
             // Just verify we got an action
             expect($body)->toHaveKey('action');
         });
@@ -152,7 +152,7 @@ describe('Comprehensive Routing Tests', function () {
             $response = $this->kernel->handle(mockRequest('GET', '/blog/hello-world'));
             expect($response)->toHaveStatus(200);
 
-            $body = json_decode((string)$response->getBody(), true);
+            $body = json_decode((string) $response->getBody(), true);
             expect($body['section'])
                 ->toBe('blog')
                 ->and($body['slug'])->toBe('hello-world');
@@ -162,7 +162,7 @@ describe('Comprehensive Routing Tests', function () {
             $response = $this->kernel->handle(mockRequest('GET', '/admin/dashboard'));
             expect($response)->toHaveStatus(200);
 
-            $body = json_decode((string)$response->getBody(), true);
+            $body = json_decode((string) $response->getBody(), true);
             expect($body['admin'])->toBeTrue();
         });
     });
@@ -179,7 +179,7 @@ describe('Comprehensive Routing Tests', function () {
             $response = $this->kernel->handle(mockRequest('GET', '/json/slow'));
             expect($response)->toHaveStatus(200);
 
-            $body = json_decode((string)$response->getBody(), true);
+            $body = json_decode((string) $response->getBody(), true);
             expect($body)
                 ->toHaveKey('now')
                 ->and($body)->toHaveKey('items')
@@ -199,10 +199,12 @@ describe('Comprehensive Routing Tests', function () {
             $response = $this->kernel->handle(mockRequest('GET', '/signed-demo'));
             expect($response)->toHaveStatus(200);
 
-            $body = json_decode((string)$response->getBody(), true);
+            $body = json_decode((string) $response->getBody(), true);
             expect($body)
                 ->toHaveKey('rel')
-                ->and($body)->toHaveKey('abs');
+                ->and($body)->toHaveKey('abs')
+                ->and($body)->toHaveKey('abs_payload')
+                ->and($body)->toHaveKey('expires_at');
         });
     });
 
@@ -211,7 +213,7 @@ describe('Comprehensive Routing Tests', function () {
             $response = $this->kernel->handle(mockRequest('GET', '/auto-demo'));
             expect($response)->toHaveStatus(200);
 
-            $body = json_decode((string)$response->getBody(), true);
+            $body = json_decode((string) $response->getBody(), true);
             expect($body)
                 ->toHaveKey('now')
                 ->and($body)->toHaveKey('msg');

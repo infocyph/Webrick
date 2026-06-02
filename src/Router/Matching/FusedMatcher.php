@@ -5,7 +5,8 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Router\Matching;
 
 use Infocyph\Webrick\Constants\HttpMethodEnum;
-use Infocyph\Webrick\Exceptions\{MethodNotAllowedException, RouteNotFoundException};
+use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
+use Infocyph\Webrick\Exceptions\RouteNotFoundException;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 
 /**
@@ -28,51 +29,48 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
  *    enabled only by dedicated cache tooling.
  *  - The matcher enforces that no routes are added after finalize() is called.
  *
- * @package Infocyph\Webrick\Router\Matching
+ * @phpstan-type AliasIndex array<string, array{0:string,1:?string}>
+ * @phpstan-type VerbRouteMap array<string, CompiledRoute>
+ * @phpstan-type StaticBucket array<string, VerbRouteMap>
+ * @phpstan-type HostBucket array{static: StaticBucket, trie: array<string,mixed>}
+ * @phpstan-type HostMap array<string, HostBucket>
  */
 final class FusedMatcher extends AbstractMatcher implements MatcherInterface
 {
+    use MatcherCacheLifecycleTrait;
+
     /**
      * Alias index mapping route name => [path, domain|null].
      *
-     * @var array<string, array{0:string,1:?string}>
+     * @var AliasIndex
      */
     private array $alias = [];
 
     /**
      * Whether single-file caching has been enabled.
-     *
-     * @var bool
      */
     private bool $cacheEnabled = false;
 
     /**
      * Path to the single-file cache when caching is enabled.
-     *
-     * @var string
      */
     private string $cacheFile = '';
 
     /**
      * Whether the cache file has been loaded into memory (lazy load).
-     *
-     * @var bool
      */
     private bool $cacheLoaded = false;
 
     /**
      * Whether cache file writing is explicitly enabled (tooling-only path).
-     *
-     * @var bool
      */
     private bool $cacheWriteEnabled = false;
 
     /**
      * Whether the matcher has been finalized (no further route additions allowed).
-     *
-     * @var bool
      */
     private bool $finalized = false;
+
     /**
      * Host-bucket data structure.
      *
@@ -85,31 +83,25 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
      *     '*' => ... // wildcard host
      *   ]
      *
-     * @var array<string, array{static: array, trie: array}>
+     * @var HostMap
      */
     private array $hosts = [];
 
     /**
      * Private constructor to enforce factory creation.
      */
-    private function __construct()
-    {
-    }
+    private function __construct() {}
 
-    /*──────────── factory/config ────────────*/
-
+    /* ──────────── factory/config ──────────── */
     /**
      * Create a new FusedMatcher instance.
-     *
-     * @return self
      */
     public static function make(): self
     {
         return new self();
     }
 
-    /*──────────── registration ────────────*/
-
+    /* ──────────── registration ──────────── */
     /**
      * Add a CompiledRoute to the matcher.
      *
@@ -117,7 +109,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
      * static map or dynamic trie depending on whether it is dynamic.
      *
      * @param CompiledRoute $route Compiled route instance to add
-     * @return void
+     *
      * @throws \LogicException When attempting to add routes after finalize()
      */
     public function add(CompiledRoute $route): void
@@ -144,71 +136,6 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         }
     }
 
-    /*──────────── alias accessors ────────────*/
-
-    /**
-     * Return the alias index mapping name => [path, domain].
-     *
-     * If caching is enabled and not yet loaded, this will lazily load the alias
-     * side-data from the cache file.
-     *
-     * @return array<string, array{0:string,1:?string}>
-     */
-    public function aliasIndex(): array
-    {
-        if ($this->cacheEnabled) {
-            if (!$this->cacheLoaded && \is_file($this->cacheFile)) {
-                $this->loadCacheBlob();
-            }
-        }
-        return $this->alias;
-    }
-
-    /**
-     * Indicate whether a ready cache file exists such that the matcher can be
-     * booted from cache without compiling routes.
-     *
-     * @return bool True when cache is enabled and the cache file exists
-     */
-    public function canBootFromCache(): bool
-    {
-        return $this->cacheEnabled && \is_file($this->cacheFile);
-    }
-
-    /**
-     * Enable single-file cache output and set the target file path.
-     *
-     * Runtime behavior:
-     *  - if the file exists it can be loaded for cache-boot;
-     *  - if the file does not exist matcher continues using in-memory routes.
-     *
-     * Cache file generation is disabled by default and must be explicitly enabled
-     * through cache tooling.
-     *
-     * @param string $cacheLocation Path to the output cache file
-     * @return self Fluent self for chaining
-     */
-    public function enableCache(string $cacheLocation): self
-    {
-        $this->cacheEnabled = true;
-        $this->cacheFile = $cacheLocation;
-        return $this;
-    }
-
-    /**
-     * Explicitly allow cache-file writes from finalize().
-     *
-     * This is intentionally opt-in and should only be used by route-cache tooling.
-     *
-     * @param bool $enable
-     * @return self
-     */
-    public function enableCacheWrite(bool $enable = true): self
-    {
-        $this->cacheWriteEnabled = $enable;
-        return $this;
-    }
-
     /**
      * Finalize the matcher.
      *
@@ -218,8 +145,6 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
      *    cache file and clear in-memory tables.
      *
      * This method is idempotent.
-     *
-     * @return void
      */
     public function finalize(): void
     {
@@ -242,7 +167,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         $this->finalized = true;
     }
 
-    /*──────────── runtime match ────────────*/
+    /* ──────────── runtime match ──────────── */
 
     /**
      * Match an incoming request method/host/path to a compiled route.
@@ -261,16 +186,13 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
      * @param string $host Host header value (expected ASCII/lowercase)
      * @param string $path Request path
      * @return array{0:CompiledRoute,1:array<string,string>} Tuple [route, params]
+     *
      * @throws RouteNotFoundException When no route matches the path/host
      * @throws MethodNotAllowedException When resource exists but verb not allowed
      */
     public function match(string $method, string $host, string $path): array
     {
-        if ($this->cacheEnabled) {
-            if (!$this->cacheLoaded && \is_file($this->cacheFile)) {
-                $this->loadCacheBlob();
-            }
-        }
+        $this->ensureCacheLoaded();
 
         $verb = \strtoupper($method);
         $host = \strtolower($host);
@@ -292,6 +214,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         if ($allowedSet !== []) {
             throw new MethodNotAllowedException($verb, $path, \array_keys($allowedSet));
         }
+
         throw new RouteNotFoundException($verb, $path);
     }
 
@@ -304,6 +227,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
     public function resolveAlias(string $name): ?array
     {
         $idx = $this->aliasIndex();
+
         return $idx[$name] ?? null;
     }
 
@@ -312,8 +236,8 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
      *
      * Uses exported PHP payload text to avoid json_encode() object-loss semantics.
      *
-     * @param array $hosts Host routing table payload.
-     * @param array $alias Alias map payload.
+     * @param HostMap $hosts Host routing table payload.
+     * @param AliasIndex $alias Alias map payload.
      * @return string xxh3 fingerprint.
      */
     private function computeCacheHash(array $hosts, array $alias): string
@@ -324,21 +248,19 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         ]));
     }
 
-    /*──────────── cache export (single file) ────────────*/
-
+    /* ──────────── cache export (single file) ──────────── */
     /**
      * Dump the in-memory host and alias tables into the configured cache file.
      *
      * The cache blob contains a checksum (xxh3) and a timestamp to allow basic
      * integrity checks and identifying stale files.
      *
-     * @return void
      * @throws \RuntimeException When the cache directory cannot be created
      */
     private function dumpCache(): void
     {
         $dir = \dirname($this->cacheFile);
-        if (!\is_dir($dir) && !@\mkdir($dir, 0775, true) && !\is_dir($dir)) {
+        if (!\is_dir($dir) && !\mkdir($dir, 0775, true) && !\is_dir($dir)) {
             throw new \RuntimeException("Cannot create cache dir {$dir}");
         }
 
@@ -357,14 +279,15 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         if (\file_put_contents($tmp, $php, \LOCK_EX) === false) {
             throw new \RuntimeException("Failed to write cache temp file {$tmp}");
         }
-        @\chmod($tmp, 0664);
-        if (!@\rename($tmp, $this->cacheFile)) {
-            @\unlink($tmp);
+        \chmod($tmp, 0664);
+        if (!\rename($tmp, $this->cacheFile)) {
+            \unlink($tmp);
+
             throw new \RuntimeException("Failed to move cache file into place {$this->cacheFile}");
         }
 
         if ($this->shouldWarmOpcache()) {
-            @\opcache_compile_file($this->cacheFile);
+            \opcache_compile_file($this->cacheFile);
         }
     }
 
@@ -374,10 +297,10 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
      * @param string $host Canonical host key
      * @param string $verb HTTP verb (uppercased)
      * @param CompiledRoute $r Compiled dynamic route
-     * @return void
      */
     private function insertDynamic(string $host, string $verb, CompiledRoute $r): void
     {
+        /** @var array<string,mixed> $node */
         $node = &$this->hosts[$host][self::K_TRIE];
         $this->trieInsert($node, $r, $verb);
     }
@@ -388,7 +311,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
      * @param string $host Canonical host key
      * @param string $verb HTTP verb (uppercased)
      * @param CompiledRoute $r Compiled route being inserted
-     * @return void
+     *
      * @throws \LogicException On duplicate insertion of the same verb/path
      */
     private function insertStatic(string $host, string $verb, CompiledRoute $r): void
@@ -405,30 +328,32 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
     /**
      * Load and hydrate matcher tables from the cache file.
      *
-     * @return void
      * @throws \RuntimeException When verification is enabled and cache hash is invalid.
      */
     private function loadCacheBlob(): void
     {
-        /** @var array{_hash?:string,_data?:array,_alias?:array<string,array{0:string,1:?string}>} $blob */
+        /** @var array{_hash?:string,_data?:mixed,_alias?:mixed} $blob */
         $blob = require $this->cacheFile;
 
         if ($this->verifyCacheOnLoad) {
             if (!isset($blob[self::H_HASH], $blob[self::H_DATA])) {
                 throw new \RuntimeException('Route cache missing Hash.');
             }
-            $calc = $this->computeCacheHash($blob[self::H_DATA], $blob[self::H_ALIAS] ?? []);
-            if (!\hash_equals((string)$blob[self::H_HASH], $calc)) {
+            $calc = $this->computeCacheHash(
+                $this->normalizeHosts($blob[self::H_DATA]),
+                $this->normalizeAliasIndex($blob[self::H_ALIAS] ?? []),
+            );
+            if (!\hash_equals($blob[self::H_HASH], $calc)) {
                 throw new \RuntimeException('Route cache Hash mismatch.');
             }
         }
 
-        $this->hosts = $blob[self::H_DATA] ?? [];
-        $this->alias = $blob[self::H_ALIAS] ?? [];
+        $this->hosts = $this->normalizeHosts($blob[self::H_DATA] ?? []);
+        $this->alias = $this->normalizeAliasIndex($blob[self::H_ALIAS] ?? []);
         $this->cacheLoaded = true;
 
         if ($this->shouldWarmOpcache()) {
-            @\opcache_compile_file($this->cacheFile);
+            \opcache_compile_file($this->cacheFile);
         }
     }
 
@@ -458,6 +383,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
 
             $this->addAllowedFromMap($map, $allowedSet);
         }
+
         return null;
     }
 
@@ -485,7 +411,125 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
                 return $hit; // [$route, $params]
             }
         }
+
         return null;
     }
 
+    /**
+     * @return AliasIndex
+     */
+    private function normalizeAliasIndex(mixed $raw): array
+    {
+        if (!\is_array($raw)) {
+            return [];
+        }
+
+        $aliases = [];
+        foreach ($raw as $name => $tuple) {
+            if (!\is_string($name) || !\is_array($tuple)) {
+                continue;
+            }
+
+            $path = $tuple[0] ?? null;
+            $domain = $tuple[1] ?? null;
+            if (!\is_string($path)) {
+                continue;
+            }
+
+            $aliases[$name] = [$path, \is_string($domain) ? $domain : null];
+        }
+
+        return $aliases;
+    }
+
+    /**
+     * @return array{0:string,1:HostBucket}|null
+     */
+    private function normalizeHostBucket(mixed $host, mixed $bucket): ?array
+    {
+        if (!\is_string($host) || !\is_array($bucket)) {
+            return null;
+        }
+
+        return [
+            $host,
+            [
+                self::K_STATIC => $this->normalizeStaticBucket($bucket[self::K_STATIC] ?? null),
+                self::K_TRIE => $this->normalizeTrieNode($bucket[self::K_TRIE] ?? []),
+            ],
+        ];
+    }
+
+    /**
+     * @return HostMap
+     */
+    private function normalizeHosts(mixed $raw): array
+    {
+        if (!\is_array($raw)) {
+            return [];
+        }
+
+        $hosts = [];
+        foreach ($raw as $host => $bucket) {
+            if ($normalized = $this->normalizeHostBucket($host, $bucket)) {
+                $hosts[$normalized[0]] = $normalized[1];
+            }
+        }
+
+        return $hosts;
+    }
+
+    /**
+     * @return StaticBucket
+     */
+    private function normalizeStaticBucket(mixed $rawStatic): array
+    {
+        if (!\is_array($rawStatic)) {
+            return [];
+        }
+
+        $static = [];
+        foreach ($rawStatic as $path => $verbs) {
+            if (!\is_string($path)) {
+                continue;
+            }
+
+            $verbMap = $this->normalizeVerbRouteMap($verbs);
+            if ($verbMap !== []) {
+                $static[$path] = $verbMap;
+            }
+        }
+
+        return $static;
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private function normalizeTrieNode(mixed $rawTrie): array
+    {
+        $trie = \is_array($rawTrie) ? $this->normalizeNodeArray($rawTrie) : [];
+        $this->ensureNode($trie);
+
+        return $trie;
+    }
+
+    /**
+     * @return VerbRouteMap
+     */
+    private function normalizeVerbRouteMap(mixed $verbs): array
+    {
+        if (!\is_array($verbs)) {
+            return [];
+        }
+
+        $verbMap = [];
+        foreach ($verbs as $verb => $route) {
+            if (\is_string($verb) && $route instanceof CompiledRoute) {
+                $verbMap[$verb] = $route;
+            }
+        }
+
+        return $verbMap;
+    }
 }

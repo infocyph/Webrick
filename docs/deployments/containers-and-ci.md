@@ -26,7 +26,7 @@ RUN composer install --no-dev --prefer-dist --classmap-authoritative --no-intera
 COPY . .
 
 # Build route cache (script should exist in repo)
-RUN mkdir -p var/cache/routes && php scripts/build-route-cache.php
+RUN mkdir -p .route-cache && php ./webrick route:cache --cache=.route-cache --routes=routes.php
 
 # ---- 2) Runtime: php-fpm + nginx
 FROM php:8.4-fpm-alpine AS runtime
@@ -148,7 +148,7 @@ jobs:
           composer run phpstan || true
           composer run test
       - name: Build route cache
-        run: php scripts/build-route-cache.php
+        run: php ./webrick route:cache --cache=.route-cache --routes=routes.php
 
   docker_build_push:
     needs: build_test

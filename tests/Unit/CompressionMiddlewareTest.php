@@ -3,11 +3,12 @@
 declare(strict_types=1);
 
 use Infocyph\Webrick\Middleware\CompressionMiddleware;
+use Infocyph\Webrick\Middleware\VaryAccumulatorMiddleware;
 use Infocyph\Webrick\Response\Response;
 
 describe('CompressionMiddleware', function () {
     it('compresses response when accepted', function () {
-        if (!function_exists('gzencode')) {
+        if (! function_exists('gzencode')) {
             $this->markTestSkipped('gzip extension not available');
         }
 
@@ -21,18 +22,18 @@ describe('CompressionMiddleware', function () {
             'Accept-Encoding' => 'gzip',
         ]);
 
-        $next = fn ($req) => Response::create($body, 200, [
+        $next = fn () => Response::create($body, 200, [
             'Content-Type' => 'text/html',
         ]);
 
-        $varyMw = new \Infocyph\Webrick\Middleware\VaryAccumulatorMiddleware();
+        $varyMw = new VaryAccumulatorMiddleware;
         $response = $varyMw($request, fn ($r) => $middleware($r, $next));
 
         expect($response)
             ->toHaveHeader('Content-Encoding', 'gzip')
             ->toHaveHeader('Vary', 'Accept-Encoding');
 
-        $compressed = (string)$response->getBody();
+        $compressed = (string) $response->getBody();
         expect(strlen($compressed))->toBeLessThan(strlen($body));
     });
 
@@ -43,54 +44,54 @@ describe('CompressionMiddleware', function () {
             'Accept-Encoding' => 'gzip',
         ]);
 
-        $next = fn ($req) => Response::create('Small', 200);
+        $next = fn () => Response::create('Small', 200);
 
-        $varyMw = new \Infocyph\Webrick\Middleware\VaryAccumulatorMiddleware();
+        $varyMw = new VaryAccumulatorMiddleware;
         $response = $varyMw($request, fn ($r) => $middleware($r, $next));
 
         expect($response->hasHeader('Content-Encoding'))
             ->toBeFalse()
-            ->and((string)$response->getBody())->toBe('Small');
+            ->and((string) $response->getBody())->toBe('Small');
     });
 
     it('skips compression for images', function () {
-        $middleware = new CompressionMiddleware();
+        $middleware = new CompressionMiddleware;
 
         $request = mockRequest('GET', '/image.jpg', [
             'Accept-Encoding' => 'gzip',
         ]);
 
         $body = str_repeat('x', 2000);
-        $next = fn ($req) => Response::create($body, 200, [
+        $next = fn () => Response::create($body, 200, [
             'Content-Type' => 'image/jpeg',
         ]);
 
-        $varyMw = new \Infocyph\Webrick\Middleware\VaryAccumulatorMiddleware();
+        $varyMw = new VaryAccumulatorMiddleware;
         $response = $varyMw($request, fn ($r) => $middleware($r, $next));
 
         expect($response->hasHeader('Content-Encoding'))->toBeFalse();
     });
 
     it('respects no-transform directive', function () {
-        $middleware = new CompressionMiddleware();
+        $middleware = new CompressionMiddleware;
 
         $request = mockRequest('GET', '/', [
             'Accept-Encoding' => 'gzip',
         ]);
 
         $body = str_repeat('Hello World! ', 100);
-        $next = fn ($req) => Response::create($body, 200, [
+        $next = fn () => Response::create($body, 200, [
             'Cache-Control' => 'no-transform',
         ]);
 
-        $varyMw = new \Infocyph\Webrick\Middleware\VaryAccumulatorMiddleware();
+        $varyMw = new VaryAccumulatorMiddleware;
         $response = $varyMw($request, fn ($r) => $middleware($r, $next));
 
         expect($response->hasHeader('Content-Encoding'))->toBeFalse();
     });
 
     it('handles ETag with weak-on-encode strategy', function () {
-        if (!function_exists('gzencode')) {
+        if (! function_exists('gzencode')) {
             $this->markTestSkipped('gzip extension not available');
         }
 
@@ -103,12 +104,12 @@ describe('CompressionMiddleware', function () {
             'Accept-Encoding' => 'gzip',
         ]);
 
-        $next = fn ($req) => Response::create($body, 200, [
+        $next = fn () => Response::create($body, 200, [
             'Content-Type' => 'text/html',
             'ETag' => '"abc123"',
         ]);
 
-        $varyMw = new \Infocyph\Webrick\Middleware\VaryAccumulatorMiddleware();
+        $varyMw = new VaryAccumulatorMiddleware;
         $response = $varyMw($request, fn ($r) => $middleware($r, $next));
 
         $etag = $response->getHeaderLine('ETag');

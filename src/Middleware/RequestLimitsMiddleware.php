@@ -8,8 +8,6 @@
  * on H2). Body size enforcement is based on Content-Length; when Transfer-Encoding
  * (e.g., chunked) is present, the middleware does not pre-reject because the length
  * is not known up front.
- *
- * @package Infocyph\Webrick\Middleware
  */
 
 declare(strict_types=1);
@@ -40,11 +38,11 @@ final readonly class RequestLimitsMiddleware
      *
      * @param int $maxHeaderBytes Maximum total header bytes; 0 disables the byte check.
      * @param int $maxHeaderCount Maximum number of header fields; 0 disables the count check
-     *                                                  (fields counted as each header value line).
+     *                            (fields counted as each header value line).
      * @param int|null $maxBodyBytes Maximum allowed body bytes; null uses ini_get('post_max_size').
      * @param array<int,string> $bodyLimitVerbs HTTP methods to which the body limit applies (uppercased compare).
      * @param bool $violateOnUnknownBody When true and neither Content-Length nor transfer-coding is present,
-     *                                                  treat as violation for configured verbs.
+     *                                   treat as violation for configured verbs.
      */
     public function __construct(
         private int $maxHeaderBytes = 8192,
@@ -78,71 +76,24 @@ final readonly class RequestLimitsMiddleware
      * 2) Enforce body size (413) based on Content-Length; do not pre-reject when Transfer-Encoding (e.g., chunked).
      *
      * @param Request $req Incoming request.
-     * @param Closure $next Next handler.
-     *
+     * @param Closure(Request):Response $next
      * @return Response Response from next handler or an error response on violation.
      */
     public function __invoke(Request $req, Closure $next): Response
     {
-        /* ── 0) header fields count → 431 ───────────────────────── */
-        if ($this->maxHeaderCount > 0) {
-            $fields = $this->totalHeaderFields($req);
-            if ($fields > $this->maxHeaderCount) {
-                $resp = Response::plaintext('Too many header fields', StatusEnum::REQUEST_HEADER_FIELDS_TOO_LARGE->value);
-                return $this->withConnCloseIfHttp1($req, $resp);
-            }
+        $resp = $this->rejectForHeaderFieldCount($req);
+        if ($resp !== null) {
+            return $resp;
         }
 
-        /* ── 1) headers total size → 431 ────────────────────────── */
-        if ($this->maxHeaderBytes > 0) {
-            $hdrBytes = $this->totalHeaderBytes($req);
-            if ($hdrBytes > $this->maxHeaderBytes) {
-                $resp = Response::plaintext('Request headers too large', StatusEnum::REQUEST_HEADER_FIELDS_TOO_LARGE->value);
-                return $this->withConnCloseIfHttp1($req, $resp);
-            }
+        $resp = $this->rejectForHeaderBytes($req);
+        if ($resp !== null) {
+            return $resp;
         }
 
-        /* ── 2) body size → 413 (by Content-Length; don't pre-reject chunked) ─ */
-        $limit = $this->resolveBodyLimit();
-        if ($limit > 0 && \in_array(HttpMethodEnum::normalize($req->getMethod()), $this->bodyLimitVerbs, true)) {
-            $cl = trim($req->getHeaderLine('Content-Length'));
-
-            // Detect presence of a transfer-coding (e.g., "chunked").
-            // Per RFC, HTTP/2 may legitimately send "TE: trailers" which is NOT a transfer-coding;
-            // ignore that token for this purpose.
-            $teLine = strtolower($req->getHeaderLine('Transfer-Encoding'));
-            $hasTransferCoding = false;
-            if ($teLine !== '') {
-                foreach (explode(',', $teLine) as $tok) {
-                    $tok = trim($tok);
-                    if ($tok !== '' && $tok !== 'identity' && $tok !== 'trailers') {
-                        $hasTransferCoding = true; // e.g., "chunked"
-                        break;
-                    }
-                }
-            }
-
-            if ($hasTransferCoding) {
-                // Length unknown up front (chunked/other coding) → do not 413 pre-emptively.
-                // Let downstream read/stream and enforce limits there if needed.
-            } elseif ($cl !== '') {
-                $len = $this->parseContentLength($cl);
-                if ($len === null) {
-                    $resp = Response::plaintext('Invalid Content-Length header.', StatusEnum::BAD_REQUEST->value);
-                    return $this->withConnCloseIfHttp1($req, $resp);
-                }
-                if ($len > $limit) {
-                    $resp = Response::plaintext(
-                        'Payload exceeds maximum allowed size.',
-                        StatusEnum::PAYLOAD_TOO_LARGE->value,
-                    );
-                    return $this->withConnCloseIfHttp1($req, $resp);
-                }
-            } elseif ($this->violateOnUnknownBody) {
-                // No Content-Length and no transfer-coding ⇒ treat as violation (conservative).
-                $resp = Response::plaintext('Payload exceeds maximum allowed size.', StatusEnum::PAYLOAD_TOO_LARGE->value);
-                return $this->withConnCloseIfHttp1($req, $resp);
-            }
+        $resp = $this->rejectForBodyLimit($req);
+        if ($resp !== null) {
+            return $resp;
         }
 
         return $next($req);
@@ -152,7 +103,6 @@ final readonly class RequestLimitsMiddleware
      * Convert a php.ini size string (e.g., "8M", "1G") to bytes.
      *
      * @param string|false $val Value returned by ini_get().
-     *
      * @return int Byte count (0 for empty/false).
      */
     private static function phpIniBytes(string|false $val): int
@@ -165,13 +115,48 @@ final readonly class RequestLimitsMiddleware
             return 0;
         }
         $unit = \strtolower(substr($val, -1));
-        $num = (int)$val;
+        $num = (int) $val;
+
         return match ($unit) {
             'g' => $num * 1024 * 1024 * 1024,
             'm' => $num * 1024 * 1024,
             'k' => $num * 1024,
-            default => (int)$val,
+            default => (int) $val,
         };
+    }
+
+    private function appliesBodyLimitToMethod(Request $req): bool
+    {
+        return \in_array(HttpMethodEnum::normalize($req->getMethod()), $this->bodyLimitVerbs, true);
+    }
+
+    private function hasTransferCoding(Request $req): bool
+    {
+        $teLine = \strtolower($req->getHeaderLine('Transfer-Encoding'));
+        if ($teLine === '') {
+            return false;
+        }
+
+        foreach (\explode(',', $teLine) as $tok) {
+            $tok = \trim($tok);
+            if ($tok !== '' && $tok !== 'identity' && $tok !== 'trailers') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function headerValueLength(mixed $value): int
+    {
+        if (\is_string($value)) {
+            return \strlen($value);
+        }
+        if (\is_scalar($value)) {
+            return \strlen((string) $value);
+        }
+
+        return 0;
     }
 
     /**
@@ -187,7 +172,77 @@ final readonly class RequestLimitsMiddleware
         }
 
         $value = filter_var($raw, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
-        return $value === false ? PHP_INT_MAX : (int)$value;
+
+        return $value === false ? PHP_INT_MAX : (int) $value;
+    }
+
+    private function payloadTooLargeResponse(Request $req): Response
+    {
+        $resp = Response::plaintext(
+            'Payload exceeds maximum allowed size.',
+            StatusEnum::PAYLOAD_TOO_LARGE->value,
+        );
+
+        return $this->withConnCloseIfHttp1($req, $resp);
+    }
+
+    private function rejectForBodyLimit(Request $req): ?Response
+    {
+        $limit = $this->resolveBodyLimit();
+        if ($limit <= 0 || !$this->appliesBodyLimitToMethod($req)) {
+            return null;
+        }
+
+        if ($this->hasTransferCoding($req)) {
+            return null;
+        }
+
+        $cl = trim($req->getHeaderLine('Content-Length'));
+        if ($cl === '') {
+            return $this->violateOnUnknownBody
+                ? $this->payloadTooLargeResponse($req)
+                : null;
+        }
+
+        $len = $this->parseContentLength($cl);
+        if ($len === null) {
+            $resp = Response::plaintext('Invalid Content-Length header.', StatusEnum::BAD_REQUEST->value);
+
+            return $this->withConnCloseIfHttp1($req, $resp);
+        }
+
+        return $len > $limit ? $this->payloadTooLargeResponse($req) : null;
+    }
+
+    private function rejectForHeaderBytes(Request $req): ?Response
+    {
+        return $this->rejectIfLimitExceeded(
+            $req,
+            $this->maxHeaderBytes,
+            $this->totalHeaderBytes($req),
+            'Request headers too large',
+        );
+    }
+
+    private function rejectForHeaderFieldCount(Request $req): ?Response
+    {
+        return $this->rejectIfLimitExceeded(
+            $req,
+            $this->maxHeaderCount,
+            $this->totalHeaderFields($req),
+            'Too many header fields',
+        );
+    }
+
+    private function rejectIfLimitExceeded(Request $req, int $limit, int $current, string $message): ?Response
+    {
+        if ($limit <= 0 || $current <= $limit) {
+            return null;
+        }
+
+        $resp = Response::plaintext($message, StatusEnum::REQUEST_HEADER_FIELDS_TOO_LARGE->value);
+
+        return $this->withConnCloseIfHttp1($req, $resp);
     }
 
     /* ───────────────────────── helpers ─────────────────────────── */
@@ -204,6 +259,7 @@ final readonly class RequestLimitsMiddleware
         if ($this->maxBodyBytes !== null) {
             return $this->maxBodyBytes;
         }
+
         return self::phpIniBytes(\ini_get('post_max_size'));
     }
 
@@ -213,25 +269,20 @@ final readonly class RequestLimitsMiddleware
      * Counts "Name: value" length for each header value line or raw line in flat-list mode.
      *
      * @param Request $r The request.
-     *
      * @return int Total header bytes.
      */
     private function totalHeaderBytes(Request $r): int
     {
         $sum = 0;
-        $all = $r->getHeaders(); // supports both map or flat list forms
+        $all = $r->getHeaders();
 
         foreach ($all as $name => $val) {
-            if (\is_int($name)) {
-                // flat list of raw header lines
-                $sum += \strlen((string)$val);
-                continue;
-            }
-            $values = \is_array($val) ? $val : [$val];
+            $values = $val;
             foreach ($values as $v) {
-                $sum += \strlen((string)$name) + 2 + \strlen((string)$v); // "Name: value"
+                $sum += \strlen($name) + 2 + $this->headerValueLength($v); // "Name: value"
             }
         }
+
         return $sum;
     }
 
@@ -242,7 +293,6 @@ final readonly class RequestLimitsMiddleware
      * your Request flattens repeated-name values as an array).
      *
      * @param Request $r The request.
-     *
      * @return int Number of header fields.
      */
     private function totalHeaderFields(Request $r): int
@@ -250,15 +300,10 @@ final readonly class RequestLimitsMiddleware
         $all = $r->getHeaders();
 
         $count = 0;
-        foreach ($all as $name => $val) {
-            if (\is_int($name)) {
-                // flat list (raw lines)
-                $count++;
-                continue;
-            }
-            $values = \is_array($val) ? $val : [$val];
+        foreach ($all as $values) {
             $count += \count($values);
         }
+
         return $count;
     }
 
@@ -267,15 +312,16 @@ final readonly class RequestLimitsMiddleware
      *
      * @param Request $req The incoming request (for protocol detection).
      * @param Response $resp The response to augment when applicable.
-     *
      * @return Response Response with "Connection: close" for HTTP/1.x; unchanged for HTTP/2.
      */
     private function withConnCloseIfHttp1(Request $req, Response $resp): Response
     {
-        $proto = strtoupper((string)($req->getServerParams()['SERVER_PROTOCOL'] ?? 'HTTP/1.1'));
+        $serverProtocol = $req->getServerParams()['SERVER_PROTOCOL'] ?? 'HTTP/1.1';
+        $proto = \is_string($serverProtocol) ? strtoupper($serverProtocol) : 'HTTP/1.1';
         if (\str_starts_with($proto, 'HTTP/1.')) {
             return $resp->withSmartHeader('Connection', 'close');
         }
+
         return $resp;
     }
 }

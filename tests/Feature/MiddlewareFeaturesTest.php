@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 use Infocyph\Webrick\Middleware\NegotiationMiddleware;
 
-require_once __DIR__ . '/../IntegrationBootstrap.php';
+require_once __DIR__.'/../IntegrationBootstrap.php';
 
 describe('Middleware Features', function () {
     beforeEach(function () {

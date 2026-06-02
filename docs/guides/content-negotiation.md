@@ -171,7 +171,7 @@ You can always bypass negotiation and respond explicitly:
 return Response::json(['ok'=>true]);
 
 // Always text
-return Response::plaintext("hello\n");
+return Response::plaintext("hello\n", 200);
 
 // XML explicitly
 return Response::create('<note>hello</note>', 200, ['Content-Type'=>'application/xml']);

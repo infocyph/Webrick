@@ -15,28 +15,25 @@ namespace Infocyph\Webrick\Request\Core;
 abstract class Message
 {
     protected Stream $body;
+
+    /** @var array<string,list<string>> */
     protected array $headers = [];
-    protected string $protocol = '1.1';
 
     /**
-     * @param array<string,string[]> $headers header-name => string[] or string (ucwords-dashed)
+     * @param array<string,string|array<int,string>> $headers header-name => string[] or string (ucwords-dashed)
      * @param Stream|null $body body stream or null for an empty stream
-     * @param string $proto HTTP protocol version (e.g. "1.1")
+     * @param string $protocol HTTP protocol version (e.g. "1.1")
      */
-    protected function __construct(array $headers = [], ?Stream $body = null, string $proto = '1.1')
+    protected function __construct(array $headers = [], ?Stream $body = null, protected string $protocol = '1.1')
     {
         $this->headers = $this->normalise($headers);
         $this->body = $body ?? new Stream();
-        $this->protocol = $proto;
     }
 
     /**
      * Cloning is disabled.
      */
-    protected function __clone(): void
-    {
-    }
-
+    protected function __clone(): void {}
 
     /**
      * Returns the current message body as an instance of Stream.
@@ -52,9 +49,9 @@ abstract class Message
      * Retrieve a header by name.
      *
      * @param string $name Case-insensitive header name
-     * @return array Header values or empty array if header not present
+     * @return list<string> Header values or empty array if header not present
      */
-    public function getHeader($name): array
+    public function getHeader(string $name): array
     {
         return $this->headers[$this->norm($name)] ?? [];
     }
@@ -63,13 +60,11 @@ abstract class Message
      * Comma-concatenated header line (`null` when header absent).
      *
      * @param string $name Case-insensitive header name
-     * @return string|null
      */
-    public function getHeaderLine($name): string
+    public function getHeaderLine(string $name): string
     {
         return implode(',', $this->getHeader($name));
     }
-
 
     /**
      * Retrieves the headers of this request.
@@ -78,7 +73,7 @@ abstract class Message
      * name (in lowercase) and the value is an array of strings for each value
      * of the header.
      *
-     * @return array
+     * @return array<string,list<string>>
      */
     public function getHeaders(): array
     {
@@ -101,7 +96,7 @@ abstract class Message
      * @param string $name Case-insensitive header name
      * @return bool True if header exists, false otherwise
      */
-    public function hasHeader($name): bool
+    public function hasHeader(string $name): bool
     {
         return isset($this->headers[$this->norm($name)]);
     }
@@ -109,22 +104,21 @@ abstract class Message
     /**
      * Append header value(s) (cloned).
      *
-     * @param string $name
-     * @param string|array $value
-     * @return static
+     * @param string|array<int,string> $value
      */
-    public function withAddedHeader($name, $value): static
+    public function withAddedHeader(string $name, string|array $value): static
     {
         $norm = $this->norm($name);
-        $val = is_array($value) ? $value : [(string)$value];
+        $val = $this->normalizeHeaderValues($value);
         if (!$this->hasHeader($norm)) {
             return $this->withHeader($norm, $val);
         }
-        if ($val === array_intersect($val, $this->headers[$norm])) {
+        if ($val === [] || array_diff($val, $this->headers[$norm]) === []) {
             return $this;                       // already present
         }
         $c = clone $this;
         $c->headers[$norm] = array_merge($this->headers[$norm], $val);
+
         return $c;
     }
 
@@ -132,7 +126,6 @@ abstract class Message
      * Create a new instance with the specified body.
      *
      * @param Stream $body The new body stream
-     * @return static
      */
     public function withBody(Stream $body): static
     {
@@ -141,6 +134,7 @@ abstract class Message
         }
         $c = clone $this;
         $c->body = $body;
+
         return $c;
     }
 
@@ -149,18 +143,18 @@ abstract class Message
      * If the header already exists with the same values, the original instance is returned.
      *
      * @param string $name Case-insensitive header name
-     * @param string|array $value New header values
-     * @return static
+     * @param string|array<int,string> $value New header values
      */
-    public function withHeader($name, $value): static
+    public function withHeader(string $name, string|array $value): static
     {
         $norm = $this->norm($name);
-        $val = is_array($value) ? array_values($value) : [(string)$value];
+        $val = $this->normalizeHeaderValues($value);
         if (($this->headers[$norm] ?? null) === $val) {
             return $this;
         }
         $c = clone $this;
         $c->headers[$norm] = $val;
+
         return $c;
     }
 
@@ -170,13 +164,14 @@ abstract class Message
      * @param string $name Header name to remove
      * @return static New instance without the specified header
      */
-    public function withoutHeader($name): static
+    public function withoutHeader(string $name): static
     {
         if (!$this->hasHeader($name)) {
             return $this;
         }
         $c = clone $this;
         unset($c->headers[$this->norm($name)]);
+
         return $c;
     }
 
@@ -184,15 +179,15 @@ abstract class Message
      * Create a new instance with the specified HTTP protocol version.
      *
      * @param string $version HTTP protocol version
-     * @return static
      */
-    public function withProtocolVersion($version): static
+    public function withProtocolVersion(string $version): static
     {
         if ($version === $this->protocol) {
             return $this;
         }
         $c = clone $this;
         $c->protocol = $version;
+
         return $c;
     }
 
@@ -204,23 +199,49 @@ abstract class Message
      */
     private function norm(string $n): string
     {
+        /** @var array<string,string> $cache */
         static $cache = [];
+
         return $cache[$n] ??= ucwords(strtolower($n), '-');
     }
-
 
     /**
      * Normalise the header names to ucwords-dashed and flatten the array to a single level.
      *
-     * @param array $h Header array
-     * @return array Normalised header array
+     * @param array<string,string|array<int,string>> $h Header array
+     * @return array<string,list<string>> Normalised header array
      */
     private function normalise(array $h): array
     {
         $out = [];
         foreach ($h as $k => $v) {
-            $out[$this->norm($k)] = is_array($v) ? array_values($v) : [(string)$v];
+            $out[$this->norm($k)] = $this->normalizeHeaderValues($v);
         }
+
         return $out;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function normalizeHeaderValues(mixed $value): array
+    {
+        if (\is_string($value)) {
+            return [$value];
+        }
+        if (!\is_array($value)) {
+            return \is_scalar($value) ? [(string) $value] : [];
+        }
+
+        $normalized = [];
+        foreach ($value as $item) {
+            if (\is_string($item)) {
+                $normalized[] = $item;
+            } elseif (\is_scalar($item)) {
+                $normalized[] = (string) $item;
+            }
+        }
+
+        return $normalized;
     }
 }

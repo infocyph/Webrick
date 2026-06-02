@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
+use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Cookies\Cookie;
 use Infocyph\Webrick\Response\Cookies\CookieJar;
 use Infocyph\Webrick\Response\Response;
-use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Router\Facade\Router as RouteFacade;
 use Infocyph\Webrick\Router\Route\Collection;
 use Infocyph\Webrick\Router\Route\Route;
@@ -15,9 +15,9 @@ describe('Response', function () {
         $response = Response::create('Hello World', 200);
 
         expect($response)
-            ->toBeInstanceOf(\Infocyph\Webrick\Response\Response::class)
+            ->toBeInstanceOf(Response::class)
             ->getStatusCode()->toBe(200)
-            ->and((string)$response->getBody())->toBe('Hello World');
+            ->and((string) $response->getBody())->toBe('Hello World');
     });
 
     it('creates JSON responses', function () {
@@ -30,7 +30,7 @@ describe('Response', function () {
         $ct = $response->getHeaderLine('Content-Type');
         expect($ct)->toContain('application/json');
 
-        $decoded = json_decode((string)$response->getBody(), true);
+        $decoded = json_decode((string) $response->getBody(), true);
         expect($decoded)->toBe($data);
     });
 
@@ -47,7 +47,7 @@ describe('Response', function () {
 
         expect($response)
             ->toHaveStatus(204)
-            ->and((string)$response->getBody())->toBe('');
+            ->and((string) $response->getBody())->toBe('');
     });
 
     it('creates plaintext responses', function () {
@@ -59,7 +59,7 @@ describe('Response', function () {
 
     it('creates HTML responses', function () {
         $response = Response::create('<h1>Hello</h1>', 200, [
-            'Content-Type' => 'text/html; charset=utf-8'
+            'Content-Type' => 'text/html; charset=utf-8',
         ]);
 
         expect($response)
@@ -148,7 +148,7 @@ describe('Response', function () {
     });
 
     it('handles cookies', function () {
-        $jar = new CookieJar();
+        $jar = new CookieJar;
         $cookie = Cookie::make('session', 'abc123');
         $jar = $jar->add($cookie);
 
@@ -162,7 +162,7 @@ describe('Response', function () {
     });
 
     it('can reset bound URL services', function () {
-        $routes = new Collection();
+        $routes = new Collection;
         $route = (new Route('GET', '/users/{id}', fn () => Response::noContent()))
             ->withName('users.show');
         $routes->add($route);
@@ -172,11 +172,11 @@ describe('Response', function () {
 
         RouteFacade::resetUrlServices();
         expect(fn () => RouteFacade::urlFor('users.show', ['id' => 7]))
-            ->toThrow(\LogicException::class);
+            ->toThrow(LogicException::class);
     });
 
     it('supports global route() helper', function () {
-        $routes = new Collection();
+        $routes = new Collection;
         $route = (new Route('GET', '/users/{id}', fn () => Response::noContent()))
             ->withName('users.show');
         $routes->add($route);
@@ -189,6 +189,6 @@ describe('Response', function () {
 
     it('throws when view factory is not bound', function () {
         expect(fn () => Response::view('home', [], 200, [], 'utf-8', '__missing_view_factory__'))
-            ->toThrow(\RuntimeException::class);
+            ->toThrow(RuntimeException::class);
     });
 });

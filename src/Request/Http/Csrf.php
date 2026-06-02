@@ -20,15 +20,12 @@ final class Csrf
      * Size of the raw random string (in **bytes**).
      * 32 bytes → 64-hex-char plain token, 128-char masked token.
      */
-    private const TOKEN_BYTES = 32;
-
+    private const int TOKEN_BYTES = 32;
 
     /**
      * Private constructor to prevent instantiation of this class.
      */
-    private function __construct()
-    {
-    }
+    private function __construct() {}
 
     /**
      * Returns a masked CSRF token (128 hex chars) that contains the following components:
@@ -75,7 +72,7 @@ final class Csrf
      */
     public static function matchesValue(?string $sent): bool
     {
-        $stored = $_SESSION['_token'] ?? null;
+        $stored = self::sessionToken();
         if (!$sent || !$stored) {
             return false;
         }
@@ -105,7 +102,15 @@ final class Csrf
      */
     public static function token(): string
     {
-        return $_SESSION['_token'] ??= bin2hex(random_bytes(self::TOKEN_BYTES));
+        $stored = self::sessionToken();
+        if ($stored !== null) {
+            return $stored;
+        }
+
+        $token = bin2hex(random_bytes(self::TOKEN_BYTES));
+        $_SESSION['_token'] = $token;
+
+        return $token;
     }
 
     /**
@@ -128,18 +133,29 @@ final class Csrf
 
         // 2) Form field wins over query param
         $body = $req->getParsedBody();
-        if (\is_array($body) && ($body['_token'] ?? '') !== '') {
-            return (string)$body['_token'];
+        if (\is_array($body)) {
+            $bodyToken = $body['_token'] ?? null;
+            if (\is_string($bodyToken) && $bodyToken !== '') {
+                return $bodyToken;
+            }
         }
 
         \parse_str($req->getUri()->getQuery(), $q);
-        if (($q['_token'] ?? '') !== '') {
-            return (string)$q['_token'];
+        $queryToken = $q['_token'] ?? null;
+        if (\is_string($queryToken) && $queryToken !== '') {
+            return $queryToken;
         }
 
         // 3) Cookie
         $cookie = $req->getCookieParams()['XSRF-TOKEN'] ?? null;
 
-        return $cookie !== '' ? (string)$cookie : null;
+        return \is_string($cookie) && $cookie !== '' ? $cookie : null;
+    }
+
+    private static function sessionToken(): ?string
+    {
+        $stored = $_SESSION['_token'] ?? null;
+
+        return \is_string($stored) && $stored !== '' ? $stored : null;
     }
 }

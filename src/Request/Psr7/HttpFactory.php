@@ -20,14 +20,14 @@ final class HttpFactory
      *
      * @param string $method The HTTP method (e.g. GET, POST, PUT, DELETE).
      * @param Uri|string $uri The URI of the request as a string or Uri object.
-     * @param array $serverParams The server parameters, typically from $_SERVER.
+     * @param array<string, mixed> $serverParams The server parameters, typically from $_SERVER.
      * @return Request A new Request object.
      */
     public function createRequest(string $method, Uri|string $uri, array $serverParams = []): Request
     {
         return new Request(
             HttpMethodEnum::normalize($method),
-            $uri instanceof Uri ? $uri : new Uri((string)$uri),
+            $uri instanceof Uri ? $uri : new Uri($uri),
             $serverParams,
         );
     }
@@ -47,6 +47,7 @@ final class HttpFactory
         if ($reasonPhrase === '' && ($st = StatusEnum::tryFrom($code))) {
             $reasonPhrase = $st->reason();
         }
+
         return new Response($code, new Stream(), [], '1.1', $reasonPhrase);
     }
 
@@ -67,14 +68,16 @@ final class HttpFactory
      * @param string $filename The filename to open.
      * @param string $mode The mode to open the file in.
      * @return Stream A new Stream object.
+     *
      * @throws RuntimeException If the file cannot be opened.
      */
     public function createStreamFromFile(string $filename, string $mode = 'r'): Stream
     {
-        $h = @fopen($filename, $mode);
+        $h = fopen($filename, $mode);
         if ($h === false) {
             throw new RuntimeException("Unable to open file: {$filename}");
         }
+
         return new Stream($h);
     }
 
@@ -89,6 +92,7 @@ final class HttpFactory
         if (!\is_resource($resource)) {
             throw new RuntimeException('createStreamFromResource() expects a valid resource');
         }
+
         return new Stream($resource);
     }
 
@@ -100,7 +104,6 @@ final class HttpFactory
      * @param int $error The error code for the uploaded file (UPLOAD_ERR_* constant).
      * @param string|null $clientFilename The client-provided filename for the uploaded file.
      * @param string|null $clientMediaType The client-provided MIME type for the uploaded file.
-     * @return UploadedFile
      */
     public function createUploadedFile(
         Stream $stream,

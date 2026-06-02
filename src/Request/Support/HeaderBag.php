@@ -21,11 +21,16 @@ use Traversable;
  *                    value()  – collapse-to-string when exactly one value (legacy)
  *
  * @psalm-type HeaderValues = string|string[]
+ *
+ * @implements ArrayAccess<string, list<string>>
+ * @implements IteratorAggregate<string, list<string>>
  */
-final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
+final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
 {
+    /** @var array<string, string> */
     private static array $normCache = [];
-    /** @var array<string,string[]> */
+
+    /** @var array<string,list<string>> */
     private array $map = [];
 
     /**
@@ -34,7 +39,7 @@ final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
      * Initializes the HeaderBag with an optional seed array of headers.
      * Each header name is normalized to a standard format.
      *
-     * @param array<string,string|string[]> $seed Optional initial headers
+     * @param array<string,string|list<string>> $seed Optional initial headers
      */
     public function __construct(array $seed = [])
     {
@@ -46,7 +51,7 @@ final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
     /**
      * Retrieve all headers.
      *
-     * @return array<string,string[]> An associative array of all headers
+     * @return array<string,list<string>> An associative array of all headers
      */
     public function all(): array
     {
@@ -84,7 +89,7 @@ final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
      * Otherwise, returns the values of the header as an array.
      *
      * @param string $name Case-insensitive header name
-     * @return array The header values or an empty array if the header is absent
+     * @return list<string> The header values or an empty array if the header is absent
      */
     public function get(string $name): array
     {
@@ -110,7 +115,7 @@ final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
      * name (in lowercase) and the value is an array of strings for each value
      * of the header.
      *
-     * @return Traversable The iterator for the collection.
+     * @return Traversable<string, list<string>> The iterator for the collection.
      */
     public function getIterator(): Traversable
     {
@@ -147,7 +152,11 @@ final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
      */
     public function offsetExists(mixed $offset): bool
     {
-        return $this->has((string)$offset);
+        if (!\is_string($offset)) {
+            return false;
+        }
+
+        return $this->has($offset);
     }
 
     /**
@@ -158,7 +167,11 @@ final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
      */
     public function offsetGet(mixed $offset): mixed
     {
-        return $this->get((string)$offset);
+        if (!\is_string($offset)) {
+            return [];
+        }
+
+        return $this->get($offset);
     }
 
     /**
@@ -196,7 +209,7 @@ final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
      * If the header has multiple values, returns an array of those values.
      *
      * @param string $name Case-insensitive header name
-     * @return string|array|null
+     * @return string|list<string>|null
      */
     public function value(string $name): string|array|null
     {
@@ -204,6 +217,7 @@ final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
         if ($all === []) {
             return null;
         }
+
         return count($all) === 1 ? $all[0] : $all;
     }
 
@@ -211,13 +225,14 @@ final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
      * Return a new instance with the specified header set.
      *
      * @param string $name Case-insensitive header name
-     * @param string|array $value New header value(s)
+     * @param string|array<int, string> $value New header value(s)
      * @return static New instance with the specified header set
      */
     public function with(string $name, string|array $value): self
     {
         $x = clone $this;
         $x->set($name, $value);
+
         return $x;
     }
 
@@ -229,7 +244,7 @@ final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
      * - If the header does not exist, the new values are used as-is.
      *
      * @param string $name Case-insensitive header name
-     * @param string|array $value New header values
+     * @param string|array<int, string> $value New header values
      * @return static New instance with the specified header value(s) added
      */
     public function withAdded(string $name, string|array $value): self
@@ -238,8 +253,9 @@ final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
         $x = clone $this;
         $x->map[$norm] = array_merge(
             $x->map[$norm] ?? [],
-            is_array($value) ? array_values($value) : [(string)$value],
+            is_array($value) ? array_values($value) : [$value],
         );
+
         return $x;
     }
 
@@ -253,6 +269,7 @@ final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
     {
         $x = clone $this;
         unset($x->map[$this->norm($name)]);
+
         return $x;
     }
 
@@ -266,7 +283,6 @@ final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
      *
      * @param string $name Case-insensitive header name
      * @param string $value New header value
-     * @return static
      */
     public function withSmart(string $name, string $value): self
     {
@@ -279,6 +295,7 @@ final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
                 $name,
                 HeaderPolicy::mergeCsv($name, $this->getHeaderLine($name), $value),
             ),
+            default => $this->with($name, $value),
         };
     }
 
@@ -300,14 +317,22 @@ final class HeaderBag implements IteratorAggregate, Countable, ArrayAccess
      * Internal helper to set a header.
      *
      * @param string $name The header name to set.
-     * @param string|array $value The header value to set.
+     * @param string|array<int, string> $value The header value to set.
      *
      * @throws \LogicException If the header bag is immutable (i.e. if it's being accessed from the Response side).
      */
     private function set(string $name, string|array $value): void
     {
-        $this->map[$this->norm($name)] = is_array($value)
-            ? array_values($value)
-            : [$value];
+        if (\is_array($value)) {
+            $normalized = [];
+            foreach ($value as $item) {
+                $normalized[] = $item;
+            }
+            $this->map[$this->norm($name)] = $normalized;
+
+            return;
+        }
+
+        $this->map[$this->norm($name)] = [$value];
     }
 }

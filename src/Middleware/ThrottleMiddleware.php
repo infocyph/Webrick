@@ -11,8 +11,6 @@
  * - Pluggable identifier resolver and scope
  *
  * Place early in the pipeline (after gateway hardening, before app handlers).
- *
- * @package Infocyph\Webrick\Middleware
  */
 
 declare(strict_types=1);
@@ -21,7 +19,7 @@ namespace Infocyph\Webrick\Middleware;
 
 use Closure;
 use DateTimeImmutable;
-use Infocyph\InterMix\Cache\Cache;
+use Infocyph\CacheLayer\Cache\Cache;
 use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
@@ -36,8 +34,6 @@ final readonly class ThrottleMiddleware
 {
     /**
      * PSR-6 cache pool used to store counters and reset epochs.
-     *
-     * @var CacheItemPoolInterface
      */
     private CacheItemPoolInterface $pool;
 
@@ -78,7 +74,13 @@ final readonly class ThrottleMiddleware
             throw new InvalidConfigException('costAttribute must be a non-empty string.');
         }
 
-        $this->pool = $pool ?? Cache::local($_SERVER['DOCUMENT_ROOT'] . '.thm');
+        if ($pool !== null) {
+            $this->pool = $pool;
+
+            return;
+        }
+
+        $this->pool = $this->buildDefaultPool();
     }
 
     /**
@@ -92,9 +94,9 @@ final readonly class ThrottleMiddleware
      * 5) Otherwise increment hits, persist, call next, and attach headers.
      *
      * @param Request $req Incoming request.
-     * @param Closure $next Next handler.
-     *
+     * @param Closure(Request):Response $next
      * @return Response Throttled or normal response with rate headers.
+     *
      * @throws InvalidArgumentException
      */
     public function __invoke(Request $req, Closure $next): Response
@@ -104,15 +106,15 @@ final readonly class ThrottleMiddleware
         }
 
         // Anchor timing to the start of the request for consistent math
-        $now = (int)($_SERVER['REQUEST_TIME'] ?? time());
+        $now = $this->intFromMixed($_SERVER['REQUEST_TIME'] ?? null, \time());
 
         [$key, $resetAt] = $this->deriveKeyAndReset($req, $now);
         $payload = $this->load($key, $resetAt);
 
-        $cost = max(1, (int)$req->getAttribute($this->costAttribute, 1));
+        $cost = max(1, $this->intFromMixed($req->getAttribute($this->costAttribute, 1), 1));
 
         // Will this request exceed the limit?
-        if ($payload['hits'] + $cost > $this->max) {
+        if ($this->max < $payload['hits'] + $cost) {
             return $this->tooMany($payload['reset']);
         }
 
@@ -132,7 +134,6 @@ final readonly class ThrottleMiddleware
      * @param Response $resp Response to augment.
      * @param int $remain Remaining requests in the window.
      * @param int $resetEpoch Window reset epoch.
-     *
      * @return Response Response with rate-limit headers.
      */
     private function attachRateHeaders(Response $resp, int $remain, int $resetEpoch): Response
@@ -140,19 +141,34 @@ final readonly class ThrottleMiddleware
         $delta = $this->secondsUntil($resetEpoch);
 
         $resp = $resp
-            ->withSmartHeader('X-RateLimit-Limit', (string)$this->max)
-            ->withSmartHeader('X-RateLimit-Remaining', (string)$remain)
-            ->withSmartHeader('X-RateLimit-Reset', (string)$resetEpoch);
+            ->withSmartHeader('X-RateLimit-Limit', (string) $this->max)
+            ->withSmartHeader('X-RateLimit-Remaining', (string) $remain)
+            ->withSmartHeader('X-RateLimit-Reset', (string) $resetEpoch);
 
         if ($this->emitStandardRateLimit) {
             $resp = $resp
-                ->withSmartHeader('RateLimit-Limit', (string)$this->max)
-                ->withSmartHeader('RateLimit-Remaining', (string)$remain)
-                ->withSmartHeader('RateLimit-Reset', (string)$delta)
+                ->withSmartHeader('RateLimit-Limit', (string) $this->max)
+                ->withSmartHeader('RateLimit-Remaining', (string) $remain)
+                ->withSmartHeader('RateLimit-Reset', (string) $delta)
                 ->withSmartHeader('RateLimit-Policy', "$this->max;w=$this->window");
         }
 
         return $resp;
+    }
+
+    private function buildDefaultPool(): CacheItemPoolInterface
+    {
+        // Windows reports directory permissions differently than POSIX; file-mode checks can false-positive.
+        if (\PHP_OS_FAMILY === 'Windows' && !\extension_loaded('apcu')) {
+            return Cache::memory('webrick.thm');
+        }
+
+        $documentRoot = $_SERVER['DOCUMENT_ROOT'] ?? '';
+        $cacheBase = \is_string($documentRoot) && $documentRoot !== ''
+            ? $documentRoot
+            : \sys_get_temp_dir() . '/webrick';
+
+        return Cache::local($cacheBase . '.thm');
     }
 
     /**
@@ -160,7 +176,6 @@ final readonly class ThrottleMiddleware
      *
      * @param Request $req Incoming request.
      * @param int $now Anchor timestamp (usually REQUEST_TIME).
-     *
      * @return array{0:string,1:int} Tuple of [cacheKey, resetEpoch].
      */
     private function deriveKeyAndReset(Request $req, int $now): array
@@ -170,6 +185,7 @@ final readonly class ThrottleMiddleware
             : ($req->getAttribute('client_ip')
                 ?? $req->getServerParams()['REMOTE_ADDR']
                 ?? 'unknown');
+        $id = $this->stringFromMixed($id, 'unknown');
 
         // ---- fixed-window alignment ----
         // Start of the current window (e.g., 12:00:00, 12:01:00, … for w=60)
@@ -178,9 +194,21 @@ final readonly class ThrottleMiddleware
 
         // Hard-partition by window to avoid cross-window races
         return [
-            't.' . hash('xxh3', $this->scope . '|' . (string)$id . '|' . $winStart, false),
+            't.' . hash('xxh3', $this->scope . '|' . $id . '|' . $winStart, false),
             $reset,
         ];
+    }
+
+    private function intFromMixed(mixed $value, int $default): int
+    {
+        if (\is_int($value)) {
+            return $value;
+        }
+        if (\is_string($value) && $value !== '' && \ctype_digit($value)) {
+            return (int) $value;
+        }
+
+        return $default;
     }
 
     /**
@@ -188,8 +216,8 @@ final readonly class ThrottleMiddleware
      *
      * @param string $key Cache key.
      * @param int $reset Reset epoch for a fresh window.
-     *
      * @return array{hits:int, reset:int} Payload.
+     *
      * @throws InvalidArgumentException
      */
     private function load(string $key, int $reset): array
@@ -201,12 +229,15 @@ final readonly class ThrottleMiddleware
             $data = ['hits' => 0, 'reset' => $reset];
         } else {
             // Normalize
-            $data['hits'] = (int)($data['hits'] ?? 0);
-            $data['reset'] = (int)($data['reset'] ?? $reset);
-            if ($data['reset'] <= time()) {
+            $hits = $this->intFromMixed($data['hits'] ?? 0, 0);
+            $storedReset = $this->intFromMixed($data['reset'] ?? $reset, $reset);
+            if ($storedReset <= time()) {
                 $data = ['hits' => 0, 'reset' => $reset];
+            } else {
+                $data = ['hits' => $hits, 'reset' => $storedReset];
             }
         }
+
         return $data;
     }
 
@@ -216,7 +247,6 @@ final readonly class ThrottleMiddleware
      * @param string $key Cache key.
      * @param array{hits:int,reset:int} $payload Payload to store.
      *
-     * @return void
      * @throws InvalidArgumentException
      */
     private function persist(string $key, array $payload): void
@@ -232,20 +262,31 @@ final readonly class ThrottleMiddleware
      * Compute seconds until the reset epoch based on request anchor time.
      *
      * @param int $resetEpoch Target epoch.
-     *
      * @return int Non-negative seconds until reset.
      */
     private function secondsUntil(int $resetEpoch): int
     {
-        $t0 = (int)($_SERVER['REQUEST_TIME'] ?? time());
+        $t0 = $this->intFromMixed($_SERVER['REQUEST_TIME'] ?? null, time());
+
         return max(0, $resetEpoch - $t0);
+    }
+
+    private function stringFromMixed(mixed $value, string $default): string
+    {
+        if (\is_string($value) && $value !== '') {
+            return $value;
+        }
+        if (\is_scalar($value)) {
+            return (string) $value;
+        }
+
+        return $default;
     }
 
     /**
      * Build a 429 Too Many Requests response with appropriate headers.
      *
      * @param int $resetEpoch Reset epoch for the current window.
-     *
      * @return Response 429 response with Retry-After and rate-limit headers.
      */
     private function tooMany(int $resetEpoch): Response
@@ -254,19 +295,19 @@ final readonly class ThrottleMiddleware
 
         $retry = $this->retryAsDate
             ? gmdate('D, d M Y H:i:s', $resetEpoch) . ' GMT'
-            : (string)$delta;
+            : (string) $delta;
 
         $resp = Response::plaintext('Too Many Requests', StatusEnum::TOO_MANY_REQUESTS->value)
             ->withSmartHeader('Retry-After', $retry)
-            ->withSmartHeader('X-RateLimit-Limit', (string)$this->max)
+            ->withSmartHeader('X-RateLimit-Limit', (string) $this->max)
             ->withSmartHeader('X-RateLimit-Remaining', '0')
-            ->withSmartHeader('X-RateLimit-Reset', (string)$resetEpoch);
+            ->withSmartHeader('X-RateLimit-Reset', (string) $resetEpoch);
 
         if ($this->emitStandardRateLimit) {
             $resp = $resp
-                ->withSmartHeader('RateLimit-Limit', (string)$this->max)
+                ->withSmartHeader('RateLimit-Limit', (string) $this->max)
                 ->withSmartHeader('RateLimit-Remaining', '0')
-                ->withSmartHeader('RateLimit-Reset', (string)$delta)
+                ->withSmartHeader('RateLimit-Reset', (string) $delta)
                 ->withSmartHeader('RateLimit-Policy', "$this->max;w=$this->window");
         }
 

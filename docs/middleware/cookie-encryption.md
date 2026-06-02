@@ -529,9 +529,11 @@ class CookieTest extends TestCase
 
     public function testReadsCookieFromRequest(): void
     {
-        $request = Request::create('GET', '/', server: [
-            'HTTP_COOKIE' => 'enc_sess=abc123; theme=dark'
-        ]);
+        $request = Request::fake(
+            headers: ['Cookie' => 'enc_sess=abc123; theme=dark'],
+            method: 'GET',
+            uri: '/',
+        );
 
         $this->assertEquals('abc123', $request->cookie('enc_sess'));
         $this->assertEquals('dark', $request->cookie('theme'));

@@ -8,7 +8,7 @@ use Infocyph\Webrick\Support\TraceContext;
 
 beforeEach(function () {
     TraceContext::clear();
-    $this->logger = new TestLogger();
+    $this->logger = new TestLogger;
 });
 
 afterEach(function () {
@@ -85,7 +85,7 @@ describe('TelemetryMiddleware - Request ID', function () {
 
         $existingId = 'existing-request-id-12345678';
         $request = mockRequest('GET', '/test', headers: [
-            'X-Request-Id' => $existingId
+            'X-Request-Id' => $existingId,
         ]);
         $next = fn () => Response::json(['ok' => true]);
 
@@ -103,7 +103,7 @@ describe('TelemetryMiddleware - Request ID', function () {
 
         $existingId = 'existing-request-id-12345678';
         $request = mockRequest('GET', '/test', headers: [
-            'X-Request-Id' => $existingId
+            'X-Request-Id' => $existingId,
         ]);
         $next = fn () => Response::json(['ok' => true]);
 
@@ -138,7 +138,7 @@ describe('TelemetryMiddleware - Trace Context', function () {
 
         $request = mockRequest('GET', '/test');
         $next = fn ($r) => Response::json([
-            'trace_id' => $r->getAttribute('trace.trace_id')
+            'trace_id' => $r->getAttribute('trace.trace_id'),
         ]);
 
         $response = $middleware($request, $next);
@@ -154,7 +154,7 @@ describe('TelemetryMiddleware - Trace Context', function () {
 
         $request = mockRequest('GET', '/test');
         $next = fn ($r) => Response::json([
-            'span_id' => $r->getAttribute('trace.span_id')
+            'span_id' => $r->getAttribute('trace.span_id'),
         ]);
 
         $response = $middleware($request, $next);
@@ -171,11 +171,11 @@ describe('TelemetryMiddleware - Trace Context', function () {
         $incomingTraceId = str_repeat('a', 32);
         $incomingSpanId = str_repeat('b', 16);
         $request = mockRequest('GET', '/test', headers: [
-            'traceparent' => "00-{$incomingTraceId}-{$incomingSpanId}-01"
+            'traceparent' => "00-{$incomingTraceId}-{$incomingSpanId}-01",
         ]);
         $next = fn ($r) => Response::json([
             'trace_id' => $r->getAttribute('trace.trace_id'),
-            'parent_span_id' => $r->getAttribute('trace.parent_span_id')
+            'parent_span_id' => $r->getAttribute('trace.parent_span_id'),
         ]);
 
         $response = $middleware($request, $next);
@@ -190,10 +190,10 @@ describe('TelemetryMiddleware - Trace Context', function () {
         $middleware = new TelemetryMiddleware($this->logger, respectIncomingTraceparent: true);
 
         $request = mockRequest('GET', '/test', headers: [
-            'traceparent' => 'invalid-format'
+            'traceparent' => 'invalid-format',
         ]);
         $next = fn ($r) => Response::json([
-            'trace_id' => $r->getAttribute('trace.trace_id')
+            'trace_id' => $r->getAttribute('trace.trace_id'),
         ]);
 
         $response = $middleware($request, $next);
@@ -236,8 +236,8 @@ describe('TelemetryMiddleware - Trace Context', function () {
 
         $tracestate = 'congo=ucfJifl5GOE,rojo=00f067aa0ba902b7';
         $request = mockRequest('GET', '/test', headers: [
-            'traceparent' => '00-' . str_repeat('a', 32) . '-' . str_repeat('b', 16) . '-01',
-            'tracestate' => $tracestate
+            'traceparent' => '00-'.str_repeat('a', 32).'-'.str_repeat('b', 16).'-01',
+            'tracestate' => $tracestate,
         ]);
         $next = fn () => Response::json(['ok' => true]);
 
@@ -328,11 +328,11 @@ describe('TelemetryMiddleware - TraceContext Integration', function () {
         $middleware = new TelemetryMiddleware($this->logger);
 
         $request = mockRequest('GET', '/test');
-        $next = fn ($r) => Response::json([
+        $next = fn () => Response::json([
             'trace_available' => TraceContext::isAvailable(),
             'trace_id' => TraceContext::getTraceId(),
             'span_id' => TraceContext::getSpanId(),
-            'request_id' => TraceContext::getRequestId()
+            'request_id' => TraceContext::getRequestId(),
         ]);
 
         $response = $middleware($request, $next);
@@ -368,11 +368,11 @@ describe('TelemetryMiddleware - Exception Handling', function () {
         $middleware = new TelemetryMiddleware($this->logger);
 
         $request = mockRequest('GET', '/test');
-        $next = fn () => throw new \RuntimeException('Test exception');
+        $next = fn () => throw new RuntimeException('Test exception');
 
         try {
             $middleware($request, $next);
-        } catch (\RuntimeException $e) {
+        } catch (RuntimeException $e) {
             // Expected
         }
 
@@ -387,7 +387,7 @@ describe('TelemetryMiddleware - OpenTelemetry Detection', function () {
 
         $request = mockRequest('GET', '/test');
         $next = fn () => Response::json([
-            'otel_mode' => TraceContext::isOtelMode()
+            'otel_mode' => TraceContext::isOtelMode(),
         ]);
 
         $response = $middleware($request, $next);
@@ -402,7 +402,7 @@ describe('TelemetryMiddleware - OpenTelemetry Detection', function () {
 
         $request = mockRequest('GET', '/test');
         $next = fn () => Response::json([
-            'otel_mode' => TraceContext::isOtelMode()
+            'otel_mode' => TraceContext::isOtelMode(),
         ]);
 
         $response = $middleware($request, $next);

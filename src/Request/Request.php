@@ -8,12 +8,17 @@ use ArrayAccess;
 use Infocyph\InterMix\Remix\MacroMix;
 use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Request\Core\Uri;
-use Infocyph\Webrick\Request\Http\{ContentNegotiator, Csrf, EndUser};
+use Infocyph\Webrick\Request\Http\ContentNegotiator;
+use Infocyph\Webrick\Request\Http\Csrf;
+use Infocyph\Webrick\Request\Http\EndUser;
 use Infocyph\Webrick\Request\Psr7\ServerRequest;
 use InvalidArgumentException;
 use JsonSerializable;
 use Stringable;
 
+/**
+ * @implements ArrayAccess<string, mixed>
+ */
 class Request extends ServerRequest implements ArrayAccess, JsonSerializable, Stringable
 {
     use MacroMix;
@@ -21,20 +26,26 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
     public const HEADER_FORWARDED = 0b10000;
 
     public const HEADER_X_FORWARDED_FOR = 0b00001;
+
     public const HEADER_X_FORWARDED_HOST = 0b00010;
+
     public const HEADER_X_FORWARDED_PORT = 0b01000;
+
     public const HEADER_X_FORWARDED_PROTO = 0b00100;
 
-    /** @var int */
-    private static int $trustedHeaderFlags =
-        self::HEADER_X_FORWARDED_FOR
+    private static int $trustedHeaderFlags
+        = self::HEADER_X_FORWARDED_FOR
         | self::HEADER_X_FORWARDED_HOST
         | self::HEADER_X_FORWARDED_PROTO
         | self::HEADER_X_FORWARDED_PORT
         | self::HEADER_FORWARDED;
 
+    /** @var array<string, mixed>|null */
     private ?array $cachedAll = null;
+
     private ?string $cachedLocale = null;
+
+    /** @var list<string>|null */
     private ?array $cachedSegments = null;
 
     /**
@@ -54,12 +65,11 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
      *
      * This method is useful for unit testing and mocking.
      *
-     * @param array $query Query parameters to set (e.g. `?foo=bar`).
-     * @param array $post Parsed request body to set (e.g. JSON, XML, etc.).
-     * @param array $headers Headers to set (e.g. `Content-Type: application/json`).
+     * @param array<string, mixed> $query Query parameters to set (e.g. `?foo=bar`).
+     * @param array<string, mixed> $post Parsed request body to set (e.g. JSON, XML, etc.).
+     * @param array<string, string|list<string>> $headers Headers to set (e.g. `Content-Type: application/json`).
      * @param string $method HTTP method to set (e.g. `GET`, `POST`, etc.).
      * @param string $uri URI to set (e.g. `/foo/bar`).
-     *
      * @return self A new Request object with the given parameters.
      */
     public static function fake(
@@ -69,7 +79,7 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
         string $method = HttpMethodEnum::GET->value,
         string $uri = '/',
     ): self {
-        return new static(HttpMethodEnum::normalize($method), Uri::from($uri), $_SERVER, $headers)
+        return new self(HttpMethodEnum::normalize($method), Uri::from($uri), self::serverMap($_SERVER), $headers)
             ->withQueryParams($query)
             ->withParsedBody($post);
     }
@@ -79,11 +89,11 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
      *
      * This method is a shortcut to `createFromGlobals()`.
      *
-     * @return static A new Request instance.
+     * @return self A new Request instance.
      */
-    public static function fromGlobals(): static
+    public static function fromGlobals(): self
     {
-        return static::createFromGlobals();
+        return self::fromServerRequest(ServerRequest::createFromGlobals());
     }
 
     /**
@@ -103,10 +113,10 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
     /**
      * Sets the trusted proxies and header flags for EndUser.
      *
-     * @param array $cidrs The trusted proxies to set.
+     * @param list<string> $cidrs The trusted proxies to set.
      * @param int|null $headerFlags The trusted proxy headers mask to set.
-     *     This is a bitwise OR of the `HEADER_X_FORWARDED_*` constants.
-     *     If null, the trusted proxy headers mask is not changed.
+     *                              This is a bitwise OR of the `HEADER_X_FORWARDED_*` constants.
+     *                              If null, the trusted proxy headers mask is not changed.
      */
     public static function setTrustedProxies(array $cidrs, ?int $headerFlags = null): void
     {
@@ -126,7 +136,7 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
      *
      * The resulting array contains the merged data from all sources.
      *
-     * @return array
+     * @return array<string, mixed>
      */
     public function all(): array
     {
@@ -134,9 +144,10 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
             return $this->cachedAll;
         }
 
-        // JSON wins over form-data (Laravel semantics)
-        $data = $this->parsedJson()?->all()
-            ?: ($this->post()?->all() + $this->query()?->all());
+        $query = $this->getQueryParams();
+        $parsed = $this->getParsedBody();
+        $body = is_array($parsed) ? $parsed : [];
+        $data = self::stringMap($body + $query);
 
         return $this->cachedAll = $data;
     }
@@ -153,6 +164,7 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
     public function boolean(string $key, bool $default = false): bool
     {
         $val = filter_var($this->data($key), FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE);
+
         return $val ?? $default;
     }
 
@@ -191,10 +203,17 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
             }
             $value = $value[$seg];
         }
+
         return $value ?? $default;
     }
 
-    /** Resolve a locale from multiple sources; first hit wins. */
+    /**
+     * Resolve a locale from multiple sources; first hit wins.
+     *
+     * @param array<int,string> $supported
+     * @param array<int,string> $sources
+     * @return array{0:string,1:string}
+     */
     public function detectLocale(
         array $supported,
         string $fallback = 'en',
@@ -229,12 +248,12 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
      *
      * Useful for validating forms where some fields must have a value.
      *
-     * @param string|array $keys The keys to exclude.
-     * @return array The filtered key-value pairs.
+     * @param string|list<string> $keys The keys to exclude.
+     * @return array<string, mixed> The filtered key-value pairs.
      */
-    public function except(array $keys): array
+    public function except(string|array $keys): array
     {
-        return array_diff_key($this->all(), array_flip($keys));
+        return self::stringMap(array_diff_key($this->all(), array_flip(self::stringList($keys))));
     }
 
     /**
@@ -245,6 +264,7 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
      *
      * @return bool Whether request expects JSON content in response.
      */
+    #[\Override]
     public function expectsJson(): bool
     {
         return parent::expectsJson();
@@ -259,6 +279,7 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
      *
      * @return bool Whether the request body contains XML content.
      */
+    #[\Override]
     public function expectsXml(): bool
     {
         return parent::expectsXml();
@@ -268,17 +289,18 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
      * Checks if all of the given data keys have a value.
      * Useful for validating forms where all fields must have a value.
      *
-     * @param string|array $keys The keys to check.
+     * @param string|list<string> $keys The keys to check.
      * @return bool True if all keys have a value, false otherwise.
      */
     public function filled(string|array $keys): bool
     {
-        foreach ((array)$keys as $k) {
+        foreach (self::stringList($keys) as $k) {
             $v = $this->data($k);
             if ($v === null || $v === '') {
                 return false;
             }
         }
+
         return true;
     }
 
@@ -286,12 +308,12 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
      * Checks if all of the given data keys have a value.
      * Useful for validating forms where some fields must have a value.
      *
-     * @param string|array $keys The keys to check.
+     * @param string|list<string> $keys The keys to check.
      * @return bool True if all keys have a value, false otherwise.
      */
     public function has(string|array $keys): bool
     {
-        return array_all((array)$keys, fn ($k) => $this->data($k) !== null);
+        return array_all(self::stringList($keys), fn($key) => !($this->data($key) === null));
     }
 
     /**
@@ -320,6 +342,7 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
     public function header(string $name, ?string $default = null): ?string
     {
         $line = $this->getHeaderLine($name);
+
         return $line !== '' ? $line : $default;
     }
 
@@ -348,6 +371,7 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
     public function int(string $key, int $default = 0): int
     {
         $v = filter_var($this->data($key), FILTER_VALIDATE_INT);
+
         return $v !== false ? $v : $default;
     }
 
@@ -359,12 +383,13 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
      * the client's public IP address without considering any trusted proxies.
      *
      * @param bool $proxyAware Whether to return the first public IP address
-     *                      in the chain of forwarded IPs (proxy-aware) or not.
+     *                         in the chain of forwarded IPs (proxy-aware) or not.
      * @return string|null The client's public IP address, or null if not available.
      */
     public function ip(bool $proxyAware = false): ?string
     {
         $eu = EndUser::from($this);
+
         return $proxyAware ? $eu->ipViaProxy() : $eu->ipNoProxy();
     }
 
@@ -379,18 +404,22 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
      */
     public function isJson(): bool
     {
-        return (bool)preg_match('#(?:application|text)/(?:[^\s;]+\+)?json#i', $this->getHeaderLine('Content-Type'));
+        return (bool) preg_match('#(?:application|text)/(?:[^\s;]+\+)?json#i', $this->getHeaderLine('Content-Type'));
     }
 
     /**
      * Whether the request was made with one of the given HTTP verbs.
      *
-     * @param string|array $verbs HTTP verbs to check against (e.g. 'GET', 'POST', ['GET', 'HEAD']).
+     * @param string|list<string> $verbs HTTP verbs to check against (e.g. 'GET', 'POST', ['GET', 'HEAD']).
      * @return bool True if the request was made with one of the given HTTP verbs, false otherwise.
      */
     public function isMethod(string|array $verbs): bool
     {
-        $normalized = array_map(HttpMethodEnum::normalize(...), (array)$verbs);
+        $normalized = [];
+        foreach (self::stringList($verbs) as $verb) {
+            $normalized[] = HttpMethodEnum::normalize($verb);
+        }
+
         return in_array(HttpMethodEnum::normalize($this->getEffectiveMethod()), $normalized, true);
     }
 
@@ -415,13 +444,13 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
      */
     public function isXml(): bool
     {
-        return (bool)preg_match('#(?:application|text)/(?:[^\s;]+\+)?xml#i', $this->getHeaderLine('Content-Type'));
+        return (bool) preg_match('#(?:application|text)/(?:[^\s;]+\+)?xml#i', $this->getHeaderLine('Content-Type'));
     }
 
     /**
      * Return an associative array that can be used to serialize the request data.
      *
-     * @return array An associative array containing the request data.
+     * @return array<string, mixed> An associative array containing the request data.
      */
     public function jsonSerialize(): array
     {
@@ -431,7 +460,7 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
     /**
      * Get the best-match language from the Accept-Language header.
      *
-     * @param array|null $supported list of supported languages (e.g. ['en', 'fr', 'bn-BD'])
+     * @param list<string>|null $supported list of supported languages (e.g. ['en', 'fr', 'bn-BD'])
      * @param string $fallback language to use if no match is found
      * @param bool $cache whether to store the result in an instance variable
      * @return string the best-match language
@@ -456,10 +485,12 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
         }
 
         if ($supported === null) {
-            return $this->cachedLocale = strtolower(substr((string)$language[0], 0, 5));
+            $first = $language[0];
+
+            return $this->cachedLocale = strtolower(substr($first, 0, 5));
         }
 
-        $supported = array_map(static fn (string $l) => strtolower(str_replace('_', '-', $l)), $supported);
+        $supported = array_map(static fn(string $l) => strtolower(str_replace('_', '-', $l)), $supported);
 
         foreach ($language as $lang) {
             $lang = strtolower(str_replace('_', '-', $lang));
@@ -471,6 +502,7 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
                 return $this->cachedLocale = $short;
             }
         }
+
         return $fallback;
     }
 
@@ -497,12 +529,15 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
      *
      * The given array will overwrite any existing key in the current request data.
      *
-     * @param array $data The array to merge with the current request data.
+     * @param array<string, mixed> $data The array to merge with the current request data.
      * @return self A new instance with the merged request data.
      */
     public function merge(array $data): self
     {
-        return $this->withParsedBody(array_merge($this->post()?->all(), $data));
+        $parsed = $this->getParsedBody();
+        $body = is_array($parsed) ? $parsed : [];
+
+        return $this->withParsedBody(self::stringMap(array_merge($body, $data)));
     }
 
     /**
@@ -512,7 +547,7 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
      * It returns true if the key does not exist, otherwise false.
      * If an array of keys is given, it returns true if any of the keys do not exist, otherwise false.
      *
-     * @param string|array $keys Key(s) to check for existence
+     * @param string|list<string> $keys Key(s) to check for existence
      * @return bool True if the key(s) is missing, false otherwise
      */
     public function missing(string|array $keys): bool
@@ -528,7 +563,12 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
      */
     public function offsetExists(mixed $offset): bool
     {
-        return $this->data((string)$offset) !== null;
+        $key = self::toStringKey($offset);
+        if ($key === null) {
+            return false;
+        }
+
+        return $this->data($key) !== null;
     }
 
     /**
@@ -539,7 +579,9 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
      */
     public function offsetGet(mixed $offset): mixed
     {
-        return $this->data((string)$offset);
+        $key = self::toStringKey($offset);
+
+        return $key === null ? null : $this->data($key);
     }
 
     /**
@@ -573,12 +615,12 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
      *
      * Useful for validating forms where some fields must have a value.
      *
-     * @param array $keys The keys to exclude from the request.
-     * @return array The filtered request data.
+     * @param string|list<string> $keys The keys to exclude from the request.
+     * @return array<string, mixed> The filtered request data.
      */
-    public function only(array $keys): array
+    public function only(string|array $keys): array
     {
-        return array_intersect_key($this->all(), array_flip($keys));
+        return array_intersect_key($this->all(), array_flip(self::stringList($keys)));
     }
 
     /**
@@ -598,7 +640,7 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
     /**
      * Replace the entire request data with the given array.
      *
-     * @param array $data The new request data to replace the old one.
+     * @param array<string, mixed> $data The new request data to replace the old one.
      * @return self A new instance with the replaced request data.
      */
     public function replace(array $data): self
@@ -611,18 +653,19 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
      *
      * The patterns can contain '*' as a wildcard character.
      *
-     * @param string|array $patterns One or multiple patterns to match against.
+     * @param string|list<string> $patterns One or multiple patterns to match against.
      * @return bool True if the request target matches any of the patterns, false otherwise.
      */
     public function routeIs(string|array $patterns): bool
     {
         $target = $this->getRequestTarget();
-        foreach ((array)$patterns as $p) {
-            $regex = '#^' . str_replace('\*', '.*', preg_quote($p, '#')) . '$#';
+        foreach (self::stringList($patterns) as $pattern) {
+            $regex = '#^' . str_replace('\*', '.*', preg_quote($pattern, '#')) . '$#';
             if (preg_match($regex, $target)) {
                 return true;
             }
         }
+
         return false;
     }
 
@@ -632,9 +675,9 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
      *
      * @param int $index 1-based index of the segment to retrieve
      * @param mixed $default Value to return if the index is out of bounds
-     * @return string|null The value of the segment at the given index or the default value
+     * @return string|mixed The value of the segment at the given index or the default value
      */
-    public function segment(int $index, mixed $default = null): ?string
+    public function segment(int $index, mixed $default = null): mixed
     {
         return $this->segments()[$index - 1] ?? $default;
     }
@@ -646,14 +689,14 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
      *
      * Example: for the URI "/foo/bar/baz", the segments array will be ["foo", "bar", "baz"]
      *
-     * @return array an array of path segments
+     * @return list<string> an array of path segments
      */
     public function segments(): array
     {
         return $this->cachedSegments ??= array_values(
             array_filter(
                 explode('/', $this->getUri()->getPath()),
-                static fn (string $s) => $s !== '',
+                static fn(string $s) => $s !== '',
             ),
         );
     }
@@ -670,7 +713,9 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
      */
     public function string(string $key, string $default = ''): string
     {
-        return (string)($this->data($key) ?? $default);
+        $value = $this->data($key);
+
+        return is_string($value) ? $value : $default;
     }
 
     /**
@@ -681,7 +726,7 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
      *   - engine: the rendering engine name (e.g. Blink, Gecko, WebKit)
      *   - raw: the raw User-Agent string
      *
-     * @return array
+     * @return array<string, string>
      */
     public function ua(): array
     {
@@ -694,17 +739,19 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
      * If a "required" rule is specified for a field and that field is not present in the request,
      * an InvalidArgumentException will be thrown.
      *
-     * @param array $rules an associative array where the keys are the field names and the values are strings containing the rules.
-     * @return array the validated request data with only the fields specified in the rules.
+     * @param array<string, string> $rules an associative array where the keys are the field names and the values are strings containing the rules.
+     * @return array<string, mixed> the validated request data with only the fields specified in the rules.
+     *
      * @throws InvalidArgumentException if a "required" field is not present in the request.
      */
     public function validate(array $rules): array
     {
         foreach ($rules as $field => $rule) {
-            if (str_contains((string)$rule, 'required') && !$this->filled($field)) {
+            if (str_contains($rule, 'required') && !$this->filled($field)) {
                 throw new InvalidArgumentException("Field '{$field}' is required");
             }
         }
+
         return $this->only(array_keys($rules));
     }
 
@@ -730,55 +777,72 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
 
     /**
      * Return an instance with updated cookies and reset derived caches.
-     *
-     * @param array $cookies
-     * @return static
      */
+    #[\Override]
     public function withCookieParams(array $cookies): static
     {
         $cl = parent::withCookieParams($cookies);
         $cl->resetDerivedCaches();
+
         return $cl;
     }
 
     /**
      * Return an instance with updated parsed body and reset derived caches.
-     *
-     * @param object|array|null $data
-     * @return static
      */
+    #[\Override]
     public function withParsedBody(object|array|null $data): static
     {
         $cl = parent::withParsedBody($data);
         $cl->resetDerivedCaches();
+
         return $cl;
     }
 
     /**
      * Return an instance with updated query parameters and reset derived caches.
-     *
-     * @param array $query
-     * @return static
      */
+    #[\Override]
     public function withQueryParams(array $query): static
     {
         $cl = parent::withQueryParams($query);
         $cl->resetDerivedCaches();
+
         return $cl;
     }
 
     /**
      * Return an instance with updated URI and reset path/locale caches.
-     *
-     * @param Uri $uri
-     * @param bool $preserveHost
-     * @return static
      */
+    #[\Override]
     public function withUri(Uri $uri, bool $preserveHost = false): static
     {
         $cl = parent::withUri($uri, $preserveHost);
         $cl->resetDerivedCaches();
+
         return $cl;
+    }
+
+    private static function fromServerRequest(ServerRequest $request): self
+    {
+        $parsedBody = $request->getParsedBody();
+        $parsed = is_array($parsedBody) ? self::stringMap($parsedBody) : $parsedBody;
+
+        $new = new self(
+            method: $request->getMethod(),
+            uri: $request->getUri(),
+            server: $request->getServerParams(),
+            headers: $request->getHeaders(),
+            body: $request->getBody(),
+            httpVer: $request->getProtocolVersion(),
+            parsed: $parsed,
+            files: $request->getUploadedFiles(),
+            requestTarget: $request->getRequestTarget(),
+        );
+
+        return $new
+            ->withQueryParams(self::stringMap($request->getQueryParams()))
+            ->withCookieParams(self::stringMap($request->getCookieParams()));
     }
 
     /** ───── leaf helpers ───── */
@@ -787,10 +851,84 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
     private static function normalizeLocale(string $l): string
     {
         $l = str_replace('_', '-', trim($l));
+
         return strtolower($l);
     }
 
+    /**
+     * @param array<mixed> $server
+     * @return array<string, mixed>
+     */
+    private static function serverMap(array $server): array
+    {
+        $result = [];
+        foreach ($server as $key => $value) {
+            if (!is_string($key)) {
+                continue;
+            }
+            $result[$key] = $value;
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param string|array<mixed> $value
+     * @return list<string>
+     */
+    private static function stringList(string|array $value): array
+    {
+        if (is_string($value)) {
+            return [$value];
+        }
+
+        $result = [];
+        foreach ($value as $item) {
+            if (!is_string($item)) {
+                continue;
+            }
+
+            $result[] = $item;
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param array<mixed> $value
+     * @return array<string, mixed>
+     */
+    private static function stringMap(array $value): array
+    {
+        $result = [];
+        foreach ($value as $key => $item) {
+            if (!is_string($key)) {
+                continue;
+            }
+
+            $result[$key] = $item;
+        }
+
+        return $result;
+    }
+
+    private static function toStringKey(mixed $key): ?string
+    {
+        if (is_string($key)) {
+            return $key;
+        }
+
+        if (is_int($key) || is_float($key) || is_bool($key)) {
+            return (string) $key;
+        }
+
+        return null;
+    }
+
     /** Exact match, then primary-subtag fallback, else null. */
+    /**
+     * @param list<string> $supported
+     */
     private function pickLocale(?string $raw, array $supported): ?string
     {
         if ($raw === null || $raw === '') {
@@ -801,6 +939,7 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
             return $cand;
         }
         $primary = substr($cand, 0, 2);
+
         return in_array($primary, $supported, true) ? $primary : null;
     }
 
@@ -815,32 +954,54 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
     }
 
     /** ───── resolvers ───── */
-
+    /**
+     * @param list<string> $supported
+     */
     private function resolveLocaleFromAttr(array $supported): ?string
     {
         $val = $this->getAttribute('locale') ?? $this->getAttribute('lang');
+
         return is_string($val) ? $this->pickLocale($val, $supported) : null;
     }
 
+    /**
+     * @param list<string> $supported
+     */
     private function resolveLocaleFromCookie(array $supported): ?string
     {
-        $val = (string)($this->cookie('locale') ?? $this->cookie('lang') ?? '');
+        $cookieLocale = $this->cookie('locale');
+        $cookieLang = $this->cookie('lang');
+        $val = is_string($cookieLocale) ? $cookieLocale : (is_string($cookieLang) ? $cookieLang : '');
+
         return $this->pickLocale($val, $supported);
     }
 
+    /**
+     * @param list<string> $supported
+     */
     private function resolveLocaleFromHeader(array $supported, string $fallback): ?string
     {
         // reuse existing Accept-Language matcher
         $val = $this->locale($supported, $fallback, true);
+
         return $this->pickLocale($val, $supported);
     }
 
+    /**
+     * @param list<string> $supported
+     */
     private function resolveLocaleFromQuery(array $supported): ?string
     {
-        $val = (string)($this->query('locale') ?? $this->query('lang') ?? '');
+        $queryLocale = $this->query('locale');
+        $queryLang = $this->query('lang');
+        $val = is_string($queryLocale) ? $queryLocale : (is_string($queryLang) ? $queryLang : '');
+
         return $this->pickLocale($val, $supported);
     }
 
+    /**
+     * @param list<string> $supported
+     */
     private function resolveLocaleFromRoute(array $supported): ?string
     {
         foreach (
@@ -857,7 +1018,7 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
                 }
             }
         }
+
         return null;
     }
-
 }

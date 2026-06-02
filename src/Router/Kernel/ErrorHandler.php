@@ -27,10 +27,8 @@ use Throwable;
  *  - Log errors using a PSR-3 logger with severity based on HTTP status series.
  *
  * Instances are immutable; configuration is supplied via constructor promotion.
- *
- * @package Infocyph\Webrick\Router\Kernel
  */
-final class ErrorHandler
+final readonly class ErrorHandler
 {
     /**
      * Construct an ErrorHandler.
@@ -43,13 +41,12 @@ final class ErrorHandler
      * @param array<class-string,int> $exceptionMap Map of exception class => HTTP status code to override resolution
      */
     public function __construct(
-        private readonly ?LoggerInterface $logger = null,
-        private readonly bool $debug = false,
-        private readonly bool $capturePhpErrors = true,
-        private readonly string $requestIdHeader = 'X-Request-Id',
-        private readonly array $exceptionMap = [],
-    ) {
-    }
+        private ?LoggerInterface $logger = null,
+        private bool $debug = false,
+        private bool $capturePhpErrors = true,
+        private string $requestIdHeader = 'X-Request-Id',
+        private array $exceptionMap = [],
+    ) {}
 
     /**
      * Handle a request through the wrapped core pipeline with error boundary.
@@ -74,6 +71,7 @@ final class ErrorHandler
                     if (!(error_reporting() & $severity)) {
                         return false;
                     }
+
                     throw new ErrorException($message, 0, $severity, $file ?? 'unknown', $line ?? 0);
                 },
             );
@@ -86,6 +84,7 @@ final class ErrorHandler
             $status = $this->resolveStatus($e);
             $resp = $this->render($req, $e, $status);
             $this->log($e, $req, $status);
+
             return $resp;
         } finally {
             if ($installedPhpErrorHandler) {
@@ -93,6 +92,32 @@ final class ErrorHandler
                 restore_error_handler();
             }
         }
+    }
+
+    /**
+     * @return array<string,string>
+     */
+    private function buildRenderHeaders(Request $req, Throwable $e, int $status): array
+    {
+        $headers = [
+            'Cache-Control' => 'no-store',
+            'X-Content-Type-Options' => 'nosniff',
+            'Vary' => 'Accept',
+        ];
+
+        $rid = $this->resolveRequestId($req);
+        if ($rid !== '') {
+            $headers[$this->requestIdHeader] = $rid;
+        }
+
+        if ($status === StatusEnum::METHOD_NOT_ALLOWED->value) {
+            $allow = $this->extractAllow($e);
+            if ($allow !== null && $allow !== '') {
+                $headers['Allow'] = $allow;
+            }
+        }
+
+        return $headers;
     }
 
     /**
@@ -140,7 +165,13 @@ final class ErrorHandler
             return null;
         }
 
-        $list = array_unique(array_map('strtoupper', (array)$list));
+        $upper = [];
+        foreach ((array) $list as $method) {
+            if (\is_string($method) && $method !== '') {
+                $upper[] = \strtoupper($method);
+            }
+        }
+        $list = \array_values(\array_unique($upper));
         sort($list, SORT_STRING);
 
         // Ensure HEAD is present whenever GET exists and HEAD was not explicitly given.
@@ -151,6 +182,7 @@ final class ErrorHandler
         if (!in_array(HttpMethodEnum::OPTIONS->value, $list, true)) {
             $list[] = HttpMethodEnum::OPTIONS->value;
         }
+
         return implode(', ', $list);
     }
 
@@ -168,7 +200,7 @@ final class ErrorHandler
      */
     private function htmlError(int $status, string $reason, string $msg, string $rid, Throwable $e): string
     {
-        $esc = fn (string $s): string => htmlspecialchars($s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $esc = fn(string $s): string => htmlspecialchars($s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
         $debug = '';
         if ($this->debug) {
             $debug = sprintf(
@@ -184,6 +216,7 @@ final class ErrorHandler
             );
         }
         $ridHtml = $rid !== '' ? '<div style="opacity:.7">Request-Id: ' . $esc($rid) . '</div>' : '';
+
         return <<<HTML
             <!doctype html>
             <meta charset="utf-8">
@@ -228,7 +261,6 @@ final class ErrorHandler
      * @param Throwable $e Exception to log
      * @param Request $req Request associated with the failure
      * @param int $status Resolved HTTP status code
-     * @return void
      */
     private function log(Throwable $e, Request $req, int $status): void
     {
@@ -250,11 +282,22 @@ final class ErrorHandler
                 'status' => $status,
                 'series' => StatusEnum::tryFrom($status)?->series(),
                 'method' => HttpMethodEnum::normalize($req->getMethod()),
-                'path' => (string)$req->getUri()->getPath(),
+                'path' => $req->getUri()->getPath(),
                 'request_id' => $req->getAttribute('request_id') ?: null,
                 'exception' => $e,
             ],
         );
+    }
+
+    private function mappedExceptionStatus(Throwable $e): ?int
+    {
+        foreach ($this->exceptionMap as $cls => $code) {
+            if ($e instanceof $cls && $this->isHttp($code)) {
+                return $code;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -281,6 +324,7 @@ final class ErrorHandler
         if (str_contains($accept, MediaTypeEnum::XML->base()) || str_contains($accept, 'text/xml')) {
             return MediaTypeEnum::XML->base();
         }
+
         return MediaTypeEnum::PLAIN->base();
     }
 
@@ -306,31 +350,10 @@ final class ErrorHandler
     {
         $statusEnum = StatusEnum::tryFrom($status) ?? StatusEnum::INTERNAL_SERVER_ERROR;
         $reason = $statusEnum->reason();
+        $wanted = $this->resolveRenderType($req);
+        $headers = $this->buildRenderHeaders($req, $e, $status);
+        $rid = $this->resolveRequestId($req);
 
-        $wanted = (string)$req->getAttribute('negotiated.type');
-        if ($wanted === '') {
-            $accept = strtolower($req->getHeaderLine('Accept'));
-            $wanted = $this->pickType($accept);
-        }
-
-        $headers = [
-            'Cache-Control' => 'no-store',
-            'X-Content-Type-Options' => 'nosniff',
-            'Vary' => 'Accept',
-        ];
-
-        $rid = $req->getAttribute('request_id') ?: $req->getHeaderLine($this->requestIdHeader);
-        if (is_string($rid) && $rid !== '') {
-            $headers[$this->requestIdHeader] = $rid;
-        }
-
-        if ($status === StatusEnum::METHOD_NOT_ALLOWED->value) {
-            if ($allow = $this->extractAllow($e)) {
-                $headers['Allow'] = $allow;
-            }
-        }
-
-        // HEAD must not include a body regardless of status.
         if (HttpMethodEnum::normalize($req->getMethod()) === HttpMethodEnum::HEAD->value) {
             return Response::empty($status, $headers);
         }
@@ -338,74 +361,162 @@ final class ErrorHandler
         $public = $reason;
         $msg = $this->debug ? ($e->getMessage() ?: $public) : $public;
 
-        // Some status codes (e.g. 204, 304) do not allow bodies.
         if (!$statusEnum->allowsBody()) {
             return Response::empty($status, $headers);
         }
 
+        return $this->renderByType(
+            $wanted,
+            $req,
+            $e,
+            $status,
+            $reason,
+            $msg,
+            $rid,
+            $headers,
+        );
+    }
+
+    /**
+     * @param array<string,string> $headers
+     */
+    private function renderByType(
+        string $wanted,
+        Request $req,
+        Throwable $e,
+        int $status,
+        string $reason,
+        string $msg,
+        string $rid,
+        array $headers,
+    ): Response {
         switch ($wanted) {
             case MediaTypeEnum::PROBLEM_JSON->value:
-                {
-                    $payload = [
-                        'type' => 'about:blank',
-                        'title' => $reason,
-                        'status' => $status,
-                        'detail' => $msg,
-                        'instance' => (string)$req->getUri()->getPath(),
-                    ];
-                    if ($rid) {
-                        $payload['request_id'] = (string)$rid;
-                    }
-                    if ($this->debug) {
-                        $payload += $this->debugMeta($e);
-                    }
-                    $headers['Content-Type'] = MediaTypeEnum::PROBLEM_JSON->value;
-                    $json = json_encode(
-                        $payload,
-                        JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE | JSON_UNESCAPED_SLASHES,
-                    );
-                    return Response::create($json === false ? '{}' : $json, $status, $headers);
-                }
+                return $this->renderProblemJson($req, $e, $status, $reason, $msg, $rid, $headers);
 
             case MediaTypeEnum::JSON->value:
-                {
-                    $payload = [
-                        'error' => $msg,
-                        'code' => $status,
-                        'reason' => $reason,
-                    ];
-                    if ($rid) {
-                        $payload['request_id'] = (string)$rid;
-                    }
-                    if ($this->debug) {
-                        $payload += $this->debugMeta($e);
-                    }
-                    return Response::json($payload, $status, $headers);
-                }
+                return $this->renderJson($e, $status, $reason, $msg, $rid, $headers);
 
             case MediaTypeEnum::XML->value:
             case 'text/xml':
                 $headers['Content-Type'] = MediaTypeEnum::XML->value;
-                $xml = $this->xmlError($status, $reason, $msg, (string)$rid, $e);
+                $xml = $this->xmlError($status, $reason, $msg, $rid, $e);
+
                 return Response::create($xml, $status, $headers);
 
             case MediaTypeEnum::HTML->base():
                 $headers['Content-Type'] = MediaTypeEnum::HTML->value;
-                $html = $this->htmlError($status, $reason, $msg, (string)$rid, $e);
+                $html = $this->htmlError($status, $reason, $msg, $rid, $e);
+
                 return Response::create($html, $status, $headers);
 
             default:
-                $headers['Content-Type'] = MediaTypeEnum::PLAIN->value;
-                $lines = ["{$status} {$reason}", $msg];
-                if ($rid) {
-                    $lines[] = "Request-Id: {$rid}";
-                }
-                if ($this->debug) {
-                    $lines[] = $e::class;
-                    $lines[] = $e->getFile() . ':' . $e->getLine();
-                }
-                return Response::plaintext(implode("\n", $lines), $status, $headers);
+                return $this->renderPlain($e, $status, $reason, $msg, $rid, $headers);
         }
+    }
+
+    /**
+     * @param array<string,string> $headers
+     */
+    private function renderJson(
+        Throwable $e,
+        int $status,
+        string $reason,
+        string $msg,
+        string $rid,
+        array $headers,
+    ): Response {
+        $payload = [
+            'error' => $msg,
+            'code' => $status,
+            'reason' => $reason,
+        ];
+        if ($rid !== '') {
+            $payload['request_id'] = $rid;
+        }
+        if ($this->debug) {
+            $payload += $this->debugMeta($e);
+        }
+
+        return Response::json($payload, $status, $headers);
+    }
+
+    /**
+     * @param array<string,string> $headers
+     */
+    private function renderPlain(
+        Throwable $e,
+        int $status,
+        string $reason,
+        string $msg,
+        string $rid,
+        array $headers,
+    ): Response {
+        $headers['Content-Type'] = MediaTypeEnum::PLAIN->value;
+        $lines = ["{$status} {$reason}", $msg];
+        if ($rid !== '') {
+            $lines[] = "Request-Id: {$rid}";
+        }
+        if ($this->debug) {
+            $lines[] = $e::class;
+            $lines[] = $e->getFile() . ':' . $e->getLine();
+        }
+
+        return Response::plaintext(implode("\n", $lines), $status, $headers);
+    }
+
+    /**
+     * @param array<string,string> $headers
+     */
+    private function renderProblemJson(
+        Request $req,
+        Throwable $e,
+        int $status,
+        string $reason,
+        string $msg,
+        string $rid,
+        array $headers,
+    ): Response {
+        $payload = [
+            'type' => 'about:blank',
+            'title' => $reason,
+            'status' => $status,
+            'detail' => $msg,
+            'instance' => $req->getUri()->getPath(),
+        ];
+        if ($rid !== '') {
+            $payload['request_id'] = $rid;
+        }
+        if ($this->debug) {
+            $payload += $this->debugMeta($e);
+        }
+
+        $headers['Content-Type'] = MediaTypeEnum::PROBLEM_JSON->value;
+        $json = \json_encode(
+            $payload,
+            JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE | JSON_UNESCAPED_SLASHES,
+        );
+
+        return Response::create($json === false ? '{}' : $json, $status, $headers);
+    }
+
+    private function resolveRenderType(Request $req): string
+    {
+        $wanted = $req->getAttribute('negotiated.type');
+        if (\is_string($wanted) && $wanted !== '') {
+            return $wanted;
+        }
+
+        $accept = strtolower($req->getHeaderLine('Accept'));
+
+        return $this->pickType($accept);
+    }
+
+    private function resolveRequestId(Request $req): string
+    {
+        $rid = $req->getAttribute('request_id') ?: $req->getHeaderLine($this->requestIdHeader);
+
+        return \is_string($rid) ? $rid : '';
     }
 
     /* ───────────────────── status + logging ───────────────────── */
@@ -425,24 +536,58 @@ final class ErrorHandler
      */
     private function resolveStatus(Throwable $e): int
     {
-        foreach ($this->exceptionMap as $cls => $code) {
-            if ($e instanceof $cls && $this->isHttp($code)) {
-                return $code;
-            }
+        $mapped = $this->mappedExceptionStatus($e);
+        if ($mapped !== null) {
+            return $mapped;
         }
 
-        if (method_exists($e, 'getStatusCode')) {
-            $sc = (int)$e->getStatusCode();
-            if ($this->isHttp($sc)) {
-                return $sc;
-            }
-        }
-        if (property_exists($e, 'status') && $this->isHttp((int)$e->status)) {
-            return (int)$e->status;
+        $methodStatus = $this->statusFromThrowableMethod($e);
+        if ($methodStatus !== null) {
+            return $methodStatus;
         }
 
-        $code = (int)$e->getCode();
+        $propertyStatus = $this->statusFromThrowableProperty($e);
+        if ($propertyStatus !== null) {
+            return $propertyStatus;
+        }
+
+        $code = (int) $e->getCode();
+
         return $this->isHttp($code) ? $code : StatusEnum::INTERNAL_SERVER_ERROR->value;
+    }
+
+    private function statusFromRaw(mixed $raw): ?int
+    {
+        if (\is_int($raw) && $this->isHttp($raw)) {
+            return $raw;
+        }
+
+        if (\is_string($raw) && $raw !== '') {
+            $parsed = (int) $raw;
+            if ($this->isHttp($parsed)) {
+                return $parsed;
+            }
+        }
+
+        return null;
+    }
+
+    private function statusFromThrowableMethod(Throwable $e): ?int
+    {
+        if (!\method_exists($e, 'getStatusCode')) {
+            return null;
+        }
+
+        return $this->statusFromRaw($e->getStatusCode());
+    }
+
+    private function statusFromThrowableProperty(Throwable $e): ?int
+    {
+        if (!\property_exists($e, 'status')) {
+            return null;
+        }
+
+        return $this->statusFromRaw($e->status);
     }
 
     /**
@@ -459,13 +604,14 @@ final class ErrorHandler
      */
     private function xmlError(int $status, string $reason, string $msg, string $rid, Throwable $e): string
     {
-        $xe = fn (string $s): string => htmlspecialchars($s, ENT_XML1 | ENT_COMPAT, 'UTF-8');
+        $xe = fn(string $s): string => htmlspecialchars($s, ENT_XML1 | ENT_COMPAT, 'UTF-8');
         $trace = $this->debug ? '<trace>' . $xe($e->getTraceAsString()) . '</trace>' : '';
         $ridEl = $rid !== '' ? '<request_id>' . $xe($rid) . '</request_id>' : '';
         $exEl = $this->debug
             ? '<exception>' . $xe($e::class) . '</exception><file>' . $xe($e->getFile()) . ':' . $e->getLine(
             ) . '</file>'
             : '';
+
         return <<<XML
             <?xml version="1.0" encoding="UTF-8"?>
             <error>

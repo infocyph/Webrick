@@ -17,22 +17,11 @@ namespace Infocyph\Webrick\Router\Definition;
  * state for nested groups so that prefix, domain, middleware and name prefix are
  * applied consistently.
  *
- * @package Infocyph\Webrick\Router\Definition
  *
- * @psalm-type MiddlewareList = list<class-string|object>
+ * @psalm-type MiddlewareList = list<string|object>
  */
-final class GroupScope
+final readonly class GroupScope
 {
-    /**
-     * Prefix applied to routes within this scope.
-     *
-     * Always normalized to have a leading slash, no trailing slash and no
-     * duplicate path separators (e.g. "/api/v1").
-     *
-     * This value is provided via constructor promotion and is read-only.
-     *
-     * @var string
-     */
     public function __construct(
         /**
          * Normalized path prefix (leading slash, no trailing slash).
@@ -41,7 +30,7 @@ final class GroupScope
          *
          * @var string
          */
-        private readonly string $prefix = '',
+        private string $prefix = '',
 
         /**
          * Optional domain constraint for the scope (e.g. "api.example.com").
@@ -50,7 +39,7 @@ final class GroupScope
          *
          * @var string|null
          */
-        private readonly ?string $domain = null,
+        private ?string $domain = null,
 
         /**
          * Middleware list applied to routes in this scope.
@@ -60,7 +49,7 @@ final class GroupScope
          *
          * @var MiddlewareList
          */
-        private readonly array $middleware = [],
+        private array $middleware = [],
 
         /**
          * Name prefix that is prepended to route names registered in this scope.
@@ -69,9 +58,8 @@ final class GroupScope
          *
          * @var string
          */
-        private readonly string $namePrefix = '',
-    ) {
-    }
+        private string $namePrefix = '',
+    ) {}
 
     /**
      * Get the optional domain constraint for this scope.
@@ -193,7 +181,7 @@ final class GroupScope
     {
         $combined = trim($this->prefix, '/') . '/' . trim($more, '/');
         // Normalize: ensure leading slash, remove trailing slash and collapse duplicate '/'
-        $normalized = '/' . trim(preg_replace('#/+#', '/', $combined), '/');
+        $normalized = '/' . trim((string) preg_replace('#/+#', '/', $combined), '/');
 
         return new self(
             $normalized,

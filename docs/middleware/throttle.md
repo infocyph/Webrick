@@ -114,12 +114,12 @@ Route::post('/expensive-operation', function (Request $r) {
     // This request costs 10 tokens
     $r = $r->withAttribute('rate_cost.thm', 10);
     return $next($r);
-})->middleware([
+})->withMiddleware([
     new ThrottleMiddleware(max: 100, window: 60, pool: $cache)
 ]);
 
 // Regular request costs 1 token (default)
-Route::get('/cheap-read', fn() => Response::json(['ok' => true]))->middleware([
+Route::get('/cheap-read', fn() => Response::json(['ok' => true]))->withMiddleware([
     new ThrottleMiddleware(max: 100, window: 60, pool: $cache)
 ]);
 ```
@@ -269,10 +269,10 @@ class ThrottleTest extends TestCase
 {
     public function testAllowsWithinLimit(): void
     {
-        $cache = new InMemoryCache();
+        $cache = new \Infocyph\CacheLayer\Cache\Adapter\ArrayCacheAdapter();
         $throttle = new ThrottleMiddleware(max: 3, window: 60, pool: $cache);
 
-        $req = Request::create('GET', '/test');
+        $req = Request::fake(method: 'GET', uri: '/test');
         $next = fn($r) => Response::json(['ok' => true]);
 
         // First 3 should pass

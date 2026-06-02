@@ -13,7 +13,7 @@ namespace Infocyph\Webrick\Response\Cookies;
 final class Cookie implements \Stringable
 {
     /** rfc6265 allowed chars for name */
-    private const NAME_RX = '/^[A-Za-z0-9!#$%&\'*+.^_`|~-]+$/';
+    private const string NAME_RX = '/^[A-Za-z0-9!#$%&\'*+.^_`|~-]+$/';
 
     /**
      * Initializes a new Cookie instance.
@@ -36,8 +36,7 @@ final class Cookie implements \Stringable
         private bool $secure = true,
         private bool $httpOnly = true,
         private string $sameSite = 'Lax',      // Lax|Strict|None
-    ) {
-    }
+    ) {}
 
     /**
      * Returns a string representation of the cookie in the format
@@ -76,7 +75,7 @@ final class Cookie implements \Stringable
      *
      * @param string $name Valid cookie name (rfc6265)
      * @param string $value Optional cookie value (default: empty string)
-     * @return static
+     *
      * @throws \InvalidArgumentException If the cookie name is invalid
      */
     public static function make(string $name, string $value = ''): self
@@ -84,6 +83,7 @@ final class Cookie implements \Stringable
         if (!preg_match(self::NAME_RX, $name)) {
             throw new \InvalidArgumentException("Invalid cookie name: {$name}");
         }
+
         return new self($name, $value);
     }
 
@@ -95,26 +95,25 @@ final class Cookie implements \Stringable
      * If set to an empty string, the cookie will be sent to all domains.
      *
      * @param string $d The domain to set for the cookie.
-     * @return self
      */
     public function domain(string $d): self
     {
         $y = clone $this;
         $y->domain = $d;
+
         return $y;
     }
 
     /**
      * Expiration sets the cookie to expire immediately.
      * Value is set to an empty string to prevent any accidental usage.
-     *
-     * @return self
      */
     public function expire(): self
     {
         $x = clone $this;
         $x->expires = time() - 86400;
         $x->value = '';
+
         return $x;
     }
 
@@ -130,44 +129,47 @@ final class Cookie implements \Stringable
     {
         $x = clone $this;
         $x->expires = $when->getTimestamp();
+
         return $x;
     }
 
     /**
      * Set the cookie's expiration time to 5 years from now.
      * After this deadline, the cookie will be deleted by the client.
-     * @return self
      */
     public function forever(): self
     {
         $x = clone $this;
         $x->expires = time() + 60 * 60 * 24 * 365 * 5; // 5y
+
         return $x;
     }
 
     /**
      * Sets the HttpOnly flag of the cookie.
      * If set to true, the cookie will only be transmitted over a secure channel (i.e., a channel protected by SSL/TLS).
+     *
      * @param bool $on If true, sets the HttpOnly flag to true. If false, sets it to false.
-     * @return self
      */
     public function httpOnly(bool $on = true): self
     {
         $y = clone $this;
         $y->httpOnly = $on;
+
         return $y;
     }
 
     /**
      * Set the cookie's max-age to the given number of seconds.
      * Note that max-age is relative to the current time, so setting it to 0 effectively deletes the cookie.
+     *
      * @param int $seconds The number of seconds until the cookie expires.
-     * @return self
      */
     public function maxAge(int $seconds): self
     {
         $x = clone $this;
         $x->expires = time() + max(0, $seconds);
+
         return $x;
     }
 
@@ -180,12 +182,12 @@ final class Cookie implements \Stringable
      * If set to an empty string, the cookie will be accessible for the root path only.
      *
      * @param string $p The path to set for the cookie.
-     * @return self
      */
     public function path(string $p): self
     {
         $y = clone $this;
         $y->path = $p;
+
         return $y;
     }
 
@@ -193,7 +195,7 @@ final class Cookie implements \Stringable
      * Set the SameSite attribute of the cookie.
      *
      * @param string $mode One of 'Lax', 'Strict', or 'None'.
-     * @return self
+     *
      * @throws \InvalidArgumentException If $mode is not one of 'Lax', 'Strict', or 'None'.
      */
     public function sameSite(string $mode): self
@@ -204,19 +206,21 @@ final class Cookie implements \Stringable
         }
         $y = clone $this;
         $y->sameSite = $mode;
+
         return $y;
     }
 
     /**
      * Sets the Secure flag of the cookie.
      * If set to true, the cookie will only be transmitted over a secure channel (i.e., a channel protected by SSL/TLS).
+     *
      * @param bool $on If true, sets the Secure flag to true. If false, sets it to false.
-     * @return self
      */
     public function secure(bool $on = true): self
     {
         $y = clone $this;
         $y->secure = $on;
+
         return $y;
     }
 }

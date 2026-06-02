@@ -28,7 +28,7 @@ Complete reference for `Infocyph\Webrick\Request\Request` class.
 ```php
 use Infocyph\Webrick\Request\Request;
 
-$request = Request::createFromGlobals();
+$request = Request::fromGlobals();
 ```
 
 **Reads from**:
@@ -41,13 +41,12 @@ $request = Request::createFromGlobals();
 
 ### Manual Construction
 ```php
-$request = Request::create(
-    method: 'GET',
-    uri: '/users/42?page=2',
-    server: ['REMOTE_ADDR' => '203.0.113.10'],
+$request = Request::fake(
+    query: ['page' => 2],
+    post: ['name' => 'John'],
     headers: ['Authorization' => 'Bearer token'],
-    body: '{"name":"John"}',
-    files: []
+    method: 'GET',
+    uri: '/users/42',
 );
 ```
 
@@ -56,7 +55,12 @@ $request = Request::create(
 use Psr\Http\Message\ServerRequestInterface;
 
 $psrRequest = /* ... */;
-$request = Request::fromPsr7($psrRequest);
+$request = new Request(
+    $psrRequest->getMethod(),
+    (string) $psrRequest->getUri(),
+    $psrRequest->getServerParams(),
+    array_map(static fn(array $v): string => implode(', ', $v), $psrRequest->getHeaders()),
+);
 ```
 
 ---

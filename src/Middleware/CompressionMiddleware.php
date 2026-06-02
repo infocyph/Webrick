@@ -12,8 +12,6 @@
  * - weak-on-encode: Make existing tags weak; synthesize weak tag when absent.
  * - recompute-strong (default): Compute strong tag from encoded bytes.
  * - derive-strong: Derive deterministic tag from base ETag + alg/level when safe.
- *
- * @package Infocyph\Webrick\Middleware
  */
 
 declare(strict_types=1);
@@ -33,13 +31,15 @@ use Infocyph\Webrick\Support\StreamUtil;
  */
 final readonly class CompressionMiddleware
 {
-    public const ETAG_STRONG_DERIVE = 'derive-strong';    // from base tag + alg/level
-    public const ETAG_STRONG_RECOMP = 'recompute-strong'; // default (bytes-on-the-wire)
+    public const string ETAG_STRONG_DERIVE = 'derive-strong';    // from base tag + alg/level
+
+    public const string ETAG_STRONG_RECOMP = 'recompute-strong'; // default (bytes-on-the-wire)
+
     /* ─────────── ETag strategies ─────────── */
-    public const ETAG_WEAK_ON_ENCODE = 'weak-on-encode';
+    public const string ETAG_WEAK_ON_ENCODE = 'weak-on-encode';
 
     /** encoder → callable (only invoked when extension is loaded) */
-    private const ALGO = [
+    private const array ALGO = [
         'br' => 'brotli_compress',   // ext-brotli
         'zstd' => 'zstd_compress',     // ext-zstd
         'gzip' => 'gzencode',          // ext-zlib (bundled)
@@ -47,7 +47,7 @@ final readonly class CompressionMiddleware
     ];
 
     /** MIME prefixes we never compress */
-    private const NO_COMPRESS_PREFIXES = [
+    private const array NO_COMPRESS_PREFIXES = [
         'image/',
         'video/',
         'audio/',
@@ -87,15 +87,13 @@ final readonly class CompressionMiddleware
         private array $excludeTypes = [],
         private array $onlyTypes = [],
         private bool $forceAddVary = true,
-    ) {
-    }
+    ) {}
 
     /**
      * Negotiate, encode, and adjust validators for the response when appropriate.
      *
-     * @param Request $req
-     * @param Closure $next
      *
+     * @param Closure(Request):Response $next
      * @return Response Possibly encoded response with adjusted ETag.
      */
     public function __invoke(Request $req, Closure $next): Response
@@ -111,7 +109,7 @@ final readonly class CompressionMiddleware
             return $resp; // client accepts none (or only identity)
         }
 
-        $raw = (string)$resp->getBody();
+        $raw = (string) $resp->getBody();
         $enc = $this->encode($raw, $alg);
         if ($enc === false) {
             return $resp; // encoder failed – rare
@@ -122,16 +120,13 @@ final readonly class CompressionMiddleware
         }
 
         $resp = $this->applyEncoded($resp, $enc, $alg);
+
         return $this->adjustValidators($req, $resp, $enc, $alg);
     }
 
     /**
      * Adjust ETag validators according to configured strategy.
      *
-     * @param Request $req
-     * @param Response $resp
-     * @param string $encodedBytes
-     * @param string $alg
      *
      * @return Response Response with updated ETag when applicable.
      */
@@ -152,42 +147,41 @@ final readonly class CompressionMiddleware
                 } elseif ($etagLine === '') {
                     $resp = $resp->withSmartHeader('ETag', 'W/' . $this->strongFromBytes($encodedBytes));
                 }
+
                 break;
 
             case self::ETAG_STRONG_DERIVE:
-                {
-                    [$base, $isWeak] = $this->parseEtag($etagLine);
-
-                    if ($base === '') {
-                        return $resp->withSmartHeader('ETag', $this->strongFromBytes($encodedBytes));
-                    }
-
-                    if ($isWeak) {
-                        $level = $this->encodedLevelToken($alg);
-                        $derived = 'W/"' . substr(
-                            hash('xxh3', $base . '|' . $alg . '|' . $level . '|' . $this->etagDeriveSalt, false),
-                            0,
-                            16,
-                        ) . '"';
-                        return $resp->withSmartHeader('ETag', $derived);
-                    }
-
-                    if ($this->isEncodingDeterministic($alg)) {
-                        $level = $this->encodedLevelToken($alg);
-                        $derived = '"' . substr(
-                            hash('xxh3', $base . '|' . $alg . '|' . $level . '|' . $this->etagDeriveSalt, false),
-                            0,
-                            16,
-                        ) . '"';
-                        return $resp->withSmartHeader('ETag', $derived);
-                    }
-
+                [$base, $isWeak] = $this->parseEtag($etagLine);
+                if ($base === '') {
                     return $resp->withSmartHeader('ETag', $this->strongFromBytes($encodedBytes));
                 }
+                if ($isWeak) {
+                    $level = $this->encodedLevelToken($alg);
+                    $derived = 'W/"' . substr(
+                        hash('xxh3', $base . '|' . $alg . '|' . $level . '|' . $this->etagDeriveSalt, false),
+                        0,
+                        16,
+                    ) . '"';
+
+                    return $resp->withSmartHeader('ETag', $derived);
+                }
+                if ($this->isEncodingDeterministic($alg)) {
+                    $level = $this->encodedLevelToken($alg);
+                    $derived = '"' . substr(
+                        hash('xxh3', $base . '|' . $alg . '|' . $level . '|' . $this->etagDeriveSalt, false),
+                        0,
+                        16,
+                    ) . '"';
+
+                    return $resp->withSmartHeader('ETag', $derived);
+                }
+
+                return $resp->withSmartHeader('ETag', $this->strongFromBytes($encodedBytes));
 
             case self::ETAG_STRONG_RECOMP:
             default:
                 $resp = $resp->withSmartHeader('ETag', $this->strongFromBytes($encodedBytes));
+
                 break;
         }
 
@@ -200,7 +194,6 @@ final readonly class CompressionMiddleware
      * @param Response $resp Original response.
      * @param string $enc Encoded bytes.
      * @param string $alg Encoding algorithm.
-     *
      * @return Response Response with Content-Encoding and adjusted headers.
      */
     private function applyEncoded(Response $resp, string $enc, string $alg): Response
@@ -208,13 +201,25 @@ final readonly class CompressionMiddleware
         $resp = $resp
             ->withBody(new Stream($enc))
             ->withSmartHeader('Content-Encoding', $alg)
-            ->withSmartHeader('Content-Length', (string)\strlen($enc));
+            ->withSmartHeader('Content-Length', (string) \strlen($enc));
 
         // Content-MD5 (if present) is now invalid; remove it.
         if ($resp->hasHeader('Content-MD5')) {
             $resp = $resp->withoutHeader('Content-MD5');
         }
+
         return $resp;
+    }
+
+    private function choosePreferredAvailableAlgorithm(): ?string
+    {
+        foreach ($this->prefOrder as $fallback) {
+            if ($this->isAlgorithmAvailable($fallback)) {
+                return $fallback;
+            }
+        }
+
+        return null;
     }
 
     /* ───────────────────────── encoding ───────────────────────── */
@@ -224,7 +229,6 @@ final readonly class CompressionMiddleware
      *
      * @param string $raw Raw response bytes.
      * @param string $alg Algorithm identifier ('gzip','br','zstd','deflate').
-     *
      * @return string|false Encoded bytes or false when encoder unavailable/fails.
      */
     private function encode(string $raw, string $alg): string|false
@@ -246,15 +250,14 @@ final readonly class CompressionMiddleware
      * Encode level token used for derive-strong strategy.
      *
      * @param string $alg Algorithm identifier.
-     *
      * @return string Level token.
      */
     private function encodedLevelToken(string $alg): string
     {
         return match ($alg) {
-            'gzip', 'deflate' => (string)$this->gzipLevel,
-            'br' => (string)$this->brotliQuality,
-            'zstd' => (string)$this->zstdLevel,
+            'gzip', 'deflate' => (string) $this->gzipLevel,
+            'br' => (string) $this->brotliQuality,
+            'zstd' => (string) $this->zstdLevel,
             default => '0',
         };
     }
@@ -267,7 +270,13 @@ final readonly class CompressionMiddleware
     private function hasNoTransform(Response $r): bool
     {
         $cc = strtolower($r->getHeaderLine('Cache-Control'));
+
         return $cc !== '' && str_contains($cc, 'no-transform');
+    }
+
+    private function isAlgorithmAvailable(string $alg): bool
+    {
+        return isset(self::ALGO[$alg]) && \function_exists(self::ALGO[$alg]);
     }
 
     /** True when `$ctype` matches any user-provided onlyTypes pattern. */
@@ -276,7 +285,8 @@ final readonly class CompressionMiddleware
         if ($this->onlyTypes === []) {
             return true; // no whitelist ⇒ allow
         }
-        return array_any($this->onlyTypes, fn ($pat) => $pat !== '' && $this->mimeMatches($ctype, strtolower($pat)));
+
+        return array_any($this->onlyTypes, fn($pat) => $pat !== '' && $this->mimeMatches($ctype, strtolower((string) $pat)));
     }
 
     /** gzip via gzencode adds an MTIME by default → bytes can vary run-to-run. */
@@ -295,7 +305,8 @@ final readonly class CompressionMiddleware
                 return true;
             }
         }
-        return array_any($this->excludeTypes, fn ($pat) => $pat !== '' && $this->mimeMatches($ctype, strtolower($pat)));
+
+        return array_any($this->excludeTypes, fn($pat) => $pat !== '' && $this->mimeMatches($ctype, strtolower((string) $pat)));
     }
 
     /**
@@ -318,11 +329,13 @@ final readonly class CompressionMiddleware
         }
         if (str_ends_with($pattern, '/*')) {
             $prefix = substr($pattern, 0, -1); // keep trailing slash
+
             return \str_starts_with($mime, $prefix);
         }
         if (str_ends_with($pattern, '/')) {
             return \str_starts_with($mime, $pattern);
         }
+
         return $mime === $pattern;
     }
 
@@ -330,7 +343,6 @@ final readonly class CompressionMiddleware
      * Return the best supported encoding from Accept-Encoding or null.
      *
      * @param string $header Raw Accept-Encoding value.
-     *
      * @return string|null Chosen encoding or null.
      */
     private function negotiate(string $header): ?string
@@ -347,16 +359,15 @@ final readonly class CompressionMiddleware
             }
 
             if ($alg === '*') {
-                // wildcard ⇒ pick first available in preferred order
-                foreach ($this->prefOrder as $fallback) {
-                    if (isset(self::ALGO[$fallback]) && \function_exists(self::ALGO[$fallback])) {
-                        return $fallback;
-                    }
+                $fallback = $this->choosePreferredAvailableAlgorithm();
+                if ($fallback !== null) {
+                    return $fallback;
                 }
+
                 continue;
             }
 
-            if (isset(self::ALGO[$alg]) && \function_exists(self::ALGO[$alg])) {
+            if ($this->isAlgorithmAvailable($alg)) {
                 return $alg; // direct hit
             }
         }
@@ -368,7 +379,6 @@ final readonly class CompressionMiddleware
      * Parse and sort Accept-Encoding into tokens by q-value (desc), filtering q=0.
      *
      * @param string $header Raw header.
-     *
      * @return array<int,string> Tokens sorted by preference.
      */
     private function parseAcceptHeader(string $header): array
@@ -382,8 +392,8 @@ final readonly class CompressionMiddleware
             if ($seg === '') {
                 continue;
             }
-            [$token, $q] = \array_map('trim', \explode(';', $seg, 2) + [1 => 'q=1']);
-            $qVal = (float)(\preg_match('/q=([\d.]+)/', $q, $m) ? $m[1] : 1);
+            [$token, $q] = \array_map(trim(...), \explode(';', $seg, 2) + [1 => 'q=1']);
+            $qVal = (float) (\preg_match('/q=([\d.]+)/', $q, $m) ? $m[1] : 1);
             if ($qVal <= 0) {
                 continue; // ignore explicitly refused codings
             }
@@ -392,7 +402,7 @@ final readonly class CompressionMiddleware
 
         \usort(
             $parsed,
-            static fn (array $a, array $b): int => $b[1] <=> $a[1], // highest q first
+            static fn(array $a, array $b): int => $b[1] <=> $a[1], // highest q first
         );
 
         return \array_column($parsed, 0);
@@ -402,7 +412,6 @@ final readonly class CompressionMiddleware
      * Parse an ETag header value into its base value and weakness flag.
      *
      * @param string $etagLine Raw ETag header line (may include W/ prefix and quotes).
-     *
      * @return array{0:string,1:bool} [valueWithoutQuotes, isWeak]. Blank value means “no ETag present”.
      */
     private function parseEtag(string $etagLine): array
@@ -418,6 +427,7 @@ final readonly class CompressionMiddleware
         if (strlen($t) >= 2 && $t[0] === '"' && $t[strlen($t) - 1] === '"') {
             $t = substr($t, 1, -1);
         }
+
         return [trim($t), $isWeak];
     }
 
@@ -459,25 +469,6 @@ final readonly class CompressionMiddleware
         }
 
         return true;
-    }
-
-    /**
-     * Strip weak prefix and surrounding quotes from an ETag line.
-     */
-    private function stripWeakQuotes(string $etagLine): string
-    {
-        $t = trim($etagLine);
-        if ($t === '') {
-            return '';
-        }
-        if (str_starts_with($t, 'W/')) {
-            $t = substr($t, 2);
-        }
-        // remove optional surrounding quotes
-        if (strlen($t) >= 2 && $t[0] === '"' && $t[strlen($t) - 1] === '"') {
-            $t = substr($t, 1, -1);
-        }
-        return trim($t);
     }
 
     /**

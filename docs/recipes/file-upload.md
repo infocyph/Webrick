@@ -79,12 +79,12 @@ final class FileUploadHandler
             'uploaded_at' => date('Y-m-d H:i:s')
         ]);
 
-        return Response::created([
+        return Response::json([
             'id' => $fileId,
             'filename' => $filename,
             'size' => $file->getSize(),
             'url' => "/uploads/{$filename}"
-        ], "/uploads/{$filename}");
+        ], 201)->withHeader('Location', "/uploads/{$filename}");
     }
 
     private function validate(UploadedFileInterface $file): string|bool
@@ -148,7 +148,7 @@ $uploadHandler = new FileUploadHandler(
 
 // Upload file
 Route::post('/upload', [$uploadHandler, 'upload'])
-    ->middleware(['auth', 'throttle:10,60']);
+    ->withMiddleware(['auth', 'throttle:10,60']);
 
 // Serve file
 Route::get('/uploads/{filename:.*}', function(string $filename) {
@@ -165,7 +165,7 @@ Route::get('/uploads/{filename:.*}', function(string $filename) {
         return Response::json(['error' => 'File not found'], 404);
     }
 
-    return Response::file($path, $file['original_name']);
+    return Response::inline($path, $file['original_name']);
 });
 
 // Download file
@@ -290,10 +290,10 @@ Route::post('/upload/image', function(Request $r) use ($uploadHandler, $imagePro
     $imageProcessor->optimize($path);
     $thumbPath = $imageProcessor->createThumbnail($path);
 
-    return Response::created([
+    return Response::json([
         'url' => "/uploads/{$filename}",
         'thumbnail' => "/uploads/" . basename($thumbPath)
-    ]);
+    ], 201);
 });
 ```
 
@@ -546,7 +546,7 @@ Route::get('/uploads/{filename}', function($filename) {
         return Response::json(['error' => 'Forbidden'], 403);
     }
 
-    return Response::file(__DIR__ . '/../storage/uploads/' . $filename);
+    return Response::inline(__DIR__ . '/../storage/uploads/' . $filename);
 });
 ```
 
@@ -569,7 +569,7 @@ upload_max_filesize = 10M
 post_max_size = 10M
 
 // In middleware
-Route::post('/upload', $handler)->middleware([
+Route::post('/upload', $handler)->withMiddleware([
     new RequestLimitsMiddleware(maxBodyBytes: 10 * 1024 * 1024)
 ]);
 ```

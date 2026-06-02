@@ -382,9 +382,11 @@ class UserApiTest extends TestCase
 
     public function testListUsers(): void
     {
-        $request = Request::create('GET', '/api/users', headers: [
-            'Authorization' => "Bearer {$this->token}"
-        ]);
+        $request = Request::fake(
+            headers: ['Authorization' => "Bearer {$this->token}"],
+            method: 'GET',
+            uri: '/api/users',
+        );
 
         $response = $this->kernel->handle($request);
 
@@ -398,16 +400,18 @@ class UserApiTest extends TestCase
 
     public function testCreateUser(): void
     {
-        $request = Request::create('POST', '/api/users',
-            headers: [
-                'Authorization' => "Bearer {$this->token}",
-                'Content-Type' => 'application/json'
-            ],
-            body: json_encode([
+        $request = Request::fake(
+            post: [
                 'name' => 'Test User',
                 'email' => 'test@example.com',
-                'password' => 'secret123'
-            ])
+                'password' => 'secret123',
+            ],
+            headers: [
+                'Authorization' => "Bearer {$this->token}",
+                'Content-Type' => 'application/json',
+            ],
+            method: 'POST',
+            uri: '/api/users',
         );
 
         $response = $this->kernel->handle($request);
@@ -422,15 +426,17 @@ class UserApiTest extends TestCase
 
     public function testValidationError(): void
     {
-        $request = Request::create('POST', '/api/users',
+        $request = Request::fake(
+            post: [
+                'name' => 'X',  // Too short
+                'email' => 'invalid-email',  // Invalid format
+            ],
             headers: [
                 'Authorization' => "Bearer {$this->token}",
-                'Content-Type' => 'application/json'
+                'Content-Type' => 'application/json',
             ],
-            body: json_encode([
-                'name' => 'X',  // Too short
-                'email' => 'invalid-email'  // Invalid format
-            ])
+            method: 'POST',
+            uri: '/api/users',
         );
 
         $response = $this->kernel->handle($request);
@@ -733,7 +739,11 @@ paths:
 
 ```php
 Route::get('/api/docs', function() {
-    return Response::html(file_get_contents(__DIR__ . '/../docs/api.html'));
+    return Response::create(
+        file_get_contents(__DIR__ . '/../docs/api.html'),
+        200,
+        ['Content-Type' => 'text/html; charset=UTF-8']
+    );
 });
 
 Route::get('/api/openapi.yaml', function() {

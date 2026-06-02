@@ -1,46 +1,53 @@
 <?php
 
+use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Response\Response;
+
 /**
  * Test debugging helpers
  */
+function debugOut(string $message): void
+{
+    file_put_contents('php://stdout', $message, FILE_APPEND);
+}
 
-if (!function_exists('debugResponse')) {
-    function debugResponse(\Infocyph\Webrick\Response\Response $response): void
+if (! function_exists('debugResponse')) {
+    function debugResponse(Response $response): void
     {
-        echo "\n";
-        echo "================== RESPONSE DEBUG ==================\n";
-        echo "Status: " . $response->getStatusCode() . " " . $response->getReasonPhrase() . "\n";
-        echo "\nHeaders:\n";
+        debugOut("\n");
+        debugOut("================== RESPONSE DEBUG ==================\n");
+        debugOut('Status: '.$response->getStatusCode().' '.$response->getReasonPhrase()."\n");
+        debugOut("\nHeaders:\n");
         foreach ($response->getHeaders() as $name => $values) {
             foreach ($values as $value) {
-                echo "  {$name}: {$value}\n";
+                debugOut("  {$name}: {$value}\n");
             }
         }
-        echo "\nBody:\n";
-        echo substr((string)$response->getBody(), 0, 500) . "\n";
-        echo "====================================================\n\n";
+        debugOut("\nBody:\n");
+        debugOut(substr((string) $response->getBody(), 0, 500)."\n");
+        debugOut("====================================================\n\n");
     }
 }
 
-if (!function_exists('debugRequest')) {
-    function debugRequest(\Infocyph\Webrick\Request\Request $request): void
+if (! function_exists('debugRequest')) {
+    function debugRequest(Request $request): void
     {
-        echo "\n";
-        echo "================== REQUEST DEBUG ===================\n";
-        echo "Method: " . $request->getMethod() . "\n";
-        echo "URI: " . $request->getUri() . "\n";
-        echo "\nHeaders:\n";
+        debugOut("\n");
+        debugOut("================== REQUEST DEBUG ===================\n");
+        debugOut('Method: '.$request->getMethod()."\n");
+        debugOut('URI: '.$request->getUri()."\n");
+        debugOut("\nHeaders:\n");
         foreach ($request->getHeaders() as $name => $values) {
             foreach ($values as $value) {
-                echo "  {$name}: {$value}\n";
+                debugOut("  {$name}: {$value}\n");
             }
         }
-        echo "\nServer:\n";
+        debugOut("\nServer:\n");
         foreach ($request->getServerParams() as $key => $val) {
             if (is_string($val)) {
-                echo "  {$key}: {$val}\n";
+                debugOut("  {$key}: {$val}\n");
             }
         }
-        echo "====================================================\n\n";
+        debugOut("====================================================\n\n");
     }
 }

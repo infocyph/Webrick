@@ -18,11 +18,12 @@ use SplFileObject;
  */
 final class Stream implements BodyStream
 {
-    /** Verified PHP stream handle (resource|null after detach/close) */
-    private mixed $h;
+    private readonly bool $readable;
 
-    private bool $readable;
-    private bool $writable;
+    private readonly bool $writable;
+
+    /** @var resource|null Verified PHP stream handle (resource|null after detach/close) */
+    private $h;
 
     /**
      * Initializes a new Stream instance.
@@ -30,20 +31,24 @@ final class Stream implements BodyStream
      * Accepts a string, a PSR-7 Stream, a PHP stream resource, or a SplFileObject.
      * If the given source is invalid, it will throw a RuntimeException.
      *
-     * @param mixed $source
      * @throws RuntimeException If the given source is invalid.
      */
     public function __construct(mixed $source = '')
     {
-        $this->h = match (true) {
+        $handle = match (true) {
             is_string($source) => self::openMemory($source),
             $source instanceof SplFileObject => self::openFileObject($source),
             $source instanceof Stream => $source->detach(),
             is_resource($source) => $source,
             default => throw new RuntimeException('Invalid stream source'),
         };
+        if (!\is_resource($handle)) {
+            throw new RuntimeException('Invalid stream handle');
+        }
+        $this->h = $handle;
 
-        $mode = stream_get_meta_data($this->h)['mode'];
+        $meta = stream_get_meta_data($this->h);
+        $mode = $meta['mode'];
         $this->readable = strpbrk($mode, 'r+') !== false;
         $this->writable = strpbrk($mode, 'waxc+') !== false;
     }
@@ -59,13 +64,15 @@ final class Stream implements BodyStream
      */
     public function __toString(): string
     {
-        if (!$this->h) {
+        $handle = $this->h;
+        if (!\is_resource($handle)) {
             return '';
         }
         $pos = $this->tell();         // save cursor
         $this->rewind();
-        $data = stream_get_contents($this->h) ?: '';
+        $data = stream_get_contents($handle) ?: '';
         $this->seek($pos);            // restore cursor
+
         return $data;
     }
 
@@ -103,6 +110,7 @@ final class Stream implements BodyStream
     {
         $h = $this->h;
         $this->h = null;
+
         return $h;
     }
 
@@ -126,8 +134,8 @@ final class Stream implements BodyStream
      * If the stream is not readable, a RuntimeException is thrown.
      *
      * @return string The remaining contents of the stream.
-     * @throws RuntimeException If unable to read stream contents.
      *
+     * @throws RuntimeException If unable to read stream contents.
      */
     public function getContents(): string
     {
@@ -138,6 +146,7 @@ final class Stream implements BodyStream
         if ($data === false) {
             throw new RuntimeException('Unable to read stream contents');
         }
+
         return $data;
     }
 
@@ -157,7 +166,6 @@ final class Stream implements BodyStream
      * - `'uri'`: The URI/resource that the underlaying stream represents.
      *
      * @param string|null $key The metadata key to retrieve.
-     *
      * @return array<string, mixed>|mixed The metadata as an associative array or value of the specified key.
      */
     public function getMetadata(?string $key = null): mixed
@@ -166,6 +174,7 @@ final class Stream implements BodyStream
             return $key ? null : [];
         }
         $meta = stream_get_meta_data($this->h);
+
         return $key ? ($meta[$key] ?? null) : $meta;
     }
 
@@ -176,7 +185,16 @@ final class Stream implements BodyStream
      */
     public function getSize(): ?int
     {
-        return $this->h ? (fstat($this->h)['size'] ?? null) : null;
+        if (!$this->h) {
+            return null;
+        }
+
+        $stat = fstat($this->h);
+        if (!\is_array($stat)) {
+            return null;
+        }
+
+        return $stat['size'];
     }
 
     /**
@@ -201,7 +219,13 @@ final class Stream implements BodyStream
      */
     public function isSeekable(): bool
     {
-        return $this->h ? (stream_get_meta_data($this->h)['seekable'] ?? false) : false;
+        if (!$this->h) {
+            return false;
+        }
+
+        $meta = stream_get_meta_data($this->h);
+
+        return $meta['seekable'];
     }
 
     /**
@@ -223,6 +247,7 @@ final class Stream implements BodyStream
      *
      * @param int $length The number of bytes to read from the stream.
      * @return string The data read from the stream.
+     *
      * @throws RuntimeException If unable to read from the stream.
      */
     public function read(int $length): string
@@ -230,10 +255,18 @@ final class Stream implements BodyStream
         if (!$this->readable) {
             throw new RuntimeException('Stream not readable');
         }
+        if ($length < 0) {
+            throw new RuntimeException('Read length must be >= 0');
+        }
+        if ($length === 0) {
+            return '';
+        }
+
         $data = fread($this->need(), $length);
         if ($data === false) {
             throw new RuntimeException('Stream read failed');
         }
+
         return $data;
     }
 
@@ -264,6 +297,7 @@ final class Stream implements BodyStream
      * Returns the current position of the file read/write pointer.
      *
      * @return int The current position of the file read/write pointer.
+     *
      * @throws RuntimeException If unable to determine stream position.
      */
     public function tell(): int
@@ -272,6 +306,7 @@ final class Stream implements BodyStream
         if ($pos === false) {
             throw new RuntimeException('Unable to determine stream position');
         }
+
         return $pos;
     }
 
@@ -285,6 +320,7 @@ final class Stream implements BodyStream
      *
      * @param string $string The string to write to the stream.
      * @return int The number of bytes written to the stream.
+     *
      * @throws RuntimeException If the stream is not writable or the write fails.
      */
     public function write(string $string): int
@@ -296,6 +332,7 @@ final class Stream implements BodyStream
         if ($bytes === false) {
             throw new RuntimeException('Stream write failed');
         }
+
         return $bytes;
     }
 
@@ -306,43 +343,50 @@ final class Stream implements BodyStream
      * handle (resource) opened in read-only or read-write mode, depending on the
      * file's permissions.
      *
+     * @return resource
      * @throws RuntimeException If the file is not readable or cannot be opened.
      */
-    private static function openFileObject(SplFileObject $f): mixed
+    private static function openFileObject(SplFileObject $f)
     {
         if (!$f->isReadable()) {
             throw new RuntimeException('File not readable: ' . $f->getPathname());
         }
         $h = fopen($f->getRealPath() ?: $f->getPathname(), $f->isWritable() ? 'r+' : 'r');
-        if (!$h) {
+        if (!\is_resource($h)) {
             throw new RuntimeException('Unable to open file: ' . $f->getPathname());
         }
+
         return $h;
     }
 
     /**
      * Open a PHP stream for a given string payload.
      *
-     * @param string $payload
-     * @return mixed A PHP stream handle (resource|null)
+     * @return resource
      *
      * If the payload is not empty, it will be written to the stream and the
      * stream pointer will be rewound to the beginning.
      */
-    private static function openMemory(string $payload): mixed
+    private static function openMemory(string $payload)
     {
         $h = fopen('php://temp', 'r+');
+        if (!\is_resource($h)) {
+            throw new RuntimeException('Unable to open temporary stream');
+        }
         if ($payload !== '') {
             fwrite($h, $payload);
             rewind($h);
         }
+
         return $h;
     }
 
     /**
      * Low-level implementation of Stream::seek().
+     *
      * @param int $off offset in bytes
      * @param int $whence one of SEEK_SET, SEEK_CUR, SEEK_END
+     *
      * @throws RuntimeException on failure
      */
     private function doSeek(int $off, int $whence = SEEK_SET): void
@@ -355,10 +399,11 @@ final class Stream implements BodyStream
     /**
      * Return the underlying stream resource, or throw if the stream is detached.
      *
-     * @return mixed the underlying stream resource
+     * @return resource the underlying stream resource
+     *
      * @throws RuntimeException if the stream is detached
      */
-    private function need(): mixed
+    private function need()
     {
         return $this->h ?? throw new RuntimeException('Stream detached');
     }

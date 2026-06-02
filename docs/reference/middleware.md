@@ -103,13 +103,16 @@ final class AuthMiddleware
 ### Pre-Global (Before Routing)
 
 ```php
-$kernel = RouterKernel::boot([
-    'preGlobal' => [
+$kernel = RouterKernel::bootWithRegistrar(
+    log: $logger,
+    matcher: $matcher,
+    register: $register,
+    preGlobal: [
         new GatewayHardeningMiddleware(/* ... */),
         new TelemetryMiddleware(/* ... */),
         new ThrottleMiddleware(/* ... */),
-    ]
-]);
+    ],
+);
 ```
 
 **Use for**:
@@ -121,13 +124,16 @@ $kernel = RouterKernel::boot([
 ### Post-Global (After Routing, Before Handler)
 
 ```php
-$kernel = RouterKernel::boot([
-    'postGlobal' => [
+$kernel = RouterKernel::bootWithRegistrar(
+    log: $logger,
+    matcher: $matcher,
+    register: $register,
+    postGlobal: [
         new CorsAndPoliciesMiddleware(/* ... */),
         new NegotiationMiddleware(/* ... */),
         new ResponseCacheMiddleware(/* ... */),
-    ]
-]);
+    ],
+);
 ```
 
 **Use for**:
@@ -139,7 +145,7 @@ $kernel = RouterKernel::boot([
 ### Per-Route
 
 ```php
-Route::get('/admin', [AdminController::class, 'index'], options: [
+Route::get('/admin', [AdminController::class, 'index'], [
     'middleware' => ['auth', 'admin']
 ]);
 ```
@@ -358,7 +364,7 @@ MiddlewareAliases::register('throttle', fn(...$params) => new ThrottleMiddleware
 ### Use Alias
 
 ```php
-Route::get('/protected', [SecretController::class, 'index'], options: [
+Route::get('/protected', [SecretController::class, 'index'], [
     'middleware' => ['auth', 'throttle:30,60']
 ]);
 ```
@@ -575,7 +581,7 @@ class AuthMiddlewareTest extends TestCase
     public function testRejectsUnauthenticated(): void
     {
         $middleware = new AuthMiddleware();
-        $request = Request::create('GET', '/protected');
+        $request = Request::fake(method: 'GET', uri: '/protected');
         $next = fn() => Response::json(['secret' => 'data']);
 
         $response = $middleware($request, $next);
@@ -586,9 +592,11 @@ class AuthMiddlewareTest extends TestCase
     public function testAllowsAuthenticated(): void
     {
         $middleware = new AuthMiddleware();
-        $request = Request::create('GET', '/protected', headers: [
-            'Authorization' => 'Bearer valid-token'
-        ]);
+        $request = Request::fake(
+            headers: ['Authorization' => 'Bearer valid-token'],
+            method: 'GET',
+            uri: '/protected',
+        );
         $next = fn($r) => Response::json(['user_id' => $r->getAttribute('auth.user_id')]);
 
         $response = $middleware($request, $next);
@@ -607,17 +615,20 @@ class MiddlewareStackTest extends TestCase
 {
     public function testMiddlewareStack(): void
     {
-        $kernel = RouterKernel::boot([
-            'preGlobal' => [
+        $kernel = RouterKernel::bootWithRegistrar(
+            log: $logger,
+            matcher: $matcher,
+            register: $register,
+            preGlobal: [
                 new TimingMiddleware(),
                 new RequestIdMiddleware(),
             ],
-            'postGlobal' => [
+            postGlobal: [
                 new CorsMiddleware(),
-            ]
-        ]);
+            ],
+        );
 
-        $request = Request::create('GET', '/test');
+        $request = Request::fake(method: 'GET', uri: '/test');
         $response = $kernel->handle($request);
 
         $this->assertTrue($response->hasHeader('X-Response-Time'));

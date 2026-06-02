@@ -1,17 +1,18 @@
 <?php
 
 declare(strict_types=1);
+use Infocyph\Webrick\Router\Kernel\RouterKernel;
 
-
-require_once __DIR__ . '/../IntegrationBootstrap.php';
+require_once __DIR__.'/../IntegrationBootstrap.php';
 
 describe('Simple Integration Tests', function () {
     beforeEach(function () {
         $_SERVER['REQUEST_TIME'] = time();
         $_SERVER['REQUEST_TIME_FLOAT'] = microtime(true);
         $this->kernel = createTestKernel();
-    });    it('can create and use a RouterKernel', function () {
-        expect($this->kernel)->toBeInstanceOf(\Infocyph\Webrick\Router\Kernel\RouterKernel::class);
+    });
+    it('can create and use a RouterKernel', function () {
+        expect($this->kernel)->toBeInstanceOf(RouterKernel::class);
     });
 
     it('routes return 200 OK status', function () {
@@ -44,7 +45,7 @@ describe('Simple Integration Tests', function () {
         $contentType = $response->getHeaderLine('Content-Type');
         expect($contentType)->toContain('application/json');
 
-        $body = json_decode((string)$response->getBody(), true);
+        $body = json_decode((string) $response->getBody(), true);
         expect($body)->toBeArray();
     });
 
@@ -54,7 +55,7 @@ describe('Simple Integration Tests', function () {
 
         expect($response)->toHaveStatus(200);
 
-        $body = json_decode((string)$response->getBody(), true);
+        $body = json_decode((string) $response->getBody(), true);
         expect($body)
             ->toHaveKey('hello')
             ->and($body['hello'])->toBe('Alice');

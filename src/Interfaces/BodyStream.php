@@ -75,7 +75,6 @@ interface BodyStream
      * - `'uri'`: The URI/resource that the underlaying stream represents.
      *
      * @param string|null $key The metadata key to retrieve.
-     *
      * @return array<string, mixed>|mixed The metadata as an associative array or value of the specified key.
      */
     public function getMetadata(?string $key = null): mixed;
@@ -114,7 +113,6 @@ interface BodyStream
      * Read data from the stream.
      *
      * @param int $length The maximum number of bytes to read.
-     *
      * @return string The data read from the stream.
      *
      * @throws \RuntimeException on failure.
@@ -135,7 +133,7 @@ interface BodyStream
      *
      * @param int $offset The stream offset to seek to.
      * @param int $whence One of SEEK_SET, SEEK_CUR, or SEEK_END to specify the seek
-     *              mode.
+     *                    mode.
      *
      * @throws \RuntimeException on failure.
      */
@@ -152,7 +150,6 @@ interface BodyStream
      * Writes data to the stream.
      *
      * @param string $string The string that should be written.
-     *
      * @return int The number of bytes written to the stream.
      *
      * @throws \RuntimeException on failure.

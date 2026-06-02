@@ -15,25 +15,27 @@ namespace Infocyph\Webrick\Response\Conditional;
  *  headers  Optional extra response headers that must be echoed back
  *           when code ≠ PASS (ETag, Last-Modified, …).
  */
-final class Outcome
+final readonly class Outcome
 {
-    public const FAIL = 2;
-    public const HIT = 1;
+    public const int FAIL = 2;
+
+    public const int HIT = 1;
+
     /** generic constants – validators decide the exact HTTP code */
-    public const PASS = 0;
+    public const int PASS = 0;
 
     /**
      * Creates a new Outcome.
      *
      * @param int $state PASS, HIT or FAIL
      * @param int $http 0 when PASS, otherwise 3xx/4xx HTTP status code
-     * @param array<string,string[]> $headers Optional extra response headers that must be echoed back
-     *                                    when code ≠ PASS (ETag, Last-Modified, …).
+     * @param array<string,string> $headers Optional extra response headers that must be echoed back
+     *                                      when code ≠ PASS (ETag, Last-Modified, …).
      */
     public function __construct(
-        public readonly int $state,   // PASS / HIT / FAIL
-        public readonly int $http,    // 0 when PASS, otherwise 3xx/4xx
-        public readonly array $headers = [],
-    ) {
-    }
+        public int $state,   // PASS / HIT / FAIL
+        public int $http,    // 0 when PASS, otherwise 3xx/4xx
+        /** @var array<string,string> */
+        public array $headers = [],
+    ) {}
 }

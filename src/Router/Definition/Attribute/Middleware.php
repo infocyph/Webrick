@@ -33,7 +33,5 @@ final readonly class Middleware
      *
      * @param list<class-string|object> $stack Middleware entries (class-string or object)
      */
-    public function __construct(public array $stack)
-    {
-    }
+    public function __construct(public array $stack) {}
 }

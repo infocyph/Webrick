@@ -42,14 +42,14 @@ final readonly class RangeResponder
         array $headers = [],
     ): Response {
         // TOCTOU-safe: open first; if it fails, bail out cleanly
-        $fp = @fopen($absolutePath, 'rb');
+        $fp = fopen($absolutePath, 'rb');
         if ($fp === false) {
             return new Response(StatusEnum::NOT_FOUND->value);
         }
 
         $stat = fstat($fp) ?: [];
-        $len = (int)($stat['size'] ?? 0);
-        $mtime = (int)($stat['mtime'] ?? time());
+        $len = (int) ($stat['size'] ?? 0);
+        $mtime = (int) ($stat['mtime'] ?? time());
         $etag = '"' . dechex($len) . '-' . dechex($mtime) . '"';
 
         $headers += [
@@ -115,7 +115,7 @@ final readonly class RangeResponder
         if ($range === null || $multiRequested) {
             $headers += [
                 'Content-Type' => $mediaType,
-                'Content-Length' => (string)$totalLength,
+                'Content-Length' => (string) $totalLength,
             ];
             if (self::isSeekable($source)) {
                 $headers += ['Accept-Ranges' => 'bytes'];
@@ -125,6 +125,7 @@ final readonly class RangeResponder
             } elseif ($req?->getAttribute('range_dropped')) {
                 $headers['X-Range-Dropped'] = '1';
             }
+
             return new Response(StatusEnum::OK->value, self::wrapSeekable($source), $headers);
         }
 
@@ -132,17 +133,20 @@ final readonly class RangeResponder
         $length = $range->length();
         if ($source instanceof Stream) {
             $source->seek($range->start);
-        } else {
+        } elseif (is_resource($source)) {
             fseek($source, $range->start);
+        } else {
+            throw new \RuntimeException('Range source must be a Stream or seekable resource.');
         }
         $headers += [
             'Content-Range' => $range->contentRange(),
-            'Content-Length' => (string)$length,
+            'Content-Length' => (string) $length,
             'Content-Type' => $mediaType,
         ];
         if (self::isSeekable($source)) {
             $headers += ['Accept-Ranges' => 'bytes'];
         }
+
         return new Response(StatusEnum::PARTIAL_CONTENT->value, self::wrapSeekable($source, $length), $headers);
     }
 
@@ -162,6 +166,7 @@ final readonly class RangeResponder
         if ($raw === '' || !str_starts_with($raw, 'bytes=')) {
             return false;
         }
+
         // RFC 7233 multi-range = comma-separated byte-range-set
         return str_contains(substr($raw, 6), ',');
     }
@@ -178,7 +183,7 @@ final readonly class RangeResponder
     {
         return $src instanceof Stream
             ? $src->isSeekable()
-            : (is_resource($src) && (stream_get_meta_data($src)['seekable'] ?? false));
+            : (is_resource($src) && stream_get_meta_data($src)['seekable']);
     }
 
     /* ─────────────────────────── internals ───────────────────────────── */
@@ -193,7 +198,7 @@ final readonly class RangeResponder
      *
      * @param mixed $src Seekable resource or Stream
      * @param int|null $limit Optional maximum number of bytes the returned stream should expose
-     * ️ * @return ByteRangeStream|Stream Stream exposing the requested window or the full stream
+     *                        ️ * @return ByteRangeStream|Stream Stream exposing the requested window or the full stream
      */
     private static function wrapSeekable(mixed $src, ?int $limit = null): ByteRangeStream|Stream
     {

@@ -75,7 +75,7 @@ Route::group(domain:'api.localhost', prefix:'/v1', namePrefix:'v1.', callback:fu
 });
 ```
 
-> When generating absolute URLs for domain-scoped routes, set your app’s base URL/host correctly (via server variables or your config) so `Response::urlFor(..., absolute:true)` picks the right host.
+> When generating absolute URLs for domain-scoped routes, set your app’s base URL/host correctly (via server variables or your config) so `Route::urlFor(..., absolute:true)` picks the right host.
 
 ---
 

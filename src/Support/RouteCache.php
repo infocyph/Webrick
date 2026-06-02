@@ -13,113 +13,58 @@ use Infocyph\Webrick\Router\Matching\FusedMatcher;
 use Infocyph\Webrick\Router\Matching\GeneratedMatcher;
 use Infocyph\Webrick\Router\Matching\ShardedMatcher;
 use Infocyph\Webrick\Router\Route\Collection;
+use Infocyph\Webrick\Router\Url\SignedUrlConfig;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 
 final class RouteCache
 {
+    /**
+     * @param array<string, mixed> $options
+     */
     public static function build(array $options): string
     {
-        $logger = $options['logger'] ?? new NullLogger();
-        \assert($logger instanceof LoggerInterface);
-
-        $cachePath = (string)($options['cache'] ?? '');
-        if ($cachePath === '') {
-            throw new \InvalidArgumentException("RouteCache::build: 'cache' path is required.");
-        }
-
-        $mode = MatcherModeEnum::fromInput(
-            isset($options['matcher']) ? (string)$options['matcher'] : null,
-            $cachePath,
-        );
-
-        $matcher = match ($mode) {
-            MatcherModeEnum::GENERATED => GeneratedMatcher::make(),
-            MatcherModeEnum::FUSED => FusedMatcher::make(),
-            default => ShardedMatcher::make(),
-        };
-        if (\method_exists($matcher, 'enableCacheWrite')) {
-            $matcher->enableCacheWrite(true);
-        }
-        $routeCache = ($mode === MatcherModeEnum::SHARDED) ? \rtrim($cachePath, "/\\") : $cachePath;
+        $logger = self::resolveBuildLogger($options);
+        $cachePath = self::resolveBuildCachePath($options);
+        [$mode, $matcher, $routeCache] = self::resolveBuildMatcher($options, $cachePath);
 
         $userRegister = $options['register'] ?? null;
-        $routesFile = (string)($options['routes'] ?? '');
-        if ($userRegister && !$userRegister instanceof \Closure && !\is_callable($userRegister)) {
-            throw new \InvalidArgumentException("RouteCache::build: 'register' must be callable.");
-        }
-        if (!$userRegister && $routesFile === '') {
-            throw new \InvalidArgumentException("RouteCache::build: provide 'register' callable or 'routes' file.");
-        }
+        $routesFile = self::stringOption($options, 'routes');
+        self::validateBuildRegisterInputs($userRegister, $routesFile);
 
-        /** @var array<string,string> $attributeDirs */
-        $attributeDirs = (array)($options['attributeDirs'] ?? []);
-        $attributeDirs = self::normalizeAttributeDirs($attributeDirs, getcwd() ?: __DIR__, $logger);
+        $attributeDirs = self::normalizeAttributeDirs(
+            self::stringMapOption($options, 'attributeDirs'),
+            getcwd() ?: __DIR__,
+            $logger,
+        );
+        $attributeClasses = self::classListOption($options, 'attributeClasses');
+        $signKey = self::nullableStringOption($options, 'signKey');
 
-        /** @var string[] $attributeClasses */
-        $attributeClasses = array_values(array_filter(array_map('trim', (array)($options['attributeClasses'] ?? []))));
-
-        // Figure out a stable base dir (so relative includes & scans act like runtime)
-        $baseDir = getcwd() ?: __DIR__;
-        if ($routesFile !== '') {
-            $absRoutes = \realpath($routesFile) ?: $routesFile;
-            $dir = \is_file($absRoutes) ? \dirname($absRoutes) : null;
-            if ($dir) {
-                $baseDir = $dir;
-            }
-        }
-
-        $register = static function (Registrar $r) use (
+        $baseDir = self::resolveBuildBaseDir($routesFile);
+        $register = self::makeBuildRegisterClosure(
             $userRegister,
             $routesFile,
             $attributeDirs,
             $attributeClasses,
             $logger,
             $baseDir,
-        ): void {
-            $cwd = getcwd();
-            // Temporarily switch to the routes base directory
-            if ($baseDir && @\chdir($baseDir) === false) {
-                $logger->warning('[routecache] failed to chdir to baseDir; continuing', ['baseDir' => $baseDir]);
-            }
+            $signKey,
+        );
 
-            try {
-                if ($userRegister) {
-                    ($userRegister)($r);
-                } else {
-                    /** @psalm-suppress UnresolvableInclude */
-                    require $routesFile;
-                }
-
-                // Attribute discovery (same CWD as runtime now)
-                if ($attributeDirs) {
-                    AttributeRouteLoader::registerFromDirs($r, $attributeDirs);
-                }
-                if ($attributeClasses) {
-                    AttributeRouteLoader::register($r, $attributeClasses);
-                }
-            } finally {
-                // Restore original CWD
-                if ($cwd !== false) {
-                    @\chdir($cwd);
-                }
-            }
-        };
-
-        $signKey = $options['signKey'] ?? null;
-        $signedDefaultTtl = (int)($options['signedDefaultTtl'] ?? 900);
-        $regOpts = (array)($options['registrarOptions'] ?? []);
-        $preGlobal = (array)($options['preGlobal'] ?? []);
-        $postGlobal = (array)($options['postGlobal'] ?? []);
-        $fallbackAliases = (bool)($options['fallbackAliasesFromRegistrar'] ?? true);
-
-        /** @var null|callable(Collection):void $bind */
-        $bind = $options['bindUrlServices'] ?? null;
-        if (!$bind) {
-            $bind = static function (Collection $routes) use ($signKey, $signedDefaultTtl): void {
-                Router::bindUrlServices($routes, $signKey, $signedDefaultTtl);
-            };
-        }
+        $signedDefaultTtl = self::intOption($options, 'signedDefaultTtl', 900);
+        $signedUrlConfig = self::signedUrlConfigOption($options, 'signedUrlConfig');
+        $urlBaseUri = self::stringOption($options, 'urlBaseUri');
+        $regOpts = self::assocArrayOption($options, 'registrarOptions');
+        $preGlobal = self::listOption($options, 'preGlobal');
+        $postGlobal = self::listOption($options, 'postGlobal');
+        $fallbackAliases = (bool) ($options['fallbackAliasesFromRegistrar'] ?? true);
+        $bind = self::resolveBindUrlServices(
+            $options,
+            $signKey,
+            $signedDefaultTtl,
+            $signedUrlConfig,
+            $urlBaseUri,
+        );
 
         RouterKernel::bootWithRegistrar(
             log: $logger,
@@ -128,9 +73,11 @@ final class RouteCache
             routeCache: $routeCache,
             registrarOptions: $regOpts + [
                 'exposeUrlServices' => false, // we'll bind explicitly
-                'autoSlashRedirect' => (bool)($regOpts['autoSlashRedirect'] ?? false),
+                'autoSlashRedirect' => (bool) ($regOpts['autoSlashRedirect'] ?? false),
                 'signKey' => $signKey,
                 'signedDefaultTtl' => $signedDefaultTtl,
+                'signedUrlConfig' => $signedUrlConfig,
+                'urlBaseUri' => $urlBaseUri,
             ],
             preGlobal: $preGlobal,
             postGlobal: $postGlobal,
@@ -141,18 +88,21 @@ final class RouteCache
         return ($mode === MatcherModeEnum::SHARDED) ? $routeCache . DIRECTORY_SEPARATOR . '__root.php' : $routeCache;
     }
 
+    /**
+     * @param array<string, mixed> $options
+     */
     public static function clear(array $options): bool
     {
-        $cachePath = (string)($options['cache'] ?? '');
+        $cachePath = self::stringOption($options, 'cache');
         if ($cachePath === '') {
             throw new \InvalidArgumentException("RouteCache::clear: 'cache' path is required.");
         }
         $mode = MatcherModeEnum::fromInput(
-            isset($options['matcher']) ? (string)$options['matcher'] : null,
+            self::nullableStringOption($options, 'matcher'),
             $cachePath,
         );
 
-        $aggressive = (bool)($options['aggressive'] ?? false);
+        $aggressive = (bool) ($options['aggressive'] ?? false);
 
         $danger = ['/', '\\', '.', '..', ''];
         if (\in_array($cachePath, $danger, true)) {
@@ -163,7 +113,7 @@ final class RouteCache
             return self::rmFile($cachePath);
         }
 
-        $dir = \rtrim($cachePath, "/\\");
+        $dir = \rtrim($cachePath, '/\\');
         if (!\is_dir($dir)) {
             return false;
         }
@@ -183,7 +133,57 @@ final class RouteCache
             }
             $removed = self::rmFile($php) || $removed;
         }
+
         return $removed;
+    }
+
+    /**
+     * @param array<string, mixed> $options
+     * @return array<string, mixed>
+     */
+    private static function assocArrayOption(array $options, string $key): array
+    {
+        $value = $options[$key] ?? [];
+        if (!\is_array($value)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($value as $mapKey => $mapValue) {
+            if (!\is_string($mapKey)) {
+                continue;
+            }
+            $out[$mapKey] = $mapValue;
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param array<string, mixed> $options
+     * @return list<class-string>
+     */
+    private static function classListOption(array $options, string $key): array
+    {
+        $value = $options[$key] ?? [];
+        if (!\is_array($value)) {
+            return [];
+        }
+
+        $classes = [];
+        foreach ($value as $className) {
+            if (!\is_string($className)) {
+                continue;
+            }
+            $className = \trim($className);
+            if ($className === '') {
+                continue;
+            }
+            /** @var class-string $className */
+            $classes[] = $className;
+        }
+
+        return $classes;
     }
 
     private static function clearDirPreservingGitignore(string $dir): bool
@@ -194,7 +194,7 @@ final class RouteCache
 
         $removed = false;
         $ok = true;
-        $root = \str_replace('\\', '/', \rtrim($dir, "/\\"));
+        $root = \str_replace('\\', '/', \rtrim($dir, '/\\'));
 
         $it = new \RecursiveIteratorIterator(
             new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS),
@@ -202,35 +202,134 @@ final class RouteCache
         );
 
         foreach ($it as $path) {
-            $pathname = $path->getPathname();
-
-            if ($path->isDir()) {
-                if (@\rmdir($pathname)) {
-                    $removed = true;
-                } else {
-                    $ok = false;
-                }
-                continue;
-            }
-
-            $normalizedPath = \str_replace('\\', '/', $pathname);
-            $isRootGitignore = \basename($normalizedPath) === '.gitignore'
-                && \dirname($normalizedPath) === $root;
-            if ($isRootGitignore) {
-                continue;
-            }
-
-            if (@\unlink($pathname)) {
-                $removed = true;
-            } else {
+            if (!$path instanceof \SplFileInfo) {
                 $ok = false;
+
+                continue;
             }
+            [$entryOk, $entryRemoved] = self::clearEntry($path, $root);
+            $ok = $ok && $entryOk;
+            $removed = $removed || $entryRemoved;
         }
 
         return $ok && $removed;
     }
 
-    /** @param array<string,string> $dirs */
+    /**
+     * @return array{0: bool, 1: bool}
+     */
+    private static function clearEntry(\SplFileInfo $path, string $root): array
+    {
+        $pathname = $path->getPathname();
+        if ($path->isDir()) {
+            $deletedDir = self::removeDirectory($pathname);
+
+            return [$deletedDir, $deletedDir];
+        }
+        if (self::isRootGitignore($pathname, $root)) {
+            return [true, false];
+        }
+
+        $deleted = \unlink($pathname);
+
+        return [$deleted, $deleted];
+    }
+
+    /**
+     * @param array<string, mixed> $options
+     */
+    private static function intOption(array $options, string $key, int $default): int
+    {
+        $value = $options[$key] ?? null;
+        if (\is_int($value)) {
+            return $value;
+        }
+        if (\is_string($value) && $value !== '' && \is_numeric($value)) {
+            return (int) $value;
+        }
+
+        return $default;
+    }
+
+    private static function isRootGitignore(string $path, string $root): bool
+    {
+        $normalizedPath = \str_replace('\\', '/', $path);
+
+        return \basename($normalizedPath) === '.gitignore'
+            && \dirname($normalizedPath) === $root;
+    }
+
+    /**
+     * @param array<string, mixed> $options
+     * @return list<mixed>
+     */
+    private static function listOption(array $options, string $key): array
+    {
+        $value = $options[$key] ?? [];
+        if (!\is_array($value)) {
+            return [];
+        }
+
+        return \array_values($value);
+    }
+
+    /**
+     * @param array<string, string> $attributeDirs
+     * @param list<class-string> $attributeClasses
+     */
+    private static function makeBuildRegisterClosure(
+        mixed $userRegister,
+        string $routesFile,
+        array $attributeDirs,
+        array $attributeClasses,
+        LoggerInterface $logger,
+        string $baseDir,
+        ?string $signKey,
+    ): \Closure {
+        return static function (Registrar $r) use (
+            $userRegister,
+            $routesFile,
+            $attributeDirs,
+            $attributeClasses,
+            $logger,
+            $baseDir,
+            $signKey,
+        ): void {
+            $signUrlSecret = $signKey;
+            $cwd = getcwd();
+            if ($baseDir !== '' && \chdir($baseDir) === false) {
+                $logger->warning('[routecache] failed to chdir to baseDir; continuing', ['baseDir' => $baseDir]);
+            }
+
+            try {
+                if ($userRegister) {
+                    if (!\is_callable($userRegister)) {
+                        throw new \InvalidArgumentException("RouteCache::build: 'register' must be callable.");
+                    }
+                    ($userRegister)($r);
+                } else {
+                    /** @psalm-suppress UnresolvableInclude */
+                    require $routesFile;
+                }
+
+                if ($attributeDirs !== []) {
+                    AttributeRouteLoader::registerFromDirs($r, $attributeDirs);
+                }
+                if ($attributeClasses !== []) {
+                    AttributeRouteLoader::register($r, $attributeClasses);
+                }
+            } finally {
+                if ($cwd !== false) {
+                    \chdir($cwd);
+                }
+            }
+        };
+    }
+
+    /**
+     * @param array<string,string> $dirs
+     * @return array<string, string>
+     */
     private static function normalizeAttributeDirs(array $dirs, string $cwd, LoggerInterface $log): array
     {
         $out = [];
@@ -246,15 +345,186 @@ final class RouteCache
 
             if (!\is_dir($rp)) {
                 $log->warning('[routecache] attribute dir not found', ['ns' => $ns, 'dir' => $rp]);
+
                 continue;
             }
             $out[$ns] = $rp;
         }
+
         return $out;
+    }
+
+    /**
+     * @param array<string, mixed> $options
+     */
+    private static function nullableStringOption(array $options, string $key): ?string
+    {
+        $value = $options[$key] ?? null;
+        if (\is_string($value)) {
+            return $value;
+        }
+
+        return null;
+    }
+
+    private static function removeDirectory(string $path): bool
+    {
+        return \rmdir($path);
+    }
+
+    /**
+     * @param array<string, mixed> $options
+     * @return \Closure(Collection):void
+     */
+    private static function resolveBindUrlServices(
+        array $options,
+        ?string $signKey,
+        int $signedDefaultTtl,
+        ?SignedUrlConfig $signedUrlConfig,
+        string $urlBaseUri,
+    ): \Closure {
+        /** @var null|callable(Collection):void $bind */
+        $bind = $options['bindUrlServices'] ?? null;
+        if ($bind !== null) {
+            return static function (Collection $routes) use ($bind): void {
+                $bind($routes);
+            };
+        }
+
+        return static function (Collection $routes) use (
+            $signKey,
+            $signedDefaultTtl,
+            $signedUrlConfig,
+            $urlBaseUri,
+        ): void {
+            Router::bindUrlServices($routes, $signKey, $signedDefaultTtl, $signedUrlConfig, $urlBaseUri);
+        };
+    }
+
+    private static function resolveBuildBaseDir(string $routesFile): string
+    {
+        $baseDir = getcwd() ?: __DIR__;
+        if ($routesFile === '') {
+            return $baseDir;
+        }
+
+        $absRoutes = \realpath($routesFile) ?: $routesFile;
+        if (\is_file($absRoutes)) {
+            return \dirname($absRoutes);
+        }
+
+        return $baseDir;
+    }
+
+    /**
+     * @param array<string, mixed> $options
+     */
+    private static function resolveBuildCachePath(array $options): string
+    {
+        $cachePath = self::stringOption($options, 'cache');
+        if ($cachePath === '') {
+            throw new \InvalidArgumentException("RouteCache::build: 'cache' path is required.");
+        }
+
+        return $cachePath;
+    }
+
+    /**
+     * @param array<string, mixed> $options
+     */
+    private static function resolveBuildLogger(array $options): LoggerInterface
+    {
+        $logger = $options['logger'] ?? null;
+        if ($logger instanceof LoggerInterface) {
+            return $logger;
+        }
+
+        return new NullLogger();
+    }
+
+    /**
+     * @param array<string, mixed> $options
+     * @return array{0:MatcherModeEnum,1:FusedMatcher|GeneratedMatcher|ShardedMatcher,2:string}
+     */
+    private static function resolveBuildMatcher(array $options, string $cachePath): array
+    {
+        $mode = MatcherModeEnum::fromInput(
+            self::nullableStringOption($options, 'matcher'),
+            $cachePath,
+        );
+        $matcher = match ($mode) {
+            MatcherModeEnum::GENERATED => GeneratedMatcher::make(),
+            MatcherModeEnum::FUSED => FusedMatcher::make(),
+            default => ShardedMatcher::make(),
+        };
+        $matcher->enableCacheWrite(true);
+
+        $routeCache = ($mode === MatcherModeEnum::SHARDED) ? \rtrim($cachePath, '/\\') : $cachePath;
+
+        return [$mode, $matcher, $routeCache];
     }
 
     private static function rmFile(string $file): bool
     {
-        return \is_file($file) && @\unlink($file);
+        return \is_file($file) && \unlink($file);
+    }
+
+    /**
+     * @param array<string, mixed> $options
+     */
+    private static function signedUrlConfigOption(array $options, string $key): ?SignedUrlConfig
+    {
+        $value = $options[$key] ?? null;
+        if ($value instanceof SignedUrlConfig) {
+            return $value;
+        }
+
+        if (\is_array($value) && $value !== []) {
+            return SignedUrlConfig::fromArray($value);
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<string, mixed> $options
+     * @return array<string, string>
+     */
+    private static function stringMapOption(array $options, string $key): array
+    {
+        $value = $options[$key] ?? [];
+        if (!\is_array($value)) {
+            return [];
+        }
+
+        $map = [];
+        foreach ($value as $mapKey => $mapValue) {
+            if (!\is_string($mapKey) || !\is_string($mapValue)) {
+                continue;
+            }
+            $map[$mapKey] = $mapValue;
+        }
+
+        return $map;
+    }
+
+    /**
+     * @param array<string, mixed> $options
+     */
+    private static function stringOption(array $options, string $key): string
+    {
+        $value = $options[$key] ?? '';
+
+        return \is_scalar($value) ? (string) $value : '';
+    }
+
+    private static function validateBuildRegisterInputs(mixed $userRegister, string $routesFile): void
+    {
+        if ($userRegister && !$userRegister instanceof \Closure && !\is_callable($userRegister)) {
+            throw new \InvalidArgumentException("RouteCache::build: 'register' must be callable.");
+        }
+        if (!$userRegister && $routesFile === '') {
+            throw new \InvalidArgumentException("RouteCache::build: provide 'register' callable or 'routes' file.");
+        }
     }
 }

@@ -14,24 +14,23 @@ final class CliEmitter implements EmitterInterface
 {
     /**
      * Dumps an HTTP-like envelope to STDOUT.
-     *
-     * @param Response $response
-     * @param null|Request $request
      */
     public function emit(
         Response $response,
         ?Request $request = null,
     ): void {
+        unset($request);
+
         $status = $response->getStatusCode() . ' ' . $response->getReasonPhrase();
         $ver = $response->getProtocolVersion();
 
-        echo "HTTP/$ver $status\n";
+        file_put_contents('php://stdout', "HTTP/$ver $status\n", FILE_APPEND);
         foreach ($response->getHeaders() as $n => $vals) {
             foreach ($vals as $v) {
-                echo "{$n}: {$v}\n";
+                file_put_contents('php://stdout', "{$n}: {$v}\n", FILE_APPEND);
             }
         }
-        echo "\n";
-        echo (string)$response->getBody();
+        file_put_contents('php://stdout', "\n", FILE_APPEND);
+        file_put_contents('php://stdout', (string) $response->getBody(), FILE_APPEND);
     }
 }

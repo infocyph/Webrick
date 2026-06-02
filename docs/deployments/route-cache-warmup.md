@@ -1,6 +1,6 @@
 # Route Cache & Warmup
 
-Build your route matcher **ahead of time** so production boots fast and avoids scanning/reflecting on every request. Webrick supports **sharded** (directory) and **fused** (single file) caches; both can be produced in CI and shipped with the release.
+Build your route matcher **ahead of time** so production boots fast and avoids scanning/reflecting on every request. Webrick supports **sharded** (directory) and **fused** (single file) caches for artifacts, plus **generated** mode when you intentionally avoid cache files.
 
 ---
 
@@ -12,7 +12,7 @@ Build your route matcher **ahead of time** so production boots fast and avoids s
 
 ---
 
-## Modes: Sharded vs Fused
+## Modes: Sharded vs Fused (and Generated)
 
 | Mode        | What it is                                    | Best for              | Pros                                                      | Cons                                                     |
 | ----------- | --------------------------------------------- | --------------------- | --------------------------------------------------------- | -------------------------------------------------------- |
@@ -42,8 +42,8 @@ use Infocyph\Webrick\Support\RouteCache;
 use Psr\Log\NullLogger;
 
 $sentinel = RouteCache::build([
-    'cache'   => __DIR__ . '/../var/cache/routes',  // Directory (auto-detects sharded)
-    'routes'  => __DIR__ . '/../routes/web.php',    // Routes file
+    'cache'   => __DIR__ . '/../.route-cache',  // Directory (auto-detects sharded)
+    'routes'  => __DIR__ . '/../routes.php',    // Routes file
     'matcher' => 'sharded',                          // Optional (auto-detected by path)
     'signKey' => $signKey,
     'signedDefaultTtl' => 900,
@@ -56,7 +56,7 @@ $sentinel = RouteCache::build([
     'preGlobal' => [],   // Optional: middleware for warmup validation
     'postGlobal' => [],
     'bindUrlServices' => static function (Collection $routes) use ($signKey): void {
-        Response::bindUrlServices($routes, $signKey, 900);
+        Route::bindUrlServices($routes, $signKey, 900, null, 'http://localhost');
     }
 ]);
 
@@ -66,9 +66,9 @@ echo "Route cache built. Sentinel: {$sentinel}\n";
 ### Build (Fused)
 ```php
 $sentinel = RouteCache::build([
-    'cache'  => __DIR__ . '/../var/cache/routes.php',  // Single file (auto-detects fused)
+    'cache'  => __DIR__ . '/../.route-cache/__routes.php',  // Single file (auto-detects fused)
     'matcher' => 'fused',                               // Explicit
-    'routes' => __DIR__ . '/../routes/web.php',
+    'routes' => __DIR__ . '/../routes.php',
     'signKey' => $signKey,
     'signedDefaultTtl' => 900,
     'fallbackAliasesFromRegistrar' => true,
@@ -85,14 +85,14 @@ $sentinel = RouteCache::build([
 use Infocyph\Webrick\Router\Definition\Registrar;
 
 $sentinel = RouteCache::build([
-    'cache' => __DIR__ . '/../var/cache/routes',
+    'cache' => __DIR__ . '/../.route-cache',
     'register' => static function (Registrar $r): void {
         // Define routes directly
         $r->get('/ping', fn() => 'pong', 'ping');
         $r->get('/hello/{name}', fn($req, $name) => Response::json(['hello' => $name]));
 
         // Or include files
-        require __DIR__ . '/../routes/web.php';
+        require __DIR__ . '/../routes.php';
 
         // Or scan attributes
         AttributeRouteLoader::registerFromDirs($r, [
@@ -109,7 +109,7 @@ $sentinel = RouteCache::build([
 ```php
 // Safe clear (keeps directory, removes PHP files)
 $removed = RouteCache::clear([
-    'cache' => __DIR__ . '/../var/cache/routes',
+    'cache' => __DIR__ . '/../.route-cache',
     'aggressive' => false  // Default: safe mode
 ]);
 
@@ -119,7 +119,7 @@ if ($removed) {
 
 // Aggressive clear (removes entire directory - use with caution)
 $removed = RouteCache::clear([
-    'cache' => __DIR__ . '/../var/cache/routes',
+    'cache' => __DIR__ . '/../.route-cache',
     'aggressive' => true  // ⚠️ Deletes the whole directory
 ]);
 ```
@@ -141,7 +141,7 @@ The builder validates routes and fails fast on:
 set -e  # Exit on error
 
 echo "Building route cache..."
-php scripts/build-route-cache.php
+php ./webrick route:cache --cache=.route-cache --routes=routes.php
 
 if [ $? -eq 0 ]; then
     echo "✅ Route cache built successfully"
@@ -156,7 +156,7 @@ Ensure the directory exists and is **readable** by PHP-FPM at runtime. You may l
 
 ## CI script (sharded) – example
 
-`scripts/build-route-cache.php`:
+`scripts/webrick-route-cache.php`:
 
 ```php
 <?php
@@ -167,8 +167,8 @@ use Psr\Log\NullLogger;
 
 require __DIR__ . '/../vendor/autoload.php';
 
-$cacheDir = __DIR__ . '/../var/cache/routes';
-$routes   = __DIR__ . '/../routes/web.php';
+$cacheDir = __DIR__ . '/../.route-cache';
+$routes   = __DIR__ . '/../routes.php';
 
 if (!is_dir($cacheDir) && !mkdir($cacheDir, 0775, true)) {
     fwrite(STDERR, "Cannot create cache dir: $cacheDir\n");
@@ -191,21 +191,21 @@ echo "[webrick] route cache built into $cacheDir\n";
 **Run in CI:**
 
 ```bash
-php scripts/build-route-cache.php
+php ./webrick route:cache --cache=.route-cache --routes=routes.php
 ```
 
-Add `var/cache/routes/` to the release artifact (or bake into your container image).
+Add `.route-cache/` to the release artifact (or bake into your container image).
 
 ---
 
 ## Using fused mode (tiny apps)
 
-If your library exposes a `RouteCache::buildFused()` (or a mode flag), switch to single-file output:
+Use `matcher: 'fused'` to switch to single-file output:
 
 ```php
 RouteCache::build([
-  'cache'  => __DIR__ . '/../var/cache/routes.php', // fused file
-  'mode'   => 'fused',
+  'cache'  => __DIR__ . '/../.route-cache/__routes.php', // fused file
+  'matcher' => 'fused',
   // ...same options...
 ]);
 ```
@@ -221,8 +221,8 @@ When you boot the kernel, set the **same path** you built in CI:
 ```php
 $kernel = RouterKernel::bootWithRegistrar(
   // ...
-  routeCache: __DIR__ . '/../var/cache/routes',        // sharded dir OR
-  // routeCache: __DIR__ . '/../var/cache/routes.php', // fused file
+  routeCache: __DIR__ . '/../.route-cache',        // sharded dir OR
+  // routeCache: __DIR__ . '/../.route-cache/__routes.php', // fused file
   // ...
 );
 ```
@@ -235,7 +235,7 @@ No extra flags needed—if the cache exists, the matcher uses it.
 
 If you use **attribute-based** routes, the **same loader call** must run during warmup and runtime. The safest pattern:
 
-* Put `AttributeRouteLoader::registerFromDirs(...)` inside the same `$register` closure that includes `routes/web.php`.
+* Put `AttributeRouteLoader::registerFromDirs(...)` inside the same `$register` closure that includes `routes.php`.
 * The warmup script invokes that closure—so both prod and CI generate **identical** registrations.
 
 ---
@@ -262,7 +262,7 @@ Treat failures as **CI failures**; don’t deploy a broken cache.
 
 ## Permissions
 
-* Artifact must include `var/cache/routes/` with proper ownership for your PHP-FPM user (e.g., `www-data`).
+* Artifact must include `.route-cache/` with proper ownership for your PHP-FPM user (e.g., `www-data`).
 * In container builds, ensure the directory exists and is writable at build time (even if runtime is read-only).
 
 ---
@@ -292,7 +292,7 @@ Expose a simple `/__bootcheck` and log a `boot_ms` metric during the first reque
 
 ## Checklist
 
-* [ ] Choose **sharded** (default) or **fused** cache mode
+* [ ] Choose **sharded** (default), **fused**, or **generated** matcher mode
 * [ ] Add a **warmup script** and run it in CI
 * [ ] Ship the cache in the artifact/container
 * [ ] Configure kernel `routeCache` to the same path

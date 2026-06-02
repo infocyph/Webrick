@@ -48,13 +48,16 @@ opcache.save_comments=1
 ### ✅ **2. Prebuild Route Cache** (High Impact)
 ```bash
 # In CI/build step
-php scripts/build-route-cache.php
+php ./webrick route:cache --cache=.route-cache --routes=routes.php
 ```
 
-Ship `var/cache/routes/` with your artifact.
+Ship `.route-cache/` with your artifact.
 ```php
 $kernel = RouterKernel::bootWithRegistrar(
-    routeCache: __DIR__ . '/var/cache/routes'  // Pre-built
+    log: $logger,
+    matcher: ShardedMatcher::make(__DIR__ . '/.route-cache'),
+    register: $register,
+    routeCache: __DIR__ . '/.route-cache'  // Pre-built
 );
 ```
 
@@ -64,7 +67,7 @@ $kernel = RouterKernel::bootWithRegistrar(
 
 ### ✅ **3. Use ShardedMatcher** (100+ Routes)
 ```php
-$matcher = ShardedMatcher::make(__DIR__ . '/var/cache/routes');
+$matcher = ShardedMatcher::make(__DIR__ . '/.route-cache');
 ```
 
 **Benefits**:
@@ -199,7 +202,7 @@ Prebuild attribute routes into route cache:
 // In build script
 RouteCache::build([
     'register' => static function (Registrar $r): void {
-        require __DIR__ . '/../routes/web.php';
+        require __DIR__ . '/../routes.php';
 
         // Scan attributes during build, not runtime
         AttributeRouteLoader::registerFromDirs($r, [

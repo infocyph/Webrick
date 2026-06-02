@@ -6,8 +6,6 @@
  * Short-circuits all requests with HTTP 503 when a sentinel "down" file exists.
  * Useful during deployments or maintenance windows to return a consistent
  * Retry-After and Content-Type. Kept standalone in the new layout.
- *
- * @package Infocyph\Webrick\Middleware
  */
 
 declare(strict_types=1);
@@ -36,8 +34,7 @@ final readonly class MaintenanceModeMiddleware
         private string $file = __DIR__ . '/../../storage/framework/down',
         private int $retryAfter = 3600,
         private string $contentType = MediaTypeEnum::PLAIN->value,
-    ) {
-    }
+    ) {}
 
     /**
      * If the maintenance file exists, return a 503 response; otherwise continue.
@@ -46,8 +43,7 @@ final readonly class MaintenanceModeMiddleware
      * or a default message. Retry-After and Content-Type headers are set accordingly.
      *
      * @param Request $req Incoming request.
-     * @param Closure $next Next handler in the pipeline.
-     *
+     * @param Closure(Request):Response $next
      * @return Response 503 maintenance response or the downstream response.
      */
     public function __invoke(Request $req, Closure $next): Response
@@ -59,7 +55,7 @@ final readonly class MaintenanceModeMiddleware
         $payload = \file_get_contents($this->file) ?: 'Service is down for maintenance.';
 
         return Response::plaintext($payload, StatusEnum::SERVICE_UNAVAILABLE->value)
-            ->withSmartHeader('Retry-After', (string)$this->retryAfter)
+            ->withSmartHeader('Retry-After', (string) $this->retryAfter)
             ->withSmartHeader('Content-Type', $this->contentType);
     }
 }

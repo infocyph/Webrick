@@ -183,7 +183,7 @@ final class PerUserRateLimitMiddleware extends RateLimitMiddleware
 }
 
 // Usage
-Route::get('/api/data', $handler)->middleware([
+Route::get('/api/data', $handler)->withMiddleware([
     'auth',
     new PerUserRateLimitMiddleware($limiter, maxAttempts: 1000, decaySeconds: 60)
 ]);
@@ -279,7 +279,7 @@ Route::post('/api/expensive', function(Request $r) {
     // ... expensive operation ...
 
     return Response::json(['result' => $result]);
-})->middleware([new CostBasedRateLimitMiddleware($limiter, maxCost: 100)]);
+})->withMiddleware([new CostBasedRateLimitMiddleware($limiter, maxCost: 100)]);
 ```
 
 ---
@@ -449,7 +449,7 @@ class RateLimiterTest extends TestCase
 {
     public function testAllowsWithinLimit(): void
     {
-        $cache = new InMemoryCache();
+        $cache = new \Infocyph\CacheLayer\Cache\Adapter\ArrayCacheAdapter();
         $limiter = new RateLimiter($cache);
 
         $key = 'test:user:1';
@@ -465,7 +465,7 @@ class RateLimiterTest extends TestCase
 
     public function testResetClearsAttempts(): void
     {
-        $cache = new InMemoryCache();
+        $cache = new \Infocyph\CacheLayer\Cache\Adapter\ArrayCacheAdapter();
         $limiter = new RateLimiter($cache);
 
         $key = 'test:user:2';
@@ -574,15 +574,15 @@ groups:
 ```php
 // Public endpoints (strict)
 Route::post('/api/public/search', $handler)
-    ->middleware(['throttle:10,60']);  // 10/minute
+    ->withMiddleware(['throttle:10,60']);  // 10/minute
 
 // Authenticated endpoints (moderate)
 Route::get('/api/user/profile', $handler)
-    ->middleware(['auth', 'throttle:120,60']);  // 120/minute
+    ->withMiddleware(['auth', 'throttle:120,60']);  // 120/minute
 
 // Premium users (relaxed)
 Route::get('/api/premium/data', $handler)
-    ->middleware(['auth', new TieredRateLimitMiddleware($limiter)]);
+    ->withMiddleware(['auth', new TieredRateLimitMiddleware($limiter)]);
 ```
 
 ### 2. Return Proper Headers

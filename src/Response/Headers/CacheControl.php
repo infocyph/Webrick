@@ -18,11 +18,38 @@ use Infocyph\Webrick\Request\Support\HeaderBag;
  * ```
  *
  * No reflection, no regex – pure string concat.
+ *
+ * @phpstan-type CcBools array{
+ *   no-store: bool,
+ *   no-cache: bool,
+ *   no-transform: bool,
+ *   must-revalidate: bool,
+ *   proxy-revalidate: bool,
+ *   immutable: bool
+ * }
+ * @phpstan-type CcPrivacy array{public: bool, private: bool}
+ * @phpstan-type CcNums array{
+ *   max-age: int|null,
+ *   s-maxage: int|null,
+ *   stale-while-revalidate: int|null,
+ *   stale-if-error: int|null
+ * }
+ * @phpstan-type CcFields array{
+ *   no-cache: array<string, true>,
+ *   private: array<string, true>
+ * }
+ * @phpstan-type CcModel array{
+ *   bools: CcBools,
+ *   privacy: CcPrivacy,
+ *   nums: CcNums,
+ *   fields: CcFields,
+ *   ext: array<string, string|null>
+ * }
  */
 final class CacheControl implements \Stringable
 {
     /** Fast membership maps */
-    private const BOOL_TOKENS = [
+    private const array BOOL_TOKENS = [
         'no-store' => true,
         'no-cache' => true,
         'no-transform' => true,
@@ -30,17 +57,21 @@ final class CacheControl implements \Stringable
         'proxy-revalidate' => true,
         'immutable' => true,
     ];
+
     /** tokens that accept field lists */
-    private const FIELD_TOKENS = ['no-cache' => true, 'private' => true];
-    private const NUM_TOKENS = [
+    private const array FIELD_TOKENS = ['no-cache' => true, 'private' => true];
+
+    private const array NUM_TOKENS = [
         'max-age' => true,
         's-maxage' => true,
         'stale-while-revalidate' => true,
         'stale-if-error' => true,
     ];
-    private const PRIVACY_TOKENS = ['public' => true, 'private' => true];
+
+    private const array PRIVACY_TOKENS = ['public' => true, 'private' => true];
+
     /** Known order for stable rendering */
-    private const RENDER_ORDER = [
+    private const array RENDER_ORDER = [
         'no-store',
         'no-cache',
         'private',
@@ -55,20 +86,14 @@ final class CacheControl implements \Stringable
         'stale-if-error',
     ];
 
-    /** @var array<string,string|null> token => value|null (builder mode only) */
-    private array $parts = [];
-
     /**
      * Private constructor for the CacheControl class.
      *
      * This constructor is only used internally by the factory methods.
      *
-     * @param array<string,string|null> $existing Existing Cache-Control parts
+     * @param array<string, string|null> $parts Existing Cache-Control parts
      */
-    private function __construct(array $existing = [])
-    {
-        $this->parts = $existing;
-    }
+    private function __construct(private array $parts = []) {}
 
     /**
      * Renders the Cache-Control header value as a single string.
@@ -82,15 +107,7 @@ final class CacheControl implements \Stringable
      */
     public function __toString(): string
     {
-        $std = [];
-        $ext = [];
-        foreach ($this->parts as $k => $v) {
-            if (isset(self::BOOL_TOKENS[$k]) || isset(self::PRIVACY_TOKENS[$k]) || isset(self::NUM_TOKENS[$k])) {
-                $std[$k] = $v;
-            } else {
-                $ext[$k] = $v;
-            }
-        }
+        [$std, $ext] = self::partitionParts($this->parts);
 
         $out = [];
         foreach (self::RENDER_ORDER as $k) {
@@ -169,6 +186,7 @@ final class CacheControl implements \Stringable
                 $parsed[$name] = $val;
             }
         }
+
         return new self($parsed);
     }
 
@@ -176,8 +194,6 @@ final class CacheControl implements \Stringable
      * Creates a new CacheControl instance with no settings.
      *
      * Use this to start building a Cache-Control header from scratch.
-     *
-     * @return static
      */
     public static function new(): self
     {
@@ -189,8 +205,6 @@ final class CacheControl implements \Stringable
      *
      * The immutable Cache-Control directive indicates that this response
      * will not be updated while it is fresh.
-     *
-     * @return self
      */
     public function immutable(): self
     {
@@ -202,8 +216,8 @@ final class CacheControl implements \Stringable
      * The max-age Cache-Control directive indicates that the client is
      * eligible to use this response until the specified number of
      * seconds have passed since the response was generated.
+     *
      * @param int $s Number of seconds
-     * @return self
      */
     public function maxAge(int $s): self
     {
@@ -216,8 +230,6 @@ final class CacheControl implements \Stringable
      *
      * This directive is usually set by a caching layer (like a CDN) to
      * reduce the load on the origin server.
-     *
-     * @return static
      */
     public function mustRevalidate(): self
     {
@@ -228,8 +240,6 @@ final class CacheControl implements \Stringable
      * Instructs caching layers to not cache the response at all.
      * This directive is usually set by the origin server to prevent caching of
      * sensitive information.
-     *
-     * @return static
      */
     public function noCache(): self
     {
@@ -238,8 +248,6 @@ final class CacheControl implements \Stringable
 
     /**
      * Disables the response from being stored by any caching layer.
-     *
-     * @return static
      */
     public function noStore(): self
     {
@@ -250,8 +258,6 @@ final class CacheControl implements \Stringable
      * Sets the Cache-Control header to "private", indicating that the response should
      * not be cached by shared caches. This directive is usually set by the origin
      * server to prevent caching of sensitive information.
-     *
-     * @return self
      */
     public function private(): self
     {
@@ -265,8 +271,6 @@ final class CacheControl implements \Stringable
      * This directive is usually set by a caching layer (like a CDN) to
      * instruct any downstream caches to revalidate their cached copy of the
      * response after it has become stale.
-     *
-     * @return self
      */
     public function proxyRevalidate(): self
     {
@@ -277,8 +281,6 @@ final class CacheControl implements \Stringable
      * Instructs caching layers to cache the response publicly.
      * This directive is usually set by the origin server to allow caching of
      * publicly accessible resources.
-     *
-     * @return self
      */
     public function public(): self
     {
@@ -290,8 +292,8 @@ final class CacheControl implements \Stringable
      * should not revalidate the response until either the specified number
      * of seconds have passed or the response's Age header value is greater
      * than the specified number of seconds.
+     *
      * @param int $s Number of seconds
-     * @return self
      */
     public function sMaxAge(int $s): self
     {
@@ -306,7 +308,7 @@ final class CacheControl implements \Stringable
      * revalidate the cached copy against the origin server.
      *
      * @param int $s Maximum number of seconds that the response can be served
-     *     stale in case of an error.
+     *               stale in case of an error.
      * @return self New instance with the specified Cache-Control directive set
      */
     public function staleIfError(int $s): self
@@ -328,11 +330,81 @@ final class CacheControl implements \Stringable
         return $this->with('stale-while-revalidate', $s);
     }
 
+    /**
+     * @param list<string> $parts
+     * @param array<string,string|null> $ext
+     */
+    private static function appendExtensionTokens(array &$parts, array $ext): void
+    {
+        if ($ext === []) {
+            return;
+        }
+
+        ksort($ext);
+        foreach ($ext as $k => $v) {
+            $parts[] = $v === null ? $k : "{$k}={$v}";
+        }
+    }
+
+    /**
+     * @param list<string> $parts
+     * @param array<string,true> $fields
+     */
+    private static function appendFieldToken(array &$parts, bool $enabled, string $name, array $fields): void
+    {
+        if ($enabled) {
+            $parts[] = self::renderFieldToken($name, $fields);
+        }
+    }
+
+    /**
+     * @param list<string> $parts
+     */
+    private static function appendFlagToken(array &$parts, bool $enabled, string $token): void
+    {
+        if ($enabled) {
+            $parts[] = $token;
+        }
+    }
+
+    /**
+     * @param list<string> $parts
+     * @param array{max-age:?int,s-maxage:?int,stale-while-revalidate:?int,stale-if-error:?int} $nums
+     */
+    private static function appendNumericTokens(array &$parts, array $nums): void
+    {
+        foreach (self::NUM_TOKENS as $k => $_) {
+            $v = $nums[$k];
+            if ($v !== null) {
+                $parts[] = $k . '=' . $v;
+            }
+        }
+    }
+
+    /**
+     * @param list<string> $parts
+     * @param array{public:bool,private:bool} $privacy
+     * @param array{no-cache:array<string,true>,private:array<string,true>} $fields
+     */
+    private static function appendPrivacyToken(array &$parts, array $privacy, array $fields): void
+    {
+        if ($privacy['private']) {
+            $parts[] = self::renderFieldToken('private', $fields['private']);
+
+            return;
+        }
+
+        if ($privacy['public']) {
+            $parts[] = 'public';
+        }
+    }
 
     /**
      * Applies the rules of the no-store directive on the Cache-Control model.
      *
      * If no-store is present, it sets all numeric tokens to null and disables immutable.
+     *
+     * @param CcModel $base
      */
     private static function applyNoStoreRules(array &$base): void
     {
@@ -344,13 +416,68 @@ final class CacheControl implements \Stringable
         }
     }
 
+    /**
+     * @return array{
+     *   bools: array{
+     *     no-store:bool, no-cache:bool, no-transform:bool, must-revalidate:bool, proxy-revalidate:bool, immutable:bool
+     *   },
+     *   privacy: array{ public:bool, private:bool },
+     *   nums: array{ max-age:?int, s-maxage:?int, stale-while-revalidate:?int, stale-if-error:?int },
+     *   fields: array{ no-cache: array<string,true>, private: array<string,true> },
+     *   ext: array<string,string|null>
+     * }
+     */
+    private static function emptyModel(): array
+    {
+        return [
+            'bools' => [
+                'no-store' => false,
+                'no-cache' => false,
+                'no-transform' => false,
+                'must-revalidate' => false,
+                'proxy-revalidate' => false,
+                'immutable' => false,
+            ],
+            'privacy' => ['public' => false, 'private' => false],
+            'nums' => [
+                'max-age' => null,
+                's-maxage' => null,
+                'stale-while-revalidate' => null,
+                'stale-if-error' => null,
+            ],
+            'fields' => ['no-cache' => [], 'private' => []],
+            'ext' => [],
+        ];
+    }
+
+    /**
+     * @param CcModel $m
+     */
+    private static function ingestBareToken(array &$m, string $k): void
+    {
+        if (isset(self::PRIVACY_TOKENS[$k])) {
+            $m['privacy'][$k] = true;
+
+            return;
+        }
+        if (isset(self::BOOL_TOKENS[$k])) {
+            $m['bools'][$k] = true;
+
+            return;
+        }
+
+        if (!\array_key_exists($k, $m['ext'])) {
+            $m['ext'][$k] = null;
+        }
+    }
+
     /** @param array<string,true> $dst */
 
     /**
      * Populate an array with boolean values from a comma-separated string.
      * Each token in the string is used as a key in the array and the value is always true.
      *
-     * @param array<string, bool> &$dst Destination array
+     * @param array<string, true> &$dst Destination array
      * @param string $csv comma-separated string to process
      */
     private static function ingestCsvFields(array &$dst, string $csv): void
@@ -364,12 +491,73 @@ final class CacheControl implements \Stringable
     }
 
     /**
+     * @param CcModel $m
+     */
+    private static function ingestModelToken(array &$m, string $raw): void
+    {
+        $tok = \trim($raw);
+        if ($tok === '') {
+            return;
+        }
+
+        $eq = \strpos($tok, '=');
+        if ($eq === false) {
+            self::ingestBareToken($m, \strtolower($tok));
+
+            return;
+        }
+
+        $k = \strtolower(\trim(\substr($tok, 0, $eq)));
+        $v = \trim(\trim(\substr($tok, $eq + 1)), "\"'");
+        self::ingestValuedToken($m, $k, $v);
+    }
+
+    /**
+     * @param CcModel $m
+     */
+    private static function ingestValuedToken(array &$m, string $k, string $v): void
+    {
+        if (isset(self::NUM_TOKENS[$k])) {
+            $num = self::toIntOrNull($v);
+            $m['nums'][$k] = self::minInt($m['nums'][$k], $num);
+
+            return;
+        }
+
+        if (isset(self::FIELD_TOKENS[$k]) && $v !== '') {
+            if ($k === 'private') {
+                $m['privacy']['private'] = true;
+            } else {
+                $m['bools'][$k] = true;
+            }
+            self::ingestCsvFields($m['fields'][$k], $v);
+
+            return;
+        }
+
+        if (isset(self::PRIVACY_TOKENS[$k])) {
+            $m['privacy'][$k] = true;
+
+            return;
+        }
+        if (isset(self::BOOL_TOKENS[$k])) {
+            $m['bools'][$k] = true;
+
+            return;
+        }
+
+        if (!\array_key_exists($k, $m['ext'])) {
+            $m['ext'][$k] = $v;
+        }
+    }
+
+    /**
      * Merge two extension lists, with incoming extensions overriding base on key conflicts.
      *
      * Extension lists are associative arrays where the key is the extension name and the value is the extension value.
      *
-     * @param array $base the base extension list to be merged with
-     * @param array $inc the incoming extension list to be merged
+     * @param CcModel $base the base extension list to be merged with
+     * @param CcModel $inc the incoming extension list to be merged
      */
     private static function mergeExtensions(array &$base, array $inc): void
     {
@@ -382,26 +570,36 @@ final class CacheControl implements \Stringable
      * If the resulting array of fields is non-empty, or if the corresponding boolean flag is present in either the base or incoming arrays,
      * then the corresponding boolean flag is set to true in the base array.
      */
+    /**
+     * @param CcModel $base
+     * @param CcModel $inc
+     */
     private static function mergeFieldLists(array &$base, array $inc): void
     {
-        // union of fields (Authorization, etc.)
-        foreach (self::FIELD_TOKENS as $k => $_) {
-            if (!isset($base['fields'][$k])) {
-                $base['fields'][$k] = [];
-            }
-            $base['fields'][$k] = $base['fields'][$k] + $inc['fields'][$k];
-            // Mark corresponding bool as present if fields were provided
-            if ($base['fields'][$k] !== [] || $base['bools'][$k] || $inc['bools'][$k]) {
-                $base['bools'][$k] = true;
-            }
+        $base['fields']['no-cache'] = $base['fields']['no-cache'] + $inc['fields']['no-cache'];
+        if (
+            $base['fields']['no-cache'] !== []
+            || $base['bools']['no-cache']
+            || $inc['bools']['no-cache']
+        ) {
+            $base['bools']['no-cache'] = true;
+        }
+
+        $base['fields']['private'] = $base['fields']['private'] + $inc['fields']['private'];
+        if (
+            $base['fields']['private'] !== []
+            || $base['privacy']['private']
+            || $inc['privacy']['private']
+        ) {
+            $base['privacy']['private'] = true;
         }
     }
 
     /**
      * Merge two associative arrays of cache control boolean directives.
      *
-     * @param array &$base The base array to merge into
-     * @param array $inc The array to merge from
+     * @param CcModel $base The base array to merge into
+     * @param CcModel $inc The array to merge from
      */
     private static function mergeFlags(array &$base, array $inc): void
     {
@@ -416,8 +614,8 @@ final class CacheControl implements \Stringable
      * Each directive in the incoming array overrides the corresponding directive in the base array.
      * The resulting array of directives will have the minimum value of the same directive from either the base or incoming array.
      *
-     * @param array $base The base array of directives.
-     * @param array $inc The incoming array of directives to merge.
+     * @param CcModel $base The base array of directives.
+     * @param CcModel $inc The incoming array of directives to merge.
      */
     private static function mergeNumbers(array &$base, array $inc): void
     {
@@ -434,8 +632,8 @@ final class CacheControl implements \Stringable
      * set to true, the resulting merged array will have "public" set to true if either the $base or
      * $inc array has a "public" key set to true.
      *
-     * @param array $base The base associative array to merge into.
-     * @param array $inc The associative array to merge into $base.
+     * @param CcModel $base The base associative array to merge into.
+     * @param CcModel $inc The associative array to merge into $base.
      */
     private static function mergePrivacy(array &$base, array $inc): void
     {
@@ -462,57 +660,30 @@ final class CacheControl implements \Stringable
         if ($b === null) {
             return $a;
         }
+
         return ($a <= $b) ? $a : $b;
     }
 
     /**
      * Serializes the Cache-Control model into a Cache-Control header line.
      *
-     * @param array $m The Cache-Control model to serialize
+     * @param CcModel $m The Cache-Control model to serialize
      * @return string The serialized Cache-Control header line
      */
     private static function modelToLine(array $m): string
     {
         $parts = [];
 
-        if ($m['bools']['no-store']) {
-            $parts[] = 'no-store';
-        }
-        if ($m['bools']['no-cache']) {
-            $parts[] = self::renderFieldToken('no-cache', $m['fields']['no-cache']);
-        }
-        if ($m['privacy']['private']) {
-            $parts[] = self::renderFieldToken('private', $m['fields']['private']);
-        }
-        if ($m['privacy']['public'] && !$m['privacy']['private']) {
-            $parts[] = 'public';
-        }
-        if ($m['bools']['no-transform']) {
-            $parts[] = 'no-transform';
-        }
-        if ($m['bools']['must-revalidate']) {
-            $parts[] = 'must-revalidate';
-        }
-        if ($m['bools']['proxy-revalidate']) {
-            $parts[] = 'proxy-revalidate';
-        }
-        if ($m['bools']['immutable']) {
-            $parts[] = 'immutable';
+        self::appendFlagToken($parts, (bool) $m['bools']['no-store'], 'no-store');
+        self::appendFieldToken($parts, (bool) $m['bools']['no-cache'], 'no-cache', $m['fields']['no-cache']);
+        self::appendPrivacyToken($parts, $m['privacy'], $m['fields']);
+
+        foreach (['no-transform', 'must-revalidate', 'proxy-revalidate', 'immutable'] as $token) {
+            self::appendFlagToken($parts, (bool) $m['bools'][$token], $token);
         }
 
-        foreach (self::NUM_TOKENS as $k => $_) {
-            $v = $m['nums'][$k];
-            if ($v !== null) {
-                $parts[] = $k . '=' . $v;
-            }
-        }
-
-        if ($m['ext'] !== []) {
-            ksort($m['ext']);
-            foreach ($m['ext'] as $k => $v) {
-                $parts[] = $v === null ? $k : "$k=$v";
-            }
-        }
+        self::appendNumericTokens($parts, $m['nums']);
+        self::appendExtensionTokens($parts, $m['ext']);
 
         return implode(', ', $parts);
     }
@@ -525,16 +696,18 @@ final class CacheControl implements \Stringable
      * like no-store, no-cache, must-revalidate, or proxy-revalidate would also prevent caching.
      * This method normalizes the Cache-Control directives by removing immutable if any of the above
      * directives are present.
+     *
+     * @param CcModel $base
      */
     private static function normalizeImmutable(array &$base): void
     {
         if (
-            $base['bools']['immutable'] &&
-            (
-                $base['bools']['no-store'] ||
-                $base['bools']['no-cache'] ||
-                $base['bools']['must-revalidate'] ||
-                $base['bools']['proxy-revalidate']
+            $base['bools']['immutable']
+            && (
+                $base['bools']['no-store']
+                || $base['bools']['no-cache']
+                || $base['bools']['must-revalidate']
+                || $base['bools']['proxy-revalidate']
             )
         ) {
             $base['bools']['immutable'] = false;
@@ -545,7 +718,6 @@ final class CacheControl implements \Stringable
      * Parses a Cache-Control line into an immutable, typed layout.
      * Returns an empty model when the input is empty.
      *
-     * @param string $line
      * @return array{
      *   bools: array{
      *     no-store:bool, no-cache:bool, no-transform:bool, must-revalidate:bool, proxy-revalidate:bool, immutable:bool
@@ -558,82 +730,43 @@ final class CacheControl implements \Stringable
      */
     private static function parseModel(string $line): array
     {
-        $m = [
-            'bools' => [
-                'no-store' => false,
-                'no-cache' => false,
-                'no-transform' => false,
-                'must-revalidate' => false,
-                'proxy-revalidate' => false,
-                'immutable' => false,
-            ],
-            'privacy' => ['public' => false, 'private' => false],
-            'nums' => [
-                'max-age' => null,
-                's-maxage' => null,
-                'stale-while-revalidate' => null,
-                'stale-if-error' => null,
-            ],
-            'fields' => ['no-cache' => [], 'private' => []],
-            'ext' => [],
-        ];
+        $m = self::emptyModel();
         if ($line === '') {
             return $m;
         }
 
         foreach (self::splitCsvRespectingQuotes($line) as $raw) {
-            $tok = trim($raw);
-            if ($tok === '') {
-                continue;
-            }
-
-            $eq = strpos($tok, '=');
-            if ($eq === false) {
-                $k = strtolower($tok);
-                if (isset(self::PRIVACY_TOKENS[$k])) {
-                    $m['privacy'][$k] = true;
-                } elseif (isset(self::BOOL_TOKENS[$k])) {
-                    $m['bools'][$k] = true;
-                } else {
-                    // extension flag without value
-                    if (!array_key_exists($k, $m['ext'])) {
-                        $m['ext'][$k] = null;
-                    }
-                }
-                continue;
-            }
-
-            $k = strtolower(trim(substr($tok, 0, $eq)));
-            $vRaw = trim(substr($tok, $eq + 1));
-            $v = trim($vRaw, "\"'");
-
-            if (isset(self::NUM_TOKENS[$k])) {
-                $num = self::toIntOrNull($v);
-                $m['nums'][$k] = self::minInt($m['nums'][$k], $num);
-            } elseif (isset(self::FIELD_TOKENS[$k]) && $v !== '') {
-                $m['bools'][$k] = true; // e.g., no-cache, private
-                self::ingestCsvFields($m['fields'][$k], $v);
-            } elseif (isset(self::BOOL_TOKENS[$k]) || isset(self::PRIVACY_TOKENS[$k])) {
-                // boolean with ignored value (rare)
-                if (isset(self::PRIVACY_TOKENS[$k])) {
-                    $m['privacy'][$k] = true;
-                } else {
-                    $m['bools'][$k] = true;
-                }
-            } else {
-                if (!array_key_exists($k, $m['ext'])) {
-                    $m['ext'][$k] = $v;
-                } // keep first; incoming may override
-            }
+            self::ingestModelToken($m, $raw);
         }
 
         return $m;
     }
 
     /**
+     * @param array<string, string|null> $parts
+     * @return array{0: array<string, string|null>, 1: array<string, string|null>}
+     */
+    private static function partitionParts(array $parts): array
+    {
+        $std = [];
+        $ext = [];
+        foreach ($parts as $k => $v) {
+            if (isset(self::BOOL_TOKENS[$k]) || isset(self::PRIVACY_TOKENS[$k]) || isset(self::NUM_TOKENS[$k])) {
+                $std[$k] = $v;
+
+                continue;
+            }
+            $ext[$k] = $v;
+        }
+
+        return [$std, $ext];
+    }
+
+    /**
      * Renders a Cache-Control header field token given a name and an array of fields.
      * If the fields array is empty, returns the name as is.
      * Otherwise, returns the name followed by an equals sign and a quoted comma-separated list of the sorted field names.
+     *
      * @param string $name The name of the Cache-Control header field token.
      * @param array<string,true> $fields The fields to include in the token.
      * @return string The rendered Cache-Control header field token.
@@ -645,6 +778,7 @@ final class CacheControl implements \Stringable
         }
         $keys = array_keys($fields);
         sort($keys, SORT_STRING);
+
         return $name . '="' . implode(', ', $keys) . '"';
     }
 
@@ -658,7 +792,7 @@ final class CacheControl implements \Stringable
      * Finally, it trims and filters out empty strings from the output array.
      *
      * @param string $line The input string to split
-     * @return array The resulting array of strings
+     * @return list<string> The resulting array of strings
      */
     private static function splitCsvRespectingQuotes(string $line): array
     {
@@ -674,11 +808,13 @@ final class CacheControl implements \Stringable
             if ($ch === '"') {
                 $inQ = !$inQ;
                 $buf .= $ch;
+
                 continue;
             }
             if ($ch === ',' && !$inQ) {
                 $out[] = trim($buf);
                 $buf = '';
+
                 continue;
             }
             $buf .= $ch;
@@ -686,7 +822,8 @@ final class CacheControl implements \Stringable
         if ($buf !== '') {
             $out[] = trim($buf);
         }
-        return array_values(array_filter($out, fn ($s) => $s !== ''));
+
+        return array_values(array_filter($out, static fn(string $s): bool => $s !== ''));
     }
 
     /**
@@ -707,7 +844,8 @@ final class CacheControl implements \Stringable
         }
         // allow +digits (common) and clamp to >=0
         $digits = ltrim($s, '+');
-        return ctype_digit($digits) ? max(0, (int)$digits) : null;
+
+        return ctype_digit($digits) ? max(0, (int) $digits) : null;
         // (No regex for speed; this outperforms filter_var for tiny strings.)
     }
 
@@ -726,13 +864,14 @@ final class CacheControl implements \Stringable
     {
         $token = strtolower($token); // canonicalize once
         $x = clone $this;
-        $x->parts[$token] = $value === null ? null : (string)$value;
+        $x->parts[$token] = $value === null ? null : (string) $value;
         // public/private mutually exclusive – last write wins
         if ($token === 'public') {
             unset($x->parts['private']);
         } elseif ($token === 'private') {
             unset($x->parts['public']);
         }
+
         return $x;
     }
 }

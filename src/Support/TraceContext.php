@@ -28,6 +28,7 @@ final class TraceContext
      * Whether OpenTelemetry mode is active.
      */
     private static bool $otelAvailable = false;
+
     /**
      * Current request with trace context attached.
      */
@@ -36,9 +37,7 @@ final class TraceContext
     /**
      * Prevent instantiation (static class).
      */
-    private function __construct()
-    {
-    }
+    private function __construct() {}
 
     /**
      * Clear trace context.
@@ -89,7 +88,7 @@ final class TraceContext
      */
     public static function getFlags(): ?string
     {
-        return self::$request?->getAttribute('trace.flags');
+        return self::requestAttributeString('trace.flags');
     }
 
     /**
@@ -113,7 +112,7 @@ final class TraceContext
             'trace_id' => self::getTraceId(),
             'span_id' => self::getSpanId(),
             'request_id' => self::getRequestId(),
-        ], fn ($value) => $value !== null);
+        ], fn($value) => $value !== null);
     }
 
     /**
@@ -153,7 +152,7 @@ final class TraceContext
      */
     public static function getParentSpanId(): ?string
     {
-        return self::$request?->getAttribute('trace.parent_span_id');
+        return self::requestAttributeString('trace.parent_span_id');
     }
 
     /**
@@ -221,7 +220,7 @@ final class TraceContext
      */
     public static function getRequestId(): ?string
     {
-        return self::$request?->getAttribute('request_id');
+        return self::requestAttributeString('request_id');
     }
 
     /**
@@ -240,17 +239,17 @@ final class TraceContext
         // In OpenTelemetry mode, try to get from current span context
         if (self::$otelAvailable && self::isOtelSdkAvailable()) {
             try {
-                $span = \OpenTelemetry\API\Trace\Span::fromContext(
-                    \OpenTelemetry\Context\Context::getCurrent(),
-                );
-                return $span->getContext()->getSpanId();
+                $spanId = self::spanContextValue('getSpanId');
+                if ($spanId !== null) {
+                    return $spanId;
+                }
             } catch (\Throwable) {
                 // Fall through to request attribute
             }
         }
 
         // Fallback to request attribute
-        return self::$request?->getAttribute('trace.span_id');
+        return self::requestAttributeString('trace.span_id');
     }
 
     /**
@@ -270,12 +269,9 @@ final class TraceContext
         // In OpenTelemetry mode, try to get from current span context
         if (self::$otelAvailable && self::isOtelSdkAvailable()) {
             try {
-                $context = \OpenTelemetry\API\Globals::propagator()->fields();
-                $span = \OpenTelemetry\Context\Context::getCurrent()->get(
-                    \OpenTelemetry\API\Trace\Span::fromContext(\OpenTelemetry\Context\Context::getCurrent()),
-                );
-                if ($span) {
-                    return $span->getContext()->getTraceId();
+                $traceId = self::spanContextValue('getTraceId');
+                if ($traceId !== null) {
+                    return $traceId;
                 }
             } catch (\Throwable) {
                 // Fall through to request attribute
@@ -283,7 +279,7 @@ final class TraceContext
         }
 
         // Fallback to request attribute (works in both modes)
-        return self::$request?->getAttribute('trace.trace_id');
+        return self::requestAttributeString('trace.trace_id');
     }
 
     /**
@@ -319,7 +315,7 @@ final class TraceContext
      */
     public static function getTraceState(): ?string
     {
-        return self::$request?->getAttribute('trace.tracestate');
+        return self::requestAttributeString('trace.tracestate');
     }
 
     /**
@@ -330,6 +326,7 @@ final class TraceContext
      *
      * @param Request $request Request with trace attributes attached
      * @param bool $otelAvailable Whether OpenTelemetry mode is active
+     *
      * @internal
      */
     public static function initialize(Request $request, bool $otelAvailable = false): void
@@ -380,7 +377,26 @@ final class TraceContext
 
         // Flags format: 2 hex chars, least significant bit = sampled flag
         $flagsInt = hexdec($flags);
+
         return ($flagsInt & 0x01) === 0x01;
+    }
+
+    private static function currentOtelSpan(): ?object
+    {
+        $contextClass = 'OpenTelemetry\\Context\\Context';
+        $spanClass = 'OpenTelemetry\\API\\Trace\\Span';
+        if (!class_exists($contextClass) || !class_exists($spanClass)) {
+            return null;
+        }
+
+        $currentContext = $contextClass::getCurrent();
+        if (!\is_object($currentContext)) {
+            return null;
+        }
+
+        $span = $spanClass::fromContext($currentContext);
+
+        return \is_object($span) ? $span : null;
     }
 
     /**
@@ -393,5 +409,36 @@ final class TraceContext
         return class_exists('OpenTelemetry\\API\\Globals')
             && class_exists('OpenTelemetry\\Context\\Context')
             && class_exists('OpenTelemetry\\API\\Trace\\Span');
+    }
+
+    private static function requestAttributeString(string $key): ?string
+    {
+        if (self::$request === null) {
+            return null;
+        }
+
+        $value = self::$request->getAttribute($key);
+        if (!\is_string($value) || $value === '') {
+            return null;
+        }
+
+        return $value;
+    }
+
+    private static function spanContextValue(string $method): ?string
+    {
+        $span = self::currentOtelSpan();
+        if (!\is_object($span) || !method_exists($span, 'getContext')) {
+            return null;
+        }
+
+        $spanContext = $span->getContext();
+        if (!\is_object($spanContext) || !method_exists($spanContext, $method)) {
+            return null;
+        }
+
+        $value = $spanContext->{$method}();
+
+        return \is_string($value) ? $value : null;
     }
 }

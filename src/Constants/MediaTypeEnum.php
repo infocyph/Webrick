@@ -6,8 +6,6 @@
  * Defines canonical media types used across the Webrick stack and provides utilities
  * to resolve a media type from file extensions or filenames, as well as helpers for
  * textual classification and header/charset retrieval.
- *
- * @package Infocyph\Webrick\Constants
  */
 
 declare(strict_types=1);
@@ -23,26 +21,45 @@ namespace Infocyph\Webrick\Constants;
 enum MediaTypeEnum: string
 {
     case AVIF = 'image/avif';
+
     case CSV = 'text/csv; charset=utf-8';
+
     case FORM_URLENCODED = 'application/x-www-form-urlencoded';
+
     case GIF = 'image/gif';
+
     case HTML = 'text/html; charset=utf-8';
+
     case JAVASCRIPT = 'text/javascript';          // or 'application/javascript' if you prefer
+
     case JPEG = 'image/jpeg';
+
     case JSON = 'application/json';
+
     case MANIFEST_JSON = 'application/manifest+json';
+
     case MULTIPART_FORM_DATA = 'multipart/form-data';
+
     case NDJSON = 'application/x-ndjson';
+
     /* ------------ canonical cases ------------ */
     // generic
     case OCTET = 'application/octet-stream';
+
     case PDF = 'application/pdf';
+
     case PLAIN = 'text/plain; charset=utf-8';
+
     case PNG = 'image/png';
+
     case PROBLEM_JSON = 'application/problem+json';
+
     case SVG = 'image/svg+xml';
+
     case WASM = 'application/wasm';
+
     case WEBP = 'image/webp';
+
     case XML = 'application/xml';
 
     /**
@@ -53,12 +70,11 @@ enum MediaTypeEnum: string
      * - Defaults to MediaType::OCTET when unknown.
      *
      * @param string $ext File extension (e.g., "jpg", "json").
-     *
      * @return self Resolved MediaType enum case.
      */
     public static function fromExtension(string $ext): self
     {
-        /* ---- static 1: irregular aliases (opcode-cached) ---- */
+        /** @var array<string, string> $alias */
         static $alias = [
             'jpg' => 'jpeg',
             'htm' => 'html',
@@ -73,7 +89,29 @@ enum MediaTypeEnum: string
             'jsonl' => 'ndjson',
         ];
 
-        /* ---- static 2: resolved memo cache  ----------------- */
+        /** @var array<string, self> $map */
+        static $map = [
+            'avif' => self::AVIF,
+            'csv' => self::CSV,
+            'gif' => self::GIF,
+            'html' => self::HTML,
+            'javascript' => self::JAVASCRIPT,
+            'jpeg' => self::JPEG,
+            'json' => self::JSON,
+            'manifest_json' => self::MANIFEST_JSON,
+            'ndjson' => self::NDJSON,
+            'octet' => self::OCTET,
+            'pdf' => self::PDF,
+            'plain' => self::PLAIN,
+            'png' => self::PNG,
+            'problem_json' => self::PROBLEM_JSON,
+            'svg' => self::SVG,
+            'wasm' => self::WASM,
+            'webp' => self::WEBP,
+            'xml' => self::XML,
+        ];
+
+        /** @var array<string, self> $cache */
         static $cache = [];
 
         $ext = strtolower($ext);
@@ -81,11 +119,8 @@ enum MediaTypeEnum: string
             return $cache[$ext];
         }
 
-        $key = $alias[$ext] ?? $ext;       // 'jpg' → 'jpeg'
-        $caseName = strtoupper($key);
-        $case = defined(self::class . '::' . $caseName)
-            ? constant(self::class . '::' . $caseName)
-            : self::OCTET;
+        $key = $alias[$ext] ?? $ext;
+        $case = $map[$key] ?? self::OCTET;
 
         return $cache[$ext] = $case;
     }
@@ -97,14 +132,16 @@ enum MediaTypeEnum: string
      * If there is no '.', defaults to MediaType::OCTET.
      *
      * @param string $file File name (e.g., "example.jpg", "document.json").
-     *
      * @return self Resolved MediaType enum case.
      */
     public static function fromFilename(string $file): self
     {
-        return ($dot = strrpos($file, '.')) === false
-            ? self::OCTET
-            : self::fromExtension(substr($file, $dot + 1));
+        $dot = strrpos($file, '.');
+        if ($dot === false) {
+            return self::OCTET;
+        }
+
+        return self::fromExtension(substr($file, $dot + 1));
     }
 
     /**
@@ -113,6 +150,7 @@ enum MediaTypeEnum: string
     public static function isJsonLike(string $type): bool
     {
         $base = strtolower(trim(explode(';', $type, 2)[0]));
+
         return $base === self::JSON->base() || str_ends_with($base, '+json');
     }
 
@@ -122,6 +160,7 @@ enum MediaTypeEnum: string
     public function base(): string
     {
         $parts = explode(';', $this->value, 2);
+
         return strtolower(trim($parts[0]));
     }
 

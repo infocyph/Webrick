@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * Webrick - HTTP method enumeration and helpers.
  *
@@ -7,8 +9,6 @@
  * extensions, and WebDAV methods. Provides helper predicates to determine
  * safety, idempotency, and whether a request body is allowed, along with
  * case-insensitive parsing utilities.
- *
- * @package Infocyph\Webrick\Constants
  */
 
 namespace Infocyph\Webrick\Constants;
@@ -24,34 +24,53 @@ namespace Infocyph\Webrick\Constants;
 enum HttpMethodEnum: string
 {
     case BAN = 'BAN';
+
     case CONNECT = 'CONNECT';
+
     case COPY = 'COPY';
+
     case DELETE = 'DELETE';
+
     /* core */
     case GET = 'GET';
+
     case HEAD = 'HEAD';
 
     /* extras */
     case LINK = 'LINK';
+
     case LOCK = 'LOCK';
+
     case MKCALENDAR = 'MKCALENDAR';
+
     case MKCOL = 'MKCOL';
+
     case MOVE = 'MOVE';
+
     case OPTIONS = 'OPTIONS';
+
     case PATCH = 'PATCH';
+
     case POST = 'POST';
 
     /* WebDAV */
     case PROPFIND = 'PROPFIND';
+
     case PROPPATCH = 'PROPPATCH';
 
     /* CDN / cache */
     case PURGE = 'PURGE';
+
     case PUT = 'PUT';
+
     case REPORT = 'REPORT';
+
     case SEARCH = 'SEARCH';
+
     case TRACE = 'TRACE';
+
     case UNLINK = 'UNLINK';
+
     case UNLOCK = 'UNLOCK';
 
     /**
@@ -63,8 +82,7 @@ enum HttpMethodEnum: string
      */
     public static function all(): array
     {
-        static $cache = null;
-        return $cache ??= array_values(self::cases());
+        return self::cases();
     }
 
     /**
@@ -73,7 +91,6 @@ enum HttpMethodEnum: string
      * Equivalent to {@see self::tryFromString()} but throws on unsupported input.
      *
      * @param string $verb The HTTP method to resolve.
-     *
      * @return self The resolved HTTP method.
      *
      * @throws \InvalidArgumentException If the method is not supported.
@@ -93,7 +110,9 @@ enum HttpMethodEnum: string
     public static function normalize(string $verb): string
     {
         $candidate = strtoupper(trim($verb));
-        return self::tryFrom($candidate)?->value ?? $candidate;
+        $resolved = self::tryFrom($candidate);
+
+        return $resolved instanceof self ? $resolved->value : $candidate;
     }
 
     /**
@@ -102,7 +121,6 @@ enum HttpMethodEnum: string
      * Equivalent to {@see self::tryFrom()} after normalizing to upper-case.
      *
      * @param string $verb The HTTP method to resolve.
-     *
      * @return self|null The resolved HTTP method, or null if not supported.
      */
     public static function tryFromString(string $verb): ?self

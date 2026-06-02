@@ -22,7 +22,7 @@ Route::get('/users/{id}/profile', function (Request $r, int $id) {
 
     $user = UserRepository::find($id);
     return Response::json($user);
-})->middleware(['auth']);
+})->withMiddleware(['auth']);
 ```
 
 **Defense in Depth**:
@@ -243,7 +243,7 @@ Route::post('/admin/delete-account/{id}', function (int $id) {
     // Only accessible via signed URL
     AccountService::delete($id);
     return Response::json(['deleted' => $id]);
-})->middleware(['auth', 'admin', 'verifySignedUrl']);
+})->withMiddleware(['auth', 'admin', 'verifySignedUrl']);
 
 // Verify file uploads
 function validateUpload(UploadedFile $file): bool {

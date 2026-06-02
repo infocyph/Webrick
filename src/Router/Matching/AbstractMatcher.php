@@ -23,29 +23,36 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
  * It does not implement a matching algorithm itself but provides reusable
  * primitives to build and traverse route tries and to export compiled routes.
  *
- * @package Infocyph\Webrick\Router\Matching
+ * @phpstan-type TrieParamSpec array{name:string,regex?:string|null,call?:callable-string|null}
+ * @phpstan-type TrieParamNode array{name:string,regex?:string|null,call?:callable-string|null,node:array<string,mixed>}
  */
 abstract class AbstractMatcher
 {
     protected const F_ALIASES = '__aliases.php';
+
     protected const H_ALIAS = '_alias';
+
     protected const H_DATA = '_data';
 
     /* Header / cache blob keys */
     protected const H_HASH = '_hash';
+
     protected const H_TS = '_ts';
+
     protected const K_CHILDREN = 'children';
+
     protected const K_PARAM = 'param';
+
     protected const K_ROUTES = 'routes';
+
     /* Shared node keys used in trie structures */
     protected const K_STATIC = 'static';
+
     protected const K_TRIE = 'trie';
 
     /**
      * When true the matcher will perform an integrity verification when loading
      * caches. Default false.
-     *
-     * @var bool
      */
     protected bool $verifyCacheOnLoad = false;
 
@@ -69,6 +76,7 @@ abstract class AbstractMatcher
     public function verifyCacheOnLoad(bool $enable = true): static
     {
         $this->verifyCacheOnLoad = $enable;
+
         return $this;
     }
 
@@ -78,14 +86,27 @@ abstract class AbstractMatcher
      * This returns a reference to the child node so callers can mutate it
      * directly when inserting further segments.
      *
-     * @param array $node Parent node (by reference)
+     * @param array<string,mixed> $node Parent node (by reference)
      * @param string $seg Literal segment value
-     * @return array Child node (reference)
+     * @return array<string,mixed> Child node (reference)
      */
     protected function &trieLiteralChild(array &$node, string $seg): array
     {
-        $node[self::K_CHILDREN][$seg] ??= $this->newNode();
-        return $node[self::K_CHILDREN][$seg];
+        $this->ensureNode($node);
+        $rawChildren = $node[self::K_CHILDREN];
+        if (!\is_array($rawChildren)) {
+            $rawChildren = [];
+        }
+        $children = [];
+        foreach ($rawChildren as $key => $child) {
+            if (\is_string($key) && \is_array($child)) {
+                $children[$key] = $this->normalizeNodeArray($child);
+            }
+        }
+        $children[$seg] ??= $this->newNode();
+        $node[self::K_CHILDREN] = $children;
+
+        return $this->childNodeRef($node[self::K_CHILDREN], $seg);
     }
 
     /**
@@ -98,24 +119,32 @@ abstract class AbstractMatcher
      *
      * Returns a reference to the node slot used for subsequent insertions.
      *
-     * @param array $node Parent node (by reference)
-     * @param array{name:string,regex?:string,call?:callable-string} $spec Parameter spec
-     * @return array Child node (reference)
+     * @param array<string,mixed> $node Parent node (by reference)
+     * @param TrieParamSpec $spec Parameter spec
+     * @return array<string,mixed> Child node (reference)
      *
      * @throws \LogicException When placeholders conflict at the same trie depth.
      */
     protected function &trieParamChild(array &$node, array $spec): array
     {
+        $this->ensureNode($node);
         $ruleKey = $this->paramRuleKey($spec); // 'regex' or 'call'
 
-        if ($node[self::K_PARAM] !== null) {
+        if (\is_array($node[self::K_PARAM] ?? null)) {
+            /** @var array<string,mixed> $cur */
             $cur = $node[self::K_PARAM];
             if (
-                $cur['name'] !== $spec['name']
+                ($cur['name'] ?? null) !== $spec['name']
                 || ($cur[$ruleKey] ?? null) !== ($spec[$ruleKey] ?? null)
             ) {
-                throw new \LogicException("Conflicting placeholders at same depth");
+                throw new \LogicException('Conflicting placeholders at same depth');
             }
+
+            $paramNode = $node[self::K_PARAM]['node'] ?? null;
+            $node[self::K_PARAM]['node'] = \is_array($paramNode)
+                ? $this->normalizeNodeArray($paramNode)
+                : $this->newNode();
+
             return $node[self::K_PARAM]['node'];
         }
 
@@ -125,6 +154,7 @@ abstract class AbstractMatcher
             'call' => $spec['call'] ?? null,
             'node' => $this->newNode(),
         ];
+
         return $node[self::K_PARAM]['node'];
     }
 
@@ -136,7 +166,6 @@ abstract class AbstractMatcher
      *
      * @param array<string,mixed> $map Verb => route-like map (values not inspected)
      * @param array<string,bool> $set Map being populated (by reference)
-     * @return void
      */
     protected function addAllowedFromMap(array $map, array &$set): void
     {
@@ -156,7 +185,6 @@ abstract class AbstractMatcher
      *
      * @param array<string,CompiledRoute> $routes Verb => CompiledRoute map
      * @param array<string,bool> $set Map being populated (by reference)
-     * @return void
      */
     protected function addAllowedFromRoutes(array $routes, array &$set): void
     {
@@ -168,7 +196,7 @@ abstract class AbstractMatcher
         }
     }
 
-    /*──────────────────── canonical host (mirrors RouterKernel rules) ────────────────────*/
+    /* ──────────────────── canonical host (mirrors RouterKernel rules) ──────────────────── */
 
     /**
      * Normalise a host name for internal route storage/lookup.
@@ -196,7 +224,7 @@ abstract class AbstractMatcher
             throw new \InvalidArgumentException("Illegal host name: {$raw}");
         }
         if (\function_exists('idn_to_ascii') && !\str_contains($host, 'xn--')) {
-            $ascii = @\idn_to_ascii($host, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
+            $ascii = \idn_to_ascii($host, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
             if ($ascii === false) {
                 throw new \InvalidArgumentException("Invalid IDN host name: {$raw}");
             }
@@ -205,7 +233,24 @@ abstract class AbstractMatcher
         if (!\preg_match('/^[\x21-\x7E]+$/', $host)) {
             throw new \InvalidArgumentException("Host contains non-ASCII bytes: {$raw}");
         }
+
         return $host;
+    }
+
+    /**
+     * @param array<string,mixed> $node
+     */
+    protected function ensureNode(array &$node): void
+    {
+        if (!\is_array($node[self::K_CHILDREN] ?? null)) {
+            $node[self::K_CHILDREN] = [];
+        }
+        if (!array_key_exists(self::K_PARAM, $node) || (!\is_array($node[self::K_PARAM]) && $node[self::K_PARAM] !== null)) {
+            $node[self::K_PARAM] = null;
+        }
+        if (!\is_array($node[self::K_ROUTES] ?? null)) {
+            $node[self::K_ROUTES] = [];
+        }
     }
 
     /**
@@ -219,10 +264,11 @@ abstract class AbstractMatcher
     protected function explodePath(string $p): array
     {
         $t = \trim($p, '/');
+
         return $t === '' ? [] : \explode('/', $t);
     }
 
-    /*──────────────────── export helpers ────────────────────*/
+    /* ──────────────────── export helpers ──────────────────── */
 
     /**
      * Export an array into a PHP source-like formatted string (used for caches).
@@ -243,7 +289,8 @@ abstract class AbstractMatcher
             $out .= \is_array($v) ? $this->exportArray($v, $depth + 1) : $this->exportValue($v, $depth + 1);
             $out .= ",\n";
         }
-        return $indent . \rtrim($out, ",\n") . "\n" . $indent . "]";
+
+        return $indent . \rtrim($out, ",\n") . "\n" . $indent . ']';
     }
 
     /**
@@ -274,6 +321,7 @@ abstract class AbstractMatcher
                 . \var_export($r->getSegments(), true)
                 . ')';
         }
+
         return '\\' . ValueSerializer::class
             . '::unserialize(' . \var_export(ValueSerializer::serialize($r), true) . ')';
     }
@@ -307,17 +355,17 @@ abstract class AbstractMatcher
     protected function fileStamp(string $file): ?string
     {
         \clearstatcache(true, $file);
-        $mtime = @\filemtime($file);
+        $mtime = \filemtime($file);
         if ($mtime === false) {
             return null;
         }
 
-        $size = @\filesize($file);
+        $size = \filesize($file);
         if ($size === false) {
             $size = 0;
         }
 
-        return (string)$mtime . ':' . (string)$size;
+        return $mtime . ':' . $size;
     }
 
     /**
@@ -327,7 +375,7 @@ abstract class AbstractMatcher
      *  - handler is a Closure
      *  - handler is an array and either element 0 or 1 is a Closure instance
      *
-     * @param callable|array|string $h Candidate handler
+     * @param callable|array{0:mixed,1:mixed}|string $h Candidate handler
      * @return bool True when handler contains a Closure
      */
     protected function handlerHasClosure(callable|array|string $h): bool
@@ -339,29 +387,47 @@ abstract class AbstractMatcher
     /**
      * Determine whether a trie node is empty (no children, no param, no routes).
      *
-     * @param array $n Node to inspect
+     * @param array<string,mixed> $n Node to inspect
      * @return bool True when node contains no useful entries
      */
     protected function isEmptyTrieNode(array $n): bool
     {
-        return ($n[self::K_CHILDREN] ?? []) === []
-            && ($n[self::K_PARAM] ?? null) === null
-            && ($n[self::K_ROUTES] ?? []) === [];
+        $this->ensureNode($n);
+
+        return $n[self::K_CHILDREN] === []
+            && $n[self::K_PARAM] === null
+            && $n[self::K_ROUTES] === [];
     }
 
-    /*──────────────────── trie helpers ────────────────────*/
+    /* ──────────────────── trie helpers ──────────────────── */
 
     /**
      * Create a new empty trie node with standard slot keys.
      *
-     * @return array{children:array,param:?array,routes:array} New node structure
+     * @return array<string,mixed> New node structure
      */
     protected function newNode(): array
     {
         return [self::K_CHILDREN => [], self::K_PARAM => null, self::K_ROUTES => []];
     }
 
-    /*──────────────────── verb selection + allowed-set helpers ────────────────────*/
+    /**
+     * @param array<mixed,mixed> $node
+     * @return array<string,mixed>
+     */
+    protected function normalizeNodeArray(array $node): array
+    {
+        $out = [];
+        foreach ($node as $k => $v) {
+            if (\is_string($k)) {
+                $out[$k] = $v;
+            }
+        }
+
+        return $out;
+    }
+
+    /* ──────────────────── verb selection + allowed-set helpers ──────────────────── */
 
     /**
      * Select the appropriate CompiledRoute for the requested HTTP verb.
@@ -380,6 +446,7 @@ abstract class AbstractMatcher
         if ($verb === HttpMethodEnum::OPTIONS->value && $buckets) {
             /** @var ?CompiledRoute $first */
             $first = \reset($buckets);
+
             return $first instanceof CompiledRoute ? $first : null;
         }
         if (isset($buckets[$verb])) {
@@ -388,6 +455,7 @@ abstract class AbstractMatcher
         if ($verb === HttpMethodEnum::HEAD->value && isset($buckets[HttpMethodEnum::GET->value])) {
             return $buckets[HttpMethodEnum::GET->value];
         }
+
         return null;
     }
 
@@ -399,25 +467,7 @@ abstract class AbstractMatcher
      */
     protected function shouldWarmOpcache(): bool
     {
-        if (!\function_exists('opcache_compile_file')) {
-            return false;
-        }
-
-        if (\filter_var((string)\ini_get('opcache.enable'), \FILTER_VALIDATE_BOOL) !== true) {
-            return false;
-        }
-
-        if (\PHP_SAPI === 'cli' || \PHP_SAPI === 'phpdbg') {
-            if (\filter_var((string)\ini_get('opcache.enable_cli'), \FILTER_VALIDATE_BOOL) !== true) {
-                return false;
-            }
-        }
-
-        if (\function_exists('opcache_get_status') && @\opcache_get_status(false) === false) {
-            return false;
-        }
-
-        return true;
+        return matcher_should_warm_opcache();
     }
 
     /**
@@ -431,24 +481,22 @@ abstract class AbstractMatcher
      * @param CompiledRoute $r Compiled route to insert
      * @param string $verb HTTP verb (uppercased)
      *
-     * @return void
      * @throws \LogicException On duplicate dynamic route insertion.
      */
     protected function trieInsert(array &$root, CompiledRoute $r, string $verb): void
     {
+        $this->ensureNode($root);
         $node = &$root;
         foreach ($r->getSegments() as $seg) {
-            if ($seg['type'] === 'lit') {
-                $node = &$this->trieLiteralChild($node, $seg['val']);
-            } else {
-                // var segment: may have 'regex' or 'call'
-                $node = &$this->trieParamChild($node, $seg);
-            }
+            $node = &$this->trieInsertSegment($node, $seg);
         }
-        if (isset($node[self::K_ROUTES][$verb])) {
+        $this->ensureNode($node);
+        $routes = \is_array($node[self::K_ROUTES]) ? $node[self::K_ROUTES] : [];
+        if (isset($routes[$verb])) {
             throw new \LogicException("Duplicate dynamic route {$verb} {$r->getPath()}");
         }
-        $node[self::K_ROUTES][$verb] = $r;
+        $routes[$verb] = $r;
+        $node[self::K_ROUTES] = $routes;
     }
 
     /**
@@ -459,7 +507,7 @@ abstract class AbstractMatcher
      * via pickVerbRoute. It also accumulates allowed methods in $allowedSet
      * when a node contains routes but none matches the requested verb.
      *
-     * @param array $node Current trie node being examined
+     * @param array<string,mixed> $node Current trie node being examined
      * @param list<string> $seg Array of path segments being matched
      * @param int $i Current index into $seg
      * @param string $verb Requested HTTP verb (uppercased)
@@ -477,43 +525,76 @@ abstract class AbstractMatcher
         array &$allowedSet,
         ?array &$hit,
     ): bool {
+        $this->ensureNode($node);
+
         if ($i === \count($seg)) {
-            $routes = $node[self::K_ROUTES] ?? [];
-            if ($r = $this->pickVerbRoute($routes, $verb)) {
-                $hit = [$r, $params];
-                return true;
-            }
-            if ($routes) {
-                $this->addAllowedFromRoutes($routes, $allowedSet);
-            }
-            return false;
+            return $this->trieWalkTerminal($node, $verb, $params, $allowedSet, $hit);
         }
 
         $piece = $seg[$i];
 
-        // literal branch — prefer exact literal matches first
-        if (isset($node[self::K_CHILDREN][$piece]) &&
-            $this->trieWalkNode($node[self::K_CHILDREN][$piece], $seg, $i + 1, $verb, $params, $allowedSet, $hit)) {
+        if ($this->tryTrieLiteralBranch($node, $piece, $seg, $i, $verb, $params, $allowedSet, $hit)) {
             return true;
         }
 
-        // parameter branch (regex OR callable)
-        $p = $node[self::K_PARAM];
-        if ($p && $this->pieceMatches($p, $piece)) {
-            // push param value
-            $params[$p['name']] = $piece;
-            $ok = $this->trieWalkNode($p['node'], $seg, $i + 1, $verb, $params, $allowedSet, $hit);
-            // pop param value
-            unset($params[$p['name']]);
-            if ($ok) {
-                return true;
+        return $this->tryTrieParamBranch($node, $piece, $seg, $i, $verb, $params, $allowedSet, $hit);
+    }
+
+    /**
+     * @param array<string,mixed> $node
+     * @return array<string,mixed>
+     */
+    private function &trieInsertSegment(array &$node, mixed $segment): array
+    {
+        if (\is_array($segment) && ($segment['type'] ?? null) === 'lit' && \is_string($segment['val'] ?? null)) {
+            return $this->trieLiteralChild($node, $segment['val']);
+        }
+
+        if (!\is_array($segment) || !\is_string($segment['name'] ?? null)) {
+            throw new \LogicException('Invalid dynamic segment spec.');
+        }
+
+        $call = $segment['call'] ?? null;
+        $callable = \is_string($call) && \is_callable($call) ? $call : null;
+        /** @var TrieParamSpec $paramSpec */
+        $paramSpec = [
+            'name' => $segment['name'],
+            'regex' => \is_string($segment['regex'] ?? null) ? $segment['regex'] : null,
+            'call' => $callable,
+        ];
+
+        return $this->trieParamChild($node, $paramSpec);
+    }
+
+    /**
+     * @param array<string,array<string,mixed>> $children
+     * @return array<string,mixed>
+     */
+    private function &childNodeRef(array &$children, string $seg): array
+    {
+        return $children[$seg];
+    }
+
+    /**
+     * @return array<string,CompiledRoute>
+     */
+    private function compiledRouteMap(mixed $routes): array
+    {
+        if (!\is_array($routes)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($routes as $verb => $route) {
+            if (\is_string($verb) && $route instanceof CompiledRoute) {
+                $out[$verb] = $route;
             }
         }
 
-        return false;
+        return $out;
     }
 
-    /*──────────────────── helpers (rule + matching) ────────────────────*/
+    /* ──────────────────── helpers (rule + matching) ──────────────────── */
 
     /**
      * Return which rule key ('regex' or 'call') the parameter spec contains.
@@ -531,6 +612,7 @@ abstract class AbstractMatcher
         if (isset($spec['call'])) {
             return 'call';
         }
+
         throw new \LogicException('Param spec missing both regex and call.');
     }
 
@@ -553,9 +635,107 @@ abstract class AbstractMatcher
         if (!empty($p['call'])) {
             /** @var callable-string $fn */
             $fn = $p['call'];
+
             // Direct invocation is faster than call_user_func for callable-strings.
-            return (bool)$fn($piece);
+            return (bool) $fn($piece);
         }
+
         return false;
+    }
+
+    /**
+     * @param array<string,mixed> $node
+     * @param array<string,string> $params
+     * @param array<string,bool> $allowedSet
+     * @param array{0:CompiledRoute,1:array<string,string>}|null $hit
+     */
+    private function trieWalkTerminal(
+        array $node,
+        string $verb,
+        array $params,
+        array &$allowedSet,
+        ?array &$hit,
+    ): bool {
+        $routes = $this->compiledRouteMap($node[self::K_ROUTES]);
+        if ($r = $this->pickVerbRoute($routes, $verb)) {
+            $hit = [$r, $params];
+
+            return true;
+        }
+        if ($routes !== []) {
+            $this->addAllowedFromRoutes($routes, $allowedSet);
+        }
+
+        return false;
+    }
+
+    /**
+     * @param array<string,mixed> $node
+     * @param list<string> $seg
+     * @param array<string,string> $params
+     * @param array<string,bool> $allowedSet
+     * @param array{0:CompiledRoute,1:array<string,string>}|null $hit
+     */
+    private function tryTrieLiteralBranch(
+        array $node,
+        string $piece,
+        array $seg,
+        int $i,
+        string $verb,
+        array &$params,
+        array &$allowedSet,
+        ?array &$hit,
+    ): bool {
+        $children = \is_array($node[self::K_CHILDREN] ?? null) ? $node[self::K_CHILDREN] : [];
+        if (!isset($children[$piece]) || !\is_array($children[$piece])) {
+            return false;
+        }
+        $child = $this->normalizeNodeArray($children[$piece]);
+        $this->ensureNode($child);
+
+        return $this->trieWalkNode($child, $seg, $i + 1, $verb, $params, $allowedSet, $hit);
+    }
+
+    /**
+     * @param array<string,mixed> $node
+     * @param list<string> $seg
+     * @param array<string,string> $params
+     * @param array<string,bool> $allowedSet
+     * @param array{0:CompiledRoute,1:array<string,string>}|null $hit
+     */
+    private function tryTrieParamBranch(
+        array $node,
+        string $piece,
+        array $seg,
+        int $i,
+        string $verb,
+        array &$params,
+        array &$allowedSet,
+        ?array &$hit,
+    ): bool {
+        $p = $node[self::K_PARAM] ?? null;
+        if (!\is_array($p) || !\is_string($p['name'] ?? null)) {
+            return false;
+        }
+
+        $call = $p['call'] ?? null;
+        $callable = \is_string($call) && \is_callable($call) ? $call : null;
+        /** @var TrieParamSpec $spec */
+        $spec = [
+            'name' => $p['name'],
+            'regex' => \is_string($p['regex'] ?? null) ? $p['regex'] : null,
+            'call' => $callable,
+        ];
+        if (!$this->pieceMatches($spec, $piece)) {
+            return false;
+        }
+
+        $params[$spec['name']] = $piece;
+        $next = \is_array($p['node'] ?? null) ? $this->normalizeNodeArray($p['node']) : $this->newNode();
+        $this->ensureNode($next);
+        $ok = $this->trieWalkNode($next, $seg, $i + 1, $verb, $params, $allowedSet, $hit);
+        unset($params[$spec['name']]);
+
+        return $ok;
     }
 }

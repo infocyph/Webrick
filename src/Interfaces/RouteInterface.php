@@ -16,16 +16,14 @@ interface RouteInterface
     public function getDomain(): ?string;
 
     /**
-     * Retrieve the handler for this route.
-     *
-     * This can be one of the following:
-     * - A string containing the name of a class and its method, separated by "@", e.g. "MyController@myMethod".
-     * - A callable function, e.g. an anonymous function.
-     * - An array containing the name of a class and its method, e.g. ["MyController", "myMethod"].
-     *
-     * @return array|string|callable The handler for this route.
+     * @return array{0:object|string,1:string}|string|callable
      */
     public function getHandler(): array|string|callable;
+
+    /**
+     * Stable handler fingerprint.
+     */
+    public function getHandlerId(): string;
 
     /**
      * Retrieve the HTTP method (GET, POST, PUT, DELETE, etc.)
@@ -36,12 +34,19 @@ interface RouteInterface
     public function getMethod(): string;
 
     /**
+     * BC alias for getMiddlewares().
+     *
+     * @return list<string|object>
+     */
+    public function getMiddleware(): array;
+
+    /**
      * Retrieve the middlewares of this route.
      *
      * This can be an empty array if the route does not have any middlewares,
      * or an array containing the middlewares of the route.
      *
-     * @return array The middlewares of this route.
+     * @return list<string|object> The middlewares of this route.
      */
     public function getMiddlewares(): array;
 
@@ -76,7 +81,7 @@ interface RouteInterface
      *
      * The route will have the middlewares of the original route, plus the given middlewares.
      *
-     * @param array $extra The middlewares to add to the route.
+     * @param list<string|object> $extra The middlewares to add to the route.
      * @return self A new instance of the route with the given middlewares.
      */
     public function withMiddleware(array $extra): self;
