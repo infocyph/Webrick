@@ -1,6 +1,5 @@
 <?php
 
-// src/Response/Emitter/AutoEmitter.php
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Response\Emitter;
@@ -39,10 +38,9 @@ final class AutoEmitter implements EmitterInterface
                 'swoole' => new SwooleEmitter(),
                 'roadrunner' => new RoadRunnerEmitter(),
                 'workerman' => new WorkermanEmitter(),
-                'frankenphp' => new FrankenPhpEmitter(),
-                'lsapi' => new LsapiEmitter(),
-                'unit' => new UnitEmitter(),
-                'fpm' => new FpmEmitter(),
+                'frankenphp' => new DefaultEmitter(DefaultEmitter::FINISH_FRANKENPHP),
+                'lsapi' => new DefaultEmitter(DefaultEmitter::FINISH_LITESPEED),
+                'unit', 'fpm' => new DefaultEmitter(DefaultEmitter::FINISH_FASTCGI, true),
                 'cli' => new CliEmitter(),
                 default => new DefaultEmitter(),
             };
@@ -62,11 +60,18 @@ final class AutoEmitter implements EmitterInterface
                 || $request?->getAttribute('workerman.connection')) => new WorkermanEmitter(),
 
             // Sync servers / special SAPIs
-            \function_exists('frankenphp_is_worker') && \frankenphp_is_worker() => new FrankenPhpEmitter(),
-            \PHP_SAPI === 'litespeed' || \function_exists('litespeed_finish_request') => new LsapiEmitter(),
+            \function_exists('frankenphp_is_worker') && \frankenphp_is_worker() => new DefaultEmitter(
+                DefaultEmitter::FINISH_FRANKENPHP,
+            ),
+            \PHP_SAPI === 'litespeed' || \function_exists('litespeed_finish_request') => new DefaultEmitter(
+                DefaultEmitter::FINISH_LITESPEED,
+            ),
             \function_exists('fastcgi_finish_request') && $serverSoftware !== ''
-            && \str_contains($serverSoftware, 'unit') => new UnitEmitter(),
-            \PHP_SAPI === 'fpm-fcgi' || \function_exists('fastcgi_finish_request') => new FpmEmitter(),
+            && \str_contains($serverSoftware, 'unit') => new DefaultEmitter(DefaultEmitter::FINISH_FASTCGI, true),
+            \PHP_SAPI === 'fpm-fcgi' || \function_exists('fastcgi_finish_request') => new DefaultEmitter(
+                DefaultEmitter::FINISH_FASTCGI,
+                true,
+            ),
 
             // CLI/testing fallback
             \in_array(\PHP_SAPI, ['cli', 'phpdbg'], true) => new CliEmitter(),

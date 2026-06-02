@@ -505,7 +505,7 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
      */
     private function renderDynamicEntryCondition(array $segments, string $indent): string
     {
-        return GeneratedMatcherRenderSupport::renderDynamicEntryCondition($segments, $indent);
+        return generated_matcher_render_dynamic_entry_condition($segments, $indent);
     }
 
     /**
@@ -601,7 +601,7 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
      */
     private function renderVerbDispatch(array $verbs, string $indent): string
     {
-        return GeneratedMatcherRenderSupport::renderVerbDispatch($verbs, $indent);
+        return generated_matcher_render_verb_dispatch($verbs, $indent);
     }
 
     /**

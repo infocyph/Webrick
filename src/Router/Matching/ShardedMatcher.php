@@ -180,7 +180,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
 
         $host = $this->canonicalRouteHost($route->getDomain());
         $method = HttpMethodEnum::normalize($route->getMethod());
-        $bucket = ShardedMatcherSupport::fileKeyForPath($route->getPath(), self::SHARD_ROOT);
+        $bucket = sharded_matcher_file_key_for_path($route->getPath(), self::SHARD_ROOT);
 
         if (isset($this->pathGuard[$host][$method][$route->getPath()])) {
             throw new \LogicException("Duplicate route {$method} {$host}{$route->getPath()}");
@@ -263,7 +263,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     public function canBootFromCache(): bool
     {
         // Sentinel is wildcard root shard; alias file will be lazy-loaded.
-        return $this->cacheEnabled && \is_file(ShardedMatcherSupport::shardFilePath(
+        return $this->cacheEnabled && \is_file(sharded_matcher_shard_file_path(
             $this->cacheDir,
             '*',
             self::SHARD_ROOT,
@@ -318,7 +318,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             return;
         }
         // Cold-dump only when explicitly enabled; check wildcard root shard as sentinel.
-        $sentinel = ShardedMatcherSupport::shardFilePath(
+        $sentinel = sharded_matcher_shard_file_path(
             $this->cacheDir,
             '*',
             self::SHARD_ROOT,
@@ -362,14 +362,14 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     {
         $tryStatic = function (?array $group, string $httpMethod, string $requestPath): array {
             $allowed = [];
-            $normalizedGroup = $group === null ? null : ShardedMatcherSupport::normalizeGroup($group);
+            $normalizedGroup = $group === null ? null : sharded_matcher_normalize_group($group);
             $hit = $this->tryStatic($normalizedGroup, $httpMethod, $requestPath, $allowed);
 
             return ['hit' => $hit, 'allowed' => $allowed];
         };
         $tryDynamic = function (?array $group, string $httpMethod, array $segments): array {
             $allowed = [];
-            $normalizedGroup = $group === null ? null : ShardedMatcherSupport::normalizeGroup($group);
+            $normalizedGroup = $group === null ? null : sharded_matcher_normalize_group($group);
             $segmentList = [];
             foreach ($segments as $segment) {
                 if (\is_string($segment)) {
@@ -381,12 +381,12 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             return ['hit' => $hit, 'allowed' => $allowed];
         };
 
-        return ShardedMatcherRuntimeSupport::match(
+        return sharded_matcher_match(
             $method,
             $host,
             $path,
-            ShardedMatcherSupport::normalizeRequest(...),
-            fn(string $requestPath): string => ShardedMatcherSupport::fileKeyForPath($requestPath, self::SHARD_ROOT),
+            sharded_matcher_normalize_request(...),
+            fn(string $requestPath): string => sharded_matcher_file_key_for_path($requestPath, self::SHARD_ROOT),
             $this->loadGroupFor(...),
             $tryStatic,
             $this->explodePath(...),
@@ -434,7 +434,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
      */
     private function aliasFilePath(): string
     {
-        return ShardedMatcherSupport::aliasFilePath($this->cacheDir, self::F_ALIASES);
+        return sharded_matcher_alias_file_path($this->cacheDir, self::F_ALIASES);
     }
 
     /**
@@ -519,7 +519,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             . "    '" . self::H_DATA . "' => " . $this->exportArray($payload) . ",\n"
             . "];\n";
 
-        ShardedMatcherSupport::writeAtomicPhpFile($file, $php);
+        sharded_matcher_write_atomic_php_file($file, $php);
 
         if ($this->shouldWarmOpcache()) {
             \opcache_compile_file($file);
@@ -600,7 +600,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
      */
     private function loadGroupFromCache(string $hostKey, string $bucket): ?array
     {
-        $file = ShardedMatcherSupport::shardFilePath($this->cacheDir, $hostKey, $bucket, self::WIN_RESERVED);
+        $file = sharded_matcher_shard_file_path($this->cacheDir, $hostKey, $bucket, self::WIN_RESERVED);
         if (\array_key_exists($file, $this->loadedFiles)) {
             return $this->loadedFiles[$file];
         }
@@ -619,13 +619,13 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             if (!isset($blob[self::H_HASH])) {
                 throw new \RuntimeException("Cache file {$file} missing Hash.");
             }
-            $calc = $this->computeShardHash(ShardedMatcherSupport::normalizeGroup($blob[self::H_DATA]));
+            $calc = $this->computeShardHash(sharded_matcher_normalize_group($blob[self::H_DATA]));
             if (!\hash_equals($blob[self::H_HASH], $calc)) {
                 throw new \RuntimeException("Cache hash mismatch ($file).");
             }
         }
 
-        return $this->loadedFiles[$file] = ShardedMatcherSupport::normalizeGroup($blob[self::H_DATA]);
+        return $this->loadedFiles[$file] = sharded_matcher_normalize_group($blob[self::H_DATA]);
     }
 
     /* ──────────────────────── match helpers ───────────────── */
@@ -699,7 +699,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
      */
     private function writeShard(string $hostKey, string $bucket, array $payload): void
     {
-        $file = ShardedMatcherSupport::shardFilePath($this->cacheDir, $hostKey, $bucket, self::WIN_RESERVED);
+        $file = sharded_matcher_shard_file_path($this->cacheDir, $hostKey, $bucket, self::WIN_RESERVED);
         if (!\is_dir($d = \dirname($file)) && !\mkdir($d, 0775, true) && !\is_dir($d)) {
             throw new \RuntimeException("Failed to create cache dir {$d}");
         }
@@ -709,7 +709,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             . "    '" . self::H_TS . "'  => " . \var_export(date(DATE_ATOM), true) . ",\n"
             . "    '" . self::H_DATA . "' => " . $this->exportArray($payload) . ",\n"
             . "];\n";
-        ShardedMatcherSupport::writeAtomicPhpFile($file, $php);
+        sharded_matcher_write_atomic_php_file($file, $php);
 
         if ($this->shouldWarmOpcache()) {
             \opcache_compile_file($file);

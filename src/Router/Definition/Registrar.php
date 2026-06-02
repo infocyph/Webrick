@@ -386,7 +386,7 @@ final readonly class Registrar
      */
     private function mergeMiddlewareWithAliasOverrides(array $group, array $route): array
     {
-        return RegistrarSupport::mergeMiddlewareWithAliasOverrides($group, $route);
+        return registrar_merge_middleware_with_alias_overrides($group, $route);
     }
 
     /* -----------------------------------------------------------------
@@ -411,7 +411,7 @@ final readonly class Registrar
         string|Closure|null $namePrefix,
         ?Closure $callback,
     ): array {
-        return RegistrarGroupSupport::normalizeGroupInputs($prefix, $domain, $middleware, $namePrefix, $callback);
+        return registrar_normalize_group_inputs($prefix, $domain, $middleware, $namePrefix, $callback);
     }
 
     /* -----------------------------------------------------------------
@@ -427,7 +427,7 @@ final readonly class Registrar
      */
     private function normalizeOptions(string|array|null $nameOrOpts): array
     {
-        return RegistrarSupport::normalizeOptions($nameOrOpts);
+        return registrar_normalize_options($nameOrOpts);
     }
 
     /**
@@ -443,7 +443,7 @@ final readonly class Registrar
      */
     private function parseResourceOptions(array $opts): array
     {
-        return RegistrarSupport::parseResourceOptions($opts);
+        return registrar_parse_resource_options($opts);
     }
 
     /** @param list<string> $aliases */
@@ -461,7 +461,7 @@ final readonly class Registrar
      */
     private function resolveAliasMiddleware(array $list): array
     {
-        return RegistrarSupport::resolveAliasMiddleware($list);
+        return registrar_resolve_alias_middleware($list);
     }
 
     /**

@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 use Infocyph\Webrick\Router\Facade\Router as Route;
 
+require_once __DIR__ . '/Router/Definition/registrar_functions.php';
+require_once __DIR__ . '/Router/Matching/matcher_functions.php';
+
 if (!\function_exists('route')) {
     /**
      * Generate a URL for a named route.

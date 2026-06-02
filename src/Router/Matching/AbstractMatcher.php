@@ -467,7 +467,7 @@ abstract class AbstractMatcher
      */
     protected function shouldWarmOpcache(): bool
     {
-        return MatcherCacheSupport::shouldWarmOpcache();
+        return matcher_should_warm_opcache();
     }
 
     /**

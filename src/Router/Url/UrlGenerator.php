@@ -6,6 +6,7 @@ namespace Infocyph\Webrick\Router\Url;
 
 use Infocyph\Webrick\Router\Route\Collection;
 use InvalidArgumentException;
+use LogicException;
 
 /**
  * Generates URLs for named routes, controller actions, and arbitrary paths.
@@ -21,6 +22,10 @@ use InvalidArgumentException;
  */
 class UrlGenerator
 {
+    public const string EXPIRES_PARAM = '_exp';
+
+    public const string SIG_PARAM = '_sig';
+
     /**
      * The base URI to prepend for absolute URLs.
      */
@@ -32,10 +37,34 @@ class UrlGenerator
      * @param string $baseUri Base URI (typically empty string as domains are handled elsewhere)
      * @param Collection $routes Collection of registered routes
      */
-    public function __construct(string $baseUri, private readonly Collection $routes)
-    {
-        // Strip any trailing slash so we can always do "$baseUri . '/' . ltrim(path)"
+    public function __construct(
+        string $baseUri,
+        private readonly Collection $routes,
+        private readonly ?string $secret = null,
+        private readonly ?int $defaultTtl = null,
+    ) {
+        $parts = \parse_url($baseUri);
+        if ($parts === false || isset($parts['query']) || isset($parts['fragment'])) {
+            throw new InvalidArgumentException(
+                'baseUri must not contain query or fragment components',
+            );
+        }
+
+        if ($this->defaultTtl !== null && $this->defaultTtl < 1) {
+            throw new InvalidArgumentException('defaultTtl must be a positive integer.');
+        }
+
         $this->baseUri = rtrim($baseUri, '/');
+    }
+
+    public static function checkSignature(string $payload, string $sig, string $key): bool
+    {
+        return \hash_equals(self::makeSignature($payload, $key), $sig);
+    }
+
+    public static function makeSignature(string $payload, string $key): string
+    {
+        return \hash_hmac('sha3-256', $payload, $key);
     }
 
     /**
@@ -63,6 +92,76 @@ class UrlGenerator
         $path = $this->substitute($route->getPath(), $params);
 
         return $this->build($path, $query, $absolute);
+    }
+
+    /**
+     * @param array<string,RouteParam> $params
+     * @param array<string,QueryValue> $query
+     */
+    public function signed(
+        string $name,
+        array $params = [],
+        array $query = [],
+        ?int $ttl = null,
+        bool $absolute = true,
+    ): string {
+        $secret = $this->requireSigningSecret();
+
+        if ($name === '') {
+            throw new InvalidArgumentException('Route name must not be empty.');
+        }
+
+        if (
+            \array_key_exists(self::SIG_PARAM, $query)
+            || \array_key_exists(self::EXPIRES_PARAM, $query)
+        ) {
+            throw new InvalidArgumentException(
+                "Query may not contain reserved parameters '"
+                . self::SIG_PARAM . "' or '" . self::EXPIRES_PARAM . "'.",
+            );
+        }
+
+        if ($ttl !== null) {
+            if ($ttl < 1) {
+                throw new InvalidArgumentException('TTL must be a positive integer.');
+            }
+
+            $query[self::EXPIRES_PARAM] = \time() + $ttl;
+        }
+
+        \ksort($query);
+
+        $relativePath = $this->urlFor($name, $params, [], false);
+        if ($relativePath === '') {
+            throw new InvalidArgumentException('Resolved route path must not be empty.');
+        }
+
+        $query[self::SIG_PARAM] = self::makeSignature(
+            $this->to($relativePath, $query, false),
+            $secret,
+        );
+
+        return $this->to($relativePath, $query, $absolute);
+    }
+
+    /**
+     * @param array<string,RouteParam> $params
+     * @param array<string,QueryValue> $query
+     */
+    public function temporary(
+        string $name,
+        array $params = [],
+        array $query = [],
+        ?int $ttl = null,
+        bool $absolute = true,
+    ): string {
+        return $this->signed(
+            name: $name,
+            params: $params,
+            query: $query,
+            ttl: $ttl ?? $this->requireDefaultTtl(),
+            absolute: $absolute,
+        );
     }
 
     /**
@@ -141,6 +240,24 @@ class UrlGenerator
 
         // RFC3986 encoding:
         return $uri . '?' . http_build_query($query, '', '&', PHP_QUERY_RFC3986);
+    }
+
+    private function requireDefaultTtl(): int
+    {
+        if ($this->defaultTtl === null) {
+            throw new LogicException('Temporary URL generation requires a default TTL.');
+        }
+
+        return $this->defaultTtl;
+    }
+
+    private function requireSigningSecret(): string
+    {
+        if ($this->secret === null || $this->secret === '') {
+            throw new LogicException('Signed URL generation requires a configured secret.');
+        }
+
+        return $this->secret;
     }
 
     /* -----------------------------------------------------------------

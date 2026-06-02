@@ -6,7 +6,6 @@ use Infocyph\Webrick\Constants\MediaTypeEnum;
 use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Middleware\ThrottleMiddleware;
 use Infocyph\Webrick\Request\Request;
-use Infocyph\Webrick\Response\Payloads\HtmlResponse;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Facade\Router as Route;
@@ -20,7 +19,7 @@ use Infocyph\Webrick\Router\Facade\Router as Route;
  */
 
 /* ---- homepage with links ---- */
-Route::get('/', function (): HtmlResponse {
+Route::get('/', function (): Response {
     $links = [
         '/ping' => 'Static text',
         '/hello/Alice' => 'Dynamic placeholder',
@@ -75,7 +74,10 @@ Route::get('/', function (): HtmlResponse {
     }
     $html .= '</ul>';
 
-    return new HtmlResponse($html);
+    return Response::create(
+        $html,
+        headers: ['Content-Type' => MediaTypeEnum::HTML->base() . '; charset=utf-8'],
+    );
 });
 
 /* ---- simple routes ---- */

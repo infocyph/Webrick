@@ -9,9 +9,7 @@ use Infocyph\Webrick\Router\Kernel\RouterKernel;
 use Infocyph\Webrick\Router\Matching\ShardedMatcher;
 use Infocyph\Webrick\Router\Route\Collection;
 use Infocyph\Webrick\Router\Route\Route;
-use Infocyph\Webrick\Router\Url\Signature;
-use Infocyph\Webrick\Router\Url\SignedUrlGenerator;
-use Infocyph\Webrick\Router\Url\TemporaryUrlGenerator;
+use Infocyph\Webrick\Router\Url\UrlGenerator;
 use Psr\Log\NullLogger;
 
 if (! class_exists('SignedUrlCacheController', false)) {
@@ -34,10 +32,10 @@ describe('Signed URLs', function () {
         $route = $route->withName('download');
         $this->routes->add($route);
 
-        $this->generator = new SignedUrlGenerator(
+        $this->generator = new UrlGenerator(
             baseUri: 'https://example.com',
             routes: $this->routes,
-            secret: $this->secret
+            secret: $this->secret,
         );
     });
 
@@ -99,7 +97,7 @@ describe('Signed URLs', function () {
         }
 
         // Verify signature
-        expect(Signature::check($payload, $sig, $this->secret))->toBeTrue();
+        expect(UrlGenerator::checkSignature($payload, $sig, $this->secret))->toBeTrue();
     });
 
     it('generates invalid signature for tampered URLs', function () {
@@ -120,15 +118,15 @@ describe('Signed URLs', function () {
         $tamperedPath = str_replace('original.pdf', 'hacked.pdf', $parts['path']);
 
         // Try to verify with original signature
-        expect(Signature::check($tamperedPath, $sig, $this->secret))->toBeFalse();
+        expect(UrlGenerator::checkSignature($tamperedPath, $sig, $this->secret))->toBeFalse();
     });
 
-    it('uses TemporaryUrlGenerator with default TTL', function () {
-        $tempGenerator = new TemporaryUrlGenerator(
+    it('uses UrlGenerator with default TTL', function () {
+        $tempGenerator = new UrlGenerator(
             baseUri: 'https://example.com',
             routes: $this->routes,
             secret: $this->secret,
-            defaultTtl: 900  // 15 minutes
+            defaultTtl: 900,
         );
 
         // Generate without specifying TTL (should use default)
@@ -161,14 +159,14 @@ describe('Signed URLs', function () {
     });
 
     it('rejects baseUri when query or fragment is present', function () {
-        expect(fn () => new TemporaryUrlGenerator(
+        expect(fn () => new UrlGenerator(
             baseUri: 'https://example.com?x=1',
             routes: $this->routes,
             secret: $this->secret,
             defaultTtl: 900
         ))->toThrow(InvalidArgumentException::class);
 
-        expect(fn () => new TemporaryUrlGenerator(
+        expect(fn () => new UrlGenerator(
             baseUri: 'https://example.com#frag',
             routes: $this->routes,
             secret: $this->secret,

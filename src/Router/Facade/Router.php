@@ -9,9 +9,7 @@ use Infocyph\InterMix\DI\Support\ReflectionResource;
 use Infocyph\Webrick\Interfaces\RouteInterface;
 use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Route\Collection;
-use Infocyph\Webrick\Router\Url\RouteGenerator;
-use Infocyph\Webrick\Router\Url\SignedUrlGenerator;
-use Infocyph\Webrick\Router\Url\TemporaryUrlGenerator;
+use Infocyph\Webrick\Router\Url\UrlGenerator;
 use RuntimeException;
 
 /**
@@ -60,13 +58,9 @@ final class Router
      */
     private static ?Registrar $instance = null;
 
-    private static ?RouteGenerator $routeGen = null;
+    private static ?UrlGenerator $routeGen = null;
 
     private static ?Collection $routesRef = null;
-
-    private static ?SignedUrlGenerator $signedGen = null;
-
-    private static ?TemporaryUrlGenerator $tempGen = null;
 
     /**
      * Private constructor to prevent instantiation — façade is static-only.
@@ -113,16 +107,7 @@ final class Router
         ?int $defaultTtl = null,
     ): void {
         self::$routesRef = $routes;
-        self::$routeGen = new RouteGenerator('', $routes);
-        self::$signedGen = null;
-        self::$tempGen = null;
-
-        if ($signKey !== null && $signKey !== '') {
-            self::$signedGen = new SignedUrlGenerator('', $routes, $signKey);
-            if ($defaultTtl !== null) {
-                self::$tempGen = new TemporaryUrlGenerator('', $routes, $signKey, $defaultTtl);
-            }
-        }
+        self::$routeGen = new UrlGenerator('', $routes, $signKey, $defaultTtl);
     }
 
     /**
@@ -270,8 +255,6 @@ final class Router
     {
         self::$routesRef = null;
         self::$routeGen = null;
-        self::$signedGen = null;
-        self::$tempGen = null;
     }
 
     /**
@@ -316,13 +299,13 @@ final class Router
         bool $absolute = false,
     ): string {
         self::assertRouteName($name);
-        $signed = self::requireSignedGenerator();
         $normalizedParams = self::normalizeRouteParams($params);
         $normalizedQuery = self::normalizeRouteQuery($query);
+        $routeGen = self::requireRouteGenerator();
 
         $path = $ttl === null
-            ? $signed->signed($name, $normalizedParams, $normalizedQuery, null, false)
-            : $signed->signed($name, $normalizedParams, $normalizedQuery, max(1, $ttl), false);
+            ? $routeGen->signed($name, $normalizedParams, $normalizedQuery, null, false)
+            : $routeGen->signed($name, $normalizedParams, $normalizedQuery, max(1, $ttl), false);
 
         return self::finalizeGeneratedPath($name, $path, $absolute);
     }
@@ -341,8 +324,13 @@ final class Router
         bool $absolute = false,
     ): string {
         self::assertRouteName($name);
-        $temp = self::requireTemporaryGenerator();
-        $path = $temp->temporary($name, self::normalizeRouteParams($params), self::normalizeRouteQuery($query), $ttl, false);
+        $path = self::requireRouteGenerator()->temporary(
+            $name,
+            self::normalizeRouteParams($params),
+            self::normalizeRouteQuery($query),
+            $ttl,
+            false,
+        );
 
         return self::finalizeGeneratedPath($name, $path, $absolute);
     }
@@ -361,7 +349,7 @@ final class Router
     ): string {
         self::assertRouteName($name);
         $routeGen = self::requireRouteGenerator();
-        $path = $routeGen->route($name, self::normalizeRouteParams($params), self::normalizeRouteQuery($query), false);
+        $path = $routeGen->urlFor($name, self::normalizeRouteParams($params), self::normalizeRouteQuery($query), false);
 
         return self::finalizeGeneratedPath($name, $path, $absolute);
     }
@@ -398,13 +386,6 @@ final class Router
     {
         if ($name === '') {
             throw new \InvalidArgumentException('Route name must be non-empty.');
-        }
-    }
-
-    private static function assertSignedBound(): void
-    {
-        if (!self::$signedGen || !self::$routesRef) {
-            throw new \LogicException('Signed URL service not bound. Provide $signKey to Registrar.');
         }
     }
 
@@ -494,29 +475,12 @@ final class Router
         return $value instanceof \Stringable ? (string) $value : null;
     }
 
-    private static function requireRouteGenerator(): RouteGenerator
+    private static function requireRouteGenerator(): UrlGenerator
     {
         self::assertUrlBound();
 
         return self::$routeGen
             ?? throw new \LogicException('URL services not bound. Enable via Registrar constructor.');
-    }
-
-    private static function requireSignedGenerator(): SignedUrlGenerator
-    {
-        self::assertSignedBound();
-
-        return self::$signedGen
-            ?? throw new \LogicException('Signed URL service not bound. Provide $signKey to Registrar.');
-    }
-
-    private static function requireTemporaryGenerator(): TemporaryUrlGenerator
-    {
-        if (!self::$tempGen) {
-            throw new \LogicException('TemporaryUrlGenerator not bound (no default TTL provided).');
-        }
-
-        return self::$tempGen;
     }
 
     /**
