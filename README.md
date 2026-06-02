@@ -193,7 +193,7 @@ Protected by [PHPForge](https://github.com/infocyph/PHPForge) — an automated q
 <div align="center">
   <sub><strong>Made with ❤️ for the PHP community</strong></sub><br />
   <sub><a href="LICENSE">MIT Licensed</a></sub><br />
-  <a href="https://docs.infocyph.com/projects/webrick/en/latest/">Documentation</a> •
+  <a href="https://docs.infocyph.com/projects/Webrick/en/latest/">Documentation</a> •
   <a href="SECURITY.md">Security</a> •
   <a href="CODE_OF_CONDUCT.md">Code of Conduct</a> •
   <a href="CONTRIBUTING.md">Contributing</a> •
