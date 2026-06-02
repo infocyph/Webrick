@@ -148,13 +148,13 @@ composer install
 **Debug**:
 ```bash
 # Run with verbose output
-php webrick route:cache --cache=.route-cache --routes=routes.php
+php ./webrick route:cache --cache=.route-cache --routes=routes.php
 
 # Check for duplicate names
-grep -r "->name(" routes/ | sort | uniq -d
+grep -r "->withName(" routes/ | sort | uniq -d
 
 # Validate route syntax
-php -l routes/web.php
+php -l routes.php
 ```
 
 ---
@@ -183,8 +183,12 @@ try {
         log: new NullLogger(),
         matcher: ShardedMatcher::make(__DIR__ . '/.route-cache'),
         register: static function (Registrar $r): void {
-            $route = $r->facade();
-            $route::get('/test', fn() => Response::plaintext('OK', 200));
+            unset($r);
+
+            \Infocyph\Webrick\Router\Facade\Router::get(
+                '/test',
+                fn() => Response::plaintext('OK', 200),
+            );
         },
     );
     echo "✅ Kernel boots successfully\n";

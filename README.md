@@ -1,291 +1,204 @@
 # Webrick Router
 
-A fast, modern PHP router with production-grade middleware, signed & temporary URLs, smart responses, and first-class route caching.
+A modern PHP router with route caching, signed URLs, production middleware, and response helpers.
 
 [![Security & Standards](https://github.com/infocyph/Webrick/actions/workflows/build.yml/badge.svg)](https://github.com/infocyph/Webrick/actions/workflows/build.yml)
-![Packagist Downloads](https://img.shields.io/packagist/dt/infocyph/Webrick?color=green&link=https%3A%2F%2Fpackagist.org%2Fpackages%2Finfocyph%2FWebrick)
+![Packagist Downloads](https://img.shields.io/packagist/dt/infocyph/Webrick?color=green&link=https%3A%2F%2Fpackagist.org%2Fpackages%2Finfocyph%2Fwebrick)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
-![Packagist Version](https://img.shields.io/packagist/v/infocyph/Webrick)
-![Packagist PHP Version](https://img.shields.io/packagist/dependency-v/infocyph/Webrick/php)
-![GitHub Code Size](https://img.shields.io/github/languages/code-size/infocyph/Webrick)
-
----
+![Packagist Version](https://img.shields.io/packagist/v/infocyph/webrick)
 
 ## Highlights
 
-- **🚀 Fast routing** – Named routes, groups, domains, resources, attribute discovery
-- **🔒 Signed URLs** – Built-in URL signing with expiration and verification middleware
-- **⚙️ Production middleware** – 15+ battle-tested middleware for security, caching, compression, CORS
-- **📦 Smart responses** – Auto content negotiation, streaming, downloads, JSON helpers
-- **💾 Route caching** – Sharded, fused, or generated matcher modes
-- **🔌 Sudo PSR-compatible** – Works with PSR-7/15/17 ecosystems
+- Fast routing: named routes, groups, domains, resources, attribute discovery
+- Signed URLs: permanent, TTL-based, or explicit-expiry links
+- Rich signing controls: relative or absolute payloads, ignored query params, key rotation, custom signature params and algorithms
+- Response helpers: JSON, plaintext, redirects, streaming, ranged file/download responses, views
+- Route caching: sharded, fused, or generated matchers
+- Middleware pipeline: negotiation, compression, throttling, validators, telemetry, cookie encryption, and more
 
-> **Requirements:** PHP 8.4+ | Production-ready with OPcache + route caching
+## Requirements
 
----
+- PHP 8.4+
+- Composer 2.x
 
 ## Installation
+
 ```bash
 composer require infocyph/webrick
 ```
 
----
+## Minimal Boot Example
 
-## Quick Start
-
-### Minimal Example
 ```php
 <?php
-use Infocyph\Webrick\Router\Kernel\RouterKernel;
+
+declare(strict_types=1);
+
+use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Response\Emitter\AutoEmitter;
 use Infocyph\Webrick\Response\Response;
-
-require __DIR__ . '/../vendor/autoload.php';
-
-$router = new RouterKernel();
-
-$router->get('/', fn() => Response::plaintext('Hello Webrick!', 200));
-$router->get('/api/users/{id:int}', fn($r, int $id) => 
-    Response::json(['id' => $id, 'name' => 'John Doe'])
-);
-
-$router->run();
-```
-
-### Production Setup
-```php
-<?php
-use Infocyph\Webrick\Router\Kernel\RouterKernel;
 use Infocyph\Webrick\Router\Definition\Registrar;
+use Infocyph\Webrick\Router\Facade\Router as Route;
+use Infocyph\Webrick\Router\Kernel\RouterKernel;
 use Infocyph\Webrick\Router\Matching\ShardedMatcher;
-use Infocyph\Webrick\Router\Route;
-use Infocyph\Webrick\Response\Response;
 use Psr\Log\NullLogger;
+
+require __DIR__ . '/vendor/autoload.php';
 
 $kernel = RouterKernel::bootWithRegistrar(
     log: new NullLogger(),
-    matcher: ShardedMatcher::make(__DIR__ . '/../.route-cache'),
-    register: function (Registrar $r) {
-        $route = $r->facade();
-        
-        $route::get('/users', [UserController::class, 'index'], 'users.index');
-        $route::post('/users', [UserController::class, 'store'], 'users.store');
-        
-        $route::get('/protected', fn() => Response::json(['secret' => 'data']))
-            ->middleware(['auth', 'verifySignedUrl']);
+    matcher: ShardedMatcher::make(__DIR__ . '/.route-cache'),
+    register: static function (Registrar $registrar): void {
+        unset($registrar);
+
+        Route::get('/', fn() => Response::plaintext('Hello Webrick', 200), 'home');
+        Route::get('/api/users/{id:int}', fn(Request $request, string $id) => Response::json([
+            'id' => (int) $id,
+            'method' => $request->getMethod(),
+        ]), 'users.show');
     },
-    routeCache: __DIR__ . '/../.route-cache',
-    preGlobal: [
-        \Infocyph\Webrick\Middleware\GatewayHardeningMiddleware::class,
-        \Infocyph\Webrick\Middleware\ThrottleMiddleware::class,
-        \Infocyph\Webrick\Middleware\NegotiationMiddleware::class,
-    ],
+    routeCache: __DIR__ . '/.route-cache',
+);
+
+(new AutoEmitter())->emit($kernel->handle(Request::fromGlobals()));
+```
+
+## Production-Oriented Boot Example
+
+```php
+<?php
+
+declare(strict_types=1);
+
+use Infocyph\Webrick\Middleware\CompressionMiddleware;
+use Infocyph\Webrick\Middleware\GatewayHardeningMiddleware;
+use Infocyph\Webrick\Middleware\NegotiationMiddleware;
+use Infocyph\Webrick\Middleware\ThrottleMiddleware;
+use Infocyph\Webrick\Middleware\VerifySignedUrlMiddleware;
+use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Response\Emitter\AutoEmitter;
+use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Router\Definition\Registrar;
+use Infocyph\Webrick\Router\Dispatch\MiddlewareAliases;
+use Infocyph\Webrick\Router\Facade\Router as Route;
+use Infocyph\Webrick\Router\Kernel\RouterKernel;
+use Infocyph\Webrick\Router\Matching\ShardedMatcher;
+use Infocyph\Webrick\Router\Route\Collection;
+use Infocyph\Webrick\Router\Url\SignedUrlConfig;
+use Psr\Log\NullLogger;
+
+require __DIR__ . '/vendor/autoload.php';
+
+$signKey = $_ENV['WEBRICK_SIGN_KEY'] ?? 'change-me';
+$baseUri = $_ENV['WEBRICK_URL_BASE_URI'] ?? 'http://localhost';
+$signedUrls = new SignedUrlConfig(
+    generationKey: $signKey,
+    verificationKeys: [$signKey],
+    defaultTtl: 900,
+);
+
+MiddlewareAliases::register(
+    'throttle',
+    static fn(...$params) => new ThrottleMiddleware(
+        max: (int) ($params[0] ?? 60),
+        window: (int) ($params[1] ?? 60),
+    ),
+);
+MiddlewareAliases::register(
+    'verifySignedUrl',
+    static fn() => new VerifySignedUrlMiddleware($signKey, 5),
+);
+
+$kernel = RouterKernel::bootWithRegistrar(
+    log: new NullLogger(),
+    matcher: ShardedMatcher::make(__DIR__ . '/.route-cache'),
+    register: static function (Registrar $registrar): void {
+        unset($registrar);
+
+        Route::get('/users/{id:int}', fn(string $id) => Response::json(['id' => (int) $id]), 'users.show');
+        Route::get('/files/{file}', fn(string $file) => Response::attachment(__DIR__ . '/files/' . $file, $file), [
+            'as' => 'files.show',
+            'middleware' => ['verifySignedUrl'],
+        ]);
+    },
+    routeCache: __DIR__ . '/.route-cache',
     registrarOptions: [
         'exposeUrlServices' => true,
-        'signKey' => $_ENV['WEBRICK_SIGN_KEY'] ?? 'change-me',
+        'signKey' => $signKey,
+        'signedDefaultTtl' => 900,
+        'signedUrlConfig' => $signedUrls,
+        'urlBaseUri' => $baseUri,
     ],
-    // Optional: InterMix module wiring + tagged globals
-    serviceProviders: [
-        App\Providers\AuthProvider::class,
-        App\Providers\CacheProvider::class,
+    preGlobal: [
+        GatewayHardeningMiddleware::class,
+        NegotiationMiddleware::class,
     ],
-    preGlobalTags: ['webrick.middleware.pre'],
-    postGlobalTags: ['webrick.middleware.post'],
-    requestScopeEnabled: true,
+    postGlobal: [
+        CompressionMiddleware::class,
+    ],
+    bindUrlServices: static function (Collection $routes) use ($signKey, $signedUrls, $baseUri): void {
+        Route::bindUrlServices($routes, $signKey, 900, $signedUrls, $baseUri);
+    },
+    fallbackAliasesFromRegistrar: true,
 );
 
-(new \Infocyph\Webrick\Response\Emitter\AutoEmitter())->emit(
-    $kernel->handle(\Infocyph\Webrick\Request\Request::fromGlobals())
-);
+(new AutoEmitter())->emit($kernel->handle(Request::fromGlobals()));
 ```
 
-**Run locally:**
-```bash
-php -S 127.0.0.1:8080 -t public
-```
+## URL Generation
 
----
-
-## Core Features
-
-### Named Routes & URL Generation
 ```php
-$route::get('/users/{id:int}', $handler, 'users.show');
-$route::post('/users', $handler, 'users.store');
+use Infocyph\Webrick\Router\Facade\Router as Route;
+use Infocyph\Webrick\Router\Url\SignedUrlConfig;
 
-// Generate URLs
-$url = Route::urlFor('users.show', ['id' => 42]); // /users/42
+$url = Route::urlFor('users.show', ['id' => 42]);
 $absolute = Route::urlFor('users.show', ['id' => 42], absolute: true);
+
+$signed = Route::signedUrlFor('files.show', ['file' => 'report.pdf']);
+$temp = Route::temporaryUrlFor('files.show', ['file' => 'report.pdf'], ttl: 900);
+$until = Route::temporaryUrlUntil('files.show', new DateTimeImmutable('+15 minutes'), ['file' => 'report.pdf']);
+
+$absolutePayload = Route::signedUrlFor(
+    'files.show',
+    ['file' => 'report.pdf'],
+    absolute: true,
+    payloadMode: SignedUrlConfig::MODE_ABSOLUTE,
+);
 ```
 
-### Signed URLs (Tamper-Proof)
-```php
-// Generate signed URL
-$signed = Route::signedUrlFor('download', ['file' => 'report.pdf']);
-$temp = Route::temporaryUrlFor('download', ['file' => 'doc.pdf'], ttl: 3600); // 1 hour
+## Route Cache
 
-// Protect route
-$route::get('/download/{file}', $handler)
-    ->middleware([\Infocyph\Webrick\Middleware\VerifySignedUrlMiddleware::class]);
+Build cache artifacts during CI or deploy:
+
+```bash
+php ./webrick route:cache --matcher=sharded --cache=.route-cache --routes=routes.php
 ```
 
-### Route Groups
-```php
-$route::group(prefix: '/api', middleware: ['auth', 'throttle:120,60'], callback: function() use ($route) {
-    $route::get('/users', [UserController::class, 'index']);
-    $route::post('/users', [UserController::class, 'store']);
-});
+Clear them when needed:
+
+```bash
+php ./webrick route:clear --matcher=sharded --cache=.route-cache
 ```
 
-### Attribute Routes
-```php
-use Infocyph\Webrick\Router\Definition\Attribute\Get;
+## Quality Commands
 
-final class UserController {
-    #[Get('/users/{id:int}', name: 'users.show')]
-    public function show(int $id): Response {
-        return Response::json(['id' => $id]);
-    }
-}
-
-// Register in routes
-AttributeRouteLoader::registerFromDirs($registrar, [
-    'App\\Http\\Routes\\' => __DIR__ . '/../src/Http/Routes',
-]);
+```bash
+composer ic:doctor
+composer ic:list-config
+composer ic:tests:details
+composer ic:ci
 ```
 
-### Smart Responses
-```php
-// JSON
-Response::json(['status' => 'ok']);
-
-// Auto negotiation (based on Accept header)
-Response::auto($request, ['data' => $items]);
-
-// Downloads
-Response::download('/path/to/file.pdf', 'report.pdf');
-
-// Streaming
-Response::stream(function() {
-    while ($data = getNextChunk()) {
-        echo json_encode($data) . "\n";
-        flush();
-    }
-});
-
-// Redirects
-Response::redirect('/login');
-Response::redirect(Route::urlFor('users.show', ['id' => 42]));
-```
-
----
-
-## Built-in Middleware
-
-| Middleware | Purpose |
-|------------|---------|
-| **GatewayHardeningMiddleware** | Security headers, host validation, IP filtering |
-| **ThrottleMiddleware** | Rate limiting per IP/user |
-| **NegotiationMiddleware** | Content negotiation (Accept, Accept-Language) |
-| **CorsAndPoliciesMiddleware** | CORS + security policies (CSP, HSTS) |
-| **CompressionMiddleware** | Response compression (gzip, brotli, zstd) |
-| **CookieEncryptionMiddleware** | Transparent cookie encryption |
-| **ResponseCacheMiddleware** | HTTP response caching |
-| **VerifySignedUrlMiddleware** | Signed URL verification |
-| **TelemetryMiddleware** | Request logging and W3C trace context |
-
-[View all middleware →](https://docs.infocyph.com/projects/webrick/en/latest/middleware/)
-
----
+`composer ic:process` is the fixer pipeline. In some sandboxed environments Rector fix mode may be blocked by local socket restrictions; `composer ic:test:refactor` and `composer ic:ci` still validate the dry-run path.
 
 ## Documentation
 
-📚 **[Full Documentation](https://docs.infocyph.com/projects/webrick/en/latest/)**
-
-### Getting Started
-- [Installation & Setup](https://docs.infocyph.com/projects/webrick/en/latest/getting-started/installation.html)
-- [Quick Start Guide](https://docs.infocyph.com/projects/webrick/en/latest/getting-started/quickstart.html)
-- [Basic Routing](https://docs.infocyph.com/projects/webrick/en/latest/guides/routing.html)
-
-### Guides
-- [Routing](https://docs.infocyph.com/projects/webrick/en/latest/guides/routing.html) – Routes, groups, parameters, constraints
-- [Requests](https://docs.infocyph.com/projects/webrick/en/latest/guides/requests.html) – Reading input, headers, files
-- [Responses](https://docs.infocyph.com/projects/webrick/en/latest/guides/responses.html) – JSON, redirects, downloads, streaming
-- [Middleware](https://docs.infocyph.com/projects/webrick/en/latest/middleware/) – Using and creating middleware
-- [Signed URLs](https://docs.infocyph.com/projects/webrick/en/latest/guides/urls.html) – Secure, expiring URLs
-- [Route Caching](https://docs.infocyph.com/projects/webrick/en/latest/deployments/route-cache-warmup.html) – Production optimization
-
-### Recipes
-- [JWT Authentication](https://docs.infocyph.com/projects/webrick/en/latest/recipes/authentication.html)
-- [RESTful API](https://docs.infocyph.com/projects/webrick/en/latest/recipes/api.html)
-- [File Uploads](https://docs.infocyph.com/projects/webrick/en/latest/recipes/file-upload.html)
-- [Caching Strategies](https://docs.infocyph.com/projects/webrick/en/latest/recipes/caching.html)
-- [Rate Limiting](https://docs.infocyph.com/projects/webrick/en/latest/recipes/rate-limiting.html)
-
-### Deployment
-- [Nginx Configuration](https://docs.infocyph.com/projects/webrick/en/latest/deployments/nginx.html)
-- [Docker & Kubernetes](https://docs.infocyph.com/projects/webrick/en/latest/deployments/containers.html)
-- [Performance Tuning](https://docs.infocyph.com/projects/webrick/en/latest/deployments/php-fpm-tuning.html)
-
----
-
-## Performance
-
-**Route Caching** dramatically improves cold-start performance:
-```bash
-# Build route cache (run in CI/deployment)
-php webrick route:cache --cache=.route-cache --routes=routes.php
-
-# Result: ~100ms faster first request
-```
-
-**Production tips:**
-- ✅ Enable OPcache with `opcache.validate_timestamps=0`
-- ✅ Prebuild route cache in CI/CD
-- ✅ Use persistent cache backend (Redis/APCu) for middleware
-- ✅ Tune PHP-FPM pools (`pm.max_children`, `pm.start_servers`)
-
-[Performance Guide →](https://docs.infocyph.com/projects/webrick/en/latest/deployments/overview.html)
-
----
-
-## Testing
-```bash
-# Run tests
-composer test
-
-# Lint + refactor + security
-composer lint
-composer refactor
-composer security:scan
-
-# Full local suite
-composer tests
-```
-
----
-
-## Contributing
-
-Contributions welcome! Please:
-
-1. Fork and create a feature branch
-2. Write tests for new features
-3. Run `composer test`, `composer lint`, and `composer security:scan`
-4. Submit a PR with clear description
-
-[Contributing Guide →](./CONTRIBUTING.md)
-
----
+- Full docs: https://docs.infocyph.com/projects/webrick/en/latest/
+- Getting Started: https://docs.infocyph.com/projects/webrick/en/latest/getting-started/index.html
+- Routing guide: https://docs.infocyph.com/projects/webrick/en/latest/guides/routing.html
+- Signed URLs guide: https://docs.infocyph.com/projects/webrick/en/latest/guides/urls.html
+- Route cache reference: https://docs.infocyph.com/projects/webrick/en/latest/reference/route-cache.html
 
 ## License
 
-[MIT](./LICENSE) © [Infocyph](https://github.com/infocyph)
-
----
-
-## Links
-
-- **Documentation:** https://docs.infocyph.com/projects/webrick/en/latest/
-- **Packagist:** https://packagist.org/packages/infocyph/webrick
-- **Issues:** https://github.com/infocyph/webrick/issues
-- **Changelog:** [CHANGELOG.md](./CHANGELOG.md)
+MIT

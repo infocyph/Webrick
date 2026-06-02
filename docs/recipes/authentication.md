@@ -213,7 +213,7 @@ Route::get('/auth/me', function (Request $r) {
     $user = UserRepository::find($userId);
 
     return Response::json($user);
-})->middleware(['auth']);
+})->withMiddleware(['auth']);
 ```
 
 ---
@@ -309,7 +309,7 @@ final class RequireRoleMiddleware
 
 // Usage
 Route::get('/admin/users', $handler)
-    ->middleware(['auth', new RequireRoleMiddleware(['admin'])]);
+    ->withMiddleware(['auth', new RequireRoleMiddleware(['admin'])]);
 ```
 
 ### With Refresh Tokens
@@ -421,7 +421,7 @@ Route::post('/oauth/token', function (Request $r) use ($jwt) {
 
 4. **Rate Limit Login Attempts**
 ```php
-   Route::post('/auth/login', $handler)->middleware(['throttle:5,300']);
+   Route::post('/auth/login', $handler)->withMiddleware(['throttle:5,300']);
 ```
 
 5. **HTTPS Only**

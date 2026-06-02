@@ -1,107 +1,62 @@
 # Webrick Router – Documentation Index
 
-A fast, modern PHP router with production-grade middleware, signed URLs, streaming responses, and route caching.
-These docs are aligned exactly to the codebase.
+These docs track the current Webrick API and runtime shape.
 
 ## What you get
 
-- **Powerful routing**: Named routes, groups, domain scoping, resource routes, attribute discovery.
-- **Signed & temporary URLs**: First-class helpers + verifier middleware.
-- **Middleware pipeline**: Pre/post globals for gateway hardening, negotiation, validators, compression, CORS/policies, telemetry, throttling, etc.
-- **Smart responses**: JSON/text auto negotiation, streaming, attachments, downloads.
-- **Route cache**: Sharded (directory), Fused (single-file), or Generated matcher modes.
-- **PSR interop**: Optional PSR-7 factory to build Request/Response/Stream.
+- Routing: named routes, groups, domains, resources, and attribute discovery
+- Signed URLs: relative or absolute payload signing, TTL or explicit expiry, ignored query params, key rotation
+- Middleware pipeline: pre-global and post-global stacks plus string aliases or direct middleware instances
+- Responses: JSON, plaintext, redirects, streaming, ranged file/download helpers, and views
+- Route cache: sharded, fused, or generated matcher modes
+- PSR interop: request/response factories and stream abstractions
 
-## Requirements & Install
-
-- PHP 8.4+ with OPcache enabled for production.
-- Composer:
+## Install
 
 ```bash
 composer require infocyph/webrick
 ```
 
-## Quick Start
-
-1) **Boot the kernel** with a matcher and registrar:
+## Current boot pattern
 
 ```php
+use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Response\Emitter\AutoEmitter;
+use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Router\Definition\Registrar;
+use Infocyph\Webrick\Router\Facade\Router as Route;
 use Infocyph\Webrick\Router\Kernel\RouterKernel;
 use Infocyph\Webrick\Router\Matching\ShardedMatcher;
 use Psr\Log\NullLogger;
 
 $kernel = RouterKernel::bootWithRegistrar(
     log: new NullLogger(),
-    matcher: ShardedMatcher::make(__DIR__.'/.route-cache'),
-    register: require __DIR__.'/routes.php',
-    registrarOptions: [
-        'autoSlashRedirect' => true,
-        'exposeUrlServices' => true,
-        'signKey'           => getenv('WEBRICK_SIGN_KEY') ?: 'dev-key-change-me',
-        'signedDefaultTtl'  => 300,
-        'fallbackAliasesFromRegistrar' => true,
-    ],
-    preGlobal: [
-        \Infocyph\Webrick\Middleware\CacheValidatorsMiddleware::class,
-        \Infocyph\Webrick\Middleware\GatewayHardeningMiddleware::class,
-        \Infocyph\Webrick\Middleware\NegotiationMiddleware::class,
-        // ...sanitize, throttle, cookies, etc.
-    ],
-    postGlobal: [
-        \Infocyph\Webrick\Middleware\CompressionMiddleware::class,
-        \Infocyph\Webrick\Middleware\VaryAccumulatorMiddleware::class,
-        // \Infocyph\Webrick\Middleware\CorsAndPoliciesMiddleware::class,
-    ]
+    matcher: ShardedMatcher::make(__DIR__ . '/.route-cache'),
+    register: static function (Registrar $registrar): void {
+        unset($registrar);
+
+        Route::get('/', fn() => Response::plaintext('Hello Webrick', 200), 'home');
+    },
+    routeCache: __DIR__ . '/.route-cache',
 );
+
+(new AutoEmitter())->emit($kernel->handle(Request::fromGlobals()));
 ```
 
-2) **Define routes** (routes.php):
+## Signed URL example
 
 ```php
-use Infocyph\Webrick\Router\Route;
-use Infocyph\Webrick\Response\Response as R;
+use Infocyph\Webrick\Router\Facade\Router as Route;
 
-Route::get('/', fn() => R::plaintext('Hello Webrick'))->name('home');
-
-// Signed download
-Route::get('/download/{file}', function (string $file) {
-    return R::attachment(__DIR__.'/files/'.$file);
-})->name('file.download')->middleware(['verifySignedUrl']);
-
-// Group + throttle
-Route::group(['prefix' => '/api', 'middleware' => ['throttle:60,60']], function () {
-    Route::get('/users', [App\Http\Controller\UserController::class, 'index'])->name('users.index');
-});
-```
-
-3) **Generate a temporary signed link**:
-
-```php
 $href = Route::temporaryUrlFor('file.download', ['file' => 'report.pdf'], ttl: 900);
 ```
 
-## Documentation Map
+## Production notes
 
-- **Getting Started**
-  - Installation, front controller, first routes
-- **Guides**
-  - Signed & Temporary URLs
-  - Attribute Routes
-  - Responses & Content Negotiation
-- **Middleware**
-  - Validators, Compression, Cookies, Negotiation, CORS/Policies, Gateway Hardening, Normalize Method, Throttle, Telemetry, Vary Accumulator
-- **Deployments**
-  - Nginx, Apache, Containers, Kubernetes, Serverless, Troubleshooting
-- **Reference**
-  - Matcher (Sharded vs Fused vs Generated), Route Cache, Enums, Request/Response (with PSR-7 factory notes)
-
-## Tips for Production
-
-- Prefer **one source of compression** (app or proxy).
-- Pre-warm **route cache** during CI and ship with artifacts.
-- Keep **route names stable** for durable links.
-- Preserve **query strings** at the proxy (required for signed URLs).
-- Tune **FPM** (pm/max_children) and enable **OPcache**.
+- Prebuild route cache in CI and ship `.route-cache` with your release artifact.
+- Register middleware aliases explicitly before you use string middleware like `throttle:60,60` or `verifySignedUrl`.
+- Set a stable signing key and, when generating absolute URLs, configure `urlBaseUri`.
+- Preserve query strings at the proxy layer; signed URLs depend on them.
 
 ```{toctree}
 :maxdepth: 2

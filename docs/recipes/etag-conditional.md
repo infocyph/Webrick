@@ -1,34 +1,25 @@
 # ETag & conditional requests
 
-Short-circuit `If-None-Match` / `If-Modified-Since` with a cache validators middleware. Example shows a simple strong ETag from payload.
+Use `CacheValidatorsMiddleware` early in the pipeline. It can short-circuit `If-None-Match` and `If-Modified-Since` before your handler does more work.
 
 ```php
-<?php
-
-use Infocyph\Webrick\Router\Kernel\RouterKernel;
+use Infocyph\Webrick\Middleware\CacheValidatorsMiddleware;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
-use Infocyph\Webrick\Middleware\CacheValidatorsMiddleware;
+use Infocyph\Webrick\Router\Facade\Router as Route;
 
-$router = new RouterKernel();
+$preGlobal[] = new CacheValidatorsMiddleware(
+    static function (Request $request): array {
+        unset($request);
 
-// Provider that returns [etag, lastModified] for the current request/resource
-$provider = function (Request $r): array {
-    // Example: calculate ETag from a known resource snapshot
-    $payload = json_encode(['version' => 1, 'time' => 'fixed'], JSON_UNESCAPED_SLASHES);
-    $etag = '"' . hash('sha256', $payload) . '"'; // strong ETag with quotes
-    $lastModified = gmdate('D, d M Y H:i:s').' GMT';
-    return [$etag, $lastModified];
-};
+        $payload = json_encode(['version' => 1, 'shape' => 'stable'], JSON_UNESCAPED_SLASHES);
+        $etag = '"' . hash('sha256', $payload) . '"';
+        $lastModified = gmdate('D, d M Y H:i:s') . ' GMT';
 
-$router->use(new CacheValidatorsMiddleware($provider));
+        return [$etag, $lastModified];
+    },
+);
 
-$router->get('/profile', function () {
-    $data = ['user' => 'alice', 'features' => ['a', 'b']];
-    // Include validators if controller builds/changes payload dynamically
-    return Response::json($data)
-        ->withHeader('ETag', 'W/"fallback"') // optional fallback if provider absent
-        ->withHeader('Cache-Control', 'public, max-age=60');
-});
+Route::get('/profile', fn() => Response::json(['user' => 'alice'])
+    ->withHeader('Cache-Control', 'public, max-age=60'), 'profile');
 ```
-**Tip:** Let the middleware add `304 Not Modified` or `412 Precondition Failed` automatically when validators match.

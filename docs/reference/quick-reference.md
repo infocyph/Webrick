@@ -93,7 +93,7 @@ Route::delete('/users/{id:int}', fn(int $id) => Response::noContent());
 Route::get('/users/{id:int}', $handler, 'users.show');
 
 // With middleware
-Route::get('/admin', $handler, options: ['middleware' => ['auth', 'admin']]);
+Route::get('/admin', $handler, ['middleware' => ['auth', 'admin']]);
 
 // Groups
 Route::group(prefix: '/api', middleware: ['throttle:60,60'], callback: function() {
@@ -133,7 +133,7 @@ final class AuthMiddleware {
 MiddlewareAliases::register('auth', fn() => new AuthMiddleware());
 
 // Use
-Route::get('/protected', $handler, options: ['middleware' => ['auth']]);
+Route::get('/protected', $handler, ['middleware' => ['auth']]);
 ```
 
 ---

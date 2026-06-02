@@ -1,70 +1,15 @@
 # Getting Started
 
-Start here to get a working app quickly, then explore guides and reference.
+Start here if you want a working Webrick app with current APIs and production-friendly defaults.
 
----
+## What you'll set up
 
-## What You'll Learn
-
-By the end of this section, you'll be able to:
-
-1. ✅ **Install** Webrick and its dependencies
-2. ✅ **Boot** a RouterKernel with proper configuration
-3. ✅ **Register** routes with closures and controllers
-4. ✅ **Generate** signed and temporary URLs
-5. ✅ **Configure** middleware (pre-global and post-global)
-6. ✅ **Build** and ship route caches for production
-7. ✅ **Troubleshoot** common installation issues
-
-**Time to Complete**: ~15 minutes
-
----
-
-## Prerequisites
-
-Before you begin:
-
-- **PHP 8.4+** installed and working
-- **Composer 2.x** available in your PATH
-- Basic understanding of:
-  - HTTP request/response cycle
-  - PHP namespaces and autoloading
-  - Command-line basics
-
-**Verify Prerequisites**:
-```bash
-# Check PHP version (must be 8.4+)
-php -v
-
-# Check Composer
-composer --version
-
-# Check required extensions
-php -m | grep -E '(mbstring|json|zlib)'
-```
-
----
-
-## Learning Path
-```
-1. Installation
-   └─> Install via Composer
-   └─> Set up directory structure
-   └─> Configure environment keys
-
-2. Quick Start
-   └─> Boot the kernel
-   └─> Define first routes
-   └─> Register middleware
-   └─> Generate signed URLs
-
-3. First Deployment
-   └─> Build route cache
-   └─> Configure web server
-   └─> Enable OPcache
-   └─> Ship to production
-```
-
+1. Install Webrick with Composer
+2. Boot `RouterKernel::bootWithRegistrar(...)`
+3. Register routes through `Infocyph\Webrick\Router\Facade\Router as Route`
+4. Enable URL generation and signed URLs
+5. Add middleware aliases where string middleware is needed
+6. Build route cache for deployment
 
 ## Install
 
@@ -75,38 +20,56 @@ composer require infocyph/webrick
 ## Boot the kernel
 
 ```php
+use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Response\Emitter\AutoEmitter;
+use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Router\Definition\Registrar;
+use Infocyph\Webrick\Router\Facade\Router as Route;
 use Infocyph\Webrick\Router\Kernel\RouterKernel;
 use Infocyph\Webrick\Router\Matching\ShardedMatcher;
 use Psr\Log\NullLogger;
 
 $kernel = RouterKernel::bootWithRegistrar(
-  log: new NullLogger(),
-  matcher: ShardedMatcher::make(__DIR__.'/.route-cache'),
-  register: require __DIR__.'/routes.php',
-  registrarOptions: [
-    'autoSlashRedirect' => true,
-    'exposeUrlServices' => true,
-    'signKey'           => getenv('WEBRICK_SIGN_KEY') ?: 'dev-key-change-me',
-    'signedDefaultTtl'  => 300,
-    'fallbackAliasesFromRegistrar' => true,
-  ]
+    log: new NullLogger(),
+    matcher: ShardedMatcher::make(__DIR__ . '/.route-cache'),
+    register: static function (Registrar $registrar): void {
+        unset($registrar);
+
+        Route::get('/', fn() => Response::plaintext('Hello Webrick', 200), 'home');
+    },
+    routeCache: __DIR__ . '/.route-cache',
+    registrarOptions: [
+        'exposeUrlServices' => true,
+        'signKey' => $_ENV['WEBRICK_SIGN_KEY'] ?? 'dev-key-change-me',
+        'signedDefaultTtl' => 300,
+        'urlBaseUri' => $_ENV['WEBRICK_URL_BASE_URI'] ?? 'http://localhost',
+    ],
 );
+
+(new AutoEmitter())->emit($kernel->handle(Request::fromGlobals()));
 ```
 
-## First routes
+## First route helpers
 
 ```php
-use Infocyph\Webrick\Router\Route;
-use Infocyph\Webrick\Response\Response as R;
+use Infocyph\Webrick\Router\Facade\Router as Route;
 
-Route::get('/', fn() => R::plaintext('Hello Webrick'))->name('home');
+$url = Route::urlFor('home');
+$signed = Route::signedUrlFor('home');
+$temp = Route::temporaryUrlFor('home', ttl: 300);
+```
+
+## Route cache build
+
+```bash
+php ./webrick route:cache --matcher=sharded --cache=.route-cache --routes=routes.php
 ```
 
 ## Next steps
-- Enable **signed URLs** and add the `verifySignedUrl` middleware for downloads/one‑time actions.
-- Add **validators** + **compression** middleware for speed and correctness.
-- Choose **Sharded**, **Fused**, or **Generated** matcher based on your deployment style.
-- Jump to **Deployments** to productionize.
+
+- Read `quickstart` for a fuller bootstrap with aliases and middleware.
+- Read `guides/urls` for the richer signed URL surface.
+- Read `reference/route-cache` for matcher and artifact details.
 
 ```{toctree}
 :maxdepth: 2

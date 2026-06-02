@@ -35,11 +35,11 @@ use Infocyph\Webrick\Response\Response;
 
 class ThrottleMiddlewareTest extends TestCase
 {
-    private InMemoryCache $cache;
+    private \Infocyph\CacheLayer\Cache\Adapter\ArrayCacheAdapter $cache;
 
     protected function setUp(): void
     {
-        $this->cache = new InMemoryCache();
+        $this->cache = new \Infocyph\CacheLayer\Cache\Adapter\ArrayCacheAdapter();
     }
 
     public function testAllowsRequestsWithinLimit(): void
@@ -139,7 +139,7 @@ class ThrottleMiddlewareTest extends TestCase
 use PHPUnit\Framework\TestCase;
 use Infocyph\Webrick\Router\Kernel\RouterKernel;
 use Infocyph\Webrick\Router\Matching\ShardedMatcher;
-use Infocyph\Webrick\Router\Route;
+use Infocyph\Webrick\Router\Facade\Router as Route;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Psr\Log\NullLogger;
@@ -157,7 +157,7 @@ class SignedUrlTest extends TestCase
             matcher: ShardedMatcher::make('/tmp/test-route-cache'),
             register: function($r) {
                 $r->get('/secure/resource', fn() => Response::json(['secret' => 'data']), 'secure.resource')
-                    ->middleware(['verifySignedUrl']);
+                    ->withMiddleware(['verifySignedUrl']);
             },
             registrarOptions: [
                 'exposeUrlServices' => true,
@@ -165,8 +165,6 @@ class SignedUrlTest extends TestCase
                 'signedDefaultTtl' => 900
             ]
         );
-
-        Route::bindUrlServices($this->kernel->routes(), $this->signKey, 900);
     }
 
     public function testUnsignedUrlRejected(): void
@@ -291,7 +289,7 @@ class MiddlewareStackTest extends TestCase
         $handlerCalled = 0;
 
         $kernel = $this->bootKernelWithMiddleware([
-            new ThrottleMiddleware(max: 1, window: 60, pool: new InMemoryCache())
+            new ThrottleMiddleware(max: 1, window: 60, pool: new \Infocyph\CacheLayer\Cache\Adapter\ArrayCacheAdapter())
         ]);
 
         $next = function($r) use (&$handlerCalled) {

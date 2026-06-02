@@ -43,7 +43,7 @@ use Psr\Log\NullLogger;
 
 $sentinel = RouteCache::build([
     'cache'   => __DIR__ . '/../.route-cache',  // Directory (auto-detects sharded)
-    'routes'  => __DIR__ . '/../routes/web.php',    // Routes file
+    'routes'  => __DIR__ . '/../routes.php',    // Routes file
     'matcher' => 'sharded',                          // Optional (auto-detected by path)
     'signKey' => $signKey,
     'signedDefaultTtl' => 900,
@@ -56,7 +56,7 @@ $sentinel = RouteCache::build([
     'preGlobal' => [],   // Optional: middleware for warmup validation
     'postGlobal' => [],
     'bindUrlServices' => static function (Collection $routes) use ($signKey): void {
-        Route::bindUrlServices($routes, $signKey, 900);
+        Route::bindUrlServices($routes, $signKey, 900, null, 'http://localhost');
     }
 ]);
 
@@ -68,7 +68,7 @@ echo "Route cache built. Sentinel: {$sentinel}\n";
 $sentinel = RouteCache::build([
     'cache'  => __DIR__ . '/../.route-cache/__routes.php',  // Single file (auto-detects fused)
     'matcher' => 'fused',                               // Explicit
-    'routes' => __DIR__ . '/../routes/web.php',
+    'routes' => __DIR__ . '/../routes.php',
     'signKey' => $signKey,
     'signedDefaultTtl' => 900,
     'fallbackAliasesFromRegistrar' => true,
@@ -92,7 +92,7 @@ $sentinel = RouteCache::build([
         $r->get('/hello/{name}', fn($req, $name) => Response::json(['hello' => $name]));
 
         // Or include files
-        require __DIR__ . '/../routes/web.php';
+        require __DIR__ . '/../routes.php';
 
         // Or scan attributes
         AttributeRouteLoader::registerFromDirs($r, [
@@ -141,7 +141,7 @@ The builder validates routes and fails fast on:
 set -e  # Exit on error
 
 echo "Building route cache..."
-php webrick route:cache --cache=.route-cache --routes=routes.php
+php ./webrick route:cache --cache=.route-cache --routes=routes.php
 
 if [ $? -eq 0 ]; then
     echo "✅ Route cache built successfully"
@@ -168,7 +168,7 @@ use Psr\Log\NullLogger;
 require __DIR__ . '/../vendor/autoload.php';
 
 $cacheDir = __DIR__ . '/../.route-cache';
-$routes   = __DIR__ . '/../routes/web.php';
+$routes   = __DIR__ . '/../routes.php';
 
 if (!is_dir($cacheDir) && !mkdir($cacheDir, 0775, true)) {
     fwrite(STDERR, "Cannot create cache dir: $cacheDir\n");
@@ -191,7 +191,7 @@ echo "[webrick] route cache built into $cacheDir\n";
 **Run in CI:**
 
 ```bash
-php webrick route:cache --cache=.route-cache --routes=routes.php
+php ./webrick route:cache --cache=.route-cache --routes=routes.php
 ```
 
 Add `.route-cache/` to the release artifact (or bake into your container image).
@@ -235,7 +235,7 @@ No extra flags needed—if the cache exists, the matcher uses it.
 
 If you use **attribute-based** routes, the **same loader call** must run during warmup and runtime. The safest pattern:
 
-* Put `AttributeRouteLoader::registerFromDirs(...)` inside the same `$register` closure that includes `routes/web.php`.
+* Put `AttributeRouteLoader::registerFromDirs(...)` inside the same `$register` closure that includes `routes.php`.
 * The warmup script invokes that closure—so both prod and CI generate **identical** registrations.
 
 ---

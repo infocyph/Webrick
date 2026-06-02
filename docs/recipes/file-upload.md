@@ -148,7 +148,7 @@ $uploadHandler = new FileUploadHandler(
 
 // Upload file
 Route::post('/upload', [$uploadHandler, 'upload'])
-    ->middleware(['auth', 'throttle:10,60']);
+    ->withMiddleware(['auth', 'throttle:10,60']);
 
 // Serve file
 Route::get('/uploads/{filename:.*}', function(string $filename) {
@@ -569,7 +569,7 @@ upload_max_filesize = 10M
 post_max_size = 10M
 
 // In middleware
-Route::post('/upload', $handler)->middleware([
+Route::post('/upload', $handler)->withMiddleware([
     new RequestLimitsMiddleware(maxBodyBytes: 10 * 1024 * 1024)
 ]);
 ```

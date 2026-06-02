@@ -1,31 +1,29 @@
 # HEAD handling
 
-Serve `HEAD` by mirroring `GET` headers without a body. You can add a tiny middleware to convert `HEAD` into `GET`, capture the response, then strip the body.
+If you want explicit `HEAD` normalization, place a small middleware in `preGlobal` that converts `HEAD` to `GET`, then strips the body from the response.
 
 ```php
-<?php
-
-use Infocyph\Webrick\Router\Kernel\RouterKernel;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Router\Facade\Router as Route;
 
-$router = new RouterKernel();
-
-$router->use(function (Request $req, callable $next) {
-    $isHead = strtoupper($req->method()) === 'HEAD';
-    if ($isHead) {
-        // Temporarily treat as GET
-        $req = $req->withMethod('GET');
-    }
-
-    $res = $next($req);
+$preGlobal[] = static function (Request $request, callable $next): Response {
+    $isHead = strtoupper($request->getMethod()) === 'HEAD';
 
     if ($isHead) {
-        // Strip body for HEAD, keep headers & status
-        return $res->withBody('')->withHeader('Content-Length', (string)0);
+        $request = $request->withMethod('GET');
     }
-    return $res;
-});
 
-$router->get('/info', fn() => Response::json(['name' => 'Webrick', 'ok' => true]));
+    $response = $next($request);
+
+    if (! $isHead) {
+        return $response;
+    }
+
+    return $response
+        ->withBody(new Infocyph\Webrick\Request\Core\Stream(''))
+        ->withHeader('Content-Length', '0');
+};
+
+Route::get('/info', fn() => Response::json(['name' => 'Webrick', 'ok' => true]), 'info');
 ```

@@ -145,7 +145,7 @@ $kernel = RouterKernel::bootWithRegistrar(
 ### Per-Route
 
 ```php
-Route::get('/admin', [AdminController::class, 'index'], options: [
+Route::get('/admin', [AdminController::class, 'index'], [
     'middleware' => ['auth', 'admin']
 ]);
 ```
@@ -364,7 +364,7 @@ MiddlewareAliases::register('throttle', fn(...$params) => new ThrottleMiddleware
 ### Use Alias
 
 ```php
-Route::get('/protected', [SecretController::class, 'index'], options: [
+Route::get('/protected', [SecretController::class, 'index'], [
     'middleware' => ['auth', 'throttle:30,60']
 ]);
 ```

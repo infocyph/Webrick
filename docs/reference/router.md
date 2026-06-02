@@ -312,7 +312,7 @@ Route::get('/posts/{year:int}/{month:int}/{slug:slug}',
 Route::get('/users', [UserController::class, 'index'], 'users.index');
 
 // Via options array
-Route::get('/users', [UserController::class, 'index'], options: [
+Route::get('/users', [UserController::class, 'index'], [
     'name' => 'users.index'
 ]);
 ```
@@ -333,19 +333,19 @@ Route::get('/current-route', function(Request $r) {
 ### Per-Route Middleware
 
 ```php
-Route::get('/protected', [SecretController::class, 'index'], options: [
+Route::get('/protected', [SecretController::class, 'index'], [
     'middleware' => ['auth', 'verified']
 ]);
 
 // Or using facade shorthand
 Route::get('/protected', [SecretController::class, 'index'])
-    ->middleware(['auth', 'verified']);
+    ->withMiddleware(['auth', 'verified']);
 ```
 
 ### Middleware with Parameters
 
 ```php
-Route::post('/api/data', [ApiController::class, 'store'], options: [
+Route::post('/api/data', [ApiController::class, 'store'], [
     'middleware' => ['throttle:30,60', 'verifySignedUrl']
 ]);
 ```
@@ -447,7 +447,10 @@ RouteCache::build([
 $kernel = RouterKernel::bootWithRegistrar(
     log: new \Psr\Log\NullLogger(),
     matcher: \Infocyph\Webrick\Router\Matching\ShardedMatcher::make(__DIR__ . '/.route-cache'),
-    register: require __DIR__ . '/routes.php',
+    register: static function (\Infocyph\Webrick\Router\Definition\Registrar $registrar): void {
+        unset($registrar);
+        require __DIR__ . '/routes.php';
+    },
     routeCache: __DIR__ . '/.route-cache',
 );
 ```
@@ -519,12 +522,13 @@ Route::get('/{path:.*}', function(string $path) {
 
 ### Route Facade
 - All Registrar methods
-- Chainable middleware: `->middleware(array $middleware)`
-- Chainable name: `->name(string $name)`
+- Chainable middleware: `->withMiddleware(array $middleware)`
+- Chainable name: `->withName(string $name)`
 
 ### URL Generation
 - `Route::urlFor(string $name, array $params = [], array $query = [], bool $absolute = false): string`
 
 ### URL Signing
-- `Route::signedUrlFor(string $name, array $params = [], array $query = [], ?int $ttl = null, bool $absolute = false): string`
-- `Route::temporaryUrlFor(string $name, array $params = [], array $query = [], ?int $ttl = null, bool $absolute = false): string`
+- `Route::signedUrlFor(string $name, array $params = [], array $query = [], ?int $ttl = null, bool $absolute = false, ?string $payloadMode = null): string`
+- `Route::temporaryUrlFor(string $name, array $params = [], array $query = [], ?int $ttl = null, bool $absolute = false, ?string $payloadMode = null): string`
+- `Route::temporaryUrlUntil(string $name, DateTimeInterface|int $expiresAt, array $params = [], array $query = [], bool $absolute = false, ?string $payloadMode = null): string`

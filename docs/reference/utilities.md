@@ -1,97 +1,74 @@
 # Utilities Reference
 
-Helper utilities and facades that are active in current Webrick runtime.
+Utilities that are part of the active Webrick runtime shape.
 
----
-
-## Route Cache
-
-Use `Infocyph\Webrick\Support\RouteCache` to prebuild/clear matcher artifacts.
-
-### Build Cache
+## RouteCache
 
 ```php
 use Infocyph\Webrick\Support\RouteCache;
 
 RouteCache::build([
-    'matcher' => 'sharded',                  // sharded|fused|generated (optional)
-    'cache' => __DIR__ . '/.route-cache',    // sharded dir or fused file path
+    'matcher' => 'sharded',
+    'cache' => __DIR__ . '/.route-cache',
     'routes' => __DIR__ . '/routes.php',
+    'signKey' => $_ENV['WEBRICK_SIGN_KEY'] ?? 'dev-key',
+    'signedDefaultTtl' => 900,
     'registrarOptions' => [
         'exposeUrlServices' => true,
-        'signKey' => $_ENV['WEBRICK_SIGN_KEY'] ?? 'dev',
-        'signedDefaultTtl' => 900,
+        'urlBaseUri' => $_ENV['WEBRICK_URL_BASE_URI'] ?? 'http://localhost',
     ],
 ]);
-```
 
-### Clear Cache
-
-```php
 RouteCache::clear([
     'matcher' => 'sharded',
     'cache' => __DIR__ . '/.route-cache',
-    'aggressive' => false,
 ]);
 ```
 
-### CLI Equivalent
+CLI equivalents:
 
 ```bash
-php webrick route:cache --matcher=sharded --cache=.route-cache --routes=routes.php
-php webrick route:clear --matcher=sharded --cache=.route-cache
+php ./webrick route:cache --matcher=sharded --cache=.route-cache --routes=routes.php
+php ./webrick route:clear --matcher=sharded --cache=.route-cache
 ```
 
----
-
-## Route URL Helpers
-
-Use the `Route` facade for URL generation/signing.
+## Route facade URL helpers
 
 ```php
-use Infocyph\Webrick\Router\Route;
+use Infocyph\Webrick\Router\Facade\Router as Route;
+use Infocyph\Webrick\Router\Url\SignedUrlConfig;
 
 $url = Route::urlFor('users.show', ['id' => 42]);
 $signed = Route::signedUrlFor('users.show', ['id' => 42]);
 $temp = Route::temporaryUrlFor('users.show', ['id' => 42], ttl: 900);
+$until = Route::temporaryUrlUntil('users.show', new DateTimeImmutable('+15 minutes'), ['id' => 42]);
+$absolutePayload = Route::signedUrlFor('users.show', ['id' => 42], absolute: true, payloadMode: SignedUrlConfig::MODE_ABSOLUTE);
 ```
 
-If you need manual binding outside registrar options:
+If you need manual binding outside `registrarOptions`:
 
 ```php
-Route::bindUrlServices($routes, $signKey, 900);
+Route::bindUrlServices($routes, $signKey, 900, $signedUrlConfig, $baseUri);
 ```
 
----
-
-## Middleware Aliases
-
-Register middleware aliases via `Infocyph\Webrick\Router\Dispatch\MiddlewareAliases`.
+## MiddlewareAliases
 
 ```php
-use Infocyph\Webrick\Router\Dispatch\MiddlewareAliases;
 use Infocyph\Webrick\Middleware\ThrottleMiddleware;
+use Infocyph\Webrick\Router\Dispatch\MiddlewareAliases;
 
 MiddlewareAliases::register(
     'throttle',
-    static fn (...$params) => new ThrottleMiddleware(
-        max: (int)($params[0] ?? 60),
-        window: (int)($params[1] ?? 60),
+    static fn(...$params) => new ThrottleMiddleware(
+        max: (int) ($params[0] ?? 60),
+        window: (int) ($params[1] ?? 60),
     ),
 );
 ```
 
-Then use alias strings in route/group middleware lists (for example `throttle:30,60`).
-
----
-
 ## Enums
 
-Webrick ships enum-backed constants in `Infocyph\Webrick\Constants`:
-
 - `HttpMethodEnum`
+- `MatcherModeEnum`
 - `MediaTypeEnum`
 - `StatusEnum`
-- `MatcherModeEnum`
-
-Use these for type-safe status/method/content-type/matcher handling instead of hardcoded strings.

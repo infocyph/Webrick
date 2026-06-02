@@ -1,108 +1,89 @@
 # Matcher
 
-Webrick provides three matcher modes. Choose one per deployment/runtime profile.
+Webrick provides three matcher modes. Pick one based on deployment shape and cache-artifact preference.
 
-## ShardedMatcher (directory cache)
+## ShardedMatcher
 
-**Best for:** many routes, frequent deploys, good OPcache locality, easy partial clears.
+Best for medium and large apps with prebuilt route cache directories.
 
 ```php
+use Infocyph\Webrick\Router\Definition\Registrar;
+use Infocyph\Webrick\Router\Kernel\RouterKernel;
 use Infocyph\Webrick\Router\Matching\ShardedMatcher;
-use Infocyph\Webrick\Router\Kernel\RouterKernel;
 use Psr\Log\NullLogger;
 
-$matcher = ShardedMatcher::make(__DIR__.'/.route-cache'); // directory
-$kernel  = RouterKernel::bootWithRegistrar(
+$kernel = RouterKernel::bootWithRegistrar(
     log: new NullLogger(),
-    matcher: $matcher,
-    register: require __DIR__.'/routes.php',
-    registrarOptions: [
-        'autoSlashRedirect' => true,
-        'exposeUrlServices' => true,
-        'signKey'           => getenv('WEBRICK_SIGN_KEY') ?: 'dev-key',
-        'signedDefaultTtl'  => 300,
-        'fallbackAliasesFromRegistrar' => true,
-    ]
+    matcher: ShardedMatcher::make(__DIR__ . '/.route-cache'),
+    register: static function (Registrar $registrar): void {
+        unset($registrar);
+        require __DIR__ . '/routes.php';
+    },
+    routeCache: __DIR__ . '/.route-cache',
 );
 ```
 
-**Traits**
-- Writes many small PHP files (per-shard) under the cache directory.
-- Great with OPcache: shards stay hot and invalidate independently.
-- Easy to clear incrementally by removing specific shard files.
+Traits:
 
-## FusedMatcher (single-file cache)
+- cache artifact is a directory
+- good OPcache locality
+- best default for production
 
-**Best for:** small/medium route sets, simpler deployment artifact, ultra-fast startup.
+## FusedMatcher
+
+Best when you want one cache file to build and ship.
 
 ```php
+use Infocyph\Webrick\Router\Definition\Registrar;
+use Infocyph\Webrick\Router\Kernel\RouterKernel;
 use Infocyph\Webrick\Router\Matching\FusedMatcher;
-use Infocyph\Webrick\Router\Kernel\RouterKernel;
 use Psr\Log\NullLogger;
 
-$matcher = FusedMatcher::make(__DIR__.'/.route-cache/__routes.php'); // single file
-$kernel  = RouterKernel::bootWithRegistrar(
+$kernel = RouterKernel::bootWithRegistrar(
     log: new NullLogger(),
-    matcher: $matcher,
-    register: require __DIR__.'/routes.php',
-    registrarOptions: [
-        'autoSlashRedirect' => true,
-        'exposeUrlServices' => true,
-        'signKey'           => getenv('WEBRICK_SIGN_KEY') ?: 'dev-key',
-        'signedDefaultTtl'  => 300,
-        'fallbackAliasesFromRegistrar' => true,
-    ]
+    matcher: FusedMatcher::make(__DIR__ . '/.route-cache/__routes.php'),
+    register: static function (Registrar $registrar): void {
+        unset($registrar);
+        require __DIR__ . '/routes.php';
+    },
+    routeCache: __DIR__ . '/.route-cache/__routes.php',
 );
 ```
 
-**Traits**
-- Emits one consolidated cache file.
-- Maximum OPcache affinity; trivial to ship in image artifacts.
-- Easy to wipe by deleting a single file.
+Traits:
 
-## GeneratedMatcher (in-memory generated table)
+- single cache file
+- simple artifact handling
+- good fit for smaller route sets and immutable images
 
-**Best for:** benchmarking or runtime scenarios where you do not want filesystem cache artifacts.
+## GeneratedMatcher
+
+Best for experiments, benchmarking, or environments where you do not want cache artifacts.
 
 ```php
-use Infocyph\Webrick\Router\Matching\GeneratedMatcher;
+use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Kernel\RouterKernel;
+use Infocyph\Webrick\Router\Matching\GeneratedMatcher;
 use Psr\Log\NullLogger;
 
-$matcher = GeneratedMatcher::make();
-$kernel  = RouterKernel::bootWithRegistrar(
+$kernel = RouterKernel::bootWithRegistrar(
     log: new NullLogger(),
-    matcher: $matcher,
-    register: require __DIR__.'/routes.php',
+    matcher: GeneratedMatcher::make(),
+    register: static function (Registrar $registrar): void {
+        unset($registrar);
+        require __DIR__ . '/routes.php';
+    },
 );
 ```
 
-**Traits**
-- No route-cache file/directory output.
-- Useful for controlled environments and matcher comparison.
+Traits:
 
-## Choosing
+- no route-cache artifacts
+- useful for isolated runtime comparisons
+- usually not the first production choice
 
-- **Large apps** → start with **ShardedMatcher** for graceful hot/warm behavior.
-- **Simple services / serverless** → **FusedMatcher** reduces filesystem chatter.
-- **No filesystem cache requirement** → **GeneratedMatcher**.
+## Recommendation
 
-## Use Cases By Matcher
-
-### ShardedMatcher
-- Use when route count is high and deploys are frequent.
-- Use when you want better OPcache locality and shard-level invalidation.
-- Good fit for long-running PHP-FPM workers on VM/container hosts.
-- Avoid when you need a single cache artifact only.
-
-### FusedMatcher
-- Use when you want one cache file that is easy to build, ship and swap.
-- Good fit for read-only runtime images where cache is prebuilt in CI.
-- Good fit for small/medium route sets and simple deployment pipelines.
-- Avoid when route cache churn is high and you need partial invalidation.
-
-### GeneratedMatcher
-- Use for benchmarking, ephemeral CI or environments where filesystem cache writes are undesirable.
-- Use when you want deterministic in-process matcher generation without cache artifacts.
-- Good fit for local experiments and controlled runtime comparisons.
-- Avoid as default for production workloads that benefit from persistent warmed route cache.
+- default to `ShardedMatcher`
+- use `FusedMatcher` when a single cache file helps your deployment model
+- use `GeneratedMatcher` when filesystem artifacts are a liability or irrelevant

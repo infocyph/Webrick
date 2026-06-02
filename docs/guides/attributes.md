@@ -248,7 +248,7 @@ public function protected(): Response
 #[Get('/download/{file}', middleware: ['verifySignedUrl', 'throttle:10,60'])]
 public function download(string $file): Response
 {
-    return Response::attachment(__DIR__ . "/files/{$file}");
+    return Response::attachment(__DIR__ . "/files/{$file}", $file);
 }
 ```
 
@@ -455,7 +455,7 @@ echo "Route cache built\n";
 
 **Run in CI**:
 ```bash
-php webrick route:cache --cache=.route-cache --routes=routes.php
+php ./webrick route:cache --cache=.route-cache --routes=routes.php
 ```
 
 **Benefits**:
@@ -580,7 +580,7 @@ MiddlewareAliases::register('auth', fn() => new AuthMiddleware());
 
 **Fix**: Prebuild route cache:
 ```bash
-php webrick route:cache --cache=.route-cache --routes=routes.php
+php ./webrick route:cache --cache=.route-cache --routes=routes.php
 ```
 
 Ship `.route-cache/` with your deployment.
@@ -622,7 +622,7 @@ Ship `.route-cache/` with your deployment.
 
 5. **Prebuild cache in production**
 ```bash
-   php webrick route:cache --cache=.route-cache --routes=routes.php  # In CI/CD
+   php ./webrick route:cache --cache=.route-cache --routes=routes.php  # In CI/CD
 ```
 
 ### ❌ **Don't**
