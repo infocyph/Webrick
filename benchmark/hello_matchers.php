@@ -1,11 +1,12 @@
 <?php
 
 declare(strict_types=1);
-
 use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Constants\MatcherModeEnum;
 use Infocyph\Webrick\Middleware\ThrottleMiddleware;
 use Infocyph\Webrick\Middleware\VerifySignedUrlMiddleware;
+use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Definition\Attribute\AttributeRouteLoader;
 use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Dispatch\MiddlewareAliases;
@@ -16,6 +17,8 @@ use Infocyph\Webrick\Router\Matching\MatcherInterface;
 use Infocyph\Webrick\Router\Matching\ShardedMatcher;
 use Infocyph\Webrick\Router\Route\Collection;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
+use Infocyph\Webrick\Router\Url\SignedUrlConfig;
+use Infocyph\Webrick\Router\Url\UrlGenerator;
 use Infocyph\Webrick\Support\RouteCache;
 use Psr\Log\NullLogger;
 
@@ -300,6 +303,120 @@ printTable(
     $summaryRows,
 );
 
+$signedBenchIterations = max(10000, (int) floor($iterations / 5));
+$signedBenchWarmup = max(1000, (int) floor($warmup / 5));
+$signedBenchConfig = new SignedUrlConfig(
+    generationKey: 'bench-sign-key',
+    verificationKeys: ['bench-sign-key'],
+    defaultTtl: 900,
+);
+$signedBenchAbsoluteConfig = new SignedUrlConfig(
+    generationKey: 'bench-sign-key',
+    verificationKeys: ['bench-sign-key'],
+    defaultTtl: 900,
+    payloadMode: SignedUrlConfig::MODE_ABSOLUTE,
+    ignoredQueryParams: ['preview'],
+    leeway: 5,
+);
+$signedBenchGenerator = buildSignedUrlBenchmarkGenerator($signedBenchConfig);
+$signedBenchAbsoluteGenerator = buildSignedUrlBenchmarkGenerator($signedBenchAbsoluteConfig);
+$relativeSignedUrl = $signedBenchGenerator->temporary(
+    'secure.show',
+    ['id' => 42],
+    ['dl' => 1],
+    300,
+    false,
+);
+$absoluteSignedUrl = $signedBenchAbsoluteGenerator->temporaryUntil(
+    'secure.absolute',
+    new \DateTimeImmutable('+10 minutes'),
+    ['id' => 42],
+    ['dl' => 1],
+    true,
+    SignedUrlConfig::MODE_ABSOLUTE,
+);
+
+$signedBenchRows = [
+    benchCallable(
+        'relative sign',
+        static fn(): string => $signedBenchGenerator->temporary(
+            'secure.show',
+            ['id' => 42],
+            ['dl' => 1],
+            300,
+            false,
+        ),
+        $signedBenchIterations,
+        $rounds,
+        $signedBenchWarmup,
+    ),
+    benchCallable(
+        'absolute sign',
+        static fn(): string => $signedBenchAbsoluteGenerator->signed(
+            'secure.absolute',
+            ['id' => 42],
+            ['dl' => 1],
+            null,
+            true,
+            SignedUrlConfig::MODE_ABSOLUTE,
+        ),
+        $signedBenchIterations,
+        $rounds,
+        $signedBenchWarmup,
+    ),
+    benchCallable(
+        'absolute until',
+        static fn(): string => $signedBenchAbsoluteGenerator->temporaryUntil(
+            'secure.absolute',
+            new \DateTimeImmutable('+10 minutes'),
+            ['id' => 42],
+            ['dl' => 1],
+            true,
+            SignedUrlConfig::MODE_ABSOLUTE,
+        ),
+        $signedBenchIterations,
+        $rounds,
+        $signedBenchWarmup,
+    ),
+    benchCallable(
+        'relative verify',
+        static fn(): Response => verifySignedUrlBenchmarkResponse(
+            $relativeSignedUrl,
+            new VerifySignedUrlMiddleware('bench-sign-key', 5),
+        ),
+        $signedBenchIterations,
+        $rounds,
+        $signedBenchWarmup,
+    ),
+    benchCallable(
+        'absolute verify',
+        static fn(): Response => verifySignedUrlBenchmarkResponse(
+            $absoluteSignedUrl,
+            new VerifySignedUrlMiddleware($signedBenchAbsoluteConfig),
+            ['preview' => '1'],
+        ),
+        $signedBenchIterations,
+        $rounds,
+        $signedBenchWarmup,
+    ),
+];
+
+out("\nSigned URL Benchmark\n");
+out("Iterations/round: {$signedBenchIterations}, rounds: {$rounds}, warmup: {$signedBenchWarmup}\n");
+printTable(
+    ['Case', 'Best ops/s', 'Best ns/op', 'Avg ops/s', 'Avg ns/op'],
+    array_map(
+        static fn(array $row): array => [
+            $row['name'],
+            number_format($row['best_ops_s'], 2),
+            number_format($row['best_ns_op'], 2),
+            number_format($row['avg_ops_s'], 2),
+            number_format($row['avg_ns_op'], 2),
+        ],
+        $signedBenchRows,
+    ),
+);
+
 function progressPercent(int $completed, int $total, bool $forceNewline = false): void
 {
     static $lastPercent = -1;
@@ -547,6 +664,49 @@ function benchMatcher(
 }
 
 /**
+ * @return array{
+ *   name:string,
+ *   best_ops_s:float,
+ *   avg_ops_s:float,
+ *   best_ns_op:float,
+ *   avg_ns_op:float
+ * }
+ */
+function benchCallable(
+    string $name,
+    callable $callable,
+    int $iterations,
+    int $rounds,
+    int $warmup,
+): array {
+    $rounds = max(1, $rounds);
+
+    for ($i = 0; $i < $warmup; $i++) {
+        $callable();
+    }
+
+    $roundNs = [];
+    for ($round = 0; $round < $rounds; $round++) {
+        $start = hrtime(true);
+        for ($i = 0; $i < $iterations; $i++) {
+            $callable();
+        }
+        $roundNs[] = (float) (hrtime(true) - $start);
+    }
+
+    $bestNs = min($roundNs);
+    $avgNs = array_sum($roundNs) / count($roundNs);
+
+    return [
+        'name' => $name,
+        'best_ops_s' => ($iterations * 1_000_000_000.0) / $bestNs,
+        'avg_ops_s' => ($iterations * 1_000_000_000.0) / $avgNs,
+        'best_ns_op' => $bestNs / $iterations,
+        'avg_ns_op' => $avgNs / $iterations,
+    ];
+}
+
+/**
  * @param array{
  *   name:string,
  *   best_ops_s:float,
@@ -578,6 +738,12 @@ function buildBenchmarkCache(string $matcher, string $cachePath, callable $regis
         'register' => $register,
         'signKey' => 'bench-sign-key',
         'signedDefaultTtl' => 900,
+        'signedUrlConfig' => new SignedUrlConfig(
+            generationKey: 'bench-sign-key',
+            verificationKeys: ['bench-sign-key'],
+            defaultTtl: 900,
+        ),
+        'urlBaseUri' => 'http://localhost',
         'fallbackAliasesFromRegistrar' => true,
         'logger' => new NullLogger(),
         'registrarOptions' => [
@@ -618,6 +784,12 @@ function buildCompiledRoutes(callable $register): array
         exposeUrlServices: false,
         signKey: 'bench-sign-key',
         signedDefaultTtl: 900,
+        signedUrlConfig: new SignedUrlConfig(
+            generationKey: 'bench-sign-key',
+            verificationKeys: ['bench-sign-key'],
+            defaultTtl: 900,
+        ),
+        urlBaseUri: 'http://localhost',
     );
 
     $register($registrar);
@@ -629,6 +801,53 @@ function buildCompiledRoutes(callable $register): array
     }
 
     return $all;
+}
+
+function buildSignedUrlBenchmarkGenerator(SignedUrlConfig $config): UrlGenerator
+{
+    $routes = new Collection();
+    $registrar = new Registrar(
+        routes: $routes,
+        autoSlashRedirect: false,
+        exposeUrlServices: false,
+        signKey: 'bench-sign-key',
+        signedDefaultTtl: 900,
+        signedUrlConfig: $config,
+        urlBaseUri: 'http://localhost',
+    );
+
+    registerIndexRoutes($registrar);
+
+    return new UrlGenerator(
+        baseUri: 'http://localhost',
+        routes: $routes,
+        signedConfig: $config,
+    );
+}
+
+/**
+ * @param array<string,string> $extraQuery
+ */
+function verifySignedUrlBenchmarkResponse(
+    string $signedUrl,
+    VerifySignedUrlMiddleware $middleware,
+    array $extraQuery = [],
+): Response {
+    $path = (string) parse_url($signedUrl, PHP_URL_PATH);
+    $query = [];
+    $queryString = parse_url($signedUrl, PHP_URL_QUERY);
+    if (\is_string($queryString) && $queryString !== '') {
+        parse_str($queryString, $query);
+    }
+
+    /** @var array<string, string|array<int|string,mixed>|bool|float|int|null> $mergedQuery */
+    $mergedQuery = array_merge($query, $extraQuery);
+    $request = Request::fake(query: $mergedQuery, uri: 'http://localhost' . $path);
+
+    return $middleware(
+        $request,
+        static fn(): Response => Response::plaintext('ok', 200),
+    );
 }
 
 /**
@@ -647,15 +866,27 @@ function registerIndexRoutes(Registrar $registrar): void
     );
     MiddlewareAliases::register(
         'verifySignedUrl',
-        static function (...$_params): string {
+        static function (...$_params): VerifySignedUrlMiddleware {
             unset($_params);
 
-            return VerifySignedUrlMiddleware::class;
+            return new VerifySignedUrlMiddleware('bench-sign-key', 5);
+        },
+    );
+    MiddlewareAliases::register(
+        'verifySignedUrlAbsolute',
+        static function (...$_params): VerifySignedUrlMiddleware {
+            unset($_params);
+
+            return new VerifySignedUrlMiddleware(new SignedUrlConfig(
+                verificationKeys: ['bench-sign-key'],
+                payloadMode: SignedUrlConfig::MODE_ABSOLUTE,
+                ignoredQueryParams: ['preview'],
+                leeway: 5,
+            ));
         },
     );
 
     Router::setInstance($registrar);
-    $signUrlSecret = 'bench-sign-key';
     require dirname(__DIR__) . '/routes.php';
 
     $fixtureDirs = [

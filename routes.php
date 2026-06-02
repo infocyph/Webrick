@@ -1,7 +1,6 @@
 <?php
 
 declare(strict_types=1);
-
 use Infocyph\Webrick\Constants\MediaTypeEnum;
 use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Middleware\ThrottleMiddleware;
@@ -9,10 +8,11 @@ use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Facade\Router as Route;
+use Infocyph\Webrick\Router\Url\SignedUrlConfig;
 
 /**
  * This file is included inside the $register closure in index.php,
- * so the variables $registrar (Registrar) and $signUrlSecret are available.
+ * so the variable $registrar (Registrar) is available.
  *
  * NOTE: DemoController and UsersController are declared in index.php (global namespace),
  * so we can reference them directly here.
@@ -46,6 +46,7 @@ Route::get('/', function (): Response {
         '/to-json' => 'Redirect to route alias: json',
         '/to-user-42' => 'Redirect to route alias: users.show (id=42)',
         '/signed-demo' => 'Signed Demo',
+        '/make-signed-absolute/42' => 'Signed Demo: absolute payload redirect',
         '/auto-demo' => 'Auto Demo',
         '/auto-hello' => 'Auto Hello',
         '/xml-demo' => 'XML Demo',
@@ -162,6 +163,21 @@ Route::get('/to-user-42', fn() => Response::redirect(
 Route::get('/signed-demo', fn() => Response::json([
     'rel' => Route::signedUrlFor('users.show', ['id' => 42]),
     'abs' => Route::signedUrlFor('users.show', ['id' => 42], absolute: true),
+    'abs_payload' => Route::signedUrlFor(
+        'secure.absolute',
+        ['id' => 42],
+        ['dl' => 1],
+        absolute: true,
+        payloadMode: SignedUrlConfig::MODE_ABSOLUTE,
+    ),
+    'expires_at' => Route::temporaryUrlUntil(
+        'secure.absolute',
+        new \DateTimeImmutable('+10 minutes'),
+        ['id' => 42],
+        ['dl' => 1],
+        absolute: true,
+        payloadMode: SignedUrlConfig::MODE_ABSOLUTE,
+    ),
 ]));
 
 // 1) Generate a signed URL (relative) and redirect to it
@@ -179,6 +195,22 @@ Route::get('/make-signed/{id:int}', function ($id) {
     'middleware' => ['throttle:2,1'],
 ]);
 
+Route::get('/make-signed-absolute/{id:int}', function ($id) {
+    $signed = Route::temporaryUrlUntil(
+        name: 'secure.absolute',
+        expiresAt: new \DateTimeImmutable('+5 minutes'),
+        params: ['id' => $id],
+        query: ['dl' => 1],
+        absolute: true,
+        payloadMode: SignedUrlConfig::MODE_ABSOLUTE,
+    );
+
+    return Response::redirect($signed . '&preview=1', StatusEnum::FOUND->value);
+}, [
+    'as' => 'make.signed.absolute',
+    'middleware' => ['throttle:2,1'],
+]);
+
 // 2) Protected endpoint (verified by middleware)
 Route::get('/secure/{id:int}', function (Request $r, $id): Response {
     unset($r);
@@ -187,6 +219,19 @@ Route::get('/secure/{id:int}', function (Request $r, $id): Response {
 }, [
     'as' => 'secure.show',
     'middleware' => ['verifySignedUrl', 'throttle:2,1'],
+]);
+
+Route::get('/secure-absolute/{id:int}', fn(Request $r, $id): Response => Response::json([
+    'ok' => true,
+    'id' => $id,
+    'preview' => $r->getQueryParams()['preview'] ?? null,
+    'time' => \date(DATE_ATOM),
+]), [
+    'as' => 'secure.absolute',
+    'middleware' => [
+        'verifySignedUrlAbsolute',
+        'throttle:2,1',
+    ],
 ]);
 
 Route::get('/auto-demo', fn(Request $r) => Response::auto($r, ['now' => time(), 'msg' => 'hello']));

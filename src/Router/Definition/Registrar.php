@@ -15,6 +15,7 @@ use Infocyph\Webrick\Router\Facade\Router;
 use Infocyph\Webrick\Router\Route\Collection;
 use Infocyph\Webrick\Router\Route\CompiledCollection;
 use Infocyph\Webrick\Router\Route\Route;
+use Infocyph\Webrick\Router\Url\SignedUrlConfig;
 
 /**
  * Registrar
@@ -56,9 +57,17 @@ final readonly class Registrar
         private bool $exposeUrlServices = false,
         private ?string $signKey = null,
         private ?int $signedDefaultTtl = null,
+        private ?SignedUrlConfig $signedUrlConfig = null,
+        private string $urlBaseUri = '',
     ) {
         if ($this->exposeUrlServices) {
-            Router::bindUrlServices($this->routes, $this->signKey, $this->signedDefaultTtl);
+            Router::bindUrlServices(
+                $this->routes,
+                $this->signKey,
+                $this->signedDefaultTtl,
+                $this->signedUrlConfig,
+                $this->urlBaseUri,
+            );
         }
     }
 
@@ -139,6 +148,8 @@ final readonly class Registrar
             false,
             $this->signKey,
             $this->signedDefaultTtl,
+            $this->signedUrlConfig,
+            $this->urlBaseUri,
         );
 
         Router::withScopedInstance($child, $callback);

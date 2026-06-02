@@ -202,7 +202,9 @@ describe('Comprehensive Routing Tests', function () {
             $body = json_decode((string) $response->getBody(), true);
             expect($body)
                 ->toHaveKey('rel')
-                ->and($body)->toHaveKey('abs');
+                ->and($body)->toHaveKey('abs')
+                ->and($body)->toHaveKey('abs_payload')
+                ->and($body)->toHaveKey('expires_at');
         });
     });
 

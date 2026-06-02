@@ -13,6 +13,7 @@ use Infocyph\Webrick\Router\Matching\FusedMatcher;
 use Infocyph\Webrick\Router\Matching\GeneratedMatcher;
 use Infocyph\Webrick\Router\Matching\ShardedMatcher;
 use Infocyph\Webrick\Router\Route\Collection;
+use Infocyph\Webrick\Router\Url\SignedUrlConfig;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 
@@ -37,6 +38,7 @@ final class RouteCache
             $logger,
         );
         $attributeClasses = self::classListOption($options, 'attributeClasses');
+        $signKey = self::nullableStringOption($options, 'signKey');
 
         $baseDir = self::resolveBuildBaseDir($routesFile);
         $register = self::makeBuildRegisterClosure(
@@ -46,15 +48,23 @@ final class RouteCache
             $attributeClasses,
             $logger,
             $baseDir,
+            $signKey,
         );
 
-        $signKey = self::nullableStringOption($options, 'signKey');
         $signedDefaultTtl = self::intOption($options, 'signedDefaultTtl', 900);
+        $signedUrlConfig = self::signedUrlConfigOption($options, 'signedUrlConfig');
+        $urlBaseUri = self::stringOption($options, 'urlBaseUri');
         $regOpts = self::assocArrayOption($options, 'registrarOptions');
         $preGlobal = self::listOption($options, 'preGlobal');
         $postGlobal = self::listOption($options, 'postGlobal');
         $fallbackAliases = (bool) ($options['fallbackAliasesFromRegistrar'] ?? true);
-        $bind = self::resolveBindUrlServices($options, $signKey, $signedDefaultTtl);
+        $bind = self::resolveBindUrlServices(
+            $options,
+            $signKey,
+            $signedDefaultTtl,
+            $signedUrlConfig,
+            $urlBaseUri,
+        );
 
         RouterKernel::bootWithRegistrar(
             log: $logger,
@@ -66,6 +76,8 @@ final class RouteCache
                 'autoSlashRedirect' => (bool) ($regOpts['autoSlashRedirect'] ?? false),
                 'signKey' => $signKey,
                 'signedDefaultTtl' => $signedDefaultTtl,
+                'signedUrlConfig' => $signedUrlConfig,
+                'urlBaseUri' => $urlBaseUri,
             ],
             preGlobal: $preGlobal,
             postGlobal: $postGlobal,
@@ -272,6 +284,7 @@ final class RouteCache
         array $attributeClasses,
         LoggerInterface $logger,
         string $baseDir,
+        ?string $signKey,
     ): \Closure {
         return static function (Registrar $r) use (
             $userRegister,
@@ -280,7 +293,9 @@ final class RouteCache
             $attributeClasses,
             $logger,
             $baseDir,
+            $signKey,
         ): void {
+            $signUrlSecret = $signKey;
             $cwd = getcwd();
             if ($baseDir !== '' && \chdir($baseDir) === false) {
                 $logger->warning('[routecache] failed to chdir to baseDir; continuing', ['baseDir' => $baseDir]);
@@ -361,8 +376,13 @@ final class RouteCache
      * @param array<string, mixed> $options
      * @return \Closure(Collection):void
      */
-    private static function resolveBindUrlServices(array $options, ?string $signKey, int $signedDefaultTtl): \Closure
-    {
+    private static function resolveBindUrlServices(
+        array $options,
+        ?string $signKey,
+        int $signedDefaultTtl,
+        ?SignedUrlConfig $signedUrlConfig,
+        string $urlBaseUri,
+    ): \Closure {
         /** @var null|callable(Collection):void $bind */
         $bind = $options['bindUrlServices'] ?? null;
         if ($bind !== null) {
@@ -371,8 +391,13 @@ final class RouteCache
             };
         }
 
-        return static function (Collection $routes) use ($signKey, $signedDefaultTtl): void {
-            Router::bindUrlServices($routes, $signKey, $signedDefaultTtl);
+        return static function (Collection $routes) use (
+            $signKey,
+            $signedDefaultTtl,
+            $signedUrlConfig,
+            $urlBaseUri,
+        ): void {
+            Router::bindUrlServices($routes, $signKey, $signedDefaultTtl, $signedUrlConfig, $urlBaseUri);
         };
     }
 
@@ -442,6 +467,23 @@ final class RouteCache
     private static function rmFile(string $file): bool
     {
         return \is_file($file) && \unlink($file);
+    }
+
+    /**
+     * @param array<string, mixed> $options
+     */
+    private static function signedUrlConfigOption(array $options, string $key): ?SignedUrlConfig
+    {
+        $value = $options[$key] ?? null;
+        if ($value instanceof SignedUrlConfig) {
+            return $value;
+        }
+
+        if (\is_array($value) && $value !== []) {
+            return SignedUrlConfig::fromArray($value);
+        }
+
+        return null;
     }
 
     /**

@@ -23,6 +23,7 @@ use Infocyph\Webrick\Router\Matching\MatcherInterface;
 use Infocyph\Webrick\Router\Route\Collection;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 use Infocyph\Webrick\Router\Route\Route;
+use Infocyph\Webrick\Router\Url\SignedUrlConfig;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -367,6 +368,8 @@ final class RouterKernel
             'exposeUrlServices' => false, // bind explicitly later
             'signKey' => null,
             'signedDefaultTtl' => null,
+            'signedUrlConfig' => null,
+            'urlBaseUri' => '',
         ];
 
         $registrar = new Registrar(
@@ -375,6 +378,8 @@ final class RouterKernel
             exposeUrlServices: false,
             signKey: $this->normalizeSignKey($opts['signKey'] ?? null),
             signedDefaultTtl: $this->normalizeSignedDefaultTtl($opts['signedDefaultTtl'] ?? null),
+            signedUrlConfig: $this->normalizeSignedUrlConfig($opts['signedUrlConfig'] ?? null),
+            urlBaseUri: $this->normalizeUrlBaseUri($opts['urlBaseUri'] ?? null),
         );
 
         // Let user add routes – matcher is NOT touched in this path.
@@ -591,6 +596,19 @@ final class RouterKernel
         return null;
     }
 
+    private function normalizeSignedUrlConfig(mixed $value): ?SignedUrlConfig
+    {
+        if ($value instanceof SignedUrlConfig) {
+            return $value;
+        }
+
+        if (\is_array($value) && $value !== []) {
+            return SignedUrlConfig::fromArray($value);
+        }
+
+        return null;
+    }
+
     private function normalizeSignKey(mixed $value): ?string
     {
         if (!\is_string($value) || $value === '') {
@@ -598,6 +616,11 @@ final class RouterKernel
         }
 
         return $value;
+    }
+
+    private function normalizeUrlBaseUri(mixed $value): string
+    {
+        return \is_string($value) ? $value : '';
     }
 
     /**
@@ -658,17 +681,13 @@ final class RouterKernel
         if ($this->bindUrlServices) {
             ($this->bindUrlServices)($aliasOnly);
         } else {
-            $signKey = $this->registrarOptions['signKey'] ?? null;
-            if (!\is_string($signKey) || $signKey === '') {
-                $signKey = null;
-            }
-
-            $ttlRaw = $this->registrarOptions['signedDefaultTtl'] ?? null;
-            $defaultTtl = \is_int($ttlRaw)
-                ? $ttlRaw
-                : (\is_string($ttlRaw) && $ttlRaw !== '' ? (int) $ttlRaw : null);
-
-            Router::bindUrlServices($aliasOnly, $signKey, $defaultTtl);
+            Router::bindUrlServices(
+                $aliasOnly,
+                $this->normalizeSignKey($this->registrarOptions['signKey'] ?? null),
+                $this->normalizeSignedDefaultTtl($this->registrarOptions['signedDefaultTtl'] ?? null),
+                $this->normalizeSignedUrlConfig($this->registrarOptions['signedUrlConfig'] ?? null),
+                $this->normalizeUrlBaseUri($this->registrarOptions['urlBaseUri'] ?? null),
+            );
         }
 
         $this->log->info('[router] route table ready (hot cache)', [
@@ -697,6 +716,8 @@ final class RouterKernel
             'exposeUrlServices' => false,
             'signKey' => null,
             'signedDefaultTtl' => null,
+            'signedUrlConfig' => null,
+            'urlBaseUri' => '',
         ];
 
         $registrar = new Registrar(
@@ -705,6 +726,8 @@ final class RouterKernel
             exposeUrlServices: (bool) $opts['exposeUrlServices'],
             signKey: $this->normalizeSignKey($opts['signKey'] ?? null),
             signedDefaultTtl: $this->normalizeSignedDefaultTtl($opts['signedDefaultTtl'] ?? null),
+            signedUrlConfig: $this->normalizeSignedUrlConfig($opts['signedUrlConfig'] ?? null),
+            urlBaseUri: $this->normalizeUrlBaseUri($opts['urlBaseUri'] ?? null),
         );
         Router::setInstance($registrar);
         ($this->register)($registrar);

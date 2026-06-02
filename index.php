@@ -68,6 +68,7 @@ namespace {
     use Infocyph\Webrick\Router\Matching\GeneratedMatcher;
     use Infocyph\Webrick\Router\Matching\ShardedMatcher;
     use Infocyph\Webrick\Router\Route\Collection;
+    use Infocyph\Webrick\Router\Url\SignedUrlConfig;
     use Psr\Log\NullLogger;
 
     final readonly class DemoController
@@ -254,7 +255,23 @@ namespace {
             return new ThrottleMiddleware($max, $window);
         },
     );
+    $signedUrlConfig = new SignedUrlConfig(
+        generationKey: $signUrlSecret,
+        verificationKeys: [$signUrlSecret],
+        defaultTtl: 900,
+    );
+    $signedAbsoluteUrlConfig = new SignedUrlConfig(
+        verificationKeys: [$signUrlSecret],
+        payloadMode: SignedUrlConfig::MODE_ABSOLUTE,
+        ignoredQueryParams: ['preview'],
+        leeway: 5,
+    );
     MiddlewareAliases::register('verifySignedUrl', static fn() => new VerifySignedUrlMiddleware($signUrlSecret, 5));
+    MiddlewareAliases::register(
+        'verifySignedUrlAbsolute',
+        static fn() => new VerifySignedUrlMiddleware($signedAbsoluteUrlConfig),
+    );
+    $urlBaseUri = getenv('WEBRICK_URL_BASE_URI') ?: 'http://localhost';
 
     /* Pre-route (global) middleware – order matters */
     $preGlobal = [
@@ -325,11 +342,17 @@ namespace {
             'exposeUrlServices' => true,
             'signKey' => $signUrlSecret,
             'signedDefaultTtl' => 900,
+            'signedUrlConfig' => $signedUrlConfig,
+            'urlBaseUri' => $urlBaseUri,
         ],
         preGlobal: $preGlobal,
         postGlobal: $postGlobal,
-        bindUrlServices: static function (Collection $routes) use ($signUrlSecret): void {
-            Route::bindUrlServices($routes, $signUrlSecret, 900);
+        bindUrlServices: static function (Collection $routes) use (
+            $signUrlSecret,
+            $signedUrlConfig,
+            $urlBaseUri,
+        ): void {
+            Route::bindUrlServices($routes, $signUrlSecret, 900, $signedUrlConfig, $urlBaseUri);
         },
         // leave true while validating your cache’s __aliases.php
         fallbackAliasesFromRegistrar: true,

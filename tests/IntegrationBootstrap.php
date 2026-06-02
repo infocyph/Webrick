@@ -12,10 +12,12 @@ declare(strict_types=1);
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Definition\Registrar;
+use Infocyph\Webrick\Router\Dispatch\MiddlewareAliases;
 use Infocyph\Webrick\Router\Facade\Router as Route;
 use Infocyph\Webrick\Router\Kernel\RouterKernel;
 use Infocyph\Webrick\Router\Matching\FusedMatcher;
 use Infocyph\Webrick\Router\Route\Collection;
+use Infocyph\Webrick\Router\Url\SignedUrlConfig;
 use Psr\Log\NullLogger;
 
 // Declare controllers in global namespace for routes.php
@@ -82,6 +84,33 @@ function createTestKernel(array $extraMiddleware = []): RouterKernel
 {
     $logger = new NullLogger;
     $signUrlSecret = 'test-secret-key-for-integration-tests';
+    $signedUrlConfig = new SignedUrlConfig(
+        generationKey: $signUrlSecret,
+        verificationKeys: [$signUrlSecret],
+        defaultTtl: 900,
+    );
+    $signedAbsoluteUrlConfig = new SignedUrlConfig(
+        verificationKeys: [$signUrlSecret],
+        payloadMode: SignedUrlConfig::MODE_ABSOLUTE,
+        ignoredQueryParams: ['preview'],
+        leeway: 5,
+    );
+    $urlBaseUri = 'http://localhost';
+
+    MiddlewareAliases::reset();
+    MiddlewareAliases::register(
+        'throttle',
+        static function (...$params): string {
+            unset($params);
+
+            return \Infocyph\Webrick\Middleware\ThrottleMiddleware::class;
+        },
+    );
+    MiddlewareAliases::register('verifySignedUrl', static fn() => new \Infocyph\Webrick\Middleware\VerifySignedUrlMiddleware($signUrlSecret, 5));
+    MiddlewareAliases::register(
+        'verifySignedUrlAbsolute',
+        static fn() => new \Infocyph\Webrick\Middleware\VerifySignedUrlMiddleware($signedAbsoluteUrlConfig),
+    );
 
     // Registration callback - load actual routes
     $register = function (Registrar $registrar) {
@@ -105,11 +134,17 @@ function createTestKernel(array $extraMiddleware = []): RouterKernel
             'exposeUrlServices' => false,
             'signKey' => $signUrlSecret,
             'signedDefaultTtl' => 900,
+            'signedUrlConfig' => $signedUrlConfig,
+            'urlBaseUri' => $urlBaseUri,
         ],
         preGlobal: $preGlobal,
         postGlobal: [],
-        bindUrlServices: function (Collection $routes) use ($signUrlSecret): void {
-            Route::bindUrlServices($routes, $signUrlSecret, 900);
+        bindUrlServices: function (Collection $routes) use (
+            $signUrlSecret,
+            $signedUrlConfig,
+            $urlBaseUri,
+        ): void {
+            Route::bindUrlServices($routes, $signUrlSecret, 900, $signedUrlConfig, $urlBaseUri);
         },
         fallbackAliasesFromRegistrar: true,
     );

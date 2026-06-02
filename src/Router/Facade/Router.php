@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Router\Facade;
 
 use Closure;
+use DateTimeInterface;
 use Infocyph\InterMix\DI\Support\ReflectionResource;
 use Infocyph\Webrick\Interfaces\RouteInterface;
 use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Route\Collection;
+use Infocyph\Webrick\Router\Url\SignedUrlConfig;
 use Infocyph\Webrick\Router\Url\UrlGenerator;
 use RuntimeException;
 
@@ -60,8 +62,6 @@ final class Router
 
     private static ?UrlGenerator $routeGen = null;
 
-    private static ?Collection $routesRef = null;
-
     /**
      * Private constructor to prevent instantiation — façade is static-only.
      */
@@ -105,9 +105,10 @@ final class Router
         Collection $routes,
         ?string $signKey = null,
         ?int $defaultTtl = null,
+        ?SignedUrlConfig $signedUrlConfig = null,
+        string $baseUri = '',
     ): void {
-        self::$routesRef = $routes;
-        self::$routeGen = new UrlGenerator('', $routes, $signKey, $defaultTtl);
+        self::$routeGen = new UrlGenerator($baseUri, $routes, $signKey, $defaultTtl, $signedUrlConfig);
     }
 
     /**
@@ -253,7 +254,6 @@ final class Router
      */
     public static function resetUrlServices(): void
     {
-        self::$routesRef = null;
         self::$routeGen = null;
     }
 
@@ -297,17 +297,16 @@ final class Router
         array $query = [],
         ?int $ttl = null,
         bool $absolute = false,
+        ?string $payloadMode = null,
     ): string {
         self::assertRouteName($name);
         $normalizedParams = self::normalizeRouteParams($params);
         $normalizedQuery = self::normalizeRouteQuery($query);
         $routeGen = self::requireRouteGenerator();
 
-        $path = $ttl === null
-            ? $routeGen->signed($name, $normalizedParams, $normalizedQuery, null, false)
-            : $routeGen->signed($name, $normalizedParams, $normalizedQuery, max(1, $ttl), false);
-
-        return self::finalizeGeneratedPath($name, $path, $absolute);
+        return $ttl === null
+            ? $routeGen->signed($name, $normalizedParams, $normalizedQuery, null, $absolute, $payloadMode)
+            : $routeGen->signed($name, $normalizedParams, $normalizedQuery, max(1, $ttl), $absolute, $payloadMode);
     }
 
     /**
@@ -322,17 +321,44 @@ final class Router
         array $query = [],
         ?int $ttl = null,
         bool $absolute = false,
+        ?string $payloadMode = null,
     ): string {
         self::assertRouteName($name);
-        $path = self::requireRouteGenerator()->temporary(
+
+        return self::requireRouteGenerator()->temporary(
             $name,
             self::normalizeRouteParams($params),
             self::normalizeRouteQuery($query),
             $ttl,
-            false,
+            $absolute,
+            $payloadMode,
         );
+    }
 
-        return self::finalizeGeneratedPath($name, $path, $absolute);
+    /**
+     * Generate temporary signed URL for named route with an explicit expiry timestamp.
+     *
+     * @param array<string,mixed> $params
+     * @param array<string,mixed> $query
+     */
+    public static function temporaryUrlUntil(
+        string $name,
+        DateTimeInterface|int $expiresAt,
+        array $params = [],
+        array $query = [],
+        bool $absolute = false,
+        ?string $payloadMode = null,
+    ): string {
+        self::assertRouteName($name);
+
+        return self::requireRouteGenerator()->temporaryUntil(
+            $name,
+            $expiresAt,
+            self::normalizeRouteParams($params),
+            self::normalizeRouteQuery($query),
+            $absolute,
+            $payloadMode,
+        );
     }
 
     /**
@@ -348,10 +374,13 @@ final class Router
         bool $absolute = false,
     ): string {
         self::assertRouteName($name);
-        $routeGen = self::requireRouteGenerator();
-        $path = $routeGen->urlFor($name, self::normalizeRouteParams($params), self::normalizeRouteQuery($query), false);
 
-        return self::finalizeGeneratedPath($name, $path, $absolute);
+        return self::requireRouteGenerator()->urlFor(
+            $name,
+            self::normalizeRouteParams($params),
+            self::normalizeRouteQuery($query),
+            $absolute,
+        );
     }
 
     /**
@@ -391,14 +420,9 @@ final class Router
 
     private static function assertUrlBound(): void
     {
-        if (!self::$routeGen || !self::$routesRef) {
+        if (!self::$routeGen) {
             throw new \LogicException('URL services not bound. Enable via Registrar constructor.');
         }
-    }
-
-    private static function finalizeGeneratedPath(string $name, string $path, bool $absolute): string
-    {
-        return $absolute ? self::withRouteDomain($name, $path) : $path;
     }
 
     /**
@@ -506,15 +530,5 @@ final class Router
             'put' => $router->put($path, $normalized, $nameOrOpts),
             default => throw new RuntimeException("Unsupported HTTP verb '{$verb}' in Router facade."),
         };
-    }
-
-    /**
-     * Prefix a generated path with the route domain when available.
-     */
-    private static function withRouteDomain(string $name, string $path): string
-    {
-        $domain = self::$routesRef?->findByName($name)?->getDomain();
-
-        return ($domain && $domain !== '*') ? ('//' . $domain . $path) : $path;
     }
 }

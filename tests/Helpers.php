@@ -7,6 +7,7 @@ use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Route\Collection;
+use Infocyph\Webrick\Router\Url\SignedUrlConfig;
 use Psr\Log\LoggerInterface;
 use Psr\Log\LogLevel;
 use Psr\Log\NullLogger;
@@ -54,7 +55,7 @@ class TestLogger implements LoggerInterface
             return $this->records;
         }
 
-        return array_filter($this->records, fn ($r) => $r['level'] === $level);
+        return array_filter($this->records, fn($r) => $r['level'] === $level);
     }
 
     public function hasDebugRecords(): bool
@@ -75,10 +76,10 @@ class TestLogger implements LoggerInterface
     public function hasRecords(?string $level = null): bool
     {
         if ($level === null) {
-            return ! empty($this->records);
+            return !empty($this->records);
         }
 
-        return ! empty(array_filter($this->records, fn ($r) => $r['level'] === $level));
+        return !empty(array_filter($this->records, fn($r) => $r['level'] === $level));
     }
 
     public function hasWarningRecords(): bool
@@ -115,13 +116,15 @@ class TestLogger implements LoggerInterface
  */
 function testRegistrar(array $options = []): Registrar
 {
-    $routes = new Collection;
+    $routes = new Collection();
 
     $defaults = [
         'autoSlashRedirect' => false,
         'exposeUrlServices' => false,
         'signKey' => null,
         'signedDefaultTtl' => null,
+        'signedUrlConfig' => null,
+        'urlBaseUri' => '',
     ];
 
     $opts = array_merge($defaults, $options);
@@ -131,7 +134,11 @@ function testRegistrar(array $options = []): Registrar
         autoSlashRedirect: $opts['autoSlashRedirect'],
         exposeUrlServices: $opts['exposeUrlServices'],
         signKey: $opts['signKey'],
-        signedDefaultTtl: $opts['signedDefaultTtl']
+        signedDefaultTtl: $opts['signedDefaultTtl'],
+        signedUrlConfig: $opts['signedUrlConfig'] instanceof SignedUrlConfig
+            ? $opts['signedUrlConfig']
+            : null,
+        urlBaseUri: is_string($opts['urlBaseUri']) ? $opts['urlBaseUri'] : '',
     );
 }
 /**
@@ -148,7 +155,7 @@ function mockRequest(string $method, string $uri, array $headers = [], array $bo
 
     // Add headers to $_SERVER
     foreach ($headers as $name => $value) {
-        $key = 'HTTP_'.strtoupper(str_replace('-', '_', $name));
+        $key = 'HTTP_' . strtoupper(str_replace('-', '_', $name));
         $_SERVER[$key] = $value;
     }
 
@@ -156,13 +163,13 @@ function mockRequest(string $method, string $uri, array $headers = [], array $bo
     $request = Request::fromGlobals();
 
     // Add body if provided
-    if (! empty($body)) {
+    if (!empty($body)) {
         if ($method === 'POST' || $method === 'PUT' || $method === 'PATCH') {
             $json = json_encode($body);
             $stream = new Stream($json);
             $request = $request->withBody($stream);
 
-            if (! isset($headers['Content-Type'])) {
+            if (!isset($headers['Content-Type'])) {
                 $request = $request->withHeader('Content-Type', 'application/json');
             }
         }
@@ -176,10 +183,10 @@ function mockRequest(string $method, string $uri, array $headers = [], array $bo
 function testCache(string $namespace = 'test'): Cache
 {
     if (\PHP_OS_FAMILY === 'Windows' && !\extension_loaded('apcu')) {
-        return Cache::memory('webrick-test-'.$namespace);
+        return Cache::memory('webrick-test-' . $namespace);
     }
 
-    return Cache::local(sys_get_temp_dir().'/webrick-test-'.$namespace);
+    return Cache::local(sys_get_temp_dir() . '/webrick-test-' . $namespace);
 }
 
 /**
@@ -187,7 +194,7 @@ function testCache(string $namespace = 'test'): Cache
  */
 function testLogger(): LoggerInterface
 {
-    return new NullLogger;
+    return new NullLogger();
 }
 
 /**
@@ -203,13 +210,13 @@ function testEncryptionKey(): string
  */
 function cleanTestCache(string $path): void
 {
-    if (! is_dir($path)) {
+    if (!is_dir($path)) {
         return;
     }
 
     $files = new RecursiveIteratorIterator(
         new RecursiveDirectoryIterator($path, RecursiveDirectoryIterator::SKIP_DOTS),
-        RecursiveIteratorIterator::CHILD_FIRST
+        RecursiveIteratorIterator::CHILD_FIRST,
     );
 
     foreach ($files as $file) {
