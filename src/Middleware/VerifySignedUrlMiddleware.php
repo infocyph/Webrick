@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Middleware;
 
 use Closure;
-use Infocyph\Webrick\Constants\StatusEnum;
+use Infocyph\Webrick\Exceptions\HttpException;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Url\SignedUrlConfig;
@@ -39,18 +39,18 @@ final readonly class VerifySignedUrlMiddleware
         $signature = $query[$signatureParam] ?? '';
 
         if (!\is_string($signature) || $signature === '') {
-            return Response::plaintext('Missing signature', StatusEnum::BAD_REQUEST->value);
+            throw HttpException::badRequest('Missing signature');
         }
         unset($query[$signatureParam]);
 
         if (isset($query[$expiryParam])) {
             $expiresAt = $query[$expiryParam];
             if (!\is_scalar($expiresAt) || !\is_numeric((string) $expiresAt)) {
-                return Response::plaintext('Invalid expiration', StatusEnum::BAD_REQUEST->value);
+                throw HttpException::badRequest('Invalid expiration');
             }
 
             if (\time() > ((int) $expiresAt + $this->config->leeway)) {
-                return Response::plaintext('URL expired', StatusEnum::GONE->value);
+                throw HttpException::gone('URL expired');
             }
         }
 
@@ -67,7 +67,7 @@ final readonly class VerifySignedUrlMiddleware
             }
         }
 
-        return Response::plaintext('Invalid signature', StatusEnum::FORBIDDEN->value);
+        throw HttpException::forbidden('Invalid signature');
     }
 
     /**

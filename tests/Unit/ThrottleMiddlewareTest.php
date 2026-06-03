@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Infocyph\Webrick\Exceptions\HttpException;
 use Infocyph\Webrick\Middleware\ThrottleMiddleware;
 use Infocyph\Webrick\Response\Response;
 
@@ -56,12 +57,19 @@ describe('ThrottleMiddleware', function () {
         }
 
         // 4th request should be throttled
-        $response = ($this->middleware)($request, $next);
-
-        expect($response)
-            ->toHaveStatus(429)
-            ->toHaveHeader('X-RateLimit-Remaining', '0')
-            ->toHaveHeader('Retry-After');
+        try {
+            ($this->middleware)($request, $next);
+            $this->fail('Expected throttle middleware to throw an HttpException.');
+        } catch (HttpException $exception) {
+            expect($exception->getStatusCode())
+                ->toBe(429)
+                ->and($exception->getHeaders())
+                ->toMatchArray([
+                    'X-RateLimit-Remaining' => '0',
+                ])
+                ->and($exception->getHeaders())
+                ->toHaveKey('Retry-After');
+        }
     });
 
     it('respects per-request cost', function () {
@@ -86,8 +94,8 @@ describe('ThrottleMiddleware', function () {
         expect($response2)->toHaveStatus(200);
 
         // Request with cost 2 more (total: 6, exceeds limit of 5)
-        $response3 = $middleware($request1, $next);
-        expect($response3)->toHaveStatus(429);
+        expect(fn() => $middleware($request1, $next))
+            ->toThrow(HttpException::class);
     });
 
     it('allows bypass via callback', function () {

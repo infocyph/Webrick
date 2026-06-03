@@ -18,7 +18,7 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Middleware;
 
 use Closure;
-use Infocyph\Webrick\Constants\StatusEnum;
+use Infocyph\Webrick\Exceptions\HttpException;
 use Infocyph\Webrick\Request\Http\EndUser;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Request\Support\IpCidr;
@@ -114,16 +114,12 @@ final class GatewayHardeningMiddleware
     public function __invoke(Request $req, Closure $next): Response
     {
         try {
-            if ($resp = $this->rejectIfUntrustedHost($req)) {
-                return $resp;
-            }
+            $this->rejectIfUntrustedHost($req);
 
             // Build EndUser once and keep for helpers
             $this->endUser = EndUser::from($req);
 
-            if ($resp = $this->denyIfBlockedEndUser()) {
-                return $resp;
-            }
+            $this->denyIfBlockedEndUser();
 
             // Attach client/peer/flag attributes for downstream
             $req = $this->attachNetworkAttributes($req);
@@ -223,16 +219,14 @@ final class GatewayHardeningMiddleware
     /**
      * Block requests from end-user IPs that match deny CIDRs.
      *
-     * @return Response|null 403 response when blocked; null when allowed.
+     * @throws HttpException
      */
-    private function denyIfBlockedEndUser(): ?Response
+    private function denyIfBlockedEndUser(): void
     {
         $clientIp = $this->endUser?->ip(); // honors trusted proxy headers
         if ($clientIp && $this->cidrHit($clientIp, $this->denyIpCidrs)) {
-            return Response::plaintext("Forbidden – $clientIp is not allowed.", StatusEnum::FORBIDDEN->value);
+            throw HttpException::forbidden("Forbidden – {$clientIp} is not allowed.");
         }
-
-        return null;
     }
 
     /**
@@ -258,11 +252,11 @@ final class GatewayHardeningMiddleware
         $scheme = parse_url($loc, PHP_URL_SCHEME);
         if ($scheme !== null && $scheme !== '') {
             if (!\is_string($scheme)) {
-                return Response::json(['error' => 'Invalid redirect scheme'], StatusEnum::BAD_REQUEST->value);
+                throw HttpException::badRequest('Invalid redirect scheme');
             }
             $scheme = strtolower($scheme);
             if ($scheme !== 'http' && $scheme !== 'https') {
-                return Response::json(['error' => 'Invalid redirect scheme'], StatusEnum::BAD_REQUEST->value);
+                throw HttpException::badRequest('Invalid redirect scheme');
             }
         }
 
@@ -275,10 +269,10 @@ final class GatewayHardeningMiddleware
             // Same-origin only when no explicit allow-list
             $current = $req->getUri()->getHost();
             if (!self::equalsIgnoreCase($host, $current)) {
-                return Response::json(['error' => 'Open redirect blocked'], StatusEnum::BAD_REQUEST->value);
+                throw HttpException::badRequest('Open redirect blocked');
             }
         } elseif (!in_array($host, $this->redirectAllowedHosts, true)) {
-            return Response::json(['error' => 'Open redirect blocked'], StatusEnum::BAD_REQUEST->value);
+            throw HttpException::badRequest('Open redirect blocked');
         }
 
         return $resp;
@@ -335,7 +329,7 @@ final class GatewayHardeningMiddleware
         $port = ($this->httpsPort === 443) ? null : $this->httpsPort; // avoid :443 in Location
         $target = $uri->withScheme('https')->withPort($port);
 
-        return Response::redirect((string) $target, StatusEnum::PERMANENT_REDIRECT->value);
+        return Response::redirect((string) $target, 308);
     }
 
     /* ───────────── step helpers ───────────── */
@@ -343,24 +337,24 @@ final class GatewayHardeningMiddleware
      * Enforce Host allow-list; reject requests with untrusted/empty Host.
      *
      *
-     * @return Response|null 400 response on rejection; null when allowed.
+     * @throws HttpException
      */
-    private function rejectIfUntrustedHost(Request $req): ?Response
+    private function rejectIfUntrustedHost(Request $req): void
     {
         if ($this->allowAllHosts || $this->trustedHosts === []) {
-            return null;
+            return;
         }
 
         $host = trim($req->getUri()->getHost());
 
         // Treat empty Host as invalid when enforcing an allow-list
         if ($host === '') {
-            return Response::plaintext('Missing or empty Host header.', StatusEnum::BAD_REQUEST->value);
+            throw HttpException::badRequest('Missing or empty Host header.');
         }
 
-        return $this->matchesHost($host)
-            ? null
-            : Response::plaintext('Untrusted Host header.', StatusEnum::BAD_REQUEST->value);
+        if (!$this->matchesHost($host)) {
+            throw HttpException::badRequest('Untrusted Host header.');
+        }
     }
 
     /**

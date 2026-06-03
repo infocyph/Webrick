@@ -12,6 +12,7 @@ use Infocyph\InterMix\DI\Support\ServiceProviderInterface;
 use Infocyph\InterMix\Exceptions\ContainerException;
 use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Constants\StatusEnum;
+use Infocyph\Webrick\Exceptions\HttpException;
 use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
 use Infocyph\Webrick\Exceptions\RouteNotFoundException;
 use Infocyph\Webrick\Request\Request;
@@ -304,19 +305,19 @@ final class RouterKernel
     private static function normaliseHost(string $raw): string
     {
         if ($raw === '' || \preg_match('/[\x00-\x20]/', $raw)) {
-            throw new \InvalidArgumentException('Illegal Host header.');
+            throw HttpException::badRequest('Illegal Host header.');
         }
         $host = \strtolower(\rtrim($raw, '.'));
 
         if (\function_exists('idn_to_ascii') && !\str_contains($host, 'xn--')) {
             $ascii = \idn_to_ascii($host, \IDNA_DEFAULT, \INTL_IDNA_VARIANT_UTS46);
             if ($ascii === false) {
-                throw new \InvalidArgumentException('Invalid IDN host name.');
+                throw HttpException::badRequest('Invalid IDN host name.');
             }
             $host = $ascii;
         }
         if (!\preg_match('/^[\x21-\x7E]+$/', $host)) {
-            throw new \InvalidArgumentException('Host contains non-ASCII bytes.');
+            throw HttpException::badRequest('Host contains non-ASCII bytes.');
         }
 
         return $host;

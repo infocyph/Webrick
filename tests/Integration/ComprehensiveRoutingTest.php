@@ -208,6 +208,24 @@ describe('Comprehensive Routing Tests', function () {
         });
     });
 
+    describe('Custom Error Rendering', function () {
+        it('renders api failures as json through the custom error boundary', function () {
+            $response = $this->kernel->handle(mockRequest('GET', '/api/error-demo'));
+
+            expect($response)
+                ->toHaveStatus(403)
+                ->and($response->getHeaderLine('Content-Type'))->toContain('application/json');
+
+            $body = json_decode((string) $response->getBody(), true);
+            expect($body)
+                ->toMatchArray([
+                    'error' => 'API token missing',
+                    'status' => 403,
+                    'path' => '/api/error-demo',
+                ]);
+        });
+    });
+
     describe('Auto Content Negotiation', function () {
         it('handles auto response detection', function () {
             $response = $this->kernel->handle(mockRequest('GET', '/auto-demo'));

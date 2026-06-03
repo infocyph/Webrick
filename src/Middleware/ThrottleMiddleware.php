@@ -20,7 +20,7 @@ namespace Infocyph\Webrick\Middleware;
 use Closure;
 use DateTimeImmutable;
 use Infocyph\CacheLayer\Cache\Cache;
-use Infocyph\Webrick\Constants\StatusEnum;
+use Infocyph\Webrick\Exceptions\HttpException;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use InvalidArgumentException as InvalidConfigException;
@@ -115,7 +115,7 @@ final readonly class ThrottleMiddleware
 
         // Will this request exceed the limit?
         if ($this->max < $payload['hits'] + $cost) {
-            return $this->tooMany($payload['reset']);
+            throw $this->tooMany($payload['reset']);
         }
 
         // Count this request before executing the handler
@@ -284,12 +284,12 @@ final readonly class ThrottleMiddleware
     }
 
     /**
-     * Build a 429 Too Many Requests response with appropriate headers.
+     * Build a 429 Too Many Requests exception with appropriate headers.
      *
      * @param int $resetEpoch Reset epoch for the current window.
-     * @return Response 429 response with Retry-After and rate-limit headers.
+     * @return HttpException 429 exception with Retry-After and rate-limit headers.
      */
-    private function tooMany(int $resetEpoch): Response
+    private function tooMany(int $resetEpoch): HttpException
     {
         $delta = $this->secondsUntil($resetEpoch);
 
@@ -297,20 +297,21 @@ final readonly class ThrottleMiddleware
             ? gmdate('D, d M Y H:i:s', $resetEpoch) . ' GMT'
             : (string) $delta;
 
-        $resp = Response::plaintext('Too Many Requests', StatusEnum::TOO_MANY_REQUESTS->value)
-            ->withSmartHeader('Retry-After', $retry)
-            ->withSmartHeader('X-RateLimit-Limit', (string) $this->max)
-            ->withSmartHeader('X-RateLimit-Remaining', '0')
-            ->withSmartHeader('X-RateLimit-Reset', (string) $resetEpoch);
+        $headers = [
+            'Retry-After' => $retry,
+            'X-RateLimit-Limit' => (string) $this->max,
+            'X-RateLimit-Remaining' => '0',
+            'X-RateLimit-Reset' => (string) $resetEpoch,
+            'Server-Timing' => 'throttle;dur=0',
+        ];
 
         if ($this->emitStandardRateLimit) {
-            $resp = $resp
-                ->withSmartHeader('RateLimit-Limit', (string) $this->max)
-                ->withSmartHeader('RateLimit-Remaining', '0')
-                ->withSmartHeader('RateLimit-Reset', (string) $delta)
-                ->withSmartHeader('RateLimit-Policy', "$this->max;w=$this->window");
+            $headers['RateLimit-Limit'] = (string) $this->max;
+            $headers['RateLimit-Remaining'] = '0';
+            $headers['RateLimit-Reset'] = (string) $delta;
+            $headers['RateLimit-Policy'] = "$this->max;w=$this->window";
         }
 
-        return $resp->withSmartHeader('Server-Timing', 'throttle;dur=0');
+        return HttpException::tooManyRequests('Too Many Requests', $headers);
     }
 }

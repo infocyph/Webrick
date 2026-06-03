@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Infocyph\Webrick\Exceptions\HttpException;
 use Infocyph\Webrick\Middleware\NegotiationMiddleware;
 use Infocyph\Webrick\Response\Response;
 
@@ -27,7 +28,7 @@ describe('NegotiationMiddleware', function () {
         expect($negotiated)->toBe('application/json');
     });
 
-    it('returns 406 for unacceptable type', function () {
+    it('throws 406 for unacceptable type', function () {
         $middleware = new NegotiationMiddleware(
             produces: ['application/json']
         );
@@ -38,9 +39,18 @@ describe('NegotiationMiddleware', function () {
 
         $next = fn () => Response::json(['ok' => true]);
 
-        $response = $middleware($request, $next);
-
-        expect($response)->toHaveStatus(406);
+        try {
+            $middleware($request, $next);
+            $this->fail('Expected negotiation middleware to throw an HttpException.');
+        } catch (HttpException $exception) {
+            expect($exception->getStatusCode())
+                ->toBe(406)
+                ->and($exception->getHeaders())
+                ->toMatchArray([
+                    'Content-Type' => 'text/plain; charset=utf-8',
+                    'Vary' => 'Accept',
+                ]);
+        }
     });
 
     it('negotiates charset', function () {

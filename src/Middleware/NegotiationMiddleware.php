@@ -18,7 +18,7 @@ namespace Infocyph\Webrick\Middleware;
 use Closure;
 use Infocyph\Webrick\Constants\MediaTypeEnum;
 use Infocyph\Webrick\Constants\StatusEnum;
-use Infocyph\Webrick\Request\Core\Stream;
+use Infocyph\Webrick\Exceptions\HttpException;
 use Infocyph\Webrick\Request\Http\ContentNegotiator;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Negotiation\ContentTypeNegotiator;
@@ -247,19 +247,17 @@ final readonly class NegotiationMiddleware
         if ($type === null) {
             // Register Vary before short-circuit 406 so accumulator can write it
             $req = VaryAccumulatorMiddleware::add($req, 'Accept');
-            $early = new Response(
-                StatusEnum::NOT_ACCEPTABLE->value,
-                new Stream('Not acceptable.'),
-                ['Content-Type' => MediaTypeEnum::PLAIN->value],
-            );
-            $early = $early->withSmartHeader('Vary', 'Accept');
+            $headers = [
+                'Content-Type' => MediaTypeEnum::PLAIN->value,
+                'Vary' => 'Accept',
+            ];
 
             if ($req->getHeaderLine('Accept-Charset') !== '' && $this->charsetMattersForAny($prod)) {
                 $req = VaryAccumulatorMiddleware::add($req, 'Accept-Charset');
-                $early = $early->withSmartHeader('Vary', 'Accept-Charset');
+                $headers['Vary'] = 'Accept, Accept-Charset';
             }
 
-            return [$req, '', null, $early];
+            throw HttpException::notAcceptable('Not acceptable.', $headers);
         }
 
         // We negotiated a type → always vary on Accept

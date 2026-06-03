@@ -8,6 +8,7 @@ use ErrorException;
 use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Constants\MediaTypeEnum;
 use Infocyph\Webrick\Constants\StatusEnum;
+use Infocyph\Webrick\Exceptions\HttpExceptionInterface;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Psr\Log\LoggerInterface;
@@ -39,6 +40,8 @@ final readonly class ErrorHandler
      *                               so they are handled by this boundary (respects @ operator)
      * @param string $requestIdHeader Header name to echo back when a request id is present
      * @param array<class-string,int> $exceptionMap Map of exception class => HTTP status code to override resolution
+     * @param null|callable(Request,Throwable,int,array<string,string>):mixed $responseRenderer
+     *                                                                                          Optional override renderer invoked for body-allowed, non-HEAD error responses before the built-in renderer
      */
     public function __construct(
         private ?LoggerInterface $logger = null,
@@ -46,6 +49,7 @@ final readonly class ErrorHandler
         private bool $capturePhpErrors = true,
         private string $requestIdHeader = 'X-Request-Id',
         private array $exceptionMap = [],
+        private mixed $responseRenderer = null,
     ) {}
 
     /**
@@ -117,7 +121,7 @@ final readonly class ErrorHandler
             }
         }
 
-        return $headers;
+        return array_replace($headers, $this->exceptionHeaders($e));
     }
 
     /**
@@ -134,6 +138,18 @@ final readonly class ErrorHandler
             'exception' => $e::class,
             'file' => $e->getFile() . ':' . $e->getLine(),
         ];
+    }
+
+    /**
+     * @return array<string,string>
+     */
+    private function exceptionHeaders(Throwable $e): array
+    {
+        if (!$e instanceof HttpExceptionInterface) {
+            return [];
+        }
+
+        return $e->getHeaders();
     }
 
     /**
@@ -358,11 +374,16 @@ final readonly class ErrorHandler
             return Response::empty($status, $headers);
         }
 
-        $public = $reason;
+        $public = $this->resolvePublicMessage($e, $reason);
         $msg = $this->debug ? ($e->getMessage() ?: $public) : $public;
 
         if (!$statusEnum->allowsBody()) {
             return Response::empty($status, $headers);
+        }
+
+        $custom = $this->renderWithOverride($req, $e, $status, $headers);
+        if ($custom instanceof Response) {
+            return $custom;
         }
 
         return $this->renderByType(
@@ -399,13 +420,13 @@ final readonly class ErrorHandler
 
             case MediaTypeEnum::XML->value:
             case 'text/xml':
-                $headers['Content-Type'] = MediaTypeEnum::XML->value;
+                $headers['Content-Type'] ??= MediaTypeEnum::XML->value;
                 $xml = $this->xmlError($status, $reason, $msg, $rid, $e);
 
                 return Response::create($xml, $status, $headers);
 
             case MediaTypeEnum::HTML->base():
-                $headers['Content-Type'] = MediaTypeEnum::HTML->value;
+                $headers['Content-Type'] ??= MediaTypeEnum::HTML->value;
                 $html = $this->htmlError($status, $reason, $msg, $rid, $e);
 
                 return Response::create($html, $status, $headers);
@@ -452,7 +473,7 @@ final readonly class ErrorHandler
         string $rid,
         array $headers,
     ): Response {
-        $headers['Content-Type'] = MediaTypeEnum::PLAIN->value;
+        $headers['Content-Type'] ??= MediaTypeEnum::PLAIN->value;
         $lines = ["{$status} {$reason}", $msg];
         if ($rid !== '') {
             $lines[] = "Request-Id: {$rid}";
@@ -491,13 +512,38 @@ final readonly class ErrorHandler
             $payload += $this->debugMeta($e);
         }
 
-        $headers['Content-Type'] = MediaTypeEnum::PROBLEM_JSON->value;
+        $headers['Content-Type'] ??= MediaTypeEnum::PROBLEM_JSON->value;
         $json = \json_encode(
             $payload,
             JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE | JSON_UNESCAPED_SLASHES,
         );
 
         return Response::create($json === false ? '{}' : $json, $status, $headers);
+    }
+
+    /**
+     * @param array<string,string> $headers
+     */
+    private function renderWithOverride(Request $req, Throwable $e, int $status, array $headers): ?Response
+    {
+        if (!\is_callable($this->responseRenderer)) {
+            return null;
+        }
+
+        $response = ($this->responseRenderer)($req, $e, $status, $headers);
+
+        return $response instanceof Response ? $response : null;
+    }
+
+    private function resolvePublicMessage(Throwable $e, string $fallback): string
+    {
+        if ($e instanceof HttpExceptionInterface) {
+            $message = $e->getPublicMessage();
+
+            return $message !== '' ? $message : $fallback;
+        }
+
+        return $fallback;
     }
 
     private function resolveRenderType(Request $req): string
@@ -536,6 +582,10 @@ final readonly class ErrorHandler
      */
     private function resolveStatus(Throwable $e): int
     {
+        if ($e instanceof HttpExceptionInterface) {
+            return $e->getStatusCode();
+        }
+
         $mapped = $this->mappedExceptionStatus($e);
         if ($mapped !== null) {
             return $mapped;
