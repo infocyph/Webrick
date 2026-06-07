@@ -50,6 +50,13 @@ use RuntimeException;
  *   name?:mixed,
  *   as?:mixed
  * }
+ * @method static RouteInterface delete(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)
+ * @method static RouteInterface get(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)
+ * @method static RouteInterface head(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)
+ * @method static RouteInterface options(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)
+ * @method static RouteInterface patch(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)
+ * @method static RouteInterface post(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)
+ * @method static RouteInterface put(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)
  */
 final class Router
 {
@@ -85,7 +92,7 @@ final class Router
     public static function __callStatic(string $method, array $args): mixed
     {
         $router = self::getInstance();
-        if (!method_exists($router, $method)) {
+        if (!\is_callable([$router, $method])) {
             throw new RuntimeException(
                 sprintf(
                     'Method %s::%s() does not exist on concrete router.',
@@ -112,38 +119,6 @@ final class Router
     }
 
     /**
-     * Register a DELETE route via the bound Registrar.
-     *
-     * @param RouteHandler $handler
-     * @param string|RouteOptions|null $nameOrOpts
-     */
-    public static function delete(
-        string $path,
-        array|string|callable $handler,
-        string|array|null $nameOrOpts = null,
-    ): RouteInterface {
-        return self::verb('delete', $path, $handler, $nameOrOpts);
-    }
-
-    /* ──────────── explicit accessors (typed, IDE-friendly) ──────────── */
-
-    /**
-     * Register a GET route via the bound Registrar.
-     *
-     * @param string $path Route path template
-     * @param RouteHandler $handler Handler (callable or controller descriptor)
-     * @param string|RouteOptions|null $nameOrOpts Optional route name or options array
-     * @return RouteInterface Registered route DTO
-     */
-    public static function get(
-        string $path,
-        array|string|callable $handler,
-        string|array|null $nameOrOpts = null,
-    ): RouteInterface {
-        return self::verb('get', $path, $handler, $nameOrOpts);
-    }
-
-    /**
      * Mirrors Registrar::group signature and forwards to the bound Registrar.
      *
      * Accepts both positional and associative (Laravel-style) arguments and
@@ -163,76 +138,6 @@ final class Router
         ?Closure $callback = null,
     ): void {
         self::getInstance()->group($prefix, $domain, $middleware, $namePrefix, $callback);
-    }
-
-    /**
-     * Register a HEAD route via the bound Registrar.
-     *
-     * @param RouteHandler $handler
-     * @param string|RouteOptions|null $nameOrOpts
-     */
-    public static function head(
-        string $path,
-        array|string|callable $handler,
-        string|array|null $nameOrOpts = null,
-    ): RouteInterface {
-        return self::verb('head', $path, $handler, $nameOrOpts);
-    }
-
-    /**
-     * Register an OPTIONS route via the bound Registrar.
-     *
-     * @param RouteHandler $handler
-     * @param string|RouteOptions|null $nameOrOpts
-     */
-    public static function options(
-        string $path,
-        array|string|callable $handler,
-        string|array|null $nameOrOpts = null,
-    ): RouteInterface {
-        return self::verb('options', $path, $handler, $nameOrOpts);
-    }
-
-    /**
-     * Register a PATCH route via the bound Registrar.
-     *
-     * @param RouteHandler $handler
-     * @param string|RouteOptions|null $nameOrOpts
-     */
-    public static function patch(
-        string $path,
-        array|string|callable $handler,
-        string|array|null $nameOrOpts = null,
-    ): RouteInterface {
-        return self::verb('patch', $path, $handler, $nameOrOpts);
-    }
-
-    /**
-     * Register a POST route via the bound Registrar.
-     *
-     * @param RouteHandler $handler
-     * @param string|RouteOptions|null $nameOrOpts
-     */
-    public static function post(
-        string $path,
-        array|string|callable $handler,
-        string|array|null $nameOrOpts = null,
-    ): RouteInterface {
-        return self::verb('post', $path, $handler, $nameOrOpts);
-    }
-
-    /**
-     * Register a PUT route via the bound Registrar.
-     *
-     * @param RouteHandler $handler
-     * @param string|RouteOptions|null $nameOrOpts
-     */
-    public static function put(
-        string $path,
-        array|string|callable $handler,
-        string|array|null $nameOrOpts = null,
-    ): RouteInterface {
-        return self::verb('put', $path, $handler, $nameOrOpts);
     }
 
     /**

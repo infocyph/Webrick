@@ -152,30 +152,9 @@ final class RouterKernel
         $this->importServiceProviders();
 
         $this->warm();
-
-        $preGlobal = $this->mergeTaggedGlobals($preGlobal, $this->preGlobalTags);
-        $postGlobal = $this->mergeTaggedGlobals($postGlobal, $this->postGlobalTags);
-        $preGlobal = $this->normalizeMiddlewareEntries($preGlobal);
-        $postGlobal = $this->normalizeMiddlewareEntries($postGlobal);
-
-        // Globals are now resolved/applied inside Dispatcher
-        $this->dispatcher = new Dispatcher(
-            invoker: $this->invoker,
-            useInvoker: $invokerOnMiddleware,
-            preGlobalRaw: $preGlobal,
-            postGlobalRaw: $postGlobal,
-        );
-
-        $this->errorHandler = $errorHandler ?? new ErrorHandler(
-            logger: $this->log,
-            debug: true,
-            capturePhpErrors: true,
-            requestIdHeader: 'X-Request-Id',
-            exceptionMap: [
-                RouteNotFoundException::class => StatusEnum::NOT_FOUND->value,
-                MethodNotAllowedException::class => StatusEnum::METHOD_NOT_ALLOWED->value,
-            ],
-        );
+        [$preGlobal, $postGlobal] = $this->prepareGlobalMiddleware($preGlobal, $postGlobal);
+        $this->dispatcher = $this->createDispatcher($invokerOnMiddleware, $preGlobal, $postGlobal);
+        $this->errorHandler = $errorHandler ?? $this->createDefaultErrorHandler();
     }
 
     /**
@@ -391,6 +370,34 @@ final class RouterKernel
         return $routes;
     }
 
+    private function createDefaultErrorHandler(): ErrorHandler
+    {
+        return new ErrorHandler(
+            logger: $this->log,
+            debug: true,
+            capturePhpErrors: true,
+            requestIdHeader: 'X-Request-Id',
+            exceptionMap: [
+                RouteNotFoundException::class => StatusEnum::NOT_FOUND->value,
+                MethodNotAllowedException::class => StatusEnum::METHOD_NOT_ALLOWED->value,
+            ],
+        );
+    }
+
+    /**
+     * @param array<int,callable|object|string> $preGlobal
+     * @param array<int,callable|object|string> $postGlobal
+     */
+    private function createDispatcher(bool $invokerOnMiddleware, array $preGlobal, array $postGlobal): Dispatcher
+    {
+        return new Dispatcher(
+            invoker: $this->invoker,
+            useInvoker: $invokerOnMiddleware,
+            preGlobalRaw: $preGlobal,
+            postGlobalRaw: $postGlobal,
+        );
+    }
+
     /**
      * Validate the alias blob structure returned from requireAliasBlob().
      *
@@ -408,22 +415,7 @@ final class RouterKernel
             return null;
         }
 
-        $pairs = [];
-        foreach ($blob['_data'] as $name => $tuple) {
-            if (!\is_string($name) || !\is_array($tuple)) {
-                continue;
-            }
-
-            $path = $tuple[0] ?? null;
-            $domain = $tuple[1] ?? null;
-            if (!\is_string($path)) {
-                continue;
-            }
-
-            $pairs[$name] = [$path, \is_string($domain) ? $domain : null];
-        }
-
-        return $pairs;
+        return \Infocyph\Webrick\Router\Matching\matcher_normalize_alias_pairs($blob['_data']);
     }
 
     /**
@@ -622,6 +614,25 @@ final class RouterKernel
     private function normalizeUrlBaseUri(mixed $value): string
     {
         return \is_string($value) ? $value : '';
+    }
+
+    /**
+     * @param array<int,mixed> $preGlobal
+     * @param array<int,mixed> $postGlobal
+     * @return array{
+     *   0:array<int,callable|object|string>,
+     *   1:array<int,callable|object|string>
+     * }
+     */
+    private function prepareGlobalMiddleware(array $preGlobal, array $postGlobal): array
+    {
+        $preGlobal = $this->mergeTaggedGlobals($preGlobal, $this->preGlobalTags);
+        $postGlobal = $this->mergeTaggedGlobals($postGlobal, $this->postGlobalTags);
+
+        return [
+            $this->normalizeMiddlewareEntries($preGlobal),
+            $this->normalizeMiddlewareEntries($postGlobal),
+        ];
     }
 
     /**

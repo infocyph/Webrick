@@ -48,6 +48,19 @@ final class BenchmarkSupport
 
     private static ?VerifySignedUrlMiddleware $relativeVerifier = null;
 
+    /**
+     * @return list<CompiledRoute>
+     */
+    public static function compiledRoutesFor(string $routeSet): array
+    {
+        return self::compiledRoutes($routeSet);
+    }
+
+    public static function createSignedGenerator(SignedUrlConfig $config): UrlGenerator
+    {
+        return self::buildSignedUrlGenerator($config);
+    }
+
     public static function generateAbsoluteSignedUrl(): string
     {
         return self::absoluteSignedGenerator()->signed(
@@ -105,6 +118,17 @@ final class BenchmarkSupport
             self::$relativeSignedUrl ??= self::generateRelativeTemporaryUrl(),
             self::$relativeVerifier ??= new VerifySignedUrlMiddleware(self::SIGN_KEY, 5),
         );
+    }
+
+    /**
+     * @param array<string, string> $extraQuery
+     */
+    public static function verifySignedUrlResponse(
+        string $signedUrl,
+        VerifySignedUrlMiddleware $middleware,
+        array $extraQuery = [],
+    ): Response {
+        return self::verifySignedUrl($signedUrl, $middleware, $extraQuery);
     }
 
     private static function absoluteSignedConfig(): SignedUrlConfig

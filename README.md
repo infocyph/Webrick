@@ -16,6 +16,7 @@ A modern PHP router with route caching, signed URLs, production middleware, and 
 - Signed URLs: permanent, TTL-based, or explicit-expiry links
 - Rich signing controls: relative or absolute payloads, ignored query params, key rotation, custom signature params and algorithms
 - Central error boundary: framework middleware throws typed HTTP exceptions and the kernel renders them just before emission
+- User controllers and user middleware can still return `Response` directly; only framework-owned rejection paths are exception-driven
 - Response helpers: JSON, plaintext, redirects, streaming, ranged file/download responses, views
 - Route caching: sharded, fused, or generated matchers
 - Middleware pipeline: negotiation, compression, throttling, validators, telemetry, cookie encryption, and more

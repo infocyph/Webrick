@@ -237,12 +237,7 @@ final class Collection implements IteratorAggregate
         $this->assertMutable();
 
         $this->routes = [];
-        $this->byName = [];
-        $this->byHandler = [];
-        $this->byPath = [];
-        $this->aliases = [];
-        $this->dirty = true;
-        $this->aliasIndex = null;
+        $this->resetIndexes();
     }
 
     /* ---------------------------------------------------------------------
@@ -483,5 +478,12 @@ final class Collection implements IteratorAggregate
         }
 
         $this->aliasIndex = null; // invalidate cached flat index
+    }
+
+    private function resetIndexes(): void
+    {
+        [$this->byName, $this->byHandler, $this->byPath, $this->aliases] = [[], [], [], []];
+        $this->dirty = true;
+        $this->aliasIndex = null;
     }
 }

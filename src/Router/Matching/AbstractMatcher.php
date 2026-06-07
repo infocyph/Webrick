@@ -580,18 +580,7 @@ abstract class AbstractMatcher
      */
     private function compiledRouteMap(mixed $routes): array
     {
-        if (!\is_array($routes)) {
-            return [];
-        }
-
-        $out = [];
-        foreach ($routes as $verb => $route) {
-            if (\is_string($verb) && $route instanceof CompiledRoute) {
-                $out[$verb] = $route;
-            }
-        }
-
-        return $out;
+        return matcher_normalize_compiled_route_map($routes);
     }
 
     /* ──────────────────── helpers (rule + matching) ──────────────────── */

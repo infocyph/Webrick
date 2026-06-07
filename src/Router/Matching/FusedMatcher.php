@@ -38,6 +38,7 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
 final class FusedMatcher extends AbstractMatcher implements MatcherInterface
 {
     use MatcherCacheLifecycleTrait;
+    use MatcherFactoryTrait;
 
     /**
      * Alias index mapping route name => [path, domain|null].
@@ -86,20 +87,6 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
      * @var HostMap
      */
     private array $hosts = [];
-
-    /**
-     * Private constructor to enforce factory creation.
-     */
-    private function __construct() {}
-
-    /* ──────────── factory/config ──────────── */
-    /**
-     * Create a new FusedMatcher instance.
-     */
-    public static function make(): self
-    {
-        return new self();
-    }
 
     /* ──────────── registration ──────────── */
     /**
@@ -420,26 +407,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
      */
     private function normalizeAliasIndex(mixed $raw): array
     {
-        if (!\is_array($raw)) {
-            return [];
-        }
-
-        $aliases = [];
-        foreach ($raw as $name => $tuple) {
-            if (!\is_string($name) || !\is_array($tuple)) {
-                continue;
-            }
-
-            $path = $tuple[0] ?? null;
-            $domain = $tuple[1] ?? null;
-            if (!\is_string($path)) {
-                continue;
-            }
-
-            $aliases[$name] = [$path, \is_string($domain) ? $domain : null];
-        }
-
-        return $aliases;
+        return matcher_normalize_alias_pairs($raw);
     }
 
     /**
@@ -519,17 +487,6 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
      */
     private function normalizeVerbRouteMap(mixed $verbs): array
     {
-        if (!\is_array($verbs)) {
-            return [];
-        }
-
-        $verbMap = [];
-        foreach ($verbs as $verb => $route) {
-            if (\is_string($verb) && $route instanceof CompiledRoute) {
-                $verbMap[$verb] = $route;
-            }
-        }
-
-        return $verbMap;
+        return matcher_normalize_compiled_route_map($verbs);
     }
 }

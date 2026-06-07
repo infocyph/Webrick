@@ -1,11 +1,11 @@
 <?php
 
 declare(strict_types=1);
+use Infocyph\Webrick\Benchmarks\Support\BenchmarkSupport;
 use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Constants\MatcherModeEnum;
 use Infocyph\Webrick\Middleware\ThrottleMiddleware;
 use Infocyph\Webrick\Middleware\VerifySignedUrlMiddleware;
-use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Definition\Attribute\AttributeRouteLoader;
 use Infocyph\Webrick\Router\Definition\Registrar;
@@ -15,14 +15,13 @@ use Infocyph\Webrick\Router\Matching\FusedMatcher;
 use Infocyph\Webrick\Router\Matching\GeneratedMatcher;
 use Infocyph\Webrick\Router\Matching\MatcherInterface;
 use Infocyph\Webrick\Router\Matching\ShardedMatcher;
-use Infocyph\Webrick\Router\Route\Collection;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 use Infocyph\Webrick\Router\Url\SignedUrlConfig;
-use Infocyph\Webrick\Router\Url\UrlGenerator;
 use Infocyph\Webrick\Support\RouteCache;
 use Psr\Log\NullLogger;
 
 require dirname(__DIR__) . '/vendor/autoload.php';
+require_once dirname(__DIR__) . '/benchmarks/Support/BenchmarkSupport.php';
 
 function out(string $text): void
 {
@@ -75,9 +74,7 @@ $routeSets = [
         'register' => static function (Registrar $r): void {
             registerIndexRoutes($r);
         },
-        'routes' => buildCompiledRoutes(static function (Registrar $r): void {
-            registerIndexRoutes($r);
-        }),
+        'routes' => BenchmarkSupport::compiledRoutesFor('index'),
     ],
     [
         'key' => 'route-cache-example',
@@ -86,9 +83,7 @@ $routeSets = [
         'register' => static function (Registrar $r): void {
             registerRouteCacheExampleRoutes($r);
         },
-        'routes' => buildCompiledRoutes(static function (Registrar $r): void {
-            registerRouteCacheExampleRoutes($r);
-        }),
+        'routes' => BenchmarkSupport::compiledRoutesFor('route-cache'),
     ],
 ];
 
@@ -318,8 +313,8 @@ $signedBenchAbsoluteConfig = new SignedUrlConfig(
     ignoredQueryParams: ['preview'],
     leeway: 5,
 );
-$signedBenchGenerator = buildSignedUrlBenchmarkGenerator($signedBenchConfig);
-$signedBenchAbsoluteGenerator = buildSignedUrlBenchmarkGenerator($signedBenchAbsoluteConfig);
+$signedBenchGenerator = BenchmarkSupport::createSignedGenerator($signedBenchConfig);
+$signedBenchAbsoluteGenerator = BenchmarkSupport::createSignedGenerator($signedBenchAbsoluteConfig);
 $relativeSignedUrl = $signedBenchGenerator->temporary(
     'secure.show',
     ['id' => 42],
@@ -380,7 +375,7 @@ $signedBenchRows = [
     ),
     benchCallable(
         'relative verify',
-        static fn(): Response => verifySignedUrlBenchmarkResponse(
+        static fn(): Response => BenchmarkSupport::verifySignedUrlResponse(
             $relativeSignedUrl,
             new VerifySignedUrlMiddleware('bench-sign-key', 5),
         ),
@@ -390,7 +385,7 @@ $signedBenchRows = [
     ),
     benchCallable(
         'absolute verify',
-        static fn(): Response => verifySignedUrlBenchmarkResponse(
+        static fn(): Response => BenchmarkSupport::verifySignedUrlResponse(
             $absoluteSignedUrl,
             new VerifySignedUrlMiddleware($signedBenchAbsoluteConfig),
             ['preview' => '1'],
@@ -549,23 +544,7 @@ function runScenarioMatcher(
     try {
         $result = benchMatcher(
             $spec['name'],
-            static function () use ($scenario, $useCache, $cachePath, $spec): MatcherInterface {
-                if ($useCache) {
-                    buildBenchmarkCache($spec['mode'], $cachePath, $scenario['register']);
-                }
-
-                $matcher = ($spec['factory'])();
-                if ($useCache) {
-                    $matcher->enableCache($cachePath);
-                } else {
-                    foreach ($scenario['routes'] as $route) {
-                        $matcher->add($route);
-                    }
-                }
-                $matcher->finalize();
-
-                return $matcher;
-            },
+            static fn(): MatcherInterface => buildScenarioMatcher($scenario, $useCache, $cachePath, $spec),
             $iterations,
             $rounds,
             $warmup,
@@ -770,84 +749,34 @@ function clearBenchmarkCache(string $matcher, string $cachePath): void
 }
 
 /**
- * Compile routes from a registration callback.
- *
- * @param callable(Registrar):void $register
- * @return list<CompiledRoute>
+ * @param array{
+ *   register:callable(Registrar):void,
+ *   routes:list<CompiledRoute>
+ * } $scenario
+ * @param array{
+ *   mode:string,
+ *   factory:callable():MatcherInterface,
+ *   name:string
+ * } $spec
  */
-function buildCompiledRoutes(callable $register): array
+function buildScenarioMatcher(array $scenario, bool $useCache, string $cachePath, array $spec): MatcherInterface
 {
-    $routes = new Collection();
-    $registrar = new Registrar(
-        routes: $routes,
-        autoSlashRedirect: false,
-        exposeUrlServices: false,
-        signKey: 'bench-sign-key',
-        signedDefaultTtl: 900,
-        signedUrlConfig: new SignedUrlConfig(
-            generationKey: 'bench-sign-key',
-            verificationKeys: ['bench-sign-key'],
-            defaultTtl: 900,
-        ),
-        urlBaseUri: 'http://localhost',
-    );
-
-    $register($registrar);
-
-    /** @var list<CompiledRoute> $all */
-    $all = $routes->compile()->all();
-    if ($all === []) {
-        throw new RuntimeException('Failed to build benchmark route set.');
+    if ($useCache) {
+        buildBenchmarkCache($spec['mode'], $cachePath, $scenario['register']);
     }
 
-    return $all;
-}
-
-function buildSignedUrlBenchmarkGenerator(SignedUrlConfig $config): UrlGenerator
-{
-    $routes = new Collection();
-    $registrar = new Registrar(
-        routes: $routes,
-        autoSlashRedirect: false,
-        exposeUrlServices: false,
-        signKey: 'bench-sign-key',
-        signedDefaultTtl: 900,
-        signedUrlConfig: $config,
-        urlBaseUri: 'http://localhost',
-    );
-
-    registerIndexRoutes($registrar);
-
-    return new UrlGenerator(
-        baseUri: 'http://localhost',
-        routes: $routes,
-        signedConfig: $config,
-    );
-}
-
-/**
- * @param array<string,string> $extraQuery
- */
-function verifySignedUrlBenchmarkResponse(
-    string $signedUrl,
-    VerifySignedUrlMiddleware $middleware,
-    array $extraQuery = [],
-): Response {
-    $path = (string) parse_url($signedUrl, PHP_URL_PATH);
-    $query = [];
-    $queryString = parse_url($signedUrl, PHP_URL_QUERY);
-    if (\is_string($queryString) && $queryString !== '') {
-        parse_str($queryString, $query);
+    $matcher = ($spec['factory'])();
+    if ($useCache) {
+        $matcher->enableCache($cachePath);
+    } else {
+        foreach ($scenario['routes'] as $route) {
+            $matcher->add($route);
+        }
     }
 
-    /** @var array<string, string|array<int|string,mixed>|bool|float|int|null> $mergedQuery */
-    $mergedQuery = array_merge($query, $extraQuery);
-    $request = Request::fake(query: $mergedQuery, uri: 'http://localhost' . $path);
+    $matcher->finalize();
 
-    return $middleware(
-        $request,
-        static fn(): Response => Response::plaintext('ok', 200),
-    );
+    return $matcher;
 }
 
 /**

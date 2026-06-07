@@ -12,9 +12,31 @@ use Throwable;
  * Generic HTTP exception for framework-owned short-circuit responses.
  *
  * @phpstan-type HeaderMap array<string,string>
+ * @method static self badRequest(string $message, array<string,string> $headers = [])
+ * @method static self forbidden(string $message, array<string,string> $headers = [])
+ * @method static self gone(string $message, array<string,string> $headers = [])
+ * @method static self notAcceptable(string $message, array<string,string> $headers = [])
+ * @method static self payloadTooLarge(string $message, array<string,string> $headers = [])
+ * @method static self requestHeaderFieldsTooLarge(string $message, array<string,string> $headers = [])
+ * @method static self serviceUnavailable(string $message, array<string,string> $headers = [])
+ * @method static self tooManyRequests(string $message, array<string,string> $headers = [])
  */
 class HttpException extends \RuntimeException implements HttpExceptionInterface
 {
+    /**
+     * @var array<string, StatusEnum>
+     */
+    private const array STATUS_METHODS = [
+        'badRequest' => StatusEnum::BAD_REQUEST,
+        'forbidden' => StatusEnum::FORBIDDEN,
+        'gone' => StatusEnum::GONE,
+        'notAcceptable' => StatusEnum::NOT_ACCEPTABLE,
+        'payloadTooLarge' => StatusEnum::PAYLOAD_TOO_LARGE,
+        'requestHeaderFieldsTooLarge' => StatusEnum::REQUEST_HEADER_FIELDS_TOO_LARGE,
+        'serviceUnavailable' => StatusEnum::SERVICE_UNAVAILABLE,
+        'tooManyRequests' => StatusEnum::TOO_MANY_REQUESTS,
+    ];
+
     private readonly string $publicMessage;
 
     /**
@@ -37,52 +59,22 @@ class HttpException extends \RuntimeException implements HttpExceptionInterface
         $this->publicMessage = $resolvedPublicMessage;
     }
 
-    /** @param HeaderMap $headers */
-    public static function badRequest(string $message, array $headers = []): self
+    /** @param list<mixed> $args */
+    public static function __callStatic(string $method, array $args): self
     {
-        return self::fromStatus(StatusEnum::BAD_REQUEST, $message, $headers);
-    }
+        $status = self::STATUS_METHODS[$method] ?? null;
+        if (!$status instanceof StatusEnum) {
+            throw new \BadMethodCallException("Undefined HTTP exception factory {$method}().");
+        }
 
-    /** @param HeaderMap $headers */
-    public static function forbidden(string $message, array $headers = []): self
-    {
-        return self::fromStatus(StatusEnum::FORBIDDEN, $message, $headers);
-    }
+        $message = $args[0] ?? null;
+        $headers = $args[1] ?? [];
+        if (!\is_string($message) || !\is_array($headers)) {
+            throw new InvalidArgumentException("Invalid arguments for HTTP exception factory {$method}().");
+        }
 
-    /** @param HeaderMap $headers */
-    public static function gone(string $message, array $headers = []): self
-    {
-        return self::fromStatus(StatusEnum::GONE, $message, $headers);
-    }
-
-    /** @param HeaderMap $headers */
-    public static function notAcceptable(string $message, array $headers = []): self
-    {
-        return self::fromStatus(StatusEnum::NOT_ACCEPTABLE, $message, $headers);
-    }
-
-    /** @param HeaderMap $headers */
-    public static function payloadTooLarge(string $message, array $headers = []): self
-    {
-        return self::fromStatus(StatusEnum::PAYLOAD_TOO_LARGE, $message, $headers);
-    }
-
-    /** @param HeaderMap $headers */
-    public static function requestHeaderFieldsTooLarge(string $message, array $headers = []): self
-    {
-        return self::fromStatus(StatusEnum::REQUEST_HEADER_FIELDS_TOO_LARGE, $message, $headers);
-    }
-
-    /** @param HeaderMap $headers */
-    public static function serviceUnavailable(string $message, array $headers = []): self
-    {
-        return self::fromStatus(StatusEnum::SERVICE_UNAVAILABLE, $message, $headers);
-    }
-
-    /** @param HeaderMap $headers */
-    public static function tooManyRequests(string $message, array $headers = []): self
-    {
-        return self::fromStatus(StatusEnum::TOO_MANY_REQUESTS, $message, $headers);
+        /** @var HeaderMap $headers */
+        return self::fromStatus($status, $message, $headers);
     }
 
     /**

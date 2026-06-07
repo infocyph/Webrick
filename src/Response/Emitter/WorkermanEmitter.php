@@ -8,6 +8,7 @@ namespace Infocyph\Webrick\Response\Emitter;
 use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Response\Internal\Utils;
 use Infocyph\Webrick\Response\Response;
 
 final class WorkermanEmitter implements EmitterInterface
@@ -101,35 +102,7 @@ final class WorkermanEmitter implements EmitterInterface
      */
     private function normalizeHeaders(array $headers): array
     {
-        $out = [];
-        foreach ($headers as $name => $values) {
-            if (!is_string($name)) {
-                continue;
-            }
-
-            if (is_string($values)) {
-                $out[$name] = [$values];
-
-                continue;
-            }
-
-            if (!is_array($values)) {
-                continue;
-            }
-
-            $normalizedValues = [];
-            foreach ($values as $value) {
-                if (!is_string($value)) {
-                    continue;
-                }
-
-                $normalizedValues[] = $value;
-            }
-
-            $out[$name] = $normalizedValues;
-        }
-
-        return $out;
+        return Utils::normalizeHeaderValueLists($headers);
     }
 
     private function shouldEmitEmptyBody(Response $response, ?Request $request): bool

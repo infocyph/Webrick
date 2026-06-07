@@ -47,6 +47,13 @@ use Infocyph\Webrick\Router\Url\SignedUrlConfig;
  *   name?:mixed,
  *   as?:mixed
  * }
+ * @method RouteInterface delete(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)
+ * @method RouteInterface get(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)
+ * @method RouteInterface head(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)
+ * @method RouteInterface options(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)
+ * @method RouteInterface patch(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)
+ * @method RouteInterface post(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)
+ * @method RouteInterface put(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)
  */
 final readonly class Registrar
 {
@@ -72,40 +79,31 @@ final readonly class Registrar
     }
 
     /* -----------------------------------------------------------------
+     *  HTTP verb helpers
+     * ----------------------------------------------------------------*/
+
+    /**
+     * @param array{0:mixed,1:mixed,2?:mixed} $args
+     */
+    public function __call(string $method, array $args): mixed
+    {
+        $verb = HttpMethodEnum::tryFrom(strtoupper($method));
+        if ($verb === null) {
+            throw new \BadMethodCallException("Method {$method} does not exist on " . self::class . '.');
+        }
+
+        [$path, $handler, $nameOrOpts] = $this->normalizeVerbCallArgs($method, $args);
+
+        return $this->verb($verb, $path, $handler, $nameOrOpts);
+    }
+
+    /* -----------------------------------------------------------------
      *  Compile
      * ----------------------------------------------------------------*/
 
     public function compile(): CompiledCollection
     {
         return $this->routes->compile();
-    }
-
-    /* -----------------------------------------------------------------
-     *  HTTP verb helpers
-     * ----------------------------------------------------------------*/
-
-    /**
-     * @param RouteHandler $handler
-     * @param string|RouteOptions|null $nameOrOpts
-     */
-    public function delete(
-        string $path,
-        array|string|callable $handler,
-        string|array|null $nameOrOpts = null,
-    ): RouteInterface {
-        return $this->verb(HttpMethodEnum::DELETE, $path, $handler, $nameOrOpts);
-    }
-
-    /**
-     * @param RouteHandler $handler
-     * @param string|RouteOptions|null $nameOrOpts
-     */
-    public function get(
-        string $path,
-        array|string|callable $handler,
-        string|array|null $nameOrOpts = null,
-    ): RouteInterface {
-        return $this->verb(HttpMethodEnum::GET, $path, $handler, $nameOrOpts);
     }
 
     /* -----------------------------------------------------------------
@@ -153,66 +151,6 @@ final readonly class Registrar
         );
 
         Router::withScopedInstance($child, $callback);
-    }
-
-    /**
-     * @param RouteHandler $handler
-     * @param string|RouteOptions|null $nameOrOpts
-     */
-    public function head(
-        string $path,
-        array|string|callable $handler,
-        string|array|null $nameOrOpts = null,
-    ): RouteInterface {
-        return $this->verb(HttpMethodEnum::HEAD, $path, $handler, $nameOrOpts);
-    }
-
-    /**
-     * @param RouteHandler $handler
-     * @param string|RouteOptions|null $nameOrOpts
-     */
-    public function options(
-        string $path,
-        array|string|callable $handler,
-        string|array|null $nameOrOpts = null,
-    ): RouteInterface {
-        return $this->verb(HttpMethodEnum::OPTIONS, $path, $handler, $nameOrOpts);
-    }
-
-    /**
-     * @param RouteHandler $handler
-     * @param string|RouteOptions|null $nameOrOpts
-     */
-    public function patch(
-        string $path,
-        array|string|callable $handler,
-        string|array|null $nameOrOpts = null,
-    ): RouteInterface {
-        return $this->verb(HttpMethodEnum::PATCH, $path, $handler, $nameOrOpts);
-    }
-
-    /**
-     * @param RouteHandler $handler
-     * @param string|RouteOptions|null $nameOrOpts
-     */
-    public function post(
-        string $path,
-        array|string|callable $handler,
-        string|array|null $nameOrOpts = null,
-    ): RouteInterface {
-        return $this->verb(HttpMethodEnum::POST, $path, $handler, $nameOrOpts);
-    }
-
-    /**
-     * @param RouteHandler $handler
-     * @param string|RouteOptions|null $nameOrOpts
-     */
-    public function put(
-        string $path,
-        array|string|callable $handler,
-        string|array|null $nameOrOpts = null,
-    ): RouteInterface {
-        return $this->verb(HttpMethodEnum::PUT, $path, $handler, $nameOrOpts);
     }
 
     /* -----------------------------------------------------------------
@@ -439,6 +377,40 @@ final readonly class Registrar
     private function normalizeOptions(string|array|null $nameOrOpts): array
     {
         return registrar_normalize_options($nameOrOpts);
+    }
+
+    /**
+     * @param array{0:mixed,1:mixed,2?:mixed} $args
+     * @return array{0:string,1:RouteHandler,2:string|RouteOptions|null}
+     */
+    private function normalizeVerbCallArgs(string $method, array $args): array
+    {
+        $path = $args[0] ?? null;
+        $handler = $args[1] ?? null;
+        $nameOrOpts = $args[2] ?? null;
+
+        if (!\is_string($path)) {
+            throw new \InvalidArgumentException("Invalid arguments for {$method} route registration.");
+        }
+
+        if ($nameOrOpts !== null && !\is_string($nameOrOpts) && !\is_array($nameOrOpts)) {
+            throw new \InvalidArgumentException("Invalid name/options argument for {$method} route registration.");
+        }
+
+        if (\is_string($handler) || \is_callable($handler)) {
+            return [$path, $handler, $nameOrOpts];
+        }
+
+        if (
+            \is_array($handler)
+            && isset($handler[0], $handler[1])
+            && (\is_string($handler[0]) || \is_object($handler[0]))
+            && \is_string($handler[1])
+        ) {
+            return [$path, [$handler[0], $handler[1]], $nameOrOpts];
+        }
+
+        throw new \InvalidArgumentException("Invalid arguments for {$method} route registration.");
     }
 
     /**
