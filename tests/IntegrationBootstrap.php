@@ -14,6 +14,7 @@ use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Dispatch\MiddlewareAliases;
 use Infocyph\Webrick\Router\Facade\Router as Route;
+use Infocyph\Webrick\Router\Kernel\ErrorHandler;
 use Infocyph\Webrick\Router\Kernel\RouterKernel;
 use Infocyph\Webrick\Router\Matching\FusedMatcher;
 use Infocyph\Webrick\Router\Route\Collection;
@@ -111,6 +112,27 @@ function createTestKernel(array $extraMiddleware = []): RouterKernel
         'verifySignedUrlAbsolute',
         static fn() => new \Infocyph\Webrick\Middleware\VerifySignedUrlMiddleware($signedAbsoluteUrlConfig),
     );
+    $errorHandler = new ErrorHandler(
+        logger: $logger,
+        debug: true,
+        capturePhpErrors: true,
+        requestIdHeader: 'X-Request-Id',
+        responseRenderer: static function (Request $request, \Throwable $e, int $status, array $headers): ?Response {
+            if (!str_starts_with($request->getUri()->getPath(), '/api/')) {
+                return null;
+            }
+
+            $message = $e instanceof \Infocyph\Webrick\Exceptions\HttpExceptionInterface
+                ? $e->getPublicMessage()
+                : 'HTTP Error';
+
+            return Response::json([
+                'error' => $message,
+                'status' => $status,
+                'path' => $request->getUri()->getPath(),
+            ], $status, $headers);
+        },
+    );
 
     // Registration callback - load actual routes
     $register = function (Registrar $registrar) {
@@ -139,6 +161,7 @@ function createTestKernel(array $extraMiddleware = []): RouterKernel
         ],
         preGlobal: $preGlobal,
         postGlobal: [],
+        errorHandler: $errorHandler,
         bindUrlServices: function (Collection $routes) use (
             $signUrlSecret,
             $signedUrlConfig,

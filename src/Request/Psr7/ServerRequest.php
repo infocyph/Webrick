@@ -650,14 +650,12 @@ class ServerRequest extends Message
      */
     public function withCookieParams(array $cookies): static
     {
-        $cl = clone $this;
-        $cl->cookie = $cookies;
-        $cl->cookieCol = null;
-        $cl->varMap = null;
-        $cl->checkEnv = false;
-        $cl->buildVariableMap();
-
-        return $cl;
+        return $this->withVariableMapRefresh(
+            static function (self $clone) use ($cookies): void {
+                $clone->cookie = $cookies;
+                $clone->cookieCol = null;
+            },
+        );
     }
 
     /**
@@ -698,17 +696,15 @@ class ServerRequest extends Message
      */
     public function withParsedBody(object|array|null $data): static
     {
-        $cl = clone $this;
-        $cl->parsed = $data;
-        $cl->postCol = null;
-        $cl->jsonCol = null;
-        $cl->xmlCol = null;
-        $cl->varMap = null;
-        $cl->checkEnv = false;
-        $cl->effectiveMethod = null;
-        $cl->buildVariableMap();
-
-        return $cl;
+        return $this->withVariableMapRefresh(
+            static function (self $clone) use ($data): void {
+                $clone->parsed = $data;
+                $clone->postCol = null;
+                $clone->jsonCol = null;
+                $clone->xmlCol = null;
+                $clone->effectiveMethod = null;
+            },
+        );
     }
 
     /**
@@ -722,14 +718,12 @@ class ServerRequest extends Message
      */
     public function withQueryParams(array $query): static
     {
-        $cl = clone $this;
-        $cl->query = $query;
-        $cl->queryCol = null;
-        $cl->varMap = null;
-        $cl->checkEnv = false;
-        $cl->buildVariableMap();
-
-        return $cl;
+        return $this->withVariableMapRefresh(
+            static function (self $clone) use ($query): void {
+                $clone->query = $query;
+                $clone->queryCol = null;
+            },
+        );
     }
 
     /**
@@ -1105,5 +1099,19 @@ class ServerRequest extends Message
     private function serverCollection(): Collection
     {
         return $this->serverCol ??= new Collection($this->server);
+    }
+
+    /**
+     * @param callable(self):void $mutate
+     */
+    private function withVariableMapRefresh(callable $mutate): static
+    {
+        $clone = clone $this;
+        $mutate($clone);
+        $clone->varMap = null;
+        $clone->checkEnv = false;
+        $clone->buildVariableMap();
+
+        return $clone;
     }
 }

@@ -14,7 +14,7 @@ namespace Infocyph\Webrick\Middleware;
 
 use Closure;
 use Infocyph\Webrick\Constants\MediaTypeEnum;
-use Infocyph\Webrick\Constants\StatusEnum;
+use Infocyph\Webrick\Exceptions\HttpException;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 
@@ -54,8 +54,12 @@ final readonly class MaintenanceModeMiddleware
 
         $payload = \file_get_contents($this->file) ?: 'Service is down for maintenance.';
 
-        return Response::plaintext($payload, StatusEnum::SERVICE_UNAVAILABLE->value)
-            ->withSmartHeader('Retry-After', (string) $this->retryAfter)
-            ->withSmartHeader('Content-Type', $this->contentType);
+        throw HttpException::serviceUnavailable(
+            $payload,
+            [
+                'Retry-After' => (string) $this->retryAfter,
+                'Content-Type' => $this->contentType,
+            ],
+        );
     }
 }

@@ -26,7 +26,7 @@ Practical, copy-paste solutions for common Webrick use cases. Each recipe is a c
 
 ### Operations
 - [Error Handling](./error-handling.md) - Centralized error management
-- [Logging & Monitoring](./logging.md) - Structured logging patterns
+- [Logging & Monitoring](./logging.md) - Telemetry middleware and reusable logging profiles
 - [Testing](./testing.md) - Unit and integration testing strategies
 
 ---

@@ -782,34 +782,7 @@ class Response
      */
     private static function headerMap(array $headers): array
     {
-        $out = [];
-        foreach ($headers as $name => $value) {
-            if (!is_string($name)) {
-                continue;
-            }
-
-            if (is_string($value)) {
-                $out[$name] = $value;
-
-                continue;
-            }
-
-            if (!is_array($value)) {
-                continue;
-            }
-
-            $vals = [];
-            foreach ($value as $item) {
-                if (!is_string($item)) {
-                    continue;
-                }
-                $vals[] = $item;
-            }
-
-            $out[$name] = $vals;
-        }
-
-        return $out;
+        return Utils::normalizeHeaderMap($headers);
     }
 
     /**

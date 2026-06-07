@@ -13,10 +13,12 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Exceptions;
 
+use Infocyph\Webrick\Constants\StatusEnum;
+
 /**
  * Exception indicating that the HTTP method is not allowed for the given path.
  */
-final class MethodNotAllowedException extends \RuntimeException
+final class MethodNotAllowedException extends HttpException
 {
     /**
      * Create a new MethodNotAllowedException.
@@ -24,20 +26,19 @@ final class MethodNotAllowedException extends \RuntimeException
      * @param string $verb The attempted HTTP verb (e.g., "POST").
      * @param string $path The requested path (e.g., "/users/1").
      * @param array<int,string> $allowed List of allowed HTTP verbs for the path.
-     * @param int $code Optional error code.
      * @param \Throwable|null $previous Optional previous throwable for chaining.
      */
     public function __construct(
         public readonly string $verb,
         public readonly string $path,
         public readonly array $allowed,
-        int $code = 0,
         ?\Throwable $previous = null,
     ) {
         parent::__construct(
+            statusCode: StatusEnum::METHOD_NOT_ALLOWED->value,
             message: "Method {$verb} not allowed for {$path}. Allowed: " . implode(', ', $allowed),
-            code: $code,
             previous: $previous,
+            headers: ['Allow' => implode(', ', $allowed)],
         );
     }
 

@@ -17,6 +17,7 @@ Complete reference for routing APIs in Webrick.
 - [URL Generation](#url-generation)
 - [Route Caching](#route-caching)
 - [Kernel DI Integration](#kernel-di-integration)
+- [Error Boundary](#error-boundary)
 
 ---
 
@@ -77,6 +78,45 @@ Notes:
 - Tagged middleware are appended after explicit `preGlobal` / `postGlobal`.
 - `requestScopeEnabled` binds `Request::class` as scoped for each request lifecycle.
 - `Response::view()` uses the same `intermix` container path as kernel DI by default.
+
+---
+
+## Error Boundary
+
+`RouterKernel` provides the final exception-to-response boundary for framework-owned failures.
+
+What it catches:
+- routing misses such as not found and method not allowed
+- typed framework HTTP exceptions thrown by middleware or kernel validation paths
+- uncaught throwables that reach the top-level request boundary
+
+What it renders from exceptions:
+- status code
+- public error message
+- response headers carried by the exception
+
+What it does not change:
+- a controller or user middleware returning `Response` directly
+- normal success responses such as `200`, `204`, redirects, or conditional/range responses
+
+Practical rule:
+- return `Response` for normal application flow
+- throw typed HTTP exceptions for framework-style rejection flow
+
+Example:
+
+```php
+use Infocyph\Webrick\Exceptions\HttpException;
+use Infocyph\Webrick\Router\Kernel\RouterKernel;
+
+$register = function (Registrar $r): void {
+    $r->get('/private', static function (): never {
+        throw HttpException::forbidden('Token missing');
+    });
+};
+```
+
+You can also replace the final renderer with a custom `ErrorHandler` when you need JSON or another response shape at the boundary.
 
 ### Using Facade
 

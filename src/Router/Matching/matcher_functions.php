@@ -93,6 +93,99 @@ function generated_matcher_render_verb_dispatch(array $verbs, string $indent): s
     return $code . ($indent . "}\n");
 }
 
+/**
+ * @param array<string, array{0:string,1:?string}> $aliasIndex
+ */
+function matcher_capture_route_alias(array &$aliasIndex, CompiledRoute $route): void
+{
+    $name = $route->getName();
+    if ($name !== null && $name !== '') {
+        $aliasIndex[$name] = [$route->getPath(), $route->getDomain()];
+    }
+}
+
+/**
+ * @param array<string, array<string, array<string, bool>>> $guard
+ */
+function matcher_guard_route_uniqueness(array &$guard, string $host, string $verb, string $path): void
+{
+    if (isset($guard[$host][$verb][$path])) {
+        throw new \LogicException("Duplicate route {$verb} {$host}{$path}");
+    }
+
+    $guard[$host][$verb][$path] = true;
+}
+
+/**
+ * @param array<string, array<string, array<string, bool>>> $guard
+ * @param callable(?string):string $canonicalHost
+ * @return array{0:string,1:string,2:string}
+ */
+function matcher_prepare_route_registration(
+    bool $finalized,
+    array &$guard,
+    callable $canonicalHost,
+    CompiledRoute $route,
+): array {
+    if ($finalized) {
+        throw new \LogicException('Cannot add routes after finalize().');
+    }
+
+    $host = $canonicalHost($route->getDomain());
+    $verb = HttpMethodEnum::normalize($route->getMethod());
+    $path = $route->getPath();
+
+    matcher_guard_route_uniqueness($guard, $host, $verb, $path);
+
+    return [$host, $verb, $path];
+}
+
+/**
+ * @return array<string, array{0:string,1:?string}>
+ */
+function matcher_normalize_alias_pairs(mixed $raw): array
+{
+    if (!\is_array($raw)) {
+        return [];
+    }
+
+    $aliases = [];
+    foreach ($raw as $name => $tuple) {
+        if (!\is_string($name) || !\is_array($tuple)) {
+            continue;
+        }
+
+        $path = $tuple[0] ?? null;
+        $domain = $tuple[1] ?? null;
+        if (!\is_string($path)) {
+            continue;
+        }
+
+        $aliases[$name] = [$path, \is_string($domain) ? $domain : null];
+    }
+
+    return $aliases;
+}
+
+/**
+ * @return array<string, CompiledRoute>
+ */
+function matcher_normalize_compiled_route_map(mixed $verbs): array
+{
+    if (!\is_array($verbs)) {
+        return [];
+    }
+
+    $verbMap = [];
+    foreach ($verbs as $verb => $route) {
+        if (\is_string($verb) && $route instanceof CompiledRoute) {
+            $verbMap[$verb] = $route;
+        }
+    }
+
+    return $verbMap;
+}
+
 function sharded_matcher_alias_file_path(string $cacheDir, string $aliasesFileName): string
 {
     return $cacheDir . \DIRECTORY_SEPARATOR . $aliasesFileName;
@@ -369,18 +462,7 @@ function sharded_matcher_normalize_group_trie(mixed $rawTrie): array
  */
 function sharded_matcher_normalize_group_verb_map(mixed $verbs): array
 {
-    if (!\is_array($verbs)) {
-        return [];
-    }
-
-    $verbMap = [];
-    foreach ($verbs as $verb => $route) {
-        if (\is_string($verb) && $route instanceof CompiledRoute) {
-            $verbMap[$verb] = $route;
-        }
-    }
-
-    return $verbMap;
+    return matcher_normalize_compiled_route_map($verbs);
 }
 
 /**

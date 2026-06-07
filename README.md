@@ -15,6 +15,8 @@ A modern PHP router with route caching, signed URLs, production middleware, and 
 - Fast routing: named routes, groups, domains, resources, attribute discovery
 - Signed URLs: permanent, TTL-based, or explicit-expiry links
 - Rich signing controls: relative or absolute payloads, ignored query params, key rotation, custom signature params and algorithms
+- Central error boundary: framework middleware throws typed HTTP exceptions and the kernel renders them just before emission
+- User controllers and user middleware can still return `Response` directly; only framework-owned rejection paths are exception-driven
 - Response helpers: JSON, plaintext, redirects, streaming, ranged file/download responses, views
 - Route caching: sharded, fused, or generated matchers
 - Middleware pipeline: negotiation, compression, throttling, validators, telemetry, cookie encryption, and more
@@ -167,6 +169,33 @@ $absolutePayload = Route::signedUrlFor(
     ['file' => 'report.pdf'],
     absolute: true,
     payloadMode: SignedUrlConfig::MODE_ABSOLUTE,
+);
+```
+
+Framework-owned failures such as invalid signed URLs, negotiation failures, throttling, request limits, bad Host headers, and maintenance mode now throw typed HTTP exceptions internally. `RouterKernel` catches them at the top-level error boundary and renders the final HTTP response there. Your controllers and user middleware can still return `Response` objects with explicit status codes directly.
+
+The demo app also includes `/api/error-demo`, which throws a framework HTTP exception and is rendered as JSON through a custom error boundary override.
+
+You can also customize the final exception-to-response conversion by supplying your own `ErrorHandler`:
+
+```php
+use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Router\Kernel\ErrorHandler;
+use Throwable;
+
+$errorHandler = new ErrorHandler(
+    responseRenderer: static function (Request $request, Throwable $e, int $status, array $headers): ?Response {
+        if (!str_starts_with($request->getUri()->getPath(), '/api/')) {
+            return null;
+        }
+
+        return Response::json([
+            'error' => $e->getMessage(),
+            'status' => $status,
+            'path' => $request->getUri()->getPath(),
+        ], $status, $headers);
+    },
 );
 ```
 

@@ -25,6 +25,8 @@ Middleware must be callable with signature:
 function (Request $request, Closure $next): Response
 ```
 
+Framework middleware may also throw exceptions instead of returning an error response directly. When that happens, `RouterKernel` catches the exception at the final error boundary and renders the HTTP response there.
+
 ---
 
 ## Creating Middleware
@@ -96,6 +98,24 @@ final class AuthMiddleware
 }
 ```
 
+If your middleware is part of normal application control flow, returning `Response` directly is still valid. If it represents a framework-style rejection path, prefer throwing a typed HTTP exception and let the kernel render the final response:
+
+```php
+use Infocyph\Webrick\Exceptions\HttpException;
+
+final class AuthMiddleware
+{
+    public function __invoke(Request $r, Closure $next): Response
+    {
+        if (!$this->isValidToken($r->getHeaderLine('Authorization'))) {
+            throw HttpException::forbidden('Unauthorized');
+        }
+
+        return $next($r);
+    }
+}
+```
+
 ---
 
 ## Registering Middleware
@@ -120,6 +140,18 @@ $kernel = RouterKernel::bootWithRegistrar(
 - Request logging
 - Rate limiting
 - Early request rejection
+
+Telemetry can also be configured as a value object when you want one reusable profile:
+
+```php
+use Infocyph\Webrick\Middleware\TelemetryMiddleware;
+use Infocyph\Webrick\Support\TelemetryOptions;
+
+$telemetry = TelemetryMiddleware::fromOptions(new TelemetryOptions(
+    requestIdHeader: 'Request-Id',
+    emitTraceparentHeader: true,
+));
+```
 
 ### Post-Global (After Routing, Before Handler)
 

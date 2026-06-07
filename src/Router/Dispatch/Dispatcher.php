@@ -372,6 +372,22 @@ final class Dispatcher
         throw new InvalidArgumentException("Failed to instantiate middleware class '{$class}'.");
     }
 
+    private function invokeClassMiddleware(string $class, Request $req, callable $next): Response
+    {
+        if (!\class_exists($class)) {
+            throw new InvalidArgumentException("Middleware class '{$class}' not found.");
+        }
+
+        $instance = $this->instantiateClassViaInterMix($class);
+        if (!\is_callable($instance)) {
+            throw new InvalidArgumentException("Middleware {$class} must be invokable (__invoke).");
+        }
+
+        $callable = $instance(...);
+
+        return $this->assertMiddlewareResponse($callable($req, $next), $class);
+    }
+
     /**
      * @param array<string,mixed> $callArgs
      */
@@ -564,18 +580,7 @@ final class Dispatcher
             $resolved ??= MiddlewareAliases::resolveString($alias);
 
             if (\is_string($resolved)) {
-                if (!\class_exists($resolved)) {
-                    throw new InvalidArgumentException("Middleware class '{$resolved}' not found.");
-                }
-
-                $instance = $this->instantiateClassViaInterMix($resolved);
-                if (!\is_callable($instance)) {
-                    throw new InvalidArgumentException("Middleware {$resolved} must be invokable (__invoke).");
-                }
-
-                $callable = $instance(...);
-
-                return $this->assertMiddlewareResponse($callable($req, $next), $resolved);
+                return $this->invokeClassMiddleware($resolved, $req, $next);
             }
 
             if (\is_object($resolved)) {
@@ -603,16 +608,7 @@ final class Dispatcher
             throw new InvalidArgumentException("Middleware class '{$mw}' not found.");
         }
 
-        return function (Request $req, callable $next) use ($mw): Response {
-            $instance = $this->instantiateClassViaInterMix($mw);
-            if (!\is_callable($instance)) {
-                throw new InvalidArgumentException("Middleware {$mw} must be invokable (__invoke).");
-            }
-
-            $callable = $instance(...);
-
-            return $this->assertMiddlewareResponse($callable($req, $next), $mw);
-        };
+        return fn(Request $req, callable $next): Response => $this->invokeClassMiddleware($mw, $req, $next);
     }
 
     private function wrapObjectAsMiddleware(object $mw): callable

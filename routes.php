@@ -1,8 +1,10 @@
 <?php
 
 declare(strict_types=1);
+
 use Infocyph\Webrick\Constants\MediaTypeEnum;
 use Infocyph\Webrick\Constants\StatusEnum;
+use Infocyph\Webrick\Exceptions\HttpException;
 use Infocyph\Webrick\Middleware\ThrottleMiddleware;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
@@ -47,6 +49,7 @@ Route::get('/', function (): Response {
         '/to-user-42' => 'Redirect to route alias: users.show (id=42)',
         '/signed-demo' => 'Signed Demo',
         '/make-signed-absolute/42' => 'Signed Demo: absolute payload redirect',
+        '/api/error-demo' => 'JSON API error rendering demo',
         '/auto-demo' => 'Auto Demo',
         '/auto-hello' => 'Auto Hello',
         '/xml-demo' => 'XML Demo',
@@ -179,6 +182,10 @@ Route::get('/signed-demo', fn() => Response::json([
         payloadMode: SignedUrlConfig::MODE_ABSOLUTE,
     ),
 ]));
+
+Route::get('/api/error-demo', static function (): Response {
+    throw HttpException::forbidden('API token missing');
+});
 
 // 1) Generate a signed URL (relative) and redirect to it
 Route::get('/make-signed/{id:int}', function ($id) {

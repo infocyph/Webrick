@@ -5,9 +5,7 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Support;
 
 use Infocyph\Webrick\Constants\MatcherModeEnum;
-use Infocyph\Webrick\Router\Definition\Attribute\AttributeRouteLoader;
 use Infocyph\Webrick\Router\Definition\Registrar;
-use Infocyph\Webrick\Router\Facade\Router;
 use Infocyph\Webrick\Router\Kernel\RouterKernel;
 use Infocyph\Webrick\Router\Matching\FusedMatcher;
 use Infocyph\Webrick\Router\Matching\GeneratedMatcher;
@@ -27,62 +25,25 @@ final class RouteCache
         $logger = self::resolveBuildLogger($options);
         $cachePath = self::resolveBuildCachePath($options);
         [$mode, $matcher, $routeCache] = self::resolveBuildMatcher($options, $cachePath);
-
-        $userRegister = $options['register'] ?? null;
-        $routesFile = self::stringOption($options, 'routes');
-        self::validateBuildRegisterInputs($userRegister, $routesFile);
-
-        $attributeDirs = self::normalizeAttributeDirs(
-            self::stringMapOption($options, 'attributeDirs'),
-            getcwd() ?: __DIR__,
-            $logger,
-        );
-        $attributeClasses = self::classListOption($options, 'attributeClasses');
-        $signKey = self::nullableStringOption($options, 'signKey');
-
-        $baseDir = self::resolveBuildBaseDir($routesFile);
-        $register = self::makeBuildRegisterClosure(
-            $userRegister,
-            $routesFile,
-            $attributeDirs,
-            $attributeClasses,
-            $logger,
-            $baseDir,
-            $signKey,
-        );
-
-        $signedDefaultTtl = self::intOption($options, 'signedDefaultTtl', 900);
-        $signedUrlConfig = self::signedUrlConfigOption($options, 'signedUrlConfig');
-        $urlBaseUri = self::stringOption($options, 'urlBaseUri');
-        $regOpts = self::assocArrayOption($options, 'registrarOptions');
-        $preGlobal = self::listOption($options, 'preGlobal');
-        $postGlobal = self::listOption($options, 'postGlobal');
-        $fallbackAliases = (bool) ($options['fallbackAliasesFromRegistrar'] ?? true);
-        $bind = self::resolveBindUrlServices(
-            $options,
-            $signKey,
-            $signedDefaultTtl,
-            $signedUrlConfig,
-            $urlBaseUri,
-        );
+        $inputs = self::resolveBuildInputs($options, $logger);
 
         RouterKernel::bootWithRegistrar(
             log: $logger,
             matcher: $matcher,
-            register: $register,
+            register: $inputs['register'],
             routeCache: $routeCache,
-            registrarOptions: $regOpts + [
+            registrarOptions: $inputs['registrarOptions'] + [
                 'exposeUrlServices' => false, // we'll bind explicitly
-                'autoSlashRedirect' => (bool) ($regOpts['autoSlashRedirect'] ?? false),
-                'signKey' => $signKey,
-                'signedDefaultTtl' => $signedDefaultTtl,
-                'signedUrlConfig' => $signedUrlConfig,
-                'urlBaseUri' => $urlBaseUri,
+                'autoSlashRedirect' => (bool) ($inputs['registrarOptions']['autoSlashRedirect'] ?? false),
+                'signKey' => $inputs['signKey'],
+                'signedDefaultTtl' => $inputs['signedDefaultTtl'],
+                'signedUrlConfig' => $inputs['signedUrlConfig'],
+                'urlBaseUri' => $inputs['urlBaseUri'],
             ],
-            preGlobal: $preGlobal,
-            postGlobal: $postGlobal,
-            bindUrlServices: $bind,
-            fallbackAliasesFromRegistrar: $fallbackAliases,
+            preGlobal: $inputs['preGlobal'],
+            postGlobal: $inputs['postGlobal'],
+            bindUrlServices: $inputs['bind'],
+            fallbackAliasesFromRegistrar: $inputs['fallbackAliases'],
         );
 
         return ($mode === MatcherModeEnum::SHARDED) ? $routeCache . DIRECTORY_SEPARATOR . '__root.php' : $routeCache;
@@ -286,7 +247,7 @@ final class RouteCache
         string $baseDir,
         ?string $signKey,
     ): \Closure {
-        return static function (Registrar $r) use (
+        return \Closure::fromCallable(new RouteCacheBuildRegistrarCallback(
             $userRegister,
             $routesFile,
             $attributeDirs,
@@ -294,36 +255,7 @@ final class RouteCache
             $logger,
             $baseDir,
             $signKey,
-        ): void {
-            $signUrlSecret = $signKey;
-            $cwd = getcwd();
-            if ($baseDir !== '' && \chdir($baseDir) === false) {
-                $logger->warning('[routecache] failed to chdir to baseDir; continuing', ['baseDir' => $baseDir]);
-            }
-
-            try {
-                if ($userRegister) {
-                    if (!\is_callable($userRegister)) {
-                        throw new \InvalidArgumentException("RouteCache::build: 'register' must be callable.");
-                    }
-                    ($userRegister)($r);
-                } else {
-                    /** @psalm-suppress UnresolvableInclude */
-                    require $routesFile;
-                }
-
-                if ($attributeDirs !== []) {
-                    AttributeRouteLoader::registerFromDirs($r, $attributeDirs);
-                }
-                if ($attributeClasses !== []) {
-                    AttributeRouteLoader::register($r, $attributeClasses);
-                }
-            } finally {
-                if ($cwd !== false) {
-                    \chdir($cwd);
-                }
-            }
-        };
+        ));
     }
 
     /**
@@ -386,19 +318,15 @@ final class RouteCache
         /** @var null|callable(Collection):void $bind */
         $bind = $options['bindUrlServices'] ?? null;
         if ($bind !== null) {
-            return static function (Collection $routes) use ($bind): void {
-                $bind($routes);
-            };
+            return \Closure::fromCallable($bind);
         }
 
-        return static function (Collection $routes) use (
+        return \Closure::fromCallable(new RouteCacheBindUrlServicesCallback(
             $signKey,
             $signedDefaultTtl,
             $signedUrlConfig,
             $urlBaseUri,
-        ): void {
-            Router::bindUrlServices($routes, $signKey, $signedDefaultTtl, $signedUrlConfig, $urlBaseUri);
-        };
+        ));
     }
 
     private static function resolveBuildBaseDir(string $routesFile): string
@@ -427,6 +355,66 @@ final class RouteCache
         }
 
         return $cachePath;
+    }
+
+    /**
+     * @param array<string, mixed> $options
+     * @return array{
+     *   register:\Closure(Registrar):void,
+     *   registrarOptions:array<string,mixed>,
+     *   signKey:?string,
+     *   signedDefaultTtl:int,
+     *   signedUrlConfig:?SignedUrlConfig,
+     *   urlBaseUri:string,
+     *   preGlobal:list<mixed>,
+     *   postGlobal:list<mixed>,
+     *   fallbackAliases:bool,
+     *   bind:\Closure(Collection):void
+     * }
+     */
+    private static function resolveBuildInputs(array $options, LoggerInterface $logger): array
+    {
+        $userRegister = $options['register'] ?? null;
+        $routesFile = self::stringOption($options, 'routes');
+        self::validateBuildRegisterInputs($userRegister, $routesFile);
+
+        $attributeDirs = self::normalizeAttributeDirs(
+            self::stringMapOption($options, 'attributeDirs'),
+            getcwd() ?: __DIR__,
+            $logger,
+        );
+        $attributeClasses = self::classListOption($options, 'attributeClasses');
+        $signKey = self::nullableStringOption($options, 'signKey');
+        $signedDefaultTtl = self::intOption($options, 'signedDefaultTtl', 900);
+        $signedUrlConfig = self::signedUrlConfigOption($options, 'signedUrlConfig');
+        $urlBaseUri = self::stringOption($options, 'urlBaseUri');
+
+        return [
+            'register' => self::makeBuildRegisterClosure(
+                $userRegister,
+                $routesFile,
+                $attributeDirs,
+                $attributeClasses,
+                $logger,
+                self::resolveBuildBaseDir($routesFile),
+                $signKey,
+            ),
+            'registrarOptions' => self::assocArrayOption($options, 'registrarOptions'),
+            'signKey' => $signKey,
+            'signedDefaultTtl' => $signedDefaultTtl,
+            'signedUrlConfig' => $signedUrlConfig,
+            'urlBaseUri' => $urlBaseUri,
+            'preGlobal' => self::listOption($options, 'preGlobal'),
+            'postGlobal' => self::listOption($options, 'postGlobal'),
+            'fallbackAliases' => (bool) ($options['fallbackAliasesFromRegistrar'] ?? true),
+            'bind' => self::resolveBindUrlServices(
+                $options,
+                $signKey,
+                $signedDefaultTtl,
+                $signedUrlConfig,
+                $urlBaseUri,
+            ),
+        ];
     }
 
     /**

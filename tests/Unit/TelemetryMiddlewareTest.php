@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Infocyph\Webrick\Middleware\TelemetryMiddleware;
 use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Support\TelemetryOptions;
 use Infocyph\Webrick\Support\TraceContext;
 
 beforeEach(function () {
@@ -57,6 +58,23 @@ describe('TelemetryMiddleware - Basic Functionality', function () {
         expect($response->hasHeader('X-Response-Time'))
             ->toBeFalse()
             ->and($response->hasHeader('Server-Timing'))->toBeFalse();
+    });
+
+    test('can be built from telemetry options', function () {
+        $middleware = TelemetryMiddleware::fromOptions(new TelemetryOptions(
+            log: $this->logger,
+            addXResponseTime: true,
+            requestIdHeader: 'Request-Id',
+        ));
+
+        $request = mockRequest('GET', '/test');
+        $next = fn () => Response::json(['ok' => true]);
+
+        $response = $middleware($request, $next);
+
+        expect($middleware->options()->requestIdHeader)->toBe('Request-Id')
+            ->and($response->hasHeader('Request-Id'))->toBeTrue()
+            ->and($response->hasHeader('X-Response-Time'))->toBeTrue();
     });
 });
 

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router\Matching;
 
-use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
 use Infocyph\Webrick\Exceptions\RouteNotFoundException;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
@@ -36,6 +35,8 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
  */
 final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
 {
+    use MatcherFactoryTrait;
+
     /**
      * Special bucket name representing the root ('/') shard.
      */
@@ -147,20 +148,6 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
      */
     private array $pathGuard = [];
 
-    /**
-     * Private constructor to enforce factory usage.
-     */
-    private function __construct() {}
-
-    /* ──────────── factory/config ──────────── */
-    /**
-     * Create a new ShardedMatcher instance.
-     */
-    public static function make(): self
-    {
-        return new self();
-    }
-
     /* ──────────── registration ──────────── */
     /**
      * Register a compiled route with the matcher.
@@ -174,25 +161,16 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
      */
     public function add(CompiledRoute $route): void
     {
-        if ($this->finalized) {
-            throw new \LogicException('Cannot add routes after finalize().');
-        }
-
-        $host = $this->canonicalRouteHost($route->getDomain());
-        $method = HttpMethodEnum::normalize($route->getMethod());
-        $bucket = sharded_matcher_file_key_for_path($route->getPath(), self::SHARD_ROOT);
-
-        if (isset($this->pathGuard[$host][$method][$route->getPath()])) {
-            throw new \LogicException("Duplicate route {$method} {$host}{$route->getPath()}");
-        }
-        $this->pathGuard[$host][$method][$route->getPath()] = true;
+        [$host, $method, $path] = matcher_prepare_route_registration(
+            $this->finalized,
+            $this->pathGuard,
+            $this->canonicalRouteHost(...),
+            $route,
+        );
+        $bucket = sharded_matcher_file_key_for_path($path, self::SHARD_ROOT);
 
         $this->bucketMap[$bucket][$method][] = $route;
-
-        // capture alias for dev-mode and for later cache dump
-        if (($name = $route->getName()) !== null && $name !== '') {
-            $this->alias[$name] = [$route->getPath(), $route->getDomain()];
-        }
+        matcher_capture_route_alias($this->alias, $route);
     }
 
     /* ──────────── alias helpers (public API) ──────────── */
@@ -327,11 +305,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         if ($this->cacheEnabled && $this->cacheWriteEnabled && !\file_exists($sentinel)) {
             $this->dumpCacheFiles();     // writes all shards
             $this->dumpAliasFile();      // writes __aliases.php
-            // free build-time memory
-            $this->bucketMap = [];
-            $this->alias = [];
-            $this->loadedFiles = [];
-            $this->aliasLoaded = null;
+            $this->discardBuildState();
         }
         $this->cacheReadable = $this->cacheEnabled && \is_file($sentinel);
         $this->finalized = true;
@@ -497,6 +471,12 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         return \hash('xxh3', $this->exportArray($payload));
     }
 
+    private function discardBuildState(): void
+    {
+        [$this->bucketMap, $this->alias, $this->loadedFiles] = [[], [], []];
+        $this->aliasLoaded = null;
+    }
+
     /* ──────────── alias cache dump ──────────── */
     /**
      * Dump the alias index into the canonical __aliases.php file.
@@ -506,24 +486,8 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     private function dumpAliasFile(): void
     {
         $file = $this->aliasFilePath();
-        if (!\is_dir($d = \dirname($file)) && !\mkdir($d, 0775, true) && !\is_dir($d)) {
-            throw new \RuntimeException("Failed to create cache dir {$d}");
-        }
-
         $payload = $this->alias;
-        $crc = $this->computeAliasHash($payload);
-
-        $php = "<?php\nreturn [\n"
-            . "    '" . self::H_HASH . "' => " . \var_export($crc, true) . ",\n"
-            . "    '" . self::H_TS . "' => " . \var_export(date(DATE_ATOM), true) . ",\n"
-            . "    '" . self::H_DATA . "' => " . $this->exportArray($payload) . ",\n"
-            . "];\n";
-
-        sharded_matcher_write_atomic_php_file($file, $php);
-
-        if ($this->shouldWarmOpcache()) {
-            \opcache_compile_file($file);
-        }
+        $this->writeCachePayloadFile($file, $payload, $this->computeAliasHash($payload));
     }
 
     /* ──────────── cache dump (per-host *and* per-bucket) ─────────── */
@@ -689,6 +653,28 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     }
 
     /**
+     * @param array<mixed> $payload
+     */
+    private function writeCachePayloadFile(string $file, array $payload, string $crc): void
+    {
+        if (!\is_dir($d = \dirname($file)) && !\mkdir($d, 0775, true) && !\is_dir($d)) {
+            throw new \RuntimeException("Failed to create cache dir {$d}");
+        }
+
+        $php = "<?php\nreturn [\n"
+            . "    '" . self::H_HASH . "' => " . \var_export($crc, true) . ",\n"
+            . "    '" . self::H_TS . "' => " . \var_export(date(DATE_ATOM), true) . ",\n"
+            . "    '" . self::H_DATA . "' => " . $this->exportArray($payload) . ",\n"
+            . "];\n";
+
+        sharded_matcher_write_atomic_php_file($file, $php);
+
+        if ($this->shouldWarmOpcache()) {
+            \opcache_compile_file($file);
+        }
+    }
+
+    /**
      * Serialize and write a single shard file.
      *
      * @param string $hostKey Canonical host key or '*' for wildcard
@@ -700,19 +686,6 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     private function writeShard(string $hostKey, string $bucket, array $payload): void
     {
         $file = sharded_matcher_shard_file_path($this->cacheDir, $hostKey, $bucket, self::WIN_RESERVED);
-        if (!\is_dir($d = \dirname($file)) && !\mkdir($d, 0775, true) && !\is_dir($d)) {
-            throw new \RuntimeException("Failed to create cache dir {$d}");
-        }
-        $crc = $this->computeShardHash($payload);
-        $php = "<?php\nreturn [\n"
-            . "    '" . self::H_HASH . "' => " . \var_export($crc, true) . ",\n"
-            . "    '" . self::H_TS . "'  => " . \var_export(date(DATE_ATOM), true) . ",\n"
-            . "    '" . self::H_DATA . "' => " . $this->exportArray($payload) . ",\n"
-            . "];\n";
-        sharded_matcher_write_atomic_php_file($file, $php);
-
-        if ($this->shouldWarmOpcache()) {
-            \opcache_compile_file($file);
-        }
+        $this->writeCachePayloadFile($file, $payload, $this->computeShardHash($payload));
     }
 }

@@ -969,11 +969,10 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
      */
     private function resolveLocaleFromCookie(array $supported): ?string
     {
-        $cookieLocale = $this->cookie('locale');
-        $cookieLang = $this->cookie('lang');
-        $val = is_string($cookieLocale) ? $cookieLocale : (is_string($cookieLang) ? $cookieLang : '');
-
-        return $this->pickLocale($val, $supported);
+        return $this->pickLocale($this->resolveLocaleScalar(
+            $this->cookie('locale'),
+            $this->cookie('lang'),
+        ), $supported);
     }
 
     /**
@@ -992,11 +991,10 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
      */
     private function resolveLocaleFromQuery(array $supported): ?string
     {
-        $queryLocale = $this->query('locale');
-        $queryLang = $this->query('lang');
-        $val = is_string($queryLocale) ? $queryLocale : (is_string($queryLang) ? $queryLang : '');
-
-        return $this->pickLocale($val, $supported);
+        return $this->pickLocale($this->resolveLocaleScalar(
+            $this->query('locale'),
+            $this->query('lang'),
+        ), $supported);
     }
 
     /**
@@ -1020,5 +1018,14 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
         }
 
         return null;
+    }
+
+    private function resolveLocaleScalar(mixed $primary, mixed $fallback): string
+    {
+        if (\is_string($primary)) {
+            return $primary;
+        }
+
+        return \is_string($fallback) ? $fallback : '';
     }
 }

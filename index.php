@@ -40,6 +40,7 @@ namespace {
     use Infocyph\Webrick\Constants\MatcherModeEnum;
     use Infocyph\Webrick\Constants\MediaTypeEnum;
     use Infocyph\Webrick\Constants\StatusEnum;
+    use Infocyph\Webrick\Exceptions\HttpExceptionInterface;
     use Infocyph\Webrick\Middleware\CacheValidatorsMiddleware;
     use Infocyph\Webrick\Middleware\CompressionMiddleware;
     use Infocyph\Webrick\Middleware\CookieEncryptionMiddleware;
@@ -63,6 +64,7 @@ namespace {
     use Infocyph\Webrick\Router\Definition\Registrar;
     use Infocyph\Webrick\Router\Dispatch\MiddlewareAliases;
     use Infocyph\Webrick\Router\Facade\Router as Route;
+    use Infocyph\Webrick\Router\Kernel\ErrorHandler;
     use Infocyph\Webrick\Router\Kernel\RouterKernel;
     use Infocyph\Webrick\Router\Matching\FusedMatcher;
     use Infocyph\Webrick\Router\Matching\GeneratedMatcher;
@@ -70,6 +72,7 @@ namespace {
     use Infocyph\Webrick\Router\Route\Collection;
     use Infocyph\Webrick\Router\Url\SignedUrlConfig;
     use Psr\Log\NullLogger;
+    use Throwable;
 
     final readonly class DemoController
     {
@@ -272,6 +275,25 @@ namespace {
         static fn() => new VerifySignedUrlMiddleware($signedAbsoluteUrlConfig),
     );
     $urlBaseUri = getenv('WEBRICK_URL_BASE_URI') ?: 'http://localhost';
+    $errorHandler = new ErrorHandler(
+        logger: $logger,
+        debug: true,
+        capturePhpErrors: true,
+        requestIdHeader: 'X-Request-Id',
+        responseRenderer: static function (Request $request, Throwable $e, int $status, array $headers): ?Response {
+            if (!str_starts_with($request->getUri()->getPath(), '/api/')) {
+                return null;
+            }
+
+            $message = $e instanceof HttpExceptionInterface ? $e->getPublicMessage() : 'HTTP Error';
+
+            return Response::json([
+                'error' => $message,
+                'status' => $status,
+                'path' => $request->getUri()->getPath(),
+            ], $status, $headers);
+        },
+    );
 
     /* Pre-route (global) middleware – order matters */
     $preGlobal = [
@@ -347,6 +369,7 @@ namespace {
         ],
         preGlobal: $preGlobal,
         postGlobal: $postGlobal,
+        errorHandler: $errorHandler,
         bindUrlServices: static function (Collection $routes) use (
             $signUrlSecret,
             $signedUrlConfig,

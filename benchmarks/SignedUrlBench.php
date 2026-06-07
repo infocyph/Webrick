@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-require_once __DIR__ . '/Support/BenchmarkSupport.php';
+namespace Infocyph\Webrick\Benchmarks;
 
 use Infocyph\Webrick\Benchmarks\Support\BenchmarkSupport;
 use PhpBench\Attributes as Bench;

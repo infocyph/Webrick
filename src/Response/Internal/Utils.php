@@ -39,4 +39,53 @@ final class Utils
     {
         return gmdate('D, d M Y H:i:s', $epoch ?? time()) . ' GMT';
     }
+
+    /**
+     * @param array<mixed> $headers
+     * @return array<string, string|list<string>>
+     */
+    public static function normalizeHeaderMap(array $headers, bool $wrapSingleValues = false): array
+    {
+        $out = [];
+        foreach ($headers as $name => $value) {
+            if (!\is_string($name)) {
+                continue;
+            }
+
+            if (\is_string($value)) {
+                $out[$name] = $wrapSingleValues ? [$value] : $value;
+
+                continue;
+            }
+
+            if (!\is_array($value)) {
+                continue;
+            }
+
+            $vals = [];
+            foreach ($value as $item) {
+                if (\is_string($item)) {
+                    $vals[] = $item;
+                }
+            }
+
+            $out[$name] = $vals;
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param array<mixed> $headers
+     * @return array<string, list<string>>
+     */
+    public static function normalizeHeaderValueLists(array $headers): array
+    {
+        $normalized = self::normalizeHeaderMap($headers, true);
+
+        return \array_map(
+            static fn(string|array $value): array => \is_string($value) ? [$value] : $value,
+            $normalized,
+        );
+    }
 }

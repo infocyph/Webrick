@@ -8,8 +8,6 @@ use Closure;
 use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
-use Psr\Log\LoggerInterface;
-use Psr\Log\NullLogger;
 use RuntimeException;
 
 final readonly class OpenTelemetryHandler
@@ -22,23 +20,7 @@ final readonly class OpenTelemetryHandler
 
     private const string OTEL_STATUS_OK = 'OpenTelemetry\\API\\Trace\\StatusCode::STATUS_OK';
 
-    public function __construct(
-        private LoggerInterface $log = new NullLogger(),
-        private bool $addXResponseTime = true,
-        private bool $addServerTiming = true,
-        private bool $emitRequestId = true,
-        private string $requestIdHeader = 'X-Request-Id',
-        private bool $respectExistingRequestId = true,
-        private ?string $nelGroup = null,
-        private ?string $nelEndpoint = null,
-        private int $nelTtlSeconds = 86400,
-        private bool $nelIncludeSubdomains = true,
-        private bool $nelCollectSuccesses = false,
-        private bool $emitTraceIdHeader = true,
-        private string $traceIdHeader = 'Trace-Id',
-        private string $otelServiceName = 'webrick-app',
-        private string $otelServiceVersion = '1.0.0',
-    ) {}
+    public function __construct(private TelemetryOptions $options) {}
 
     /**
      * @param Closure(Request):Response $next
@@ -68,17 +50,22 @@ final readonly class OpenTelemetryHandler
             $this->setSpanStatus($span, $resp->getStatusCode());
 
             $durMs = (hrtime(true) - $startNs) / 1e6;
-            $resp = TelemetrySupport::addTimingHeaders($resp, $this->addXResponseTime, $this->addServerTiming, $durMs);
+            $resp = TelemetrySupport::addTimingHeaders(
+                $resp,
+                $this->options->addXResponseTime,
+                $this->options->addServerTiming,
+                $durMs,
+            );
             $resp = $this->addCorrelationHeaders($resp, $traceId, $requestId);
             $resp = TelemetrySupport::applyNelHeaders(
                 $resp,
-                $this->nelGroup,
-                $this->nelEndpoint,
-                $this->nelTtlSeconds,
-                $this->nelIncludeSubdomains,
-                $this->nelCollectSuccesses,
+                $this->options->nelGroup,
+                $this->options->nelEndpoint,
+                $this->options->nelTtlSeconds,
+                $this->options->nelIncludeSubdomains,
+                $this->options->nelCollectSuccesses,
             );
-            TelemetrySupport::logAccess($this->log, $req, $resp, $durMs, $spanId, $traceId, $requestId, 'otel');
+            TelemetrySupport::logAccess($this->options->log, $req, $resp, $durMs, $spanId, $traceId, $requestId, 'otel');
 
             return $resp;
         } catch (\Throwable $e) {
@@ -99,11 +86,11 @@ final readonly class OpenTelemetryHandler
     {
         return TelemetrySupport::addCorrelationHeaders(
             $resp,
-            $this->emitRequestId,
-            $this->requestIdHeader,
+            $this->options->emitRequestId,
+            $this->options->requestIdHeader,
             $requestId,
-            $this->emitTraceIdHeader,
-            $this->traceIdHeader,
+            $this->options->emitTraceIdHeader,
+            $this->options->traceIdHeader,
             $traceId,
         );
     }
@@ -203,7 +190,7 @@ final readonly class OpenTelemetryHandler
 
         $this->addNetworkAttributes($span, $req);
         $this->addCustomAttributes($span, $req);
-        $this->setSpanAttribute($span, 'http.server_name', $this->otelServiceName);
+        $this->setSpanAttribute($span, 'http.server_name', $this->options->otelServiceName);
     }
 
     private function buildSpanName(Request $req): string
@@ -272,9 +259,9 @@ final readonly class OpenTelemetryHandler
     {
         return TelemetrySupport::deriveRequestId(
             $req,
-            $this->emitRequestId,
-            $this->requestIdHeader,
-            $this->respectExistingRequestId,
+            $this->options->emitRequestId,
+            $this->options->requestIdHeader,
+            $this->options->respectExistingRequestId,
         );
     }
 
@@ -363,7 +350,11 @@ final readonly class OpenTelemetryHandler
         }
 
         $provider = $this->callStaticObject(self::OTEL_GLOBALS, 'tracerProvider');
-        $tracer = $this->callObject($provider, 'getTracer', [$this->otelServiceName, $this->otelServiceVersion]);
+        $tracer = $this->callObject(
+            $provider,
+            'getTracer',
+            [$this->options->otelServiceName, $this->options->otelServiceVersion],
+        );
 
         $propagator = $this->callStaticObject(self::OTEL_GLOBALS, 'propagator');
         $context = $this->call($propagator, 'extract', [$this->headersToCarrier($req)]);

@@ -12,6 +12,7 @@ use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Request\Core\Uri;
 use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Response\Internal\Utils;
 use Infocyph\Webrick\Response\Response;
 use RuntimeException;
 
@@ -321,33 +322,7 @@ final readonly class ResponseCacheMiddleware
      */
     private function normalizeHeaders(mixed $value): array
     {
-        if (!\is_array($value)) {
-            return [];
-        }
-
-        $headers = [];
-        foreach ($value as $name => $headerValues) {
-            if (!\is_string($name) || $name === '') {
-                continue;
-            }
-            if (\is_string($headerValues)) {
-                $headers[$name] = [$headerValues];
-
-                continue;
-            }
-            if (!\is_array($headerValues)) {
-                continue;
-            }
-            $normalizedValues = [];
-            foreach ($headerValues as $headerValue) {
-                if (\is_string($headerValue)) {
-                    $normalizedValues[] = $headerValue;
-                }
-            }
-            $headers[$name] = $normalizedValues;
-        }
-
-        return $headers;
+        return \is_array($value) ? Utils::normalizeHeaderValueLists($value) : [];
     }
 
     /* ───────────────────────── packing ───────────────────────── */

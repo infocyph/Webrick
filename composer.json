@@ -48,6 +48,7 @@
     },
     "autoload-dev": {
         "psr-4": {
+            "Infocyph\\Webrick\\Benchmarks\\": "benchmarks/",
             "Infocyph\\Webrick\\Tests\\": "tests/"
         },
         "files": [

@@ -8,6 +8,7 @@ use Closure;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Support\OpenTelemetryHandler;
+use Infocyph\Webrick\Support\TelemetryOptions;
 use Infocyph\Webrick\Support\TelemetrySupport;
 use Infocyph\Webrick\Support\TraceContext;
 use Psr\Log\LoggerInterface;
@@ -83,6 +84,35 @@ final readonly class TelemetryMiddleware
         }
 
         return $this->handleMinimal($req, $next);
+    }
+
+    public static function fromOptions(TelemetryOptions $options): self
+    {
+        return new self(...$options->toMiddlewareConstructorArgs());
+    }
+
+    public function options(): TelemetryOptions
+    {
+        return new TelemetryOptions(
+            log: $this->log,
+            addXResponseTime: $this->addXResponseTime,
+            addServerTiming: $this->addServerTiming,
+            emitRequestId: $this->emitRequestId,
+            requestIdHeader: $this->requestIdHeader,
+            respectExistingRequestId: $this->respectExistingRequestId,
+            nelGroup: $this->nelGroup,
+            nelEndpoint: $this->nelEndpoint,
+            nelTtlSeconds: $this->nelTtlSeconds,
+            nelIncludeSubdomains: $this->nelIncludeSubdomains,
+            nelCollectSuccesses: $this->nelCollectSuccesses,
+            emitTraceIdHeader: $this->emitTraceIdHeader,
+            traceIdHeader: $this->traceIdHeader,
+            respectIncomingTraceparent: $this->respectIncomingTraceparent,
+            emitTraceparentHeader: $this->emitTraceparentHeader,
+            enableOtelIntegration: $this->enableOtelIntegration,
+            otelServiceName: $this->otelServiceName,
+            otelServiceVersion: $this->otelServiceVersion,
+        );
     }
 
     /* ======================= Static helpers ======================= */
@@ -207,23 +237,7 @@ final readonly class TelemetryMiddleware
      */
     private function delegateToOtel(Request $req, Closure $next): Response
     {
-        $handler = new OpenTelemetryHandler(
-            log: $this->log,
-            addXResponseTime: $this->addXResponseTime,
-            addServerTiming: $this->addServerTiming,
-            emitRequestId: $this->emitRequestId,
-            requestIdHeader: $this->requestIdHeader,
-            respectExistingRequestId: $this->respectExistingRequestId,
-            nelGroup: $this->nelGroup,
-            nelEndpoint: $this->nelEndpoint,
-            nelTtlSeconds: $this->nelTtlSeconds,
-            nelIncludeSubdomains: $this->nelIncludeSubdomains,
-            nelCollectSuccesses: $this->nelCollectSuccesses,
-            emitTraceIdHeader: $this->emitTraceIdHeader,
-            traceIdHeader: $this->traceIdHeader,
-            otelServiceName: $this->otelServiceName,
-            otelServiceVersion: $this->otelServiceVersion,
-        );
+        $handler = new OpenTelemetryHandler($this->options());
 
         return $handler->handle($req, $next);
     }

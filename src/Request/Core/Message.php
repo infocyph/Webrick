@@ -132,10 +132,8 @@ abstract class Message
         if ($body === $this->body) {
             return $this;
         }
-        $c = clone $this;
-        $c->body = $body;
 
-        return $c;
+        return $this->withPropertyValue('body', $body);
     }
 
     /**
@@ -152,10 +150,8 @@ abstract class Message
         if (($this->headers[$norm] ?? null) === $val) {
             return $this;
         }
-        $c = clone $this;
-        $c->headers[$norm] = $val;
 
-        return $c;
+        return $this->withMappedHeaderValue($norm, $val);
     }
 
     /**
@@ -185,10 +181,8 @@ abstract class Message
         if ($version === $this->protocol) {
             return $this;
         }
-        $c = clone $this;
-        $c->protocol = $version;
 
-        return $c;
+        return $this->withPropertyValue('protocol', $version);
     }
 
     /**
@@ -243,5 +237,22 @@ abstract class Message
         }
 
         return $normalized;
+    }
+
+    /** @param list<string> $value */
+    private function withMappedHeaderValue(string $name, array $value): static
+    {
+        $clone = clone $this;
+        $clone->headers[$name] = $value;
+
+        return $clone;
+    }
+
+    private function withPropertyValue(string $property, mixed $value): static
+    {
+        $clone = clone $this;
+        $clone->{$property} = $value;
+
+        return $clone;
     }
 }

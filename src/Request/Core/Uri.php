@@ -317,10 +317,8 @@ final class Uri implements \Stringable
         if ($fragment === $this->fragment) {
             return $this;
         }
-        $clone = clone $this;
-        $clone->fragment = $fragment;
 
-        return $clone;
+        return $this->withComponent('fragment', $fragment);
     }
 
     /**
@@ -335,10 +333,8 @@ final class Uri implements \Stringable
         if ($host === $this->host) {
             return $this;
         }
-        $clone = clone $this;
-        $clone->host = $host;
 
-        return $clone;
+        return $this->withComponent('host', $host);
     }
 
     /**
@@ -356,10 +352,8 @@ final class Uri implements \Stringable
         if ($path === $this->path) {
             return $this;
         }
-        $clone = clone $this;
-        $clone->path = $path;
 
-        return $clone;
+        return $this->withComponent('path', $path);
     }
 
     /**
@@ -377,10 +371,8 @@ final class Uri implements \Stringable
         if ($port === $this->port) {
             return $this;
         }
-        $clone = clone $this;
-        $clone->port = $port === $this->defaultPort($this->scheme) ? null : $port;
 
-        return $clone;
+        return $this->withComponent('port', $port === $this->defaultPort($this->scheme) ? null : $port);
     }
 
     /**
@@ -398,10 +390,8 @@ final class Uri implements \Stringable
         if ($query === $this->query) {
             return $this;
         }
-        $clone = clone $this;
-        $clone->query = $query;
 
-        return $clone;
+        return $this->withComponent('query', $query);
     }
 
     /**
@@ -584,5 +574,13 @@ final class Uri implements \Stringable
     private function filterQuery(string $query): string
     {
         return ltrim($query, '?');
+    }
+
+    private function withComponent(string $property, mixed $value): self
+    {
+        $clone = clone $this;
+        $clone->{$property} = $value;
+
+        return $clone;
     }
 }

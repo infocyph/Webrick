@@ -35,6 +35,7 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
 final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
 {
     use MatcherCacheLifecycleTrait;
+    use MatcherFactoryTrait;
 
     /**
      * Route alias index: name => [path, domain|null].
@@ -92,32 +93,16 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
      */
     private array $hostRoutes = [];
 
-    private function __construct() {}
-
-    public static function make(): self
-    {
-        return new self();
-    }
-
     public function add(CompiledRoute $route): void
     {
-        if ($this->finalized) {
-            throw new \LogicException('Cannot add routes after finalize().');
-        }
-
-        $host = $this->canonicalRouteHost($route->getDomain());
-        $verb = HttpMethodEnum::normalize($route->getMethod());
-        $path = $route->getPath();
-
-        if (isset($this->guard[$host][$verb][$path])) {
-            throw new \LogicException("Duplicate route {$verb} {$host}{$path}");
-        }
-        $this->guard[$host][$verb][$path] = true;
+        [$host] = matcher_prepare_route_registration(
+            $this->finalized,
+            $this->guard,
+            $this->canonicalRouteHost(...),
+            $route,
+        );
         $this->hostRoutes[$host][] = $route;
-
-        if (($name = $route->getName()) !== null && $name !== '') {
-            $this->alias[$name] = [$route->getPath(), $route->getDomain()];
-        }
+        matcher_capture_route_alias($this->alias, $route);
     }
 
     public function finalize(): void
@@ -135,10 +120,7 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
 
             if ($cacheFileExists) {
                 // Cache boot mode: load lazily from file.
-                $this->hostRoutes = [];
-                $this->guard = [];
-                $this->compiledFn = null;
-                $this->cacheLoaded = false;
+                $this->resetCachedState();
             } elseif ($this->compiledFn === null) {
                 // No cache file available: keep runtime path purely in-memory.
                 $this->compiledFn = $this->compileClosureFromCode($this->buildMatcherCode());
@@ -604,6 +586,13 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         return generated_matcher_render_verb_dispatch($verbs, $indent);
     }
 
+    private function resetCachedState(): void
+    {
+        [$this->hostRoutes, $this->guard] = [[], []];
+        $this->compiledFn = null;
+        $this->cacheLoaded = false;
+    }
+
     /**
      * @param array<int,string> $routeExprs
      * @param array<int,int> $routeIds
@@ -636,15 +625,6 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
      */
     private function writeAtomicPhpFile(string $file, string $php): void
     {
-        $tmp = $file . '.' . \uniqid('', true) . '.tmp';
-        if (\file_put_contents($tmp, $php, \LOCK_EX) === false) {
-            throw new \RuntimeException("Failed to write cache temp file {$tmp}");
-        }
-        \chmod($tmp, 0664);
-        if (!\rename($tmp, $file)) {
-            \unlink($tmp);
-
-            throw new \RuntimeException("Failed to move cache file into place {$file}");
-        }
+        sharded_matcher_write_atomic_php_file($file, $php);
     }
 }
