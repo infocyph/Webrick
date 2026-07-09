@@ -1,0 +1,493 @@
+# AI Context Reference (Webrick)
+
+Purpose: persistent handoff/reference so new chats can resume fast without rescanning the whole repo.
+
+How to use (for future chats):
+1. Open this file first.
+2. Follow "Current Architecture Decisions" as source of truth.
+3. Start from "Last Stop" and execute "Next Actions".
+4. Update this file at the end of each significant change.
+
+Last Updated: 2026-06-04
+
+## Project Snapshot
+- Framework: `Infocyph/Webrick` (PHP).
+- Entrypoint for local demo/runtime switching: `index.php`.
+- Route cache location convention: `.route-cache`.
+- Matcher modes in use: `sharded`, `fused`, `generated`.
+
+## Current Architecture Decisions (Do Not Revert)
+- URL generation ownership is on Route facade, not Response.
+  - Use `Route::urlFor(...)`, `Route::signedUrlFor(...)`, `Route::temporaryUrlFor(...)`.
+  - Global helper `route()` must delegate to Route facade.
+- No backward compatibility required for removed Response URL API.
+  - `Response::urlFor/signedUrlFor/temporaryUrlFor/bindUrlServices/resetUrlServices` are removed.
+- Route URL binding occurs from router lifecycle (`Registrar`, `RouterKernel`, `RouteCache`), using Route facade binder.
+- `RouteGenerator` is now collection-backed only (legacy add/generate fallback removed).
+- Negotiation still exists and is middleware-driven.
+  - Removed only wrapper classes (`LocaleNegotiator`, `CharsetNegotiator`).
+  - Active behavior is in `NegotiationMiddleware` + `ContentNegotiator` + `ContentTypeNegotiator`.
+- Response surface consolidation:
+  - Removed payload subclasses: `JsonResponse`, `RedirectResponse`, `ViewResponse`.
+  - Removed redundant response factory classes: `ResponseFactory`, `StreamFactory`, `UploadedFileFactory`.
+  - Keep using `Request\Psr7\HttpFactory` for PSR-style object creation.
+- View rendering is now `Response::view(...)` (factory-driven via `ViewFactoryInterface` binding).
+- Byte-range file serving is exposed via `Response::rangedFile(...)` / `Response::rangedDownload(...)` and is now used by `/download`.
+
+## Routing/Cache Conventions
+- `index.php` has `$_ENV['WEBRICK_MATCHER_DEFAULT']` near top with values comment.
+- Route cache files:
+  - sharded: `.route-cache/`
+  - fused: `.route-cache/__routes.php`
+  - generated: `.route-cache/__generated.php`
+- Clear behavior must preserve root `.route-cache/.gitignore` (already implemented in `RouteCache::clear`).
+
+## Signed URL/TTL Behavior
+- TTL must be positive.
+- `Route::signedUrlFor(..., ttl: ...)` clamps ttl to `>=1`.
+- `Route::temporaryUrlFor(...)` uses `UrlGenerator::temporary(...)`; requires URL services bound with default TTL.
+- Signed URL behavior is now profile-driven via `SignedUrlConfig`.
+  - Default profile still uses `_sig`, `_exp`, `sha3-256`, and relative payload signing.
+  - Supported extras now include:
+    - absolute payload signing
+    - absolute expiry timestamps via `temporaryUntil(...)`
+    - ignored query parameter allowlists during verification
+    - multiple verification keys with a single generation key
+    - configurable signature/expiry parameter names and HMAC algorithm
+
+## Fixture/Attribute Loading Notes
+- Attribute fixture scanning supports both:
+  - `tests/Fixture`
+  - `tests/Fixtures`
+- Bench script registers whichever exists to avoid fatal directory errors.
+
+## Files Most Relevant For Ongoing Routing Work
+- `index.php`
+- `routes.php`
+- `src/functions.php`
+- `src/Response/Emitter/AutoEmitter.php`
+- `src/Response/Emitter/DefaultEmitter.php`
+- `src/Router/Facade/Router.php`
+- `src/Router/Definition/Registrar.php`
+- `src/Router/Definition/registrar_functions.php`
+- `src/Router/Url/UrlGenerator.php`
+- `src/Router/Url/SignedUrlConfig.php`
+- `src/Router/Matching/AbstractMatcher.php`
+- `src/Router/Matching/GeneratedMatcher.php`
+- `src/Router/Matching/ShardedMatcher.php`
+- `src/Router/Matching/matcher_functions.php`
+- `src/Router/Kernel/RouterKernel.php`
+- `src/Support/RouteCache.php`
+- `src/Middleware/NegotiationMiddleware.php`
+
+## Known Follow-ups
+- Docs migration is mostly complete for URL and response helper API drift.
+  - Residual sweep still needed for legacy recipe snippets that use old `new RouterKernel(); $router->...` style pseudo-API.
+- If route cache command workflow is changed, keep all three matchers aligned with `.route-cache` convention.
+- `composer ic:process` is still environment-blocked in this workspace when Rector fix mode tries to bind a local TCP port.
+  - Exact failure:
+    - `In TcpServer.php line 167: Failed to listen on "tcp://127.0.0.1:0": Success`
+
+## Last Stop
+- Follow-up cleanup/demo pass completed on top of the exception-boundary work.
+  - `src/Exceptions/HttpException.php`
+    - factory duplication was reduced behind a shared private `fromStatus(...)` helper
+    - public factory docblocks were compacted with a shared `HeaderMap` type alias
+  - Demo/runtime integration added for custom API error rendering:
+    - `index.php`
+    - `tests/IntegrationBootstrap.php`
+    - both now install a custom `ErrorHandler` with `responseRenderer`
+    - renderer returns JSON for `/api/*` failures and falls back to default rendering elsewhere
+  - Added a runnable demo route:
+    - `routes.php`
+    - `GET /api/error-demo` throws `HttpException::forbidden('API token missing')`
+  - Updated docs/tests:
+    - `README.md`
+    - `docs/guides/error-rendering.md`
+    - `docs/guides/index.md`
+    - `docs/index.md`
+    - `docs/recipes/error-handling.md`
+    - `tests/Integration/ComprehensiveRoutingTest.php`
+  - Validation completed:
+    - `composer ic:process:lint` PASS
+    - `composer ic:ci` PASS
+  - Duplicate-code impact:
+    - aggregate duplicate lines dropped from `1305` to `1289`
+    - duplicate ratio dropped from `4.00%` to `3.94%`
+- Extended the framework-owned HTTP exception flow beyond the first middleware batch.
+  - `src/Middleware/NegotiationMiddleware.php`
+    - unacceptable media negotiation now throws `HttpException::notAcceptable(...)`
+    - response headers needed for the eventual `406` render still travel on the exception
+  - `src/Router/Kernel/RouterKernel.php`
+    - invalid host normalization paths now throw `HttpException::badRequest(...)`
+    - current public messages:
+      - `Illegal Host header.`
+      - `Invalid IDN host name.`
+      - `Host contains non-ASCII bytes.`
+  - `src/Router/Kernel/ErrorHandler.php`
+    - gained an optional `responseRenderer` override hook
+    - hook shape: `callable(Request, Throwable, int, array<string,string>): mixed`
+    - if it returns a `Response`, that response wins; otherwise built-in rendering continues
+  - `src/Exceptions/HttpException.php`
+    - added `HttpException::notAcceptable(...)`
+  - Added/updated tests:
+    - `tests/Unit/ErrorHandlerTest.php`
+    - `tests/Unit/NegotiationMiddlewareTest.php`
+  - Updated docs:
+    - `README.md`
+    - `docs/deployments/troubleshooting.md`
+  - Important boundary decision:
+    - remaining direct framework status responses that still exist are protocol/control-flow responses, not error rendering paths
+    - examples: redirects, `304`, `204`, range handling
+  - Validation in this pass:
+    - `composer ic:doctor` PASS
+    - `composer ic:list-config` PASS
+    - `composer ic:process:lint` PASS
+    - `composer ic:test:static` PASS
+    - `composer ic:tests:details` PASS
+    - `composer ic:ci` PASS
+- Framework-owned HTTP failure flow was centralized around typed exceptions and the kernel error boundary.
+  - Added:
+    - `src/Exceptions/HttpExceptionInterface.php`
+    - `src/Exceptions/HttpException.php`
+  - Updated routing exceptions to participate in the same flow:
+    - `src/Exceptions/MethodNotAllowedException.php`
+    - `src/Exceptions/RouteNotFoundException.php`
+  - `src/Router/Kernel/ErrorHandler.php` now:
+    - resolves `HttpExceptionInterface` statuses directly
+    - preserves exception headers
+    - preserves public error messages for framework HTTP exceptions
+  - Middleware now throws framework HTTP exceptions instead of returning framework-owned error responses:
+    - `src/Middleware/VerifySignedUrlMiddleware.php`
+    - `src/Middleware/RequestLimitsMiddleware.php`
+    - `src/Middleware/ThrottleMiddleware.php`
+    - `src/Middleware/MaintenanceModeMiddleware.php`
+    - `src/Middleware/GatewayHardeningMiddleware.php`
+  - Direct controller/user middleware `Response` returns still work unchanged.
+  - Added coverage:
+    - `tests/Unit/ErrorHandlerTest.php`
+    - updated `tests/Unit/ThrottleMiddlewareTest.php`
+  - Updated docs:
+    - `README.md`
+    - `docs/guides/urls.md`
+    - `docs/deployments/troubleshooting.md`
+  - Validation completed:
+    - `composer ic:doctor` PASS
+    - `composer ic:list-config` PASS
+    - `composer ic:process:lint` PASS
+    - `composer ic:test:refactor` PASS
+    - `composer ic:tests:details` PASS
+    - `composer ic:ci` PASS
+- PHPBench benchmark suite added under `benchmarks/` so PHPForge bench commands no longer fail on a missing path.
+  - Added:
+    - `benchmarks/MatcherBench.php`
+    - `benchmarks/SignedUrlBench.php`
+    - `benchmarks/Support/BenchmarkSupport.php`
+  - Scope mirrors the existing custom `benchmark/hello_matchers.php` focus:
+    - matcher hot-path benchmarks across `fused`, `generated`, and `sharded`
+    - route sets for current `routes.php` and the small route-cache example
+    - signed URL generation benchmarks
+    - signed URL verification benchmarks
+  - Existing custom script `benchmark/hello_matchers.php` remains intact for manual console benchmarking.
+  - Validation completed:
+    - `composer ic:bench:quick` PASS
+    - `composer ic:benchmark` PASS
+    - `composer ic:test:syntax` PASS
+    - `composer ic:test:static` PASS
+    - `composer ic:test:refactor` PASS
+- Documentation refresh completed after the routing/URL/response refactors.
+  - Reworked `README.md` to match the current kernel boot pattern, Route facade usage, signed URL config shape, route-cache CLI, and PHPForge quality commands.
+  - Updated the main docs entry pages:
+    - `docs/index.md`
+    - `docs/getting-started/index.md`
+    - `docs/getting-started/quickstart.md`
+    - `docs/guides/urls.md`
+  - Replaced stale router/response/cache examples across reference and recipe docs:
+    - removed `new RouterKernel()` pseudo-API examples
+    - removed old `Route` namespace imports
+    - removed stale `->name()` / `->middleware()` chain examples in favor of `->withName()` / `->withMiddleware()` or route options arrays
+    - removed stale response helper references (`html`, `xml`, `redirectToRoute`, etc.)
+    - updated route-cache commands to `php ./webrick route:cache|route:clear`
+    - replaced non-existent `InMemoryCache` examples with CacheLayer's `ArrayCacheAdapter`
+  - Rewrote/updated:
+    - `docs/reference/response.md`
+    - `docs/reference/route-cache.md`
+    - `docs/reference/matcher.md`
+    - `docs/reference/utilities.md`
+    - selected recipes and middleware pages that still used pre-refactor APIs
+  - Validation completed:
+    - `composer ic:doctor` PASS
+    - `composer ic:list-config` PASS
+    - `composer ic:test:syntax` PASS
+    - stale-reference grep sweep for removed APIs returned clean
+- Route demo and benchmark follow-up completed for the signed URL feature-richness pass.
+  - `routes.php` now demonstrates:
+    - relative signed URLs
+    - absolute signed URLs
+    - absolute-payload signed URLs
+    - explicit-expiry signed URLs
+    - verified absolute signed route flow via `verifySignedUrlAbsolute`
+  - `index.php` now registers both signed URL middleware aliases:
+    - `verifySignedUrl`
+    - `verifySignedUrlAbsolute`
+  - `tests/IntegrationBootstrap.php` now mirrors those alias registrations for integration runs.
+  - `benchmark/hello_matchers.php` now includes a second benchmark table for signed URL generation and verification:
+    - `relative sign`
+    - `absolute sign`
+    - `absolute until`
+    - `relative verify`
+    - `absolute verify`
+  - `src/Support/RouteCache.php` build flow was fixed so the route registration closure receives `signKey` after the option is initialized.
+  - Validation completed:
+    - targeted Pest runs for:
+      - `tests/Integration/GeneratedMatcherTest.php`
+      - `tests/Integration/ComprehensiveRoutingTest.php`
+      - `tests/Feature/SignedUrlsTest.php`
+    - benchmark smoke run:
+      - `php benchmark/hello_matchers.php --iters=1000 --rounds=1 --warmup=100 --memory`
+    - `composer ic:test:refactor` PASS
+    - `composer ic:ci` PASS
+- Signed URL feature-richness pass completed.
+  - Added `src/Router/Url/SignedUrlConfig.php`.
+  - Refactored `src/Router/Url/UrlGenerator.php` to support:
+    - profile-based signing config
+    - absolute or relative payload signing modes
+    - TTL-based or explicit timestamp-based expiry
+    - configurable signature parameter names and algorithms
+  - Refactored `src/Middleware/VerifySignedUrlMiddleware.php` to support:
+    - profile objects or key lists
+    - ignored query parameters
+    - multi-key verification
+    - absolute payload verification
+  - Propagated signed URL config/base URI support through:
+    - `src/Router/Facade/Router.php`
+    - `src/Router/Definition/Registrar.php`
+    - `src/Router/Kernel/RouterKernel.php`
+    - `src/Support/RouteCache.php`
+    - `tests/Helpers.php`
+  - Expanded `tests/Feature/SignedUrlsTest.php` to cover the new capabilities.
+  - Validation completed:
+    - `composer ic:doctor` PASS
+    - `composer ic:list-config` PASS
+    - `composer ic:test:static` PASS
+    - `composer ic:test:security` PASS
+    - `composer ic:test:refactor` PASS
+    - `composer ic:ci` PASS
+  - `composer ic:process` remains blocked in this environment at Rector fix mode with:
+    - `In TcpServer.php line 167: Failed to listen on "tcp://127.0.0.1:0": Success`
+- User explicitly requested a class/file-count consolidation pass focused on:
+  - sync emitter wrappers
+  - registrar-only support classes
+  - URL wrapper thinning
+  - matcher support helper inlining
+  - removal of `HtmlResponse`
+- User reverted the earlier attempt, and this pass was reapplied from a clean workspace.
+- Current consolidation batch is validated with PHPForge quality checks.
+  - `composer ic:doctor` PASS
+  - `composer ic:list-config` PASS
+  - `composer ic:test:static` PASS
+  - `composer ic:ci` PASS
+- `composer ic:process` is still environment-blocked in this workspace when it reaches Rector fix mode.
+  - Exact failure:
+    - `In TcpServer.php line 167: Failed to listen on "tcp://127.0.0.1:0": Success`
+  - Dry-run Rector paths used by `composer ic:tests:details` and `composer ic:ci` do pass.
+- Consolidations completed in the current dirty workspace:
+  - Sync emitter wrappers were folded into a configurable `DefaultEmitter`.
+    - `AutoEmitter` now maps FPM/Unit/LiteSpeed/FrankenPHP to configured `DefaultEmitter` instances.
+    - Async emitters remain separate: `Swoole`, `RoadRunner`, `Workerman`.
+    - Removed files:
+      - `src/Response/Emitter/FpmEmitter.php`
+      - `src/Response/Emitter/FrankenPhpEmitter.php`
+      - `src/Response/Emitter/LsapiEmitter.php`
+      - `src/Response/Emitter/UnitEmitter.php`
+  - `HtmlResponse` was removed.
+    - `routes.php` homepage now uses the main `Response` API with explicit HTML content type.
+    - Removed file:
+      - `src/Response/Payloads/HtmlResponse.php`
+  - URL wrapper stack was collapsed into `src/Router/Url/UrlGenerator.php`.
+    - `Router` facade now uses a single `UrlGenerator` for plain, signed, and temporary URLs.
+    - Removed files:
+      - `src/Router/Url/RouteGenerator.php`
+      - `src/Router/Url/SignedUrlGenerator.php`
+      - `src/Router/Url/TemporaryUrlGenerator.php`
+      - `src/Router/Url/Signature.php`
+  - Registrar-only support classes were fully removed.
+    - Support logic now lives in `src/Router/Definition/registrar_functions.php`.
+    - Removed files:
+      - `src/Router/Definition/RegistrarGroupSupport.php`
+      - `src/Router/Definition/RegistrarSupport.php`
+  - Matcher helper support classes were fully removed.
+    - Support logic now lives in one dedicated namespace function file for the directory:
+      - `src/Router/Matching/matcher_functions.php`
+    - Removed files:
+      - `src/Router/Matching/MatcherCacheSupport.php`
+      - `src/Router/Matching/GeneratedMatcherRenderSupport.php`
+      - `src/Router/Matching/ShardedMatcherRuntimeSupport.php`
+      - `src/Router/Matching/ShardedMatcherSupport.php`
+- Current modified/deleted files for this validated batch:
+  - Modified:
+    - `routes.php`
+    - `src/Middleware/VerifySignedUrlMiddleware.php`
+    - `src/Response/Emitter/AutoEmitter.php`
+    - `src/Response/Emitter/DefaultEmitter.php`
+    - `src/Router/Definition/Registrar.php`
+    - `src/Router/Facade/Router.php`
+    - `src/Router/Matching/AbstractMatcher.php`
+    - `src/Router/Matching/GeneratedMatcher.php`
+    - `src/Router/Matching/ShardedMatcher.php`
+    - `src/Router/Url/UrlGenerator.php`
+    - `src/functions.php`
+    - `src/Router/Definition/registrar_functions.php`
+    - `src/Router/Matching/matcher_functions.php`
+    - `tests/Feature/SignedUrlsTest.php`
+  - Deleted:
+    - `src/Response/Emitter/FpmEmitter.php`
+    - `src/Response/Emitter/FrankenPhpEmitter.php`
+    - `src/Response/Emitter/LsapiEmitter.php`
+    - `src/Response/Emitter/UnitEmitter.php`
+    - `src/Response/Payloads/HtmlResponse.php`
+    - `src/Router/Definition/RegistrarGroupSupport.php`
+    - `src/Router/Definition/RegistrarSupport.php`
+    - `src/Router/Matching/MatcherCacheSupport.php`
+    - `src/Router/Matching/GeneratedMatcherRenderSupport.php`
+    - `src/Router/Matching/ShardedMatcherRuntimeSupport.php`
+    - `src/Router/Matching/ShardedMatcherSupport.php`
+    - `src/Router/Url/RouteGenerator.php`
+    - `src/Router/Url/SignedUrlGenerator.php`
+    - `src/Router/Url/TemporaryUrlGenerator.php`
+    - `src/Router/Url/Signature.php`
+- User updated the codebase after the prior PHPStan-only state; project was rechecked from current workspace state.
+- `git status --short` was clean before this verification pass.
+- Full `composer ic:ci` now passes end-to-end with no pending CI failures.
+  - Passing: Syntax, Pest, PHPCS, Public API, Comment Policy, Deptrac, Pint, Psalm, Duplicate Code, PHPStan, Rector.
+- Repository size/tooling surface changed since prior session:
+  - Syntax scan now covers `114` PHP files.
+  - Pest now reports `202` passing tests / `523` assertions.
+  - Public API scan now reports `160` symbols.
+- Previous PHPStan debt called out in this file is resolved in the current workspace snapshot.
+- No pending CI blocker is currently recorded from this verification pass.
+- `composer ic:tests:details` also passes under the current vendor PHPForge config.
+  - Validation note: one earlier `ic:tests:details` run failed only because it was launched in parallel with other full-suite commands and hit shared runtime state; an isolated rerun passes.
+  - Current isolated suite output reports no comment policy findings.
+- URL generation refactor completed to Route facade ownership.
+- Legacy fallback in `RouteGenerator` removed (no-BC direction applied).
+- Negotiator wrapper classes removed; middleware negotiation path confirmed active.
+- Added `AGENTS.md` in repo root to enforce first-read of `AI_CONTEXT.md` in future sessions.
+- Removed legacy response payload subclasses and redundant response factory classes.
+- Added `src/Response/View/ViewFactoryInterface.php`.
+- Added `Response::view(...)`, `Response::rangedFile(...)`, and `Response::rangedDownload(...)`.
+- Switched `/download` route to `Response::rangedDownload(...)` so RangeResponder is actively used.
+- Verified passing tests:
+  - `php vendor/bin/pest tests/Unit/ResponseTest.php tests/Feature/SignedUrlsTest.php tests/Unit/NegotiationMiddlewareTest.php tests/Integration/RoutingRegressionTest.php`
+- Enum hardening pass completed across active runtime paths:
+  - Added `MatcherModeEnum` and integrated matcher mode normalization/validation in cache/runtime scripts.
+  - Expanded `MediaTypeEnum` usage in middleware/response/request helpers (`HttpUtils`, maintenance response, negotiation defaults).
+  - Expanded `StatusEnum` usage for response defaults and error classification; added helpers `StatusEnum::isErrorCode()` and `StatusEnum::isServerErrorCode()`.
+  - Expanded `HttpMethodEnum` usage in request factories and PSR request normalization (`Request::fake`, `ServerRequest::VALID`, `withMethod`).
+  - Kept `HttpFactory` and improved enum-backed defaults.
+  - Updated benchmark and CLI help text to consume enum values where applicable.
+- Verified passing tests after enum pass:
+  - `php vendor/bin/pest tests/Unit/ResponseTest.php tests/Feature/SignedUrlsTest.php tests/Unit/NegotiationMiddlewareTest.php tests/Integration/RoutingRegressionTest.php tests/Unit/RequestTest.php tests/Unit/CorsAndPoliciesMiddlewareTest.php tests/Unit/CompressionMiddlewareTest.php`
+- CI workflow `.github/workflows/build.yml` was converted to security-focused scanning:
+  - Current state keeps existing mandatory matrix checks (`composer validate`, install, `composer audit`, tests).
+  - Uses a single shared PHP versions source via `prepare` job outputs (`php_versions`) consumed by both `run` and `analyze` matrices.
+  - Added separate `analyze` job for security advisory scanning:
+    - Runs dependency CVE advisory checks via `composer audit`.
+    - Uses Psalm code security scanning (Semgrep removed by project decision).
+  - Dedupe update: removed `composer audit` from `run` job to avoid duplicate advisory checks across jobs.
+- Security tooling integration updates:
+  - Added Composer scripts: `test:security` and `security:scan` (Psalm security analysis).
+  - Added CaptainHook `pre-commit` action: `composer test:security`.
+  - Fixed workflow matrix usage bug by making `run` job actually honor `dependency-version` (`composer update ... --${{ matrix.dependency-version }}`).
+  - Fixed Psalm config compatibility for Psalm 6 (`psalm.xml`):
+    - removed unsupported issue handlers
+    - removed broken legacy plugin path
+    - set `cacheDirectory=".psalm-cache"` for predictable writable cache path.
+  - Psalm now executes successfully and reports taint findings (non-zero exit by design when findings exist).
+- Taint/security fixes applied:
+  - Removed exception trace emission from JSON/problem/plain error bodies in `ErrorHandler` (debug metadata now limited to exception class + file:line).
+  - This resolved current Psalm taint findings in emitter paths.
+  - Verified: `composer run test:security` now passes with no errors.
+- Previous Semgrep-flagged path hardening (kept as code hardening even after Semgrep removal):
+  - `CacheValidatorsMiddleware::scriptMtime()` now uses fixed internal path (`__FILE__`) instead of server-input file paths for `filemtime()`.
+  - `Request::fake()` now instantiates a concrete `Request` with normalized method (`HttpMethodEnum::normalize`) to avoid tainted-instantiation warnings.
+  - `webrick route:cache` success path no longer performs `is_file($sentinel)` check on dynamic path; build success is trusted when no exception is thrown.
+  - Verified impacted tests pass (`RequestTest`, `SimpleIntegrationTest`, `RoutingRegressionTest`).
+- Cross-repo tooling parity pass completed across `InterMix`, `ReqShield`, and `Webrick`:
+  - Removed dead Composer script `bench:hello` from `InterMix` and `ReqShield` (target file did not exist in those repos).
+  - Updated `InterMix/rector.php` fallback from `PHP_84` to `PHP_83` to align with `InterMix` minimum supported PHP (`>=8.3`).
+  - Hardened DNS-dependent `ReqShield` tests (`tests/Validation/CoreRulesTest.php`) to skip when DNS resolution is unavailable; keeps `active_url` assertions deterministic in restricted environments.
+  - Verified toolchain runs:
+    - `pest`, `pint`, `rector --dry-run`, `psalm --security-analysis --no-cache` pass in all three repos (environment still shows local cache-file permission warnings in some Pest runs).
+- Benchmark command naming unified across repos:
+  - Replaced `bench:*` usage with a common `benchmark` script entry in `InterMix`, `ReqShield`, and `Webrick`.
+  - Folder structure normalized to `benchmark/` in all three projects.
+  - `ReqShield` maps `benchmark` to `benchmark/validator_bench.php`.
+  - `Webrick` maps `benchmark` to `benchmark/hello_matchers.php`.
+  - `InterMix` maps `benchmark` to `benchmark/intermix_benchmark.php` with progress output and summary metrics.
+- Benchmark progress output normalized:
+  - All benchmark scripts now emit only total-progress percentage lines (`[progress] X%`) with no per-task/per-round detail output.
+  - This behavior is aligned across `Webrick`, `InterMix`, and `ReqShield`.
+- Webrick docs parity pass (current session):
+  - Replaced removed response helpers in docs (`Response::created|accepted|html|xml|file|fromBody|redirectToRoute`) with current APIs (`Response::json/create/inline`, `Response::redirect(Route::urlFor(...))`).
+  - Fixed stale `RouterKernel::bootWithRegistrar(...)` examples in attribute/compression docs (correct named args: `log`, `matcher`, `register`).
+  - Migrated docs from removed request statics (`Request::create`, `Request::capture`, `Request::fromPsr7`) to supported usage (`Request::fake`, `Request::fromGlobals`, explicit constructor example).
+  - Corrected `temporaryUrlFor` docs to use named `ttl:` argument and updated plaintext examples to include explicit `200` where success is intended.
+  - Expanded matcher reference with explicit per-matcher use-cases and “avoid when” guidance for `sharded`, `fused`, and `generated`.
+- PHPForge flow triage + targeted runtime/security fixes:
+  - Fixed `RouterKernel` → `Dispatcher` named-argument mismatch (`preGlobalRaw` / `postGlobalRaw`) that caused broad routing/integration test failures.
+  - Replaced invalid `#[\AllowDynamicProperties(false)]` attribute usage in active router classes.
+  - Replaced removed `Infocyph\InterMix\Cache\Cache` usage with project cache abstraction updates.
+    - Updated `ThrottleMiddleware`, `ResponseCacheMiddleware`, and `tests/Helpers.php` accordingly.
+  - Removed raw request echoing from demo routes that triggered Psalm taint findings:
+    - `/cookie/read` no longer returns full cookie bag.
+    - `/secure/{id}` no longer returns raw query params.
+  - Re-ran focused quality checks:
+    - `composer ic:test:code` passes.
+    - `composer ic:test:security` passes.
+    - `composer ic:test:refactor` passes.
+    - `composer ic:test:lint` passes.
+  - `composer ic:tests:details` no longer fails in the current workspace snapshot.
+- Follow-up cache backend alignment:
+  - Migrated cache usage to `infocyph/cachelayer` (`Infocyph\CacheLayer\Cache\Cache`) per project direction.
+  - Removed temporary `src/Support/LocalCache.php` shim.
+  - Re-verified: `composer ic:test:syntax`, `composer ic:test:code`, `composer ic:test:security`, and `composer ic:test:lint` pass.
+- Duplicate-resolution pass:
+  - Reduced duplicate report to enum-only clone groups.
+  - Non-enum duplicates were removed by:
+    - collapsing repeated route/matcher/header normalization into shared helpers
+    - replacing repeated matcher factory boilerplate with `src/Router/Matching/MatcherFactoryTrait.php`
+    - moving Telemetry OTel handoff config into `src/Support/TelemetryOptions.php`
+    - converting `RouteCache` callback closures into dedicated invokable callbacks
+    - tightening magic APIs in `src/Exceptions/HttpException.php` and `src/Router/Definition/Registrar.php`
+  - Added benchmark namespace autoload-dev support in `composer.json` for PHPStan visibility.
+  - Re-verified:
+    - `composer ic:test:duplicates` passes with only enum clone groups remaining
+    - `composer ic:test:static` passes
+    - `composer ic:ci` passes
+- Follow-up structural cleanup:
+  - Benchmark classes now use PSR-4 namespaces:
+    - `benchmarks/MatcherBench.php`
+    - `benchmarks/SignedUrlBench.php`
+  - `RouteCache` support callbacks were extracted into dedicated files:
+    - `src/Support/RouteCacheBindUrlServicesCallback.php`
+    - `src/Support/RouteCacheBuildRegistrarCallback.php`
+  - `TelemetryMiddleware` now supports `TelemetryMiddleware::fromOptions(...)` and exposes `->options()`.
+  - Added `TelemetryOptions::toMiddlewareConstructorArgs()` to keep the options-based path clone-free.
+  - `RouterKernel` constructor orchestration was trimmed by extracting:
+    - default error-handler construction
+    - global middleware preparation
+    - dispatcher creation
+  - Docs/tests updated for the Telemetry options path:
+    - `tests/Unit/TelemetryMiddlewareTest.php`
+    - `docs/reference/middleware.md`
+  - Re-verified:
+    - `composer ic:test:duplicates` passes with only enum clone groups remaining
+    - `composer ic:test:static` passes
+    - `composer ic:bench:quick` passes
+    - benchmark autoload warnings for benchmark classes are gone from `composer dump-autoload`
+
+## Next Actions
+1. If the user wants another file-count pass, reassess remaining thin containers and traits outside this completed target set.
+2. If a fully clean PHPForge process run is required, investigate the Rector fix-mode socket failure separately.
+   - Current blocker is environmental, not a reported code regression.
