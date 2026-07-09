@@ -14,4 +14,3 @@ git-story_media
 *.patch
 patch.php
 .route-cache-*
-AI_CONTEXT.md

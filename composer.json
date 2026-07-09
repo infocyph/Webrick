@@ -16,19 +16,23 @@
     ],
     "authors": [
         {
+            "name": "Infocyph",
+            "email": "infocyph@gmail.com"
+        },
+        {
             "name": "abmmhasan",
             "email": "abmmhasan@gmail.com"
         }
     ],
     "require": {
         "php": ">=8.4",
-        "infocyph/arraykit": "^4.2",
-        "infocyph/cachelayer": "^1.2",
-        "infocyph/intermix": "^7.2",
+        "infocyph/arraykit": "^4.4",
+        "infocyph/cachelayer": "^1.2.2",
+        "infocyph/intermix": "^7.2.2",
         "psr/log": "^3.0.2"
     },
     "require-dev": {
-        "infocyph/phpforge": "dev-main"
+        "infocyph/phpforge": "dev-main@dev"
     },
     "suggest": {
         "open-telemetry/exporter-otlp": "Export traces to OpenTelemetry collectors (Jaeger, Zipkin, etc.)",
@@ -70,6 +74,6 @@
     },
     "scripts": {
         "benchmark": "@php benchmark/hello_matchers.php",
-        "webrick": "webrick"
+        "webrick": "@php webrick"
     }
 }
