@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Router\Definition\Attribute;
 
 use FilesystemIterator;
+use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Router\Definition\Registrar;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
@@ -165,11 +166,12 @@ final class AttributeRouteLoader
         array $opts,
     ): void {
         foreach ($methods as $verb) {
-            $call = strtolower($verb);
-            if (!method_exists($r, $call)) {
+            $method = HttpMethodEnum::tryFrom(strtoupper($verb));
+            if (!$method instanceof HttpMethodEnum) {
                 continue;
             }
-            $r->{$call}($path, $handler, $opts);
+
+            $r->__call(strtolower($method->value), [$path, $handler, $opts]);
         }
     }
 

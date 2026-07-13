@@ -167,7 +167,7 @@ final class UAParser
     }
 
     /**
-     * @return HintMap
+     * @phpstan-return HintMap
      */
     private function parseSecCh(Request $req): array
     {

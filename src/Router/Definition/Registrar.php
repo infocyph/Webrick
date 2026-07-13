@@ -439,8 +439,8 @@ final readonly class Registrar
     }
 
     /**
-     * @param list<RawMiddlewareEntry|AliasSpec> $list
-     * @return MiddlewareList
+     * @phpstan-param list<RawMiddlewareEntry|AliasSpec> $list
+     * @phpstan-return MiddlewareList
      */
     private function resolveAliasMiddleware(array $list): array
     {

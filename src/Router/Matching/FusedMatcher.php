@@ -403,7 +403,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
     }
 
     /**
-     * @return AliasIndex
+     * @phpstan-return AliasIndex
      */
     private function normalizeAliasIndex(mixed $raw): array
     {
@@ -429,7 +429,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
     }
 
     /**
-     * @return HostMap
+     * @phpstan-return HostMap
      */
     private function normalizeHosts(mixed $raw): array
     {
@@ -448,7 +448,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
     }
 
     /**
-     * @return StaticBucket
+     * @phpstan-return StaticBucket
      */
     private function normalizeStaticBucket(mixed $rawStatic): array
     {
@@ -483,7 +483,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
     }
 
     /**
-     * @return VerbRouteMap
+     * @phpstan-return VerbRouteMap
      */
     private function normalizeVerbRouteMap(mixed $verbs): array
     {

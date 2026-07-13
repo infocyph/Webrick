@@ -135,7 +135,7 @@ final class RequestHeaders
      * - length: Content-Length header value as an integer
      * - md5: Content-Md5 header value as a lowercase string
      *
-     * @return ContentMeta
+     * @phpstan-return ContentMeta
      */
     public function content(): array
     {

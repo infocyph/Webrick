@@ -77,7 +77,7 @@ final readonly class GroupScope
      * Returns the middleware entries in declared order. Each element is either
      * a class-string or an instantiated middleware object.
      *
-     * @return MiddlewareList
+     * @psalm-return MiddlewareList
      */
     public function getMiddleware(): array
     {
