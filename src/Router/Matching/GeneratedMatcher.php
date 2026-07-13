@@ -307,8 +307,8 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
     }
 
     /**
-     * @param DynamicTmp $dynamicTmp
-     * @return DynamicBuckets
+     * @phpstan-param DynamicTmp $dynamicTmp
+     * @phpstan-return DynamicBuckets
      */
     private function finalizeDynamicGenerationBuckets(array $dynamicTmp): array
     {
@@ -442,10 +442,10 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
     }
 
     /**
-     * @param list<CompiledRoute> $routes
-     * @param array<int,string> $routeExprs
-     * @param array<int,int> $routeIds
-     * @return HostGen
+     * @phpstan-param list<CompiledRoute> $routes
+     * @phpstan-param array<int,string> $routeExprs
+     * @phpstan-param array<int,int> $routeIds
+     * @phpstan-return HostGen
      */
     private function prepareHostGenerationData(array $routes, array &$routeExprs, array &$routeIds): array
     {
