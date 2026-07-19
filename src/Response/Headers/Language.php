@@ -57,7 +57,7 @@ final class Language
         foreach (explode(',', $accept) as $seg) {
             [$tag, $params] = array_map(trim(...), explode(';', $seg, 2) + [1 => '']);
             $q = (float) (preg_match('/q=([\d.]+)/', $params, $m) ? $m[1] : 1);
-            if ($q == 0.0) {
+            if ($q === 0.0) {
                 continue;
             }            // “not acceptable” shortcut
             $parts[] = [strtolower($tag), $q];
