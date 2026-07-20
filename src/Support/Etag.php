@@ -18,7 +18,7 @@ use Infocyph\Webrick\Interfaces\BodyStream;
  *
  * This final utility class offers a chunked hashing method that preserves the
  * original stream position, supports optional salt (e.g., normalized query),
- * and returns a quoted hexadecimal digest truncated to a requested length.
+ * and returns a quoted hexadecimal digest.
  */
 final class Etag
 {
@@ -30,21 +30,21 @@ final class Etag
      * - Saves and restores the stream position to avoid side effects.
      * - Computes a hash in chunks to reduce memory usage.
      * - Optionally prefixes the hash input with a salt followed by a newline.
-     * - Returns a quoted hexadecimal digest (first $hexLen chars of the $algo digest),
+     * - Returns a quoted hexadecimal digest (optionally truncated to $hexLen characters),
      *   or null on failure (any thrown error/exception is caught).
      *
      * @param BodyStream $stream Seekable stream to hash (position is preserved).
      * @param string $salt Optional salt to include before the content (e.g., normalized query).
-     * @param string $algo Hash algorithm name (e.g., 'xxh3', 'sha256'); must be supported by hash_init().
-     * @param int $hexLen Number of hex characters to include in the final (quoted) ETag.
+     * @param string $algo Cryptographic hash algorithm supported by hash_init().
+     * @param int|null $hexLen Optional number of hex characters to include; null retains the full digest.
      * @param int $chunk Chunk size in bytes used when reading the stream.
-     * @return string|null Quoted hex digest (truncated) on success; null on error or if not seekable.
+     * @return string|null Quoted hex digest (optionally truncated) on success; null on error or if not seekable.
      */
     public static function fromStream(
         BodyStream $stream,
         string $salt = '',
-        string $algo = 'xxh3',
-        int $hexLen = 16,
+        string $algo = 'xxh128',
+        ?int $hexLen = null,
         int $chunk = 131072, // 128 KiB
     ): ?string {
         if (!$stream->isSeekable()) {
@@ -70,7 +70,9 @@ final class Etag
 
             $stream->seek($pos);
 
-            return '"' . substr($hex, 0, $hexLen) . '"';
+            $digest = $hexLen === null ? $hex : substr($hex, 0, $hexLen);
+
+            return '"' . $digest . '"';
         } catch (\Throwable) {
             return null;
         }

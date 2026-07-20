@@ -27,6 +27,12 @@ use Traversable;
  */
 final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
 {
+    private const string INVALID_HEADER_NAME = "/[^!#$%&'*+.^_`|~0-9A-Za-z-]/";
+
+    private const string INVALID_HEADER_VALUE = '/[\x00-\x08\x0A-\x1F\x7F]/';
+
+    private const int NORMALIZATION_CACHE_LIMIT = 256;
+
     /** @var array<string, string> */
     private static array $normCache = [];
 
@@ -39,11 +45,14 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
      * Initializes the HeaderBag with an optional seed array of headers.
      * Each header name is normalized to a standard format.
      *
-     * @param array<string,string|list<string>> $seed Optional initial headers
+     * @param array<array-key,mixed> $seed Optional initial headers; values are validated at this boundary
      */
     public function __construct(array $seed = [])
     {
         foreach ($seed as $name => $value) {
+            if (!is_string($name) || (!is_string($value) && !is_array($value))) {
+                throw new \InvalidArgumentException('HTTP headers must use string names and string or array values.');
+            }
             $this->set($name, $value);
         }
     }
@@ -244,16 +253,17 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
      * - If the header does not exist, the new values are used as-is.
      *
      * @param string $name Case-insensitive header name
-     * @param string|array<int, string> $value New header values
+     * @param string|array<array-key, mixed> $value New header values
      * @return static New instance with the specified header value(s) added
      */
     public function withAdded(string $name, string|array $value): self
     {
         $norm = $this->norm($name);
+        $values = $this->normalizeValues($value);
         $x = clone $this;
         $x->map[$norm] = array_merge(
             $x->map[$norm] ?? [],
-            is_array($value) ? array_values($value) : [$value],
+            $values,
         );
 
         return $x;
@@ -310,29 +320,51 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
      */
     private function norm(string $name): string
     {
-        return self::$normCache[$name] ??= ucwords(strtolower($name), '-');
+        if ($name === '' || preg_match(self::INVALID_HEADER_NAME, $name) === 1) {
+            throw new \InvalidArgumentException('Invalid HTTP header name.');
+        }
+
+        if (isset(self::$normCache[$name])) {
+            return self::$normCache[$name];
+        }
+
+        $normalized = ucwords(strtolower($name), '-');
+        if (count(self::$normCache) < self::NORMALIZATION_CACHE_LIMIT) {
+            self::$normCache[$name] = $normalized;
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * @param string|array<array-key, mixed> $value
+     * @return list<string>
+     */
+    private function normalizeValues(string|array $value): array
+    {
+        $values = is_array($value) ? array_values($value) : [$value];
+        foreach ($values as $item) {
+            if (!is_string($item)) {
+                throw new \InvalidArgumentException('HTTP header values must be strings.');
+            }
+            if (preg_match(self::INVALID_HEADER_VALUE, $item) === 1) {
+                throw new \InvalidArgumentException('HTTP header values must not contain control characters.');
+            }
+        }
+
+        return $values;
     }
 
     /**
      * Internal helper to set a header.
      *
      * @param string $name The header name to set.
-     * @param string|array<int, string> $value The header value to set.
+     * @param string|array<array-key, mixed> $value The header value to set.
      *
      * @throws \LogicException If the header bag is immutable (i.e. if it's being accessed from the Response side).
      */
     private function set(string $name, string|array $value): void
     {
-        if (\is_array($value)) {
-            $normalized = [];
-            foreach ($value as $item) {
-                $normalized[] = $item;
-            }
-            $this->map[$this->norm($name)] = $normalized;
-
-            return;
-        }
-
-        $this->map[$this->norm($name)] = [$value];
+        $this->map[$this->norm($name)] = $this->normalizeValues($value);
     }
 }

@@ -6,6 +6,8 @@ namespace Infocyph\Webrick\Request\Support;
 
 final class IpCidr
 {
+    private const int MEMO_LIMIT = 256;
+
     /** @var array<string,bool> */
     private static array $memo = [];
 
@@ -32,7 +34,11 @@ final class IpCidr
             ? self::v6($ip, $cidr)
             : self::v4($ip, $cidr);
 
-        return self::$memo[$key] = $result;
+        if (count(self::$memo) < self::MEMO_LIMIT) {
+            self::$memo[$key] = $result;
+        }
+
+        return $result;
     }
 
     private static function matchPackedNetwork(string $ipBin, string $netBin, int $mask): bool

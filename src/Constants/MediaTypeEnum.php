@@ -120,9 +120,11 @@ enum MediaTypeEnum: string
         }
 
         $key = $alias[$ext] ?? $ext;
-        $case = $map[$key] ?? self::OCTET;
+        if (!isset($map[$key])) {
+            return self::OCTET;
+        }
 
-        return $cache[$ext] = $case;
+        return $cache[$ext] = $map[$key];
     }
 
     /**

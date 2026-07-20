@@ -25,10 +25,8 @@ use Psr\Log\NullLogger;
 if (! class_exists('DemoController', false)) {
     final readonly class DemoController
     {
-        public function hello(Request $request, string $name): Response
+        public function hello(string $name): Response
         {
-            unset($request);
-
             return Response::json([
                 'handler' => 'DemoController::hello',
                 'hello' => $name,
@@ -101,9 +99,7 @@ function createTestKernel(array $extraMiddleware = []): RouterKernel
     MiddlewareAliases::reset();
     MiddlewareAliases::register(
         'throttle',
-        static function (...$params): string {
-            unset($params);
-
+        static function (): string {
             return \Infocyph\Webrick\Middleware\ThrottleMiddleware::class;
         },
     );
@@ -135,9 +131,7 @@ function createTestKernel(array $extraMiddleware = []): RouterKernel
     );
 
     // Registration callback - load actual routes
-    $register = function (Registrar $registrar) {
-        unset($registrar);
-
+    $register = function () {
         // Load the same routes as the real app
         require __DIR__.'/../routes.php';
     };

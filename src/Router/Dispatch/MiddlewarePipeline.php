@@ -42,6 +42,8 @@ use UnexpectedValueException;
  */
 final class MiddlewarePipeline
 {
+    private const int CALLABLE_MEMO_LIMIT = 128;
+
     /**
      * Composed pipeline closure that accepts a Request and returns a Response.
      *
@@ -232,11 +234,16 @@ final class MiddlewarePipeline
             return $mw;
         }
 
-        if (!isset($memo[$mw])) {
-            $memo[$mw] = $this->resolveMiddlewareString($mw);
+        if (isset($memo[$mw])) {
+            return $memo[$mw];
         }
 
-        return $memo[$mw];
+        $resolved = $this->resolveMiddlewareString($mw);
+        if (count($memo) < self::CALLABLE_MEMO_LIMIT) {
+            $memo[$mw] = $resolved;
+        }
+
+        return $resolved;
     }
 
     /**

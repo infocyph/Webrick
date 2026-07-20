@@ -305,7 +305,7 @@ final class CompiledRoute implements RouteInterface
      */
     private static function buildVarSegment(string $name, ?string $constraint): array
     {
-        if ($constraint) {
+        if ($constraint !== null) {
             $spec = ConstraintRegistry::getValidatorSpec($constraint);
 
             if (isset($spec['regex'])) {

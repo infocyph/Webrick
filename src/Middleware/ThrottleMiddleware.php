@@ -20,6 +20,7 @@ namespace Infocyph\Webrick\Middleware;
 use Closure;
 use DateTimeImmutable;
 use Infocyph\CacheLayer\Cache\Cache;
+use Infocyph\CacheLayer\Counter\AtomicCounterStoreInterface;
 use Infocyph\Webrick\Exceptions\HttpException;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
@@ -35,7 +36,7 @@ final readonly class ThrottleMiddleware
     /**
      * PSR-6 cache pool used to store counters and reset epochs.
      */
-    private CacheItemPoolInterface $pool;
+    private ?CacheItemPoolInterface $pool;
 
     /**
      * Configure the throttle middleware.
@@ -49,6 +50,7 @@ final readonly class ThrottleMiddleware
      * @param string $scope Logical bucket (e.g., "global", "auth", "login").
      * @param string $costAttribute Request attribute name used for per-request cost.
      * @param Closure(Request):bool|null $bypass If returns true, request is not throttled.
+     * @param AtomicCounterStoreInterface|null $counterStore Optional atomic counter backend; preferred for concurrent workers.
      */
     public function __construct(
         private int $max = 1,
@@ -60,6 +62,7 @@ final readonly class ThrottleMiddleware
         private string $scope = 'global',
         private string $costAttribute = 'rate_cost.thm',
         private ?Closure $bypass = null,
+        private ?AtomicCounterStoreInterface $counterStore = null,
     ) {
         if ($this->max < 1) {
             throw new InvalidConfigException('max must be >= 1.');
@@ -74,13 +77,7 @@ final readonly class ThrottleMiddleware
             throw new InvalidConfigException('costAttribute must be a non-empty string.');
         }
 
-        if ($pool !== null) {
-            $this->pool = $pool;
-
-            return;
-        }
-
-        $this->pool = $this->buildDefaultPool();
+        $this->pool = $pool ?? ($this->counterStore === null ? $this->buildDefaultPool() : null);
     }
 
     /**
@@ -89,9 +86,9 @@ final readonly class ThrottleMiddleware
      * Flow:
      * 1) Optional bypass.
      * 2) Anchor timing to request start for consistent math.
-     * 3) Compute bucket key and reset epoch; load current window payload.
-     * 4) If this request would exceed the limit, return 429 with headers.
-     * 5) Otherwise increment hits, persist, call next, and attach headers.
+     * 3) Compute the bucket key and atomically reserve capacity when configured.
+     * 4) If this request exceeds the limit, return 429 with headers.
+     * 5) Otherwise call the next handler and attach rate-limit headers.
      *
      * @param Request $req Incoming request.
      * @param Closure(Request):Response $next
@@ -109,23 +106,12 @@ final readonly class ThrottleMiddleware
         $now = $this->intFromMixed($_SERVER['REQUEST_TIME'] ?? null, \time());
 
         [$key, $resetAt] = $this->deriveKeyAndReset($req, $now);
-        $payload = $this->load($key, $resetAt);
-
         $cost = max(1, $this->intFromMixed($req->getAttribute($this->costAttribute, 1), 1));
-
-        // Will this request exceed the limit?
-        if ($this->max < $payload['hits'] + $cost) {
-            throw $this->tooMany($payload['reset']);
-        }
-
-        // Count this request before executing the handler
-        $payload['hits'] += $cost;
-        $this->persist($key, $payload);
-
-        $remain = max(0, $this->max - $payload['hits']);
+        $hits = $this->reserveCapacity($key, $resetAt, $now, $cost);
+        $remain = max(0, $this->max - $hits);
         $resp = $next($req);
 
-        return $this->attachRateHeaders($resp, $remain, $payload['reset']);
+        return $this->attachRateHeaders($resp, $remain, $resetAt);
     }
 
     /**
@@ -171,6 +157,11 @@ final readonly class ThrottleMiddleware
         return Cache::local($cacheBase . '.thm');
     }
 
+    private function cachePool(): CacheItemPoolInterface
+    {
+        return $this->pool ?? throw new \LogicException('No cache pool configured for non-atomic throttling.');
+    }
+
     /**
      * Derive the cache key and reset epoch for the current window.
      *
@@ -194,7 +185,7 @@ final readonly class ThrottleMiddleware
 
         // Hard-partition by window to avoid cross-window races
         return [
-            't.' . hash('xxh3', $this->scope . '|' . $id . '|' . $winStart, false),
+            't.' . hash('sha256', $this->scope . '|' . $id . '|' . $winStart, false),
             $reset,
         ];
     }
@@ -222,7 +213,7 @@ final readonly class ThrottleMiddleware
      */
     private function load(string $key, int $reset): array
     {
-        $item = $this->pool->getItem($key);
+        $item = $this->cachePool()->getItem($key);
         $data = $item->isHit() ? $item->get() : null;
 
         if (!is_array($data)) {
@@ -251,11 +242,34 @@ final readonly class ThrottleMiddleware
      */
     private function persist(string $key, array $payload): void
     {
-        $item = $this->pool->getItem($key);
+        $pool = $this->cachePool();
+        $item = $pool->getItem($key);
         $item->set($payload);
         $item->expiresAt(new DateTimeImmutable()->setTimestamp($payload['reset']));
         // Write immediately (less chance of loss/race than saveDeferred)
-        $this->pool->save($item);
+        $pool->save($item);
+    }
+
+    private function reserveCapacity(string $key, int $resetAt, int $now, int $cost): int
+    {
+        if ($this->counterStore !== null) {
+            $hits = $this->counterStore->increment($key, $cost, max(1, $resetAt - $now))->value;
+            if ($hits > $this->max) {
+                throw $this->tooMany($resetAt);
+            }
+
+            return $hits;
+        }
+
+        $payload = $this->load($key, $resetAt);
+        if ($this->max < $payload['hits'] + $cost) {
+            throw $this->tooMany($payload['reset']);
+        }
+
+        $payload['hits'] += $cost;
+        $this->persist($key, $payload);
+
+        return $payload['hits'];
     }
 
     /**

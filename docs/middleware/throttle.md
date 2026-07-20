@@ -18,7 +18,8 @@ $preGlobal[] = new ThrottleMiddleware(
     emitStandardRateLimit: true,        // Emit RateLimit-* headers (RFC draft)
     scope: 'global',                    // Logical bucket name/namespace
     costAttribute: 'rate_cost.thm',     // Request attribute for per-request cost
-    bypass: null                        // Closure to bypass throttle
+    bypass: null,                       // Closure to bypass throttle
+    counterStore: null                  // Optional atomic CacheLayer counter backend
 );
 ```
 
@@ -28,13 +29,14 @@ $preGlobal[] = new ThrottleMiddleware(
 | ----------------------- | ------------------------- | ----------------- | -------------------------------------------------- |
 | `max`                   | `int`                     | *required*        | Maximum requests allowed per window                |
 | `window`                | `int`                     | *required*        | Time window in seconds                             |
-| `pool`                  | `CacheItemPoolInterface`  | *required*        | PSR-6 cache for storing counters                   |
+| `pool`                  | `?CacheItemPoolInterface` | `null`            | PSR-6 fallback; defaults to a local CacheLayer pool |
 | `retryAsDate`           | `bool`                    | `false`           | `Retry-After` as HTTP-date (true) or seconds (false) |
 | `identifierResolver`    | `?callable`               | `null`            | Custom function to resolve identifier from request |
 | `emitStandardRateLimit` | `bool`                    | `true`            | Emit `RateLimit-*` headers (IETF draft standard)   |
 | `scope`                 | `string`                  | `'global'`        | Namespace for cache keys (allows multiple buckets) |
 | `costAttribute`         | `string`                  | `'rate_cost.thm'` | Request attribute name for custom cost             |
 | `bypass`                | `?callable`               | `null`            | Function to bypass throttle for certain requests   |
+| `counterStore`          | `?AtomicCounterStoreInterface` | `null`       | Atomic Redis/Valkey counter fast path for concurrent workers |
 
 ---
 
@@ -216,18 +218,17 @@ Route::post('/login', /* ... */, ['middleware' => ['throttle.login']]);
 
 ## Redis Backend (Recommended)
 
-For distributed/multi-server setups:
+For distributed/multi-server setups, use CacheLayer's atomic counter API:
 ```php
-use Symfony\Component\Cache\Adapter\RedisAdapter;
-
-$redis = new \Redis();
-$redis->connect('127.0.0.1', 6379);
-$cachePool = new RedisAdapter($redis, namespace: 'throttle');
+use Infocyph\CacheLayer\Counter\AtomicCounters;
 
 new ThrottleMiddleware(
     max: 60,
     window: 60,
-    pool: $cachePool
+    counterStore: AtomicCounters::redis(
+        namespace: 'throttle',
+        dsn: 'redis://127.0.0.1:6379',
+    ),
 );
 ```
 
@@ -238,7 +239,9 @@ new ThrottleMiddleware(
 
 ---
 
-## Algorithm (Token Bucket)
+The generic PSR-6 fallback remains available for local/single-worker use, but its read-modify-write sequence is not atomic across workers.
+
+## Algorithm (Fixed Window)
 ```
 1. Generate key: {scope}:{identifier}:{window_start}
 2. Increment counter in cache (atomic)
@@ -246,6 +249,8 @@ new ThrottleMiddleware(
 4. If counter > max: deny (429)
 5. Set TTL = window duration
 ```
+
+The atomic path counts rejected attempts until the fixed window expires, preventing repeated over-limit requests from racing back under the limit.
 
 **Window sliding**: Uses fixed windows aligned to Unix timestamps.
 ```php

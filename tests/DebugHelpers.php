@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 

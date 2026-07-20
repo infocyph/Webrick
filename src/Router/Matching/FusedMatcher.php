@@ -225,11 +225,11 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
      *
      * @param HostMap $hosts Host routing table payload.
      * @param AliasIndex $alias Alias map payload.
-     * @return string xxh3 fingerprint.
+     * @return string xxh128 fingerprint.
      */
     private function computeCacheHash(array $hosts, array $alias): string
     {
-        return \hash('xxh3', $this->exportArray([
+        return \hash('xxh128', $this->exportArray([
             self::H_DATA => $hosts,
             self::H_ALIAS => $alias,
         ]));
@@ -239,7 +239,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
     /**
      * Dump the in-memory host and alias tables into the configured cache file.
      *
-     * The cache blob contains a checksum (xxh3) and a timestamp to allow basic
+     * The cache blob contains an xxh128 checksum and a timestamp to allow basic
      * integrity checks and identifying stale files.
      *
      * @throws \RuntimeException When the cache directory cannot be created

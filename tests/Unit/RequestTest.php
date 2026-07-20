@@ -3,6 +3,9 @@
 declare(strict_types=1);
 
 use Infocyph\Webrick\Request\Core\Stream;
+use Infocyph\Webrick\Request\Core\UploadedFile;
+use Infocyph\Webrick\Request\Core\Uri;
+use Infocyph\Webrick\Request\Psr7\ServerRequest;
 use Infocyph\Webrick\Request\Request;
 
 describe('Request', function () {
@@ -51,6 +54,24 @@ describe('Request', function () {
             ->and($params['missing'] ?? 'default')->toBe('default');
 
         // Request doesn't have query() method, use getQueryParams()
+    });
+
+    it('preserves zero-like URI components and request targets', function () {
+        $uri = new Uri('https://0@example.com/path?0');
+        $request = new ServerRequest('GET', $uri);
+
+        expect($uri->getAuthority())
+            ->toBe('0@example.com')
+            ->and($request->getRequestTarget())->toBe('/path?0');
+    });
+
+    it('preserves zero-byte upload sizes and rejects negative sizes', function () {
+        $upload = new UploadedFile(new Stream(''), 0);
+
+        expect($upload->getSize())
+            ->toBe(0)
+            ->and(fn () => new UploadedFile(new Stream(''), -1))
+            ->toThrow(InvalidArgumentException::class);
     });
 
     it('keeps data and all caches in sync after immutable mutations', function () {

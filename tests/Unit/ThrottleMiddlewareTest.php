@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Infocyph\CacheLayer\Counter\AtomicCounterStoreInterface;
+use Infocyph\CacheLayer\Counter\AtomicCounterValue;
 use Infocyph\Webrick\Exceptions\HttpException;
 use Infocyph\Webrick\Middleware\ThrottleMiddleware;
 use Infocyph\Webrick\Response\Response;
@@ -114,5 +116,55 @@ describe('ThrottleMiddleware', function () {
             $response = $middleware($request, $next);
             expect($response)->toHaveStatus(200);
         }
+    });
+
+    it('uses the atomic counter fast path when configured', function () {
+        $counter = new class implements AtomicCounterStoreInterface {
+            public string $key = '';
+
+            public ?int $ttl = null;
+
+            public int $value = 0;
+
+            public function decrement(string $key, int $by = 1, ?int $ttlSeconds = null): AtomicCounterValue
+            {
+                $this->key = $key;
+                $this->ttl = $ttlSeconds;
+                $this->value -= $by;
+
+                return new AtomicCounterValue($this->value, false);
+            }
+
+            public function delete(string $key): bool
+            {
+                $this->key = $key;
+                $this->value = 0;
+
+                return true;
+            }
+
+            public function get(string $key): ?int
+            {
+                return $key === $this->key ? $this->value : null;
+            }
+
+            public function increment(string $key, int $by = 1, ?int $ttlSeconds = null): AtomicCounterValue
+            {
+                $this->key = $key;
+                $this->ttl = $ttlSeconds;
+                $this->value += $by;
+
+                return new AtomicCounterValue($this->value, $this->value === $by);
+            }
+        };
+        $middleware = new ThrottleMiddleware(max: 2, window: 60, counterStore: $counter);
+        $request = mockRequest('GET', '/atomic');
+        $next = static fn () => Response::json(['ok' => true]);
+
+        expect($middleware($request, $next))->toHaveHeader('X-RateLimit-Remaining', '1')
+            ->and($middleware($request, $next))->toHaveHeader('X-RateLimit-Remaining', '0')
+            ->and($counter->ttl)->toBeGreaterThanOrEqual(1)
+            ->and(fn () => $middleware($request, $next))->toThrow(HttpException::class)
+            ->and($counter->value)->toBe(3);
     });
 });

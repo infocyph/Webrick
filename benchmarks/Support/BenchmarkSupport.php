@@ -247,25 +247,19 @@ final class BenchmarkSupport
         MiddlewareAliases::reset();
         MiddlewareAliases::register(
             'throttle',
-            static function (...$_params): string {
-                unset($_params);
-
+            static function (): string {
                 return ThrottleMiddleware::class;
             },
         );
         MiddlewareAliases::register(
             'verifySignedUrl',
-            static function (...$_params): VerifySignedUrlMiddleware {
-                unset($_params);
-
+            static function (): VerifySignedUrlMiddleware {
                 return new VerifySignedUrlMiddleware(self::SIGN_KEY, 5);
             },
         );
         MiddlewareAliases::register(
             'verifySignedUrlAbsolute',
-            static function (...$_params): VerifySignedUrlMiddleware {
-                unset($_params);
-
+            static function (): VerifySignedUrlMiddleware {
                 return new VerifySignedUrlMiddleware(self::absoluteSignedConfig());
             },
         );
@@ -293,9 +287,7 @@ final class BenchmarkSupport
     private static function registerRouteCacheExampleRoutes(Registrar $registrar): void
     {
         $registrar->get('/ping', static fn(): string => 'pong', 'ping');
-        $registrar->get('/hello/{name}', static function ($request, string $name): string {
-            unset($request);
-
+        $registrar->get('/hello/{name}', static function (string $name): string {
             return $name;
         }, 'hello');
     }

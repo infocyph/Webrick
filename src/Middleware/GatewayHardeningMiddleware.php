@@ -52,7 +52,9 @@ final class GatewayHardeningMiddleware
         'upgrade',
     ];
 
-    /** per-process cache: key = sha1(json_encode($trustedHosts)), value = list of compiled regex */
+    private const int HOST_REGEX_CACHE_LIMIT = 64;
+
+    /** per-process cache: key = xxh128(json_encode($trustedHosts)), value = list of compiled regex */
     /** @var array<string,list<string>> */
     private static array $hostRegexCache = [];
 
@@ -160,17 +162,22 @@ final class GatewayHardeningMiddleware
         }
         $trustedHosts = array_values($trustedHosts);
         $encoded = json_encode($trustedHosts, JSON_THROW_ON_ERROR);
-        $key = hash('xxh3', $encoded);
-        if (!isset(self::$hostRegexCache[$key])) {
-            $compiled = [];
-            foreach ($trustedHosts as $p) {
-                $escaped = str_replace(['.', '*'], ['\.', '.*'], $p);
-                $compiled[] = '#^' . $escaped . '$#i';
-            }
+        $key = hash('xxh128', $encoded);
+        if (isset(self::$hostRegexCache[$key])) {
+            return self::$hostRegexCache[$key];
+        }
+
+        $compiled = [];
+        foreach ($trustedHosts as $p) {
+            $escaped = str_replace(['.', '*'], ['\.', '.*'], $p);
+            $compiled[] = '#^' . $escaped . '$#i';
+        }
+
+        if (count(self::$hostRegexCache) < self::HOST_REGEX_CACHE_LIMIT) {
             self::$hostRegexCache[$key] = $compiled;
         }
 
-        return self::$hostRegexCache[$key];
+        return $compiled;
     }
 
     /* ───────────── general helpers ───────────── */

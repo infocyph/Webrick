@@ -91,6 +91,15 @@ describe('Response', function () {
             ->and($line)->toContain('value2');
     });
 
+    it('rejects invalid header names and values', function () {
+        expect(fn () => Response::create('test', headers: ['Bad Header' => 'value']))
+            ->toThrow(InvalidArgumentException::class)
+            ->and(fn () => Response::create('test', headers: ['X-Test' => "safe\r\nInjected: value"]))
+            ->toThrow(InvalidArgumentException::class)
+            ->and(fn () => Response::create('test', headers: ['X-Test' => ['safe', 1]]))
+            ->toThrow(InvalidArgumentException::class);
+    });
+
     it('uses smart header addition', function () {
         $response = Response::create('test')
             ->withSmartHeader('X-Test', 'first')
@@ -159,6 +168,16 @@ describe('Response', function () {
         expect($setCookie)
             ->toHaveCount(1)
             ->and($setCookie[0])->toContain('session=abc123');
+    });
+
+    it('rejects cookie attribute injection and preserves epoch expiry', function () {
+        expect(fn () => Cookie::make('session')->domain("example.com\r\nX-Test: injected"))
+            ->toThrow(InvalidArgumentException::class)
+            ->and(fn () => Cookie::make('session')->path('/safe; injected=true'))
+            ->toThrow(InvalidArgumentException::class);
+
+        $cookie = Cookie::make('session')->expires(new DateTimeImmutable('@0'));
+        expect((string) $cookie)->toContain('Expires=Thu, 01 Jan 1970 00:00:00 GMT');
     });
 
     it('can reset bound URL services', function () {

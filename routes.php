@@ -87,20 +87,12 @@ Route::get('/', function (): Response {
 /* ---- simple routes ---- */
 Route::get('/ping', fn() => 'pong', 'ping');
 
-Route::get('/hello/{name}', function (Request $r, $name): Response {
-    unset($r);
-
-    return Response::json(['hello' => $name]);
-});
+Route::get('/hello/{name}', fn($name): Response => Response::json(['hello' => $name]));
 Route::get('/json', fn() => Response::json(['memory' => memory_get_usage(true)]), 'json');
 Route::get('/redirect', fn() => Response::redirect('/', StatusEnum::FOUND->value));
 Route::get('/download', fn(Request $r) => Response::rangedDownload($r, __FILE__, 'index.php'));
 
-Route::get('/color/{color:hex}', function (Request $r, $hex): Response {
-    unset($r);
-
-    return Response::json(['you sent hex' => $hex]);
-});
+Route::get('/color/{color:hex}', fn($hex): Response => Response::json(['you sent hex' => $hex]));
 
 /* ---- class-based routes ---- */
 Route::get('/class/test/{name}', [DemoController::class, 'hello'], 'test');
@@ -134,11 +126,7 @@ Route::get('/xml-demo', fn() => Response::create(
     ['Content-Type' => MediaTypeEnum::XML->value],
 ));
 
-Route::get('/status/{code}', function (Request $r, string $code): Response {
-    unset($r);
-
-    return Response::plaintext("Status: $code", (int) $code);
-});
+Route::get('/status/{code}', fn(string $code): Response => Response::plaintext("Status: $code", (int) $code));
 
 Route::get('/json/slow', fn(): Response => Response::json(new class implements JsonSerializable {
     /**
@@ -219,11 +207,7 @@ Route::get('/make-signed-absolute/{id:int}', function ($id) {
 ]);
 
 // 2) Protected endpoint (verified by middleware)
-Route::get('/secure/{id:int}', function (Request $r, $id): Response {
-    unset($r);
-
-    return Response::json(['ok' => true, 'id' => $id, 'time' => \date(DATE_ATOM)]);
-}, [
+Route::get('/secure/{id:int}', fn($id): Response => Response::json(['ok' => true, 'id' => $id, 'time' => \date(DATE_ATOM)]), [
     'as' => 'secure.show',
     'middleware' => ['verifySignedUrl', 'throttle:2,1'],
 ]);
@@ -306,9 +290,7 @@ Route::group(
 Route::group(
     domain: 'admin.localhost',
     namePrefix: 'admin.',
-    callback: function (Registrar $adm): void {
-        unset($adm);
-
+    callback: function (): void {
         Route::get('/dashboard', fn() => Response::json(['domain' => 'admin.localhost', 'page' => 'dashboard'])); // admin.dashboard
     },
 );

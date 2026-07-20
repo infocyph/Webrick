@@ -15,12 +15,11 @@ final class CliEmitter implements EmitterInterface
     /**
      * Dumps an HTTP-like envelope to STDOUT.
      */
+    // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundInImplementedInterfaceAfterLastUsed -- Required by EmitterInterface.
     public function emit(
         Response $response,
         ?Request $request = null,
     ): void {
-        unset($request);
-
         $status = $response->getStatusCode() . ' ' . $response->getReasonPhrase();
         $ver = $response->getProtocolVersion();
 
