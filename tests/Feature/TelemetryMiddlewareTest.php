@@ -45,8 +45,7 @@ describe('TelemetryMiddleware - End-to-End Integration', function () {
         $kernel = RouterKernel::bootWithRegistrar(
             log: new NullLogger,
             matcher: ShardedMatcher::make(),
-            register: function ($registrar) {
-                unset($registrar);
+            register: function () {
                 Route::get('/api/lifecycle', function () {
                     return Response::json([
                         'trace_id' => TraceContext::getTraceId(),
@@ -86,8 +85,7 @@ describe('TelemetryMiddleware - End-to-End Integration', function () {
         $kernel = RouterKernel::bootWithRegistrar(
             log: new NullLogger,
             matcher: ShardedMatcher::make(),
-            register: function ($registrar) {
-                unset($registrar);
+            register: function () {
                 Route::get('/api/test', function () {
                     return Response::json([
                         'trace_available' => TraceContext::isAvailable(),
@@ -129,8 +127,7 @@ describe('TelemetryMiddleware - End-to-End Integration', function () {
         $kernel = RouterKernel::bootWithRegistrar(
             log: new NullLogger,
             matcher: ShardedMatcher::make(),
-            register: function ($registrar) {
-                unset($registrar);
+            register: function () {
                 Route::get('/api/service-b', function () {
                     return Response::json([
                         'service' => 'B',
@@ -180,8 +177,7 @@ describe('TelemetryMiddleware - End-to-End Integration', function () {
         $kernel = RouterKernel::bootWithRegistrar(
             log: new NullLogger,
             matcher: ShardedMatcher::make(),
-            register: function ($registrar) {
-                unset($registrar);
+            register: function () {
                 Route::get('/api/request', fn () => Response::json([
                     'trace_id' => TraceContext::getTraceId(),
                     'has_trace' => TraceContext::getTraceId() !== null,
@@ -210,8 +206,7 @@ describe('TelemetryMiddleware - Performance Timing', function () {
         $kernel = RouterKernel::bootWithRegistrar(
             log: new NullLogger,
             matcher: ShardedMatcher::make(),
-            register: function ($registrar) {
-                unset($registrar);
+            register: function () {
                 Route::get('/api/slow', function () {
                     usleep(50000); // 50ms
 
@@ -241,8 +236,7 @@ describe('TelemetryMiddleware - Performance Timing', function () {
         $kernel = RouterKernel::bootWithRegistrar(
             log: new NullLogger,
             matcher: ShardedMatcher::make(),
-            register: function ($registrar) {
-                unset($registrar);
+            register: function () {
                 Route::get('/api/test', fn () => Response::json(['ok' => true]));
             },
             routeCache: $this->cacheDir,
@@ -266,8 +260,7 @@ describe('TelemetryMiddleware - Configuration Scenarios', function () {
         $kernel = RouterKernel::bootWithRegistrar(
             log: new NullLogger,
             matcher: ShardedMatcher::make(),
-            register: function ($registrar) {
-                unset($registrar);
+            register: function () {
                 Route::get('/health', fn () => Response::json(['status' => 'ok']));
             },
             routeCache: $this->cacheDir,
@@ -302,8 +295,7 @@ describe('TelemetryMiddleware - Configuration Scenarios', function () {
         $kernel = RouterKernel::bootWithRegistrar(
             log: new NullLogger,
             matcher: ShardedMatcher::make(),
-            register: function ($registrar) {
-                unset($registrar);
+            register: function () {
                 Route::get('/test', fn () => Response::json(['ok' => true]));
             },
             routeCache: $this->cacheDir,

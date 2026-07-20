@@ -14,6 +14,8 @@ namespace Infocyph\Webrick\Request\Core;
  */
 abstract class Message
 {
+    private const int NORMALIZATION_CACHE_LIMIT = 256;
+
     protected Stream $body;
 
     /** @var array<string,list<string>> */
@@ -196,7 +198,16 @@ abstract class Message
         /** @var array<string,string> $cache */
         static $cache = [];
 
-        return $cache[$n] ??= ucwords(strtolower($n), '-');
+        if (isset($cache[$n])) {
+            return $cache[$n];
+        }
+
+        $normalized = ucwords(strtolower($n), '-');
+        if (count($cache) < self::NORMALIZATION_CACHE_LIMIT) {
+            $cache[$n] = $normalized;
+        }
+
+        return $normalized;
     }
 
     /**

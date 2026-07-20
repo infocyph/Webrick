@@ -262,7 +262,7 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         }
 
         $code = $this->buildMatcherCode();
-        $hash = \hash('xxh3', $code);
+        $hash = \hash('xxh128', $code);
 
         $php = "<?php\nreturn [\n"
             . "    '" . self::H_HASH . "' => " . \var_export($hash, true) . ",\n"
@@ -341,7 +341,7 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
             if (!isset($blob[self::H_HASH])) {
                 throw new \RuntimeException('Generated matcher cache missing Hash.');
             }
-            $calc = \hash('xxh3', $code);
+            $calc = \hash('xxh128', $code);
             if (!\hash_equals($blob[self::H_HASH], $calc)) {
                 throw new \RuntimeException('Generated matcher cache Hash mismatch.');
             }

@@ -12,6 +12,10 @@ namespace Infocyph\Webrick\Response\Cookies;
  */
 final class Cookie implements \Stringable
 {
+    private const string INVALID_DOMAIN = '/[\x00-\x20\x7F;,]/';
+
+    private const string INVALID_PATH = '/[\x00-\x1F\x7F;]/';
+
     /** rfc6265 allowed chars for name */
     private const string NAME_RX = '/^[A-Za-z0-9!#$%&\'*+.^_`|~-]+$/';
 
@@ -49,10 +53,10 @@ final class Cookie implements \Stringable
         $parts = ["$this->name=" . rawurlencode($this->value)];
         $parts[] = 'Path=' . $this->path;
 
-        if ($this->domain) {
+        if ($this->domain !== null && $this->domain !== '') {
             $parts[] = 'Domain=' . $this->domain;
         }
-        if ($this->expires) {
+        if ($this->expires !== null) {
             $parts[] = 'Expires=' . gmdate('D, d M Y H:i:s', $this->expires) . ' GMT';
             $parts[] = 'Max-Age=' . max(0, $this->expires - time());
         }
@@ -98,6 +102,10 @@ final class Cookie implements \Stringable
      */
     public function domain(string $d): self
     {
+        if (preg_match(self::INVALID_DOMAIN, $d) === 1) {
+            throw new \InvalidArgumentException('Cookie domain contains invalid characters');
+        }
+
         $y = clone $this;
         $y->domain = $d;
 
@@ -185,6 +193,10 @@ final class Cookie implements \Stringable
      */
     public function path(string $p): self
     {
+        if (preg_match(self::INVALID_PATH, $p) === 1) {
+            throw new \InvalidArgumentException('Cookie path contains invalid characters');
+        }
+
         $y = clone $this;
         $y->path = $p;
 

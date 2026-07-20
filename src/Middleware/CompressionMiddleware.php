@@ -157,20 +157,20 @@ final readonly class CompressionMiddleware
                 }
                 if ($isWeak) {
                     $level = $this->encodedLevelToken($alg);
-                    $derived = 'W/"' . substr(
-                        hash('xxh3', $base . '|' . $alg . '|' . $level . '|' . $this->etagDeriveSalt, false),
-                        0,
-                        16,
+                    $derived = 'W/"' . hash(
+                        'xxh128',
+                        $base . '|' . $alg . '|' . $level . '|' . $this->etagDeriveSalt,
+                        false,
                     ) . '"';
 
                     return $resp->withSmartHeader('ETag', $derived);
                 }
                 if ($this->isEncodingDeterministic($alg)) {
                     $level = $this->encodedLevelToken($alg);
-                    $derived = '"' . substr(
-                        hash('xxh3', $base . '|' . $alg . '|' . $level . '|' . $this->etagDeriveSalt, false),
-                        0,
-                        16,
+                    $derived = '"' . hash(
+                        'xxh128',
+                        $base . '|' . $alg . '|' . $level . '|' . $this->etagDeriveSalt,
+                        false,
                     ) . '"';
 
                     return $resp->withSmartHeader('ETag', $derived);
@@ -472,10 +472,10 @@ final readonly class CompressionMiddleware
     }
 
     /**
-     * Compute a short, strong ETag from encoded bytes.
+     * Compute a collision-resistant strong ETag from encoded bytes.
      */
     private function strongFromBytes(string $bytes): string
     {
-        return '"' . substr(hash('xxh3', $bytes, false), 0, 16) . '"';  // strong, short, cache-friendly
+        return '"' . hash('xxh128', $bytes, false) . '"';
     }
 }

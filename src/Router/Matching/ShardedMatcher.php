@@ -453,22 +453,22 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
      * Compute deterministic hash for alias cache payload.
      *
      * @param array<string,array{0:string,1:?string}> $payload Alias payload.
-     * @return string xxh3 fingerprint.
+     * @return string xxh128 fingerprint.
      */
     private function computeAliasHash(array $payload): string
     {
-        return \hash('xxh3', $this->exportArray($payload));
+        return \hash('xxh128', $this->exportArray($payload));
     }
 
     /**
      * Compute deterministic hash for shard payload.
      *
      * @param Group $payload Shard payload.
-     * @return string xxh3 fingerprint.
+     * @return string xxh128 fingerprint.
      */
     private function computeShardHash(array $payload): string
     {
-        return \hash('xxh3', $this->exportArray($payload));
+        return \hash('xxh128', $this->exportArray($payload));
     }
 
     private function discardBuildState(): void

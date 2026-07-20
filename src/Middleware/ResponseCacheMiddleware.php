@@ -314,7 +314,7 @@ final readonly class ResponseCacheMiddleware
             $buf .= $nul . $h . $nul . $v;
         }
 
-        return substr(hash('xxh3', $buf, false), 0, 24);
+        return hash('sha256', $buf, false);
     }
 
     /**

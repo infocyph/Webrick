@@ -36,9 +36,7 @@ describe('Routing Regressions', function () {
             register: static function (Registrar $r): void {
                 $r->get('/lang/{locale}', static fn (): Response => Response::plaintext('ok'), [
                     'middleware' => [
-                        static function (Request $request, callable $next): Response {
-                            unset($next);
-
+                        static function (Request $request): Response {
                             return Response::json([
                                 'route_params' => $request->getAttribute('route_params'),
                                 'route.params' => $request->getAttribute('route.params'),

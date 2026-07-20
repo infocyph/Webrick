@@ -333,7 +333,7 @@ class ServerRequest extends Message
      */
     public function getEffectiveMethod(): string
     {
-        if ($this->effectiveMethod) {
+        if ($this->effectiveMethod !== null) {
             return $this->effectiveMethod;
         }
         $verb = HttpMethodEnum::normalize($this->method);
@@ -396,11 +396,12 @@ class ServerRequest extends Message
      */
     public function getRequestTarget(): string
     {
-        if ($this->requestTarget) {
+        if ($this->requestTarget !== null) {
             return $this->requestTarget;
         }
         $t = $this->uri->getPath() ?: '/';
-        if ($q = $this->uri->getQuery()) {
+        $q = $this->uri->getQuery();
+        if ($q !== '') {
             $t .= '?' . $q;
         }
 

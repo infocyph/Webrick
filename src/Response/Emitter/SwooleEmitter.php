@@ -110,15 +110,14 @@ final class SwooleEmitter extends BaseEmitter
      * framing internally. This method always returns false.
      */
     #[\Override]
+    // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundInExtendedClassAfterLastUsed -- Required by BaseEmitter.
     protected function wantsChunked(
-        bool $isHttp11,
-        bool $allowsBody,
-        Response $response,
-        bool $isStreaming,
-        ?int $size,
+        bool $_isHttp11,
+        bool $_allowsBody,
+        Response $_response,
+        bool $_isStreaming,
+        ?int $_size,
     ): bool {
-        unset($isHttp11, $allowsBody, $response, $isStreaming, $size);
-
         // Never emit TE: chunked — Swoole handles framing internally
         return false;
     }

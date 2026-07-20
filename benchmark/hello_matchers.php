@@ -787,32 +787,20 @@ function registerIndexRoutes(Registrar $registrar): void
     MiddlewareAliases::reset();
     MiddlewareAliases::register(
         'throttle',
-        static function (...$_params): string {
-            unset($_params);
-
-            return ThrottleMiddleware::class;
-        },
+        static fn(): string => ThrottleMiddleware::class,
     );
     MiddlewareAliases::register(
         'verifySignedUrl',
-        static function (...$_params): VerifySignedUrlMiddleware {
-            unset($_params);
-
-            return new VerifySignedUrlMiddleware('bench-sign-key', 5);
-        },
+        static fn(): VerifySignedUrlMiddleware => new VerifySignedUrlMiddleware('bench-sign-key', 5),
     );
     MiddlewareAliases::register(
         'verifySignedUrlAbsolute',
-        static function (...$_params): VerifySignedUrlMiddleware {
-            unset($_params);
-
-            return new VerifySignedUrlMiddleware(new SignedUrlConfig(
-                verificationKeys: ['bench-sign-key'],
-                payloadMode: SignedUrlConfig::MODE_ABSOLUTE,
-                ignoredQueryParams: ['preview'],
-                leeway: 5,
-            ));
-        },
+        static fn(): VerifySignedUrlMiddleware => new VerifySignedUrlMiddleware(new SignedUrlConfig(
+            verificationKeys: ['bench-sign-key'],
+            payloadMode: SignedUrlConfig::MODE_ABSOLUTE,
+            ignoredQueryParams: ['preview'],
+            leeway: 5,
+        )),
     );
 
     Router::setInstance($registrar);
@@ -841,11 +829,7 @@ function registerIndexRoutes(Registrar $registrar): void
 function registerRouteCacheExampleRoutes(Registrar $registrar): void
 {
     $registrar->get('/ping', static fn(): string => 'pong', 'ping');
-    $registrar->get('/hello/{name}', static function ($req, string $name): string {
-        unset($req);
-
-        return $name;
-    }, 'hello');
+    $registrar->get('/hello/{name}', static fn(string $name): string => $name, 'hello');
 }
 
 /**

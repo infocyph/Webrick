@@ -10,19 +10,16 @@ namespace Infocyph\Webrick\Response\Internal;
 final class Utils
 {
     /**
-     * Generate a compact, strong ETag from a string payload.
+     * Generate a collision-resistant strong ETag from a string payload.
      *
-     * - Produces a quoted hex token using the xxh3 hash algorithm.
-     * - The returned value is the first 16 hex characters (8 bytes) of the hash,
-     *   wrapped in double quotes, e.g. "\"e3b0c44298fc1c14\"".
-     * - Intended as a fast, short strong ETag for caching purposes.
+     * - Produces a quoted 128-bit xxHash hexadecimal digest.
      *
      * @param string $payload Input string to hash
      * @return string Quoted ETag value
      */
     public static function generateEtag(string $payload): string
     {
-        return '"' . substr(hash('xxh3', $payload, false), 0, 16) . '"';
+        return '"' . hash('xxh128', $payload, false) . '"';
     }
 
     /**

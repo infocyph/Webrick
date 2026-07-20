@@ -8,6 +8,8 @@ use InvalidArgumentException;
 
 final class Uri implements \Stringable
 {
+    private const int ASCII_CACHE_LIMIT = 256;
+
     /**
      * @var array<string, string>
      */
@@ -210,7 +212,8 @@ final class Uri implements \Stringable
             return '';
         }
         $auth = $this->host;
-        if ($info = $this->getUserInfo()) {
+        $info = $this->getUserInfo();
+        if ($info !== '') {
             $auth = $info . '@' . $auth;
         }
         if ($this->port !== null) {
@@ -491,10 +494,8 @@ final class Uri implements \Stringable
         }
 
         if ($host[0] === '[') {                         // IPv6 + zone
-            return self::$asciiCache[$host] = strtolower($host);
-        }
-
-        if (\function_exists('idn_to_ascii')) {
+            $normalized = strtolower($host);
+        } elseif (\function_exists('idn_to_ascii')) {
             $ascii = idn_to_ascii(
                 $host,
                 IDNA_NONTRANSITIONAL_TO_ASCII,
@@ -503,17 +504,16 @@ final class Uri implements \Stringable
             if ($ascii === false) {
                 throw new InvalidArgumentException("Invalid host: {$host}");
             }
-
-            $asciiLower = strtolower($ascii);
-            self::$asciiCache[$host] = $asciiLower;
-
-            return $asciiLower;
+            $normalized = strtolower($ascii);
+        } else {
+            $normalized = strtolower($host);
         }
 
-        $hostLower = strtolower($host);
-        self::$asciiCache[$host] = $hostLower;
+        if (count(self::$asciiCache) < self::ASCII_CACHE_LIMIT) {
+            self::$asciiCache[$host] = $normalized;
+        }
 
-        return $hostLower; // intl not loaded
+        return $normalized;
     }
 
     /**

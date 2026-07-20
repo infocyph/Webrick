@@ -263,7 +263,8 @@ final readonly class Registrar
     private function decorateWithScope(Route $route, array $extraMw, array &$aliases): Route
     {
         // Domain
-        if ($domain = $this->scope->getDomain()) {
+        $domain = $this->scope->getDomain();
+        if ($domain !== null && $domain !== '') {
             $route = $route->withDomain($domain);
         }
 
@@ -276,7 +277,8 @@ final readonly class Registrar
         }
 
         // Name prefix (+ alias prefixing)
-        if ($namePrefix = $this->scope->getNamePrefix()) {
+        $namePrefix = $this->scope->getNamePrefix();
+        if ($namePrefix !== '') {
             $baseName = $route->getName() ?? '';
             $route = $route->withName($namePrefix . $baseName);
 

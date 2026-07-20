@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Infocyph\Webrick\Tests\Fixture;
 
 use Infocyph\Webrick\Request\Request;
@@ -13,10 +15,8 @@ final class AttrDemoController
 {
     #[Route(method: 'GET', path: '/hello/{name}', name: 'hello')]
     #[Produces(types: ['application/json'])]
-    public function hello(Request $r, string $name)
+    public function hello(string $name): Response
     {
-        unset($r);
-
         return Response::json(['hello' => $name]);
     }
 }

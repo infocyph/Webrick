@@ -85,7 +85,7 @@ class Response
 
         self::putIfAbsent($defaults, 'Content-Length', self::chooseLength($file, $stream, $size), $headers);
         self::putIfAbsent($defaults, 'Last-Modified', self::formatHttpDate($mtime), $headers);
-        self::putIfAbsent($defaults, 'ETag', self::etagFromMeta($size, $mtime, $name), $headers);
+        self::putIfAbsent($defaults, 'ETag', self::weakEtagFromMeta($size, $mtime, $name), $headers);
 
         return new self(StatusEnum::OK->value, $stream, self::headerMap($defaults + $headers));
     }
@@ -748,24 +748,6 @@ class Response
     }
 
     /**
-     * Produce a small ETag token from available metadata.
-     *
-     * @param int|null $size File size or null
-     * @param int|null $mtime File mtime or null
-     * @param string $name Filename used in seed
-     * @return string|null Quoted ETag or null when no metadata available
-     */
-    private static function etagFromMeta(?int $size, ?int $mtime, string $name): ?string
-    {
-        if ($size === null && $mtime === null) {
-            return null;
-        }
-        $seed = ($size ?? -1) . '|' . ($mtime ?? -1) . '|' . $name;
-
-        return Utils::generateEtag($seed);
-    }
-
-    /**
      * Format an mtime as an HTTP date string or return null.
      *
      * @param int|null $mtime UNIX epoch or null
@@ -782,7 +764,31 @@ class Response
      */
     private static function headerMap(array $headers): array
     {
-        return Utils::normalizeHeaderMap($headers);
+        $normalized = [];
+        foreach ($headers as $name => $value) {
+            if (!is_string($name)) {
+                throw new \InvalidArgumentException('HTTP header names must be strings.');
+            }
+            if (is_string($value)) {
+                $normalized[$name] = $value;
+
+                continue;
+            }
+            if (!is_array($value)) {
+                throw new \InvalidArgumentException('HTTP header values must be strings or lists of strings.');
+            }
+
+            $values = [];
+            foreach ($value as $item) {
+                if (!is_string($item)) {
+                    throw new \InvalidArgumentException('HTTP header values must be strings.');
+                }
+                $values[] = $item;
+            }
+            $normalized[$name] = $values;
+        }
+
+        return $normalized;
     }
 
     /**
@@ -929,6 +935,24 @@ class Response
     private static function streamFor(string|Stream $file): Stream
     {
         return $file instanceof Stream ? $file : self::openFileStream($file);
+    }
+
+    /**
+     * Produce a weak ETag token from available metadata.
+     *
+     * @param int|null $size File size or null
+     * @param int|null $mtime File mtime or null
+     * @param string $name Filename used in seed
+     * @return string|null Quoted ETag or null when no metadata available
+     */
+    private static function weakEtagFromMeta(?int $size, ?int $mtime, string $name): ?string
+    {
+        if ($size === null && $mtime === null) {
+            return null;
+        }
+        $seed = ($size ?? -1) . '|' . ($mtime ?? -1) . '|' . $name;
+
+        return 'W/' . Utils::generateEtag($seed);
     }
 
     /**

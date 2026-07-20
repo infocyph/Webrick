@@ -59,12 +59,29 @@ final readonly class ConditionalValidator
         }
 
         // If-Range can be an ETag or HTTP-date
-        if ($this->etag && preg_match('/^W?"/', $ifRange)) {
+        if ($this->etag !== null && preg_match('/^(?:W\/)?"/', $ifRange) === 1) {
             return $this->etagEquals($this->etag, $ifRange, true);
         }
         $date = $this->parseDate($ifRange);
 
         return $date !== null && $this->lastModified !== null && $this->lastModified <= $date;
+    }
+
+    private static function strongEtagEquals(string $current, string $candidate): bool
+    {
+        return !str_starts_with($candidate, 'W/')
+            && !str_starts_with($current, 'W/')
+            && $candidate === $current;
+    }
+
+    private static function weakEtagEquals(string $current, string $candidate): bool
+    {
+        return self::withoutWeakPrefix($candidate) === self::withoutWeakPrefix($current);
+    }
+
+    private static function withoutWeakPrefix(string $etag): string
+    {
+        return str_starts_with($etag, 'W/') ? substr($etag, 2) : $etag;
     }
 
     /**
@@ -78,10 +95,10 @@ final readonly class ConditionalValidator
     {
         /** @var array<string, string> $h */
         $h = [];
-        if ($this->etag) {
+        if ($this->etag !== null) {
             $h['ETag'] = $this->etag;
         }
-        if ($this->lastModified) {
+        if ($this->lastModified !== null) {
             $h['Last-Modified'] = gmdate('D, d M Y H:i:s', $this->lastModified) . ' GMT';
         }
 
@@ -93,25 +110,18 @@ final readonly class ConditionalValidator
      *
      * @param string $current The current ETag to compare against.
      * @param list<string>|string $candidates The list of candidate ETags to compare with.
-     * @param bool $strong Whether to perform a strong comparison (exact match)
-     *                     or a weak comparison (ignoring W/ prefix and ignoring case).
+     * @param bool $strong Whether to perform a strong comparison or a weak comparison.
      * @return bool True if the current ETag matches one of the candidate ETags, false otherwise.
      */
     private function etagEquals(string $current, array|string $candidates, bool $strong): bool
     {
-        if ($candidates === '*') {
-            return true;
-        }
         $tokens = is_array($candidates) ? $candidates : [$candidates];
         foreach ($tokens as $cand) {
-            if ($strong) {
-                if ($cand === $current) {
-                    return true;
-                }
-            } else {
-                if (ltrim($cand, 'W/') === ltrim($current, 'W/')) {
-                    return true;               // weak match allowed
-                }
+            if ($cand === '*') {
+                return true;
+            }
+            if ($strong ? self::strongEtagEquals($current, $cand) : self::weakEtagEquals($current, $cand)) {
+                return true;
             }
         }
 
@@ -217,7 +227,13 @@ final readonly class ConditionalValidator
      */
     private function parseDate(string $httpDate): ?int
     {
-        return $httpDate === '' ? null : (strtotime($httpDate) ?: null);
+        if ($httpDate === '') {
+            return null;
+        }
+
+        $timestamp = strtotime($httpDate);
+
+        return $timestamp === false ? null : $timestamp;
     }
 
     /**

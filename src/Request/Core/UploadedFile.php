@@ -25,7 +25,7 @@ final class UploadedFile
      * Constructs a new UploadedFile value object.
      *
      * @param string|Stream $src Either a tmp-path or a StreamInterface
-     * @param int|null $size Bytes (0 / null ⇒ auto)
+     * @param int|null $size Bytes; null enables automatic detection
      * @param int $err UPLOAD_ERR_* constant
      * @param string|null $clientName Client-provided filename
      * @param string|null $clientType Client-provided MIME type
@@ -43,6 +43,9 @@ final class UploadedFile
         if ($err < 0 || $err > 8) {
             throw new InvalidArgumentException('Invalid upload error code');
         }
+        if ($this->size !== null && $this->size < 0) {
+            throw new InvalidArgumentException('Upload size must be zero or greater');
+        }
         $this->err = $err;
     }
 
@@ -51,7 +54,7 @@ final class UploadedFile
      *
      * The following keys are supported in the $spec array:
      *   - 'tmp_name': string, tmp filename
-     *   - 'size': int|null, bytes (0 / null ⇒ auto)
+     *   - 'size': int|null, bytes (null ⇒ auto)
      *   - 'error': int, UPLOAD_ERR_* constant
      *   - 'name': string|null, client-provided filename
      *   - 'type': string|null, client-provided MIME type
@@ -138,11 +141,13 @@ final class UploadedFile
      */
     public function getSize(): ?int
     {
-        if ($this->size) {
+        if ($this->size !== null) {
             return $this->size;
         }
         if (is_string($this->src) && is_file($this->src)) {
-            return filesize($this->src) ?: null;
+            $size = filesize($this->src);
+
+            return $size === false ? null : $size;
         }
 
         return $this->src instanceof Stream
