@@ -34,6 +34,23 @@ use Infocyph\Webrick\Router\Definition\Attribute\Cors;
  */
 final readonly class CorsAndPoliciesMiddleware
 {
+    private ?string $acceptChHeader;
+
+    /**
+     * @var array{
+     *   origins:list<string>,
+     *   methods:string,
+     *   allowHeaders:string|list<string>,
+     *   exposeHeaders:string|list<string>,
+     *   maxAgeSeconds:int,
+     *   allowCredentials:bool,
+     *   allowPrivateNetwork:bool
+     * }
+     */
+    private array $defaultPolicy;
+
+    private ?string $timingAllowOriginHeader;
+
     /**
      * @param array<int,string> $origins Allowed origins (exact URLs, "null", wildcard patterns like "https://*.example.com", or ['*']).
      * @param string $methods CSV list of allowed methods (e.g., "GET, POST, PUT, PATCH, DELETE, OPTIONS").
@@ -82,7 +99,26 @@ final readonly class CorsAndPoliciesMiddleware
             'Sec-CH-UA-Full-Version',
         ],
         private array $timingAllowOrigins = [],
-    ) {}
+    ) {
+        $defaultPolicy = $this->normalizePolicy([
+            'origins' => $this->origins,
+            'methods' => $this->methods,
+            'allowHeaders' => $this->allowHeaders,
+            'exposeHeaders' => $this->exposeHeaders,
+            'maxAgeSeconds' => $this->maxAgeSeconds,
+            'allowCredentials' => $this->allowCredentials,
+            'allowPrivateNetwork' => $this->allowPrivateNetwork,
+        ]);
+        $defaultPolicy['allowHeaders'] = $this->csv($defaultPolicy['allowHeaders']);
+        $defaultPolicy['exposeHeaders'] = $this->csv($defaultPolicy['exposeHeaders']);
+        $this->defaultPolicy = $defaultPolicy;
+        $this->acceptChHeader = $this->acceptCh === [] ? null : implode(', ', $this->acceptCh);
+        $this->timingAllowOriginHeader = match ($this->timingAllowOrigins) {
+            [] => null,
+            ['*'] => '*',
+            default => implode(', ', $this->timingAllowOrigins),
+        };
+    }
 
     /**
      * Handle the request by applying CORS (including preflight handling) and security policies.
@@ -98,15 +134,7 @@ final readonly class CorsAndPoliciesMiddleware
      */
     public function __invoke(Request $req, Closure $next): Response
     {
-        $policy = [
-            'origins' => $this->origins,
-            'methods' => $this->methods,
-            'allowHeaders' => $this->allowHeaders,
-            'exposeHeaders' => $this->exposeHeaders,
-            'maxAgeSeconds' => $this->maxAgeSeconds,
-            'allowCredentials' => $this->allowCredentials,
-            'allowPrivateNetwork' => $this->allowPrivateNetwork,
-        ];
+        $policy = $this->defaultPolicy;
 
         /** @var Cors|null $route */
         $route = $req->getAttribute('cors_policy');
@@ -118,8 +146,8 @@ final readonly class CorsAndPoliciesMiddleware
             $policy['maxAgeSeconds'] = $route->maxAgeSeconds ?? $policy['maxAgeSeconds'];
             $policy['allowCredentials'] = $route->allowCredentials ?? $policy['allowCredentials'];
             $policy['allowPrivateNetwork'] = $route->allowPrivateNetwork ?? $policy['allowPrivateNetwork'];
+            $policy = $this->normalizePolicy($policy);
         }
-        $policy = $this->normalizePolicy($policy);
 
         $origin = $req->getHeaderLine('Origin');
         [$acao, $usedWildcard] = $this->resolveAllowedOrigin($origin, $policy['origins'], $policy['allowCredentials']);
@@ -200,12 +228,11 @@ final readonly class CorsAndPoliciesMiddleware
         if ($this->csp !== null && $this->csp !== '' && !$r->hasHeader('Content-Security-Policy')) {
             $r = $r->withSmartHeader('Content-Security-Policy', $this->csp);
         }
-        if (!empty($this->acceptCh) && !$r->hasHeader('Accept-CH')) {
-            $r = $r->withSmartHeader('Accept-CH', implode(', ', $this->acceptCh));
+        if ($this->acceptChHeader !== null && !$r->hasHeader('Accept-CH')) {
+            $r = $r->withSmartHeader('Accept-CH', $this->acceptChHeader);
         }
-        if (!empty($this->timingAllowOrigins) && !$r->hasHeader('Timing-Allow-Origin')) {
-            $tao = $this->timingAllowOrigins === ['*'] ? '*' : implode(', ', $this->timingAllowOrigins);
-            $r = $r->withSmartHeader('Timing-Allow-Origin', $tao);
+        if ($this->timingAllowOriginHeader !== null && !$r->hasHeader('Timing-Allow-Origin')) {
+            $r = $r->withSmartHeader('Timing-Allow-Origin', $this->timingAllowOriginHeader);
         }
 
         return $r;

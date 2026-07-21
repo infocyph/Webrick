@@ -85,6 +85,19 @@ describe('Signed URLs', function () {
             ->and($signedUrl)->toContain('/download/document.pdf');
     });
 
+    it('generates named URLs directly from a cached alias index', function () {
+        $generator = new UrlGenerator(
+            baseUri: 'https://example.com',
+            routes: ['download' => ['/download/{file}', null]],
+            signedConfig: $this->config,
+        );
+
+        expect($generator->urlFor('download', ['file' => 'cached.pdf']))
+            ->toBe('/download/cached.pdf')
+            ->and($generator->signed('download', ['file' => 'cached.pdf'], absolute: false))
+            ->toContain('/download/cached.pdf?_sig=');
+    });
+
     it('generates temporary URLs with ttl-based expiry', function () {
         $signedUrl = $this->generator->temporary(
             name: 'download',

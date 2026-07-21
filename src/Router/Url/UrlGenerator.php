@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Router\Url;
 
 use DateTimeInterface;
-use Infocyph\Webrick\Interfaces\RouteInterface;
 use Infocyph\Webrick\Router\Route\Collection;
 use InvalidArgumentException;
 use LogicException;
@@ -22,6 +21,9 @@ class UrlGenerator
 
     public const string SIG_PARAM = SignedUrlConfig::DEFAULT_SIGNATURE_PARAM;
 
+    /** @var array<string, array{0:string,1:?string}> */
+    private readonly array $aliases;
+
     private readonly string $basePass;
 
     private readonly ?int $basePort;
@@ -32,14 +34,17 @@ class UrlGenerator
 
     private readonly string $baseUser;
 
+    private readonly ?Collection $routes;
+
     private readonly ?SignedUrlConfig $signedConfig;
 
     /**
      * @param string $baseUri Base URI used for absolute URL generation.
+     * @param Collection|array<string, array{0:string,1:?string}> $routes Route collection or cached alias index.
      */
     public function __construct(
         string $baseUri,
-        private readonly Collection $routes,
+        Collection|array $routes,
         ?string $secret = null,
         ?int $defaultTtl = null,
         ?SignedUrlConfig $signedConfig = null,
@@ -55,6 +60,8 @@ class UrlGenerator
         $this->basePass = (string) ($parts['pass'] ?? '');
         $this->basePort = $parts['port'] ?? null;
         $this->signedConfig = SignedUrlConfig::mergeLegacy($signedConfig, $secret, $defaultTtl);
+        $this->routes = $routes instanceof Collection ? $routes : null;
+        $this->aliases = $routes instanceof Collection ? [] : $this->normalizeAliasIndex($routes);
     }
 
     public static function checkSignature(
@@ -84,7 +91,7 @@ class UrlGenerator
         array $query = [],
         bool $absolute = false,
     ): string {
-        $route = $this->routes->findByHandler($handler);
+        $route = $this->routes?->findByHandler($handler);
         if ($route === null) {
             throw new InvalidArgumentException('Route for given handler not found.');
         }
@@ -116,16 +123,16 @@ class UrlGenerator
         bool $absolute = true,
         ?string $payloadMode = null,
     ): string {
-        $route = $this->requireNamedRoute($name);
+        [$path, $domain] = $this->requireNamedRoute($name);
         $expiresAt = $ttl === null ? null : \time() + $this->normalizePositiveInt($ttl, 'ttl');
 
         return $this->signResolvedPath(
-            path: $this->substitute($route->getPath(), $params),
+            path: $this->substitute($path, $params),
             query: $query,
             expiresAt: $expiresAt,
             absolute: $absolute,
             payloadMode: $payloadMode,
-            routeDomain: $route->getDomain(),
+            routeDomain: $domain,
         );
     }
 
@@ -163,15 +170,15 @@ class UrlGenerator
         bool $absolute = true,
         ?string $payloadMode = null,
     ): string {
-        $route = $this->requireNamedRoute($name);
+        [$path, $domain] = $this->requireNamedRoute($name);
 
         return $this->signResolvedPath(
-            path: $this->substitute($route->getPath(), $params),
+            path: $this->substitute($path, $params),
             query: $query,
             expiresAt: $this->normalizeExpiryTimestamp($expiresAt),
             absolute: $absolute,
             payloadMode: $payloadMode,
-            routeDomain: $route->getDomain(),
+            routeDomain: $domain,
         );
     }
 
@@ -193,10 +200,10 @@ class UrlGenerator
         array $query = [],
         bool $absolute = false,
     ): string {
-        $route = $this->requireNamedRoute($name);
-        $path = $this->substitute($route->getPath(), $params);
+        [$path, $domain] = $this->requireNamedRoute($name);
+        $path = $this->substitute($path, $params);
 
-        return $this->buildResolvedPath($path, $query, $absolute, $route->getDomain());
+        return $this->buildResolvedPath($path, $query, $absolute, $domain);
     }
 
     /**
@@ -377,6 +384,24 @@ class UrlGenerator
             && $parts['host'] !== '';
     }
 
+    /**
+     * @param array<mixed,mixed> $aliases
+     * @return array<string, array{0:string,1:?string}>
+     */
+    private function normalizeAliasIndex(array $aliases): array
+    {
+        $normalized = [];
+        foreach ($aliases as $name => $tuple) {
+            if (!\is_string($name) || $name === '' || !\is_array($tuple) || !\is_string($tuple[0] ?? null)) {
+                continue;
+            }
+            $domain = $tuple[1] ?? null;
+            $normalized[$name] = [$tuple[0], \is_string($domain) ? $domain : null];
+        }
+
+        return $normalized;
+    }
+
     private function normalizeExpiryTimestamp(DateTimeInterface|int $expiresAt): int
     {
         if ($expiresAt instanceof DateTimeInterface) {
@@ -388,7 +413,7 @@ class UrlGenerator
 
     private function normalizePath(string $path): string
     {
-        if ($this->routes->hasPath($path)) {
+        if (($path !== '' && $path[0] === '/') || $this->routes?->hasPath($path) === true) {
             return $path;
         }
 
@@ -424,18 +449,25 @@ class UrlGenerator
         return $config->generationKey;
     }
 
-    private function requireNamedRoute(string $name): RouteInterface
+    /**
+     * @return array{0:string,1:?string}
+     */
+    private function requireNamedRoute(string $name): array
     {
         if ($name === '') {
             throw new InvalidArgumentException('Route name must not be empty.');
         }
 
-        $route = $this->routes->findByName($name);
-        if ($route === null) {
-            throw new InvalidArgumentException("Route '{$name}' not found.");
+        if ($this->routes !== null) {
+            $route = $this->routes->findByName($name);
+            if ($route !== null) {
+                return [$route->getPath(), $route->getDomain()];
+            }
+        } elseif (isset($this->aliases[$name])) {
+            return $this->aliases[$name];
         }
 
-        return $route;
+        throw new InvalidArgumentException("Route '{$name}' not found.");
     }
 
     private function requireSignedConfig(): SignedUrlConfig

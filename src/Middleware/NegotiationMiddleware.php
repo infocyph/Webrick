@@ -338,9 +338,10 @@ final readonly class NegotiationMiddleware
      */
     private function stashChoices(Request $req, string $type, ?string $cset, string $locale): Request
     {
-        return $req
-            ->withAttribute('negotiated.type', $type)
-            ->withAttribute('negotiated.charset', $cset)
-            ->withAttribute('locale', $locale);
+        return $req->withAttributes([
+            'negotiated.type' => $type,
+            'negotiated.charset' => $cset,
+            'locale' => $locale,
+        ]);
     }
 }

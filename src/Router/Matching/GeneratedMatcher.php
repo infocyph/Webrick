@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Router\Matching;
 
 use Closure;
+use Infocyph\InterMix\Serializer\ValueSerializer;
 use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
 use Infocyph\Webrick\Exceptions\RouteNotFoundException;
@@ -204,10 +205,8 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         $hostSwitch = $this->renderHostSwitch($hosts);
 
         return "static function (string \$verb, string \$host, string \$path): array {\n"
-            . "    static \$routes = null;\n"
-            . "    if (\$routes === null) {\n"
-            . "        \$routes = {$routeInit};\n"
-            . "    }\n"
+            . "    static \$routePayloads = {$routeInit};\n"
+            . "    static \$routes = [];\n"
             . "    \$allowed = [];\n"
             . "    \$trimmed = \\trim(\$path, '/');\n"
             . "    \$segments = (\$trimmed === '') ? [] : \\explode('/', \$trimmed);\n"
@@ -215,6 +214,29 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
             . $hostSwitch
             . "    return ['hit' => null, 'params' => [], 'allowed' => \$allowed];\n"
             . '}';
+    }
+
+    /**
+     * @param array{_code?:string,_code_deflate?:string} $blob
+     */
+    private function cachedMatcherSource(array $blob): ?string
+    {
+        $plain = $blob['_code'] ?? null;
+        if (\is_string($plain) && $plain !== '') {
+            return $plain;
+        }
+
+        $encoded = $blob['_code_deflate'] ?? null;
+        if (!\is_string($encoded) || $encoded === '' || !\function_exists('gzinflate')) {
+            return null;
+        }
+        $compressed = \base64_decode($encoded, true);
+        if ($compressed === false) {
+            return null;
+        }
+        $code = \gzinflate($compressed);
+
+        return \is_string($code) && $code !== '' ? $code : null;
     }
 
     /**
@@ -264,11 +286,17 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         $code = $this->buildMatcherCode();
         $hash = \hash('xxh128', $code);
 
+        $compressedCode = \function_exists('gzdeflate') ? \gzdeflate($code, 9) : false;
+        $sourcePayload = \is_string($compressedCode)
+            ? "    '_code_deflate' => " . \var_export(\base64_encode($compressedCode), true) . ",\n"
+            : "    '_code' => " . \var_export($code, true) . ",\n";
+
         $php = "<?php\nreturn [\n"
+            . "    '" . self::H_VERSION . "' => " . self::CACHE_FORMAT_VERSION . ",\n"
             . "    '" . self::H_HASH . "' => " . \var_export($hash, true) . ",\n"
             . "    '" . self::H_TS . "' => " . \var_export(\date(\DATE_ATOM), true) . ",\n"
             . "    '" . self::H_ALIAS . "' => " . $this->exportArray($this->alias) . ",\n"
-            . "    '_code' => " . \var_export($code, true) . ",\n"
+            . $sourcePayload
             . "    '_match' => {$code},\n"
             . "];\n";
 
@@ -325,7 +353,7 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
      */
     private function loadCacheBlob(): void
     {
-        /** @var array{_hash?:string,_alias?:array<string,array{0:string,1:?string}>,_code?:string,_match?:mixed} $blob */
+        /** @var array{_hash?:string,_alias?:array<string,array{0:string,1:?string}>,_code?:string,_code_deflate?:string,_match?:mixed} $blob */
         $blob = require $this->cacheFile;
 
         $fn = $blob['_match'] ?? null;
@@ -334,7 +362,7 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         }
 
         if ($this->verifyCacheOnLoad) {
-            $code = $blob['_code'] ?? null;
+            $code = $this->cachedMatcherSource($blob);
             if (!\is_string($code) || $code === '') {
                 throw new \RuntimeException('Generated matcher cache missing code payload.');
             }
@@ -602,7 +630,7 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         $objId = \spl_object_id($route);
         if (!isset($routeIds[$objId])) {
             $routeIds[$objId] = \count($routeExprs);
-            $routeExprs[$routeIds[$objId]] = $this->exportRoute($route);
+            $routeExprs[$routeIds[$objId]] = \var_export(ValueSerializer::serialize($route), true);
         }
 
         return $routeIds[$objId];

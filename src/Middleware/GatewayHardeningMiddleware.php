@@ -201,10 +201,11 @@ final class GatewayHardeningMiddleware
         $peerIp = $this->endUser?->ipNoProxy(); // direct socket peer
         $isTrustedProxy = $this->cidrHit($peerIp, $this->trustedProxyCidrs);
 
-        return $req
-            ->withAttribute('client_ip', $clientIp)
-            ->withAttribute('peer_ip', $peerIp)
-            ->withAttribute('is_trusted_proxy', $isTrustedProxy);
+        return $req->withAttributes([
+            'client_ip' => $clientIp,
+            'peer_ip' => $peerIp,
+            'is_trusted_proxy' => $isTrustedProxy,
+        ]);
     }
 
     /**

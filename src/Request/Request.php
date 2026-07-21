@@ -93,7 +93,7 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
      */
     public static function fromGlobals(): self
     {
-        return self::fromServerRequest(ServerRequest::createFromGlobals());
+        return static::createFromGlobals();
     }
 
     /**
@@ -821,28 +821,6 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
         $cl->resetDerivedCaches();
 
         return $cl;
-    }
-
-    private static function fromServerRequest(ServerRequest $request): self
-    {
-        $parsedBody = $request->getParsedBody();
-        $parsed = is_array($parsedBody) ? self::stringMap($parsedBody) : $parsedBody;
-
-        $new = new self(
-            method: $request->getMethod(),
-            uri: $request->getUri(),
-            server: $request->getServerParams(),
-            headers: $request->getHeaders(),
-            body: $request->getBody(),
-            httpVer: $request->getProtocolVersion(),
-            parsed: $parsed,
-            files: $request->getUploadedFiles(),
-            requestTarget: $request->getRequestTarget(),
-        );
-
-        return $new
-            ->withQueryParams(self::stringMap($request->getQueryParams()))
-            ->withCookieParams(self::stringMap($request->getCookieParams()));
     }
 
     /** ───── leaf helpers ───── */

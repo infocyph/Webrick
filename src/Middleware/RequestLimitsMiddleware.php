@@ -81,8 +81,7 @@ final readonly class RequestLimitsMiddleware
      */
     public function __invoke(Request $req, Closure $next): Response
     {
-        $this->rejectForHeaderFieldCount($req);
-        $this->rejectForHeaderBytes($req);
+        $this->rejectForHeaderLimits($req);
         $this->rejectForBodyLimit($req);
 
         return $next($req);
@@ -226,23 +225,33 @@ final readonly class RequestLimitsMiddleware
         }
     }
 
-    private function rejectForHeaderBytes(Request $req): void
+    private function rejectForHeaderLimits(Request $req): void
     {
-        $this->rejectIfLimitExceeded(
-            $req,
-            $this->maxHeaderBytes,
-            $this->totalHeaderBytes($req),
-            'Request headers too large',
-        );
-    }
+        if ($this->maxHeaderCount <= 0 && $this->maxHeaderBytes <= 0) {
+            return;
+        }
 
-    private function rejectForHeaderFieldCount(Request $req): void
-    {
+        $bytes = 0;
+        $fields = 0;
+        foreach ($req->getHeaders() as $name => $values) {
+            $nameBytes = \strlen($name) + 2;
+            $fields += \count($values);
+            foreach ($values as $value) {
+                $bytes += $nameBytes + $this->headerValueLength($value);
+            }
+        }
+
         $this->rejectIfLimitExceeded(
             $req,
             $this->maxHeaderCount,
-            $this->totalHeaderFields($req),
+            $fields,
             'Too many header fields',
+        );
+        $this->rejectIfLimitExceeded(
+            $req,
+            $this->maxHeaderBytes,
+            $bytes,
+            'Request headers too large',
         );
     }
 
@@ -271,49 +280,5 @@ final readonly class RequestLimitsMiddleware
         }
 
         return self::phpIniBytes(\ini_get('post_max_size'));
-    }
-
-    /**
-     * Compute a conservative byte count for all headers.
-     *
-     * Counts "Name: value" length for each header value line or raw line in flat-list mode.
-     *
-     * @param Request $r The request.
-     * @return int Total header bytes.
-     */
-    private function totalHeaderBytes(Request $r): int
-    {
-        $sum = 0;
-        $all = $r->getHeaders();
-
-        foreach ($all as $name => $val) {
-            $values = $val;
-            foreach ($values as $v) {
-                $sum += \strlen($name) + 2 + $this->headerValueLength($v); // "Name: value"
-            }
-        }
-
-        return $sum;
-    }
-
-    /**
-     * Count total header fields (each value counts as one field).
-     *
-     * Example: "Set-Cookie" repeated 5 times + "Accept: a,b" (still 1 field here since
-     * your Request flattens repeated-name values as an array).
-     *
-     * @param Request $r The request.
-     * @return int Number of header fields.
-     */
-    private function totalHeaderFields(Request $r): int
-    {
-        $all = $r->getHeaders();
-
-        $count = 0;
-        foreach ($all as $values) {
-            $count += \count($values);
-        }
-
-        return $count;
     }
 }

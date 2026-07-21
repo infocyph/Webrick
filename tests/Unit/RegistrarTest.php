@@ -4,20 +4,21 @@ declare(strict_types=1);
 
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Definition\Registrar;
+use Infocyph\Webrick\Router\Dispatch\MiddlewareAliases;
 use Infocyph\Webrick\Router\Route\Collection;
 
 describe('Registrar', function () {
     beforeEach(function () {
-        $this->routes = new Collection;
+        $this->routes = new Collection();
         $this->registrar = new Registrar(
             routes: $this->routes,
             autoSlashRedirect: false,
-            exposeUrlServices: false
+            exposeUrlServices: false,
         );
     });
 
     it('registers GET routes', function () {
-        $this->registrar->get('/users', fn () => Response::json([]), 'users.index');
+        $this->registrar->get('/users', fn() => Response::json([]), 'users.index');
 
         $route = $this->routes->findByName('users.index');
 
@@ -29,19 +30,38 @@ describe('Registrar', function () {
     });
 
     it('registers POST routes', function () {
-        $this->registrar->post('/users', fn () => Response::json([]), 'users.store');
+        $this->registrar->post('/users', fn() => Response::json([]), 'users.store');
 
         $route = $this->routes->findByName('users.store');
         expect($route->getMethod())->toBe('POST');
     });
 
     it('registers routes with middleware', function () {
-        $this->registrar->get('/admin', fn () => 'admin', [
+        $this->registrar->get('/admin', fn() => 'admin', [
             'middleware' => ['AuthMiddleware'],
         ]);
 
         $routes = $this->routes->all();
         expect($routes[0]->getMiddlewares())->toBe(['AuthMiddleware']);
+    });
+
+    it('defers middleware alias factories until dispatch', function () {
+        $resolved = 0;
+        MiddlewareAliases::reset();
+        MiddlewareAliases::register('expensive', static function () use (&$resolved): Closure {
+            $resolved++;
+
+            return static fn($request, $next) => $next($request);
+        });
+
+        $this->registrar->get('/lazy', fn() => 'lazy', [
+            'middleware' => ['expensive:one'],
+        ]);
+
+        expect($resolved)->toBe(0)
+            ->and($this->routes->all()[0]->getMiddlewares())->toBe(['expensive:one']);
+
+        MiddlewareAliases::reset();
     });
 
     it('registers resource routes', function () {
@@ -80,8 +100,8 @@ describe('Registrar', function () {
             prefix: '/api',
             namePrefix: 'api.',
             callback: function (Registrar $r) {
-                $r->get('/users', fn () => 'users', 'users');
-            }
+                $r->get('/users', fn() => 'users', 'users');
+            },
         );
 
         $route = $this->routes->findByName('api.users');
@@ -101,10 +121,10 @@ describe('Registrar', function () {
                     prefix: '/users',
                     namePrefix: 'users.',
                     callback: function (Registrar $r2) {
-                        $r2->get('/', fn () => 'list', 'index');
-                    }
+                        $r2->get('/', fn() => 'list', 'index');
+                    },
                 );
-            }
+            },
         );
 
         $route = $this->routes->findByName('admin.users.index');
@@ -123,8 +143,8 @@ describe('Registrar', function () {
             prefix: '/api',
             middleware: ['ApiMiddleware'],
             callback: function (Registrar $r) {
-                $r->get('/test', fn () => 'test');
-            }
+                $r->get('/test', fn() => 'test');
+            },
         );
 
         $routes = $this->routes->all();

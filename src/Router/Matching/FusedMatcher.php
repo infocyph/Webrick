@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router\Matching;
 
+use Infocyph\InterMix\Serializer\ValueSerializer;
 use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
 use Infocyph\Webrick\Exceptions\RouteNotFoundException;
@@ -30,7 +31,7 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
  *  - The matcher enforces that no routes are added after finalize() is called.
  *
  * @phpstan-type AliasIndex array<string, array{0:string,1:?string}>
- * @phpstan-type VerbRouteMap array<string, CompiledRoute>
+ * @phpstan-type VerbRouteMap array<string, CompiledRoute|string>
  * @phpstan-type StaticBucket array<string, VerbRouteMap>
  * @phpstan-type HostBucket array{static: StaticBucket, trie: array<string,mixed>}
  * @phpstan-type HostMap array<string, HostBucket>
@@ -219,6 +220,17 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
     }
 
     /**
+     * Persist route payloads without constructing every CompiledRoute while the
+     * single-file cache boots. The shared matcher materializes only the route
+     * selected by the request and memoizes it for persistent workers.
+     */
+    #[\Override]
+    protected function exportRoute(CompiledRoute $r): string
+    {
+        return \var_export(ValueSerializer::serialize($r), true);
+    }
+
+    /**
      * Compute a deterministic hash for cache verification.
      *
      * Uses exported PHP payload text to avoid json_encode() object-loss semantics.
@@ -256,6 +268,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         $crc = $this->computeCacheHash($payloadHosts, $payloadAlias);
 
         $php = "<?php\nreturn [\n"
+            . "    '" . self::H_VERSION . "' => " . self::CACHE_FORMAT_VERSION . ",\n"
             . "    '" . self::H_HASH . "'  => " . \var_export($crc, true) . ",\n"
             . "    '" . self::H_TS . "'  => " . \var_export(date(DATE_ATOM), true) . ",\n"
             . "    '" . self::H_DATA . "' => " . $this->exportArray($payloadHosts) . ",\n"
@@ -319,7 +332,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
      */
     private function loadCacheBlob(): void
     {
-        /** @var array{_hash?:string,_data?:mixed,_alias?:mixed} $blob */
+        /** @var array{_version?:int,_hash?:string,_data?:mixed,_alias?:mixed} $blob */
         $blob = require $this->cacheFile;
 
         if ($this->verifyCacheOnLoad) {
@@ -335,13 +348,22 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
             }
         }
 
-        $this->hosts = $this->normalizeHosts($blob[self::H_DATA] ?? []);
-        $this->alias = $this->normalizeAliasIndex($blob[self::H_ALIAS] ?? []);
-        $this->cacheLoaded = true;
-
-        if ($this->shouldWarmOpcache()) {
-            \opcache_compile_file($this->cacheFile);
+        $rawHosts = $blob[self::H_DATA] ?? null;
+        $rawAlias = $blob[self::H_ALIAS] ?? null;
+        if (!\is_array($rawHosts) || !\is_array($rawAlias)) {
+            throw new \RuntimeException('Route cache has an invalid payload.');
         }
+
+        if (($blob[self::H_VERSION] ?? null) === self::CACHE_FORMAT_VERSION) {
+            /** @var HostMap $rawHosts */
+            $this->hosts = $rawHosts;
+            /** @var AliasIndex $rawAlias */
+            $this->alias = $rawAlias;
+        } else {
+            $this->hosts = $this->normalizeHosts($rawHosts);
+            $this->alias = $this->normalizeAliasIndex($rawAlias);
+        }
+        $this->cacheLoaded = true;
     }
 
     /**

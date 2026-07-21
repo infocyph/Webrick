@@ -23,13 +23,13 @@ final class CliEmitter implements EmitterInterface
         $status = $response->getStatusCode() . ' ' . $response->getReasonPhrase();
         $ver = $response->getProtocolVersion();
 
-        file_put_contents('php://stdout', "HTTP/$ver $status\n", FILE_APPEND);
+        $output = "HTTP/$ver $status\n";
         foreach ($response->getHeaders() as $n => $vals) {
             foreach ($vals as $v) {
-                file_put_contents('php://stdout', "{$n}: {$v}\n", FILE_APPEND);
+                $output .= "{$n}: {$v}\n";
             }
         }
-        file_put_contents('php://stdout', "\n", FILE_APPEND);
-        file_put_contents('php://stdout', (string) $response->getBody(), FILE_APPEND);
+        $output .= "\n" . $response->getBody();
+        file_put_contents('php://stdout', $output, FILE_APPEND);
     }
 }

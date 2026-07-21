@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router\Matching;
 
+use Infocyph\InterMix\Serializer\ValueSerializer;
 use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
 use Infocyph\Webrick\Exceptions\RouteNotFoundException;
@@ -70,17 +71,23 @@ function generated_matcher_render_verb_dispatch(array $verbs, string $indent): s
     $code = $indent . "switch (\$verb) {\n";
     foreach ($verbs as $method => $idx) {
         $code .= $indent . '    case ' . \var_export($method, true) . ":\n";
-        $code .= $indent . "        return ['hit' => \$routes[{$idx}], 'params' => \$params, 'allowed' => []];\n";
+        $code .= $indent . '        return [\'hit\' => ($routes[' . $idx . '] ??= \\'
+            . ValueSerializer::class . '::unserialize($routePayloads[' . $idx
+            . "])), 'params' => \$params, 'allowed' => []];\n";
     }
 
     if (!isset($verbs[HttpMethodEnum::HEAD->value]) && isset($verbs[HttpMethodEnum::GET->value])) {
         $getIdx = $verbs[HttpMethodEnum::GET->value];
         $code .= $indent . '    case ' . \var_export(HttpMethodEnum::HEAD->value, true) . ":\n";
-        $code .= $indent . "        return ['hit' => \$routes[{$getIdx}], 'params' => \$params, 'allowed' => []];\n";
+        $code .= $indent . '        return [\'hit\' => ($routes[' . $getIdx . '] ??= \\'
+            . ValueSerializer::class . '::unserialize($routePayloads[' . $getIdx
+            . "])), 'params' => \$params, 'allowed' => []];\n";
     }
 
     $code .= $indent . '    case ' . \var_export(HttpMethodEnum::OPTIONS->value, true) . ":\n";
-    $code .= $indent . "        return ['hit' => \$routes[{$firstIdx}], 'params' => \$params, 'allowed' => []];\n";
+    $code .= $indent . '        return [\'hit\' => ($routes[' . $firstIdx . '] ??= \\'
+        . ValueSerializer::class . '::unserialize($routePayloads[' . $firstIdx
+        . "])), 'params' => \$params, 'allowed' => []];\n";
     $code .= $indent . "    default:\n";
     foreach ($verbs as $method => $_idx) {
         $code .= $indent . '        $allowed[' . \var_export($method, true) . "] = true;\n";
@@ -168,7 +175,7 @@ function matcher_normalize_alias_pairs(mixed $raw): array
 }
 
 /**
- * @return array<string, CompiledRoute>
+ * @return array<string, CompiledRoute|string>
  */
 function matcher_normalize_compiled_route_map(mixed $verbs): array
 {
@@ -176,14 +183,11 @@ function matcher_normalize_compiled_route_map(mixed $verbs): array
         return [];
     }
 
-    $verbMap = [];
-    foreach ($verbs as $verb => $route) {
-        if (\is_string($verb) && $route instanceof CompiledRoute) {
-            $verbMap[$verb] = $route;
-        }
-    }
-
-    return $verbMap;
+    return array_filter(
+        $verbs,
+        fn($route, $verb) => \is_string($verb) && ($route instanceof CompiledRoute || \is_string($route)),
+        ARRAY_FILTER_USE_BOTH,
+    );
 }
 
 function sharded_matcher_alias_file_path(string $cacheDir, string $aliasesFileName): string
@@ -277,7 +281,7 @@ function sharded_matcher_match(
 }
 
 /**
- * @return array{static: array<string, array<string, CompiledRoute>>, trie: array<string,mixed>}
+ * @return array{static: array<string, array<string, CompiledRoute|string>>, trie: array<string,mixed>}
  */
 function sharded_matcher_normalize_group(mixed $raw): array
 {
@@ -341,12 +345,11 @@ function sharded_matcher_as_match_hit(mixed $value): ?array
         return null;
     }
 
-    $params = [];
-    foreach ($value[1] as $k => $v) {
-        if (\is_string($k) && \is_string($v)) {
-            $params[$k] = $v;
-        }
-    }
+    $params = array_filter(
+        $value[1],
+        fn($v, $k) => \is_string($k) && \is_string($v),
+        ARRAY_FILTER_USE_BOTH,
+    );
 
     return [$value[0], $params];
 }
@@ -407,7 +410,7 @@ function sharded_matcher_new_node(): array
 }
 
 /**
- * @return array<string, array<string, CompiledRoute>>
+ * @return array<string, array<string, CompiledRoute|string>>
  */
 function sharded_matcher_normalize_group_static(mixed $rawStatic): array
 {
@@ -458,7 +461,7 @@ function sharded_matcher_normalize_group_trie(mixed $rawTrie): array
 }
 
 /**
- * @return array<string, CompiledRoute>
+ * @return array<string, CompiledRoute|string>
  */
 function sharded_matcher_normalize_group_verb_map(mixed $verbs): array
 {

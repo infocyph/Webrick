@@ -361,18 +361,18 @@ final readonly class TelemetryMiddleware
             'span_id' => $spanId,
         ];
 
-        $req = $req
-            ->withAttribute('trace.trace_id', $traceId)
-            ->withAttribute('trace.parent_span_id', $parentSpanId)
-            ->withAttribute('trace.span_id', $spanId)
-            ->withAttribute('trace.flags', $flags)
-            ->withAttribute('trace.tracestate', $tracestate);
-
         $requestId = $this->deriveRequestId($req);
+        $attributes = [
+            'trace.trace_id' => $traceId,
+            'trace.parent_span_id' => $parentSpanId,
+            'trace.span_id' => $spanId,
+            'trace.flags' => $flags,
+            'trace.tracestate' => $tracestate,
+        ];
         if ($this->emitRequestId && $requestId !== null) {
-            $req = $req->withAttribute('request_id', $requestId);
+            $attributes['request_id'] = $requestId;
         }
 
-        return [$req, $trace, $requestId];
+        return [$req->withAttributes($attributes), $trace, $requestId];
     }
 }

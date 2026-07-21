@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router\Matching;
 
+use Infocyph\InterMix\Serializer\ValueSerializer;
 use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
 use Infocyph\Webrick\Exceptions\RouteNotFoundException;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
@@ -29,7 +30,7 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
  *  - The matcher enforces no further route additions after finalize() is called.
  *
  * @phpstan-type AliasIndex array<string, array{0:string,1:?string}>
- * @phpstan-type VerbRouteMap array<string, CompiledRoute>
+ * @phpstan-type VerbRouteMap array<string, CompiledRoute|string>
  * @phpstan-type StaticBucket array<string, VerbRouteMap>
  * @phpstan-type Group array{static: StaticBucket, trie: array<string,mixed>}
  */
@@ -203,7 +204,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             return $this->alias;
         }
 
-        /** @var array{_hash?:string,_data?:AliasIndex} $blob */
+        /** @var array{_version?:int,_hash?:string,_data?:AliasIndex} $blob */
         $blob = require $file;
 
         if (!isset($blob[self::H_DATA])) {
@@ -219,12 +220,10 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             }
         }
 
-        $this->alias = $blob[self::H_DATA];
+        $this->alias = ($blob[self::H_VERSION] ?? null) === self::CACHE_FORMAT_VERSION
+            ? $blob[self::H_DATA]
+            : matcher_normalize_alias_pairs($blob[self::H_DATA]);
         $this->aliasLoaded = true;
-
-        if ($this->shouldWarmOpcache()) {
-            \opcache_compile_file($file);
-        }
 
         return $this->alias;
     }
@@ -334,38 +333,43 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
      */
     public function match(string $method, string $host, string $path): array
     {
-        $tryStatic = function (?array $group, string $httpMethod, string $requestPath): array {
-            $allowed = [];
-            $normalizedGroup = $group === null ? null : sharded_matcher_normalize_group($group);
-            $hit = $this->tryStatic($normalizedGroup, $httpMethod, $requestPath, $allowed);
+        $method = \strtoupper($method);
+        $host = \strtolower($host ?: '*');
+        $path = $path === '' ? '/' : $path;
+        $bucket = sharded_matcher_file_key_for_path($path, self::SHARD_ROOT);
+        $hostGroup = $this->loadGroupFor($host, $bucket);
+        $wildcardGroup = null;
+        $hasCandidateGroup = $hostGroup !== null;
+        $allowed = [];
 
-            return ['hit' => $hit, 'allowed' => $allowed];
-        };
-        $tryDynamic = function (?array $group, string $httpMethod, array $segments): array {
-            $allowed = [];
-            $normalizedGroup = $group === null ? null : sharded_matcher_normalize_group($group);
-            $segmentList = [];
-            foreach ($segments as $segment) {
-                if (\is_string($segment)) {
-                    $segmentList[] = $segment;
-                }
+        if ($hit = $this->tryStatic($hostGroup, $method, $path, $allowed)) {
+            return $hit;
+        }
+
+        if ($host !== '*') {
+            $wildcardGroup = $this->loadGroupFor('*', $bucket);
+            $hasCandidateGroup = $hasCandidateGroup || $wildcardGroup !== null;
+            if ($hit = $this->tryStatic($wildcardGroup, $method, $path, $allowed)) {
+                return $hit;
             }
-            $hit = $this->tryDynamic($normalizedGroup, $httpMethod, $segmentList, $allowed);
+        }
 
-            return ['hit' => $hit, 'allowed' => $allowed];
-        };
+        $segments = $this->explodePath($path);
+        if ($hit = $this->tryDynamic($hostGroup, $method, $segments, $allowed)) {
+            return $hit;
+        }
+        if ($host !== '*' && ($hit = $this->tryDynamic($wildcardGroup, $method, $segments, $allowed))) {
+            return $hit;
+        }
 
-        return sharded_matcher_match(
-            $method,
-            $host,
-            $path,
-            sharded_matcher_normalize_request(...),
-            fn(string $requestPath): string => sharded_matcher_file_key_for_path($requestPath, self::SHARD_ROOT),
-            $this->loadGroupFor(...),
-            $tryStatic,
-            $this->explodePath(...),
-            $tryDynamic,
-        );
+        if (!$hasCandidateGroup) {
+            throw new RouteNotFoundException($method, $path);
+        }
+        if ($allowed !== []) {
+            throw new MethodNotAllowedException($method, $path, \array_keys($allowed));
+        }
+
+        throw new RouteNotFoundException($method, $path);
     }
 
     /**
@@ -379,6 +383,20 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         $idx = $this->aliasIndex();
 
         return $idx[$name] ?? null;
+    }
+
+    /**
+     * Keep closure-backed routes serialized in shard files. Only the matched
+     * route is materialized; unrelated routes in the same shard stay strings.
+     */
+    #[\Override]
+    protected function exportRoute(CompiledRoute $r): string
+    {
+        if ($this->handlerHasClosure($r->getHandler())) {
+            return \var_export(ValueSerializer::serialize($r), true);
+        }
+
+        return parent::exportRoute($r);
     }
 
     /**
@@ -573,7 +591,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             return $this->loadedFiles[$file] = null;
         }
 
-        /** @var array{_hash?:string,_data?:mixed} $blob */
+        /** @var array{_version?:int,_hash?:string,_data?:mixed} $blob */
         $blob = require $file;
 
         if (!isset($blob[self::H_DATA])) {
@@ -662,6 +680,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         }
 
         $php = "<?php\nreturn [\n"
+            . "    '" . self::H_VERSION . "' => " . self::CACHE_FORMAT_VERSION . ",\n"
             . "    '" . self::H_HASH . "' => " . \var_export($crc, true) . ",\n"
             . "    '" . self::H_TS . "' => " . \var_export(date(DATE_ATOM), true) . ",\n"
             . "    '" . self::H_DATA . "' => " . $this->exportArray($payload) . ",\n"

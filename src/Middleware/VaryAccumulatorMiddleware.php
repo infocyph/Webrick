@@ -54,19 +54,20 @@ final class VaryAccumulatorMiddleware
     {
         $resp = $next($req);
 
-        if (self::hasStar($resp->getHeaderLine('Vary'))) {
+        $currentVary = $resp->getHeaderLine('Vary');
+        if (self::hasStar($currentVary)) {
             return $resp;
         }
 
         $tokens = $this->collectMergedTokens($req, $resp);
 
         if ($tokens === []) {
-            return $resp->getHeaderLine('Vary') === '' ? $resp : $resp->withoutHeader('Vary');
+            return $currentVary === '' ? $resp : $resp->withoutHeader('Vary');
         }
 
         $final = implode(', ', $tokens);
 
-        return $final === $resp->getHeaderLine('Vary')
+        return $final === $currentVary
             ? $resp
             : $resp->withHeader('Vary', $final);
     }

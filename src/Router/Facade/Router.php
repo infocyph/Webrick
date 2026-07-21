@@ -69,6 +69,9 @@ final class Router
 
     private static ?UrlGenerator $routeGen = null;
 
+    /** @var (Closure():UrlGenerator)|null */
+    private static ?Closure $routeGenFactory = null;
+
     /**
      * Private constructor to prevent instantiation — façade is static-only.
      */
@@ -107,14 +110,34 @@ final class Router
 
     /**
      * Bind URL generation services to the Route facade.
+     *
+     * @param Collection|array<string, array{0:string,1:?string}>|(Closure():(Collection|array<string, array{0:string,1:?string}>)) $routes
      */
     public static function bindUrlServices(
-        Collection $routes,
+        Collection|array|Closure $routes,
         ?string $signKey = null,
         ?int $defaultTtl = null,
         ?SignedUrlConfig $signedUrlConfig = null,
         string $baseUri = '',
     ): void {
+        if ($routes instanceof Closure) {
+            self::$routeGen = null;
+            self::$routeGenFactory = static function () use (
+                $baseUri,
+                $routes,
+                $signKey,
+                $defaultTtl,
+                $signedUrlConfig,
+            ): UrlGenerator {
+                $resolved = self::normalizeLazyRouteSource($routes());
+
+                return new UrlGenerator($baseUri, $resolved, $signKey, $defaultTtl, $signedUrlConfig);
+            };
+
+            return;
+        }
+
+        self::$routeGenFactory = null;
         self::$routeGen = new UrlGenerator($baseUri, $routes, $signKey, $defaultTtl, $signedUrlConfig);
     }
 
@@ -160,6 +183,7 @@ final class Router
     public static function resetUrlServices(): void
     {
         self::$routeGen = null;
+        self::$routeGenFactory = null;
     }
 
     /**
@@ -325,7 +349,7 @@ final class Router
 
     private static function assertUrlBound(): void
     {
-        if (!self::$routeGen) {
+        if (self::$routeGen === null && self::$routeGenFactory === null) {
             throw new \LogicException('URL services not bound. Enable via Registrar constructor.');
         }
     }
@@ -360,6 +384,34 @@ final class Router
         }
 
         return $handler;
+    }
+
+    /**
+     * @return Collection|array<string, array{0:string,1:?string}>
+     */
+    private static function normalizeLazyRouteSource(mixed $routes): Collection|array
+    {
+        if ($routes instanceof Collection) {
+            return $routes;
+        }
+        if (!\is_array($routes)) {
+            throw new \LogicException('Lazy URL services factory must return a route collection or alias index.');
+        }
+
+        $normalized = [];
+        foreach ($routes as $name => $tuple) {
+            if (!\is_string($name) || $name === '' || !\is_array($tuple)) {
+                continue;
+            }
+            $path = $tuple[0] ?? null;
+            $domain = $tuple[1] ?? null;
+            if (!\is_string($path)) {
+                continue;
+            }
+            $normalized[$name] = [$path, \is_string($domain) ? $domain : null];
+        }
+
+        return $normalized;
     }
 
     /**
@@ -407,6 +459,12 @@ final class Router
     private static function requireRouteGenerator(): UrlGenerator
     {
         self::assertUrlBound();
+
+        if (self::$routeGen === null && self::$routeGenFactory !== null) {
+            $factory = self::$routeGenFactory;
+            self::$routeGenFactory = null;
+            self::$routeGen = $factory();
+        }
 
         return self::$routeGen
             ?? throw new \LogicException('URL services not bound. Enable via Registrar constructor.');

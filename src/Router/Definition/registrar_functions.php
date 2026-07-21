@@ -292,14 +292,16 @@ function registrar_read_group_input_options(array $opts): array
 /**
  * @param array{__alias:true,key:non-empty-string,params:list<string>} $item
  */
-function registrar_resolve_alias_item(array $item): string|object|null
+function registrar_resolve_alias_item(array $item): string
 {
     $spec = $item['key'];
     if ($item['params'] !== []) {
         $spec .= ':' . \implode(',', $item['params']);
     }
 
-    return registrar_normalize_resolved_middleware(MiddlewareAliases::resolveString($spec));
+    // Keep aliases as descriptors. The dispatcher resolves only the aliases
+    // that belong to the matched route and memoizes the resulting pipeline.
+    return $spec;
 }
 
 /**
