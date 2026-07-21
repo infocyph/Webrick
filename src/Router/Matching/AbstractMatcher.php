@@ -28,6 +28,8 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
  */
 abstract class AbstractMatcher
 {
+    protected const CACHE_FORMAT_VERSION = 2;
+
     protected const F_ALIASES = '__aliases.php';
 
     protected const H_ALIAS = '_alias';
@@ -38,6 +40,8 @@ abstract class AbstractMatcher
     protected const H_HASH = '_hash';
 
     protected const H_TS = '_ts';
+
+    protected const H_VERSION = '_version';
 
     protected const K_CHILDREN = 'children';
 
@@ -55,6 +59,9 @@ abstract class AbstractMatcher
      * caches. Default false.
      */
     protected bool $verifyCacheOnLoad = false;
+
+    /** @var array<string, CompiledRoute> */
+    private array $materializedRoutes = [];
 
     /**
      * Optional hook for kernels; concrete matchers may override to indicate
@@ -183,7 +190,7 @@ abstract class AbstractMatcher
      * Equivalent to addAllowedFromMap but provided for semantic clarity when the
      * source is an array of route instances.
      *
-     * @param array<string,CompiledRoute> $routes Verb => CompiledRoute map
+     * @param array<string,CompiledRoute|string> $routes Verb => route map
      * @param array<string,bool> $set Map being populated (by reference)
      */
     protected function addAllowedFromRoutes(array $routes, array &$set): void
@@ -437,23 +444,22 @@ abstract class AbstractMatcher
      *  - Exact verb match returns that route.
      *  - HEAD falls back to GET when a GET route exists.
      *
-     * @param array<string,CompiledRoute> $buckets Map of verb => CompiledRoute
+     * @param array<string,CompiledRoute|string> $buckets Map of verb => compiled or serialized route
      * @param string $verb Uppercased HTTP verb to resolve (e.g. 'GET')
      * @return CompiledRoute|null Matching compiled route or null when none applicable
      */
     protected function pickVerbRoute(array $buckets, string $verb): ?CompiledRoute
     {
         if ($verb === HttpMethodEnum::OPTIONS->value && $buckets) {
-            /** @var ?CompiledRoute $first */
             $first = \reset($buckets);
 
-            return $first instanceof CompiledRoute ? $first : null;
+            return $this->materializeRoute($first);
         }
         if (isset($buckets[$verb])) {
-            return $buckets[$verb];
+            return $this->materializeRoute($buckets[$verb]);
         }
         if ($verb === HttpMethodEnum::HEAD->value && isset($buckets[HttpMethodEnum::GET->value])) {
-            return $buckets[HttpMethodEnum::GET->value];
+            return $this->materializeRoute($buckets[HttpMethodEnum::GET->value]);
         }
 
         return null;
@@ -576,11 +582,31 @@ abstract class AbstractMatcher
     }
 
     /**
-     * @return array<string,CompiledRoute>
+     * @return array<string,CompiledRoute|string>
      */
     private function compiledRouteMap(mixed $routes): array
     {
         return matcher_normalize_compiled_route_map($routes);
+    }
+
+    private function materializeRoute(mixed $route): ?CompiledRoute
+    {
+        if ($route instanceof CompiledRoute) {
+            return $route;
+        }
+        if (!\is_string($route)) {
+            return null;
+        }
+        if (isset($this->materializedRoutes[$route])) {
+            return $this->materializedRoutes[$route];
+        }
+
+        $materialized = ValueSerializer::unserialize($route);
+        if (!$materialized instanceof CompiledRoute) {
+            throw new \RuntimeException('Serialized route cache entry did not produce a CompiledRoute.');
+        }
+
+        return $this->materializedRoutes[$route] = $materialized;
     }
 
     /* ──────────────────── helpers (rule + matching) ──────────────────── */

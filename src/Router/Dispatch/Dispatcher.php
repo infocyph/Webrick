@@ -50,6 +50,9 @@ final class Dispatcher
      */
     private array $pipelines = [];
 
+    /** @var array<string, callable|object|string> */
+    private array $resolvedAliases = [];
+
     /**
      * Construct the Dispatcher.
      *
@@ -118,7 +121,7 @@ final class Dispatcher
      */
     private function aliasStringClass(string $alias): ?string
     {
-        $resolved = MiddlewareAliases::resolveString($alias);
+        $resolved = $this->resolveAlias($alias);
 
         if (\is_string($resolved)) {
             return \class_exists($resolved) ? $resolved : null;
@@ -506,6 +509,15 @@ final class Dispatcher
     }
 
     /**
+     * Resolve each alias descriptor once for this kernel. Both global-override
+     * inspection and pipeline execution use the same middleware instance.
+     */
+    private function resolveAlias(string $alias): callable|object|string
+    {
+        return $this->resolvedAliases[$alias] ??= MiddlewareAliases::resolveString($alias);
+    }
+
+    /**
      * Collect the set of middleware class-strings referenced by the route.
      *
      * This inspects route middleware entries and returns a set of class names
@@ -576,8 +588,7 @@ final class Dispatcher
     private function wrapAliasStringAsMiddleware(string $alias): callable
     {
         return function (Request $req, Closure $next) use ($alias): Response {
-            static $resolved = null; // cached resolution per-process
-            $resolved ??= MiddlewareAliases::resolveString($alias);
+            $resolved = $this->resolveAlias($alias);
 
             if (\is_string($resolved)) {
                 return $this->invokeClassMiddleware($resolved, $req, $next);
@@ -593,12 +604,8 @@ final class Dispatcher
                 return $this->assertMiddlewareResponse($resolved($req, $next), $resolved::class);
             }
 
-            // Callable (closure or function) — invoke directly.
-            if (\is_callable($resolved)) {
-                return $this->assertMiddlewareResponse($resolved($req, $next), $alias);
-            }
-
-            throw new InvalidArgumentException("Failed to resolve middleware alias '{$alias}'.");
+            // The declared resolver contract leaves only a callable here.
+            return $this->assertMiddlewareResponse($resolved($req, $next), $alias);
         };
     }
 

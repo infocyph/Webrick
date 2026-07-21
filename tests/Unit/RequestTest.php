@@ -56,6 +56,15 @@ describe('Request', function () {
         // Request doesn't have query() method, use getQueryParams()
     });
 
+    it('lazily exposes variables through magic properties after immutable changes', function () {
+        $request = Request::fake(query: ['query_key' => 'first'])
+            ->withQueryParams(['query_key' => 'second']);
+
+        expect($request->query_key)->toBe('second')
+            ->and(isset($request->query_key))->toBeTrue()
+            ->and(isset($request->missing_key))->toBeFalse();
+    });
+
     it('preserves zero-like URI components and request targets', function () {
         $uri = new Uri('https://0@example.com/path?0');
         $request = new ServerRequest('GET', $uri);
@@ -70,7 +79,7 @@ describe('Request', function () {
 
         expect($upload->getSize())
             ->toBe(0)
-            ->and(fn () => new UploadedFile(new Stream(''), -1))
+            ->and(fn() => new UploadedFile(new Stream(''), -1))
             ->toThrow(InvalidArgumentException::class);
     });
 

@@ -332,6 +332,35 @@ final class RouterKernel
     }
 
     /**
+     * @return array<string, array{0:string,1:?string}>
+     */
+    private function aliasPairsFromCache(string $cacheLocation): array
+    {
+        $aliasFile = $this->aliasFilePath($cacheLocation);
+        if (!$this->aliasFileExists($aliasFile)) {
+            $this->log->warning('[router] alias cache file not found; URL helpers may be limited', [
+                'cache' => $cacheLocation,
+            ]);
+
+            return [];
+        }
+
+        $blob = $this->requireAliasBlob($aliasFile);
+        $pairs = $this->extractAliasPairs($blob);
+        if ($pairs === null) {
+            $this->log->warning('[router] alias cache has unexpected format; URL helpers may be limited', [
+                'file' => $aliasFile,
+            ]);
+
+            return [];
+        }
+
+        $this->log->info('[router] alias cache loaded', ['file' => $aliasFile, 'count' => \count($pairs)]);
+
+        return $pairs;
+    }
+
+    /**
      * Registrar-only pass to build a Collection containing named route aliases
      * (used when alias cache is hot but empty and we need name -> path mapping).
      *
@@ -419,37 +448,10 @@ final class RouterKernel
     }
 
     /**
-     * Hydrate a destination Collection with named route aliases read from the
-     * alias cache file. Returns the number of successfully added alias entries.
-     *
-     * Expected cache blob format:
-     *   ['_data' => [ name => [path, domain|null], ... ]]
-     *
-     * @param Collection $dst Destination collection to populate with alias routes
-     * @param string $cacheLocation Path to cache (directory or file)
-     * @return int Number of alias entries added to $dst
+     * @param array<string, array{0:string,1:?string}> $pairs
      */
-    private function hydrateAliasesFromCache(Collection $dst, string $cacheLocation): int
+    private function hydrateAliasPairs(Collection $dst, array $pairs): int
     {
-        $aliasFile = $this->aliasFilePath($cacheLocation);
-        if (!$this->aliasFileExists($aliasFile)) {
-            $this->log->warning('[router] alias cache file not found; URL helpers may be limited', [
-                'cache' => $cacheLocation,
-            ]);
-
-            return 0;
-        }
-
-        $blob = $this->requireAliasBlob($aliasFile);
-        $pairs = $this->extractAliasPairs($blob);
-        if ($pairs === null) {
-            $this->log->warning('[router] alias cache has unexpected format; URL helpers may be limited', [
-                'file' => $aliasFile,
-            ]);
-
-            return 0;
-        }
-
         $added = 0;
         foreach ($pairs as $name => $tuple) {
             if ($name === '') {
@@ -474,8 +476,6 @@ final class RouterKernel
             }
         }
 
-        $this->log->info('[router] alias cache hydrated', ['file' => $aliasFile, 'count' => $added]);
-
         return $added;
     }
 
@@ -494,6 +494,20 @@ final class RouterKernel
         foreach ($this->serviceProviders as $provider) {
             $registration->import($provider);
         }
+    }
+
+    /**
+     * @return array<string, array{0:string,1:?string}>
+     */
+    private function matcherAliasIndex(): array
+    {
+        if (!method_exists($this->matcher, 'aliasIndex')) {
+            return [];
+        }
+
+        return \Infocyph\Webrick\Router\Matching\matcher_normalize_alias_pairs(
+            $this->matcher->aliasIndex(),
+        );
     }
 
     /**
@@ -652,6 +666,24 @@ final class RouterKernel
         return require $file;
     }
 
+    /**
+     * @return array<string, array{0:string,1:?string}>
+     */
+    private function resolveCachedAliasPairs(): array
+    {
+        $pairs = $this->matcherAliasIndex();
+        if ($pairs === [] && $this->routeCache !== null) {
+            $pairs = $this->aliasPairsFromCache($this->routeCache);
+        }
+        if ($pairs === [] && $this->fallbackAliasesFromRegistrar) {
+            $this->log->info('[router] alias cache empty; building aliases via registrar (matcher untouched)');
+
+            return $this->buildAliasesViaRegistrar()->aliasIndex();
+        }
+
+        return $pairs;
+    }
+
     /* -----------------------------------------------------------------
      * Warm-up / cache priming helpers
      * ----------------------------------------------------------------- */
@@ -679,34 +711,28 @@ final class RouterKernel
     {
         $this->matcher->finalize();
 
-        $aliasOnly = new Collection();
-        $added = 0;
-        if ($this->routeCache !== null) {
-            $added = $this->hydrateAliasesFromCache($aliasOnly, $this->routeCache);
-        }
-        if ($added === 0 && $this->fallbackAliasesFromRegistrar) {
-            $this->log->info('[router] alias cache empty; building aliases via registrar (matcher untouched)');
-            $aliasOnly = $this->buildAliasesViaRegistrar(); // ← restored
-            $added = \count($aliasOnly->aliasIndex());
-        }
-
         if ($this->bindUrlServices) {
+            $pairs = $this->resolveCachedAliasPairs();
+            $aliasOnly = new Collection();
+            $this->hydrateAliasPairs($aliasOnly, $pairs);
             ($this->bindUrlServices)($aliasOnly);
+            $aliasCount = \count($pairs);
         } else {
             Router::bindUrlServices(
-                $aliasOnly,
+                fn(): array => $this->resolveCachedAliasPairs(),
                 $this->normalizeSignKey($this->registrarOptions['signKey'] ?? null),
                 $this->normalizeSignedDefaultTtl($this->registrarOptions['signedDefaultTtl'] ?? null),
                 $this->normalizeSignedUrlConfig($this->registrarOptions['signedUrlConfig'] ?? null),
                 $this->normalizeUrlBaseUri($this->registrarOptions['urlBaseUri'] ?? null),
             );
+            $aliasCount = 'lazy';
         }
 
         $this->log->info('[router] route table ready (hot cache)', [
             'matcher' => $this->matcher::class,
             'cache' => true,
             'mode' => 'cache',
-            'aliases' => $added,
+            'aliases' => $aliasCount,
         ]);
     }
 

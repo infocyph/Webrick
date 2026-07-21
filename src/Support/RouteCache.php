@@ -27,6 +27,14 @@ final class RouteCache
         [$mode, $matcher, $routeCache] = self::resolveBuildMatcher($options, $cachePath);
         $inputs = self::resolveBuildInputs($options, $logger);
 
+        // A build is an explicit refresh operation. Remove only this matcher's
+        // old output so colocated caches for other matcher modes remain valid.
+        self::clear([
+            'cache' => $cachePath,
+            'matcher' => $mode->value,
+            'aggressive' => false,
+        ]);
+
         RouterKernel::bootWithRegistrar(
             log: $logger,
             matcher: $matcher,
@@ -89,7 +97,7 @@ final class RouteCache
         }
         foreach (\glob($dir . DIRECTORY_SEPARATOR . '*.php') ?: [] as $php) {
             $base = \basename($php);
-            if ($base === '__root.php' || $base === '__aliases.php') {
+            if (\in_array($base, ['__root.php', '__aliases.php', '__routes.php', '__generated.php'], true)) {
                 continue;
             }
             $removed = self::rmFile($php) || $removed;

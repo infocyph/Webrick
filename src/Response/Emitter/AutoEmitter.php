@@ -46,6 +46,15 @@ final class AutoEmitter implements EmitterInterface
             };
         }
 
+        // Resolve the common synchronous SAPIs before probing optional async
+        // runtimes and request attributes on every short-lived request.
+        if (\PHP_SAPI === 'fpm-fcgi') {
+            return new DefaultEmitter(DefaultEmitter::FINISH_FASTCGI, true);
+        }
+        if (\in_array(\PHP_SAPI, ['cli', 'phpdbg'], true)) {
+            return new CliEmitter();
+        }
+
         $serverSoftwareRaw = $_SERVER['SERVER_SOFTWARE'] ?? null;
         $serverSoftware = \is_string($serverSoftwareRaw) ? strtolower($serverSoftwareRaw) : '';
 
@@ -68,13 +77,10 @@ final class AutoEmitter implements EmitterInterface
             ),
             \function_exists('fastcgi_finish_request') && $serverSoftware !== ''
             && \str_contains($serverSoftware, 'unit') => new DefaultEmitter(DefaultEmitter::FINISH_FASTCGI, true),
-            \PHP_SAPI === 'fpm-fcgi' || \function_exists('fastcgi_finish_request') => new DefaultEmitter(
+            \function_exists('fastcgi_finish_request') => new DefaultEmitter(
                 DefaultEmitter::FINISH_FASTCGI,
                 true,
             ),
-
-            // CLI/testing fallback
-            \in_array(\PHP_SAPI, ['cli', 'phpdbg'], true) => new CliEmitter(),
 
             default => new DefaultEmitter(),
         };

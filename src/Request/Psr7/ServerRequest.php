@@ -16,6 +16,7 @@ use Infocyph\Webrick\Request\Http\RequestHeaders;
 use Infocyph\Webrick\Support\HttpUtils;
 use InvalidArgumentException;
 
+/** @phpstan-consistent-constructor */
 class ServerRequest extends Message
 {
     /* Valid verbs */
@@ -125,7 +126,6 @@ class ServerRequest extends Message
             ];
         }
 
-        $this->buildVariableMap();
     }
 
     /**
@@ -136,8 +136,10 @@ class ServerRequest extends Message
      */
     public function __get(string $key): mixed
     {
-        if (\array_key_exists($key, $this->varMap ?? [])) {
-            return $this->varMap[$key];
+        $this->buildVariableMap();
+        $map = $this->varMap ?? [];
+        if (\array_key_exists($key, $map)) {
+            return $map[$key];
         }
         if ($this->checkEnv && ($e = getenv($key)) !== false) {
             return $this->varMap[$key] = $e;
@@ -173,9 +175,9 @@ class ServerRequest extends Message
     /**
      * Create a new ServerRequest object from $_SERVER superglobal.
      *
-     * @return self A new ServerRequest object.
+     * @return static A new ServerRequest object.
      */
-    public static function createFromGlobals(): self
+    public static function createFromGlobals(): static
     {
         $srv = self::serverMap($_SERVER);
         $uri = Uri::fromServerParams($srv);
@@ -184,7 +186,7 @@ class ServerRequest extends Message
         $headers = RequestHeaders::extractFromServer($srv);
 
         // build request (headers re-imported once below)
-        $req = new self(
+        $req = new static(
             HttpMethodEnum::normalize(self::serverString($srv, 'REQUEST_METHOD', HttpMethodEnum::GET->value)),
             $uri,
             $srv,
@@ -788,9 +790,10 @@ class ServerRequest extends Message
     /**
      * Attach query string and cookie parameters to the request.
      *
-     * @param self $req The request object.
+     * @template T of self
+     * @param T $req The request object.
      * @param Uri $uri The URI object.
-     * @return self The request object with the query string and cookie parameters attached.
+     * @return T The request object with the query string and cookie parameters attached.
      */
     private static function attachQueryAndCookies(self $req, Uri $uri): self
     {
@@ -828,7 +831,9 @@ class ServerRequest extends Message
      *
      * Called once when creating a new ServerRequest from globals.
      *
-     * @return self The request object with the replaced headers.
+     * @template T of self
+     * @param T $req
+     * @return T The request object with the replaced headers.
      */
     private static function importHeadersOnce(self $req): self
     {
@@ -846,8 +851,10 @@ class ServerRequest extends Message
      * header is application/x-www-form-urlencoded, the body is parsed and
      * attached to the request as a parsed body.
      *
-     * @return self The request object with the parsed body, or the original
-     *              request object if the body could not be parsed.
+     * @template T of self
+     * @param T $req
+     * @return T The request object with the parsed body, or the original
+     *           request object if the body could not be parsed.
      */
     private static function maybeParseUrlEncodedForNonPost(self $req, Stream $body): self
     {
@@ -1111,7 +1118,6 @@ class ServerRequest extends Message
         $mutate($clone);
         $clone->varMap = null;
         $clone->checkEnv = false;
-        $clone->buildVariableMap();
 
         return $clone;
     }

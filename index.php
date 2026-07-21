@@ -69,10 +69,8 @@ namespace {
     use Infocyph\Webrick\Router\Matching\FusedMatcher;
     use Infocyph\Webrick\Router\Matching\GeneratedMatcher;
     use Infocyph\Webrick\Router\Matching\ShardedMatcher;
-    use Infocyph\Webrick\Router\Route\Collection;
     use Infocyph\Webrick\Router\Url\SignedUrlConfig;
     use Psr\Log\NullLogger;
-    use Throwable;
 
     final readonly class DemoController
     {
@@ -277,10 +275,10 @@ namespace {
     $urlBaseUri = getenv('WEBRICK_URL_BASE_URI') ?: 'http://localhost';
     $errorHandler = new ErrorHandler(
         logger: $logger,
-        debug: true,
+        debug: $dev,
         capturePhpErrors: true,
         requestIdHeader: 'X-Request-Id',
-        responseRenderer: static function (Request $request, Throwable $e, int $status, array $headers): ?Response {
+        responseRenderer: static function (Request $request, \Throwable $e, int $status, array $headers): ?Response {
             if (!str_starts_with($request->getUri()->getPath(), '/api/')) {
                 return null;
             }
@@ -329,10 +327,13 @@ namespace {
      * 2) Registration closure (executed only when cache is NOT hot)
      * ----------------------------------------------------------------------- */
     //    $register = static function (Registrar $registrar): void {
-    //        require_once __DIR__ . '/routes.php';
+    //        require __DIR__ . '/routes.php';
     //    };
     $register = static function (Registrar $registrar): void {
-        require_once __DIR__ . '/routes.php';
+        // Registration may run more than once in a persistent worker when a
+        // matcher cache is missing or refreshed. The route file is executable
+        // registration input, so it must not be suppressed by require_once.
+        require __DIR__ . '/routes.php';
         $fixtureDirs = [
             __DIR__ . '/tests/Fixture',
             __DIR__ . '/tests/Fixtures',
@@ -367,16 +368,11 @@ namespace {
             'signedUrlConfig' => $signedUrlConfig,
             'urlBaseUri' => $urlBaseUri,
         ],
+        // URL signing is bound from the options above. On a hot matcher cache,
+        // RouterKernel keeps the alias table lazy until a URL helper is called.
         preGlobal: $preGlobal,
         postGlobal: $postGlobal,
         errorHandler: $errorHandler,
-        bindUrlServices: static function (Collection $routes) use (
-            $signUrlSecret,
-            $signedUrlConfig,
-            $urlBaseUri,
-        ): void {
-            Route::bindUrlServices($routes, $signUrlSecret, 900, $signedUrlConfig, $urlBaseUri);
-        },
         // leave true while validating your cache’s __aliases.php
         fallbackAliasesFromRegistrar: true,
     );

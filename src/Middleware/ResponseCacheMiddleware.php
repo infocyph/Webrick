@@ -32,6 +32,19 @@ use RuntimeException;
  */
 final readonly class ResponseCacheMiddleware
 {
+    private const array CACHEABLE_STATUS = [
+        StatusEnum::OK->value => true,
+        StatusEnum::NON_AUTHORITATIVE_INFO->value => true,
+        StatusEnum::NO_CONTENT->value => true,
+        StatusEnum::MOVED_PERMANENTLY->value => true,
+        StatusEnum::PERMANENT_REDIRECT->value => true,
+        StatusEnum::NOT_FOUND->value => true,
+        StatusEnum::METHOD_NOT_ALLOWED->value => true,
+        StatusEnum::GONE->value => true,
+        StatusEnum::URI_TOO_LONG->value => true,
+        StatusEnum::UNAVAILABLE_FOR_LEGAL_REASONS->value => true,
+    ];
+
     /** Cache store (PSR-16-style wrapper) */
     private CacheInterface $store;
 
@@ -71,10 +84,10 @@ final readonly class ResponseCacheMiddleware
         }
 
         // Build key: method + host + path (+query?) + vary surface (+ negotiated attrs).
-        $key = $this->makeKey($req);
+        $key = $this->makeKey($req, $method);
 
         // Fast path: serve from cache when available.
-        $hit = $this->store->get($key);
+        $hit = $this->readCache($key);
         if (\is_array($hit)) {
             $resp = $this->unpack($hit);
 
@@ -95,7 +108,7 @@ final readonly class ResponseCacheMiddleware
         if ($this->isCacheable($resp)) {
             $ttl = $this->computeTtl($resp);
             if ($ttl > 0) {
-                $this->store->set($key, $this->pack($resp), $ttl);
+                $this->writeCache($key, $this->pack($resp), $ttl);
             }
         }
 
@@ -229,19 +242,7 @@ final readonly class ResponseCacheMiddleware
         }
 
         // Status whitelist (RFC 9111-ish + practical micro-cache picks).
-        $okStatuses = [
-            StatusEnum::OK->value,
-            StatusEnum::NON_AUTHORITATIVE_INFO->value,
-            StatusEnum::NO_CONTENT->value,
-            StatusEnum::MOVED_PERMANENTLY->value,
-            StatusEnum::PERMANENT_REDIRECT->value,
-            StatusEnum::NOT_FOUND->value,
-            StatusEnum::METHOD_NOT_ALLOWED->value,
-            StatusEnum::GONE->value,
-            StatusEnum::URI_TOO_LONG->value,
-            StatusEnum::UNAVAILABLE_FOR_LEGAL_REASONS->value,
-        ];
-        if (!in_array($resp->getStatusCode(), $okStatuses, true)) {
+        if (!isset(self::CACHEABLE_STATUS[$resp->getStatusCode()])) {
             return false;
         }
 
@@ -274,7 +275,7 @@ final readonly class ResponseCacheMiddleware
 
     /* ───────────────────────── keying ───────────────────────── */
 
-    private function makeKey(Request $req): string
+    private function makeKey(Request $req, string $method): string
     {
         $u = $req->getUri();
         $host = strtolower($u->getHost() ?: 'localhost');
@@ -302,7 +303,7 @@ final readonly class ResponseCacheMiddleware
 
         // Build a compact, delimiter-safe buffer (NUL separators).
         $nul = "\0";
-        $buf = HttpMethodEnum::normalize($req->getMethod()) . $nul
+        $buf = $method . $nul
             . $host . $nul
             . $path . $nul
             . $query . $nul
@@ -375,6 +376,17 @@ final readonly class ResponseCacheMiddleware
         return $out;
     }
 
+    private function readCache(string $key): mixed
+    {
+        try {
+            return $this->store->get($key);
+        } catch (\Throwable) {
+            // A response cache is an optimization. Backend races/outages must
+            // degrade to a miss instead of taking the application down.
+            return null;
+        }
+    }
+
     /**
      * Resolve request header/value pairs that participate in cache variance.
      *
@@ -435,5 +447,18 @@ final readonly class ResponseCacheMiddleware
             $this->stringFromMixed($data['pv'] ?? '1.1', '1.1'),
             $this->stringFromMixed($data['rp'] ?? '', ''),
         );
+    }
+
+    /**
+     * @param array<string,mixed> $payload
+     */
+    private function writeCache(string $key, array $payload, int $ttl): void
+    {
+        try {
+            $this->store->set($key, $payload, $ttl);
+        } catch (\Throwable) {
+            // The downstream response is already valid; failed persistence is
+            // therefore safely treated as an uncached response.
+        }
     }
 }

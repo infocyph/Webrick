@@ -13,6 +13,9 @@ use Infocyph\Webrick\Response\Response;
 
 final class WorkermanEmitter implements EmitterInterface
 {
+    /** @var array<class-string, \ReflectionMethod> */
+    private static array $endMethods = [];
+
     /**
      * Emit the response to the current IO target.
      * Supports two native Workerman HTTP Response object paths:
@@ -91,7 +94,8 @@ final class WorkermanEmitter implements EmitterInterface
         }
 
         $body = $this->shouldEmitEmptyBody($response, $request) ? '' : (string) $response->getBody();
-        new \ReflectionMethod($wmResp, 'end')->invoke($wmResp, $body);
+        $class = $wmResp::class;
+        (self::$endMethods[$class] ??= new \ReflectionMethod($wmResp, 'end'))->invoke($wmResp, $body);
 
         return true;
     }

@@ -28,7 +28,7 @@
         "php": ">=8.4",
         "infocyph/arraykit": "^4.6",
         "infocyph/cachelayer": "^1.6",
-        "infocyph/intermix": "^7.2.4",
+        "infocyph/intermix": "^7.2.5",
         "psr/log": "^3.0.2"
     },
     "require-dev": {

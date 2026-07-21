@@ -44,10 +44,11 @@ abstract class BaseEmitter implements EmitterInterface
         $isStreaming = $response->isStreaming();
         $body = $response->getBody();
         $size = $isStreaming ? null : $body->getSize();
+        $allowsBody = $this->shouldEmitBody($response, $request);
 
-        $this->sendHeadersCommon($response, $size, $isStreaming);
+        $this->sendHeadersCommon($response, $size, $isStreaming, $allowsBody);
 
-        if (!$this->shouldEmitBody($response, $request)) {
+        if (!$allowsBody) {
             $this->finish();
 
             return;
@@ -286,8 +287,12 @@ abstract class BaseEmitter implements EmitterInterface
      * @param int|null $size the known size of the response body, or null if unknown
      * @param bool $isStreaming whether the response body is a streaming resource
      */
-    protected function sendHeadersCommon(Response $response, ?int $size, bool $isStreaming): void
-    {
+    protected function sendHeadersCommon(
+        Response $response,
+        ?int $size,
+        bool $isStreaming,
+        ?bool $allowsBody = null,
+    ): void {
         if ($this->headersAlreadySent()) {
             return;
         }
@@ -303,7 +308,7 @@ abstract class BaseEmitter implements EmitterInterface
             $this->sendRawHeader($name, $value);
         }
 
-        $allowsBody = $this->allowsBodyForCurrentRequest($response);
+        $allowsBody ??= $this->allowsBodyForCurrentRequest($response);
 
         // Content-Length if known and allowed
         if (
