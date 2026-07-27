@@ -170,7 +170,8 @@ Controller behavior:
 
 The default `requestScopeEnabled: true` creates and leaves one InterMix scope
 around each `handle()` call. This is the safe default, including for RoadRunner,
-Swoole and Workerman.
+Swoole and Workerman. The active `Request` is seeded directly into that scope,
+so request injection does not rewrite container definitions on each call.
 
 Use `requestScopeEnabled: false` only when the embedding integration has an
 equivalent scope lifecycle and deliberately owns cleanup. Disabling Webrick's

@@ -374,4 +374,27 @@ describe('InterMix integration', function () {
             ->and($b2['scope_id'] ?? null)->not->toBeNull()
             ->and($b1['scope_id'] ?? null)->not->toBe($b2['scope_id'] ?? null);
     });
+
+    it('injects the active request without registering a global definition', function () {
+        $container = Container::instance('intermix');
+        $kernel = intermixKernelForTest(
+            static function (Registrar $r): void {
+                $r->get('/request-seed', static function (Request $request): Response {
+                    return Response::json(['path' => $request->getUri()->getPath()]);
+                });
+            },
+            options: [
+                'container' => $container,
+                'preGlobalTags' => [],
+                'postGlobalTags' => [],
+            ],
+        );
+
+        $response = $kernel->handle(mockRequest('GET', '/request-seed'));
+        $body = json_decode((string) $response->getBody(), true);
+
+        expect($response)->toHaveStatus(200)
+            ->and($body['path'] ?? null)->toBe('/request-seed')
+            ->and($container->getRepository()->hasFunctionReference(Request::class))->toBeFalse();
+    });
 });
