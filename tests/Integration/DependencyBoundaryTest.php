@@ -13,6 +13,11 @@ it('keeps CacheLayer optional in production requirements', function (): void {
         'php',
         'infocyph/arraykit',
         'infocyph/intermix',
+        'psr/cache',
         'psr/log',
-    ])->and($composer['suggest']['infocyph/cachelayer'] ?? null)->toBeString();
+    ])->and($composer['suggest']['infocyph/cachelayer'] ?? null)->toBeString()
+        ->and($composer['suggest'])->not->toHaveKeys([
+            'psr/http-factory',
+            'psr/http-server-middleware',
+        ]);
 });

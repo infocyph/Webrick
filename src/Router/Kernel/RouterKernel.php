@@ -7,6 +7,7 @@ namespace Infocyph\Webrick\Router\Kernel;
 use Closure;
 use Infocyph\InterMix\DI\Container;
 use Infocyph\InterMix\DI\Invoker;
+use Infocyph\InterMix\DI\Support\DirectFactory;
 use Infocyph\InterMix\DI\Support\LifetimeEnum;
 use Infocyph\InterMix\DI\Support\ServiceProviderInterface;
 use Infocyph\InterMix\Exceptions\ContainerException;
@@ -499,6 +500,30 @@ final class RouterKernel
     }
 
     /**
+     * @return Closure(Request, Closure(Request):Response):Response
+     */
+    private function lazyTaggedFactoryMiddleware(Container $container, string $id): Closure
+    {
+        return static function (Request $request, Closure $next) use ($container, $id): Response {
+            $middleware = $container->get($id);
+            if (!\is_callable($middleware)) {
+                throw new \InvalidArgumentException(
+                    \sprintf('Tagged middleware [%s] must resolve to a callable.', $id),
+                );
+            }
+
+            $response = $middleware($request, $next);
+            if (!$response instanceof Response) {
+                throw new \InvalidArgumentException(
+                    \sprintf('Tagged middleware [%s] must return Response.', $id),
+                );
+            }
+
+            return $response;
+        };
+    }
+
+    /**
      * @return array<string, array{0:string,1:?string}>
      */
     private function matcherAliasIndex(): array
@@ -561,9 +586,14 @@ final class RouterKernel
 
             try {
                 foreach ($repository->getIdsByTag($tag) as $id) {
-                    if (\array_key_exists($id, $definitions)) {
-                        $tagged[] = $definitions[$id];
+                    if (!\array_key_exists($id, $definitions)) {
+                        continue;
                     }
+
+                    $definition = $definitions[$id];
+                    $tagged[] = $definition instanceof DirectFactory
+                        ? $this->lazyTaggedFactoryMiddleware($container, $id)
+                        : $definition;
                 }
             } catch (\Throwable $e) {
                 $this->log->warning('[router] unable to resolve tagged middleware', [
