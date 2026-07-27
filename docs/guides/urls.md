@@ -69,7 +69,7 @@ $kernel = RouterKernel::bootWithRegistrar(
 );
 ```
 
-`signKey`, `signedDefaultTtl`, `signedUrlConfig`, and `urlBaseUri` remain part
+`signKey`, `signedDefaultTtl`, `signedUrlConfig` and `urlBaseUri` remain part
 of kernel configuration. When booting from cache, Webrick defers alias loading
 and `UrlGenerator` construction until the first URL helper call. Provide
 `bindUrlServices` only to replace the default binding behavior.
@@ -191,6 +191,6 @@ Use `leeway` when you need a small clock-skew buffer.
 ## 7. Recommendations
 
 - Use permanent signed URLs only for low-risk links.
-- Use `temporaryUrlFor(...)` or `temporaryUrlUntil(...)` for downloads, callbacks, and sensitive actions.
+- Use `temporaryUrlFor(...)` or `temporaryUrlUntil(...)` for downloads, callbacks and sensitive actions.
 - Prefer multi-key verification during signing-key rotations.
 - If your application appends analytics params after generation, add them to `ignoredQueryParams` on the verifier profile.

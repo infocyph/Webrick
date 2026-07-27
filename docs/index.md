@@ -6,14 +6,14 @@ kernel behind a persistent PHP worker.
 
 ## What you get
 
-- Routing: named routes, groups, domains, resources, and attribute discovery
+- Routing: named routes, groups, domains, resources and attribute discovery
 - Signed URLs: relative or absolute payload signing, TTL or explicit expiry, ignored query params, key rotation
 - Error boundary: framework failures throw typed HTTP exceptions and the kernel renders the final response
 - Middleware pipeline: pre-global and post-global stacks plus string aliases or direct middleware instances
-- Responses: JSON, plaintext, redirects, streaming, ranged file/download helpers, and views
+- Responses: JSON, plaintext, redirects, streaming, ranged file/download helpers and views
 - Route cache: sharded, fused, or generated deploy-time PHP artifacts
 - Runtime boundaries: explicit framework adapters and emitters for synchronous or persistent servers
-- DI lifecycle: InterMix services, tagged middleware, and one request scope per `handle()` by default
+- DI lifecycle: InterMix services, tagged middleware and one request scope per `handle()` by default
 
 ## Install
 
@@ -69,7 +69,7 @@ $href = Route::temporaryUrlFor('file.download', ['file' => 'report.pdf'], ttl: 9
 
 The next major release does not include a legacy compatibility layer. Matcher
 factories are zero-argument, route-cache artifacts must be rebuilt, cached
-class routes use scalar payloads, middleware families can resolve lazily, and
+class routes use scalar payloads, middleware families can resolve lazily and
 cached URL services initialize on first use.
 
 ## New guide

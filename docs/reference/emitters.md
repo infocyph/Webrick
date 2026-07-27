@@ -82,13 +82,13 @@ The callable signature is:
 function (int $status, array $headers, string|iterable $body): void
 ```
 
-Webrick sends an empty body for `HEAD`, `204`, and `304` responses.
+Webrick sends an empty body for `HEAD`, `204` and `304` responses.
 
 ## Workerman
 
 Attach either:
 
-- `workerman.response`: an object supporting `withStatus()`, `withHeader()`, and
+- `workerman.response`: an object supporting `withStatus()`, `withHeader()` and
   `end()`, or
 - `workerman.connection`: an object supporting `send()`.
 
@@ -112,7 +112,7 @@ return it:
 return $responseAdapter->fromWebrick($kernel->handle($webrickRequest));
 ```
 
-This prevents duplicate headers, duplicate bodies, and premature FastCGI or
+This prevents duplicate headers, duplicate bodies and premature FastCGI or
 worker completion.
 
 ## Operational rules
@@ -122,5 +122,5 @@ worker completion.
   attributes.
 - Do not share a native response object between requests.
 - Let only one layer perform compression and final emission.
-- Test streaming and `HEAD`, `204`, `304`, file, and error responses in the
+- Test streaming and `HEAD`, `204`, `304`, file and error responses in the
   actual target runtime.

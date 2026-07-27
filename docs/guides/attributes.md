@@ -283,7 +283,7 @@ Route::group(
     namePrefix: 'api.',
     middleware: ['throttle:120,60'],
     callback: function ($registrar) {
-        // All discovered routes inherit /api prefix, api.* name prefix, and throttle
+        // All discovered routes inherit /api prefix, api.* name prefix and throttle
         AttributeRouteLoader::registerFromDirs($registrar, [
             'App\\Api\\Routes\\' => __DIR__ . '/../src/Api/Routes',
         ]);

@@ -41,19 +41,19 @@ Route::get('/stream/logs', function () {
 
 ## Validators & compression (middleware cooperation)
 
-- **Cache Validators Middleware**: computes/propagates `ETag` / `Last-Modified`, answers 304 or 412 on preconditions, and drops stale `Range` headers so handlers return a full 200 when needed.
-- **Compression Middleware**: negotiates `zstd`, `br`, `gzip`, `deflate`, sets `Vary: Accept-Encoding`, and coordinates with ETags (weak/strong) to avoid validator mismatches.
+- **Cache Validators Middleware**: computes/propagates `ETag` / `Last-Modified`, answers 304 or 412 on preconditions and drops stale `Range` headers so handlers return a full 200 when needed.
+- **Compression Middleware**: negotiates `zstd`, `br`, `gzip`, `deflate`, sets `Vary: Accept-Encoding` and coordinates with ETags (weak/strong) to avoid validator mismatches.
 
 **Tip:** Let Webrick handle compression; avoid double-encoding at the reverse proxy.
 
 ## CORS & Security Policies
 
-Use the CORS/policy middleware to emit ACA* headers, HSTS, CSP, Accept-CH, and TAO as configured. Attach per-route via attribute or group middleware if you need different policies.
+Use the CORS/policy middleware to emit ACA* headers, HSTS, CSP, Accept-CH and TAO as configured. Attach per-route via attribute or group middleware if you need different policies.
 
 ## PSR-7-style factories and framework adapters
 
 `HttpFactory` creates Webrick message objects with familiar factory method
-names. It does not implement PSR-17, and the returned response does not
+names. It does not implement PSR-17 and the returned response does not
 implement the PSR-7 response interface:
 
 ```php
@@ -66,6 +66,6 @@ $res = $res->withBody($stream);
 ```
 
 When another framework owns the response, copy the Webrick status, headers,
-protocol, and body into that framework's response through an explicit adapter.
+protocol and body into that framework's response through an explicit adapter.
 Do not pass a Webrick response to a parameter type-hinted as
 `Psr\Http\Message\ResponseInterface`.

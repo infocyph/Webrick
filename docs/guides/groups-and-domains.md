@@ -1,6 +1,6 @@
 # Groups, Prefixes & Domains
 
-Bundle related routes with shared options (path prefix, name prefix, middleware), and optionally scope them to a specific hostname. Groups keep large apps tidy, avoid repetition, and make it easy to apply policies in one place.
+Bundle related routes with shared options (path prefix, name prefix, middleware) and optionally scope them to a specific hostname. Groups keep large apps tidy, avoid repetition and make it easy to apply policies in one place.
 
 ---
 
@@ -167,7 +167,7 @@ curl -i -H "Host: api.localhost" http://127.0.0.1:8000/v1/ping
 
 ## Checklist
 
-* [ ] Use groups to avoid repeating `prefix`, `namePrefix`, and shared `middleware`
+* [ ] Use groups to avoid repeating `prefix`, `namePrefix` and shared `middleware`
 * [ ] Keep nested depth reasonable; structure by module/version
 * [ ] Domain-scope APIs or admin portals when hosts differ
 * [ ] Order static before dynamic paths within the same prefix

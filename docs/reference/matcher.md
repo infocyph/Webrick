@@ -88,14 +88,14 @@ For all modes, production-friendly route definitions use scalar cache metadata:
 Route::get('/users/{id:int}', [UserController::class, 'show'], 'users.show');
 ```
 
-Class strings, class-method handlers, and string middleware are exported as
-ordinary PHP arrays. The selected route is validated and materialized once, and
+Class strings, class-method handlers and string middleware are exported as
+ordinary PHP arrays. The selected route is validated and materialized once and
 persistent workers memoize it. This avoids serializing and deserializing every
 route during request boot.
 
-Closure handlers, object-backed handlers, and object middleware remain
+Closure handlers, object-backed handlers and object middleware remain
 supported through the serializer fallback. Prefer class-based route definitions
-when cache size, boot time, and predictable deployment artifacts matter.
+when cache size, boot time and predictable deployment artifacts matter.
 
 ## Standalone matcher use
 

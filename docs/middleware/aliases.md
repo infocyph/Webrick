@@ -55,7 +55,7 @@ to a constructor.
 ## Register a lazy alias family
 
 An integration package or host framework may own a family such as `auth`,
-`auth:admin`, and `auth:verified`. Register one resolver instead of eagerly
+`auth:admin` and `auth:verified`. Register one resolver instead of eagerly
 registering or loading every middleware:
 
 ```php

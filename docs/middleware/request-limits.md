@@ -1,6 +1,6 @@
 # Request Limits
 
-Fail fast on requests that are too large or too slow. This middleware guards your app (and upstream services) by enforcing **body size caps**, **upload timeouts**, and optional **header limits** before the handler runs.
+Fail fast on requests that are too large or too slow. This middleware guards your app (and upstream services) by enforcing **body size caps**, **upload timeouts** and optional **header limits** before the handler runs.
 
 ---
 

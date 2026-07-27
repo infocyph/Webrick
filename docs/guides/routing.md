@@ -1,6 +1,6 @@
 # Routing
 
-Webrick’s router is ergonomic and explicit. Define routes with closures or controller methods, add constraints, name them, bundle them into groups, and even scope by domain. This guide covers the essentials and useful patterns.
+Webrick’s router is ergonomic and explicit. Define routes with closures or controller methods, add constraints, name them, bundle them into groups and even scope by domain. This guide covers the essentials and useful patterns.
 
 ---
 
@@ -275,7 +275,7 @@ curl -i http://127.0.0.1:8000/users/42
 curl -i -X POST http://127.0.0.1:8000/echo -d 'x=1&y=2'
 ```
 
-Consider adding a small PHPUnit test that boots your router and asserts status codes, payloads, and headers for critical endpoints.
+Consider adding a small PHPUnit test that boots your router and asserts status codes, payloads and headers for critical endpoints.
 
 ---
 

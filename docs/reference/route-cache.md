@@ -8,7 +8,7 @@ reduce request-time work.
 
 | Mode | `cache` / `routeCache` value | Artifact |
 | --- | --- | --- |
-| `sharded` | Directory, for example `.route-cache` | Root, aliases, and route shard PHP files |
+| `sharded` | Directory, for example `.route-cache` | Root, aliases and route shard PHP files |
 | `fused` | File, for example `.route-cache/fused.php` | One PHP routing data file |
 | `generated` | File, for example `.route-cache/generated.php` | One PHP file with generated matcher code |
 
@@ -62,7 +62,7 @@ php ./webrick route:cache --matcher=fused --cache=.route-cache/fused.php --route
 php ./webrick route:cache --matcher=generated --cache=.route-cache/generated.php --routes=routes.php
 ```
 
-The installed Composer binary is also available at `vendor/bin/webrick`, and a
+The installed Composer binary is also available at `vendor/bin/webrick` and a
 package checkout can use:
 
 ```bash
@@ -115,7 +115,7 @@ fallback unnecessary.
 
 - compiled route match data;
 - handler and middleware descriptors;
-- route names, paths, domains, constraints, and CORS metadata;
+- route names, paths, domains, constraints and CORS metadata;
 - name-to-path and name-to-domain alias metadata;
 - generated matching code in generated mode.
 

@@ -1,6 +1,6 @@
 # Quick Start
 
-Build a small app with the current Webrick runtime flow: boot the kernel, register routes through the `Route` facade, add middleware aliases, and generate signed URLs.
+Build a small app with the current Webrick runtime flow: boot the kernel, register routes through the `Route` facade, add middleware aliases and generate signed URLs.
 
 ## 1. Front controller
 

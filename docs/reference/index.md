@@ -1,11 +1,11 @@
 # Reference
 
-Exact APIs, options, and behaviors. Use this section when you know *what* you want but need the precise knobs.
+Exact APIs, options and behaviors. Use this section when you know *what* you want but need the precise knobs.
 
 ## Topics
 - **Matcher** — Sharded vs Fused vs Generated, boot wiring and tradeoffs.
 - **Route Cache** — Warm/clear flow, artifact shipping.
-- **Emitters** — PHP-FPM, CLI, Swoole, RoadRunner, Workerman, and host-owned emission.
+- **Emitters** — PHP-FPM, CLI, Swoole, RoadRunner, Workerman and host-owned emission.
 - **Enums** — `HttpMethodEnum`, `MediaTypeEnum`, `StatusEnum` helpers.
 - **Request/Response** — Message helpers and explicit framework adapter boundaries.
 

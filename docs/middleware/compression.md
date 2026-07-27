@@ -4,7 +4,7 @@
 
 ## Recommended placement
 
-Register it in `postGlobal` so your handler and earlier middleware finish setting status, headers, validators, and content type first.
+Register it in `postGlobal` so your handler and earlier middleware finish setting status, headers, validators and content type first.
 
 ```php
 use Infocyph\Webrick\Router\Definition\Registrar;

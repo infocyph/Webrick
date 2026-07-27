@@ -53,11 +53,11 @@ $kernel = RouterKernel::bootWithRegistrar(
 
 | Argument | Type / values | Default | Purpose |
 | --- | --- | --- | --- |
-| `log` | `Psr\Log\LoggerInterface` | required | Routing, cache, and boundary diagnostics |
+| `log` | `Psr\Log\LoggerInterface` | required | Routing, cache and boundary diagnostics |
 | `matcher` | `MatcherInterface` | required | Sharded, fused, generated, or a custom matcher |
 | `register` | `Closure(Registrar): void` | required | Cold-path route definitions |
 | `routeCache` | directory, file, or `null` | `null` | Enables cache reading at the matcher-specific location |
-| `registrarOptions` | associative array | `[]` | Registrar, signed URL, and base URI configuration |
+| `registrarOptions` | associative array | `[]` | Registrar, signed URL and base URI configuration |
 | `preGlobal` | middleware descriptor list | `[]` | Middleware before route middleware |
 | `postGlobal` | middleware descriptor list | `[]` | Middleware after route middleware |
 | `invokerOnMiddleware` | `true` or `false` | `false` | Use InterMix invocation for middleware calls |

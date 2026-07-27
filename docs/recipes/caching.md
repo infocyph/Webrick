@@ -6,7 +6,7 @@ Implement smart caching for optimal performance.
 
 ## Problem
 
-You need to cache expensive operations, API responses, and database queries efficiently.
+You need to cache expensive operations, API responses and database queries efficiently.
 
 ---
 

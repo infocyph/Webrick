@@ -1,7 +1,7 @@
 # Webrick
 
 A framework-neutral HTTP routing kernel for PHP with deploy-time route compilation,
-lazy middleware resolution, signed URLs, response helpers, and emitters for
+lazy middleware resolution, signed URLs, response helpers and emitters for
 traditional and persistent runtimes.
 
 [![Security & Standards](https://github.com/infocyph/Webrick/actions/workflows/security-standards.yml/badge.svg)](https://github.com/infocyph/Webrick/actions/workflows/security-standards.yml)
@@ -16,7 +16,7 @@ traditional and persistent runtimes.
 
 - Fast routing: named routes, groups, domains, resources, attribute discovery
 - Framework-neutral: run Webrick standalone or mount it behind another framework's request/response adapter
-- Deploy-time compilation: sharded, fused, and generated PHP route-cache artifacts
+- Deploy-time compilation: sharded, fused and generated PHP route-cache artifacts
 - Lean cached dispatch: class handlers and string middleware stay scalar until the matched route is materialized
 - Lazy optional services: middleware alias families and URL generation are resolved only when used
 - DI-aware dispatch: constructor and method injection through InterMix, with request scopes and service providers
@@ -25,8 +25,8 @@ traditional and persistent runtimes.
 - Central error boundary: framework middleware throws typed HTTP exceptions and the kernel renders them just before emission
 - User controllers and user middleware can still return `Response` directly; only framework-owned rejection paths are exception-driven
 - Response helpers: JSON, plaintext, redirects, streaming, ranged file/download responses, views
-- Middleware pipeline: negotiation, compression, throttling, validators, telemetry, cookie encryption, and more
-- Runtime emitters: PHP-FPM, FrankenPHP, LiteSpeed, Nginx Unit, CLI, Swoole, RoadRunner, and Workerman
+- Middleware pipeline: negotiation, compression, throttling, validators, telemetry, cookie encryption and more
+- Runtime emitters: PHP-FPM, FrankenPHP, LiteSpeed, Nginx Unit, CLI, Swoole, RoadRunner and Workerman
 
 ## Requirements
 
@@ -51,7 +51,7 @@ composer require infocyph/cachelayer
 supplies its own PSR-6 cache pool.
 
 Webrick is a library, not an application skeleton. Its directory layout,
-configuration source, container composition, and deployment entry point remain
+configuration source, container composition and deployment entry point remain
 under the host application's control.
 
 ## Minimal Boot Example
@@ -113,8 +113,7 @@ but they do not implement the PSR-7 interfaces. A host framework must therefore
 provide the explicit adapters shown above. Do not emit the response from
 Webrick when the host framework owns emission.
 
-See [Framework Integration](docs/getting-started/framework-integration.md) for
-container, middleware, request-scope, and persistent-worker guidance.
+See documentation for container, middleware, request-scope and persistent-worker guidance.
 
 ## Production-Oriented Boot Example
 
@@ -221,7 +220,7 @@ $absolutePayload = Route::signedUrlFor(
 );
 ```
 
-Framework-owned failures such as invalid signed URLs, negotiation failures, throttling, request limits, bad Host headers, and maintenance mode now throw typed HTTP exceptions internally. `RouterKernel` catches them at the top-level error boundary and renders the final HTTP response there. Your controllers and user middleware can still return `Response` objects with explicit status codes directly.
+Framework-owned failures such as invalid signed URLs, negotiation failures, throttling, request limits, bad Host headers and maintenance mode now throw typed HTTP exceptions internally. `RouterKernel` catches them at the top-level error boundary and renders the final HTTP response there. Your controllers and user middleware can still return `Response` objects with explicit status codes directly.
 
 The demo app also includes `/api/error-demo`, which throws a framework HTTP exception and is rendered as JSON through a custom error boundary override.
 

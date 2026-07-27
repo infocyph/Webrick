@@ -8,7 +8,7 @@ slower when that produces a smaller and more predictable request path.
 
 | Mode | Cache path | Artifact shape |
 | --- | --- | --- |
-| `sharded` | Directory | Root, alias, and route shard PHP files |
+| `sharded` | Directory | Root, alias and route shard PHP files |
 | `fused` | File | One PHP routing data file |
 | `generated` | File | One PHP file containing generated matching code |
 
@@ -107,7 +107,7 @@ Keep these inputs equivalent:
 - attribute directories and classes;
 - handler and middleware descriptors;
 - automatic slash behavior;
-- signed URL key, default TTL, configuration, and base URI;
+- signed URL key, default TTL, configuration and base URI;
 - alias fallback behavior.
 
 Class handlers and string middleware generate the leanest artifacts. Closure or
@@ -167,7 +167,7 @@ Verify at least:
 - the artifact exists at the configured path;
 - runtime PHP and required extensions match the build environment;
 - the web or worker identity can read every artifact;
-- a representative static route, dynamic route, method rejection, and named URL
+- a representative static route, dynamic route, method rejection and named URL
   work from cache;
 - persistent workers restart after publication.
 

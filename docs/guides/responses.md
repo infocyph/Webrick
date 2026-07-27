@@ -1,6 +1,6 @@
 # Response Helpers
 
-Webrick ships ergonomic helpers to return JSON, text, XML/HTML, file downloads, redirects, and streamed output. You can also set headers/cookies, status codes, and rely on content negotiation.
+Webrick ships ergonomic helpers to return JSON, text, XML/HTML, file downloads, redirects and streamed output. You can also set headers/cookies, status codes and rely on content negotiation.
 
 ---
 
@@ -161,7 +161,7 @@ Route::get('/auto-demo', function ($r) {
 
 ## ETags & cache validators (behavioral)
 
-When **CacheValidatorsMiddleware** is active, responses can carry `ETag` / `Last-Modified`, and the middleware will short-circuit `304 Not Modified` / `412 Precondition Failed` when client validators match. Combine with compression (post-global) for optimal wire bytes.
+When **CacheValidatorsMiddleware** is active, responses can carry `ETag` / `Last-Modified` and the middleware will short-circuit `304 Not Modified` / `412 Precondition Failed` when client validators match. Combine with compression (post-global) for optimal wire bytes.
 
 > You generally don’t set ETag manually; the middleware coordinates it (and with compression).
 

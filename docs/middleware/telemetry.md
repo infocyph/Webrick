@@ -1,6 +1,6 @@
 # Telemetry Middleware
 
-Comprehensive observability middleware with W3C Trace Context support and optional OpenTelemetry integration for distributed tracing, request correlation, and performance monitoring.
+Comprehensive observability middleware with W3C Trace Context support and optional OpenTelemetry integration for distributed tracing, request correlation and performance monitoring.
 
 ## Overview
 

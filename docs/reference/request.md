@@ -76,7 +76,7 @@ $request = new Request(
 ```
 
 This compact example buffers the incoming body. A production adapter may copy
-or bridge it differently for large or streaming requests, and should also
+or bridge it differently for large or streaming requests and should also
 normalize uploaded files.
 
 ---
@@ -495,7 +495,7 @@ $locale = $request->getAttribute('locale');
 ## PSR-7-Style Surface
 
 Webrick follows familiar immutable message method names, but its concrete
-request, URI, stream, and uploaded-file classes do not implement the PSR-7
+request, URI, stream and uploaded-file classes do not implement the PSR-7
 interfaces. Use explicit adapters when an interface-typed framework owns the
 HTTP boundary.
 

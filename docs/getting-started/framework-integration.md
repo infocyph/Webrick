@@ -3,7 +3,7 @@
 Webrick can run as the application's HTTP kernel or as a routed sub-application
 inside Laravel, Symfony, Slim, a custom framework, or a persistent worker. The
 integration boundary is explicit so the host keeps control of its own request,
-response, middleware, and container lifecycle.
+response, middleware and container lifecycle.
 
 ## Integration contract
 
@@ -36,7 +36,7 @@ final class WebrickBridge
 `HostRequestAdapter` and `HostResponseAdapter` represent application-owned
 adapters in this example; they are not Webrick classes. The adapter should
 preserve the method, URI, headers, protocol version, body, cookies, query
-parameters, uploaded files, server parameters, and any runtime response handle
+parameters, uploaded files, server parameters and any runtime response handle
 needed by the selected server.
 
 Webrick's request and response classes expose PSR-7-style immutable methods, but
@@ -46,7 +46,7 @@ compatibility. Conversion must be explicit.
 ## Boot once
 
 Kernel construction warms routes, imports service providers, composes global
-middleware descriptors, and prepares the error boundary. It belongs in
+middleware descriptors and prepares the error boundary. It belongs in
 application bootstrap, a service-provider singleton, or worker startup—not in
 the per-request adapter:
 
@@ -149,7 +149,7 @@ Controller behavior:
 
 The default `requestScopeEnabled: true` creates and leaves one InterMix scope
 around each `handle()` call. This is the safe default, including for RoadRunner,
-Swoole, and Workerman.
+Swoole and Workerman.
 
 Use `requestScopeEnabled: false` only when the embedding integration has an
 equivalent scope lifecycle and deliberately owns cleanup. Disabling Webrick's
