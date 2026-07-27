@@ -1,6 +1,8 @@
-# Webrick Router – Documentation Index
+# Webrick Documentation
 
-These docs track the current Webrick API and runtime shape.
+Webrick is a framework-neutral HTTP routing kernel. Use it as a standalone
+front controller, a routed sub-application inside another framework, or a
+kernel behind a persistent PHP worker.
 
 ## What you get
 
@@ -9,8 +11,9 @@ These docs track the current Webrick API and runtime shape.
 - Error boundary: framework failures throw typed HTTP exceptions and the kernel renders the final response
 - Middleware pipeline: pre-global and post-global stacks plus string aliases or direct middleware instances
 - Responses: JSON, plaintext, redirects, streaming, ranged file/download helpers, and views
-- Route cache: sharded, fused, or generated matcher modes
-- PSR interop: request/response factories and stream abstractions
+- Route cache: sharded, fused, or generated deploy-time PHP artifacts
+- Runtime boundaries: explicit framework adapters and emitters for synchronous or persistent servers
+- DI lifecycle: InterMix services, tagged middleware, and one request scope per `handle()` by default
 
 ## Install
 
@@ -55,15 +58,27 @@ $href = Route::temporaryUrlFor('file.download', ['file' => 'report.pdf'], ttl: 9
 ## Production notes
 
 - Prebuild route cache in CI and ship `.route-cache` with your release artifact.
+- Instantiate the kernel once per application or worker lifecycle.
 - Register middleware aliases explicitly before you use string middleware like `throttle:60,60` or `verifySignedUrl`.
+- Register optional middleware families with a lazy resolver so unused subsystems remain unloaded.
 - Set a stable signing key and, when generating absolute URLs, configure `urlBaseUri`.
 - Preserve query strings at the proxy layer; signed URLs depend on them.
+- When another framework owns emission, adapt and return the response instead of using a Webrick emitter.
+
+## Major release
+
+The next major release does not include a legacy compatibility layer. Matcher
+factories are zero-argument, route-cache artifacts must be rebuilt, cached
+class routes use scalar payloads, middleware families can resolve lazily, and
+cached URL services initialize on first use.
 
 ## New guide
 
 If you want JSON API errors, HTML browser errors, or any other boundary-specific rendering strategy, see:
 
 - [Error Rendering](./guides/error-rendering.md)
+- [Framework Integration](./getting-started/framework-integration.md)
+- [Response Emitters](./reference/emitters.md)
 
 ```{toctree}
 :maxdepth: 2

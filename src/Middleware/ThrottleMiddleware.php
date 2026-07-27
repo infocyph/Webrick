@@ -144,6 +144,12 @@ final readonly class ThrottleMiddleware
 
     private function buildDefaultPool(): CacheItemPoolInterface
     {
+        if (!class_exists(Cache::class)) {
+            throw new \LogicException(
+                'ThrottleMiddleware requires infocyph/cachelayer when no cache pool or atomic counter store is provided.',
+            );
+        }
+
         // Windows reports directory permissions differently than POSIX; file-mode checks can false-positive.
         if (\PHP_OS_FAMILY === 'Windows' && !\extension_loaded('apcu')) {
             return Cache::memory('webrick.thm');

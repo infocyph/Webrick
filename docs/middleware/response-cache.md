@@ -2,6 +2,14 @@
 
 Serve cached responses for safe requests (typically **GET/HEAD**) without running handlers. This middleware provides a fast-path lookup and a coherent invalidation story that plays well with **ETag/Last-Modified** and **Compression**.
 
+`ResponseCacheMiddleware` is an optional module boundary. Install CacheLayer
+before using this class:
+
+```bash
+composer require infocyph/cachelayer
+```
+
+Core routing does not load or require CacheLayer.
 
 ---
 
@@ -9,7 +17,7 @@ Serve cached responses for safe requests (typically **GET/HEAD**) without runnin
 
 ```php
 use Infocyph\Webrick\Middleware\ResponseCacheMiddleware;
-use Psr\SimpleCache\CacheInterface;
+use Infocyph\CacheLayer\Cache\Cache;
 
 $preGlobal[] = new ResponseCacheMiddleware(
     store: Cache::local('http'),               // PSR-16 simple cache
@@ -27,7 +35,7 @@ $preGlobal[] = new ResponseCacheMiddleware(
 
 | Parameter                    | Type               | Default                 | Description                                     |
 | ---------------------------- | ------------------ | ----------------------- | ----------------------------------------------- |
-| `store`                      | `CacheInterface`   | *required*              | PSR-16 cache implementation                     |
+| `store`                      | `?Infocyph\CacheLayer\Cache\CacheInterface` | `null` | CacheLayer store; defaults to `Cache::local('http')` |
 | `ttlSeconds`                 | `int`              | `10`                    | Default TTL for cached responses                |
 | `includeQuery`               | `bool`             | `true`                  | Include query string in cache key               |
 | `maxBodyBytes`               | `int`              | `1048576`               | Maximum response body size to cache (bytes)     |

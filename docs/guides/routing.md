@@ -177,7 +177,7 @@ Route::get('/download', fn() => Response::attachment(__FILE__, 'routes.php'));
 // Absolute URL
 Route::urlFor('profile.show', ['id'=>7], absolute: true);
 
-// Signed URLs (requires Route::bindUrlServices at boot)
+// Signed URLs (requires URL services through registrarOptions or manual binding)
 Route::signedUrlFor('profile.show', ['id'=>7], absolute: false);
 Route::temporaryUrlFor('secure.show', ['id'=>7], query:['dl'=>1], absolute:false, ttl:900);
 ```

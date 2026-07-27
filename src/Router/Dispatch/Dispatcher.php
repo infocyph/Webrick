@@ -99,12 +99,13 @@ final class Dispatcher
         array $vars,
     ): Response {
         $request = $this->attachRouteAttributes($route, $request, $vars);
-        $final = $this->buildFinalHandler($route);
-
         $routeId = $route->getIndex();
 
         // Build + memoize the full pipeline (globals + route + globals) per route.
-        $this->pipelines[$routeId] ??= $this->compilePipelineForRoute($route, $final);
+        $this->pipelines[$routeId] ??= $this->compilePipelineForRoute(
+            $route,
+            $this->buildFinalHandler($route),
+        );
 
         return $this->pipelines[$routeId]->handle($request);
     }
@@ -167,11 +168,13 @@ final class Dispatcher
      */
     private function buildFinalHandler(CompiledRoute $route): Closure
     {
-        return function (Request $req) use ($route): Response {
+        $handler = $route->getHandler();
+
+        return function (Request $req) use ($handler): Response {
             $routeVars = $this->normalizeCallArgs($req->getAttribute('route_params', []));
 
             $callArgs = $routeVars + ['request' => $req];
-            $result = $this->invokeRouteHandler($route->getHandler(), $callArgs);
+            $result = $this->invokeRouteHandler($handler, $callArgs);
 
             return $result instanceof Response ? $result : Response::json($this->normalizeJsonPayload($result));
         };
@@ -398,6 +401,10 @@ final class Dispatcher
     {
         $classMethod = $this->classMethodArrayHandler($handler);
         if ($classMethod !== null) {
+            if (\is_callable($classMethod)) {
+                return $this->invoker->invoke($classMethod, $callArgs);
+            }
+
             return $this->invoker->make($classMethod[0], method: $classMethod[1], methodArgs: $callArgs);
         }
 
@@ -434,10 +441,6 @@ final class Dispatcher
      */
     private function looksLikeAliasString(string $s): bool
     {
-        if (\class_exists($s)) {
-            return false;
-        } // it's a class-string, not an alias
-
         $name = \strtolower(\trim(\explode(':', $s, 2)[0]));
 
         return $name !== '' && MiddlewareAliases::has($name);
@@ -531,10 +534,10 @@ final class Dispatcher
         $set = [];
         foreach ($route->getMiddlewares() as $mw) {
             if (\is_string($mw)) {
-                if (\class_exists($mw)) {
-                    $set[$mw] = true;
-                } elseif ($this->looksLikeAliasString($mw) && ($cls = $this->aliasStringClass($mw))) {
+                if ($this->looksLikeAliasString($mw) && ($cls = $this->aliasStringClass($mw))) {
                     $set[$cls] = true;
+                } elseif (\class_exists($mw)) {
+                    $set[$mw] = true;
                 }
             } elseif (\is_object($mw)) {
                 $set[$mw::class] = true;

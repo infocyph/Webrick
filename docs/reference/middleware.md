@@ -393,6 +393,28 @@ MiddlewareAliases::register('throttle', fn(...$params) => new ThrottleMiddleware
 ));
 ```
 
+### Register a lazy alias family
+
+Use a resolver when a host framework or optional package owns a family of
+middleware names:
+
+```php
+MiddlewareAliases::registerResolver(
+    supports: static fn(string $alias): bool => $alias === 'auth',
+    resolve: static fn(string $alias, string ...$parameters) =>
+        $hostBridge->resolve($alias, $parameters),
+    name: 'host.auth',
+);
+```
+
+The direct alias map is checked first. Family resolvers are consulted only for
+an alias that is actually used while compiling a matched route's pipeline. A
+stable non-empty name makes a later registration replace the previous resolver,
+which prevents duplicate registrations in persistent workers.
+
+`MiddlewareAliases::reset()` clears direct aliases and family resolvers. It is
+intended for isolated tests or worker reconfiguration, not per-request use.
+
 ### Use Alias
 
 ```php
@@ -683,7 +705,7 @@ class MiddlewareStackTest extends TestCase
 **Key concepts**:
 1. **Callable with (Request, Closure) → Response**
 2. **Three registration points** (pre-global, post-global, per-route)
-3. **Immutable transformations** (PSR-7)
+3. **Immutable request transformations** (PSR-7-style methods)
 4. **Can short-circuit** (early return)
 5. **Order matters** (especially security middleware)
 

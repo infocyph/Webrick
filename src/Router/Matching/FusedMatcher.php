@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router\Matching;
 
-use Infocyph\InterMix\Serializer\ValueSerializer;
 use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
 use Infocyph\Webrick\Exceptions\RouteNotFoundException;
@@ -31,7 +30,7 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
  *  - The matcher enforces that no routes are added after finalize() is called.
  *
  * @phpstan-type AliasIndex array<string, array{0:string,1:?string}>
- * @phpstan-type VerbRouteMap array<string, CompiledRoute|string>
+ * @phpstan-type VerbRouteMap array<string, CompiledRoute|array<mixed>|string>
  * @phpstan-type StaticBucket array<string, VerbRouteMap>
  * @phpstan-type HostBucket array{static: StaticBucket, trie: array<string,mixed>}
  * @phpstan-type HostMap array<string, HostBucket>
@@ -217,17 +216,6 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         $idx = $this->aliasIndex();
 
         return $idx[$name] ?? null;
-    }
-
-    /**
-     * Persist route payloads without constructing every CompiledRoute while the
-     * single-file cache boots. The shared matcher materializes only the route
-     * selected by the request and memoizes it for persistent workers.
-     */
-    #[\Override]
-    protected function exportRoute(CompiledRoute $r): string
-    {
-        return \var_export(ValueSerializer::serialize($r), true);
     }
 
     /**

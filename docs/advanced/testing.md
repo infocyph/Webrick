@@ -154,7 +154,7 @@ class SignedUrlTest extends TestCase
         // Boot kernel with test configuration
         $this->kernel = RouterKernel::bootWithRegistrar(
             log: new NullLogger(),
-            matcher: ShardedMatcher::make('/tmp/test-route-cache'),
+            matcher: ShardedMatcher::make(),
             register: function($r) {
                 $r->get('/secure/resource', fn() => Response::json(['secret' => 'data']), 'secure.resource')
                     ->withMiddleware(['verifySignedUrl']);

@@ -50,9 +50,11 @@ Route::get('/stream/logs', function () {
 
 Use the CORS/policy middleware to emit ACA* headers, HSTS, CSP, Accept-CH, and TAO as configured. Attach per-route via attribute or group middleware if you need different policies.
 
-## PSR-7 interop (optional)
+## PSR-7-style factories and framework adapters
 
-You can also build responses using the PSR-7 factory when interop is useful:
+`HttpFactory` creates Webrick message objects with familiar factory method
+names. It does not implement PSR-17, and the returned response does not
+implement the PSR-7 response interface:
 
 ```php
 use Infocyph\Webrick\Request\Psr7\HttpFactory;
@@ -62,3 +64,8 @@ $res = $factory->createResponse(200)->withHeader('X-App', 'Webrick');
 $stream = $factory->createStream('Hello');
 $res = $res->withBody($stream);
 ```
+
+When another framework owns the response, copy the Webrick status, headers,
+protocol, and body into that framework's response through an explicit adapter.
+Do not pass a Webrick response to a parameter type-hinted as
+`Psr\Http\Message\ResponseInterface`.

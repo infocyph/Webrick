@@ -123,7 +123,7 @@ $register = static function (Registrar $registrar): void {
 
 $kernel = RouterKernel::bootWithRegistrar(
     log: new NullLogger(),
-    matcher: ShardedMatcher::make(__DIR__ . '/../.route-cache'),
+    matcher: ShardedMatcher::make(),
     register: $register,
     routeCache: __DIR__ . '/../.route-cache',
 );
@@ -493,7 +493,7 @@ class AttributeRoutingTest extends TestCase
     protected function setUp(): void
     {
         $logger = new NullLogger();
-        $matcher = ShardedMatcher::make(__DIR__ . '/../.route-cache-test');
+        $matcher = ShardedMatcher::make();
 
         $this->kernel = RouterKernel::bootWithRegistrar(
             log: $logger,

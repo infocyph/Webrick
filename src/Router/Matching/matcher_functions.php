@@ -67,26 +67,27 @@ function generated_matcher_render_dynamic_entry_condition(array $segments, strin
  */
 function generated_matcher_render_verb_dispatch(array $verbs, string $indent): string
 {
+    $materialize = '\\' . __NAMESPACE__ . '\\matcher_materialize_cached_route';
     $firstIdx = (int) \reset($verbs);
     $code = $indent . "switch (\$verb) {\n";
     foreach ($verbs as $method => $idx) {
         $code .= $indent . '    case ' . \var_export($method, true) . ":\n";
-        $code .= $indent . '        return [\'hit\' => ($routes[' . $idx . '] ??= \\'
-            . ValueSerializer::class . '::unserialize($routePayloads[' . $idx
+        $code .= $indent . '        return [\'hit\' => ($routes[' . $idx
+            . '] ??= ' . $materialize . '($routePayloads[' . $idx
             . "])), 'params' => \$params, 'allowed' => []];\n";
     }
 
     if (!isset($verbs[HttpMethodEnum::HEAD->value]) && isset($verbs[HttpMethodEnum::GET->value])) {
         $getIdx = $verbs[HttpMethodEnum::GET->value];
         $code .= $indent . '    case ' . \var_export(HttpMethodEnum::HEAD->value, true) . ":\n";
-        $code .= $indent . '        return [\'hit\' => ($routes[' . $getIdx . '] ??= \\'
-            . ValueSerializer::class . '::unserialize($routePayloads[' . $getIdx
+        $code .= $indent . '        return [\'hit\' => ($routes[' . $getIdx
+            . '] ??= ' . $materialize . '($routePayloads[' . $getIdx
             . "])), 'params' => \$params, 'allowed' => []];\n";
     }
 
     $code .= $indent . '    case ' . \var_export(HttpMethodEnum::OPTIONS->value, true) . ":\n";
-    $code .= $indent . '        return [\'hit\' => ($routes[' . $firstIdx . '] ??= \\'
-        . ValueSerializer::class . '::unserialize($routePayloads[' . $firstIdx
+    $code .= $indent . '        return [\'hit\' => ($routes[' . $firstIdx
+        . '] ??= ' . $materialize . '($routePayloads[' . $firstIdx
         . "])), 'params' => \$params, 'allowed' => []];\n";
     $code .= $indent . "    default:\n";
     foreach ($verbs as $method => $_idx) {
@@ -98,6 +99,22 @@ function generated_matcher_render_verb_dispatch(array $verbs, string $indent): s
     $code .= $indent . "        break;\n";
 
     return $code . ($indent . "}\n");
+}
+
+function matcher_materialize_cached_route(mixed $payload): CompiledRoute
+{
+    if (\is_array($payload)) {
+        return CompiledRoute::fromCachePayload($payload);
+    }
+
+    if (\is_string($payload)) {
+        $route = ValueSerializer::unserialize($payload);
+        if ($route instanceof CompiledRoute) {
+            return $route;
+        }
+    }
+
+    throw new \RuntimeException('Invalid compiled-route cache payload.');
 }
 
 /**
@@ -175,7 +192,7 @@ function matcher_normalize_alias_pairs(mixed $raw): array
 }
 
 /**
- * @return array<string, CompiledRoute|string>
+ * @return array<string, CompiledRoute|array<mixed>|string>
  */
 function matcher_normalize_compiled_route_map(mixed $verbs): array
 {
@@ -185,7 +202,8 @@ function matcher_normalize_compiled_route_map(mixed $verbs): array
 
     return array_filter(
         $verbs,
-        fn($route, $verb) => \is_string($verb) && ($route instanceof CompiledRoute || \is_string($route)),
+        fn($route, $verb) => \is_string($verb)
+            && ($route instanceof CompiledRoute || \is_array($route) || \is_string($route)),
         ARRAY_FILTER_USE_BOTH,
     );
 }
@@ -281,7 +299,10 @@ function sharded_matcher_match(
 }
 
 /**
- * @return array{static: array<string, array<string, CompiledRoute|string>>, trie: array<string,mixed>}
+ * @return array{
+ *   static:array<string,array<string,CompiledRoute|array<mixed>|string>>,
+ *   trie:array<string,mixed>
+ * }
  */
 function sharded_matcher_normalize_group(mixed $raw): array
 {
@@ -410,7 +431,7 @@ function sharded_matcher_new_node(): array
 }
 
 /**
- * @return array<string, array<string, CompiledRoute|string>>
+ * @return array<string, array<string, CompiledRoute|array<mixed>|string>>
  */
 function sharded_matcher_normalize_group_static(mixed $rawStatic): array
 {
@@ -461,7 +482,7 @@ function sharded_matcher_normalize_group_trie(mixed $rawTrie): array
 }
 
 /**
- * @return array<string, CompiledRoute|string>
+ * @return array<string, CompiledRoute|array<mixed>|string>
  */
 function sharded_matcher_normalize_group_verb_map(mixed $verbs): array
 {

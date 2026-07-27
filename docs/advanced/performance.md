@@ -55,7 +55,7 @@ Ship `.route-cache/` with your artifact.
 ```php
 $kernel = RouterKernel::bootWithRegistrar(
     log: $logger,
-    matcher: ShardedMatcher::make(__DIR__ . '/.route-cache'),
+    matcher: ShardedMatcher::make(),
     register: $register,
     routeCache: __DIR__ . '/.route-cache'  // Pre-built
 );
@@ -67,7 +67,7 @@ $kernel = RouterKernel::bootWithRegistrar(
 
 ### ✅ **3. Use ShardedMatcher** (100+ Routes)
 ```php
-$matcher = ShardedMatcher::make(__DIR__ . '/.route-cache');
+$matcher = ShardedMatcher::make();
 ```
 
 **Benefits**:

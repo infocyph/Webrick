@@ -27,14 +27,15 @@
     "require": {
         "php": ">=8.4",
         "infocyph/arraykit": "^4.6",
-        "infocyph/cachelayer": "^1.6",
         "infocyph/intermix": "^7.2.5",
         "psr/log": "^3.0.2"
     },
     "require-dev": {
+        "infocyph/cachelayer": "^1.6",
         "infocyph/phpforge": "dev-main@dev"
     },
     "suggest": {
+        "infocyph/cachelayer": "Required by response-cache middleware and the default throttle cache backend.",
         "open-telemetry/exporter-otlp": "Export traces to OpenTelemetry collectors (Jaeger, Zipkin, etc.)",
         "open-telemetry/sdk": "Full OpenTelemetry tracing with automatic span export (auto-detected by TelemetryMiddleware)",
         "psr/http-factory": "PSR-17 HTTP factories for framework interoperability",

@@ -4,10 +4,11 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router\Matching;
 
-use Closure;
 use Infocyph\InterMix\Serializer\ValueSerializer;
 use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
+
+require_once __DIR__ . '/matcher_functions.php';
 
 /**
  * Shared matcher utilities and small toolkit used by concrete matchers.
@@ -190,7 +191,7 @@ abstract class AbstractMatcher
      * Equivalent to addAllowedFromMap but provided for semantic clarity when the
      * source is an array of route instances.
      *
-     * @param array<string,CompiledRoute|string> $routes Verb => route map
+     * @param array<string,CompiledRoute|array<mixed>|string> $routes Verb => route map
      * @param array<string,bool> $set Map being populated (by reference)
      */
     protected function addAllowedFromRoutes(array $routes, array &$set): void
@@ -301,36 +302,18 @@ abstract class AbstractMatcher
     }
 
     /**
-     * Produce PHP source to recreate a CompiledRoute instance.
+     * Produce a lazy cache payload for a CompiledRoute.
      *
-     * When the route's handler is a Closure the ValueSerializer is used to
-     * produce a safe serialised form; otherwise a direct constructor expression
-     * is emitted so consumers may instantiate or memoize the class-string.
-     *
-     * @param CompiledRoute $r Compiled route to export
-     * @return string PHP expression that reconstructs the route
+     * Scalar routes remain arrays until matched. Routes containing runtime
+     * objects or closures retain the serializer fallback.
      */
     protected function exportRoute(CompiledRoute $r): string
     {
-        if (!$this->handlerHasClosure($r->getHandler())) {
-            return 'new \\' . CompiledRoute::class . '('
-                . \var_export($r->getMethod(), true) . ', '
-                . \var_export($r->getPath(), true) . ', '
-                . \var_export($r->getHandler(), true) . ', '
-                . \var_export($r->getDomain(), true) . ', '
-                . \var_export($r->getMiddlewares(), true) . ', '
-                . \var_export($r->getName(), true) . ', '
-                . ($r->isDynamic() ? 'true' : 'false') . ', '
-                . \var_export($r->getRegex(), true) . ', '
-                . \var_export($r->getVariables(), true) . ', '
-                . \var_export($r->getIndex(), true) . ', '
-                . \var_export($r->getCorsPolicy(), true) . ', '
-                . \var_export($r->getSegments(), true)
-                . ')';
+        if (!$this->routeNeedsSerialization($r)) {
+            return \var_export($r->toCachePayload(), true);
         }
 
-        return '\\' . ValueSerializer::class
-            . '::unserialize(' . \var_export(ValueSerializer::serialize($r), true) . ')';
+        return \var_export(ValueSerializer::serialize($r), true);
     }
 
     /**
@@ -373,22 +356,6 @@ abstract class AbstractMatcher
         }
 
         return $mtime . ':' . $size;
-    }
-
-    /**
-     * Detect whether the given handler contains a Closure element.
-     *
-     * Returns true when:
-     *  - handler is a Closure
-     *  - handler is an array and either element 0 or 1 is a Closure instance
-     *
-     * @param callable|array{0:mixed,1:mixed}|string $h Candidate handler
-     * @return bool True when handler contains a Closure
-     */
-    protected function handlerHasClosure(callable|array|string $h): bool
-    {
-        return $h instanceof Closure
-            || (\is_array($h) && (($h[0] ?? null) instanceof Closure || ($h[1] ?? null) instanceof Closure));
     }
 
     /**
@@ -444,7 +411,7 @@ abstract class AbstractMatcher
      *  - Exact verb match returns that route.
      *  - HEAD falls back to GET when a GET route exists.
      *
-     * @param array<string,CompiledRoute|string> $buckets Map of verb => compiled or serialized route
+     * @param array<string,CompiledRoute|array<mixed>|string> $buckets Map of verb => compiled or serialized route
      * @param string $verb Uppercased HTTP verb to resolve (e.g. 'GET')
      * @return CompiledRoute|null Matching compiled route or null when none applicable
      */
@@ -582,7 +549,7 @@ abstract class AbstractMatcher
     }
 
     /**
-     * @return array<string,CompiledRoute|string>
+     * @return array<string,CompiledRoute|array<mixed>|string>
      */
     private function compiledRouteMap(mixed $routes): array
     {
@@ -593,6 +560,15 @@ abstract class AbstractMatcher
     {
         if ($route instanceof CompiledRoute) {
             return $route;
+        }
+        if (\is_array($route)) {
+            $index = $route[10] ?? null;
+            if (!\is_int($index)) {
+                return null;
+            }
+            $key = 'payload:' . $index;
+
+            return $this->materializedRoutes[$key] ??= CompiledRoute::fromCachePayload($route);
         }
         if (!\is_string($route)) {
             return null;
@@ -656,6 +632,19 @@ abstract class AbstractMatcher
         }
 
         return false;
+    }
+
+    private function routeNeedsSerialization(CompiledRoute $route): bool
+    {
+        $handler = $route->getHandler();
+        if (\is_object($handler)) {
+            return true;
+        }
+        if (\is_array($handler) && !\is_string($handler[0])) {
+            return true;
+        }
+
+        return array_any($route->getMiddlewares(), static fn(mixed $middleware): bool => !\is_string($middleware));
     }
 
     /**

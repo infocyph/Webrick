@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router\Matching;
 
-use Infocyph\InterMix\Serializer\ValueSerializer;
 use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
 use Infocyph\Webrick\Exceptions\RouteNotFoundException;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
@@ -30,7 +29,7 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
  *  - The matcher enforces no further route additions after finalize() is called.
  *
  * @phpstan-type AliasIndex array<string, array{0:string,1:?string}>
- * @phpstan-type VerbRouteMap array<string, CompiledRoute|string>
+ * @phpstan-type VerbRouteMap array<string, CompiledRoute|array<mixed>|string>
  * @phpstan-type StaticBucket array<string, VerbRouteMap>
  * @phpstan-type Group array{static: StaticBucket, trie: array<string,mixed>}
  */
@@ -383,20 +382,6 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         $idx = $this->aliasIndex();
 
         return $idx[$name] ?? null;
-    }
-
-    /**
-     * Keep closure-backed routes serialized in shard files. Only the matched
-     * route is materialized; unrelated routes in the same shard stay strings.
-     */
-    #[\Override]
-    protected function exportRoute(CompiledRoute $r): string
-    {
-        if ($this->handlerHasClosure($r->getHandler())) {
-            return \var_export(ValueSerializer::serialize($r), true);
-        }
-
-        return parent::exportRoute($r);
     }
 
     /**

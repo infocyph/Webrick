@@ -62,9 +62,7 @@ final class RequestHeaders
      */
     public static function extractFromServer(array $srv): array
     {
-        $out = \function_exists('getallheaders')
-            ? self::viaGetAllHeaders()
-            : self::viaServerFallback($srv);
+        $out = self::viaServerFallback($srv);
 
         self::backfillContentHeaders($srv, $out);
         self::backfillAuthorization($srv, $out);
@@ -210,14 +208,27 @@ final class RequestHeaders
         if (isset($out['Authorization'])) {
             return;
         }
-        if (isset($srv['HTTP_AUTHORIZATION'])) {
-            if (\is_string($srv['HTTP_AUTHORIZATION'])) {
-                $out['Authorization'] = [$srv['HTTP_AUTHORIZATION']];
-            }
-        } elseif (isset($srv['REDIRECT_HTTP_AUTHORIZATION'])) {
-            if (\is_string($srv['REDIRECT_HTTP_AUTHORIZATION'])) {
-                $out['Authorization'] = [$srv['REDIRECT_HTTP_AUTHORIZATION']];
-            }
+
+        $authorization = $srv['HTTP_AUTHORIZATION'] ?? $srv['REDIRECT_HTTP_AUTHORIZATION'] ?? null;
+        if (\is_string($authorization) && $authorization !== '') {
+            $out['Authorization'] = [$authorization];
+
+            return;
+        }
+
+        $user = $srv['PHP_AUTH_USER'] ?? null;
+        if (\is_string($user) && $user !== '') {
+            $password = $srv['PHP_AUTH_PW'] ?? '';
+            $out['Authorization'] = ['Basic ' . \base64_encode(
+                $user . ':' . (\is_string($password) ? $password : ''),
+            )];
+
+            return;
+        }
+
+        $digest = $srv['PHP_AUTH_DIGEST'] ?? null;
+        if (\is_string($digest) && $digest !== '') {
+            $out['Authorization'] = [$digest];
         }
     }
 
@@ -240,41 +251,6 @@ final class RequestHeaders
                 $out[$hn] = [$srv[$sk]];
             }
         }
-    }
-
-    /**
-     * Use getallheaders() if available (Apache, FastCGI, etc).
-     * This function is used when getallheaders() is available.
-     * It returns an array of headers in PSR-7 format: name => string[].
-     * If the value is an array, it is converted to an array of strings.
-     * If the value is a string, it is wrapped in an array.
-     *
-     * @return HeaderMap Header bag
-     */
-    private static function viaGetAllHeaders(): array
-    {
-        $out = [];
-        foreach (\getallheaders() as $name => $value) {
-            if (!\is_string($name)) {
-                continue;
-            }
-            if (\is_array($value)) {
-                $vals = [];
-                foreach ($value as $item) {
-                    if (\is_string($item)) {
-                        $vals[] = $item;
-                    }
-                }
-                $out[$name] = $vals;
-
-                continue;
-            }
-            if (\is_string($value)) {
-                $out[$name] = [$value];
-            }
-        }
-
-        return $out;
     }
 
     /**

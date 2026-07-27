@@ -142,6 +142,12 @@ final readonly class ResponseCacheMiddleware
 
     private function buildDefaultStore(): CacheInterface
     {
+        if (!class_exists(Cache::class)) {
+            throw new \LogicException(
+                'ResponseCacheMiddleware requires infocyph/cachelayer; install the package before enabling response caching.',
+            );
+        }
+
         // Windows reports directory modes differently than POSIX; prefer memory cache without APCu.
         if (\PHP_OS_FAMILY === 'Windows' && !\extension_loaded('apcu')) {
             return Cache::memory('http');

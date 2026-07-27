@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Router\Matching;
 
 use Closure;
-use Infocyph\InterMix\Serializer\ValueSerializer;
 use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
 use Infocyph\Webrick\Exceptions\RouteNotFoundException;
@@ -630,7 +629,7 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         $objId = \spl_object_id($route);
         if (!isset($routeIds[$objId])) {
             $routeIds[$objId] = \count($routeExprs);
-            $routeExprs[$routeIds[$objId]] = \var_export(ValueSerializer::serialize($route), true);
+            $routeExprs[$routeIds[$objId]] = $this->exportRoute($route);
         }
 
         return $routeIds[$objId];

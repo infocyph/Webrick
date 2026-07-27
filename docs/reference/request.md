@@ -18,7 +18,7 @@ Complete reference for `Infocyph\Webrick\Request\Request` class.
 - [Server Variables](#server-variables)
 - [Client Information](#client-information)
 - [Content Negotiation](#content-negotiation)
-- [PSR-7 Compatibility](#psr-7-compatibility)
+- [PSR-7-Style Surface](#psr-7-style-surface)
 
 ---
 
@@ -50,8 +50,14 @@ $request = Request::fake(
 );
 ```
 
-### From PSR-7
+### From a PSR-7 host
+
+`Request` does not implement `ServerRequestInterface`. Convert at the framework
+boundary and preserve all message data needed by the application:
+
 ```php
+use Infocyph\Webrick\Request\Core\Stream;
+use Infocyph\Webrick\Request\Request;
 use Psr\Http\Message\ServerRequestInterface;
 
 $psrRequest = /* ... */;
@@ -59,9 +65,19 @@ $request = new Request(
     $psrRequest->getMethod(),
     (string) $psrRequest->getUri(),
     $psrRequest->getServerParams(),
-    array_map(static fn(array $v): string => implode(', ', $v), $psrRequest->getHeaders()),
+    $psrRequest->getHeaders(),
+    new Stream((string) $psrRequest->getBody()),
+    $psrRequest->getProtocolVersion(),
+    $psrRequest->getParsedBody(),
+    files: [],
+    query: $psrRequest->getQueryParams(),
+    cookies: $psrRequest->getCookieParams(),
 );
 ```
+
+This compact example buffers the incoming body. A production adapter may copy
+or bridge it differently for large or streaming requests, and should also
+normalize uploaded files.
 
 ---
 
@@ -476,7 +492,12 @@ $locale = $request->getAttribute('locale');
 
 ---
 
-## PSR-7 Compatibility
+## PSR-7-Style Surface
+
+Webrick follows familiar immutable message method names, but its concrete
+request, URI, stream, and uploaded-file classes do not implement the PSR-7
+interfaces. Use explicit adapters when an interface-typed framework owns the
+HTTP boundary.
 
 ### Immutability
 
@@ -628,12 +649,12 @@ Route::get('/__debug/request', function (Request $r) {
 - `except(array $keys): array`
 
 ### Files
-- `files(): array`
-- `file(string $key): ?UploadedFileInterface`
+- `files(): UploadedFileCollection`
+- `file(?string $key = null): UploadedFile|array|null`
 
 ### Cookies
 - `getCookieParams(): array`
-- `cookie(string $key, mixed $default = null): mixed`
+- `cookie(?string $key = null): mixed`
 
 ### Attributes
 - `getAttributes(): array`
@@ -643,15 +664,15 @@ Route::get('/__debug/request', function (Request $r) {
 
 ### Server
 - `getServerParams(): array`
-- `server(string $key, mixed $default = null): mixed`
+- `server(?string $key = null): mixed`
 
-### PSR-7 Compatibility
+### PSR-7-style methods
 - `withMethod(string $method): static`
-- `withUri(UriInterface $uri): static`
+- `withUri(Uri $uri, bool $preserveHost = false): static`
 - `withHeader(string $name, $value): static`
 - `withAddedHeader(string $name, $value): static`
 - `withoutHeader(string $name): static`
-- `withBody(StreamInterface $body): static`
+- `withBody(Stream $body): static`
 - `withQueryParams(array $query): static`
 - `withCookieParams(array $cookies): static`
 - `withUploadedFiles(array $files): static`
