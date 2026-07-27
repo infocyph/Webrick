@@ -138,6 +138,27 @@ For a non-InterMix host container, register small factories or adapter services
 in InterMix at bootstrap. Do not copy the host's entire service graph or eagerly
 resolve optional services.
 
+Tagged middleware may use InterMix direct factories. Webrick keeps the service
+unresolved during kernel boot and resolves it inside the active request scope,
+so singleton, scoped and transient lifetimes retain their InterMix semantics:
+
+```php
+use Infocyph\InterMix\DI\Container;
+use Infocyph\InterMix\DI\Support\LifetimeEnum;
+
+$container->bindFactory(
+    AuthMiddleware::class,
+    static fn(Container $container): AuthMiddleware => new AuthMiddleware(
+        $container->get(AuthService::class),
+    ),
+    LifetimeEnum::Scoped,
+    ['webrick.middleware.pre'],
+);
+```
+
+Each tagged definition must resolve to callable middleware with the standard
+`(Request $request, Closure $next): Response` contract.
+
 Controller behavior:
 
 - `[Controller::class, 'staticMethod']` is called without allocating a controller.

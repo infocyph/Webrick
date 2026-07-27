@@ -78,6 +78,18 @@ if (! class_exists('InterMixTaggedPostMiddleware', false)) {
     }
 }
 
+if (! class_exists('InterMixDirectFactoryTaggedMiddleware', false)) {
+    final readonly class InterMixDirectFactoryTaggedMiddleware
+    {
+        public function __construct(public int $instance) {}
+
+        public function __invoke(Request $request, Closure $next): Response
+        {
+            return $next($request)->withHeader('X-Factory-Instance', (string) $this->instance);
+        }
+    }
+}
+
 if (! class_exists('InterMixTestProvider', false)) {
     final readonly class InterMixTestProvider implements ServiceProviderInterface
     {
@@ -287,6 +299,54 @@ describe('InterMix integration', function () {
             ->and($response->getHeaderLine('X-Tagged-Pre'))->toBe('yes')
             ->and($response->getHeaderLine('X-Tagged-Post'))->toBe('yes');
     });
+
+    it('resolves tagged direct factories lazily and preserves their lifetime', function (
+        LifetimeEnum $lifetime,
+        int $expectedAfterFirst,
+        int $expectedFactoryCalls,
+    ) {
+        $factoryCalls = 0;
+        $container = Container::instance('intermix');
+        $container->bindFactory(
+            InterMixDirectFactoryTaggedMiddleware::class,
+            static function (Container $container) use (&$factoryCalls): InterMixDirectFactoryTaggedMiddleware {
+                if (!$container->get(Request::class) instanceof Request) {
+                    throw new RuntimeException('Tagged middleware resolved outside the request scope.');
+                }
+
+                ++$factoryCalls;
+
+                return new InterMixDirectFactoryTaggedMiddleware($factoryCalls);
+            },
+            $lifetime,
+            ['webrick.middleware.pre', 'webrick.middleware.post'],
+        );
+
+        $kernel = intermixKernelForTest(
+            static function (Registrar $r): void {
+                $r->get(
+                    '/tagged-factory',
+                    static fn(): Response => Response::json(['ok' => true]),
+                );
+            },
+            options: ['container' => $container],
+        );
+
+        expect($factoryCalls)->toBe(0);
+
+        $first = $kernel->handle(mockRequest('GET', '/tagged-factory'));
+        expect($first)->toHaveStatus(200)
+            ->and($factoryCalls)->toBe($expectedAfterFirst);
+
+        $second = $kernel->handle(mockRequest('GET', '/tagged-factory'));
+
+        expect($second)->toHaveStatus(200)
+            ->and($factoryCalls)->toBe($expectedFactoryCalls);
+    })->with([
+        'singleton' => [LifetimeEnum::Singleton, 1, 1],
+        'scoped' => [LifetimeEnum::Scoped, 1, 2],
+        'transient' => [LifetimeEnum::Transient, 2, 4],
+    ]);
 
     it('creates a fresh scoped service instance per request', function () {
         $kernel = intermixKernelForTest(

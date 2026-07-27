@@ -122,6 +122,11 @@ $kernel = RouterKernel::bootWithRegistrar(
 
 Notes:
 - Tagged middleware are appended after explicit `preGlobal` / `postGlobal`.
+- Tagged `Container::bindFactory()` definitions are resolved lazily inside the
+  request scope and retain their configured singleton, scoped or transient
+  lifetime.
+- Every tagged definition must resolve to callable middleware accepting
+  `(Request $request, Closure $next)` and returning `Response`.
 - `requestScopeEnabled` binds `Request::class` as scoped for each request lifecycle.
 - `Response::view()` uses the same `intermix` container path as kernel DI by default.
 
