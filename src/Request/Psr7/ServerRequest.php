@@ -94,8 +94,10 @@ class ServerRequest extends Message
      * @param Stream $body The request body as a Stream object.
      * @param string $httpVer The HTTP protocol version (e.g. "1.1")
      * @param array<string, mixed>|object|null $parsed The parsed request body (e.g. JSON, XML, etc.)
-     * @param array<string, mixed> $files The $_FILES superglobal array.
+     * @param array<string, mixed>|null $files The $_FILES superglobal array, or null to read it lazily.
      * @param string|null $requestTarget The request target (e.g. "index.php").
+     * @param array<string, mixed>|null $query Explicit query parameters.
+     * @param array<string, mixed>|null $cookies Explicit cookie parameters.
      */
     public function __construct(
         string $method,
@@ -105,18 +107,20 @@ class ServerRequest extends Message
         Stream $body = new Stream(),
         string $httpVer = '1.1',
         private array|object|null $parsed = null,
-        array $files = [],
+        ?array $files = null,
         private ?string $requestTarget = null,
+        ?array $query = null,
+        ?array $cookies = null,
     ) {
         parent::__construct(ServerRequestHeaderNormalizer::normalize($headers), $body, $httpVer);
 
         $this->method = HttpMethodEnum::normalize($method);
         $this->uri = $uri instanceof Uri ? $uri : new Uri($uri);
-        $this->filesSpec = $files !== [] ? $files : self::mixedMap($_FILES);
+        $this->filesSpec = $files ?? self::mixedMap($_FILES);
 
         /* copies of super-globals */
-        $this->cookie = self::mixedMap($_COOKIE);
-        $this->query = self::mixedMap($_GET);
+        $this->cookie = $cookies ?? self::mixedMap($_COOKIE);
+        $this->query = server_request_query_parameters($query, $this->uri);
 
         /* Host header fallback */
         if (!$this->hasHeader('Host') && $this->uri->getHost() !== '') {
@@ -185,7 +189,6 @@ class ServerRequest extends Message
         $httpVer = self::detectHttpVersion($srv);
         $headers = RequestHeaders::extractFromServer($srv);
 
-        // build request (headers re-imported once below)
         $req = new static(
             HttpMethodEnum::normalize(self::serverString($srv, 'REQUEST_METHOD', HttpMethodEnum::GET->value)),
             $uri,
@@ -195,12 +198,11 @@ class ServerRequest extends Message
             $httpVer,
             self::mixedMap($_POST),
             UploadedFilesNormalizer::normalise(self::mixedMap($_FILES)),
+            query: $_GET !== [] ? self::mixedMap($_GET) : null,
+            cookies: self::mixedMap($_COOKIE),
         );
 
-        $req = self::importHeadersOnce($req);
-        $req = self::maybeParseUrlEncodedForNonPost($req, $body);
-
-        return self::attachQueryAndCookies($req, $uri);
+        return self::maybeParseUrlEncodedForNonPost($req, $body);
     }
 
     /**
@@ -788,23 +790,6 @@ class ServerRequest extends Message
     }
 
     /**
-     * Attach query string and cookie parameters to the request.
-     *
-     * @template T of self
-     * @param T $req The request object.
-     * @param Uri $uri The URI object.
-     * @return T The request object with the query string and cookie parameters attached.
-     */
-    private static function attachQueryAndCookies(self $req, Uri $uri): self
-    {
-        parse_str($uri->getQuery(), $qs);
-
-        return $req
-            ->withQueryParams(self::mixedMap($qs))
-            ->withCookieParams(self::mixedMap($_COOKIE));
-    }
-
-    /**
      * Detects the HTTP protocol version from the given server parameters.
      *
      * This function extracts the HTTP protocol version from the
@@ -824,23 +809,6 @@ class ServerRequest extends Message
         $proto = self::serverString($srv, 'SERVER_PROTOCOL');
 
         return str_starts_with($proto, 'HTTP/') ? substr($proto, 5) : '1.1';
-    }
-
-    /**
-     * Replaces the request headers with an immutable HeaderBag.
-     *
-     * Called once when creating a new ServerRequest from globals.
-     *
-     * @template T of self
-     * @param T $req
-     * @return T The request object with the replaced headers.
-     */
-    private static function importHeadersOnce(self $req): self
-    {
-        $bag = new RequestHeaders($req)->all();
-        $req->headers = $bag->all();   // protected prop on parent; same class context
-
-        return $req;
     }
 
     /**
@@ -1121,4 +1089,41 @@ class ServerRequest extends Message
 
         return $clone;
     }
+}
+
+/**
+ * Resolve query input without adding branching to the request object itself.
+ *
+ * @param array<string,mixed>|null $query
+ * @return array<string,mixed>
+ */
+function server_request_query_parameters(?array $query, Uri $uri): array
+{
+    if ($query !== null) {
+        return $query;
+    }
+
+    if ($uri->getQuery() === '') {
+        return server_request_string_map($_GET);
+    }
+
+    \parse_str($uri->getQuery(), $uriQuery);
+
+    return server_request_string_map($uriQuery);
+}
+
+/**
+ * @param array<mixed> $value
+ * @return array<string,mixed>
+ */
+function server_request_string_map(array $value): array
+{
+    $map = [];
+    foreach ($value as $key => $entry) {
+        if (\is_string($key)) {
+            $map[$key] = $entry;
+        }
+    }
+
+    return $map;
 }

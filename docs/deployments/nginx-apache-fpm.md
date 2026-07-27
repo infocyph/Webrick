@@ -2,7 +2,7 @@
 
 Concrete, production-ready web-server configs for Webrick. Pick **Nginx → PHP-FPM** (most common) or **Apache → PHP-FPM**. Each recipe serves static assets directly and forwards everything else to `public/index.php`.
 
-> Webrick handles compression, caching headers, and validators; disable double-work at the edge.
+> Webrick handles compression, caching headers and validators; disable double-work at the edge.
 
 ---
 

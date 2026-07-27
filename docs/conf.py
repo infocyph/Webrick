@@ -4,7 +4,7 @@ import os, datetime
 from subprocess import Popen, PIPE
 
 # --- Project information -----------------------------------------------------
-project   = "Webrick – PHP Router"
+project   = "Webrick – HTTP Routing Kernel"
 author    = "Infocyph"
 year_now  = datetime.date.today().strftime("%Y")
 copyright = f"2021-{year_now}"

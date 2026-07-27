@@ -6,7 +6,7 @@ Build a complete, standards-compliant REST API.
 
 ## Problem
 
-You need a RESTful API with proper HTTP methods, status codes, error handling, and documentation.
+You need a RESTful API with proper HTTP methods, status codes, error handling and documentation.
 
 ---
 

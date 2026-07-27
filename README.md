@@ -1,6 +1,8 @@
-# Webrick Router
+# Webrick
 
-A modern PHP router with route caching, signed URLs, production middleware, and response helpers.
+A framework-neutral HTTP routing kernel for PHP with deploy-time route compilation,
+lazy middleware resolution, signed URLs, response helpers and emitters for
+traditional and persistent runtimes.
 
 [![Security & Standards](https://github.com/infocyph/Webrick/actions/workflows/security-standards.yml/badge.svg)](https://github.com/infocyph/Webrick/actions/workflows/security-standards.yml)
 ![Packagist Downloads](https://img.shields.io/packagist/dt/infocyph/webrick?color=green\&link=https%3A%2F%2Fpackagist.org%2Fpackages%2Finfocyph%2Fwebrick)
@@ -13,13 +15,18 @@ A modern PHP router with route caching, signed URLs, production middleware, and 
 ## Highlights
 
 - Fast routing: named routes, groups, domains, resources, attribute discovery
+- Framework-neutral: run Webrick standalone or mount it behind another framework's request/response adapter
+- Deploy-time compilation: sharded, fused and generated PHP route-cache artifacts
+- Lean cached dispatch: class handlers and string middleware stay scalar until the matched route is materialized
+- Lazy optional services: middleware alias families and URL generation are resolved only when used
+- DI-aware dispatch: constructor and method injection through InterMix, with request scopes and service providers
 - Signed URLs: permanent, TTL-based, or explicit-expiry links
 - Rich signing controls: relative or absolute payloads, ignored query params, key rotation, custom signature params and algorithms
 - Central error boundary: framework middleware throws typed HTTP exceptions and the kernel renders them just before emission
 - User controllers and user middleware can still return `Response` directly; only framework-owned rejection paths are exception-driven
 - Response helpers: JSON, plaintext, redirects, streaming, ranged file/download responses, views
-- Route caching: sharded, fused, or generated matchers
-- Middleware pipeline: negotiation, compression, throttling, validators, telemetry, cookie encryption, and more
+- Middleware pipeline: negotiation, compression, throttling, validators, telemetry, cookie encryption and more
+- Runtime emitters: PHP-FPM, FrankenPHP, LiteSpeed, Nginx Unit, CLI, Swoole, RoadRunner and Workerman
 
 ## Requirements
 
@@ -31,6 +38,21 @@ A modern PHP router with route caching, signed URLs, production middleware, and 
 ```bash
 composer require infocyph/webrick
 ```
+
+Core routing does not install CacheLayer. Add it only when using
+`ResponseCacheMiddleware`, the default throttle cache backend, or CacheLayer's
+atomic counter backend:
+
+```bash
+composer require infocyph/cachelayer
+```
+
+`ThrottleMiddleware` can also run without CacheLayer when the application
+supplies its own PSR-6 cache pool.
+
+Webrick is a library, not an application skeleton. Its directory layout,
+configuration source, container composition and deployment entry point remain
+under the host application's control.
 
 ## Minimal Boot Example
 
@@ -56,8 +78,8 @@ $kernel = RouterKernel::bootWithRegistrar(
     register: static function (Registrar $registrar): void {
         unset($registrar);
 
-        Route::get('/', fn() => Response::plaintext('Hello Webrick', 200), 'home');
-        Route::get('/api/users/{id:int}', fn(Request $request, string $id) => Response::json([
+        Route::get('/', static fn() => Response::plaintext('Hello Webrick', 200), 'home');
+        Route::get('/api/users/{id:int}', static fn(Request $request, string $id) => Response::json([
             'id' => (int) $id,
             'method' => $request->getMethod(),
         ]), 'users.show');
@@ -67,6 +89,31 @@ $kernel = RouterKernel::bootWithRegistrar(
 
 (new AutoEmitter())->emit($kernel->handle(Request::fromGlobals()));
 ```
+
+For deployable route caches, prefer a controller class-string or
+`[Controller::class, 'method']` handler. Static controller methods avoid a
+controller allocation; non-static methods are constructed through InterMix.
+Closures and object-backed handlers remain supported through the serializer
+fallback, but they are not the cheapest cache representation.
+
+## Use Inside Another Framework
+
+Keep one `RouterKernel` for the application or worker lifecycle and adapt only at
+the HTTP boundary:
+
+```php
+$webrickRequest = $requestAdapter->toWebrick($frameworkRequest);
+$webrickResponse = $kernel->handle($webrickRequest);
+
+return $responseAdapter->fromWebrick($webrickResponse);
+```
+
+Webrick's `Request` and `Response` expose familiar PSR-7-style message methods,
+but they do not implement the PSR-7 interfaces. A host framework must therefore
+provide the explicit adapters shown above. Do not emit the response from
+Webrick when the host framework owns emission.
+
+See documentation for container, middleware, request-scope and persistent-worker guidance.
 
 ## Production-Oriented Boot Example
 
@@ -88,7 +135,6 @@ use Infocyph\Webrick\Router\Dispatch\MiddlewareAliases;
 use Infocyph\Webrick\Router\Facade\Router as Route;
 use Infocyph\Webrick\Router\Kernel\RouterKernel;
 use Infocyph\Webrick\Router\Matching\ShardedMatcher;
-use Infocyph\Webrick\Router\Route\Collection;
 use Infocyph\Webrick\Router\Url\SignedUrlConfig;
 use Psr\Log\NullLogger;
 
@@ -141,14 +187,16 @@ $kernel = RouterKernel::bootWithRegistrar(
     postGlobal: [
         CompressionMiddleware::class,
     ],
-    bindUrlServices: static function (Collection $routes) use ($signKey, $signedUrls, $baseUri): void {
-        Route::bindUrlServices($routes, $signKey, 900, $signedUrls, $baseUri);
-    },
     fallbackAliasesFromRegistrar: true,
 );
 
 (new AutoEmitter())->emit($kernel->handle(Request::fromGlobals()));
 ```
+
+The signing configuration is preserved in `registrarOptions`. On cached boot,
+the default URL binding defers alias loading and `UrlGenerator` construction
+until the first URL helper call. Supply `bindUrlServices` only when an
+integration needs to replace that default binding behavior.
 
 ## URL Generation
 
@@ -172,7 +220,7 @@ $absolutePayload = Route::signedUrlFor(
 );
 ```
 
-Framework-owned failures such as invalid signed URLs, negotiation failures, throttling, request limits, bad Host headers, and maintenance mode now throw typed HTTP exceptions internally. `RouterKernel` catches them at the top-level error boundary and renders the final HTTP response there. Your controllers and user middleware can still return `Response` objects with explicit status codes directly.
+Framework-owned failures such as invalid signed URLs, negotiation failures, throttling, request limits, bad Host headers and maintenance mode now throw typed HTTP exceptions internally. `RouterKernel` catches them at the top-level error boundary and renders the final HTTP response there. Your controllers and user middleware can still return `Response` objects with explicit status codes directly.
 
 The demo app also includes `/api/error-demo`, which throws a framework HTTP exception and is rendered as JSON through a custom error boundary override.
 
@@ -201,10 +249,13 @@ $errorHandler = new ErrorHandler(
 
 ## Route Cache
 
-Build cache artifacts during CI or deploy:
+Build cache artifacts during CI or deploy. Cache creation may spend more work so
+the request path does less:
 
 ```bash
 php ./webrick route:cache --matcher=sharded --cache=.route-cache --routes=routes.php
+php ./webrick route:cache --matcher=fused --cache=.route-cache/fused.php --routes=routes.php
+php ./webrick route:cache --matcher=generated --cache=.route-cache/generated.php --routes=routes.php
 ```
 
 Clear them when needed:
@@ -212,6 +263,13 @@ Clear them when needed:
 ```bash
 php ./webrick route:clear --matcher=sharded --cache=.route-cache
 ```
+
+All matcher factories are zero-argument. Pass the cache directory or file only
+as `routeCache:` when booting the kernel.
+
+For the major release, rebuild every route-cache artifact after updating;
+cache formats are internal deployment artifacts and are not portable across
+major versions.
 
 ## Security
 

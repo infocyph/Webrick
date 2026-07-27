@@ -181,7 +181,7 @@ echo "Testing Webrick installation...\n\n";
 try {
     $kernel = RouterKernel::bootWithRegistrar(
         log: new NullLogger(),
-        matcher: ShardedMatcher::make(__DIR__ . '/.route-cache'),
+        matcher: ShardedMatcher::make(),
         register: static function (Registrar $r): void {
             unset($r);
 
@@ -190,6 +190,7 @@ try {
                 fn() => Response::plaintext('OK', 200),
             );
         },
+        routeCache: __DIR__ . '/.route-cache',
     );
     echo "✅ Kernel boots successfully\n";
 } catch (Throwable $e) {

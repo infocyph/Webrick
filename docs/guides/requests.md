@@ -1,6 +1,6 @@
 # Request Handling
 
-This guide shows how to read input (query, JSON, form, files), headers, cookies, route params, and attributes from `Infocyph\Webrick\Request\Request`. It also covers method overrides and locale/negotiation attributes.
+This guide shows how to read input (query, JSON, form, files), headers, cookies, route params and attributes from `Infocyph\Webrick\Request\Request`. It also covers method overrides and locale/negotiation attributes.
 
 ---
 

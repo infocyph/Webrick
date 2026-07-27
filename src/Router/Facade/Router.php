@@ -12,6 +12,7 @@ use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Route\Collection;
 use Infocyph\Webrick\Router\Url\SignedUrlConfig;
 use Infocyph\Webrick\Router\Url\UrlGenerator;
+use Infocyph\Webrick\Router\Url\UrlGeneratorRegistry;
 use RuntimeException;
 
 /**
@@ -67,11 +68,6 @@ final class Router
      */
     private static ?Registrar $instance = null;
 
-    private static ?UrlGenerator $routeGen = null;
-
-    /** @var (Closure():UrlGenerator)|null */
-    private static ?Closure $routeGenFactory = null;
-
     /**
      * Private constructor to prevent instantiation — façade is static-only.
      */
@@ -121,8 +117,7 @@ final class Router
         string $baseUri = '',
     ): void {
         if ($routes instanceof Closure) {
-            self::$routeGen = null;
-            self::$routeGenFactory = static function () use (
+            UrlGeneratorRegistry::bindFactory(static function () use (
                 $baseUri,
                 $routes,
                 $signKey,
@@ -132,13 +127,18 @@ final class Router
                 $resolved = self::normalizeLazyRouteSource($routes());
 
                 return new UrlGenerator($baseUri, $resolved, $signKey, $defaultTtl, $signedUrlConfig);
-            };
+            });
 
             return;
         }
 
-        self::$routeGenFactory = null;
-        self::$routeGen = new UrlGenerator($baseUri, $routes, $signKey, $defaultTtl, $signedUrlConfig);
+        UrlGeneratorRegistry::bind(new UrlGenerator(
+            $baseUri,
+            $routes,
+            $signKey,
+            $defaultTtl,
+            $signedUrlConfig,
+        ));
     }
 
     /**
@@ -182,8 +182,7 @@ final class Router
      */
     public static function resetUrlServices(): void
     {
-        self::$routeGen = null;
-        self::$routeGenFactory = null;
+        UrlGeneratorRegistry::reset();
     }
 
     /**
@@ -349,7 +348,7 @@ final class Router
 
     private static function assertUrlBound(): void
     {
-        if (self::$routeGen === null && self::$routeGenFactory === null) {
+        if (!UrlGeneratorRegistry::has()) {
             throw new \LogicException('URL services not bound. Enable via Registrar constructor.');
         }
     }
@@ -460,14 +459,7 @@ final class Router
     {
         self::assertUrlBound();
 
-        if (self::$routeGen === null && self::$routeGenFactory !== null) {
-            $factory = self::$routeGenFactory;
-            self::$routeGenFactory = null;
-            self::$routeGen = $factory();
-        }
-
-        return self::$routeGen
-            ?? throw new \LogicException('URL services not bound. Enable via Registrar constructor.');
+        return UrlGeneratorRegistry::get();
     }
 
     /**

@@ -25,6 +25,8 @@ use Infocyph\Webrick\Router\Route\Collection;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 use Infocyph\Webrick\Router\Route\Route;
 use Infocyph\Webrick\Router\Url\SignedUrlConfig;
+use Infocyph\Webrick\Router\Url\UrlGenerator;
+use Infocyph\Webrick\Router\Url\UrlGeneratorRegistry;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -718,13 +720,13 @@ final class RouterKernel
             ($this->bindUrlServices)($aliasOnly);
             $aliasCount = \count($pairs);
         } else {
-            Router::bindUrlServices(
-                fn(): array => $this->resolveCachedAliasPairs(),
+            UrlGeneratorRegistry::bindFactory(fn(): UrlGenerator => new UrlGenerator(
+                $this->normalizeUrlBaseUri($this->registrarOptions['urlBaseUri'] ?? null),
+                $this->resolveCachedAliasPairs(),
                 $this->normalizeSignKey($this->registrarOptions['signKey'] ?? null),
                 $this->normalizeSignedDefaultTtl($this->registrarOptions['signedDefaultTtl'] ?? null),
                 $this->normalizeSignedUrlConfig($this->registrarOptions['signedUrlConfig'] ?? null),
-                $this->normalizeUrlBaseUri($this->registrarOptions['urlBaseUri'] ?? null),
-            );
+            ));
             $aliasCount = 'lazy';
         }
 

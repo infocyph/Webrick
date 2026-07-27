@@ -1,6 +1,6 @@
 # Vercel & Serverless
 
-Running Webrick in serverless/edge environments requires a slightly different shape: **single-binary boot**, **fast cold-start**, and **stateless caches**. This page sketches patterns for Vercel, AWS Lambda (via API Gateway/Lambda@Edge), and Cloudflare Workers (edge JS).
+Running Webrick in serverless/edge environments requires a slightly different shape: **single-binary boot**, **fast cold-start** and **stateless caches**. This page sketches patterns for Vercel, AWS Lambda (via API Gateway/Lambda@Edge) and Cloudflare Workers (edge JS).
 
 > TL;DR: PHP is a great fit on serverless **containers** (Lambda with PHP Runtime, Vercel’s PHP runtime). For **edge JS-only** platforms (Cloudflare Workers), place Webrick behind an edge proxy or re-implement only the thinnest endpoints at the edge.
 
@@ -11,7 +11,7 @@ Running Webrick in serverless/edge environments requires a slightly different sh
 * **Precompute**: ship a prebuilt **route cache** and classmap (Composer `--classmap-authoritative`).
 * **Light boot**: keep the front controller small; avoid dynamic scanning.
 * **Immutable code**: no writes outside `/tmp` (or platform temp dir).
-* **Stateless**: use external stores for session, response cache, and rate limits.
+* **Stateless**: use external stores for session, response cache and rate limits.
 * **Short timeouts**: streaming and long-running jobs are a poor fit; offload to queues/cron.
 
 ---

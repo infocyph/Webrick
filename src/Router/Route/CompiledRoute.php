@@ -46,6 +46,8 @@ final class CompiledRoute implements RouteInterface
 {
     use RouteCoreAccessors;
 
+    public const int CACHE_PAYLOAD_VERSION = 1;
+
     /* ──────────────────────── static ordinal ─────────────────────── */
     /**
      * Monotonic index assigned to each compiled route (used for stable ordering).
@@ -123,6 +125,33 @@ final class CompiledRoute implements RouteInterface
     public static function __set_state(array $data): self
     {
         return new self(...$data);
+    }
+
+    /**
+     * Rehydrate a route from the scalar metadata emitted by matcher caches.
+     *
+     * @param array<mixed> $payload
+     */
+    public static function fromCachePayload(array $payload): self
+    {
+        $payload = CompiledRouteCachePayload::validate($payload);
+
+        $cors = $payload[11];
+
+        return new self(
+            method: $payload[1],
+            path: $payload[2],
+            handler: $payload[3],
+            domain: $payload[4],
+            middleware: $payload[5],
+            name: $payload[6],
+            dynamic: $payload[7],
+            regex: $payload[8],
+            variables: $payload[9],
+            index: $payload[10],
+            corsPolicy: \is_array($cors) ? new Cors(...$cors) : null,
+            segments: $payload[12],
+        );
     }
 
     /* ──────────────────── factory (compile-once) ─────────────────── */
@@ -237,6 +266,78 @@ final class CompiledRoute implements RouteInterface
     public function isDynamic(): bool
     {
         return $this->dynamic;
+    }
+
+    /**
+     * Return scalar cache metadata. Closure or object-backed routes must use
+     * the serializer fallback selected by the matcher.
+     *
+     * @return array{
+     *   0:int,
+     *   1:string,
+     *   2:string,
+     *   3:array{0:string,1:string}|string,
+     *   4:?string,
+     *   5:list<string>,
+     *   6:?string,
+     *   7:bool,
+     *   8:string,
+     *   9:list<string>,
+     *   10:int,
+     *   11:?array{
+     *     origins:list<string>,
+     *     methods:?string,
+     *     headers:string|list<string>|null,
+     *     exposeHeaders:string|list<string>|null,
+     *     maxAgeSeconds:?int,
+     *     allowCredentials:?bool,
+     *     allowPrivateNetwork:?bool
+     *   },
+     *   12:list<SegmentSpec>
+     * }
+     */
+    public function toCachePayload(): array
+    {
+        $handler = $this->handler;
+        if (!\is_string($handler)) {
+            if (!\is_array($handler) || !\is_string($handler[0])) {
+                throw new \LogicException('Object-backed route handlers cannot use scalar cache payloads.');
+            }
+        }
+
+        $middleware = [];
+        foreach ($this->middleware as $entry) {
+            if (!\is_string($entry)) {
+                throw new \LogicException('Object-backed route middleware cannot use scalar cache payloads.');
+            }
+            $middleware[] = $entry;
+        }
+
+        $cors = $this->corsPolicy;
+
+        return [
+            self::CACHE_PAYLOAD_VERSION,
+            $this->method,
+            $this->path,
+            $handler,
+            $this->domain,
+            $middleware,
+            $this->name,
+            $this->dynamic,
+            $this->regex,
+            $this->variables,
+            $this->index,
+            $cors instanceof Cors ? [
+                'origins' => \array_values($cors->origins),
+                'methods' => $cors->methods,
+                'headers' => $cors->headers,
+                'exposeHeaders' => $cors->exposeHeaders,
+                'maxAgeSeconds' => $cors->maxAgeSeconds,
+                'allowCredentials' => $cors->allowCredentials,
+                'allowPrivateNetwork' => $cors->allowPrivateNetwork,
+            ] : null,
+            $this->segments,
+        ];
     }
 
     /* ──────────────────── functional immutators ──────────────────── */

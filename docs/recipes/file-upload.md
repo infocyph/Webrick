@@ -1,12 +1,12 @@
 # File Upload Recipe
 
-Handle file uploads securely with validation, storage, and serving.
+Handle file uploads securely with validation, storage and serving.
 
 ---
 
 ## Problem
 
-You need to accept file uploads, validate them, store securely, and serve them back.
+You need to accept file uploads, validate them, store securely and serve them back.
 
 ---
 

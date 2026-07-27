@@ -10,7 +10,7 @@ Handle cross-origin requests correctly and ship modern security headers from one
 
     * Responds to **preflight** `OPTIONS` with configured `Access-Control-*` headers
     * Adds `Access-Control-Allow-Origin` and friends on **actual** requests when allowed
-    * Supports allowlists (exact origins, wildcards, or regex), allowed methods/headers, credentials, and `Vary: Origin`
+    * Supports allowlists (exact origins, wildcards, or regex), allowed methods/headers, credentials and `Vary: Origin`
 * **Security headers**
 
     * `Content-Security-Policy` (CSP)

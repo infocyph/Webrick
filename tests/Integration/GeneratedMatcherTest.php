@@ -25,6 +25,14 @@ dataset('cached matcher modes', [
     'generated' => ['generated', static fn(): MatcherInterface => GeneratedMatcher::make()],
 ]);
 
+final class CachedClassHandlerFixture
+{
+    public static function handle(): array
+    {
+        return ['ok' => true];
+    }
+}
+
 test('GeneratedMatcher matches static and dynamic routes', function (): void {
     $matcher = GeneratedMatcher::make();
 
@@ -300,3 +308,65 @@ test('fresh route caches boot and lazily dispatch alias middleware', function (
         ]);
     }
 })->with('cached matcher modes');
+
+test('class-handler caches use scalar route payloads in every matcher mode', function (
+    string $mode,
+    Closure $makeMatcher,
+): void {
+    $cache = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'webrick-scalar-' . $mode . '-' . uniqid('', true);
+    if ($mode !== 'sharded') {
+        $cache .= '.php';
+    }
+
+    try {
+        RouteCache::build([
+            'matcher' => $mode,
+            'cache' => $cache,
+            'register' => static function (Registrar $registrar): void {
+                $registrar->get('/class-handler', [CachedClassHandlerFixture::class, 'handle']);
+            },
+        ]);
+
+        $matcher = $makeMatcher()->enableCache($cache);
+        $matcher->finalize();
+        [$route] = $matcher->match('GET', 'localhost', '/class-handler');
+        $kernel = RouterKernel::bootWithRegistrar(
+            log: new NullLogger(),
+            matcher: $makeMatcher(),
+            register: static function (): void {},
+            routeCache: $cache,
+            fallbackAliasesFromRegistrar: false,
+        );
+        $response = $kernel->handle(Request::fake(uri: 'http://localhost/class-handler'));
+
+        expect($route->getHandler())->toBe([CachedClassHandlerFixture::class, 'handle'])
+            ->and((string) $response->getBody())->toBe('{"ok":true}');
+    } finally {
+        RouteCache::clear([
+            'matcher' => $mode,
+            'cache' => $cache,
+            'aggressive' => true,
+        ]);
+    }
+})->with('cached matcher modes');
+
+test('named middleware resolver families replace stale application bindings', function (): void {
+    MiddlewareAliases::reset();
+
+    try {
+        MiddlewareAliases::registerResolver(
+            static fn(string $alias): bool => $alias === 'family',
+            static fn(): string => 'first',
+            'application.family',
+        );
+        MiddlewareAliases::registerResolver(
+            static fn(string $alias): bool => $alias === 'family',
+            static fn(): string => 'second',
+            'application.family',
+        );
+
+        expect(MiddlewareAliases::resolveString('family'))->toBe('second');
+    } finally {
+        MiddlewareAliases::reset();
+    }
+});

@@ -31,7 +31,7 @@ use Psr\Log\NullLogger;
 
 $kernel = RouterKernel::bootWithRegistrar(
     log: new NullLogger(),
-    matcher: ShardedMatcher::make(__DIR__ . '/.route-cache'),
+    matcher: ShardedMatcher::make(),
     register: static function (Registrar $registrar): void {
         unset($registrar);
 
@@ -68,6 +68,7 @@ php ./webrick route:cache --matcher=sharded --cache=.route-cache --routes=routes
 ## Next steps
 
 - Read `quickstart` for a fuller bootstrap with aliases and middleware.
+- Read `framework-integration` when mounting Webrick inside another framework.
 - Read `guides/urls` for the richer signed URL surface.
 - Read `reference/route-cache` for matcher and artifact details.
 
@@ -78,4 +79,5 @@ php ./webrick route:cache --matcher=sharded --cache=.route-cache --routes=routes
 
 installation
 quickstart
+framework-integration
 ```

@@ -6,7 +6,7 @@ Protect your API from abuse with flexible rate limiting.
 
 ## Problem
 
-You need to limit how many requests users can make to prevent abuse, ensure fair usage, and protect your infrastructure.
+You need to limit how many requests users can make to prevent abuse, ensure fair usage and protect your infrastructure.
 
 ---
 

@@ -1,6 +1,6 @@
 # Quick Start
 
-Build a small app with the current Webrick runtime flow: boot the kernel, register routes through the `Route` facade, add middleware aliases, and generate signed URLs.
+Build a small app with the current Webrick runtime flow: boot the kernel, register routes through the `Route` facade, add middleware aliases and generate signed URLs.
 
 ## 1. Front controller
 
@@ -22,7 +22,6 @@ use Infocyph\Webrick\Router\Dispatch\MiddlewareAliases;
 use Infocyph\Webrick\Router\Facade\Router as Route;
 use Infocyph\Webrick\Router\Kernel\RouterKernel;
 use Infocyph\Webrick\Router\Matching\ShardedMatcher;
-use Infocyph\Webrick\Router\Route\Collection;
 use Infocyph\Webrick\Router\Url\SignedUrlConfig;
 use Psr\Log\NullLogger;
 
@@ -50,7 +49,7 @@ MiddlewareAliases::register(
 
 $kernel = RouterKernel::bootWithRegistrar(
     log: new NullLogger(),
-    matcher: ShardedMatcher::make(__DIR__ . '/../.route-cache'),
+    matcher: ShardedMatcher::make(),
     register: static function (Registrar $registrar): void {
         unset($registrar);
 
@@ -84,14 +83,15 @@ $kernel = RouterKernel::bootWithRegistrar(
     postGlobal: [
         CompressionMiddleware::class,
     ],
-    bindUrlServices: static function (Collection $routes) use ($signKey, $signedUrls, $baseUri): void {
-        Route::bindUrlServices($routes, $signKey, 900, $signedUrls, $baseUri);
-    },
     fallbackAliasesFromRegistrar: true,
 );
 
 (new AutoEmitter())->emit($kernel->handle(Request::fromGlobals()));
 ```
+
+The kernel keeps the signing configuration above and lazily creates cached URL
+services on the first URL helper call. A custom `bindUrlServices` callback is
+only needed when replacing that default behavior.
 
 ## 2. Generate URLs
 
@@ -117,7 +117,9 @@ $absolutePayload = Route::signedUrlFor(
 php ./webrick route:cache --matcher=sharded --cache=.route-cache --routes=routes.php
 ```
 
-Switch to fused cache by using a single file path such as `.route-cache/__routes.php` with `FusedMatcher::make(...)` and the same `routeCache` path.
+Switch to fused cache with `FusedMatcher::make()` and pass a single file such
+as `.route-cache/fused.php` as `routeCache`. Generated mode likewise uses
+`GeneratedMatcher::make()` with a file such as `.route-cache/generated.php`.
 
 ## 4. Run locally
 

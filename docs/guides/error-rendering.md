@@ -4,8 +4,8 @@ Webrick now treats framework-owned HTTP failures as exceptions first, then conve
 
 That gives you two clean layers:
 
-- middleware, matchers, and routing can reject with exceptions
-- the top-level `ErrorHandler` decides how the final HTTP body, headers, and status are rendered
+- middleware, matchers and routing can reject with exceptions
+- the top-level `ErrorHandler` decides how the final HTTP body, headers and status are rendered
 
 Controllers and user middleware can still return `Response` objects with explicit status codes directly. This guide is only about framework failures and custom boundary rendering.
 
@@ -21,7 +21,7 @@ Common framework paths that now throw typed HTTP exceptions:
 - unacceptable content negotiation
 - route `404` / `405`
 
-The final status still becomes `400`, `403`, `404`, `405`, `406`, `410`, `429`, `503`, and so on, but only when the kernel renders the exception.
+The final status still becomes `400`, `403`, `404`, `405`, `406`, `410`, `429`, `503` and so on, but only when the kernel renders the exception.
 
 ## Default behavior
 
@@ -141,7 +141,7 @@ That keeps the boundary clean:
 ## Recommendations
 
 - Keep exception messages public only when they are safe to expose
-- Preserve headers like `Retry-After`, `Allow`, and cache directives
+- Preserve headers like `Retry-After`, `Allow` and cache directives
 - Scope custom renderers by path or content type instead of forcing one format globally
 - For APIs, prefer returning `null` for non-API paths so browser-facing HTML errors still use the default renderer
 

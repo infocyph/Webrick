@@ -17,6 +17,8 @@ use Infocyph\Webrick\Router\Route\CompiledCollection;
 use Infocyph\Webrick\Router\Route\Route;
 use Infocyph\Webrick\Router\Url\SignedUrlConfig;
 
+require_once __DIR__ . '/registrar_functions.php';
+
 /**
  * Registrar
  *

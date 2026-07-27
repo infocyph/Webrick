@@ -39,6 +39,14 @@ final class MiddlewareAliases
     private static array $map = [];
 
     /**
+     * @var array<int|string, array{
+     *     supports: callable(string):bool,
+     *     resolve: callable(string,string...):(callable|object|string)
+     * }>
+     */
+    private static array $resolvers = [];
+
+    /**
      * Determine if an alias is registered.
      *
      * @param string $alias Alias name to check (case-insensitive)
@@ -46,7 +54,12 @@ final class MiddlewareAliases
      */
     public static function has(string $alias): bool
     {
-        return isset(self::$map[strtolower($alias)]);
+        $alias = strtolower($alias);
+        if (isset(self::$map[$alias])) {
+            return true;
+        }
+
+        return array_any(self::$resolvers, fn(array $resolver): bool => ($resolver['supports'])($alias));
     }
 
     /**
@@ -85,6 +98,28 @@ final class MiddlewareAliases
     }
 
     /**
+     * Register one lazy resolver for a family of aliases.
+     *
+     * @param callable(string):bool $supports
+     * @param callable(string,string...):(callable|object|string) $resolve
+     * @param string|null $name Stable family name; registering it again replaces the previous resolver.
+     */
+    public static function registerResolver(callable $supports, callable $resolve, ?string $name = null): void
+    {
+        $resolver = [
+            'supports' => $supports,
+            'resolve' => $resolve,
+        ];
+        if ($name !== null && $name !== '') {
+            self::$resolvers[$name] = $resolver;
+
+            return;
+        }
+
+        self::$resolvers[] = $resolver;
+    }
+
+    /**
      * Reset the alias registry.
      *
      * Clears all registered middleware aliases. This is primarily intended for
@@ -96,18 +131,18 @@ final class MiddlewareAliases
     public static function reset(): void
     {
         self::$map = [];
+        self::$resolvers = [];
     }
 
     /**
      * Resolve a potential alias string into a middleware descriptor.
      *
      * Input:
-     *  - If $maybeAlias is already a concrete class-string (class_exists returns true)
-     *    the same string is returned unchanged.
-     *  - Otherwise $maybeAlias is split at the first ':' into name and comma-separated
-     *    params. If the name corresponds to a registered alias the associated factory
+     *  - $maybeAlias is split at the first ':' into name and comma-separated
+     *    params. If the name corresponds to a registered alias, the associated factory
      *    is invoked with the trimmed params and its return value is returned.
-     *  - If the name is not a registered alias the original string is returned.
+     *  - If the name is not registered, the original string is returned unchanged;
+     *    the pipeline remains responsible for class-string autoloading.
      *
      * Return value is one of:
      *  - callable : middleware callable/closure,
@@ -119,23 +154,29 @@ final class MiddlewareAliases
      */
     public static function resolveString(string $maybeAlias): callable|object|string
     {
-        // If it’s a class-string already, let the pipeline handle it.
-        if (class_exists($maybeAlias)) {
-            return $maybeAlias;
-        }
-
         [$name, $paramStr] = explode(':', $maybeAlias, 2) + [1 => null];
         $key = strtolower((string) $name);
-
-        if (!isset(self::$map[$key])) {
-            return $maybeAlias; // not our alias
-        }
 
         $params = ($paramStr !== null && $paramStr !== '')
             ? array_map(trim(...), explode(',', $paramStr))
             : [];
 
-        $resolved = (self::$map[$key])(...$params);
+        if (isset(self::$map[$key])) {
+            $resolved = (self::$map[$key])(...$params);
+        } else {
+            $resolved = null;
+            foreach (self::$resolvers as $resolver) {
+                if (($resolver['supports'])($key)) {
+                    $resolved = ($resolver['resolve'])($key, ...$params);
+
+                    break;
+                }
+            }
+            if ($resolved === null) {
+                return $maybeAlias;
+            }
+        }
+
         if (\is_string($resolved) || \is_object($resolved) || \is_callable($resolved)) {
             return $resolved;
         }

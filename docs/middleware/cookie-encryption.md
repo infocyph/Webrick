@@ -1,6 +1,6 @@
 # Cookie Encryption Middleware
 
-Comprehensive guide to reading, setting, and encrypting cookies in Webrick. Covers both basic cookie operations and transparent encryption for sensitive data.
+Comprehensive guide to reading, setting and encrypting cookies in Webrick. Covers both basic cookie operations and transparent encryption for sensitive data.
 
 ---
 

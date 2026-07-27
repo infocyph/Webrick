@@ -199,9 +199,7 @@ final class RouteCache
             return [true, false];
         }
 
-        $deleted = \unlink($pathname);
-
-        return [$deleted, $deleted];
+        return [true, self::rmFile($pathname)];
     }
 
     /**
@@ -309,7 +307,14 @@ final class RouteCache
 
     private static function removeDirectory(string $path): bool
     {
-        return \rmdir($path);
+        if (!\is_writable(\dirname($path))) {
+            throw new \RuntimeException("Route cache directory is not writable: {$path}");
+        }
+        if (!\rmdir($path)) {
+            throw new \RuntimeException("Unable to remove route cache directory: {$path}");
+        }
+
+        return true;
     }
 
     /**
@@ -462,7 +467,18 @@ final class RouteCache
 
     private static function rmFile(string $file): bool
     {
-        return \is_file($file) && \unlink($file);
+        if (!\is_file($file)) {
+            return false;
+        }
+        $directory = \dirname($file);
+        if (!\is_writable($directory)) {
+            throw new \RuntimeException("Route cache directory is not writable: {$directory}");
+        }
+        if (!\unlink($file)) {
+            throw new \RuntimeException("Unable to remove route cache file: {$file}");
+        }
+
+        return true;
     }
 
     /**

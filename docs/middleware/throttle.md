@@ -2,6 +2,14 @@
 
 Rate limiting middleware that enforces request limits per client/user with configurable windows and costs.
 
+Pass any application-provided PSR-6 pool to use throttling without CacheLayer.
+Install CacheLayer only when using the default local pool or its atomic counter
+backend:
+
+```bash
+composer require infocyph/cachelayer
+```
+
 ---
 
 ## Configuration
@@ -27,8 +35,8 @@ $preGlobal[] = new ThrottleMiddleware(
 
 | Parameter               | Type                      | Default           | Description                                        |
 | ----------------------- | ------------------------- | ----------------- | -------------------------------------------------- |
-| `max`                   | `int`                     | *required*        | Maximum requests allowed per window                |
-| `window`                | `int`                     | *required*        | Time window in seconds                             |
+| `max`                   | `int`                     | `1`               | Maximum requests allowed per window                |
+| `window`                | `int`                     | `1`               | Time window in seconds                             |
 | `pool`                  | `?CacheItemPoolInterface` | `null`            | PSR-6 fallback; defaults to a local CacheLayer pool |
 | `retryAsDate`           | `bool`                    | `false`           | `Retry-After` as HTTP-date (true) or seconds (false) |
 | `identifierResolver`    | `?callable`               | `null`            | Custom function to resolve identifier from request |

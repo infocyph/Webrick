@@ -6,7 +6,7 @@ Build secure API authentication with JWT tokens.
 
 ## Problem
 
-You need to authenticate users for your API, issue tokens, and protect routes.
+You need to authenticate users for your API, issue tokens and protect routes.
 
 ---
 

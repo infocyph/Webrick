@@ -28,6 +28,9 @@ abstract class BaseEmitter implements EmitterInterface
         'upgrade' => true,
     ];
 
+    /** @var resource|null */
+    private mixed $outputStream = null;
+
     /**
      * Emit the response to the current IO target.
      *
@@ -459,7 +462,15 @@ abstract class BaseEmitter implements EmitterInterface
      */
     protected function write(string $chunk): void
     {
-        file_put_contents('php://output', $chunk, FILE_APPEND);
+        if (!\is_resource($this->outputStream)) {
+            $stream = \fopen('php://output', 'wb');
+            if ($stream === false) {
+                throw new \RuntimeException('Unable to open the response output stream.');
+            }
+            $this->outputStream = $stream;
+        }
+
+        \fwrite($this->outputStream, $chunk);
     }
 
     /**

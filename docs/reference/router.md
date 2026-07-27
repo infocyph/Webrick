@@ -7,6 +7,7 @@ Complete reference for routing APIs in Webrick.
 ## Table of Contents
 
 - [Route Registration](#route-registration)
+- [Kernel Boot Options](#kernel-boot-options)
 - [Route Facade](#route-facade)
 - [HTTP Verb Methods](#http-verb-methods)
 - [Route Groups](#route-groups)
@@ -38,11 +39,55 @@ $register = function (Registrar $r): void {
 
 $kernel = RouterKernel::bootWithRegistrar(
     log: new NullLogger(),
-    matcher: ShardedMatcher::make(__DIR__ . '/.route-cache'),
+    matcher: ShardedMatcher::make(),
     register: $register,
     routeCache: __DIR__ . '/.route-cache',
 );
 ```
+
+---
+
+## Kernel Boot Options
+
+`RouterKernel::bootWithRegistrar()` accepts:
+
+| Argument | Type / values | Default | Purpose |
+| --- | --- | --- | --- |
+| `log` | `Psr\Log\LoggerInterface` | required | Routing, cache and boundary diagnostics |
+| `matcher` | `MatcherInterface` | required | Sharded, fused, generated, or a custom matcher |
+| `register` | `Closure(Registrar): void` | required | Cold-path route definitions |
+| `routeCache` | directory, file, or `null` | `null` | Enables cache reading at the matcher-specific location |
+| `registrarOptions` | associative array | `[]` | Registrar, signed URL and base URI configuration |
+| `preGlobal` | middleware descriptor list | `[]` | Middleware before route middleware |
+| `postGlobal` | middleware descriptor list | `[]` | Middleware after route middleware |
+| `invokerOnMiddleware` | `true` or `false` | `false` | Use InterMix invocation for middleware calls |
+| `errorHandler` | `ErrorHandler` or `null` | `null` | Custom top-level exception renderer |
+| `bindUrlServices` | `Closure(Collection): void` or `null` | `null` | Replace default URL-service binding |
+| `fallbackAliasesFromRegistrar` | `true`, `false`, or `null` | `null` | Override alias-only registrar fallback |
+| `serviceProviders` | service provider class/instance list | `[]` | Import InterMix service providers at boot |
+| `preGlobalTags` | list of container tag names | `['webrick.middleware.pre']` | Append tagged pre-route middleware |
+| `postGlobalTags` | list of container tag names | `['webrick.middleware.post']` | Append tagged post-route middleware |
+| `requestScopeEnabled` | `true` or `false` | `true` | Create and leave an InterMix scope per `handle()` |
+| `container` | InterMix `Container` or `null` | `null` | Container used when no explicit invoker is passed |
+| `invoker` | InterMix `Invoker` or `null` | `null` | Explicit dispatcher/container integration |
+
+Common `registrarOptions`:
+
+| Key | Values / example | Default |
+| --- | --- | --- |
+| `autoSlashRedirect` | `true` or `false` | `false` |
+| `exposeUrlServices` | `true` or `false` | `false` |
+| `signKey` | non-empty secret string or `null` | `null` |
+| `signedDefaultTtl` | integer seconds, for example `900`, or `null` | `null` |
+| `signedUrlConfig` | `SignedUrlConfig`, configuration array, or `null` | `null` |
+| `urlBaseUri` | `https://example.com` or empty string | `''` |
+
+On cached boot, the default URL-service binding is lazy. A custom
+`bindUrlServices` callback replaces that behavior, while the signing values in
+`registrarOptions` remain the source for the default binding.
+
+`routeCache` enables cache reads but does not authorize request-time writes.
+Build artifacts explicitly with `RouteCache::build()` or `route:cache`.
 
 ---
 
@@ -61,8 +106,9 @@ $invoker = Invoker::with($container);
 
 $kernel = RouterKernel::bootWithRegistrar(
     log: new NullLogger(),
-    matcher: ShardedMatcher::make(__DIR__ . '/.route-cache'),
+    matcher: ShardedMatcher::make(),
     register: $register,
+    routeCache: __DIR__ . '/.route-cache',
     invoker: $invoker,                         // or container: $container
     serviceProviders: [
         AuthProvider::class,
@@ -486,7 +532,7 @@ RouteCache::build([
 ```php
 $kernel = RouterKernel::bootWithRegistrar(
     log: new \Psr\Log\NullLogger(),
-    matcher: \Infocyph\Webrick\Router\Matching\ShardedMatcher::make(__DIR__ . '/.route-cache'),
+    matcher: \Infocyph\Webrick\Router\Matching\ShardedMatcher::make(),
     register: static function (\Infocyph\Webrick\Router\Definition\Registrar $registrar): void {
         unset($registrar);
         require __DIR__ . '/routes.php';

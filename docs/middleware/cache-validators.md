@@ -1,9 +1,9 @@
 # Cache Validators Middleware
 
-Handles HTTP conditional requests with `ETag` and `Last-Modified`, and short-circuits when appropriate.
+Handles HTTP conditional requests with `ETag` and `Last-Modified` and short-circuits when appropriate.
 
 ## Responsibilities
-- Evaluate `If-None-Match`, `If-Modified-Since`, and other preconditions before controller work.
+- Evaluate `If-None-Match`, `If-Modified-Since` and other preconditions before controller work.
 - Return **304 Not Modified** or **412 Precondition Failed** when conditions match.
 - Drop stale `Range` headers so downstream returns a full `200` when needed.
 - Auto-attach validators (ETag/Last-Modified) for GET/HEAD responses if missing.

@@ -25,7 +25,6 @@ use Infocyph\Webrick\Router\Dispatch\MiddlewareAliases;
 use Infocyph\Webrick\Router\Facade\Router as Route;
 use Infocyph\Webrick\Router\Kernel\RouterKernel;
 use Infocyph\Webrick\Router\Matching\ShardedMatcher;
-use Infocyph\Webrick\Router\Route\Collection;
 use Infocyph\Webrick\Router\Url\SignedUrlConfig;
 use Psr\Log\NullLogger;
 
@@ -66,12 +65,14 @@ $kernel = RouterKernel::bootWithRegistrar(
         'signedUrlConfig' => $signedUrls,
         'urlBaseUri' => $baseUri,
     ],
-    bindUrlServices: static function (Collection $routes) use ($signKey, $signedUrls, $baseUri): void {
-        Route::bindUrlServices($routes, $signKey, 900, $signedUrls, $baseUri);
-    },
     fallbackAliasesFromRegistrar: true,
 );
 ```
+
+`signKey`, `signedDefaultTtl`, `signedUrlConfig` and `urlBaseUri` remain part
+of kernel configuration. When booting from cache, Webrick defers alias loading
+and `UrlGenerator` construction until the first URL helper call. Provide
+`bindUrlServices` only to replace the default binding behavior.
 
 If you do not want aliases, you can attach `new VerifySignedUrlMiddleware(...)` directly in a route's `middleware` option.
 
@@ -190,6 +191,6 @@ Use `leeway` when you need a small clock-skew buffer.
 ## 7. Recommendations
 
 - Use permanent signed URLs only for low-risk links.
-- Use `temporaryUrlFor(...)` or `temporaryUrlUntil(...)` for downloads, callbacks, and sensitive actions.
+- Use `temporaryUrlFor(...)` or `temporaryUrlUntil(...)` for downloads, callbacks and sensitive actions.
 - Prefer multi-key verification during signing-key rotations.
 - If your application appends analytics params after generation, add them to `ignoredQueryParams` on the verifier profile.

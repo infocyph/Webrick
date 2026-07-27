@@ -1,6 +1,6 @@
 # Containers & CI
 
-A pragmatic, copy-pasteable approach to packaging Webrick with Docker and wiring a CI pipeline that builds, tests, warms caches, and ships images safely.
+A pragmatic, copy-pasteable approach to packaging Webrick with Docker and wiring a CI pipeline that builds, tests, warms caches and ships images safely.
 
 ---
 

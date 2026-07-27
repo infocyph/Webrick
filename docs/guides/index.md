@@ -5,7 +5,7 @@ Practical, copy‑paste friendly walkthroughs that show how to use Webrick’s f
 ## What’s inside
 - **Signed & Temporary URLs** — Generate secure links and verify them via middleware.
 - **Attribute Routes** — Co‑locate route metadata with your handlers using PHP attributes.
-- **Responses & Negotiation** — Let Webrick pick the right `Content-Type`, stream data, and cooperate with ETags/compression.
+- **Responses & Negotiation** — Let Webrick pick the right `Content-Type`, stream data and cooperate with ETags/compression.
 - **Error Rendering** — Let framework failures throw, then shape final HTTP output at the kernel boundary.
 
 ## When to use guides vs reference
