@@ -258,11 +258,11 @@ final class RouterKernel
 
         $scope = 'webrick.request.' . (++$this->requestScopeSeq);
 
-        $result = $container->withinScope($scope, function (Container $scoped) use ($request, $runner): Response {
-            $scoped->definitions()->bind(Request::class, $request, LifetimeEnum::Scoped);
-
-            return $this->errorHandler->handle($request, $runner);
-        });
+        $result = $container->withinScope(
+            $scope,
+            fn(): Response => $this->errorHandler->handle($request, $runner),
+            [Request::class => $request],
+        );
         if (!$result instanceof Response) {
             throw new \RuntimeException('Request scope callback must return Response.');
         }

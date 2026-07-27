@@ -127,7 +127,8 @@ Notes:
   lifetime.
 - Every tagged definition must resolve to callable middleware accepting
   `(Request $request, Closure $next)` and returning `Response`.
-- `requestScopeEnabled` binds `Request::class` as scoped for each request lifecycle.
+- `requestScopeEnabled` seeds `Request::class` directly into each request scope,
+  avoiding per-request definition registration while retaining scoped isolation.
 - `Response::view()` uses the same `intermix` container path as kernel DI by default.
 
 ---
