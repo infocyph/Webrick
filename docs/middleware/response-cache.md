@@ -2,14 +2,14 @@
 
 Serve cached responses for safe requests (typically **GET/HEAD**) without running handlers. This middleware provides a fast-path lookup and a coherent invalidation story that plays well with **ETag/Last-Modified** and **Compression**.
 
-`ResponseCacheMiddleware` is an optional module boundary. Install CacheLayer
+`ResponseCacheMiddleware` is an optional module boundary. Install CacheLayer 2
 before using this class:
 
 ```bash
-composer require infocyph/cachelayer
+composer require "infocyph/cachelayer:^2.0"
 ```
 
-Core routing does not load or require CacheLayer.
+Core routing does not load, initialize, or require CacheLayer.
 
 ---
 

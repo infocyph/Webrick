@@ -39,12 +39,12 @@ traditional and persistent runtimes.
 composer require infocyph/webrick
 ```
 
-Core routing does not install CacheLayer. Add it only when using
+Core routing does not install or initialize CacheLayer. Add CacheLayer 2 only when using
 `ResponseCacheMiddleware`, the default throttle cache backend, or CacheLayer's
 atomic counter backend:
 
 ```bash
-composer require infocyph/cachelayer
+composer require "infocyph/cachelayer:^2.0"
 ```
 
 `ThrottleMiddleware` can also run without CacheLayer when the application
