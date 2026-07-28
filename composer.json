@@ -32,7 +32,7 @@
         "psr/log": "^3.0.2"
     },
     "require-dev": {
-        "infocyph/cachelayer": "^1.6",
+        "infocyph/cachelayer": "^2.0",
         "infocyph/phpforge": "dev-main@dev"
     },
     "suggest": {

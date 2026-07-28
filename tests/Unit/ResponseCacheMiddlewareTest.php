@@ -97,3 +97,23 @@ test('response cache preserves the response when its backend cannot write', func
     expect($response->getStatusCode())->toBe(200)
         ->and((string) $response->getBody())->toBe('{"ok":true}');
 });
+
+test('response cache serves a CacheLayer 2 hit without invoking the handler again', function (): void {
+    $middleware = new ResponseCacheMiddleware(
+        new Cache(new ArrayCacheAdapter('webrick-response-hit')),
+    );
+    $request = Request::fake(uri: 'http://localhost/cache-hit');
+    $calls = 0;
+    $next = static function () use (&$calls): Response {
+        $calls++;
+
+        return Response::json(['call' => $calls]);
+    };
+
+    $first = $middleware($request, $next);
+    $second = $middleware($request, $next);
+
+    expect((string) $first->getBody())->toBe('{"call":1}')
+        ->and((string) $second->getBody())->toBe('{"call":1}')
+        ->and($calls)->toBe(1);
+});

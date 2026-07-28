@@ -3,11 +3,11 @@
 Rate limiting middleware that enforces request limits per client/user with configurable windows and costs.
 
 Pass any application-provided PSR-6 pool to use throttling without CacheLayer.
-Install CacheLayer only when using the default local pool or its atomic counter
+Install CacheLayer 2 only when using the default local pool or its atomic counter
 backend:
 
 ```bash
-composer require infocyph/cachelayer
+composer require "infocyph/cachelayer:^2.0"
 ```
 
 ---
