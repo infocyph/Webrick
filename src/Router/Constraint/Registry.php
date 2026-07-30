@@ -182,7 +182,6 @@ final class Registry
         }
 
         if (\is_callable($rule)) {
-            /** @var callable-string $rule */
             self::$callableValidators[$key] = $rule;
 
             return;
