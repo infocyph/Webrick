@@ -528,7 +528,7 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
 
         $pairs = [];
         foreach ($params as [$name, $pos]) {
-            $pairs[] = \var_export((string) $name, true) . " => (string)\$segments[{$pos}]";
+            $pairs[] = \var_export($name, true) . " => (string)\$segments[{$pos}]";
         }
 
         return $indent . '            $params = [' . \implode(', ', $pairs) . "];\n";

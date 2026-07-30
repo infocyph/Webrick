@@ -403,8 +403,8 @@ final class CookieEncryptionMiddleware
             $decoded = $this->decryptAndDecompress(
                 $baseName,
                 $frame['mode'],
-                (int) $useKid,
-                (string) $key,
+                $useKid,
+                $key,
                 $frame['iv'],
                 $frame['tag'],
                 $frame['ct'],

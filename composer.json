@@ -26,8 +26,8 @@
     ],
     "require": {
         "php": ">=8.4",
-        "infocyph/arraykit": "^4.6",
-        "infocyph/intermix": "^7.3.1",
+        "infocyph/arraykit": "^4.6.1",
+        "infocyph/intermix": "^7.3.2",
         "psr/cache": "^3.0",
         "psr/log": "^3.0.2"
     },
@@ -53,7 +53,7 @@
     "autoload-dev": {
         "psr-4": {
             "Infocyph\\Webrick\\Benchmarks\\": "benchmarks/",
-            "Infocyph\\Webrick\\Tests\\": "tests/"
+            "Infocyph\\Webrick\\Tests\\Fixture\\": "tests/Fixtures/"
         },
         "files": [
             "tests/Helpers.php"

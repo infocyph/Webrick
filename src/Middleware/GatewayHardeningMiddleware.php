@@ -58,14 +58,14 @@ final class GatewayHardeningMiddleware
     /** @var array<string,list<string>> */
     private static array $hostRegexCache = [];
 
-    private bool $allowAllHosts = false;
-
-    /** EndUser instance for the current request (set in __invoke) */
-    private ?EndUser $endUser = null;
+    private readonly bool $allowAllHosts;
 
     /** compiled regex list for this instance (populated from static cache) */
     /** @var list<string> */
-    private array $hostRegex = [];
+    private readonly array $hostRegex;
+
+    /** EndUser instance for the current request (set in __invoke) */
+    private ?EndUser $endUser = null;
 
     /**
      * Configure gateway hardening knobs and pre-compile host allow-list.

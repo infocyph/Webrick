@@ -19,7 +19,7 @@ abstract class Message
     protected Stream $body;
 
     /** @var array<string,list<string>> */
-    protected array $headers = [];
+    protected array $headers;
 
     /**
      * @param array<string,string|array<int,string>> $headers header-name => string[] or string (ucwords-dashed)
