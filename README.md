@@ -44,7 +44,7 @@ Core routing does not install or initialize CacheLayer. Add CacheLayer 2 only wh
 atomic counter backend:
 
 ```bash
-composer require "infocyph/cachelayer:^2.0"
+composer require "infocyph/cachelayer:^2.0.1"
 ```
 
 `ThrottleMiddleware` can also run without CacheLayer when the application

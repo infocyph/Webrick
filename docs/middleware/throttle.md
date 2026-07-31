@@ -7,7 +7,7 @@ Install CacheLayer 2 only when using the default local pool or its atomic counte
 backend:
 
 ```bash
-composer require "infocyph/cachelayer:^2.0"
+composer require infocyph/cachelayer
 ```
 
 ---
