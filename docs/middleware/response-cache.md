@@ -6,7 +6,7 @@ Serve cached responses for safe requests (typically **GET/HEAD**) without runnin
 before using this class:
 
 ```bash
-composer require "infocyph/cachelayer:^2.0"
+composer require infocyph/cachelayer
 ```
 
 Core routing does not load, initialize, or require CacheLayer.
