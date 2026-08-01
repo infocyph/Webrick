@@ -10,7 +10,9 @@ use Infocyph\Webrick\Response\Response;
 
 describe('ThrottleMiddleware', function () {
     beforeEach(function () {
-        $this->cache = testCache('throttle');
+        $this->cacheNamespace = 'throttle-' . bin2hex(random_bytes(8));
+        $this->cachePath = sys_get_temp_dir() . '/webrick-test-' . $this->cacheNamespace;
+        $this->cache = testCache($this->cacheNamespace);
         $this->middleware = new ThrottleMiddleware(
             max: 3,
             window: 60,
@@ -19,16 +21,15 @@ describe('ThrottleMiddleware', function () {
     });
 
     afterEach(function () {
-        cleanTestCache(sys_get_temp_dir().'/webrick-test-throttle');
+        $this->cache->clear();
+        cleanTestCache($this->cachePath);
     });
 
     it('allows requests within limit', function () {
-        // Fresh cache and middleware for this test
-        $cache = testCache('throttle-allow-'.uniqid());
         $middleware = new ThrottleMiddleware(
             max: 3,
             window: 60,
-            pool: $cache
+            pool: $this->cache
         );
 
         $request = mockRequest('GET', '/test');
@@ -51,6 +52,8 @@ describe('ThrottleMiddleware', function () {
 
     it('blocks requests over limit', function () {
         $request = mockRequest('GET', '/test');
+        // Keep the backing cache expiry safely ahead of the real clock for this fixed-window assertion.
+        $_SERVER['REQUEST_TIME'] = time() + 60;
         $next = fn () => Response::json(['ok' => true]);
 
         // Make 3 requests (limit)
@@ -75,15 +78,15 @@ describe('ThrottleMiddleware', function () {
     });
 
     it('respects per-request cost', function () {
-        // Fresh cache for this test
-        $cache = testCache('throttle-cost-'.uniqid());
         $middleware = new ThrottleMiddleware(
             max: 5,
             window: 60,
-            pool: $cache
+            pool: $this->cache
         );
 
         $request = mockRequest('GET', '/test');
+        // Keep the backing cache expiry safely ahead of the real clock for this fixed-window assertion.
+        $_SERVER['REQUEST_TIME'] = time() + 60;
         $next = fn () => Response::json(['ok' => true]);
 
         // Request with cost 2 (total: 2)
