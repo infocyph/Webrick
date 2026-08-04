@@ -83,6 +83,33 @@ describe('Request', function () {
             ->toThrow(InvalidArgumentException::class);
     });
 
+    it('hydrates raw upload specifications only when uploads are requested', function () {
+        $temporary = tempnam(sys_get_temp_dir(), 'webrick-upload-');
+        expect($temporary)->toBeString();
+        file_put_contents($temporary, 'upload');
+
+        try {
+            $request = new ServerRequest('POST', '/', files: [
+                'document' => [
+                    'name' => 'document.txt',
+                    'type' => 'text/plain',
+                    'tmp_name' => $temporary,
+                    'error' => UPLOAD_ERR_OK,
+                    'size' => 6,
+                ],
+            ]);
+            $hydrated = new ReflectionProperty(ServerRequest::class, 'filesHydrated');
+
+            expect($hydrated->getValue($request))->toBeNull()
+                ->and($request->getUploadedFiles()['document'] ?? null)->toBeInstanceOf(UploadedFile::class)
+                ->and($hydrated->getValue($request))->toBeArray();
+        } finally {
+            if (is_string($temporary) && is_file($temporary)) {
+                unlink($temporary);
+            }
+        }
+    });
+
     it('keeps data and all caches in sync after immutable mutations', function () {
         $request = Request::fake(query: ['q' => 'old'], post: ['name' => 'first']);
 

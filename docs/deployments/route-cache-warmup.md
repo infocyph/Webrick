@@ -8,7 +8,7 @@ slower when that produces a smaller and more predictable request path.
 
 | Mode | Cache path | Artifact shape |
 | --- | --- | --- |
-| `sharded` | Directory | Root, alias and route shard PHP files |
+| `sharded` | Directory | Manifest plus immutable generation directories containing aliases and route shards |
 | `fused` | File | One PHP routing data file |
 | `generated` | File | One PHP file containing generated matching code |
 
@@ -95,9 +95,9 @@ $artifact = RouteCache::build([
 ]);
 ```
 
-The builder clears only the selected matcher output before rebuilding. Named
-fused and generated files can coexist with sharded artifacts in one parent
-directory.
+The builder stages and validates the selected matcher output before activating
+it. It does not remove the active artifact first. Named fused and generated
+files can coexist with sharded artifacts in one parent directory.
 
 ## Build and runtime parity
 
@@ -110,8 +110,11 @@ Keep these inputs equivalent:
 - signed URL key, default TTL, configuration and base URI;
 - alias fallback behavior.
 
-Class handlers and string middleware generate the leanest artifacts. Closure or
-object-backed routes remain supported through the serializer fallback.
+Class handlers and string middleware generate the leanest artifacts. Public
+static first-class callables are normalized to scalar class/method descriptors
+when reflection proves the conversion preserves their binding semantics.
+Captured, bound, instance and otherwise stateful closures remain supported
+through the serializer fallback.
 
 ## Publish atomically
 
@@ -125,6 +128,11 @@ A safe deployment sequence is:
 6. Restart or reload persistent workers so they use matching code and cache.
 
 Do not overwrite the cache currently used by live workers one file at a time.
+Webrick validates fused and generated files before an atomic rename. Sharded
+mode writes a complete immutable generation, publishes `__manifest.php`, and
+atomically switches a `__current` symlink where the platform supports it. The
+manifest is the portable fallback. Existing generation directories remain
+available for persistent workers that already pinned the previous generation.
 
 ## Clear
 
@@ -134,9 +142,9 @@ vendor/bin/webrick route:clear \
   --cache=var/cache/webrick/routes
 ```
 
-Normal sharded clear removes known Webrick PHP artifacts. Aggressive sharded
-clear recursively removes entries below the cache directory but preserves a
-root `.gitignore`:
+Normal sharded clear removes the active manifest, legacy root artifacts and all
+Webrick generation directories. Aggressive sharded clear recursively removes
+entries below the cache directory but preserves a root `.gitignore`:
 
 ```bash
 vendor/bin/webrick route:clear \
@@ -165,6 +173,7 @@ request rebuild in production.
 Verify at least:
 
 - the artifact exists at the configured path;
+- every executable artifact has the exact cache-format version expected by the installed Webrick version;
 - runtime PHP and required extensions match the build environment;
 - the web or worker identity can read every artifact;
 - a representative static route, dynamic route, method rejection and named URL

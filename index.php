@@ -326,9 +326,6 @@ namespace {
     /* --------------------------------------------------------------------------
      * 2) Registration closure (executed only when cache is NOT hot)
      * ----------------------------------------------------------------------- */
-    //    $register = static function (Registrar $registrar): void {
-    //        require __DIR__ . '/routes.php';
-    //    };
     $register = static function (Registrar $registrar): void {
         // Registration may run more than once in a persistent worker when a
         // matcher cache is missing or refreshed. The route file is executable

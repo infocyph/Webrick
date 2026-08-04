@@ -6,6 +6,7 @@ use Infocyph\Webrick\Exceptions\HttpException;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Kernel\ErrorHandler;
+use Psr\Log\NullLogger;
 
 describe('ErrorHandler', function () {
     it('renders framework http exceptions at the kernel boundary', function () {
@@ -73,5 +74,22 @@ describe('ErrorHandler', function () {
         expect($response)
             ->toHaveStatus(403)
             ->and((string) $response->getBody())->toContain('"custom":true');
+    });
+
+    it('does not resolve lazy error collaborators on successful requests', function () {
+        $loggerResolutions = 0;
+        $handler = new ErrorHandler(
+            logger: static function () use (&$loggerResolutions): NullLogger {
+                ++$loggerResolutions;
+
+                return new NullLogger();
+            },
+            capturePhpErrors: false,
+        );
+
+        $response = $handler->handle(Request::fake(), static fn(): Response => Response::json(['ok' => true]));
+
+        expect($response)->toHaveStatus(200)
+            ->and($loggerResolutions)->toBe(0);
     });
 });

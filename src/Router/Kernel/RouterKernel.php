@@ -109,6 +109,8 @@ final class RouterKernel
      * @param bool $requestScopeEnabled Whether to wrap handle() in enterScope/leaveScope lifecycle
      * @param Container|null $container Optional container to use for kernel DI
      * @param Invoker|null $invoker Optional invoker to use for kernel DI
+     * @param bool $debug Whether default error responses may expose diagnostic details
+     * @param bool $capturePhpErrors Whether the default boundary converts PHP warnings and notices to exceptions
      */
     public function __construct(
         private readonly LoggerInterface $log,
@@ -144,6 +146,8 @@ final class RouterKernel
         private readonly bool $requestScopeEnabled = true,
         ?Container $container = null,
         ?Invoker $invoker = null,
+        private readonly bool $debug = true,
+        private readonly bool $capturePhpErrors = true,
     ) {
         $this->routeCache = ($routeCache !== '' ? $routeCache : null);
         if ($fallbackAliasesFromRegistrar !== null) {
@@ -182,6 +186,8 @@ final class RouterKernel
      * @param bool $requestScopeEnabled Whether to wrap handle() in enterScope/leaveScope lifecycle
      * @param Container|null $container Optional container to use for kernel DI
      * @param Invoker|null $invoker Optional invoker to use for kernel DI
+     * @param bool $debug Whether default error responses may expose diagnostic details
+     * @param bool $capturePhpErrors Whether the default boundary converts PHP warnings and notices to exceptions
      * @return self Configured RouterKernel instance
      */
     public static function bootWithRegistrar(
@@ -202,6 +208,8 @@ final class RouterKernel
         bool $requestScopeEnabled = true,
         ?Container $container = null,
         ?Invoker $invoker = null,
+        bool $debug = true,
+        bool $capturePhpErrors = true,
     ): self {
         $normalizedCache = ($routeCache !== null && $routeCache !== '') ? $routeCache : null;
         if ($normalizedCache !== null) {
@@ -226,6 +234,8 @@ final class RouterKernel
             requestScopeEnabled: $requestScopeEnabled,
             container: $container,
             invoker: $invoker,
+            debug: $debug,
+            capturePhpErrors: $capturePhpErrors,
         );
     }
 
@@ -406,8 +416,8 @@ final class RouterKernel
     {
         return new ErrorHandler(
             logger: $this->log,
-            debug: true,
-            capturePhpErrors: true,
+            debug: $this->debug,
+            capturePhpErrors: $this->capturePhpErrors,
             requestIdHeader: 'X-Request-Id',
             exceptionMap: [
                 RouteNotFoundException::class => StatusEnum::NOT_FOUND->value,
@@ -672,6 +682,10 @@ final class RouterKernel
      */
     private function prepareGlobalMiddleware(array $preGlobal, array $postGlobal): array
     {
+        if ($preGlobal === [] && $postGlobal === [] && $this->preGlobalTags === [] && $this->postGlobalTags === []) {
+            return [[], []];
+        }
+
         $preGlobal = $this->mergeTaggedGlobals($preGlobal, $this->preGlobalTags);
         $postGlobal = $this->mergeTaggedGlobals($postGlobal, $this->postGlobalTags);
 

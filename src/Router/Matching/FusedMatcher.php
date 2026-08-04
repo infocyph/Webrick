@@ -88,6 +88,9 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
      */
     private array $hosts = [];
 
+    /** @var array<string,true> */
+    private array $middlewareRequirements = [];
+
     /* ──────────── registration ──────────── */
     /**
      * Add a CompiledRoute to the matcher.
@@ -121,6 +124,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         if (($name = $route->getName()) !== null && $name !== '') {
             $this->alias[$name] = [$route->getPath(), $route->getDomain()];
         }
+        matcher_capture_middleware_requirements($this->middlewareRequirements, $route);
     }
 
     /**
@@ -142,7 +146,6 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         if (
             $this->cacheEnabled
             && $this->cacheWriteEnabled
-            && !\is_file($this->cacheFile)
             && $this->hosts !== []
         ) {
             $this->dumpCache();
@@ -223,15 +226,17 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
      *
      * Uses exported PHP payload text to avoid json_encode() object-loss semantics.
      *
-     * @param HostMap $hosts Host routing table payload.
-     * @param AliasIndex $alias Alias map payload.
+     * @param array<mixed> $hosts Host routing table payload.
+     * @param array<mixed> $alias Alias map payload.
+     * @param list<string> $middleware Middleware alias requirements.
      * @return string xxh128 fingerprint.
      */
-    private function computeCacheHash(array $hosts, array $alias): string
+    private function computeCacheHash(array $hosts, array $alias, array $middleware): string
     {
-        return \hash('xxh128', $this->exportArray([
+        return \hash('xxh128', \serialize([
             self::H_DATA => $hosts,
             self::H_ALIAS => $alias,
+            self::H_MIDDLEWARE => $middleware,
         ]));
     }
 
@@ -251,9 +256,11 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
             throw new \RuntimeException("Cannot create cache dir {$dir}");
         }
 
-        $payloadHosts = $this->hosts;
+        /** @var HostMap $payloadHosts */
+        $payloadHosts = MatcherCachePayloadNormalizer::normalize($this->hosts);
         $payloadAlias = $this->alias;
-        $crc = $this->computeCacheHash($payloadHosts, $payloadAlias);
+        $payloadMiddleware = \array_keys($this->middlewareRequirements);
+        $crc = $this->computeCacheHash($payloadHosts, $payloadAlias, $payloadMiddleware);
 
         $php = "<?php\nreturn [\n"
             . "    '" . self::H_VERSION . "' => " . self::CACHE_FORMAT_VERSION . ",\n"
@@ -261,18 +268,32 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
             . "    '" . self::H_TS . "'  => " . \var_export(date(DATE_ATOM), true) . ",\n"
             . "    '" . self::H_DATA . "' => " . $this->exportArray($payloadHosts) . ",\n"
             . "    '" . self::H_ALIAS . "' => " . $this->exportArray($payloadAlias) . ",\n"
+            . "    '" . self::H_MIDDLEWARE . "' => " . $this->exportArray($payloadMiddleware) . ",\n"
             . "];\n";
 
-        $tmp = $this->cacheFile . '.' . \uniqid('', true) . '.tmp';
-        if (\file_put_contents($tmp, $php, \LOCK_EX) === false) {
-            throw new \RuntimeException("Failed to write cache temp file {$tmp}");
-        }
-        \chmod($tmp, 0664);
-        if (!\rename($tmp, $this->cacheFile)) {
-            \unlink($tmp);
-
-            throw new \RuntimeException("Failed to move cache file into place {$this->cacheFile}");
-        }
+        matcher_write_validated_atomic_php_file(
+            $this->cacheFile,
+            $php,
+            function (array $blob) use ($crc): void {
+                if (($blob[self::H_VERSION] ?? null) !== self::CACHE_FORMAT_VERSION) {
+                    throw new \UnexpectedValueException('Generated fused cache has an invalid format version.');
+                }
+                $hosts = $blob[self::H_DATA] ?? null;
+                $alias = $blob[self::H_ALIAS] ?? null;
+                $middleware = $blob[self::H_MIDDLEWARE] ?? null;
+                $hash = $blob[self::H_HASH] ?? null;
+                if (!\is_array($hosts) || !\is_array($alias) || !\is_array($middleware) || !\is_string($hash)) {
+                    throw new \UnexpectedValueException('Generated fused cache has an invalid payload.');
+                }
+                if (!\hash_equals($crc, $hash) || !\hash_equals($crc, $this->computeCacheHash(
+                    $hosts,
+                    $alias,
+                    matcher_normalize_middleware_requirements($middleware),
+                ))) {
+                    throw new \UnexpectedValueException('Generated fused cache hash mismatch.');
+                }
+            },
+        );
 
         if ($this->shouldWarmOpcache()) {
             \opcache_compile_file($this->cacheFile);
@@ -320,8 +341,12 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
      */
     private function loadCacheBlob(): void
     {
-        /** @var array{_version?:int,_hash?:string,_data?:mixed,_alias?:mixed} $blob */
+        /** @var array{_version?:int,_hash?:string,_data?:mixed,_alias?:mixed,_middleware?:mixed} $blob */
         $blob = require $this->cacheFile;
+
+        if (($blob[self::H_VERSION] ?? null) !== self::CACHE_FORMAT_VERSION) {
+            throw new \RuntimeException('Stale fused route cache. Rebuild the route cache.');
+        }
 
         if ($this->verifyCacheOnLoad) {
             if (!isset($blob[self::H_HASH], $blob[self::H_DATA])) {
@@ -330,6 +355,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
             $calc = $this->computeCacheHash(
                 $this->normalizeHosts($blob[self::H_DATA]),
                 $this->normalizeAliasIndex($blob[self::H_ALIAS] ?? []),
+                matcher_normalize_middleware_requirements($blob[self::H_MIDDLEWARE] ?? []),
             );
             if (!\hash_equals($blob[self::H_HASH], $calc)) {
                 throw new \RuntimeException('Route cache Hash mismatch.');
@@ -342,15 +368,14 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
             throw new \RuntimeException('Route cache has an invalid payload.');
         }
 
-        if (($blob[self::H_VERSION] ?? null) === self::CACHE_FORMAT_VERSION) {
-            /** @var HostMap $rawHosts */
-            $this->hosts = $rawHosts;
-            /** @var AliasIndex $rawAlias */
-            $this->alias = $rawAlias;
-        } else {
-            $this->hosts = $this->normalizeHosts($rawHosts);
-            $this->alias = $this->normalizeAliasIndex($rawAlias);
-        }
+        /** @var HostMap $rawHosts */
+        $this->hosts = $rawHosts;
+        /** @var AliasIndex $rawAlias */
+        $this->alias = $rawAlias;
+        $this->middlewareRequirements = \array_fill_keys(
+            matcher_normalize_middleware_requirements($blob[self::H_MIDDLEWARE] ?? []),
+            true,
+        );
         $this->cacheLoaded = true;
     }
 

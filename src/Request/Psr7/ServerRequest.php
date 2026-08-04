@@ -197,7 +197,7 @@ class ServerRequest extends Message
             $body,
             $httpVer,
             self::mixedMap($_POST),
-            UploadedFilesNormalizer::normalise(self::mixedMap($_FILES)),
+            self::mixedMap($_FILES),
             query: $_GET !== [] ? self::mixedMap($_GET) : null,
             cookies: self::mixedMap($_COOKIE),
         );

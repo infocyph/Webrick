@@ -34,6 +34,39 @@ function matcher_should_warm_opcache(): bool
 }
 
 /**
+ * Write generated PHP metadata, validate the staged executable artifact, and
+ * only then atomically replace the active cache file.
+ *
+ * @param callable(array<mixed>):void $validate
+ */
+function matcher_write_validated_atomic_php_file(string $file, string $php, callable $validate): void
+{
+    $tmp = $file . '.' . \uniqid('', true) . '.tmp';
+    if (\file_put_contents($tmp, $php, \LOCK_EX) === false) {
+        throw new \RuntimeException("Failed to write cache temp file {$tmp}");
+    }
+    \chmod($tmp, 0664);
+
+    try {
+        $blob = require $tmp;
+        if (!\is_array($blob)) {
+            throw new \UnexpectedValueException('Generated cache file must return an array.');
+        }
+        $validate($blob);
+    } catch (\Throwable $exception) {
+        \unlink($tmp);
+
+        throw new \RuntimeException('Generated cache validation failed before publication.', 0, $exception);
+    }
+
+    if (!\rename($tmp, $file)) {
+        \unlink($tmp);
+
+        throw new \RuntimeException("Failed to move cache file into place {$file}");
+    }
+}
+
+/**
  * @param list<array{type:'lit',val:string}|array{type:'var',name:string,regex?:string,call?:callable-string}> $segments
  */
 function generated_matcher_render_dynamic_entry_condition(array $segments, string $indent): string
@@ -126,6 +159,43 @@ function matcher_capture_route_alias(array &$aliasIndex, CompiledRoute $route): 
     if ($name !== null && $name !== '') {
         $aliasIndex[$name] = [$route->getPath(), $route->getDomain()];
     }
+}
+
+/**
+ * @param array<string,true> $requirements
+ */
+function matcher_capture_middleware_requirements(array &$requirements, CompiledRoute $route): void
+{
+    foreach ($route->getMiddlewares() as $middleware) {
+        if (!\is_string($middleware) || \class_exists($middleware) || \function_exists($middleware)) {
+            continue;
+        }
+        $name = \strtolower(\trim(\explode(':', $middleware, 2)[0]));
+        if ($name !== '' && \Infocyph\Webrick\Router\Dispatch\MiddlewareAliases::has($name)) {
+            $requirements[$name] = true;
+        }
+    }
+}
+
+/** @return list<string> */
+function matcher_normalize_middleware_requirements(mixed $raw): array
+{
+    if (!\is_array($raw)) {
+        return [];
+    }
+
+    $requirements = [];
+    foreach ($raw as $name) {
+        if (!\is_string($name)) {
+            continue;
+        }
+        $name = \strtolower(\trim($name));
+        if ($name !== '') {
+            $requirements[$name] = true;
+        }
+    }
+
+    return \array_keys($requirements);
 }
 
 /**
@@ -335,21 +405,6 @@ function sharded_matcher_shard_file_path(string $cacheDir, string $hostKey, stri
         : sharded_matcher_sanitize_for_filename($hostKey, $winReserved) . '.' . $bucketSafe . '.php';
 
     return $cacheDir . \DIRECTORY_SEPARATOR . $name;
-}
-
-function sharded_matcher_write_atomic_php_file(string $file, string $php): void
-{
-    $tmp = $file . '.' . \uniqid('', true) . '.tmp';
-    if (\file_put_contents($tmp, $php, \LOCK_EX) === false) {
-        throw new \RuntimeException("Failed to write cache temp file {$tmp}");
-    }
-    \chmod($tmp, 0664);
-
-    if (!\rename($tmp, $file)) {
-        \unlink($tmp);
-
-        throw new \RuntimeException("Failed to move cache file into place {$file}");
-    }
 }
 
 /**

@@ -77,4 +77,14 @@ interface MatcherInterface
      * @throws MethodNotAllowedException When a matching path exists but the HTTP verb is not allowed.
      */
     public function match(string $method, string $host, string $path): array;
+
+    /**
+     * Return registered middleware aliases referenced by cached routes.
+     *
+     * The list is an optimization hint. Dynamic or unknown middleware remains
+     * discoverable through the normal registrar and dispatcher paths.
+     *
+     * @return list<string>
+     */
+    public function middlewareRequirements(): array;
 }

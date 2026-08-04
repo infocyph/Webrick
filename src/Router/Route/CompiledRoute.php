@@ -134,23 +134,22 @@ final class CompiledRoute implements RouteInterface
      */
     public static function fromCachePayload(array $payload): self
     {
-        $payload = CompiledRouteCachePayload::validate($payload);
-
-        $cors = $payload[11];
+        $data = CompiledRouteCachePayload::validate($payload);
+        $cors = $data[11];
 
         return new self(
-            method: $payload[1],
-            path: $payload[2],
-            handler: $payload[3],
-            domain: $payload[4],
-            middleware: $payload[5],
-            name: $payload[6],
-            dynamic: $payload[7],
-            regex: $payload[8],
-            variables: $payload[9],
-            index: $payload[10],
+            method: $data[1],
+            path: $data[2],
+            handler: $data[3],
+            domain: $data[4],
+            middleware: $data[5],
+            name: $data[6],
+            dynamic: $data[7],
+            regex: $data[8],
+            variables: $data[9],
+            index: $data[10],
             corsPolicy: \is_array($cors) ? new Cors(...$cors) : null,
-            segments: $payload[12],
+            segments: $data[12],
         );
     }
 
@@ -305,6 +304,40 @@ final class CompiledRoute implements RouteInterface
             }
         }
 
+        return $this->toCachePayloadWithHandler($handler);
+    }
+
+    /**
+     * Export scalar route metadata using a cache-normalized handler.
+     *
+     * @param array{0:string,1:string}|string $handler
+     * @return array{
+     *   0:int,
+     *   1:string,
+     *   2:string,
+     *   3:array{0:string,1:string}|string,
+     *   4:?string,
+     *   5:list<string>,
+     *   6:?string,
+     *   7:bool,
+     *   8:string,
+     *   9:list<string>,
+     *   10:int,
+     *   11:?array{
+     *     origins:list<string>,
+     *     methods:?string,
+     *     headers:string|list<string>|null,
+     *     exposeHeaders:string|list<string>|null,
+     *     maxAgeSeconds:?int,
+     *     allowCredentials:?bool,
+     *     allowPrivateNetwork:?bool
+     *   },
+     *   12:list<SegmentSpec>
+     * }
+     * @internal
+     */
+    public function toCachePayloadWithHandler(array|string $handler): array
+    {
         $middleware = [];
         foreach ($this->middleware as $entry) {
             if (!\is_string($entry)) {

@@ -12,8 +12,11 @@ use Infocyph\Webrick\Response\Response;
 
 /**
  * Minimal adapter for RoadRunner.
+ *
  * Requires Request attribute 'roadrunner.respond' (callable):
- *   function (int $status, array $headers, string|iterable $body): void
+ *
+ * Example:
+ * function (int $status, array $headers, string|iterable $body): void
  */
 final class RoadRunnerEmitter implements EmitterInterface
 {
@@ -21,7 +24,9 @@ final class RoadRunnerEmitter implements EmitterInterface
      * Emits a response to the current IO target.
      *
      * Requires Request attribute 'roadrunner.respond' (callable):
-     *   function (int $status, array $headers, string|iterable $body): void
+     *
+     * Example:
+     * function (int $status, array $headers, string|iterable $body): void
      *
      * @throws \RuntimeException
      */

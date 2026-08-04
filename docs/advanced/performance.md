@@ -14,9 +14,8 @@ apt-get install wrk  # or brew install wrk
 # Benchmark
 wrk -t4 -c100 -d30s http://127.0.0.1:8000/ping
 
-# Expected baseline with OPcache + route cache
-# 10,000+ req/s for simple routes
-# 2,000-5,000 req/s for typical API endpoints
+# Record successful RPS/RPM, p50/p95/p99, failures, CPU and memory.
+# Compare medians across repeated production-equivalent runs.
 ```
 
 ---
@@ -41,7 +40,8 @@ opcache.max_wasted_percentage=5
 opcache.save_comments=1
 ```
 
-**Impact**: **5-10x faster** vs no OPcache.
+Measure cold and warm behavior separately; OPcache gains depend on the complete
+application, deployment mode and runtime configuration.
 
 ---
 
@@ -61,7 +61,18 @@ $kernel = RouterKernel::bootWithRegistrar(
 );
 ```
 
-**Impact**: **50% faster boot** vs live registration (~100ms → ~50ms for 1000 routes).
+Measure cache generation, cached kernel boot and matched-route dispatch as three
+separate costs. Cache generation may become slower when that removes validation,
+reflection and serialization from normal requests.
+
+Webrick validates staged cache artifacts before publication. Sharded mode
+publishes an immutable generation through one atomic manifest switch, so a
+partial generation is never selected by a new kernel.
+
+Upload specifications remain raw until uploaded files are requested. Webrick
+still opens the PSR-compatible request body stream for every method, including
+GET and HEAD, because those methods may legally carry a body. URL-encoded body
+parsing remains gated to applicable non-POST methods and content types.
 
 ---
 
@@ -79,6 +90,11 @@ $matcher = ShardedMatcher::make();
 - < 100 routes
 - Serverless/edge deployments
 - Simple services
+
+Benchmark all three modes with the application's route count and traffic mix.
+For a middleware-free route, Webrick uses a direct dispatch lane and does not
+allocate a middleware pipeline. Adding any pre-global, route, or post-global
+middleware intentionally selects the full ordered pipeline.
 
 ---
 
@@ -99,7 +115,10 @@ $preGlobal = [
 ];
 ```
 
-**Each middleware adds ~0.5-2ms latency**.
+Measure every global layer as part of end-to-end RPM. Webrick retains its
+standard pre/post tag names by default. Pass empty `preGlobalTags` and
+`postGlobalTags` lists when an application does not use tagged middleware and
+wants to remove even the container tag lookup from boot.
 
 ---
 

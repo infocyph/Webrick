@@ -65,11 +65,13 @@ $kernel = RouterKernel::bootWithRegistrar(
 | `bindUrlServices` | `Closure(Collection): void` or `null` | `null` | Replace default URL-service binding |
 | `fallbackAliasesFromRegistrar` | `true`, `false`, or `null` | `null` | Override alias-only registrar fallback |
 | `serviceProviders` | service provider class/instance list | `[]` | Import InterMix service providers at boot |
-| `preGlobalTags` | list of container tag names | `['webrick.middleware.pre']` | Append tagged pre-route middleware |
-| `postGlobalTags` | list of container tag names | `['webrick.middleware.post']` | Append tagged post-route middleware |
+| `preGlobalTags` | list of container tag names | `['webrick.middleware.pre']` | Append tagged pre-route middleware; pass `[]` to disable tag lookup |
+| `postGlobalTags` | list of container tag names | `['webrick.middleware.post']` | Append tagged post-route middleware; pass `[]` to disable tag lookup |
 | `requestScopeEnabled` | `true` or `false` | `true` | Create and leave an InterMix scope per `handle()` |
 | `container` | InterMix `Container` or `null` | `null` | Container used when no explicit invoker is passed |
 | `invoker` | InterMix `Invoker` or `null` | `null` | Explicit dispatcher/container integration |
+| `debug` | `true` or `false` | `true` | Expose default error-boundary diagnostic details; set `false` for public production traffic |
+| `capturePhpErrors` | `true` or `false` | `true` | Convert PHP warnings/notices to exceptions for the default boundary |
 
 Common `registrarOptions`:
 
@@ -121,6 +123,8 @@ $kernel = RouterKernel::bootWithRegistrar(
 ```
 
 Notes:
+- Pass empty tag lists when the application uses only explicit global or route
+  middleware and should avoid container tag discovery.
 - Tagged middleware are appended after explicit `preGlobal` / `postGlobal`.
 - Tagged `Container::bindFactory()` definitions are resolved lazily inside the
   request scope and retain their configured singleton, scoped or transient

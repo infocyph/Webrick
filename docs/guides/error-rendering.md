@@ -41,6 +41,20 @@ Default rendering behavior:
 - preserves exception headers like `Allow` or `Retry-After`
 - preserves public framework messages
 - negotiates the final response type at the boundary
+- retains diagnostic exception details for compatibility
+- converts PHP warnings/notices inside the request boundary for compatibility
+
+Set `debug: false` for public production traffic. Set `capturePhpErrors: false`
+when lifecycle-wide error conversion already exists or warnings must follow the
+host runtime's handler; the compatibility default installs and restores a PHP
+error handler around every request. Both options may be passed to
+`RouterKernel::bootWithRegistrar()` when using the default boundary, or directly
+to a custom `ErrorHandler`.
+
+The logger may be a PSR-3 instance or a zero-argument closure returning one.
+The closure is invoked only after an exception reaches the boundary, so a
+successful request does not construct an error-only logger. A custom response
+renderer is likewise called only while rendering an error.
 
 ## Custom boundary renderer
 

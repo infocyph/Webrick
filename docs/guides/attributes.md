@@ -136,7 +136,9 @@ $kernel = RouterKernel::bootWithRegistrar(
 3. Reflects on each class looking for route attributes
 4. Registers routes with the router
 
-**Performance**: Scanning happens once per request (or prebuild in route cache for production).
+**Performance**: Live registration scans during kernel boot. Build the route
+cache during deployment so production requests load the compiled artifact and
+do not scan application directories.
 
 ---
 

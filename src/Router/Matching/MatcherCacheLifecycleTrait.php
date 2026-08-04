@@ -19,7 +19,7 @@ trait MatcherCacheLifecycleTrait
     #[\Override]
     public function canBootFromCache(): bool
     {
-        return $this->cacheEnabled && \is_file($this->cacheFile);
+        return $this->cacheEnabled && !$this->cacheWriteEnabled && \is_file($this->cacheFile);
     }
 
     public function enableCache(string $cacheLocation): self
@@ -35,6 +35,14 @@ trait MatcherCacheLifecycleTrait
         $this->cacheWriteEnabled = $enable;
 
         return $this;
+    }
+
+    /** @return list<string> */
+    public function middlewareRequirements(): array
+    {
+        $this->ensureCacheLoaded();
+
+        return \array_keys($this->middlewareRequirements);
     }
 
     private function ensureCacheLoaded(): void

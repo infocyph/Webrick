@@ -8,11 +8,12 @@ use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Request\Support\IpCidr;
 
 /**
- * EndUser – information about the *real* client
- * --------------------------------------------
- *   $eu = new EndUser($psrRequest, ['203.0.113.0/24']); // extra trusted proxies
- *   $ip = $eu->ip();                                    // best public address
- *   $log = $eu->anonymize($ip);                         // privacy-safe
+ * Resolves information about the real client behind trusted proxies.
+ *
+ * Example:
+ * $endUser = new EndUser($request, ['203.0.113.0/24']);
+ * $ip = $endUser->ip();
+ * $logValue = $endUser->anonymize($ip);
  */
 final class EndUser
 {

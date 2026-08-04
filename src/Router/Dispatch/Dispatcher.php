@@ -19,8 +19,6 @@ namespace Infocyph\Webrick\Router\Dispatch;
 
 use Closure;
 use Infocyph\InterMix\DI\Invoker;
-use Infocyph\InterMix\DI\Invoker\GenericCall;
-use Infocyph\InterMix\DI\Invoker\InjectedCall;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
@@ -99,6 +97,11 @@ final class Dispatcher
         array $vars,
     ): Response {
         $request = $this->attachRouteAttributes($route, $request, $vars);
+
+        if ($this->preGlobalRaw === [] && $route->getMiddlewares() === [] && $this->postGlobalRaw === []) {
+            return $this->dispatchFinal($route, $request);
+        }
+
         $routeId = $route->getIndex();
 
         // Build + memoize the full pipeline (globals + route + globals) per route.
@@ -170,13 +173,16 @@ final class Dispatcher
     {
         $handler = $route->getHandler();
 
-        return function (Request $req) use ($handler): Response {
-            $routeVars = $this->normalizeCallArgs($req->getAttribute('route_params', []));
+        return function (Request $request) use ($handler): Response {
+            $routeVars = $this->normalizeCallArgs($request->getAttribute('route_params', []));
+            $result = $this->invokeRouteHandler(
+                $handler,
+                $routeVars + ['request' => $request],
+            );
 
-            $callArgs = $routeVars + ['request' => $req];
-            $result = $this->invokeRouteHandler($handler, $callArgs);
-
-            return $result instanceof Response ? $result : Response::json($this->normalizeJsonPayload($result));
+            return $result instanceof Response
+                ? $result
+                : Response::json($this->normalizeJsonPayload($result));
         };
     }
 
@@ -282,7 +288,26 @@ final class Dispatcher
         // Merge pre → route → post into the final stack.
         $stack = [...$preInv, ...$routeInvokables, ...$postInv];
 
-        return new MiddlewarePipeline($stack, $final, invoker: $this->invoker, useInvoker: $this->useInvoker);
+        return new MiddlewarePipeline(
+            $stack,
+            $final,
+            invoker: $this->invoker,
+            useInvoker: $this->useInvoker,
+            invokeFinalWithInvoker: false,
+        );
+    }
+
+    private function dispatchFinal(CompiledRoute $route, Request $request): Response
+    {
+        $routeVars = $this->normalizeCallArgs($request->getAttribute('route_params', []));
+        $result = $this->invokeRouteHandler(
+            $route->getHandler(),
+            $routeVars + ['request' => $request],
+        );
+
+        return $result instanceof Response
+            ? $result
+            : Response::json($this->normalizeJsonPayload($result));
     }
 
     /**
@@ -300,6 +325,13 @@ final class Dispatcher
     private function filteredGlobalsFor(CompiledRoute $route): array
     {
         $routeClasses = $this->routeMiddlewareClasses($route);
+
+        if ($routeClasses === []) {
+            return [
+                $this->buildInvokables($this->preGlobalRaw),
+                $this->buildInvokables($this->postGlobalRaw),
+            ];
+        }
 
         $preRaw = $this->filterGlobals($this->preGlobalRaw, $routeClasses);
         $postRaw = $this->filterGlobals($this->postGlobalRaw, $routeClasses);
@@ -345,18 +377,7 @@ final class Dispatcher
     private function instantiateClassViaInterMix(string $class): object
     {
         try {
-            $resolver = $this->invoker->getContainer()->getCurrentResolver();
-            if ($resolver instanceof InjectedCall) {
-                $settled = $resolver->classSettler($class, '__webrick_noop__', true);
-            } elseif ($resolver instanceof GenericCall) {
-                $settled = $resolver->classSettler($class, '__webrick_noop__');
-            } else {
-                throw new InvalidArgumentException(
-                    \sprintf('Unsupported InterMix resolver type: %s', $resolver::class),
-                );
-            }
-
-            $instance = $settled['instance'] ?? null;
+            $instance = $this->invoker->make($class);
             if (\is_object($instance)) {
                 return $instance;
             }
@@ -441,6 +462,10 @@ final class Dispatcher
      */
     private function looksLikeAliasString(string $s): bool
     {
+        if (\class_exists($s) || \function_exists($s) || (\str_contains($s, '::') && \is_callable($s))) {
+            return false;
+        }
+
         $name = \strtolower(\trim(\explode(':', $s, 2)[0]));
 
         return $name !== '' && MiddlewareAliases::has($name);

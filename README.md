@@ -17,7 +17,9 @@ traditional and persistent runtimes.
 - Fast routing: named routes, groups, domains, resources, attribute discovery
 - Framework-neutral: run Webrick standalone or mount it behind another framework's request/response adapter
 - Deploy-time compilation: sharded, fused and generated PHP route-cache artifacts
+- Validated cache publication: exact format versions, staged PHP validation and atomic activation
 - Lean cached dispatch: class handlers and string middleware stay scalar until the matched route is materialized
+- Safe callable caching: public static first-class callables become scalar descriptors; stateful closures keep serializer semantics
 - Lazy optional services: middleware alias families and URL generation are resolved only when used
 - DI-aware dispatch: constructor and method injection through InterMix, with request scopes and service providers
 - Signed URLs: permanent, TTL-based, or explicit-expiry links
@@ -95,6 +97,13 @@ For deployable route caches, prefer a controller class-string or
 controller allocation; non-static methods are constructed through InterMix.
 Closures and object-backed handlers remain supported through the serializer
 fallback, but they are not the cheapest cache representation.
+
+Route-cache builds validate staged executable PHP before activation. Sharded
+builds publish an immutable generation through a small manifest, so an
+incomplete build cannot replace the generation used by live workers.
+On systems that support symbolic links, a tiny atomic `__current` pointer keeps
+generation selection out of PHP cache hydration; the manifest remains the
+portable fallback.
 
 ## Use Inside Another Framework
 
