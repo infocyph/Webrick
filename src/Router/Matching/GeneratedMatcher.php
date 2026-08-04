@@ -93,6 +93,9 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
      */
     private array $hostRoutes = [];
 
+    /** @var array<string,true> */
+    private array $middlewareRequirements = [];
+
     public function add(CompiledRoute $route): void
     {
         [$host] = matcher_prepare_route_registration(
@@ -103,6 +106,7 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         );
         $this->hostRoutes[$host][] = $route;
         matcher_capture_route_alias($this->alias, $route);
+        matcher_capture_middleware_requirements($this->middlewareRequirements, $route);
     }
 
     public function finalize(): void
@@ -113,7 +117,7 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
 
         if ($this->cacheEnabled) {
             $cacheFileExists = \is_file($this->cacheFile);
-            if (!$cacheFileExists && $this->cacheWriteEnabled && $this->hostRoutes !== []) {
+            if ($this->cacheWriteEnabled && $this->hostRoutes !== []) {
                 $this->dumpCache();
                 $cacheFileExists = true;
             }
@@ -216,7 +220,7 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
     }
 
     /**
-     * @param array{_code?:string,_code_deflate?:string} $blob
+     * @param array<mixed> $blob
      */
     private function cachedMatcherSource(array $blob): ?string
     {
@@ -236,6 +240,12 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         $code = \gzinflate($compressed);
 
         return \is_string($code) && $code !== '' ? $code : null;
+    }
+
+    /** @param list<string> $middleware */
+    private function cacheHash(string $code, array $middleware): string
+    {
+        return \hash('xxh128', \serialize([$code, $middleware]));
     }
 
     /**
@@ -283,7 +293,8 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         }
 
         $code = $this->buildMatcherCode();
-        $hash = \hash('xxh128', $code);
+        $middleware = \array_keys($this->middlewareRequirements);
+        $hash = $this->cacheHash($code, $middleware);
 
         $compressedCode = \function_exists('gzdeflate') ? \gzdeflate($code, 9) : false;
         $sourcePayload = \is_string($compressedCode)
@@ -295,11 +306,32 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
             . "    '" . self::H_HASH . "' => " . \var_export($hash, true) . ",\n"
             . "    '" . self::H_TS . "' => " . \var_export(\date(\DATE_ATOM), true) . ",\n"
             . "    '" . self::H_ALIAS . "' => " . $this->exportArray($this->alias) . ",\n"
+            . "    '" . self::H_MIDDLEWARE . "' => " . $this->exportArray($middleware) . ",\n"
             . $sourcePayload
             . "    '_match' => {$code},\n"
             . "];\n";
 
-        $this->writeAtomicPhpFile($this->cacheFile, $php);
+        matcher_write_validated_atomic_php_file(
+            $this->cacheFile,
+            $php,
+            function (array $blob) use ($hash): void {
+                if (($blob[self::H_VERSION] ?? null) !== self::CACHE_FORMAT_VERSION) {
+                    throw new \UnexpectedValueException('Generated matcher cache has an invalid format version.');
+                }
+                if (!($blob['_match'] ?? null) instanceof Closure) {
+                    throw new \UnexpectedValueException('Generated matcher cache is missing its matcher closure.');
+                }
+                $source = $this->cachedMatcherSource($blob);
+                $middleware = matcher_normalize_middleware_requirements($blob[self::H_MIDDLEWARE] ?? []);
+                $storedHash = $blob[self::H_HASH] ?? null;
+                if (!\is_string($source) || !\is_string($storedHash)) {
+                    throw new \UnexpectedValueException('Generated matcher cache is missing validation metadata.');
+                }
+                if (!\hash_equals($hash, $storedHash) || !\hash_equals($hash, $this->cacheHash($source, $middleware))) {
+                    throw new \UnexpectedValueException('Generated matcher cache hash mismatch.');
+                }
+            },
+        );
 
         if ($this->shouldWarmOpcache()) {
             \opcache_compile_file($this->cacheFile);
@@ -352,8 +384,12 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
      */
     private function loadCacheBlob(): void
     {
-        /** @var array{_hash?:string,_alias?:array<string,array{0:string,1:?string}>,_code?:string,_code_deflate?:string,_match?:mixed} $blob */
+        /** @var array{_version?:int,_hash?:string,_alias?:array<string,array{0:string,1:?string}>,_middleware?:mixed,_code?:string,_code_deflate?:string,_match?:mixed} $blob */
         $blob = require $this->cacheFile;
+
+        if (($blob[self::H_VERSION] ?? null) !== self::CACHE_FORMAT_VERSION) {
+            throw new \RuntimeException('Stale generated route cache. Rebuild the route cache.');
+        }
 
         $fn = $blob['_match'] ?? null;
         if (!$fn instanceof Closure) {
@@ -368,7 +404,10 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
             if (!isset($blob[self::H_HASH])) {
                 throw new \RuntimeException('Generated matcher cache missing Hash.');
             }
-            $calc = \hash('xxh128', $code);
+            $calc = $this->cacheHash(
+                $code,
+                matcher_normalize_middleware_requirements($blob[self::H_MIDDLEWARE] ?? []),
+            );
             if (!\hash_equals($blob[self::H_HASH], $calc)) {
                 throw new \RuntimeException('Generated matcher cache Hash mismatch.');
             }
@@ -376,6 +415,10 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
 
         $this->compiledFn = $fn;
         $this->alias = $blob[self::H_ALIAS] ?? [];
+        $this->middlewareRequirements = \array_fill_keys(
+            matcher_normalize_middleware_requirements($blob[self::H_MIDDLEWARE] ?? []),
+            true,
+        );
         $this->cacheLoaded = true;
     }
 
@@ -645,13 +688,5 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         }
 
         throw new RouteNotFoundException($verb, $path);
-    }
-
-    /**
-     * Atomically write a PHP file.
-     */
-    private function writeAtomicPhpFile(string $file, string $php): void
-    {
-        sharded_matcher_write_atomic_php_file($file, $php);
     }
 }

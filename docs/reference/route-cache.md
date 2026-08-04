@@ -8,7 +8,7 @@ reduce request-time work.
 
 | Mode | `cache` / `routeCache` value | Artifact |
 | --- | --- | --- |
-| `sharded` | Directory, for example `.route-cache` | Root, aliases and route shard PHP files |
+| `sharded` | Directory, for example `.route-cache` | Atomic manifest plus immutable generation directories containing aliases and route shards |
 | `fused` | File, for example `.route-cache/fused.php` | One PHP routing data file |
 | `generated` | File, for example `.route-cache/generated.php` | One PHP file with generated matcher code |
 
@@ -106,6 +106,19 @@ On a valid cache hit:
 - URL aliases and the URL generator remain lazy unless a custom binding callback
   requests eager behavior.
 
+String handlers, `[Controller::class, 'method']`, named functions, and safe
+first-class public static callables are stored as native scalar descriptors.
+Webrick converts a first-class static callable only when reflection proves that
+it is unbound, captures no variables, names a public static method, and
+preserves the called class for late static binding. Captured closures, instance
+callables, and genuine closures retain the serializer fallback.
+
+Every matcher exposes `middlewareRequirements()`, returning registered alias
+names actually referenced by cached routes. Framework integrations may use the
+list as a cache-time module activation hint. Unknown or dynamically registered
+aliases must retain the normal registrar fallback. The cache stores descriptors
+only; it never freezes executable, scoped, or stateful middleware pipelines.
+
 If alias metadata is unavailable and `fallbackAliasesFromRegistrar` is `true`,
 the kernel can run registration only to rebuild URL aliases without replacing
 the cached matcher. A complete deployment artifact should normally make that
@@ -115,12 +128,36 @@ fallback unnecessary.
 
 - compiled route match data;
 - handler and middleware descriptors;
+- registered middleware alias requirements referenced by routes;
 - route names, paths, domains, constraints and CORS metadata;
 - name-to-path and name-to-domain alias metadata;
 - generated matching code in generated mode.
 
 It does not contain instantiated application services, a request, controller
 objects for class-based handlers, or resolved lazy middleware.
+
+## Validation and publication
+
+Cache generation deliberately does more work than a request:
+
+1. route metadata is normalized to its final scalar representation;
+2. every scalar route payload is fully validated;
+3. PHP is written to a temporary file;
+4. the staged PHP file is loaded and its version, shape and checksum are verified;
+5. only a valid artifact is atomically renamed into service.
+
+Fused and generated modes replace one file atomically. Sharded mode writes all
+files into a unique immutable `generation-*` directory. It publishes a validated
+manifest and, where symbolic links are available, atomically switches a
+`__current` pointer. The manifest is the portable fallback. A failed build
+leaves the previous generation usable. Readers pin the resolved generation, and
+old directories remain available so persistent workers can finish lazy shard
+loading safely; clear them during a controlled deploy or with `route:clear`.
+
+Cache format versions are exact. Webrick rejects an old format with a rebuild
+message instead of normalizing it during a request. All cache files are trusted
+application-generated executable PHP; do not accept their paths from requests
+or untrusted configuration.
 
 ## Clear artifacts
 
@@ -130,15 +167,17 @@ php ./webrick route:clear --matcher=fused --cache=.route-cache/fused.php
 php ./webrick route:clear --matcher=generated --cache=.route-cache/generated.php
 ```
 
-Normal sharded clearing removes known Webrick PHP artifacts while allowing
-different named matcher-cache files to coexist. `--aggressive=1` recursively
-purges the sharded cache directory while preserving a root `.gitignore`.
+Normal sharded clearing removes the manifest, legacy root artifacts, and
+generation directories while allowing different named matcher-cache files to
+coexist. `--aggressive=1` recursively purges the sharded cache directory while
+preserving a root `.gitignore`.
 
 ## Deployment rules
 
 - Build in CI or deployment, never in normal request handling.
 - Build as the same application release that will consume the artifacts.
-- Publish code and route caches atomically.
+- Let the cache builder publish validated artifacts atomically; do not copy
+  individual sharded files into a live cache directory.
 - Keep artifacts read-only to the web process when runtime rebuilds are not
   required.
 - Rebuild after changing Webrick, route definitions, handler or middleware

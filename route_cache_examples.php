@@ -173,15 +173,8 @@ $sentinel8 = RouteCache::build([
         'autoSlashRedirect' => false,
         'exposeUrlServices' => true,
     ],
-    // You can also pass middleware lists if you want them wired during warmup
-    'preGlobal' => [
-        // \Infocyph\Webrick\Middleware\GatewayHardeningMiddleware::class,
-        // \Infocyph\Webrick\Middleware\TelemetryMiddleware::class,
-    ],
-    'postGlobal' => [
-        // \Infocyph\Webrick\Middleware\CompressionMiddleware::class,
-        // \Infocyph\Webrick\Middleware\VaryAccumulatorMiddleware::class,
-    ],
+    'preGlobal' => [],
+    'postGlobal' => [],
 ]);
 out("   -> sentinel: {$sentinel8}\n\n");
 

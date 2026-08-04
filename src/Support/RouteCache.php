@@ -27,14 +27,6 @@ final class RouteCache
         [$mode, $matcher, $routeCache] = self::resolveBuildMatcher($options, $cachePath);
         $inputs = self::resolveBuildInputs($options, $logger);
 
-        // A build is an explicit refresh operation. Remove only this matcher's
-        // old output so colocated caches for other matcher modes remain valid.
-        self::clear([
-            'cache' => $cachePath,
-            'matcher' => $mode->value,
-            'aggressive' => false,
-        ]);
-
         RouterKernel::bootWithRegistrar(
             log: $logger,
             matcher: $matcher,
@@ -54,7 +46,7 @@ final class RouteCache
             fallbackAliasesFromRegistrar: $inputs['fallbackAliases'],
         );
 
-        return ($mode === MatcherModeEnum::SHARDED) ? $routeCache . DIRECTORY_SEPARATOR . '__root.php' : $routeCache;
+        return ($mode === MatcherModeEnum::SHARDED) ? $routeCache . DIRECTORY_SEPARATOR . '__manifest.php' : $routeCache;
     }
 
     /**
@@ -82,28 +74,7 @@ final class RouteCache
             return self::rmFile($cachePath);
         }
 
-        $dir = \rtrim($cachePath, '/\\');
-        if (!\is_dir($dir)) {
-            return false;
-        }
-
-        if ($aggressive) {
-            return self::clearDirPreservingGitignore($dir);
-        }
-
-        $removed = false;
-        foreach (['__root.php', '__aliases.php'] as $known) {
-            $removed = self::rmFile($dir . DIRECTORY_SEPARATOR . $known) || $removed;
-        }
-        foreach (\glob($dir . DIRECTORY_SEPARATOR . '*.php') ?: [] as $php) {
-            $base = \basename($php);
-            if (\in_array($base, ['__root.php', '__aliases.php', '__routes.php', '__generated.php'], true)) {
-                continue;
-            }
-            $removed = self::rmFile($php) || $removed;
-        }
-
-        return $removed;
+        return self::clearSharded(\rtrim($cachePath, '/\\'), $aggressive);
     }
 
     /**
@@ -190,6 +161,9 @@ final class RouteCache
     private static function clearEntry(\SplFileInfo $path, string $root): array
     {
         $pathname = $path->getPathname();
+        if ($path->isLink()) {
+            return [true, self::rmFile($pathname)];
+        }
         if ($path->isDir()) {
             $deletedDir = self::removeDirectory($pathname);
 
@@ -200,6 +174,39 @@ final class RouteCache
         }
 
         return [true, self::rmFile($pathname)];
+    }
+
+    private static function clearSharded(string $dir, bool $aggressive): bool
+    {
+        if (!\is_dir($dir)) {
+            return false;
+        }
+
+        if ($aggressive) {
+            return self::clearDirPreservingGitignore($dir);
+        }
+
+        $removed = false;
+        foreach (['__root.php', '__aliases.php', '__manifest.php', '__current'] as $known) {
+            $removed = self::rmFile($dir . DIRECTORY_SEPARATOR . $known) || $removed;
+        }
+        foreach (\glob($dir . DIRECTORY_SEPARATOR . '*.php') ?: [] as $php) {
+            $base = \basename($php);
+            if (\in_array($base, ['__root.php', '__aliases.php', '__routes.php', '__generated.php'], true)) {
+                continue;
+            }
+            $removed = self::rmFile($php) || $removed;
+        }
+        foreach (\glob($dir . DIRECTORY_SEPARATOR . 'generation-*', \GLOB_ONLYDIR) ?: [] as $generation) {
+            $generationRemoved = self::clearDirPreservingGitignore($generation);
+            if (\is_dir($generation)) {
+                self::removeDirectory($generation);
+                $generationRemoved = true;
+            }
+            $removed = $generationRemoved || $removed;
+        }
+
+        return $removed;
     }
 
     /**
@@ -467,7 +474,7 @@ final class RouteCache
 
     private static function rmFile(string $file): bool
     {
-        if (!\is_file($file)) {
+        if (!\is_file($file) && !\is_link($file)) {
             return false;
         }
         $directory = \dirname($file);

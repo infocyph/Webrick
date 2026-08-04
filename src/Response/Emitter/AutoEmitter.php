@@ -54,6 +54,9 @@ final class AutoEmitter implements EmitterInterface
         if (\in_array(\PHP_SAPI, ['cli', 'phpdbg'], true)) {
             return new CliEmitter();
         }
+        if (\in_array(\PHP_SAPI, ['apache2handler', 'cli-server'], true)) {
+            return new DefaultEmitter();
+        }
 
         $serverSoftwareRaw = $_SERVER['SERVER_SOFTWARE'] ?? null;
         $serverSoftware = \is_string($serverSoftwareRaw) ? strtolower($serverSoftwareRaw) : '';

@@ -30,6 +30,10 @@ repeating environment detection in a persistent worker. Create a separate
 `AutoEmitter` if one process intentionally serves requests through different
 runtime transports.
 
+Known synchronous SAPIs (`apache2handler` and PHP's `cli-server`) select the
+default emitter before Webrick probes optional asynchronous runtimes. This
+keeps extension and bridge detection out of their normal response path.
+
 Set `WEBRICK_EMITTER` to override detection:
 
 | Value | Selected behavior |

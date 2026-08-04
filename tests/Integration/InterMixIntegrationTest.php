@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use Infocyph\InterMix\DI\Container;
+use Infocyph\InterMix\DI\Invoker;
+use Infocyph\InterMix\DI\Invoker\CompiledCall;
 use Infocyph\InterMix\DI\Support\LifetimeEnum;
 use Infocyph\InterMix\DI\Support\ServiceProviderInterface;
 use Infocyph\Webrick\Request\Request;
@@ -10,6 +12,7 @@ use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Response\View\ViewFactoryInterface;
 use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Dispatch\MiddlewareAliases;
+use Infocyph\Webrick\Router\Dispatch\MiddlewarePipeline;
 use Infocyph\Webrick\Router\Kernel\RouterKernel;
 use Infocyph\Webrick\Router\Matching\FusedMatcher;
 use Psr\Container\ContainerInterface;
@@ -230,6 +233,58 @@ describe('InterMix integration', function () {
         expect($response)
             ->toHaveStatus(200)
             ->and($response->getHeaderLine('X-DI-Marker'))->toBe('wired-alias');
+    });
+
+    it('constructs class middleware through the InterMix compiled resolver', function () {
+        $container = Container::instance('intermix');
+        $container->definitions()->bind(
+            InterMixMiddlewareDependency::class,
+            new InterMixMiddlewareDependency('wired-compiled'),
+            LifetimeEnum::Singleton,
+        );
+        $compiled = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'webrick-intermix-' . uniqid('', true) . '.php';
+
+        try {
+            $container->compileTo($compiled, load: true);
+            expect($container->getCurrentResolver())->toBeInstanceOf(CompiledCall::class);
+
+            $kernel = intermixKernelForTest(
+                static function (Registrar $registrar): void {
+                    $registrar->get('/di/compiled', static fn() => Response::json(['ok' => true]));
+                },
+                preGlobal: [InterMixNeedsDiMiddleware::class],
+                options: ['container' => $container],
+            );
+
+            $response = $kernel->handle(mockRequest('GET', '/di/compiled'));
+            expect($response)
+                ->toHaveStatus(200)
+                ->and($response->getHeaderLine('X-DI-Marker'))->toBe('wired-compiled');
+        } finally {
+            if (is_file($compiled)) {
+                unlink($compiled);
+            }
+        }
+    });
+
+    it('keeps direct pipeline terminal DI while dispatcher avoids duplicate invocation', function () {
+        $container = Container::instance('intermix');
+        $container->definitions()->bind(
+            InterMixMiddlewareDependency::class,
+            new InterMixMiddlewareDependency('direct-terminal'),
+            LifetimeEnum::Singleton,
+        );
+        $pipeline = new MiddlewarePipeline(
+            [],
+            static fn(Request $request, InterMixMiddlewareDependency $dependency): Response => Response::json([
+                'request' => $request instanceof Request,
+                'marker' => $dependency->marker,
+            ]),
+            Invoker::with($container),
+        );
+
+        expect((string) $pipeline->handle(mockRequest('GET', '/pipeline'))->getBody())
+            ->toBe('{"request":true,"marker":"direct-terminal"}');
     });
 
     it('uses the same container for route DI and Response::view', function () {

@@ -7,12 +7,13 @@ namespace Infocyph\Webrick\Request\Http;
 use Infocyph\Webrick\Request\Request;
 
 /**
- * Csrf – tiny helper that mirrors Laravel 12 semantics
- * ----------------------------------------------------
- *   $cookie = Csrf::maskedToken();              // send as "XSRF-TOKEN" cookie
- *   if (!Csrf::matches($request)) {
- *       throw new \RuntimeException('419 CSRF mismatch');
- *   }
+ * Tiny CSRF helper with masked-token semantics.
+ *
+ * Example:
+ * $cookie = Csrf::maskedToken();
+ * if (!Csrf::matches($request)) {
+ *     throw new \RuntimeException('419 CSRF mismatch');
+ * }
  */
 final class Csrf
 {

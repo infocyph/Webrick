@@ -29,7 +29,7 @@ require_once __DIR__ . '/matcher_functions.php';
  */
 abstract class AbstractMatcher
 {
-    protected const CACHE_FORMAT_VERSION = 2;
+    protected const CACHE_FORMAT_VERSION = 3;
 
     protected const F_ALIASES = '__aliases.php';
 
@@ -39,6 +39,8 @@ abstract class AbstractMatcher
 
     /* Header / cache blob keys */
     protected const H_HASH = '_hash';
+
+    protected const H_MIDDLEWARE = '_middleware';
 
     protected const H_TS = '_ts';
 
@@ -309,11 +311,7 @@ abstract class AbstractMatcher
      */
     protected function exportRoute(CompiledRoute $r): string
     {
-        if (!$this->routeNeedsSerialization($r)) {
-            return \var_export($r->toCachePayload(), true);
-        }
-
-        return \var_export(ValueSerializer::serialize($r), true);
+        return \var_export(MatcherCachePayloadNormalizer::normalize($r), true);
     }
 
     /**
@@ -632,19 +630,6 @@ abstract class AbstractMatcher
         }
 
         return false;
-    }
-
-    private function routeNeedsSerialization(CompiledRoute $route): bool
-    {
-        $handler = $route->getHandler();
-        if (\is_object($handler)) {
-            return true;
-        }
-        if (\is_array($handler) && !\is_string($handler[0])) {
-            return true;
-        }
-
-        return array_any($route->getMiddlewares(), static fn(mixed $middleware): bool => !\is_string($middleware));
     }
 
     /**

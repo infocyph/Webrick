@@ -27,9 +27,10 @@ use UnexpectedValueException;
  *  - Provide stable per-process memoization for certain resolved callables
  *    to avoid repeated binding/lookup overhead.
  *
+ * Example:
+ *     function(Request $req, callable $next): Response
+ *
  * Notes:
- *  - Middleware callables must follow the shape:
- *      function(Request $req, callable $next): Response
  *  - The final handler (last) is a callable that accepts a Request and returns
  *    any value which will be normalized to Response (or an exception thrown).
  *
@@ -79,18 +80,22 @@ final class MiddlewarePipeline
      * @param list<mixed> $stack Ordered list of middleware callables.
      * @param FinalHandler $last Terminal handler callable executed after middleware.
      * @param Invoker $invoker DI invoker used when $useInvoker is enabled.
-     * @param bool $useInvoker When true, use $invoker to invoke middleware and final handler.
+     * @param bool $useInvoker Whether middleware calls use the DI invoker.
+     * @param bool $invokeFinalWithInvoker Whether the terminal handler uses the DI invoker.
      *
      * @throws InvalidArgumentException If any entry in $stack is not callable.
      */
-    public function __construct(array $stack, callable $last, /**
+    public function __construct(
+        array $stack,
+        callable $last, /**
      * DI invoker used to call middleware and handlers when $useInvoker is true.
      */
         private readonly Invoker $invoker, /**
      * Whether to dispatch middleware/handler via the Invoker (DI/autowiring).
      */
-        private readonly bool $useInvoker = true)
-    {
+        private readonly bool $useInvoker = true,
+        private readonly bool $invokeFinalWithInvoker = true,
+    ) {
         foreach ($stack as $mw) {
             if (!\is_callable($mw)) {
                 throw new InvalidArgumentException(
@@ -256,7 +261,7 @@ final class MiddlewarePipeline
      * The wrapper resolves certain string forms once and memoizes them in a
      * per-process static cache to avoid repeated binding overhead.
      *
-     * The returned Closure conforms to:
+     * Example:
      *   function(Request $req): Response
      *
      * @param callable|string $mw Middleware callable or string descriptor.
@@ -287,7 +292,7 @@ final class MiddlewarePipeline
     /**
      * Wrap the final handler into a Closure(Request):Response.
      *
-     * When $useInvoker is true the Invoker is used to invoke the handler so
+     * When terminal invocation is enabled the Invoker invokes the handler so
      * parameter autowiring is available. The handler result is normalized to
      * a Response instance via assertResponse().
      *
@@ -296,11 +301,11 @@ final class MiddlewarePipeline
      */
     private function wrapFinal(callable $handler): Closure
     {
-        $useInvoker = $this->useInvoker;
         $invoker = $this->invoker;
+        $invoke = $this->invokeFinalWithInvoker;
 
-        return static function (Request $req) use ($handler, $useInvoker, $invoker): Response {
-            $res = $useInvoker
+        return static function (Request $req) use ($handler, $invoke, $invoker): Response {
+            $res = $invoke
                 ? $invoker->invoke($handler, ['request' => $req])
                 : $handler($req);
 

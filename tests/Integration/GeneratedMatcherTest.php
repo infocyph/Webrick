@@ -33,6 +33,32 @@ final class CachedClassHandlerFixture
     }
 }
 
+final class CachedLateStaticHandlerFixture extends CachedStaticHandlerBaseFixture {}
+
+class CachedStaticHandlerBaseFixture
+{
+    public static function identify(): array
+    {
+        return ['class' => static::class];
+    }
+}
+
+final class CachedInvokableHandlerFixture
+{
+    public function __invoke(): array
+    {
+        return ['handler' => 'invokable'];
+    }
+}
+
+final class CachedInstanceMethodHandlerFixture
+{
+    public function handle(): array
+    {
+        return ['handler' => 'instance'];
+    }
+}
+
 test('GeneratedMatcher matches static and dynamic routes', function (): void {
     $matcher = GeneratedMatcher::make();
 
@@ -149,11 +175,50 @@ test('RouteCache build replaces an existing generated cache', function (): void 
     }
 });
 
+test('sharded readers pin their immutable generation across cache refreshes', function (): void {
+    $directory = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'webrick-sharded-refresh-' . uniqid('', true);
+
+    try {
+        RouteCache::build([
+            'matcher' => 'sharded',
+            'cache' => $directory,
+            'register' => static function (Registrar $registrar): void {
+                $registrar->get('/old', [CachedClassHandlerFixture::class, 'handle']);
+            },
+        ]);
+        $existingReader = ShardedMatcher::make()->enableCache($directory);
+        expect($existingReader->canBootFromCache())->toBeTrue();
+        $existingReader->finalize();
+
+        RouteCache::build([
+            'matcher' => 'sharded',
+            'cache' => $directory,
+            'register' => static function (Registrar $registrar): void {
+                $registrar->get('/new', [CachedClassHandlerFixture::class, 'handle']);
+            },
+        ]);
+        $newReader = ShardedMatcher::make()->enableCache($directory);
+        expect($newReader->canBootFromCache())->toBeTrue();
+        $newReader->finalize();
+
+        expect($existingReader->match('GET', 'localhost', '/old')[0]->getPath())->toBe('/old')
+            ->and($newReader->match('GET', 'localhost', '/new')[0]->getPath())->toBe('/new')
+            ->and(fn() => $existingReader->match('GET', 'localhost', '/new'))
+            ->toThrow(RouteNotFoundException::class);
+    } finally {
+        RouteCache::clear([
+            'matcher' => 'sharded',
+            'cache' => $directory,
+            'aggressive' => true,
+        ]);
+    }
+});
+
 test('all matcher cache builds coexist across refreshes', function (): void {
     $directory = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'webrick-colocated-' . uniqid('', true);
     $fused = $directory . DIRECTORY_SEPARATOR . '__routes.php';
     $generated = $directory . DIRECTORY_SEPARATOR . '__generated.php';
-    $sharded = $directory . DIRECTORY_SEPARATOR . '__root.php';
+    $sharded = $directory . DIRECTORY_SEPARATOR . '__manifest.php';
     mkdir($directory);
 
     $register = static function (Registrar $registrar): void {
@@ -341,6 +406,201 @@ test('class-handler caches use scalar route payloads in every matcher mode', fun
 
         expect($route->getHandler())->toBe([CachedClassHandlerFixture::class, 'handle'])
             ->and((string) $response->getBody())->toBe('{"ok":true}');
+    } finally {
+        RouteCache::clear([
+            'matcher' => $mode,
+            'cache' => $cache,
+            'aggressive' => true,
+        ]);
+    }
+})->with('cached matcher modes');
+
+test('safe first-class static handlers become native cache descriptors in every matcher mode', function (
+    string $mode,
+    Closure $makeMatcher,
+): void {
+    $cache = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'webrick-first-class-' . $mode . '-' . uniqid('', true);
+    if ($mode !== 'sharded') {
+        $cache .= '.php';
+    }
+
+    try {
+        RouteCache::build([
+            'matcher' => $mode,
+            'cache' => $cache,
+            'register' => static function (Registrar $registrar): void {
+                $captured = 'kept';
+                $registrar->get('/static-callable', CachedLateStaticHandlerFixture::identify(...));
+                $registrar->get('/captured-closure', static fn(): array => ['value' => $captured]);
+            },
+        ]);
+
+        $matcher = $makeMatcher()->enableCache($cache);
+        $matcher->finalize();
+        [$staticRoute] = $matcher->match('GET', 'localhost', '/static-callable');
+        [$capturedRoute] = $matcher->match('GET', 'localhost', '/captured-closure');
+
+        expect($staticRoute->getHandler())
+            ->toBe([CachedLateStaticHandlerFixture::class, 'identify'])
+            ->and($capturedRoute->getHandler())->toBeInstanceOf(Closure::class);
+
+        $kernel = RouterKernel::bootWithRegistrar(
+            log: new NullLogger(),
+            matcher: $makeMatcher(),
+            register: static function (): void {},
+            routeCache: $cache,
+            fallbackAliasesFromRegistrar: false,
+        );
+
+        expect((string) $kernel->handle(Request::fake(uri: 'http://localhost/static-callable'))->getBody())
+            ->toBe('{"class":"' . CachedLateStaticHandlerFixture::class . '"}')
+            ->and((string) $kernel->handle(Request::fake(uri: 'http://localhost/captured-closure'))->getBody())
+            ->toBe('{"value":"kept"}');
+    } finally {
+        RouteCache::clear([
+            'matcher' => $mode,
+            'cache' => $cache,
+            'aggressive' => true,
+        ]);
+    }
+})->with('cached matcher modes');
+
+test('object-backed handlers retain their binding in every matcher mode', function (
+    string $mode,
+    Closure $makeMatcher,
+): void {
+    $cache = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'webrick-object-handler-' . $mode . '-' . uniqid('', true);
+    if ($mode !== 'sharded') {
+        $cache .= '.php';
+    }
+
+    try {
+        RouteCache::build([
+            'matcher' => $mode,
+            'cache' => $cache,
+            'register' => static function (Registrar $registrar): void {
+                $registrar->get('/invokable', new CachedInvokableHandlerFixture());
+                $registrar->get('/instance', [new CachedInstanceMethodHandlerFixture(), 'handle']);
+            },
+        ]);
+
+        $kernel = RouterKernel::bootWithRegistrar(
+            log: new NullLogger(),
+            matcher: $makeMatcher(),
+            register: static function (): void {},
+            routeCache: $cache,
+            fallbackAliasesFromRegistrar: false,
+        );
+
+        expect((string) $kernel->handle(Request::fake(uri: 'http://localhost/invokable'))->getBody())
+            ->toBe('{"handler":"invokable"}')
+            ->and((string) $kernel->handle(Request::fake(uri: 'http://localhost/instance'))->getBody())
+            ->toBe('{"handler":"instance"}');
+    } finally {
+        RouteCache::clear([
+            'matcher' => $mode,
+            'cache' => $cache,
+            'aggressive' => true,
+        ]);
+    }
+})->with('cached matcher modes');
+
+test('route caches expose only registered middleware alias requirements', function (
+    string $mode,
+    Closure $makeMatcher,
+): void {
+    $cache = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'webrick-middleware-meta-' . $mode . '-' . uniqid('', true);
+    if ($mode !== 'sharded') {
+        $cache .= '.php';
+    }
+    MiddlewareAliases::register('auth', static fn(): Closure => static fn(
+        Request $request,
+        Closure $next,
+    ): Response => $next($request));
+
+    try {
+        RouteCache::build([
+            'matcher' => $mode,
+            'cache' => $cache,
+            'register' => static function (Registrar $registrar): void {
+                $registrar->get('/secured', [CachedClassHandlerFixture::class, 'handle'], [
+                    'middleware' => ['auth:admin', CachedInvokableHandlerFixture::class],
+                ]);
+            },
+        ]);
+
+        $matcher = $makeMatcher()->enableCache($cache);
+        $matcher->finalize();
+
+        expect($matcher->middlewareRequirements())->toBe(['auth']);
+    } finally {
+        MiddlewareAliases::reset();
+        RouteCache::clear([
+            'matcher' => $mode,
+            'cache' => $cache,
+            'aggressive' => true,
+        ]);
+    }
+})->with('cached matcher modes');
+
+test('staged cache validation preserves the active artifact on failure', function (): void {
+    $file = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'webrick-atomic-' . uniqid('', true) . '.php';
+    file_put_contents($file, "<?php return ['value' => 'active'];\n");
+
+    try {
+        expect(fn() => \Infocyph\Webrick\Router\Matching\matcher_write_validated_atomic_php_file(
+            $file,
+            "<?php return ['value' => 'invalid'];\n",
+            static function (): void {
+                throw new UnexpectedValueException('rejected');
+            },
+        ))->toThrow(RuntimeException::class, 'validation failed');
+
+        expect(require $file)->toBe(['value' => 'active']);
+    } finally {
+        if (is_file($file)) {
+            unlink($file);
+        }
+    }
+});
+
+test('stale cache formats fail clearly in every matcher mode', function (
+    string $mode,
+    Closure $makeMatcher,
+): void {
+    $cache = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'webrick-stale-' . $mode . '-' . uniqid('', true);
+    if ($mode !== 'sharded') {
+        $cache .= '.php';
+    }
+
+    try {
+        RouteCache::build([
+            'matcher' => $mode,
+            'cache' => $cache,
+            'register' => static function (Registrar $registrar): void {
+                $registrar->get('/cached', [CachedClassHandlerFixture::class, 'handle']);
+            },
+        ]);
+
+        if ($mode === 'sharded') {
+            $pointer = $cache . DIRECTORY_SEPARATOR . '__current';
+            if (is_link($pointer)) {
+                unlink($pointer);
+            }
+        }
+        $artifact = $mode === 'sharded' ? $cache . DIRECTORY_SEPARATOR . '__manifest.php' : $cache;
+        $source = file_get_contents($artifact);
+        expect($source)->toBeString();
+        file_put_contents($artifact, str_replace("'_version' => 3", "'_version' => 2", $source));
+
+        $reader = $makeMatcher()->enableCache($cache);
+        expect(static function () use ($reader): void {
+            if (!$reader->canBootFromCache()) {
+                throw new RuntimeException('Cache unexpectedly unavailable.');
+            }
+            $reader->finalize();
+            $reader->match('GET', 'localhost', '/cached');
+        })->toThrow(RuntimeException::class, 'Stale');
     } finally {
         RouteCache::clear([
             'matcher' => $mode,

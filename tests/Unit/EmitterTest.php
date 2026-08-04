@@ -3,7 +3,9 @@
 declare(strict_types=1);
 
 use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Response\Emitter\AutoEmitter;
 use Infocyph\Webrick\Response\Emitter\BaseEmitter;
+use Infocyph\Webrick\Response\Emitter\DefaultEmitter;
 use Infocyph\Webrick\Response\Response;
 
 test('base emitter sends a known content length and writes the body once', function (): void {
@@ -51,4 +53,67 @@ test('base emitter suppresses a head response body', function (): void {
     $output = ob_get_clean();
 
     expect($output)->toBe('');
+});
+
+test('base emitter suppresses response bodies forbidden by status', function (int $status): void {
+    $emitter = new class extends BaseEmitter {
+        protected function finish(): void {}
+
+        protected function headersAlreadySent(): bool
+        {
+            return true;
+        }
+    };
+
+    ob_start();
+    $emitter->emit(Response::create('not-emitted', $status), Request::fake());
+    $output = ob_get_clean();
+
+    expect($output)->toBe('');
+})->with([204, 304]);
+
+test('base emitter preserves streaming chunk order', function (): void {
+    $emitter = new class extends BaseEmitter {
+        public string $output = '';
+
+        protected function finish(): void {}
+
+        protected function headersAlreadySent(): bool
+        {
+            return true;
+        }
+
+        protected function reduceOutputBuffering(): void {}
+
+        protected function flush(): void {}
+
+        protected function write(string $chunk): void
+        {
+            $this->output .= $chunk;
+        }
+    };
+    $response = Response::stream(static function (): iterable {
+        yield 'first';
+        yield '-second';
+    });
+
+    $emitter->emit($response, Request::fake());
+
+    expect($emitter->output)->toBe('first-second');
+});
+
+test('auto emitter gives an explicit override priority over SAPI detection', function (): void {
+    $previous = getenv('WEBRICK_EMITTER');
+    putenv('WEBRICK_EMITTER=default');
+
+    try {
+        $picker = new ReflectionMethod(AutoEmitter::class, 'pick');
+        $selected = $picker->invoke(new AutoEmitter(), null);
+
+        expect($selected)->toBeInstanceOf(DefaultEmitter::class);
+    } finally {
+        is_string($previous)
+            ? putenv('WEBRICK_EMITTER=' . $previous)
+            : putenv('WEBRICK_EMITTER');
+    }
 });

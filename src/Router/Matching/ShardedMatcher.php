@@ -74,6 +74,9 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         'LPT9',
     ];
 
+    /** Active immutable generation selected by the published manifest. */
+    private ?string $activeCacheDir = null;
+
     /**
      * Alias index (name => [path, domain]) collected at build-time or loaded from alias cache.
      *
@@ -139,6 +142,9 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
      */
     private array $memGroups = [];
 
+    /** @var array<string,true> */
+    private array $middlewareRequirements = [];
+
     /**
      * Duplicate guard to prevent adding the same host+method+path twice.
      *
@@ -171,6 +177,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
 
         $this->bucketMap[$bucket][$method][] = $route;
         matcher_capture_route_alias($this->alias, $route);
+        matcher_capture_middleware_requirements($this->middlewareRequirements, $route);
     }
 
     /* ──────────── alias helpers (public API) ──────────── */
@@ -206,6 +213,10 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         /** @var array{_version?:int,_hash?:string,_data?:AliasIndex} $blob */
         $blob = require $file;
 
+        if (($blob[self::H_VERSION] ?? null) !== self::CACHE_FORMAT_VERSION) {
+            throw new \RuntimeException("Stale alias route cache ({$file}). Rebuild the route cache.");
+        }
+
         if (!isset($blob[self::H_DATA])) {
             throw new \RuntimeException("Alias cache file {$file} missing data payload.");
         }
@@ -219,9 +230,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             }
         }
 
-        $this->alias = ($blob[self::H_VERSION] ?? null) === self::CACHE_FORMAT_VERSION
-            ? $blob[self::H_DATA]
-            : matcher_normalize_alias_pairs($blob[self::H_DATA]);
+        $this->alias = matcher_normalize_alias_pairs($blob[self::H_DATA]);
         $this->aliasLoaded = true;
 
         return $this->alias;
@@ -230,21 +239,34 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     /**
      * Whether a ready shard set exists so the matcher can boot directly from files.
      *
-     * The sentinel used is the wildcard root shard; if present we treat the cache
-     * as available for lazy loading.
+     * A published immutable generation is complete by construction: publication
+     * validates its root sentinel and alias metadata before switching the pointer.
      *
-     * @return bool True when cache is enabled and sentinel shard file exists.
+     * @return bool True when cache is enabled and an active generation exists.
      */
     #[\Override]
     public function canBootFromCache(): bool
     {
-        // Sentinel is wildcard root shard; alias file will be lazy-loaded.
-        return $this->cacheEnabled && \is_file(sharded_matcher_shard_file_path(
-            $this->cacheDir,
-            '*',
-            self::SHARD_ROOT,
-            self::WIN_RESERVED,
-        ));
+        if (!$this->cacheEnabled || $this->cacheWriteEnabled) {
+            return false;
+        }
+
+        $active = $this->resolveActiveCacheDir();
+        if ($active === null) {
+            $legacySentinel = sharded_matcher_shard_file_path(
+                $this->cacheDir,
+                '*',
+                self::SHARD_ROOT,
+                self::WIN_RESERVED,
+            );
+            if (\is_file($legacySentinel)) {
+                throw new \RuntimeException('Stale sharded route cache layout. Rebuild the route cache.');
+            }
+
+            return false;
+        }
+
+        return true;
     }
 
     /**
@@ -257,6 +279,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     {
         $this->cacheEnabled = true;
         $this->cacheDir = \rtrim($cacheLocation, '/\\');
+        $this->activeCacheDir = null;
         $this->cacheReadable = false;
 
         return $this;
@@ -293,19 +316,20 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         if ($this->finalized) {
             return;
         }
-        // Cold-dump only when explicitly enabled; check wildcard root shard as sentinel.
-        $sentinel = sharded_matcher_shard_file_path(
-            $this->cacheDir,
-            '*',
-            self::SHARD_ROOT,
-            self::WIN_RESERVED,
-        );
-        if ($this->cacheEnabled && $this->cacheWriteEnabled && !\file_exists($sentinel)) {
-            $this->dumpCacheFiles();     // writes all shards
-            $this->dumpAliasFile();      // writes __aliases.php
+        if ($this->cacheEnabled && $this->cacheWriteEnabled) {
+            $this->publishGeneration();
             $this->discardBuildState();
         }
-        $this->cacheReadable = $this->cacheEnabled && \is_file($sentinel);
+
+        $active = $this->resolveActiveCacheDir();
+        if ($active === null) {
+            $this->cacheReadable = false;
+            $this->finalized = true;
+
+            return;
+        }
+
+        $this->cacheReadable = $this->cacheEnabled;
         $this->finalized = true;
     }
 
@@ -371,6 +395,16 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         throw new RouteNotFoundException($method, $path);
     }
 
+    /** @return list<string> */
+    public function middlewareRequirements(): array
+    {
+        if (!$this->cacheEnabled || !$this->cacheReadable) {
+            return \array_keys($this->middlewareRequirements);
+        }
+
+        return ShardedCacheGeneration::middlewareRequirements($this->cacheDir, self::CACHE_FORMAT_VERSION);
+    }
+
     /**
      * Resolve a named route to its [path, domain] tuple.
      *
@@ -411,7 +445,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
      */
     private function aliasFilePath(): string
     {
-        return sharded_matcher_alias_file_path($this->cacheDir, self::F_ALIASES);
+        return sharded_matcher_alias_file_path($this->cacheStorageDir(), self::F_ALIASES);
     }
 
     /**
@@ -452,6 +486,11 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         return $group;
     }
 
+    private function cacheStorageDir(): string
+    {
+        return $this->activeCacheDir ?? $this->cacheDir;
+    }
+
     /**
      * Compute deterministic hash for alias cache payload.
      *
@@ -460,7 +499,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
      */
     private function computeAliasHash(array $payload): string
     {
-        return \hash('xxh128', $this->exportArray($payload));
+        return \hash('xxh128', \serialize($payload));
     }
 
     /**
@@ -471,12 +510,12 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
      */
     private function computeShardHash(array $payload): string
     {
-        return \hash('xxh128', $this->exportArray($payload));
+        return \hash('xxh128', \serialize($payload));
     }
 
     private function discardBuildState(): void
     {
-        [$this->bucketMap, $this->alias, $this->loadedFiles] = [[], [], []];
+        [$this->bucketMap, $this->alias, $this->middlewareRequirements, $this->loadedFiles] = [[], [], [], []];
         $this->aliasLoaded = null;
     }
 
@@ -490,7 +529,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     {
         $file = $this->aliasFilePath();
         $payload = $this->alias;
-        $this->writeCachePayloadFile($file, $payload, $this->computeAliasHash($payload));
+        $this->writeCachePayloadFile($file, $payload);
     }
 
     /* ──────────── cache dump (per-host *and* per-bucket) ─────────── */
@@ -567,7 +606,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
      */
     private function loadGroupFromCache(string $hostKey, string $bucket): ?array
     {
-        $file = sharded_matcher_shard_file_path($this->cacheDir, $hostKey, $bucket, self::WIN_RESERVED);
+        $file = sharded_matcher_shard_file_path($this->cacheStorageDir(), $hostKey, $bucket, self::WIN_RESERVED);
         if (\array_key_exists($file, $this->loadedFiles)) {
             return $this->loadedFiles[$file];
         }
@@ -579,20 +618,61 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         /** @var array{_version?:int,_hash?:string,_data?:mixed} $blob */
         $blob = require $file;
 
+        if (($blob[self::H_VERSION] ?? null) !== self::CACHE_FORMAT_VERSION) {
+            throw new \RuntimeException("Stale sharded route cache ({$file}). Rebuild the route cache.");
+        }
+
         if (!isset($blob[self::H_DATA])) {
             throw new \RuntimeException("Cache file {$file} missing data payload.");
         }
+        $data = sharded_matcher_normalize_group($blob[self::H_DATA]);
         if ($this->verifyCacheOnLoad) {
             if (!isset($blob[self::H_HASH])) {
                 throw new \RuntimeException("Cache file {$file} missing Hash.");
             }
-            $calc = $this->computeShardHash(sharded_matcher_normalize_group($blob[self::H_DATA]));
+            $calc = $this->computeShardHash($data);
             if (!\hash_equals($blob[self::H_HASH], $calc)) {
                 throw new \RuntimeException("Cache hash mismatch ($file).");
             }
         }
 
-        return $this->loadedFiles[$file] = sharded_matcher_normalize_group($blob[self::H_DATA]);
+        return $this->loadedFiles[$file] = $data;
+    }
+
+    private function publishGeneration(): void
+    {
+        [$generation, $this->activeCacheDir] = ShardedCacheGeneration::create($this->cacheDir);
+        $this->dumpCacheFiles();
+        $this->dumpAliasFile();
+
+        $sentinel = sharded_matcher_shard_file_path(
+            $this->cacheStorageDir(),
+            '*',
+            self::SHARD_ROOT,
+            self::WIN_RESERVED,
+        );
+        if (!\is_file($sentinel) || !\is_file($this->aliasFilePath())) {
+            throw new \RuntimeException('Generated sharded cache is incomplete.');
+        }
+
+        ShardedCacheGeneration::publish(
+            $this->cacheDir,
+            self::CACHE_FORMAT_VERSION,
+            $generation,
+            \array_keys($this->middlewareRequirements),
+        );
+    }
+
+    private function resolveActiveCacheDir(): ?string
+    {
+        if ($this->activeCacheDir !== null) {
+            return $this->activeCacheDir;
+        }
+
+        return $this->activeCacheDir = ShardedCacheGeneration::resolve(
+            $this->cacheDir,
+            self::CACHE_FORMAT_VERSION,
+        );
     }
 
     /* ──────────────────────── match helpers ───────────────── */
@@ -658,11 +738,15 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     /**
      * @param array<mixed> $payload
      */
-    private function writeCachePayloadFile(string $file, array $payload, string $crc): void
+    private function writeCachePayloadFile(string $file, array $payload): void
     {
         if (!\is_dir($d = \dirname($file)) && !\mkdir($d, 0775, true) && !\is_dir($d)) {
             throw new \RuntimeException("Failed to create cache dir {$d}");
         }
+
+        /** @var array<mixed> $payload */
+        $payload = MatcherCachePayloadNormalizer::normalize($payload);
+        $crc = \hash('xxh128', \serialize($payload));
 
         $php = "<?php\nreturn [\n"
             . "    '" . self::H_VERSION . "' => " . self::CACHE_FORMAT_VERSION . ",\n"
@@ -671,7 +755,24 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             . "    '" . self::H_DATA . "' => " . $this->exportArray($payload) . ",\n"
             . "];\n";
 
-        sharded_matcher_write_atomic_php_file($file, $php);
+        matcher_write_validated_atomic_php_file(
+            $file,
+            $php,
+            function (array $blob) use ($crc): void {
+                if (($blob[self::H_VERSION] ?? null) !== self::CACHE_FORMAT_VERSION) {
+                    throw new \UnexpectedValueException('Generated sharded cache has an invalid format version.');
+                }
+                $data = $blob[self::H_DATA] ?? null;
+                $hash = $blob[self::H_HASH] ?? null;
+                if (!\is_array($data) || !\is_string($hash)) {
+                    throw new \UnexpectedValueException('Generated sharded cache has an invalid payload.');
+                }
+                $computed = \hash('xxh128', \serialize($data));
+                if (!\hash_equals($crc, $hash) || !\hash_equals($crc, $computed)) {
+                    throw new \UnexpectedValueException('Generated sharded cache hash mismatch.');
+                }
+            },
+        );
 
         if ($this->shouldWarmOpcache()) {
             \opcache_compile_file($file);
@@ -689,7 +790,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
      */
     private function writeShard(string $hostKey, string $bucket, array $payload): void
     {
-        $file = sharded_matcher_shard_file_path($this->cacheDir, $hostKey, $bucket, self::WIN_RESERVED);
-        $this->writeCachePayloadFile($file, $payload, $this->computeShardHash($payload));
+        $file = sharded_matcher_shard_file_path($this->cacheStorageDir(), $hostKey, $bucket, self::WIN_RESERVED);
+        $this->writeCachePayloadFile($file, $payload);
     }
 }

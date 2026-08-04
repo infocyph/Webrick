@@ -34,7 +34,7 @@ final readonly class ErrorHandler
     /**
      * Construct an ErrorHandler.
      *
-     * @param LoggerInterface|null $logger PSR-3 logger used to persist error details (optional)
+     * @param LoggerInterface|\Closure|null $logger PSR-3 logger or zero-argument lazy logger factory
      * @param bool $debug When true include exception details (file/trace) in responses
      * @param bool $capturePhpErrors Convert PHP warnings/notices/stricter errors into ErrorException
      *                               so they are handled by this boundary (respects @ operator)
@@ -44,7 +44,7 @@ final readonly class ErrorHandler
      *                                                                                          Optional override renderer invoked for body-allowed, non-HEAD error responses before the built-in renderer
      */
     public function __construct(
-        private ?LoggerInterface $logger = null,
+        private LoggerInterface|\Closure|null $logger = null,
         private bool $debug = false,
         private bool $capturePhpErrors = true,
         private string $requestIdHeader = 'X-Request-Id',
@@ -280,7 +280,8 @@ final readonly class ErrorHandler
      */
     private function log(Throwable $e, Request $req, int $status): void
     {
-        if (!$this->logger) {
+        $logger = $this->resolveLogger();
+        if (!$logger instanceof LoggerInterface) {
             return;
         }
 
@@ -292,7 +293,7 @@ final readonly class ErrorHandler
             default => 'warning',
         };
 
-        $this->logger->{$level}(
+        $logger->{$level}(
             sprintf('[http:%d] %s: %s', $status, $e::class, $e->getMessage()),
             [
                 'status' => $status,
@@ -533,6 +534,20 @@ final readonly class ErrorHandler
         $response = ($this->responseRenderer)($req, $e, $status, $headers);
 
         return $response instanceof Response ? $response : null;
+    }
+
+    private function resolveLogger(): ?LoggerInterface
+    {
+        if ($this->logger instanceof LoggerInterface || $this->logger === null) {
+            return $this->logger;
+        }
+
+        $logger = ($this->logger)();
+        if ($logger !== null && !$logger instanceof LoggerInterface) {
+            throw new \UnexpectedValueException('The error logger factory must return a PSR-3 logger or null.');
+        }
+
+        return $logger;
     }
 
     private function resolvePublicMessage(Throwable $e, string $fallback): string
