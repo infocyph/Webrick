@@ -7,11 +7,11 @@
         "router",
         "routing",
         "http",
-        "web",
-        "framework",
         "middleware",
-        "psr-7",
-        "psr-15",
+        "http-kernel",
+        "php-router",
+        "route-cache",
+        "signed-url",
         "opentelemetry"
     ],
     "authors": [
@@ -26,13 +26,13 @@
     ],
     "require": {
         "php": ">=8.4",
-        "infocyph/arraykit": "^4.6.1",
-        "infocyph/intermix": "^8.1",
+        "infocyph/arraykit": "^5.1",
+        "infocyph/intermix": "^9.1",
         "psr/cache": "^3.0",
         "psr/log": "^3.0.2"
     },
     "require-dev": {
-        "infocyph/cachelayer": "^2.0.1",
+        "infocyph/cachelayer": "^3.1",
         "infocyph/phpforge": "dev-main@dev"
     },
     "suggest": {

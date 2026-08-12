@@ -3,7 +3,7 @@
 Rate limiting middleware that enforces request limits per client/user with configurable windows and costs.
 
 Pass any application-provided PSR-6 pool to use throttling without CacheLayer.
-Install CacheLayer 2 only when using the default local pool or its atomic counter
+Install a supported CacheLayer release only when using the default local pool or its atomic counter
 backend:
 
 ```bash
@@ -484,7 +484,6 @@ new ThrottleMiddleware(
     max: 5,
     window: 60,
     pool: $cache,
-    debug: true,  // If supported
     identifierResolver: function (Request $r): string {
         $id = $r->getAttribute('client_ip');
         error_log("Throttle ID: {$id}");  // Debug
@@ -717,7 +716,7 @@ new ThrottleMiddleware(
 3. **Don't use local cache in multi-server setup**
    ```php
    // ❌ Each server has separate counter
-   Cache::local('apcu')
+   Cache::apcu('webrick.throttle')
 
    // ✅ Shared counter
    Cache::redis()

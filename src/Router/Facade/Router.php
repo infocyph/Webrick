@@ -6,13 +6,13 @@ namespace Infocyph\Webrick\Router\Facade;
 
 use Closure;
 use DateTimeInterface;
-use Infocyph\InterMix\DI\Support\ReflectionResource;
 use Infocyph\Webrick\Interfaces\RouteInterface;
 use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Route\Collection;
 use Infocyph\Webrick\Router\Url\SignedUrlConfig;
 use Infocyph\Webrick\Router\Url\UrlGenerator;
 use Infocyph\Webrick\Router\Url\UrlGeneratorRegistry;
+use ReflectionFunction;
 use RuntimeException;
 
 /**
@@ -328,7 +328,7 @@ final class Router
         self::$instance = $router;
 
         try {
-            $ref = ReflectionResource::getFunctionReflection($callback);
+            $ref = new ReflectionFunction($callback);
 
             return $ref->getNumberOfParameters() > 0
                 ? $callback($router)

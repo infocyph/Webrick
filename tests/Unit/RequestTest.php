@@ -34,6 +34,21 @@ describe('Request', function () {
             ->getHeaderLine('Accept')->toBe('application/json');
     });
 
+    it('keeps manual and fake construction independent from PHP globals', function () {
+        $_COOKIE = ['leaked' => 'cookie'];
+        $_FILES = ['leaked' => ['name' => 'file.txt']];
+        $_SERVER = ['REMOTE_ADDR' => '203.0.113.9'];
+
+        $manual = new ServerRequest('GET', '/manual');
+        $fake = Request::fake(uri: '/fake');
+
+        expect($manual->getCookieParams())->toBe([])
+            ->and($manual->getUploadedFiles())->toBe([])
+            ->and($manual->getServerParams())->toBe([])
+            ->and($fake->getCookieParams())->toBe([])
+            ->and($fake->getServerParams())->toBe([]);
+    });
+
     it('is immutable', function () {
         $r1 = mockRequest('GET', '/test');
         $r2 = $r1->withMethod('POST');
@@ -53,7 +68,28 @@ describe('Request', function () {
             ->and($params['q'])->toBe('test')
             ->and($params['missing'] ?? 'default')->toBe('default');
 
-        // Request doesn't have query() method, use getQueryParams()
+        expect($request->query('q'))->toBe('test');
+    });
+
+    it('allocates ArrayKit request collections only when requested', function () {
+        $request = new Request(
+            'POST',
+            'https://example.test/items?q=search',
+            ['REMOTE_ADDR' => '127.0.0.1'],
+            parsed: ['name' => 'Webrick'],
+            cookies: ['session' => 'token'],
+        );
+        $collectionProperties = ['queryCol', 'postCol', 'cookieCol', 'serverCol', 'jsonCol'];
+
+        foreach ($collectionProperties as $property) {
+            expect((new ReflectionProperty(\Infocyph\Webrick\Request\Psr7\ServerRequest::class, $property))->getValue($request))->toBeNull();
+        }
+
+        expect($request->query('q'))->toBe('search')
+            ->and((new ReflectionProperty(\Infocyph\Webrick\Request\Psr7\ServerRequest::class, 'queryCol'))->getValue($request))->not->toBeNull()
+            ->and((new ReflectionProperty(\Infocyph\Webrick\Request\Psr7\ServerRequest::class, 'postCol'))->getValue($request))->toBeNull()
+            ->and((new ReflectionProperty(\Infocyph\Webrick\Request\Psr7\ServerRequest::class, 'cookieCol'))->getValue($request))->toBeNull()
+            ->and((new ReflectionProperty(\Infocyph\Webrick\Request\Psr7\ServerRequest::class, 'serverCol'))->getValue($request))->toBeNull();
     });
 
     it('lazily exposes variables through magic properties after immutable changes', function () {

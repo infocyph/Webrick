@@ -27,7 +27,8 @@ use Psr\Log\NullLogger;
 
 require __DIR__ . '/../vendor/autoload.php';
 
-$signKey = $_ENV['WEBRICK_SIGN_KEY'] ?? 'change-me';
+$signKey = $_ENV['WEBRICK_SIGN_KEY']
+    ?? throw new RuntimeException('WEBRICK_SIGN_KEY is required');
 $baseUri = $_ENV['WEBRICK_URL_BASE_URI'] ?? 'http://localhost';
 $signedUrls = new SignedUrlConfig(
     generationKey: $signKey,

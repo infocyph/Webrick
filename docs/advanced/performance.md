@@ -76,22 +76,16 @@ parsing remains gated to applicable non-POST methods and content types.
 
 ---
 
-### ✅ **3. Use ShardedMatcher** (100+ Routes)
+### ✅ **3. Select a Matcher from Representative Measurements**
 ```php
 $matcher = ShardedMatcher::make();
 ```
 
-**Benefits**:
-- Lazy loads only needed shards
-- Better OPcache locality
-- Faster than FusedMatcher for large apps
-
-**When to use Fused**:
-- < 100 routes
-- Serverless/edge deployments
-- Simple services
-
-Benchmark all three modes with the application's route count and traffic mix.
+Sharded is a useful starting point for substantial applications because it
+loads selected immutable shards and can improve OPcache locality. Route count
+alone does not determine the winner: benchmark Fused, Generated and Sharded
+with the application's static/dynamic mix, prefixes, domains, OPcache settings,
+worker lifetime and traffic distribution.
 For a middleware-free route, Webrick uses a direct dispatch lane and does not
 allocate a middleware pipeline. Adding any pre-global, route, or post-global
 middleware intentionally selects the full ordered pipeline.
@@ -126,13 +120,15 @@ wants to remove even the container tag lookup from boot.
 ```php
 new CompressionMiddleware(
     minBytes: 1400,              // MTU-friendly (1 packet)
-    prefOrder: ['zstd', 'br'],   // Skip gzip (slower, worse ratio)
+    prefOrder: ['zstd', 'br', 'gzip'],
     etagMode: CompressionMiddleware::ETAG_STRONG_DERIVE,  // Avoid recomputing hash
     maxBufferBytes: 8_388_608    // 8MB safety ceiling
 );
 ```
 
-**zstd** is **2-3x faster** than gzip with better compression.
+Codec throughput and compression ratio depend on payload, level, extension,
+CPU and response size. Measure the supported codecs on representative traffic,
+and compress at Webrick or the edge—not both.
 
 ---
 
@@ -145,7 +141,8 @@ new ResponseCacheMiddleware(
 );
 ```
 
-**Impact**: **10-100x faster** for hot GET endpoints (bypasses handler entirely).
+Measure hit, miss and fill paths separately. A hit bypasses the handler, but the
+end-to-end improvement depends on handler cost, backend latency and hit rate.
 
 **Best for**:
 - Product listings
@@ -199,18 +196,12 @@ location ~* \.(css|js|png|jpg|jpeg|gif|ico|woff2)$ {
 
 ---
 
-### ✅ **9. Database Connection Pooling**
+### ✅ **9. Choose Database Connections for the Runtime**
 
-Use persistent connections:
-```php
-$pdo = new PDO($dsn, $user, $pass, [
-    PDO::ATTR_PERSISTENT => true,
-    PDO::ATTR_EMULATE_PREPARES => false,
-    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION
-]);
-```
-
-**Impact**: Saves ~10-50ms per request (connection overhead).
+Database connection lifetime is owned by the embedding application. Persistent
+PDO connections can help or hurt depending on the SAPI, transaction hygiene,
+server limits and workload. Benchmark the selected strategy and bound total
+connections; Webrick does not require persistent PDO.
 
 ---
 
@@ -231,7 +222,8 @@ RouteCache::build([
 ]);
 ```
 
-**Scanning 1000 classes at runtime = ~100ms penalty**.
+Record discovery time separately from cached boot. The cost varies with the
+class set, filesystem, autoloader, PHP build and cache warmth.
 
 ---
 
@@ -279,7 +271,7 @@ final class TimingMiddleware
 | Issue                   | Symptom             | Fix                                      |
 | ----------------------- | ------------------- | ---------------------------------------- |
 | Cold OPcache            | First hit slow      | Warm cache post-deploy                   |
-| Attribute scanning      | Boot ~100ms         | Prebuild route cache                     |
+| Attribute scanning      | Cold-boot overhead  | Measure it; prebuild route cache         |
 | Large JSON responses    | High memory         | Use pagination; enable compression       |
 | N+1 queries             | DB load spikes      | Eager load; use query logging            |
 | No response cache       | Redundant work      | Add ResponseCacheMiddleware for hot GETs |
@@ -287,7 +279,7 @@ final class TimingMiddleware
 | Unindexed DB columns    | Slow queries        | Add indexes; analyze EXPLAIN             |
 | Too many pre-globals    | High latency        | Remove unused middleware                 |
 | Small FPM pool          | 502 errors          | Size `pm.max_children` by memory         |
-| No connection pooling   | Slow DB connections | Use persistent PDO connections           |
+| Connection saturation   | Timeouts/queueing    | Bound and measure application DB usage   |
 
 ---
 
@@ -295,26 +287,21 @@ final class TimingMiddleware
 
 - [ ] OPcache enabled (`validate_timestamps=0`)
 - [ ] Route cache prebuilt in CI
-- [ ] ShardedMatcher for 100+ routes
+- [ ] Fused, Generated and Sharded measured with representative routes
 - [ ] Compression enabled (app OR edge, not both)
 - [ ] Response cache for hot GETs
 - [ ] PHP-FPM sized by memory
-- [ ] Database connection pooling
+- [ ] Database connection strategy measured for the deployment runtime
 - [ ] Static assets cached at edge
 - [ ] Unnecessary middleware removed
 - [ ] Profiling set up (Blackfire/Xdebug)
 
 ---
 
-## Benchmark Results (Reference)
+## Publishing Benchmark Results
 
-**Setup**: 4-core, 8GB RAM, PHP 8.4, OPcache, ShardedMatcher, micro-cache
-
-| Endpoint              | Requests/sec | P50 Latency | P99 Latency |
-| --------------------- | -----------: | ----------: | ----------: |
-| `/ping` (cached)      |      25,000+ |        2ms  |        5ms  |
-| `/api/users` (cached) |      15,000+ |        3ms  |        8ms  |
-| `/api/users` (DB)     |       2,500+ |       15ms  |       45ms  |
-| `/api/heavy` (no cache) |        500+ |      80ms  |      200ms  |
-
-**Key Insight**: Micro-cache provides **5-10x improvement** for read-heavy endpoints.
+Publish fixed numbers only with the Webrick commit, PHP build, OPcache/JIT
+settings, CPU, RAM, operating system, web server, worker configuration,
+concurrency, route set, matcher, middleware stack, command, duration, warm/cold
+state, failures and p50/p95/p99 latency. Compare median sustained successful
+RPM across repeated production-equivalent runs.

@@ -35,9 +35,6 @@ final class EndUser
         'HTTP_X_STACKPATH_EDGE_IP',
     ];
 
-    /** @var list<string> CIDR strings */
-    private static array $trustedGlobal = [];
-
     /* ----------------------------------------------------------------------- */
     private ?string $cachedNoProxy = null;
 
@@ -52,6 +49,7 @@ final class EndUser
     public function __construct(
         private readonly Request $req,
         private readonly array $extraTrusted = [],
+        private readonly ?int $forwardedHeaderMask = null,
     ) {}
 
     /**
@@ -60,9 +58,9 @@ final class EndUser
      * @param Request $r The request to get the end-user from.
      * @param list<string> $cidrs Extra trusted proxies (CIDR strings).
      */
-    public static function from(Request $r, array $cidrs = []): self
+    public static function from(Request $r, array $cidrs = [], ?int $forwardedHeaderMask = null): self
     {
-        return new self($r, $cidrs);
+        return new self($r, $cidrs, $forwardedHeaderMask);
     }
 
     /**
@@ -76,7 +74,7 @@ final class EndUser
      */
     public static function setTrustedProxies(array $cidrs): void
     {
-        self::$trustedGlobal = $cidrs;
+        Request::setTrustedProxies($cidrs);
     }
 
     /**
@@ -132,17 +130,9 @@ final class EndUser
             return $this->cachedNoProxy;
         }
 
-        $ip = null;
-        if (\PHP_SAPI === 'cli') {
-            $hostname = \gethostname();
-            if ($hostname !== false) {
-                $ip = \gethostbyname($hostname);
-            }
-        } else {
-            $remote = $this->req->getServerParams()['REMOTE_ADDR'] ?? null;
-            if (\is_string($remote)) {
-                $ip = $remote;
-            }
+        $ip = $this->req->getServerParams()['REMOTE_ADDR'] ?? null;
+        if (!\is_string($ip)) {
+            $ip = null;
         }
 
         return $this->cachedNoProxy = \filter_var($ip, \FILTER_VALIDATE_IP) ?: null;
@@ -285,7 +275,7 @@ final class EndUser
     private function isTrustedProxy(string $ip): bool
     {
         return array_any(
-            array_merge(self::$trustedGlobal, $this->extraTrusted),
+            array_merge(Request::getTrustedProxyCidrs(), $this->extraTrusted),
             static fn(string $cidr): bool => IpCidr::match($ip, $cidr),
         );
     }
@@ -299,7 +289,7 @@ final class EndUser
      */
     private function parseForwarded(): array
     {
-        if ((Request::getProxyHeaderFlags() & Request::HEADER_FORWARDED) === 0) {
+        if (($this->proxyHeaderFlags() & Request::HEADER_FORWARDED) === 0) {
             return [];
         }
         $h = $this->req->getHeaderLine('Forwarded');
@@ -321,7 +311,7 @@ final class EndUser
      */
     private function parseLegacyForwarded(): array
     {
-        if ((Request::getProxyHeaderFlags() & Request::HEADER_X_FORWARDED_FOR) === 0) {
+        if (($this->proxyHeaderFlags() & Request::HEADER_X_FORWARDED_FOR) === 0) {
             return [];
         }
         $srv = $this->req->getServerParams();
@@ -337,5 +327,10 @@ final class EndUser
         }
 
         return [];
+    }
+
+    private function proxyHeaderFlags(): int
+    {
+        return $this->forwardedHeaderMask ?? Request::getProxyHeaderFlags();
     }
 }

@@ -19,6 +19,7 @@ namespace Infocyph\Webrick\Middleware;
 
 use Closure;
 use Infocyph\Webrick\Exceptions\HttpException;
+use Infocyph\Webrick\Request\Core\Uri;
 use Infocyph\Webrick\Request\Http\EndUser;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Request\Support\IpCidr;
@@ -35,11 +36,18 @@ use Infocyph\Webrick\Response\Response;
  * - Redirect validation (scheme allow-list + same-origin policy unless configured).
  *
  * Notes:
- * - Uses Request::setTrustedProxies to configure proxy-awareness.
+ * - Proxy trust is evaluated per instance, so multiple gateways cannot mutate
+ *   each other's policy in a persistent worker.
  * - Uses a per-process static cache for compiled trusted host regexes.
  */
 final class GatewayHardeningMiddleware
 {
+    private const int DEFAULT_FORWARDED_HEADER_MASK = Request::HEADER_FORWARDED
+        | Request::HEADER_X_FORWARDED_FOR
+        | Request::HEADER_X_FORWARDED_HOST
+        | Request::HEADER_X_FORWARDED_PORT
+        | Request::HEADER_X_FORWARDED_PROTO;
+
     /** Hop-by-hop header names (lower-case) */
     private const array HOP_BY_HOP = [
         'connection',
@@ -60,6 +68,8 @@ final class GatewayHardeningMiddleware
 
     private readonly bool $allowAllHosts;
 
+    private readonly int $forwardedHeaderMask;
+
     /** compiled regex list for this instance (populated from static cache) */
     /** @var list<string> */
     private readonly array $hostRegex;
@@ -70,14 +80,14 @@ final class GatewayHardeningMiddleware
     /**
      * Configure gateway hardening knobs and pre-compile host allow-list.
      *
-     * @param string[] $trustedProxyCidrs CIDRs considered trusted proxies.
-     * @param string[] $denyIpCidrs CIDRs for end-user IPs to block.
-     * @param string[] $trustedHosts Host header allow-list (supports '*' wildcard).
+     * @param list<string> $trustedProxyCidrs CIDRs considered trusted proxies.
+     * @param list<string> $denyIpCidrs CIDRs for end-user IPs to block.
+     * @param list<string> $trustedHosts Host header allow-list (supports '*' wildcard).
      * @param int|null $forwardedHeaderMask Symfony-style mask (e.g., Request::HEADER_X_FORWARDED_FOR | …).
      * @param bool $enforceHttps Force HTTPS (308) when scheme != https.
      * @param int $httpsPort Port used for HTTPS redirection (typically 443).
      * @param bool $stripHopByHop Remove hop-by-hop headers (req + resp).
-     * @param string[] $redirectAllowedHosts Absolute redirect targets allowed; empty ⇒ same-origin only.
+     * @param list<string> $redirectAllowedHosts Absolute redirect targets allowed; empty ⇒ same-origin only.
      */
     public function __construct(
         private readonly array $trustedProxyCidrs = [],
@@ -89,11 +99,9 @@ final class GatewayHardeningMiddleware
         private readonly bool $stripHopByHop = true,
         private readonly array $redirectAllowedHosts = [],
     ) {
-        // ① Configure trusted proxies & which forwarded headers to honor
-        $trustedProxyCidrs = array_values($this->trustedProxyCidrs);
-        Request::setTrustedProxies($trustedProxyCidrs, $forwardedHeaderMask);
+        $this->forwardedHeaderMask = $forwardedHeaderMask ?? self::DEFAULT_FORWARDED_HEADER_MASK;
 
-        // ② Compile/resolve host allow-list (static cache)
+        // Compile/resolve host allow-list (static cache)
         $this->allowAllHosts = ($this->trustedHosts === ['*']);
         $this->hostRegex = self::compileHostRegex($this->trustedHosts);
     }
@@ -116,10 +124,11 @@ final class GatewayHardeningMiddleware
     public function __invoke(Request $req, Closure $next): Response
     {
         try {
+            $req = $this->normalizeProxyContext($req);
             $this->rejectIfUntrustedHost($req);
 
             // Build EndUser once and keep for helpers
-            $this->endUser = EndUser::from($req);
+            $this->endUser = EndUser::from($req, $this->trustedProxyCidrs, $this->forwardedHeaderMask);
 
             $this->denyIfBlockedEndUser();
 
@@ -169,7 +178,7 @@ final class GatewayHardeningMiddleware
 
         $compiled = [];
         foreach ($trustedHosts as $p) {
-            $escaped = str_replace(['.', '*'], ['\.', '.*'], $p);
+            $escaped = str_replace('\*', '.*', preg_quote($p, '#'));
             $compiled[] = '#^' . $escaped . '$#i';
         }
 
@@ -205,6 +214,9 @@ final class GatewayHardeningMiddleware
             'client_ip' => $clientIp,
             'peer_ip' => $peerIp,
             'is_trusted_proxy' => $isTrustedProxy,
+            'effective_scheme' => $req->getUri()->getScheme(),
+            'effective_host' => $req->getUri()->getHost(),
+            'effective_port' => $req->getUri()->getPort(),
         ]);
     }
 
@@ -295,6 +307,20 @@ final class GatewayHardeningMiddleware
     private function matchesHost(string $host): bool
     {
         return array_any($this->hostRegex, fn(string $rx): bool => preg_match($rx, $host) === 1);
+    }
+
+    /**
+     * Apply forwarded scheme/host/port only when the direct peer is trusted.
+     */
+    private function normalizeProxyContext(Request $req): Request
+    {
+        $server = $req->getServerParams();
+        $peer = $server['REMOTE_ADDR'] ?? null;
+        if (!\is_string($peer) || !$this->cidrHit($peer, $this->trustedProxyCidrs)) {
+            return $req;
+        }
+
+        return $req->withUri(Uri::fromServerParams($server, $this->forwardedHeaderMask));
     }
 
     /**

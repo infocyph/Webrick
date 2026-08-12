@@ -98,8 +98,11 @@ Place it in **pre-global** (before anything reads cookies):
 use Infocyph\Webrick\Middleware\CookieEncryptionMiddleware;
 use Psr\Cache\CacheItemPoolInterface;
 
+$cookieKey = $_ENV['WEBRICK_COOKIE_KEY']
+    ?? throw new RuntimeException('WEBRICK_COOKIE_KEY is required');
+
 $preGlobal[] = new CookieEncryptionMiddleware(
-    keyOrKeys: $_ENV['WEBRICK_COOKIE_KEY'] ?? 'change-me-32-bytes-minimum',
+    keyOrKeys: $cookieKey,
     cookiePrefix: 'enc_',           // Only encrypt cookies with this prefix
     maxBytes: 3_800,                // Per-cookie size limit (4KB browser limit)
     store: $cachePool,              // PSR-6 cache for server-side storage fallback

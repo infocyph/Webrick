@@ -32,6 +32,8 @@ use RuntimeException;
  */
 final readonly class ResponseCacheMiddleware
 {
+    private const string CACHE_KEY_PREFIX = 'webrick.hr.v1.';
+
     private const array CACHEABLE_STATUS = [
         StatusEnum::OK->value => true,
         StatusEnum::NON_AUTHORITATIVE_INFO->value => true,
@@ -49,7 +51,7 @@ final readonly class ResponseCacheMiddleware
     private CacheInterface $store;
 
     /**
-     * @param CacheInterface|null $store Cache backend; defaults to local('http')
+     * @param CacheInterface|null $store Cache backend; defaults to a local file cache
      * @param int $ttlSeconds Base TTL for cache entries (e.g., 10)
      * @param bool $includeQuery Whether to include normalized query in the cache key
      * @param int $maxBodyBytes Upper bound for payload size to cache
@@ -105,7 +107,7 @@ final readonly class ResponseCacheMiddleware
         $resp = $this->invokeNext($next, $req);
 
         // Decide whether to store.
-        if ($this->isCacheable($resp)) {
+        if ($this->isCacheable($resp, $req)) {
             $ttl = $this->computeTtl($resp);
             if ($ttl > 0) {
                 $this->writeCache($key, $this->pack($resp), $ttl);
@@ -140,6 +142,11 @@ final readonly class ResponseCacheMiddleware
         return $pairs;
     }
 
+    private function base64UrlHash(string $value): string
+    {
+        return rtrim(strtr(base64_encode(hash('sha256', $value, true)), '+/', '-_'), '=');
+    }
+
     private function buildDefaultStore(): CacheInterface
     {
         if (!class_exists(Cache::class)) {
@@ -153,7 +160,7 @@ final readonly class ResponseCacheMiddleware
             return Cache::memory('http');
         }
 
-        return Cache::local('http');
+        return Cache::file('webrick.http');
     }
 
     /**
@@ -207,6 +214,27 @@ final readonly class ResponseCacheMiddleware
         return (int) $value;
     }
 
+    private function hasSafeVary(Response $response, Request $request): bool
+    {
+        $vary = $response->getHeaderLine('Vary');
+        if ($vary === '') {
+            return true;
+        }
+
+        $keyed = array_fill_keys(array_keys($this->resolveVaryPairs($request)), true);
+        foreach (explode(',', $vary) as $token) {
+            $name = $this->canonicalHeaderToken($token);
+            if ($name === '' || $name === '*') {
+                return false;
+            }
+            if ($name === 'Authorization' || $name === 'Cookie' || !isset($keyed[$name])) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private function intFromMixed(mixed $value, int $default): int
     {
         if (\is_int($value)) {
@@ -231,7 +259,7 @@ final readonly class ResponseCacheMiddleware
 
     /* ───────────────────────── policy ───────────────────────── */
 
-    private function isCacheable(Response $resp): bool
+    private function isCacheable(Response $resp, Request $req): bool
     {
         // Skip streaming or unknown/oversized bodies.
         if ($resp->isStreaming()) {
@@ -244,6 +272,10 @@ final readonly class ResponseCacheMiddleware
 
         // Do not cache Set-Cookie unless explicitly allowed.
         if ($this->avoidSetCookie && $resp->hasHeader('Set-Cookie')) {
+            return false;
+        }
+
+        if (!$this->hasSafeVary($resp, $req)) {
             return false;
         }
 
@@ -276,6 +308,10 @@ final readonly class ResponseCacheMiddleware
 
     private function isPersonalizedRequest(Request $req): bool
     {
+        if ($req->hasHeader('Authorization') || $req->hasHeader('Cookie')) {
+            return true;
+        }
+
         return $this->skipWhenPersonalized && $req->getAttribute('personalized') === true;
     }
 
@@ -285,6 +321,9 @@ final readonly class ResponseCacheMiddleware
     {
         $u = $req->getUri();
         $host = strtolower($u->getHost() ?: 'localhost');
+        if ($u->getPort() !== null) {
+            $host .= ':' . $u->getPort();
+        }
         $path = $u->getPath() ?: '/';
         $query = '';
 
@@ -321,7 +360,7 @@ final readonly class ResponseCacheMiddleware
             $buf .= $nul . $h . $nul . $v;
         }
 
-        return hash('sha256', $buf, false);
+        return self::CACHE_KEY_PREFIX . $this->base64UrlHash($buf);
     }
 
     /**
@@ -418,9 +457,9 @@ final readonly class ResponseCacheMiddleware
         }
 
         foreach ($this->defaultVary as $name) {
-            $line = $req->getHeaderLine($name);
-            if ($line !== '') {
-                $pairs[$name] = $line;
+            $canonical = $this->canonicalHeaderToken($name);
+            if ($canonical !== '') {
+                $pairs[$canonical] = $req->getHeaderLine($canonical);
             }
         }
 

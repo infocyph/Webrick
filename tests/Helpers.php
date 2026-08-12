@@ -192,7 +192,7 @@ function testCache(string $namespace = 'test'): Cache
         return Cache::memory('webrick-test-' . $namespace);
     }
 
-    return Cache::local(
+    return Cache::file(
         'webrick-test-' . $namespace,
         sys_get_temp_dir() . '/webrick-test-' . $namespace,
     );

@@ -4,9 +4,10 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router\Matching;
 
-use Infocyph\InterMix\Serializer\ValueSerializer;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 use Infocyph\Webrick\Router\Route\CompiledRouteCachePayload;
+
+require_once __DIR__ . '/matcher_functions.php';
 
 /**
  * Produces the canonical scalar metadata used for cache hashing and emission.
@@ -45,7 +46,7 @@ final class MatcherCachePayloadNormalizer
     {
         $handler = CachedHandlerNormalizer::normalize($route->getHandler());
         if ($handler === null || !self::hasOnlyStringMiddleware($route)) {
-            return ValueSerializer::serialize($route);
+            return matcher_serialize_cached_route($route);
         }
 
         return CompiledRouteCachePayload::validate($route->toCachePayloadWithHandler($handler));

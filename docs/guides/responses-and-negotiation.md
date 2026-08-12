@@ -1,8 +1,5 @@
 # Responses & Content Negotiation
 
-
----
-
 **📖 Note**: This guide focuses on how Response helpers work **with** content negotiation middleware. For comprehensive Response API reference (all helpers, status codes, headers, etc.), see [Response Helpers](./responses.md).
 
 ---
@@ -19,7 +16,7 @@ The examples reflect the real behavior in the codebase.
 ```php
 use Infocyph\Webrick\Response\Response as R;
 
-Route::get('/profile', function () {
+Route::get('/profile', function (Request $r) {
     $payload = ['id' => 123, 'name' => 'Hasan'];
     return R::auto($r, $payload); // JSON by default; can also respect charset/locale if configured
 });

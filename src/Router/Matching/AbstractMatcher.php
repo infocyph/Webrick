@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router\Matching;
 
-use Infocyph\InterMix\Serializer\ValueSerializer;
 use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 
@@ -29,7 +28,7 @@ require_once __DIR__ . '/matcher_functions.php';
  */
 abstract class AbstractMatcher
 {
-    protected const CACHE_FORMAT_VERSION = 3;
+    protected const CACHE_FORMAT_VERSION = 4;
 
     protected const F_ALIASES = '__aliases.php';
 
@@ -317,8 +316,8 @@ abstract class AbstractMatcher
     /**
      * Export a single value into a PHP source-like string.
      *
-     * CompiledRoute instances are handled specially to avoid serialising closures
-     * into cache blobs; routes with closures are serialized via ValueSerializer.
+     * CompiledRoute instances are handled specially so scalar routes remain
+     * native arrays while runtime values use Webrick's versioned route envelope.
      *
      * @param mixed $v Value to export
      * @param int $depth Indentation depth (unused for non-array values)
@@ -575,10 +574,7 @@ abstract class AbstractMatcher
             return $this->materializedRoutes[$route];
         }
 
-        $materialized = ValueSerializer::unserialize($route);
-        if (!$materialized instanceof CompiledRoute) {
-            throw new \RuntimeException('Serialized route cache entry did not produce a CompiledRoute.');
-        }
+        $materialized = matcher_unserialize_cached_route($route);
 
         return $this->materializedRoutes[$route] = $materialized;
     }

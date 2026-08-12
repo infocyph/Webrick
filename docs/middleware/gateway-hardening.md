@@ -30,7 +30,7 @@ $preGlobal[] = new GatewayHardeningMiddleware(
     trustedProxyCidrs: ['10.0.0.0/8', '172.16.0.0/12'],  // Trusted proxy IPs
     denyIpCidrs: ['192.168.1.100/32'],                    // Blocked IPs
     trustedHosts: ['example.com', '*.example.com'],      // Host whitelist
-    forwardedHeaderMask: null,                            // Symfony-style mask
+    forwardedHeaderMask: null,                            // All supported forwarded headers
     enforceHttps: true,                                   // Force HTTPS
     httpsPort: 443,                                       // HTTPS port
     stripHopByHop: true,                                  // Strip Connection, Keep-Alive, etc.
@@ -45,8 +45,8 @@ $preGlobal[] = new GatewayHardeningMiddleware(
 | `trustedProxyCidrs`   | `array<string>` | `[]`    | CIDR ranges of trusted proxies                 |
 | `denyIpCidrs`         | `array<string>` | `[]`    | CIDR ranges to block                           |
 | `trustedHosts`        | `array<string>` | `[]`    | Allowed Host header values                     |
-| `forwardedHeaderMask` | `?int`          | `null`  | Symfony ForwardedHeaderMask flags              |
-| `enforceHttps`        | `bool`          | `false` | Redirect HTTP → HTTPS                          |
+| `forwardedHeaderMask` | `?int`          | `null`  | Trusted-header bitmask (`null` = all supported) |
+| `enforceHttps`        | `bool`          | `true`  | Redirect HTTP → HTTPS                          |
 | `httpsPort`           | `int`           | `443`   | HTTPS port for redirects                       |
 | `stripHopByHop`       | `bool`          | `true`  | Remove hop-by-hop headers                      |
 | `redirectAllowedHosts`| `array<string>` | `[]`    | Allowed redirect destinations                  |
@@ -149,7 +149,14 @@ Middleware attaches useful attributes:
 $r->getAttribute('client_ip');         // End-user IP (honors proxies)
 $r->getAttribute('peer_ip');           // Direct socket peer
 $r->getAttribute('is_trusted_proxy');  // bool
+$r->getAttribute('effective_scheme');  // Normalized scheme
+$r->getAttribute('effective_host');    // Hostname without port
+$r->getAttribute('effective_port');    // Non-default port or null
 ```
+
+Forwarded values are used only when the direct socket peer matches
+`trustedProxyCidrs`. Each middleware instance owns its proxy policy, which keeps
+separate applications isolated in persistent workers.
 
 ---
 
@@ -269,4 +276,3 @@ trustedHosts: ['example.com', 'api.example.com']
    // ❌ Trusting X-Forwarded-For without validation
    $ip = $request->getHeaderLine('X-Forwarded-For');
    ```
-

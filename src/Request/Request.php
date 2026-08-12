@@ -12,6 +12,7 @@ use Infocyph\Webrick\Request\Http\ContentNegotiator;
 use Infocyph\Webrick\Request\Http\Csrf;
 use Infocyph\Webrick\Request\Http\EndUser;
 use Infocyph\Webrick\Request\Psr7\ServerRequest;
+use Infocyph\Webrick\Request\Support\IpCidr;
 use InvalidArgumentException;
 use JsonSerializable;
 use Stringable;
@@ -33,12 +34,10 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
 
     public const HEADER_X_FORWARDED_PROTO = 0b00100;
 
-    private static int $trustedHeaderFlags
-        = self::HEADER_X_FORWARDED_FOR
-        | self::HEADER_X_FORWARDED_HOST
-        | self::HEADER_X_FORWARDED_PROTO
-        | self::HEADER_X_FORWARDED_PORT
-        | self::HEADER_FORWARDED;
+    private static int $trustedHeaderFlags = 0;
+
+    /** @var list<string> */
+    private static array $trustedProxyCidrs = [];
 
     /** @var array<string, mixed>|null */
     private ?array $cachedAll = null;
@@ -82,7 +81,7 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
         return new self(
             HttpMethodEnum::normalize($method),
             Uri::from($uri),
-            self::serverMap($_SERVER),
+            [],
             $headers,
             parsed: $post,
             files: [],
@@ -117,6 +116,26 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
         return self::$trustedHeaderFlags;
     }
 
+    /** @return list<string> */
+    public static function getTrustedProxyCidrs(): array
+    {
+        return self::$trustedProxyCidrs;
+    }
+
+    /** @param array<string, mixed> $server */
+    public static function isFromTrustedProxy(array $server): bool
+    {
+        $peer = $server['REMOTE_ADDR'] ?? null;
+        if (!\is_string($peer) || $peer === '') {
+            return false;
+        }
+
+        return array_any(
+            self::$trustedProxyCidrs,
+            static fn(string $cidr): bool => IpCidr::match($peer, $cidr),
+        );
+    }
+
     /**
      * Sets the trusted proxies and header flags for EndUser.
      *
@@ -127,7 +146,7 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
      */
     public static function setTrustedProxies(array $cidrs, ?int $headerFlags = null): void
     {
-        EndUser::setTrustedProxies($cidrs);
+        self::$trustedProxyCidrs = $cidrs;
         if ($headerFlags !== null) {
             self::$trustedHeaderFlags = $headerFlags;
         }
@@ -838,23 +857,6 @@ class Request extends ServerRequest implements ArrayAccess, JsonSerializable, St
         $l = str_replace('_', '-', trim($l));
 
         return strtolower($l);
-    }
-
-    /**
-     * @param array<mixed> $server
-     * @return array<string, mixed>
-     */
-    private static function serverMap(array $server): array
-    {
-        $result = [];
-        foreach ($server as $key => $value) {
-            if (!is_string($key)) {
-                continue;
-            }
-            $result[$key] = $value;
-        }
-
-        return $result;
     }
 
     /**

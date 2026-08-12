@@ -94,10 +94,10 @@ class ServerRequest extends Message
      * @param Stream $body The request body as a Stream object.
      * @param string $httpVer The HTTP protocol version (e.g. "1.1")
      * @param array<string, mixed>|object|null $parsed The parsed request body (e.g. JSON, XML, etc.)
-     * @param array<string, mixed>|null $files The $_FILES superglobal array, or null to read it lazily.
+     * @param array<string, mixed> $files Uploaded-file specifications. Globals are read only by createFromGlobals().
      * @param string|null $requestTarget The request target (e.g. "index.php").
      * @param array<string, mixed>|null $query Explicit query parameters.
-     * @param array<string, mixed>|null $cookies Explicit cookie parameters.
+     * @param array<string, mixed> $cookies Explicit cookie parameters.
      */
     public function __construct(
         string $method,
@@ -107,19 +107,18 @@ class ServerRequest extends Message
         Stream $body = new Stream(),
         string $httpVer = '1.1',
         private array|object|null $parsed = null,
-        ?array $files = null,
+        array $files = [],
         private ?string $requestTarget = null,
         ?array $query = null,
-        ?array $cookies = null,
+        array $cookies = [],
     ) {
         parent::__construct(ServerRequestHeaderNormalizer::normalize($headers), $body, $httpVer);
 
         $this->method = HttpMethodEnum::normalize($method);
         $this->uri = $uri instanceof Uri ? $uri : new Uri($uri);
-        $this->filesSpec = $files ?? self::mixedMap($_FILES);
+        $this->filesSpec = self::mixedMap($files);
 
-        /* copies of super-globals */
-        $this->cookie = $cookies ?? self::mixedMap($_COOKIE);
+        $this->cookie = self::mixedMap($cookies);
         $this->query = server_request_query_parameters($query, $this->uri);
 
         /* Host header fallback */

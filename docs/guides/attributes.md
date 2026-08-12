@@ -463,7 +463,7 @@ php ./webrick route:cache --cache=.route-cache --routes=routes.php
 **Benefits**:
 - ✅ Attribute scanning happens once (build time)
 - ✅ Production requests skip reflection entirely
-- ✅ ~100ms faster boot for apps with many attribute routes
+- ✅ Cold-boot reflection cost is removed; measure the impact for your route set
 
 ---
 
@@ -530,18 +530,12 @@ class AttributeRoutingTest extends TestCase
 
 **Debug**:
 ```php
-// Add debug output during registration
-AttributeRouteLoader::registerFromDirs($registrar, [
+// Confirm the namespace/path pair with a focused registration test.
+$count = AttributeRouteLoader::registerFromDirs($registrar, [
     'App\\Http\\Routes\\' => __DIR__ . '/../src/Http/Routes',
-], debug: true);  // If supported
+]);
 
-// Or manually check
-$files = glob(__DIR__ . '/../src/Http/Routes/*.php');
-foreach ($files as $file) {
-    echo "Found: $file\n";
-    require_once $file;
-    // Check if class exists
-}
+assert($count > 0);
 ```
 
 **Checklist**:
@@ -652,13 +646,10 @@ Ship `.route-cache/` with your deployment.
 
 ## Performance Comparison
 
-| Approach       | Boot Time (Cold) | Boot Time (Cached) | Memory  |
-| -------------- | ---------------: | -----------------: | ------: |
-| Central routes |             50ms |               10ms |   2 MiB |
-| Attributes     |            150ms |               12ms | 2.5 MiB |
-| Cached both    |             12ms |               12ms |   2 MiB |
-
-**Takeaway**: Attributes add ~100ms on cold boot due to reflection. Cache eliminates the difference.
+Attribute discovery performs reflection during uncached boot; route-cache boot
+loads the built artifact instead. The difference depends on route count,
+filesystem, OPcache state, PHP build, and hardware. Benchmark both paths with
+the application's real route set before publishing numbers.
 
 ---
 

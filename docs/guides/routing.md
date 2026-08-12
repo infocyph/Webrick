@@ -279,9 +279,6 @@ Consider adding a small PHPUnit test that boots your router and asserts status c
 
 ---
 
-
----
-
 ## Related Guides
 
 - [Attribute Routes](./attributes.md) - Declare routes with PHP attributes
