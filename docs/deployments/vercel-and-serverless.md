@@ -171,15 +171,13 @@ Workers don’t run PHP. Two common patterns:
 
 ---
 
-## Timeouts & limits (guidance)
+## Timeouts & limits
 
-| Platform           |        Cold Start |            Max Duration | Notes                                       |
-| ------------------ | ----------------: | ----------------------: | ------------------------------------------- |
-| Vercel PHP         | ~50–200ms typical | 10–60s (plan-dependent) | Avoid streaming; rely on object storage     |
-| AWS Lambda + Bref  |          100ms–1s |               Up to 15m | Provisioned concurrency for critical routes |
-| Cloudflare Workers |              ~0ms |                30s HTTP | JS only; use as smart edge cache/proxy      |
-
-Keep **Compression** enabled (gzip/br) unless the platform auto-compresses. Ensure ETag strategy remains **recompute-strong** if bytes change on the wire.
+Cold starts, execution limits, streaming support, and compression behavior are
+platform- and plan-specific and change over time. Check the provider's current
+documentation during deployment, measure cold and warm requests, and avoid
+double compression when the edge already transforms the response. Ensure the
+ETag strategy accounts for any byte transformation.
 
 ---
 

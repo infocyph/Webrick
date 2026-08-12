@@ -8,6 +8,91 @@ use Infocyph\Webrick\Exceptions\HttpException;
 use Infocyph\Webrick\Middleware\ThrottleMiddleware;
 use Infocyph\Webrick\Response\Response;
 
+final class PcntlFileAtomicCounterStore implements AtomicCounterStoreInterface
+{
+    public string $lastKey = '';
+
+    public function __construct(private readonly string $path) {}
+
+    public function decrement(string $key, int $by = 1, ?int $ttlSeconds = null): AtomicCounterValue
+    {
+        return $this->change($key, -$by, $ttlSeconds);
+    }
+
+    public function delete(string $key): bool
+    {
+        $this->mutate($key, static fn(): ?array => null);
+
+        return true;
+    }
+
+    public function get(string $key): ?int
+    {
+        return $this->mutate($key, static fn(?array $entry): ?array => $entry)['value'] ?? null;
+    }
+
+    public function increment(string $key, int $by = 1, ?int $ttlSeconds = null): AtomicCounterValue
+    {
+        return $this->change($key, $by, $ttlSeconds);
+    }
+
+    private function change(string $key, int $by, ?int $ttlSeconds): AtomicCounterValue
+    {
+        $first = false;
+        $entry = $this->mutate($key, static function (?array $current) use ($by, $ttlSeconds, &$first): array {
+            $first = $current === null;
+            $value = ($current['value'] ?? 0) + $by;
+
+            return [
+                'value' => $value,
+                'expires' => $current['expires'] ?? ($ttlSeconds === null ? null : time() + $ttlSeconds),
+            ];
+        });
+
+        return new AtomicCounterValue($entry['value'], $first);
+    }
+
+    /**
+     * @param Closure(?array{value:int,expires:?int}):(?array{value:int,expires:?int}) $callback
+     * @return array{value:int,expires:?int}|null
+     */
+    private function mutate(string $key, Closure $callback): ?array
+    {
+        $this->lastKey = $key;
+        $handle = fopen($this->path, 'c+');
+        if ($handle === false || !flock($handle, LOCK_EX)) {
+            throw new RuntimeException('Unable to lock atomic-counter fixture.');
+        }
+
+        try {
+            rewind($handle);
+            $raw = stream_get_contents($handle);
+            $map = is_string($raw) && $raw !== '' ? json_decode($raw, true, flags: JSON_THROW_ON_ERROR) : [];
+            $entry = is_array($map[$key] ?? null) ? $map[$key] : null;
+            if (is_array($entry) && is_int($entry['expires'] ?? null) && $entry['expires'] <= time()) {
+                $entry = null;
+            }
+
+            $entry = $callback($entry);
+            if ($entry === null) {
+                unset($map[$key]);
+            } else {
+                $map[$key] = $entry;
+            }
+
+            rewind($handle);
+            ftruncate($handle, 0);
+            fwrite($handle, json_encode($map, JSON_THROW_ON_ERROR));
+            fflush($handle);
+
+            return $entry;
+        } finally {
+            flock($handle, LOCK_UN);
+            fclose($handle);
+        }
+    }
+}
+
 describe('ThrottleMiddleware', function () {
     beforeEach(function () {
         $this->cacheNamespace = 'throttle-' . bin2hex(random_bytes(8));
@@ -169,5 +254,124 @@ describe('ThrottleMiddleware', function () {
             ->and($counter->ttl)->toBeGreaterThanOrEqual(1)
             ->and(fn () => $middleware($request, $next))->toThrow(HttpException::class)
             ->and($counter->value)->toBe(3);
+    });
+
+    it('uses versioned bounded keys and isolates scopes clients and windows', function () {
+        $path = tempnam(sys_get_temp_dir(), 'webrick-counter-');
+        expect($path)->toBeString();
+        $store = new PcntlFileAtomicCounterStore($path);
+        $next = static fn() => Response::json(['ok' => true]);
+        $global = new ThrottleMiddleware(max: 10, window: 60, counterStore: $store, scope: 'global');
+        $login = new ThrottleMiddleware(max: 10, window: 60, counterStore: $store, scope: 'login');
+        $firstWindow = time();
+        $firstClient = mockRequest('GET', '/scope')->withAttribute('client_ip', '192.0.2.1');
+        $otherClient = mockRequest('GET', '/scope')->withAttribute('client_ip', '192.0.2.2');
+
+        try {
+            $_SERVER['REQUEST_TIME'] = $firstWindow;
+            $global($firstClient, $next);
+            $globalKey = $store->lastKey;
+            $login($firstClient, $next);
+            $loginKey = $store->lastKey;
+            $global($otherClient, $next);
+            $otherClientKey = $store->lastKey;
+            $_SERVER['REQUEST_TIME'] = $firstWindow + 60;
+            $global($firstClient, $next);
+            $nextWindowKey = $store->lastKey;
+
+            expect($globalKey)->toStartWith('webrick.th.v1.')
+                ->and(strlen($globalKey))->toBeLessThanOrEqual(64)
+                ->and(array_unique([$globalKey, $loginKey, $otherClientKey, $nextWindowKey]))->toHaveCount(4);
+        } finally {
+            if (is_file($path)) {
+                unlink($path);
+            }
+        }
+    });
+
+    it('reserves atomic capacity correctly across concurrent workers', function () {
+        if (!function_exists('pcntl_fork') || !function_exists('pcntl_waitpid')) {
+            $this->markTestSkipped('pcntl is required for the multi-process throttle test.');
+        }
+
+        $directory = sys_get_temp_dir() . '/webrick-throttle-' . bin2hex(random_bytes(6));
+        expect(mkdir($directory, 0700))->toBeTrue();
+        $counterPath = $directory . '/counter.json';
+        $workers = 4;
+        $attemptsPerWorker = 50;
+        $limit = 100;
+        $children = [];
+        $_SERVER['REQUEST_TIME'] = time();
+
+        try {
+            for ($worker = 0; $worker < $workers; $worker++) {
+                $pid = pcntl_fork();
+                if ($pid === -1) {
+                    throw new RuntimeException('Unable to fork throttle test worker.');
+                }
+                if ($pid > 0) {
+                    $children[] = $pid;
+
+                    continue;
+                }
+
+                $allowed = 0;
+                $rejected = 0;
+                $middleware = new ThrottleMiddleware(
+                    max: $limit,
+                    window: 60,
+                    counterStore: new PcntlFileAtomicCounterStore($counterPath),
+                    scope: 'concurrency',
+                );
+                $request = mockRequest('GET', '/concurrency')->withAttribute('client_ip', '198.51.100.10');
+                $next = static fn() => Response::json(['ok' => true]);
+
+                for ($attempt = 0; $attempt < $attemptsPerWorker; $attempt++) {
+                    try {
+                        $middleware($request, $next);
+                        ++$allowed;
+                    } catch (HttpException $exception) {
+                        if ($exception->getStatusCode() !== 429) {
+                            throw $exception;
+                        }
+                        ++$rejected;
+                    }
+                }
+
+                file_put_contents($directory . '/result-' . getmypid(), $allowed . ',' . $rejected, LOCK_EX);
+                pcntl_exec(PHP_BINARY, ['-r', '']);
+                throw new RuntimeException('Unable to terminate throttle test worker.');
+            }
+
+            foreach ($children as $pid) {
+                pcntl_waitpid($pid, $status);
+                expect(pcntl_wifexited($status) && pcntl_wexitstatus($status) === 0)->toBeTrue();
+            }
+
+            $allowed = 0;
+            $rejected = 0;
+            foreach (glob($directory . '/result-*') ?: [] as $result) {
+                [$childAllowed, $childRejected] = array_map('intval', explode(',', (string) file_get_contents($result)));
+                $allowed += $childAllowed;
+                $rejected += $childRejected;
+            }
+
+            $counterMap = json_decode((string) file_get_contents($counterPath), true, flags: JSON_THROW_ON_ERROR);
+            $counterEntry = array_values($counterMap)[0] ?? null;
+
+            expect($allowed)->toBe($limit)
+                ->and($rejected)->toBe(($workers * $attemptsPerWorker) - $limit)
+                ->and($counterMap)->toHaveCount(1)
+                ->and($counterEntry['value'] ?? null)->toBe($workers * $attemptsPerWorker);
+        } finally {
+            foreach (glob($directory . '/*') ?: [] as $file) {
+                if (is_file($file)) {
+                    unlink($file);
+                }
+            }
+            if (is_dir($directory)) {
+                rmdir($directory);
+            }
+        }
     });
 });

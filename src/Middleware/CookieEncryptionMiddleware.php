@@ -580,8 +580,8 @@ final class CookieEncryptionMiddleware
      */
     private function keysToTry(?int $kid): array
     {
-        if ($kid !== null && isset($this->keys[$kid])) {
-            return [[$kid, $this->keys[$kid]]];
+        if ($kid !== null) {
+            return isset($this->keys[$kid]) ? [[$kid, $this->keys[$kid]]] : [];
         }
 
         $keys = [];

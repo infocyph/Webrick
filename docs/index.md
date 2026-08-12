@@ -91,4 +91,7 @@ middleware/index
 deployments/index
 reference/index
 recipes/index
+advanced/performance
+advanced/security
+advanced/testing
 ```

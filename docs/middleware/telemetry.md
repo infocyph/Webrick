@@ -30,7 +30,7 @@ $preGlobal = [
 ```
 
 **Response headers:**
-```http
+```text
 X-Response-Time: 45.2ms
 Server-Timing: app;dur=45.2
 X-Request-Id: 1a2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p
@@ -212,7 +212,7 @@ $preGlobal[] = new TelemetryMiddleware(
 ### 1. W3C Trace Context
 
 **Standard compliance** with W3C Trace Context specification:
-```http
+```text
 traceparent: 00-a4c9e2b8f1d3a7e5c2b1f8e3d4a5c6b7-1234567890abcdef-01
 tracestate: congo=ucfJifl5GOE,rojo=00f067aa0ba902b7
 ```
@@ -238,7 +238,7 @@ $r->getAttribute('trace.tracestate');     // congo=ucfJifl5GOE
 ### 2. Request ID Correlation
 
 **Unique identifier per request:**
-```http
+```text
 X-Request-Id: 1a2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p
 ```
 
@@ -255,19 +255,19 @@ X-Request-Id: 1a2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p
 ### 3. Response Timing Headers
 
 #### X-Response-Time
-```http
+```text
 X-Response-Time: 45.2ms
 ```
 
 Human-readable response time in milliseconds.
 
 #### Server-Timing
-```http
+```text
 Server-Timing: app;dur=45.2
 ```
 
 W3C Server Timing API format. Can be extended by other middleware:
-```http
+```text
 Server-Timing: cache;dur=2.3, db;dur=12.5, app;dur=45.2
 ```
 
@@ -278,7 +278,7 @@ Server-Timing: cache;dur=2.3, db;dur=12.5, app;dur=45.2
 ### 4. Network Error Logging (NEL)
 
 **Browser error reporting configuration:**
-```http
+```text
 NEL: {"group":"default","max_age":86400,"include_subdomains":true,"success_fraction":0.0,"failure_fraction":1.0}
 Report-To: {"group":"default","max_age":86400,"endpoints":[{"url":"https://nel.example.com/report"}]}
 ```
@@ -452,7 +452,7 @@ final class PaymentService
 ```
 
 **Headers sent:**
-```http
+```text
 traceparent: 00-a4c9e2b8f1d3a7e5c2b1f8e3d4a5c6b7-1234567890abcdef-01
 X-Trace-Id: a4c9e2b8f1d3a7e5c2b1f8e3d4a5c6b7
 X-Request-Id: xyz789...

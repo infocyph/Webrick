@@ -44,7 +44,6 @@ $link = Route::temporaryUrlFor('file.download', ['file' => 'report.pdf'], ttl: 9
 
 routing
 groups-and-domains
-attribute-routes
 attributes
 requests
 responses

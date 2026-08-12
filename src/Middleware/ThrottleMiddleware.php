@@ -33,6 +33,8 @@ use Psr\Cache\InvalidArgumentException;
  */
 final readonly class ThrottleMiddleware
 {
+    private const string CACHE_KEY_PREFIX = 'webrick.th.v1.';
+
     /**
      * PSR-6 cache pool used to store counters and reset epochs.
      */
@@ -142,6 +144,11 @@ final readonly class ThrottleMiddleware
         return $resp;
     }
 
+    private function base64UrlHash(string $value): string
+    {
+        return rtrim(strtr(base64_encode(hash('sha256', $value, true)), '+/', '-_'), '=');
+    }
+
     private function buildDefaultPool(): CacheItemPoolInterface
     {
         if (!class_exists(Cache::class)) {
@@ -160,7 +167,7 @@ final readonly class ThrottleMiddleware
             ? $documentRoot
             : \sys_get_temp_dir() . '/webrick';
 
-        return Cache::local($cacheBase . '.thm');
+        return Cache::file('webrick.throttle', $cacheBase . '.thm');
     }
 
     private function cachePool(): CacheItemPoolInterface
@@ -191,7 +198,7 @@ final readonly class ThrottleMiddleware
 
         // Hard-partition by window to avoid cross-window races
         return [
-            't.' . hash('sha256', $this->scope . '|' . $id . '|' . $winStart, false),
+            self::CACHE_KEY_PREFIX . $this->base64UrlHash($this->scope . '|' . $id . '|' . $winStart),
             $reset,
         ];
     }

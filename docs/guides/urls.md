@@ -28,7 +28,8 @@ use Infocyph\Webrick\Router\Matching\ShardedMatcher;
 use Infocyph\Webrick\Router\Url\SignedUrlConfig;
 use Psr\Log\NullLogger;
 
-$signKey = $_ENV['WEBRICK_SIGN_KEY'] ?? 'change-me';
+$signKey = $_ENV['WEBRICK_SIGN_KEY']
+    ?? throw new RuntimeException('WEBRICK_SIGN_KEY is required');
 $baseUri = $_ENV['WEBRICK_URL_BASE_URI'] ?? 'http://localhost';
 $signedUrls = new SignedUrlConfig(
     generationKey: $signKey,

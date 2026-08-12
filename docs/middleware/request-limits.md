@@ -276,7 +276,7 @@ new RequestLimitsMiddleware(
 
 ### 413 Payload Too Large
 
-```json
+```text
 HTTP/1.1 413 Payload Too Large
 Content-Type: application/json
 
@@ -292,7 +292,7 @@ Content-Type: application/json
 
 ### 431 Request Header Fields Too Large
 
-```json
+```text
 HTTP/1.1 431 Request Header Fields Too Large
 
 {

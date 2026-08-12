@@ -51,7 +51,7 @@ Set secrets via environment variables or your config layer:
 
 Example `.env`:
 
-```env
+```text
 WEBRICK_SIGN_KEY="base64:KJ9r...replace_me...kQ="
 WEBRICK_SIGN_TTL=900
 WEBRICK_COOKIE_KEYS="hex:001122... (32 bytes),hex:8899aa... (32 bytes)"

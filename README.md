@@ -41,12 +41,12 @@ traditional and persistent runtimes.
 composer require infocyph/webrick
 ```
 
-Core routing does not install or initialize CacheLayer. Add CacheLayer 2 only when using
+Core routing does not install or initialize CacheLayer. Add CacheLayer only when using
 `ResponseCacheMiddleware`, the default throttle cache backend, or CacheLayer's
 atomic counter backend:
 
 ```bash
-composer require "infocyph/cachelayer:^2.0.1"
+composer require infocyph/cachelayer
 ```
 
 `ThrottleMiddleware` can also run without CacheLayer when the application
@@ -149,7 +149,8 @@ use Psr\Log\NullLogger;
 
 require __DIR__ . '/vendor/autoload.php';
 
-$signKey = $_ENV['WEBRICK_SIGN_KEY'] ?? 'change-me';
+$signKey = $_ENV['WEBRICK_SIGN_KEY']
+    ?? throw new RuntimeException('WEBRICK_SIGN_KEY is required');
 $baseUri = $_ENV['WEBRICK_URL_BASE_URI'] ?? 'http://localhost';
 $signedUrls = new SignedUrlConfig(
     generationKey: $signKey,
@@ -280,18 +281,48 @@ For the major release, rebuild every route-cache artifact after updating;
 cache formats are internal deployment artifacts and are not portable across
 major versions.
 
+## Benchmarks
+
+The two benchmark directories serve different workflows:
+
+- `benchmark/` contains the standalone executable matcher runner for quick
+  local comparisons and smoke checks.
+- `benchmarks/` contains the structured PhpBench suite for repeatable matcher,
+  cache-lifecycle, kernel-dispatch, signed-URL, and ETag measurements.
+
+Keep build and boot results separate from steady-state request measurements.
+Record PHP, extension, hardware, route-set, warmup, and iteration details when
+publishing results.
+
 ## Security
 
-Protected by [PHPForge](https://github.com/infocyph/PHPForge) — an automated quality and security gate for PHP projects.
+Do not disclose suspected vulnerabilities in a public issue, discussion or pull request. Follow [SECURITY.md](SECURITY.md) and use [GitHub private vulnerability reporting](https://github.com/infocyph/Webrick/security/advisories/new).
+
+Webrick is protected by [PHPForge](https://github.com/infocyph/PHPForge), which provides automated tests, static and taint analysis, dependency auditing, architecture checks and release-readiness gates. Automated controls do not replace responsible disclosure or manual review.
+
 
 ---
 
 <div align="center">
   <sub><strong>Made with ❤️ for the PHP community</strong></sub><br />
   <sub><a href="LICENSE">MIT Licensed</a></sub><br />
-  <a href="https://docs.infocyph.com/projects/webrick/en/latest/">Documentation</a> •
+  <a href="https://docs.infocyph.com/projects/Webrick/">Documentation</a> •
   <a href="SECURITY.md">Security</a> •
   <a href="CODE_OF_CONDUCT.md">Code of Conduct</a> •
-  <a href="CONTRIBUTING.md">Contributing</a> •
-  <a href="https://github.com/infocyph/Webrick/issues">Report | Request | Suggest</a>
+  <a href="CONTRIBUTING.md">Contributing</a><br />
+  <span title="Issue templates" aria-label="Issue templates">🗂️</span>
+  <a href="https://github.com/infocyph/Webrick/issues/new?template=bug_report.yml">Bug</a> •
+  <a href="https://github.com/infocyph/Webrick/issues/new?template=feature_request.yml">Feature</a> •
+  <a href="https://github.com/infocyph/Webrick/issues/new?template=docs_improvement.yml">Documentation</a> •
+  <a href="https://github.com/infocyph/Webrick/issues/new?template=question.yml">Question</a> •
+  <a href="https://github.com/infocyph/Webrick/issues/new?template=ci_failure.yml">CI failure</a><br />
+  <span title="Pull request templates" aria-label="Pull request templates">🔀</span>
+  <a href="https://github.com/infocyph/Webrick/compare/main...HEAD?quick_pull=1&amp;template=PULL_REQUEST_TEMPLATE.md">General</a> •
+  <a href="https://github.com/infocyph/Webrick/compare/main...HEAD?quick_pull=1&amp;template=bug_fix.md">Bug fix</a> •
+  <a href="https://github.com/infocyph/Webrick/compare/main...HEAD?quick_pull=1&amp;template=feature.md">Feature</a> •
+  <a href="https://github.com/infocyph/Webrick/compare/main...HEAD?quick_pull=1&amp;template=refactor.md">Refactor</a> •
+  <a href="https://github.com/infocyph/Webrick/compare/main...HEAD?quick_pull=1&amp;template=performance.md">Performance</a> •
+  <a href="https://github.com/infocyph/Webrick/compare/main...HEAD?quick_pull=1&amp;template=security_reliability.md">Security &amp; reliability</a> •
+  <a href="https://github.com/infocyph/Webrick/compare/main...HEAD?quick_pull=1&amp;template=documentation.md">Documentation</a> •
+  <a href="https://github.com/infocyph/Webrick/compare/main...HEAD?quick_pull=1&amp;template=maintenance.md">Maintenance</a>
 </div>

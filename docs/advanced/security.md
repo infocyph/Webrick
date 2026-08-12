@@ -397,7 +397,7 @@ Route::post('/fetch-external', function (Request $r) {
 - [ ] Logs sent to centralized system
 - [ ] Alerting set up for anomalies
 
-###### Data Protection
+### Data Protection
 
 - [ ] Encryption at rest for sensitive data
 - [ ] Encryption in transit (TLS 1.3)
@@ -414,200 +414,20 @@ Route::post('/fetch-external', function (Request $r) {
 
 ---
 
-## Penetration Testing Checklist
-```bash
-#!/bin/bash
-# security-tests.sh - Basic security validation
+## Responsibility Boundaries
 
-set -e
+Webrick owns routing and HTTP-kernel controls such as signed URLs, request
+limits, cookie handling, trusted-proxy processing, CORS, response headers and
+typed HTTP errors.
 
-BASE_URL="${1:-http://localhost:8000}"
-
-echo "🔒 Running security tests against $BASE_URL"
-
-# Test 1: SQL Injection
-echo "Test 1: SQL Injection protection..."
-curl -s "$BASE_URL/login" \
-  -d "email=admin' OR '1'='1&password=test" | grep -q "Invalid" && echo "✅ Protected" || echo "❌ VULNERABLE"
-
-# Test 2: XSS
-echo "Test 2: XSS protection..."
-curl -s "$BASE_URL/search?q=<script>alert(1)</script>" | grep -q "&lt;script&gt;" && echo "✅ Protected" || echo "❌ VULNERABLE"
-
-# Test 3: HTTPS redirect
-echo "Test 3: HTTPS enforcement..."
-curl -s -o /dev/null -w "%{http_code}" "http://${BASE_URL#http://}" | grep -q "301\|302\|308" && echo "✅ Redirects" || echo "⚠️  No redirect"
-
-# Test 4: Security headers
-echo "Test 4: Security headers..."
-HEADERS=$(curl -s -I "$BASE_URL")
-echo "$HEADERS" | grep -qi "X-Content-Type-Options: nosniff" && echo "✅ nosniff" || echo "❌ Missing nosniff"
-echo "$HEADERS" | grep -qi "X-Frame-Options" && echo "✅ Frame-Options" || echo "❌ Missing Frame-Options"
-echo "$HEADERS" | grep -qi "Content-Security-Policy" && echo "✅ CSP" || echo "⚠️  No CSP"
-echo "$HEADERS" | grep -qi "Strict-Transport-Security" && echo "✅ HSTS" || echo "⚠️  No HSTS"
-
-# Test 5: Rate limiting
-echo "Test 5: Rate limiting..."
-for i in {1..10}; do
-  STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/login" -d "email=test&password=test")
-  if [ "$STATUS" = "429" ]; then
-    echo "✅ Rate limited after $i attempts"
-    break
-  fi
-done
-
-echo "Security tests complete."
-```
-
-Run regularly in CI/CD and before releases.
-
----
-
-## Incident Response Plan
-
-### 1. Detection
-
-**Monitoring**:
-- Failed auth spike (> 100/min)
-- 5xx rate spike (> 5% of traffic)
-- Unusual data access patterns
-- Suspicious file uploads
-
-**Alerting**:
-```php
-// Example: Alert on auth failures
-if ($failedAuthCount > 100) {
-    $alerting->critical('Auth spike detected', [
-        'count' => $failedAuthCount,
-        'time_window' => '1min',
-        'top_ips' => $topIps
-    ]);
-}
-```
-
-### 2. Response
-
-**Immediate Actions**:
-1. Enable maintenance mode
-2. Review access logs
-3. Block attacking IPs (temporarily)
-4. Rotate compromised credentials
-5. Notify stakeholders
-```php
-// Quick IP block via middleware
-Route::group(['middleware' => [
-    function (Request $r, Closure $next) {
-        $blocked = ['203.0.113.10', '198.51.100.0/24'];
-        $ip = $r->getAttribute('client_ip');
-
-        foreach ($blocked as $cidr) {
-            if (IpCidr::match($ip, $cidr)) {
-                return Response::json(['error' => 'Blocked'], 403);
-            }
-        }
-
-        return $next($r);
-    }
-]], function() {
-    // Your routes
-});
-```
-
-### 3. Recovery
-
-**Steps**:
-1. Patch vulnerability
-2. Deploy fix
-3. Review logs for impact
-4. Reset affected accounts
-5. Communicate to affected users
-
-### 4. Post-Incident
-
-**Documentation**:
-- Timeline of events
-- Root cause analysis
-- Remediation steps taken
-- Preventive measures added
-
-**Improvements**:
-- Update security tests
-- Add monitoring/alerting
-- Train team on new threats
-
----
-
-## Tools & Resources
-
-### Security Scanners
-
-- **OWASP ZAP**: Web app scanner
-- **Nikto**: Web server scanner
-- **Snyk**: Dependency vulnerabilities
-- **SonarQube**: Code quality & security
-
-### PHP-Specific
-```bash
-# Security audit
-composer audit
-
-# Static analysis (security rules)
-vendor/bin/phpstan analyse --level=8
-
-# Security-focused linters
-vendor/bin/psalm --show-info=false
-```
-
-### Headers Testing
-```bash
-# Check security headers
-curl -I https://example.com | grep -i "x-\|content-security\|strict-transport"
-
-# Online tools
-# - securityheaders.com
-# - observatory.mozilla.org
-```
-
-### Penetration Testing Services
-
-- **HackerOne**: Bug bounty platform
-- **Synack**: Continuous penetration testing
-- **Cobalt**: Pentest as a service
-
----
-
-## Compliance
-
-### GDPR (EU)
-
-- [ ] Privacy policy published
-- [ ] Data processing agreements signed
-- [ ] User consent mechanisms implemented
-- [ ] Right to erasure (deletion) implemented
-- [ ] Data portability (export) available
-- [ ] Breach notification procedures (72h)
-
-### PCI DSS (Payment Cards)
-
-- [ ] No storage of CVV/CVC
-- [ ] Encrypted storage of card data
-- [ ] Tokenization preferred over storage
-- [ ] Regular security scans
-- [ ] Annual PCI assessment
-
-### HIPAA (Healthcare)
-
-- [ ] Encrypted PHI at rest and in transit
-- [ ] Access controls and audit logs
-- [ ] Business Associate Agreements
-- [ ] Regular risk assessments
-
----
+The embedding application owns authorization policy, authentication lifecycle,
+prepared database queries, contextual output encoding and business access
+control. Deployment infrastructure owns TLS, firewall and operating-system
+hardening. Installing Webrick does not by itself establish regulatory
+compliance.
 
 ## Security Contact
 
-**For security vulnerabilities, please email**: `security@example.com`
-
-**PGP Key**: Available at `https://example.com/.well-known/security.txt`
-
-**Bug Bounty**: `https://hackerone.com/example` (if applicable)
+Report suspected vulnerabilities through the private disclosure process in the
+repository's `SECURITY.md`. Do not open a public issue for a suspected security
+vulnerability.

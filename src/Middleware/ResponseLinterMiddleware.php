@@ -231,6 +231,6 @@ final readonly class ResponseLinterMiddleware
             return false;
         }
 
-        return array_any(explode(',', $line), fn($tok) => \strtolower(trim((string) $tok)) === $needleLower);
+        return array_any(explode(',', $line), fn($tok) => \strtolower(trim($tok)) === $needleLower);
     }
 }

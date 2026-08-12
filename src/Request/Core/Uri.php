@@ -140,10 +140,10 @@ final class Uri implements \Stringable
      * @param array<string, mixed> $srv The server parameters, typically from $_SERVER.
      * @return self A new Uri object.
      */
-    public static function fromServerParams(array $srv): self
+    public static function fromServerParams(array $srv, ?int $trustedProxyFlags = null): self
     {
-        $scheme = UriServerParams::detectScheme($srv);          // 'http' | 'https'
-        [$host, $port] = UriServerParams::detectHostPort($srv); // honors proxy flags
+        $scheme = UriServerParams::detectScheme($srv, $trustedProxyFlags);
+        [$host, $port] = UriServerParams::detectHostPort($srv, $trustedProxyFlags);
         $uri = UriServerParams::detectRequestUri($srv);
 
         return new self(self::buildFullUrl($scheme, $host, $port, $uri));
@@ -489,6 +489,10 @@ final class Uri implements \Stringable
      */
     private function asciiHost(string $host): string
     {
+        if (preg_match('/[\x00-\x20\x7f\/\\\\@?#]/', $host) === 1) {
+            throw new InvalidArgumentException("Invalid host: {$host}");
+        }
+
         if (isset(self::$asciiCache[$host])) {
             return self::$asciiCache[$host];            // cache-hit
         }

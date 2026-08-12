@@ -28,6 +28,7 @@ use Infocyph\Webrick\Router\Route\Route;
 use Infocyph\Webrick\Router\Url\SignedUrlConfig;
 use Infocyph\Webrick\Router\Url\UrlGenerator;
 use Infocyph\Webrick\Router\Url\UrlGeneratorRegistry;
+use LogicException;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -485,7 +486,7 @@ final class RouterKernel
             try {
                 $dst->add($r);
                 $added++;
-            } catch (\Throwable) { /* skip dupes */
+            } catch (LogicException) { /* skip duplicate aliases */
             }
         }
 
@@ -594,22 +595,15 @@ final class RouterKernel
                 continue;
             }
 
-            try {
-                foreach ($repository->getIdsByTag($tag) as $id) {
-                    if (!\array_key_exists($id, $definitions)) {
-                        continue;
-                    }
-
-                    $definition = $definitions[$id];
-                    $tagged[] = $definition instanceof DirectFactory
-                        ? $this->lazyTaggedFactoryMiddleware($container, $id)
-                        : $definition;
+            foreach ($repository->getIdsByTag($tag) as $id) {
+                if (!\array_key_exists($id, $definitions)) {
+                    continue;
                 }
-            } catch (\Throwable $e) {
-                $this->log->warning('[router] unable to resolve tagged middleware', [
-                    'tag' => $tag,
-                    'error' => $e->getMessage(),
-                ]);
+
+                $definition = $definitions[$id];
+                $tagged[] = $definition instanceof DirectFactory
+                    ? $this->lazyTaggedFactoryMiddleware($container, $id)
+                    : $definition;
             }
         }
 

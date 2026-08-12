@@ -4,11 +4,44 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router\Matching;
 
-use Infocyph\InterMix\Serializer\ValueSerializer;
 use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
 use Infocyph\Webrick\Exceptions\RouteNotFoundException;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
+
+use function Opis\Closure\serialize as opis_serialize;
+use function Opis\Closure\unserialize as opis_unserialize;
+
+const MATCHER_ROUTE_ENVELOPE = 'wrc1.';
+
+function matcher_serialize_cached_route(CompiledRoute $route): string
+{
+    return MATCHER_ROUTE_ENVELOPE . base64_encode(opis_serialize($route));
+}
+
+function matcher_unserialize_cached_route(string $payload): CompiledRoute
+{
+    if (!str_starts_with($payload, MATCHER_ROUTE_ENVELOPE)) {
+        throw new \UnexpectedValueException('Invalid serialized route cache envelope.');
+    }
+
+    $serialized = base64_decode(substr($payload, strlen(MATCHER_ROUTE_ENVELOPE)), true);
+    if ($serialized === false || $serialized === '') {
+        throw new \UnexpectedValueException('Invalid serialized route cache payload.');
+    }
+
+    try {
+        $route = opis_unserialize($serialized);
+    } catch (\Throwable $exception) {
+        throw new \UnexpectedValueException('Unable to unserialize route cache payload.', 0, $exception);
+    }
+
+    if (!$route instanceof CompiledRoute) {
+        throw new \UnexpectedValueException('Serialized route cache payload must contain a CompiledRoute.');
+    }
+
+    return $route;
+}
 
 function matcher_should_warm_opcache(): bool
 {
@@ -141,10 +174,7 @@ function matcher_materialize_cached_route(mixed $payload): CompiledRoute
     }
 
     if (\is_string($payload)) {
-        $route = ValueSerializer::unserialize($payload);
-        if ($route instanceof CompiledRoute) {
-            return $route;
-        }
+        return matcher_unserialize_cached_route($payload);
     }
 
     throw new \RuntimeException('Invalid compiled-route cache payload.');

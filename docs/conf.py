@@ -72,9 +72,10 @@ autodoc_default_options = {
 napoleon_google_docstring = True
 napoleon_numpy_docstring  = False
 autosectionlabel_prefix_document = True
+autosectionlabel_maxdepth = 1
 
 # Intersphinx: only include inventories that exist
-intersphinx_mapping = {
+intersphinx_mapping = {} if os.environ.get("WEBRICK_DOCS_OFFLINE") == "1" else {
     "python": ("https://docs.python.org/3", None),
 }
 

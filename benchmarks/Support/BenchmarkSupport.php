@@ -61,6 +61,11 @@ final class BenchmarkSupport
         return self::buildSignedUrlGenerator($config);
     }
 
+    public static function freshSyntheticMatcher(int $routeCount, string $matcher): MatcherInterface
+    {
+        return self::buildMatcher('scale-' . $routeCount, $matcher);
+    }
+
     public static function generateAbsoluteSignedUrl(): string
     {
         return self::absoluteSignedGenerator()->signed(
@@ -101,6 +106,19 @@ final class BenchmarkSupport
         $key = $routeSet . ':' . $matcher;
 
         return self::$matchers[$key] ??= self::buildMatcher($routeSet, $matcher);
+    }
+
+    public static function syntheticHitPath(int $routeCount): string
+    {
+        $index = max(0, $routeCount - 1);
+
+        return match ($index % 5) {
+            0 => "/scale/static/{$index}",
+            1 => "/scale/users/{$index}/42",
+            2 => "/scale/colors/{$index}/ff00ff",
+            3 => "/scale/deep/segment/{$index}/items/benchmark",
+            default => "/scale/similar/prefix-{$index}",
+        };
     }
 
     public static function verifyAbsoluteSignedUrl(): Response
@@ -230,6 +248,17 @@ final class BenchmarkSupport
      */
     private static function compiledRoutes(string $routeSet): array
     {
+        if (str_starts_with($routeSet, 'scale-')) {
+            $routeCount = filter_var(substr($routeSet, 6), FILTER_VALIDATE_INT);
+            if (!\is_int($routeCount) || $routeCount < 1) {
+                throw new RuntimeException("Unsupported route set '{$routeSet}'.");
+            }
+
+            return self::$compiledRoutes[$routeSet] ??= self::buildCompiledRoutes(
+                static fn(Registrar $registrar): mixed => self::registerSyntheticRoutes($registrar, $routeCount),
+            );
+        }
+
         return self::$compiledRoutes[$routeSet] ??= match ($routeSet) {
             'index' => self::buildCompiledRoutes(self::registerIndexRoutes(...)),
             'route-cache' => self::buildCompiledRoutes(self::registerRouteCacheExampleRoutes(...)),
@@ -290,6 +319,20 @@ final class BenchmarkSupport
         $registrar->get('/hello/{name}', static function (string $name): string {
             return $name;
         }, 'hello');
+    }
+
+    private static function registerSyntheticRoutes(Registrar $registrar, int $routeCount): void
+    {
+        for ($index = 0; $index < $routeCount; ++$index) {
+            $path = match ($index % 5) {
+                0 => "/scale/static/{$index}",
+                1 => "/scale/users/{$index}/{id:int}",
+                2 => "/scale/colors/{$index}/{color:hex}",
+                3 => "/scale/deep/segment/{$index}/items/{slug}",
+                default => "/scale/similar/prefix-{$index}",
+            };
+            $registrar->get($path, static fn(): string => 'ok');
+        }
     }
 
     private static function relativeSignedGenerator(): UrlGenerator
