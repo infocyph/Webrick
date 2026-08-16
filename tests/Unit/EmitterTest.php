@@ -102,18 +102,9 @@ test('base emitter preserves streaming chunk order', function (): void {
     expect($emitter->output)->toBe('first-second');
 });
 
-test('auto emitter gives an explicit override priority over SAPI detection', function (): void {
-    $previous = getenv('WEBRICK_EMITTER');
-    putenv('WEBRICK_EMITTER=default');
+test('auto emitter gives its explicit emit argument priority over SAPI detection', function (): void {
+    $picker = new ReflectionMethod(AutoEmitter::class, 'pick');
+    $selected = $picker->invoke(new AutoEmitter(), null, 'default');
 
-    try {
-        $picker = new ReflectionMethod(AutoEmitter::class, 'pick');
-        $selected = $picker->invoke(new AutoEmitter(), null);
-
-        expect($selected)->toBeInstanceOf(DefaultEmitter::class);
-    } finally {
-        is_string($previous)
-            ? putenv('WEBRICK_EMITTER=' . $previous)
-            : putenv('WEBRICK_EMITTER');
-    }
+    expect($selected)->toBeInstanceOf(DefaultEmitter::class);
 });
