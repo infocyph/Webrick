@@ -49,12 +49,12 @@ function matcher_should_warm_opcache(): bool
         return false;
     }
 
-    if (\filter_var((string) \ini_get('opcache.enable'), \FILTER_VALIDATE_BOOL) !== true) {
+    if (!\filter_var((string) \ini_get('opcache.enable'), \FILTER_VALIDATE_BOOL)) {
         return false;
     }
 
     if (\PHP_SAPI === 'cli' || \PHP_SAPI === 'phpdbg') {
-        if (\filter_var((string) \ini_get('opcache.enable_cli'), \FILTER_VALIDATE_BOOL) !== true) {
+        if (!\filter_var((string) \ini_get('opcache.enable_cli'), \FILTER_VALIDATE_BOOL)) {
             return false;
         }
     }
