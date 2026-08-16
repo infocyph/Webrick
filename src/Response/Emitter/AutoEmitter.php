@@ -13,28 +13,29 @@ final class AutoEmitter implements EmitterInterface
 
     /**
      * Auto-detect the best emitter for the current environment and emit the response.
-     * If an emitter is chosen, it will be cached for future calls.
-     * If no emitter matches, null is returned.
+     *
+     * Pass an emitter name to select a transport explicitly for this call. An
+     * empty name preserves automatic detection and its per-instance cache.
      */
-    public function emit(Response $response, ?Request $request = null): void
+    public function emit(Response $response, ?Request $request = null, string $emitter = ''): void
     {
-        $this->chosen ??= $this->pick($request);
-        $this->chosen->emit($response, $request);
+        $selected = $emitter === ''
+            ? ($this->chosen ??= $this->pick($request))
+            : $this->pick($request, $emitter);
+
+        $selected->emit($response, $request);
     }
 
     /**
      * Choose the best emitter based on the current environment.
      *
-     * If an emitter is chosen, it will be cached for future calls.
-     * If no emitter matches, null is returned.
+     * A non-empty emitter name explicitly selects a transport. Otherwise the
+     * current runtime is detected.
      */
-    private function pick(?Request $request): EmitterInterface
+    private function pick(?Request $request, string $emitter = ''): EmitterInterface
     {
-        // Optional explicit override via env var (e.g., WEBRICK_EMITTER=swoole|roadrunner|workerman|frankenphp|lsapi|unit|fpm|cli|default)
-        $overrideRaw = \getenv('WEBRICK_EMITTER');
-        $override = \is_string($overrideRaw) ? strtolower($overrideRaw) : '';
-        if ($override !== '') {
-            return match ($override) {
+        if ($emitter !== '') {
+            return match ($emitter) {
                 'swoole' => new SwooleEmitter(),
                 'roadrunner' => new RoadRunnerEmitter(),
                 'workerman' => new WorkermanEmitter(),

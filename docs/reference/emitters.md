@@ -34,7 +34,14 @@ Known synchronous SAPIs (`apache2handler` and PHP's `cli-server`) select the
 default emitter before Webrick probes optional asynchronous runtimes. This
 keeps extension and bridge detection out of their normal response path.
 
-Set `WEBRICK_EMITTER` to override detection:
+Pass a non-empty third argument to select an emitter explicitly for that call:
+
+```php
+$emitter->emit($response, $request, 'swoole');
+```
+
+The default third argument is `''`, which uses automatic detection. Explicit
+selections apply only to that call and do not replace the automatic selection.
 
 | Value | Selected behavior |
 | --- | --- |
