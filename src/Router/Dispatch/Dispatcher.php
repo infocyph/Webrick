@@ -174,7 +174,7 @@ final class Dispatcher
         $handler = $route->getHandler();
 
         return function (Request $request) use ($handler): Response {
-            $routeVars = $this->normalizeCallArgs($request->getAttribute('route_params', []));
+            $routeVars = $this->normalizeNamedArguments($request->getAttribute('route_params', []));
             $result = $this->invokeRouteHandler(
                 $handler,
                 $routeVars + ['request' => $request],
@@ -182,7 +182,7 @@ final class Dispatcher
 
             return $result instanceof Response
                 ? $result
-                : Response::json($this->normalizeJsonPayload($result));
+                : Response::json($this->normalizeResponsePayload($result));
         };
     }
 
@@ -299,7 +299,7 @@ final class Dispatcher
 
     private function dispatchFinal(CompiledRoute $route, Request $request): Response
     {
-        $routeVars = $this->normalizeCallArgs($request->getAttribute('route_params', []));
+        $routeVars = $this->normalizeNamedArguments($request->getAttribute('route_params', []));
         $result = $this->invokeRouteHandler(
             $route->getHandler(),
             $routeVars + ['request' => $request],
@@ -307,7 +307,7 @@ final class Dispatcher
 
         return $result instanceof Response
             ? $result
-            : Response::json($this->normalizeJsonPayload($result));
+            : Response::json($this->normalizeResponsePayload($result));
     }
 
     /**
@@ -474,7 +474,7 @@ final class Dispatcher
     /**
      * @return array<string,mixed>
      */
-    private function normalizeCallArgs(mixed $value): array
+    private function normalizeNamedArguments(mixed $value): array
     {
         if (!\is_array($value)) {
             return [];
@@ -491,12 +491,12 @@ final class Dispatcher
     }
 
     /**
-     * @return array<string,mixed>|bool|float|int|JsonSerializable|string|null
+     * @return array<array-key,mixed>|bool|float|int|JsonSerializable|string|null
      */
-    private function normalizeJsonPayload(mixed $value): array|bool|float|int|JsonSerializable|string|null
+    private function normalizeResponsePayload(mixed $value): array|bool|float|int|JsonSerializable|string|null
     {
         if (\is_array($value)) {
-            return $this->normalizeCallArgs($value);
+            return $value;
         }
 
         if ($value instanceof JsonSerializable) {

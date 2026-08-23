@@ -14,3 +14,4 @@ git-story_media
 *.patch
 patch.php
 .route-cache-*
+/graphify-out

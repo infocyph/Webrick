@@ -97,7 +97,7 @@ class Response
      * - Returns JSON, plaintext, or JSON-as-plain depending on client preference.
      *
      * @param Request $r Request object to inspect Accept preferences
-     * @param array<string, mixed>|JsonSerializable|string|int|float|bool|null $data Payload to serialize
+     * @param array<array-key, mixed>|JsonSerializable|string|int|float|bool|null $data Payload to serialize
      * @param int $status HTTP status
      * @param array<string, string|list<string>> $headers Additional headers
      * @param int $flags json_encode flags
@@ -241,7 +241,7 @@ class Response
      * - Uses LazyJsonStream for deferred encoding when appropriate.
      * - Ensures Content-Type application/json; charset=utf-8 by default.
      *
-     * @param array<string, mixed>|JsonSerializable|string|int|float|bool|null $data Data or lazy JsonSerializable
+     * @param array<array-key, mixed>|JsonSerializable|string|int|float|bool|null $data Data or lazy JsonSerializable
      * @param int $status HTTP status
      * @param array<string, string|list<string>> $headers Additional headers
      * @param int $flags json_encode flags
