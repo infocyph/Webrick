@@ -26,13 +26,13 @@
     ],
     "require": {
         "php": ">=8.4",
-        "infocyph/arraykit": "^5.1",
-        "infocyph/intermix": "^9.1",
+        "infocyph/arraykit": "^5.1.1",
+        "infocyph/intermix": "^9.2",
         "psr/cache": "^3.0",
         "psr/log": "^3.0.2"
     },
     "require-dev": {
-        "infocyph/cachelayer": "^3.1",
+        "infocyph/cachelayer": "^3.2",
         "infocyph/phpforge": "dev-main@dev"
     },
     "suggest": {
