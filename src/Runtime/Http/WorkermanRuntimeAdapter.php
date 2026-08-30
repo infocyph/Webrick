@@ -14,10 +14,10 @@ use RuntimeException;
 final readonly class WorkermanRuntimeAdapter implements RuntimeAdapterInterface
 {
     /** @var class-string */
-    private string $responseClass;
+    private string $chunkClass;
 
     /** @var class-string */
-    private string $chunkClass;
+    private string $responseClass;
 
     private RuntimeCapabilities $runtimeCapabilities;
 
@@ -65,15 +65,25 @@ final readonly class WorkermanRuntimeAdapter implements RuntimeAdapterInterface
         }
 
         $server = WorkermanNativeRequest::server($nativeRequest, $nativeResponse);
-        $post = WorkermanNativeRequest::post($nativeRequest);
+        $postResolved = false;
+        $post = [];
+        $resolvePost = static function () use ($nativeRequest, &$postResolved, &$post): array {
+            if (!$postResolved) {
+                $post = WorkermanNativeRequest::post($nativeRequest);
+                $postResolved = true;
+            }
+
+            return $post;
+        };
+        $form = RoutingFormInput::resolve($server, $resolvePost);
 
         return new RuntimeRequestContext(
-            RoutingInput::fromServer($server, $withHost, $post),
+            RoutingInput::fromServer($server, $withHost, $form),
             static fn(): Request => TransportRequestFactory::fromParts(
                 $server,
                 WorkermanNativeRequest::headers($nativeRequest),
                 WorkermanNativeRequest::rawBody($nativeRequest),
-                $post,
+                $resolvePost(),
                 WorkermanNativeRequest::files($nativeRequest),
                 WorkermanNativeRequest::query($nativeRequest),
                 WorkermanNativeRequest::cookies($nativeRequest),
@@ -113,8 +123,7 @@ final readonly class WorkermanRuntimeAdapter implements RuntimeAdapterInterface
 
         $file = $response->getFileBody();
         if ($file !== null && $file->offset() === 0 && $file->length() === filesize($file->path())) {
-            $native = $this->response($response->getStatusCode(), $headers, '');
-            $native = $native->withFile($file->path());
+            $native = $this->response($response->getStatusCode(), $headers, '')->withFile($file->path());
             $this->send($connection, $native);
 
             return;
@@ -130,12 +139,11 @@ final readonly class WorkermanRuntimeAdapter implements RuntimeAdapterInterface
         unset($headers['Content-Length']);
         $headers['Transfer-Encoding'] = 'chunked';
         $this->send($connection, $this->response($response->getStatusCode(), $headers, ''));
+        $chunkClass = $this->chunkClass;
         foreach (ResponseWriterSupport::chunks($response) as $chunk) {
-            $class = $this->chunkClass;
-            $this->send($connection, new $class($chunk));
+            $this->send($connection, new $chunkClass($chunk));
         }
-        $class = $this->chunkClass;
-        $this->send($connection, new $class(''));
+        $this->send($connection, new $chunkClass(''));
     }
 
     /** @return array<string,string|array<int,string>> */
