@@ -32,29 +32,6 @@ final readonly class ResponseWriterSupport
         );
     }
 
-    /** @return Generator<array{0:string,1:string}> */
-    public static function headers(Response $response, bool $http2 = false): Generator
-    {
-        foreach ($response->getHeaders() as $name => $values) {
-            $lower = strtolower($name);
-            foreach ($values as $value) {
-                if ($http2 && isset(self::HTTP2_FORBIDDEN[$lower])) {
-                    continue;
-                }
-                if ($http2 && $lower === 'te' && strtolower(trim($value)) !== 'trailers') {
-                    continue;
-                }
-
-                yield [$name, $value];
-            }
-        }
-    }
-
-    public static function knownLength(Response $response): ?int
-    {
-        return $response->isStreaming() ? null : $response->getBodySize();
-    }
-
     /** @return iterable<string> */
     public static function chunks(Response $response, int $chunkSize = 65_536): iterable
     {
@@ -103,5 +80,36 @@ final readonly class ResponseWriterSupport
             }
             yield $chunk;
         }
+    }
+
+    public static function headerAllowed(string $name, string $value, bool $http2): bool
+    {
+        if (!$http2) {
+            return true;
+        }
+
+        $lower = strtolower($name);
+        if (isset(self::HTTP2_FORBIDDEN[$lower])) {
+            return false;
+        }
+
+        return $lower !== 'te' || strtolower(trim($value)) === 'trailers';
+    }
+
+    /** @return Generator<array{0:string,1:string}> */
+    public static function headers(Response $response, bool $http2 = false): Generator
+    {
+        foreach ($response->getHeaders() as $name => $values) {
+            foreach ($values as $value) {
+                if (self::headerAllowed($name, $value, $http2)) {
+                    yield [$name, $value];
+                }
+            }
+        }
+    }
+
+    public static function knownLength(Response $response): ?int
+    {
+        return $response->isStreaming() ? null : $response->getBodySize();
     }
 }
