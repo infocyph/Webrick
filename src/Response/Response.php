@@ -178,9 +178,7 @@ class Response
         array $headers = [],
         ?string $mime = null,
     ): self {
-        if ($name === null) {
-            $name = is_string($file) ? basename($file) : 'download';
-        }
+        $name ??= is_string($file) ? basename($file) : 'download';
 
         return self::attachment($file, $name, $mime, $headers);
     }
