@@ -23,6 +23,7 @@ final readonly class SapiRuntimeAdapter implements RuntimeAdapterInterface
         string $name,
         bool $persistent,
         bool $transportCompression,
+        bool $transportRequestLimits,
     ) {
         $this->runtimeCapabilities = new RuntimeCapabilities(
             name: $name,
@@ -31,23 +32,32 @@ final readonly class SapiRuntimeAdapter implements RuntimeAdapterInterface
             nativeStreaming: true,
             nativeFile: false,
             transportCompression: $transportCompression,
+            transportRequestLimits: $transportRequestLimits,
         );
     }
 
     /** Resolve the synchronous SAPI once during application bootstrap. */
-    public static function current(bool $transportCompression = false): self
-    {
+    public static function current(
+        bool $transportCompression = false,
+        bool $transportRequestLimits = false,
+    ): self {
         if (function_exists('frankenphp_is_worker') && frankenphp_is_worker()) {
-            return new self(self::FINISH_FRANKENPHP, 'frankenphp', true, $transportCompression);
+            return new self(self::FINISH_FRANKENPHP, 'frankenphp', true, $transportCompression, $transportRequestLimits);
         }
         if (PHP_SAPI === 'litespeed' || function_exists('litespeed_finish_request')) {
-            return new self(self::FINISH_LITESPEED, 'litespeed', false, $transportCompression);
+            return new self(self::FINISH_LITESPEED, 'litespeed', false, $transportCompression, $transportRequestLimits);
         }
         if (function_exists('fastcgi_finish_request')) {
-            return new self(self::FINISH_FASTCGI, PHP_SAPI === 'fpm-fcgi' ? 'fpm' : 'fastcgi', false, $transportCompression);
+            return new self(
+                self::FINISH_FASTCGI,
+                PHP_SAPI === 'fpm-fcgi' ? 'fpm' : 'fastcgi',
+                false,
+                $transportCompression,
+                $transportRequestLimits,
+            );
         }
 
-        return new self(self::FINISH_NONE, PHP_SAPI, false, $transportCompression);
+        return new self(self::FINISH_NONE, PHP_SAPI, false, $transportCompression, $transportRequestLimits);
     }
 
     public function capabilities(): RuntimeCapabilities
