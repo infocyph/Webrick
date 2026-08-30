@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Runtime\Http;
 
-use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Runtime\RoutingInput;
@@ -103,15 +102,7 @@ final readonly class WorkermanRuntimeAdapter implements RuntimeAdapterInterface
 
         $headers = $this->headerMap($response);
         $size = ResponseWriterSupport::knownLength($response);
-        if (
-            !$response->hasHeader('Content-Length')
-            && $size !== null
-            && !in_array(
-                $response->getStatusCode(),
-                [StatusEnum::NO_CONTENT->value, StatusEnum::NOT_MODIFIED->value],
-                true,
-            )
-        ) {
+        if (!$response->hasHeader('Content-Length') && $size !== null) {
             $headers['Content-Length'] = (string) $size;
         }
 
