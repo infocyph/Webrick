@@ -14,14 +14,7 @@ final class IpCidr
     /**
      * Checks if an IP address matches a CIDR.
      *
-     * This function first checks if the result is already cached.
-     * If not, it checks if the CIDR contains an IPv6 address (indicated by a colon).
-     * If so, it calls the v6 method, otherwise it calls the v4 method.
-     * The result is then cached for future use.
-     *
-     * @param string $ip The IP address to check.
-     * @param string $cidr The CIDR to check against.
-     * @return bool Whether the address matches the CIDR.
+     * Malformed addresses, masks, and mixed IP families fail closed.
      */
     public static function match(string $ip, string $cidr): bool
     {
@@ -59,33 +52,41 @@ final class IpCidr
     }
 
     /**
-     * @return array{0:string,1:int}
+     * @return array{0:string,1:int}|null
      */
-    private static function splitCidr(string $cidr, int $defaultMask): array
+    private static function splitCidr(string $cidr, int $defaultMask, int $maxMask): ?array
     {
         if (!str_contains($cidr, '/')) {
-            return [$cidr, $defaultMask];
+            return $cidr === '' ? null : [$cidr, $defaultMask];
         }
 
         [$subnet, $mask] = explode('/', $cidr, 2);
+        if ($subnet === '' || $mask === '' || !ctype_digit($mask)) {
+            return null;
+        }
 
-        return [$subnet, (int) $mask];
+        $maskBits = (int) $mask;
+        if ($maskBits > $maxMask) {
+            return null;
+        }
+
+        return [$subnet, $maskBits];
     }
 
     /**
      * Check if an IPv4 address matches a CIDR.
-     *
-     * @param string $ip The IPv4 address to check.
-     * @param string $cidr The CIDR to check against.
-     * @return bool Whether the address matches the CIDR.
      */
     private static function v4(string $ip, string $cidr): bool
     {
-        [$subnet, $mask] = self::splitCidr($cidr, 32);
+        $parts = self::splitCidr($cidr, 32, 32);
+        if ($parts === null) {
+            return false;
+        }
+        [$subnet, $mask] = $parts;
 
         $ipBin = inet_pton($ip);
         $netBin = inet_pton($subnet);
-        if ($ipBin === false || $netBin === false || strlen($ipBin) !== 4) {
+        if ($ipBin === false || $netBin === false || strlen($ipBin) !== 4 || strlen($netBin) !== 4) {
             return false;
         }
 
@@ -94,18 +95,18 @@ final class IpCidr
 
     /**
      * Check if an IPv6 address matches a CIDR.
-     *
-     * @param string $ip The IPv6 address to check.
-     * @param string $cidr The CIDR to check against.
-     * @return bool Whether the address matches the CIDR.
      */
     private static function v6(string $ip, string $cidr): bool
     {
-        [$subnet, $mask] = self::splitCidr($cidr, 128);
+        $parts = self::splitCidr($cidr, 128, 128);
+        if ($parts === null) {
+            return false;
+        }
+        [$subnet, $mask] = $parts;
 
         $ipBin = inet_pton($ip);
         $netBin = inet_pton($subnet);
-        if ($ipBin === false || $netBin === false) {
+        if ($ipBin === false || $netBin === false || strlen($ipBin) !== 16 || strlen($netBin) !== 16) {
             return false;
         }
 
