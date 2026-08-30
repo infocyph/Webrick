@@ -173,13 +173,16 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
 
     public function matchOutcome(string $method, string $host, string $path): MatchOutcome
     {
-        $this->bootIndex();
+        if (!$this->finalized) {
+            $this->finalize();
+        }
+
         if (!$this->cacheReadable) {
             $hosts = $this->index->hosts();
 
-            return $this->engine->match(
-                isset($hosts[$host]) ? [$hosts[$host]] : [],
-                $host !== '*' && isset($hosts['*']) ? [$hosts['*']] : [],
+            return $this->engine->matchSingle(
+                $hosts[$host] ?? null,
+                $host !== '*' ? ($hosts['*'] ?? null) : null,
                 $method,
                 $path,
             );
