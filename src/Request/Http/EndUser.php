@@ -112,6 +112,7 @@ final class EndUser
             if (!$this->isTrustedProxy($candidate)) {
                 break;
             }
+
             $candidate = $chain[$i];
         }
 
@@ -133,55 +134,6 @@ final class EndUser
     public function userAgent(): ?string
     {
         return $this->req->getHeaderLine('User-Agent') ?: null;
-    }
-
-    /** @return list<string> */
-    private function explicitVendorChain(): array
-    {
-        $ip = $this->explicitVendorClientIp();
-
-        return $ip === null ? [] : [$ip];
-    }
-
-    private function explicitVendorClientIp(): ?string
-    {
-        foreach ($this->trustedClientIpHeaders as $header) {
-            $value = trim($this->req->getHeaderLine($header));
-            if ($value === '') {
-                continue;
-            }
-
-            $first = trim(explode(',', $value, 2)[0]);
-            $validated = filter_var($first, FILTER_VALIDATE_IP);
-            if (is_string($validated)) {
-                return $validated;
-            }
-        }
-
-        return null;
-    }
-
-    /** @return list<string> */
-    private function forwardedChain(): array
-    {
-        $chain = $this->parseForwarded();
-        if ($chain !== []) {
-            return $chain;
-        }
-
-        if (($this->proxyHeaderFlags() & Request::HEADER_X_FORWARDED_FOR) === 0) {
-            return [];
-        }
-
-        return $this->validIpList(explode(',', $this->req->getHeaderLine('X-Forwarded-For')));
-    }
-
-    private function isTrustedProxy(string $ip): bool
-    {
-        return array_any(
-            $this->trustedProxyCidrs,
-            static fn(string $cidr): bool => IpCidr::match($ip, $cidr),
-        );
     }
 
     private static function maskedIp(string $ip): ?string
@@ -216,6 +168,53 @@ final class EndUser
         return [$plainIp, $wrapped];
     }
 
+    private function explicitVendorClientIp(): ?string
+    {
+        foreach ($this->trustedClientIpHeaders as $header) {
+            $value = trim($this->req->getHeaderLine($header));
+            if ($value === '') {
+                continue;
+            }
+
+            $first = trim(explode(',', $value, 2)[0]);
+            $validated = filter_var($first, FILTER_VALIDATE_IP);
+            if (is_string($validated)) {
+                return $validated;
+            }
+        }
+
+        return null;
+    }
+
+    /** @return list<string> */
+    private function forwardedChain(): array
+    {
+        $chain = $this->parseForwarded();
+        if ($chain !== []) {
+            return $chain;
+        }
+
+        if (($this->proxyHeaderFlags() & Request::HEADER_X_FORWARDED_FOR) === 0) {
+            return [];
+        }
+
+        $line = $this->req->getHeaderLine('X-Forwarded-For');
+        if ($line === '') {
+            $serverLine = $this->req->getServerParams()['HTTP_X_FORWARDED_FOR'] ?? null;
+            $line = is_string($serverLine) ? $serverLine : '';
+        }
+
+        return $this->validIpList(explode(',', $line));
+    }
+
+    private function isTrustedProxy(string $ip): bool
+    {
+        return array_any(
+            $this->trustedProxyCidrs,
+            static fn(string $cidr): bool => IpCidr::match($ip, $cidr),
+        );
+    }
+
     /** @return list<string> */
     private function parseForwarded(): array
     {
@@ -224,6 +223,10 @@ final class EndUser
         }
 
         $header = $this->req->getHeaderLine('Forwarded');
+        if ($header === '') {
+            $serverHeader = $this->req->getServerParams()['HTTP_FORWARDED'] ?? null;
+            $header = is_string($serverHeader) ? $serverHeader : '';
+        }
         if ($header === '' || preg_match_all('/(?:^|[,;]\s*)for=(?:"?\[?)([A-F0-9:.]+)(?:\]?"?)/i', $header, $matches) === false) {
             return [];
         }

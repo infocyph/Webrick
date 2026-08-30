@@ -55,27 +55,10 @@ final readonly class CorsMiddleware
         }
 
         if ($preflight) {
-            return $this->preflightResponse($req, $policy, $acao, $origin);
+            return $this->preflightResponse($req, $policy, $acao);
         }
 
-        return $this->applyActualHeaders($next($req), $policy, $acao, $origin);
-    }
-
-    /**
-     * @param array{origins:list<string>,methods:string,allowHeaders:string|list<string>,exposeHeaders:string|list<string>,maxAgeSeconds:int,allowCredentials:bool,allowPrivateNetwork:bool} $policy
-     */
-    private function applyActualHeaders(Response $response, array $policy, string $acao, string $origin): Response
-    {
-        $response = $response->withSmartHeader('Access-Control-Allow-Origin', $acao);
-        if ($policy['allowCredentials']) {
-            $response = $response->withSmartHeader('Access-Control-Allow-Credentials', 'true');
-        }
-        $expose = $this->csv($policy['exposeHeaders']);
-        if ($expose !== '') {
-            $response = $response->withSmartHeader('Access-Control-Expose-Headers', $expose);
-        }
-
-        return $acao === '*' ? $response : $response->withSmartHeader('Vary', 'Origin');
+        return $this->applyActualHeaders($next($req), $policy, $acao);
     }
 
     /** @param list<string> $origins */
@@ -96,6 +79,23 @@ final readonly class CorsMiddleware
         }
 
         return null;
+    }
+
+    /**
+     * @param array{origins:list<string>,methods:string,allowHeaders:string|list<string>,exposeHeaders:string|list<string>,maxAgeSeconds:int,allowCredentials:bool,allowPrivateNetwork:bool} $policy
+     */
+    private function applyActualHeaders(Response $response, array $policy, string $acao): Response
+    {
+        $response = $response->withSmartHeader('Access-Control-Allow-Origin', $acao);
+        if ($policy['allowCredentials']) {
+            $response = $response->withSmartHeader('Access-Control-Allow-Credentials', 'true');
+        }
+        $expose = $this->csv($policy['exposeHeaders']);
+        if ($expose !== '') {
+            $response = $response->withSmartHeader('Access-Control-Expose-Headers', $expose);
+        }
+
+        return $acao === '*' ? $response : $response->withSmartHeader('Vary', 'Origin');
     }
 
     /** @param string|list<string> $value */
@@ -172,7 +172,7 @@ final readonly class CorsMiddleware
     /**
      * @param array{origins:list<string>,methods:string,allowHeaders:string|list<string>,exposeHeaders:string|list<string>,maxAgeSeconds:int,allowCredentials:bool,allowPrivateNetwork:bool} $policy
      */
-    private function preflightResponse(Request $req, array $policy, string $acao, string $origin): Response
+    private function preflightResponse(Request $req, array $policy, string $acao): Response
     {
         $requestedMethod = strtoupper(trim($req->getHeaderLine('Access-Control-Request-Method')));
         if (!$this->methodAllowed($requestedMethod, $policy['methods'])) {

@@ -10,7 +10,9 @@ namespace Infocyph\Webrick\Response\Headers;
 final class HeaderPolicy
 {
     public const int MERGE_TOKENS = 2;
+
     public const int MULTI_LINE = 1;
+
     public const int SINGLE = 0;
 
     /** @var array<string,int> */
@@ -71,7 +73,7 @@ final class HeaderPolicy
     {
         $parts = explode('-', strtolower($token));
 
-        return implode('-', array_map(static fn(string $part): string => ucfirst($part), $parts));
+        return implode('-', array_map(ucfirst(...), $parts));
     }
 
     /** @return list<string> */

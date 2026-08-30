@@ -26,29 +26,34 @@ use Infocyph\Webrick\Router\Route\Route;
 describe('Webrick 5 Phase 1 correctness and security invariants', function () {
     it('keeps native Swoole transport state request-local', function () {
         $reflection = new ReflectionClass(SwooleEmitter::class);
-
+        $propertyTypes = [];
         foreach ($reflection->getProperties() as $property) {
             $type = $property->getType();
-            expect($type instanceof ReflectionNamedType ? $type->getName() : null)
-                ->not->toBe('Swoole\\Http\\Response');
+            $propertyTypes[] = $type instanceof ReflectionNamedType ? $type->getName() : null;
         }
+
+        expect($propertyTypes)->not->toContain('Swoole\\Http\\Response');
     });
 
     it('keeps reusable gateway middleware free of current EndUser state', function () {
         $reflection = new ReflectionClass(GatewayHardeningMiddleware::class);
-
+        $propertyNames = [];
+        $propertyTypes = [];
         foreach ($reflection->getProperties() as $property) {
             $type = $property->getType();
-            expect($property->getName())->not->toBe('endUser')
-                ->and($type instanceof ReflectionNamedType ? $type->getName() : null)
-                ->not->toBe(EndUser::class);
+            $propertyNames[] = $property->getName();
+            $propertyTypes[] = $type instanceof ReflectionNamedType ? $type->getName() : null;
         }
+
+        expect($propertyNames)->not->toContain('endUser')
+            ->and($propertyTypes)->not->toContain(EndUser::class);
     });
 
     it('does not install a PHP error handler around each request', function () {
         $seen = false;
         set_error_handler(static function () use (&$seen): bool {
             $seen = true;
+
             return true;
         });
 
@@ -57,6 +62,7 @@ describe('Webrick 5 Phase 1 correctness and security invariants', function () {
                 mockRequest('GET', '/'),
                 static function (): Response {
                     trigger_error('phase-one-probe', E_USER_WARNING);
+
                     return Response::noContent();
                 },
             );
@@ -107,10 +113,8 @@ describe('Webrick 5 Phase 1 correctness and security invariants', function () {
     });
 
     it('preserves case-sensitive HTTP method tokens when combining headers', function () {
-        expect(HeaderPolicy::mergeCsv('Allow', 'GET, POST', 'patch, get'))
-            ->toBe('GET, POST, PATCH')
-            ->and(HeaderPolicy::mergeCsv('Access-Control-Allow-Methods', 'GET', 'post'))
-            ->toBe('GET, POST');
+        expect(HeaderPolicy::mergeCsv('Allow', 'GET, POST', 'patch, get'))->toBe('GET, POST, PATCH')
+            ->and(HeaderPolicy::mergeCsv('Access-Control-Allow-Methods', 'GET', 'post'))->toBe('GET, POST');
     });
 
     it('exposes only the real Authorization header for PHP basic-auth server state', function () {

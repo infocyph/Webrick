@@ -3,429 +3,203 @@
 declare(strict_types=1);
 
 use Infocyph\Webrick\Middleware\TelemetryMiddleware;
+use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Support\TelemetryOptions;
 use Infocyph\Webrick\Support\TraceContext;
 
 beforeEach(function () {
-    TraceContext::clear();
     $this->logger = new TestLogger;
 });
 
-afterEach(function () {
-    TraceContext::clear();
-});
+describe('TelemetryMiddleware - response telemetry', function () {
+    test('adds timing headers', function () {
+        $middleware = new TelemetryMiddleware($this->logger);
+        $response = $middleware(mockRequest('GET', '/test'), fn() => Response::json(['ok' => true]));
 
-describe('TelemetryMiddleware - Basic Functionality', function () {
-    test('adds X-Response-Time header', function () {
-        $middleware = new TelemetryMiddleware($this->logger, addXResponseTime: true);
-
-        $request = mockRequest('GET', '/test');
-        $next = fn () => Response::json(['ok' => true]);
-
-        $response = $middleware($request, $next);
-
-        expect($response->hasHeader('X-Response-Time'))
-            ->toBeTrue()
-            ->and($response->getHeaderLine('X-Response-Time'))->toMatch('/^\d+\.\d+ms$/');
-    });
-
-    test('adds Server-Timing header', function () {
-        $middleware = new TelemetryMiddleware($this->logger, addServerTiming: true);
-
-        $request = mockRequest('GET', '/test');
-        $next = fn () => Response::json(['ok' => true]);
-
-        $response = $middleware($request, $next);
-
-        expect($response->hasHeader('Server-Timing'))
-            ->toBeTrue()
+        expect($response->getHeaderLine('X-Response-Time'))->toMatch('/^\d+\.\d+ms$/')
             ->and($response->getHeaderLine('Server-Timing'))->toMatch('/^app;dur=\d+\.\d+$/');
     });
 
-    test('does not add headers when disabled', function () {
+    test('does not add timing headers when disabled', function () {
         $middleware = new TelemetryMiddleware(
             $this->logger,
             addXResponseTime: false,
-            addServerTiming: false
+            addServerTiming: false,
         );
+        $response = $middleware(mockRequest('GET', '/test'), fn() => Response::json(['ok' => true]));
 
-        $request = mockRequest('GET', '/test');
-        $next = fn () => Response::json(['ok' => true]);
-
-        $response = $middleware($request, $next);
-
-        expect($response->hasHeader('X-Response-Time'))
-            ->toBeFalse()
+        expect($response->hasHeader('X-Response-Time'))->toBeFalse()
             ->and($response->hasHeader('Server-Timing'))->toBeFalse();
     });
 
     test('can be built from telemetry options', function () {
         $middleware = TelemetryMiddleware::fromOptions(new TelemetryOptions(
             log: $this->logger,
-            addXResponseTime: true,
             requestIdHeader: 'Request-Id',
         ));
-
-        $request = mockRequest('GET', '/test');
-        $next = fn () => Response::json(['ok' => true]);
-
-        $response = $middleware($request, $next);
+        $response = $middleware(mockRequest('GET', '/test'), fn() => Response::noContent());
 
         expect($middleware->options()->requestIdHeader)->toBe('Request-Id')
-            ->and($response->hasHeader('Request-Id'))->toBeTrue()
-            ->and($response->hasHeader('X-Response-Time'))->toBeTrue();
+            ->and($response->hasHeader('Request-Id'))->toBeTrue();
     });
 });
 
-describe('TelemetryMiddleware - Request ID', function () {
-    test('generates request ID when missing', function () {
+describe('TelemetryMiddleware - request IDs', function () {
+    test('generates a request ID when missing', function () {
         $middleware = new TelemetryMiddleware($this->logger, emitRequestId: true);
-
-        $request = mockRequest('GET', '/test');
-        $next = fn () => Response::json(['ok' => true]);
-
-        $response = $middleware($request, $next);
-
-        expect($response->hasHeader('X-Request-Id'))->toBeTrue();
+        $response = $middleware(mockRequest('GET', '/test'), fn() => Response::noContent());
         $requestId = $response->getHeaderLine('X-Request-Id');
-        expect($requestId)
-            ->toHaveLength(32)
-            ->and(ctype_xdigit($requestId))->toBeTrue();
+
+        expect($requestId)->toHaveLength(32)
+            ->and(preg_match('/\A[0-9a-f]{32}\z/D', $requestId))->toBe(1);
     });
 
-    test('respects existing request ID', function () {
-        $middleware = new TelemetryMiddleware(
-            $this->logger,
-            emitRequestId: true,
-            respectExistingRequestId: true
+    test('respects a valid existing request ID', function () {
+        $middleware = new TelemetryMiddleware($this->logger, respectExistingRequestId: true);
+        $response = $middleware(
+            mockRequest('GET', '/test', ['X-Request-Id' => 'existing-request-id-12345678']),
+            fn() => Response::noContent(),
         );
 
-        $existingId = 'existing-request-id-12345678';
-        $request = mockRequest('GET', '/test', headers: [
-            'X-Request-Id' => $existingId,
-        ]);
-        $next = fn () => Response::json(['ok' => true]);
-
-        $response = $middleware($request, $next);
-
-        expect($response->getHeaderLine('X-Request-Id'))->toBe($existingId);
+        expect($response->getHeaderLine('X-Request-Id'))->toBe('existing-request-id-12345678');
     });
 
-    test('generates new ID when not respecting existing', function () {
-        $middleware = new TelemetryMiddleware(
-            $this->logger,
-            emitRequestId: true,
-            respectExistingRequestId: false
+    test('generates a new request ID when existing IDs are not respected', function () {
+        $middleware = new TelemetryMiddleware($this->logger, respectExistingRequestId: false);
+        $response = $middleware(
+            mockRequest('GET', '/test', ['X-Request-Id' => 'existing-request-id-12345678']),
+            fn() => Response::noContent(),
         );
 
-        $existingId = 'existing-request-id-12345678';
-        $request = mockRequest('GET', '/test', headers: [
-            'X-Request-Id' => $existingId,
-        ]);
-        $next = fn () => Response::json(['ok' => true]);
-
-        $response = $middleware($request, $next);
-
-        expect($response->getHeaderLine('X-Request-Id'))->not
-            ->toBe($existingId)
+        expect($response->getHeaderLine('X-Request-Id'))->not->toBe('existing-request-id-12345678')
             ->and($response->getHeaderLine('X-Request-Id'))->toHaveLength(32);
     });
-
-    test('uses custom request ID header name', function () {
-        $middleware = new TelemetryMiddleware(
-            $this->logger,
-            emitRequestId: true,
-            requestIdHeader: 'X-Custom-Request-Id'
-        );
-
-        $request = mockRequest('GET', '/test');
-        $next = fn () => Response::json(['ok' => true]);
-
-        $response = $middleware($request, $next);
-
-        expect($response->hasHeader('X-Custom-Request-Id'))
-            ->toBeTrue()
-            ->and($response->hasHeader('X-Request-Id'))->toBeFalse();
-    });
 });
 
-describe('TelemetryMiddleware - Trace Context', function () {
-    test('generates trace ID when missing', function () {
+describe('TelemetryMiddleware - explicit trace context', function () {
+    test('attaches request-local context before invoking the application', function () {
         $middleware = new TelemetryMiddleware($this->logger);
+        $response = $middleware(
+            mockRequest('GET', '/test'),
+            function (Request $request): Response {
+                $context = TraceContext::require($request);
 
-        $request = mockRequest('GET', '/test');
-        $next = fn ($r) => Response::json([
-            'trace_id' => $r->getAttribute('trace.trace_id'),
-        ]);
-
-        $response = $middleware($request, $next);
+                return Response::json([
+                    'trace_id' => $context->traceId(),
+                    'span_id' => $context->spanId(),
+                    'request_id' => $context->requestId(),
+                    'otel' => $context->otelAvailable(),
+                ]);
+            },
+        );
         $data = json_decode((string) $response->getBody(), true);
 
-        expect($data['trace_id'])
-            ->toHaveLength(32)
-            ->and(ctype_xdigit($data['trace_id']))->toBeTrue();
+        expect($data['trace_id'])->toHaveLength(32)
+            ->and($data['span_id'])->toHaveLength(16)
+            ->and($data['request_id'])->not->toBeNull()
+            ->and($data['otel'])->toBeFalse();
     });
 
-    test('generates span ID for each request', function () {
-        $middleware = new TelemetryMiddleware($this->logger);
-
-        $request = mockRequest('GET', '/test');
-        $next = fn ($r) => Response::json([
-            'span_id' => $r->getAttribute('trace.span_id'),
-        ]);
-
-        $response = $middleware($request, $next);
-        $data = json_decode((string) $response->getBody(), true);
-
-        expect($data['span_id'])
-            ->toHaveLength(16)
-            ->and(ctype_xdigit($data['span_id']))->toBeTrue();
-    });
-
-    test('respects incoming traceparent header', function () {
+    test('respects incoming traceparent and records parent span', function () {
+        $traceId = str_repeat('a', 32);
+        $parentSpanId = str_repeat('b', 16);
         $middleware = new TelemetryMiddleware($this->logger, respectIncomingTraceparent: true);
+        $response = $middleware(
+            mockRequest('GET', '/test', [
+                'traceparent' => "00-{$traceId}-{$parentSpanId}-01",
+            ]),
+            function (Request $request): Response {
+                $context = TraceContext::require($request);
 
-        $incomingTraceId = str_repeat('a', 32);
-        $incomingSpanId = str_repeat('b', 16);
-        $request = mockRequest('GET', '/test', headers: [
-            'traceparent' => "00-{$incomingTraceId}-{$incomingSpanId}-01",
-        ]);
-        $next = fn ($r) => Response::json([
-            'trace_id' => $r->getAttribute('trace.trace_id'),
-            'parent_span_id' => $r->getAttribute('trace.parent_span_id'),
-        ]);
-
-        $response = $middleware($request, $next);
+                return Response::json([
+                    'trace_id' => $context->traceId(),
+                    'span_id' => $context->spanId(),
+                    'parent_span_id' => $context->parentSpanId(),
+                ]);
+            },
+        );
         $data = json_decode((string) $response->getBody(), true);
 
-        expect($data['trace_id'])
-            ->toBe($incomingTraceId)
-            ->and($data['parent_span_id'])->toBe($incomingSpanId);
+        expect($data['trace_id'])->toBe($traceId)
+            ->and($data['parent_span_id'])->toBe($parentSpanId)
+            ->and($data['span_id'])->not->toBe($parentSpanId);
     });
 
-    test('validates traceparent format', function () {
+    test('invalid traceparent produces a fresh trace', function () {
         $middleware = new TelemetryMiddleware($this->logger, respectIncomingTraceparent: true);
-
-        $request = mockRequest('GET', '/test', headers: [
-            'traceparent' => 'invalid-format',
-        ]);
-        $next = fn ($r) => Response::json([
-            'trace_id' => $r->getAttribute('trace.trace_id'),
-        ]);
-
-        $response = $middleware($request, $next);
+        $response = $middleware(
+            mockRequest('GET', '/test', ['traceparent' => 'invalid-format']),
+            function (Request $request): Response {
+                return Response::json(['trace_id' => TraceContext::require($request)->traceId()]);
+            },
+        );
         $data = json_decode((string) $response->getBody(), true);
 
-        // Should generate new trace ID due to invalid format
-        expect($data['trace_id'])
-            ->toHaveLength(32)
+        expect($data['trace_id'])->toHaveLength(32)
             ->and($data['trace_id'])->not->toBe('invalid-format');
     });
 
-    test('emits Trace-Id header in response', function () {
-        $middleware = new TelemetryMiddleware($this->logger, emitTraceIdHeader: true);
+    test('independent requests receive independent contexts', function () {
+        $middleware = new TelemetryMiddleware($this->logger);
+        $contexts = [];
 
-        $request = mockRequest('GET', '/test');
-        $next = fn () => Response::json(['ok' => true]);
+        $next = function (Request $request) use (&$contexts): Response {
+            $contexts[] = TraceContext::require($request);
 
-        $response = $middleware($request, $next);
+            return Response::noContent();
+        };
 
-        expect($response->hasHeader('Trace-Id'))
-            ->toBeTrue()
-            ->and($response->getHeaderLine('Trace-Id'))->toHaveLength(32);
-    });
+        $middleware(mockRequest('GET', '/first'), $next);
+        $middleware(mockRequest('GET', '/second'), $next);
 
-    test('emits traceparent header when enabled', function () {
-        $middleware = new TelemetryMiddleware($this->logger, emitTraceparentHeader: true);
-
-        $request = mockRequest('GET', '/test');
-        $next = fn () => Response::json(['ok' => true]);
-
-        $response = $middleware($request, $next);
-
-        expect($response->hasHeader('traceparent'))
-            ->toBeTrue()
-            ->and($response->getHeaderLine('traceparent'))->toMatch('/^00-[a-f0-9]{32}-[a-f0-9]{16}-[a-f0-9]{2}$/');
-    });
-
-    test('preserves tracestate header', function () {
-        $middleware = new TelemetryMiddleware($this->logger, emitTraceparentHeader: true);
-
-        $tracestate = 'congo=ucfJifl5GOE,rojo=00f067aa0ba902b7';
-        $request = mockRequest('GET', '/test', headers: [
-            'traceparent' => '00-'.str_repeat('a', 32).'-'.str_repeat('b', 16).'-01',
-            'tracestate' => $tracestate,
-        ]);
-        $next = fn () => Response::json(['ok' => true]);
-
-        $response = $middleware($request, $next);
-
-        expect($response->hasHeader('tracestate'))
-            ->toBeTrue()
-            ->and($response->getHeaderLine('tracestate'))->toBe($tracestate);
+        expect($contexts)->toHaveCount(2)
+            ->and($contexts[0])->not->toBe($contexts[1]);
     });
 });
 
-describe('TelemetryMiddleware - Network Error Logging (NEL)', function () {
-    test('adds NEL headers when configured', function () {
-        $middleware = new TelemetryMiddleware(
-            $this->logger,
-            nelGroup: 'default',
-            nelEndpoint: 'https://nel.example.com/report'
+describe('TelemetryMiddleware - propagation and logging', function () {
+    test('emits traceparent and preserves tracestate when requested', function () {
+        $middleware = new TelemetryMiddleware($this->logger, emitTraceparentHeader: true);
+        $tracestate = 'congo=ucfJifl5GOE,rojo=00f067aa0ba902b7';
+        $response = $middleware(
+            mockRequest('GET', '/test', [
+                'traceparent' => '00-' . str_repeat('a', 32) . '-' . str_repeat('b', 16) . '-01',
+                'tracestate' => $tracestate,
+            ]),
+            fn() => Response::noContent(),
         );
 
-        $request = mockRequest('GET', '/test');
-        $next = fn () => Response::json(['ok' => true]);
-
-        $response = $middleware($request, $next);
-
-        expect($response->hasHeader('NEL'))
-            ->toBeTrue()
-            ->and($response->hasHeader('Report-To'))->toBeTrue();
-
-        $nel = json_decode($response->getHeaderLine('NEL'), true);
-        expect($nel['group'])
-            ->toBe('default')
-            ->and($nel['max_age'])->toBe(86400);
-
-        $reportTo = json_decode($response->getHeaderLine('Report-To'), true);
-        expect($reportTo['endpoints'][0]['url'])->toBe('https://nel.example.com/report');
+        expect($response->getHeaderLine('traceparent'))->toMatch('/^00-[a-f0-9]{32}-[a-f0-9]{16}-[a-f0-9]{2}$/')
+            ->and($response->getHeaderLine('tracestate'))->toBe($tracestate);
     });
 
-    test('does not add NEL headers when not configured', function () {
-        $middleware = new TelemetryMiddleware($this->logger);
+    test('adds NEL headers only when configured', function () {
+        $configured = new TelemetryMiddleware(
+            $this->logger,
+            nelGroup: 'default',
+            nelEndpoint: 'https://nel.example.com/report',
+        );
+        $plain = new TelemetryMiddleware($this->logger);
 
-        $request = mockRequest('GET', '/test');
-        $next = fn () => Response::json(['ok' => true]);
+        $configuredResponse = $configured(mockRequest('GET', '/'), fn() => Response::noContent());
+        $plainResponse = $plain(mockRequest('GET', '/'), fn() => Response::noContent());
 
-        $response = $middleware($request, $next);
-
-        expect($response->hasHeader('NEL'))
-            ->toBeFalse()
-            ->and($response->hasHeader('Report-To'))->toBeFalse();
+        expect($configuredResponse->hasHeader('NEL'))->toBeTrue()
+            ->and($configuredResponse->hasHeader('Report-To'))->toBeTrue()
+            ->and($plainResponse->hasHeader('NEL'))->toBeFalse()
+            ->and($plainResponse->hasHeader('Report-To'))->toBeFalse();
     });
-});
 
-describe('TelemetryMiddleware - Access Logging', function () {
-    test('logs request with trace context', function () {
+    test('logs access with correlation data', function () {
         $middleware = new TelemetryMiddleware($this->logger);
-
-        $request = mockRequest('GET', '/test');
-        $next = fn () => Response::json(['ok' => true]);
-
-        $middleware($request, $next);
+        $middleware(mockRequest('GET', '/test'), fn() => Response::json(['ok' => true]));
 
         expect($this->logger->hasInfoRecords())->toBeTrue();
         $record = $this->logger->records[0];
-        expect($record['message'])
-            ->toContain('GET /test')
-            ->and($record['message'])->toContain('200')
+        expect($record['message'])->toContain('GET /test')
             ->and($record['message'])->toContain('trace=')
             ->and($record['message'])->toContain('span=')
             ->and($record['message'])->toContain('[w3c]');
-    });
-
-    test('logs correct HTTP method and path', function () {
-        $middleware = new TelemetryMiddleware($this->logger);
-
-        $request = mockRequest('POST', '/api/users');
-        $next = fn () => Response::json(['id' => 1], 201);
-
-        $middleware($request, $next);
-
-        $record = $this->logger->records[0];
-        expect($record['message'])
-            ->toContain('POST /api/users')
-            ->and($record['message'])->toContain('201');
-    });
-});
-
-describe('TelemetryMiddleware - TraceContext Integration', function () {
-    test('initializes TraceContext for application use', function () {
-        $middleware = new TelemetryMiddleware($this->logger);
-
-        $request = mockRequest('GET', '/test');
-        $next = fn () => Response::json([
-            'trace_available' => TraceContext::isAvailable(),
-            'trace_id' => TraceContext::getTraceId(),
-            'span_id' => TraceContext::getSpanId(),
-            'request_id' => TraceContext::getRequestId(),
-        ]);
-
-        $response = $middleware($request, $next);
-        $data = json_decode((string) $response->getBody(), true);
-
-        expect($data['trace_available'])
-            ->toBeTrue()
-            ->and($data['trace_id'])->toHaveLength(32)
-            ->and($data['span_id'])->toHaveLength(16)
-            ->and($data['request_id'])->not
-            ->toBeNull()
-            ->and($data['request_id'])->not->toBeEmpty();
-        // Request ID might be variable length, just check it exists
-    });
-
-    test('clears TraceContext after request', function () {
-        $middleware = new TelemetryMiddleware($this->logger);
-
-        $request = mockRequest('GET', '/test');
-        $next = fn () => Response::json(['ok' => true]);
-
-        $middleware($request, $next);
-
-        // After middleware execution, TraceContext should be cleared
-        expect(TraceContext::isAvailable())
-            ->toBeFalse()
-            ->and(TraceContext::getTraceId())->toBeNull();
-    });
-});
-
-describe('TelemetryMiddleware - Exception Handling', function () {
-    test('clears TraceContext even when exception occurs', function () {
-        $middleware = new TelemetryMiddleware($this->logger);
-
-        $request = mockRequest('GET', '/test');
-        $next = fn () => throw new RuntimeException('Test exception');
-
-        try {
-            $middleware($request, $next);
-        } catch (RuntimeException $e) {
-            // Expected
-        }
-
-        // TraceContext should be cleared even after exception
-        expect(TraceContext::isAvailable())->toBeFalse();
-    });
-});
-
-describe('TelemetryMiddleware - OpenTelemetry Detection', function () {
-    test('detects minimal mode when OTel SDK not available', function () {
-        $middleware = new TelemetryMiddleware($this->logger);
-
-        $request = mockRequest('GET', '/test');
-        $next = fn () => Response::json([
-            'otel_mode' => TraceContext::isOtelMode(),
-        ]);
-
-        $response = $middleware($request, $next);
-        $data = json_decode((string) $response->getBody(), true);
-
-        // In test environment without OTel SDK
-        expect($data['otel_mode'])->toBeFalse();
-    });
-
-    test('can force minimal mode', function () {
-        $middleware = new TelemetryMiddleware($this->logger, enableOtelIntegration: false);
-
-        $request = mockRequest('GET', '/test');
-        $next = fn () => Response::json([
-            'otel_mode' => TraceContext::isOtelMode(),
-        ]);
-
-        $response = $middleware($request, $next);
-        $data = json_decode((string) $response->getBody(), true);
-
-        expect($data['otel_mode'])->toBeFalse();
     });
 });

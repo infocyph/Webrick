@@ -23,26 +23,19 @@ final class TraceContext
         return $request->withAttribute(RequestContext::ATTRIBUTE, $context);
     }
 
-    /**
-     * Compatibility entry point for existing middleware. It no longer mutates
-     * global state; callers that need ambient data must retain the returned
-     * RequestContext or attach it to the Request explicitly.
-     */
-    public static function initialize(Request $request, bool $otelAvailable = false): RequestContext
-    {
-        return new RequestContext($request, $otelAvailable);
-    }
-
-    /**
-     * Compatibility no-op: there is no process-global context to clear.
-     */
-    public static function clear(): void {}
-
     public static function fromRequest(Request $request): ?RequestContext
     {
         $context = $request->getAttribute(RequestContext::ATTRIBUTE);
 
         return $context instanceof RequestContext ? $context : null;
+    }
+
+    /**
+     * Compatibility constructor for callers that explicitly retain the context.
+     */
+    public static function initialize(Request $request, bool $otelAvailable = false): RequestContext
+    {
+        return new RequestContext($request, $otelAvailable);
     }
 
     public static function require(Request $request): RequestContext

@@ -25,14 +25,14 @@ final class Route implements RouteInterface
 {
     use RouteCoreAccessors;
 
+    /** One-time, stable fingerprint for the handler. */
+    private readonly string $handlerId;
+
     /** @var Cors|null The route-specific CORS policy. */
     private ?Cors $corsPolicy = null;
 
     /** @var array{0:object|string,1:string}|string|callable */
     private mixed $handler;
-
-    /** One-time, stable fingerprint for the handler. */
-    private readonly string $handlerId;
 
     /** @var MiddlewareList */
     private array $middleware = [];

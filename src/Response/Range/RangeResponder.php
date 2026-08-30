@@ -48,11 +48,7 @@ final readonly class RangeResponder
         );
     }
 
-    /**
-     * @param mixed $source
-     * @param RangeParseResult|SimpleRange|null $range
-     * @param array<string,string> $headers
-     */
+    /** @param array<string,string> $headers */
     public static function fromSeekable(
         mixed $source,
         int $totalLength,
@@ -122,7 +118,7 @@ final readonly class RangeResponder
 
         $metadata = stream_get_meta_data($source);
 
-        return (bool) ($metadata['seekable'] ?? false);
+        return $metadata['seekable'] ?? false;
     }
 
     private static function normalizeResult(
