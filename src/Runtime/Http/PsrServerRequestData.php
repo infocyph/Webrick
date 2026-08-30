@@ -4,9 +4,23 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Runtime\Http;
 
+use Infocyph\Webrick\Interfaces\BodyStream;
+use Infocyph\Webrick\Interop\Psr7\PsrBodyStreamAdapter;
+use RuntimeException;
+
 /** Duck-typed PSR-7 server-request extraction used only at interop runtimes. */
 final readonly class PsrServerRequestData
 {
+    public static function body(object $request): BodyStream
+    {
+        $stream = $request->getBody();
+        if (!is_object($stream)) {
+            throw new RuntimeException('PSR request body must be a stream object.');
+        }
+
+        return new PsrBodyStreamAdapter($stream);
+    }
+
     /** @return array<string,string|list<string>> */
     public static function headers(object $request): array
     {
@@ -30,11 +44,6 @@ final readonly class PsrServerRequestData
         }
 
         return $out;
-    }
-
-    public static function rawBody(object $request): string
-    {
-        return (string) $request->getBody();
     }
 
     /** @return array<string,mixed> */
