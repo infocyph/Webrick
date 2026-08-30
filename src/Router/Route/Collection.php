@@ -207,9 +207,7 @@ final class Collection implements IteratorAggregate
 
         // aliases (keep primary name when conflict arises)
         foreach ($this->aliases as $alias => $route) {
-            if (!isset($out[$alias])) {
-                $out[$alias] = [$route->getPath(), $route->getDomain()];
-            }
+            $out[$alias] ??= [$route->getPath(), $route->getDomain()];
         }
 
         return $this->aliasIndex = $out;
