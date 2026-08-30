@@ -5,13 +5,14 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Router\Build;
 
 use Infocyph\Webrick\Router\Build\Artifact\ArtifactValueCodec;
+use Infocyph\Webrick\Router\Build\Artifact\MatcherRouteMetadata;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 use UnexpectedValueException;
 
 /** Verified immutable Webrick runtime artifact loaded at process/worker boot. */
 final readonly class CompiledRouterArtifact
 {
-    public const int FORMAT_VERSION = 1;
+    public const int FORMAT_VERSION = 2;
 
     /** @var array<int,ExecutionPlan> */
     private array $plansByIndex;
@@ -69,10 +70,7 @@ final readonly class CompiledRouterArtifact
         $routes = [];
         $routeIds = [];
         foreach (self::arrayField($payload, 'routes') as $encoded) {
-            $route = ArtifactValueCodec::decode($encoded);
-            if (!$route instanceof CompiledRoute) {
-                throw new UnexpectedValueException('Router artifact route payload did not restore CompiledRoute.');
-            }
+            $route = MatcherRouteMetadata::decode($encoded);
             $routeId = RouteIdentity::forRoute($route);
             if (isset($routeIds[$routeId])) {
                 throw new UnexpectedValueException('Duplicate deterministic route identity in router artifact.');
