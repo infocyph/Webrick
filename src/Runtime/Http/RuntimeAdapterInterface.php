@@ -10,7 +10,11 @@ interface RuntimeAdapterInterface
 {
     public function capabilities(): RuntimeCapabilities;
 
-    public function context(mixed $nativeRequest = null, mixed $nativeResponse = null): RuntimeRequestContext;
+    public function context(
+        mixed $nativeRequest = null,
+        mixed $nativeResponse = null,
+        bool $withHost = false,
+    ): RuntimeRequestContext;
 
     public function write(Response $response, RuntimeRequestContext $context): void;
 }
