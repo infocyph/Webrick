@@ -6,6 +6,7 @@ namespace Infocyph\Webrick\Request\Core;
 
 use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Constants\MediaTypeEnum;
+use Infocyph\Webrick\Interfaces\BodyStream;
 use Infocyph\Webrick\Request\Http\RequestHeaders;
 use Infocyph\Webrick\Request\Psr7\ServerRequestHeaderNormalizer;
 use Infocyph\Webrick\Request\Psr7\UploadedFilesNormalizer;
@@ -79,7 +80,7 @@ class ServerRequest extends Message
         Uri|string $uri,
         private array $server = [],
         array $headers = [],
-        Stream $body = new Stream(),
+        ?BodyStream $body = null,
         string $httpVer = '1.1',
         private array|object|null $parsed = null,
         array $files = [],
