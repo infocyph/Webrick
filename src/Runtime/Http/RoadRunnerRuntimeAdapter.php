@@ -26,6 +26,8 @@ final readonly class RoadRunnerRuntimeAdapter implements RuntimeAdapterInterface
 
     private RuntimeCapabilities $runtimeCapabilities;
 
+    private bool $sendfileMiddleware;
+
     /**
      * @param callable(int,string|Generator,array<string,list<string>>,bool):void $respond
      */
@@ -46,8 +48,6 @@ final readonly class RoadRunnerRuntimeAdapter implements RuntimeAdapterInterface
         $this->sendfileMiddleware = $sendfileMiddleware;
     }
 
-    private bool $sendfileMiddleware;
-
     public function capabilities(): RuntimeCapabilities
     {
         return $this->runtimeCapabilities;
@@ -63,20 +63,39 @@ final readonly class RoadRunnerRuntimeAdapter implements RuntimeAdapterInterface
         }
 
         $server = PsrServerRequestData::server($nativeRequest);
-        $parsed = $nativeRequest->getParsedBody();
-        $form = is_array($parsed) ? PsrServerRequestData::stringMapResult($parsed) : [];
+        $parsedResolved = false;
+        $parsed = null;
+        $resolveParsed = static function () use ($nativeRequest, &$parsedResolved, &$parsed): array|object|null {
+            if (!$parsedResolved) {
+                $value = $nativeRequest->getParsedBody();
+                $parsed = is_array($value) || is_object($value) ? $value : null;
+                $parsedResolved = true;
+            }
+
+            return $parsed;
+        };
+        $form = RoutingFormInput::resolve(
+            $server,
+            static function () use ($resolveParsed): array {
+                $value = $resolveParsed();
+
+                return is_array($value) ? PsrServerRequestData::stringMapResult($value) : [];
+            },
+        );
 
         return new RuntimeRequestContext(
             RoutingInput::fromServer($server, $withHost, $form),
-            static fn(): Request => TransportRequestFactory::fromParts(
-                $server,
-                PsrServerRequestData::headers($nativeRequest),
-                PsrServerRequestData::body($nativeRequest),
-                is_array($parsed) || is_object($parsed) ? $parsed : null,
-                PsrUploadedFiles::normalize($nativeRequest->getUploadedFiles()),
-                PsrServerRequestData::stringMapResult($nativeRequest->getQueryParams()),
-                PsrServerRequestData::stringMapResult($nativeRequest->getCookieParams()),
-            ),
+            static function () use ($nativeRequest, $server, $resolveParsed): Request {
+                return TransportRequestFactory::fromParts(
+                    $server,
+                    PsrServerRequestData::headers($nativeRequest),
+                    PsrServerRequestData::body($nativeRequest),
+                    $resolveParsed(),
+                    PsrUploadedFiles::normalize($nativeRequest->getUploadedFiles()),
+                    PsrServerRequestData::stringMapResult($nativeRequest->getQueryParams()),
+                    PsrServerRequestData::stringMapResult($nativeRequest->getCookieParams()),
+                );
+            },
             $this->runtimeCapabilities,
             $nativeRequest,
         );
@@ -124,8 +143,12 @@ final readonly class RoadRunnerRuntimeAdapter implements RuntimeAdapterInterface
             return;
         }
 
-        $chunks = self::generator(ResponseWriterSupport::chunks($response));
-        ($this->respond)($response->getStatusCode(), $chunks, $headers, true);
+        ($this->respond)(
+            $response->getStatusCode(),
+            self::generator(ResponseWriterSupport::chunks($response)),
+            $headers,
+            true,
+        );
     }
 
     /** @param iterable<string> $chunks */
