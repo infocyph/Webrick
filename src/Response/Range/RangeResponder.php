@@ -7,13 +7,12 @@ namespace Infocyph\Webrick\Response\Range;
 use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Response\Body\FileBody;
 use Infocyph\Webrick\Response\Headers\Range as SimpleRange;
 use Infocyph\Webrick\Response\Internal\Utils;
 use Infocyph\Webrick\Response\Response;
 
-/**
- * Build 200/206/416 responses for seekable resources.
- */
+/** Build 200/206/416 responses for seekable resources. */
 final readonly class RangeResponder
 {
     /** @param array<string,string> $headers */
@@ -23,14 +22,16 @@ final readonly class RangeResponder
         string $mediaType = 'application/octet-stream',
         array $headers = [],
     ): Response {
-        $resource = fopen($absolutePath, 'rb');
-        if ($resource === false) {
+        if (!is_file($absolutePath) || !is_readable($absolutePath)) {
             return new Response(StatusEnum::NOT_FOUND->value);
         }
 
-        $stat = fstat($resource) ?: [];
-        $length = max(0, (int) ($stat['size'] ?? 0));
-        $mtime = (int) ($stat['mtime'] ?? time());
+        $size = filesize($absolutePath);
+        if ($size === false) {
+            return new Response(StatusEnum::NOT_FOUND->value);
+        }
+        $mtime = filemtime($absolutePath) ?: time();
+        $length = max(0, $size);
 
         $headers += [
             'Accept-Ranges' => 'bytes',
@@ -38,13 +39,42 @@ final readonly class RangeResponder
             'Last-Modified' => Utils::httpDate($mtime),
         ];
 
-        return self::fromSeekable(
-            $resource,
-            $length,
-            RangeParser::parse($req->getHeaderLine('Range'), $length),
-            $mediaType,
+        $result = RangeParser::parse($req->getHeaderLine('Range'), $length);
+        if ($result->status === RangeParseStatus::UNSATISFIABLE) {
+            unset(
+                $headers['Content-Type'],
+                $headers['Content-Encoding'],
+                $headers['Content-Language'],
+                $headers['Content-Length'],
+            );
+            $headers['Content-Range'] = "bytes */{$length}";
+            $headers['Content-Length'] = '0';
+
+            return new Response(StatusEnum::RANGE_NOT_SATISFIABLE->value, '', $headers);
+        }
+
+        if ($result->status !== RangeParseStatus::SATISFIABLE) {
+            $headers += [
+                'Content-Type' => $mediaType,
+                'Content-Length' => (string) $length,
+            ];
+
+            return new Response(StatusEnum::OK->value, new FileBody($absolutePath), $headers);
+        }
+
+        $resolved = $result->requireRange();
+        $partialLength = $resolved->length();
+        $headers += [
+            'Content-Range' => $resolved->contentRange(),
+            'Content-Length' => (string) $partialLength,
+            'Content-Type' => $mediaType,
+            'Accept-Ranges' => 'bytes',
+        ];
+
+        return new Response(
+            StatusEnum::PARTIAL_CONTENT->value,
+            new FileBody($absolutePath, $resolved->start, $partialLength),
             $headers,
-            $req,
         );
     }
 
@@ -72,7 +102,7 @@ final readonly class RangeResponder
             $headers['Content-Range'] = "bytes */{$totalLength}";
             $headers['Content-Length'] = '0';
 
-            return new Response(StatusEnum::RANGE_NOT_SATISFIABLE->value, new Stream(''), $headers);
+            return new Response(StatusEnum::RANGE_NOT_SATISFIABLE->value, '', $headers);
         }
 
         if ($result->status !== RangeParseStatus::SATISFIABLE) {
