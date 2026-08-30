@@ -24,6 +24,7 @@ final readonly class WorkermanRuntimeAdapter implements RuntimeAdapterInterface
         string $responseClass,
         string $chunkClass,
         bool $transportCompression,
+        bool $transportRequestLimits,
     ) {
         $this->responseClass = $responseClass;
         $this->chunkClass = $chunkClass;
@@ -34,19 +35,22 @@ final readonly class WorkermanRuntimeAdapter implements RuntimeAdapterInterface
             nativeStreaming: true,
             nativeFile: true,
             transportCompression: $transportCompression,
+            transportRequestLimits: $transportRequestLimits,
         );
     }
 
     /** Resolve Workerman's HTTP response protocol classes once during worker boot. */
-    public static function current(bool $transportCompression = false): self
-    {
+    public static function current(
+        bool $transportCompression = false,
+        bool $transportRequestLimits = false,
+    ): self {
         $response = 'Workerman\\Protocols\\Http\\Response';
         $chunk = 'Workerman\\Protocols\\Http\\Chunk';
         if (!class_exists($response) || !class_exists($chunk)) {
             throw new RuntimeException('Workerman 4+ HTTP Response and Chunk classes are required.');
         }
 
-        return new self($response, $chunk, $transportCompression);
+        return new self($response, $chunk, $transportCompression, $transportRequestLimits);
     }
 
     public function capabilities(): RuntimeCapabilities
