@@ -21,15 +21,8 @@ final readonly class ResponseWriterSupport
 
     public static function allowsBody(Response $response, RuntimeRequestContext $context): bool
     {
-        if ($context->routing->method === HttpMethodEnum::HEAD->value) {
-            return false;
-        }
-
-        return !in_array(
-            $response->getStatusCode(),
-            [StatusEnum::NO_CONTENT->value, StatusEnum::NOT_MODIFIED->value],
-            true,
-        );
+        return $context->routing->method !== HttpMethodEnum::HEAD->value
+            && !StatusEnum::isEmptyCode($response->getStatusCode());
     }
 
     /** @return iterable<string> */
@@ -110,6 +103,10 @@ final readonly class ResponseWriterSupport
 
     public static function knownLength(Response $response): ?int
     {
-        return $response->isStreaming() ? null : $response->getBodySize();
+        if ($response->isStreaming() || StatusEnum::isEmptyCode($response->getStatusCode())) {
+            return null;
+        }
+
+        return $response->getBodySize();
     }
 }
