@@ -22,7 +22,6 @@ use Infocyph\Webrick\Router\Dispatch\RuntimeDispatcher;
 use Infocyph\Webrick\Router\Matching\MatcherInterface;
 use Infocyph\Webrick\Router\Matching\MatcherOutcomeAdapter;
 use Infocyph\Webrick\Router\Matching\MatchOutcomeType;
-use Infocyph\Webrick\Router\Route\CompiledRoute;
 use Infocyph\Webrick\Router\Runtime\RoutingInput;
 use Infocyph\Webrick\Router\Url\SignedUrlConfig;
 use Infocyph\Webrick\Router\Url\UrlGenerator;
@@ -38,11 +37,13 @@ use Throwable;
  */
 final readonly class CompiledRouterKernel
 {
+    private RuntimeDispatcher $dispatcher;
+
     private ErrorHandler $errorHandler;
 
-    private MatcherOutcomeAdapter $outcomes;
+    private bool $hasGlobalMiddleware;
 
-    private RuntimeDispatcher $dispatcher;
+    private MatcherOutcomeAdapter $outcomes;
 
     private InterMixRuntime $runtime;
 
@@ -64,6 +65,7 @@ final readonly class CompiledRouterKernel
 
         $this->runtime = new InterMixRuntime($container);
         $this->dispatcher = new RuntimeDispatcher($this->runtime, $artifact);
+        $this->hasGlobalMiddleware = $this->dispatcher->hasGlobalMiddleware();
         $this->outcomes = new MatcherOutcomeAdapter($matcher);
         $this->errorHandler = $errorHandler ?? new ErrorHandler(
             logger: $log,
@@ -198,13 +200,13 @@ final readonly class CompiledRouterKernel
         $route = $outcome->requireRoute();
         $plan = $this->artifact->planFor($route);
         $pipeline = $plan->kind === ExecutionKind::MIDDLEWARE_PIPELINE
-            || $this->dispatcher->hasGlobalMiddleware();
+            || $this->hasGlobalMiddleware;
 
         if (!$pipeline && !$plan->requiresRequest()) {
             $response = $this->dispatchWithoutRequest($routing, $plan, $outcome->params);
         } else {
             $request ??= Request::fromGlobals();
-            $response = $this->dispatchWithRequest($routing, $plan, $route, $request, $outcome->params, $pipeline);
+            $response = $this->dispatchWithRequest($routing, $plan, $request, $outcome->params, $pipeline);
         }
 
         // HEAD semantics apply to explicit HEAD routes and GET fallback alike.
@@ -219,19 +221,17 @@ final readonly class CompiledRouterKernel
     private function dispatchWithRequest(
         RoutingInput $routing,
         ExecutionPlan $plan,
-        CompiledRoute $route,
         Request $request,
         array $vars,
         bool $pipeline,
     ): Response {
-        $execute = fn(): Response => $this->dispatcher->dispatch($route, $request, $vars);
         if (!$plan->requiresScope() && !$pipeline) {
-            return $execute();
+            return $this->dispatcher->dispatch($plan, $request, $vars);
         }
 
         $response = $this->runtime->withinScope(
             'webrick.request.' . spl_object_id($routing),
-            static fn() => $execute(),
+            fn() => $this->dispatcher->dispatch($plan, $request, $vars),
             [Request::class => $request],
         );
         if (!$response instanceof Response) {
@@ -244,14 +244,17 @@ final readonly class CompiledRouterKernel
     /** @param array<string,string> $vars */
     private function dispatchWithoutRequest(RoutingInput $routing, ExecutionPlan $plan, array $vars): Response
     {
-        $execute = fn(): Response => $this->dispatcher->dispatchWithoutRequest($plan, $vars);
         if (!$plan->requiresScope()) {
-            return $execute();
+            return match ($plan->terminalKind) {
+                ExecutionKind::DIRECT_ZERO_ARG => $this->dispatcher->dispatchDirectZeroArg($plan),
+                ExecutionKind::DIRECT_ROUTE_ARGS => $this->dispatcher->dispatchDirectRouteArgs($plan, $vars),
+                default => $this->dispatcher->dispatchWithoutRequest($plan, $vars),
+            };
         }
 
         $response = $this->runtime->withinScope(
             'webrick.request.' . spl_object_id($routing),
-            static fn() => $execute(),
+            fn() => $this->dispatcher->dispatchWithoutRequest($plan, $vars),
         );
         if (!$response instanceof Response) {
             throw new \RuntimeException('Compiled request scope must return Response.');

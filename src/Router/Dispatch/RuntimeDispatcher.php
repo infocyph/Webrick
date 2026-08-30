@@ -9,7 +9,6 @@ use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Build\CompiledRouterArtifact;
 use Infocyph\Webrick\Router\Build\ExecutionKind;
 use Infocyph\Webrick\Router\Build\ExecutionPlan;
-use Infocyph\Webrick\Router\Route\CompiledRoute;
 use Infocyph\Webrick\Runtime\InterMixRuntime;
 use JsonSerializable;
 use UnexpectedValueException;
@@ -28,16 +27,15 @@ final class RuntimeDispatcher
 
     public function __construct(
         private readonly InterMixRuntime $runtime,
-        private readonly CompiledRouterArtifact $artifact,
+        CompiledRouterArtifact $artifact,
     ) {
         $this->preGlobal = $this->withTagged($artifact->preGlobal, $artifact->preGlobalTags);
         $this->postGlobal = $this->withTagged($artifact->postGlobal, $artifact->postGlobalTags);
     }
 
     /** @param array<string,string> $vars */
-    public function dispatch(CompiledRoute $route, Request $request, array $vars): Response
+    public function dispatch(ExecutionPlan $plan, Request $request, array $vars): Response
     {
-        $plan = $this->artifact->planFor($route);
         $middleware = [...$this->preGlobal, ...$plan->middleware, ...$this->postGlobal];
         $request = $vars === [] ? $request : $request->withAttributes(['route_params' => $vars]);
 
@@ -59,6 +57,23 @@ final class RuntimeDispatcher
         return $this->pipelines[$routeId]->handle($request);
     }
 
+    public function dispatchDirectZeroArg(ExecutionPlan $plan): Response
+    {
+        /** @var callable $handler */
+        $handler = $plan->handler;
+
+        return $this->response($handler());
+    }
+
+    /** @param array<string,string> $vars */
+    public function dispatchDirectRouteArgs(ExecutionPlan $plan, array $vars): Response
+    {
+        /** @var callable $handler */
+        $handler = $plan->handler;
+
+        return $this->response($handler(...$this->orderedRouteArguments($plan, $vars)));
+    }
+
     /**
      * Execute a compiled terminal without materializing Request. The kernel owns
      * scope selection; this method only enforces that the plan itself is
@@ -72,18 +87,14 @@ final class RuntimeDispatcher
             throw new UnexpectedValueException('Execution plan requires a full Request.');
         }
 
-        /** @var callable $direct */
-        $direct = $plan->handler;
-        $result = match ($plan->terminalKind) {
-            ExecutionKind::DIRECT_ZERO_ARG => $direct(),
-            ExecutionKind::DIRECT_ROUTE_ARGS => $direct(...$this->orderedRouteArguments($plan, $vars)),
-            ExecutionKind::COMPILED_INVOKE => $this->runtime->resolveNow($plan->handler, $vars),
+        return match ($plan->terminalKind) {
+            ExecutionKind::DIRECT_ZERO_ARG => $this->dispatchDirectZeroArg($plan),
+            ExecutionKind::DIRECT_ROUTE_ARGS => $this->dispatchDirectRouteArgs($plan, $vars),
+            ExecutionKind::COMPILED_INVOKE => $this->response($this->runtime->resolveNow($plan->handler, $vars)),
             ExecutionKind::DIRECT_REQUEST, ExecutionKind::MIDDLEWARE_PIPELINE => throw new UnexpectedValueException(
                 'Execution plan cannot run without Request.',
             ),
         };
-
-        return $this->response($result);
     }
 
     public function hasGlobalMiddleware(): bool
