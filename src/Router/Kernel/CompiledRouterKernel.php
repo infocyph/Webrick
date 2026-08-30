@@ -20,7 +20,6 @@ use Infocyph\Webrick\Router\Constraint\Registry as ConstraintRegistry;
 use Infocyph\Webrick\Router\Dispatch\MiddlewareAliases;
 use Infocyph\Webrick\Router\Dispatch\RuntimeDispatcher;
 use Infocyph\Webrick\Router\Matching\MatcherInterface;
-use Infocyph\Webrick\Router\Matching\MatcherOutcomeAdapter;
 use Infocyph\Webrick\Router\Matching\MatchOutcomeType;
 use Infocyph\Webrick\Router\Runtime\RoutingInput;
 use Infocyph\Webrick\Router\Url\SignedUrlConfig;
@@ -43,7 +42,7 @@ final readonly class CompiledRouterKernel
 
     private bool $hasGlobalMiddleware;
 
-    private MatcherOutcomeAdapter $outcomes;
+    private MatcherInterface $matcher;
 
     private InterMixRuntime $runtime;
 
@@ -63,10 +62,10 @@ final readonly class CompiledRouterKernel
         }
         $matcher->finalize();
 
+        $this->matcher = $matcher;
         $this->runtime = new InterMixRuntime($container);
         $this->dispatcher = new RuntimeDispatcher($this->runtime, $artifact);
         $this->hasGlobalMiddleware = $this->dispatcher->hasGlobalMiddleware();
-        $this->outcomes = new MatcherOutcomeAdapter($matcher);
         $this->errorHandler = $errorHandler ?? new ErrorHandler(
             logger: $log,
             debug: false,
@@ -185,7 +184,7 @@ final readonly class CompiledRouterKernel
 
     private function dispatchRoutingInput(RoutingInput $routing, ?Request &$request): Response
     {
-        $outcome = $this->outcomes->match($routing->method, $routing->host, $routing->path);
+        $outcome = $this->matcher->matchOutcome($routing->method, $routing->host, $routing->path);
 
         if ($outcome->type === MatchOutcomeType::AUTO_OPTIONS) {
             return self::automaticOptionsResponse($outcome->allowed);
@@ -209,15 +208,12 @@ final readonly class CompiledRouterKernel
             $response = $this->dispatchWithRequest($routing, $plan, $request, $outcome->params, $pipeline);
         }
 
-        // HEAD semantics apply to explicit HEAD routes and GET fallback alike.
         return $routing->method === HttpMethodEnum::HEAD->value
             ? $response->withBody(new Stream(''))
             : $response;
     }
 
-    /**
-     * @param array<string,string> $vars
-     */
+    /** @param array<string,string> $vars */
     private function dispatchWithRequest(
         RoutingInput $routing,
         ExecutionPlan $plan,
