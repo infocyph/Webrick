@@ -39,13 +39,12 @@ final class RuntimeDispatcher
     {
         $plan = $this->artifact->planFor($route);
         $middleware = [...$this->preGlobal, ...$plan->middleware, ...$this->postGlobal];
+        $request = $vars === [] ? $request : $request->withAttributes(['route_params' => $vars]);
+
         if ($middleware === []) {
             return $this->invokeTerminal($plan, $request, $vars);
         }
 
-        // One canonical route-parameter bag is attached only because middleware
-        // already requires a full Request. No duplicate internal aliases exist.
-        $pipelineRequest = $vars === [] ? $request : $request->withAttributes(['route_params' => $vars]);
         $routeId = $plan->routeId;
         $this->pipelines[$routeId] ??= new CompiledMiddlewarePipeline(
             $middleware,
@@ -57,7 +56,34 @@ final class RuntimeDispatcher
             $this->runtime,
         );
 
-        return $this->pipelines[$routeId]->handle($pipelineRequest);
+        return $this->pipelines[$routeId]->handle($request);
+    }
+
+    /**
+     * Execute a compiled terminal without materializing Request. The kernel owns
+     * scope selection; this method only enforces that the plan itself is
+     * request- and middleware-free.
+     *
+     * @param array<string,string> $vars
+     */
+    public function dispatchWithoutRequest(ExecutionPlan $plan, array $vars): Response
+    {
+        if ($plan->requiresRequest() || $plan->kind === ExecutionKind::MIDDLEWARE_PIPELINE) {
+            throw new UnexpectedValueException('Execution plan requires a full Request.');
+        }
+
+        /** @var callable $direct */
+        $direct = $plan->handler;
+        $result = match ($plan->terminalKind) {
+            ExecutionKind::DIRECT_ZERO_ARG => $direct(),
+            ExecutionKind::DIRECT_ROUTE_ARGS => $direct(...$this->orderedRouteArguments($plan, $vars)),
+            ExecutionKind::COMPILED_INVOKE => $this->runtime->resolveNow($plan->handler, $vars),
+            ExecutionKind::DIRECT_REQUEST, ExecutionKind::MIDDLEWARE_PIPELINE => throw new UnexpectedValueException(
+                'Execution plan cannot run without Request.',
+            ),
+        };
+
+        return $this->response($result);
     }
 
     public function hasGlobalMiddleware(): bool
@@ -68,24 +94,39 @@ final class RuntimeDispatcher
     /** @param array<string,string> $vars */
     private function invokeTerminal(ExecutionPlan $plan, Request $request, array $vars): Response
     {
+        if (!$plan->requiresRequest() && $plan->terminalKind !== ExecutionKind::DIRECT_REQUEST) {
+            return $this->dispatchWithoutRequest($plan, $vars);
+        }
+
         /** @var callable $direct */
         $direct = $plan->handler;
         $result = match ($plan->terminalKind) {
-            ExecutionKind::DIRECT_ZERO_ARG => $direct(),
-            ExecutionKind::DIRECT_ROUTE_ARGS => $direct(...$this->orderedRouteArguments($plan, $vars)),
             ExecutionKind::DIRECT_REQUEST => $direct($request),
             ExecutionKind::COMPILED_INVOKE => $this->runtime->resolveNow(
                 $plan->handler,
-                $plan->requiresRequest() ? ($vars + ['request' => $request]) : $vars,
+                $vars + ['request' => $request],
             ),
+            ExecutionKind::DIRECT_ZERO_ARG => $direct(),
+            ExecutionKind::DIRECT_ROUTE_ARGS => $direct(...$this->orderedRouteArguments($plan, $vars)),
             ExecutionKind::MIDDLEWARE_PIPELINE => throw new UnexpectedValueException(
                 'Middleware pipeline cannot be used as a terminal execution kind.',
             ),
         };
 
-        return $result instanceof Response
-            ? $result
-            : Response::json($this->normalizeResponsePayload($result));
+        return $this->response($result);
+    }
+
+    /** @return array<array-key,mixed>|bool|float|int|JsonSerializable|string|null */
+    private function normalizeResponsePayload(mixed $value): array|bool|float|int|JsonSerializable|string|null
+    {
+        if (is_array($value) || $value instanceof JsonSerializable) {
+            return $value;
+        }
+        if ($value === null || is_bool($value) || is_float($value) || is_int($value) || is_string($value)) {
+            return $value;
+        }
+
+        return get_debug_type($value);
     }
 
     /** @param array<string,string> $vars @return list<string> */
@@ -102,17 +143,11 @@ final class RuntimeDispatcher
         return $arguments;
     }
 
-    /** @return array<array-key,mixed>|bool|float|int|JsonSerializable|string|null */
-    private function normalizeResponsePayload(mixed $value): array|bool|float|int|JsonSerializable|string|null
+    private function response(mixed $result): Response
     {
-        if (is_array($value) || $value instanceof JsonSerializable) {
-            return $value;
-        }
-        if ($value === null || is_bool($value) || is_float($value) || is_int($value) || is_string($value)) {
-            return $value;
-        }
-
-        return get_debug_type($value);
+        return $result instanceof Response
+            ? $result
+            : Response::json($this->normalizeResponsePayload($result));
     }
 
     /** @return array<string,string> */

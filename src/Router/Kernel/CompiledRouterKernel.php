@@ -7,7 +7,6 @@ namespace Infocyph\Webrick\Router\Kernel;
 use Infocyph\InterMix\DI\ProductionContainer;
 use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Constants\StatusEnum;
-use Infocyph\Webrick\Exceptions\HttpException;
 use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
 use Infocyph\Webrick\Exceptions\RouteNotFoundException;
 use Infocyph\Webrick\Request\Core\Stream;
@@ -15,6 +14,7 @@ use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Build\CompiledRouterArtifact;
 use Infocyph\Webrick\Router\Build\ExecutionKind;
+use Infocyph\Webrick\Router\Build\ExecutionPlan;
 use Infocyph\Webrick\Router\Build\RouterArtifactLoader;
 use Infocyph\Webrick\Router\Constraint\Registry as ConstraintRegistry;
 use Infocyph\Webrick\Router\Dispatch\MiddlewareAliases;
@@ -22,11 +22,14 @@ use Infocyph\Webrick\Router\Dispatch\RuntimeDispatcher;
 use Infocyph\Webrick\Router\Matching\MatcherInterface;
 use Infocyph\Webrick\Router\Matching\MatcherOutcomeAdapter;
 use Infocyph\Webrick\Router\Matching\MatchOutcomeType;
+use Infocyph\Webrick\Router\Route\CompiledRoute;
+use Infocyph\Webrick\Router\Runtime\RoutingInput;
 use Infocyph\Webrick\Router\Url\SignedUrlConfig;
 use Infocyph\Webrick\Router\Url\UrlGenerator;
 use Infocyph\Webrick\Router\Url\UrlGeneratorRegistry;
 use Infocyph\Webrick\Runtime\InterMixRuntime;
 use Psr\Log\LoggerInterface;
+use Throwable;
 
 /**
  * Strict production kernel. It consumes verified build artifacts and a
@@ -149,51 +152,15 @@ final readonly class CompiledRouterKernel
 
     public function handle(?Request $request = null): Response
     {
-        $request ??= Request::fromGlobals();
+        try {
+            $routing = $request instanceof Request
+                ? RoutingInput::fromRequest($request, $this->artifact->hasDomainRoutes)
+                : RoutingInput::fromGlobals($this->artifact->hasDomainRoutes);
 
-        return $this->errorHandler->handle($request, function (Request $current): Response {
-            $method = self::routingMethod($current);
-            $path = $current->getUri()->getPath() ?: '/';
-            $host = $this->artifact->hasDomainRoutes
-                ? self::normaliseHost($current->getUri()->getHost())
-                : '*';
-            $outcome = $this->outcomes->match($method, $host, $path);
-
-            if ($outcome->type === MatchOutcomeType::AUTO_OPTIONS) {
-                return self::automaticOptionsResponse($outcome->allowed);
-            }
-            if ($outcome->type === MatchOutcomeType::METHOD_NOT_ALLOWED) {
-                throw new MethodNotAllowedException($method, $path, $outcome->allowed);
-            }
-            if ($outcome->type === MatchOutcomeType::NOT_FOUND) {
-                throw new RouteNotFoundException($method, $path);
-            }
-
-            $route = $outcome->requireRoute();
-            $plan = $this->artifact->planFor($route);
-            $pipeline = $plan->kind === ExecutionKind::MIDDLEWARE_PIPELINE
-                || $this->dispatcher->hasGlobalMiddleware();
-            $execute = fn(): Response => $this->dispatcher->dispatch($route, $current, $outcome->params);
-
-            if ($plan->requiresScope() || $pipeline) {
-                $seeds = ($plan->requiresRequest() || $pipeline) ? [Request::class => $current] : [];
-                $response = $this->runtime->withinScope(
-                    'webrick.request.' . spl_object_id($current),
-                    static fn() => $execute(),
-                    $seeds,
-                );
-                if (!$response instanceof Response) {
-                    throw new \RuntimeException('Compiled request scope must return Response.');
-                }
-            } else {
-                $response = $execute();
-            }
-
-            // HEAD semantics apply to explicit HEAD routes and GET fallback alike.
-            return $method === HttpMethodEnum::HEAD->value
-                ? $response->withBody(new Stream(''))
-                : $response;
-        });
+            return $this->dispatchRoutingInput($routing, $request);
+        } catch (Throwable $exception) {
+            return $this->renderException($exception, $request);
+        }
     }
 
     /** @param list<string> $allowed */
@@ -214,32 +181,98 @@ final readonly class CompiledRouterKernel
         return Response::noContent(['Allow' => implode(', ', array_keys($methods))]);
     }
 
-    private static function normaliseHost(string $raw): string
+    private function dispatchRoutingInput(RoutingInput $routing, ?Request &$request): Response
     {
-        if ($raw === '' || preg_match('/[\\x00-\\x20]/', $raw) === 1) {
-            throw HttpException::badRequest('Illegal Host header.');
+        $outcome = $this->outcomes->match($routing->method, $routing->host, $routing->path);
+
+        if ($outcome->type === MatchOutcomeType::AUTO_OPTIONS) {
+            return self::automaticOptionsResponse($outcome->allowed);
         }
-        $host = strtolower(rtrim($raw, '.'));
-        if (function_exists('idn_to_ascii') && !str_contains($host, 'xn--')) {
-            $ascii = idn_to_ascii($host, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
-            if ($ascii === false) {
-                throw HttpException::badRequest('Invalid IDN host name.');
-            }
-            $host = $ascii;
+        if ($outcome->type === MatchOutcomeType::METHOD_NOT_ALLOWED) {
+            throw new MethodNotAllowedException($routing->method, $routing->path, $outcome->allowed);
         }
-        if (preg_match('/^[\\x21-\\x7E]+$/', $host) !== 1) {
-            throw HttpException::badRequest('Host contains non-ASCII bytes.');
+        if ($outcome->type === MatchOutcomeType::NOT_FOUND) {
+            throw new RouteNotFoundException($routing->method, $routing->path);
         }
 
-        return $host;
+        $route = $outcome->requireRoute();
+        $plan = $this->artifact->planFor($route);
+        $pipeline = $plan->kind === ExecutionKind::MIDDLEWARE_PIPELINE
+            || $this->dispatcher->hasGlobalMiddleware();
+
+        if (!$pipeline && !$plan->requiresRequest()) {
+            $response = $this->dispatchWithoutRequest($routing, $plan, $outcome->params);
+        } else {
+            $request ??= Request::fromGlobals();
+            $response = $this->dispatchWithRequest($routing, $plan, $route, $request, $outcome->params, $pipeline);
+        }
+
+        // HEAD semantics apply to explicit HEAD routes and GET fallback alike.
+        return $routing->method === HttpMethodEnum::HEAD->value
+            ? $response->withBody(new Stream(''))
+            : $response;
     }
 
-    private static function routingMethod(Request $request): string
-    {
-        $raw = HttpMethodEnum::normalize($request->getMethod());
+    /**
+     * @param array<string,string> $vars
+     */
+    private function dispatchWithRequest(
+        RoutingInput $routing,
+        ExecutionPlan $plan,
+        CompiledRoute $route,
+        Request $request,
+        array $vars,
+        bool $pipeline,
+    ): Response {
+        $execute = fn(): Response => $this->dispatcher->dispatch($route, $request, $vars);
+        if (!$plan->requiresScope() && !$pipeline) {
+            return $execute();
+        }
 
-        return $raw === HttpMethodEnum::HEAD->value
-            ? HttpMethodEnum::HEAD->value
-            : HttpMethodEnum::normalize($request->getEffectiveMethod());
+        $response = $this->runtime->withinScope(
+            'webrick.request.' . spl_object_id($routing),
+            static fn() => $execute(),
+            [Request::class => $request],
+        );
+        if (!$response instanceof Response) {
+            throw new \RuntimeException('Compiled request scope must return Response.');
+        }
+
+        return $response;
+    }
+
+    /** @param array<string,string> $vars */
+    private function dispatchWithoutRequest(RoutingInput $routing, ExecutionPlan $plan, array $vars): Response
+    {
+        $execute = fn(): Response => $this->dispatcher->dispatchWithoutRequest($plan, $vars);
+        if (!$plan->requiresScope()) {
+            return $execute();
+        }
+
+        $response = $this->runtime->withinScope(
+            'webrick.request.' . spl_object_id($routing),
+            static fn() => $execute(),
+        );
+        if (!$response instanceof Response) {
+            throw new \RuntimeException('Compiled request scope must return Response.');
+        }
+
+        return $response;
+    }
+
+    private function renderException(Throwable $exception, ?Request $request): Response
+    {
+        if (!$request instanceof Request) {
+            try {
+                $request = Request::fromGlobals();
+            } catch (Throwable) {
+                $request = Request::fake();
+            }
+        }
+
+        return $this->errorHandler->handle(
+            $request,
+            static fn(Request $_): Response => throw $exception,
+        );
     }
 }
