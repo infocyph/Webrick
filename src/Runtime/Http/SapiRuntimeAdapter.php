@@ -1,0 +1,125 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Infocyph\Webrick\Runtime\Http;
+
+use Infocyph\Webrick\Constants\StatusEnum;
+use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Router\Runtime\RoutingInput;
+
+/** Classic SAPI/FPM/FrankenPHP response runtime selected once at bootstrap. */
+final readonly class SapiRuntimeAdapter implements RuntimeAdapterInterface
+{
+    private const string FINISH_FASTCGI = 'fastcgi';
+    private const string FINISH_FRANKENPHP = 'frankenphp';
+    private const string FINISH_LITESPEED = 'litespeed';
+    private const string FINISH_NONE = 'none';
+
+    private RuntimeCapabilities $runtimeCapabilities;
+
+    private function __construct(
+        private string $finishMode,
+        string $name,
+        bool $persistent,
+        bool $transportCompression,
+    ) {
+        $this->runtimeCapabilities = new RuntimeCapabilities(
+            name: $name,
+            persistent: $persistent,
+            concurrent: false,
+            nativeStreaming: true,
+            nativeFile: false,
+            transportCompression: $transportCompression,
+        );
+    }
+
+    /** Resolve the synchronous SAPI once during application bootstrap. */
+    public static function current(bool $transportCompression = false): self
+    {
+        if (function_exists('frankenphp_is_worker') && frankenphp_is_worker()) {
+            return new self(self::FINISH_FRANKENPHP, 'frankenphp', true, $transportCompression);
+        }
+        if (PHP_SAPI === 'litespeed' || function_exists('litespeed_finish_request')) {
+            return new self(self::FINISH_LITESPEED, 'litespeed', false, $transportCompression);
+        }
+        if (function_exists('fastcgi_finish_request')) {
+            return new self(self::FINISH_FASTCGI, PHP_SAPI === 'fpm-fcgi' ? 'fpm' : 'fastcgi', false, $transportCompression);
+        }
+
+        return new self(self::FINISH_NONE, PHP_SAPI, false, $transportCompression);
+    }
+
+    public function capabilities(): RuntimeCapabilities
+    {
+        return $this->runtimeCapabilities;
+    }
+
+    public function context(
+        mixed $nativeRequest = null,
+        mixed $nativeResponse = null,
+        bool $withHost = false,
+    ): RuntimeRequestContext {
+        return new RuntimeRequestContext(
+            RoutingInput::fromGlobals($withHost),
+            static fn(): Request => Request::fromGlobals(),
+            $this->runtimeCapabilities,
+        );
+    }
+
+    public function write(Response $response, RuntimeRequestContext $context): void
+    {
+        $allowsBody = ResponseWriterSupport::allowsBody($response, $context);
+        $size = ResponseWriterSupport::knownLength($response);
+
+        if (!headers_sent()) {
+            http_response_code($response->getStatusCode());
+            header_remove('X-Powered-By');
+
+            $protocol = $_SERVER['SERVER_PROTOCOL'] ?? 'HTTP/1.1';
+            $http2 = is_string($protocol) && str_starts_with($protocol, 'HTTP/2');
+            foreach (ResponseWriterSupport::headers($response, $http2) as [$name, $value]) {
+                header("{$name}: {$value}", false);
+            }
+
+            if (
+                !$response->hasHeader('Content-Length')
+                && $size !== null
+                && !in_array(
+                    $response->getStatusCode(),
+                    [StatusEnum::NO_CONTENT->value, StatusEnum::NOT_MODIFIED->value],
+                    true,
+                )
+            ) {
+                header('Content-Length: ' . $size, false);
+            }
+        }
+
+        if ($allowsBody) {
+            $string = $response->getStringBody();
+            if ($string !== null) {
+                echo $string;
+            } else {
+                foreach (ResponseWriterSupport::chunks($response) as $chunk) {
+                    echo $chunk;
+                    if ($response->isStreaming()) {
+                        flush();
+                    }
+                }
+            }
+        }
+
+        $this->finish();
+    }
+
+    private function finish(): void
+    {
+        match ($this->finishMode) {
+            self::FINISH_FASTCGI => function_exists('fastcgi_finish_request') ? fastcgi_finish_request() : null,
+            self::FINISH_FRANKENPHP => function_exists('frankenphp_finish_request') ? frankenphp_finish_request() : null,
+            self::FINISH_LITESPEED => function_exists('litespeed_finish_request') ? litespeed_finish_request() : null,
+            default => null,
+        };
+    }
+}
