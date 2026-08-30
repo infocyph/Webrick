@@ -6,140 +6,80 @@ namespace Infocyph\Webrick\Middleware;
 
 use Closure;
 use Infocyph\CacheLayer\Cache\Cache;
-use Infocyph\CacheLayer\Cache\CacheInterface;
 use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Constants\StatusEnum;
-use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Request\Core\Uri;
 use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Response\Cache\CachePolicy;
 use Infocyph\Webrick\Response\Internal\Utils;
 use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Support\VaryContext;
+use Psr\Cache\CacheItemPoolInterface;
 use RuntimeException;
 
-/**
- * Tiny server-side micro-cache for idempotent responses.
- *
- * Goals:
- *  - Cache GET/HEAD only (safe methods).
- *  - Key = method + host + path (+ optional query) + negotiated/vary surface.
- *  - Skip caching when request/response implies personalization or no-store.
- *  - Respect small TTL (micro-cache) and s-maxage/max-age caps.
- *  - Avoid streaming responses and oversized bodies.
- *
- * Works best when:
- *  - NegotiationMiddleware + VaryAccumulatorMiddleware run BEFORE this.
- *  - CacheValidatorsMiddleware runs AFTER (this cache stores final validators too).
- */
+/** Small shared response micro-cache using native string response bodies. */
 final readonly class ResponseCacheMiddleware
 {
-    private const string CACHE_KEY_PREFIX = 'webrick.hr.v1.';
+    private const string CACHE_KEY_PREFIX = 'webrick.hr.v2.';
 
-    private const array CACHEABLE_STATUS = [
-        StatusEnum::OK->value => true,
-        StatusEnum::NON_AUTHORITATIVE_INFO->value => true,
-        StatusEnum::NO_CONTENT->value => true,
-        StatusEnum::MOVED_PERMANENTLY->value => true,
-        StatusEnum::PERMANENT_REDIRECT->value => true,
-        StatusEnum::NOT_FOUND->value => true,
-        StatusEnum::METHOD_NOT_ALLOWED->value => true,
-        StatusEnum::GONE->value => true,
-        StatusEnum::URI_TOO_LONG->value => true,
-        StatusEnum::UNAVAILABLE_FOR_LEGAL_REASONS->value => true,
-    ];
+    private CachePolicy $policy;
 
-    /** Cache store (PSR-16-style wrapper) */
-    private CacheInterface $store;
+    private CacheItemPoolInterface $store;
 
-    /**
-     * @param CacheInterface|null $store Cache backend; defaults to a local file cache
-     * @param int $ttlSeconds Base TTL for cache entries (e.g., 10)
-     * @param bool $includeQuery Whether to include normalized query in the cache key
-     * @param int $maxBodyBytes Upper bound for payload size to cache
-     * @param string[] $defaultVary Headers to consider when no vary accumulator present
-     * @param bool $skipWhenPersonalized Skip caching if $req->getAttribute('personalized')
-     * @param bool $respectResponseCacheControl Honor no-store/private and (s-)maxage caps
-     * @param bool $avoidSetCookie Do not cache responses that set cookies
-     */
+    /** @param list<string> $defaultVary */
     public function __construct(
-        ?CacheInterface $store = null,
+        ?CacheItemPoolInterface $store = null,
         private int $ttlSeconds = 10,
         private bool $includeQuery = true,
-        private int $maxBodyBytes = 1_048_576, // 1 MiB
+        private int $maxBodyBytes = 1_048_576,
         private array $defaultVary = ['Accept', 'Accept-Language', 'Accept-Encoding'],
         private bool $skipWhenPersonalized = true,
         private bool $respectResponseCacheControl = true,
         private bool $avoidSetCookie = true,
+        ?CachePolicy $policy = null,
     ) {
         $this->store = $store ?? $this->buildDefaultStore();
+        $this->policy = $policy ?? new CachePolicy();
     }
 
-    /**
-     * @param Closure(Request):Response $next
-     */
+    /** @param Closure(Request):Response $next */
     public function __invoke(Request $req, Closure $next): Response
     {
-        // Cache only safe, idempotent reads.
         $method = HttpMethodEnum::normalize($req->getMethod());
-        $isHead = $method === HttpMethodEnum::HEAD->value;
-        if (!$this->isCacheMethod($method) || $this->isPersonalizedRequest($req)) {
+        if (!$this->policy->lookupAllowed($req, $this->skipWhenPersonalized)) {
             return $this->invokeNext($next, $req);
         }
 
-        // Build key: method + host + path (+query?) + vary surface (+ negotiated attrs).
-        $key = $this->makeKey($req, $method);
+        $head = $method === HttpMethodEnum::HEAD->value;
+        $key = $this->makeKey($req, $head ? HttpMethodEnum::GET->value : $method);
+        $cached = $this->readCache($key);
+        if (is_array($cached)) {
+            $response = $this->unpack($cached);
 
-        // Fast path: serve from cache when available.
-        $hit = $this->readCache($key);
-        if (\is_array($hit)) {
-            $resp = $this->unpack($hit);
-
-            // HEAD should not include a body.
-            if ($isHead) {
-                $resp = $resp
-                    ->withBody(new Stream(''))
-                    ->withSmartHeader('Content-Length', $resp->getHeaderLine('Content-Length') ?: '0');
-            }
-
-            return $resp;
+            return $head ? self::head($response) : $response;
         }
 
-        // Miss → fall through.
-        $resp = $this->invokeNext($next, $req);
-
-        // Decide whether to store.
-        if ($this->isCacheable($resp, $req)) {
-            $ttl = $this->computeTtl($resp);
+        $response = $this->invokeNext($next, $req);
+        if (!$head) {
+            $ttl = $this->storeTtl($req, $response);
             if ($ttl > 0) {
-                $this->writeCache($key, $this->pack($resp), $ttl);
+                $this->writeCache($key, $this->pack($response), $ttl);
             }
         }
 
-        return $resp;
+        return $response;
     }
 
-    /**
-     * @param array<string,string> $pairs
-     * @return array<string,string>
-     */
-    private function appendVaryTokens(array $pairs, Request $req, mixed $tokens): array
+    private static function head(Response $response): Response
     {
-        if (!\is_array($tokens) || $tokens === []) {
-            return $pairs;
+        if (!$response->hasHeader('Content-Length')) {
+            $size = $response->getBodySize();
+            if ($size !== null) {
+                $response = $response->withHeader('Content-Length', (string) $size);
+            }
         }
 
-        foreach ($tokens as $token) {
-            if (!\is_string($token)) {
-                continue;
-            }
-            $name = $this->canonicalHeaderToken($token);
-            if ($name === '') {
-                continue;
-            }
-            // Keep empty values too (absence is a valid cache variant).
-            $pairs[$name] = $req->getHeaderLine($name);
-        }
-
-        return $pairs;
+        return $response->withBody('');
     }
 
     private function base64UrlHash(string $value): string
@@ -147,25 +87,19 @@ final readonly class ResponseCacheMiddleware
         return rtrim(strtr(base64_encode(hash('sha256', $value, true)), '+/', '-_'), '=');
     }
 
-    private function buildDefaultStore(): CacheInterface
+    private function buildDefaultStore(): CacheItemPoolInterface
     {
         if (!class_exists(Cache::class)) {
             throw new \LogicException(
-                'ResponseCacheMiddleware requires infocyph/cachelayer; install the package before enabling response caching.',
+                'ResponseCacheMiddleware requires an explicit PSR-6 pool or the optional infocyph/cachelayer package.',
             );
         }
 
-        // Windows reports directory modes differently than POSIX; prefer memory cache without APCu.
-        if (\PHP_OS_FAMILY === 'Windows' && !\extension_loaded('apcu')) {
-            return Cache::memory('http');
-        }
-
-        return Cache::file('webrick.http');
+        return PHP_OS_FAMILY === 'Windows' && !extension_loaded('apcu')
+            ? Cache::memory('webrick.http')
+            : Cache::file('webrick.http');
     }
 
-    /**
-     * Canonicalize a header token to Title-Case for deterministic keying.
-     */
     private function canonicalHeaderToken(string $token): string
     {
         $token = trim($token);
@@ -173,45 +107,10 @@ final readonly class ResponseCacheMiddleware
             return '';
         }
 
-        return implode(
-            '-',
-            array_map(
-                static fn(string $part): string => $part === '' ? '' : ucfirst(strtolower($part)),
-                explode('-', $token),
-            ),
-        );
-    }
-
-    private function computeTtl(Response $resp): int
-    {
-        $ttl = max(0, $this->ttlSeconds);
-        if (!$this->respectResponseCacheControl) {
-            return $ttl;
-        }
-
-        $cc = $this->parseCacheControl($resp->getHeaderLine('Cache-Control'));
-
-        // Prefer s-maxage for shared/server caches, fall back to max-age.
-        $cap = $this->directiveInt($cc, 's-maxage') ?? $this->directiveInt($cc, 'max-age');
-
-        if ($cap !== null) {
-            $ttl = min($ttl, max(0, $cap));
-        }
-
-        return $ttl;
-    }
-
-    /**
-     * @param array<string,bool|string> $cc
-     */
-    private function directiveInt(array $cc, string $key): ?int
-    {
-        $value = $cc[$key] ?? null;
-        if (!\is_string($value) || $value === '' || !\ctype_digit($value)) {
-            return null;
-        }
-
-        return (int) $value;
+        return implode('-', array_map(
+            static fn(string $part): string => $part === '' ? '' : ucfirst(strtolower($part)),
+            explode('-', $token),
+        ));
     }
 
     private function hasSafeVary(Response $response, Request $request): bool
@@ -224,10 +123,7 @@ final readonly class ResponseCacheMiddleware
         $keyed = array_fill_keys(array_keys($this->resolveVaryPairs($request)), true);
         foreach (explode(',', $vary) as $token) {
             $name = $this->canonicalHeaderToken($token);
-            if ($name === '' || $name === '*') {
-                return false;
-            }
-            if ($name === 'Authorization' || $name === 'Cookie' || !isset($keyed[$name])) {
+            if ($name === '' || $name === '*' || $name === 'Authorization' || $name === 'Cookie' || !isset($keyed[$name])) {
                 return false;
             }
         }
@@ -237,273 +133,169 @@ final readonly class ResponseCacheMiddleware
 
     private function intFromMixed(mixed $value, int $default): int
     {
-        if (\is_int($value)) {
+        if (is_int($value)) {
             return $value;
         }
-        if (\is_string($value) && $value !== '' && \ctype_digit($value)) {
-            return (int) $value;
-        }
 
-        return $default;
+        return is_string($value) && preg_match('/^[0-9]+$/D', $value) === 1 ? (int) $value : $default;
     }
 
     private function invokeNext(Closure $next, Request $req): Response
     {
-        $resp = $next($req);
-        if (!$resp instanceof Response) {
+        $response = $next($req);
+        if (!$response instanceof Response) {
             throw new RuntimeException('ResponseCacheMiddleware expects downstream to return Response.');
         }
 
-        return $resp;
+        return $response;
     }
-
-    /* ───────────────────────── policy ───────────────────────── */
-
-    private function isCacheable(Response $resp, Request $req): bool
-    {
-        // Skip streaming or unknown/oversized bodies.
-        if ($resp->isStreaming()) {
-            return false;
-        }
-        $size = $resp->getBody()->getSize();
-        if ($size !== null && $size > $this->maxBodyBytes) {
-            return false;
-        }
-
-        // Do not cache Set-Cookie unless explicitly allowed.
-        if ($this->avoidSetCookie && $resp->hasHeader('Set-Cookie')) {
-            return false;
-        }
-
-        if (!$this->hasSafeVary($resp, $req)) {
-            return false;
-        }
-
-        // Status whitelist (RFC 9111-ish + practical micro-cache picks).
-        if (!isset(self::CACHEABLE_STATUS[$resp->getStatusCode()])) {
-            return false;
-        }
-
-        if (!$this->respectResponseCacheControl) {
-            return true;
-        }
-
-        // Honor basic Cache-Control signals.
-        $cc = $this->parseCacheControl($resp->getHeaderLine('Cache-Control'));
-        if (isset($cc['no-store'])) {
-            return false;
-        }
-        // Respect explicit privacy if we treat this store like a shared cache.
-        if (isset($cc['private'])) {
-            return false;
-        }
-
-        return true;
-    }
-
-    private function isCacheMethod(string $method): bool
-    {
-        return $method === HttpMethodEnum::GET->value || $method === HttpMethodEnum::HEAD->value;
-    }
-
-    private function isPersonalizedRequest(Request $req): bool
-    {
-        if ($req->hasHeader('Authorization') || $req->hasHeader('Cookie')) {
-            return true;
-        }
-
-        return $this->skipWhenPersonalized && $req->getAttribute('personalized') === true;
-    }
-
-    /* ───────────────────────── keying ───────────────────────── */
 
     private function makeKey(Request $req, string $method): string
     {
-        $u = $req->getUri();
-        $host = strtolower($u->getHost() ?: 'localhost');
-        if ($u->getPort() !== null) {
-            $host .= ':' . $u->getPort();
+        $uri = $req->getUri();
+        $host = strtolower($uri->getHost() ?: 'localhost');
+        if ($uri->getPort() !== null) {
+            $host .= ':' . $uri->getPort();
         }
-        $path = $u->getPath() ?: '/';
+
         $query = '';
-
-        if ($this->includeQuery) {
-            $qs = $u->getQuery();
-            if ($qs !== '') {
-                $query = Uri::normalizeQueryString($qs);
-            }
+        if ($this->includeQuery && $uri->getQuery() !== '') {
+            $query = Uri::normalizeQueryString($uri->getQuery());
         }
 
-        // Prefer accumulator-provided pairs/tokens; fallback to configured default vary surface.
         $pairs = $this->resolveVaryPairs($req);
-
-        // Deterministic order for header surface.
-        if ($pairs) {
-            ksort($pairs, SORT_STRING);
-        }
-
-        $type = $this->stringFromMixed($req->getAttribute('negotiated.type', ''), '');
-        $charset = $this->stringFromMixed($req->getAttribute('negotiated.charset', ''), '');
-        $locale = $this->stringFromMixed($req->getAttribute('locale', ''), '');
-
-        // Build a compact, delimiter-safe buffer (NUL separators).
+        ksort($pairs, SORT_STRING);
         $nul = "\0";
-        $buf = $method . $nul
+        $buffer = $method . $nul
             . $host . $nul
-            . $path . $nul
+            . ($uri->getPath() ?: '/') . $nul
             . $query . $nul
-            . $type . $nul
-            . $charset . $nul
-            . $locale;
+            . $this->stringFromMixed($req->getAttribute('negotiated.type', ''), '') . $nul
+            . $this->stringFromMixed($req->getAttribute('negotiated.charset', ''), '') . $nul
+            . $this->stringFromMixed($req->getAttribute('locale', ''), '');
 
-        foreach ($pairs as $h => $v) {
-            $buf .= $nul . $h . $nul . $v;
+        foreach ($pairs as $name => $value) {
+            $buffer .= $nul . $name . $nul . $value;
         }
 
-        return self::CACHE_KEY_PREFIX . $this->base64UrlHash($buf);
+        return self::CACHE_KEY_PREFIX . $this->base64UrlHash($buffer);
     }
 
-    /**
-     * @return array<string, list<string>>
-     */
+    /** @return array<string,list<string>> */
     private function normalizeHeaders(mixed $value): array
     {
-        return \is_array($value) ? Utils::normalizeHeaderValueLists($value) : [];
+        return is_array($value) ? Utils::normalizeHeaderValueLists($value) : [];
     }
 
-    /* ───────────────────────── packing ───────────────────────── */
-
-    /**
-     * @return array{
-     *   s:int,
-     *   h:array<string,list<string>>,
-     *   b:string,
-     *   pv:string,
-     *   rp:string
-     * }
-     */
-    private function pack(Response $r): array
+    /** @return array{s:int,h:array<string,list<string>>,b:string,pv:string,rp:string} */
+    private function pack(Response $response): array
     {
-        // Snapshot body safely (assumes non-streaming).
-        $body = (string) $r->getBody();
-
         return [
-            's' => $r->getStatusCode(),
-            'h' => $this->normalizeHeaders($r->getHeaders()),
-            'b' => $body,
-            'pv' => $r->getProtocolVersion(),
-            'rp' => $r->getReasonPhrase(),
+            's' => $response->getStatusCode(),
+            'h' => $this->normalizeHeaders($response->getHeaders()),
+            'b' => $response->getStringBody() ?? '',
+            'pv' => $response->getProtocolVersion(),
+            'rp' => $response->getReasonPhrase(),
         ];
-    }
-
-    /**
-     * @return array<string,bool|string>
-     */
-    private function parseCacheControl(string $line): array
-    {
-        if ($line === '') {
-            return [];
-        }
-        $out = [];
-        foreach (explode(',', $line) as $seg) {
-            $seg = trim($seg);
-            if ($seg === '') {
-                continue;
-            }
-            if (str_contains($seg, '=')) {
-                [$k, $v] = array_map(trim(...), explode('=', $seg, 2));
-                $out[strtolower($k)] = trim($v, '"\'');
-            } else {
-                $out[strtolower($seg)] = true;
-            }
-        }
-
-        return $out;
     }
 
     private function readCache(string $key): mixed
     {
         try {
-            return $this->store->get($key);
+            $item = $this->store->getItem($key);
+
+            return $item->isHit() ? $item->get() : null;
         } catch (\Throwable) {
-            // A response cache is an optimization. Backend races/outages must
-            // degrade to a miss instead of taking the application down.
             return null;
         }
     }
 
-    /**
-     * Resolve request header/value pairs that participate in cache variance.
-     *
-     * Sources (in priority order):
-     * - Explicit precomputed `vary.pairs` attribute (if supplied by caller).
-     * - Pending vary tokens (`__vary_tokens`) registered by VaryAccumulatorMiddleware::add().
-     * - Fallback configured default vary headers when neither attribute is present.
-     *
-     * @return array<string,string>
-     */
+    /** @return array<string,string> */
     private function resolveVaryPairs(Request $req): array
     {
-        /** @var array<string,string> $pairs */
-        $pairs = (array) $req->getAttribute('vary.pairs');
-        if ($pairs !== []) {
-            return $pairs;
+        $explicit = $req->getAttribute('vary.pairs');
+        if (is_array($explicit) && $explicit !== []) {
+            $pairs = [];
+            foreach ($explicit as $name => $value) {
+                if (is_string($name) && is_string($value)) {
+                    $pairs[$name] = $value;
+                }
+            }
+            if ($pairs !== []) {
+                return $pairs;
+            }
         }
 
-        // Internal token queue used by VaryAccumulatorMiddleware.
-        $pairs = $this->appendVaryTokens($pairs, $req, $req->getAttribute('__vary_tokens'));
-        if ($pairs !== []) {
-            return $pairs;
+        $context = $req->getAttribute(VaryContext::ATTRIBUTE);
+        $tokens = $context instanceof VaryContext ? $context->all() : [];
+        if ($tokens === []) {
+            $tokens = $this->defaultVary;
         }
 
-        foreach ($this->defaultVary as $name) {
-            $canonical = $this->canonicalHeaderToken($name);
-            if ($canonical !== '') {
-                $pairs[$canonical] = $req->getHeaderLine($canonical);
+        $pairs = [];
+        foreach ($tokens as $token) {
+            $name = $this->canonicalHeaderToken($token);
+            if ($name !== '') {
+                $pairs[$name] = $req->getHeaderLine($name);
             }
         }
 
         return $pairs;
     }
 
-    private function stringFromMixed(mixed $value, string $default): string
+    private function storeTtl(Request $request, Response $response): int
     {
-        if (\is_string($value)) {
-            return $value;
+        if ($response->isStreaming() || $response->getStringBody() === null) {
+            return 0;
         }
-        if (\is_scalar($value)) {
-            return (string) $value;
+        $size = $response->getBodySize();
+        if ($size !== null && $size > $this->maxBodyBytes) {
+            return 0;
+        }
+        if (!$this->hasSafeVary($response, $request)) {
+            return 0;
         }
 
-        return $default;
+        return $this->policy->storeTtl(
+            $request,
+            $response,
+            $this->ttlSeconds,
+            $this->respectResponseCacheControl,
+            $this->avoidSetCookie,
+        );
     }
 
-    /**
-     * @param array<mixed,mixed> $data
-     */
+    private function stringFromMixed(mixed $value, string $default): string
+    {
+        if (is_string($value)) {
+            return $value;
+        }
+
+        return is_scalar($value) ? (string) $value : $default;
+    }
+
+    /** @param array<mixed,mixed> $data */
     private function unpack(array $data): Response
     {
-        $headers = $this->normalizeHeaders($data['h'] ?? []);
-
         return new Response(
             $this->intFromMixed($data['s'] ?? null, StatusEnum::OK->value),
-            new Stream($this->stringFromMixed($data['b'] ?? '', '')),
-            $headers,
+            $this->stringFromMixed($data['b'] ?? '', ''),
+            $this->normalizeHeaders($data['h'] ?? []),
             $this->stringFromMixed($data['pv'] ?? '1.1', '1.1'),
             $this->stringFromMixed($data['rp'] ?? '', ''),
         );
     }
 
-    /**
-     * @param array<string,mixed> $payload
-     */
+    /** @param array<string,mixed> $payload */
     private function writeCache(string $key, array $payload, int $ttl): void
     {
         try {
-            $this->store->set($key, $payload, $ttl);
+            $item = $this->store->getItem($key);
+            $item->set($payload);
+            $item->expiresAfter($ttl);
+            $this->store->save($item);
         } catch (\Throwable) {
-            // The downstream response is already valid; failed persistence is
-            // therefore safely treated as an uncached response.
+            // Response caching is an optimization; backend failure degrades to a miss.
         }
     }
 }
