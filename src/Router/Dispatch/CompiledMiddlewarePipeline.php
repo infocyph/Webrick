@@ -16,12 +16,17 @@ final readonly class CompiledMiddlewarePipeline
     /** @var Closure(Request):Response */
     private Closure $pipeline;
 
+    private bool $requiresScope;
+
     /** @param list<mixed> $middleware @param Closure(Request):Response $terminal */
     public function __construct(array $middleware, Closure $terminal, InterMixRuntime $runtime)
     {
         $invokers = [];
+        $requiresScope = false;
         foreach ($middleware as $descriptor) {
-            $invokers[] = self::compileInvoker($runtime, $descriptor);
+            [$invoke, $runtimeBacked] = self::compileInvoker($runtime, $descriptor);
+            $invokers[] = $invoke;
+            $requiresScope = $requiresScope || $runtimeBacked;
         }
 
         $next = $terminal;
@@ -37,6 +42,7 @@ final readonly class CompiledMiddlewarePipeline
             };
         }
         $this->pipeline = $next;
+        $this->requiresScope = $requiresScope;
     }
 
     public function handle(Request $request): Response
@@ -44,22 +50,33 @@ final readonly class CompiledMiddlewarePipeline
         return ($this->pipeline)($request);
     }
 
-    /** @return Closure(Request,Closure):mixed */
-    private static function compileInvoker(InterMixRuntime $runtime, mixed $descriptor): Closure
+    public function requiresScope(): bool
+    {
+        return $this->requiresScope;
+    }
+
+    /** @return array{0:Closure(Request,Closure):mixed,1:bool} */
+    private static function compileInvoker(InterMixRuntime $runtime, mixed $descriptor): array
     {
         if (is_callable($descriptor) && (!is_string($descriptor) || function_exists($descriptor))) {
             $callable = $descriptor;
 
-            return static fn(Request $request, Closure $next): mixed => $callable($request, $next);
+            return [
+                static fn(Request $request, Closure $next): mixed => $callable($request, $next),
+                false,
+            ];
         }
 
         if (!is_string($descriptor) && !is_array($descriptor)) {
             throw new UnexpectedValueException('Compiled middleware descriptor is not invokable.');
         }
 
-        return static fn(Request $request, Closure $next): mixed => $runtime->resolveNow(
-            $descriptor,
-            ['request' => $request, 'next' => $next],
-        );
+        return [
+            static fn(Request $request, Closure $next): mixed => $runtime->resolveNow(
+                $descriptor,
+                ['request' => $request, 'next' => $next],
+            ),
+            true,
+        ];
     }
 }
