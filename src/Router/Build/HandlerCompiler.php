@@ -34,7 +34,14 @@ final class HandlerCompiler
             handler: $handler,
             middleware: $middleware,
             routeArguments: $routeArguments,
-            capabilities: $this->capabilities($route, $reflection, $kind, $terminalKind, $routeArguments),
+            capabilities: $this->capabilities(
+                $route,
+                $reflection,
+                $kind,
+                $terminalKind,
+                $this->middlewareRequiresScope($middleware),
+                $routeArguments,
+            ),
         );
     }
 
@@ -56,18 +63,32 @@ final class HandlerCompiler
     }
 
     /** @param list<string> $routeArguments */
+    private function allRequiredParametersAreRouteArguments(ReflectionFunctionAbstract $reflection, array $routeArguments): bool
+    {
+        $set = array_fill_keys($routeArguments, true);
+        foreach ($reflection->getParameters() as $parameter) {
+            if (!$parameter->isOptional() && !isset($set[$parameter->getName()])) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /** @param list<string> $routeArguments */
     private function capabilities(
         CompiledRoute $route,
         ReflectionFunctionAbstract $reflection,
         ExecutionKind $kind,
         ExecutionKind $terminalKind,
+        bool $middlewareRequiresScope,
         array $routeArguments,
     ): int {
         $mask = 0;
         if ($this->reflectionNeedsRequest($reflection) || $kind === ExecutionKind::MIDDLEWARE_PIPELINE) {
             $mask |= RouteCapability::REQUEST;
         }
-        if ($terminalKind === ExecutionKind::COMPILED_INVOKE || $kind === ExecutionKind::MIDDLEWARE_PIPELINE) {
+        if ($terminalKind === ExecutionKind::COMPILED_INVOKE || $middlewareRequiresScope) {
             $mask |= RouteCapability::SCOPE;
         }
         if ($kind === ExecutionKind::MIDDLEWARE_PIPELINE) {
@@ -89,17 +110,16 @@ final class HandlerCompiler
         return $mask;
     }
 
-    /** @param list<string> $routeArguments */
-    private function allRequiredParametersAreRouteArguments(ReflectionFunctionAbstract $reflection, array $routeArguments): bool
+    /** @param list<mixed> $middleware */
+    private function middlewareRequiresScope(array $middleware): bool
     {
-        $set = array_fill_keys($routeArguments, true);
-        foreach ($reflection->getParameters() as $parameter) {
-            if (!$parameter->isOptional() && !isset($set[$parameter->getName()])) {
-                return false;
+        foreach ($middleware as $descriptor) {
+            if (!is_callable($descriptor) || (is_string($descriptor) && !function_exists($descriptor))) {
+                return true;
             }
         }
 
-        return true;
+        return false;
     }
 
     /**
@@ -230,7 +250,6 @@ final class HandlerCompiler
         ReflectionFunctionAbstract $reflection,
         array $routeArguments,
     ): ExecutionKind {
-        // A non-static controller descriptor needs InterMix to construct the target.
         if (!is_callable($handler)) {
             return ExecutionKind::COMPILED_INVOKE;
         }
