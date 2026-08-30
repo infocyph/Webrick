@@ -23,11 +23,17 @@ final readonly class ExecutionPlan
         public array $routeArguments,
         public int $capabilities,
     ) {
+        if ($routeId === '') {
+            throw new \InvalidArgumentException('Execution-plan route ID must not be empty.');
+        }
         if ($terminalKind === ExecutionKind::MIDDLEWARE_PIPELINE) {
             throw new \InvalidArgumentException('Execution-plan terminal kind cannot be a middleware pipeline.');
         }
         if ($kind !== ExecutionKind::MIDDLEWARE_PIPELINE && $kind !== $terminalKind) {
             throw new \InvalidArgumentException('Non-pipeline execution kind must equal its terminal kind.');
+        }
+        if ($terminalKind !== ExecutionKind::COMPILED_INVOKE && !is_callable($handler)) {
+            throw new \InvalidArgumentException('Direct execution plans require a callable handler.');
         }
     }
 
@@ -92,14 +98,18 @@ final readonly class ExecutionPlan
             $arguments[] = $argument;
         }
 
-        return new self(
-            routeId: $routeId,
-            kind: $executionKind,
-            terminalKind: $terminalExecutionKind,
-            handler: ArtifactValueCodec::decode($payload['handler'] ?? null),
-            middleware: $middleware,
-            routeArguments: $arguments,
-            capabilities: $capabilities,
-        );
+        try {
+            return new self(
+                routeId: $routeId,
+                kind: $executionKind,
+                terminalKind: $terminalExecutionKind,
+                handler: ArtifactValueCodec::decode($payload['handler'] ?? null),
+                middleware: $middleware,
+                routeArguments: $arguments,
+                capabilities: $capabilities,
+            );
+        } catch (\InvalidArgumentException $exception) {
+            throw new UnexpectedValueException('Invalid execution-plan invariant.', 0, $exception);
+        }
     }
 }

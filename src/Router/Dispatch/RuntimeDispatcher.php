@@ -68,10 +68,12 @@ final class RuntimeDispatcher
     /** @param array<string,string> $vars */
     private function invokeTerminal(ExecutionPlan $plan, Request $request, array $vars): Response
     {
+        /** @var callable $direct */
+        $direct = $plan->handler;
         $result = match ($plan->terminalKind) {
-            ExecutionKind::DIRECT_ZERO_ARG => $this->directCallable($plan)(),
-            ExecutionKind::DIRECT_ROUTE_ARGS => $this->directCallable($plan)(...$this->orderedRouteArguments($plan, $vars)),
-            ExecutionKind::DIRECT_REQUEST => $this->directCallable($plan)($request),
+            ExecutionKind::DIRECT_ZERO_ARG => $direct(),
+            ExecutionKind::DIRECT_ROUTE_ARGS => $direct(...$this->orderedRouteArguments($plan, $vars)),
+            ExecutionKind::DIRECT_REQUEST => $direct($request),
             ExecutionKind::COMPILED_INVOKE => $this->runtime->resolveNow(
                 $plan->handler,
                 $plan->requiresRequest() ? ($vars + ['request' => $request]) : $vars,
@@ -84,16 +86,6 @@ final class RuntimeDispatcher
         return $result instanceof Response
             ? $result
             : Response::json($this->normalizeResponsePayload($result));
-    }
-
-    /** @return callable */
-    private function directCallable(ExecutionPlan $plan): callable
-    {
-        if (!is_callable($plan->handler)) {
-            throw new UnexpectedValueException('Compiled direct handler is not callable.');
-        }
-
-        return $plan->handler;
     }
 
     /** @param array<string,string> $vars @return list<string> */
