@@ -9,6 +9,7 @@ use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Build\CompiledRouterArtifact;
 use Infocyph\Webrick\Router\Build\ExecutionKind;
 use Infocyph\Webrick\Router\Build\ExecutionPlan;
+use Infocyph\Webrick\Router\Build\RouteIdentity;
 use Infocyph\Webrick\Runtime\InterMixRuntime;
 use JsonSerializable;
 use UnexpectedValueException;
@@ -25,19 +26,30 @@ final class RuntimeDispatcher
     /** @var list<mixed> */
     private array $preGlobal;
 
+    /** @var array<string,array<string,mixed>> */
+    private array $routeAttributes = [];
+
     public function __construct(
         private readonly InterMixRuntime $runtime,
         CompiledRouterArtifact $artifact,
     ) {
         $this->preGlobal = $this->withTagged($artifact->preGlobal, $artifact->preGlobalTags);
         $this->postGlobal = $this->withTagged($artifact->postGlobal, $artifact->postGlobalTags);
+        $this->prepareRouteAttributes($artifact);
         $this->preparePipelines($artifact);
     }
 
     /** @param array<string,string> $vars */
     public function dispatch(ExecutionPlan $plan, Request $request, array $vars): Response
     {
-        $request = $vars === [] ? $request : $request->withAttributes(['route_params' => $vars]);
+        $attributes = $this->routeAttributes[$plan->routeId] ?? [];
+        if ($vars !== []) {
+            $attributes['route_params'] = $vars;
+        }
+        if ($attributes !== []) {
+            $request = $request->withAttributes($attributes);
+        }
+
         $pipeline = $this->pipelines[$plan->routeId] ?? null;
 
         return $pipeline instanceof CompiledMiddlewarePipeline
@@ -164,6 +176,24 @@ final class RuntimeDispatcher
                 ),
                 $this->runtime,
             );
+        }
+    }
+
+    private function prepareRouteAttributes(CompiledRouterArtifact $artifact): void
+    {
+        foreach ($artifact->routes as $route) {
+            $attributes = [];
+            $cors = $route->getCorsPolicy();
+            if ($cors !== null) {
+                $attributes['cors_policy'] = $cors;
+            }
+            $produces = $route->getProduces();
+            if ($produces !== null) {
+                $attributes['produces'] = $produces;
+            }
+            if ($attributes !== []) {
+                $this->routeAttributes[RouteIdentity::forRoute($route)] = $attributes;
+            }
         }
     }
 
