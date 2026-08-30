@@ -669,15 +669,6 @@ final class RouterKernel
         return $normalized;
     }
 
-    private function normalizeSignKey(mixed $value): ?string
-    {
-        if (!\is_string($value) || $value === '') {
-            return null;
-        }
-
-        return $value;
-    }
-
     private function normalizeSignedDefaultTtl(mixed $value): ?int
     {
         if (\is_int($value)) {
@@ -702,6 +693,15 @@ final class RouterKernel
         }
 
         return null;
+    }
+
+    private function normalizeSignKey(mixed $value): ?string
+    {
+        if (!\is_string($value) || $value === '') {
+            return null;
+        }
+
+        return $value;
     }
 
     private function normalizeUrlBaseUri(mixed $value): string
