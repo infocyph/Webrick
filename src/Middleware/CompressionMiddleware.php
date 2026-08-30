@@ -85,16 +85,12 @@ final readonly class CompressionMiddleware
             return $resp;
         }
 
+        $encodedResponse = $this->applyEncoded($resp, $encoded, $algorithm);
         if ($this->forceAddVary) {
-            VaryAccumulatorMiddleware::add($req, 'Accept-Encoding');
+            $encodedResponse = $encodedResponse->withSmartHeader('Vary', 'Accept-Encoding');
         }
 
-        return $this->adjustValidators(
-            $req,
-            $this->applyEncoded($resp, $encoded, $algorithm),
-            $encoded,
-            $algorithm,
-        );
+        return $this->adjustValidators($req, $encodedResponse, $encoded, $algorithm);
     }
 
     private function adjustValidators(Request $req, Response $resp, string $encodedBytes, string $algorithm): Response
