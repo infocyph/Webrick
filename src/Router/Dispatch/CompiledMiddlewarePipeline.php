@@ -10,7 +10,7 @@ use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Runtime\InterMixRuntime;
 use UnexpectedValueException;
 
-/** Production middleware pipeline built once from compiled descriptors. */
+/** Production middleware pipeline fully prepared once at worker/process boot. */
 final readonly class CompiledMiddlewarePipeline
 {
     /** @var Closure(Request):Response */
@@ -19,11 +19,16 @@ final readonly class CompiledMiddlewarePipeline
     /** @param list<mixed> $middleware @param Closure(Request):Response $terminal */
     public function __construct(array $middleware, Closure $terminal, InterMixRuntime $runtime)
     {
+        $invokers = [];
+        foreach ($middleware as $descriptor) {
+            $invokers[] = self::compileInvoker($runtime, $descriptor);
+        }
+
         $next = $terminal;
-        foreach (array_reverse($middleware) as $descriptor) {
+        foreach (array_reverse($invokers) as $invoke) {
             $following = $next;
-            $next = static function (Request $request) use ($descriptor, $following, $runtime): Response {
-                $result = self::invokeMiddleware($runtime, $descriptor, $request, $following);
+            $next = static function (Request $request) use ($invoke, $following): Response {
+                $result = $invoke($request, $following);
                 if (!$result instanceof Response) {
                     throw new UnexpectedValueException('Compiled middleware must return ' . Response::class . '.');
                 }
@@ -39,19 +44,22 @@ final readonly class CompiledMiddlewarePipeline
         return ($this->pipeline)($request);
     }
 
-    private static function invokeMiddleware(
-        InterMixRuntime $runtime,
-        mixed $descriptor,
-        Request $request,
-        Closure $next,
-    ): mixed {
-        if (!is_string($descriptor) && is_callable($descriptor)) {
-            return $descriptor($request, $next);
+    /** @return Closure(Request,Closure):mixed */
+    private static function compileInvoker(InterMixRuntime $runtime, mixed $descriptor): Closure
+    {
+        if (is_callable($descriptor) && (!is_string($descriptor) || function_exists($descriptor))) {
+            $callable = $descriptor;
+
+            return static fn(Request $request, Closure $next): mixed => $callable($request, $next);
         }
+
         if (!is_string($descriptor) && !is_array($descriptor)) {
             throw new UnexpectedValueException('Compiled middleware descriptor is not invokable.');
         }
 
-        return $runtime->resolveNow($descriptor, ['request' => $request, 'next' => $next]);
+        return static fn(Request $request, Closure $next): mixed => $runtime->resolveNow(
+            $descriptor,
+            ['request' => $request, 'next' => $next],
+        );
     }
 }
