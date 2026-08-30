@@ -7,6 +7,8 @@ namespace Infocyph\Webrick\Runtime\Http;
 /** Immutable transport/runtime capabilities resolved once at bootstrap. */
 final readonly class RuntimeCapabilities
 {
+    public const string ATTRIBUTE = 'webrick.runtime_capabilities';
+
     public function __construct(
         public string $name,
         public bool $persistent = false,
