@@ -13,6 +13,9 @@ final readonly class CompiledRouterArtifact
 {
     public const int FORMAT_VERSION = 1;
 
+    /** @var array<int,ExecutionPlan> */
+    private array $plansByIndex;
+
     /**
      * @param list<CompiledRoute> $routes
      * @param array<string,ExecutionPlan> $plans
@@ -34,7 +37,19 @@ final readonly class CompiledRouterArtifact
         public string $environment,
         public string $configFingerprint,
         public string $artifactFingerprint,
-    ) {}
+    ) {
+        $plansByIndex = [];
+        foreach ($routes as $route) {
+            $index = $route->getIndex();
+            if (isset($plansByIndex[$index])) {
+                throw new UnexpectedValueException('Duplicate compiled route index in router artifact.');
+            }
+            $routeId = RouteIdentity::forRoute($route);
+            $plansByIndex[$index] = $plans[$routeId]
+                ?? throw new UnexpectedValueException('Missing route execution plan.');
+        }
+        $this->plansByIndex = $plansByIndex;
+    }
 
     /** @param array<string,mixed> $payload */
     public static function fromPayload(array $payload): self
@@ -128,7 +143,7 @@ final readonly class CompiledRouterArtifact
 
     public function planFor(CompiledRoute $route): ExecutionPlan
     {
-        return $this->plans[RouteIdentity::forRoute($route)]
+        return $this->plansByIndex[$route->getIndex()]
             ?? throw new UnexpectedValueException('Matched route has no compiled execution plan.');
     }
 
