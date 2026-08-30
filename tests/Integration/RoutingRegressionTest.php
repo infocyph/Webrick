@@ -39,20 +39,15 @@ describe('Routing Regressions', function () {
     });
 
     it('answers automatic OPTIONS without executing a business handler', function (Closure $matcherFactory) {
-        $calls = 0;
         $kernel = RouterKernel::bootWithRegistrar(
             log: new NullLogger,
             matcher: $matcherFactory(),
-            register: static function (Registrar $r) use (&$calls): void {
-                $r->get('/resource', static function () use (&$calls): Response {
-                    $calls++;
-
-                    return Response::plaintext('get', 200);
+            register: static function (Registrar $r): void {
+                $r->get('/resource', static function (): Response {
+                    throw new RuntimeException('GET business handler must not execute for automatic OPTIONS.');
                 });
-                $r->post('/resource', static function () use (&$calls): Response {
-                    $calls++;
-
-                    return Response::plaintext('post', 200);
+                $r->post('/resource', static function (): Response {
+                    throw new RuntimeException('POST business handler must not execute for automatic OPTIONS.');
                 });
             },
         );
@@ -61,30 +56,23 @@ describe('Routing Regressions', function () {
         $allow = array_map(trim(...), explode(',', $response->getHeaderLine('Allow')));
 
         expect($response)->toHaveStatus(204)
-            ->and($calls)->toBe(0)
             ->and($allow)->toContain('GET', 'HEAD', 'POST', 'OPTIONS');
     })->with('routing regression matchers');
 
     it('honors an explicit OPTIONS route', function (Closure $matcherFactory) {
-        $calls = 0;
         $kernel = RouterKernel::bootWithRegistrar(
             log: new NullLogger,
             matcher: $matcherFactory(),
-            register: static function (Registrar $r) use (&$calls): void {
+            register: static function (Registrar $r): void {
                 $r->get('/resource', static fn(): Response => Response::plaintext('get', 200));
-                $r->options('/resource', static function () use (&$calls): Response {
-                    $calls++;
-
-                    return Response::plaintext('explicit-options', 200);
-                });
+                $r->options('/resource', static fn(): Response => Response::plaintext('explicit-options', 200));
             },
         );
 
         $response = $kernel->handle(mockRequest('OPTIONS', '/resource'));
 
         expect($response)->toHaveStatus(200)
-            ->and((string) $response->getBody())->toBe('explicit-options')
-            ->and($calls)->toBe(1);
+            ->and((string) $response->getBody())->toBe('explicit-options');
     })->with('routing regression matchers');
 
     it('does not expose throwable details with the default kernel error boundary', function () {
