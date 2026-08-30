@@ -1,6 +1,5 @@
 <?php
 
-// src/Response/Emitter/RoadRunnerEmitter.php
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Response\Emitter;
@@ -10,52 +9,37 @@ use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 
-/**
- * Minimal adapter for RoadRunner.
- *
- * Requires Request attribute 'roadrunner.respond' (callable):
- *
- * Example:
- * function (int $status, array $headers, string|iterable $body): void
- */
+/** Minimal RoadRunner response bridge. */
 final class RoadRunnerEmitter implements EmitterInterface
 {
-    /**
-     * Emits a response to the current IO target.
-     *
-     * Requires Request attribute 'roadrunner.respond' (callable):
-     *
-     * Example:
-     * function (int $status, array $headers, string|iterable $body): void
-     *
-     * @throws \RuntimeException
-     */
     public function emit(Response $response, ?Request $request = null): void
     {
-        if ($request === null) {
+        if (!$request instanceof Request) {
             throw new \RuntimeException('RoadRunnerEmitter requires a Request instance.');
         }
 
         $respond = $request->getAttribute('roadrunner.respond');
-        if (!\is_callable($respond)) {
+        if (!is_callable($respond)) {
             throw new \RuntimeException('RoadRunnerEmitter requires Request attribute "roadrunner.respond" callable.');
         }
 
         $status = $response->getStatusCode();
         $headers = $response->getHeaders();
         $method = HttpMethodEnum::normalize($request->getMethod());
-        $noBody = \in_array($status, [StatusEnum::NO_CONTENT->value, StatusEnum::NOT_MODIFIED->value], true)
+        $noBody = in_array($status, [StatusEnum::NO_CONTENT->value, StatusEnum::NOT_MODIFIED->value], true)
             || $method === HttpMethodEnum::HEAD->value;
 
         if ($response->isStreaming()) {
-            $fn = $response->getProducer();
-            $out = $fn ? $fn() : [];
-            // Respect HEAD / no-body statuses by responding with an empty payload
-            $respond($status, $headers, $noBody ? '' : $out);
-
+            $producer = $response->getProducer();
+            $output = $producer ? $producer() : [];
+            $respond($status, $headers, $noBody ? '' : $output);
             return;
         }
 
-        $respond($status, $headers, $noBody ? '' : (string) $response->getBody());
+        $body = $response->getStringBody();
+        if ($body === null) {
+            $body = (string) $response->getBody();
+        }
+        $respond($status, $headers, $noBody ? '' : $body);
     }
 }
