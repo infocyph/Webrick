@@ -181,13 +181,11 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         $segCount = \count($segments);
         $key = $route->getPath();
 
-        if (!isset($dynamicTmp[$segCount][$key])) {
-            $dynamicTmp[$segCount][$key] = [
-                'segments' => $segments,
-                'params' => $this->extractDynamicParams($segments),
-                'verbs' => [],
-            ];
-        }
+        $dynamicTmp[$segCount][$key] ??= [
+            'segments' => $segments,
+            'params' => $this->extractDynamicParams($segments),
+            'verbs' => [],
+        ];
 
         $dynamicTmp[$segCount][$key]['verbs'][$verb] = $idx;
     }
@@ -341,10 +339,7 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
     private function ensureCompiledMatcher(): Closure
     {
         $this->ensureCacheLoaded();
-
-        if ($this->compiledFn === null) {
-            $this->compiledFn = $this->compileClosureFromCode($this->buildMatcherCode());
-        }
+        $this->compiledFn ??= $this->compileClosureFromCode($this->buildMatcherCode());
 
         return $this->compiledFn;
     }
