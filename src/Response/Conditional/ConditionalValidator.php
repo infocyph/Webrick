@@ -9,16 +9,13 @@ use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Request\Request;
 
 /**
- * Unified conditional-header evaluator  (RFC 9110 §13).
+ * Unified conditional-header evaluator (RFC 9110 §13).
  *
- * – Handles    If-Match, If-None-Match, If-Modified-Since,
- *              If-Unmodified-Since and If-Range.
- * – No IO; it only inspects request headers against metadata
- *   you provide (ETag / last-modified Unix-epoch).
+ * Handles If-Match, If-None-Match, If-Modified-Since,
+ * If-Unmodified-Since and If-Range without performing IO.
  */
 final readonly class ConditionalValidator
 {
-    /* result codes */
     private const int HTTP_NOT_MODIFIED = StatusEnum::NOT_MODIFIED->value;
 
     private const int HTTP_PRECONDITION = StatusEnum::PRECONDITION_FAILED->value;
@@ -31,11 +28,25 @@ final readonly class ConditionalValidator
     public function evaluate(Request $req): Outcome
     {
         $echo = $this->buildEchoHeaders();
+        $ifMatchPresent = $req->getHeaderLine('If-Match') !== '';
 
-        if ($this->failsIfMatch($req) || $this->failsIfUnmodSince($req)) {
+        // RFC 9110 §13.2.2: If-Match takes precedence over If-Unmodified-Since.
+        if ($this->failsIfMatch($req) || (!$ifMatchPresent && $this->failsIfUnmodSince($req))) {
             return new Outcome(Outcome::FAIL, self::HTTP_PRECONDITION, $echo);
         }
-        if ($this->hitsIfNoneMatch($req) || $this->hitsIfModSince($req)) {
+
+        // A matching If-None-Match is 304 for GET/HEAD and 412 for unsafe methods.
+        if ($this->hitsIfNoneMatch($req)) {
+            $method = HttpMethodEnum::normalize($req->getMethod());
+            if ($method === HttpMethodEnum::GET->value || $method === HttpMethodEnum::HEAD->value) {
+                return new Outcome(Outcome::HIT, self::HTTP_NOT_MODIFIED, $echo);
+            }
+
+            return new Outcome(Outcome::FAIL, self::HTTP_PRECONDITION, $echo);
+        }
+
+        // If-Modified-Since is evaluated only when If-None-Match is absent.
+        if ($this->hitsIfModSince($req)) {
             return new Outcome(Outcome::HIT, self::HTTP_NOT_MODIFIED, $echo);
         }
 
@@ -143,7 +154,7 @@ final readonly class ConditionalValidator
         }
         if ($this->etag === null) {
             return true;
-        } // no current tag ⇒ fail
+        }
 
         return !$this->etagEquals($this->etag, $candidates, true);
     }
@@ -168,13 +179,6 @@ final readonly class ConditionalValidator
     /**
      * Check if the request has a valid If-Modified-Since header
      * and the resource has not been modified since then.
-     *
-     * Returns true if the request has a valid If-Modified-Since header
-     * and the resource has not been modified since then, false otherwise.
-     *
-     * @param Request $req The request to evaluate.
-     * @return bool Whether the request has a valid If-Modified-Since header
-     *              and the resource has not been modified since then.
      */
     private function hitsIfModSince(Request $req): bool
     {
@@ -183,7 +187,7 @@ final readonly class ConditionalValidator
             return false;
         }
         if ($req->getHeaderLine('If-None-Match') !== '') {
-            return false; // IMS ignored when INM present
+            return false;
         }
         if ($this->lastModified === null) {
             return false;
@@ -194,22 +198,12 @@ final readonly class ConditionalValidator
     }
 
     /**
-     * Check if the request has a valid If-None-Match header
-     * and the resource has the same ETag as one of the candidates.
+     * Check whether If-None-Match selects the current representation.
      *
-     * Returns true if the request has a valid If-None-Match header
-     * and the resource has the same ETag as one of the candidates, false otherwise.
-     *
-     * @param Request $req The request to evaluate.
-     * @return bool Whether the request has a valid If-None-Match header
-     *              and the resource has the same ETag as one of the candidates.
+     * Method-specific 304/412 behavior is decided by evaluate().
      */
     private function hitsIfNoneMatch(Request $req): bool
     {
-        $method = HttpMethodEnum::normalize($req->getMethod());
-        if ($method !== HttpMethodEnum::GET->value && $method !== HttpMethodEnum::HEAD->value) {
-            return false;
-        }
         $candidates = $this->tokenize($req->getHeaderLine('If-None-Match'));
 
         return $candidates !== null
@@ -218,12 +212,7 @@ final readonly class ConditionalValidator
     }
 
     /**
-     * Parses an HTTP date string (RFC 7231) into a Unix epoch.
-     *
-     * Returns null if the input string is empty or invalid.
-     *
-     * @param string $httpDate HTTP date string (e.g. "Fri, 12 Jan 2018 08:00:00 GMT")
-     * @return int|null Unix epoch or null if invalid
+     * Parses an HTTP date string into a Unix epoch.
      */
     private function parseDate(string $httpDate): ?int
     {
@@ -237,12 +226,7 @@ final readonly class ConditionalValidator
     }
 
     /**
-     * Tokenizes a comma-separated list of strings into an array of strings.
-     *
-     * If the list is empty, returns null.
-     *
-     * @param string $list The list of strings to tokenize.
-     * @return list<string>|null The tokenized list of strings, or null if the list is empty.
+     * @return list<string>|null
      */
     private function tokenize(string $list): ?array
     {
