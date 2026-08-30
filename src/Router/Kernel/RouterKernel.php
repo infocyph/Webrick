@@ -147,7 +147,7 @@ final class RouterKernel
         private readonly bool $requestScopeEnabled = true,
         ?Container $container = null,
         ?Invoker $invoker = null,
-        private readonly bool $debug = true,
+        private readonly bool $debug = false,
         private readonly bool $capturePhpErrors = true,
     ) {
         $this->routeCache = ($routeCache !== '' ? $routeCache : null);
@@ -209,7 +209,7 @@ final class RouterKernel
         bool $requestScopeEnabled = true,
         ?Container $container = null,
         ?Invoker $invoker = null,
-        bool $debug = true,
+        bool $debug = false,
         bool $capturePhpErrors = true,
     ): self {
         $normalizedCache = ($routeCache !== null && $routeCache !== '') ? $routeCache : null;
@@ -254,7 +254,15 @@ final class RouterKernel
     {
         $request ??= Request::fromGlobals();
         $runner = function (Request $req): Response {
-            [$route, $vars] = $this->matchRoute($req);
+            try {
+                [$route, $vars] = $this->matchRoute($req);
+            } catch (MethodNotAllowedException $e) {
+                if (self::routingMethod($req) !== HttpMethodEnum::OPTIONS->value) {
+                    throw $e;
+                }
+
+                return $this->automaticOptionsResponse($e->allowed());
+            }
 
             return $this->dispatcher->dispatch($route, $req, $vars);
         };
@@ -549,6 +557,31 @@ final class RouterKernel
     }
 
     /**
+     * Return a standards-oriented automatic OPTIONS response from a matcher
+     * method-mismatch result without dispatching an application route.
+     *
+     * @param array<int,string> $allowed
+     */
+    private function automaticOptionsResponse(array $allowed): Response
+    {
+        $methods = [];
+        foreach ($allowed as $method) {
+            $method = HttpMethodEnum::normalize($method);
+            if ($method !== '') {
+                $methods[$method] = true;
+            }
+        }
+        if (isset($methods[HttpMethodEnum::GET->value])) {
+            $methods[HttpMethodEnum::HEAD->value] = true;
+        }
+        $methods[HttpMethodEnum::OPTIONS->value] = true;
+
+        return Response::noContent([
+            'Allow' => implode(', ', array_keys($methods)),
+        ]);
+    }
+
+    /**
      * Match the incoming request to a compiled route using the matcher.
      *
      * Returns a two-element tuple: [CompiledRoute, array<string,mixed> vars].
@@ -557,10 +590,7 @@ final class RouterKernel
      */
     private function matchRoute(Request $req): array
     {
-        // Respect method overrides for routing while preserving explicit HEAD routes.
-        $rawMethod = HttpMethodEnum::normalize($req->getMethod());
-        $effectiveMethod = HttpMethodEnum::normalize($req->getEffectiveMethod());
-        $method = ($rawMethod === HttpMethodEnum::HEAD->value) ? HttpMethodEnum::HEAD->value : $effectiveMethod;
+        $method = self::routingMethod($req);
         $uri = $req->getUri();
         $host = self::normaliseHost($uri->getHost());
         $path = $uri->getPath() ?: '/';
@@ -569,7 +599,42 @@ final class RouterKernel
             throw new \RuntimeException('Method and host must be non-empty for matcher.');
         }
 
-        return $this->matcher->match($method, $host, $path);
+        $hit = $this->matcher->match($method, $host, $path);
+
+        // Generated caches from the current format can still synthesize OPTIONS
+        // as an arbitrary route. Never dispatch that route. Probe the same target
+        // with an impossible internal verb so the matcher returns the real Allow set.
+        if (
+            $method === HttpMethodEnum::OPTIONS->value
+            && HttpMethodEnum::normalize($hit[0]->getMethod()) !== HttpMethodEnum::OPTIONS->value
+        ) {
+            try {
+                $this->matcher->match('__WEBRICK_AUTO_OPTIONS__', $host, $path);
+            } catch (MethodNotAllowedException $e) {
+                throw $e;
+            }
+
+            throw new MethodNotAllowedException(
+                HttpMethodEnum::OPTIONS->value,
+                $path,
+                [$hit[0]->getMethod()],
+            );
+        }
+
+        return $hit;
+    }
+
+    /**
+     * Resolve the request method used for routing while preserving explicit HEAD.
+     */
+    private static function routingMethod(Request $req): string
+    {
+        $rawMethod = HttpMethodEnum::normalize($req->getMethod());
+        $effectiveMethod = HttpMethodEnum::normalize($req->getEffectiveMethod());
+
+        return $rawMethod === HttpMethodEnum::HEAD->value
+            ? HttpMethodEnum::HEAD->value
+            : $effectiveMethod;
     }
 
     /**
