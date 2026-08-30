@@ -40,17 +40,10 @@ final readonly class RoutingInput
     {
         /** @var array<string,mixed> $server */
         $server = $_SERVER;
-        $host = '*';
-        if ($withHost) {
-            [$rawHost] = UriServerParams::detectHostPort($server);
-            $host = self::normalizeHost($rawHost);
-        }
+        /** @var array<string,mixed> $form */
+        $form = $_POST;
 
-        return new self(
-            method: self::routingMethodFromGlobals($server),
-            path: self::normalizeRequestPath(UriServerParams::detectRequestUri($server)),
-            host: $host,
-        );
+        return self::fromServer($server, $withHost, $form);
     }
 
     public static function fromRequest(Request $request, bool $withHost): self
@@ -63,6 +56,28 @@ final readonly class RoutingInput
         $host = $withHost ? self::normalizeHost($request->getUri()->getHost()) : '*';
 
         return new self($method, $path, $host);
+    }
+
+    /**
+     * Build routing preflight from explicit transport data without touching
+     * process-global request state.
+     *
+     * @param array<string,mixed> $server
+     * @param array<string,mixed> $form
+     */
+    public static function fromServer(array $server, bool $withHost, array $form = []): self
+    {
+        $host = '*';
+        if ($withHost) {
+            [$rawHost] = UriServerParams::detectHostPort($server);
+            $host = self::normalizeHost($rawHost);
+        }
+
+        return new self(
+            method: self::routingMethodFromServer($server, $form),
+            path: self::normalizeRequestPath(UriServerParams::detectRequestUri($server)),
+            host: $host,
+        );
     }
 
     /** @param array<string,mixed> $server */
@@ -132,8 +147,11 @@ final readonly class RoutingInput
         return $path === '' ? '/' : $path;
     }
 
-    /** @param array<string,mixed> $server */
-    private static function routingMethodFromGlobals(array $server): string
+    /**
+     * @param array<string,mixed> $server
+     * @param array<string,mixed> $form
+     */
+    private static function routingMethodFromServer(array $server, array $form): string
     {
         $value = $server['REQUEST_METHOD'] ?? HttpMethodEnum::GET->value;
         $raw = HttpMethodEnum::normalize(is_string($value) ? $value : HttpMethodEnum::GET->value);
@@ -158,7 +176,7 @@ final readonly class RoutingInput
             return HttpMethodEnum::POST->value;
         }
 
-        $override = $_POST['_method'] ?? null;
+        $override = $form['_method'] ?? null;
         if (!is_string($override)) {
             return HttpMethodEnum::POST->value;
         }
