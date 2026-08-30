@@ -43,7 +43,8 @@ final class CanonicalMatcherIndex
             return;
         }
 
-        $segments = $route->getSegments();
+        $rawSegments = $route->getSegments();
+        $segments = $this->normalizeSegments($rawSegments, count($rawSegments));
         $count = count($segments);
         $prefix = self::prefixForSegments($segments);
         if (isset($this->hosts[$host]['dynamic'][$count][$prefix][$path]['verbs'][$verb])) {
@@ -121,10 +122,9 @@ final class CanonicalMatcherIndex
 
         $dynamic = [];
         foreach ($raw as $count => $prefixes) {
-            if ((!is_int($count) && !ctype_digit((string) $count)) || !is_array($prefixes)) {
+            if (!is_int($count) || !is_array($prefixes)) {
                 throw new UnexpectedValueException('Invalid canonical dynamic segment-count bucket.');
             }
-            $segmentCount = (int) $count;
             foreach ($prefixes as $prefix => $entries) {
                 if (!is_string($prefix) || !is_array($entries)) {
                     throw new UnexpectedValueException('Invalid canonical dynamic prefix bucket.');
@@ -133,12 +133,12 @@ final class CanonicalMatcherIndex
                     if (!is_string($path) || !is_array($entry)) {
                         throw new UnexpectedValueException('Invalid canonical dynamic route entry.');
                     }
-                    $segments = $this->normalizeSegments($entry['segments'] ?? null, $segmentCount);
+                    $segments = $this->normalizeSegments($entry['segments'] ?? null, $count);
                     $verbs = matcher_normalize_compiled_route_map($entry['verbs'] ?? null);
                     if ($verbs === []) {
                         throw new UnexpectedValueException('Canonical dynamic route requires at least one verb.');
                     }
-                    $dynamic[$segmentCount][$prefix][$path] = [
+                    $dynamic[$count][$prefix][$path] = [
                         'segments' => $segments,
                         'verbs' => $verbs,
                     ];
@@ -179,7 +179,7 @@ final class CanonicalMatcherIndex
             }
             $call = $segment['call'] ?? null;
             if (!is_string($call) || !is_callable($call)) {
-                throw new UnexpectedValueException('Callable route constraint is unavailable at matcher load.');
+                throw new UnexpectedValueException('Callable route constraint is unavailable at matcher build/load.');
             }
             /** @var callable-string $call */
             $segments[] = ['type' => 'var', 'name' => $segment['name'], 'call' => $call];
