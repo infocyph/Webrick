@@ -157,7 +157,7 @@ Phase 5 commits include: `f46c994`, `75c7030`, `2e928e9`, `1077c27`, `015fec7`, 
 
 - [x] One `RuntimeAdapterInterface` is selected at process/worker bootstrap; production request handling performs no engine discovery.
 - [x] `RuntimeServer` owns the boot-selected adapter and delegates routing/execution to `CompiledRouterKernel`.
-- [x] Immutable `RuntimeCapabilities` exposes persistence, concurrency, native streaming/file support, and transport-owned compression.
+- [x] Immutable `RuntimeCapabilities` exposes persistence, concurrency, native streaming/file support, and transport-owned compression/request-limit enforcement.
 - [x] `RuntimeRequestContext` owns request-local native transport handles, lazy Request materialization, and unique InterMix scope identity.
 - [x] `CompiledRouterKernel::handleRuntime()` consumes runtime context and never falls back to async superglobal state.
 - [x] Compiled-artifact domain capability is passed into runtime preflight so host normalization remains conditional.
@@ -181,7 +181,7 @@ Phase 5 commits include: `f46c994`, `75c7030`, `2e928e9`, `1077c27`, `015fec7`, 
 - [x] RoadRunner uses a boot-injected native responder with string/Generator output and optional configured sendfile delegation.
 - [x] Workerman uses native `Response::withFile()` for whole files and explicit chunk streaming otherwise.
 - [x] Native writer failures are surfaced rather than silently ignored.
-- [x] Runtime transport-compression ownership is represented in capabilities for Phase 7 compression bypass.
+- [x] Runtime transport-compression/request-limit ownership is represented in capabilities for middleware bypass.
 - [x] InterMix production runtime remains host-owned and worker-shared; Webrick opens explicit request scopes only when compiled capabilities require them.
 - [x] Request/native transport state is never stored in static current-request/current-response fields or reusable middleware.
 - [x] Persistent-runtime isolation coverage includes one-time materialization, unique native handles/scope IDs, interleaved Fibers, weak-reference release, and FileBody/range metadata.
@@ -192,9 +192,47 @@ Phase 5 commits include: `f46c994`, `75c7030`, `2e928e9`, `1077c27`, `015fec7`, 
 
 ---
 
+## Phase 7 — middleware optimization
+
+### Compiled middleware execution
+
+- [x] Route/global aliases are resolved and middleware descriptors are validated before traffic.
+- [x] Middleware invocation mode is prepared once; request execution no longer performs descriptor-shape or `is_callable()` discovery.
+- [x] Per-route middleware pipelines are constructed at worker/process boot, not on first request.
+- [x] Empty-middleware routes retain the zero-pipeline fast path.
+- [x] Direct closure/function/static middleware does not force an InterMix request scope.
+- [x] DI-backed route/global middleware retains explicit request-scope resolution.
+- [x] Compiled route policy attributes (`cors_policy`, `produces`) are prepared once and attached only after Request promotion.
+
+### Response policy and cache middleware
+
+- [x] `VaryAccumulatorMiddleware` uses one request-local `VaryContext`; adding tokens no longer clones Request repeatedly.
+- [x] Compression operates only on native string bodies, caches codec availability, preserves q=0 refusals, and bypasses when transport compression is enabled.
+- [x] Compressed representations always retain `Vary: Accept-Encoding`, even without the accumulator middleware.
+- [x] `CachePolicy` centralizes shared-cache eligibility/freshness decisions.
+- [x] Response micro-cache uses PSR-6, native string payloads, safe Vary surfaces, and correct GET/HEAD representation reuse.
+- [x] Cache-validator fallback no longer probes/hashes `DOCUMENT_ROOT` on ordinary requests; explicit provider/resource metadata owns static validators.
+- [x] Dynamic string ETags hash the native body directly without stream materialization.
+
+### Persistent-worker/concurrency middleware
+
+- [x] Production throttling uses a Webrick-owned atomic-counter contract; CacheLayer is an optional adapter rather than a core middleware API.
+- [x] Non-atomic PSR-cache throttling is explicit approximate/development-only fallback behavior.
+- [x] Throttle clocks come from request-local request-start state instead of process `$_SERVER`.
+- [x] Request limits resolve portable configuration once and allow unknown/chunked bodies to remain transport-streamable.
+- [x] SAPI/Swoole/OpenSwoole/RoadRunner/Workerman expose transport-owned request-limit capability for portable middleware bypass.
+- [x] Maintenance mode uses explicit/cached worker-local state instead of `is_file()` polling on every request.
+- [x] Blanket input sanitization is no longer a default security behavior; compatibility transformation is explicit/opt-in.
+- [x] **Phase 7 implementation complete.**
+- [x] **Phase 7 feature complete.**
+- [ ] **Phase 7 consolidated certification** — deferred.
+
+Phase 7 implementation span: `b416189` … `8e88301`
+
+---
+
 ## Remaining feature phases
 
-- [ ] **Phase 7 — middleware optimization**
 - [ ] **Phase 8 — benchmark-driven deletion/final optimization**
 - [ ] **Consolidated stabilization and release certification**
 
