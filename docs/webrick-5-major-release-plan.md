@@ -1,225 +1,175 @@
-# Webrick 5.0 — Major Release Engineering Plan
+# Webrick 5.0 — Major Release Implementation Tracker
 
-This file is the **live implementation tracker** for Webrick 5.0.
+This file is the **live TODO/checklist** for Webrick 5.0.
 
-The complete engineering design, rationale, architecture, file-by-file disposition, benchmark gates, and detailed requirements are preserved in [`webrick-5-major-release-plan-details.md`](./webrick-5-major-release-plan-details.md).
+The full engineering design, rationale, detailed requirements, file disposition, benchmark matrix, and release gates remain in [`webrick-5-major-release-plan-details.md`](./webrick-5-major-release-plan-details.md).
 
 ## Governing workflow
 
 Follow `vendor/infocyph/phpforge/resources/engineering-principles.md` throughout the release.
 
-For the remaining feature phases:
-
-1. finish a coherent feature slice before committing it;
-2. when a phase is large, commit **2–3 complete checklist points at a time** instead of carrying an oversized unpublished tree;
-3. keep all implementation on `webrick-5/batch-1-correctness` unless explicitly changed;
-4. use only lightweight implementation hygiene while feature work is active; do **not** block phase progress on the full PHPForge/CI matrix;
-5. mark implementation/feature completion separately from validation certification;
-6. after all feature phases are implemented, run one consolidated PHPForge/test/static-analysis/concurrency/benchmark stabilization pass and resolve cross-phase findings together.
-
-Full validation therefore remains intentionally pending for completed feature phases until the consolidated stabilization pass.
+- [x] Keep all feature work on `webrick-5/batch-1-correctness` unless explicitly changed.
+- [x] Finish coherent feature slices before committing.
+- [x] Split large phases into roughly 2–3 complete points per commit when useful.
+- [x] Keep lightweight implementation hygiene during feature work.
+- [x] Defer the full PHPUnit/Pest/PHPStan/Psalm/PHPForge/Composer/concurrency/benchmark matrix until all feature phases are implemented.
+- [ ] Run one consolidated stabilization/certification pass after Phase 8.
 
 ---
 
-## Phase 1 — P0 correctness and security blockers
+## Phase 1 — P0 correctness/security
 
-**Implementation commit:** `025019e490471753930534e5f43854cc25e1df97`  
-**Validation-fix work already captured:** `5f9184a2f37f72132e75a7e3c1818d12c4d6059b`
+- [x] Safe automatic OPTIONS and explicit OPTIONS behavior.
+- [x] RFC conditional-request precedence and unsafe `If-None-Match` handling.
+- [x] Request/coroutine-local transport and telemetry state.
+- [x] Stateless reusable middleware and process-level error bridge.
+- [x] CSRF proof/storage hardening.
+- [x] Conservative CORS and real preflight detection.
+- [x] Trusted-proxy chain selection and strict CIDR validation.
+- [x] Correct range parsing/streaming/cache interaction.
+- [x] Field-specific header combination and Produces propagation.
+- [x] Authorization cleanup and cookie identity/security invariants.
+- [x] **Phase 1 implementation complete.**
+- [x] **Phase 1 feature complete.**
+- [ ] **Phase 1 consolidated certification** — deferred.
 
-- [x] **3.1 OPTIONS safety** — implicit OPTIONS cannot execute application handlers; explicit OPTIONS remains executable.
-- [x] **3.2 Conditional requests** — RFC precondition precedence; unsafe matching `If-None-Match` returns 412.
-- [x] **3.3 Swoole request locality** — native response/transport state is request-local.
-- [x] **3.4 Request context** — process-global current-request telemetry state removed in favor of explicit request context.
-- [x] **3.5 Stateless middleware** — reusable middleware does not retain mutable current-request/end-user state.
-- [x] **3.6 Error boundary** — request rendering no longer installs/removes process error handlers; debug defaults false.
-- [x] **3.7 CSRF** — injected token storage; header/body proof; cookie is not proof; query proof opt-in.
-- [x] **3.8 CORS** — deny/disabled by default; credentialed wildcard rejected; real preflight detection.
-- [x] **3.9 Trusted proxies** — trusted chain normalized from the trusted peer inward; vendor headers explicit.
-- [x] **3.10 CIDR** — strict IPv4/IPv6 family and prefix validation.
-- [x] **3.11 Byte ranges** — bounded immutable start/length with request-local position.
-- [x] **3.12 Range/cache correctness** — malformed vs unsatisfiable ranges distinguished; weak metadata ETags.
-- [x] **3.13 Header combination** — field-specific combination and correct method-token casing.
-- [x] **3.14 Produces metadata** — survives registration, compilation, cache payloads, and dispatch.
-- [x] **3.15 Authorization** — no pseudo credential headers.
-- [x] **3.16 Cookie identity/security** — full identity and prefix/SameSite/Partitioned invariants.
-- [x] **Phase 1 implementation complete**
-- [x] **Phase 1 feature complete**
-- [ ] **Phase 1 consolidated test/PHPForge certification** — deferred to final stabilization.
+Primary implementation: `025019e490471753930534e5f43854cc25e1df97`  
+Early validation fixes: `5f9184a2f37f72132e75a7e3c1818d12c4d6059b`
 
 ---
 
 ## Phase 2 — compiler/runtime foundation
 
-### Composition root and InterMix 10
+- [x] InterMix `^10.0.2` and caller-owned application `ContainerBuilder`.
+- [x] Explicit development/production runtime selection at boot; no `APP_ENV` inference.
+- [x] Deterministic route identity and five compiled execution kinds.
+- [x] Route capability masks and build-time handler/middleware classification.
+- [x] Versioned Webrick production artifact + metadata/config/environment alignment.
+- [x] Normal SHA-256 and trusted-prevalidated artifact loading.
+- [x] Coordinated Webrick/InterMix release compilation without duplicating InterMix format.
+- [x] Typed routing outcomes and explicit HEAD fallback.
+- [x] Runtime dispatcher preserves terminal execution kind through middleware.
+- [x] Conditional request scopes and Request seeding.
+- [x] Strict compiled production kernel; no registrar/reflection/runtime-compilation fallback.
+- [x] Production aliases/constraints/middleware registries freeze before traffic.
+- [x] **Phase 2 implementation complete.**
+- [x] **Phase 2 feature complete.**
+- [ ] **Phase 2 consolidated certification** — deferred.
 
-- [x] Require **InterMix `^10.0.2`** and directly own the closure serializer dependency used by Webrick artifacts.
-- [x] Application/host owns the single `ContainerBuilder`; Webrick contributes providers via `Webrick::contributeTo()`.
-- [x] Environment selection remains host-owned; Webrick does not infer production runtime from `APP_ENV` or call `setEnvironment()` behind the host.
-- [x] Explicit standalone-development convenience exists without creating a production runtime implicitly.
-- [x] Runtime selection is resolved once at boot through `InterMixRuntime`; request execution does not branch between development/production containers.
-
-**Commit:** `e15c83fe83784bedc420658f4fe0fe82c15d07e6`
-
-### Build-plane route IR
-
-- [x] Registration, handler inspection, middleware-alias resolution, route capability discovery, and execution classification happen in the build plane.
-- [x] Deterministic route identity is derived from canonical `(method, domain, path)` instead of registration-order indexes.
-- [x] Compile the five execution kinds: `DIRECT_ZERO_ARG`, `DIRECT_ROUTE_ARGS`, `DIRECT_REQUEST`, `COMPILED_INVOKE`, `MIDDLEWARE_PIPELINE`.
-- [x] Compile route capability masks for Request, scope, middleware, domain, CORS, Produces, and route arguments.
-- [x] Non-static controller methods remain InterMix-backed `COMPILED_INVOKE`; direct execution is emitted only for genuinely callable targets.
-- [x] Middleware aliases are resolved before traffic and unknown descriptors fail at the build boundary.
-
-**Commit:** `5202c23ff421e4c1cf3d8d560007f9e9604e65ed`
-
-### Coordinated production artifacts
-
-- [x] Versioned Webrick artifact contains route data, execution plans, aliases, global middleware descriptors/tags, domain-routing capability, environment, and configuration fingerprint.
-- [x] Normal production loading verifies SHA-256 plus metadata/payload/config/environment alignment.
-- [x] Trusted-prevalidated loading accepts an externally trusted SHA only for an immutable deployment boundary and skips duplicate file hashing.
-- [x] `ReleaseCompiler` coordinates the Webrick artifact with the InterMix generated artifact and release manifest without duplicating InterMix's compiler or artifact format.
-- [x] InterMix dynamic/fallback islands remain owned by InterMix `ProductionContainer::resolveNow()` rather than Webrick inventing a second DI fallback model.
-
-**Commit:** `4427b7543130f76f68b60cafa2496b2ec98864d7`
-
-### Typed execution runtime
-
-- [x] Existing matcher backends are normalized through one typed outcome boundary: `FOUND`, `AUTO_OPTIONS`, `METHOD_NOT_ALLOWED`, `NOT_FOUND`.
-- [x] HEAD→GET fallback is represented explicitly in the match outcome rather than inferred through a synthetic route.
-- [x] Middleware plans retain the terminal execution kind, so middleware does not force every terminal handler through InterMix.
-- [x] Compiled runtime dispatcher executes direct handlers directly and delegates only DI-backed handlers/middleware to the selected InterMix runtime.
-- [x] Cached middleware pipelines read the current request's canonical `route_params` bag and never capture the first request's dynamic variables.
-- [x] Production execution does not perform route-handler reflection, class discovery, or middleware-alias parsing per request.
-
-**Commit:** `33dd045ca4d42f7a1a26e44cd059876eca88c1db`
-
-### Strict production bootstrap and freeze
-
-- [x] `CompiledRouterKernel` requires a host-selected `ProductionContainer`; it cannot construct a competing container or import providers.
-- [x] Production boot consumes only verified/prevalidated Webrick artifacts; missing/stale artifacts fail instead of running the registrar or compiling on first request.
-- [x] Request scope is conditional; `withinScope()` is used only for plans/global middleware that require scoped runtime behavior.
-- [x] Request is seeded into the scope only when Request-aware execution/middleware requires it.
-- [x] URL aliases are bound from the compiled artifact; signing secrets/runtime URL configuration remain outside the artifact.
-- [x] Middleware-alias, URL-generator, and route-constraint registries freeze before production traffic.
-- [x] Domain host normalization is skipped entirely when the compiled artifact proves there are no domain routes.
-- [x] HEAD response bodies are suppressed while preserving representation headers.
-
-**Commit:** `a7fa49e59c69750bd15a28b4e8f4bf5b4f86ef75`
-
-### Final Phase 2 invariants
-
-- [x] Direct-handler callability is validated at build/artifact-load time rather than probed on every request.
-- [x] Compiled production runtime has no registrar/reflection/DI-runtime fallback owned by Webrick.
-- [x] Legacy `Response::view()` representation-helper cleanup is explicitly owned by **Phase 5**; the compiled production kernel does not create or depend on its legacy global container path.
-- [x] **Phase 2 implementation complete**
-- [x] **Phase 2 feature complete**
-- [ ] **Phase 2 consolidated test/PHPForge certification** — deferred to final stabilization.
+Commits: `e15c83f`, `5202c23`, `4427b75`, `33dd045`, `a7fa49e`, `8555348`
 
 ---
 
 ## Phase 3 — direct dispatch path
 
-### Routing preflight and lazy promotion
+- [x] Minimal immutable `RoutingInput` before full Request materialization.
+- [x] Skip host work when compiled artifact has no domain routes.
+- [x] Match/OPTIONS/plan selection before `Request::fromGlobals()`.
+- [x] `DIRECT_ZERO_ARG` bypasses Request, InterMix, scope, and middleware when permitted.
+- [x] `DIRECT_ROUTE_ARGS` uses ordered compiled route args without Request.
+- [x] DI-only plans may scope without constructing/seeding Request.
+- [x] `DIRECT_REQUEST` promotes Request only after matching and invokes directly.
+- [x] Error rendering promotes Request lazily.
+- [x] One canonical `route_params` bag only.
+- [x] Global middleware decision cached at boot.
+- [x] Kernel-selected `ExecutionPlan` reused by dispatcher; no duplicate plan lookup.
+- [x] HEAD/error semantics shared across direct and promoted paths.
+- [x] **Phase 3 implementation complete.**
+- [x] **Phase 3 feature complete.**
+- [ ] **Phase 3 consolidated certification** — deferred.
 
-- [x] Minimal immutable `RoutingInput` is created from native globals or an already supplied Request before full Request materialization.
-- [x] Domain host detection/normalization is skipped when the compiled artifact proves there are no domain routes.
-- [x] Method override semantics and normalized request path are preserved in the routing preflight.
-- [x] Match, automatic OPTIONS, and direct handler selection happen before `Request::fromGlobals()`.
-- [x] `DIRECT_ZERO_ARG` and `DIRECT_ROUTE_ARGS` bypass Request, InterMix resolution, request scope, and middleware machinery when their capabilities allow it.
-- [x] DI-backed plans that do not require Request may execute inside an InterMix scope without constructing or seeding Request.
-- [x] Errors lazily promote to Request only for rendering; invalid-global Request construction has a minimal error-render fallback.
-- [x] A materialized Request receives one canonical `route_params` bag only; duplicate route-param aliases are not reintroduced.
-
-**Commit:** `efeb09b654f4bf354ae93b40c48cfc0a76557a2e`
-
-### Direct execution specialization
-
-- [x] `DIRECT_REQUEST` promotes Request only after matching and invokes the callable directly without InterMix resolution or request scope unless middleware requires scoped execution.
-- [x] Unscoped direct/direct-request paths no longer allocate wrapper closures before invoking their terminal handler.
-- [x] Global-middleware presence is resolved once at kernel boot rather than recomputed from middleware arrays for every request.
-- [x] The compiled kernel passes its already selected `ExecutionPlan` into the dispatcher; promoted execution no longer performs a duplicate route-to-plan lookup.
-- [x] Direct zero-argument and route-argument paths use dedicated dispatcher entry points after route selection.
-- [x] Scoped DI-only execution remains Request-free; its only request-time wrapper is the scope callback required by InterMix lifecycle semantics.
-- [x] HEAD suppression and error rendering remain shared after both direct and promoted execution paths.
-- [x] **Phase 3 implementation complete**
-- [x] **Phase 3 feature complete**
-- [ ] **Phase 3 consolidated test/PHPForge certification** — deferred to final stabilization.
-
-**Commit:** `f9d48eec2b34c976f48ee87e58a87d3e1d119051`
+Commits: `efeb09b`, `737554b`, `f9d48ee`, `a272420`
 
 ---
 
 ## Phase 4 — matcher rewrite
 
-### Canonical matcher IR and static-first Fused path
+- [x] One canonical matcher IR: exact static map + segment-count/literal-prefix dynamic buckets.
+- [x] Exact static lookup occurs before path trim/split/count/dynamic allocation.
+- [x] Fused migrated from recursive trie to canonical engine.
+- [x] Sharded migrated to canonical IR.
+- [x] Dedicated `__dynamic` shard preserves first-segment-variable routes such as `/{id}`.
+- [x] Generated matcher emitted from canonical IR with static switches before segmentation.
+- [x] Callable constraints validated at build/cache-load and directly invoked at runtime.
+- [x] `MatcherInterface::matchOutcome()` natively owns FOUND/404/405/OPTIONS/HEAD semantics.
+- [x] Compiled kernel calls matcher directly; `MatcherOutcomeAdapter` removed.
+- [x] Legacy trie/helper physical deletion deferred to measured Phase 8 cleanup.
+- [x] Matcher-mode retention/removal deferred to Phase 8 benchmark evidence.
+- [x] **Phase 4 implementation complete.**
+- [x] **Phase 4 feature complete.**
+- [ ] **Phase 4 consolidated certification** — deferred.
 
-- [x] One canonical matcher index is shared by all matcher modes: exact static maps plus dynamic segment-count/first-literal buckets.
-- [x] Exact static lookup occurs before path trimming, splitting, segment counting, trie traversal, or dynamic-result allocation.
-- [x] Fused matcher uses the canonical index/semantic engine instead of recursive trie traversal.
-- [x] Dynamic candidates are restricted by segment count and first literal before constraint evaluation.
-
-**Commit:** `5f7964ef0bb0fead5265fa36d27097f370580776`
-
-### Sharded canonical layout
-
-- [x] Sharded matcher consumes the same canonical IR and semantic engine as Fused.
-- [x] Persisted shards are keyed by first literal while first-segment-variable routes use a dedicated `__dynamic` catch-all shard.
-- [x] Root/first-variable routes such as `/{id}` remain resolvable from persisted sharded caches.
-- [x] Runtime loads only the requested literal shard plus the dynamic catch-all for each applicable host/wildcard bucket.
-
-**Commit:** `b044e44aee2c7a29b8d13e49086be9d2c3cf9f75`
-
-### Generated static-first backend
-
-- [x] Generated matcher is emitted from the canonical matcher index rather than a separate route-shape implementation.
-- [x] Generated exact static host/wildcard switches run before `trim()`, `explode()`, segment counting, or dynamic matching.
-- [x] Generated dynamic code is grouped by segment count and literal prefix.
-- [x] Generated callable constraints invoke their prevalidated callable-string directly instead of `call_user_func()` or runtime callability probing.
-
-**Commit:** `3c534a1214d2bebfc9918c382a83d62f1e3758ea`
-
-### Native typed semantics and matcher boundary
-
-- [x] `MatcherInterface::matchOutcome()` is the normalized production matcher contract.
-- [x] `FOUND`, 404, 405, automatic OPTIONS, explicit OPTIONS, and HEAD→GET fallback semantics are implemented by the matcher family itself.
-- [x] `CompiledRouterKernel` sends its already-normalized `RoutingInput` tuple directly to the matcher without the Phase 2 exception adapter.
-- [x] `MatcherOutcomeAdapter` is removed from the production graph; `match()` remains only as the compatibility/error-oriented matcher API.
-
-**Commit:** `0c27cb827ce6107f6be71e7333e2c1bd0e8fbcdd`
-
-### Build/load invariants
-
-- [x] Callable constraints are validated when entering the canonical build index and again when loading persisted matcher metadata.
-- [x] Active match paths never call `is_callable()` for route constraints.
-- [x] Canonical matcher cache validation does not introduce an `ext-ctype` dependency.
-- [x] Legacy recursive-trie/helper code is no longer used by Fused, Sharded, or Generated; physical deletion is intentionally reserved for the Phase 8 measured deletion pass.
-- [x] Matcher-mode retention/removal is deferred to Phase 8 benchmark evidence rather than decided without workload measurements.
-- [x] **Phase 4 implementation complete**
-- [x] **Phase 4 feature complete**
-- [ ] **Phase 4 consolidated test/PHPForge certification** — deferred to final stabilization.
-
-**Commit:** `d5d37738da954c78237c10914347f40b52f4b513`
+Commits: `5f7964e`, `b044e44`, `3c534a1`, `0c27cb8`, `d5d3773`, `03f003a`
 
 ---
 
-## Remaining phases
+## Phase 5 — HTTP representation
 
-- [ ] **Phase 5 — HTTP representation**
-  - native/string-backed response body path instead of unconditional stream wrapping
-  - lazy/materialized Request representation cleanup and correct JSON/XML parse-state semantics
-  - PSR bridges only at interoperability boundaries
-  - re-evaluate mandatory ArrayKit use in Request core
-  - remove legacy `Response::view()` global container lookup in favor of the selected runtime/view-factory boundary
+### Native response/body representation
+
+- [x] Ordinary text/HTML/eager JSON remains a native PHP string inside `Response`.
+- [x] `StringBody` supplies stream-compatible semantics only when an interop caller explicitly requests a body stream.
+- [x] `Response::getBodySize()`, `getStringBody()`, and `isStringBody()` expose the cheap native representation.
+- [x] Lazy JSON encodes once into `StringBody`; it no longer creates a second temp stream.
+- [x] Unchanged immutable response clones share `HeaderBag`; headers are validated/normalized at the boundary rather than cloned repeatedly.
+- [x] Resource-backed `Stream::__toString()` handles non-seekable streams without attempting an impossible rewind.
+
+### Output path
+
+- [x] Classic SAPI `DefaultEmitter` writes string-backed responses directly without `getBody()` or stream allocation.
+- [x] Existing Swoole emitter sends native string bodies directly.
+- [x] Existing RoadRunner bridge keeps native strings native.
+- [x] Existing Workerman bridge keeps native strings native.
+- [x] Full runtime-adapter replacement remains correctly owned by Phase 6.
+
+### Native Request representation
+
+- [x] Public Request input access (`query`, `post`, `cookie`, `server`) is array/scalar-backed rather than Collection-backed.
+- [x] JSON/XML parsing has explicit `NOT_APPLICABLE`, `NOT_PARSED`, `PARSED`, and `INVALID` states.
+- [x] Valid empty JSON/XML remains a successful parsed payload and never falls through to POST data.
+- [x] Invalid JSON/XML has an explicit failure policy instead of being treated as an empty form payload.
+- [x] Request locale metadata consumes only the canonical `route_params` bag.
+- [x] Native `Request\Core\ServerRequest` replaces the pseudo-PSR message implementation in the Request inheritance chain.
+- [x] Full Request materialization builds URI state from validated transport components rather than constructing a complete URL solely to `parse_url()` it again.
+- [x] Uploaded-file hydration remains lazy.
+
+### Dependency / interoperability boundaries
+
+- [x] Mandatory `infocyph/arraykit` dependency removed from Webrick core.
+- [x] Native Webrick `HttpFactory` moved out of the misleading `Psr7` namespace.
+- [x] Legacy pseudo-PSR `ServerRequest` and `HttpFactory` removed.
+- [x] `Interop\Psr7\PsrBridge` provides an explicit optional PSR-7/PSR-17 adaptation boundary.
+- [x] `psr/http-message` and `psr/http-factory` remain optional Composer suggestions, not hot-path dependencies.
+- [x] `Response::view()` no longer reaches a global InterMix container.
+- [x] Injected `ViewResponder` + `ViewFactoryInterface` owns view rendering; `Response` remains a value/output type.
+- [x] Remaining old `Request\Psr7` normalizer filenames are non-message compatibility utilities only; physical relocation/deletion is reserved for Phase 8 cleanup.
+- [x] **Phase 5 implementation complete.**
+- [x] **Phase 5 feature complete.**
+- [ ] **Phase 5 consolidated certification** — deferred.
+
+Phase 5 commits include: `f46c994`, `75c7030`, `2e928e9`, `1077c27`, `015fec7`, `ed90ffb`, `8ad30e1`, `3ca65a0`, `68ab9c4`, `ef34bf7`, `bbd1d40`, `affa34f`, `d0902e9`, `b8e0d57`, `567a6fe`, `20de187`, `3e40fd1`, `c6b9fb9`, `c08d6fa`, `70394db`, `13a0207`
+
+---
+
+## Remaining feature phases
+
 - [ ] **Phase 6 — persistent runtimes**
+  - SAPI/Swoole/OpenSwoole/RoadRunner/Workerman runtime adapters selected once at boot
+  - request-local native transport context
+  - native streaming/file/sendfile paths and runtime capability compilation
+  - delegated InterMix production runtime at worker bootstrap
+  - explicit request scopes only where required
+  - concurrency and long-worker soak behavior
 - [ ] **Phase 7 — middleware optimization**
-- [ ] **Phase 8 — final benchmark/deletion pass**
-- [ ] **Consolidated stabilization** — PHPUnit/Pest, PHPStan, Psalm, PHPForge QA, persistent-runtime concurrency/soak tests, Composer matrices, benchmarks, and cross-phase fixes.
+- [ ] **Phase 8 — benchmark-driven deletion/final optimization**
+- [ ] **Consolidated stabilization and release certification**
 
 ---
 
 ## Release gates
 
-- [ ] Webrick compiled static endpoint reaches at least 80% of FastRoute sustainable stable RPM in the same run.
-- [ ] Stretch target: at least 85% of FastRoute.
+- [ ] Compiled static endpoint reaches **>=80% FastRoute** sustainable stable RPM in the same run.
+- [ ] Stretch target: **>=85% FastRoute**.
 - [ ] No unaccepted >5% sustainable regression on representative feature-heavy routes.
 - [ ] No request/coroutine state leaks under persistent-worker concurrency tests.
 - [ ] Persistent-worker memory plateaus after warm caches.
