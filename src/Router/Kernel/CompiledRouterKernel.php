@@ -9,7 +9,6 @@ use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
 use Infocyph\Webrick\Exceptions\RouteNotFoundException;
-use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Build\CompiledRouterArtifact;
@@ -25,6 +24,7 @@ use Infocyph\Webrick\Router\Runtime\RoutingInput;
 use Infocyph\Webrick\Router\Url\SignedUrlConfig;
 use Infocyph\Webrick\Router\Url\UrlGenerator;
 use Infocyph\Webrick\Router\Url\UrlGeneratorRegistry;
+use Infocyph\Webrick\Runtime\Http\RuntimeRequestContext;
 use Infocyph\Webrick\Runtime\InterMixRuntime;
 use Psr\Log\LoggerInterface;
 use Throwable;
@@ -164,6 +164,17 @@ final readonly class CompiledRouterKernel
         }
     }
 
+    public function handleRuntime(RuntimeRequestContext $context): Response
+    {
+        $request = null;
+
+        try {
+            return $this->dispatchRoutingInput($context->routing, $request, $context);
+        } catch (Throwable $exception) {
+            return $this->renderException($exception, $request, $context);
+        }
+    }
+
     /** @param list<string> $allowed */
     private static function automaticOptionsResponse(array $allowed): Response
     {
@@ -182,8 +193,11 @@ final readonly class CompiledRouterKernel
         return Response::noContent(['Allow' => implode(', ', array_keys($methods))]);
     }
 
-    private function dispatchRoutingInput(RoutingInput $routing, ?Request &$request): Response
-    {
+    private function dispatchRoutingInput(
+        RoutingInput $routing,
+        ?Request &$request,
+        ?RuntimeRequestContext $runtimeContext = null,
+    ): Response {
         $outcome = $this->matcher->matchOutcome($routing->method, $routing->host, $routing->path);
 
         if ($outcome->type === MatchOutcomeType::AUTO_OPTIONS) {
@@ -202,14 +216,21 @@ final readonly class CompiledRouterKernel
             || $this->hasGlobalMiddleware;
 
         if (!$pipeline && !$plan->requiresRequest()) {
-            $response = $this->dispatchWithoutRequest($routing, $plan, $outcome->params);
+            $response = $this->dispatchWithoutRequest($routing, $plan, $outcome->params, $runtimeContext);
         } else {
-            $request ??= Request::fromGlobals();
-            $response = $this->dispatchWithRequest($routing, $plan, $request, $outcome->params, $pipeline);
+            $request ??= $runtimeContext?->request() ?? Request::fromGlobals();
+            $response = $this->dispatchWithRequest(
+                $routing,
+                $plan,
+                $request,
+                $outcome->params,
+                $pipeline,
+                $runtimeContext,
+            );
         }
 
         return $routing->method === HttpMethodEnum::HEAD->value
-            ? $response->withBody(new Stream(''))
+            ? $response->withBody('')
             : $response;
     }
 
@@ -220,13 +241,14 @@ final readonly class CompiledRouterKernel
         Request $request,
         array $vars,
         bool $pipeline,
+        ?RuntimeRequestContext $runtimeContext,
     ): Response {
         if (!$plan->requiresScope() && !$pipeline) {
             return $this->dispatcher->dispatch($plan, $request, $vars);
         }
 
         $response = $this->runtime->withinScope(
-            'webrick.request.' . spl_object_id($routing),
+            self::scopeId($routing, $runtimeContext),
             fn() => $this->dispatcher->dispatch($plan, $request, $vars),
             [Request::class => $request],
         );
@@ -238,8 +260,12 @@ final readonly class CompiledRouterKernel
     }
 
     /** @param array<string,string> $vars */
-    private function dispatchWithoutRequest(RoutingInput $routing, ExecutionPlan $plan, array $vars): Response
-    {
+    private function dispatchWithoutRequest(
+        RoutingInput $routing,
+        ExecutionPlan $plan,
+        array $vars,
+        ?RuntimeRequestContext $runtimeContext,
+    ): Response {
         if (!$plan->requiresScope()) {
             return match ($plan->terminalKind) {
                 ExecutionKind::DIRECT_ZERO_ARG => $this->dispatcher->dispatchDirectZeroArg($plan),
@@ -249,7 +275,7 @@ final readonly class CompiledRouterKernel
         }
 
         $response = $this->runtime->withinScope(
-            'webrick.request.' . spl_object_id($routing),
+            self::scopeId($routing, $runtimeContext),
             fn() => $this->dispatcher->dispatchWithoutRequest($plan, $vars),
         );
         if (!$response instanceof Response) {
@@ -259,11 +285,14 @@ final readonly class CompiledRouterKernel
         return $response;
     }
 
-    private function renderException(Throwable $exception, ?Request $request): Response
-    {
+    private function renderException(
+        Throwable $exception,
+        ?Request $request,
+        ?RuntimeRequestContext $runtimeContext = null,
+    ): Response {
         if (!$request instanceof Request) {
             try {
-                $request = Request::fromGlobals();
+                $request = $runtimeContext?->request() ?? Request::fromGlobals();
             } catch (Throwable) {
                 $request = Request::fake();
             }
@@ -273,5 +302,10 @@ final readonly class CompiledRouterKernel
             $request,
             static fn(Request $_): Response => throw $exception,
         );
+    }
+
+    private static function scopeId(RoutingInput $routing, ?RuntimeRequestContext $runtimeContext): string
+    {
+        return $runtimeContext?->scopeId() ?? 'webrick.request.' . spl_object_id($routing);
     }
 }
