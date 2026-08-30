@@ -16,6 +16,7 @@ final readonly class RuntimeCapabilities
         public bool $nativeStreaming = false,
         public bool $nativeFile = false,
         public bool $transportCompression = false,
+        public bool $transportRequestLimits = false,
     ) {
         if ($name === '') {
             throw new \InvalidArgumentException('Runtime capability name must be non-empty.');
