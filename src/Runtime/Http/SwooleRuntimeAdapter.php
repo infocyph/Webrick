@@ -14,8 +14,11 @@ final readonly class SwooleRuntimeAdapter implements RuntimeAdapterInterface
 {
     private RuntimeCapabilities $runtimeCapabilities;
 
-    private function __construct(string $name, bool $transportCompression)
-    {
+    private function __construct(
+        string $name,
+        bool $transportCompression,
+        bool $transportRequestLimits,
+    ) {
         $this->runtimeCapabilities = new RuntimeCapabilities(
             name: $name,
             persistent: true,
@@ -23,17 +26,22 @@ final readonly class SwooleRuntimeAdapter implements RuntimeAdapterInterface
             nativeStreaming: true,
             nativeFile: true,
             transportCompression: $transportCompression,
+            transportRequestLimits: $transportRequestLimits,
         );
     }
 
-    public static function openSwoole(bool $transportCompression = false): self
-    {
-        return new self('openswoole', $transportCompression);
+    public static function openSwoole(
+        bool $transportCompression = false,
+        bool $transportRequestLimits = false,
+    ): self {
+        return new self('openswoole', $transportCompression, $transportRequestLimits);
     }
 
-    public static function swoole(bool $transportCompression = false): self
-    {
-        return new self('swoole', $transportCompression);
+    public static function swoole(
+        bool $transportCompression = false,
+        bool $transportRequestLimits = false,
+    ): self {
+        return new self('swoole', $transportCompression, $transportRequestLimits);
     }
 
     public function capabilities(): RuntimeCapabilities
