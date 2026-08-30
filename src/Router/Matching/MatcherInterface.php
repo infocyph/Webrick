@@ -8,13 +8,7 @@ use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
 use Infocyph\Webrick\Exceptions\RouteNotFoundException;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 
-/**
- * Contract for compiled route matchers.
- *
- * The production hot path uses matchOutcome() with an already-normalized
- * method/host/path tuple. match() remains the compatibility/error-oriented
- * surface for direct callers.
- */
+/** Contract for canonical compiled route matchers. */
 interface MatcherInterface
 {
     public function add(CompiledRoute $route): void;
@@ -36,12 +30,12 @@ interface MatcherInterface
     public function match(string $method, string $host, string $path): array;
 
     /**
-     * Match a tuple already normalized at the routing-input trust boundary.
-     *
-     * @param non-empty-string $method Canonical HTTP method.
-     * @param non-empty-string $host Canonical host or '*'.
-     * @param non-empty-string $path Canonical absolute path.
+     * Strict compiled-runtime surface. FOUND outcomes may carry only routeIndex,
+     * allowing persisted/generated matchers to avoid route materialization.
      */
+    public function matchCompiledOutcome(string $method, string $host, string $path): MatchOutcome;
+
+    /** Generic/development surface returning a materialized route on FOUND. */
     public function matchOutcome(string $method, string $host, string $path): MatchOutcome;
 
     /** @return list<string> */
