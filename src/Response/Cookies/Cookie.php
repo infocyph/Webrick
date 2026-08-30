@@ -5,10 +5,7 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Response\Cookies;
 
 /**
- * Immutable cookie value-object.
- *
- * `$cookie = Cookie::make('theme','dark')->httpOnly()->secure();`
- * `$headerLine = (string)$cookie;`
+ * Immutable RFC 6265-style cookie with security-prefix invariants.
  */
 final class Cookie implements \Stringable
 {
@@ -16,43 +13,24 @@ final class Cookie implements \Stringable
 
     private const string INVALID_PATH = '/[\x00-\x1F\x7F;]/';
 
-    /** rfc6265 allowed chars for name */
     private const string NAME_RX = '/^[A-Za-z0-9!#$%&\'*+.^_`|~-]+$/';
 
-    /**
-     * Initializes a new Cookie instance.
-     *
-     * @param string $name Cookie name, must match the rfc6265 allowed chars.
-     * @param string $value [optional] Cookie value, defaults to an empty string.
-     * @param int|null $expires [optional] Unix epoch timestamp for the cookie's expiration time, defaults to null (no expiration).
-     * @param string $path [optional] Cookie path, defaults to '/'.
-     * @param string|null $domain [optional] Cookie domain, defaults to null (current domain).
-     * @param bool $secure [optional] Whether the cookie should be transmitted over a secure channel, defaults to true.
-     * @param bool $httpOnly [optional] Whether the cookie should be restricted to HTTP only, defaults to true.
-     * @param string $sameSite [optional] Same-site policy for the cookie, one of 'Lax', 'Strict', or 'None', defaults to 'Lax'.
-     */
     private function __construct(
         public string $name,
         private string $value = '',
-        private ?int $expires = null,       // unix epoch
+        private ?int $expires = null,
         private string $path = '/',
         private ?string $domain = null,
         private bool $secure = true,
         private bool $httpOnly = true,
-        private string $sameSite = 'Lax',      // Lax|Strict|None
+        private string $sameSite = 'Lax',
+        private bool $partitioned = false,
     ) {}
 
-    /**
-     * Returns a string representation of the cookie in the format
-     * "Set-Cookie: <name>=<value>; Path=<path>; Domain=<domain>; Expires=<date>; Max-Age=<seconds>; Secure; HttpOnly; SameSite=<mode>"
-     *
-     * @return string A string representation of the cookie.
-     */
     public function __toString(): string
     {
-        $parts = ["$this->name=" . rawurlencode($this->value)];
-        $parts[] = 'Path=' . $this->path;
-
+        $this->assertInvariants();
+        $parts = [$this->name . '=' . rawurlencode($this->value), 'Path=' . $this->path];
         if ($this->domain !== null && $this->domain !== '') {
             $parts[] = 'Domain=' . $this->domain;
         }
@@ -63,25 +41,17 @@ final class Cookie implements \Stringable
         if ($this->secure) {
             $parts[] = 'Secure';
         }
-        if ($this->sameSite === 'None' && !$this->secure) {
-            $parts[] = 'Secure';
-        }
         if ($this->httpOnly) {
             $parts[] = 'HttpOnly';
         }
         $parts[] = 'SameSite=' . $this->sameSite;
+        if ($this->partitioned) {
+            $parts[] = 'Partitioned';
+        }
 
         return implode('; ', $parts);
     }
 
-    /**
-     * Factory method to create a new Cookie instance.
-     *
-     * @param string $name Valid cookie name (rfc6265)
-     * @param string $value Optional cookie value (default: empty string)
-     *
-     * @throws \InvalidArgumentException If the cookie name is invalid
-     */
     public static function make(string $name, string $value = ''): self
     {
         if (!preg_match(self::NAME_RX, $name)) {
@@ -91,148 +61,154 @@ final class Cookie implements \Stringable
         return new self($name, $value);
     }
 
-    /**
-     * Sets the domain of the cookie.
-     *
-     * If set to a non-empty string, the cookie will only be sent to the specified domain.
-     * If set to null, the cookie will be sent to the current domain.
-     * If set to an empty string, the cookie will be sent to all domains.
-     *
-     * @param string $d The domain to set for the cookie.
-     */
-    public function domain(string $d): self
+    public function domain(string $domain): self
     {
-        if (preg_match(self::INVALID_DOMAIN, $d) === 1) {
-            throw new \InvalidArgumentException('Cookie domain contains invalid characters');
+        if (preg_match(self::INVALID_DOMAIN, $domain) === 1) {
+            throw new \InvalidArgumentException('Cookie domain contains invalid characters.');
+        }
+        if (str_starts_with($this->name, '__Host-') && $domain !== '') {
+            throw new \InvalidArgumentException('__Host- cookies must not declare Domain.');
         }
 
-        $y = clone $this;
-        $y->domain = $d;
+        $cookie = clone $this;
+        $cookie->domain = $domain === '' ? null : strtolower($domain);
+        $cookie->assertInvariants();
 
-        return $y;
+        return $cookie;
     }
 
-    /**
-     * Expiration sets the cookie to expire immediately.
-     * Value is set to an empty string to prevent any accidental usage.
-     */
+    public function domainValue(): ?string
+    {
+        return $this->domain;
+    }
+
     public function expire(): self
     {
-        $x = clone $this;
-        $x->expires = time() - 86400;
-        $x->value = '';
+        $cookie = clone $this;
+        $cookie->expires = time() - 86400;
+        $cookie->value = '';
 
-        return $x;
+        return $cookie;
     }
 
-    /**
-     * Sets the cookie's expiration time to the given DateTimeInterface object.
-     *
-     * Note that the expiration time is represented as a Unix timestamp, which is the number of seconds elapsed since January 1, 1970, 00:00:00 (UTC) time.
-     *
-     * @param \DateTimeInterface $when The desired expiration time of the cookie.
-     * @return self The instance of the cookie with the expiration time set.
-     */
     public function expires(\DateTimeInterface $when): self
     {
-        $x = clone $this;
-        $x->expires = $when->getTimestamp();
+        $cookie = clone $this;
+        $cookie->expires = $when->getTimestamp();
 
-        return $x;
+        return $cookie;
     }
 
-    /**
-     * Set the cookie's expiration time to 5 years from now.
-     * After this deadline, the cookie will be deleted by the client.
-     */
     public function forever(): self
     {
-        $x = clone $this;
-        $x->expires = time() + 60 * 60 * 24 * 365 * 5; // 5y
+        $cookie = clone $this;
+        $cookie->expires = time() + 60 * 60 * 24 * 365 * 5;
 
-        return $x;
+        return $cookie;
     }
 
-    /**
-     * Sets the HttpOnly flag of the cookie.
-     * If set to true, the cookie will only be transmitted over a secure channel (i.e., a channel protected by SSL/TLS).
-     *
-     * @param bool $on If true, sets the HttpOnly flag to true. If false, sets it to false.
-     */
     public function httpOnly(bool $on = true): self
     {
-        $y = clone $this;
-        $y->httpOnly = $on;
+        $cookie = clone $this;
+        $cookie->httpOnly = $on;
 
-        return $y;
+        return $cookie;
     }
 
-    /**
-     * Set the cookie's max-age to the given number of seconds.
-     * Note that max-age is relative to the current time, so setting it to 0 effectively deletes the cookie.
-     *
-     * @param int $seconds The number of seconds until the cookie expires.
-     */
+    public function identity(): string
+    {
+        return $this->name . "\0" . strtolower($this->domain ?? '') . "\0" . $this->path;
+    }
+
     public function maxAge(int $seconds): self
     {
-        $x = clone $this;
-        $x->expires = time() + max(0, $seconds);
+        $cookie = clone $this;
+        $cookie->expires = time() + max(0, $seconds);
 
-        return $x;
+        return $cookie;
     }
 
-    /**
-     * Sets the path of the cookie.
-     *
-     * If set to a non-empty string, the cookie will only be accessible when the
-     * path of the request matches the specified path.
-     * If set to null, the cookie will be accessible for all paths.
-     * If set to an empty string, the cookie will be accessible for the root path only.
-     *
-     * @param string $p The path to set for the cookie.
-     */
-    public function path(string $p): self
+    public function partitioned(bool $on = true): self
     {
-        if (preg_match(self::INVALID_PATH, $p) === 1) {
-            throw new \InvalidArgumentException('Cookie path contains invalid characters');
+        $cookie = clone $this;
+        $cookie->partitioned = $on;
+        if ($on) {
+            $cookie->secure = true;
+        }
+        $cookie->assertInvariants();
+
+        return $cookie;
+    }
+
+    public function path(string $path): self
+    {
+        if ($path === '' || preg_match(self::INVALID_PATH, $path) === 1) {
+            throw new \InvalidArgumentException('Cookie path is empty or contains invalid characters.');
+        }
+        if (str_starts_with($this->name, '__Host-') && $path !== '/') {
+            throw new \InvalidArgumentException('__Host- cookies must use Path=/.');
         }
 
-        $y = clone $this;
-        $y->path = $p;
+        $cookie = clone $this;
+        $cookie->path = $path;
+        $cookie->assertInvariants();
 
-        return $y;
+        return $cookie;
     }
 
-    /**
-     * Set the SameSite attribute of the cookie.
-     *
-     * @param string $mode One of 'Lax', 'Strict', or 'None'.
-     *
-     * @throws \InvalidArgumentException If $mode is not one of 'Lax', 'Strict', or 'None'.
-     */
+    public function pathValue(): string
+    {
+        return $this->path;
+    }
+
     public function sameSite(string $mode): self
     {
         $mode = ucfirst(strtolower($mode));
         if (!in_array($mode, ['Lax', 'Strict', 'None'], true)) {
-            throw new \InvalidArgumentException('SameSite must be Lax|Strict|None');
+            throw new \InvalidArgumentException('SameSite must be Lax|Strict|None.');
         }
-        $y = clone $this;
-        $y->sameSite = $mode;
 
-        return $y;
+        $cookie = clone $this;
+        $cookie->sameSite = $mode;
+        if ($mode === 'None') {
+            $cookie->secure = true;
+        }
+        $cookie->assertInvariants();
+
+        return $cookie;
     }
 
-    /**
-     * Sets the Secure flag of the cookie.
-     * If set to true, the cookie will only be transmitted over a secure channel (i.e., a channel protected by SSL/TLS).
-     *
-     * @param bool $on If true, sets the Secure flag to true. If false, sets it to false.
-     */
     public function secure(bool $on = true): self
     {
-        $y = clone $this;
-        $y->secure = $on;
+        if (!$on && (str_starts_with($this->name, '__Host-') || str_starts_with($this->name, '__Secure-'))) {
+            throw new \InvalidArgumentException('Cookie security prefix requires Secure.');
+        }
+        if (!$on && ($this->sameSite === 'None' || $this->partitioned)) {
+            throw new \InvalidArgumentException('SameSite=None and Partitioned cookies require Secure.');
+        }
 
-        return $y;
+        $cookie = clone $this;
+        $cookie->secure = $on;
+        $cookie->assertInvariants();
+
+        return $cookie;
+    }
+
+    private function assertInvariants(): void
+    {
+        if (str_starts_with($this->name, '__Secure-') && !$this->secure) {
+            throw new \InvalidArgumentException('__Secure- cookies require Secure.');
+        }
+        if (str_starts_with($this->name, '__Host-')) {
+            if (!$this->secure || $this->path !== '/' || $this->domain !== null) {
+                throw new \InvalidArgumentException('__Host- cookies require Secure, Path=/, and no Domain.');
+            }
+        }
+        if ($this->sameSite === 'None' && !$this->secure) {
+            throw new \InvalidArgumentException('SameSite=None cookies require Secure.');
+        }
+        if ($this->partitioned && !$this->secure) {
+            throw new \InvalidArgumentException('Partitioned cookies require Secure.');
+        }
     }
 }

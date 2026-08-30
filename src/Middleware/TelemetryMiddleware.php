@@ -17,24 +17,8 @@ use Psr\Log\NullLogger;
 /**
  * Telemetry middleware with W3C Trace Context and optional OpenTelemetry integration.
  *
- * Minimal mode (default - zero dependencies):
- * - W3C Trace Context propagation (traceparent/tracestate)
- * - Request ID generation and correlation
- * - Response timing headers (X-Response-Time, Server-Timing)
- * - Access logging with trace correlation
- * - Global trace context via TraceContext helper
- *
- * OpenTelemetry mode (auto-enabled when SDK is installed):
- * - Delegates to OpenTelemetryHandler for full span management
- * - Automatic span creation with semantic conventions
- * - Span export to Jaeger, Zipkin, OTLP collectors
- * - Exception recording in spans with stack traces
- * - Distributed tracing UI visibility
- *
- * No configuration needed - automatically detects and uses OpenTelemetry SDK if available.
- *
- * @see https://www.w3.org/TR/trace-context/
- * @see https://opentelemetry.io/docs/specs/semconv/http/
+ * Trace data is attached to the request through the explicit RequestContext
+ * abstraction. No process-global current-request state is used.
  */
 final readonly class TelemetryMiddleware
 {
@@ -44,39 +28,28 @@ final readonly class TelemetryMiddleware
         private LoggerInterface $log = new NullLogger(),
         private bool $addXResponseTime = true,
         private bool $addServerTiming = true,
-
-        // Request ID
         private bool $emitRequestId = true,
         private string $requestIdHeader = 'X-Request-Id',
         private bool $respectExistingRequestId = true,
-
-        // NEL (Network Error Logging)
         private ?string $nelGroup = null,
         private ?string $nelEndpoint = null,
         private int $nelTtlSeconds = 86400,
         private bool $nelIncludeSubdomains = true,
         private bool $nelCollectSuccesses = false,
-
-        // Tracing (W3C + optional OTel)
         private bool $emitTraceIdHeader = true,
         private string $traceIdHeader = 'Trace-Id',
         private bool $respectIncomingTraceparent = true,
         private bool $emitTraceparentHeader = false,
-
-        // OpenTelemetry (auto-detected)
         private bool $enableOtelIntegration = false,
         private string $otelServiceName = 'webrick-app',
         private string $otelServiceVersion = '1.0.0',
     ) {
-        // Auto-detect OpenTelemetry SDK availability
         $this->otelAvailable = $this->enableOtelIntegration
             && class_exists('OpenTelemetry\\API\\Globals')
             && class_exists('OpenTelemetry\\API\\Trace\\SpanKind');
     }
 
-    /**
-     * @param Closure(Request):Response $next
-     */
+    /** @param Closure(Request):Response $next */
     public function __invoke(Request $req, Closure $next): Response
     {
         if ($this->otelAvailable) {
@@ -115,19 +88,11 @@ final readonly class TelemetryMiddleware
         );
     }
 
-    /* ======================= Static helpers ======================= */
-
-    /**
-     * Build W3C traceparent header.
-     */
     private static function buildTraceParent(string $traceId, string $spanId, string $flags = '01'): string
     {
         return '00-' . strtolower($traceId) . '-' . strtolower($spanId) . '-' . strtolower($flags);
     }
 
-    /**
-     * Generate random span ID (16 hex chars).
-     */
     private static function generateSpanId(): string
     {
         try {
@@ -137,9 +102,6 @@ final readonly class TelemetryMiddleware
         }
     }
 
-    /**
-     * Generate random trace ID (32 hex chars).
-     */
     private static function generateTraceId(): string
     {
         try {
@@ -149,33 +111,22 @@ final readonly class TelemetryMiddleware
         }
     }
 
-    /**
-     * Validate W3C trace flags (2 hex chars).
-     */
     private static function isValidFlags(string $hex): bool
     {
-        return \strlen($hex) === 2 && ctype_xdigit($hex);
+        return preg_match('/\A[0-9a-f]{2}\z/iD', $hex) === 1;
     }
 
-    /**
-     * Validate W3C span ID (16 hex chars, non-zero).
-     */
     private static function isValidSpanId(string $hex): bool
     {
-        return \strlen($hex) === 16 && ctype_xdigit($hex) && $hex !== str_repeat('0', 16);
+        return preg_match('/\A[0-9a-f]{16}\z/iD', $hex) === 1 && $hex !== str_repeat('0', 16);
     }
 
-    /**
-     * Validate W3C trace ID (32 hex chars, non-zero).
-     */
     private static function isValidTraceId(string $hex): bool
     {
-        return \strlen($hex) === 32 && ctype_xdigit($hex) && $hex !== str_repeat('0', 32);
+        return preg_match('/\A[0-9a-f]{32}\z/iD', $hex) === 1 && $hex !== str_repeat('0', 32);
     }
 
     /**
-     * Add Request-Id, Trace-Id, and optional traceparent/tracestate to the response.
-     *
      * @param array{trace_id:string,parent_span_id:string,flags:string,tracestate:string,span_id:string} $trace
      */
     private function addCorrelationHeaders(Response $resp, array $trace, ?string $requestId): Response
@@ -193,11 +144,7 @@ final readonly class TelemetryMiddleware
         if ($this->emitTraceparentHeader && !$resp->hasHeader('traceparent')) {
             $resp = $resp->withHeader(
                 'traceparent',
-                self::buildTraceParent(
-                    $trace['trace_id'],
-                    $trace['span_id'],
-                    $trace['flags'],
-                ),
+                self::buildTraceParent($trace['trace_id'], $trace['span_id'], $trace['flags']),
             );
             if ($trace['tracestate'] !== '' && !$resp->hasHeader('tracestate')) {
                 $resp = $resp->withHeader('tracestate', $trace['tracestate']);
@@ -207,17 +154,11 @@ final readonly class TelemetryMiddleware
         return $resp;
     }
 
-    /**
-     * Add timing headers (X-Response-Time, Server-Timing).
-     */
     private function addTimingHeaders(Response $resp, float $durMs): Response
     {
         return TelemetrySupport::addTimingHeaders($resp, $this->addXResponseTime, $this->addServerTiming, $durMs);
     }
 
-    /**
-     * Apply Network Error Logging (NEL) headers.
-     */
     private function applyNelHeaders(Response $resp): Response
     {
         return TelemetrySupport::applyNelHeaders(
@@ -230,21 +171,12 @@ final readonly class TelemetryMiddleware
         );
     }
 
-    /**
-     * Delegate to OpenTelemetryHandler for full OTel integration.
-     *
-     * @param Closure(Request):Response $next
-     */
+    /** @param Closure(Request):Response $next */
     private function delegateToOtel(Request $req, Closure $next): Response
     {
-        $handler = new OpenTelemetryHandler($this->options());
-
-        return $handler->handle($req, $next);
+        return (new OpenTelemetryHandler($this->options()))->handle($req, $next);
     }
 
-    /**
-     * Derive or generate request ID.
-     */
     private function deriveRequestId(Request $req): ?string
     {
         return TelemetrySupport::deriveRequestId(
@@ -255,74 +187,47 @@ final readonly class TelemetryMiddleware
         );
     }
 
-    /**
-     * Extract W3C Trace Context from incoming request.
-     *
-     * @return array{0:string,1:string,2:string,3:string} [traceId, parentSpanId, flags, tracestate]
-     */
+    /** @return array{0:string,1:string,2:string,3:string} */
     private function extractTraceContext(Request $req): array
     {
-        $tp = trim($req->getHeaderLine('traceparent'));
-        $ts = trim($req->getHeaderLine('tracestate'));
+        $traceparent = trim($req->getHeaderLine('traceparent'));
+        $tracestate = trim($req->getHeaderLine('tracestate'));
 
-        if ($this->respectIncomingTraceparent && $tp !== '') {
-            // Format: version-traceid-spanid-flags (lowercase hex)
-            $parts = explode('-', $tp);
-            if (\count($parts) === 4) {
-                [$ver, $tid, $sid, $flg] = $parts;
-                $ver = strtolower($ver);
-                if ($ver === '00' && self::isValidTraceId($tid) && self::isValidSpanId($sid) && self::isValidFlags(
-                    $flg,
-                )) {
-                    return [strtolower($tid), strtolower($sid), strtolower($flg), $ts];
+        if ($this->respectIncomingTraceparent && $traceparent !== '') {
+            $parts = explode('-', $traceparent);
+            if (count($parts) === 4) {
+                [$version, $traceId, $spanId, $flags] = $parts;
+                if (
+                    strtolower($version) === '00'
+                    && self::isValidTraceId($traceId)
+                    && self::isValidSpanId($spanId)
+                    && self::isValidFlags($flags)
+                ) {
+                    return [strtolower($traceId), strtolower($spanId), strtolower($flags), $tracestate];
                 }
             }
         }
 
-        // New trace, sampled by default (flags 01)
-        return [self::generateTraceId(), '0000000000000000', '01', $ts];
+        return [self::generateTraceId(), '0000000000000000', '01', $tracestate];
     }
 
-    /**
-     * Minimal W3C trace context handling (no OTel SDK required).
-     *
-     * @param Closure(Request):Response $next
-     */
+    /** @param Closure(Request):Response $next */
     private function handleMinimal(Request $req, Closure $next): Response
     {
         $startNs = hrtime(true);
-
-        // 1) Enrich request with trace context & request id
         [$req, $trace, $requestId] = $this->prepareContext($req);
+        $req = TraceContext::attach($req, false);
 
-        // 2) Initialize global trace context for application-wide access
-        TraceContext::initialize($req, false);
+        $resp = $next($req);
+        $durMs = (hrtime(true) - $startNs) / 1e6;
+        $resp = $this->addTimingHeaders($resp, $durMs);
+        $resp = $this->addCorrelationHeaders($resp, $trace, $requestId);
+        $resp = $this->applyNelHeaders($resp);
+        $this->logAccess($req, $resp, $durMs, $trace['span_id'], $trace['trace_id'], $requestId);
 
-        try {
-            // 3) Execute next middleware/handler
-            $resp = $next($req);
-
-            // 4) Compute duration
-            $durMs = (hrtime(true) - $startNs) / 1e6;
-
-            // 5) Decorate response (timing, correlation, nel)
-            $resp = $this->addTimingHeaders($resp, $durMs);
-            $resp = $this->addCorrelationHeaders($resp, $trace, $requestId);
-            $resp = $this->applyNelHeaders($resp);
-
-            // 6) Access log
-            $this->logAccess($req, $resp, $durMs, $trace['span_id'], $trace['trace_id'], $requestId);
-
-            return $resp;
-        } finally {
-            // Clean up trace context (important for long-running processes)
-            TraceContext::clear();
-        }
+        return $resp;
     }
 
-    /**
-     * Log access with trace correlation.
-     */
     private function logAccess(
         Request $req,
         Response $resp,
@@ -344,15 +249,12 @@ final readonly class TelemetryMiddleware
     }
 
     /**
-     * Prepare W3C trace context + request id and attach them to the Request.
-     *
      * @return array{0:Request,1:array{trace_id:string,parent_span_id:string,flags:string,tracestate:string,span_id:string},2:?string}
      */
     private function prepareContext(Request $req): array
     {
         [$traceId, $parentSpanId, $flags, $tracestate] = $this->extractTraceContext($req);
         $spanId = self::generateSpanId();
-
         $trace = [
             'trace_id' => $traceId,
             'parent_span_id' => $parentSpanId,

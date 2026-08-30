@@ -8,39 +8,18 @@ namespace Infocyph\Webrick\Router\Route;
  * Validates persisted route metadata at the cache boundary.
  *
  * @phpstan-type SegmentSpec array{type:'lit',val:string}|array{type:'var',name:string,regex:string}|array{type:'var',name:string,call:callable-string}
- * @phpstan-type CorsPayload array{
- *   origins:list<string>,
- *   methods:?string,
- *   headers:string|list<string>|null,
- *   exposeHeaders:string|list<string>|null,
- *   maxAgeSeconds:?int,
- *   allowCredentials:?bool,
- *   allowPrivateNetwork:?bool
- * }
+ * @phpstan-type CorsPayload array{origins:list<string>,methods:?string,headers:string|list<string>|null,exposeHeaders:string|list<string>|null,maxAgeSeconds:?int,allowCredentials:?bool,allowPrivateNetwork:?bool}
+ * @phpstan-type ProducesPayload array{types:list<string>,charsets:list<string>|null}
  */
 final class CompiledRouteCachePayload
 {
     /**
      * @param array<mixed> $payload
-     * @return array{
-     *   0:int,
-     *   1:string,
-     *   2:string,
-     *   3:array{0:string,1:string}|string,
-     *   4:?string,
-     *   5:list<string>,
-     *   6:?string,
-     *   7:bool,
-     *   8:string,
-     *   9:list<string>,
-     *   10:int,
-     *   11:?CorsPayload,
-     *   12:list<SegmentSpec>
-     * }
+     * @return array{0:int,1:string,2:string,3:array{0:string,1:string}|string,4:?string,5:list<string>,6:?string,7:bool,8:string,9:list<string>,10:int,11:?CorsPayload,12:?ProducesPayload,13:list<SegmentSpec>}
      */
     public static function validate(array $payload): array
     {
-        if (\count($payload) !== 13 || ($payload[0] ?? null) !== CompiledRoute::CACHE_PAYLOAD_VERSION) {
+        if (count($payload) !== 14 || ($payload[0] ?? null) !== CompiledRoute::CACHE_PAYLOAD_VERSION) {
             throw new \UnexpectedValueException('Invalid compiled-route cache payload.');
         }
 
@@ -57,13 +36,14 @@ final class CompiledRouteCachePayload
             self::stringList($payload[9] ?? null),
             self::integer($payload[10] ?? null),
             self::cors($payload[11] ?? null),
-            self::segments($payload[12] ?? null),
+            self::produces($payload[12] ?? null),
+            self::segments($payload[13] ?? null),
         ];
     }
 
     private static function boolean(mixed $value): bool
     {
-        if (!\is_bool($value)) {
+        if (!is_bool($value)) {
             throw new \UnexpectedValueException('Invalid boolean in compiled-route cache payload.');
         }
 
@@ -79,15 +59,13 @@ final class CompiledRouteCachePayload
         return ['type' => 'var', 'name' => $name, 'call' => $call];
     }
 
-    /**
-     * @return CorsPayload|null
-     */
+    /** @return CorsPayload|null */
     private static function cors(mixed $value): ?array
     {
         if ($value === null) {
             return null;
         }
-        if (!\is_array($value)) {
+        if (!is_array($value)) {
             throw new \UnexpectedValueException('Invalid CORS metadata in compiled-route cache payload.');
         }
 
@@ -102,21 +80,13 @@ final class CompiledRouteCachePayload
         ];
     }
 
-    /**
-     * @return array{0:string,1:string}|string
-     */
+    /** @return array{0:string,1:string}|string */
     private static function handler(mixed $value): array|string
     {
-        if (\is_string($value)) {
+        if (is_string($value)) {
             return $value;
         }
-        if (
-            !\is_array($value)
-            || !\array_is_list($value)
-            || \count($value) !== 2
-            || !\is_string($value[0])
-            || !\is_string($value[1])
-        ) {
+        if (!is_array($value) || !array_is_list($value) || count($value) !== 2 || !is_string($value[0]) || !is_string($value[1])) {
             throw new \UnexpectedValueException('Invalid handler in compiled-route cache payload.');
         }
 
@@ -125,16 +95,14 @@ final class CompiledRouteCachePayload
 
     private static function integer(mixed $value): int
     {
-        if (!\is_int($value)) {
+        if (!is_int($value)) {
             throw new \UnexpectedValueException('Invalid integer in compiled-route cache payload.');
         }
 
         return $value;
     }
 
-    /**
-     * @return array{type:'lit',val:string}
-     */
+    /** @return array{type:'lit',val:string} */
     private static function literalSegment(string $value): array
     {
         return ['type' => 'lit', 'val' => $value];
@@ -155,38 +123,55 @@ final class CompiledRouteCachePayload
         return $value === null ? null : self::string($value);
     }
 
-    /**
-     * @return string|list<string>|null
-     */
+    /** @return string|list<string>|null */
     private static function nullableStringList(mixed $value): array|string|null
     {
-        if ($value === null || \is_string($value)) {
+        if ($value === null || is_string($value)) {
             return $value;
         }
 
         return self::stringList($value);
     }
 
-    /**
-     * @return array{type:'var',name:string,regex:string}
-     */
+    /** @return ProducesPayload|null */
+    private static function produces(mixed $value): ?array
+    {
+        if ($value === null) {
+            return null;
+        }
+        if (!is_array($value)) {
+            throw new \UnexpectedValueException('Invalid Produces metadata in compiled-route cache payload.');
+        }
+
+        $types = self::stringList($value['types'] ?? null);
+        if ($types === []) {
+            throw new \UnexpectedValueException('Produces metadata requires at least one media type.');
+        }
+
+        $charsets = $value['charsets'] ?? null;
+
+        return [
+            'types' => $types,
+            'charsets' => $charsets === null ? null : self::stringList($charsets),
+        ];
+    }
+
+    /** @return array{type:'var',name:string,regex:string} */
     private static function regexSegment(string $name, string $regex): array
     {
         return ['type' => 'var', 'name' => $name, 'regex' => $regex];
     }
 
-    /**
-     * @return list<SegmentSpec>
-     */
+    /** @return list<SegmentSpec> */
     private static function segments(mixed $value): array
     {
-        if (!\is_array($value) || !\array_is_list($value)) {
+        if (!is_array($value) || !array_is_list($value)) {
             throw new \UnexpectedValueException('Invalid segments in compiled-route cache payload.');
         }
 
         $segments = [];
         foreach ($value as $segment) {
-            if (!\is_array($segment)) {
+            if (!is_array($segment)) {
                 throw new \UnexpectedValueException('Invalid segment in compiled-route cache payload.');
             }
 
@@ -201,13 +186,14 @@ final class CompiledRouteCachePayload
             }
 
             $name = self::string($segment['name'] ?? null);
-            if (\is_string($segment['regex'] ?? null)) {
+            if (is_string($segment['regex'] ?? null)) {
                 $segments[] = self::regexSegment($name, $segment['regex']);
 
                 continue;
             }
+
             $call = $segment['call'] ?? null;
-            if (\is_string($call) && \is_callable($call)) {
+            if (is_string($call) && is_callable($call)) {
                 $segments[] = self::callSegment($name, $call);
 
                 continue;
@@ -221,19 +207,17 @@ final class CompiledRouteCachePayload
 
     private static function string(mixed $value): string
     {
-        if (!\is_string($value)) {
+        if (!is_string($value)) {
             throw new \UnexpectedValueException('Invalid string in compiled-route cache payload.');
         }
 
         return $value;
     }
 
-    /**
-     * @return list<string>
-     */
+    /** @return list<string> */
     private static function stringList(mixed $value): array
     {
-        if (!\is_array($value) || !\array_is_list($value)) {
+        if (!is_array($value) || !array_is_list($value)) {
             throw new \UnexpectedValueException('Invalid string list in compiled-route cache payload.');
         }
 

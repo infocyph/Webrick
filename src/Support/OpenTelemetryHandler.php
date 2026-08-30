@@ -13,18 +13,13 @@ use RuntimeException;
 final readonly class OpenTelemetryHandler
 {
     private const string OTEL_GLOBALS = 'OpenTelemetry\\API\\Globals';
-
     private const string OTEL_SPAN_KIND_SERVER = 'OpenTelemetry\\API\\Trace\\SpanKind::KIND_SERVER';
-
     private const string OTEL_STATUS_ERROR = 'OpenTelemetry\\API\\Trace\\StatusCode::STATUS_ERROR';
-
     private const string OTEL_STATUS_OK = 'OpenTelemetry\\API\\Trace\\StatusCode::STATUS_OK';
 
     public function __construct(private TelemetryOptions $options) {}
 
-    /**
-     * @param Closure(Request):Response $next
-     */
+    /** @param Closure(Request):Response $next */
     public function handle(Request $req, Closure $next): Response
     {
         $startNs = hrtime(true);
@@ -33,7 +28,6 @@ final readonly class OpenTelemetryHandler
 
         try {
             $this->addSpanAttributes($span, $req);
-
             [$traceId, $spanId] = $this->extractTraceContext($span);
             $requestId = $this->deriveRequestId($req);
 
@@ -41,11 +35,9 @@ final readonly class OpenTelemetryHandler
                 ->withAttribute('trace.trace_id', $traceId)
                 ->withAttribute('trace.span_id', $spanId)
                 ->withAttribute('request_id', $requestId);
-
-            TraceContext::initialize($req, true);
+            $req = TraceContext::attach($req, true);
 
             $resp = $next($req);
-
             $this->addResponseAttributes($span, $resp);
             $this->setSpanStatus($span, $resp->getStatusCode());
 
@@ -65,20 +57,27 @@ final readonly class OpenTelemetryHandler
                 $this->options->nelIncludeSubdomains,
                 $this->options->nelCollectSuccesses,
             );
-            TelemetrySupport::logAccess($this->options->log, $req, $resp, $durMs, $spanId, $traceId, $requestId, 'otel');
+            TelemetrySupport::logAccess(
+                $this->options->log,
+                $req,
+                $resp,
+                $durMs,
+                $spanId,
+                $traceId,
+                $requestId,
+                'otel',
+            );
 
             return $resp;
         } catch (\Throwable $e) {
             $this->call($span, 'recordException', [$e]);
             $this->call($span, 'setStatus', [$this->otelStatusError(), $e->getMessage()]);
-
             throw $e;
         } finally {
             $this->call($span, 'end');
             if (method_exists($scope, 'detach')) {
                 $this->call($scope, 'detach');
             }
-            TraceContext::clear();
         }
     }
 
@@ -98,7 +97,7 @@ final readonly class OpenTelemetryHandler
     private function addCustomAttributes(object $span, Request $req): void
     {
         $routeName = $req->getAttribute('route.name');
-        if (\is_string($routeName) && $routeName !== '') {
+        if (is_string($routeName) && $routeName !== '') {
             $this->setSpanAttribute($span, 'http.route', $routeName);
         }
 
@@ -106,25 +105,21 @@ final readonly class OpenTelemetryHandler
         if ($userId !== null) {
             $this->setSpanAttribute($span, 'enduser.id', $userId);
         }
-
         $userRole = TelemetrySupport::stringFromMixed($req->getAttribute('auth.role'));
         if ($userRole !== null) {
             $this->setSpanAttribute($span, 'enduser.role', $userRole);
         }
-
         $clientType = TelemetrySupport::stringFromMixed($req->getAttribute('client.type'));
         if ($clientType !== null) {
             $this->setSpanAttribute($span, 'client.type', $clientType);
         }
-
         $apiVersion = TelemetrySupport::stringFromMixed($req->getAttribute('api.version'));
         if ($apiVersion !== null) {
             $this->setSpanAttribute($span, 'api.version', $apiVersion);
         }
-
-        $isTrustedProxy = $req->getAttribute('is_trusted_proxy');
-        if (\is_bool($isTrustedProxy)) {
-            $this->setSpanAttribute($span, 'http.client.is_trusted_proxy', $isTrustedProxy);
+        $trusted = $req->getAttribute('is_trusted_proxy');
+        if (is_bool($trusted)) {
+            $this->setSpanAttribute($span, 'http.client.is_trusted_proxy', $trusted);
         }
     }
 
@@ -133,9 +128,8 @@ final readonly class OpenTelemetryHandler
         $clientIp = TelemetrySupport::stringFromMixed($req->getAttribute('client_ip'));
         if ($clientIp === null) {
             $remote = $req->getServerParams()['REMOTE_ADDR'] ?? null;
-            $clientIp = \is_string($remote) && $remote !== '' ? $remote : null;
+            $clientIp = is_string($remote) && $remote !== '' ? $remote : null;
         }
-
         if ($clientIp !== null) {
             $this->setSpanAttribute($span, 'net.peer.ip', $clientIp);
         }
@@ -144,7 +138,6 @@ final readonly class OpenTelemetryHandler
         if ($serverPort !== null) {
             $this->setSpanAttribute($span, 'net.host.port', $serverPort);
         }
-
         $protocolVersion = $req->getProtocolVersion();
         if ($protocolVersion !== '') {
             $this->setSpanAttribute($span, 'http.flavor', $protocolVersion);
@@ -154,12 +147,10 @@ final readonly class OpenTelemetryHandler
     private function addResponseAttributes(object $span, Response $resp): void
     {
         $this->setSpanAttribute($span, 'http.status_code', $resp->getStatusCode());
-
         $contentLength = $resp->getBody()->getSize();
         if ($contentLength !== null) {
             $this->setSpanAttribute($span, 'http.response_content_length', $contentLength);
         }
-
         $contentType = $resp->getHeaderLine('Content-Type');
         if ($contentType !== '') {
             $this->setSpanAttribute($span, 'http.response_content_type', $contentType);
@@ -177,12 +168,10 @@ final readonly class OpenTelemetryHandler
         if ($url !== '') {
             $this->setSpanAttribute($span, 'http.url', $url);
         }
-
         $userAgent = $req->getHeaderLine('User-Agent');
         if ($userAgent !== '') {
             $this->setSpanAttribute($span, 'http.user_agent', $userAgent);
         }
-
         $contentLength = $req->getHeaderLine('Content-Length');
         if ($contentLength !== '' && is_numeric($contentLength)) {
             $this->setSpanAttribute($span, 'http.request_content_length', (int) $contentLength);
@@ -195,63 +184,47 @@ final readonly class OpenTelemetryHandler
 
     private function buildSpanName(Request $req): string
     {
-        $method = $req->getMethod();
         $routeName = $req->getAttribute('route.name');
-
-        if (\is_string($routeName) && $routeName !== '') {
-            return $method . ' ' . $routeName;
-        }
-
-        return $method . ' ' . ($req->getUri()->getPath() ?: '/');
+        return $req->getMethod() . ' ' . (is_string($routeName) && $routeName !== ''
+            ? $routeName
+            : ($req->getUri()->getPath() ?: '/'));
     }
 
-    /**
-     * @param list<mixed> $args
-     */
+    /** @param list<mixed> $args */
     private function call(object $target, string $method, array $args = []): mixed
     {
         if (!method_exists($target, $method)) {
             throw new RuntimeException(sprintf('Method %s::%s() not available.', $target::class, $method));
         }
-
         return $target->{$method}(...$args);
     }
 
-    /**
-     * @param list<mixed> $args
-     */
+    /** @param list<mixed> $args */
     private function callObject(object $target, string $method, array $args = []): object
     {
         $result = $this->call($target, $method, $args);
-        if (!\is_object($result)) {
+        if (!is_object($result)) {
             throw new RuntimeException(sprintf('Method %s::%s() did not return an object.', $target::class, $method));
         }
-
         return $result;
     }
 
-    /**
-     * @param list<mixed> $args
-     */
+    /** @param list<mixed> $args */
     private function callStatic(string $class, string $method, array $args = []): mixed
     {
         if (!method_exists($class, $method)) {
             throw new RuntimeException(sprintf('Static method %s::%s() not available.', $class, $method));
         }
-
         return $class::$method(...$args);
     }
 
-    /**
-     * @param list<mixed> $args
-     */
+    /** @param list<mixed> $args */
     private function callStaticObject(string $class, string $method, array $args = []): object
     {
         $result = $this->callStatic($class, $method, $args);
-        if (!\is_object($result)) {
+        if (!is_object($result)) {
             throw new RuntimeException(sprintf('Static method %s::%s() did not return an object.', $class, $method));
         }
-
         return $result;
     }
 
@@ -265,29 +238,23 @@ final readonly class OpenTelemetryHandler
         );
     }
 
-    /**
-     * @return array{0:string,1:string}
-     */
+    /** @return array{0:string,1:string} */
     private function extractTraceContext(object $span): array
     {
         $context = $this->callObject($span, 'getContext');
-        $traceId = TelemetrySupport::stringFromMixed($this->call($context, 'getTraceId')) ?? '';
-        $spanId = TelemetrySupport::stringFromMixed($this->call($context, 'getSpanId')) ?? '';
-
-        return [$traceId, $spanId];
+        return [
+            TelemetrySupport::stringFromMixed($this->call($context, 'getTraceId')) ?? '',
+            TelemetrySupport::stringFromMixed($this->call($context, 'getSpanId')) ?? '',
+        ];
     }
 
-    /**
-     * @return array<string,string>
-     */
+    /** @return array<string,string> */
     private function headersToCarrier(Request $req): array
     {
         $carrier = [];
         foreach ($req->getHeaders() as $name => $values) {
-            $lower = strtolower((string) $name);
-            $carrier[$lower] = $values[0] ?? '';
+            $carrier[strtolower((string) $name)] = $values[0] ?? '';
         }
-
         return $carrier;
     }
 
@@ -296,12 +263,10 @@ final readonly class OpenTelemetryHandler
         if (!defined($name)) {
             return $fallback;
         }
-
         $value = constant($name);
-        if (!\is_int($value)) {
+        if (!is_int($value)) {
             throw new RuntimeException("Invalid {$label} constant.");
         }
-
         return $value;
     }
 
@@ -320,9 +285,7 @@ final readonly class OpenTelemetryHandler
         return $this->otelIntConstant(self::OTEL_STATUS_OK, 1, 'OpenTelemetry StatusCode::STATUS_OK');
     }
 
-    /**
-     * @param bool|int|float|string|array<int|string,mixed>|null $value
-     */
+    /** @param bool|int|float|string|array<int|string,mixed>|null $value */
     private function setSpanAttribute(object $span, string $key, bool|int|float|string|array|null $value): void
     {
         $this->call($span, 'setAttribute', [$key, $value]);
@@ -333,7 +296,6 @@ final readonly class OpenTelemetryHandler
         $series = StatusEnum::tryFrom($statusCode)?->series() ?? intdiv($statusCode, 100);
         if ($series === 5) {
             $this->call($span, 'setStatus', [$this->otelStatusError(), 'HTTP ' . $statusCode]);
-
             return;
         }
 
@@ -355,10 +317,8 @@ final readonly class OpenTelemetryHandler
             'getTracer',
             [$this->options->otelServiceName, $this->options->otelServiceVersion],
         );
-
         $propagator = $this->callStaticObject(self::OTEL_GLOBALS, 'propagator');
         $context = $this->call($propagator, 'extract', [$this->headersToCarrier($req)]);
-
         $builder = $this->callObject($tracer, 'spanBuilder', [$this->buildSpanName($req)]);
         $builder = $this->callObject($builder, 'setParent', [$context]);
         $builder = $this->callObject($builder, 'setSpanKind', [$this->otelSpanKindServer()]);
