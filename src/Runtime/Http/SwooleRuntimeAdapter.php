@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Runtime\Http;
 
-use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Runtime\RoutingInput;
@@ -103,11 +102,6 @@ final readonly class SwooleRuntimeAdapter implements RuntimeAdapterInterface
         if (
             !$response->hasHeader('Content-Length')
             && $size !== null
-            && !in_array(
-                $response->getStatusCode(),
-                [StatusEnum::NO_CONTENT->value, StatusEnum::NOT_MODIFIED->value],
-                true,
-            )
             && $native->header('Content-Length', (string) $size) === false
         ) {
             throw new RuntimeException('Swoole Content-Length header failed.');
