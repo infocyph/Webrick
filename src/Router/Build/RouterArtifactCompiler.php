@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Router\Build;
 
 use Infocyph\Webrick\Router\Build\Artifact\ArtifactValueCodec;
+use Infocyph\Webrick\Router\Build\Artifact\MatcherRouteMetadata;
 use RuntimeException;
 
 /** Emits the Webrick half of a coordinated production release bundle. */
@@ -25,7 +26,7 @@ final class RouterArtifactCompiler
             'config_fingerprint' => $build->configFingerprint,
             'artifact_fingerprint' => $fingerprint,
             'has_domain_routes' => $build->hasDomainRoutes,
-            'routes' => array_map(ArtifactValueCodec::encode(...), $build->routes->all()),
+            'routes' => array_map(MatcherRouteMetadata::encode(...), $build->routes->all()),
             'plans' => $plans,
             'aliases' => $build->aliases,
             'pre_global' => array_map(ArtifactValueCodec::encode(...), $build->preGlobal),
