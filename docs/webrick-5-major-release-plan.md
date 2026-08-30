@@ -131,15 +131,20 @@ Full validation therefore remains intentionally pending for completed feature ph
 
 **Commit:** `efeb09b654f4bf354ae93b40c48cfc0a76557a2e`
 
-### Remaining Phase 3 work
+### Direct execution specialization
 
-- [ ] Specialize `DIRECT_REQUEST` promotion so the callable executes directly with no InterMix resolution/scope unless middleware requires scope.
-- [ ] Remove avoidable per-request closures/branching from the direct no-Request path after route selection.
-- [ ] Ensure direct static execution can use the compiled plan without unnecessary route/dispatcher lookups beyond the Phase 4 matcher boundary.
-- [ ] Keep HEAD suppression and error semantics identical across direct and promoted paths.
-- [ ] **Phase 3 implementation complete**
-- [ ] **Phase 3 feature complete**
+- [x] `DIRECT_REQUEST` promotes Request only after matching and invokes the callable directly without InterMix resolution or request scope unless middleware requires scoped execution.
+- [x] Unscoped direct/direct-request paths no longer allocate wrapper closures before invoking their terminal handler.
+- [x] Global-middleware presence is resolved once at kernel boot rather than recomputed from middleware arrays for every request.
+- [x] The compiled kernel passes its already selected `ExecutionPlan` into the dispatcher; promoted execution no longer performs a duplicate route-to-plan lookup.
+- [x] Direct zero-argument and route-argument paths use dedicated dispatcher entry points after route selection.
+- [x] Scoped DI-only execution remains Request-free; its only request-time wrapper is the scope callback required by InterMix lifecycle semantics.
+- [x] HEAD suppression and error rendering remain shared after both direct and promoted execution paths.
+- [x] **Phase 3 implementation complete**
+- [x] **Phase 3 feature complete**
 - [ ] **Phase 3 consolidated test/PHPForge certification** — deferred to final stabilization.
+
+**Commit:** `f9d48eec2b34c976f48ee87e58a87d3e1d119051`
 
 ---
 
