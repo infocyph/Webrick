@@ -116,13 +116,35 @@ Full validation therefore remains intentionally pending for completed feature ph
 
 ---
 
+## Phase 3 — direct dispatch path
+
+### Routing preflight and lazy promotion
+
+- [x] Minimal immutable `RoutingInput` is created from native globals or an already supplied Request before full Request materialization.
+- [x] Domain host detection/normalization is skipped when the compiled artifact proves there are no domain routes.
+- [x] Method override semantics and normalized request path are preserved in the routing preflight.
+- [x] Match, automatic OPTIONS, and direct handler selection happen before `Request::fromGlobals()`.
+- [x] `DIRECT_ZERO_ARG` and `DIRECT_ROUTE_ARGS` bypass Request, InterMix resolution, request scope, and middleware machinery when their capabilities allow it.
+- [x] DI-backed plans that do not require Request may execute inside an InterMix scope without constructing or seeding Request.
+- [x] Errors lazily promote to Request only for rendering; invalid-global Request construction has a minimal error-render fallback.
+- [x] A materialized Request receives one canonical `route_params` bag only; duplicate route-param aliases are not reintroduced.
+
+**Commit:** `efeb09b654f4bf354ae93b40c48cfc0a76557a2e`
+
+### Remaining Phase 3 work
+
+- [ ] Specialize `DIRECT_REQUEST` promotion so the callable executes directly with no InterMix resolution/scope unless middleware requires scope.
+- [ ] Remove avoidable per-request closures/branching from the direct no-Request path after route selection.
+- [ ] Ensure direct static execution can use the compiled plan without unnecessary route/dispatcher lookups beyond the Phase 4 matcher boundary.
+- [ ] Keep HEAD suppression and error semantics identical across direct and promoted paths.
+- [ ] **Phase 3 implementation complete**
+- [ ] **Phase 3 feature complete**
+- [ ] **Phase 3 consolidated test/PHPForge certification** — deferred to final stabilization.
+
+---
+
 ## Remaining phases
 
-- [ ] **Phase 3 — direct dispatch path**
-  - minimal `RoutingInput` before full Request materialization
-  - zero-argument static route bypasses Request, scope, DI, and middleware machinery when capabilities permit
-  - lazy Request promotion only for Request-aware routes
-  - direct route-argument and direct-request execution specialization
 - [ ] **Phase 4 — matcher rewrite**
 - [ ] **Phase 5 — HTTP representation**
   - includes removal of the legacy `Response::view()` global container lookup in favor of the selected runtime/view-factory boundary
