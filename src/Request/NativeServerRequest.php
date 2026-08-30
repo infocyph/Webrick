@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Request;
 
-use Infocyph\Webrick\Request\Psr7\ServerRequest;
+use Infocyph\Webrick\Request\Core\ServerRequest;
 use Infocyph\Webrick\Request\Support\PayloadParseState;
 use InvalidArgumentException;
 
 /**
- * Native Webrick request surface layered over the compatibility ServerRequest.
+ * Native Webrick request surface layered over the native ServerRequest core.
  *
  * Core input access returns arrays/scalars directly. JSON/XML parsing carries an
  * explicit state so valid empty payloads are never confused with "not parsed"
@@ -18,11 +18,8 @@ use InvalidArgumentException;
 class NativeServerRequest extends ServerRequest
 {
     private mixed $jsonPayload = null;
-
     private ?PayloadParseState $jsonState = null;
-
     private mixed $xmlPayload = null;
-
     private ?PayloadParseState $xmlState = null;
 
     public function cookie(?string $key = null): mixed
@@ -116,7 +113,6 @@ class NativeServerRequest extends ServerRequest
         }
         if (!$this->isJsonContentType()) {
             $this->jsonState = PayloadParseState::NOT_APPLICABLE;
-
             return;
         }
 
@@ -136,12 +132,10 @@ class NativeServerRequest extends ServerRequest
         }
         if (!$this->isXmlContentType()) {
             $this->xmlState = PayloadParseState::NOT_APPLICABLE;
-
             return;
         }
         if (!function_exists('simplexml_load_string')) {
             $this->xmlState = PayloadParseState::INVALID;
-
             return;
         }
 
@@ -152,14 +146,17 @@ class NativeServerRequest extends ServerRequest
         );
         if ($xml === false) {
             $this->xmlState = PayloadParseState::INVALID;
-
             return;
         }
 
-        $encoded = json_encode($xml, JSON_THROW_ON_ERROR);
-        $decoded = json_decode($encoded, true, 512, JSON_THROW_ON_ERROR);
-        $this->xmlPayload = $decoded ?? [];
-        $this->xmlState = PayloadParseState::PARSED;
+        try {
+            $encoded = json_encode($xml, JSON_THROW_ON_ERROR);
+            $this->xmlPayload = json_decode($encoded, true, 512, JSON_THROW_ON_ERROR) ?? [];
+            $this->xmlState = PayloadParseState::PARSED;
+        } catch (\JsonException) {
+            $this->xmlPayload = null;
+            $this->xmlState = PayloadParseState::INVALID;
+        }
     }
 
     /** @param array<mixed> $value @return array<string,mixed> */
@@ -171,7 +168,6 @@ class NativeServerRequest extends ServerRequest
                 $map[$key] = $entry;
             }
         }
-
         return $map;
     }
 
@@ -186,7 +182,6 @@ class NativeServerRequest extends ServerRequest
         if ($key === null) {
             return $payload;
         }
-
         return is_array($payload) ? ($payload[$key] ?? null) : null;
     }
 }
