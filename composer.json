@@ -47,10 +47,7 @@
     "autoload": {
         "psr-4": {
             "Infocyph\\Webrick\\": "src/"
-        },
-        "files": [
-            "src/functions.php"
-        ]
+        }
     },
     "autoload-dev": {
         "psr-4": {
