@@ -404,9 +404,9 @@ abstract class AbstractMatcher
      * Select the appropriate CompiledRoute for the requested HTTP verb.
      *
      * Rules:
-     *  - OPTIONS returns the first available route in the bucket (if any).
      *  - Exact verb match returns that route.
      *  - HEAD falls back to GET when a GET route exists.
+     *  - OPTIONS is never synthesized from another application route.
      *
      * @param array<string,CompiledRoute|array<mixed>|string> $buckets Map of verb => compiled or serialized route
      * @param string $verb Uppercased HTTP verb to resolve (e.g. 'GET')
@@ -414,11 +414,6 @@ abstract class AbstractMatcher
      */
     protected function pickVerbRoute(array $buckets, string $verb): ?CompiledRoute
     {
-        if ($verb === HttpMethodEnum::OPTIONS->value && $buckets) {
-            $first = \reset($buckets);
-
-            return $this->materializeRoute($first);
-        }
         if (isset($buckets[$verb])) {
             return $this->materializeRoute($buckets[$verb]);
         }
