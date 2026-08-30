@@ -7,9 +7,7 @@ namespace Infocyph\Webrick\Router\Build;
 use Infocyph\Webrick\Router\Build\Artifact\ArtifactValueCodec;
 use UnexpectedValueException;
 
-/**
- * Immutable runtime execution descriptor generated entirely in the build plane.
- */
+/** Immutable runtime execution descriptor generated entirely in the build plane. */
 final readonly class ExecutionPlan
 {
     /**
@@ -19,11 +17,19 @@ final readonly class ExecutionPlan
     public function __construct(
         public string $routeId,
         public ExecutionKind $kind,
+        public ExecutionKind $terminalKind,
         public mixed $handler,
         public array $middleware,
         public array $routeArguments,
         public int $capabilities,
-    ) {}
+    ) {
+        if ($terminalKind === ExecutionKind::MIDDLEWARE_PIPELINE) {
+            throw new \InvalidArgumentException('Execution-plan terminal kind cannot be a middleware pipeline.');
+        }
+        if ($kind !== ExecutionKind::MIDDLEWARE_PIPELINE && $kind !== $terminalKind) {
+            throw new \InvalidArgumentException('Non-pipeline execution kind must equal its terminal kind.');
+        }
+    }
 
     public function requiresRequest(): bool
     {
@@ -41,6 +47,7 @@ final readonly class ExecutionPlan
         return [
             'route_id' => $this->routeId,
             'kind' => $this->kind->value,
+            'terminal_kind' => $this->terminalKind->value,
             'handler' => ArtifactValueCodec::encode($this->handler),
             'middleware' => array_map(ArtifactValueCodec::encode(...), $this->middleware),
             'route_arguments' => $this->routeArguments,
@@ -56,14 +63,14 @@ final readonly class ExecutionPlan
 
         $routeId = $payload['route_id'] ?? null;
         $kind = $payload['kind'] ?? null;
+        $terminalKind = $payload['terminal_kind'] ?? null;
         $middlewarePayload = $payload['middleware'] ?? null;
         $routeArguments = $payload['route_arguments'] ?? null;
         $capabilities = $payload['capabilities'] ?? null;
-
         if (
-            !is_string($routeId)
-            || $routeId === ''
+            !is_string($routeId) || $routeId === ''
             || !is_string($kind)
+            || !is_string($terminalKind)
             || !is_array($middlewarePayload)
             || !is_array($routeArguments)
             || !is_int($capabilities)
@@ -73,26 +80,25 @@ final readonly class ExecutionPlan
 
         $executionKind = ExecutionKind::tryFrom($kind)
             ?? throw new UnexpectedValueException("Unknown execution kind '{$kind}'.");
+        $terminalExecutionKind = ExecutionKind::tryFrom($terminalKind)
+            ?? throw new UnexpectedValueException("Unknown terminal execution kind '{$terminalKind}'.");
 
-        $middleware = [];
-        foreach ($middlewarePayload as $entry) {
-            $middleware[] = ArtifactValueCodec::decode($entry);
-        }
-
-        $args = [];
+        $middleware = array_map(ArtifactValueCodec::decode(...), array_values($middlewarePayload));
+        $arguments = [];
         foreach ($routeArguments as $argument) {
             if (!is_string($argument) || $argument === '') {
                 throw new UnexpectedValueException('Invalid route-argument metadata.');
             }
-            $args[] = $argument;
+            $arguments[] = $argument;
         }
 
         return new self(
             routeId: $routeId,
             kind: $executionKind,
+            terminalKind: $terminalExecutionKind,
             handler: ArtifactValueCodec::decode($payload['handler'] ?? null),
             middleware: $middleware,
-            routeArguments: $args,
+            routeArguments: $arguments,
             capabilities: $capabilities,
         );
     }

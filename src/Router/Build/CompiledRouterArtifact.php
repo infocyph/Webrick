@@ -42,7 +42,6 @@ final readonly class CompiledRouterArtifact
         if (($payload['format'] ?? null) !== self::FORMAT_VERSION) {
             throw new UnexpectedValueException('Unsupported Webrick router artifact format.');
         }
-
         foreach (['environment', 'config_fingerprint', 'artifact_fingerprint'] as $key) {
             if (!is_string($payload[$key] ?? null) || $payload[$key] === '') {
                 throw new UnexpectedValueException("Malformed Webrick router artifact field '{$key}'.");
@@ -52,11 +51,9 @@ final readonly class CompiledRouterArtifact
             throw new UnexpectedValueException('Malformed Webrick domain-routing capability.');
         }
 
-        $routesPayload = self::arrayField($payload, 'routes');
-        $plansPayload = self::arrayField($payload, 'plans');
         $routes = [];
         $routeIds = [];
-        foreach ($routesPayload as $encoded) {
+        foreach (self::arrayField($payload, 'routes') as $encoded) {
             $route = ArtifactValueCodec::decode($encoded);
             if (!$route instanceof CompiledRoute) {
                 throw new UnexpectedValueException('Router artifact route payload did not restore CompiledRoute.');
@@ -70,7 +67,7 @@ final readonly class CompiledRouterArtifact
         }
 
         $plans = [];
-        foreach ($plansPayload as $routeId => $planPayload) {
+        foreach (self::arrayField($payload, 'plans') as $routeId => $planPayload) {
             if (!is_string($routeId) || $routeId === '' || !isset($routeIds[$routeId])) {
                 throw new UnexpectedValueException('Execution-plan table references an unknown route identity.');
             }
@@ -111,6 +108,7 @@ final readonly class CompiledRouterArtifact
                 $route->getDomain(),
                 $route->getPath(),
                 $plan->kind->value,
+                $plan->terminalKind->value,
                 $plan->capabilities,
                 $plan->routeArguments,
             ];

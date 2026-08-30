@@ -72,6 +72,7 @@ final class RouterArtifactCompiler
                 $route->getDomain(),
                 $route->getPath(),
                 $plan->kind->value,
+                $plan->terminalKind->value,
                 $plan->capabilities,
                 $plan->routeArguments,
             ];

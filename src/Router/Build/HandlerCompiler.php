@@ -15,10 +15,7 @@ use ReflectionMethod;
 use ReflectionNamedType;
 use ReflectionParameter;
 
-/**
- * Build-plane handler and middleware inspector. Reflection and alias parsing
- * stop here; the production request path consumes only ExecutionPlan values.
- */
+/** Build-plane handler and middleware inspector. */
 final class HandlerCompiler
 {
     public function compile(CompiledRoute $route): ExecutionPlan
@@ -27,15 +24,17 @@ final class HandlerCompiler
         $middleware = $this->compileMiddlewareList($route->getMiddlewares());
         $reflection = $this->reflect($handler);
         $routeArguments = $this->routeArgumentNames($reflection, $route->getVariables());
-        $kind = $this->executionKind($handler, $reflection, $middleware, $routeArguments);
+        $terminalKind = $this->terminalKind($handler, $reflection, $routeArguments);
+        $kind = $middleware === [] ? $terminalKind : ExecutionKind::MIDDLEWARE_PIPELINE;
 
         return new ExecutionPlan(
             routeId: RouteIdentity::forRoute($route),
             kind: $kind,
+            terminalKind: $terminalKind,
             handler: $handler,
             middleware: $middleware,
             routeArguments: $routeArguments,
-            capabilities: $this->capabilities($route, $reflection, $kind, $routeArguments),
+            capabilities: $this->capabilities($route, $reflection, $kind, $terminalKind, $routeArguments),
         );
     }
 
@@ -61,13 +60,14 @@ final class HandlerCompiler
         CompiledRoute $route,
         ReflectionFunctionAbstract $reflection,
         ExecutionKind $kind,
+        ExecutionKind $terminalKind,
         array $routeArguments,
     ): int {
         $mask = 0;
         if ($this->reflectionNeedsRequest($reflection) || $kind === ExecutionKind::MIDDLEWARE_PIPELINE) {
             $mask |= RouteCapability::REQUEST;
         }
-        if ($kind === ExecutionKind::COMPILED_INVOKE || $kind === ExecutionKind::MIDDLEWARE_PIPELINE) {
+        if ($terminalKind === ExecutionKind::COMPILED_INVOKE || $kind === ExecutionKind::MIDDLEWARE_PIPELINE) {
             $mask |= RouteCapability::SCOPE;
         }
         if ($kind === ExecutionKind::MIDDLEWARE_PIPELINE) {
@@ -90,10 +90,8 @@ final class HandlerCompiler
     }
 
     /** @param list<string> $routeArguments */
-    private function allRequiredParametersAreRouteArguments(
-        ReflectionFunctionAbstract $reflection,
-        array $routeArguments,
-    ): bool {
+    private function allRequiredParametersAreRouteArguments(ReflectionFunctionAbstract $reflection, array $routeArguments): bool
+    {
         $set = array_fill_keys($routeArguments, true);
         foreach ($reflection->getParameters() as $parameter) {
             if (!$parameter->isOptional() && !isset($set[$parameter->getName()])) {
@@ -102,37 +100,6 @@ final class HandlerCompiler
         }
 
         return true;
-    }
-
-    /** @param list<mixed> $middleware @param list<string> $routeArguments */
-    private function executionKind(
-        mixed $handler,
-        ReflectionFunctionAbstract $reflection,
-        array $middleware,
-        array $routeArguments,
-    ): ExecutionKind {
-        if ($middleware !== []) {
-            return ExecutionKind::MIDDLEWARE_PIPELINE;
-        }
-
-        // Class-string instance methods/controllers require InterMix to create
-        // the target even if their method signature itself has no dependencies.
-        if (!is_callable($handler)) {
-            return ExecutionKind::COMPILED_INVOKE;
-        }
-
-        $parameters = $reflection->getParameters();
-        if ($parameters === [] || array_all($parameters, static fn(ReflectionParameter $parameter): bool => $parameter->isOptional())) {
-            return ExecutionKind::DIRECT_ZERO_ARG;
-        }
-        if (count($parameters) === 1 && $this->parameterIsRequest($parameters[0])) {
-            return ExecutionKind::DIRECT_REQUEST;
-        }
-        if ($routeArguments !== [] && $this->allRequiredParametersAreRouteArguments($reflection, $routeArguments)) {
-            return ExecutionKind::DIRECT_ROUTE_ARGS;
-        }
-
-        return ExecutionKind::COMPILED_INVOKE;
     }
 
     /**
@@ -255,5 +222,30 @@ final class HandlerCompiler
         }
 
         return $arguments;
+    }
+
+    /** @param list<string> $routeArguments */
+    private function terminalKind(
+        mixed $handler,
+        ReflectionFunctionAbstract $reflection,
+        array $routeArguments,
+    ): ExecutionKind {
+        // A non-static controller descriptor needs InterMix to construct the target.
+        if (!is_callable($handler)) {
+            return ExecutionKind::COMPILED_INVOKE;
+        }
+
+        $parameters = $reflection->getParameters();
+        if ($parameters === [] || array_all($parameters, static fn(ReflectionParameter $parameter): bool => $parameter->isOptional())) {
+            return ExecutionKind::DIRECT_ZERO_ARG;
+        }
+        if (count($parameters) === 1 && $this->parameterIsRequest($parameters[0])) {
+            return ExecutionKind::DIRECT_REQUEST;
+        }
+        if ($routeArguments !== [] && $this->allRequiredParametersAreRouteArguments($reflection, $routeArguments)) {
+            return ExecutionKind::DIRECT_ROUTE_ARGS;
+        }
+
+        return ExecutionKind::COMPILED_INVOKE;
     }
 }

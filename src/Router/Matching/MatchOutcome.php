@@ -8,7 +8,8 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
 use LogicException;
 
 /**
- * Immutable result of routing a method/host/path tuple.
+ * Immutable routing decision. HTTP control flow is represented explicitly and
+ * never by synthesizing a fake application route.
  *
  * @phpstan-type RouteParams array<string,string>
  */
@@ -23,6 +24,7 @@ final readonly class MatchOutcome
         public ?CompiledRoute $route = null,
         public array $params = [],
         public array $allowed = [],
+        public bool $headFallback = false,
     ) {}
 
     /** @param list<string> $allowed */
@@ -32,9 +34,9 @@ final readonly class MatchOutcome
     }
 
     /** @param RouteParams $params */
-    public static function found(CompiledRoute $route, array $params = []): self
+    public static function found(CompiledRoute $route, array $params = [], bool $headFallback = false): self
     {
-        return new self(MatchOutcomeType::FOUND, $route, $params);
+        return new self(MatchOutcomeType::FOUND, $route, $params, headFallback: $headFallback);
     }
 
     /** @param list<string> $allowed */
