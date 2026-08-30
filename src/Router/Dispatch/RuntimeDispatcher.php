@@ -45,14 +45,6 @@ final class RuntimeDispatcher
             : $this->invokeTerminal($plan, $request, $vars);
     }
 
-    public function dispatchDirectZeroArg(ExecutionPlan $plan): Response
-    {
-        /** @var callable $handler */
-        $handler = $plan->handler;
-
-        return $this->response($handler());
-    }
-
     /** @param array<string,string> $vars */
     public function dispatchDirectRouteArgs(ExecutionPlan $plan, array $vars): Response
     {
@@ -60,6 +52,14 @@ final class RuntimeDispatcher
         $handler = $plan->handler;
 
         return $this->response($handler(...$this->orderedRouteArguments($plan, $vars)));
+    }
+
+    public function dispatchDirectZeroArg(ExecutionPlan $plan): Response
+    {
+        /** @var callable $handler */
+        $handler = $plan->handler;
+
+        return $this->response($handler());
     }
 
     /**
@@ -88,6 +88,11 @@ final class RuntimeDispatcher
     public function hasGlobalMiddleware(): bool
     {
         return $this->preGlobal !== [] || $this->postGlobal !== [];
+    }
+
+    public function pipelineRequiresScope(string $routeId): bool
+    {
+        return ($this->pipelines[$routeId] ?? null)?->requiresScope() ?? false;
     }
 
     /** @param array<string,string> $vars */
