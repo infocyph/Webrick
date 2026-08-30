@@ -40,7 +40,7 @@ final class RuntimeRequestContext
             throw new RuntimeException('Runtime request factory must return Request.');
         }
 
-        return $this->request = $request;
+        return $this->request = $request->withAttribute(RuntimeCapabilities::ATTRIBUTE, $this->capabilities);
     }
 
     public function scopeId(): string
