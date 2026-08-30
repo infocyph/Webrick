@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Router\Matching;
 
 use Infocyph\Webrick\Constants\HttpMethodEnum;
+use Infocyph\Webrick\Router\Build\Artifact\ExecutableRoutePayload;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 
 /**
@@ -20,8 +21,8 @@ final class CanonicalMatcherEngine
     private array $materialized = [];
 
     /**
-     * @param list<array{static:array<string,array<string,CompiledRoute|array<mixed>|string>>,dynamic:array<mixed>}> $hostGroups
-     * @param list<array{static:array<string,array<string,CompiledRoute|array<mixed>|string>>,dynamic:array<mixed>}> $wildcardGroups
+     * @param list<array{static:array<string,array<string,CompiledRoute|array<mixed>>>,dynamic:array<mixed>}> $hostGroups
+     * @param list<array{static:array<string,array<string,CompiledRoute|array<mixed>>>,dynamic:array<mixed>}> $wildcardGroups
      */
     public function match(array $hostGroups, array $wildcardGroups, string $method, string $path): MatchOutcome
     {
@@ -62,8 +63,8 @@ final class CanonicalMatcherEngine
     /**
      * Fast path for one concrete host group plus one wildcard host group.
      *
-     * @param array{static:array<string,array<string,CompiledRoute|array<mixed>|string>>,dynamic:array<mixed>}|null $hostGroup
-     * @param array{static:array<string,array<string,CompiledRoute|array<mixed>|string>>,dynamic:array<mixed>}|null $wildcardGroup
+     * @param array{static:array<string,array<string,CompiledRoute|array<mixed>>>,dynamic:array<mixed>}|null $hostGroup
+     * @param array{static:array<string,array<string,CompiledRoute|array<mixed>>>,dynamic:array<mixed>}|null $wildcardGroup
      */
     public function matchSingle(
         ?array $hostGroup,
@@ -263,24 +264,21 @@ final class CanonicalMatcherEngine
         if ($value instanceof CompiledRoute) {
             return $value;
         }
-        if (is_array($value)) {
-            $index = $value[10] ?? null;
-            if (!is_int($index)) {
-                throw new \UnexpectedValueException('Cached compiled route is missing its route index.');
-            }
-            $key = 'payload:' . $index;
-
-            return $this->materialized[$key] ??= matcher_materialize_cached_route($value);
-        }
-        if (!is_string($value)) {
+        if (!is_array($value)) {
             throw new \UnexpectedValueException('Invalid compiled route value in matcher index.');
         }
 
-        return $this->materialized[$value] ??= matcher_materialize_cached_route($value);
+        $index = ExecutableRoutePayload::routeIndex($value);
+        if ($index === null) {
+            throw new \UnexpectedValueException('Cached compiled route is missing its route index.');
+        }
+        $key = 'payload:' . $index;
+
+        return $this->materialized[$key] ??= matcher_materialize_cached_route($value);
     }
 
     /**
-     * @param array<string,CompiledRoute|array<mixed>|string> $verbs
+     * @param array<string,CompiledRoute|array<mixed>> $verbs
      * @param array<string,string> $params
      */
     private function selectVerb(array $verbs, string $method, array $params): ?MatchOutcome
