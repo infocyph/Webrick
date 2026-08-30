@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Runtime\Http;
 
 use Infocyph\Webrick\Constants\HttpMethodEnum;
+use Infocyph\Webrick\Interfaces\BodyStream;
 use Infocyph\Webrick\Request\Core\StringBody;
 use Infocyph\Webrick\Request\Core\Uri;
 use Infocyph\Webrick\Request\Request;
@@ -23,7 +24,7 @@ final readonly class TransportRequestFactory
     public static function fromParts(
         array $server,
         array $headers,
-        string $rawBody = '',
+        string|BodyStream $body = '',
         array|object|null $parsed = null,
         array $files = [],
         array $query = [],
@@ -37,7 +38,7 @@ final readonly class TransportRequestFactory
             Uri::fromServerParams($server),
             $server,
             $headers,
-            new StringBody($rawBody),
+            is_string($body) ? new StringBody($body) : $body,
             $httpVersion,
             $parsed,
             $files,
