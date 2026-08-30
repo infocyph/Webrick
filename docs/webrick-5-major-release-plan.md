@@ -148,11 +148,67 @@ Full validation therefore remains intentionally pending for completed feature ph
 
 ---
 
+## Phase 4 — matcher rewrite
+
+### Canonical matcher IR and static-first Fused path
+
+- [x] One canonical matcher index is shared by all matcher modes: exact static maps plus dynamic segment-count/first-literal buckets.
+- [x] Exact static lookup occurs before path trimming, splitting, segment counting, trie traversal, or dynamic-result allocation.
+- [x] Fused matcher uses the canonical index/semantic engine instead of recursive trie traversal.
+- [x] Dynamic candidates are restricted by segment count and first literal before constraint evaluation.
+
+**Commit:** `5f7964ef0bb0fead5265fa36d27097f370580776`
+
+### Sharded canonical layout
+
+- [x] Sharded matcher consumes the same canonical IR and semantic engine as Fused.
+- [x] Persisted shards are keyed by first literal while first-segment-variable routes use a dedicated `__dynamic` catch-all shard.
+- [x] Root/first-variable routes such as `/{id}` remain resolvable from persisted sharded caches.
+- [x] Runtime loads only the requested literal shard plus the dynamic catch-all for each applicable host/wildcard bucket.
+
+**Commit:** `b044e44aee2c7a29b8d13e49086be9d2c3cf9f75`
+
+### Generated static-first backend
+
+- [x] Generated matcher is emitted from the canonical matcher index rather than a separate route-shape implementation.
+- [x] Generated exact static host/wildcard switches run before `trim()`, `explode()`, segment counting, or dynamic matching.
+- [x] Generated dynamic code is grouped by segment count and literal prefix.
+- [x] Generated callable constraints invoke their prevalidated callable-string directly instead of `call_user_func()` or runtime callability probing.
+
+**Commit:** `3c534a1214d2bebfc9918c382a83d62f1e3758ea`
+
+### Native typed semantics and matcher boundary
+
+- [x] `MatcherInterface::matchOutcome()` is the normalized production matcher contract.
+- [x] `FOUND`, 404, 405, automatic OPTIONS, explicit OPTIONS, and HEAD→GET fallback semantics are implemented by the matcher family itself.
+- [x] `CompiledRouterKernel` sends its already-normalized `RoutingInput` tuple directly to the matcher without the Phase 2 exception adapter.
+- [x] `MatcherOutcomeAdapter` is removed from the production graph; `match()` remains only as the compatibility/error-oriented matcher API.
+
+**Commit:** `0c27cb827ce6107f6be71e7333e2c1bd0e8fbcdd`
+
+### Build/load invariants
+
+- [x] Callable constraints are validated when entering the canonical build index and again when loading persisted matcher metadata.
+- [x] Active match paths never call `is_callable()` for route constraints.
+- [x] Canonical matcher cache validation does not introduce an `ext-ctype` dependency.
+- [x] Legacy recursive-trie/helper code is no longer used by Fused, Sharded, or Generated; physical deletion is intentionally reserved for the Phase 8 measured deletion pass.
+- [x] Matcher-mode retention/removal is deferred to Phase 8 benchmark evidence rather than decided without workload measurements.
+- [x] **Phase 4 implementation complete**
+- [x] **Phase 4 feature complete**
+- [ ] **Phase 4 consolidated test/PHPForge certification** — deferred to final stabilization.
+
+**Commit:** `d5d37738da954c78237c10914347f40b52f4b513`
+
+---
+
 ## Remaining phases
 
-- [ ] **Phase 4 — matcher rewrite**
 - [ ] **Phase 5 — HTTP representation**
-  - includes removal of the legacy `Response::view()` global container lookup in favor of the selected runtime/view-factory boundary
+  - native/string-backed response body path instead of unconditional stream wrapping
+  - lazy/materialized Request representation cleanup and correct JSON/XML parse-state semantics
+  - PSR bridges only at interoperability boundaries
+  - re-evaluate mandatory ArrayKit use in Request core
+  - remove legacy `Response::view()` global container lookup in favor of the selected runtime/view-factory boundary
 - [ ] **Phase 6 — persistent runtimes**
 - [ ] **Phase 7 — middleware optimization**
 - [ ] **Phase 8 — final benchmark/deletion pass**
