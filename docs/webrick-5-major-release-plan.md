@@ -151,15 +151,49 @@ Phase 5 commits include: `f46c994`, `75c7030`, `2e928e9`, `1077c27`, `015fec7`, 
 
 ---
 
+## Phase 6 — persistent runtimes
+
+### Boot-selected runtime contract
+
+- [x] One `RuntimeAdapterInterface` is selected at process/worker bootstrap; production request handling performs no engine discovery.
+- [x] `RuntimeServer` owns the boot-selected adapter and delegates routing/execution to `CompiledRouterKernel`.
+- [x] Immutable `RuntimeCapabilities` exposes persistence, concurrency, native streaming/file support, and transport-owned compression.
+- [x] `RuntimeRequestContext` owns request-local native transport handles, lazy Request materialization, and unique InterMix scope identity.
+- [x] `CompiledRouterKernel::handleRuntime()` consumes runtime context and never falls back to async superglobal state.
+- [x] Compiled-artifact domain capability is passed into runtime preflight so host normalization remains conditional.
+
+### Native request promotion and response writing
+
+- [x] SAPI/FPM routing reads globals minimally and materializes full Request only after route capability selection.
+- [x] Swoole/OpenSwoole reads native request data without copying it into `$_SERVER`/other process globals.
+- [x] RoadRunner keeps the incoming PSR request at the interoperability boundary and wraps body/upload streams without full-body copying.
+- [x] Workerman uses its native Request/Connection API with compatibility resolved once at adapter construction.
+- [x] Form POST data is touched during routing preflight only when POST `_method` override is enabled and observable.
+- [x] Promoted async request bodies can remain `BodyStream`/`StringBody`; no mandatory `php://temp` conversion.
+- [x] URI materialization uses transport components directly through `Uri::fromComponents()`.
+- [x] HEAD suppresses transport bytes while preserving representation `Content-Length`.
+- [x] Informational/204/205/304 body semantics are shared centrally across runtime writers.
+
+### Streaming, files and persistent-worker safety
+
+- [x] `FileBody` preserves path, offset, and length for native transport handoff, including byte ranges.
+- [x] Swoole/OpenSwoole uses native `end()`, checked `write()`, and `sendfile(path, offset, length)`.
+- [x] RoadRunner uses a boot-injected native responder with string/Generator output and optional configured sendfile delegation.
+- [x] Workerman uses native `Response::withFile()` for whole files and explicit chunk streaming otherwise.
+- [x] Native writer failures are surfaced rather than silently ignored.
+- [x] Runtime transport-compression ownership is represented in capabilities for Phase 7 compression bypass.
+- [x] InterMix production runtime remains host-owned and worker-shared; Webrick opens explicit request scopes only when compiled capabilities require them.
+- [x] Request/native transport state is never stored in static current-request/current-response fields or reusable middleware.
+- [x] Persistent-runtime isolation coverage includes one-time materialization, unique native handles/scope IDs, interleaved Fibers, weak-reference release, and FileBody/range metadata.
+- [x] Legacy emitter discovery remains compatibility-only and is reserved for measured Phase 8 deletion; compiled production runtime uses the adapter path.
+- [x] **Phase 6 implementation complete.**
+- [x] **Phase 6 feature complete.**
+- [ ] **Phase 6 consolidated certification / long-worker soak validation** — deferred.
+
+---
+
 ## Remaining feature phases
 
-- [ ] **Phase 6 — persistent runtimes**
-  - SAPI/Swoole/OpenSwoole/RoadRunner/Workerman runtime adapters selected once at boot
-  - request-local native transport context
-  - native streaming/file/sendfile paths and runtime capability compilation
-  - delegated InterMix production runtime at worker bootstrap
-  - explicit request scopes only where required
-  - concurrency and long-worker soak behavior
 - [ ] **Phase 7 — middleware optimization**
 - [ ] **Phase 8 — benchmark-driven deletion/final optimization**
 - [ ] **Consolidated stabilization and release certification**
