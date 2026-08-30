@@ -9,84 +9,72 @@ use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use RuntimeException;
 
-/**
- * Request-local Swoole response emitter.
- *
- * The native Swoole response is never stored on the emitter instance, so one
- * emitter may safely be reused across concurrent coroutines.
- */
+/** Request-local Swoole response emitter. */
 final class SwooleEmitter extends BaseEmitter
 {
     #[\Override]
     public function emit(Response $response, ?Request $request = null): void
     {
-        $sw = $this->extractSwooleResponse($request);
-        $isStreaming = $response->isStreaming();
-        $body = $response->getBody();
-        $size = $isStreaming ? null : $body->getSize();
+        $swoole = $this->extractSwooleResponse($request);
+        $streaming = $response->isStreaming();
+        $stringBody = !$streaming ? $response->getStringBody() : null;
+        $size = $streaming ? null : $response->getBodySize();
         $allowsBody = $this->shouldEmitBody($response, $request);
 
-        $sw->status($response->getStatusCode());
+        $swoole->status($response->getStatusCode());
         foreach ($this->filteredHeaderIterator($response, true) as [$name, $value]) {
-            $sw->header($name, $value);
+            $swoole->header($name, $value);
         }
-
-        if ($allowsBody && !$isStreaming && $size !== null && !$response->hasHeader('Content-Length')) {
-            $sw->header('Content-Length', (string) $size);
+        if ($allowsBody && !$streaming && $size !== null && !$response->hasHeader('Content-Length')) {
+            $swoole->header('Content-Length', (string) $size);
         }
-
         if (!$allowsBody) {
-            $sw->end();
-
+            $swoole->end();
+            return;
+        }
+        if ($streaming) {
+            $this->emitProducer($swoole, $response);
+            $swoole->end();
+            return;
+        }
+        if ($stringBody !== null) {
+            $swoole->end($stringBody);
             return;
         }
 
-        if ($isStreaming) {
-            $this->emitProducer($sw, $response);
-            $sw->end();
-
-            return;
-        }
-
-        $this->emitBody($sw, $body, $size);
+        $this->emitBody($swoole, $response->getBody(), $size);
     }
 
-    private function emitBody(\Swoole\Http\Response $sw, BodyStream $body, ?int $size): void
+    private function emitBody(\Swoole\Http\Response $swoole, BodyStream $body, ?int $size): void
     {
         if ($body->isSeekable()) {
             $body->rewind();
         }
-
         if ($size !== null && $size < self::CHUNK_SIZE) {
-            $sw->end($body->getContents());
-
+            $swoole->end($body->getContents());
             return;
         }
-
         while (!$body->eof()) {
             $chunk = $body->read(self::CHUNK_SIZE);
             if ($chunk === '') {
                 break;
             }
-            $sw->write($chunk);
+            $swoole->write($chunk);
         }
-        $sw->end();
+        $swoole->end();
     }
 
-    private function emitProducer(\Swoole\Http\Response $sw, Response $response): void
+    private function emitProducer(\Swoole\Http\Response $swoole, Response $response): void
     {
         $producer = $response->getProducer();
-        $out = $producer ? $producer() : [];
-
-        if (is_iterable($out)) {
-            foreach ($out as $chunk) {
-                $this->writeValue($sw, $chunk);
+        $output = $producer ? $producer() : [];
+        if (is_iterable($output)) {
+            foreach ($output as $chunk) {
+                $this->writeValue($swoole, $chunk);
             }
-
             return;
         }
-
-        $this->writeValue($sw, $out);
+        $this->writeValue($swoole, $output);
     }
 
     private function extractSwooleResponse(?Request $request): \Swoole\Http\Response
@@ -95,26 +83,15 @@ final class SwooleEmitter extends BaseEmitter
         if ($response instanceof \Swoole\Http\Response) {
             return $response;
         }
-
-        throw new RuntimeException(
-            'SwooleEmitter requires Request attribute "swoole.response" (Swoole\\Http\\Response).',
-        );
+        throw new RuntimeException('SwooleEmitter requires Request attribute "swoole.response".');
     }
 
-    private function writeValue(\Swoole\Http\Response $sw, mixed $value): void
+    private function writeValue(\Swoole\Http\Response $swoole, mixed $value): void
     {
-        if (is_string($value)) {
-            if ($value !== '') {
-                $sw->write($value);
-            }
-
-            return;
-        }
-
         if (is_scalar($value)) {
-            $value = (string) $value;
-            if ($value !== '') {
-                $sw->write($value);
+            $chunk = (string) $value;
+            if ($chunk !== '') {
+                $swoole->write($chunk);
             }
         }
     }
