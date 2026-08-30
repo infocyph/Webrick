@@ -134,7 +134,6 @@ function generated_matcher_render_dynamic_entry_condition(array $segments, strin
 function generated_matcher_render_verb_dispatch(array $verbs, string $indent): string
 {
     $materialize = '\\' . __NAMESPACE__ . '\\matcher_materialize_cached_route';
-    $firstIdx = (int) \reset($verbs);
     $code = $indent . "switch (\$verb) {\n";
     foreach ($verbs as $method => $idx) {
         $code .= $indent . '    case ' . \var_export($method, true) . ":\n";
@@ -151,10 +150,6 @@ function generated_matcher_render_verb_dispatch(array $verbs, string $indent): s
             . "])), 'params' => \$params, 'allowed' => []];\n";
     }
 
-    $code .= $indent . '    case ' . \var_export(HttpMethodEnum::OPTIONS->value, true) . ":\n";
-    $code .= $indent . '        return [\'hit\' => ($routes[' . $firstIdx
-        . '] ??= ' . $materialize . '($routePayloads[' . $firstIdx
-        . "])), 'params' => \$params, 'allowed' => []];\n";
     $code .= $indent . "    default:\n";
     foreach ($verbs as $method => $_idx) {
         $code .= $indent . '        $allowed[' . \var_export($method, true) . "] = true;\n";
