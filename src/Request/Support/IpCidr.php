@@ -61,7 +61,7 @@ final class IpCidr
         }
 
         [$subnet, $mask] = explode('/', $cidr, 2);
-        if ($subnet === '' || $mask === '' || !ctype_digit($mask)) {
+        if ($subnet === '' || $mask === '' || preg_match('/^[0-9]+$/D', $mask) !== 1) {
             return null;
         }
 
