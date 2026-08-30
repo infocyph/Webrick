@@ -31,30 +31,18 @@ final class RuntimeDispatcher
     ) {
         $this->preGlobal = $this->withTagged($artifact->preGlobal, $artifact->preGlobalTags);
         $this->postGlobal = $this->withTagged($artifact->postGlobal, $artifact->postGlobalTags);
+        $this->preparePipelines($artifact);
     }
 
     /** @param array<string,string> $vars */
     public function dispatch(ExecutionPlan $plan, Request $request, array $vars): Response
     {
-        $middleware = [...$this->preGlobal, ...$plan->middleware, ...$this->postGlobal];
         $request = $vars === [] ? $request : $request->withAttributes(['route_params' => $vars]);
+        $pipeline = $this->pipelines[$plan->routeId] ?? null;
 
-        if ($middleware === []) {
-            return $this->invokeTerminal($plan, $request, $vars);
-        }
-
-        $routeId = $plan->routeId;
-        $this->pipelines[$routeId] ??= new CompiledMiddlewarePipeline(
-            $middleware,
-            fn(Request $current): Response => $this->invokeTerminal(
-                $plan,
-                $current,
-                $this->routeVariables($current),
-            ),
-            $this->runtime,
-        );
-
-        return $this->pipelines[$routeId]->handle($request);
+        return $pipeline instanceof CompiledMiddlewarePipeline
+            ? $pipeline->handle($request)
+            : $this->invokeTerminal($plan, $request, $vars);
     }
 
     public function dispatchDirectZeroArg(ExecutionPlan $plan): Response
@@ -152,6 +140,26 @@ final class RuntimeDispatcher
         }
 
         return $arguments;
+    }
+
+    private function preparePipelines(CompiledRouterArtifact $artifact): void
+    {
+        foreach ($artifact->plans as $routeId => $plan) {
+            $middleware = [...$this->preGlobal, ...$plan->middleware, ...$this->postGlobal];
+            if ($middleware === []) {
+                continue;
+            }
+
+            $this->pipelines[$routeId] = new CompiledMiddlewarePipeline(
+                $middleware,
+                fn(Request $current): Response => $this->invokeTerminal(
+                    $plan,
+                    $current,
+                    $this->routeVariables($current),
+                ),
+                $this->runtime,
+            );
+        }
     }
 
     private function response(mixed $result): Response
