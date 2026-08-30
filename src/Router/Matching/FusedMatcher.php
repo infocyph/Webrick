@@ -96,13 +96,18 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
 
     public function matchOutcome(string $method, string $host, string $path): MatchOutcome
     {
-        $this->bootIndex();
-        $this->ensureCacheLoaded();
-        $hosts = $this->index->hosts();
-        $hostGroups = isset($hosts[$host]) ? [$hosts[$host]] : [];
-        $wildcardGroups = $host !== '*' && isset($hosts['*']) ? [$hosts['*']] : [];
+        if (!$this->finalized) {
+            $this->finalize();
+        }
 
-        return $this->engine->match($hostGroups, $wildcardGroups, $method, $path);
+        $hosts = $this->index->hosts();
+
+        return $this->engine->matchSingle(
+            $hosts[$host] ?? null,
+            $host !== '*' ? ($hosts['*'] ?? null) : null,
+            $method,
+            $path,
+        );
     }
 
     public function resolveAlias(string $name): ?array
