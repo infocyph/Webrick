@@ -29,21 +29,13 @@ use Infocyph\Webrick\Runtime\InterMixRuntime;
 use Psr\Log\LoggerInterface;
 use Throwable;
 
-/**
- * Strict production kernel. It consumes verified build artifacts and a
- * host-selected InterMix ProductionContainer; registrar/reflection fallback is
- * intentionally impossible from this runtime.
- */
+/** Strict production kernel backed only by verified compiled artifacts. */
 final readonly class CompiledRouterKernel
 {
     private RuntimeDispatcher $dispatcher;
-
     private ErrorHandler $errorHandler;
-
     private bool $hasGlobalMiddleware;
-
     private MatcherInterface $matcher;
-
     private InterMixRuntime $runtime;
 
     private function __construct(
@@ -157,10 +149,17 @@ final readonly class CompiledRouterKernel
             $routing = $request instanceof Request
                 ? RoutingInput::fromRequest($request, $this->artifact->hasDomainRoutes)
                 : RoutingInput::fromGlobals($this->artifact->hasDomainRoutes);
+            $response = $this->dispatchRoutingInput($routing, $request);
 
-            return $this->dispatchRoutingInput($routing, $request);
+            return $routing->method === HttpMethodEnum::HEAD->value
+                ? self::legacyHeadResponse($response)
+                : $response;
         } catch (Throwable $exception) {
-            return $this->renderException($exception, $request);
+            $response = $this->renderException($exception, $request);
+
+            return isset($routing) && $routing->method === HttpMethodEnum::HEAD->value
+                ? self::legacyHeadResponse($response)
+                : $response;
         }
     }
 
@@ -173,6 +172,11 @@ final readonly class CompiledRouterKernel
         } catch (Throwable $exception) {
             return $this->renderException($exception, $request, $context);
         }
+    }
+
+    public function requiresHostRouting(): bool
+    {
+        return $this->artifact->hasDomainRoutes;
     }
 
     /** @param list<string> $allowed */
@@ -191,6 +195,18 @@ final readonly class CompiledRouterKernel
         $methods[HttpMethodEnum::OPTIONS->value] = true;
 
         return Response::noContent(['Allow' => implode(', ', array_keys($methods))]);
+    }
+
+    private static function legacyHeadResponse(Response $response): Response
+    {
+        if (!$response->hasHeader('Content-Length')) {
+            $size = $response->getBodySize();
+            if ($size !== null) {
+                $response = $response->withHeader('Content-Length', (string) $size);
+            }
+        }
+
+        return $response->withBody('');
     }
 
     private function dispatchRoutingInput(
@@ -212,26 +228,22 @@ final readonly class CompiledRouterKernel
 
         $route = $outcome->requireRoute();
         $plan = $this->artifact->planFor($route);
-        $pipeline = $plan->kind === ExecutionKind::MIDDLEWARE_PIPELINE
-            || $this->hasGlobalMiddleware;
+        $pipeline = $plan->kind === ExecutionKind::MIDDLEWARE_PIPELINE || $this->hasGlobalMiddleware;
 
         if (!$pipeline && !$plan->requiresRequest()) {
-            $response = $this->dispatchWithoutRequest($routing, $plan, $outcome->params, $runtimeContext);
-        } else {
-            $request ??= $runtimeContext?->request() ?? Request::fromGlobals();
-            $response = $this->dispatchWithRequest(
-                $routing,
-                $plan,
-                $request,
-                $outcome->params,
-                $pipeline,
-                $runtimeContext,
-            );
+            return $this->dispatchWithoutRequest($routing, $plan, $outcome->params, $runtimeContext);
         }
 
-        return $routing->method === HttpMethodEnum::HEAD->value
-            ? $response->withBody('')
-            : $response;
+        $request ??= $runtimeContext?->request() ?? Request::fromGlobals();
+
+        return $this->dispatchWithRequest(
+            $routing,
+            $plan,
+            $request,
+            $outcome->params,
+            $pipeline,
+            $runtimeContext,
+        );
     }
 
     /** @param array<string,string> $vars */
