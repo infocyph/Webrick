@@ -27,36 +27,82 @@ final class CanonicalMatcherEngine
     {
         $allowed = [];
 
-        $hit = $this->matchStaticGroups($hostGroups, $method, $path, $allowed);
-        if ($hit instanceof MatchOutcome) {
-            return $hit;
+        foreach ($hostGroups as $group) {
+            $hit = $this->matchStaticGroup($group, $method, $path, $allowed);
+            if ($hit instanceof MatchOutcome) {
+                return $hit;
+            }
         }
-        $hit = $this->matchStaticGroups($wildcardGroups, $method, $path, $allowed);
-        if ($hit instanceof MatchOutcome) {
-            return $hit;
+        foreach ($wildcardGroups as $group) {
+            $hit = $this->matchStaticGroup($group, $method, $path, $allowed);
+            if ($hit instanceof MatchOutcome) {
+                return $hit;
+            }
         }
 
         $segments = self::segments($path);
         $prefix = $segments[0] ?? '';
 
-        $hit = $this->matchDynamicGroups($hostGroups, $method, $segments, $prefix, $allowed);
-        if ($hit instanceof MatchOutcome) {
-            return $hit;
+        foreach ($hostGroups as $group) {
+            $hit = $this->matchDynamicGroup($group, $method, $segments, $prefix, $allowed);
+            if ($hit instanceof MatchOutcome) {
+                return $hit;
+            }
         }
-        $hit = $this->matchDynamicGroups($wildcardGroups, $method, $segments, $prefix, $allowed);
-        if ($hit instanceof MatchOutcome) {
-            return $hit;
+        foreach ($wildcardGroups as $group) {
+            $hit = $this->matchDynamicGroup($group, $method, $segments, $prefix, $allowed);
+            if ($hit instanceof MatchOutcome) {
+                return $hit;
+            }
         }
 
-        if ($allowed === []) {
-            return MatchOutcome::notFound();
+        return self::missOutcome($method, $allowed);
+    }
+
+    /**
+     * Fast path for one concrete host group plus one wildcard host group.
+     *
+     * @param array{static:array<string,array<string,CompiledRoute|array<mixed>|string>>,dynamic:array<mixed>}|null $hostGroup
+     * @param array{static:array<string,array<string,CompiledRoute|array<mixed>|string>>,dynamic:array<mixed>}|null $wildcardGroup
+     */
+    public function matchSingle(
+        ?array $hostGroup,
+        ?array $wildcardGroup,
+        string $method,
+        string $path,
+    ): MatchOutcome {
+        $allowed = [];
+
+        if ($hostGroup !== null) {
+            $hit = $this->matchStaticGroup($hostGroup, $method, $path, $allowed);
+            if ($hit instanceof MatchOutcome) {
+                return $hit;
+            }
+        }
+        if ($wildcardGroup !== null) {
+            $hit = $this->matchStaticGroup($wildcardGroup, $method, $path, $allowed);
+            if ($hit instanceof MatchOutcome) {
+                return $hit;
+            }
         }
 
-        $methods = array_keys($allowed);
+        $segments = self::segments($path);
+        $prefix = $segments[0] ?? '';
 
-        return $method === HttpMethodEnum::OPTIONS->value
-            ? MatchOutcome::autoOptions($methods)
-            : MatchOutcome::methodNotAllowed($methods);
+        if ($hostGroup !== null) {
+            $hit = $this->matchDynamicGroup($hostGroup, $method, $segments, $prefix, $allowed);
+            if ($hit instanceof MatchOutcome) {
+                return $hit;
+            }
+        }
+        if ($wildcardGroup !== null) {
+            $hit = $this->matchDynamicGroup($wildcardGroup, $method, $segments, $prefix, $allowed);
+            if ($hit instanceof MatchOutcome) {
+                return $hit;
+            }
+        }
+
+        return self::missOutcome($method, $allowed);
     }
 
     /** @param array<string,bool> $allowed */
@@ -73,70 +119,85 @@ final class CanonicalMatcherEngine
     }
 
     /**
-     * @param list<array{static:array<string,array<string,CompiledRoute|array<mixed>|string>>,dynamic:array<mixed>}> $groups
+     * @param array<string,mixed> $group
      * @param list<string> $segments
      * @param array<string,bool> $allowed
      */
-    private function matchDynamicGroups(
-        array $groups,
+    private function matchDynamicGroup(
+        array $group,
         string $method,
         array $segments,
         string $prefix,
         array &$allowed,
     ): ?MatchOutcome {
-        $count = count($segments);
-        foreach ($groups as $group) {
-            $bucket = $group['dynamic'][$count] ?? null;
-            if (!is_array($bucket)) {
+        $bucket = $group['dynamic'][count($segments)] ?? null;
+        if (!is_array($bucket)) {
+            return null;
+        }
+
+        $entries = $bucket[$prefix] ?? null;
+        if (is_array($entries)) {
+            $hit = $this->matchDynamicEntries($entries, $method, $segments, $allowed);
+            if ($hit instanceof MatchOutcome) {
+                return $hit;
+            }
+        }
+
+        if ($prefix === '*') {
+            return null;
+        }
+        $entries = $bucket['*'] ?? null;
+
+        return is_array($entries)
+            ? $this->matchDynamicEntries($entries, $method, $segments, $allowed)
+            : null;
+    }
+
+    /**
+     * @param array<mixed> $entries
+     * @param list<string> $segments
+     * @param array<string,bool> $allowed
+     */
+    private function matchDynamicEntries(
+        array $entries,
+        string $method,
+        array $segments,
+        array &$allowed,
+    ): ?MatchOutcome {
+        foreach ($entries as $entry) {
+            if (!is_array($entry) || !is_array($entry['segments'] ?? null) || !is_array($entry['verbs'] ?? null)) {
                 continue;
             }
-
-            $candidateSets = [];
-            if (isset($bucket[$prefix]) && is_array($bucket[$prefix])) {
-                $candidateSets[] = $bucket[$prefix];
+            $params = $this->matchSegments($entry['segments'], $segments);
+            if ($params === null) {
+                continue;
             }
-            if ($prefix !== '*' && isset($bucket['*']) && is_array($bucket['*'])) {
-                $candidateSets[] = $bucket['*'];
+            $outcome = $this->selectVerb($entry['verbs'], $method, $params);
+            if ($outcome instanceof MatchOutcome) {
+                return $outcome;
             }
-
-            foreach ($candidateSets as $entries) {
-                foreach ($entries as $entry) {
-                    if (!is_array($entry) || !is_array($entry['segments'] ?? null) || !is_array($entry['verbs'] ?? null)) {
-                        continue;
-                    }
-                    $params = $this->matchSegments($entry['segments'], $segments);
-                    if ($params === null) {
-                        continue;
-                    }
-                    $outcome = $this->selectVerb($entry['verbs'], $method, $params);
-                    if ($outcome instanceof MatchOutcome) {
-                        return $outcome;
-                    }
-                    $this->addAllowed($entry['verbs'], $allowed);
-                }
-            }
+            $this->addAllowed($entry['verbs'], $allowed);
         }
 
         return null;
     }
 
     /**
-     * @param list<array{static:array<string,array<string,CompiledRoute|array<mixed>|string>>,dynamic:array<mixed>}> $groups
+     * @param array<string,mixed> $group
      * @param array<string,bool> $allowed
      */
-    private function matchStaticGroups(array $groups, string $method, string $path, array &$allowed): ?MatchOutcome
+    private function matchStaticGroup(array $group, string $method, string $path, array &$allowed): ?MatchOutcome
     {
-        foreach ($groups as $group) {
-            $verbs = $group['static'][$path] ?? null;
-            if (!is_array($verbs)) {
-                continue;
-            }
-            $outcome = $this->selectVerb($verbs, $method, []);
-            if ($outcome instanceof MatchOutcome) {
-                return $outcome;
-            }
-            $this->addAllowed($verbs, $allowed);
+        $verbs = $group['static'][$path] ?? null;
+        if (!is_array($verbs)) {
+            return null;
         }
+
+        $outcome = $this->selectVerb($verbs, $method, []);
+        if ($outcome instanceof MatchOutcome) {
+            return $outcome;
+        }
+        $this->addAllowed($verbs, $allowed);
 
         return null;
     }
@@ -181,6 +242,20 @@ final class CanonicalMatcherEngine
         }
 
         return $params;
+    }
+
+    /** @param array<string,bool> $allowed */
+    private static function missOutcome(string $method, array $allowed): MatchOutcome
+    {
+        if ($allowed === []) {
+            return MatchOutcome::notFound();
+        }
+
+        $methods = array_keys($allowed);
+
+        return $method === HttpMethodEnum::OPTIONS->value
+            ? MatchOutcome::autoOptions($methods)
+            : MatchOutcome::methodNotAllowed($methods);
     }
 
     private function materialize(mixed $value): CompiledRoute
