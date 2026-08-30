@@ -4,16 +4,19 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Request;
 
+use Infocyph\Webrick\Constants\HttpMethodEnum;
+use Infocyph\Webrick\Constants\MediaTypeEnum;
 use Infocyph\Webrick\Request\Core\ServerRequest;
+use Infocyph\Webrick\Request\Core\Stream;
+use Infocyph\Webrick\Request\Core\UriComponents;
+use Infocyph\Webrick\Request\Http\RequestHeaders;
 use Infocyph\Webrick\Request\Support\PayloadParseState;
 use InvalidArgumentException;
+use RuntimeException;
 
 /**
- * Native Webrick request surface layered over the native ServerRequest core.
- *
- * Core input access returns arrays/scalars directly. JSON/XML parsing carries an
- * explicit state so valid empty payloads are never confused with "not parsed"
- * and invalid payloads never silently fall through to form data.
+ * Native Webrick request surface with array/scalar input access and explicit
+ * structured-payload parse states.
  */
 class NativeServerRequest extends ServerRequest
 {
@@ -21,6 +24,43 @@ class NativeServerRequest extends ServerRequest
     private ?PayloadParseState $jsonState = null;
     private mixed $xmlPayload = null;
     private ?PayloadParseState $xmlState = null;
+
+    public static function createFromGlobals(): static
+    {
+        $server = self::stringMap($_SERVER);
+        $handle = fopen('php://input', 'rb') ?: fopen('php://temp', 'rb');
+        if (!is_resource($handle)) {
+            throw new RuntimeException('Unable to open request input stream.');
+        }
+        $body = new Stream($handle);
+        $protocol = $server['SERVER_PROTOCOL'] ?? null;
+        $httpVersion = is_string($protocol) && str_starts_with($protocol, 'HTTP/')
+            ? substr($protocol, 5)
+            : '1.1';
+
+        $request = new static(
+            HttpMethodEnum::normalize(is_string($server['REQUEST_METHOD'] ?? null) ? $server['REQUEST_METHOD'] : HttpMethodEnum::GET->value),
+            UriComponents::fromServerParams($server),
+            $server,
+            RequestHeaders::extractFromServer($server),
+            $body,
+            $httpVersion,
+            self::stringMap($_POST),
+            self::stringMap($_FILES),
+            query: $_GET !== [] ? self::stringMap($_GET) : null,
+            cookies: self::stringMap($_COOKIE),
+        );
+
+        if (
+            in_array($request->getMethod(), [HttpMethodEnum::PUT->value, HttpMethodEnum::PATCH->value, HttpMethodEnum::DELETE->value], true)
+            && str_contains(strtolower($request->getHeaderLine('Content-Type')), MediaTypeEnum::FORM_URLENCODED->value)
+        ) {
+            parse_str((string) $body, $form);
+            $request = $request->withParsedBody(self::stringMap($form));
+        }
+
+        return $request;
+    }
 
     public function cookie(?string $key = null): mixed
     {
