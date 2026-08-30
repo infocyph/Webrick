@@ -52,15 +52,18 @@ final readonly class SwooleRuntimeAdapter implements RuntimeAdapterInterface
         }
 
         $server = SwooleNativeRequest::server($nativeRequest);
-        $post = SwooleNativeRequest::arrayProperty($nativeRequest, 'post');
+        $routingForm = RoutingFormInput::resolve(
+            $server,
+            static fn(): array => SwooleNativeRequest::arrayProperty($nativeRequest, 'post'),
+        );
 
         return new RuntimeRequestContext(
-            RoutingInput::fromServer($server, $withHost, $post),
+            RoutingInput::fromServer($server, $withHost, $routingForm),
             static fn(): Request => TransportRequestFactory::fromParts(
                 $server,
                 SwooleNativeRequest::headers($nativeRequest),
                 SwooleNativeRequest::rawBody($nativeRequest),
-                $post,
+                SwooleNativeRequest::arrayProperty($nativeRequest, 'post'),
                 SwooleNativeRequest::arrayProperty($nativeRequest, 'files'),
                 SwooleNativeRequest::arrayProperty($nativeRequest, 'get'),
                 SwooleNativeRequest::arrayProperty($nativeRequest, 'cookie'),
@@ -79,7 +82,10 @@ final readonly class SwooleRuntimeAdapter implements RuntimeAdapterInterface
             throw new RuntimeException('Swoole transport handles are unavailable.');
         }
 
-        $native->status($response->getStatusCode());
+        if ($native->status($response->getStatusCode()) === false) {
+            throw new RuntimeException('Swoole response status failed.');
+        }
+
         $http2 = SwooleNativeRequest::isHttp2($request);
         foreach ($response->getHeaders() as $name => $values) {
             $allowed = [];
@@ -88,8 +94,8 @@ final readonly class SwooleRuntimeAdapter implements RuntimeAdapterInterface
                     $allowed[] = $value;
                 }
             }
-            if ($allowed !== []) {
-                $native->header($name, count($allowed) === 1 ? $allowed[0] : $allowed);
+            if ($allowed !== [] && $native->header($name, count($allowed) === 1 ? $allowed[0] : $allowed) === false) {
+                throw new RuntimeException("Swoole response header failed: {$name}");
             }
         }
 
@@ -102,12 +108,15 @@ final readonly class SwooleRuntimeAdapter implements RuntimeAdapterInterface
                 [StatusEnum::NO_CONTENT->value, StatusEnum::NOT_MODIFIED->value],
                 true,
             )
+            && $native->header('Content-Length', (string) $size) === false
         ) {
-            $native->header('Content-Length', (string) $size);
+            throw new RuntimeException('Swoole Content-Length header failed.');
         }
 
         if (!ResponseWriterSupport::allowsBody($response, $context)) {
-            $native->end('');
+            if ($native->end('') === false) {
+                throw new RuntimeException('Swoole response end failed.');
+            }
 
             return;
         }
@@ -123,7 +132,9 @@ final readonly class SwooleRuntimeAdapter implements RuntimeAdapterInterface
 
         $string = $response->getStringBody();
         if ($string !== null && !$response->isStreaming()) {
-            $native->end($string);
+            if ($native->end($string) === false) {
+                throw new RuntimeException('Swoole response end failed.');
+            }
 
             return;
         }
@@ -133,6 +144,8 @@ final readonly class SwooleRuntimeAdapter implements RuntimeAdapterInterface
                 throw new RuntimeException('Swoole response write failed.');
             }
         }
-        $native->end();
+        if ($native->end() === false) {
+            throw new RuntimeException('Swoole response end failed.');
+        }
     }
 }
