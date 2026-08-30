@@ -26,7 +26,6 @@
     ],
     "require": {
         "php": ">=8.4",
-        "infocyph/arraykit": "^5.1.1",
         "infocyph/intermix": "^10.0.2",
         "opis/closure": "^4.5",
         "psr/cache": "^3.0",
@@ -39,7 +38,9 @@
     "suggest": {
         "infocyph/cachelayer": "Required by response-cache middleware and the default throttle cache backend.",
         "open-telemetry/exporter-otlp": "Export traces to OpenTelemetry collectors (Jaeger, Zipkin, etc.)",
-        "open-telemetry/sdk": "Full OpenTelemetry tracing with automatic span export (auto-detected by TelemetryMiddleware)"
+        "open-telemetry/sdk": "Full OpenTelemetry tracing with automatic span export (auto-detected by TelemetryMiddleware)",
+        "psr/http-factory": "Optional PSR-17 factories for Webrick's explicit PSR-7 interoperability bridge.",
+        "psr/http-message": "Optional PSR-7 message interfaces for interoperability adapters."
     },
     "minimum-stability": "stable",
     "prefer-stable": true,
