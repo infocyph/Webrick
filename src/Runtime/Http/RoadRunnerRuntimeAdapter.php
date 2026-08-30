@@ -34,6 +34,7 @@ final readonly class RoadRunnerRuntimeAdapter implements RuntimeAdapterInterface
         callable $respond,
         bool $sendfileMiddleware = false,
         bool $transportCompression = false,
+        bool $transportRequestLimits = false,
     ) {
         $this->respond = Closure::fromCallable($respond);
         $this->runtimeCapabilities = new RuntimeCapabilities(
@@ -43,6 +44,7 @@ final readonly class RoadRunnerRuntimeAdapter implements RuntimeAdapterInterface
             nativeStreaming: true,
             nativeFile: $sendfileMiddleware,
             transportCompression: $transportCompression,
+            transportRequestLimits: $transportRequestLimits,
         );
         $this->sendfileMiddleware = $sendfileMiddleware;
     }
