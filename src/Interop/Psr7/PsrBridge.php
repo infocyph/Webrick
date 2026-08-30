@@ -6,7 +6,6 @@ namespace Infocyph\Webrick\Interop\Psr7;
 
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
-use Psr\Http\Message\RequestFactoryInterface;
 use Psr\Http\Message\ResponseFactoryInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestFactoryInterface;
@@ -16,8 +15,8 @@ use Psr\Http\Message\StreamFactoryInterface;
 /**
  * Optional PSR-7/PSR-17 interoperability boundary.
  *
- * Webrick remains native internally. This class is only load/use-worthy when a
- * consuming application installs psr/http-message plus psr/http-factory.
+ * Webrick remains native internally. This class is used only when a consuming
+ * application installs psr/http-message plus psr/http-factory.
  */
 final class PsrBridge
 {
