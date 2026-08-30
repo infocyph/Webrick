@@ -241,7 +241,6 @@ final readonly class CompiledRouterKernel
             $plan,
             $request,
             $outcome->params,
-            $pipeline,
             $runtimeContext,
         );
     }
@@ -252,10 +251,10 @@ final readonly class CompiledRouterKernel
         ExecutionPlan $plan,
         Request $request,
         array $vars,
-        bool $pipeline,
         ?RuntimeRequestContext $runtimeContext,
     ): Response {
-        if (!$plan->requiresScope() && !$pipeline) {
+        $requiresScope = $plan->requiresScope() || $this->dispatcher->pipelineRequiresScope($plan->routeId);
+        if (!$requiresScope) {
             return $this->dispatcher->dispatch($plan, $request, $vars);
         }
 
