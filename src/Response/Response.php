@@ -12,6 +12,7 @@ use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Request\Core\StringBody;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Request\Support\HeaderBag;
+use Infocyph\Webrick\Response\Body\FileBody;
 use Infocyph\Webrick\Response\Headers\CacheControl;
 use Infocyph\Webrick\Response\Headers\ContentDisposition;
 use Infocyph\Webrick\Response\Internal\LazyJsonStream;
@@ -22,11 +23,11 @@ use JsonSerializable;
 use RuntimeException;
 
 /**
- * Immutable HTTP response optimized for native string bodies.
+ * Immutable HTTP response optimized for native string and file bodies.
  *
  * Normal text/HTML/JSON stays as a PHP string until a stream-compatibility
- * boundary explicitly asks for getBody(). File/range/stream responses retain a
- * BodyStream. HeaderBag is immutable and therefore shared by unchanged clones.
+ * boundary explicitly asks for getBody(). File/range responses retain path
+ * identity so persistent runtimes may use native file transports.
  */
 class Response
 {
@@ -64,18 +65,18 @@ class Response
         ?string $mime = null,
         array $headers = [],
     ): self {
-        $stream = self::streamFor($file);
+        $body = is_string($file) ? new FileBody($file) : $file;
         [$size, $mtime] = self::metaFor($file);
-        $size ??= $stream->getSize();
-        $mtime ??= self::mtimeFromStream($stream);
+        $size ??= $body->getSize();
+        $mtime ??= $body instanceof Stream ? self::mtimeFromStream($body) : null;
         $mime = self::inferMime($name, $mime);
         $defaults = self::baseDownloadHeaders($name, $mime);
 
-        self::putIfAbsent($defaults, 'Content-Length', self::chooseLength($file, $stream, $size), $headers);
+        self::putIfAbsent($defaults, 'Content-Length', $size !== null ? (string) $size : null, $headers);
         self::putIfAbsent($defaults, 'Last-Modified', self::formatHttpDate($mtime), $headers);
         self::putIfAbsent($defaults, 'ETag', self::weakEtagFromMeta($size, $mtime, $name), $headers);
 
-        return new self(StatusEnum::OK->value, $stream, $defaults + $headers);
+        return new self(StatusEnum::OK->value, $body, $defaults + $headers);
     }
 
     /**
@@ -152,17 +153,18 @@ class Response
         array $headers = [],
     ): self {
         $name ??= is_string($file) ? basename($file) : 'inline';
-        $stream = $file instanceof Stream ? $file : self::openFileStream($file);
+        $body = is_string($file) ? new FileBody($file) : $file;
         $mime ??= MediaTypeEnum::fromFilename($name)->value;
         $defaults = [
             'Content-Type' => $mime,
             'Content-Disposition' => ContentDisposition::inline($name),
         ];
-        if ($stream->getSize() !== null && !isset($headers['Content-Length'])) {
-            $defaults['Content-Length'] = (string) $stream->getSize();
+        $size = $body->getSize();
+        if ($size !== null && !isset($headers['Content-Length'])) {
+            $defaults['Content-Length'] = (string) $size;
         }
 
-        return new self(StatusEnum::OK->value, $stream, $defaults + $headers);
+        return new self(StatusEnum::OK->value, $body, $defaults + $headers);
     }
 
     /**
@@ -273,12 +275,12 @@ class Response
         array $headers = [],
     ): self {
         if (is_string($file)) {
-            $stream = self::openFileStream($file);
-            $length = filesize($file) ?: null;
+            $body = new FileBody($file);
+            $length = $body->getSize();
             $name ??= basename($file);
         } else {
-            $stream = $file;
-            $length = $stream->getSize();
+            $body = $file;
+            $length = $body->getSize();
             $name ??= 'download';
         }
 
@@ -290,7 +292,7 @@ class Response
             $headers['Content-Length'] = (string) $length;
         }
 
-        return new self(StatusEnum::OK->value, $stream, $headers);
+        return new self(StatusEnum::OK->value, $body, $headers);
     }
 
     public function cache(): CacheControl
@@ -314,6 +316,11 @@ class Response
     public function getBodySize(): ?int
     {
         return is_string($this->body) ? strlen($this->body) : $this->body->getSize();
+    }
+
+    public function getFileBody(): ?FileBody
+    {
+        return $this->body instanceof FileBody ? $this->body : null;
     }
 
     public function getHeader(string $n): array
@@ -437,13 +444,6 @@ class Response
         ];
     }
 
-    private static function chooseLength(string|Stream $file, Stream $stream, ?int $fsSize): ?string
-    {
-        $length = is_string($file) ? $fsSize : $stream->getSize();
-
-        return $length !== null ? (string) $length : null;
-    }
-
     private static function formatHttpDate(?int $mtime): ?string
     {
         return $mtime ? gmdate('D, d M Y H:i:s', $mtime) . ' GMT' : null;
@@ -498,16 +498,6 @@ class Response
         };
     }
 
-    private static function openFileStream(string $file): Stream
-    {
-        $handle = fopen($file, 'rb');
-        if ($handle === false) {
-            throw new RuntimeException("Unable to open file for download: {$file}");
-        }
-
-        return new Stream($handle);
-    }
-
     /**
      * @param array<string,string> $target
      * @param array<string,string|list<string>> $caller
@@ -522,11 +512,6 @@ class Response
     private static function statusText(int $code): string
     {
         return StatusEnum::text($code);
-    }
-
-    private static function streamFor(string|Stream $file): Stream
-    {
-        return $file instanceof Stream ? $file : self::openFileStream($file);
     }
 
     private static function weakEtagFromMeta(?int $size, ?int $mtime, string $name): ?string
