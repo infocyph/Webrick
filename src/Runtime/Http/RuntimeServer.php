@@ -22,7 +22,11 @@ final readonly class RuntimeServer
 
     public function handle(mixed $nativeRequest = null, mixed $nativeResponse = null): Response
     {
-        $context = $this->adapter->context($nativeRequest, $nativeResponse);
+        $context = $this->adapter->context(
+            $nativeRequest,
+            $nativeResponse,
+            $this->kernel->requiresHostRouting(),
+        );
         $response = $this->kernel->handleRuntime($context);
         $this->adapter->write($response, $context);
 
