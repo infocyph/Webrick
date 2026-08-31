@@ -25,7 +25,7 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
     private string $cacheFile = '';
     private bool $cacheLoaded = false;
     private bool $cacheWriteEnabled = false;
-    /** @var Closure(string,string,string,bool):MatchOutcome|null */
+    /** @var Closure(string,string,string,bool):(int|array{0:int,1:array<string,string>}|MatchOutcome)|null */
     private ?Closure $compiledFn = null;
     private bool $finalized = false;
     private CanonicalMatcherIndex $index;
@@ -85,10 +85,9 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         throw new RouteNotFoundException($verb, $path);
     }
 
-    public function matchCompiledOutcome(string $method, string $host, string $path): MatchOutcome
+    public function matchCompiled(string $method, string $host, string $path): int|array|MatchOutcome
     {
-        $this->finalize();
-        $fn = $this->compiledFn ?? throw new \LogicException('Generated matcher was not finalized.');
+        $fn = $this->compiledFn ?? throw new \LogicException('Generated matcher must be finalized before compiled dispatch.');
 
         return $fn($method, $host, $path, true);
     }
@@ -97,8 +96,10 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
     {
         $this->finalize();
         $fn = $this->compiledFn ?? throw new \LogicException('Generated matcher was not finalized.');
+        /** @var MatchOutcome $outcome */
+        $outcome = $fn($method, $host, $path, false);
 
-        return $fn($method, $host, $path, false);
+        return $outcome;
     }
 
     public function resolveAlias(string $name): ?array
@@ -109,27 +110,28 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
     }
 
     /** @param array<string,int> $verbs */
-    private function renderVerbDispatch(array $verbs, string $indent): string
+    private function renderVerbDispatch(array $verbs, string $indent, bool $hasParams): string
     {
         $materialize = '\\' . __NAMESPACE__ . '\\matcher_materialize_cached_route';
         $outcome = '\\' . MatchOutcome::class;
+        $params = $hasParams ? '$params' : '[]';
         $code = $indent . "switch (\$verb) {\n";
         foreach ($verbs as $method => $index) {
             $code .= $indent . '    case ' . var_export($method, true) . ":\n";
-            $code .= $indent . "        if (\$indexOnly) {\n";
-            $code .= $indent . '            return ' . $outcome . '::foundIndex(' . $index . ", \$params);\n";
+            $code .= $indent . "        if (\$compact) {\n";
+            $code .= $indent . '            return ' . ($hasParams ? '[' . $index . ', $params]' : (string) $index) . ";\n";
             $code .= $indent . "        }\n";
             $code .= $indent . '        return ' . $outcome . '::found(($routes[' . $index
-                . '] ??= ' . $materialize . '($routePayloads[' . $index . "])), \$params);\n";
+                . '] ??= ' . $materialize . '($routePayloads[' . $index . '])), ' . $params . ");\n";
         }
         if (!isset($verbs[HttpMethodEnum::HEAD->value]) && isset($verbs[HttpMethodEnum::GET->value])) {
             $index = $verbs[HttpMethodEnum::GET->value];
             $code .= $indent . '    case ' . var_export(HttpMethodEnum::HEAD->value, true) . ":\n";
-            $code .= $indent . "        if (\$indexOnly) {\n";
-            $code .= $indent . '            return ' . $outcome . '::foundIndex(' . $index . ", \$params, true);\n";
+            $code .= $indent . "        if (\$compact) {\n";
+            $code .= $indent . '            return ' . ($hasParams ? '[' . $index . ', $params]' : (string) $index) . ";\n";
             $code .= $indent . "        }\n";
             $code .= $indent . '        return ' . $outcome . '::found(($routes[' . $index
-                . '] ??= ' . $materialize . '($routePayloads[' . $index . "])), \$params, true);\n";
+                . '] ??= ' . $materialize . '($routePayloads[' . $index . '])), ' . $params . ", true);\n";
         }
         $code .= $indent . "    default:\n";
         foreach ($verbs as $method => $_index) {
@@ -185,7 +187,7 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
             $condition = $this->renderCondition($entry['segments'], $indent . '        ');
             $code .= $indent . "if ({$condition}) {\n";
             $code .= $indent . '    $params = ' . $this->renderParams($entry['segments']) . ";\n";
-            $code .= $this->renderVerbDispatch($entry['verbs'], $indent . '    ');
+            $code .= $this->renderVerbDispatch($entry['verbs'], $indent . '    ', true);
             $code .= $indent . "}\n";
         }
 
@@ -231,8 +233,7 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         $code = $indent . "switch (\$path) {\n";
         foreach ($static as $path => $verbs) {
             $code .= $indent . '    case ' . var_export($path, true) . ":\n";
-            $code .= $indent . "        \$params = [];\n";
-            $code .= $this->renderVerbDispatch($verbs, $indent . '        ');
+            $code .= $this->renderVerbDispatch($verbs, $indent . '        ', false);
             $code .= $indent . "        break;\n";
         }
 
@@ -281,7 +282,7 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
             }
         }
 
-        return "static function (string \$verb, string \$host, string \$path, bool \$indexOnly) {\n"
+        return "static function (string \$verb, string \$host, string \$path, bool \$compact) {\n"
             . "    static \$routePayloads = {$payloadCode};\n"
             . "    static \$routes = [];\n"
             . "    \$allowed = [];\n"
