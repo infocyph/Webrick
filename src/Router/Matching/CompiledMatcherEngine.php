@@ -13,14 +13,15 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
  *
  * Successful static requests are direct method/path lookups. Successful
  * regex-dynamic requests execute bounded combined PCRE chunks and use MARK to
- * identify the selected route. Cross-method probing is reserved for miss,
- * automatic OPTIONS and 405 handling.
+ * identify the selected route. Fallback steps remain in registration order so
+ * optimization never changes route precedence. Cross-method probing is
+ * reserved for miss, automatic OPTIONS and 405 handling.
  *
  * @phpstan-type RouteValue CompiledRoute|array<array-key,mixed>|string
  * @phpstan-type FastRouteEntry array{route:RouteValue,params:array<int,string>}
- * @phpstan-type PcreChunk array{regex:string,routes:array<string,FastRouteEntry>}
- * @phpstan-type FallbackEntry array{segments:list<array<string,mixed>>,route:RouteValue}
- * @phpstan-type DynamicBucket array{pcre:list<PcreChunk>,fallback:list<FallbackEntry>}
+ * @phpstan-type PcreStep array{type:'pcre',regex:string,routes:array<string,FastRouteEntry>}
+ * @phpstan-type FallbackStep array{type:'fallback',segments:list<array<string,mixed>>,route:RouteValue}
+ * @phpstan-type DynamicBucket array{steps:list<PcreStep|FallbackStep>}
  * @phpstan-type MatcherGroup array{static:array<string,array<string,RouteValue>>,dynamic:array<string,array<int,array<string,DynamicBucket>>>}
  * @phpstan-type CompiledMatch int|array{0:int,1:array<string,string>}|MatchOutcome
  */
@@ -81,9 +82,7 @@ final class CompiledMatcherEngine
         return $this->matchSingleGroup($hostGroup, $wildcardGroup, $method, $path, true);
     }
 
-    /**
-     * @param array<string,bool> $allowed
-     */
+    /** @param array<string,bool> $allowed */
     private static function addAllowedMethod(array &$allowed, string $method): void
     {
         if ($method === '') {
@@ -121,6 +120,7 @@ final class CompiledMatcherEngine
         return [substr_count($trimmed, '/') + 1, $prefix];
     }
 
+    /** @param array<string,bool> $allowed */
     private static function missOutcome(string $method, array $allowed): MatchOutcome
     {
         if ($allowed === []) {
@@ -203,45 +203,41 @@ final class CompiledMatcherEngine
      */
     private function findDynamicBucket(array $bucket, string $path, ?array &$segments): ?array
     {
-        foreach ($bucket['pcre'] as $chunk) {
-            $matches = [];
-            $status = preg_match($chunk['regex'], $path, $matches);
-            if ($status === false) {
-                throw new \RuntimeException('Compiled matcher PCRE failed during dispatch.');
-            }
-            if ($status !== 1) {
-                continue;
-            }
-
-            $mark = $matches['MARK'] ?? null;
-            if (!is_string($mark) || !isset($chunk['routes'][$mark])) {
-                throw new \UnexpectedValueException('Compiled matcher PCRE returned an unknown route mark.');
-            }
-            $entry = $chunk['routes'][$mark];
-            $params = [];
-            if ($entry['params'] !== []) {
-                $segments ??= self::pathSegments($path);
-                foreach ($entry['params'] as $position => $name) {
-                    $piece = $segments[$position] ?? null;
-                    if (!is_string($piece)) {
-                        throw new \UnexpectedValueException('Compiled matcher parameter position is unavailable.');
-                    }
-                    $params[$name] = $piece;
+        foreach ($bucket['steps'] as $step) {
+            if ($step['type'] === 'pcre') {
+                $matches = [];
+                $status = preg_match($step['regex'], $path, $matches);
+                if ($status === false) {
+                    throw new \RuntimeException('Compiled matcher PCRE failed during dispatch.');
                 }
+                if ($status !== 1) {
+                    continue;
+                }
+
+                $mark = $matches['MARK'] ?? null;
+                if (!is_string($mark) || !isset($step['routes'][$mark])) {
+                    throw new \UnexpectedValueException('Compiled matcher PCRE returned an unknown route mark.');
+                }
+                $entry = $step['routes'][$mark];
+                $params = [];
+                if ($entry['params'] !== []) {
+                    $segments ??= self::pathSegments($path);
+                    foreach ($entry['params'] as $position => $name) {
+                        $piece = $segments[$position] ?? null;
+                        if (!is_string($piece)) {
+                            throw new \UnexpectedValueException('Compiled matcher parameter position is unavailable.');
+                        }
+                        $params[$name] = $piece;
+                    }
+                }
+
+                return ['route' => $entry['route'], 'params' => $params];
             }
 
-            return ['route' => $entry['route'], 'params' => $params];
-        }
-
-        if ($bucket['fallback'] === []) {
-            return null;
-        }
-
-        $segments ??= self::pathSegments($path);
-        foreach ($bucket['fallback'] as $entry) {
-            $params = $this->matchFallbackSegments($entry['segments'], $segments);
+            $segments ??= self::pathSegments($path);
+            $params = $this->matchFallbackSegments($step['segments'], $segments);
             if ($params !== null) {
-                return ['route' => $entry['route'], 'params' => $params];
+                return ['route' => $step['route'], 'params' => $params];
             }
         }
 
