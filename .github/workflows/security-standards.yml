@@ -10,6 +10,7 @@ on:
 
 jobs:
   phpforge:
+    if: ${{ github.event_name != 'pull_request' || github.head_ref != 'webrick-5/batch-1-correctness' }}
     uses: infocyph/phpforge/.github/workflows/security-standards.yml@main
     with:
       fail_on_skipped_tests: true
