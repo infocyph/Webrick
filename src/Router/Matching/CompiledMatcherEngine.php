@@ -94,6 +94,17 @@ final class CompiledMatcherEngine
         }
     }
 
+    /** @return array<string,true> */
+    private static function alreadyTestedMethods(string $method): array
+    {
+        $tested = [$method => true];
+        if ($method === HttpMethodEnum::HEAD->value) {
+            $tested[HttpMethodEnum::GET->value] = true;
+        }
+
+        return $tested;
+    }
+
     /** @return list<string> */
     private static function pathSegments(string $path): array
     {
@@ -354,41 +365,73 @@ final class CompiledMatcherEngine
     }
 
     /**
-     * @param list<MatcherGroup> $groups
+     * @param MatcherGroup $group
+     * @param array<string,true> $skip
      * @param array<string,bool> $allowed
      */
-    private function collectStaticAllowed(array $groups, string $path, array &$allowed): void
+    private function collectStaticAllowedGroup(array $group, string $path, array $skip, array &$allowed): void
     {
-        foreach ($groups as $group) {
-            foreach ($group['static'] as $method => $routes) {
-                if (isset($routes[$path])) {
-                    self::addAllowedMethod($allowed, $method);
-                }
+        foreach ($group['static'] as $method => $routes) {
+            if (!isset($skip[$method]) && isset($routes[$path])) {
+                self::addAllowedMethod($allowed, $method);
             }
         }
     }
 
     /**
      * @param list<MatcherGroup> $groups
+     * @param array<string,true> $skip
      * @param array<string,bool> $allowed
+     */
+    private function collectStaticAllowed(array $groups, string $path, array $skip, array &$allowed): void
+    {
+        foreach ($groups as $group) {
+            $this->collectStaticAllowedGroup($group, $path, $skip, $allowed);
+        }
+    }
+
+    /**
+     * @param MatcherGroup $group
+     * @param array<string,true> $skip
+     * @param array<string,bool> $allowed
+     * @param list<string>|null $segments
+     */
+    private function collectDynamicAllowedGroup(
+        array $group,
+        string $path,
+        int $count,
+        string $prefix,
+        array $skip,
+        array &$allowed,
+        ?array &$segments,
+    ): void {
+        foreach ($group['dynamic'] as $method => $_buckets) {
+            if (isset($skip[$method]) || isset($allowed[$method])) {
+                continue;
+            }
+            if ($this->findDynamicMethod($group, $method, $path, $count, $prefix, $segments) !== null) {
+                self::addAllowedMethod($allowed, $method);
+            }
+        }
+    }
+
+    /**
+     * @param list<MatcherGroup> $groups
+     * @param array<string,true> $skip
+     * @param array<string,bool> $allowed
+     * @param list<string>|null $segments
      */
     private function collectDynamicAllowed(
         array $groups,
         string $path,
         int $count,
         string $prefix,
+        array $skip,
         array &$allowed,
+        ?array &$segments,
     ): void {
         foreach ($groups as $group) {
-            $segments = null;
-            foreach ($group['dynamic'] as $method => $_buckets) {
-                if (isset($allowed[$method])) {
-                    continue;
-                }
-                if ($this->findDynamicMethod($group, $method, $path, $count, $prefix, $segments) !== null) {
-                    self::addAllowedMethod($allowed, $method);
-                }
-            }
+            $this->collectDynamicAllowedGroup($group, $path, $count, $prefix, $skip, $allowed, $segments);
         }
     }
 
@@ -424,10 +467,12 @@ final class CompiledMatcherEngine
         }
 
         $allowed = [];
-        $this->collectStaticAllowed($hostGroups, $path, $allowed);
-        $this->collectStaticAllowed($wildcardGroups, $path, $allowed);
-        $this->collectDynamicAllowed($hostGroups, $path, $count, $prefix, $allowed);
-        $this->collectDynamicAllowed($wildcardGroups, $path, $count, $prefix, $allowed);
+        $skip = self::alreadyTestedMethods($method);
+        $this->collectStaticAllowed($hostGroups, $path, $skip, $allowed);
+        $this->collectStaticAllowed($wildcardGroups, $path, $skip, $allowed);
+        $segments = null;
+        $this->collectDynamicAllowed($hostGroups, $path, $count, $prefix, $skip, $allowed, $segments);
+        $this->collectDynamicAllowed($wildcardGroups, $path, $count, $prefix, $skip, $allowed, $segments);
 
         return self::missOutcome($method, $allowed);
     }
@@ -444,10 +489,50 @@ final class CompiledMatcherEngine
         string $path,
         bool $compact,
     ): int|array|MatchOutcome {
-        $hostGroups = $hostGroup === null ? [] : [$hostGroup];
-        $wildcardGroups = $wildcardGroup === null ? [] : [$wildcardGroup];
+        if ($hostGroup !== null) {
+            $hit = $this->matchStaticRequested($hostGroup, $method, $path, $compact);
+            if ($hit !== null) {
+                return $hit;
+            }
+        }
+        if ($wildcardGroup !== null) {
+            $hit = $this->matchStaticRequested($wildcardGroup, $method, $path, $compact);
+            if ($hit !== null) {
+                return $hit;
+            }
+        }
 
-        return $this->matchGroups($hostGroups, $wildcardGroups, $method, $path, $compact);
+        [$count, $prefix] = self::pathShape($path);
+        if ($hostGroup !== null) {
+            $hit = $this->matchDynamicRequested($hostGroup, $method, $path, $count, $prefix, $compact);
+            if ($hit !== null) {
+                return $hit;
+            }
+        }
+        if ($wildcardGroup !== null) {
+            $hit = $this->matchDynamicRequested($wildcardGroup, $method, $path, $count, $prefix, $compact);
+            if ($hit !== null) {
+                return $hit;
+            }
+        }
+
+        $allowed = [];
+        $skip = self::alreadyTestedMethods($method);
+        if ($hostGroup !== null) {
+            $this->collectStaticAllowedGroup($hostGroup, $path, $skip, $allowed);
+        }
+        if ($wildcardGroup !== null) {
+            $this->collectStaticAllowedGroup($wildcardGroup, $path, $skip, $allowed);
+        }
+        $segments = null;
+        if ($hostGroup !== null) {
+            $this->collectDynamicAllowedGroup($hostGroup, $path, $count, $prefix, $skip, $allowed, $segments);
+        }
+        if ($wildcardGroup !== null) {
+            $this->collectDynamicAllowedGroup($wildcardGroup, $path, $count, $prefix, $skip, $allowed, $segments);
+        }
+
+        return self::missOutcome($method, $allowed);
     }
 
     /**
