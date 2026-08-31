@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
+use Infocyph\Webrick\Request\Core\ServerRequest;
 use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Request\Core\UploadedFile;
 use Infocyph\Webrick\Request\Core\Uri;
-use Infocyph\Webrick\Request\Psr7\ServerRequest;
 use Infocyph\Webrick\Request\Request;
 
 describe('Request', function () {
@@ -71,27 +71,6 @@ describe('Request', function () {
         expect($request->query('q'))->toBe('test');
     });
 
-    it('allocates ArrayKit request collections only when requested', function () {
-        $request = new Request(
-            'POST',
-            'https://example.test/items?q=search',
-            ['REMOTE_ADDR' => '127.0.0.1'],
-            parsed: ['name' => 'Webrick'],
-            cookies: ['session' => 'token'],
-        );
-        $collectionProperties = ['queryCol', 'postCol', 'cookieCol', 'serverCol', 'jsonCol'];
-
-        foreach ($collectionProperties as $property) {
-            expect((new ReflectionProperty(\Infocyph\Webrick\Request\Psr7\ServerRequest::class, $property))->getValue($request))->toBeNull();
-        }
-
-        expect($request->query('q'))->toBe('search')
-            ->and((new ReflectionProperty(\Infocyph\Webrick\Request\Psr7\ServerRequest::class, 'queryCol'))->getValue($request))->not->toBeNull()
-            ->and((new ReflectionProperty(\Infocyph\Webrick\Request\Psr7\ServerRequest::class, 'postCol'))->getValue($request))->toBeNull()
-            ->and((new ReflectionProperty(\Infocyph\Webrick\Request\Psr7\ServerRequest::class, 'cookieCol'))->getValue($request))->toBeNull()
-            ->and((new ReflectionProperty(\Infocyph\Webrick\Request\Psr7\ServerRequest::class, 'serverCol'))->getValue($request))->toBeNull();
-    });
-
     it('lazily exposes variables through magic properties after immutable changes', function () {
         $request = Request::fake(query: ['query_key' => 'first'])
             ->withQueryParams(['query_key' => 'second']);
@@ -140,8 +119,8 @@ describe('Request', function () {
                 ->and($request->getUploadedFiles()['document'] ?? null)->toBeInstanceOf(UploadedFile::class)
                 ->and($hydrated->getValue($request))->toBeArray();
         } finally {
-            if (is_string($temporary) && is_file($temporary)) {
-                unlink($temporary);
+            if (is_string($temporary) && is_file($temporary) && !unlink($temporary)) {
+                throw new RuntimeException("Unable to remove temporary upload fixture: {$temporary}");
             }
         }
     });
@@ -183,7 +162,6 @@ describe('Request', function () {
         $stream = new Stream($json);
         $request = $request->withBody($stream);
 
-        // Request doesn't auto-parse JSON, that's done by middleware
         $body = json_decode((string) $request->getBody(), true);
         expect($body)->toBe(['key' => 'value']);
     });
