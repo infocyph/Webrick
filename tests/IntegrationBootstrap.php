@@ -9,6 +9,7 @@ declare(strict_types=1);
  * using the same configuration as index.php but in a test-friendly way.
  */
 
+use Infocyph\CacheLayer\Cache\Cache;
 use Infocyph\InterMix\DI\Container;
 use Infocyph\InterMix\DI\Invoker;
 use Infocyph\Webrick\Middleware\ThrottleMiddleware;
@@ -94,17 +95,19 @@ function createTestKernel(array $extraMiddleware = []): RouterKernel
         leeway: 5,
     );
     $urlBaseUri = 'http://localhost';
+    $throttlePool = Cache::memory('webrick.integration.throttle.' . bin2hex(random_bytes(6)));
 
     MiddlewareAliases::reset();
     MiddlewareAliases::register(
         'throttle',
-        static function (mixed ...$parameters): ThrottleMiddleware {
+        static function (mixed ...$parameters) use ($throttlePool): ThrottleMiddleware {
             $max = isset($parameters[0]) && is_numeric($parameters[0]) ? (int) $parameters[0] : 60;
             $window = isset($parameters[1]) && is_numeric($parameters[1]) ? (int) $parameters[1] : 60;
 
             return new ThrottleMiddleware(
                 max: $max,
                 window: $window,
+                pool: $throttlePool,
                 allowApproximateFallback: true,
             );
         },
