@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Request\Http;
 
-use Infocyph\Webrick\Request\Psr7\ServerRequest;
+use Infocyph\Webrick\Request\Core\ServerRequest;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Request\Support\HeaderBag;
 
@@ -33,7 +33,8 @@ final class RequestHeaders
 
     public function __construct(private readonly Request|ServerRequest $req) {}
 
-    /** @param array<string,mixed> $srv
+    /**
+     * @param array<string,mixed> $srv
      * @return HeaderMap
      */
     public static function extractFromServer(array $srv): array
@@ -125,7 +126,8 @@ final class RequestHeaders
         return $key ? ($dep[$key] ?? []) : $dep;
     }
 
-    /** @param array<string,mixed> $srv
+    /**
+     * @param array<string,mixed> $srv
      * @param HeaderMap $out
      */
     private static function backfillAuthorization(array $srv, array &$out): void
@@ -155,7 +157,8 @@ final class RequestHeaders
         }
     }
 
-    /** @param array<string,mixed> $srv
+    /**
+     * @param array<string,mixed> $srv
      * @param HeaderMap $out
      */
     private static function backfillContentHeaders(array $srv, array &$out): void
@@ -167,7 +170,8 @@ final class RequestHeaders
         }
     }
 
-    /** @param array<string,mixed> $srv
+    /**
+     * @param array<string,mixed> $srv
      * @return HeaderMap
      */
     private static function viaServerFallback(array $srv): array
