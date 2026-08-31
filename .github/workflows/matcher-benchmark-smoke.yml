@@ -22,9 +22,13 @@ jobs:
           coverage: none
           tools: composer:v2
       - run: composer install --no-interaction --no-progress --prefer-dist
+      - name: Matcher regression focus
+        run: vendor/bin/pest tests/Unit/MatcherPerformanceRevisionTest.php tests/Unit/CompiledMatcherOutcomeTest.php
       - name: Reference smoke
         run: php benchmark/fastroute_reference.php --routes=1000 --iters=5000 --rounds=3 --warmup=1000 | tee matcher-smoke.txt
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: matcher-benchmark-smoke
           path: matcher-smoke.txt
+          if-no-files-found: warn
