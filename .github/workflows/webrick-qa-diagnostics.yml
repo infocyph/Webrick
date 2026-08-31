@@ -20,7 +20,7 @@ jobs:
       - name: Install dependencies
         run: composer update --no-interaction --prefer-dist --no-progress --prefer-stable
 
-      - name: Print strict diagnostics
+      - name: Collect strict diagnostics
         shell: bash
         run: |
           set +e
@@ -28,14 +28,31 @@ jobs:
             --configuration=vendor/infocyph/phpforge/resources/phpstan.neon.dist \
             --memory-limit=1G \
             --no-progress \
-            --error-format=table
-          phpstan_status=$?
+            --error-format=table 2>&1 | tee phpstan.txt
+          phpstan_status=${PIPESTATUS[0]}
 
-          composer ic:test:comments
-          comments_status=$?
+          composer ic:test:comments 2>&1 | tee comments.txt
+          comments_status=${PIPESTATUS[0]}
           set -e
 
-          printf 'phpstan_status=%d\ncomments_status=%d\n' "$phpstan_status" "$comments_status"
+          printf '%d\n' "$phpstan_status" > phpstan.status
+          printf '%d\n' "$comments_status" > comments.status
+
+      - name: Upload strict diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: strict-diagnostics
+          path: |
+            phpstan.txt
+            comments.txt
+            phpstan.status
+            comments.status
+
+      - name: Enforce strict diagnostics
+        shell: bash
+        run: |
+          phpstan_status="$(cat phpstan.status)"
+          comments_status="$(cat comments.status)"
           if [ "$phpstan_status" -ne 0 ] || [ "$comments_status" -ne 0 ]; then
             exit 1
           fi
