@@ -33,7 +33,9 @@
     "require-dev": {
         "infocyph/cachelayer": "^3.2",
         "infocyph/phpforge": "dev-main@dev",
-        "opis/closure": "^4.5"
+        "opis/closure": "^4.5",
+        "psr/http-factory": "^1.1",
+        "psr/http-message": "^2.0"
     },
     "suggest": {
         "infocyph/cachelayer": "Required by response-cache middleware and the CacheLayer atomic-counter adapter.",
