@@ -1,9 +1,10 @@
 # Matcher
 
 Webrick provides three matching strategies. All three can run in memory and all
-three can boot from a deploy-time cache artifact. They share the same canonical
-route/index semantics; the difference is how that canonical state is executed
-and stored for production.
+three can boot from a deploy-time cache artifact. Fused and Sharded share the
+same compiled matcher IR and request-time route-discrimination engine; Sharded
+changes the physical storage/working-set boundary. Generated remains a separate
+generated-code strategy.
 
 Matcher factories take no arguments:
 
@@ -17,25 +18,35 @@ enables cache reads on the matcher. Cache writes remain an explicit
 
 ## Comparison
 
-| Matcher | Artifact | Request-time shape | Good fit |
+| Matcher | Artifact | Request-time shape | Measured role |
 | --- | --- | --- | --- |
-| `FusedMatcher` | One PHP file | Uses one consolidated canonical routing structure | Default baseline for normal applications |
-| `GeneratedMatcher` | One PHP file with generated matcher code | Executes bucketed generated PHP matching code | Maximum-throughput candidates validated by representative benchmarks |
-| `ShardedMatcher` | Directory of PHP files | Loads the relevant host/path shard into the worker | Very large route sets where reduced working set or memory is demonstrably valuable |
+| `FusedMatcher` | One PHP file | Direct static maps + shared compiled combined-PCRE matcher IR | **Default/general production matcher** |
+| `GeneratedMatcher` | One PHP file with generated matcher code | Executes generated PHP matching code | **Niche generated-code mode; not the general throughput recommendation** |
+| `ShardedMatcher` | Directory of PHP files | Lazily loads relevant shards that use the same compiled matcher IR as Fused | **Very-large-route / cold-boot / working-set specialization** |
 
-Do not choose only from a synthetic microbenchmark. Benchmark your route count,
+The Webrick 5 matcher revision benchmarks changed the recommended roles. On the
+1,000-route FastRoute-reference corpus, Fused and Sharded stayed close to each
+other while Generated became substantially slower on dynamic, 404 and 405 paths.
+At 5,000 routes, Sharded demonstrated a very large cold-boot advantage and a
+smaller startup working set, while Fused retained materially faster warm
+request dispatch. Generated also degraded sharply as route counts increased.
+
+Do not choose only from one synthetic microbenchmark. Benchmark your route count,
 static/dynamic mix, host routing, OPcache settings, filesystem, process model,
 worker lifetime and traffic distribution.
 
-The intended selection model is:
+The measured selection model is:
 
-- **Fused** is the normal starting point and canonical performance baseline.
-- **Generated** is a throughput specialization. Select it when production-like
-  measurements show a meaningful dispatch advantage after accounting for
-  generated-code size, OPcache usage and worker boot cost.
-- **Sharded** is a scale/working-set specialization. Select it when a very large
-  route table benefits measurably from loading only relevant route groups after
-  accounting for shard management and first-use loading costs.
+- **Fused** is the normal starting point, canonical matcher implementation and
+  default production choice. It offers the best general balance of warm dispatch,
+  deployment simplicity and predictable one-artifact behavior.
+- **Generated** is no longer the default "maximum throughput" alternative.
+  Keep it only when a specific small/known route corpus demonstrates a repeatable
+  advantage or when the generated-code mode is otherwise operationally useful.
+  Do not assume that advantage survives route-set growth.
+- **Sharded** is a scale/startup/working-set specialization. Select it when very
+  large route sets make lazy shard loading, extremely cheap cold boot or reduced
+  startup memory more important than Fused's faster warm dispatch.
 
 ## Fused matcher
 
@@ -50,10 +61,15 @@ $kernel = RouterKernel::bootWithRegistrar(
 );
 ```
 
-The cache location is one PHP file. Fused mode keeps one consolidated canonical
-routing structure and executes it through the canonical matcher engine. It has
-the smallest operational surface of the three modes and is the recommended
-starting point for normal applications.
+The cache location is one PHP file. Fused mode stores the compiled matcher IR
+required for direct static lookup and combined-PCRE dynamic dispatch. It has the
+smallest operational surface of the production-oriented matcher modes and is the
+recommended starting point for normal applications.
+
+The matcher hot path is compile-first: regex-compilable dynamic routes are merged
+into bounded `(*MARK:...)` PCRE chunks; callable or unsafe-to-compose constraints
+remain in ordered fallback steps so route precedence and segment semantics are
+preserved.
 
 ## Generated matcher
 
@@ -72,10 +88,11 @@ Generated mode emits a PHP file containing generated bucketed matching code.
 Without `routeCache:` it compiles an in-memory matcher during finalization.
 Cache generation is explicit; normal request boot does not write it.
 
-Generated mode can reduce generalized matcher-engine work by specializing host,
-path, segment and method dispatch into executable PHP. That specialization also
-increases generated code and OPcache footprint, so treat it as a measured
-throughput option rather than an automatic upgrade from Fused.
+Generated can still be fast for small route sets, especially simple static
+lookups, but the Webrick 5 scale benchmarks show that its generated-condition
+strategy degrades significantly as dynamic route counts grow. It should therefore
+be treated as a niche measured mode rather than a general performance upgrade
+from Fused.
 
 ## Sharded matcher
 
@@ -96,10 +113,15 @@ $kernel = RouterKernel::bootWithRegistrar(
 ```
 
 The cache location is a directory. The build produces root and alias metadata
-plus route shards partitioned by host/path grouping. This can reduce the routing
-working set for very large route collections. Cached workers may load a shard on
-first use and retain it afterward, so compare both cold and warm behavior and do
-not assume sharding is faster merely because the route table is non-trivial.
+plus route shards partitioned by host/path grouping. Every loaded shard uses the
+same compiled matcher IR and combined-PCRE executor as Fused; sharding changes
+storage and working-set behavior, not routing semantics.
+
+On the 5,000-route matcher profile, Sharded booted in tens of microseconds instead
+of loading the whole Fused artifact at startup, but paid a first-use shard load
+and slower warm dispatch. This makes it appropriate when cold boot/startup memory
+or very large routing tables dominate, not as a blanket request-throughput
+optimization.
 
 ## Cached route materialization
 
@@ -151,13 +173,14 @@ caches are executable, trusted deployment artifacts regardless of this option.
 
 ## Recommendation
 
-- Start with `FusedMatcher` for normal applications and use it as the canonical
-  comparison baseline.
-- Move to `GeneratedMatcher` only when representative production-like benchmarks
-  show a meaningful throughput advantage after including boot and OPcache costs.
-- Move to `ShardedMatcher` for very large route sets only when measurements show
-  a useful working-set, memory or locality advantage that outweighs shard
-  loading and artifact-management costs.
+- Start with `FusedMatcher` for normal applications. It is the measured general
+  production choice and canonical comparison baseline.
+- Use `ShardedMatcher` for very large route sets when measurements show that its
+  dramatically cheaper cold boot/lazy working set is worth the first-shard-load
+  and slower warm-dispatch costs.
+- Use `GeneratedMatcher` only when the application's actual route corpus proves a
+  repeatable benefit. Do not select it merely because generated code sounds
+  faster; the Webrick 5 scale benchmark showed poor dynamic/miss scaling.
 - Measure cold and warm behavior separately, especially for FPM versus
   persistent-worker deployments.
 - Build every cache mode outside the request path and rebuild after upgrades or
