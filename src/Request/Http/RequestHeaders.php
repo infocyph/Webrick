@@ -185,38 +185,9 @@ final class RequestHeaders
             return [];
         }
 
-        $tokens = [];
-        $token = '';
-        $quoted = false;
-        for ($i = 0, $length = strlen($value); $i < $length; ++$i) {
-            $char = $value[$i];
-            if ($char === '"') {
-                $quoted = !$quoted;
-                $token .= $char;
+        $tokens = HttpUtils::splitQuoted($value, ',');
 
-                continue;
-            }
-            if ($char === ',' && !$quoted) {
-                $trimmed = trim($token);
-                if ($trimmed !== '') {
-                    $tokens[] = $trimmed;
-                }
-                $token = '';
-
-                continue;
-            }
-            $token .= $char;
-        }
-
-        if ($quoted) {
-            return [];
-        }
-        $trimmed = trim($token);
-        if ($trimmed !== '') {
-            $tokens[] = $trimmed;
-        }
-
-        return $tokens;
+        return $tokens ?? [];
     }
 
     private function httpDate(string $value): ?int
@@ -236,8 +207,11 @@ final class RequestHeaders
     private function parseAccept(string $raw): array
     {
         $parsed = [];
-        foreach (self::splitQuoted($raw, ',') as $segment) {
-            $parts = self::splitQuoted($segment, ';');
+        foreach (HttpUtils::splitQuoted($raw, ',') ?? [] as $segment) {
+            $parts = HttpUtils::splitQuoted($segment, ';');
+            if ($parts === null) {
+                continue;
+            }
             $value = array_shift($parts);
             if ($value === null || $value === '') {
                 continue;
@@ -264,56 +238,6 @@ final class RequestHeaders
         $values = array_column($parsed, 'value');
 
         return $values;
-    }
-
-    /** @return list<string> */
-    private static function splitQuoted(string $raw, string $delimiter): array
-    {
-        $parts = [];
-        $buffer = '';
-        $quoted = false;
-        $escaped = false;
-        for ($i = 0, $length = strlen($raw); $i < $length; ++$i) {
-            $char = $raw[$i];
-            if ($escaped) {
-                $buffer .= $char;
-                $escaped = false;
-
-                continue;
-            }
-            if ($quoted && $char === '\\') {
-                $buffer .= $char;
-                $escaped = true;
-
-                continue;
-            }
-            if ($char === '"') {
-                $quoted = !$quoted;
-                $buffer .= $char;
-
-                continue;
-            }
-            if ($char === $delimiter && !$quoted) {
-                $token = trim($buffer);
-                if ($token !== '') {
-                    $parts[] = $token;
-                }
-                $buffer = '';
-
-                continue;
-            }
-            $buffer .= $char;
-        }
-
-        if ($quoted || $escaped) {
-            return [];
-        }
-        $token = trim($buffer);
-        if ($token !== '') {
-            $parts[] = $token;
-        }
-
-        return $parts;
     }
 
     /** @return array<string,mixed> */
