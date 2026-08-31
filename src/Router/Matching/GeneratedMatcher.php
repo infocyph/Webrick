@@ -8,40 +8,27 @@ use Closure;
 use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
 use Infocyph\Webrick\Exceptions\RouteNotFoundException;
+use Infocyph\Webrick\Router\Build\Artifact\ExecutableRoutePayload;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 
-/**
- * Generated matcher compiled from the canonical matcher index.
- *
- * Generated code performs exact static lookup before allocating or splitting
- * path segments. Dynamic matching is then limited by segment count and the
- * first literal segment, with callable constraints invoked directly.
- */
+/** Generated matcher compiled from the canonical matcher index. */
 final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
 {
     use MatcherCacheLifecycleTrait;
     use MatcherFactoryTrait;
 
-    private const int INDEX_CACHE_VERSION = 5;
+    private const int INDEX_CACHE_VERSION = 6;
 
     /** @var array<string,array{0:string,1:?string}> */
     private array $alias = [];
-
     private bool $cacheEnabled = false;
-
     private string $cacheFile = '';
-
     private bool $cacheLoaded = false;
-
     private bool $cacheWriteEnabled = false;
-
-    /** @var Closure(string,string,string):MatchOutcome|null */
+    /** @var Closure(string,string,string,bool):MatchOutcome|null */
     private ?Closure $compiledFn = null;
-
     private bool $finalized = false;
-
     private CanonicalMatcherIndex $index;
-
     /** @var array<string,true> */
     private array $middlewareRequirements = [];
 
@@ -98,11 +85,20 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         throw new RouteNotFoundException($verb, $path);
     }
 
+    public function matchCompiledOutcome(string $method, string $host, string $path): MatchOutcome
+    {
+        $this->finalize();
+        $fn = $this->compiledFn ?? throw new \LogicException('Generated matcher was not finalized.');
+
+        return $fn($method, $host, $path, true);
+    }
+
     public function matchOutcome(string $method, string $host, string $path): MatchOutcome
     {
-        $fn = $this->ensureCompiledMatcher();
+        $this->finalize();
+        $fn = $this->compiledFn ?? throw new \LogicException('Generated matcher was not finalized.');
 
-        return $fn($method, $host, $path);
+        return $fn($method, $host, $path, false);
     }
 
     public function resolveAlias(string $name): ?array
@@ -112,9 +108,7 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         return $index[$name] ?? null;
     }
 
-    /**
-     * @param array<string,int> $verbs
-     */
+    /** @param array<string,int> $verbs */
     private function renderVerbDispatch(array $verbs, string $indent): string
     {
         $materialize = '\\' . __NAMESPACE__ . '\\matcher_materialize_cached_route';
@@ -122,12 +116,18 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         $code = $indent . "switch (\$verb) {\n";
         foreach ($verbs as $method => $index) {
             $code .= $indent . '    case ' . var_export($method, true) . ":\n";
+            $code .= $indent . "        if (\$indexOnly) {\n";
+            $code .= $indent . '            return ' . $outcome . '::foundIndex(' . $index . ", \$params);\n";
+            $code .= $indent . "        }\n";
             $code .= $indent . '        return ' . $outcome . '::found(($routes[' . $index
                 . '] ??= ' . $materialize . '($routePayloads[' . $index . "])), \$params);\n";
         }
         if (!isset($verbs[HttpMethodEnum::HEAD->value]) && isset($verbs[HttpMethodEnum::GET->value])) {
             $index = $verbs[HttpMethodEnum::GET->value];
             $code .= $indent . '    case ' . var_export(HttpMethodEnum::HEAD->value, true) . ":\n";
+            $code .= $indent . "        if (\$indexOnly) {\n";
+            $code .= $indent . '            return ' . $outcome . '::foundIndex(' . $index . ", \$params, true);\n";
+            $code .= $indent . "        }\n";
             $code .= $indent . '        return ' . $outcome . '::found(($routes[' . $index
                 . '] ??= ' . $materialize . '($routePayloads[' . $index . "])), \$params, true);\n";
         }
@@ -149,13 +149,11 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         foreach ($segments as $index => $segment) {
             if (($segment['type'] ?? null) === 'lit') {
                 $checks[] = "(\$segments[{$index}] ?? null) === " . var_export($segment['val'], true);
-
                 continue;
             }
             if (isset($segment['regex'])) {
                 $checks[] = '\\preg_match(' . var_export($segment['regex'], true)
                     . ", (string)(\$segments[{$index}] ?? '')) === 1";
-
                 continue;
             }
             /** @var callable-string $call */
@@ -179,9 +177,7 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         return '[' . implode(', ', $pairs) . ']';
     }
 
-    /**
-     * @param array<string,array{segments:list<array<string,mixed>>,verbs:array<string,int>}> $entries
-     */
+    /** @param array<string,array{segments:list<array<string,mixed>>,verbs:array<string,int>}> $entries */
     private function renderDynamicEntries(array $entries, string $indent): string
     {
         $code = '';
@@ -264,9 +260,8 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
             $staticSwitch .= $this->renderStaticIndex($hosts['*']['static'], '    ');
         }
 
-        $hasDynamic = array_any($hosts, static fn(array $index): bool => $index['dynamic'] !== []);
         $dynamicSwitch = '';
-        if ($hasDynamic) {
+        if (array_any($hosts, static fn(array $index): bool => $index['dynamic'] !== [])) {
             $dynamicSwitch .= "    \$trimmed = \\trim(\$path, '/');\n";
             $dynamicSwitch .= "    \$segments = \$trimmed === '' ? [] : \\explode('/', \$trimmed);\n";
             $dynamicSwitch .= "    \$segCount = \\count(\$segments);\n";
@@ -286,7 +281,7 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
             }
         }
 
-        return "static function (string \$verb, string \$host, string \$path) {\n"
+        return "static function (string \$verb, string \$host, string \$path, bool \$indexOnly) {\n"
             . "    static \$routePayloads = {$payloadCode};\n"
             . "    static \$routes = [];\n"
             . "    \$allowed = [];\n"
@@ -306,14 +301,13 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
     private function generationData(): array
     {
         $payloads = [];
-        $routeIds = [];
         $hosts = [];
 
         foreach ($this->index->hosts() as $host => $index) {
             $hosts[$host] = ['static' => [], 'dynamic' => []];
             foreach ($index['static'] as $path => $verbs) {
                 foreach ($verbs as $verb => $route) {
-                    $hosts[$host]['static'][$path][$verb] = $this->routeIndex($route, $payloads, $routeIds);
+                    $hosts[$host]['static'][$path][$verb] = $this->routeIndex($route, $payloads);
                 }
             }
             foreach ($index['dynamic'] as $count => $prefixes) {
@@ -321,7 +315,7 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
                     foreach ($entries as $path => $entry) {
                         $mapped = ['segments' => $entry['segments'], 'verbs' => []];
                         foreach ($entry['verbs'] as $verb => $route) {
-                            $mapped['verbs'][$verb] = $this->routeIndex($route, $payloads, $routeIds);
+                            $mapped['verbs'][$verb] = $this->routeIndex($route, $payloads);
                         }
                         $hosts[$host]['dynamic'][$count][$prefix][$path] = $mapped;
                     }
@@ -332,20 +326,20 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         return [$payloads, $hosts];
     }
 
-    /** @param array<int,mixed> $payloads @param array<string,int> $ids */
-    private function routeIndex(mixed $route, array &$payloads, array &$ids): int
+    /** @param array<int,mixed> $payloads */
+    private function routeIndex(mixed $route, array &$payloads): int
     {
-        $key = $route instanceof CompiledRoute
-            ? 'object:' . spl_object_id($route)
-            : 'payload:' . hash('xxh3', serialize($route));
-        if (!isset($ids[$key])) {
-            $ids[$key] = count($payloads);
-            $payloads[] = $route instanceof CompiledRoute
+        $index = $route instanceof CompiledRoute ? $route->getIndex() : ExecutableRoutePayload::routeIndex($route);
+        if ($index === null) {
+            throw new \UnexpectedValueException('Generated matcher route is missing its compiled index.');
+        }
+        if (!array_key_exists($index, $payloads)) {
+            $payloads[$index] = $route instanceof CompiledRoute
                 ? MatcherCachePayloadNormalizer::normalize($route)
                 : $route;
         }
 
-        return $ids[$key];
+        return $index;
     }
 
     private function compileClosureFromCode(string $code): Closure
@@ -414,15 +408,6 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         if ($this->shouldWarmOpcache()) {
             opcache_compile_file($this->cacheFile);
         }
-    }
-
-    private function ensureCompiledMatcher(): Closure
-    {
-        $this->bootIndex();
-        $this->ensureCacheLoaded();
-        $this->compiledFn ??= $this->compileClosureFromCode($this->buildMatcherCode());
-
-        return $this->compiledFn;
     }
 
     private function loadCacheBlob(): void
