@@ -81,9 +81,8 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         throw new RouteNotFoundException($verb, $path);
     }
 
-    public function matchCompiledOutcome(string $method, string $host, string $path): MatchOutcome
+    public function matchCompiled(string $method, string $host, string $path): int|array|MatchOutcome
     {
-        $this->finalize();
         $hosts = $this->index->hosts();
 
         return $this->engine->matchSingleCompiled(
