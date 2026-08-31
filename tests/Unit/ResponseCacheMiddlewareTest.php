@@ -11,7 +11,7 @@ use Psr\Cache\CacheItemPoolInterface;
 
 test('response cache fails open when its backend cannot read', function (): void {
     $store = $this->createMock(CacheItemPoolInterface::class);
-    $store->expects($this->once())
+    $store->expects($this->exactly(2))
         ->method('getItem')
         ->willThrowException(new RuntimeException('cache read unavailable'));
     $middleware = new ResponseCacheMiddleware($store);
