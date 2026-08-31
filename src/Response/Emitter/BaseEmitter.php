@@ -298,27 +298,15 @@ abstract class BaseEmitter implements EmitterInterface
     private function emitIterableOutput(iterable $out): void
     {
         foreach ($out as $chunk) {
-            $this->emitScalarOutput($chunk);
+            if (!\is_string($chunk)) {
+                throw new \UnexpectedValueException('Streaming response producers must yield strings.');
+            }
+            if ($chunk !== '') {
+                $this->write($chunk);
+            }
             $this->flush();
             if (\function_exists('connection_aborted') && connection_aborted()) {
                 break;
-            }
-        }
-    }
-
-    private function emitScalarOutput(mixed $out): void
-    {
-        if (\is_string($out)) {
-            if ($out !== '') {
-                $this->write($out);
-            }
-
-            return;
-        }
-        if (\is_scalar($out)) {
-            $asString = (string) $out;
-            if ($asString !== '') {
-                $this->write($asString);
             }
         }
     }
