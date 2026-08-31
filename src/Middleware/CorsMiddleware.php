@@ -194,7 +194,12 @@ final readonly class CorsMiddleware
     /** @param array{origins:list<string>,methods:string,allowHeaders:string|list<string>,exposeHeaders:string|list<string>,maxAgeSeconds:int,allowCredentials:bool,allowPrivateNetwork:bool} $policy */
     private function preflightResponse(Request $req, array $policy, string $acao): Response
     {
-        $requestedMethod = HttpMethodEnum::normalize(trim($req->getHeaderLine('Access-Control-Request-Method')));
+        $rawRequestedMethod = trim($req->getHeaderLine('Access-Control-Request-Method'));
+        try {
+            $requestedMethod = HttpMethodEnum::normalize($rawRequestedMethod);
+        } catch (\InvalidArgumentException) {
+            throw HttpException::forbidden('CORS requested method is invalid.');
+        }
         if (!$this->methodAllowed($requestedMethod, $policy['methods'])) {
             throw HttpException::forbidden('CORS method is not allowed.');
         }
