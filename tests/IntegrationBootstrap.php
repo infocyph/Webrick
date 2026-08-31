@@ -9,9 +9,10 @@ declare(strict_types=1);
  * using the same configuration as index.php but in a test-friendly way.
  */
 
+use Infocyph\InterMix\DI\Container;
+use Infocyph\InterMix\DI\Invoker;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
-use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Dispatch\MiddlewareAliases;
 use Infocyph\Webrick\Router\Facade\Router as Route;
 use Infocyph\Webrick\Router\Kernel\ErrorHandler;
@@ -111,7 +112,6 @@ function createTestKernel(array $extraMiddleware = []): RouterKernel
     $errorHandler = new ErrorHandler(
         logger: $logger,
         debug: true,
-        capturePhpErrors: true,
         requestIdHeader: 'X-Request-Id',
         responseRenderer: static function (Request $request, \Throwable $e, int $status, array $headers): ?Response {
             if (!str_starts_with($request->getUri()->getPath(), '/api/')) {
@@ -144,7 +144,7 @@ function createTestKernel(array $extraMiddleware = []): RouterKernel
         log: $logger,
         matcher: FusedMatcher::make(),
         register: $register,
-        routeCache: null, // No cache for tests
+        invoker: Invoker::with(new Container('webrick.tests.integration')),
         registrarOptions: [
             'autoSlashRedirect' => false, // No automatic redirects
             'exposeUrlServices' => false,
@@ -163,6 +163,5 @@ function createTestKernel(array $extraMiddleware = []): RouterKernel
         ): void {
             Route::bindUrlServices($routes, $signUrlSecret, 900, $signedUrlConfig, $urlBaseUri);
         },
-        fallbackAliasesFromRegistrar: true,
     );
 }
