@@ -119,6 +119,28 @@ final class CompiledMatcherIndexCompiler
         return $chunks;
     }
 
+    private static function escapeDelimiter(string $pattern, string $delimiter): string
+    {
+        $out = '';
+        $length = strlen($pattern);
+
+        for ($i = 0; $i < $length; $i++) {
+            $char = $pattern[$i];
+            if ($char === $delimiter) {
+                $slashes = 0;
+                for ($j = $i - 1; $j >= 0 && $pattern[$j] === '\\'; $j--) {
+                    $slashes++;
+                }
+                if (($slashes % 2) === 0) {
+                    $out .= '\\';
+                }
+            }
+            $out .= $char;
+        }
+
+        return $out;
+    }
+
     /** @param list<SegmentSpec> $segments */
     private function isPcreCompilable(array $segments): bool
     {
@@ -156,7 +178,7 @@ final class CompiledMatcherIndexCompiler
     private function routePattern(array $segments): string
     {
         if ($segments === []) {
-            return '/';
+            return '/*';
         }
 
         $parts = [];
@@ -181,7 +203,9 @@ final class CompiledMatcherIndexCompiler
             $parts[] = '(?:' . self::segmentRegexInner($regex) . ')';
         }
 
-        return '/' . implode('/', $parts);
+        // CanonicalMatcherEngine historically trims leading/trailing slashes
+        // before segment matching. Preserve that behavior in the PCRE lane.
+        return '/*' . implode('/', $parts) . '/*';
     }
 
     private static function segmentRegexInner(string $regex): string
@@ -195,9 +219,7 @@ final class CompiledMatcherIndexCompiler
             throw new \UnexpectedValueException('Compiled matcher segment regex cannot be empty.');
         }
 
-        // The combined matcher uses ~ as its delimiter. Escaping an otherwise
-        // literal ~ is safe both inside and outside character classes.
-        return str_replace('~', '\\~', $inner);
+        return self::escapeDelimiter($inner, '~');
     }
 
     /**
