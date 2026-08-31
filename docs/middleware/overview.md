@@ -1,122 +1,93 @@
 # Middleware Overview
 
-Webrick’s middleware pipeline runs **before** and **after** your route handler. Use **pre-global** middleware for request hardening and shaping; use **post-global** middleware for response transformation and delivery. You can also attach **per-route** middleware via route options or attributes.
+Webrick middleware is split between portable request/response policy and the compiled production execution plan. Development can register class strings, objects, aliases and callables; production resolves and validates the supported graph before traffic.
 
----
+## Typical portable stack
 
-## The pipeline
+### Pre-global
 
-```
-Client → [ Pre-Global Middleware ] → Route Handler → [ Post-Global Middleware ] → Emitter → Client
-```
+- **Gateway Hardening** — trusted request/security normalization.
+- **Telemetry** — request IDs and tracing when enabled.
+- **Maintenance Mode** — cached/explicit maintenance state.
+- **Request Limits** — portable fallback when transport limits are unavailable.
+- **Throttle** — production requires an atomic counter backend.
+- **Cookie Encryption** — optional; routes without cookies should not pay crypto cost.
+- **Negotiation** — media type, charset and locale selection.
+- **Response Cache** — shared-cache policy and representation reuse.
+- **Cache Validators** — conditional request handling without global filesystem probing.
 
-### Pre-global (typical)
+### Post-global
 
-* **Gateway Hardening** – basic security headers & request sanity checks
-* **Telemetry** – request IDs, timing, tracing hooks
-* **Maintenance Mode** – short-circuit with 503 during maintenance windows
-* **Request Limits** – size/time guards before reaching handlers
-* **Throttle** – per-key rate limiting, emits 429 + retry headers
-* **Cookie Encryption** – decrypts incoming cookies into `Request`
-* **Normalize Method** – honors `_method` override for HTML forms
-* **Input Sanitizer** – trims/normalizes common inputs
-* **Negotiation** – parses `Accept`/language, sets attributes
-* **Response Cache** – fast path for cacheable GETs (if configured)
-* **Cache Validators** – handles `ETag` / `Last-Modified`, returns 304/412 when applicable
+- **Compression** — string-body compression when the transport does not own it.
+- **CORS & Policies** — route policy and security headers.
+- **Vary Accumulator** — one request-local `Vary` context.
+- **Response Linter** — development/test only.
 
-### Post-global (typical)
+`InputSanitizerMiddleware` is an explicit compatibility/transformation tool, not a blanket security layer. HTTP method normalization happens once at the request/runtime boundary; Webrick 5 has no method-normalization middleware.
 
-* **Compression** – negotiates `zstd/br/gzip` safely; coordinates ETags
-* **CORS & Policies** – CORS preflight/allow headers + security policies
-* **Vary Accumulator** – canonicalizes and appends `Vary` tokens
-* **Response Linter (dev)** – catches header/body anti-patterns early
-
-> Keep **order** intentional: validators before handlers; compression after handlers.
-
----
-
-## Wiring middleware
-
-You attach global middleware when booting the kernel:
+## Development wiring
 
 ```php
-$preGlobal = [
-  \Infocyph\Webrick\Middleware\GatewayHardeningMiddleware::class,
-  \Infocyph\Webrick\Middleware\TelemetryMiddleware::class,
-  \Infocyph\Webrick\Middleware\MaintenanceModeMiddleware::class,
-  \Infocyph\Webrick\Middleware\RequestLimitsMiddleware::class,
-  \Infocyph\Webrick\Middleware\ThrottleMiddleware::class,
-  new \Infocyph\Webrick\Middleware\CookieEncryptionMiddleware($_ENV['WEBRICK_COOKIE_KEY'] ?? 'dev'),
-  \Infocyph\Webrick\Middleware\NormalizeMethodMiddleware::class,
-  \Infocyph\Webrick\Middleware\InputSanitizerMiddleware::class,
-  \Infocyph\Webrick\Middleware\NegotiationMiddleware::class,
-  \Infocyph\Webrick\Middleware\ResponseCacheMiddleware::class,
-  \Infocyph\Webrick\Middleware\CacheValidatorsMiddleware::class,
-];
-
-$postGlobal = [
-  \Infocyph\Webrick\Middleware\CompressionMiddleware::class,
-  \Infocyph\Webrick\Middleware\CorsAndPoliciesMiddleware::class,
-  \Infocyph\Webrick\Middleware\VaryAccumulatorMiddleware::class,
-  \Infocyph\Webrick\Middleware\ResponseLinterMiddleware::class, // dev only
-];
+$kernel = RouterKernel::bootWithRegistrar(
+    log: $logger,
+    matcher: GeneratedMatcher::make(),
+    register: $register,
+    invoker: $applicationInvoker,
+    preGlobal: [
+        GatewayHardeningMiddleware::class,
+        RequestLimitsMiddleware::class,
+        NegotiationMiddleware::class,
+        ResponseCacheMiddleware::class,
+        CacheValidatorsMiddleware::class,
+    ],
+    postGlobal: [
+        CompressionMiddleware::class,
+        CorsAndPoliciesMiddleware::class,
+        VaryAccumulatorMiddleware::class,
+    ],
+);
 ```
 
-Per-route middleware:
+The application owns the InterMix builder/container. `RouterKernel` receives an `Invoker`; it does not create a container or import providers.
 
-```php
-Route::get('/secure/{id:int}', fn()=>['ok'=>true], [
-  'middleware' => ['verifySignedUrl','throttle:5,60'],
-]);
-```
+## Production wiring
 
-Attributes also accept `middleware:` arrays.
+Compile global and route middleware through `RouteCompiler` / `ReleaseCompiler`, then boot `CompiledRouterKernel` with the host-selected `ProductionContainer`.
 
----
+Production preparation provides:
 
-## Choosing the right order
+- alias resolution before traffic;
+- prepared invocation modes;
+- per-route pipelines built at boot;
+- a zero-pipeline path for routes with no middleware;
+- request scopes only for execution plans that require scoped/injected context;
+- route policy attributes attached only when a `Request` is materialized.
 
-1. **Hardening & limits** first → drop bad or oversized requests early
-2. **Throttling** before any heavy work
-3. **Normalization & sanitization** before reading input
-4. **Negotiation** before handlers (so `Response::auto()` has context)
-5. **Response cache / validators** before handler to short-circuit
-6. **Compression / CORS / Vary** after handler, final shaping
+## Ordering guidance
 
----
+1. Hardening and transport/request limits first.
+2. Throttle before expensive application work.
+3. Negotiation before handlers that use negotiated attributes.
+4. Cache/validator short-circuits before body generation where applicable.
+5. Compression after representation creation.
+6. CORS/policies and `Vary` finalization at the response boundary.
 
-## Performance notes
+## Persistent workers
 
-* Middleware classes should be **stateless** or light; reuse shared services via DI.
-* Prefer **header appends** over string manipulation of big bodies in post-globals.
-* Use **route cache warmups** so matcher/registrar work is done ahead of time.
-* Avoid expensive I/O in pre-globals unless it short-circuits a lot of work.
+Middleware instances shared by a worker must not hold current-request state. Request IDs, trace data, `Vary`, decoded cookies, IP information and native transport handles remain request-local. Webrick runtime adapters expose transport capabilities so portable middleware can bypass work already owned by Swoole/OpenSwoole, RoadRunner or Workerman.
 
----
+## Deep dives
 
-## Testing strategy
-
-* Unit test individual middleware (given a request → expect headers/status).
-* Integration test the **ordered stack** to catch interactions (e.g., ETag + compression).
-* For throttling and response cache, add **time-based** tests with controlled clocks.
-
----
-
-## What’s next
-
-Deep-dives for each middleware:
-
-* [`compression.md`](compression.md) – encodings, ETag strategies, caveats
-* [`cache-validators.md`](cache-validators.md) – 304/412 logic, ETag/Last-Modified providers
-* [`vary-accumulator.md`](vary-accumulator.md) – consistent `Vary` management
-* [`cors-and-policies.md`](cors-and-policies.md) – cross-origin and security headers
-* [`throttle.md`](throttle.md) – limits, keys, headers
-* [`request-limits.md`](request-limits.md) – body size/time caps
-* [`cookie-encryption.md`](cookie-encryption.md) – encrypt/decrypt lifecycle
-* [`maintenance-mode.md`](maintenance-mode.md) – toggles & messages
-* [`telemetry.md`](telemetry.md) – IDs, timings, tracing hooks
-* [`normalize-method.md`](normalize-method.md) – `_method` override rules
-* [`input-sanitizer.md`](input-sanitizer.md) – best-effort normalization
-* [`negotiation.md`](negotiation.md) – content & locale selection
-* [`response-cache.md`](response-cache.md) – when to serve from cache
-* [`response-linter.md`](response-linter.md) – dev-only quality guard
+- [`compression.md`](compression.md)
+- [`cache-validators.md`](cache-validators.md)
+- [`vary-accumulator.md`](vary-accumulator.md)
+- [`cors-and-policies.md`](cors-and-policies.md)
+- [`throttle.md`](throttle.md)
+- [`request-limits.md`](request-limits.md)
+- [`cookie-encryption.md`](cookie-encryption.md)
+- [`maintenance-mode.md`](maintenance-mode.md)
+- [`telemetry.md`](telemetry.md)
+- [`input-sanitizer.md`](input-sanitizer.md)
+- [`negotiation.md`](negotiation.md)
+- [`response-cache.md`](response-cache.md)
+- [`response-linter.md`](response-linter.md)
