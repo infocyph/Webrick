@@ -87,10 +87,7 @@ final readonly class RequestLimitsMiddleware
     /** @return array<string,string> */
     private function connectionCloseHeaders(Request $req): array
     {
-        $protocol = $req->getServerParams()['SERVER_PROTOCOL'] ?? 'HTTP/1.1';
-        $protocol = is_string($protocol) ? strtoupper($protocol) : 'HTTP/1.1';
-
-        return str_starts_with($protocol, 'HTTP/1.') ? ['Connection' => 'close'] : [];
+        return str_starts_with($req->getProtocolVersion(), '1.') ? ['Connection' => 'close'] : [];
     }
 
     private function enforceBodyLimit(Request $req): Request
