@@ -142,14 +142,12 @@ $register = static function (Registrar $registrar): void {
     }
 };
 
-// The application owns the InterMix graph. Webrick only consumes its runtime.
 $container = Webrick::standaloneDevelopment()->development();
 $invoker = Invoker::with($container);
 
 $errorHandler = new ErrorHandler(
     logger: $logger,
     debug: true,
-    capturePhpErrors: true,
     requestIdHeader: 'X-Request-Id',
     responseRenderer: static function (Request $request, Throwable $error, int $status, array $headers): ?Response {
         if (!str_starts_with($request->getUri()->getPath(), '/api/')) {
