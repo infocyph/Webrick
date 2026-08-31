@@ -69,9 +69,16 @@ final readonly class CachePolicy
             return false;
         }
 
-        $directives = self::directives($request->getHeaderLine('Cache-Control'));
+        $cacheControl = $request->getHeaderLine('Cache-Control');
+        $directives = self::directives($cacheControl);
+        if (isset($directives['no-store']) || isset($directives['no-cache'])) {
+            return false;
+        }
+        if (self::seconds($directives['max-age'] ?? null) === 0) {
+            return false;
+        }
 
-        return !isset($directives['no-store']) && !isset($directives['no-cache']);
+        return $cacheControl !== '' || stripos($request->getHeaderLine('Pragma'), 'no-cache') === false;
     }
 
     public function storeTtl(
@@ -97,7 +104,7 @@ final readonly class CachePolicy
         }
 
         $directives = self::directives($response->getHeaderLine('Cache-Control'));
-        if (isset($directives['no-store']) || isset($directives['private'])) {
+        if (isset($directives['no-store']) || isset($directives['private']) || isset($directives['no-cache'])) {
             return 0;
         }
 

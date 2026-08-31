@@ -85,7 +85,11 @@ class Response
             MediaTypeEnum::JSON->base(),
             '+json',
             MediaTypeEnum::PLAIN->base(),
-        ]) ?? MediaTypeEnum::JSON->base();
+        ]);
+        if ($want === null) {
+            return self::plaintext('Not Acceptable', StatusEnum::NOT_ACCEPTABLE->value, $headers)
+                ->withSmartHeader('Vary', 'Accept');
+        }
 
         if (MediaTypeEnum::isJsonLike($want)) {
             $response = self::json($data, $status, $headers, $flags, $depth);

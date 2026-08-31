@@ -143,28 +143,32 @@ final readonly class CorsMiddleware
 
     private function methodAllowed(string $method, string $methods): bool
     {
-        $allowed = array_map(static fn(string $value): string => strtoupper(trim($value)), explode(',', $methods));
+        $method = HttpMethodEnum::normalize(trim($method));
+        foreach (explode(',', $methods) as $allowed) {
+            if (HttpMethodEnum::normalize(trim($allowed)) === $method) {
+                return true;
+            }
+        }
 
-        return in_array(strtoupper($method), $allowed, true);
+        return false;
     }
 
     private function originMatches(string $origin, string $allowed): bool
     {
-        if (strcasecmp($origin, $allowed) === 0) {
-            return true;
-        }
-
         $actual = parse_url($origin);
         $pattern = parse_url($allowed);
-        if (!is_array($actual) || !is_array($pattern)) {
+        if (!$this->validOriginParts($actual) || !$this->validOriginParts($pattern)) {
             return false;
+        }
+        if (strcasecmp($origin, $allowed) === 0) {
+            return true;
         }
 
         $actualScheme = strtolower((string) ($actual['scheme'] ?? ''));
         $patternScheme = strtolower((string) ($pattern['scheme'] ?? ''));
         $actualHost = strtolower((string) ($actual['host'] ?? ''));
         $patternHost = strtolower((string) ($pattern['host'] ?? ''));
-        if ($actualScheme === '' || $patternScheme === '' || $actualScheme !== $patternScheme || $actualHost === '' || $patternHost === '') {
+        if ($actualScheme !== $patternScheme) {
             return false;
         }
 
@@ -202,7 +206,7 @@ final readonly class CorsMiddleware
      */
     private function preflightResponse(Request $req, array $policy, string $acao): Response
     {
-        $requestedMethod = strtoupper(trim($req->getHeaderLine('Access-Control-Request-Method')));
+        $requestedMethod = HttpMethodEnum::normalize(trim($req->getHeaderLine('Access-Control-Request-Method')));
         if (!$this->methodAllowed($requestedMethod, $policy['methods'])) {
             throw HttpException::forbidden('CORS method is not allowed.');
         }
@@ -249,6 +253,25 @@ final readonly class CorsMiddleware
         if ($policy['allowCredentials'] && in_array('*', $policy['origins'], true)) {
             throw new \InvalidArgumentException('CORS credentials require explicit origins; wildcard origin is not allowed.');
         }
+    }
+
+    /** @param array<string,mixed>|false $parts */
+    private function validOriginParts(array|false $parts): bool
+    {
+        if (!is_array($parts)) {
+            return false;
+        }
+        if (!is_string($parts['scheme'] ?? null) || $parts['scheme'] === '' || !is_string($parts['host'] ?? null) || $parts['host'] === '') {
+            return false;
+        }
+
+        foreach (['user', 'pass', 'path', 'query', 'fragment'] as $part) {
+            if (isset($parts[$part]) && $parts[$part] !== '') {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /** @param string|list<string> $configured */

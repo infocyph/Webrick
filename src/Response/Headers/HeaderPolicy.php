@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Response\Headers;
 
+use Infocyph\Webrick\Constants\HttpMethodEnum;
+
 /** Field-specific response header combination policy, mutable only before production freeze. */
 final class HeaderPolicy
 {
@@ -54,7 +56,7 @@ final class HeaderPolicy
         $out = [];
         foreach ([$existing, $incoming] as $value) {
             foreach (self::normalizeCsv($lowerName, $value) as $token) {
-                $key = strtolower($token);
+                $key = self::tokenKey($lowerName, $token);
                 if (!isset($seen[$key])) {
                     $seen[$key] = true;
                     $out[] = $token;
@@ -92,12 +94,19 @@ final class HeaderPolicy
                 continue;
             }
             $out[] = match ($lowerName) {
-                'allow', 'access-control-allow-methods' => strtoupper($token),
+                'allow', 'access-control-allow-methods' => HttpMethodEnum::normalize($token),
                 'access-control-allow-headers', 'vary' => self::canonicalHeaderToken($token),
                 default => $token,
             };
         }
 
         return $out;
+    }
+
+    private static function tokenKey(string $lowerName, string $token): string
+    {
+        return $lowerName === 'allow' || $lowerName === 'access-control-allow-methods'
+            ? $token
+            : strtolower($token);
     }
 }

@@ -99,8 +99,8 @@ final class RequestHeaders
         $headers = $this->all();
         $rangeLine = $headers->getHeaderLine('Range');
         $dep = [
-            'if_match' => $this->csv($headers->getHeaderLine('If-Match')),
-            'if_none_match' => $this->csv($headers->getHeaderLine('If-None-Match')),
+            'if_match' => $this->etagList($headers->getHeaderLine('If-Match')),
+            'if_none_match' => $this->etagList($headers->getHeaderLine('If-None-Match')),
             'if_modified_since' => $this->httpDate($headers->getHeaderLine('If-Modified-Since')),
             'if_unmodified_since' => $this->httpDate($headers->getHeaderLine('If-Unmodified-Since')),
             'prefer_safe' => strtolower($headers->first('Prefer') ?? '') === 'safe' && $this->req->getUri()->getScheme() === 'https',
@@ -194,14 +194,41 @@ final class RequestHeaders
     }
 
     /** @return list<string> */
-    private function csv(string $value): array
+    private function etagList(string $value): array
     {
         if ($value === '') {
             return [];
         }
-        $parts = preg_split('/\s*,\s*/', $value);
 
-        return is_array($parts) ? array_values($parts) : [];
+        $tokens = [];
+        $token = '';
+        $quoted = false;
+        for ($i = 0, $length = strlen($value); $i < $length; ++$i) {
+            $char = $value[$i];
+            if ($char === '"') {
+                $quoted = !$quoted;
+                $token .= $char;
+
+                continue;
+            }
+            if ($char === ',' && !$quoted) {
+                $trimmed = trim($token);
+                if ($trimmed !== '') {
+                    $tokens[] = $trimmed;
+                }
+                $token = '';
+
+                continue;
+            }
+            $token .= $char;
+        }
+
+        $trimmed = trim($token);
+        if ($trimmed !== '') {
+            $tokens[] = $trimmed;
+        }
+
+        return $tokens;
     }
 
     private function httpDate(string $value): ?int
