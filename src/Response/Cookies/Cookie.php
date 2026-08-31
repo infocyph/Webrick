@@ -7,8 +7,6 @@ namespace Infocyph\Webrick\Response\Cookies;
 /** Immutable RFC 6265-style cookie with security-prefix invariants. */
 final class Cookie implements \Stringable
 {
-    private const string INVALID_DOMAIN = '/[\x00-\x20\x7F;,]/';
-
     private const string INVALID_PATH = '/[\x00-\x1F\x7F;]/';
 
     private const string NAME_RX = '/^[A-Za-z0-9!#$%&\'*+.^_`|~-]+$/';
@@ -17,6 +15,7 @@ final class Cookie implements \Stringable
         public string $name,
         private string $value = '',
         private ?int $expires = null,
+        private ?int $maxAge = null,
         private string $path = '/',
         private ?string $domain = null,
         private bool $secure = true,
@@ -34,7 +33,9 @@ final class Cookie implements \Stringable
         }
         if ($this->expires !== null) {
             $parts[] = 'Expires=' . gmdate('D, d M Y H:i:s', $this->expires) . ' GMT';
-            $parts[] = 'Max-Age=' . max(0, $this->expires - time());
+        }
+        if ($this->maxAge !== null) {
+            $parts[] = 'Max-Age=' . $this->maxAge;
         }
         if ($this->secure) {
             $parts[] = 'Secure';
@@ -77,15 +78,12 @@ final class Cookie implements \Stringable
 
     public function domain(string $domain): self
     {
-        if (preg_match(self::INVALID_DOMAIN, $domain) === 1) {
-            throw new \InvalidArgumentException('Cookie domain contains invalid characters.');
-        }
         if (str_starts_with($this->name, '__Host-') && $domain !== '') {
             throw new \InvalidArgumentException('__Host- cookies must not declare Domain.');
         }
 
         $cookie = clone $this;
-        $cookie->domain = $domain === '' ? null : strtolower($domain);
+        $cookie->domain = $domain === '' ? null : self::normalizeDomain($domain);
         $cookie->assertInvariants();
 
         return $cookie;
@@ -100,6 +98,7 @@ final class Cookie implements \Stringable
     {
         $cookie = clone $this;
         $cookie->expires = time() - 86400;
+        $cookie->maxAge = 0;
         $cookie->value = '';
 
         return $cookie;
@@ -109,14 +108,17 @@ final class Cookie implements \Stringable
     {
         $cookie = clone $this;
         $cookie->expires = $when->getTimestamp();
+        $cookie->maxAge = max(0, $cookie->expires - time());
 
         return $cookie;
     }
 
     public function forever(): self
     {
+        $seconds = 60 * 60 * 24 * 365 * 5;
         $cookie = clone $this;
-        $cookie->expires = time() + 60 * 60 * 24 * 365 * 5;
+        $cookie->expires = time() + $seconds;
+        $cookie->maxAge = $seconds;
 
         return $cookie;
     }
@@ -136,8 +138,13 @@ final class Cookie implements \Stringable
 
     public function maxAge(int $seconds): self
     {
+        if ($seconds < 0) {
+            throw new \InvalidArgumentException('Cookie Max-Age must be >= 0.');
+        }
+
         $cookie = clone $this;
-        $cookie->expires = time() + max(0, $seconds);
+        $cookie->maxAge = $seconds;
+        $cookie->expires = time() + $seconds;
 
         return $cookie;
     }
@@ -206,6 +213,43 @@ final class Cookie implements \Stringable
         $cookie->assertInvariants();
 
         return $cookie;
+    }
+
+    private static function normalizeDomain(string $domain): string
+    {
+        $domain = trim($domain);
+        if ($domain === '') {
+            throw new \InvalidArgumentException('Cookie domain must not be empty.');
+        }
+        if (str_contains($domain, '://') || preg_match('/[\x00-\x20\x7F;,\/\\\\@?#:\[\]]/', $domain) === 1) {
+            throw new \InvalidArgumentException('Cookie domain contains invalid characters or URI components.');
+        }
+
+        $domain = ltrim($domain, '.');
+        if ($domain === '') {
+            throw new \InvalidArgumentException('Cookie domain must contain a host name.');
+        }
+        if (function_exists('idn_to_ascii')) {
+            $ascii = idn_to_ascii(
+                $domain,
+                IDNA_NONTRANSITIONAL_TO_ASCII,
+                defined('INTL_IDNA_VARIANT_UTS46') ? INTL_IDNA_VARIANT_UTS46 : 0,
+            );
+            if ($ascii === false) {
+                throw new \InvalidArgumentException('Cookie domain is not a valid IDN host name.');
+            }
+            $domain = $ascii;
+        }
+
+        $domain = strtolower(rtrim($domain, '.'));
+        if (filter_var($domain, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false) {
+            return $domain;
+        }
+        if (strlen($domain) > 253 || preg_match('/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(?:\.(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))*$/D', $domain) !== 1) {
+            throw new \InvalidArgumentException('Cookie domain is not a valid domain name.');
+        }
+
+        return $domain;
     }
 
     private function assertInvariants(): void

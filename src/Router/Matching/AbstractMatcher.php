@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router\Matching;
 
+use Infocyph\Webrick\Request\Core\Uri;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 
 require_once __DIR__ . '/matcher_functions.php';
@@ -16,15 +17,11 @@ abstract class AbstractMatcher
     /** Verify persisted matcher metadata when it is loaded at boot. */
     protected bool $verifyCacheOnLoad = false;
 
-    /** Optional hook for kernels; concrete cache-aware matchers override it. */
     public function canBootFromCache(): bool
     {
         return false;
     }
 
-    /**
-     * Enable or disable persisted-cache verification at boot.
-     */
     public function verifyCacheOnLoad(bool $enable = true): static
     {
         $this->verifyCacheOnLoad = $enable;
@@ -32,36 +29,25 @@ abstract class AbstractMatcher
         return $this;
     }
 
-    /**
-     * Normalize a configured route host once at route-build time.
-     */
+    /** Normalize a configured route host once at route-build time. */
     protected function canonicalRouteHost(?string $raw): string
     {
         if ($raw === null || $raw === '' || $raw === '*') {
             return '*';
         }
 
-        $host = rtrim(strtolower($raw), '.');
-        if (preg_match('/[\x00-\x20]/', $host)) {
+        try {
+            $host = Uri::fromComponents(host: rtrim($raw, '.'))->getHost();
+        } catch (\InvalidArgumentException $exception) {
+            throw new \InvalidArgumentException("Illegal host name: {$raw}", 0, $exception);
+        }
+        if ($host === '') {
             throw new \InvalidArgumentException("Illegal host name: {$raw}");
         }
-        if (function_exists('idn_to_ascii') && !str_contains($host, 'xn--')) {
-            $ascii = idn_to_ascii($host, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
-            if ($ascii === false) {
-                throw new \InvalidArgumentException("Invalid IDN host name: {$raw}");
-            }
-            $host = $ascii;
-        }
-        if (!preg_match('/^[\x21-\x7E]+$/', $host)) {
-            throw new \InvalidArgumentException("Host contains non-ASCII bytes: {$raw}");
-        }
 
-        return $host;
+        return rtrim(strtolower($host), '.');
     }
 
-    /**
-     * @param array<mixed,mixed> $values
-     */
     /** @param array<array-key,mixed> $values */
     protected function exportArray(array $values, int $depth = 0): string
     {
@@ -89,7 +75,6 @@ abstract class AbstractMatcher
             : var_export($value, true);
     }
 
-    /** OPcache warm-up is boot/build work and must be valid for the active SAPI. */
     protected function shouldWarmOpcache(): bool
     {
         return matcher_should_warm_opcache();

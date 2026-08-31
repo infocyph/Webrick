@@ -7,16 +7,50 @@ namespace Infocyph\Webrick\Support;
 /** Filesystem operations for route-cache cleanup, isolated from build orchestration. */
 final class RouteCacheCleaner
 {
+    public static function canonicalSafeDirectory(string $dir): string
+    {
+        $dir = trim($dir);
+        if ($dir === '' || is_link($dir)) {
+            throw new \RuntimeException("Unsafe route cache directory: {$dir}");
+        }
+
+        $canonical = realpath($dir);
+        if ($canonical === false || !is_dir($canonical)) {
+            throw new \RuntimeException("Route cache directory does not resolve to an existing directory: {$dir}");
+        }
+
+        $canonical = rtrim($canonical, "/\\");
+        if ($canonical === '') {
+            $canonical = DIRECTORY_SEPARATOR;
+        }
+        $normalized = str_replace('\\', '/', $canonical);
+        if ($normalized === '/' || preg_match('/^[A-Za-z]:\/?$/D', $normalized) === 1) {
+            throw new \RuntimeException("Refusing to clear filesystem root: {$canonical}");
+        }
+
+        $cwd = getcwd();
+        $cwd = $cwd === false ? false : realpath($cwd);
+        if ($cwd !== false) {
+            $cwd = rtrim($cwd, "/\\");
+            if ($canonical === $cwd || $canonical === dirname($cwd)) {
+                throw new \RuntimeException("Refusing to clear current or parent working directory: {$canonical}");
+            }
+        }
+
+        return $canonical;
+    }
+
     public static function clearDirectoryPreservingGitignore(string $dir): bool
     {
-        if (!is_dir($dir)) {
-            return false;
-        }
+        $dir = self::canonicalSafeDirectory($dir);
 
         $removed = false;
         $ok = true;
         $root = str_replace('\\', '/', rtrim($dir, '/\\'));
-        $iterator = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS), \RecursiveIteratorIterator::CHILD_FIRST);
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::CHILD_FIRST,
+        );
         foreach ($iterator as $path) {
             if (!$path instanceof \SplFileInfo) {
                 $ok = false;
@@ -33,6 +67,9 @@ final class RouteCacheCleaner
 
     public static function removeDirectory(string $path): bool
     {
+        if (is_link($path)) {
+            throw new \RuntimeException("Refusing to remove symlinked route cache directory: {$path}");
+        }
         if (!is_writable(dirname($path))) {
             throw new \RuntimeException("Route cache directory is not writable: {$path}");
         }

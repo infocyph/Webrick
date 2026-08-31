@@ -20,6 +20,7 @@ final class Registry
         'alnum' => 'ctype_alnum',
         'bool' => 'Infocyph\\Webrick\\Router\\Constraint\\Registry::isBoolString',
         'json' => 'json_validate',
+        'ipv6' => 'Infocyph\\Webrick\\Router\\Constraint\\Registry::isIpv6String',
     ];
 
     /** @var array<string,string> */
@@ -37,7 +38,6 @@ final class Registry
         'time' => '/^([01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d)?$/',
         'datetime' => '/^\\d{4}-\\d{2}-\\d{2}[ T](?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d)?(?:\\.\\d+)?(?:Z|[+\\-][01]\\d:[0-5]\\d)?$/i',
         'ipv4' => '/^(25[0-5]|2[0-4]\\d|[01]?\\d?\\d)(?:\\.(?:25[0-5]|2[0-4]\\d|[01]?\\d?\\d)){3}$/',
-        'ipv6' => '/^([0-9A-Fa-f]{1,4}:){7}[0-9A-Fa-f]{1,4}$/',
         'ipv4_cidr' => '/^(?:25[0-5]|2[0-4]\\d|[01]?\\d?\\d)(?:\\.(?:25[0-5]|2[0-4]\\d|[01]?\\d?\\d)){3}\\/(?:[0-9]|[12]\\d|3[0-2])$/',
         'mac' => '/^(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$/',
     ];
@@ -72,9 +72,7 @@ final class Registry
         return self::$frozen;
     }
 
-    /**
-     * @return array<string,string>
-     */
+    /** @return array<string,string> */
     public static function getValidatorSpec(string $name): array
     {
         $key = strtolower($name);
@@ -93,6 +91,11 @@ final class Registry
         $value = strtolower($value);
 
         return $value === 'true' || $value === 'false' || $value === '0' || $value === '1';
+    }
+
+    public static function isIpv6String(string $value): bool
+    {
+        return filter_var($value, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) !== false;
     }
 
     public static function register(string $name, string $rule): void
@@ -147,9 +150,7 @@ final class Registry
         return $modifiers === '' ? $inner : '(?' . $modifiers . ':' . $inner . ')';
     }
 
-    /**
-     * @return array{0:string,1:string}|null
-     */
+    /** @return array{0:string,1:string}|null */
     private static function splitDelimitedRegex(string $rule): ?array
     {
         $length = strlen($rule);
@@ -161,20 +162,46 @@ final class Registry
             return null;
         }
 
+        $closing = match ($delimiter) {
+            '(' => ')',
+            '[' => ']',
+            '{' => '}',
+            '<' => '>',
+            default => $delimiter,
+        };
+        $paired = $closing !== $delimiter;
+        $depth = 0;
         $end = null;
+        $escaped = false;
+
         for ($i = 1; $i < $length; $i++) {
-            if ($rule[$i] !== $delimiter) {
+            $char = $rule[$i];
+            if ($escaped) {
+                $escaped = false;
+
                 continue;
             }
-            $slashes = 0;
-            for ($j = $i - 1; $j >= 0 && $rule[$j] === '\\'; $j--) {
-                $slashes++;
-            }
-            if (($slashes % 2) === 0) {
-                $end = $i;
+            if ($char === '\\') {
+                $escaped = true;
 
-                break;
+                continue;
             }
+            if ($paired && $char === $delimiter) {
+                $depth++;
+
+                continue;
+            }
+            if ($char !== $closing) {
+                continue;
+            }
+            if ($paired && $depth > 0) {
+                $depth--;
+
+                continue;
+            }
+            $end = $i;
+
+            break;
         }
         if ($end === null || $end === 1) {
             return null;
