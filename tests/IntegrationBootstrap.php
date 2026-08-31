@@ -11,6 +11,7 @@ declare(strict_types=1);
 
 use Infocyph\InterMix\DI\Container;
 use Infocyph\InterMix\DI\Invoker;
+use Infocyph\Webrick\Middleware\ThrottleMiddleware;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Dispatch\MiddlewareAliases;
@@ -22,7 +23,6 @@ use Infocyph\Webrick\Router\Route\Collection;
 use Infocyph\Webrick\Router\Url\SignedUrlConfig;
 use Psr\Log\NullLogger;
 
-// Declare controllers in global namespace for routes.php
 if (! class_exists('DemoController', false)) {
     final readonly class DemoController
     {
@@ -77,9 +77,7 @@ if (! class_exists('UsersController', false)) {
     }
 }
 
-/**
- * Create a test RouterKernel with actual routes
- */
+/** Create a test RouterKernel with actual routes. */
 function createTestKernel(array $extraMiddleware = []): RouterKernel
 {
     $logger = new NullLogger;
@@ -100,11 +98,21 @@ function createTestKernel(array $extraMiddleware = []): RouterKernel
     MiddlewareAliases::reset();
     MiddlewareAliases::register(
         'throttle',
-        static function (): string {
-            return \Infocyph\Webrick\Middleware\ThrottleMiddleware::class;
+        static function (mixed ...$parameters): ThrottleMiddleware {
+            $max = isset($parameters[0]) && is_numeric($parameters[0]) ? (int) $parameters[0] : 60;
+            $window = isset($parameters[1]) && is_numeric($parameters[1]) ? (int) $parameters[1] : 60;
+
+            return new ThrottleMiddleware(
+                max: $max,
+                window: $window,
+                allowApproximateFallback: true,
+            );
         },
     );
-    MiddlewareAliases::register('verifySignedUrl', static fn() => new \Infocyph\Webrick\Middleware\VerifySignedUrlMiddleware($signUrlSecret, 5));
+    MiddlewareAliases::register(
+        'verifySignedUrl',
+        static fn() => new \Infocyph\Webrick\Middleware\VerifySignedUrlMiddleware($signUrlSecret, 5),
+    );
     MiddlewareAliases::register(
         'verifySignedUrlAbsolute',
         static fn() => new \Infocyph\Webrick\Middleware\VerifySignedUrlMiddleware($signedAbsoluteUrlConfig),
@@ -130,15 +138,9 @@ function createTestKernel(array $extraMiddleware = []): RouterKernel
         },
     );
 
-    // Registration callback - load actual routes
     $register = function () {
-        // Load the same routes as the real app
         require __DIR__.'/../routes.php';
     };
-
-    // NO global middleware by default - tests should be simple
-    // If tests need middleware, they can pass it via $extraMiddleware
-    $preGlobal = $extraMiddleware;
 
     return RouterKernel::bootWithRegistrar(
         log: $logger,
@@ -146,14 +148,14 @@ function createTestKernel(array $extraMiddleware = []): RouterKernel
         register: $register,
         invoker: Invoker::with(new Container('webrick.tests.integration')),
         registrarOptions: [
-            'autoSlashRedirect' => false, // No automatic redirects
+            'autoSlashRedirect' => false,
             'exposeUrlServices' => false,
             'signKey' => $signUrlSecret,
             'signedDefaultTtl' => 900,
             'signedUrlConfig' => $signedUrlConfig,
             'urlBaseUri' => $urlBaseUri,
         ],
-        preGlobal: $preGlobal,
+        preGlobal: $extraMiddleware,
         postGlobal: [],
         errorHandler: $errorHandler,
         bindUrlServices: function (Collection $routes) use (
