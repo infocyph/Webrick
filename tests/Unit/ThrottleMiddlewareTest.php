@@ -101,7 +101,8 @@ describe('ThrottleMiddleware', function () {
         $this->middleware = new ThrottleMiddleware(
             max: 3,
             window: 60,
-            pool: $this->cache
+            pool: $this->cache,
+            allowApproximateFallback: true,
         );
     });
 
@@ -114,7 +115,8 @@ describe('ThrottleMiddleware', function () {
         $middleware = new ThrottleMiddleware(
             max: 3,
             window: 60,
-            pool: $this->cache
+            pool: $this->cache,
+            allowApproximateFallback: true,
         );
 
         $request = mockRequest('GET', '/test');
@@ -137,16 +139,13 @@ describe('ThrottleMiddleware', function () {
 
     it('blocks requests over limit', function () {
         $request = mockRequest('GET', '/test');
-        // Keep the backing cache expiry safely ahead of the real clock for this fixed-window assertion.
         $_SERVER['REQUEST_TIME'] = time() + 60;
         $next = fn () => Response::json(['ok' => true]);
 
-        // Make 3 requests (limit)
         for ($i = 0; $i < 3; $i++) {
             ($this->middleware)($request, $next);
         }
 
-        // 4th request should be throttled
         try {
             ($this->middleware)($request, $next);
             $this->fail('Expected throttle middleware to throw an HttpException.');
@@ -166,24 +165,21 @@ describe('ThrottleMiddleware', function () {
         $middleware = new ThrottleMiddleware(
             max: 5,
             window: 60,
-            pool: $this->cache
+            pool: $this->cache,
+            allowApproximateFallback: true,
         );
 
         $request = mockRequest('GET', '/test');
-        // Keep the backing cache expiry safely ahead of the real clock for this fixed-window assertion.
         $_SERVER['REQUEST_TIME'] = time() + 60;
         $next = fn () => Response::json(['ok' => true]);
 
-        // Request with cost 2 (total: 2)
         $request1 = $request->withAttribute('rate_cost.thm', 2);
         $response1 = $middleware($request1, $next);
         expect($response1)->toHaveStatus(200);
 
-        // Request with cost 2 again (total: 4)
         $response2 = $middleware($request1, $next);
         expect($response2)->toHaveStatus(200);
 
-        // Request with cost 2 more (total: 6, exceeds limit of 5)
         expect(fn() => $middleware($request1, $next))
             ->toThrow(HttpException::class);
     });
@@ -193,13 +189,13 @@ describe('ThrottleMiddleware', function () {
             max: 1,
             window: 60,
             pool: $this->cache,
-            bypass: fn ($req) => $req->getHeaderLine('X-Admin-Key') === 'secret'
+            bypass: fn ($req) => $req->getHeaderLine('X-Admin-Key') === 'secret',
+            allowApproximateFallback: true,
         );
 
         $request = mockRequest('GET', '/test', ['X-Admin-Key' => 'secret']);
         $next = fn () => Response::json(['ok' => true]);
 
-        // Should not be throttled even after multiple requests
         for ($i = 0; $i < 5; $i++) {
             $response = $middleware($request, $next);
             expect($response)->toHaveStatus(200);
@@ -279,12 +275,12 @@ describe('ThrottleMiddleware', function () {
             $global($firstClient, $next);
             $nextWindowKey = $store->lastKey;
 
-            expect($globalKey)->toStartWith('webrick.th.v1.')
+            expect($globalKey)->toStartWith('webrick.th.v2.')
                 ->and(strlen($globalKey))->toBeLessThanOrEqual(64)
                 ->and(array_unique([$globalKey, $loginKey, $otherClientKey, $nextWindowKey]))->toHaveCount(4);
         } finally {
-            if (is_file($path)) {
-                unlink($path);
+            if (is_file($path) && !unlink($path)) {
+                throw new RuntimeException("Unable to remove atomic-counter fixture: {$path}");
             }
         }
     });
@@ -365,12 +361,12 @@ describe('ThrottleMiddleware', function () {
                 ->and($counterEntry['value'] ?? null)->toBe($workers * $attemptsPerWorker);
         } finally {
             foreach (glob($directory . '/*') ?: [] as $file) {
-                if (is_file($file)) {
-                    unlink($file);
+                if (is_file($file) && !unlink($file)) {
+                    throw new RuntimeException("Unable to remove throttle test fixture: {$file}");
                 }
             }
-            if (is_dir($directory)) {
-                rmdir($directory);
+            if (is_dir($directory) && !rmdir($directory)) {
+                throw new RuntimeException("Unable to remove throttle test directory: {$directory}");
             }
         }
     });
