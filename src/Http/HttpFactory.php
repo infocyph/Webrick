@@ -36,11 +36,6 @@ final class HttpFactory
         return new Response($code, '', [], '1.1', $reasonPhrase);
     }
 
-    public function createStringBody(string $content = ''): StringBody
-    {
-        return new StringBody($content);
-    }
-
     public function createStreamFromFile(string $filename, string $mode = 'r'): Stream
     {
         $handle = fopen($filename, $mode);
@@ -59,6 +54,11 @@ final class HttpFactory
         }
 
         return new Stream($resource);
+    }
+
+    public function createStringBody(string $content = ''): StringBody
+    {
+        return new StringBody($content);
     }
 
     public function createUploadedFile(

@@ -11,7 +11,10 @@ namespace Infocyph\Webrick\Router\Matching;
 enum MatchOutcomeType: string
 {
     case AUTO_OPTIONS = 'auto_options';
+
     case FOUND = 'found';
+
     case METHOD_NOT_ALLOWED = 'method_not_allowed';
+
     case NOT_FOUND = 'not_found';
 }

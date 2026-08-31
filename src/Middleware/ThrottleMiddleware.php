@@ -37,7 +37,7 @@ final readonly class ThrottleMiddleware
         private string $costAttribute = 'rate_cost.thm',
         private ?Closure $bypass = null,
         private ?AtomicCounterInterface $counterStore = null,
-        private bool $allowApproximateFallback = false,
+        bool $allowApproximateFallback = false,
     ) {
         if ($max < 1 || $window < 1) {
             throw new InvalidConfigException('Throttle max/window must be >= 1.');

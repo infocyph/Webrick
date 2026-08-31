@@ -9,23 +9,6 @@ use Infocyph\Webrick\Interfaces\BodyStream;
 /** Strong ETag helpers for native strings and explicit streams. */
 final class Etag
 {
-    public static function fromString(
-        string $body,
-        string $salt = '',
-        string $algo = 'xxh128',
-        ?int $hexLen = null,
-    ): string {
-        $context = hash_init($algo);
-        if ($salt !== '') {
-            hash_update($context, $salt . "\n");
-        }
-        hash_update($context, $body);
-        $hex = hash_final($context);
-        $digest = $hexLen === null ? $hex : substr($hex, 0, $hexLen);
-
-        return '"' . $digest . '"';
-    }
-
     public static function fromStream(
         BodyStream $stream,
         string $salt = '',
@@ -59,5 +42,22 @@ final class Etag
         } catch (\Throwable) {
             return null;
         }
+    }
+
+    public static function fromString(
+        string $body,
+        string $salt = '',
+        string $algo = 'xxh128',
+        ?int $hexLen = null,
+    ): string {
+        $context = hash_init($algo);
+        if ($salt !== '') {
+            hash_update($context, $salt . "\n");
+        }
+        hash_update($context, $body);
+        $hex = hash_final($context);
+        $digest = $hexLen === null ? $hex : substr($hex, 0, $hexLen);
+
+        return '"' . $digest . '"';
     }
 }

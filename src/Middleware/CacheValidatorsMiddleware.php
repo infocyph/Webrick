@@ -51,6 +51,17 @@ final readonly class CacheValidatorsMiddleware
         return $this->applyResponsePreconditions($req, $resp);
     }
 
+    private static function parseLastModified(string $value): ?int
+    {
+        if ($value === '') {
+            return null;
+        }
+
+        $timestamp = strtotime($value);
+
+        return $timestamp === false ? null : $timestamp;
+    }
+
     private function applyResponsePreconditions(Request $req, Response $resp): Response
     {
         $etag = trim($resp->getHeaderLine('ETag'));
@@ -137,16 +148,5 @@ final readonly class CacheValidatorsMiddleware
             : $result->http;
 
         return Response::empty($status, $result->headers);
-    }
-
-    private static function parseLastModified(string $value): ?int
-    {
-        if ($value === '') {
-            return null;
-        }
-
-        $timestamp = strtotime($value);
-
-        return $timestamp === false ? null : $timestamp;
     }
 }

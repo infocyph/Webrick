@@ -71,6 +71,19 @@ final class VaryAccumulatorMiddleware
         return $normalized ? self::normalize($tokens) : $tokens;
     }
 
+    private static function canonical(string $token): string
+    {
+        $token = trim($token);
+        if ($token === '') {
+            return '';
+        }
+
+        return implode('-', array_map(
+            static fn(string $part): string => $part === '' ? '' : ucfirst(strtolower($part)),
+            explode('-', $token),
+        ));
+    }
+
     private static function context(Request $request): ?VaryContext
     {
         $context = $request->getAttribute(VaryContext::ATTRIBUTE);
@@ -128,19 +141,6 @@ final class VaryAccumulatorMiddleware
         }
 
         return $tokens;
-    }
-
-    private static function canonical(string $token): string
-    {
-        $token = trim($token);
-        if ($token === '') {
-            return '';
-        }
-
-        return implode('-', array_map(
-            static fn(string $part): string => $part === '' ? '' : ucfirst(strtolower($part)),
-            explode('-', $token),
-        ));
     }
 
     /** @return list<string> */

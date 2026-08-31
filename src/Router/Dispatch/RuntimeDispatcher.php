@@ -17,14 +17,14 @@ use UnexpectedValueException;
 /** Runtime-plane dispatcher for already-compiled route execution plans. */
 final class RuntimeDispatcher
 {
+    /** @var list<mixed> */
+    private readonly array $postGlobal;
+
+    /** @var list<mixed> */
+    private readonly array $preGlobal;
+
     /** @var array<string,CompiledMiddlewarePipeline> */
     private array $pipelines = [];
-
-    /** @var list<mixed> */
-    private array $postGlobal;
-
-    /** @var list<mixed> */
-    private array $preGlobal;
 
     /** @var array<string,array<string,mixed>> */
     private array $routeAttributes = [];

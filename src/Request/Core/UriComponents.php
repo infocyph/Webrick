@@ -17,7 +17,7 @@ final class UriComponents
         $path = $queryPosition === false ? $requestUri : substr($requestUri, 0, $queryPosition);
         $query = $queryPosition === false ? '' : substr($requestUri, $queryPosition + 1);
 
-        return (new Uri())
+        return new Uri()
             ->withScheme($scheme)
             ->withHost($host)
             ->withPort($port)

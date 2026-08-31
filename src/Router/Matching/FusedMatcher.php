@@ -19,21 +19,23 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
 
     /** @var array<string,array{0:string,1:?string}> */
     private array $alias = [];
+
     private bool $cacheEnabled = false;
+
     private string $cacheFile = '';
+
     private bool $cacheLoaded = false;
+
     private bool $cacheWriteEnabled = false;
+
     private CanonicalMatcherEngine $engine;
+
     private bool $finalized = false;
+
     private CanonicalMatcherIndex $index;
+
     /** @var array<string,true> */
     private array $middlewareRequirements = [];
-
-    private function bootIndex(): void
-    {
-        $this->index ??= new CanonicalMatcherIndex();
-        $this->engine ??= new CanonicalMatcherEngine();
-    }
 
     public function add(CompiledRoute $route): void
     {
@@ -111,6 +113,12 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         $index = $this->aliasIndex();
 
         return $index[$name] ?? null;
+    }
+
+    private function bootIndex(): void
+    {
+        $this->index ??= new CanonicalMatcherIndex();
+        $this->engine ??= new CanonicalMatcherEngine();
     }
 
     private function cacheHash(array $hosts, array $alias, array $middleware): string

@@ -7,29 +7,15 @@ namespace Infocyph\Webrick\Runtime\Http;
 final readonly class WorkermanNativeRequest
 {
     /** @return array<string,mixed> */
-    public static function server(object $request, object $connection): array
+    public static function cookies(object $request): array
     {
-        $headers = self::stringMap($request->header());
-        $scheme = (($connection->worker->transport ?? null) === 'ssl') ? 'https' : 'http';
-        $server = [
-            'REQUEST_METHOD' => (string) $request->method(),
-            'REQUEST_URI' => (string) $request->uri(),
-            'SERVER_PROTOCOL' => 'HTTP/' . (string) $request->protocolVersion(),
-            'REMOTE_ADDR' => (string) $connection->getRemoteIp(),
-            'REQUEST_SCHEME' => $scheme,
-        ];
+        return self::stringMap($request->cookie());
+    }
 
-        self::copyHeader($server, $headers, 'host', 'HTTP_HOST');
-        self::copyHeader($server, $headers, 'content-type', 'CONTENT_TYPE');
-        self::copyHeader($server, $headers, 'x-http-method-override', 'HTTP_X_HTTP_METHOD_OVERRIDE');
-        self::copyHeader($server, $headers, 'http-method-override', 'HTTP_HTTP_METHOD_OVERRIDE');
-        self::copyHeader($server, $headers, 'forwarded', 'HTTP_FORWARDED');
-        self::copyHeader($server, $headers, 'x-forwarded-for', 'HTTP_X_FORWARDED_FOR');
-        self::copyHeader($server, $headers, 'x-forwarded-host', 'HTTP_X_FORWARDED_HOST');
-        self::copyHeader($server, $headers, 'x-forwarded-port', 'HTTP_X_FORWARDED_PORT');
-        self::copyHeader($server, $headers, 'x-forwarded-proto', 'HTTP_X_FORWARDED_PROTO');
-
-        return $server;
+    /** @return array<string,mixed> */
+    public static function files(object $request): array
+    {
+        return self::stringMap($request->file());
     }
 
     /** @return array<string,string|list<string>> */
@@ -46,11 +32,10 @@ final readonly class WorkermanNativeRequest
         return $out;
     }
 
-    public static function rawBody(object $request): string
+    /** @return array<string,mixed> */
+    public static function post(object $request): array
     {
-        $body = $request->rawBody();
-
-        return is_string($body) ? $body : '';
+        return self::stringMap($request->post());
     }
 
     /** @return array<string,mixed> */
@@ -59,22 +44,37 @@ final readonly class WorkermanNativeRequest
         return self::stringMap($request->get());
     }
 
-    /** @return array<string,mixed> */
-    public static function post(object $request): array
+    public static function rawBody(object $request): string
     {
-        return self::stringMap($request->post());
+        $body = $request->rawBody();
+
+        return is_string($body) ? $body : '';
     }
 
     /** @return array<string,mixed> */
-    public static function cookies(object $request): array
+    public static function server(object $request, object $connection): array
     {
-        return self::stringMap($request->cookie());
-    }
+        $headers = self::stringMap($request->header());
+        $scheme = (($connection->worker->transport ?? null) === 'ssl') ? 'https' : 'http';
+        $server = [
+            'REQUEST_METHOD' => (string) $request->method(),
+            'REQUEST_URI' => (string) $request->uri(),
+            'SERVER_PROTOCOL' => 'HTTP/' . $request->protocolVersion(),
+            'REMOTE_ADDR' => (string) $connection->getRemoteIp(),
+            'REQUEST_SCHEME' => $scheme,
+        ];
 
-    /** @return array<string,mixed> */
-    public static function files(object $request): array
-    {
-        return self::stringMap($request->file());
+        self::copyHeader($server, $headers, 'host', 'HTTP_HOST');
+        self::copyHeader($server, $headers, 'content-type', 'CONTENT_TYPE');
+        self::copyHeader($server, $headers, 'x-http-method-override', 'HTTP_X_HTTP_METHOD_OVERRIDE');
+        self::copyHeader($server, $headers, 'http-method-override', 'HTTP_HTTP_METHOD_OVERRIDE');
+        self::copyHeader($server, $headers, 'forwarded', 'HTTP_FORWARDED');
+        self::copyHeader($server, $headers, 'x-forwarded-for', 'HTTP_X_FORWARDED_FOR');
+        self::copyHeader($server, $headers, 'x-forwarded-host', 'HTTP_X_FORWARDED_HOST');
+        self::copyHeader($server, $headers, 'x-forwarded-port', 'HTTP_X_FORWARDED_PORT');
+        self::copyHeader($server, $headers, 'x-forwarded-proto', 'HTTP_X_FORWARDED_PROTO');
+
+        return $server;
     }
 
     /** @param array<string,mixed> $server @param array<string,mixed> $headers */

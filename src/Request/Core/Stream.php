@@ -17,6 +17,7 @@ use SplFileObject;
 final class Stream implements BodyStream
 {
     private readonly bool $readable;
+
     private readonly bool $writable;
 
     /** @var resource|null */
@@ -53,6 +54,7 @@ final class Stream implements BodyStream
         // remaining bytes from the current position instead of failing on rewind.
         if (!$this->isSeekable()) {
             $data = stream_get_contents($handle);
+
             return $data === false ? '' : $data;
         }
 
@@ -63,6 +65,7 @@ final class Stream implements BodyStream
 
         try {
             $data = stream_get_contents($handle);
+
             return $data === false ? '' : $data;
         } finally {
             fseek($handle, $position, SEEK_SET);
@@ -135,7 +138,7 @@ final class Stream implements BodyStream
         }
         $metadata = stream_get_meta_data($this->handle);
 
-        return ($metadata['seekable'] ?? false) === true;
+        return $metadata['seekable'] ?? false;
     }
 
     public function isWritable(): bool
@@ -222,6 +225,7 @@ final class Stream implements BodyStream
         if ($payload !== '') {
             if (fwrite($handle, $payload) === false || rewind($handle) === false) {
                 fclose($handle);
+
                 throw new RuntimeException('Unable to initialize temporary stream');
             }
         }

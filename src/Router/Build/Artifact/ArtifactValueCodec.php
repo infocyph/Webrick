@@ -12,9 +12,30 @@ use UnexpectedValueException;
 final class ArtifactValueCodec
 {
     private const string CLOSURE = 'closure';
+
     private const string VALUE = 'value';
 
     private function __construct() {}
+
+    public static function decode(mixed $payload): mixed
+    {
+        if (!is_array($payload) || !is_string($payload['kind'] ?? null)) {
+            throw new UnexpectedValueException('Invalid Webrick artifact value descriptor.');
+        }
+
+        if ($payload['kind'] === self::VALUE) {
+            return self::decodeValue($payload['value'] ?? null);
+        }
+        if ($payload['kind'] !== self::CLOSURE || !is_string($payload['value'] ?? null)) {
+            throw new UnexpectedValueException('Unknown Webrick artifact value descriptor.');
+        }
+
+        try {
+            return ClosureSerializer::unserialize($payload['value']);
+        } catch (\Throwable $exception) {
+            throw new UnexpectedValueException('Unable to restore Webrick Closure artifact.', 0, $exception);
+        }
+    }
 
     /** @return array{kind:string,value:mixed} */
     public static function encode(mixed $value): array
@@ -44,26 +65,6 @@ final class ArtifactValueCodec
         }
 
         return ['kind' => self::CLOSURE, 'value' => ClosureSerializer::serialize($value)];
-    }
-
-    public static function decode(mixed $payload): mixed
-    {
-        if (!is_array($payload) || !is_string($payload['kind'] ?? null)) {
-            throw new UnexpectedValueException('Invalid Webrick artifact value descriptor.');
-        }
-
-        if ($payload['kind'] === self::VALUE) {
-            return self::decodeValue($payload['value'] ?? null);
-        }
-        if ($payload['kind'] !== self::CLOSURE || !is_string($payload['value'] ?? null)) {
-            throw new UnexpectedValueException('Unknown Webrick artifact value descriptor.');
-        }
-
-        try {
-            return ClosureSerializer::unserialize($payload['value']);
-        } catch (\Throwable $exception) {
-            throw new UnexpectedValueException('Unable to restore Webrick Closure artifact.', 0, $exception);
-        }
     }
 
     /** @return array{0:string,1:string}|string */

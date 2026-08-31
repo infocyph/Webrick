@@ -84,6 +84,7 @@ final readonly class ReleaseCompiler
         $temporary = $path . '.' . bin2hex(random_bytes(6)) . '.tmp';
         if (file_put_contents($temporary, $contents, LOCK_EX) === false || !rename($temporary, $path)) {
             @unlink($temporary);
+
             throw new RuntimeException("Unable to publish release manifest '{$path}'.");
         }
     }

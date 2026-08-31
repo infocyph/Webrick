@@ -28,6 +28,30 @@ final class CanonicalMatcherIndex
     /** @var HostMap */
     private array $hosts = [];
 
+    public static function prefixForPath(string $path): string
+    {
+        if ($path === '/' || $path === '') {
+            return '';
+        }
+
+        $trimmed = $path[0] === '/' ? substr($path, 1) : $path;
+        $pos = strpos($trimmed, '/');
+
+        return $pos === false ? $trimmed : substr($trimmed, 0, $pos);
+    }
+
+    /** @param list<array<string,mixed>> $segments */
+    public static function prefixForSegments(array $segments): string
+    {
+        $first = $segments[0] ?? null;
+
+        return is_array($first)
+            && ($first['type'] ?? null) === 'lit'
+            && is_string($first['val'] ?? null)
+            ? $first['val']
+            : '*';
+    }
+
     public function add(string $host, CompiledRoute $route): void
     {
         $verb = HttpMethodEnum::normalize($route->getMethod());
@@ -67,30 +91,6 @@ final class CanonicalMatcherIndex
     public function isEmpty(): bool
     {
         return $this->hosts === [];
-    }
-
-    public static function prefixForPath(string $path): string
-    {
-        if ($path === '/' || $path === '') {
-            return '';
-        }
-
-        $trimmed = $path[0] === '/' ? substr($path, 1) : $path;
-        $pos = strpos($trimmed, '/');
-
-        return $pos === false ? $trimmed : substr($trimmed, 0, $pos);
-    }
-
-    /** @param list<array<string,mixed>> $segments */
-    public static function prefixForSegments(array $segments): string
-    {
-        $first = $segments[0] ?? null;
-
-        return is_array($first)
-            && ($first['type'] ?? null) === 'lit'
-            && is_string($first['val'] ?? null)
-            ? $first['val']
-            : '*';
     }
 
     public function replaceFromCache(mixed $raw): void

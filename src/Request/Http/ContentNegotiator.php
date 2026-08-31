@@ -108,15 +108,6 @@ final readonly class ContentNegotiator
         return array_map(strtolower(...), $values);
     }
 
-    private function matches(string $candidate, string $accepted): bool
-    {
-        if ($candidate[0] === '+') {
-            return !str_contains($accepted, '*') && str_ends_with($accepted, $candidate);
-        }
-
-        return self::mimeMatch($candidate, $accepted);
-    }
-
     private static function mimeMatch(string $candidate, string $accepted): bool
     {
         if ($candidate === $accepted || $accepted === '*/*') {
@@ -144,5 +135,14 @@ final readonly class ContentNegotiator
         return str_starts_with($candidate, $prefix)
             && str_ends_with($candidate, $suffix)
             && strlen($candidate) > strlen($prefix) + strlen($suffix);
+    }
+
+    private function matches(string $candidate, string $accepted): bool
+    {
+        if ($candidate[0] === '+') {
+            return !str_contains($accepted, '*') && str_ends_with($accepted, $candidate);
+        }
+
+        return self::mimeMatch($candidate, $accepted);
     }
 }

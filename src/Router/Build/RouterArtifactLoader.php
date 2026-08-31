@@ -57,6 +57,41 @@ final class RouterArtifactLoader
         }
     }
 
+    /**
+     * @param array{format:int,environment:string,config_fingerprint:string,artifact_fingerprint:string,sha256:string} $meta
+     */
+    private function loadPayload(
+        string $path,
+        array $meta,
+        string $expectedEnvironment,
+        string $expectedConfigFingerprint,
+    ): CompiledRouterArtifact {
+        if ($meta['environment'] !== $expectedEnvironment) {
+            throw new RuntimeException('Webrick router artifact environment mismatch.');
+        }
+        if (!hash_equals($expectedConfigFingerprint, $meta['config_fingerprint'])) {
+            throw new RuntimeException('Webrick router artifact configuration fingerprint mismatch.');
+        }
+
+        /**  */
+        $payload = require $path;
+        if (!is_array($payload)) {
+            throw new UnexpectedValueException('Compiled Webrick router artifact must return an array.');
+        }
+
+        $artifact = CompiledRouterArtifact::fromPayload($payload);
+        if (
+            $artifact->environment !== $meta['environment']
+            || !hash_equals($artifact->configFingerprint, $meta['config_fingerprint'])
+            || !hash_equals($artifact->artifactFingerprint, $meta['artifact_fingerprint'])
+            || !hash_equals($artifact->artifactFingerprint, $artifact->calculatedFingerprint())
+        ) {
+            throw new RuntimeException('Webrick router artifact metadata/payload mismatch.');
+        }
+
+        return $artifact;
+    }
+
     /** @return array{format:int,environment:string,config_fingerprint:string,artifact_fingerprint:string,sha256:string} */
     private function readMeta(string $path): array
     {
@@ -83,40 +118,5 @@ final class RouterArtifactLoader
 
         /** @var array{format:int,environment:string,config_fingerprint:string,artifact_fingerprint:string,sha256:string} $meta */
         return $meta;
-    }
-
-    /**
-     * @param array{format:int,environment:string,config_fingerprint:string,artifact_fingerprint:string,sha256:string} $meta
-     */
-    private function loadPayload(
-        string $path,
-        array $meta,
-        string $expectedEnvironment,
-        string $expectedConfigFingerprint,
-    ): CompiledRouterArtifact {
-        if ($meta['environment'] !== $expectedEnvironment) {
-            throw new RuntimeException('Webrick router artifact environment mismatch.');
-        }
-        if (!hash_equals($expectedConfigFingerprint, $meta['config_fingerprint'])) {
-            throw new RuntimeException('Webrick router artifact configuration fingerprint mismatch.');
-        }
-
-        /** @var mixed $payload */
-        $payload = require $path;
-        if (!is_array($payload)) {
-            throw new UnexpectedValueException('Compiled Webrick router artifact must return an array.');
-        }
-
-        $artifact = CompiledRouterArtifact::fromPayload($payload);
-        if (
-            $artifact->environment !== $meta['environment']
-            || !hash_equals($artifact->configFingerprint, $meta['config_fingerprint'])
-            || !hash_equals($artifact->artifactFingerprint, $meta['artifact_fingerprint'])
-            || !hash_equals($artifact->artifactFingerprint, $artifact->calculatedFingerprint())
-        ) {
-            throw new RuntimeException('Webrick router artifact metadata/payload mismatch.');
-        }
-
-        return $artifact;
     }
 }

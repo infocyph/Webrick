@@ -15,7 +15,9 @@ use Infocyph\Webrick\Runtime\Http\RuntimeCapabilities;
 final readonly class CompressionMiddleware
 {
     public const string ETAG_STRONG_DERIVE = 'derive-strong';
+
     public const string ETAG_STRONG_RECOMP = 'recompute-strong';
+
     public const string ETAG_WEAK_ON_ENCODE = 'weak-on-encode';
 
     /** encoder => function */
@@ -93,6 +95,23 @@ final readonly class CompressionMiddleware
         return $this->adjustValidators($req, $encodedResponse, $encoded, $algorithm);
     }
 
+    /** @return array<string,bool> */
+    private static function availableAlgorithms(): array
+    {
+        /** @var array<string,bool>|null $available */
+        static $available = null;
+        if ($available !== null) {
+            return $available;
+        }
+
+        $available = [];
+        foreach (self::ALGO as $algorithm => $function) {
+            $available[$algorithm] = function_exists($function);
+        }
+
+        return $available;
+    }
+
     private function adjustValidators(Request $req, Response $resp, string $encodedBytes, string $algorithm): Response
     {
         $method = HttpMethodEnum::normalize($req->getMethod());
@@ -117,23 +136,6 @@ final readonly class CompressionMiddleware
             ->withSmartHeader('Content-Length', (string) strlen($encoded));
 
         return $resp->hasHeader('Content-MD5') ? $resp->withoutHeader('Content-MD5') : $resp;
-    }
-
-    /** @return array<string,bool> */
-    private static function availableAlgorithms(): array
-    {
-        /** @var array<string,bool>|null $available */
-        static $available = null;
-        if ($available !== null) {
-            return $available;
-        }
-
-        $available = [];
-        foreach (self::ALGO as $algorithm => $function) {
-            $available[$algorithm] = function_exists($function);
-        }
-
-        return $available;
     }
 
     private function derivedEncodedEtag(Response $resp, string $etag, string $encodedBytes, string $algorithm): Response
@@ -286,6 +288,7 @@ final readonly class CompressionMiddleware
             foreach ($parts as $parameter) {
                 if (preg_match('/^q\s*=\s*(0(?:\.\d{0,3})?|1(?:\.0{0,3})?)$/i', $parameter, $match) === 1) {
                     $q = (float) $match[1];
+
                     break;
                 }
             }

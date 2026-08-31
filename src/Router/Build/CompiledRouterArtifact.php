@@ -150,17 +150,6 @@ final readonly class CompiledRouterArtifact
             ?? throw new UnexpectedValueException('Matched route index has no compiled execution plan.');
     }
 
-    /** @param array<string,mixed> $payload @return array<mixed> */
-    private static function arrayField(array $payload, string $key): array
-    {
-        $value = $payload[$key] ?? null;
-        if (!is_array($value)) {
-            throw new UnexpectedValueException("Malformed Webrick router artifact field '{$key}'.");
-        }
-
-        return $value;
-    }
-
     /** @param array<mixed> $payload @return array<string,array{0:string,1:?string}> */
     private static function aliases(array $payload): array
     {
@@ -177,6 +166,17 @@ final readonly class CompiledRouterArtifact
         }
 
         return $aliases;
+    }
+
+    /** @param array<string,mixed> $payload @return array<mixed> */
+    private static function arrayField(array $payload, string $key): array
+    {
+        $value = $payload[$key] ?? null;
+        if (!is_array($value)) {
+            throw new UnexpectedValueException("Malformed Webrick router artifact field '{$key}'.");
+        }
+
+        return $value;
     }
 
     /** @param array<mixed> $payload @return list<mixed> */

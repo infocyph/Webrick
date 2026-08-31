@@ -15,7 +15,9 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     use MatcherFactoryTrait;
 
     private const int INDEX_CACHE_VERSION = 6;
+
     private const string SHARD_DYNAMIC = '__dynamic';
+
     private const string SHARD_ROOT = '__root';
 
     /** @var list<string> */
@@ -26,26 +28,31 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     ];
 
     private ?string $activeCacheDir = null;
+
     /** @var array<string,array{0:string,1:?string}> */
     private array $alias = [];
+
     private ?bool $aliasLoaded = null;
+
     private string $cacheDir = '';
+
     private bool $cacheEnabled = false;
+
     private bool $cacheReadable = false;
+
     private bool $cacheWriteEnabled = false;
+
     private CanonicalMatcherEngine $engine;
+
     private bool $finalized = false;
+
     private CanonicalMatcherIndex $index;
+
     /** @var array<string,array{static:array<mixed>,dynamic:array<mixed>}|null> */
     private array $loadedGroups = [];
+
     /** @var array<string,true> */
     private array $middlewareRequirements = [];
-
-    private function bootIndex(): void
-    {
-        $this->index ??= new CanonicalMatcherIndex();
-        $this->engine ??= new CanonicalMatcherEngine();
-    }
 
     public function add(CompiledRoute $route): void
     {
@@ -184,27 +191,10 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         return $index[$name] ?? null;
     }
 
-    /** @return int|array{0:int,1:array<string,string>}|MatchOutcome */
-    private function matchCanonical(string $method, string $host, string $path, bool $compact): int|array|MatchOutcome
+    private function bootIndex(): void
     {
-        if (!$this->cacheReadable) {
-            $hosts = $this->index->hosts();
-            $hostGroup = $hosts[$host] ?? null;
-            $wildcardGroup = $host !== '*' ? ($hosts['*'] ?? null) : null;
-
-            return $compact
-                ? $this->engine->matchSingleCompiled($hostGroup, $wildcardGroup, $method, $path)
-                : $this->engine->matchSingle($hostGroup, $wildcardGroup, $method, $path);
-        }
-
-        $bucket = CanonicalMatcherIndex::prefixForPath($path);
-        $bucket = $bucket === '' ? self::SHARD_ROOT : $bucket;
-        $hostGroups = $this->loadCandidateGroups($host, $bucket);
-        $wildcardGroups = $host !== '*' ? $this->loadCandidateGroups('*', $bucket) : [];
-
-        return $compact
-            ? $this->engine->matchCompiled($hostGroups, $wildcardGroups, $method, $path)
-            : $this->engine->match($hostGroups, $wildcardGroups, $method, $path);
+        $this->index ??= new CanonicalMatcherIndex();
+        $this->engine ??= new CanonicalMatcherEngine();
     }
 
     private function cacheStorageDir(): string
@@ -266,30 +256,27 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         return $this->loadedGroups[$file] = $hosts[$host] ?? null;
     }
 
-    private function publishGeneration(): void
+    /** @return int|array{0:int,1:array<string,string>}|MatchOutcome */
+    private function matchCanonical(string $method, string $host, string $path, bool $compact): int|array|MatchOutcome
     {
-        [$generation, $this->activeCacheDir] = ShardedCacheGeneration::create($this->cacheDir);
-        $groups = $this->partitionIndex();
+        if (!$this->cacheReadable) {
+            $hosts = $this->index->hosts();
+            $hostGroup = $hosts[$host] ?? null;
+            $wildcardGroup = $host !== '*' ? ($hosts['*'] ?? null) : null;
 
-        foreach ($groups as $host => $buckets) {
-            foreach ($buckets as $bucket => $group) {
-                $this->writeGroup($host, $bucket, $group);
-            }
+            return $compact
+                ? $this->engine->matchSingleCompiled($hostGroup, $wildcardGroup, $method, $path)
+                : $this->engine->matchSingle($hostGroup, $wildcardGroup, $method, $path);
         }
 
-        $groups['*'][self::SHARD_ROOT] ??= ['static' => [], 'dynamic' => []];
-        $this->writeGroup('*', self::SHARD_ROOT, $groups['*'][self::SHARD_ROOT]);
-        $this->writePayload(
-            $this->cacheStorageDir() . DIRECTORY_SEPARATOR . self::F_ALIASES,
-            $this->alias,
-        );
+        $bucket = CanonicalMatcherIndex::prefixForPath($path);
+        $bucket = $bucket === '' ? self::SHARD_ROOT : $bucket;
+        $hostGroups = $this->loadCandidateGroups($host, $bucket);
+        $wildcardGroups = $host !== '*' ? $this->loadCandidateGroups('*', $bucket) : [];
 
-        ShardedCacheGeneration::publish(
-            $this->cacheDir,
-            self::INDEX_CACHE_VERSION,
-            $generation,
-            array_keys($this->middlewareRequirements),
-        );
+        return $compact
+            ? $this->engine->matchCompiled($hostGroups, $wildcardGroups, $method, $path)
+            : $this->engine->match($hostGroups, $wildcardGroups, $method, $path);
     }
 
     /** @return array<string,array<string,array{static:array<mixed>,dynamic:array<mixed>}>> */
@@ -315,6 +302,32 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         }
 
         return $groups;
+    }
+
+    private function publishGeneration(): void
+    {
+        [$generation, $this->activeCacheDir] = ShardedCacheGeneration::create($this->cacheDir);
+        $groups = $this->partitionIndex();
+
+        foreach ($groups as $host => $buckets) {
+            foreach ($buckets as $bucket => $group) {
+                $this->writeGroup($host, $bucket, $group);
+            }
+        }
+
+        $groups['*'][self::SHARD_ROOT] ??= ['static' => [], 'dynamic' => []];
+        $this->writeGroup('*', self::SHARD_ROOT, $groups['*'][self::SHARD_ROOT]);
+        $this->writePayload(
+            $this->cacheStorageDir() . DIRECTORY_SEPARATOR . self::F_ALIASES,
+            $this->alias,
+        );
+
+        ShardedCacheGeneration::publish(
+            $this->cacheDir,
+            self::INDEX_CACHE_VERSION,
+            $generation,
+            array_keys($this->middlewareRequirements),
+        );
     }
 
     private function resolveActiveCacheDir(): ?string

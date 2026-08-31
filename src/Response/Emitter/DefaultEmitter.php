@@ -11,8 +11,11 @@ use Infocyph\Webrick\Response\Response;
 final class DefaultEmitter extends BaseEmitter
 {
     public const string FINISH_FASTCGI = 'fastcgi';
+
     public const string FINISH_FRANKENPHP = 'frankenphp';
+
     public const string FINISH_LITESPEED = 'litespeed';
+
     public const string FINISH_NONE = 'none';
 
     public function __construct(
@@ -25,6 +28,7 @@ final class DefaultEmitter extends BaseEmitter
     {
         if ($response->isStreaming() || !$response->isStringBody()) {
             parent::emit($response, $request);
+
             return;
         }
 

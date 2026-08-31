@@ -71,6 +71,45 @@ final class CanonicalMatcherEngine
     }
 
     /** @param array<string,bool> $allowed */
+    private static function missOutcome(string $method, array $allowed): MatchOutcome
+    {
+        if ($allowed === []) {
+            return MatchOutcome::notFound();
+        }
+
+        $methods = array_keys($allowed);
+
+        return $method === HttpMethodEnum::OPTIONS->value
+            ? MatchOutcome::autoOptions($methods)
+            : MatchOutcome::methodNotAllowed($methods);
+    }
+
+    private static function routeIndex(mixed $value): int
+    {
+        if ($value instanceof CompiledRoute) {
+            return $value->getIndex();
+        }
+        $index = ExecutableRoutePayload::routeIndex($value);
+        if ($index === null) {
+            throw new \UnexpectedValueException('Cached compiled route is missing its route index.');
+        }
+
+        return $index;
+    }
+
+    /** @return list<string> */
+    private static function segments(string $path): array
+    {
+        if ($path === '/' || $path === '') {
+            return [];
+        }
+
+        $trimmed = trim($path, '/');
+
+        return $trimmed === '' ? [] : explode('/', $trimmed);
+    }
+
+    /** @param array<string,bool> $allowed */
     private function addAllowed(array $verbs, array &$allowed): void
     {
         foreach ($verbs as $verb => $_route) {
@@ -81,6 +120,52 @@ final class CanonicalMatcherEngine
         if (isset($verbs[HttpMethodEnum::GET->value])) {
             $allowed[HttpMethodEnum::HEAD->value] = true;
         }
+    }
+
+    /**
+     * @param array<string,string> $params
+     * @return int|array{0:int,1:array<string,string>}|MatchOutcome
+     */
+    private function found(mixed $value, array $params, bool $headFallback, bool $compact): int|array|MatchOutcome
+    {
+        if ($compact) {
+            $index = self::routeIndex($value);
+
+            return $params === [] ? $index : [$index, $params];
+        }
+
+        return MatchOutcome::found($this->materialize($value), $params, $headFallback);
+    }
+
+    /**
+     * @param array<mixed> $entries
+     * @param list<string> $segments
+     * @param array<string,bool> $allowed
+     * @return CompiledMatch|null
+     */
+    private function matchDynamicEntries(
+        array $entries,
+        string $method,
+        array $segments,
+        array &$allowed,
+        bool $compact,
+    ): int|array|MatchOutcome|null {
+        foreach ($entries as $entry) {
+            if (!is_array($entry) || !is_array($entry['segments'] ?? null) || !is_array($entry['verbs'] ?? null)) {
+                continue;
+            }
+            $params = $this->matchSegments($entry['segments'], $segments);
+            if ($params === null) {
+                continue;
+            }
+            $outcome = $this->selectVerb($entry['verbs'], $method, $params, $compact);
+            if ($outcome !== null) {
+                return $outcome;
+            }
+            $this->addAllowed($entry['verbs'], $allowed);
+        }
+
+        return null;
     }
 
     /**
@@ -118,37 +203,6 @@ final class CanonicalMatcherEngine
         return is_array($entries)
             ? $this->matchDynamicEntries($entries, $method, $segments, $allowed, $compact)
             : null;
-    }
-
-    /**
-     * @param array<mixed> $entries
-     * @param list<string> $segments
-     * @param array<string,bool> $allowed
-     * @return CompiledMatch|null
-     */
-    private function matchDynamicEntries(
-        array $entries,
-        string $method,
-        array $segments,
-        array &$allowed,
-        bool $compact,
-    ): int|array|MatchOutcome|null {
-        foreach ($entries as $entry) {
-            if (!is_array($entry) || !is_array($entry['segments'] ?? null) || !is_array($entry['verbs'] ?? null)) {
-                continue;
-            }
-            $params = $this->matchSegments($entry['segments'], $segments);
-            if ($params === null) {
-                continue;
-            }
-            $outcome = $this->selectVerb($entry['verbs'], $method, $params, $compact);
-            if ($outcome !== null) {
-                return $outcome;
-            }
-            $this->addAllowed($entry['verbs'], $allowed);
-        }
-
-        return null;
     }
 
     /**
@@ -195,6 +249,48 @@ final class CanonicalMatcherEngine
         }
 
         return self::missOutcome($method, $allowed);
+    }
+
+    /**
+     * @param list<array<string,mixed>> $specs
+     * @param list<string> $segments
+     * @return array<string,string>|null
+     */
+    private function matchSegments(array $specs, array $segments): ?array
+    {
+        $params = [];
+        foreach ($specs as $index => $spec) {
+            $piece = $segments[$index] ?? null;
+            if (!is_string($piece) || !is_array($spec)) {
+                return null;
+            }
+            if (($spec['type'] ?? null) === 'lit') {
+                if (($spec['val'] ?? null) !== $piece) {
+                    return null;
+                }
+
+                continue;
+            }
+
+            $name = $spec['name'] ?? null;
+            if (($spec['type'] ?? null) !== 'var' || !is_string($name)) {
+                return null;
+            }
+            if (isset($spec['regex'])) {
+                if (!is_string($spec['regex']) || preg_match($spec['regex'], $piece) !== 1) {
+                    return null;
+                }
+            } else {
+                /** @var callable-string $call */
+                $call = $spec['call'];
+                if (!$call($piece)) {
+                    return null;
+                }
+            }
+            $params[$name] = $piece;
+        }
+
+        return $params;
     }
 
     /**
@@ -269,61 +365,6 @@ final class CanonicalMatcherEngine
         return null;
     }
 
-    /**
-     * @param list<array<string,mixed>> $specs
-     * @param list<string> $segments
-     * @return array<string,string>|null
-     */
-    private function matchSegments(array $specs, array $segments): ?array
-    {
-        $params = [];
-        foreach ($specs as $index => $spec) {
-            $piece = $segments[$index] ?? null;
-            if (!is_string($piece) || !is_array($spec)) {
-                return null;
-            }
-            if (($spec['type'] ?? null) === 'lit') {
-                if (($spec['val'] ?? null) !== $piece) {
-                    return null;
-                }
-                continue;
-            }
-
-            $name = $spec['name'] ?? null;
-            if (($spec['type'] ?? null) !== 'var' || !is_string($name)) {
-                return null;
-            }
-            if (isset($spec['regex'])) {
-                if (!is_string($spec['regex']) || preg_match($spec['regex'], $piece) !== 1) {
-                    return null;
-                }
-            } else {
-                /** @var callable-string $call */
-                $call = $spec['call'];
-                if (!$call($piece)) {
-                    return null;
-                }
-            }
-            $params[$name] = $piece;
-        }
-
-        return $params;
-    }
-
-    /** @param array<string,bool> $allowed */
-    private static function missOutcome(string $method, array $allowed): MatchOutcome
-    {
-        if ($allowed === []) {
-            return MatchOutcome::notFound();
-        }
-
-        $methods = array_keys($allowed);
-
-        return $method === HttpMethodEnum::OPTIONS->value
-            ? MatchOutcome::autoOptions($methods)
-            : MatchOutcome::methodNotAllowed($methods);
-    }
-
     private function materialize(mixed $value): CompiledRoute
     {
         if ($value instanceof CompiledRoute) {
@@ -337,19 +378,6 @@ final class CanonicalMatcherEngine
         $key = 'payload:' . $index;
 
         return $this->materialized[$key] ??= matcher_materialize_cached_route($value);
-    }
-
-    private static function routeIndex(mixed $value): int
-    {
-        if ($value instanceof CompiledRoute) {
-            return $value->getIndex();
-        }
-        $index = ExecutableRoutePayload::routeIndex($value);
-        if ($index === null) {
-            throw new \UnexpectedValueException('Cached compiled route is missing its route index.');
-        }
-
-        return $index;
     }
 
     /**
@@ -367,32 +395,5 @@ final class CanonicalMatcherEngine
         }
 
         return null;
-    }
-
-    /**
-     * @param array<string,string> $params
-     * @return int|array{0:int,1:array<string,string>}|MatchOutcome
-     */
-    private function found(mixed $value, array $params, bool $headFallback, bool $compact): int|array|MatchOutcome
-    {
-        if ($compact) {
-            $index = self::routeIndex($value);
-
-            return $params === [] ? $index : [$index, $params];
-        }
-
-        return MatchOutcome::found($this->materialize($value), $params, $headFallback);
-    }
-
-    /** @return list<string> */
-    private static function segments(string $path): array
-    {
-        if ($path === '/' || $path === '') {
-            return [];
-        }
-
-        $trimmed = trim($path, '/');
-
-        return $trimmed === '' ? [] : explode('/', $trimmed);
     }
 }

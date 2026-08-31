@@ -28,6 +28,32 @@ final readonly class CachePolicy
         StatusEnum::NOT_IMPLEMENTED->value => true,
     ];
 
+    /** @return array<string,true|string> */
+    public static function directives(string $line): array
+    {
+        if ($line === '') {
+            return [];
+        }
+
+        $directives = [];
+        foreach (explode(',', $line) as $segment) {
+            $segment = trim($segment);
+            if ($segment === '') {
+                continue;
+            }
+            if (!str_contains($segment, '=')) {
+                $directives[strtolower($segment)] = true;
+
+                continue;
+            }
+
+            [$name, $value] = array_map(trim(...), explode('=', $segment, 2));
+            $directives[strtolower($name)] = trim($value, "\"'");
+        }
+
+        return $directives;
+    }
+
     public function lookupAllowed(Request $request, bool $skipPersonalized = true): bool
     {
         $method = HttpMethodEnum::normalize($request->getMethod());
@@ -77,31 +103,6 @@ final readonly class CachePolicy
             ?? self::seconds($directives['max-age'] ?? null);
 
         return $cap === null ? $ttl : min($ttl, $cap);
-    }
-
-    /** @return array<string,true|string> */
-    public static function directives(string $line): array
-    {
-        if ($line === '') {
-            return [];
-        }
-
-        $directives = [];
-        foreach (explode(',', $line) as $segment) {
-            $segment = trim($segment);
-            if ($segment === '') {
-                continue;
-            }
-            if (!str_contains($segment, '=')) {
-                $directives[strtolower($segment)] = true;
-                continue;
-            }
-
-            [$name, $value] = array_map(trim(...), explode('=', $segment, 2));
-            $directives[strtolower($name)] = trim($value, "\"'");
-        }
-
-        return $directives;
     }
 
     private static function seconds(mixed $value): ?int

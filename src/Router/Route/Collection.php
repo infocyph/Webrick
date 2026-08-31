@@ -43,7 +43,9 @@ final class Collection implements IteratorAggregate
     private array $byPath = [];
 
     private ?CompiledCollection $compiled = null;
+
     private bool $dirty = false;
+
     private bool $frozen = false;
 
     /** @var list<RouteInterface> */

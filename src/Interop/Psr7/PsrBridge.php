@@ -18,9 +18,9 @@ use Psr\Http\Message\StreamFactoryInterface;
  * Webrick remains native internally. This class is used only when a consuming
  * application installs psr/http-message plus psr/http-factory.
  */
-final class PsrBridge
+final readonly class PsrBridge
 {
-    public function __construct(private readonly StreamFactoryInterface $streams) {}
+    public function __construct(private StreamFactoryInterface $streams) {}
 
     public function response(Response $source, ResponseFactoryInterface $factory): ResponseInterface
     {

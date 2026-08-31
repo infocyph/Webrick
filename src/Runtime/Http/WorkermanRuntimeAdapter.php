@@ -12,22 +12,16 @@ use RuntimeException;
 /** Workerman 4+ adapter with compatibility resolved once at bootstrap. */
 final readonly class WorkermanRuntimeAdapter implements RuntimeAdapterInterface
 {
-    /** @var class-string */
-    private string $chunkClass;
-
-    /** @var class-string */
-    private string $responseClass;
-
     private RuntimeCapabilities $runtimeCapabilities;
 
     private function __construct(
-        string $responseClass,
-        string $chunkClass,
+        /** @var class-string */
+        private string $responseClass,
+        /** @var class-string */
+        private string $chunkClass,
         bool $transportCompression,
         bool $transportRequestLimits,
     ) {
-        $this->responseClass = $responseClass;
-        $this->chunkClass = $chunkClass;
         $this->runtimeCapabilities = new RuntimeCapabilities(
             name: 'workerman',
             persistent: true,

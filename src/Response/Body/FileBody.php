@@ -12,11 +12,11 @@ use Throwable;
 /** Read-only file body preserving native path/range metadata for runtime adapters. */
 final class FileBody implements BodyStream
 {
-    private ?Stream $stream = null;
+    private readonly int $length;
 
     private int $position = 0;
 
-    private readonly int $length;
+    private ?Stream $stream = null;
 
     public function __construct(
         private readonly string $path,

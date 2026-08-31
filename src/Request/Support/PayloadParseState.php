@@ -8,7 +8,10 @@ namespace Infocyph\Webrick\Request\Support;
 enum PayloadParseState: string
 {
     case INVALID = 'invalid';
+
     case NOT_APPLICABLE = 'not_applicable';
+
     case NOT_PARSED = 'not_parsed';
+
     case PARSED = 'parsed';
 }

@@ -196,4 +196,4 @@ $kernel = RouterKernel::bootWithRegistrar(
 );
 
 $request = Request::fromGlobals();
-(new DefaultEmitter())->emit($kernel->handle($request), $request);
+new DefaultEmitter()->emit($kernel->handle($request), $request);

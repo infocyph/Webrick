@@ -37,9 +37,9 @@
     },
     "suggest": {
         "infocyph/cachelayer": "Required by response-cache middleware and the CacheLayer atomic-counter adapter.",
-        "opis/closure": "Required only when compiling route or middleware Closures into persistent artifacts through InterMix.",
         "open-telemetry/exporter-otlp": "Export traces to OpenTelemetry collectors (Jaeger, Zipkin, etc.)",
         "open-telemetry/sdk": "Full OpenTelemetry tracing with automatic span export (auto-detected by TelemetryMiddleware)",
+        "opis/closure": "Required only when compiling route or middleware Closures into persistent artifacts through InterMix.",
         "psr/http-factory": "Optional PSR-17 factories for Webrick's explicit PSR-7 interoperability bridge.",
         "psr/http-message": "Optional PSR-7 message interfaces for interoperability adapters."
     },

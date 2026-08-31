@@ -15,6 +15,15 @@ final class MatcherRouteMetadata
 
     private function __construct() {}
 
+    public static function decode(mixed $payload): CompiledRoute
+    {
+        if (!is_array($payload)) {
+            throw new \UnexpectedValueException('Invalid matcher route metadata payload.');
+        }
+
+        return CompiledRoute::fromCachePayload($payload);
+    }
+
     /** @return array<mixed> */
     public static function encode(CompiledRoute $route): array
     {
@@ -48,14 +57,5 @@ final class MatcherRouteMetadata
             ] : null,
             $route->getSegments(),
         ];
-    }
-
-    public static function decode(mixed $payload): CompiledRoute
-    {
-        if (!is_array($payload)) {
-            throw new \UnexpectedValueException('Invalid matcher route metadata payload.');
-        }
-
-        return CompiledRoute::fromCachePayload($payload);
     }
 }

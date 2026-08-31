@@ -30,21 +30,33 @@ class ServerRequest extends Message
 
     /** @var array<string,mixed> */
     private array $attributes = [];
+
     private bool $checkEnv = false;
+
     /** @var array<string,mixed> */
     private array $cookie;
+
     private ?string $effectiveMethod = null;
+
     private ?UploadedFileCollection $filesCollection = null;
+
     /** @var array<string,UploadedFile|array<mixed>>|null */
     private ?array $filesHydrated = null;
+
     /** @var array<string,mixed> */
     private array $filesSpec;
+
     private ?RequestHeaders $headersFacade = null;
+
     private string $method;
+
     /** @var array<string,mixed> */
     private array $query;
+
     private ?string $rawBody = null;
+
     private Uri $uri;
+
     /** @var array<string,mixed>|null */
     private ?array $variableMap = null;
 
@@ -388,6 +400,27 @@ class ServerRequest extends Message
         return $clone;
     }
 
+    /** @param array<string,mixed> $server */
+    private static function serverString(array $server, string $key, string $default = ''): string
+    {
+        $value = $server[$key] ?? null;
+
+        return is_string($value) ? $value : $default;
+    }
+
+    /** @param array<mixed> $value @return array<string,mixed> */
+    private static function stringMap(array $value): array
+    {
+        $map = [];
+        foreach ($value as $key => $entry) {
+            if (is_string($key)) {
+                $map[$key] = $entry;
+            }
+        }
+
+        return $map;
+    }
+
     private function buildVariableMap(): void
     {
         if ($this->variableMap !== null) {
@@ -407,6 +440,7 @@ class ServerRequest extends Message
         foreach ($order as $source) {
             if ($source === 'E') {
                 $map += self::stringMap($_ENV);
+
                 continue;
             }
             if (isset($sources[$source])) {
@@ -469,27 +503,6 @@ class ServerRequest extends Message
     {
         $this->variableMap = null;
         $this->checkEnv = false;
-    }
-
-    /** @param array<mixed> $value @return array<string,mixed> */
-    private static function stringMap(array $value): array
-    {
-        $map = [];
-        foreach ($value as $key => $entry) {
-            if (is_string($key)) {
-                $map[$key] = $entry;
-            }
-        }
-
-        return $map;
-    }
-
-    /** @param array<string,mixed> $server */
-    private static function serverString(array $server, string $key, string $default = ''): string
-    {
-        $value = $server[$key] ?? null;
-
-        return is_string($value) ? $value : $default;
     }
 }
 

@@ -155,6 +155,7 @@ final class RouteCache
         foreach ($iterator as $path) {
             if (!$path instanceof \SplFileInfo) {
                 $ok = false;
+
                 continue;
             }
 
@@ -175,6 +176,7 @@ final class RouteCache
         }
         if ($path->isDir()) {
             $deleted = self::removeDirectory($pathname);
+
             return [$deleted, $deleted];
         }
         if (self::isRootGitignore($pathname, $root)) {
@@ -269,6 +271,7 @@ final class RouteCache
             $path = realpath($path) ?: $path;
             if (!is_dir($path)) {
                 $logger->warning('[routecache] attribute dir not found', ['ns' => $namespace, 'dir' => $path]);
+
                 continue;
             }
             $out[$namespace] = $path;

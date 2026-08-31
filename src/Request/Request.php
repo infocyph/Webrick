@@ -22,9 +22,13 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
     use MacroMix;
 
     public const HEADER_FORWARDED = 0b10000;
+
     public const HEADER_X_FORWARDED_FOR = 0b00001;
+
     public const HEADER_X_FORWARDED_HOST = 0b00010;
+
     public const HEADER_X_FORWARDED_PORT = 0b01000;
+
     public const HEADER_X_FORWARDED_PROTO = 0b00100;
 
     private static int $trustedHeaderFlags = 0;
@@ -292,7 +296,7 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
             return $this->cachedLocale = strtolower(substr($languages[0], 0, 5));
         }
 
-        $supported = array_map(static fn(string $language): string => self::normalizeLocale($language), $supported);
+        $supported = array_map(self::normalizeLocale(...), $supported);
         foreach ($languages as $language) {
             $language = self::normalizeLocale($language);
             $primary = substr($language, 0, 2);
@@ -360,7 +364,7 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
     /** @param string[] $mimeTypes */
     public function prefers(array $mimeTypes): ?string
     {
-        return (new ContentNegotiator($this->headers()))->preferred($mimeTypes);
+        return new ContentNegotiator($this->headers())->preferred($mimeTypes);
     }
 
     /** @param array<string,mixed> $data */
@@ -373,13 +377,8 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
     public function routeIs(string|array $patterns): bool
     {
         $target = $this->getRequestTarget();
-        foreach (self::stringList($patterns) as $pattern) {
-            if (preg_match('#^' . str_replace('\\*', '.*', preg_quote($pattern, '#')) . '$#', $target) === 1) {
-                return true;
-            }
-        }
 
-        return false;
+        return array_any(self::stringList($patterns), fn($pattern) => preg_match('#^' . str_replace('\\*', '.*', preg_quote($pattern, '#')) . '$#', $target) === 1);
     }
 
     public function segment(int $index, mixed $default = null): mixed

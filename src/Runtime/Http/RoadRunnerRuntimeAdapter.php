@@ -86,17 +86,15 @@ final readonly class RoadRunnerRuntimeAdapter implements RuntimeAdapterInterface
 
         return new RuntimeRequestContext(
             RoutingInput::fromServer($server, $withHost, $form),
-            static function () use ($nativeRequest, $server, $resolveParsed): Request {
-                return TransportRequestFactory::fromParts(
-                    $server,
-                    PsrServerRequestData::headers($nativeRequest),
-                    PsrServerRequestData::body($nativeRequest),
-                    $resolveParsed(),
-                    PsrUploadedFiles::normalize($nativeRequest->getUploadedFiles()),
-                    PsrServerRequestData::stringMapResult($nativeRequest->getQueryParams()),
-                    PsrServerRequestData::stringMapResult($nativeRequest->getCookieParams()),
-                );
-            },
+            static fn(): Request => TransportRequestFactory::fromParts(
+                $server,
+                PsrServerRequestData::headers($nativeRequest),
+                PsrServerRequestData::body($nativeRequest),
+                $resolveParsed(),
+                PsrUploadedFiles::normalize($nativeRequest->getUploadedFiles()),
+                PsrServerRequestData::stringMapResult($nativeRequest->getQueryParams()),
+                PsrServerRequestData::stringMapResult($nativeRequest->getCookieParams()),
+            ),
             $this->runtimeCapabilities,
             $nativeRequest,
         );

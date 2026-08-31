@@ -18,8 +18,11 @@ use RuntimeException;
 class NativeServerRequest extends ServerRequest
 {
     private mixed $jsonPayload = null;
+
     private ?PayloadParseState $jsonState = null;
+
     private mixed $xmlPayload = null;
+
     private ?PayloadParseState $xmlState = null;
 
     public static function createFromGlobals(): static
@@ -133,69 +136,6 @@ class NativeServerRequest extends ServerRequest
             : PayloadParseState::NOT_APPLICABLE);
     }
 
-    private function isJsonContentType(): bool
-    {
-        return preg_match('#(?:application|text)/(?:[^\s;]+\+)?json(?:\s*;|$)#i', $this->getHeaderLine('Content-Type')) === 1;
-    }
-
-    private function isXmlContentType(): bool
-    {
-        return preg_match('#(?:application|text)/(?:[^\s;]+\+)?xml(?:\s*;|$)#i', $this->getHeaderLine('Content-Type')) === 1;
-    }
-
-    private function parseJson(): void
-    {
-        if ($this->jsonState !== null) {
-            return;
-        }
-        if (!$this->isJsonContentType()) {
-            $this->jsonState = PayloadParseState::NOT_APPLICABLE;
-            return;
-        }
-
-        try {
-            $this->jsonPayload = json_decode($this->raw(), true, 512, JSON_THROW_ON_ERROR);
-            $this->jsonState = PayloadParseState::PARSED;
-        } catch (\JsonException) {
-            $this->jsonPayload = null;
-            $this->jsonState = PayloadParseState::INVALID;
-        }
-    }
-
-    private function parseXml(): void
-    {
-        if ($this->xmlState !== null) {
-            return;
-        }
-        if (!$this->isXmlContentType()) {
-            $this->xmlState = PayloadParseState::NOT_APPLICABLE;
-            return;
-        }
-        if (!function_exists('simplexml_load_string')) {
-            $this->xmlState = PayloadParseState::INVALID;
-            return;
-        }
-
-        $xml = simplexml_load_string(
-            $this->raw(),
-            'SimpleXMLElement',
-            LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING,
-        );
-        if ($xml === false) {
-            $this->xmlState = PayloadParseState::INVALID;
-            return;
-        }
-
-        try {
-            $encoded = json_encode($xml, JSON_THROW_ON_ERROR);
-            $this->xmlPayload = json_decode($encoded, true, 512, JSON_THROW_ON_ERROR) ?? [];
-            $this->xmlState = PayloadParseState::PARSED;
-        } catch (\JsonException) {
-            $this->xmlPayload = null;
-            $this->xmlState = PayloadParseState::INVALID;
-        }
-    }
-
     /** @param array<mixed> $value @return array<string,mixed> */
     private static function stringMap(array $value): array
     {
@@ -222,5 +162,72 @@ class NativeServerRequest extends ServerRequest
         }
 
         return is_array($payload) ? ($payload[$key] ?? null) : null;
+    }
+
+    private function isJsonContentType(): bool
+    {
+        return preg_match('#(?:application|text)/(?:[^\s;]+\+)?json(?:\s*;|$)#i', $this->getHeaderLine('Content-Type')) === 1;
+    }
+
+    private function isXmlContentType(): bool
+    {
+        return preg_match('#(?:application|text)/(?:[^\s;]+\+)?xml(?:\s*;|$)#i', $this->getHeaderLine('Content-Type')) === 1;
+    }
+
+    private function parseJson(): void
+    {
+        if ($this->jsonState !== null) {
+            return;
+        }
+        if (!$this->isJsonContentType()) {
+            $this->jsonState = PayloadParseState::NOT_APPLICABLE;
+
+            return;
+        }
+
+        try {
+            $this->jsonPayload = json_decode($this->raw(), true, 512, JSON_THROW_ON_ERROR);
+            $this->jsonState = PayloadParseState::PARSED;
+        } catch (\JsonException) {
+            $this->jsonPayload = null;
+            $this->jsonState = PayloadParseState::INVALID;
+        }
+    }
+
+    private function parseXml(): void
+    {
+        if ($this->xmlState !== null) {
+            return;
+        }
+        if (!$this->isXmlContentType()) {
+            $this->xmlState = PayloadParseState::NOT_APPLICABLE;
+
+            return;
+        }
+        if (!function_exists('simplexml_load_string')) {
+            $this->xmlState = PayloadParseState::INVALID;
+
+            return;
+        }
+
+        $xml = simplexml_load_string(
+            $this->raw(),
+            'SimpleXMLElement',
+            LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING,
+        );
+        if ($xml === false) {
+            $this->xmlState = PayloadParseState::INVALID;
+
+            return;
+        }
+
+        try {
+            $encoded = json_encode($xml, JSON_THROW_ON_ERROR);
+            $this->xmlPayload = json_decode($encoded, true, 512, JSON_THROW_ON_ERROR) ?? [];
+            $this->xmlState = PayloadParseState::PARSED;
+        } catch (\JsonException) {
+            $this->xmlPayload = null;
+            $this->xmlState = PayloadParseState::INVALID;
+        }
     }
 }

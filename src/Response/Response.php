@@ -27,14 +27,15 @@ class Response
     use MacroMix;
 
     private BodyStream|string $body;
+
     private ?BodyStream $bodyFacade = null;
+
     private HeaderBag $headers;
 
     /** @var null|\Closure(): (iterable<string>|string) */
     private ?\Closure $producer = null;
 
     /**
-     * @param BodyStream|string|null $body
      * @param array<string,string|list<string>> $headers
      */
     public function __construct(
@@ -81,7 +82,7 @@ class Response
         int $flags = JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE,
         int $depth = 512,
     ): self {
-        $want = (new ContentNegotiator($r->headers()))->preferred([
+        $want = new ContentNegotiator($r->headers())->preferred([
             MediaTypeEnum::JSON->base(),
             '+json',
             MediaTypeEnum::PLAIN->base(),

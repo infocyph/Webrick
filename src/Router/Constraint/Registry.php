@@ -112,7 +112,6 @@ final class Registry
             return;
         }
         if (is_callable($rule)) {
-            /** @var callable-string $rule */
             self::$callableValidators[$key] = $rule;
 
             return;
@@ -169,6 +168,7 @@ final class Registry
             }
             if (($slashes % 2) === 0) {
                 $end = $i;
+
                 break;
             }
         }

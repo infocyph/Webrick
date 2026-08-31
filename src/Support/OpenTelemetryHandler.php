@@ -13,8 +13,11 @@ use RuntimeException;
 final readonly class OpenTelemetryHandler
 {
     private const string OTEL_GLOBALS = 'OpenTelemetry\\API\\Globals';
+
     private const string OTEL_SPAN_KIND_SERVER = 'OpenTelemetry\\API\\Trace\\SpanKind::KIND_SERVER';
+
     private const string OTEL_STATUS_ERROR = 'OpenTelemetry\\API\\Trace\\StatusCode::STATUS_ERROR';
+
     private const string OTEL_STATUS_OK = 'OpenTelemetry\\API\\Trace\\StatusCode::STATUS_OK';
 
     public function __construct(private TelemetryOptions $options) {}
@@ -72,6 +75,7 @@ final readonly class OpenTelemetryHandler
         } catch (\Throwable $e) {
             $this->call($span, 'recordException', [$e]);
             $this->call($span, 'setStatus', [$this->otelStatusError(), $e->getMessage()]);
+
             throw $e;
         } finally {
             $this->call($span, 'end');
@@ -185,6 +189,7 @@ final readonly class OpenTelemetryHandler
     private function buildSpanName(Request $req): string
     {
         $routeName = $req->getAttribute('route.name');
+
         return $req->getMethod() . ' ' . (is_string($routeName) && $routeName !== ''
             ? $routeName
             : ($req->getUri()->getPath() ?: '/'));
@@ -196,6 +201,7 @@ final readonly class OpenTelemetryHandler
         if (!method_exists($target, $method)) {
             throw new RuntimeException(sprintf('Method %s::%s() not available.', $target::class, $method));
         }
+
         return $target->{$method}(...$args);
     }
 
@@ -206,6 +212,7 @@ final readonly class OpenTelemetryHandler
         if (!is_object($result)) {
             throw new RuntimeException(sprintf('Method %s::%s() did not return an object.', $target::class, $method));
         }
+
         return $result;
     }
 
@@ -215,6 +222,7 @@ final readonly class OpenTelemetryHandler
         if (!method_exists($class, $method)) {
             throw new RuntimeException(sprintf('Static method %s::%s() not available.', $class, $method));
         }
+
         return $class::$method(...$args);
     }
 
@@ -225,6 +233,7 @@ final readonly class OpenTelemetryHandler
         if (!is_object($result)) {
             throw new RuntimeException(sprintf('Static method %s::%s() did not return an object.', $class, $method));
         }
+
         return $result;
     }
 
@@ -242,6 +251,7 @@ final readonly class OpenTelemetryHandler
     private function extractTraceContext(object $span): array
     {
         $context = $this->callObject($span, 'getContext');
+
         return [
             TelemetrySupport::stringFromMixed($this->call($context, 'getTraceId')) ?? '',
             TelemetrySupport::stringFromMixed($this->call($context, 'getSpanId')) ?? '',
@@ -255,6 +265,7 @@ final readonly class OpenTelemetryHandler
         foreach ($req->getHeaders() as $name => $values) {
             $carrier[strtolower((string) $name)] = $values[0] ?? '';
         }
+
         return $carrier;
     }
 
@@ -267,6 +278,7 @@ final readonly class OpenTelemetryHandler
         if (!is_int($value)) {
             throw new RuntimeException("Invalid {$label} constant.");
         }
+
         return $value;
     }
 
@@ -296,6 +308,7 @@ final readonly class OpenTelemetryHandler
         $series = StatusEnum::tryFrom($statusCode)?->series() ?? intdiv($statusCode, 100);
         if ($series === 5) {
             $this->call($span, 'setStatus', [$this->otelStatusError(), 'HTTP ' . $statusCode]);
+
             return;
         }
 

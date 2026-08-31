@@ -13,17 +13,6 @@ final class ExecutableRoutePayload
 
     private function __construct() {}
 
-    /** @return array{version:int,route:array<mixed>,handler:array{kind:string,value:mixed},middleware:list<array{kind:string,value:mixed}>} */
-    public static function encode(CompiledRoute $route): array
-    {
-        return [
-            'version' => self::VERSION,
-            'route' => MatcherRouteMetadata::encode($route),
-            'handler' => ArtifactValueCodec::encode($route->getHandler()),
-            'middleware' => array_map(ArtifactValueCodec::encode(...), array_values($route->getMiddlewares())),
-        ];
-    }
-
     public static function decode(mixed $payload): CompiledRoute
     {
         if (!is_array($payload) || ($payload['version'] ?? null) !== self::VERSION) {
@@ -53,6 +42,17 @@ final class ExecutableRoutePayload
             produces: $metadata->getProduces(),
             segments: $metadata->getSegments(),
         );
+    }
+
+    /** @return array{version:int,route:array<mixed>,handler:array{kind:string,value:mixed},middleware:list<array{kind:string,value:mixed}>} */
+    public static function encode(CompiledRoute $route): array
+    {
+        return [
+            'version' => self::VERSION,
+            'route' => MatcherRouteMetadata::encode($route),
+            'handler' => ArtifactValueCodec::encode($route->getHandler()),
+            'middleware' => array_map(ArtifactValueCodec::encode(...), array_values($route->getMiddlewares())),
+        ];
     }
 
     public static function routeIndex(mixed $payload): ?int

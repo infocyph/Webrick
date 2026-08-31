@@ -37,30 +37,6 @@ final readonly class ExecutionPlan
         }
     }
 
-    public function requiresRequest(): bool
-    {
-        return RouteCapability::has($this->capabilities, RouteCapability::REQUEST);
-    }
-
-    public function requiresScope(): bool
-    {
-        return RouteCapability::has($this->capabilities, RouteCapability::SCOPE);
-    }
-
-    /** @return array<string,mixed> */
-    public function toPayload(): array
-    {
-        return [
-            'route_id' => $this->routeId,
-            'kind' => $this->kind->value,
-            'terminal_kind' => $this->terminalKind->value,
-            'handler' => ArtifactValueCodec::encode($this->handler),
-            'middleware' => array_map(ArtifactValueCodec::encode(...), $this->middleware),
-            'route_arguments' => $this->routeArguments,
-            'capabilities' => $this->capabilities,
-        ];
-    }
-
     public static function fromPayload(mixed $payload): self
     {
         if (!is_array($payload)) {
@@ -111,5 +87,29 @@ final readonly class ExecutionPlan
         } catch (\InvalidArgumentException $exception) {
             throw new UnexpectedValueException('Invalid execution-plan invariant.', 0, $exception);
         }
+    }
+
+    public function requiresRequest(): bool
+    {
+        return RouteCapability::has($this->capabilities, RouteCapability::REQUEST);
+    }
+
+    public function requiresScope(): bool
+    {
+        return RouteCapability::has($this->capabilities, RouteCapability::SCOPE);
+    }
+
+    /** @return array<string,mixed> */
+    public function toPayload(): array
+    {
+        return [
+            'route_id' => $this->routeId,
+            'kind' => $this->kind->value,
+            'terminal_kind' => $this->terminalKind->value,
+            'handler' => ArtifactValueCodec::encode($this->handler),
+            'middleware' => array_map(ArtifactValueCodec::encode(...), $this->middleware),
+            'route_arguments' => $this->routeArguments,
+            'capabilities' => $this->capabilities,
+        ];
     }
 }

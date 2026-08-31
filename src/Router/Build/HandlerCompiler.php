@@ -66,13 +66,8 @@ final class HandlerCompiler
     private function allRequiredParametersAreRouteArguments(ReflectionFunctionAbstract $reflection, array $routeArguments): bool
     {
         $set = array_fill_keys($routeArguments, true);
-        foreach ($reflection->getParameters() as $parameter) {
-            if (!$parameter->isOptional() && !isset($set[$parameter->getName()])) {
-                return false;
-            }
-        }
 
-        return true;
+        return array_all($reflection->getParameters(), fn($parameter) => !(!$parameter->isOptional() && !isset($set[$parameter->getName()])));
     }
 
     /** @param list<string> $routeArguments */
@@ -113,13 +108,7 @@ final class HandlerCompiler
     /** @param list<mixed> $middleware */
     private function middlewareRequiresScope(array $middleware): bool
     {
-        foreach ($middleware as $descriptor) {
-            if (!is_callable($descriptor) || (is_string($descriptor) && !function_exists($descriptor))) {
-                return true;
-            }
-        }
-
-        return false;
+        return array_any($middleware, fn($descriptor) => !is_callable($descriptor) || (is_string($descriptor) && !function_exists($descriptor)));
     }
 
     /**
@@ -168,6 +157,7 @@ final class HandlerCompiler
             if (is_callable($entry)) {
                 return $entry;
             }
+
             throw new InvalidArgumentException('Unsupported middleware descriptor at build time.');
         }
         if (class_exists($entry) && method_exists($entry, '__invoke')) {

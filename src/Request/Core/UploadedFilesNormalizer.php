@@ -95,6 +95,7 @@ final class UploadedFilesNormalizer
                     'name' => $name,
                     'type' => $type,
                 ]);
+
                 continue;
             }
 

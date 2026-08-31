@@ -18,7 +18,6 @@ use Throwable;
 final readonly class ErrorHandler
 {
     /**
-     * @param LoggerInterface|\Closure|null $logger
      * @param array<class-string,int> $exceptionMap
      * @param null|callable(Request,Throwable,int,array<string,string>):mixed $responseRenderer
      */
@@ -360,7 +359,7 @@ final readonly class ErrorHandler
             return strtolower($negotiated);
         }
 
-        return (new ContentNegotiator($request->headers()))->preferred([
+        return new ContentNegotiator($request->headers())->preferred([
             MediaTypeEnum::PLAIN->base(),
             MediaTypeEnum::PROBLEM_JSON->value,
             MediaTypeEnum::JSON->base(),

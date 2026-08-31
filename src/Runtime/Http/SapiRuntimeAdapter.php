@@ -12,8 +12,11 @@ use Infocyph\Webrick\Router\Runtime\RoutingInput;
 final readonly class SapiRuntimeAdapter implements RuntimeAdapterInterface
 {
     private const string FINISH_FASTCGI = 'fastcgi';
+
     private const string FINISH_FRANKENPHP = 'frankenphp';
+
     private const string FINISH_LITESPEED = 'litespeed';
+
     private const string FINISH_NONE = 'none';
 
     private RuntimeCapabilities $runtimeCapabilities;

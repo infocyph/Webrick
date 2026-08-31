@@ -14,12 +14,19 @@ final class Uri implements \Stringable
     private static array $asciiCache = [];
 
     private string $fragment;
+
     private string $host;
+
     private string $pass;
+
     private string $path;
+
     private ?int $port;
+
     private string $query;
+
     private string $scheme;
+
     private string $user;
 
     public function __construct(string $uri = '')

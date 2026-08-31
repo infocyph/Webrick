@@ -33,13 +33,17 @@ use Throwable;
 final readonly class CompiledRouterKernel
 {
     private RuntimeDispatcher $dispatcher;
+
     private ErrorHandler $errorHandler;
+
     private bool $hasGlobalMiddleware;
+
     private MatcherInterface $matcher;
+
     private InterMixRuntime $runtime;
 
     private function __construct(
-        private LoggerInterface $log,
+        LoggerInterface $log,
         private CompiledRouterArtifact $artifact,
         MatcherInterface $matcher,
         ProductionContainer $container,
@@ -201,6 +205,11 @@ final readonly class CompiledRouterKernel
         return $response->withBody('');
     }
 
+    private static function scopeId(RoutingInput $routing, ?RuntimeRequestContext $runtimeContext): string
+    {
+        return $runtimeContext?->scopeId() ?? 'webrick.request.' . spl_object_id($routing);
+    }
+
     private function dispatchRoutingInput(
         RoutingInput $routing,
         ?Request &$request,
@@ -238,20 +247,30 @@ final readonly class CompiledRouterKernel
         );
     }
 
-    /**
-     * @throws MethodNotAllowedException
-     * @throws RouteNotFoundException
-     */
-    private function throwOrReturnControlOutcome(MatchOutcome $outcome, RoutingInput $routing): void
-    {
-        if ($outcome->type === MatchOutcomeType::AUTO_OPTIONS) {
-            return;
-        }
-        if ($outcome->type === MatchOutcomeType::METHOD_NOT_ALLOWED) {
-            throw new MethodNotAllowedException($routing->method, $routing->path, $outcome->allowed);
+    /** @param array<string,string> $vars */
+    private function dispatchWithoutRequest(
+        RoutingInput $routing,
+        ExecutionPlan $plan,
+        array $vars,
+        ?RuntimeRequestContext $runtimeContext,
+    ): Response {
+        if (!$plan->requiresScope()) {
+            return match ($plan->terminalKind) {
+                ExecutionKind::DIRECT_ZERO_ARG => $this->dispatcher->dispatchDirectZeroArg($plan),
+                ExecutionKind::DIRECT_ROUTE_ARGS => $this->dispatcher->dispatchDirectRouteArgs($plan, $vars),
+                default => $this->dispatcher->dispatchWithoutRequest($plan, $vars),
+            };
         }
 
-        throw new RouteNotFoundException($routing->method, $routing->path);
+        $response = $this->runtime->withinScope(
+            self::scopeId($routing, $runtimeContext),
+            fn() => $this->dispatcher->dispatchWithoutRequest($plan, $vars),
+        );
+        if (!$response instanceof Response) {
+            throw new \RuntimeException('Compiled request scope must return Response.');
+        }
+
+        return $response;
     }
 
     /** @param array<string,string> $vars */
@@ -279,32 +298,6 @@ final readonly class CompiledRouterKernel
         return $response;
     }
 
-    /** @param array<string,string> $vars */
-    private function dispatchWithoutRequest(
-        RoutingInput $routing,
-        ExecutionPlan $plan,
-        array $vars,
-        ?RuntimeRequestContext $runtimeContext,
-    ): Response {
-        if (!$plan->requiresScope()) {
-            return match ($plan->terminalKind) {
-                ExecutionKind::DIRECT_ZERO_ARG => $this->dispatcher->dispatchDirectZeroArg($plan),
-                ExecutionKind::DIRECT_ROUTE_ARGS => $this->dispatcher->dispatchDirectRouteArgs($plan, $vars),
-                default => $this->dispatcher->dispatchWithoutRequest($plan, $vars),
-            };
-        }
-
-        $response = $this->runtime->withinScope(
-            self::scopeId($routing, $runtimeContext),
-            fn() => $this->dispatcher->dispatchWithoutRequest($plan, $vars),
-        );
-        if (!$response instanceof Response) {
-            throw new \RuntimeException('Compiled request scope must return Response.');
-        }
-
-        return $response;
-    }
-
     private function renderException(
         Throwable $exception,
         ?Request $request,
@@ -324,8 +317,19 @@ final readonly class CompiledRouterKernel
         );
     }
 
-    private static function scopeId(RoutingInput $routing, ?RuntimeRequestContext $runtimeContext): string
+    /**
+     * @throws MethodNotAllowedException
+     * @throws RouteNotFoundException
+     */
+    private function throwOrReturnControlOutcome(MatchOutcome $outcome, RoutingInput $routing): void
     {
-        return $runtimeContext?->scopeId() ?? 'webrick.request.' . spl_object_id($routing);
+        if ($outcome->type === MatchOutcomeType::AUTO_OPTIONS) {
+            return;
+        }
+        if ($outcome->type === MatchOutcomeType::METHOD_NOT_ALLOWED) {
+            throw new MethodNotAllowedException($routing->method, $routing->path, $outcome->allowed);
+        }
+
+        throw new RouteNotFoundException($routing->method, $routing->path);
     }
 }

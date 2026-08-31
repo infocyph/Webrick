@@ -174,7 +174,7 @@ final readonly class TelemetryMiddleware
     /** @param Closure(Request):Response $next */
     private function delegateToOtel(Request $req, Closure $next): Response
     {
-        return (new OpenTelemetryHandler($this->options()))->handle($req, $next);
+        return new OpenTelemetryHandler($this->options())->handle($req, $next);
     }
 
     private function deriveRequestId(Request $req): ?string

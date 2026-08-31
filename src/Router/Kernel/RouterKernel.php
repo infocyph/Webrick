@@ -33,7 +33,9 @@ use Psr\Log\LoggerInterface;
 final class RouterKernel
 {
     private readonly Dispatcher $dispatcher;
+
     private readonly ErrorHandler $errorHandler;
+
     private int $requestScopeSeq = 0;
 
     /**
@@ -48,7 +50,7 @@ final class RouterKernel
         private readonly MatcherInterface $matcher,
         private readonly Closure $register,
         private readonly Invoker $invoker,
-        private array $registrarOptions = [],
+        private readonly array $registrarOptions = [],
         array $preGlobal = [],
         array $postGlobal = [],
         bool $invokerOnMiddleware = false,
@@ -142,6 +144,37 @@ final class RouterKernel
         }
 
         return $result;
+    }
+
+    private static function normaliseHost(string $raw): string
+    {
+        if ($raw === '' || preg_match('/[\x00-\x20]/', $raw)) {
+            throw HttpException::badRequest('Illegal Host header.');
+        }
+
+        $host = strtolower(rtrim($raw, '.'));
+        if (function_exists('idn_to_ascii') && !str_contains($host, 'xn--')) {
+            $ascii = idn_to_ascii($host, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
+            if ($ascii === false) {
+                throw HttpException::badRequest('Invalid IDN host name.');
+            }
+            $host = $ascii;
+        }
+        if (!preg_match('/^[\x21-\x7E]+$/', $host)) {
+            throw HttpException::badRequest('Host contains non-ASCII bytes.');
+        }
+
+        return $host;
+    }
+
+    private static function routingMethod(Request $req): string
+    {
+        $rawMethod = HttpMethodEnum::normalize($req->getMethod());
+        $effectiveMethod = HttpMethodEnum::normalize($req->getEffectiveMethod());
+
+        return $rawMethod === HttpMethodEnum::HEAD->value
+            ? HttpMethodEnum::HEAD->value
+            : $effectiveMethod;
     }
 
     /** @param array<int,string> $allowed */
@@ -260,32 +293,6 @@ final class RouterKernel
         return $normalized;
     }
 
-    private static function normaliseHost(string $raw): string
-    {
-        if ($raw === '' || preg_match('/[\x00-\x20]/', $raw)) {
-            throw HttpException::badRequest('Illegal Host header.');
-        }
-
-        $host = strtolower(rtrim($raw, '.'));
-        if (function_exists('idn_to_ascii') && !str_contains($host, 'xn--')) {
-            $ascii = idn_to_ascii($host, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
-            if ($ascii === false) {
-                throw HttpException::badRequest('Invalid IDN host name.');
-            }
-            $host = $ascii;
-        }
-        if (!preg_match('/^[\x21-\x7E]+$/', $host)) {
-            throw HttpException::badRequest('Host contains non-ASCII bytes.');
-        }
-
-        return $host;
-    }
-
-    private function normalizeSignKey(mixed $value): ?string
-    {
-        return is_string($value) && $value !== '' ? $value : null;
-    }
-
     private function normalizeSignedDefaultTtl(mixed $value): ?int
     {
         if (is_int($value)) {
@@ -302,6 +309,11 @@ final class RouterKernel
         }
 
         return is_array($value) && $value !== [] ? SignedUrlConfig::fromArray($value) : null;
+    }
+
+    private function normalizeSignKey(mixed $value): ?string
+    {
+        return is_string($value) && $value !== '' ? $value : null;
     }
 
     private function normalizeUrlBaseUri(mixed $value): string
@@ -324,16 +336,6 @@ final class RouterKernel
             $this->normalizeMiddlewareEntries($this->mergeTaggedGlobals($preGlobal, $this->preGlobalTags)),
             $this->normalizeMiddlewareEntries($this->mergeTaggedGlobals($postGlobal, $this->postGlobalTags)),
         ];
-    }
-
-    private static function routingMethod(Request $req): string
-    {
-        $rawMethod = HttpMethodEnum::normalize($req->getMethod());
-        $effectiveMethod = HttpMethodEnum::normalize($req->getEffectiveMethod());
-
-        return $rawMethod === HttpMethodEnum::HEAD->value
-            ? HttpMethodEnum::HEAD->value
-            : $effectiveMethod;
     }
 
     private function warm(): void

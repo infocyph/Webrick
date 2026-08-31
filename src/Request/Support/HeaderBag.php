@@ -20,7 +20,9 @@ use Traversable;
 final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
 {
     private const string INVALID_HEADER_NAME = "/[^!#$%&'*+.^_`|~0-9A-Za-z-]/";
+
     private const string INVALID_HEADER_VALUE = '/[\x00-\x08\x0A-\x1F\x7F]/';
+
     private const int NORMALIZATION_CACHE_LIMIT = 256;
 
     /** @var array<string,string> */

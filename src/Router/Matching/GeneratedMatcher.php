@@ -21,21 +21,24 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
 
     /** @var array<string,array{0:string,1:?string}> */
     private array $alias = [];
+
     private bool $cacheEnabled = false;
+
     private string $cacheFile = '';
+
     private bool $cacheLoaded = false;
+
     private bool $cacheWriteEnabled = false;
+
     /** @var Closure(string,string,string,bool):(int|array{0:int,1:array<string,string>}|MatchOutcome)|null */
     private ?Closure $compiledFn = null;
+
     private bool $finalized = false;
+
     private CanonicalMatcherIndex $index;
+
     /** @var array<string,true> */
     private array $middlewareRequirements = [];
-
-    private function bootIndex(): void
-    {
-        $this->index ??= new CanonicalMatcherIndex();
-    }
 
     public function add(CompiledRoute $route): void
     {
@@ -109,135 +112,9 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         return $index[$name] ?? null;
     }
 
-    /** @param array<string,int> $verbs */
-    private function renderVerbDispatch(array $verbs, string $indent, bool $hasParams): string
+    private function bootIndex(): void
     {
-        $materialize = '\\' . __NAMESPACE__ . '\\matcher_materialize_cached_route';
-        $outcome = '\\' . MatchOutcome::class;
-        $params = $hasParams ? '$params' : '[]';
-        $code = $indent . "switch (\$verb) {\n";
-        foreach ($verbs as $method => $index) {
-            $code .= $indent . '    case ' . var_export($method, true) . ":\n";
-            $code .= $indent . "        if (\$compact) {\n";
-            $code .= $indent . '            return ' . ($hasParams ? '[' . $index . ', $params]' : (string) $index) . ";\n";
-            $code .= $indent . "        }\n";
-            $code .= $indent . '        return ' . $outcome . '::found(($routes[' . $index
-                . '] ??= ' . $materialize . '($routePayloads[' . $index . '])), ' . $params . ");\n";
-        }
-        if (!isset($verbs[HttpMethodEnum::HEAD->value]) && isset($verbs[HttpMethodEnum::GET->value])) {
-            $index = $verbs[HttpMethodEnum::GET->value];
-            $code .= $indent . '    case ' . var_export(HttpMethodEnum::HEAD->value, true) . ":\n";
-            $code .= $indent . "        if (\$compact) {\n";
-            $code .= $indent . '            return ' . ($hasParams ? '[' . $index . ', $params]' : (string) $index) . ";\n";
-            $code .= $indent . "        }\n";
-            $code .= $indent . '        return ' . $outcome . '::found(($routes[' . $index
-                . '] ??= ' . $materialize . '($routePayloads[' . $index . '])), ' . $params . ", true);\n";
-        }
-        $code .= $indent . "    default:\n";
-        foreach ($verbs as $method => $_index) {
-            $code .= $indent . '        $allowed[' . var_export($method, true) . "] = true;\n";
-        }
-        if (isset($verbs[HttpMethodEnum::GET->value])) {
-            $code .= $indent . '        $allowed[' . var_export(HttpMethodEnum::HEAD->value, true) . "] = true;\n";
-        }
-
-        return $code . $indent . "}\n";
-    }
-
-    /** @param list<array<string,mixed>> $segments */
-    private function renderCondition(array $segments, string $indent): string
-    {
-        $checks = [];
-        foreach ($segments as $index => $segment) {
-            if (($segment['type'] ?? null) === 'lit') {
-                $checks[] = "(\$segments[{$index}] ?? null) === " . var_export($segment['val'], true);
-                continue;
-            }
-            if (isset($segment['regex'])) {
-                $checks[] = '\\preg_match(' . var_export($segment['regex'], true)
-                    . ", (string)(\$segments[{$index}] ?? '')) === 1";
-                continue;
-            }
-            /** @var callable-string $call */
-            $call = $segment['call'];
-            $checks[] = '(bool)(' . var_export($call, true) . ")((string)(\$segments[{$index}] ?? ''))";
-        }
-
-        return $checks === [] ? 'true' : implode(" &&\n" . $indent, $checks);
-    }
-
-    /** @param list<array<string,mixed>> $segments */
-    private function renderParams(array $segments): string
-    {
-        $pairs = [];
-        foreach ($segments as $index => $segment) {
-            if (($segment['type'] ?? null) === 'var') {
-                $pairs[] = var_export($segment['name'], true) . " => (string)\$segments[{$index}]";
-            }
-        }
-
-        return '[' . implode(', ', $pairs) . ']';
-    }
-
-    /** @param array<string,array{segments:list<array<string,mixed>>,verbs:array<string,int>}> $entries */
-    private function renderDynamicEntries(array $entries, string $indent): string
-    {
-        $code = '';
-        foreach ($entries as $entry) {
-            $condition = $this->renderCondition($entry['segments'], $indent . '        ');
-            $code .= $indent . "if ({$condition}) {\n";
-            $code .= $indent . '    $params = ' . $this->renderParams($entry['segments']) . ";\n";
-            $code .= $this->renderVerbDispatch($entry['verbs'], $indent . '    ', true);
-            $code .= $indent . "}\n";
-        }
-
-        return $code;
-    }
-
-    /** @param array<int,array<string,array<string,array{segments:list<array<string,mixed>>,verbs:array<string,int>}>>> $dynamic */
-    private function renderDynamicIndex(array $dynamic, string $indent): string
-    {
-        if ($dynamic === []) {
-            return '';
-        }
-
-        $code = $indent . "switch (\$segCount) {\n";
-        foreach ($dynamic as $count => $prefixes) {
-            $code .= $indent . "    case {$count}:\n";
-            $literal = array_filter($prefixes, static fn(string $key): bool => $key !== '*', ARRAY_FILTER_USE_KEY);
-            if ($literal !== []) {
-                $code .= $indent . "        switch (\$prefix) {\n";
-                foreach ($literal as $prefix => $entries) {
-                    $code .= $indent . '            case ' . var_export($prefix, true) . ":\n";
-                    $code .= $this->renderDynamicEntries($entries, $indent . '                ');
-                    $code .= $indent . "                break;\n";
-                }
-                $code .= $indent . "        }\n";
-            }
-            if (isset($prefixes['*'])) {
-                $code .= $this->renderDynamicEntries($prefixes['*'], $indent . '        ');
-            }
-            $code .= $indent . "        break;\n";
-        }
-
-        return $code . $indent . "}\n";
-    }
-
-    /** @param array<string,array<string,int>> $static */
-    private function renderStaticIndex(array $static, string $indent): string
-    {
-        if ($static === []) {
-            return '';
-        }
-
-        $code = $indent . "switch (\$path) {\n";
-        foreach ($static as $path => $verbs) {
-            $code .= $indent . '    case ' . var_export($path, true) . ":\n";
-            $code .= $this->renderVerbDispatch($verbs, $indent . '        ', false);
-            $code .= $indent . "        break;\n";
-        }
-
-        return $code . $indent . "}\n";
+        $this->index ??= new CanonicalMatcherIndex();
     }
 
     private function buildMatcherCode(): string
@@ -296,51 +173,10 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
             . '}';
     }
 
-    /**
-     * @return array{0:array<int,mixed>,1:array<string,array{static:array<string,array<string,int>>,dynamic:array<int,array<string,array<string,array{segments:list<array<string,mixed>>,verbs:array<string,int>}>>>}>}
-     */
-    private function generationData(): array
+    /** @param list<string> $middleware */
+    private function cacheHash(string $code, array $middleware): string
     {
-        $payloads = [];
-        $hosts = [];
-
-        foreach ($this->index->hosts() as $host => $index) {
-            $hosts[$host] = ['static' => [], 'dynamic' => []];
-            foreach ($index['static'] as $path => $verbs) {
-                foreach ($verbs as $verb => $route) {
-                    $hosts[$host]['static'][$path][$verb] = $this->routeIndex($route, $payloads);
-                }
-            }
-            foreach ($index['dynamic'] as $count => $prefixes) {
-                foreach ($prefixes as $prefix => $entries) {
-                    foreach ($entries as $path => $entry) {
-                        $mapped = ['segments' => $entry['segments'], 'verbs' => []];
-                        foreach ($entry['verbs'] as $verb => $route) {
-                            $mapped['verbs'][$verb] = $this->routeIndex($route, $payloads);
-                        }
-                        $hosts[$host]['dynamic'][$count][$prefix][$path] = $mapped;
-                    }
-                }
-            }
-        }
-
-        return [$payloads, $hosts];
-    }
-
-    /** @param array<int,mixed> $payloads */
-    private function routeIndex(mixed $route, array &$payloads): int
-    {
-        $index = $route instanceof CompiledRoute ? $route->getIndex() : ExecutableRoutePayload::routeIndex($route);
-        if ($index === null) {
-            throw new \UnexpectedValueException('Generated matcher route is missing its compiled index.');
-        }
-        if (!array_key_exists($index, $payloads)) {
-            $payloads[$index] = $route instanceof CompiledRoute
-                ? MatcherCachePayloadNormalizer::normalize($route)
-                : $route;
-        }
-
-        return $index;
+        return hash('xxh128', serialize([$code, $middleware]));
     }
 
     private function compileClosureFromCode(string $code): Closure
@@ -351,6 +187,7 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         }
         if (file_put_contents($file, "<?php return {$code};\n", LOCK_EX) === false) {
             @unlink($file);
+
             throw new \RuntimeException('Failed to write generated matcher source.');
         }
 
@@ -364,12 +201,6 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         }
 
         return $fn;
-    }
-
-    /** @param list<string> $middleware */
-    private function cacheHash(string $code, array $middleware): string
-    {
-        return hash('xxh128', serialize([$code, $middleware]));
     }
 
     private function dumpCache(): void
@@ -411,6 +242,37 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         }
     }
 
+    /**
+     * @return array{0:array<int,mixed>,1:array<string,array{static:array<string,array<string,int>>,dynamic:array<int,array<string,array<string,array{segments:list<array<string,mixed>>,verbs:array<string,int>}>>>}>}
+     */
+    private function generationData(): array
+    {
+        $payloads = [];
+        $hosts = [];
+
+        foreach ($this->index->hosts() as $host => $index) {
+            $hosts[$host] = ['static' => [], 'dynamic' => []];
+            foreach ($index['static'] as $path => $verbs) {
+                foreach ($verbs as $verb => $route) {
+                    $hosts[$host]['static'][$path][$verb] = $this->routeIndex($route, $payloads);
+                }
+            }
+            foreach ($index['dynamic'] as $count => $prefixes) {
+                foreach ($prefixes as $prefix => $entries) {
+                    foreach ($entries as $path => $entry) {
+                        $mapped = ['segments' => $entry['segments'], 'verbs' => []];
+                        foreach ($entry['verbs'] as $verb => $route) {
+                            $mapped['verbs'][$verb] = $this->routeIndex($route, $payloads);
+                        }
+                        $hosts[$host]['dynamic'][$count][$prefix][$path] = $mapped;
+                    }
+                }
+            }
+        }
+
+        return [$payloads, $hosts];
+    }
+
     private function loadCacheBlob(): void
     {
         if ($this->cacheLoaded) {
@@ -438,5 +300,154 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
             true,
         );
         $this->cacheLoaded = true;
+    }
+
+    /** @param list<array<string,mixed>> $segments */
+    private function renderCondition(array $segments, string $indent): string
+    {
+        $checks = [];
+        foreach ($segments as $index => $segment) {
+            if (($segment['type'] ?? null) === 'lit') {
+                $checks[] = "(\$segments[{$index}] ?? null) === " . var_export($segment['val'], true);
+
+                continue;
+            }
+            if (isset($segment['regex'])) {
+                $checks[] = '\\preg_match(' . var_export($segment['regex'], true)
+                    . ", (string)(\$segments[{$index}] ?? '')) === 1";
+
+                continue;
+            }
+            /** @var callable-string $call */
+            $call = $segment['call'];
+            $checks[] = '(bool)(' . var_export($call, true) . ")((string)(\$segments[{$index}] ?? ''))";
+        }
+
+        return $checks === [] ? 'true' : implode(" &&\n" . $indent, $checks);
+    }
+
+    /** @param array<string,array{segments:list<array<string,mixed>>,verbs:array<string,int>}> $entries */
+    private function renderDynamicEntries(array $entries, string $indent): string
+    {
+        $code = '';
+        foreach ($entries as $entry) {
+            $condition = $this->renderCondition($entry['segments'], $indent . '        ');
+            $code .= $indent . "if ({$condition}) {\n";
+            $code .= $indent . '    $params = ' . $this->renderParams($entry['segments']) . ";\n";
+            $code .= $this->renderVerbDispatch($entry['verbs'], $indent . '    ', true);
+            $code .= $indent . "}\n";
+        }
+
+        return $code;
+    }
+
+    /** @param array<int,array<string,array<string,array{segments:list<array<string,mixed>>,verbs:array<string,int>}>>> $dynamic */
+    private function renderDynamicIndex(array $dynamic, string $indent): string
+    {
+        if ($dynamic === []) {
+            return '';
+        }
+
+        $code = $indent . "switch (\$segCount) {\n";
+        foreach ($dynamic as $count => $prefixes) {
+            $code .= $indent . "    case {$count}:\n";
+            $literal = array_filter($prefixes, static fn(string $key): bool => $key !== '*', ARRAY_FILTER_USE_KEY);
+            if ($literal !== []) {
+                $code .= $indent . "        switch (\$prefix) {\n";
+                foreach ($literal as $prefix => $entries) {
+                    $code .= $indent . '            case ' . var_export($prefix, true) . ":\n";
+                    $code .= $this->renderDynamicEntries($entries, $indent . '                ');
+                    $code .= $indent . "                break;\n";
+                }
+                $code .= $indent . "        }\n";
+            }
+            if (isset($prefixes['*'])) {
+                $code .= $this->renderDynamicEntries($prefixes['*'], $indent . '        ');
+            }
+            $code .= $indent . "        break;\n";
+        }
+
+        return $code . $indent . "}\n";
+    }
+
+    /** @param list<array<string,mixed>> $segments */
+    private function renderParams(array $segments): string
+    {
+        $pairs = [];
+        foreach ($segments as $index => $segment) {
+            if (($segment['type'] ?? null) === 'var') {
+                $pairs[] = var_export($segment['name'], true) . " => (string)\$segments[{$index}]";
+            }
+        }
+
+        return '[' . implode(', ', $pairs) . ']';
+    }
+
+    /** @param array<string,array<string,int>> $static */
+    private function renderStaticIndex(array $static, string $indent): string
+    {
+        if ($static === []) {
+            return '';
+        }
+
+        $code = $indent . "switch (\$path) {\n";
+        foreach ($static as $path => $verbs) {
+            $code .= $indent . '    case ' . var_export($path, true) . ":\n";
+            $code .= $this->renderVerbDispatch($verbs, $indent . '        ', false);
+            $code .= $indent . "        break;\n";
+        }
+
+        return $code . $indent . "}\n";
+    }
+
+    /** @param array<string,int> $verbs */
+    private function renderVerbDispatch(array $verbs, string $indent, bool $hasParams): string
+    {
+        $materialize = '\\' . __NAMESPACE__ . '\\matcher_materialize_cached_route';
+        $outcome = '\\' . MatchOutcome::class;
+        $params = $hasParams ? '$params' : '[]';
+        $code = $indent . "switch (\$verb) {\n";
+        foreach ($verbs as $method => $index) {
+            $code .= $indent . '    case ' . var_export($method, true) . ":\n";
+            $code .= $indent . "        if (\$compact) {\n";
+            $code .= $indent . '            return ' . ($hasParams ? '[' . $index . ', $params]' : (string) $index) . ";\n";
+            $code .= $indent . "        }\n";
+            $code .= $indent . '        return ' . $outcome . '::found(($routes[' . $index
+                . '] ??= ' . $materialize . '($routePayloads[' . $index . '])), ' . $params . ");\n";
+        }
+        if (!isset($verbs[HttpMethodEnum::HEAD->value]) && isset($verbs[HttpMethodEnum::GET->value])) {
+            $index = $verbs[HttpMethodEnum::GET->value];
+            $code .= $indent . '    case ' . var_export(HttpMethodEnum::HEAD->value, true) . ":\n";
+            $code .= $indent . "        if (\$compact) {\n";
+            $code .= $indent . '            return ' . ($hasParams ? '[' . $index . ', $params]' : (string) $index) . ";\n";
+            $code .= $indent . "        }\n";
+            $code .= $indent . '        return ' . $outcome . '::found(($routes[' . $index
+                . '] ??= ' . $materialize . '($routePayloads[' . $index . '])), ' . $params . ", true);\n";
+        }
+        $code .= $indent . "    default:\n";
+        foreach ($verbs as $method => $_index) {
+            $code .= $indent . '        $allowed[' . var_export($method, true) . "] = true;\n";
+        }
+        if (isset($verbs[HttpMethodEnum::GET->value])) {
+            $code .= $indent . '        $allowed[' . var_export(HttpMethodEnum::HEAD->value, true) . "] = true;\n";
+        }
+
+        return $code . $indent . "}\n";
+    }
+
+    /** @param array<int,mixed> $payloads */
+    private function routeIndex(mixed $route, array &$payloads): int
+    {
+        $index = $route instanceof CompiledRoute ? $route->getIndex() : ExecutableRoutePayload::routeIndex($route);
+        if ($index === null) {
+            throw new \UnexpectedValueException('Generated matcher route is missing its compiled index.');
+        }
+        if (!array_key_exists($index, $payloads)) {
+            $payloads[$index] = $route instanceof CompiledRoute
+                ? MatcherCachePayloadNormalizer::normalize($route)
+                : $route;
+        }
+
+        return $index;
     }
 }

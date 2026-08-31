@@ -24,8 +24,11 @@ use RuntimeException;
 final class KernelDispatchBench
 {
     private RouterKernel $closureKernel;
+
     private RouterKernel $factoryMiddlewareKernel;
+
     private Request $request;
+
     private RouterKernel $staticControllerKernel;
 
     public function setUp(): void

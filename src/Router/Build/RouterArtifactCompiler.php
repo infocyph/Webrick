@@ -104,6 +104,7 @@ final class RouterArtifactCompiler
         }
         if (!rename($temporary, $path)) {
             @unlink($temporary);
+
             throw new RuntimeException("Unable to publish Webrick artifact '{$path}'.");
         }
     }

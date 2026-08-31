@@ -59,7 +59,7 @@ final readonly class PsrServerRequestData
         $server['REQUEST_METHOD'] = (string) $request->getMethod();
         $server['REQUEST_URI'] = $requestUri;
         $server['REQUEST_SCHEME'] = (string) $uri->getScheme();
-        $server['SERVER_PROTOCOL'] = 'HTTP/' . (string) $request->getProtocolVersion();
+        $server['SERVER_PROTOCOL'] = 'HTTP/' . $request->getProtocolVersion();
         $host = (string) $uri->getHost();
         $port = $uri->getPort();
         if ($host !== '') {

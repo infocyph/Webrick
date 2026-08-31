@@ -13,13 +13,13 @@ use UnexpectedValueException;
  */
 final class MiddlewareAliases
 {
+    private static bool $frozen = false;
+
     /** @var array<string,callable> */
     private static array $map = [];
 
     /** @var array<int|string,array{supports:callable(string):bool,resolve:callable(string,string...):(callable|object|string)}> */
     private static array $resolvers = [];
-
-    private static bool $frozen = false;
 
     private function __construct() {}
 
@@ -100,6 +100,7 @@ final class MiddlewareAliases
             foreach (self::$resolvers as $resolver) {
                 if (($resolver['supports'])($key)) {
                     $resolved = ($resolver['resolve'])($key, ...$params);
+
                     break;
                 }
             }
