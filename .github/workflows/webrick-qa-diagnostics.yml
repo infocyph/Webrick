@@ -1,0 +1,41 @@
+name: "Webrick QA Diagnostics"
+
+on:
+  push:
+    branches: [ "webrick-5/batch-1-correctness" ]
+
+jobs:
+  diagnostics:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.5"
+          tools: composer:v2
+          coverage: none
+
+      - name: Install dependencies
+        run: composer update --no-interaction --prefer-dist --no-progress --prefer-stable
+
+      - name: Print strict diagnostics
+        shell: bash
+        run: |
+          set +e
+          php vendor/bin/phpstan analyse \
+            --configuration=vendor/infocyph/phpforge/resources/phpstan.neon.dist \
+            --memory-limit=1G \
+            --no-progress \
+            --error-format=table
+          phpstan_status=$?
+
+          composer ic:test:comments
+          comments_status=$?
+          set -e
+
+          printf 'phpstan_status=%d\ncomments_status=%d\n' "$phpstan_status" "$comments_status"
+          if [ "$phpstan_status" -ne 0 ] || [ "$comments_status" -ne 0 ]; then
+            exit 1
+          fi
