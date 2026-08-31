@@ -59,7 +59,6 @@ final class RouterKernel
         private readonly array $preGlobalTags = ['webrick.middleware.pre'],
         private readonly array $postGlobalTags = ['webrick.middleware.post'],
         private readonly bool $debug = false,
-        private readonly bool $capturePhpErrors = true,
     ) {
         $this->warm();
         [$preGlobal, $postGlobal] = $this->prepareGlobalMiddleware($preGlobal, $postGlobal);
@@ -98,7 +97,6 @@ final class RouterKernel
         array $preGlobalTags = ['webrick.middleware.pre'],
         array $postGlobalTags = ['webrick.middleware.post'],
         bool $debug = false,
-        bool $capturePhpErrors = true,
     ): self {
         return new self(
             log: $log,
@@ -114,7 +112,6 @@ final class RouterKernel
             preGlobalTags: $preGlobalTags,
             postGlobalTags: $postGlobalTags,
             debug: $debug,
-            capturePhpErrors: $capturePhpErrors,
         );
     }
 
@@ -172,7 +169,6 @@ final class RouterKernel
         return new ErrorHandler(
             logger: $this->log,
             debug: $this->debug,
-            capturePhpErrors: $this->capturePhpErrors,
             requestIdHeader: 'X-Request-Id',
             exceptionMap: [
                 RouteNotFoundException::class => StatusEnum::NOT_FOUND->value,
