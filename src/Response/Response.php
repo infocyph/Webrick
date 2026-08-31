@@ -10,13 +10,13 @@ use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Interfaces\BodyStream;
 use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Request\Core\StringBody;
+use Infocyph\Webrick\Request\Http\ContentNegotiator;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Request\Support\HeaderBag;
 use Infocyph\Webrick\Response\Body\FileBody;
 use Infocyph\Webrick\Response\Headers\CacheControl;
 use Infocyph\Webrick\Response\Headers\ContentDisposition;
 use Infocyph\Webrick\Response\Internal\Utils;
-use Infocyph\Webrick\Response\Negotiation\ContentTypeNegotiator;
 use Infocyph\Webrick\Response\Range\RangeResponder;
 use JsonSerializable;
 use RuntimeException;
@@ -81,10 +81,11 @@ class Response
         int $flags = JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE,
         int $depth = 512,
     ): self {
-        $want = ContentTypeNegotiator::chooseFromRequest(
-            $r,
-            [MediaTypeEnum::JSON->base(), '+json', MediaTypeEnum::PLAIN->base()],
-        ) ?? MediaTypeEnum::JSON->base();
+        $want = (new ContentNegotiator($r->headers()))->preferred([
+            MediaTypeEnum::JSON->base(),
+            '+json',
+            MediaTypeEnum::PLAIN->base(),
+        ]) ?? MediaTypeEnum::JSON->base();
 
         if (MediaTypeEnum::isJsonLike($want)) {
             $jsonData = is_array($data) ? self::mixedMap($data) : $data;
