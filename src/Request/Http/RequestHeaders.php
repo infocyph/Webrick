@@ -208,6 +208,9 @@ final class RequestHeaders
             $token .= $char;
         }
 
+        if ($quoted) {
+            return [];
+        }
         $trimmed = trim($token);
         if ($trimmed !== '') {
             $tokens[] = $trimmed;
