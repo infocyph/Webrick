@@ -8,17 +8,10 @@ use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Constants\MediaTypeEnum;
 use Infocyph\Webrick\Interfaces\BodyStream;
 use Infocyph\Webrick\Request\Http\RequestHeaders;
-use Infocyph\Webrick\Request\Psr7\ServerRequestHeaderNormalizer;
-use Infocyph\Webrick\Request\Psr7\UploadedFilesNormalizer;
 use Infocyph\Webrick\Support\HttpUtils;
 use InvalidArgumentException;
 
-/**
- * Native Webrick server-request model.
- *
- * This is intentionally not a PSR-7 implementation. PSR adaptation belongs at
- * an explicit interoperability boundary; core request execution stays native.
- */
+/** Native Webrick server-request model. */
 class ServerRequest extends Message
 {
     private const array VALID = [
@@ -37,33 +30,21 @@ class ServerRequest extends Message
 
     /** @var array<string,mixed> */
     private array $attributes = [];
-
     private bool $checkEnv = false;
-
     /** @var array<string,mixed> */
     private array $cookie;
-
     private ?string $effectiveMethod = null;
-
     private ?UploadedFileCollection $filesCollection = null;
-
     /** @var array<string,UploadedFile|array<mixed>>|null */
     private ?array $filesHydrated = null;
-
     /** @var array<string,mixed> */
     private array $filesSpec;
-
     private ?RequestHeaders $headersFacade = null;
-
     private string $method;
-
     /** @var array<string,mixed> */
     private array $query;
-
     private ?string $rawBody = null;
-
     private Uri $uri;
-
     /** @var array<string,mixed>|null */
     private ?array $variableMap = null;
 
@@ -88,7 +69,7 @@ class ServerRequest extends Message
         ?array $query = null,
         array $cookies = [],
     ) {
-        parent::__construct(ServerRequestHeaderNormalizer::normalize($headers), $body, $httpVer);
+        parent::__construct($headers, $body, $httpVer);
         $this->method = HttpMethodEnum::normalize($method);
         $this->uri = $uri instanceof Uri ? $uri : new Uri($uri);
         $this->server = self::stringMap($server);
@@ -140,7 +121,7 @@ class ServerRequest extends Message
         $httpVersion = str_starts_with($protocol, 'HTTP/') ? substr($protocol, 5) : '1.1';
 
         $request = new static(
-            HttpMethodEnum::normalize(self::serverString($server, 'REQUEST_METHOD', HttpMethodEnum::GET->value)),
+            self::serverString($server, 'REQUEST_METHOD', HttpMethodEnum::GET->value),
             Uri::fromServerParams($server),
             $server,
             RequestHeaders::extractFromServer($server),
@@ -218,7 +199,7 @@ class ServerRequest extends Message
         if ($this->effectiveMethod !== null) {
             return $this->effectiveMethod;
         }
-        $verb = HttpMethodEnum::normalize($this->method);
+        $verb = $this->method;
         if (!in_array($verb, self::VALID, true)) {
             return $this->effectiveMethod = $verb;
         }
@@ -458,7 +439,7 @@ class ServerRequest extends Message
 
     private function isFormPost(): bool
     {
-        return HttpMethodEnum::normalize($this->method) === HttpMethodEnum::POST->value
+        return $this->method === HttpMethodEnum::POST->value
             && HttpUtils::isFormContentType($this->getHeaderLine('Content-Type'));
     }
 
