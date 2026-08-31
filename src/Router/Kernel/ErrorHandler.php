@@ -64,17 +64,20 @@ final readonly class ErrorHandler
      */
     private function buildRenderHeaders(Request $request, Throwable $error): array
     {
-        $headers = [
+        $bag = new HeaderBag([
             'Cache-Control' => 'no-store',
             'X-Content-Type-Options' => 'nosniff',
             'Vary' => 'Accept',
-        ];
+        ]);
         $requestId = $this->resolveRequestId($request);
         if ($requestId !== '') {
-            $headers[$this->requestIdHeader] = $requestId;
+            $bag = $bag->with($this->requestIdHeader, $requestId);
+        }
+        foreach ($this->exceptionHeaders($error) as $name => $value) {
+            $bag = $bag->with($name, $value);
         }
 
-        return array_replace($headers, $this->exceptionHeaders($error));
+        return self::singleValueHeaders($bag);
     }
 
     /**
@@ -426,6 +429,19 @@ final readonly class ErrorHandler
         }
 
         return $this->mappedExceptionStatus($error) ?? StatusEnum::INTERNAL_SERVER_ERROR->value;
+    }
+
+    /** @return array<string,string> */
+    private static function singleValueHeaders(HeaderBag $bag): array
+    {
+        $headers = [];
+        foreach ($bag->all() as $name => $values) {
+            if ($values !== []) {
+                $headers[$name] = $values[count($values) - 1];
+            }
+        }
+
+        return $headers;
     }
 
     private function xmlError(
