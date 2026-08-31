@@ -90,6 +90,7 @@ class ServerRequest extends Message
     ) {
         parent::__construct($headers, $body, $httpVer);
         $this->method = HttpMethodEnum::normalize($method);
+        $this->requestTarget = self::validateRequestTarget($this->requestTarget);
         $this->uri = $uri instanceof Uri ? $uri : new Uri($uri);
         $this->server = self::stringMap($server);
         $this->filesSpec = self::stringMap($files);
@@ -195,12 +196,18 @@ class ServerRequest extends Message
 
     public function expectsJson(): bool
     {
-        return str_contains(strtolower($this->getHeaderLine('Accept')), 'json') || $this->isAjax();
+        return $this->isAjax() || array_any(
+            $this->headers()->accept('Accept'),
+            static fn(string $mediaType): bool => HttpUtils::isJsonContentType($mediaType),
+        );
     }
 
     public function expectsXml(): bool
     {
-        return str_contains(strtolower($this->getHeaderLine('Accept')), 'xml');
+        return array_any(
+            $this->headers()->accept('Accept'),
+            static fn(string $mediaType): bool => HttpUtils::isXmlContentType($mediaType),
+        );
     }
 
     /** @return UploadedFile|array<array-key,mixed>|null */
@@ -397,9 +404,8 @@ class ServerRequest extends Message
 
     public function withRequestTarget(string $requestTarget): static
     {
-        if (preg_match('#\s#', $requestTarget) === 1) {
-            throw new InvalidArgumentException('Whitespace in request-target');
-        }
+        $requestTarget = self::validateRequestTarget($requestTarget)
+            ?? throw new InvalidArgumentException('Request-target must not be null.');
 
         $clone = clone $this;
         $clone->requestTarget = $requestTarget;
@@ -459,6 +465,22 @@ class ServerRequest extends Message
     private static function uriHostHeader(Uri $uri): string
     {
         return $uri->getHost() . ($uri->getPort() !== null ? ':' . $uri->getPort() : '');
+    }
+
+    private static function validateRequestTarget(?string $requestTarget): ?string
+    {
+        if ($requestTarget === null) {
+            return null;
+        }
+        if (
+            $requestTarget === ''
+            || str_contains($requestTarget, '#')
+            || preg_match('/[\x00-\x20\x7F]/', $requestTarget) === 1
+        ) {
+            throw new InvalidArgumentException('Invalid HTTP request-target.');
+        }
+
+        return $requestTarget;
     }
 
     private function buildVariableMap(): void
