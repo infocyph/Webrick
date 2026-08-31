@@ -86,6 +86,30 @@ final class Registry
         throw new InvalidArgumentException("No constraint named '$name'.");
     }
 
+    /**
+     * Whether a segment-level regex is known to preserve its semantics when it
+     * is embedded into a whole-path combined matcher PCRE.
+     *
+     * Arbitrary registered regexes intentionally return false. Their anchors,
+     * lookarounds, backreferences or control verbs were historically evaluated
+     * against the segment alone and therefore stay on the fallback lane.
+     */
+    public static function isCombinedPcreSafeSegmentRegex(string $regex): bool
+    {
+        if ($regex === '#\\A[^/]+\\z#D') {
+            return true;
+        }
+
+        foreach (self::BUILTIN_REGEX as $rule) {
+            $inner = self::regexInner($rule);
+            if ($regex === "#\\A{$inner}\\z#D") {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public static function isBoolString(string $value): bool
     {
         $value = strtolower($value);
