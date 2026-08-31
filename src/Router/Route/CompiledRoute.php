@@ -81,7 +81,7 @@ final class CompiledRoute implements RouteInterface
         );
     }
 
-    public static function fromRoute(RouteInterface $route): self
+    public static function fromRoute(RouteInterface $route, ?int $index = null): self
     {
         [$regex, $vars, $dynamic, $segments] = self::parsePath($route->getPath());
 
@@ -111,7 +111,7 @@ final class CompiledRoute implements RouteInterface
             dynamic: $dynamic,
             regex: $regex,
             variables: $vars,
-            index: self::$autoIdx++,
+            index: $index ?? self::$autoIdx++,
             corsPolicy: $cors,
             produces: $produces,
             segments: $segments,
