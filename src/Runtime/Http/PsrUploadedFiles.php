@@ -40,7 +40,10 @@ final readonly class PsrUploadedFiles
         return $out;
     }
 
-    /** @return UploadedTree|null */
+    /**
+     * @return UploadedTree|null
+     * @param mixed $file
+     */
     private static function one(mixed $file): UploadedFile|array|null
     {
         if (is_array($file)) {
