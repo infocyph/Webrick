@@ -93,6 +93,15 @@ final class HeaderPolicy
         return $token === '*' ? '*' : implode('-', array_map(ucfirst(...), explode('-', strtolower($token))));
     }
 
+    private static function canonicalMethodToken(string $token): string
+    {
+        if (preg_match(self::FIELD_NAME_RX, $token) !== 1) {
+            throw new \InvalidArgumentException('Merged method token must be a valid HTTP method token.');
+        }
+
+        return HttpMethodEnum::normalize($token);
+    }
+
     /** @return list<string> */
     private static function normalizeCsv(string $lowerName, string $csv): array
     {
@@ -103,7 +112,7 @@ final class HeaderPolicy
                 continue;
             }
             $out[] = match ($lowerName) {
-                'allow', 'access-control-allow-methods' => HttpMethodEnum::normalize($token),
+                'allow', 'access-control-allow-methods' => self::canonicalMethodToken($token),
                 'access-control-allow-headers', 'vary' => self::canonicalHeaderToken($token),
                 default => $token,
             };
