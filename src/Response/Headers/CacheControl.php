@@ -102,6 +102,37 @@ final class CacheControl implements \Stringable
         return self::modelToLine($base);
     }
 
+    /** @return array<string,true|string> */
+    public static function directives(string $line): array
+    {
+        $directives = [];
+        foreach (self::splitCsvRespectingQuotes($line) as $raw) {
+            $token = trim($raw);
+            if ($token === '') {
+                continue;
+            }
+
+            $position = strpos($token, '=');
+            if ($position === false) {
+                $directives[strtolower($token)] = true;
+
+                continue;
+            }
+
+            $name = strtolower(trim(substr($token, 0, $position)));
+            if ($name === '') {
+                continue;
+            }
+            $value = trim(substr($token, $position + 1));
+            if (strlen($value) >= 2 && $value[0] === '"' && $value[strlen($value) - 1] === '"') {
+                $value = substr($value, 1, -1);
+            }
+            $directives[$name] = $value;
+        }
+
+        return $directives;
+    }
+
     public static function fromHeaderBag(HeaderBag $bag): self
     {
         $line = $bag->getHeaderLine('Cache-Control');
