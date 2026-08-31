@@ -1,187 +1,110 @@
-# Route Cache Reference
+# Matcher Cache Reference
 
-Webrick route cache stores compiled PHP routing artifacts so normal requests do
-not rebuild route structures. The build step is allowed to spend CPU and I/O to
-reduce request-time work.
+`RouteCache` builds matcher cache artifacts only. It is a build-plane optimization for `GeneratedMatcher`, `FusedMatcher`, or `ShardedMatcher`; it does not boot `RouterKernel`, create URL services, or initialize an InterMix runtime.
 
-## Modes and locations
+The complete production application artifact is a separate concern handled by `RouteCompiler`, `RouterArtifactCompiler`, and `ReleaseCompiler`.
 
-| Mode | `cache` / `routeCache` value | Artifact |
+## Modes
+
+| Matcher | Cache location | Output |
 | --- | --- | --- |
-| `sharded` | Directory, for example `.route-cache` | Atomic manifest plus immutable generation directories containing aliases and route shards |
-| `fused` | File, for example `.route-cache/fused.php` | One PHP routing data file |
-| `generated` | File, for example `.route-cache/generated.php` | One PHP file with generated matcher code |
+| `generated` | PHP file | generated matcher code/data |
+| `fused` | PHP file | compact fused matcher data |
+| `sharded` | directory | immutable generation + manifest/shards |
 
-If the matcher mode is omitted, a path ending in `.php` selects fused mode;
-other paths select sharded mode. Specify the mode explicitly in deployment
-automation so intent remains clear.
+Prefer an explicit `matcher` value in deployment tooling.
 
-## Build with the PHP API
+## PHP API
 
 ```php
 use Infocyph\Webrick\Support\RouteCache;
 
 $artifact = RouteCache::build([
-    'matcher' => 'sharded',
-    'cache' => __DIR__ . '/../.route-cache',
+    'matcher' => 'generated',
+    'cache' => __DIR__ . '/../.route-cache/generated.php',
     'routes' => __DIR__ . '/../routes.php',
-    'signKey' => $_ENV['WEBRICK_SIGN_KEY'] ?? 'dev-key',
-    'signedDefaultTtl' => 900,
-    'registrarOptions' => [
-        'urlBaseUri' => $_ENV['WEBRICK_URL_BASE_URI'] ?? 'http://localhost',
+    'attributeDirs' => [
+        'App\\Http\\' => __DIR__ . '/../src/Http',
     ],
 ]);
 ```
 
-Relevant options:
+Supported build options:
 
-| Key | Values / example | Meaning |
-| --- | --- | --- |
-| `matcher` | `sharded`, `fused`, `generated` | Cache format |
-| `cache` | `/app/cache/routes` or `/app/cache/routes.php` | Required output location |
-| `routes` | `/app/routes.php` | Route file; use this or `register` |
-| `register` | callable | Programmatic route registration; use this or `routes` |
-| `signKey` | non-empty secret string or `null` | Signed URL generation key |
-| `signedDefaultTtl` | integer seconds, for example `900` | Default temporary URL lifetime |
-| `signedUrlConfig` | `SignedUrlConfig` or configuration array | Full signing behavior |
-| `urlBaseUri` | `https://example.com` | Base URI for absolute URL generation |
-| `registrarOptions` | associative array | Options forwarded to the registrar |
-| `preGlobal`, `postGlobal` | middleware descriptor lists | Global middleware metadata for build parity |
-| `fallbackAliasesFromRegistrar` | `true` or `false` | Allow alias-only registration fallback |
-| `attributeDirs` | namespace-to-directory map | Attribute discovery inputs |
-| `attributeClasses` | list of class strings | Explicit attribute route classes |
-| `logger` | `Psr\Log\LoggerInterface` | Build diagnostics |
+| Key | Meaning |
+| --- | --- |
+| `matcher` | `generated`, `fused`, or `sharded` |
+| `cache` | required output file/directory |
+| `routes` | route file; use this or `register` |
+| `register` | registration callable; use this or `routes` |
+| `registrarOptions` | build-time registrar options such as `autoSlashRedirect` |
+| `signKey` | optional build-time signing key exposed to legacy route files |
+| `signedDefaultTtl` | optional registrar signing default |
+| `signedUrlConfig` | optional `SignedUrlConfig`/array |
+| `urlBaseUri` | optional registrar base URI |
+| `attributeDirs` | namespace → directory attribute-discovery map |
+| `attributeClasses` | explicit attribute route classes |
+| `logger` | optional PSR-3 build logger |
 
-Use the same route inputs and URL configuration for cache build and runtime.
+There are no runtime middleware, alias-fallback, DI-container, or URL-service binding options. Those concerns do not belong to matcher-cache generation.
 
-## Build with the CLI
+## CLI
 
 ```bash
-php ./webrick route:cache --matcher=sharded --cache=.route-cache --routes=routes.php
-php ./webrick route:cache --matcher=fused --cache=.route-cache/fused.php --routes=routes.php
 php ./webrick route:cache --matcher=generated --cache=.route-cache/generated.php --routes=routes.php
+php ./webrick route:cache --matcher=fused --cache=.route-cache/fused.php --routes=routes.php
+php ./webrick route:cache --matcher=sharded --cache=.route-cache --routes=routes.php
 ```
 
-The installed Composer binary is also available at `vendor/bin/webrick` and a
-package checkout can use:
+Optional CLI inputs include `--signkey`, `--ttl`, `--attr-dirs`, and `--attr-classes`.
+
+## Build flow
+
+Matcher-cache generation is intentionally simple:
+
+1. create a build-only `Registrar` and `Collection`;
+2. execute the route registration input inside a scoped `Router` facade binding;
+3. compile route definitions once;
+4. feed the compiled routes into the selected matcher;
+5. enable cache-write mode and finalize the matcher;
+6. atomically publish the matcher's cache format.
+
+No request kernel, request scope, controller invocation, middleware pipeline, application container, or response emitter is created.
+
+## Cache contents
+
+Depending on matcher mode, cache artifacts contain the matcher structures required to reconstruct routing state, including route descriptors, alias metadata, middleware alias requirements, constraints and generated matching code.
+
+They do not contain application service instances, current request state, resolved middleware objects, native runtime handles, or an InterMix runtime.
+
+## Clearing
 
 ```bash
-composer run webrick -- route:cache --matcher=sharded --cache=.route-cache --routes=routes.php
-```
-
-CLI build options include:
-
-- `--signkey=KEY`
-- `--ttl=900`
-- `--alias-fallback=1|0`
-- `--attr-dirs="App\\Http\\=src/Http"`
-- `--attr-classes="App\\Http\\HealthController,App\\Http\\UserController"`
-- `--verbose=1`
-
-## Runtime wiring
-
-```php
-$kernel = RouterKernel::bootWithRegistrar(
-    log: $logger,
-    matcher: ShardedMatcher::make(),
-    register: $register,
-    routeCache: __DIR__ . '/../.route-cache',
-    registrarOptions: [
-        'signKey' => $_ENV['WEBRICK_SIGN_KEY'],
-        'signedDefaultTtl' => 900,
-        'urlBaseUri' => 'https://example.com',
-    ],
-);
-```
-
-Use `FusedMatcher::make()` with the fused file or
-`GeneratedMatcher::make()` with the generated file. The matcher factory never
-receives the cache path.
-
-On a valid cache hit:
-
-- the registrar does not rebuild the matcher;
-- class handlers and string middleware remain scalar until their route matches;
-- the materialized route is memoized;
-- URL aliases and the URL generator remain lazy unless a custom binding callback
-  requests eager behavior.
-
-String handlers, `[Controller::class, 'method']`, named functions, and safe
-first-class public static callables are stored as native scalar descriptors.
-Webrick converts a first-class static callable only when reflection proves that
-it is unbound, captures no variables, names a public static method, and
-preserves the called class for late static binding. Captured closures, instance
-callables, and genuine closures retain the serializer fallback.
-
-Every matcher exposes `middlewareRequirements()`, returning registered alias
-names actually referenced by cached routes. Framework integrations may use the
-list as a cache-time module activation hint. Unknown or dynamically registered
-aliases must retain the normal registrar fallback. The cache stores descriptors
-only; it never freezes executable, scoped, or stateful middleware pipelines.
-
-If alias metadata is unavailable and `fallbackAliasesFromRegistrar` is `true`,
-the kernel can run registration only to rebuild URL aliases without replacing
-the cached matcher. A complete deployment artifact should normally make that
-fallback unnecessary.
-
-## What the cache includes
-
-- compiled route match data;
-- handler and middleware descriptors;
-- registered middleware alias requirements referenced by routes;
-- route names, paths, domains, constraints and CORS metadata;
-- name-to-path and name-to-domain alias metadata;
-- generated matching code in generated mode.
-
-It does not contain instantiated application services, a request, controller
-objects for class-based handlers, or resolved lazy middleware.
-
-## Validation and publication
-
-Cache generation deliberately does more work than a request:
-
-1. route metadata is normalized to its final scalar representation;
-2. every scalar route payload is fully validated;
-3. PHP is written to a temporary file;
-4. the staged PHP file is loaded and its version, shape and checksum are verified;
-5. only a valid artifact is atomically renamed into service.
-
-Fused and generated modes replace one file atomically. Sharded mode writes all
-files into a unique immutable `generation-*` directory. It publishes a validated
-manifest and, where symbolic links are available, atomically switches a
-`__current` pointer. The manifest is the portable fallback. A failed build
-leaves the previous generation usable. Readers pin the resolved generation, and
-old directories remain available so persistent workers can finish lazy shard
-loading safely; clear them during a controlled deploy or with `route:clear`.
-
-Cache format versions are exact. Webrick rejects an old format with a rebuild
-message instead of normalizing it during a request. All cache files are trusted
-application-generated executable PHP; do not accept their paths from requests
-or untrusted configuration.
-
-## Clear artifacts
-
-```bash
-php ./webrick route:clear --matcher=sharded --cache=.route-cache
-php ./webrick route:clear --matcher=fused --cache=.route-cache/fused.php
 php ./webrick route:clear --matcher=generated --cache=.route-cache/generated.php
+php ./webrick route:clear --matcher=fused --cache=.route-cache/fused.php
+php ./webrick route:clear --matcher=sharded --cache=.route-cache
 ```
 
-Normal sharded clearing removes the manifest, legacy root artifacts, and
-generation directories while allowing different named matcher-cache files to
-coexist. `--aggressive=1` recursively purges the sharded cache directory while
-preserving a root `.gitignore`.
+For sharded cache, `--aggressive=1` recursively clears generated artifacts while preserving the root `.gitignore`.
+
+## Production release artifacts
+
+Do not confuse matcher cache with the strict Webrick production artifact. `ReleaseCompiler` coordinates:
+
+- the host-owned InterMix compiled runtime;
+- Webrick compiled routes;
+- execution plans and capabilities;
+- route aliases;
+- global middleware descriptors/tags;
+- environment and configuration fingerprints;
+- a release manifest containing trusted artifact digests.
+
+`CompiledRouterKernel` consumes that release artifact with the host-selected `ProductionContainer`.
 
 ## Deployment rules
 
-- Build in CI or deployment, never in normal request handling.
-- Build as the same application release that will consume the artifacts.
-- Let the cache builder publish validated artifacts atomically; do not copy
-  individual sharded files into a live cache directory.
-- Keep artifacts read-only to the web process when runtime rebuilds are not
-  required.
-- Rebuild after changing Webrick, route definitions, handler or middleware
-  descriptors, attribute discovery, signing settings, or matcher mode.
-- Delete and rebuild caches during a major Webrick upgrade.
-- Treat cache files as executable trusted PHP; never load user-provided cache
-  artifacts.
+- Build artifacts during CI/deployment, never during ordinary requests.
+- Treat generated PHP cache/artifact files as trusted executable deployment data.
+- Publish complete release sets atomically from the deployment layer.
+- Keep runtime artifacts read-only to serving workers where possible.
+- Rebuild matcher caches and production release artifacts after a Webrick major upgrade or route-schema change.
