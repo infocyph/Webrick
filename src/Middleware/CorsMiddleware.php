@@ -61,6 +61,9 @@ final readonly class CorsMiddleware
         if ($origin === 'null') {
             return in_array('null', $origins, true) ? 'null' : null;
         }
+        if (!$this->originMatches($origin, $origin)) {
+            return null;
+        }
         if (in_array('*', $origins, true)) {
             return $credentials ? null : '*';
         }
