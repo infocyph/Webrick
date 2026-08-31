@@ -9,13 +9,13 @@ use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
 use Infocyph\Webrick\Exceptions\RouteNotFoundException;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 
-/** Compact in-memory matcher backed by the canonical matcher index. */
+/** Compact matcher backed by the compiled matcher IR. */
 final class FusedMatcher extends AbstractMatcher implements MatcherInterface
 {
     use MatcherCacheLifecycleTrait;
     use MatcherFactoryTrait;
 
-    private const int INDEX_CACHE_VERSION = 6;
+    private const int INDEX_CACHE_VERSION = 7;
 
     /** @var array<string,array{0:string,1:?string}> */
     private array $alias = [];
@@ -66,8 +66,10 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         if ($this->cacheEnabled && is_file($this->cacheFile)) {
             $this->loadCacheBlob();
         }
+        if ($this->compiledHosts === null) {
+            $this->compiledHosts = new CompiledMatcherIndexCompiler()->compile($this->index->hosts());
+        }
 
-        $this->compiledHosts = new CompiledMatcherIndexCompiler()->compile($this->index->hosts());
         $this->finalized = true;
     }
 
@@ -146,10 +148,9 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
             throw new \RuntimeException("Cannot create cache dir {$dir}");
         }
 
-        $hosts = MatcherCachePayloadNormalizer::normalize($this->index->hosts());
-        if (!is_array($hosts)) {
-            throw new \UnexpectedValueException('Normalized fused matcher cache must be an array.');
-        }
+        $compiled = new CompiledMatcherIndexCompiler()->compile($this->index->hosts());
+        $hosts = MatcherCachePayloadNormalizer::normalize($compiled);
+        $hosts = CompiledMatcherIndexValidator::validateHosts($hosts);
         $middleware = array_keys($this->middlewareRequirements);
         $hash = $this->cacheHash($hosts, $this->alias, $middleware);
         $php = "<?php\nreturn [\n"
@@ -167,11 +168,11 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
                 if (($blob['_version'] ?? null) !== self::INDEX_CACHE_VERSION) {
                     throw new \UnexpectedValueException('Generated fused matcher cache has an invalid format version.');
                 }
-                $data = $blob['_data'] ?? null;
+                $data = CompiledMatcherIndexValidator::validateHosts($blob['_data'] ?? null);
                 $alias = $blob['_alias'] ?? null;
                 $middleware = matcher_normalize_middleware_requirements($blob['_middleware'] ?? []);
                 $stored = $blob['_hash'] ?? null;
-                if (!is_array($data) || !is_array($alias) || !is_string($stored)) {
+                if (!is_array($alias) || !is_string($stored)) {
                     throw new \UnexpectedValueException('Generated fused matcher cache has an invalid payload.');
                 }
                 if (!hash_equals($hash, $stored) || !hash_equals($hash, $this->cacheHash($data, $alias, $middleware))) {
@@ -197,10 +198,10 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
             throw new \RuntimeException('Stale fused route cache. Rebuild the route cache.');
         }
 
-        $data = $blob['_data'] ?? null;
+        $data = CompiledMatcherIndexValidator::validateHosts($blob['_data'] ?? null);
         $alias = $blob['_alias'] ?? null;
-        if (!is_array($data) || !is_array($alias)) {
-            throw new \RuntimeException('Fused route cache has an invalid payload.');
+        if (!is_array($alias)) {
+            throw new \RuntimeException('Fused route cache has an invalid alias payload.');
         }
 
         if ($this->verifyCacheOnLoad) {
@@ -211,8 +212,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
             }
         }
 
-        $this->index = new CanonicalMatcherIndex();
-        $this->index->replaceFromCache($data);
+        $this->compiledHosts = $data;
         $this->alias = matcher_normalize_alias_pairs($alias);
         $this->middlewareRequirements = array_fill_keys(
             matcher_normalize_middleware_requirements($blob['_middleware'] ?? []),
