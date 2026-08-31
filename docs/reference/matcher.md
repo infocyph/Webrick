@@ -71,6 +71,14 @@ into bounded `(*MARK:...)` PCRE chunks; callable or unsafe-to-compose constraint
 remain in ordered fallback steps so route precedence and segment semantics are
 preserved.
 
+The measured default is an **approximate 48 routes per PCRE chunk**. Webrick does
+not rigidly slice every run at 48: each precedence-safe PCRE run is redistributed
+into balanced chunks around that target. The 1,000-route PHP 8.4 tuning corpus
+showed 48 as the best balanced point across middle hits, late hits and misses;
+64 only narrowly improved the late/miss cases while regressing the middle case.
+Rebuild route-cache artifacts after changing Webrick versions so deployed
+artifacts pick up the current compiler tuning.
+
 ## Generated matcher
 
 ```php
