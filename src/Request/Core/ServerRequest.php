@@ -164,10 +164,8 @@ class ServerRequest extends Message
                 [HttpMethodEnum::PUT->value, HttpMethodEnum::PATCH->value, HttpMethodEnum::DELETE->value],
                 true,
             )
-            && str_contains(
-                strtolower($request->getHeaderLine('Content-Type')),
-                MediaTypeEnum::FORM_URLENCODED->value,
-            )
+            && HttpUtils::baseMediaType($request->getHeaderLine('Content-Type'))
+                === MediaTypeEnum::FORM_URLENCODED->base()
         ) {
             parse_str((string) $body, $form);
             $request = $request->withParsedBody(self::stringMap($form));
