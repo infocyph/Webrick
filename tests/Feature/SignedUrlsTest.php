@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Infocyph\InterMix\DI\Container;
+use Infocyph\InterMix\DI\Invoker;
 use Infocyph\Webrick\Middleware\VerifySignedUrlMiddleware;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
@@ -293,11 +295,10 @@ describe('Signed URLs', function () {
         ))->toThrow(InvalidArgumentException::class);
     });
 
-    it('keeps signed URL helpers bound after hot-cache boot', function () {
+    it('keeps signed URL helpers bound across development kernel reboots', function () {
         RouteFacade::resetUrlServices();
 
-        $cacheDir = \sys_get_temp_dir() . \DIRECTORY_SEPARATOR . 'webrick-route-cache-' . \bin2hex(\random_bytes(6));
-        $secret = 'hot-cache-sign-secret';
+        $secret = 'development-sign-secret';
         $signedUrlConfig = new SignedUrlConfig(
             generationKey: $secret,
             verificationKeys: [$secret],
@@ -307,27 +308,31 @@ describe('Signed URLs', function () {
         $register = static function (Registrar $registrar): void {
             $registrar->get('/download/{file}', [SignedUrlCacheController::class, 'handle'], 'download');
         };
+        $bindUrlServices = static function (Collection $routes) use ($secret, $signedUrlConfig): void {
+            RouteFacade::bindUrlServices($routes, $secret, 300, $signedUrlConfig, 'https://example.com');
+        };
 
         try {
             RouterKernel::bootWithRegistrar(
                 log: new NullLogger(),
                 matcher: ShardedMatcher::make(),
                 register: $register,
-                routeCache: $cacheDir,
+                invoker: Invoker::with(new Container('webrick.tests.signed-urls.first')),
                 registrarOptions: [
                     'autoSlashRedirect' => false,
-                    'exposeUrlServices' => true,
+                    'exposeUrlServices' => false,
                     'signKey' => $secret,
                     'signedDefaultTtl' => 300,
                     'signedUrlConfig' => $signedUrlConfig,
                     'urlBaseUri' => 'https://example.com',
                 ],
+                bindUrlServices: $bindUrlServices,
             );
 
             expect(RouteFacade::temporaryUrlUntil(
                 'download',
                 new DateTimeImmutable('+5 minutes'),
-                ['file' => 'cold.txt'],
+                ['file' => 'first.txt'],
                 absolute: true,
                 payloadMode: SignedUrlConfig::MODE_ABSOLUTE,
             ))->toContain('_sig=');
@@ -336,25 +341,25 @@ describe('Signed URLs', function () {
                 log: new NullLogger(),
                 matcher: ShardedMatcher::make(),
                 register: $register,
-                routeCache: $cacheDir,
+                invoker: Invoker::with(new Container('webrick.tests.signed-urls.second')),
                 registrarOptions: [
                     'autoSlashRedirect' => false,
-                    'exposeUrlServices' => true,
+                    'exposeUrlServices' => false,
                     'signKey' => $secret,
                     'signedDefaultTtl' => 300,
                     'signedUrlConfig' => $signedUrlConfig,
                     'urlBaseUri' => 'https://example.com',
                 ],
+                bindUrlServices: $bindUrlServices,
             );
 
             expect(RouteFacade::signedUrlFor(
                 'download',
-                ['file' => 'hot.txt'],
+                ['file' => 'second.txt'],
                 absolute: true,
                 payloadMode: SignedUrlConfig::MODE_ABSOLUTE,
             ))->toContain('_sig=');
         } finally {
-            cleanTestCache($cacheDir);
             RouteFacade::resetUrlServices();
         }
     });
