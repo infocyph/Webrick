@@ -25,7 +25,12 @@ use Infocyph\Webrick\Router\Constraint\Registry as ConstraintRegistry;
  */
 final class CompiledMatcherIndexCompiler
 {
-    public const int DEFAULT_CHUNK_SIZE = 32;
+    /**
+     * Approximate PCRE routes per chunk. Contiguous PCRE runs are redistributed
+     * evenly around this target so the final tail is not disproportionately
+     * small. Benchmarking on PHP 8.4 selected 48 as the best balanced target.
+     */
+    public const int DEFAULT_CHUNK_SIZE = 48;
 
     public function __construct(private readonly int $chunkSize = self::DEFAULT_CHUNK_SIZE)
     {
@@ -99,16 +104,12 @@ final class CompiledMatcherIndexCompiler
         foreach ($routes as $entry) {
             if ($entry['pcre']) {
                 $pcreBuffer[] = ['segments' => $entry['segments'], 'route' => $entry['route']];
-                if (count($pcreBuffer) >= $this->chunkSize) {
-                    $steps[] = $this->compilePcreStep($pcreBuffer);
-                    $pcreBuffer = [];
-                }
 
                 continue;
             }
 
             if ($pcreBuffer !== []) {
-                $steps[] = $this->compilePcreStep($pcreBuffer);
+                array_push($steps, ...$this->compileBalancedPcreSteps($pcreBuffer));
                 $pcreBuffer = [];
             }
             $steps[] = [
@@ -119,7 +120,29 @@ final class CompiledMatcherIndexCompiler
         }
 
         if ($pcreBuffer !== []) {
-            $steps[] = $this->compilePcreStep($pcreBuffer);
+            array_push($steps, ...$this->compileBalancedPcreSteps($pcreBuffer));
+        }
+
+        return $steps;
+    }
+
+    /**
+     * Evenly partitions one precedence-safe PCRE run around the configured
+     * approximate target, following the same balancing principle used by
+     * FastRoute rather than rigidly slicing at the target boundary.
+     *
+     * @param non-empty-list<array{segments:list<SegmentSpec>,route:RouteValue}> $routes
+     * @return non-empty-list<PcreStep>
+     */
+    private function compileBalancedPcreSteps(array $routes): array
+    {
+        $count = count($routes);
+        $parts = max(1, (int) round($count / $this->chunkSize));
+        $size = (int) ceil($count / $parts);
+        $steps = [];
+
+        foreach (array_chunk($routes, $size) as $chunk) {
+            $steps[] = $this->compilePcreStep($chunk);
         }
 
         return $steps;
