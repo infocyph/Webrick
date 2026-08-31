@@ -122,16 +122,6 @@ final class ArtifactValueCodec
         }
     }
 
-    /** @param callable $callable
-     *  @return array{kind:string,value:string}
-     */
-    private static function encodeCallable(callable $callable): array
-    {
-        $transport = static fn(): callable => $callable;
-
-        return ['kind' => self::CALLABLE, 'value' => ClosureSerializer::serialize($transport)];
-    }
-
     /** @return array{0:string,1:string}|string */
     private static function decodeValue(mixed $value): array|string
     {
@@ -150,6 +140,14 @@ final class ArtifactValueCodec
         }
 
         throw new UnexpectedValueException('Invalid scalar Webrick artifact value.');
+    }
+
+    /** @return array{kind:string,value:string} */
+    private static function encodeCallable(callable $callable): array
+    {
+        $transport = static fn(): callable => $callable;
+
+        return ['kind' => self::CALLABLE, 'value' => ClosureSerializer::serialize($transport)];
     }
 
     /** @return array{0:class-string,1:string}|null */
