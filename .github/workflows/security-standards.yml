@@ -6,7 +6,7 @@ on:
   push:
     branches: [ "main", "master", "webrick-5/batch-1-correctness" ]
   pull_request:
-    branches: [ "main", "master", "develop", "development", "webrick-5/batch-1-correctness" ]
+    branches: [ "main", "master", "develop", "development" ]
 
 jobs:
   phpforge:
