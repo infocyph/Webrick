@@ -26,6 +26,10 @@ class Response
 {
     use MacroMix;
 
+    private const string INVALID_REASON_PHRASE = '/[\x00-\x08\x0A-\x1F\x7F]/';
+
+    private const string PROTOCOL_VERSION_RX = '/^[0-9]+(?:\.[0-9]+)?$/D';
+
     private BodyStream|string $body;
 
     private ?BodyStream $bodyFacade = null;
@@ -44,6 +48,8 @@ class Response
         private ?string $reasonPhrase = null,
     ) {
         self::assertStatus($this->statusCode);
+        self::assertProtocolVersion($this->protocolVersion);
+        self::assertReasonPhrase($this->reasonPhrase);
         $this->headers = new HeaderBag($headers);
         $this->body = $body ?? '';
     }
@@ -428,6 +434,8 @@ class Response
 
     public function withProtocolVersion(string $version): self
     {
+        self::assertProtocolVersion($version);
+
         return $this->copy(protocolVersion: $version);
     }
 
@@ -439,11 +447,26 @@ class Response
     public function withStatus(int $code, string $reasonPhrase = ''): self
     {
         self::assertStatus($code);
+        self::assertReasonPhrase($reasonPhrase);
 
         return $this->copy(
             statusCode: $code,
             reasonPhrase: $reasonPhrase !== '' ? $reasonPhrase : self::statusText($code),
         );
+    }
+
+    private static function assertProtocolVersion(string $version): void
+    {
+        if (preg_match(self::PROTOCOL_VERSION_RX, $version) !== 1) {
+            throw new \InvalidArgumentException('Invalid HTTP protocol version.');
+        }
+    }
+
+    private static function assertReasonPhrase(?string $reasonPhrase): void
+    {
+        if ($reasonPhrase !== null && preg_match(self::INVALID_REASON_PHRASE, $reasonPhrase) === 1) {
+            throw new \InvalidArgumentException('HTTP reason phrase must not contain control characters.');
+        }
     }
 
     private static function assertStatus(int $code): void
