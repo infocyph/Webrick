@@ -95,52 +95,58 @@ final class CompiledMatcherIndexValidator
         return $dynamic;
     }
 
-    /** @return array{pcre:list<array{regex:string,routes:array<string,array{route:mixed,params:array<int,string>}>}>,fallback:list<array{segments:list<array<string,mixed>>,route:mixed}>} */
+    /** @return array{steps:list<array<string,mixed>>} */
     private static function validateBucket(mixed $raw, bool $validateRegex): array
     {
         if (!is_array($raw)) {
             throw new \UnexpectedValueException('Compiled matcher dynamic bucket is invalid.');
         }
 
-        $pcreRaw = $raw['pcre'] ?? null;
-        $fallbackRaw = $raw['fallback'] ?? null;
-        if (!is_array($pcreRaw) || !array_is_list($pcreRaw) || !is_array($fallbackRaw) || !array_is_list($fallbackRaw)) {
-            throw new \UnexpectedValueException('Compiled matcher dynamic lanes are invalid.');
+        $stepsRaw = $raw['steps'] ?? null;
+        if (!is_array($stepsRaw) || !array_is_list($stepsRaw) || $stepsRaw === []) {
+            throw new \UnexpectedValueException('Compiled matcher dynamic steps are invalid.');
         }
 
-        $pcre = [];
-        foreach ($pcreRaw as $chunk) {
-            $pcre[] = self::validateChunk($chunk, $validateRegex);
+        $steps = [];
+        foreach ($stepsRaw as $step) {
+            $steps[] = self::validateStep($step, $validateRegex);
         }
 
-        $fallback = [];
-        foreach ($fallbackRaw as $entry) {
-            if (!is_array($entry)) {
-                throw new \UnexpectedValueException('Compiled matcher fallback entry is invalid.');
-            }
-            $segments = self::validateSegments($entry['segments'] ?? null);
-            $route = $entry['route'] ?? null;
-            self::validateRoute($route);
-            $fallback[] = ['segments' => $segments, 'route' => $route];
-        }
-
-        return ['pcre' => $pcre, 'fallback' => $fallback];
+        return ['steps' => $steps];
     }
 
-    /** @return array{regex:string,routes:array<string,array{route:mixed,params:array<int,string>}>} */
-    private static function validateChunk(mixed $raw, bool $validateRegex): array
+    /** @return array<string,mixed> */
+    private static function validateStep(mixed $raw, bool $validateRegex): array
     {
         if (!is_array($raw)) {
-            throw new \UnexpectedValueException('Compiled matcher PCRE chunk is invalid.');
+            throw new \UnexpectedValueException('Compiled matcher dynamic step is invalid.');
         }
 
+        $type = $raw['type'] ?? null;
+        if ($type === 'pcre') {
+            return self::validatePcreStep($raw, $validateRegex);
+        }
+        if ($type !== 'fallback') {
+            throw new \UnexpectedValueException('Compiled matcher dynamic step type is invalid.');
+        }
+
+        $segments = self::validateSegments($raw['segments'] ?? null);
+        $route = $raw['route'] ?? null;
+        self::validateRoute($route);
+
+        return ['type' => 'fallback', 'segments' => $segments, 'route' => $route];
+    }
+
+    /** @return array{type:'pcre',regex:string,routes:array<string,array{route:mixed,params:array<int,string>}>} */
+    private static function validatePcreStep(array $raw, bool $validateRegex): array
+    {
         $regex = $raw['regex'] ?? null;
         $routesRaw = $raw['routes'] ?? null;
         if (!is_string($regex) || $regex === '' || !is_array($routesRaw)) {
-            throw new \UnexpectedValueException('Compiled matcher PCRE chunk payload is invalid.');
+            throw new \UnexpectedValueException('Compiled matcher PCRE step payload is invalid.');
         }
         if ($validateRegex && @preg_match($regex, '') === false) {
-            throw new \UnexpectedValueException('Compiled matcher PCRE chunk cannot be compiled.');
+            throw new \UnexpectedValueException('Compiled matcher PCRE step cannot be compiled.');
         }
 
         $routes = [];
@@ -156,10 +162,10 @@ final class CompiledMatcherIndexValidator
             ];
         }
         if ($routes === []) {
-            throw new \UnexpectedValueException('Compiled matcher PCRE chunk has no routes.');
+            throw new \UnexpectedValueException('Compiled matcher PCRE step has no routes.');
         }
 
-        return ['regex' => $regex, 'routes' => $routes];
+        return ['type' => 'pcre', 'regex' => $regex, 'routes' => $routes];
     }
 
     /** @return array<int,string> */
