@@ -6,7 +6,6 @@ namespace Infocyph\Webrick\Router\Kernel;
 
 use Infocyph\InterMix\DI\ProductionContainer;
 use Infocyph\Webrick\Constants\HttpMethodEnum;
-use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
 use Infocyph\Webrick\Exceptions\RouteNotFoundException;
 use Infocyph\Webrick\Request\Request;
@@ -59,14 +58,7 @@ final readonly class CompiledRouterKernel
         $this->runtime = new InterMixRuntime($container);
         $this->dispatcher = new RuntimeDispatcher($this->runtime, $artifact);
         $this->hasGlobalMiddleware = $this->dispatcher->hasGlobalMiddleware();
-        $this->errorHandler = $errorHandler ?? new ErrorHandler(
-            logger: $log,
-            debug: false,
-            exceptionMap: [
-                RouteNotFoundException::class => StatusEnum::NOT_FOUND->value,
-                MethodNotAllowedException::class => StatusEnum::METHOD_NOT_ALLOWED->value,
-            ],
-        );
+        $this->errorHandler = $errorHandler ?? new ErrorHandler(logger: $log, debug: false);
 
         UrlGeneratorRegistry::bind(new UrlGenerator(
             $urlBaseUri,
