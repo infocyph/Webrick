@@ -73,7 +73,7 @@ enum HttpMethodEnum: string
     {
         $verb = trim($verb);
         if ($verb === '') {
-            return '';
+            throw new \InvalidArgumentException('HTTP method must not be empty.');
         }
         if (preg_match("/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/D", $verb) !== 1) {
             throw new \InvalidArgumentException('Invalid HTTP method token.');
@@ -86,14 +86,17 @@ enum HttpMethodEnum: string
 
     public static function tryFromString(string $verb): ?self
     {
-        $normalized = self::normalize($verb);
+        $verb = trim($verb);
+        if ($verb === '') {
+            return null;
+        }
 
-        return $normalized === '' ? null : self::tryFrom(strtoupper($normalized));
+        return self::tryFrom(strtoupper(self::normalize($verb)));
     }
 
     public function allowsBody(): bool
     {
-        return !in_array($this, [self::TRACE, self::HEAD, self::DELETE, self::CONNECT], true);
+        return $this->specAllowsBody();
     }
 
     public function isIdempotent(): bool
