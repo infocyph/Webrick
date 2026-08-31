@@ -205,7 +205,16 @@ enum StatusEnum: int
 
     public function isRedirect(): bool
     {
-        return $this->series() === 3;
+        return match ($this) {
+            self::MULTIPLE_CHOICES,
+            self::MOVED_PERMANENTLY,
+            self::FOUND,
+            self::SEE_OTHER,
+            self::USE_PROXY,
+            self::TEMPORARY_REDIRECT,
+            self::PERMANENT_REDIRECT => true,
+            default => false,
+        };
     }
 
     public function isServerError(): bool

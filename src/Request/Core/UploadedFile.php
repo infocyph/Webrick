@@ -151,19 +151,30 @@ final class UploadedFile
             throw new RuntimeException("Cannot write to {$targetPath}");
         }
 
+        $completed = false;
         try {
             while (!$source->eof()) {
                 $chunk = $source->read(65_536);
                 if ($chunk === '') {
                     break;
                 }
-                $written = fwrite($out, $chunk);
-                if ($written === false || $written !== strlen($chunk)) {
-                    throw new RuntimeException("Failed to write uploaded file to {$targetPath}");
+
+                $offset = 0;
+                $length = strlen($chunk);
+                while ($offset < $length) {
+                    $written = fwrite($out, substr($chunk, $offset));
+                    if ($written === false || $written === 0) {
+                        throw new RuntimeException("Failed to write uploaded file to {$targetPath}");
+                    }
+                    $offset += $written;
                 }
             }
+            $completed = true;
         } finally {
             fclose($out);
+            if (!$completed && is_file($targetPath)) {
+                @unlink($targetPath);
+            }
         }
     }
 }

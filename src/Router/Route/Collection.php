@@ -10,100 +10,71 @@ use IteratorAggregate;
 use LogicException;
 use Traversable;
 
-/**
- * In-memory collection of Route DTOs used during router build-time.
- *
- * Responsibilities:
- *  - Accept RouteInterface instances during registration (add, addAlias, addAliases).
- *  - Provide fast lookups by primary name, alias, handler id and path.
- *  - Produce a compiled, immutable CompiledCollection via compile().
- *  - Expose a flat alias index for URL helper generation and cache export.
- *
- * Lifecycle:
- *  - Build phase: collection is mutable and indices are kept up-to-date.
- *  - Freeze phase: compile() produces a CompiledCollection and prevents further mutation.
- *
- * @implements IteratorAggregate<int, RouteInterface>
- */
+/** @implements IteratorAggregate<int, RouteInterface> */
 final class Collection implements IteratorAggregate
 {
-    /** @var array<string, RouteInterface> */
+    /** @var array<string,RouteInterface> */
     private array $aliases = [];
-
-    /** @var array<string, array{0:string,1:?string}>|null */
+    /** @var array<string,array{0:string,1:?string}>|null */
     private ?array $aliasIndex = null;
-
-    /** @var array<string, list<RouteInterface>> */
+    /** @var array<string,list<RouteInterface>> */
     private array $byHandler = [];
-
-    /** @var array<string, RouteInterface> */
+    /** @var array<string,RouteInterface> */
     private array $byName = [];
-
-    /** @var array<string, RouteInterface> */
+    /** @var array<string,RouteInterface> */
     private array $byPath = [];
-
     private ?CompiledCollection $compiled = null;
-
     private bool $dirty = false;
-
     private bool $frozen = false;
-
     /** @var list<RouteInterface> */
     private array $routes = [];
 
     public function add(RouteInterface $route): void
     {
         $this->assertMutable();
-
-        $this->routes[] = $route;
-        $this->dirty = true;
-        $this->aliasIndex = null;
-
-        if (($name = $route->getName()) !== null && $name !== '') {
-            if ((isset($this->byName[$name]) && $this->byName[$name] !== $route)
-                || isset($this->aliases[$name])) {
-                throw new LogicException("Duplicate route name: {$name}");
-            }
-            $this->byName[$name] = $route;
-        }
-
-        $this->byPath[$route->getPath()] = $route;
-        $this->byHandler[$route->getHandlerId()][] = $route;
+        $this->validateRouteRegistration($route);
+        $this->commitRoute($route);
     }
 
     public function addAlias(RouteInterface $route, string $alias): void
     {
         $this->assertMutable();
-
-        $alias = trim($alias);
-        if ($alias === '') {
-            throw new LogicException('Alias cannot be empty.');
-        }
-        if (isset($this->byName[$alias])) {
-            throw new LogicException("Alias '{$alias}' conflicts with an existing route name.");
-        }
-        if (isset($this->aliases[$alias]) && $this->aliases[$alias] !== $route) {
-            throw new LogicException("Alias '{$alias}' is already in use.");
-        }
-        if (($route->getName() ?? '') === $alias) {
-            throw new LogicException("Alias '{$alias}' duplicates the route's primary name.");
-        }
-
+        $alias = $this->normalizeAlias($route, $alias);
+        $this->validateAliasRegistration($route, $alias);
         $this->aliases[$alias] = $route;
         $this->aliasIndex = null;
     }
 
-    /**
-     * @param string[] $aliases
-     */
+    /** @param string[] $aliases */
     public function addAliases(RouteInterface $route, array $aliases): void
     {
-        foreach ($aliases as $alias) {
-            $this->addAlias($route, (string) $alias);
+        $this->assertMutable();
+        $normalized = $this->validateAliasBatch($route, $aliases);
+        foreach ($normalized as $alias) {
+            $this->aliases[$alias] = $route;
+        }
+        if ($normalized !== []) {
+            $this->aliasIndex = null;
         }
     }
 
-    /** @return array<string, array{0:string,1:?string}> */
+    /** @param list<string> $aliases */
+    public function addWithAliases(RouteInterface $route, array $aliases): void
+    {
+        $this->assertMutable();
+        $this->validateRouteRegistration($route);
+        $normalized = $this->validateAliasBatch($route, $aliases);
+
+        $this->commitRoute($route);
+        foreach ($normalized as $alias) {
+            $this->aliases[$alias] = $route;
+        }
+        if ($normalized !== []) {
+            $this->aliasIndex = null;
+        }
+    }
+
+    /** @return array<string,array{0:string,1:?string}> */
     public function aliasIndex(): array
     {
         if ($this->aliasIndex !== null) {
@@ -122,15 +93,11 @@ final class Collection implements IteratorAggregate
     }
 
     /** @return list<RouteInterface> */
-    public function all(): array
-    {
-        return $this->routes;
-    }
+    public function all(): array { return $this->routes; }
 
     public function clear(): void
     {
         $this->assertMutable();
-
         $this->routes = [];
         $this->resetIndexes();
     }
@@ -153,26 +120,17 @@ final class Collection implements IteratorAggregate
         return $this->compiled;
     }
 
-    public function dirty(): bool
-    {
-        return $this->dirty;
-    }
+    public function dirty(): bool { return $this->dirty; }
 
-    /**
-     * @return list<RouteInterface>
-     */
+    /** @return list<RouteInterface> */
     public function findAllByHandler(callable|string $handler): array
     {
-        $id = Route::fingerprint($handler);
-
-        return $this->byHandler[$id] ?? [];
+        return $this->byHandler[Route::fingerprint($handler)] ?? [];
     }
 
     public function findByHandler(callable|string $handler): ?RouteInterface
     {
-        $id = Route::fingerprint($handler);
-
-        return $this->byHandler[$id][0] ?? null;
+        return $this->byHandler[Route::fingerprint($handler)][0] ?? null;
     }
 
     public function findByName(string $name): ?RouteInterface
@@ -180,63 +138,34 @@ final class Collection implements IteratorAggregate
         return $this->byName[$name] ?? $this->aliases[$name] ?? null;
     }
 
-    public function frozen(): bool
-    {
-        return $this->frozen;
-    }
+    public function frozen(): bool { return $this->frozen; }
 
-    /** @return Traversable<int, RouteInterface> */
-    public function getIterator(): Traversable
-    {
-        return new ArrayIterator($this->routes);
-    }
+    /** @return Traversable<int,RouteInterface> */
+    public function getIterator(): Traversable { return new ArrayIterator($this->routes); }
 
-    public function hasPath(string $path): bool
-    {
-        return isset($this->byPath[$path]);
-    }
+    public function hasPath(string $path): bool { return isset($this->byPath[$path]); }
 
-    public function nameDomain(string $name): ?string
-    {
-        $route = $this->findByName($name);
-
-        return $route?->getDomain();
-    }
-
-    public function namePath(string $name): ?string
-    {
-        $route = $this->findByName($name);
-
-        return $route?->getPath();
-    }
+    public function nameDomain(string $name): ?string { return $this->findByName($name)?->getDomain(); }
+    public function namePath(string $name): ?string { return $this->findByName($name)?->getPath(); }
 
     public function remove(RouteInterface $route): void
     {
         $this->assertMutable();
-
-        $this->routes = array_values(
-            array_filter($this->routes, static fn($entry) => $entry !== $route),
-        );
-        $this->rebuildIndices();
-
+        $this->routes = array_values(array_filter($this->routes, static fn($entry) => $entry !== $route));
         foreach ($this->aliases as $name => $entry) {
             if ($entry === $route) {
                 unset($this->aliases[$name]);
             }
         }
-
+        $this->rebuildIndices();
         $this->dirty = true;
         $this->aliasIndex = null;
     }
 
-    /**
-     * @return array{0:string,1:?string}|null
-     */
+    /** @return array{0:string,1:?string}|null */
     public function resolveAlias(string $name): ?array
     {
-        $index = $this->aliasIndex();
-
-        return $index[$name] ?? null;
+        return $this->aliasIndex()[$name] ?? null;
     }
 
     private function assertMutable(): void
@@ -244,6 +173,32 @@ final class Collection implements IteratorAggregate
         if ($this->frozen) {
             throw new LogicException('Route collection already compiled – further mutation prohibited.');
         }
+    }
+
+    private function commitRoute(RouteInterface $route): void
+    {
+        $this->routes[] = $route;
+        $this->dirty = true;
+        $this->compiled = null;
+        $this->aliasIndex = null;
+        if (($name = $route->getName()) !== null && $name !== '') {
+            $this->byName[$name] = $route;
+        }
+        $this->byPath[$route->getPath()] = $route;
+        $this->byHandler[$route->getHandlerId()][] = $route;
+    }
+
+    private function normalizeAlias(RouteInterface $route, string $alias): string
+    {
+        $alias = trim($alias);
+        if ($alias === '') {
+            throw new LogicException('Alias cannot be empty.');
+        }
+        if (($route->getName() ?? '') === $alias) {
+            throw new LogicException("Alias '{$alias}' duplicates the route's primary name.");
+        }
+
+        return $alias;
     }
 
     private function rebuildIndices(): void
@@ -254,8 +209,7 @@ final class Collection implements IteratorAggregate
 
         foreach ($this->routes as $route) {
             if (($name = $route->getName()) !== null && $name !== '') {
-                if ((isset($this->byName[$name]) && $this->byName[$name] !== $route)
-                    || isset($this->aliases[$name])) {
+                if ((isset($this->byName[$name]) && $this->byName[$name] !== $route) || isset($this->aliases[$name])) {
                     throw new LogicException("Duplicate route name during rebuild: {$name}");
                 }
                 $this->byName[$name] = $route;
@@ -270,7 +224,6 @@ final class Collection implements IteratorAggregate
                 unset($this->aliases[$alias]);
             }
         }
-
         $this->aliasIndex = null;
     }
 
@@ -278,6 +231,46 @@ final class Collection implements IteratorAggregate
     {
         [$this->byName, $this->byHandler, $this->byPath, $this->aliases] = [[], [], [], []];
         $this->dirty = true;
+        $this->compiled = null;
         $this->aliasIndex = null;
+    }
+
+    /** @param list<string> $aliases @return list<string> */
+    private function validateAliasBatch(RouteInterface $route, array $aliases): array
+    {
+        $normalized = [];
+        $seen = [];
+        foreach ($aliases as $alias) {
+            $alias = $this->normalizeAlias($route, (string) $alias);
+            if (isset($seen[$alias])) {
+                throw new LogicException("Alias '{$alias}' is duplicated in the registration batch.");
+            }
+            $this->validateAliasRegistration($route, $alias);
+            $seen[$alias] = true;
+            $normalized[] = $alias;
+        }
+
+        return $normalized;
+    }
+
+    private function validateAliasRegistration(RouteInterface $route, string $alias): void
+    {
+        if (isset($this->byName[$alias])) {
+            throw new LogicException("Alias '{$alias}' conflicts with an existing route name.");
+        }
+        if (isset($this->aliases[$alias]) && $this->aliases[$alias] !== $route) {
+            throw new LogicException("Alias '{$alias}' is already in use.");
+        }
+    }
+
+    private function validateRouteRegistration(RouteInterface $route): void
+    {
+        $name = $route->getName();
+        if ($name === null || $name === '') {
+            return;
+        }
+        if ((isset($this->byName[$name]) && $this->byName[$name] !== $route) || isset($this->aliases[$name])) {
+            throw new LogicException("Duplicate route name: {$name}");
+        }
     }
 }

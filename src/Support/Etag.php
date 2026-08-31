@@ -22,6 +22,11 @@ final class Etag
 
         try {
             $position = $stream->tell();
+        } catch (\Throwable) {
+            return null;
+        }
+
+        try {
             $stream->seek(0);
             $context = hash_init($algo);
             if ($salt !== '') {
@@ -35,12 +40,17 @@ final class Etag
                 hash_update($context, $buffer);
             }
             $hex = hash_final($context);
-            $stream->seek($position);
             $digest = $hexLen === null ? $hex : substr($hex, 0, $hexLen);
 
             return '"' . $digest . '"';
         } catch (\Throwable) {
             return null;
+        } finally {
+            try {
+                $stream->seek($position);
+            } catch (\Throwable) {
+                // Best effort: hashing failure must not be replaced by a restore failure.
+            }
         }
     }
 

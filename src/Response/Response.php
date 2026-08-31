@@ -134,10 +134,13 @@ class Response
     /** @param array<string,string|list<string>> $headers */
     public static function empty(int $code, array $headers = []): self
     {
-        if (!StatusEnum::isEmptyCode($code)) {
-            $headers += ['Content-Length' => '0'];
-        } else {
+        if (($code >= 100 && $code < 200) || $code === StatusEnum::NO_CONTENT->value) {
             unset($headers['Content-Length'], $headers['content-length']);
+        } elseif ($code === StatusEnum::RESET_CONTENT->value) {
+            unset($headers['content-length']);
+            $headers['Content-Length'] = '0';
+        } elseif ($code !== StatusEnum::NOT_MODIFIED->value) {
+            $headers += ['Content-Length' => '0'];
         }
 
         return new self($code, '', $headers);
@@ -231,8 +234,8 @@ class Response
     public static function redirect(string $uri, int $status = StatusEnum::FOUND->value): self
     {
         $resolved = StatusEnum::tryFrom($status);
-        if (!$resolved || !$resolved->isRedirect()) {
-            throw new \InvalidArgumentException('Redirect status must be a 3xx code.');
+        if (!$resolved instanceof StatusEnum || !$resolved->isRedirect()) {
+            throw new \InvalidArgumentException('Redirect status must be one of 300, 301, 302, 303, 305, 307, or 308.');
         }
 
         return new self($status, '')
@@ -492,10 +495,7 @@ class Response
         };
     }
 
-    /**
-     * @param array<string,string> $target
-     * @param array<string,string|list<string>> $caller
-     */
+    /** @param array<string,string> $target @param array<string,string|list<string>> $caller */
     private static function putIfAbsent(array &$target, string $name, ?string $value, array $caller): void
     {
         if ($value !== null && !array_key_exists($name, $caller)) {

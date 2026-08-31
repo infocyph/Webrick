@@ -19,34 +19,22 @@ use RuntimeException;
 final class CookieEncryptionMiddleware
 {
     private const string CACHE_PREFIX = 'enc_cookie.';
-
     private const string MODE_BROTLI = 'b';
-
     private const string MODE_GZIP = 'g';
-
     private const string MODE_NONE = '0';
-
     private const string MODE_STORE = 'S:';
-
     private const string MODE_ZSTD = 'z';
-
     private const string STORE_BLOB_V1 = 'C1:';
-
     private const string STORE_SEP = ':';
-
     private const string V1_BYTE = '1';
 
-    private static bool $hasBrotli = false;
-
-    private static bool $hasGzip = false;
-
-    private static bool $hasZstd = false;
-
     private readonly CookieAttributeApplier $cookieAttributeApplier;
+    private readonly bool $hasBrotli;
+    private readonly bool $hasGzip;
+    private readonly bool $hasZstd;
 
     /** @var list<string> */
     private readonly array $keys;
-
     private readonly int $kid;
 
     /** @param string|array<int,string> $keyOrKeys */
@@ -83,13 +71,9 @@ final class CookieEncryptionMiddleware
 
         $this->keys = $keys;
         $this->kid = $activeKid;
-
-        if (!self::$hasZstd && !self::$hasBrotli && !self::$hasGzip) {
-            self::$hasZstd = function_exists('zstd_compress');
-            self::$hasBrotli = function_exists('brotli_compress');
-            self::$hasGzip = function_exists('gzdeflate');
-        }
-
+        $this->hasZstd = function_exists('zstd_compress') && function_exists('zstd_uncompress');
+        $this->hasBrotli = function_exists('brotli_compress') && function_exists('brotli_uncompress');
+        $this->hasGzip = function_exists('gzdeflate') && function_exists('gzinflate');
         $this->cookieAttributeApplier = new CookieAttributeApplier(
             forceSecure: $this->forceSecure,
             forceHttpOnly: $this->forceHttpOnly,
@@ -100,9 +84,10 @@ final class CookieEncryptionMiddleware
     /** @param Closure(Request):Response $next */
     public function __invoke(Request $req, Closure $next): Response
     {
-        $req = $req->withCookieParams($this->decryptAll($req->getCookieParams()));
+        $incoming = $req->getCookieParams();
+        $req = $req->withCookieParams($this->decryptAll($incoming));
 
-        return $this->encryptAll($next($req));
+        return $this->encryptAll($next($req), $incoming);
     }
 
     /** Return a new middleware instance with a different active encryption key. */
@@ -139,15 +124,15 @@ final class CookieEncryptionMiddleware
     {
         $best = $plaintext;
         $mode = self::MODE_NONE;
-        if (self::$hasZstd && ($compressed = zstd_compress($plaintext, 3)) !== false && strlen($compressed) < strlen($best)) {
+        if ($this->hasZstd && ($compressed = zstd_compress($plaintext, 3)) !== false && strlen($compressed) < strlen($best)) {
             $best = $compressed;
             $mode = self::MODE_ZSTD;
         }
-        if (self::$hasBrotli && ($compressed = brotli_compress($plaintext, 4)) !== false && strlen($compressed) < strlen($best)) {
+        if ($this->hasBrotli && ($compressed = brotli_compress($plaintext, 4)) !== false && strlen($compressed) < strlen($best)) {
             $best = $compressed;
             $mode = self::MODE_BROTLI;
         }
-        if (self::$hasGzip && ($compressed = gzdeflate($plaintext, 4)) !== false && strlen($compressed) < strlen($best)) {
+        if ($this->hasGzip && ($compressed = gzdeflate($plaintext, 4)) !== false && strlen($compressed) < strlen($best)) {
             $best = $compressed;
             $mode = self::MODE_GZIP;
         }
@@ -174,10 +159,11 @@ final class CookieEncryptionMiddleware
     private function decompress(string $mode, string $payload): mixed
     {
         return match ($mode) {
-            self::MODE_ZSTD => self::$hasZstd ? zstd_uncompress($payload) : null,
-            self::MODE_BROTLI => self::$hasBrotli ? brotli_uncompress($payload) : null,
-            self::MODE_GZIP => gzinflate($payload),
-            default => $payload,
+            self::MODE_ZSTD => $this->hasZstd ? zstd_uncompress($payload) : null,
+            self::MODE_BROTLI => $this->hasBrotli ? brotli_uncompress($payload) : null,
+            self::MODE_GZIP => $this->hasGzip ? gzinflate($payload) : null,
+            self::MODE_NONE => $payload,
+            default => null,
         };
     }
 
@@ -195,14 +181,10 @@ final class CookieEncryptionMiddleware
         return $frame === null ? null : $this->decryptFrame($baseName, $frame);
     }
 
-    /**
-     * @param array<string,mixed> $cookies
-     * @return array<string,mixed>
-     */
+    /** @param array<string,mixed> $cookies @return array<string,mixed> */
     private function decryptAll(array $cookies): array
     {
         $pattern = '/^(' . preg_quote($this->cookiePrefix, '/') . '[^.]+)(?:\.p(\d+))?$/';
-        /** @var array<string,mixed> $out */
         $out = [];
         /** @var array<string,array<int,string>> $assemblies */
         $assemblies = [];
@@ -212,7 +194,6 @@ final class CookieEncryptionMiddleware
             }
             if (!preg_match($pattern, $name, $matches)) {
                 $out[$name] = $value;
-
                 continue;
             }
             $assemblies[$matches[1]][(int) ($matches[2] ?? 1)] = $value;
@@ -220,6 +201,12 @@ final class CookieEncryptionMiddleware
 
         foreach ($assemblies as $base => $parts) {
             ksort($parts);
+            if (array_keys($parts) !== range(1, count($parts))) {
+                if (!$this->dropOnDecryptFailure) {
+                    $out[$base] = null;
+                }
+                continue;
+            }
             $plain = $this->decrypt($base, implode('', $parts));
             if (($plain === null || $plain === false) && $this->dropOnDecryptFailure) {
                 continue;
@@ -282,7 +269,8 @@ final class CookieEncryptionMiddleware
         return self::STORE_BLOB_V1 . substr(hash('sha3-256', $cipher), 0, 8) . self::STORE_SEP . $cipher;
     }
 
-    private function encryptAll(Response $response): Response
+    /** @param array<string,mixed> $incoming */
+    private function encryptAll(Response $response, array $incoming): Response
     {
         $setCookies = $response->getHeader('Set-Cookie');
         if ($setCookies === []) {
@@ -294,18 +282,50 @@ final class CookieEncryptionMiddleware
             $parts = $this->parseSetCookie($line);
             if ($parts === null || !str_starts_with($parts['name'], $this->cookiePrefix)) {
                 $jar = $jar->raw($line);
-
                 continue;
             }
 
-            foreach ($this->encryptSegments($parts['name'], rawurldecode($parts['value'])) as $index => $segment) {
+            $segments = $this->encryptSegments($parts['name'], rawurldecode($parts['value']));
+            $lastIndex = max(array_keys($segments));
+            foreach ($segments as $index => $segment) {
                 $name = $index === 1 ? $parts['name'] : $parts['name'] . '.p' . $index;
-                $cookie = $this->cookieAttributeApplier->apply(Cookie::make($name, $segment), $parts['attrs']);
+                $cookie = $this->cookieAttributeApplier->apply(
+                    Cookie::make($name, $segment, secure: false, httpOnly: false),
+                    $parts['attrs'],
+                );
                 $jar = $jar->add($cookie);
             }
+            $jar = $this->expireStaleSegments($jar, $parts['name'], $lastIndex, $parts['attrs'], $incoming);
         }
 
         return $jar->apply($response->withoutHeader('Set-Cookie'));
+    }
+
+    /** @param array<string,bool|string> $attrs @param array<string,mixed> $incoming */
+    private function expireStaleSegments(
+        CookieJar $jar,
+        string $baseName,
+        int $lastIndex,
+        array $attrs,
+        array $incoming,
+    ): CookieJar {
+        $pattern = '/^' . preg_quote($baseName, '/') . '\.p(\d+)$/D';
+        foreach ($incoming as $name => $_value) {
+            if (!is_string($name) || preg_match($pattern, $name, $matches) !== 1) {
+                continue;
+            }
+            $index = (int) $matches[1];
+            if ($index <= $lastIndex) {
+                continue;
+            }
+            $cookie = $this->cookieAttributeApplier->apply(
+                Cookie::make($name, '', secure: false, httpOnly: false),
+                $attrs,
+            )->expire();
+            $jar = $jar->add($cookie);
+        }
+
+        return $jar;
     }
 
     /** @throws RandomException|RuntimeException */
@@ -330,10 +350,7 @@ final class CookieEncryptionMiddleware
         return base64_encode(self::V1_BYTE . $mode . chr($this->kidByte()) . $iv . $tag . $ciphertext);
     }
 
-    /**
-     * @return array<int,string>
-     * @throws RandomException|LengthException|RuntimeException
-     */
+    /** @return array<int,string> @throws RandomException|LengthException|RuntimeException */
     private function encryptSegments(string $baseName, string $plaintext): array
     {
         $cipher = $this->encryptBlob($baseName, $plaintext);
@@ -343,13 +360,17 @@ final class CookieEncryptionMiddleware
 
         $parts = str_split($cipher, $this->maxBytes);
         if (count($parts) <= 10) {
-            return array_combine(range(1, count($parts)), $parts);
+            /** @var array<int,string> $combined */
+            $combined = array_combine(range(1, count($parts)), $parts);
+            return $combined;
         }
         if ($this->store !== null) {
             $id = bin2hex(random_bytes(16));
             $item = $this->store->getItem(self::CACHE_PREFIX . $id);
             $item->set($this->encodeCacheBlobV1($cipher))->expiresAfter($this->storeTtl);
-            $this->store->save($item);
+            if (!$this->store->save($item)) {
+                throw new RuntimeException('Unable to persist oversized encrypted cookie payload.');
+            }
 
             return [1 => self::MODE_STORE . $id];
         }
@@ -431,7 +452,7 @@ final class CookieEncryptionMiddleware
     private function parseSetCookie(string $line): ?array
     {
         $chunks = array_map(trim(...), explode(';', $line));
-        if (!str_contains($chunks[0], '=')) {
+        if ($chunks === [] || !str_contains($chunks[0], '=')) {
             return null;
         }
         [$name, $value] = explode('=', $chunks[0], 2);

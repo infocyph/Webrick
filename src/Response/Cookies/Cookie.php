@@ -4,9 +4,7 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Response\Cookies;
 
-/**
- * Immutable RFC 6265-style cookie with security-prefix invariants.
- */
+/** Immutable RFC 6265-style cookie with security-prefix invariants. */
 final class Cookie implements \Stringable
 {
     private const string INVALID_DOMAIN = '/[\x00-\x20\x7F;,]/';
@@ -23,7 +21,7 @@ final class Cookie implements \Stringable
         private ?string $domain = null,
         private bool $secure = true,
         private bool $httpOnly = true,
-        private string $sameSite = 'Lax',
+        private ?string $sameSite = 'Lax',
         private bool $partitioned = false,
     ) {}
 
@@ -44,7 +42,9 @@ final class Cookie implements \Stringable
         if ($this->httpOnly) {
             $parts[] = 'HttpOnly';
         }
-        $parts[] = 'SameSite=' . $this->sameSite;
+        if ($this->sameSite !== null) {
+            $parts[] = 'SameSite=' . $this->sameSite;
+        }
         if ($this->partitioned) {
             $parts[] = 'Partitioned';
         }
@@ -52,13 +52,27 @@ final class Cookie implements \Stringable
         return implode('; ', $parts);
     }
 
-    public static function make(string $name, string $value = ''): self
-    {
+    public static function make(
+        string $name,
+        string $value = '',
+        bool $secure = true,
+        bool $httpOnly = true,
+        ?string $sameSite = 'Lax',
+    ): self {
         if (!preg_match(self::NAME_RX, $name)) {
             throw new \InvalidArgumentException("Invalid cookie name: {$name}");
         }
+        if ($sameSite !== null) {
+            $sameSite = ucfirst(strtolower($sameSite));
+            if (!in_array($sameSite, ['Lax', 'Strict', 'None'], true)) {
+                throw new \InvalidArgumentException('SameSite must be Lax|Strict|None.');
+            }
+        }
 
-        return new self($name, $value);
+        $cookie = new self($name, $value, secure: $secure, httpOnly: $httpOnly, sameSite: $sameSite);
+        $cookie->assertInvariants();
+
+        return $cookie;
     }
 
     public function domain(string $domain): self

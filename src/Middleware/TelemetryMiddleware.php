@@ -14,12 +14,7 @@ use Infocyph\Webrick\Support\TraceContext;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 
-/**
- * Telemetry middleware with W3C Trace Context and optional OpenTelemetry integration.
- *
- * Trace data is attached to the request through the explicit RequestContext
- * abstraction. No process-global current-request state is used.
- */
+/** Telemetry middleware with W3C Trace Context and optional OpenTelemetry integration. */
 final readonly class TelemetryMiddleware
 {
     private bool $otelAvailable;
@@ -49,9 +44,7 @@ final readonly class TelemetryMiddleware
             && class_exists('OpenTelemetry\\API\\Trace\\SpanKind');
     }
 
-    /**
-     * @param Closure(Request):Response $next
-     */
+    /** @param Closure(Request):Response $next */
     public function __invoke(Request $req, Closure $next): Response
     {
         if ($this->otelAvailable) {
@@ -128,9 +121,7 @@ final readonly class TelemetryMiddleware
         return preg_match('/\A[0-9a-f]{32}\z/iD', $hex) === 1 && $hex !== str_repeat('0', 32);
     }
 
-    /**
-     * @param array{trace_id:string,parent_span_id:string,flags:string,tracestate:string,span_id:string} $trace
-     */
+    /** @param array{trace_id:string,parent_span_id:string,flags:string,tracestate:string,span_id:string} $trace */
     private function addCorrelationHeaders(Response $resp, array $trace, ?string $requestId): Response
     {
         $resp = TelemetrySupport::addCorrelationHeaders(
@@ -173,9 +164,7 @@ final readonly class TelemetryMiddleware
         );
     }
 
-    /**
-     * @param Closure(Request):Response $next
-     */
+    /** @param Closure(Request):Response $next */
     private function delegateToOtel(Request $req, Closure $next): Response
     {
         return new OpenTelemetryHandler($this->options())->handle($req, $next);
@@ -191,9 +180,7 @@ final readonly class TelemetryMiddleware
         );
     }
 
-    /**
-     * @return array{0:string,1:string,2:string,3:string}
-     */
+    /** @return array{0:string,1:string,2:string,3:string} */
     private function extractTraceContext(Request $req): array
     {
         $traceparent = trim($req->getHeaderLine('traceparent'));
@@ -214,12 +201,11 @@ final readonly class TelemetryMiddleware
             }
         }
 
-        return [self::generateTraceId(), '0000000000000000', '01', $tracestate];
+        // Tracestate is meaningful only together with an accepted traceparent.
+        return [self::generateTraceId(), '0000000000000000', '01', ''];
     }
 
-    /**
-     * @param Closure(Request):Response $next
-     */
+    /** @param Closure(Request):Response $next */
     private function handleMinimal(Request $req, Closure $next): Response
     {
         $startNs = hrtime(true);
@@ -256,9 +242,7 @@ final readonly class TelemetryMiddleware
         );
     }
 
-    /**
-     * @return array{0:Request,1:array{trace_id:string,parent_span_id:string,flags:string,tracestate:string,span_id:string},2:?string}
-     */
+    /** @return array{0:Request,1:array{trace_id:string,parent_span_id:string,flags:string,tracestate:string,span_id:string},2:?string} */
     private function prepareContext(Request $req): array
     {
         [$traceId, $parentSpanId, $flags, $tracestate] = $this->extractTraceContext($req);
