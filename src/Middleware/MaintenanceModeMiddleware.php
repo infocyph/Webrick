@@ -24,6 +24,13 @@ final readonly class MaintenanceModeMiddleware
         int $refreshMilliseconds = 1000,
         ?MaintenanceStateInterface $state = null,
     ) {
+        if ($this->retryAfter < 0) {
+            throw new \InvalidArgumentException('Maintenance Retry-After must be >= 0.');
+        }
+        if ($this->contentType === '') {
+            throw new \InvalidArgumentException('Maintenance content type must be non-empty.');
+        }
+
         $this->state = $state ?? new FileMaintenanceState($file, $refreshMilliseconds);
     }
 
