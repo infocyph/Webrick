@@ -6,15 +6,15 @@ The complete production application artifact is a separate concern handled by `R
 
 ## Modes
 
-| Matcher | Cache location | Output | Intended role |
+| Matcher | Cache location | Output | Measured role |
 | --- | --- | --- | --- |
-| `fused` | PHP file | compact fused matcher data | default baseline for normal applications |
-| `generated` | PHP file | generated matcher code/data | throughput specialization after benchmark validation |
-| `sharded` | directory | immutable generation + manifest/shards | very large route sets where working-set or memory reduction is measurable |
+| `fused` | PHP file | precompiled fused matcher IR | **default/general production matcher** |
+| `generated` | PHP file | generated matcher code/data | **niche generated-code mode; use only when the actual route corpus proves an advantage** |
+| `sharded` | directory | immutable generation + manifest/shards using the Fused matcher IR | **very-large-route / cold-boot / working-set specialization** |
 
-Prefer an explicit `matcher` value in deployment tooling. Start from `fused` unless representative production-like measurements justify one of the specialized modes.
+Prefer an explicit `matcher` value in deployment tooling. Start from `fused` unless representative production-like measurements justify a specialized mode.
 
-Generated should be selected for a demonstrated matcher-throughput advantage after accounting for generated artifact size, OPcache footprint and worker boot cost. Sharded should be selected when a very large route table benefits measurably from loading relevant route groups rather than keeping one consolidated routing structure in the worker; include first-use shard loading, filesystem behavior and worker lifetime in that comparison.
+The Webrick 5 matcher revision benchmarks showed that Generated can remain attractive on small/simple route sets but scales poorly on large dynamic and miss-heavy corpora, so it is no longer the general throughput recommendation. Sharded uses the same route-discrimination engine as Fused and should be selected when a large route table benefits materially from lazy shard loading, extremely cheap cold boot or reduced startup working set. Include first-use shard loading, filesystem behavior, warm-dispatch cost and worker lifetime in that comparison.
 
 ## PHP API
 
@@ -75,7 +75,9 @@ No request kernel, request scope, controller invocation, middleware pipeline, ap
 
 ## Cache contents
 
-Depending on matcher mode, cache artifacts contain the matcher structures required to reconstruct routing state, including route descriptors, alias metadata, middleware alias requirements, constraints and generated matching code.
+Depending on matcher mode, cache artifacts contain the matcher structures required to reconstruct routing state, including route descriptors, alias metadata, middleware alias requirements, constraints and generated/compiled matching data.
+
+Fused persists the precompiled method-first/static-map and combined-PCRE matcher IR. Sharded persists the same matcher IR partitioned into immutable shards and loads only the required groups. Generated persists its separate generated-code strategy.
 
 They do not contain application service instances, current request state, resolved middleware objects, native runtime handles, or an InterMix runtime.
 
@@ -110,3 +112,4 @@ Do not confuse matcher cache with the strict Webrick production artifact. `Relea
 - Publish complete release sets atomically from the deployment layer.
 - Keep runtime artifacts read-only to serving workers where possible.
 - Rebuild matcher caches and production release artifacts after a Webrick major upgrade or route-schema change.
+- Use Fused by default; switch to Sharded for measured startup/working-set needs or Generated only for a route corpus that actually proves a benefit.
