@@ -153,18 +153,18 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         throw new RouteNotFoundException($verb, $path);
     }
 
-    public function matchCompiledOutcome(string $method, string $host, string $path): MatchOutcome
+    public function matchCompiled(string $method, string $host, string $path): int|array|MatchOutcome
     {
-        $this->finalize();
-
         return $this->matchCanonical($method, $host, $path, true);
     }
 
     public function matchOutcome(string $method, string $host, string $path): MatchOutcome
     {
         $this->finalize();
+        /** @var MatchOutcome $outcome */
+        $outcome = $this->matchCanonical($method, $host, $path, false);
 
-        return $this->matchCanonical($method, $host, $path, false);
+        return $outcome;
     }
 
     /** @return list<string> */
@@ -184,14 +184,15 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         return $index[$name] ?? null;
     }
 
-    private function matchCanonical(string $method, string $host, string $path, bool $indexOnly): MatchOutcome
+    /** @return int|array{0:int,1:array<string,string>}|MatchOutcome */
+    private function matchCanonical(string $method, string $host, string $path, bool $compact): int|array|MatchOutcome
     {
         if (!$this->cacheReadable) {
             $hosts = $this->index->hosts();
             $hostGroup = $hosts[$host] ?? null;
             $wildcardGroup = $host !== '*' ? ($hosts['*'] ?? null) : null;
 
-            return $indexOnly
+            return $compact
                 ? $this->engine->matchSingleCompiled($hostGroup, $wildcardGroup, $method, $path)
                 : $this->engine->matchSingle($hostGroup, $wildcardGroup, $method, $path);
         }
@@ -201,7 +202,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         $hostGroups = $this->loadCandidateGroups($host, $bucket);
         $wildcardGroups = $host !== '*' ? $this->loadCandidateGroups('*', $bucket) : [];
 
-        return $indexOnly
+        return $compact
             ? $this->engine->matchCompiled($hostGroups, $wildcardGroups, $method, $path)
             : $this->engine->match($hostGroups, $wildcardGroups, $method, $path);
     }
