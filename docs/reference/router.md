@@ -1,630 +1,148 @@
 # Router API Reference
 
-Complete reference for routing APIs in Webrick.
+Webrick 5 separates route registration from strict compiled production execution.
 
----
+## Development/registrar kernel
 
-## Table of Contents
-
-- [Route Registration](#route-registration)
-- [Kernel Boot Options](#kernel-boot-options)
-- [Route Facade](#route-facade)
-- [HTTP Verb Methods](#http-verb-methods)
-- [Route Groups](#route-groups)
-- [Route Parameters](#route-parameters)
-- [Route Names](#route-names)
-- [Middleware](#middleware)
-- [Domain Routing](#domain-routing)
-- [URL Generation](#url-generation)
-- [Route Caching](#route-caching)
-- [Kernel DI Integration](#kernel-di-integration)
-- [Error Boundary](#error-boundary)
-
----
-
-## Route Registration
-
-### Using Registrar
+`RouterKernel` is the explicit development path. The host supplies the InterMix `Invoker`; Webrick does not create or select a container.
 
 ```php
+use Infocyph\InterMix\DI\Invoker;
+use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Definition\Registrar;
-use Infocyph\Webrick\Router\Matching\ShardedMatcher;
 use Infocyph\Webrick\Router\Kernel\RouterKernel;
+use Infocyph\Webrick\Router\Matching\GeneratedMatcher;
 use Psr\Log\NullLogger;
 
-$register = function (Registrar $r): void {
-    $r->get('/users', [UserController::class, 'index'], 'users.index');
-    $r->post('/users', [UserController::class, 'store'], 'users.store');
-};
+$invoker = Invoker::with($applicationBuilder->development());
 
 $kernel = RouterKernel::bootWithRegistrar(
     log: new NullLogger(),
-    matcher: ShardedMatcher::make(),
-    register: $register,
-    routeCache: __DIR__ . '/.route-cache',
+    matcher: GeneratedMatcher::make(),
+    register: static function (Registrar $routes): void {
+        $routes->get('/users/{id:int}', [UserController::class, 'show'], 'users.show');
+    },
+    invoker: $invoker,
 );
 ```
 
----
+### `RouterKernel::bootWithRegistrar()`
 
-## Kernel Boot Options
+| Argument | Purpose |
+| --- | --- |
+| `log` | PSR-3 logger |
+| `matcher` | matcher instance for development routing |
+| `register` | `Closure(Registrar): void` route registration |
+| `invoker` | **required host-owned** InterMix invoker |
+| `registrarOptions` | slash behavior, signing and URL-base options |
+| `preGlobal` / `postGlobal` | explicit global middleware descriptors |
+| `invokerOnMiddleware` | opt into Invoker-mediated middleware calls in the development dispatcher |
+| `errorHandler` | optional custom top-level error renderer |
+| `bindUrlServices` | optional explicit development URL-service binding hook |
+| `preGlobalTags` / `postGlobalTags` | application-owned InterMix middleware tags |
+| `debug` | enable diagnostic error detail for development |
 
-`RouterKernel::bootWithRegistrar()` accepts:
+There is no `routeCache`, provider-import, container-selection, request-scope toggle, alias-fallback, or per-request PHP-error switch on the v5 development kernel. Every `handle()` executes inside an InterMix request scope seeded with the active `Request`.
 
-| Argument | Type / values | Default | Purpose |
-| --- | --- | --- | --- |
-| `log` | `Psr\Log\LoggerInterface` | required | Routing, cache and boundary diagnostics |
-| `matcher` | `MatcherInterface` | required | Sharded, fused, generated, or a custom matcher |
-| `register` | `Closure(Registrar): void` | required | Cold-path route definitions |
-| `routeCache` | directory, file, or `null` | `null` | Enables cache reading at the matcher-specific location |
-| `registrarOptions` | associative array | `[]` | Registrar, signed URL and base URI configuration |
-| `preGlobal` | middleware descriptor list | `[]` | Middleware before route middleware |
-| `postGlobal` | middleware descriptor list | `[]` | Middleware after route middleware |
-| `invokerOnMiddleware` | `true` or `false` | `false` | Use InterMix invocation for middleware calls |
-| `errorHandler` | `ErrorHandler` or `null` | `null` | Custom top-level exception renderer |
-| `bindUrlServices` | `Closure(Collection): void` or `null` | `null` | Replace default URL-service binding |
-| `fallbackAliasesFromRegistrar` | `true`, `false`, or `null` | `null` | Override alias-only registrar fallback |
-| `serviceProviders` | service provider class/instance list | `[]` | Import InterMix service providers at boot |
-| `preGlobalTags` | list of container tag names | `['webrick.middleware.pre']` | Append tagged pre-route middleware; pass `[]` to disable tag lookup |
-| `postGlobalTags` | list of container tag names | `['webrick.middleware.post']` | Append tagged post-route middleware; pass `[]` to disable tag lookup |
-| `requestScopeEnabled` | `true` or `false` | `true` | Create and leave an InterMix scope per `handle()` |
-| `container` | InterMix `Container` or `null` | `null` | Container used when no explicit invoker is passed |
-| `invoker` | InterMix `Invoker` or `null` | `null` | Explicit dispatcher/container integration |
-| `debug` | `true` or `false` | `true` | Expose default error-boundary diagnostic details; set `false` for public production traffic |
-| `capturePhpErrors` | `true` or `false` | `true` | Convert PHP warnings/notices to exceptions for the default boundary |
+## Compiled production kernel
 
-Common `registrarOptions`:
-
-| Key | Values / example | Default |
-| --- | --- | --- |
-| `autoSlashRedirect` | `true` or `false` | `false` |
-| `exposeUrlServices` | `true` or `false` | `false` |
-| `signKey` | non-empty secret string or `null` | `null` |
-| `signedDefaultTtl` | integer seconds, for example `900`, or `null` | `null` |
-| `signedUrlConfig` | `SignedUrlConfig`, configuration array, or `null` | `null` |
-| `urlBaseUri` | `https://example.com` or empty string | `''` |
-
-On cached boot, the default URL-service binding is lazy. A custom
-`bindUrlServices` callback replaces that behavior, while the signing values in
-`registrarOptions` remain the source for the default binding.
-
-`routeCache` enables cache reads but does not authorize request-time writes.
-Build artifacts explicitly with `RouteCache::build()` or `route:cache`.
-
----
-
-## Kernel DI Integration
-
-`RouterKernel::bootWithRegistrar()` can be wired directly with InterMix features:
+Production traffic uses `CompiledRouterKernel`. It accepts a host-selected `ProductionContainer` and a verified Webrick artifact.
 
 ```php
-use Infocyph\InterMix\DI\Container;
-use Infocyph\InterMix\DI\Invoker;
-use App\Providers\AuthProvider;
-use App\Providers\CacheProvider;
-
-$container = Container::instance('intermix');
-$invoker = Invoker::with($container);
-
-$kernel = RouterKernel::bootWithRegistrar(
-    log: new NullLogger(),
-    matcher: ShardedMatcher::make(),
-    register: $register,
-    routeCache: __DIR__ . '/.route-cache',
-    invoker: $invoker,                         // or container: $container
-    serviceProviders: [
-        AuthProvider::class,
-        CacheProvider::class,
-    ],
-    preGlobalTags: ['webrick.middleware.pre'],
-    postGlobalTags: ['webrick.middleware.post'],
-    requestScopeEnabled: true,                 // enterScope/leaveScope per handle()
+$kernel = CompiledRouterKernel::fromPrevalidatedArtifact(
+    log: $logger,
+    matcher: GeneratedMatcher::make(),
+    container: $productionContainer,
+    artifactPath: $release['webrick']['path'],
+    trustedSha256: $release['webrick']['sha256'],
+    environment: $release['environment'],
+    configFingerprint: $release['config_fingerprint'],
 );
 ```
 
-Notes:
-- Pass empty tag lists when the application uses only explicit global or route
-  middleware and should avoid container tag discovery.
-- Tagged middleware are appended after explicit `preGlobal` / `postGlobal`.
-- Tagged `Container::bindFactory()` definitions are resolved lazily inside the
-  request scope and retain their configured singleton, scoped or transient
-  lifetime.
-- Every tagged definition must resolve to callable middleware accepting
-  `(Request $request, Closure $next)` and returning `Response`.
-- `requestScopeEnabled` seeds `Request::class` directly into each request scope,
-  avoiding per-request definition registration while retaining scoped isolation.
-- `Response::view()` uses the same `intermix` container path as kernel DI by default.
+Use `fromCompiledArtifact()` when an external trusted digest is unavailable. Environment/configuration values validate the artifact; they never select a Webrick or InterMix runtime.
 
----
+## Route registration
 
-## Error Boundary
-
-`RouterKernel` provides the final exception-to-response boundary for framework-owned failures.
-
-What it catches:
-- routing misses such as not found and method not allowed
-- typed framework HTTP exceptions thrown by middleware or kernel validation paths
-- uncaught throwables that reach the top-level request boundary
-
-What it renders from exceptions:
-- status code
-- public error message
-- response headers carried by the exception
-
-What it does not change:
-- a controller or user middleware returning `Response` directly
-- normal success responses such as `200`, `204`, redirects, or conditional/range responses
-
-Practical rule:
-- return `Response` for normal application flow
-- throw typed HTTP exceptions for framework-style rejection flow
-
-Example:
-
-```php
-use Infocyph\Webrick\Exceptions\HttpException;
-use Infocyph\Webrick\Router\Kernel\RouterKernel;
-
-$register = function (Registrar $r): void {
-    $r->get('/private', static function (): never {
-        throw HttpException::forbidden('Token missing');
-    });
-};
-```
-
-You can also replace the final renderer with a custom `ErrorHandler` when you need JSON or another response shape at the boundary.
-
-### Using Facade
+Use `Registrar` directly or the `Router` facade while a registrar is active:
 
 ```php
 use Infocyph\Webrick\Router\Facade\Router as Route;
 
-Route::get('/posts', [PostController::class, 'index']);
-Route::post('/posts', [PostController::class, 'store']);
+Route::get('/users', [UserController::class, 'index'], 'users.index');
+Route::post('/users', [UserController::class, 'store'], 'users.store');
+Route::put('/users/{id:int}', [UserController::class, 'update'], 'users.update');
+Route::patch('/users/{id:int}', [UserController::class, 'patch'], 'users.patch');
+Route::delete('/users/{id:int}', [UserController::class, 'destroy'], 'users.destroy');
+Route::options('/users', [UserController::class, 'options']);
+Route::head('/health', [HealthController::class, 'head']);
 ```
 
----
+When an explicit OPTIONS route is absent, matcher control flow can produce an automatic OPTIONS response with the canonical `Allow` set. HEAD falls back to GET when appropriate while suppressing the response body at the boundary.
 
-## Route Facade
-
-### Available Methods
+## Parameters and constraints
 
 ```php
-Route::get($path, $handler, $nameOrOpts = null);
-Route::post($path, $handler, $nameOrOpts = null);
-Route::put($path, $handler, $nameOrOpts = null);
-Route::patch($path, $handler, $nameOrOpts = null);
-Route::delete($path, $handler, $nameOrOpts = null);
-Route::options($path, $handler, $nameOrOpts = null);
-Route::head($path, $handler, $nameOrOpts = null);
+Route::get('/users/{id:int}', static fn(string $id) => Response::json(['id' => (int) $id]));
+Route::get('/posts/{slug:slug}', $handler);
+Route::get('/objects/{id:uuid}', $handler);
+Route::get('/colors/{color:hex}', $handler);
 ```
 
-### Multi-Method Endpoints
+Custom constraints are registered and frozen at boot. Runtime matching consumes the compiled/canonical constraint representation rather than rediscovering structure per request.
 
-```php
-Route::get('/form', fn() => Response::create('<form>...</form>', 200, [
-    'Content-Type' => 'text/html; charset=UTF-8'
-]));
-Route::post('/form', fn(Request $r) => Response::json(['submitted' => true]));
-```
-
----
-
-## HTTP Verb Methods
-
-### GET
-
-```php
-Route::get('/users', function() {
-    return Response::json(UserRepository::all());
-});
-```
-
-### POST
-
-```php
-Route::post('/users', function(Request $r) {
-    $user = UserRepository::create($r->input());
-    return Response::json($user, 201)
-        ->withHeader('Location', "/users/{$user['id']}");
-});
-```
-
-### PUT
-
-```php
-Route::put('/users/{id:int}', function(Request $r, int $id) {
-    $user = UserRepository::update($id, $r->input());
-    return Response::json($user);
-});
-```
-
-### PATCH
-
-```php
-Route::patch('/users/{id:int}', function(Request $r, int $id) {
-    $user = UserRepository::patch($id, $r->input());
-    return Response::json($user);
-});
-```
-
-### DELETE
-
-```php
-Route::delete('/users/{id:int}', function(int $id) {
-    UserRepository::delete($id);
-    return Response::noContent();
-});
-```
-
-### OPTIONS
-
-```php
-Route::options('/api/*', function() {
-    return Response::create('', 200, [
-        'Allow' => 'GET, POST, PUT, DELETE, OPTIONS',
-        'Access-Control-Allow-Methods' => 'GET, POST, PUT, DELETE, OPTIONS'
-    ]);
-});
-```
-
----
-
-## Route Groups
-
-### Basic Group
-
-```php
-Route::group(callback: function() {
-    Route::get('/users', [UserController::class, 'index']);
-    Route::get('/users/{id:int}', [UserController::class, 'show']);
-});
-```
-
-### Prefix
-
-```php
-Route::group(prefix: '/api/v1', callback: function() {
-    // GET /api/v1/users
-    Route::get('/users', [UserController::class, 'index']);
-
-    // GET /api/v1/posts
-    Route::get('/posts', [PostController::class, 'index']);
-});
-```
-
-### Name Prefix
-
-```php
-Route::group(namePrefix: 'admin.', callback: function() {
-    // Name: admin.users.index
-    Route::get('/users', [AdminController::class, 'users'], 'users.index');
-
-    // Name: admin.settings
-    Route::get('/settings', [AdminController::class, 'settings'], 'settings');
-});
-```
-
-### Middleware
-
-```php
-Route::group(middleware: ['auth', 'throttle:60,60'], callback: function() {
-    Route::get('/profile', [ProfileController::class, 'show']);
-    Route::put('/profile', [ProfileController::class, 'update']);
-});
-```
-
-### Combined Options
+## Groups
 
 ```php
 Route::group(
-    prefix: '/admin',
-    namePrefix: 'admin.',
-    middleware: ['auth', 'admin'],
-    callback: function() {
-        // GET /admin/users, name: admin.users, middleware: auth, admin
-        Route::get('/users', [AdminController::class, 'users'], 'users');
-    }
+    prefix: '/api',
+    domain: 'api.example.com',
+    middleware: ['auth', 'throttle:120,60'],
+    namePrefix: 'api.',
+    callback: static function (): void {
+        Route::get('/users', [UserController::class, 'index'], 'users.index');
+    },
 );
 ```
 
-### Nested Groups
-
-```php
-Route::group(prefix: '/api', callback: function() {
-    Route::group(prefix: '/v1', callback: function() {
-        // GET /api/v1/users
-        Route::get('/users', [UserController::class, 'index']);
-    });
-
-    Route::group(prefix: '/v2', callback: function() {
-        // GET /api/v2/users
-        Route::get('/users', [UserV2Controller::class, 'index']);
-    });
-});
-```
-
----
-
-## Route Parameters
-
-### Required Parameters
-
-```php
-Route::get('/users/{id}', function(int $id) {
-    return Response::json(['id' => $id]);
-});
-```
-
-### Optional Parameters
-
-```php
-Route::get('/search/{query?}', function(?string $query = null) {
-    return Response::json(['query' => $query ?? 'all']);
-});
-```
-
-### Constrained Parameters
-
-```php
-// Integer constraint
-Route::get('/users/{id:int}', function(int $id) { /* ... */ });
-
-// Slug constraint
-Route::get('/posts/{slug:slug}', function(string $slug) { /* ... */ });
-
-// UUID constraint
-Route::get('/resources/{uuid:uuid}', function(string $uuid) { /* ... */ });
-
-// Hex constraint
-Route::get('/colors/{hex:hex}', function(string $hex) { /* ... */ });
-
-// Custom regex
-Route::get('/codes/{code:[A-Z]{3}}', function(string $code) { /* ... */ });
-```
-
-### Multiple Parameters
-
-```php
-Route::get('/posts/{year:int}/{month:int}/{slug:slug}',
-    function(int $year, int $month, string $slug) {
-        return Response::json([
-            'year' => $year,
-            'month' => $month,
-            'slug' => $slug
-        ]);
-    }
-);
-```
-
----
-
-## Route Names
-
-### Setting Names
-
-```php
-// Third parameter
-Route::get('/users', [UserController::class, 'index'], 'users.index');
-
-// Via options array
-Route::get('/users', [UserController::class, 'index'], [
-    'name' => 'users.index'
-]);
-```
-
-### Checking Route Names
-
-```php
-Route::get('/current-route', function(Request $r) {
-    $name = $r->getAttribute('route.name');
-    return Response::json(['route' => $name]);
-});
-```
-
----
+Nested groups compose prefix/domain/name/middleware metadata at registration/compile time.
 
 ## Middleware
 
-### Per-Route Middleware
+Per-route middleware descriptors can be class strings, supported callables/objects, or registered aliases:
 
 ```php
-Route::get('/protected', [SecretController::class, 'index'], [
-    'middleware' => ['auth', 'verified']
-]);
-
-// Or using facade shorthand
-Route::get('/protected', [SecretController::class, 'index'])
-    ->withMiddleware(['auth', 'verified']);
-```
-
-### Middleware with Parameters
-
-```php
-Route::post('/api/data', [ApiController::class, 'store'], [
-    'middleware' => ['throttle:30,60', 'verifySignedUrl']
+Route::get('/private', [PrivateController::class, 'show'], [
+    'as' => 'private.show',
+    'middleware' => ['auth', 'throttle:30,60'],
 ]);
 ```
 
-### Group Middleware
+Compiled production resolves and validates middleware descriptors before traffic and keeps a zero-pipeline fast path for routes without middleware.
+
+## URL generation
+
+Named routes drive URL generation:
 
 ```php
-Route::group(middleware: ['auth'], callback: function() {
-    Route::get('/profile', [ProfileController::class, 'show']);
-    Route::put('/profile', [ProfileController::class, 'update']);
-});
-```
-
----
-
-## Domain Routing
-
-### Domain Constraint
-
-```php
-Route::group(domain: 'api.example.com', callback: function() {
-    Route::get('/users', [ApiController::class, 'users']);
-});
-```
-
-### Subdomain Wildcards
-
-```php
-Route::group(domain: '{account}.example.com', callback: function() {
-    Route::get('/', function(string $account) {
-        return Response::json(['account' => $account]);
-    });
-});
-```
-
-### Multiple Domains
-
-```php
-Route::group(domain: 'admin.example.com', callback: function() {
-    Route::get('/dashboard', [AdminController::class, 'dashboard']);
-});
-
-Route::group(domain: 'api.example.com', callback: function() {
-    Route::get('/users', [ApiController::class, 'users']);
-});
-```
-
----
-
-## URL Generation
-
-### From Named Routes
-
-```php
-// In handler
 $url = Route::urlFor('users.show', ['id' => 42]);
-// '/users/42'
-
-// Absolute URL
-$url = Route::urlFor('users.show', ['id' => 42], absolute: true);
-// 'https://example.com/users/42'
+$absolute = Route::urlFor('users.show', ['id' => 42], absolute: true);
+$signed = Route::signedUrlFor('users.show', ['id' => 42]);
+$temp = Route::temporaryUrlFor('users.show', ['id' => 42], ttl: 900);
 ```
 
-### With Query Parameters
+Signing configuration is represented by `SignedUrlConfig`. Generation and verification share canonical path/query normalization.
 
-```php
-$url = Route::urlFor('users.index', query: ['page' => 2, 'sort' => 'name']);
-// '/users?page=2&sort=name'
-```
+## Error boundary
 
-### Signed URLs
+Framework rejection paths should throw `HttpExceptionInterface` implementations. Only that authoritative contract or an **explicit custom `exceptionMap`** may define an HTTP status. Arbitrary exception properties, methods and numeric exception codes are not treated as HTTP status metadata.
 
-```php
-$signed = Route::signedUrlFor('download', ['file' => 'report.pdf']);
-$temp = Route::temporaryUrlFor('download', ['file' => 'report.pdf'], ttl: 3600);
-```
+Error response format negotiation uses the same canonical `ContentNegotiator` as normal response negotiation. HEAD errors have no body, request IDs are bounded, and stack/file detail is emitted only when debug mode is enabled.
 
----
+## Matcher cache vs compiled artifact
 
-## Route Caching
+`RouteCache::build()` / `webrick route:cache` creates matcher cache only. It does not boot `RouterKernel` or InterMix.
 
-### Build Cache
+The full production graph is built by `ReleaseCompiler`, which coordinates Webrick execution plans with the host application's InterMix compiled runtime and release manifest.
 
-```php
-use Infocyph\Webrick\Support\RouteCache;
-
-RouteCache::build([
-    'cache' => __DIR__ . '/.route-cache',
-    'register' => function($r) {
-        require __DIR__ . '/routes/web.php';
-        require __DIR__ . '/routes/api.php';
-    }
-]);
-```
-
-### Use Cache
-
-```php
-$kernel = RouterKernel::bootWithRegistrar(
-    log: new \Psr\Log\NullLogger(),
-    matcher: \Infocyph\Webrick\Router\Matching\ShardedMatcher::make(),
-    register: static function (\Infocyph\Webrick\Router\Definition\Registrar $registrar): void {
-        unset($registrar);
-        require __DIR__ . '/routes.php';
-    },
-    routeCache: __DIR__ . '/.route-cache',
-);
-```
-
-### Clear Cache
-
-```php
-RouteCache::clear([
-    'matcher' => 'sharded',
-    'cache' => __DIR__ . '/.route-cache',
-]);
-```
-
----
-
-## Common Patterns
-
-### RESTful Resource
-
-```php
-Route::get('/posts', [PostController::class, 'index'], 'posts.index');
-Route::get('/posts/create', [PostController::class, 'create'], 'posts.create');
-Route::post('/posts', [PostController::class, 'store'], 'posts.store');
-Route::get('/posts/{id:int}', [PostController::class, 'show'], 'posts.show');
-Route::get('/posts/{id:int}/edit', [PostController::class, 'edit'], 'posts.edit');
-Route::put('/posts/{id:int}', [PostController::class, 'update'], 'posts.update');
-Route::delete('/posts/{id:int}', [PostController::class, 'destroy'], 'posts.destroy');
-```
-
-### API Versioning
-
-```php
-Route::group(prefix: '/api', callback: function() {
-    Route::group(prefix: '/v1', namePrefix: 'v1.', callback: function() {
-        Route::get('/users', [V1\UserController::class, 'index'], 'users');
-    });
-
-    Route::group(prefix: '/v2', namePrefix: 'v2.', callback: function() {
-        Route::get('/users', [V2\UserController::class, 'index'], 'users');
-    });
-});
-```
-
-### Fallback Route
-
-```php
-// Must be last route registered
-Route::get('/{path:.*}', function(string $path) {
-    return Response::json([
-        'error' => 'Not Found',
-        'path' => $path
-    ], 404);
-});
-```
-
----
-
-## Method Summary
-
-### Registrar
-- `get(string $path, array|string|callable $handler, string|array|null $nameOrOpts = null): RouteInterface`
-- `post(string $path, array|string|callable $handler, string|array|null $nameOrOpts = null): RouteInterface`
-- `put(string $path, array|string|callable $handler, string|array|null $nameOrOpts = null): RouteInterface`
-- `patch(string $path, array|string|callable $handler, string|array|null $nameOrOpts = null): RouteInterface`
-- `delete(string $path, array|string|callable $handler, string|array|null $nameOrOpts = null): RouteInterface`
-- `options(string $path, array|string|callable $handler, string|array|null $nameOrOpts = null): RouteInterface`
-- `head(string $path, array|string|callable $handler, string|array|null $nameOrOpts = null): RouteInterface`
-- `group(array|string|null $prefix = null, string|array|Closure|null $domain = null, array|Closure $middleware = [], string|Closure|null $namePrefix = null, ?Closure $callback = null): void`
-
-### Route Facade
-- All Registrar methods
-- Chainable middleware: `->withMiddleware(array $middleware)`
-- Chainable name: `->withName(string $name)`
-
-### URL Generation
-- `Route::urlFor(string $name, array $params = [], array $query = [], bool $absolute = false): string`
-
-### URL Signing
-- `Route::signedUrlFor(string $name, array $params = [], array $query = [], ?int $ttl = null, bool $absolute = false, ?string $payloadMode = null): string`
-- `Route::temporaryUrlFor(string $name, array $params = [], array $query = [], ?int $ttl = null, bool $absolute = false, ?string $payloadMode = null): string`
-- `Route::temporaryUrlUntil(string $name, DateTimeInterface|int $expiresAt, array $params = [], array $query = [], bool $absolute = false, ?string $payloadMode = null): string`
+See [Matcher](matcher.md), [Matcher Cache](route-cache.md), [Middleware](middleware.md), and [Emitters/Runtime Adapters](emitters.md).
