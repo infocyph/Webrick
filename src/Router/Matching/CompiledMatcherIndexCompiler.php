@@ -9,18 +9,19 @@ use Infocyph\Webrick\Router\Constraint\Registry as ConstraintRegistry;
 /**
  * Converts the canonical route index into the request-time matcher IR.
  *
- * Static routes become method-first exact-path maps. Dynamic regex routes are
- * compiled into bounded MARK-based PCRE chunks. Routes containing callable or
- * arbitrary user-regex constraints stay in a narrow method-specific fallback
- * lane so their historical segment-level semantics remain unchanged.
+ * Static routes become method-first exact-path maps. Dynamic routes retain
+ * registration precedence as ordered steps: consecutive safe regex routes are
+ * combined into MARK-based PCRE chunks, while callable/arbitrary-regex routes
+ * remain individual fallback steps that act as precedence barriers.
  *
  * @phpstan-type RouteValue mixed
  * @phpstan-type SegmentSpec array<string,mixed>
  * @phpstan-type CanonicalDynamicEntry array{segments:list<SegmentSpec>,verbs:array<string,RouteValue>}
  * @phpstan-type FastRouteEntry array{route:RouteValue,params:array<int,string>}
- * @phpstan-type PcreChunk array{regex:string,routes:array<string,FastRouteEntry>}
- * @phpstan-type FallbackEntry array{segments:list<SegmentSpec>,route:RouteValue}
- * @phpstan-type DynamicBucket array{pcre:list<PcreChunk>,fallback:list<FallbackEntry>}
+ * @phpstan-type PcreStep array{type:'pcre',regex:string,routes:array<string,FastRouteEntry>}
+ * @phpstan-type FallbackStep array{type:'fallback',segments:list<SegmentSpec>,route:RouteValue}
+ * @phpstan-type DynamicStep PcreStep|FallbackStep
+ * @phpstan-type DynamicBucket array{steps:list<DynamicStep>}
  */
 final class CompiledMatcherIndexCompiler
 {
@@ -60,30 +61,25 @@ final class CompiledMatcherIndexCompiler
 
         foreach ($dynamic as $count => $prefixes) {
             foreach ($prefixes as $prefix => $entries) {
-                /** @var array<string,list<array{segments:list<SegmentSpec>,route:RouteValue}>> $pcre */
-                $pcre = [];
-                /** @var array<string,list<FallbackEntry>> $fallback */
-                $fallback = [];
+                /** @var array<string,list<array{segments:list<SegmentSpec>,route:RouteValue,pcre:bool}>> $ordered */
+                $ordered = [];
 
                 foreach ($entries as $entry) {
                     $segments = $entry['segments'];
                     $canCompile = $this->isPcreCompilable($segments);
                     foreach ($entry['verbs'] as $method => $route) {
-                        if ($canCompile) {
-                            $pcre[$method][] = ['segments' => $segments, 'route' => $route];
-                        } else {
-                            $fallback[$method][] = ['segments' => $segments, 'route' => $route];
-                        }
+                        $ordered[$method][] = [
+                            'segments' => $segments,
+                            'route' => $route,
+                            'pcre' => $canCompile,
+                        ];
                     }
                 }
 
-                foreach ($pcre as $method => $routes) {
-                    $methods[$method][$count][$prefix] ??= ['pcre' => [], 'fallback' => []];
-                    $methods[$method][$count][$prefix]['pcre'] = $this->compileChunks($routes);
-                }
-                foreach ($fallback as $method => $routes) {
-                    $methods[$method][$count][$prefix] ??= ['pcre' => [], 'fallback' => []];
-                    $methods[$method][$count][$prefix]['fallback'] = $routes;
+                foreach ($ordered as $method => $routes) {
+                    $methods[$method][$count][$prefix] = [
+                        'steps' => $this->compileSteps($routes),
+                    ];
                 }
             }
         }
@@ -92,36 +88,69 @@ final class CompiledMatcherIndexCompiler
     }
 
     /**
-     * @param list<array{segments:list<SegmentSpec>,route:RouteValue}> $routes
-     * @return list<PcreChunk>
+     * @param list<array{segments:list<SegmentSpec>,route:RouteValue,pcre:bool}> $routes
+     * @return list<DynamicStep>
      */
-    private function compileChunks(array $routes): array
+    private function compileSteps(array $routes): array
     {
-        $chunks = [];
-        foreach (array_chunk($routes, $this->chunkSize) as $routesChunk) {
-            $alternatives = [];
-            $routeMap = [];
+        $steps = [];
+        $pcreBuffer = [];
 
-            foreach ($routesChunk as $index => $entry) {
-                $mark = 'r' . $index;
-                $alternatives[] = '(?:' . $this->routePattern($entry['segments']) . ')(*MARK:' . $mark . ')';
-                $routeMap[$mark] = [
-                    'route' => $entry['route'],
-                    'params' => $this->parameterPositions($entry['segments']),
-                ];
+        foreach ($routes as $entry) {
+            if ($entry['pcre']) {
+                $pcreBuffer[] = ['segments' => $entry['segments'], 'route' => $entry['route']];
+                if (count($pcreBuffer) >= $this->chunkSize) {
+                    $steps[] = $this->compilePcreStep($pcreBuffer);
+                    $pcreBuffer = [];
+                }
+
+                continue;
             }
 
-            // J allows different built-in route constraints to reuse named
-            // groups inside separate alternatives without capture conflicts.
-            $regex = '~(?J)\\A(?:' . implode('|', $alternatives) . ')\\z~D';
-            if (@preg_match($regex, '') === false) {
-                throw new \UnexpectedValueException('Failed to compile combined matcher PCRE chunk.');
+            if ($pcreBuffer !== []) {
+                $steps[] = $this->compilePcreStep($pcreBuffer);
+                $pcreBuffer = [];
             }
-
-            $chunks[] = ['regex' => $regex, 'routes' => $routeMap];
+            $steps[] = [
+                'type' => 'fallback',
+                'segments' => $entry['segments'],
+                'route' => $entry['route'],
+            ];
         }
 
-        return $chunks;
+        if ($pcreBuffer !== []) {
+            $steps[] = $this->compilePcreStep($pcreBuffer);
+        }
+
+        return $steps;
+    }
+
+    /**
+     * @param non-empty-list<array{segments:list<SegmentSpec>,route:RouteValue}> $routes
+     * @return PcreStep
+     */
+    private function compilePcreStep(array $routes): array
+    {
+        $alternatives = [];
+        $routeMap = [];
+
+        foreach ($routes as $index => $entry) {
+            $mark = 'r' . $index;
+            $alternatives[] = '(?:' . $this->routePattern($entry['segments']) . ')(*MARK:' . $mark . ')';
+            $routeMap[$mark] = [
+                'route' => $entry['route'],
+                'params' => $this->parameterPositions($entry['segments']),
+            ];
+        }
+
+        // J allows different built-in route constraints to reuse named groups
+        // inside separate alternatives without capture conflicts.
+        $regex = '~(?J)\\A(?:' . implode('|', $alternatives) . ')\\z~D';
+        if (@preg_match($regex, '') === false) {
+            throw new \UnexpectedValueException('Failed to compile combined matcher PCRE chunk.');
+        }
+
+        return ['type' => 'pcre', 'regex' => $regex, 'routes' => $routeMap];
     }
 
     private static function escapeDelimiter(string $pattern, string $delimiter): string
