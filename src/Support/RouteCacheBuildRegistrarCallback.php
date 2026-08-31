@@ -50,7 +50,7 @@ final readonly class RouteCacheBuildRegistrarCallback
             AttributeRouteLoader::registerFromDirs($registrar, $this->attributeDirs);
         }
         if ($this->attributeClasses !== []) {
-            AttributeRouteLoader::registerFromClasses($registrar, $this->attributeClasses);
+            AttributeRouteLoader::register($registrar, $this->attributeClasses);
         }
     }
 }
