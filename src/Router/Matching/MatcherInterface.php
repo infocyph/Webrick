@@ -8,7 +8,11 @@ use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
 use Infocyph\Webrick\Exceptions\RouteNotFoundException;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 
-/** Contract for canonical compiled route matchers. */
+/**
+ * Contract for route matchers.
+ *
+ * @phpstan-type CompiledMatch int|array{0:int,1:array<string,string>}|MatchOutcome
+ */
 interface MatcherInterface
 {
     public function add(CompiledRoute $route): void;
@@ -30,12 +34,26 @@ interface MatcherInterface
     public function match(string $method, string $host, string $path): array;
 
     /**
-     * Strict compiled-runtime surface. FOUND outcomes may carry only routeIndex,
-     * allowing persisted/generated matchers to avoid route materialization.
+     * Strict already-finalized compiled-runtime surface.
+     *
+     * Parameter-free FOUND returns the non-negative compiled route index directly.
+     * FOUND with route parameters returns [routeIndex, params]. HTTP control-flow
+     * misses remain explicit MatchOutcome values. No route object is materialized.
+     *
+     * @param non-empty-string $method Canonical HTTP method.
+     * @param non-empty-string $host Canonical host or '*'.
+     * @param non-empty-string $path Canonical absolute path.
+     * @return CompiledMatch
      */
-    public function matchCompiledOutcome(string $method, string $host, string $path): MatchOutcome;
+    public function matchCompiled(string $method, string $host, string $path): int|array|MatchOutcome;
 
-    /** Generic/development surface returning a materialized route on FOUND. */
+    /**
+     * Generic/dev surface returning the full matched route.
+     *
+     * @param non-empty-string $method Canonical HTTP method.
+     * @param non-empty-string $host Canonical host or '*'.
+     * @param non-empty-string $path Canonical absolute path.
+     */
     public function matchOutcome(string $method, string $host, string $path): MatchOutcome;
 
     /** @return list<string> */
