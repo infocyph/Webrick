@@ -28,6 +28,10 @@ final readonly class ResponseWriterSupport
     /** @return Generator<int,string,void,void> */
     public static function chunks(Response $response, int $chunkSize = 65_536): iterable
     {
+        if ($chunkSize <= 0) {
+            throw new \InvalidArgumentException('Response chunk size must be greater than zero.');
+        }
+
         $producer = $response->getProducer();
         if ($producer !== null) {
             yield from self::nonEmptyChunks($producer());
