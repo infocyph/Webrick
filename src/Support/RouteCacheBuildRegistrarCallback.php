@@ -8,10 +8,11 @@ use Infocyph\Webrick\Router\Definition\Attribute\AttributeRouteLoader;
 use Infocyph\Webrick\Router\Definition\Registrar;
 use Psr\Log\LoggerInterface;
 
+/** Build-only route source loader. The caller owns the scoped Router facade binding. */
 final readonly class RouteCacheBuildRegistrarCallback
 {
     /**
-     * @param array<string, string> $attributeDirs
+     * @param array<string,string> $attributeDirs
      * @param list<class-string> $attributeClasses
      */
     public function __construct(
@@ -26,33 +27,25 @@ final readonly class RouteCacheBuildRegistrarCallback
 
     public function __invoke(Registrar $registrar): void
     {
-        $signUrlSecret = $this->signKey;
-        $cwd = getcwd();
-        if ($this->baseDir !== '' && \chdir($this->baseDir) === false) {
-            $this->logger->warning('[routecache] failed to chdir to baseDir; continuing', ['baseDir' => $this->baseDir]);
+        if (is_callable($this->userRegister)) {
+            ($this->userRegister)($registrar);
+        } elseif ($this->routesFile !== '') {
+            if (!is_file($this->routesFile)) {
+                throw new \RuntimeException("Routes file not found: {$this->routesFile}");
+            }
+
+            $registrarForFile = $registrar;
+            $logger = $this->logger;
+            $baseDir = $this->baseDir;
+            $signKey = $this->signKey;
+            require $this->routesFile;
         }
 
-        try {
-            if ($this->userRegister) {
-                if (!\is_callable($this->userRegister)) {
-                    throw new \InvalidArgumentException("RouteCache::build: 'register' must be callable.");
-                }
-                ($this->userRegister)($registrar);
-            } else {
-                /** @psalm-suppress UnresolvableInclude */
-                require $this->routesFile;
-            }
-
-            if ($this->attributeDirs !== []) {
-                AttributeRouteLoader::registerFromDirs($registrar, $this->attributeDirs);
-            }
-            if ($this->attributeClasses !== []) {
-                AttributeRouteLoader::register($registrar, $this->attributeClasses);
-            }
-        } finally {
-            if ($cwd !== false) {
-                \chdir($cwd);
-            }
+        if ($this->attributeDirs !== []) {
+            AttributeRouteLoader::registerFromDirs($registrar, $this->attributeDirs);
+        }
+        if ($this->attributeClasses !== []) {
+            AttributeRouteLoader::registerFromClasses($registrar, $this->attributeClasses);
         }
     }
 }
