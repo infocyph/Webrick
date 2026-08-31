@@ -115,7 +115,11 @@ MiddlewareAliases::register(
         $max = isset($parameters[0]) && is_numeric($parameters[0]) ? (int) $parameters[0] : 60;
         $window = isset($parameters[1]) && is_numeric($parameters[1]) ? (int) $parameters[1] : 60;
 
-        return new ThrottleMiddleware($max, $window);
+        return new ThrottleMiddleware(
+            max: $max,
+            window: $window,
+            allowApproximateFallback: true,
+        );
     },
 );
 MiddlewareAliases::register(
