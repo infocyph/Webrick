@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Matching\CanonicalMatcherIndex;
 use Infocyph\Webrick\Router\Matching\CompiledMatcherIndexCompiler;
 use Infocyph\Webrick\Router\Matching\FusedMatcher;
@@ -18,8 +17,30 @@ function matcherRevisionRoute(string $method, string $path): CompiledRoute
     return CompiledRoute::fromRoute(new Route(
         $method,
         $path,
-        static fn(): Response => Response::plaintext('ok'),
+        'matcher-revision-handler',
     ));
+}
+
+function matcherRevisionRemoveTree(string $path): void
+{
+    if (is_link($path) || is_file($path)) {
+        @unlink($path);
+
+        return;
+    }
+    if (!is_dir($path)) {
+        return;
+    }
+
+    foreach (new FilesystemIterator($path, FilesystemIterator::SKIP_DOTS) as $entry) {
+        $entryPath = $entry->getPathname();
+        if ($entry->isLink() || $entry->isFile()) {
+            @unlink($entryPath);
+        } elseif ($entry->isDir()) {
+            matcherRevisionRemoveTree($entryPath);
+        }
+    }
+    @rmdir($path);
 }
 
 dataset('compiled pcre ir matchers', [
@@ -136,3 +157,54 @@ it('keeps 405 and automatic options semantics on dynamic misses', function (Clos
         ->and($options->type)->toBe(MatchOutcomeType::AUTO_OPTIONS)
         ->and($options->allowed)->toContain('GET', 'HEAD', 'POST');
 })->with('compiled pcre ir matchers');
+
+it('boots fused version 7 cache directly into compiled matcher ir', function (): void {
+    $root = sys_get_temp_dir() . '/webrick-fused-ir-' . bin2hex(random_bytes(6));
+    $cache = $root . '/routes.php';
+    mkdir($root, 0775, true);
+
+    try {
+        $regex = matcherRevisionRoute('GET', '/users/{name}');
+        $callable = matcherRevisionRoute('GET', '/orders/{id:int}');
+        $builder = FusedMatcher::make()->enableCache($cache)->enableCacheWrite();
+        $builder->add($regex);
+        $builder->add($callable);
+        $builder->finalize();
+
+        $reader = FusedMatcher::make()->enableCache($cache);
+        expect($reader->canBootFromCache())->toBeTrue();
+        $reader->finalize();
+
+        expect($reader->matchCompiled('GET', '*', '/users/hasan'))
+            ->toBe([$regex->getIndex(), ['name' => 'hasan']])
+            ->and($reader->matchCompiled('GET', '*', '/orders/42'))
+            ->toBe([$callable->getIndex(), ['id' => '42']]);
+    } finally {
+        matcherRevisionRemoveTree($root);
+    }
+});
+
+it('boots sharded version 7 cache directly into compiled matcher shards', function (): void {
+    $root = sys_get_temp_dir() . '/webrick-sharded-ir-' . bin2hex(random_bytes(6));
+    mkdir($root, 0775, true);
+
+    try {
+        $regex = matcherRevisionRoute('GET', '/users/{name}');
+        $callable = matcherRevisionRoute('GET', '/orders/{id:int}');
+        $builder = ShardedMatcher::make()->enableCache($root)->enableCacheWrite();
+        $builder->add($regex);
+        $builder->add($callable);
+        $builder->finalize();
+
+        $reader = ShardedMatcher::make()->enableCache($root);
+        expect($reader->canBootFromCache())->toBeTrue();
+        $reader->finalize();
+
+        expect($reader->matchCompiled('GET', '*', '/users/hasan'))
+            ->toBe([$regex->getIndex(), ['name' => 'hasan']])
+            ->and($reader->matchCompiled('GET', '*', '/orders/42'))
+            ->toBe([$callable->getIndex(), ['id' => '42']]);
+    } finally {
+        matcherRevisionRemoveTree($root);
+    }
+});
