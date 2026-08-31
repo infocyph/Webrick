@@ -13,6 +13,8 @@ use UnexpectedValueException;
 /** Build/runtime-boundary codec for already-compiled execution descriptors. */
 final class ArtifactValueCodec
 {
+    private const string CALLABLE = 'callable';
+
     private const string CLOSURE = 'closure';
 
     private const string VALUE = 'value';
@@ -28,15 +30,23 @@ final class ArtifactValueCodec
         if ($payload['kind'] === self::VALUE) {
             return self::decodeValue($payload['value'] ?? null);
         }
-        if ($payload['kind'] !== self::CLOSURE || !is_string($payload['value'] ?? null)) {
+        if (!is_string($payload['value'] ?? null)) {
+            throw new UnexpectedValueException('Invalid Webrick artifact value payload.');
+        }
+        if ($payload['kind'] === self::CALLABLE) {
+            $transport = self::decodeClosure($payload['value']);
+            $callable = $transport();
+            if (!is_callable($callable)) {
+                throw new UnexpectedValueException('Webrick callable artifact did not restore a callable.');
+            }
+
+            return $callable;
+        }
+        if ($payload['kind'] !== self::CLOSURE) {
             throw new UnexpectedValueException('Unknown Webrick artifact value descriptor.');
         }
 
-        try {
-            return ClosureSerializer::unserialize($payload['value']);
-        } catch (\Throwable $exception) {
-            throw new UnexpectedValueException('Unable to restore Webrick Closure artifact.', 0, $exception);
-        }
+        return self::decodeClosure($payload['value']);
     }
 
     /** @return array{kind:string,value:mixed} */
@@ -58,21 +68,68 @@ final class ArtifactValueCodec
         }
 
         if ($value instanceof Closure) {
-            $descriptor = self::staticMethodDescriptor($value);
-            if ($descriptor !== null) {
-                return ['kind' => self::VALUE, 'value' => $descriptor];
+            $staticDescriptor = self::staticMethodDescriptor($value);
+            if ($staticDescriptor !== null) {
+                return ['kind' => self::VALUE, 'value' => $staticDescriptor];
             }
-        } elseif (is_callable($value)) {
-            $value = Closure::fromCallable($value);
+
+            $boundDescriptor = self::boundMethodDescriptor($value);
+            if ($boundDescriptor !== null) {
+                return self::encodeCallable($boundDescriptor);
+            }
+
+            return ['kind' => self::CLOSURE, 'value' => ClosureSerializer::serialize($value)];
         }
 
-        if (!$value instanceof Closure) {
-            throw new UnexpectedValueException(
-                'Compiled artifact values must be scalar callable descriptors or Closures.',
-            );
+        if (is_callable($value)) {
+            return self::encodeCallable($value);
         }
 
-        return ['kind' => self::CLOSURE, 'value' => ClosureSerializer::serialize($value)];
+        throw new UnexpectedValueException(
+            'Compiled artifact values must be scalar callable descriptors or Closures.',
+        );
+    }
+
+    /** @return array{0:object,1:string}|null */
+    private static function boundMethodDescriptor(Closure $closure): ?array
+    {
+        $reflection = new ReflectionFunction($closure);
+        $object = $reflection->getClosureThis();
+        $method = $reflection->getName();
+
+        if (
+            $object === null
+            || $method === '{closure}'
+            || !method_exists($object, $method)
+        ) {
+            return null;
+        }
+
+        $methodReflection = new ReflectionMethod($object, $method);
+        if (!$methodReflection->isPublic() || $methodReflection->isStatic()) {
+            return null;
+        }
+
+        return [$object, $method];
+    }
+
+    private static function decodeClosure(string $payload): Closure
+    {
+        try {
+            return ClosureSerializer::unserialize($payload);
+        } catch (\Throwable $exception) {
+            throw new UnexpectedValueException('Unable to restore Webrick Closure artifact.', 0, $exception);
+        }
+    }
+
+    /** @param callable $callable
+     *  @return array{kind:string,value:string}
+     */
+    private static function encodeCallable(callable $callable): array
+    {
+        $transport = static fn(): callable => $callable;
+
+        return ['kind' => self::CALLABLE, 'value' => ClosureSerializer::serialize($transport)];
     }
 
     /** @return array{0:string,1:string}|string */
