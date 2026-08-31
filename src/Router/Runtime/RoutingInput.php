@@ -59,9 +59,6 @@ final readonly class RoutingInput
     }
 
     /**
-     * Build routing preflight from explicit transport data without touching
-     * process-global request state.
-     *
      * @param array<string,mixed> $server
      * @param array<string,mixed> $form
      */
@@ -128,13 +125,20 @@ final readonly class RoutingInput
 
         if ($requestUri[0] === '/') {
             $length = strcspn($requestUri, '?#');
-            $path = substr($requestUri, 0, $length);
+            $path = $length === strlen($requestUri) ? $requestUri : substr($requestUri, 0, $length);
         } else {
             $parts = parse_url($requestUri);
             if ($parts === false) {
                 throw HttpException::badRequest('Invalid request URI.');
             }
             $path = (string) ($parts['path'] ?? '/');
+        }
+
+        if ($path === '' || $path === '/') {
+            return '/';
+        }
+        if (!str_contains($path, '//') && !str_contains($path, '/.')) {
+            return $path;
         }
 
         do {
