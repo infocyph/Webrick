@@ -60,14 +60,6 @@ final readonly class ConditionalValidator
         return $date !== null && $this->lastModified !== null && $this->lastModified <= $date;
     }
 
-    private static function appendToken(array &$tokens, string $token): void
-    {
-        $value = trim($token);
-        if ($value !== '') {
-            $tokens[] = $value;
-        }
-    }
-
     private static function strongEtagEquals(string $current, string $candidate): bool
     {
         return !str_starts_with($candidate, 'W/') && !str_starts_with($current, 'W/') && $candidate === $current;
@@ -183,43 +175,6 @@ final readonly class ConditionalValidator
             return null;
         }
 
-        $tokens = [];
-        $token = '';
-        $quoted = false;
-        $escaped = false;
-        for ($i = 0, $length = strlen($list); $i < $length; $i++) {
-            $char = $list[$i];
-            if ($escaped) {
-                $token .= $char;
-                $escaped = false;
-
-                continue;
-            }
-            if ($quoted && $char === '\\') {
-                $token .= $char;
-                $escaped = true;
-
-                continue;
-            }
-            if ($char === '"') {
-                $quoted = !$quoted;
-                $token .= $char;
-
-                continue;
-            }
-            if ($char === ',' && !$quoted) {
-                self::appendToken($tokens, $token);
-                $token = '';
-
-                continue;
-            }
-            $token .= $char;
-        }
-        if ($quoted || $escaped) {
-            return [];
-        }
-        self::appendToken($tokens, $token);
-
-        return $tokens;
+        return HttpUtils::splitQuoted($list, ',') ?? [];
     }
 }
