@@ -8,11 +8,13 @@ use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Request\Support\HeaderBag;
 use Infocyph\Webrick\Response\Body\FileBody;
 use Infocyph\Webrick\Response\Conditional\ConditionalValidator;
 use Infocyph\Webrick\Response\Headers\Range as SimpleRange;
 use Infocyph\Webrick\Response\Internal\Utils;
 use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Support\HttpUtils;
 
 /** Build 200/206/416 responses for seekable resources. */
 final readonly class RangeResponder
@@ -24,7 +26,7 @@ final readonly class RangeResponder
         string $mediaType = 'application/octet-stream',
         array $headers = [],
     ): Response {
-        $metadata = self::fileMetadata($absolutePath, $headers);
+        $metadata = self::fileMetadata($absolutePath, self::normalizeHeaders($headers));
         if ($metadata === null) {
             return new Response(StatusEnum::NOT_FOUND->value);
         }
@@ -49,6 +51,7 @@ final readonly class RangeResponder
             throw new \InvalidArgumentException('Total length cannot be negative.');
         }
 
+        $headers = self::normalizeHeaders($headers);
         $result = self::normalizeResult($range, $req, $totalLength);
         if ($result->status === RangeParseStatus::UNSATISFIABLE) {
             unset($headers['Content-Type'], $headers['Content-Encoding'], $headers['Content-Language']);
@@ -163,10 +166,12 @@ final readonly class RangeResponder
         }
 
         $etag = $headers['ETag'] ?? null;
-        $headerLastModified = isset($headers['Last-Modified']) ? strtotime($headers['Last-Modified']) : false;
+        $headerLastModified = isset($headers['Last-Modified'])
+            ? HttpUtils::parseHttpDate($headers['Last-Modified'])
+            : null;
         $validator = new ConditionalValidator(
             is_string($etag) && $etag !== '' ? $etag : null,
-            $headerLastModified === false ? null : $headerLastModified,
+            $headerLastModified,
             true,
         );
 
@@ -187,16 +192,33 @@ final readonly class RangeResponder
         return (bool) $metadata['seekable'];
     }
 
+    /** @param array<string,string> $headers @return array<string,string> */
+    private static function normalizeHeaders(array $headers): array
+    {
+        $normalized = [];
+        foreach ((new HeaderBag($headers))->all() as $name => $values) {
+            if ($values !== []) {
+                $normalized[$name] = $values[count($values) - 1];
+            }
+        }
+
+        return $normalized;
+    }
+
     private static function normalizeResult(
         RangeParseResult|SimpleRange|null $range,
         ?Request $req,
         int $totalLength,
     ): RangeParseResult {
         if ($range instanceof RangeParseResult) {
-            return $range;
+            if ($range->status !== RangeParseStatus::SATISFIABLE) {
+                return $range;
+            }
+
+            return self::validateRangeForTotal($range->requireRange(), $totalLength);
         }
         if ($range instanceof SimpleRange) {
-            return RangeParseResult::satisfiable($range);
+            return self::validateRangeForTotal($range, $totalLength);
         }
         if (!$req instanceof Request || HttpMethodEnum::normalize($req->getMethod()) !== HttpMethodEnum::GET->value) {
             return RangeParseResult::none();
@@ -206,6 +228,22 @@ final readonly class RangeResponder
         }
 
         return RangeParser::parse($req->getHeaderLine('Range'), $totalLength);
+    }
+
+    private static function validateRangeForTotal(SimpleRange $range, int $totalLength): RangeParseResult
+    {
+        if (
+            $totalLength <= 0
+            || $range->length !== $totalLength
+            || $range->start < 0
+            || $range->end < $range->start
+            || $range->start >= $totalLength
+            || $range->end >= $totalLength
+        ) {
+            return RangeParseResult::unsatisfiable();
+        }
+
+        return RangeParseResult::satisfiable($range);
     }
 
     private static function wrapSeekable(mixed $source, ?int $start = null, ?int $length = null): ByteRangeStream|Stream
