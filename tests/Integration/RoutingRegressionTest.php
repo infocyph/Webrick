@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Infocyph\InterMix\DI\Container;
+use Infocyph\InterMix\DI\Invoker;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Definition\Registrar;
@@ -11,6 +13,11 @@ use Infocyph\Webrick\Router\Matching\GeneratedMatcher;
 use Infocyph\Webrick\Router\Matching\MatcherInterface;
 use Infocyph\Webrick\Router\Matching\ShardedMatcher;
 use Psr\Log\NullLogger;
+
+function routingRegressionInvoker(): Invoker
+{
+    return Invoker::with(new Container('webrick.tests.routing-regression'));
+}
 
 dataset('routing regression matchers', [
     'fused' => [static fn(): MatcherInterface => FusedMatcher::make()],
@@ -26,6 +33,7 @@ describe('Routing Regressions', function () {
             register: static function (Registrar $r): void {
                 $r->put('/resource', static fn () => Response::plaintext('updated', 200));
             },
+            invoker: routingRegressionInvoker(),
         );
 
         $request = mockRequest('POST', '/resource', [
@@ -50,6 +58,7 @@ describe('Routing Regressions', function () {
                     throw new RuntimeException('POST business handler must not execute for automatic OPTIONS.');
                 });
             },
+            invoker: routingRegressionInvoker(),
         );
 
         $response = $kernel->handle(mockRequest('OPTIONS', '/resource'));
@@ -67,6 +76,7 @@ describe('Routing Regressions', function () {
                 $r->get('/resource', static fn(): Response => Response::plaintext('get', 200));
                 $r->options('/resource', static fn(): Response => Response::plaintext('explicit-options', 200));
             },
+            invoker: routingRegressionInvoker(),
         );
 
         $response = $kernel->handle(mockRequest('OPTIONS', '/resource'));
@@ -84,6 +94,7 @@ describe('Routing Regressions', function () {
                     throw new RuntimeException('internal-secret-message');
                 });
             },
+            invoker: routingRegressionInvoker(),
         );
 
         $response = $kernel->handle(mockRequest('GET', '/explode'));
@@ -111,6 +122,7 @@ describe('Routing Regressions', function () {
                     ],
                 ]);
             },
+            invoker: routingRegressionInvoker(),
         );
 
         $request = mockRequest('GET', '/lang/en');
