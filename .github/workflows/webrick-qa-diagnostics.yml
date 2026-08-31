@@ -26,10 +26,19 @@ jobs:
         run: composer update --no-interaction --prefer-dist --no-progress --prefer-stable
 
       - name: Apply one-shot PHPDoc parameter repair
+        id: phpdoc_fix
+        continue-on-error: true
         if: "${{ github.event.head_commit.message != 'docs: normalize PHPDoc parameter tags' }}"
         shell: bash
         run: |
-          php tools/fix_phpdoc_params.php
+          set +e
+          php tools/fix_phpdoc_params.php 2>&1 | tee phpdoc-fix.txt
+          fixer_status=${PIPESTATUS[0]}
+          set -e
+          printf '%d\n' "$fixer_status" > phpdoc-fix.status
+          if [ "$fixer_status" -ne 0 ]; then
+            exit "$fixer_status"
+          fi
           if git diff --quiet -- benchmark benchmarks src routes.php index.php; then
             exit 0
           fi
@@ -39,7 +48,17 @@ jobs:
           git commit -m "docs: normalize PHPDoc parameter tags"
           git push origin HEAD:webrick-5/batch-1-correctness
 
+      - name: Upload PHPDoc fixer diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phpdoc-fixer-diagnostics
+          path: |
+            phpdoc-fix.txt
+            phpdoc-fix.status
+
       - name: Collect strict diagnostics
+        if: always()
         shell: bash
         run: |
           set +e
@@ -58,6 +77,7 @@ jobs:
           printf '%d\n' "$comments_status" > comments.status
 
       - name: Upload strict diagnostics
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: strict-diagnostics
@@ -68,8 +88,12 @@ jobs:
             comments.status
 
       - name: Enforce strict diagnostics
+        if: always()
         shell: bash
         run: |
+          if [ "${{ steps.phpdoc_fix.outcome }}" = "failure" ]; then
+            exit 1
+          fi
           phpstan_status="$(cat phpstan.status)"
           comments_status="$(cat comments.status)"
           if [ "$phpstan_status" -ne 0 ] || [ "$comments_status" -ne 0 ]; then
