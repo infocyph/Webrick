@@ -6,8 +6,10 @@ use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Matching\CanonicalMatcherIndex;
 use Infocyph\Webrick\Router\Matching\CompiledMatcherIndexCompiler;
 use Infocyph\Webrick\Router\Matching\FusedMatcher;
+use Infocyph\Webrick\Router\Matching\MatcherInterface;
 use Infocyph\Webrick\Router\Matching\MatchOutcome;
 use Infocyph\Webrick\Router\Matching\MatchOutcomeType;
+use Infocyph\Webrick\Router\Matching\ShardedMatcher;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 use Infocyph\Webrick\Router\Route\Route;
 
@@ -19,6 +21,11 @@ function matcherRevisionRoute(string $method, string $path): CompiledRoute
         static fn(): Response => Response::plaintext('ok'),
     ));
 }
+
+dataset('compiled pcre ir matchers', [
+    'fused' => [static fn(): MatcherInterface => FusedMatcher::make()],
+    'sharded' => [static fn(): MatcherInterface => ShardedMatcher::make()],
+]);
 
 it('compiles regex routes into the pcre lane and callable constraints into fallback', function (): void {
     $index = new CanonicalMatcherIndex();
@@ -33,19 +40,19 @@ it('compiles regex routes into the pcre lane and callable constraints into fallb
         ->and($compiled['*']['dynamic']['GET'][2]['orders']['fallback'])->toHaveCount(1);
 });
 
-it('dispatches regex dynamic routes through fused compiled matching', function (): void {
+it('dispatches regex dynamic routes through the shared compiled matcher engine', function (Closure $factory): void {
     $route = matcherRevisionRoute('GET', '/users/{name}');
-    $matcher = FusedMatcher::make();
+    $matcher = $factory();
     $matcher->add($route);
     $matcher->finalize();
 
     expect($matcher->matchCompiled('GET', '*', '/users/hasan'))
         ->toBe([$route->getIndex(), ['name' => 'hasan']]);
-});
+})->with('compiled pcre ir matchers');
 
-it('keeps callable route constraints on the fused fallback lane', function (): void {
+it('keeps callable route constraints on the shared fallback lane', function (Closure $factory): void {
     $route = matcherRevisionRoute('GET', '/orders/{id:int}');
-    $matcher = FusedMatcher::make();
+    $matcher = $factory();
     $matcher->add($route);
     $matcher->finalize();
 
@@ -55,12 +62,12 @@ it('keeps callable route constraints on the fused fallback lane', function (): v
     $miss = $matcher->matchCompiled('GET', '*', '/orders/not-an-int');
     expect($miss)->toBeInstanceOf(MatchOutcome::class)
         ->and($miss->type)->toBe(MatchOutcomeType::NOT_FOUND);
-});
+})->with('compiled pcre ir matchers');
 
-it('uses method-first dynamic pcre buckets for overlapping route patterns', function (): void {
+it('uses method-first dynamic pcre buckets for overlapping route patterns', function (Closure $factory): void {
     $get = matcherRevisionRoute('GET', '/lookup/{value:uuid}');
     $post = matcherRevisionRoute('POST', '/lookup/{value:slug}');
-    $matcher = FusedMatcher::make();
+    $matcher = $factory();
     $matcher->add($get);
     $matcher->add($post);
     $matcher->finalize();
@@ -71,21 +78,21 @@ it('uses method-first dynamic pcre buckets for overlapping route patterns', func
         ->toBe([$get->getIndex(), ['value' => $uuid]])
         ->and($matcher->matchCompiled('POST', '*', '/lookup/' . $uuid))
         ->toBe([$post->getIndex(), ['value' => $uuid]]);
-});
+})->with('compiled pcre ir matchers');
 
-it('maps parameters correctly when a constraint contains nested capture groups', function (): void {
+it('maps parameters correctly when a constraint contains nested capture groups', function (Closure $factory): void {
     $route = matcherRevisionRoute('GET', '/packages/{version:semver}');
-    $matcher = FusedMatcher::make();
+    $matcher = $factory();
     $matcher->add($route);
     $matcher->finalize();
 
     expect($matcher->matchCompiled('GET', '*', '/packages/1.2.3-beta+build.7'))
         ->toBe([$route->getIndex(), ['version' => '1.2.3-beta+build.7']]);
-});
+})->with('compiled pcre ir matchers');
 
-it('preserves dynamic leading and trailing slash matching behavior', function (): void {
+it('preserves dynamic leading and trailing slash matching behavior', function (Closure $factory): void {
     $route = matcherRevisionRoute('GET', '/users/{name}');
-    $matcher = FusedMatcher::make();
+    $matcher = $factory();
     $matcher->add($route);
     $matcher->finalize();
 
@@ -93,10 +100,10 @@ it('preserves dynamic leading and trailing slash matching behavior', function ()
         ->toBe([$route->getIndex(), ['name' => 'hasan']])
         ->and($matcher->matchCompiled('GET', '*', '//users/hasan//'))
         ->toBe([$route->getIndex(), ['name' => 'hasan']]);
-});
+})->with('compiled pcre ir matchers');
 
-it('dispatches across multiple combined pcre chunks', function (): void {
-    $matcher = FusedMatcher::make();
+it('dispatches across multiple combined pcre chunks', function (Closure $factory): void {
+    $matcher = $factory();
     $last = null;
 
     for ($i = 0; $i < 40; $i++) {
@@ -109,12 +116,12 @@ it('dispatches across multiple combined pcre chunks', function (): void {
     expect($last)->toBeInstanceOf(CompiledRoute::class)
         ->and($matcher->matchCompiled('GET', '*', '/bulk/main/item-39/99'))
         ->toBe([$last->getIndex(), ['group' => 'main', 'id' => '99']]);
-});
+})->with('compiled pcre ir matchers');
 
-it('keeps 405 and automatic options semantics on dynamic misses', function (): void {
+it('keeps 405 and automatic options semantics on dynamic misses', function (Closure $factory): void {
     $get = matcherRevisionRoute('GET', '/resource/{id}');
     $post = matcherRevisionRoute('POST', '/resource/{id}');
-    $matcher = FusedMatcher::make();
+    $matcher = $factory();
     $matcher->add($get);
     $matcher->add($post);
     $matcher->finalize();
@@ -128,4 +135,4 @@ it('keeps 405 and automatic options semantics on dynamic misses', function (): v
     expect($options)->toBeInstanceOf(MatchOutcome::class)
         ->and($options->type)->toBe(MatchOutcomeType::AUTO_OPTIONS)
         ->and($options->allowed)->toContain('GET', 'HEAD', 'POST');
-});
+})->with('compiled pcre ir matchers');
