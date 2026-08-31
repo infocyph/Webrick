@@ -67,9 +67,9 @@ final class VaryAccumulatorMiddleware
     }
 
     /**
-     * @return list<string>
      * @param Request $r
      * @param bool $normalized
+     * @return list<string>
      */
     public static function peek(Request $r, bool $normalized = true): array
     {
@@ -111,8 +111,9 @@ final class VaryAccumulatorMiddleware
     }
 
     /**
-     * @param list<string> $base @param list<string> $extra @return list<string>
-     * @param array $base
+     * @param list<string> $base
+     * @param list<string> $extra
+     * @return list<string>
      */
     private static function merge(array $base, array $extra): array
     {
@@ -129,15 +130,18 @@ final class VaryAccumulatorMiddleware
         return $base;
     }
 
-    /** @param list<string> $tokens @return list<string> */
+    /**
+     * @param list<string> $tokens
+     * @return list<string>
+     */
     private static function normalize(array $tokens): array
     {
         return self::merge([], $tokens);
     }
 
     /**
-     * @return list<string>
      * @param string $line
+     * @return list<string>
      */
     private static function splitTokens(string $line): array
     {
@@ -157,9 +161,9 @@ final class VaryAccumulatorMiddleware
     }
 
     /**
-     * @return list<string>
      * @param Request $req
      * @param Response $resp
+     * @return list<string>
      */
     private function inferAutoTokens(Request $req, Response $resp): array
     {
