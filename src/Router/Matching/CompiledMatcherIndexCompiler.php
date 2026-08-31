@@ -17,7 +17,7 @@ use Infocyph\Webrick\Router\Constraint\Registry as ConstraintRegistry;
  * @phpstan-type RouteValue mixed
  * @phpstan-type SegmentSpec array<string,mixed>
  * @phpstan-type CanonicalDynamicEntry array{segments:list<SegmentSpec>,verbs:array<string,RouteValue>}
- * @phpstan-type FastRouteEntry array{route:RouteValue,params:array<int,string>}
+ * @phpstan-type FastRouteEntry array{route:RouteValue,params:array<string,string>}
  * @phpstan-type PcreStep array{type:'pcre',regex:string,routes:array<string,FastRouteEntry>}
  * @phpstan-type FallbackStep array{type:'fallback',segments:list<SegmentSpec>,route:RouteValue}
  * @phpstan-type DynamicStep PcreStep|FallbackStep
@@ -136,10 +136,11 @@ final class CompiledMatcherIndexCompiler
 
         foreach ($routes as $index => $entry) {
             $mark = 'r' . $index;
-            $alternatives[] = '(?:' . $this->routePattern($entry['segments']) . ')(*MARK:' . $mark . ')';
+            [$pattern, $params] = $this->routePattern($entry['segments'], $index);
+            $alternatives[] = '(?:' . $pattern . ')(*MARK:' . $mark . ')';
             $routeMap[$mark] = [
                 'route' => $entry['route'],
-                'params' => $this->parameterPositions($entry['segments']),
+                'params' => $params,
             ];
         }
 
@@ -193,33 +194,18 @@ final class CompiledMatcherIndexCompiler
 
     /**
      * @param list<SegmentSpec> $segments
-     * @return array<int,string>
+     * @return array{0:string,1:array<string,string>}
      */
-    private function parameterPositions(array $segments): array
-    {
-        $positions = [];
-        foreach ($segments as $index => $segment) {
-            if (($segment['type'] ?? null) !== 'var') {
-                continue;
-            }
-            $name = $segment['name'] ?? null;
-            if (!is_string($name) || $name === '') {
-                throw new \UnexpectedValueException('Compiled matcher variable is missing its name.');
-            }
-            $positions[$index] = $name;
-        }
-
-        return $positions;
-    }
-
-    /** @param list<SegmentSpec> $segments */
-    private function routePattern(array $segments): string
+    private function routePattern(array $segments, int $routeOrdinal): array
     {
         if ($segments === []) {
-            return '/*';
+            return ['/*', []];
         }
 
         $parts = [];
+        $params = [];
+        $parameterOrdinal = 0;
+
         foreach ($segments as $segment) {
             $type = $segment['type'] ?? null;
             if ($type === 'lit') {
@@ -234,16 +220,23 @@ final class CompiledMatcherIndexCompiler
             if ($type !== 'var') {
                 throw new \UnexpectedValueException('Compiled matcher segment type is invalid.');
             }
+
             $regex = $segment['regex'] ?? null;
-            if (!is_string($regex)) {
+            $name = $segment['name'] ?? null;
+            if (!is_string($regex) || !is_string($name) || $name === '') {
                 throw new \LogicException('Non-PCRE matcher segment cannot enter the PCRE fast lane.');
             }
-            $parts[] = '(?:' . self::segmentRegexInner($regex) . ')';
+
+            // Names are deliberately short because PCRE capture names have a
+            // bounded length. They are unique within one combined step.
+            $capture = 'w' . $routeOrdinal . 'p' . $parameterOrdinal++;
+            $parts[] = '(?<' . $capture . '>' . self::segmentRegexInner($regex) . ')';
+            $params[$capture] = $name;
         }
 
         // CanonicalMatcherEngine historically trims leading/trailing slashes
         // before segment matching. Preserve that behavior in the PCRE lane.
-        return '/*' . implode('/', $parts) . '/*';
+        return ['/*' . implode('/', $parts) . '/*', $params];
     }
 
     private static function segmentRegexInner(string $regex): string
