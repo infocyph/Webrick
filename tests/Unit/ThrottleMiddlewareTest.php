@@ -5,7 +5,9 @@ declare(strict_types=1);
 use Infocyph\CacheLayer\Counter\AtomicCounterStoreInterface;
 use Infocyph\CacheLayer\Counter\AtomicCounterValue;
 use Infocyph\Webrick\Exceptions\HttpException;
+use Infocyph\Webrick\Interop\CacheLayer\AtomicCounterAdapter;
 use Infocyph\Webrick\Middleware\ThrottleMiddleware;
+use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 
 final class PcntlFileAtomicCounterStore implements AtomicCounterStoreInterface
@@ -139,7 +141,6 @@ describe('ThrottleMiddleware', function () {
 
     it('blocks requests over limit', function () {
         $request = mockRequest('GET', '/test');
-        $_SERVER['REQUEST_TIME'] = time() + 60;
         $next = fn () => Response::json(['ok' => true]);
 
         for ($i = 0; $i < 3; $i++) {
@@ -170,7 +171,6 @@ describe('ThrottleMiddleware', function () {
         );
 
         $request = mockRequest('GET', '/test');
-        $_SERVER['REQUEST_TIME'] = time() + 60;
         $next = fn () => Response::json(['ok' => true]);
 
         $request1 = $request->withAttribute('rate_cost.thm', 2);
@@ -241,7 +241,11 @@ describe('ThrottleMiddleware', function () {
                 return new AtomicCounterValue($this->value, $this->value === $by);
             }
         };
-        $middleware = new ThrottleMiddleware(max: 2, window: 60, counterStore: $counter);
+        $middleware = new ThrottleMiddleware(
+            max: 2,
+            window: 60,
+            counterStore: new AtomicCounterAdapter($counter),
+        );
         $request = mockRequest('GET', '/atomic');
         $next = static fn () => Response::json(['ok' => true]);
 
@@ -256,23 +260,26 @@ describe('ThrottleMiddleware', function () {
         $path = tempnam(sys_get_temp_dir(), 'webrick-counter-');
         expect($path)->toBeString();
         $store = new PcntlFileAtomicCounterStore($path);
+        $counter = new AtomicCounterAdapter($store);
         $next = static fn() => Response::json(['ok' => true]);
-        $global = new ThrottleMiddleware(max: 10, window: 60, counterStore: $store, scope: 'global');
-        $login = new ThrottleMiddleware(max: 10, window: 60, counterStore: $store, scope: 'login');
+        $global = new ThrottleMiddleware(max: 10, window: 60, counterStore: $counter, scope: 'global');
+        $login = new ThrottleMiddleware(max: 10, window: 60, counterStore: $counter, scope: 'login');
         $firstWindow = time();
-        $firstClient = mockRequest('GET', '/scope')->withAttribute('client_ip', '192.0.2.1');
-        $otherClient = mockRequest('GET', '/scope')->withAttribute('client_ip', '192.0.2.2');
+        $firstClient = (new Request('GET', 'http://localhost/scope', ['REQUEST_TIME' => $firstWindow]))
+            ->withAttribute('client_ip', '192.0.2.1');
+        $otherClient = (new Request('GET', 'http://localhost/scope', ['REQUEST_TIME' => $firstWindow]))
+            ->withAttribute('client_ip', '192.0.2.2');
+        $nextWindowClient = (new Request('GET', 'http://localhost/scope', ['REQUEST_TIME' => $firstWindow + 60]))
+            ->withAttribute('client_ip', '192.0.2.1');
 
         try {
-            $_SERVER['REQUEST_TIME'] = $firstWindow;
             $global($firstClient, $next);
             $globalKey = $store->lastKey;
             $login($firstClient, $next);
             $loginKey = $store->lastKey;
             $global($otherClient, $next);
             $otherClientKey = $store->lastKey;
-            $_SERVER['REQUEST_TIME'] = $firstWindow + 60;
-            $global($firstClient, $next);
+            $global($nextWindowClient, $next);
             $nextWindowKey = $store->lastKey;
 
             expect($globalKey)->toStartWith('webrick.th.v2.')
@@ -297,7 +304,6 @@ describe('ThrottleMiddleware', function () {
         $attemptsPerWorker = 50;
         $limit = 100;
         $children = [];
-        $_SERVER['REQUEST_TIME'] = time();
 
         try {
             for ($worker = 0; $worker < $workers; $worker++) {
@@ -316,7 +322,7 @@ describe('ThrottleMiddleware', function () {
                 $middleware = new ThrottleMiddleware(
                     max: $limit,
                     window: 60,
-                    counterStore: new PcntlFileAtomicCounterStore($counterPath),
+                    counterStore: new AtomicCounterAdapter(new PcntlFileAtomicCounterStore($counterPath)),
                     scope: 'concurrency',
                 );
                 $request = mockRequest('GET', '/concurrency')->withAttribute('client_ip', '198.51.100.10');
