@@ -8,6 +8,7 @@ use Generator;
 use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Response\Response;
+use UnexpectedValueException;
 
 final readonly class ResponseWriterSupport
 {
@@ -117,10 +118,13 @@ final readonly class ResponseWriterSupport
             || $status === StatusEnum::NO_CONTENT->value;
     }
 
-    /** @param iterable<string> $chunks @return Generator<int,string,void,void> */
+    /** @param iterable<mixed> $chunks @return Generator<int,string,void,void> */
     private static function nonEmptyChunks(iterable $chunks): iterable
     {
         foreach ($chunks as $chunk) {
+            if (!is_string($chunk)) {
+                throw new UnexpectedValueException('Streaming response producers must yield strings.');
+            }
             if ($chunk !== '') {
                 yield $chunk;
             }
