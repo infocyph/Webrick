@@ -10,6 +10,7 @@ use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Exceptions\HttpExceptionInterface;
 use Infocyph\Webrick\Request\Http\ContentNegotiator;
 use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Request\Support\HeaderBag;
 use Infocyph\Webrick\Response\Response;
 use Psr\Log\LoggerInterface;
 use Throwable;
@@ -27,7 +28,20 @@ final readonly class ErrorHandler
         private string $requestIdHeader = 'X-Request-Id',
         private array $exceptionMap = [],
         private mixed $responseRenderer = null,
-    ) {}
+    ) {
+        new HeaderBag([$this->requestIdHeader => 'probe']);
+        foreach ($this->exceptionMap as $class => $code) {
+            if (!is_string($class) || !is_int($code) || !is_a($class, Throwable::class, true)) {
+                throw new \InvalidArgumentException('Error handler exception map must use throwable class names and integer statuses.');
+            }
+            if (!StatusEnum::isErrorCode($code)) {
+                throw new \InvalidArgumentException('Error handler exception statuses must be between 400 and 599.');
+            }
+        }
+        if ($this->responseRenderer !== null && !is_callable($this->responseRenderer)) {
+            throw new \InvalidArgumentException('Error response renderer must be callable or null.');
+        }
+    }
 
     /**
      * @param callable(Request):Response $core
