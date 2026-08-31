@@ -110,12 +110,7 @@ final class UploadedFile
         $this->assertTarget($targetPath);
 
         if (is_string($this->src)) {
-            $ok = is_uploaded_file($this->src)
-                ? move_uploaded_file($this->src, $targetPath)
-                : rename($this->src, $targetPath);
-            if (!$ok) {
-                throw new RuntimeException("Failed to move uploaded file to {$targetPath}");
-            }
+            $this->movePathTo($this->src, $targetPath);
         } else {
             $this->copyStreamTo($targetPath);
         }
@@ -185,6 +180,31 @@ final class UploadedFile
             if (!$completed && is_file($targetPath)) {
                 @unlink($targetPath);
             }
+        }
+    }
+
+    private function movePathTo(string $sourcePath, string $targetPath): void
+    {
+        if (is_uploaded_file($sourcePath)) {
+            if (!move_uploaded_file($sourcePath, $targetPath)) {
+                throw new RuntimeException("Failed to move uploaded file to {$targetPath}");
+            }
+
+            return;
+        }
+
+        if (@rename($sourcePath, $targetPath)) {
+            return;
+        }
+        if (!@copy($sourcePath, $targetPath)) {
+            @unlink($targetPath);
+
+            throw new RuntimeException("Failed to copy uploaded file to {$targetPath}");
+        }
+        if (!@unlink($sourcePath)) {
+            @unlink($targetPath);
+
+            throw new RuntimeException("Failed to remove uploaded source after copying to {$targetPath}");
         }
     }
 }
