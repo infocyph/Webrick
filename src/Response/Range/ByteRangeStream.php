@@ -28,6 +28,11 @@ final class ByteRangeStream implements BodyStream
             throw new RuntimeException('ByteRangeStream requires a seekable base stream.');
         }
 
+        $size = $base->getSize();
+        if ($size !== null && ($start > $size || $length > $size - $start)) {
+            throw new \InvalidArgumentException('Byte range window exceeds the base stream size.');
+        }
+
         $this->base->seek($this->start);
     }
 
