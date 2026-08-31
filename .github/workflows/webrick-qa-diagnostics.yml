@@ -4,16 +4,11 @@ on:
   push:
     branches: [ "webrick-5/batch-1-correctness" ]
 
-permissions:
-  contents: write
-
 jobs:
   diagnostics:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -25,40 +20,19 @@ jobs:
       - name: Install dependencies
         run: composer update --no-interaction --prefer-dist --no-progress --prefer-stable
 
-      - name: Apply one-shot PHPDoc parameter repair
-        id: phpdoc_fix
-        continue-on-error: true
-        if: "${{ github.event.head_commit.message != 'docs: normalize PHPDoc parameter tags' }}"
-        shell: bash
-        run: |
-          set +e
-          php tools/fix_phpdoc_params.php 2>&1 | tee phpdoc-fix.txt
-          fixer_status=${PIPESTATUS[0]}
-          set -e
-          printf '%d\n' "$fixer_status" > phpdoc-fix.status
-          if [ "$fixer_status" -ne 0 ]; then
-            exit "$fixer_status"
-          fi
-          git add -A -- benchmark src routes.php index.php
-          if git diff --cached --quiet; then
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit --no-verify -m "docs: normalize PHPDoc parameter tags"
-          git push origin HEAD:webrick-5/batch-1-correctness
-
-      - name: Upload PHPDoc fixer diagnostics
-        if: always()
+      - name: Upload source snapshot
         uses: actions/upload-artifact@v4
         with:
-          name: phpdoc-fixer-diagnostics
+          name: source-snapshot
           path: |
-            phpdoc-fix.txt
-            phpdoc-fix.status
+            benchmark
+            src
+            tests
+            composer.json
+            index.php
+            routes.php
 
       - name: Collect strict diagnostics
-        if: always()
         shell: bash
         run: |
           set +e
@@ -91,9 +65,6 @@ jobs:
         if: always()
         shell: bash
         run: |
-          if [ "${{ steps.phpdoc_fix.outcome }}" = "failure" ]; then
-            exit 1
-          fi
           phpstan_status="$(cat phpstan.status)"
           comments_status="$(cat comments.status)"
           if [ "$phpstan_status" -ne 0 ] || [ "$comments_status" -ne 0 ]; then
