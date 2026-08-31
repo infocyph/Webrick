@@ -9,12 +9,11 @@ use Infocyph\Webrick\Exceptions\HttpException;
 use Infocyph\Webrick\Request\Core\Uri;
 use Infocyph\Webrick\Request\Http\EndUser;
 use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Request\Support\CidrNetwork;
 use Infocyph\Webrick\Request\Support\IpCidr;
 use Infocyph\Webrick\Response\Response;
 
-/**
- * Gateway/front-door hardening with request-local proxy state.
- */
+/** Gateway/front-door hardening with request-local proxy state. */
 final class GatewayHardeningMiddleware
 {
     private const int DEFAULT_FORWARDED_HEADER_MASK = Request::HEADER_FORWARDED
@@ -24,38 +23,32 @@ final class GatewayHardeningMiddleware
         | Request::HEADER_X_FORWARDED_PROTO;
 
     private const array HOP_BY_HOP = [
-        'connection',
-        'keep-alive',
-        'proxy-authenticate',
-        'proxy-authorization',
-        'te',
-        'trailer',
-        'transfer-encoding',
-        'upgrade',
+        'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization',
+        'te', 'trailer', 'transfer-encoding', 'upgrade',
     ];
 
-    private const int HOST_REGEX_CACHE_LIMIT = 64;
-
-    /** @var array<string,list<string>> */
-    private static array $hostRegexCache = [];
-
     private readonly bool $allowAllHosts;
-
     private readonly int $forwardedHeaderMask;
 
     /** @var list<string> */
     private readonly array $hostRegex;
+
+    /** @var list<CidrNetwork> */
+    private readonly array $trustedProxyNetworks;
+
+    /** @var list<CidrNetwork> */
+    private readonly array $denyIpNetworks;
 
     /**
      * @param list<string> $trustedProxyCidrs
      * @param list<string> $denyIpCidrs
      * @param list<string> $trustedHosts
      * @param list<string> $redirectAllowedHosts
-     * @param list<string> $trustedClientIpHeaders Explicit vendor client-IP header names.
+     * @param list<string> $trustedClientIpHeaders
      */
     public function __construct(
-        private readonly array $trustedProxyCidrs = [],
-        private readonly array $denyIpCidrs = [],
+        array $trustedProxyCidrs = [],
+        array $denyIpCidrs = [],
         private readonly array $trustedHosts = [],
         ?int $forwardedHeaderMask = null,
         private readonly bool $enforceHttps = true,
@@ -64,14 +57,17 @@ final class GatewayHardeningMiddleware
         private readonly array $redirectAllowedHosts = [],
         private readonly array $trustedClientIpHeaders = [],
     ) {
+        if ($httpsPort < 1 || $httpsPort > 65535) {
+            throw new \InvalidArgumentException('httpsPort must be between 1 and 65535.');
+        }
         $this->forwardedHeaderMask = $forwardedHeaderMask ?? self::DEFAULT_FORWARDED_HEADER_MASK;
         $this->allowAllHosts = $this->trustedHosts === ['*'];
         $this->hostRegex = self::compileHostRegex($this->trustedHosts);
+        $this->trustedProxyNetworks = self::compileNetworks($trustedProxyCidrs);
+        $this->denyIpNetworks = self::compileNetworks($denyIpCidrs);
     }
 
-    /**
-     * @param Closure(Request):Response $next
-     */
+    /** @param Closure(Request):Response $next */
     public function __invoke(Request $req, Closure $next): Response
     {
         $req = $this->normalizeProxyContext($req);
@@ -79,7 +75,7 @@ final class GatewayHardeningMiddleware
 
         $endUser = EndUser::from(
             $req,
-            $this->trustedProxyCidrs,
+            $this->trustedProxyNetworks,
             $this->forwardedHeaderMask,
             $this->trustedClientIpHeaders,
         );
@@ -103,31 +99,38 @@ final class GatewayHardeningMiddleware
         return $this->guardRedirects($req, $response);
     }
 
-    /** @param array<string> $trustedHosts
-     * @return list<string>
-     */
+    /** @param list<string> $trustedHosts @return list<string> */
     private static function compileHostRegex(array $trustedHosts): array
     {
         if ($trustedHosts === [] || $trustedHosts === ['*']) {
             return [];
         }
 
-        $trustedHosts = array_values($trustedHosts);
-        $key = hash('xxh128', json_encode($trustedHosts, JSON_THROW_ON_ERROR));
-        if (isset(self::$hostRegexCache[$key])) {
-            return self::$hostRegexCache[$key];
-        }
-
         $compiled = [];
         foreach ($trustedHosts as $pattern) {
-            $compiled[] = '#^' . str_replace('\\*', '.*', preg_quote($pattern, '#')) . '$#i';
-        }
-
-        if (count(self::$hostRegexCache) < self::HOST_REGEX_CACHE_LIMIT) {
-            self::$hostRegexCache[$key] = $compiled;
+            $pattern = trim($pattern);
+            if ($pattern === '') {
+                throw new \InvalidArgumentException('Trusted host patterns must not be empty.');
+            }
+            $compiled[] = '#^' . str_replace('\\*', '.*', preg_quote($pattern, '#')) . '$#iD';
         }
 
         return $compiled;
+    }
+
+    /** @param list<string> $cidrs @return list<CidrNetwork> */
+    private static function compileNetworks(array $cidrs): array
+    {
+        $networks = [];
+        foreach ($cidrs as $cidr) {
+            $cidr = trim($cidr);
+            if ($cidr === '') {
+                throw new \InvalidArgumentException('CIDR entries must not be empty.');
+            }
+            $networks[] = IpCidr::compile($cidr);
+        }
+
+        return $networks;
     }
 
     private static function equalsIgnoreCase(string $a, string $b): bool
@@ -143,27 +146,24 @@ final class GatewayHardeningMiddleware
         return $req->withAttributes([
             'client_ip' => $clientIp,
             'peer_ip' => $peerIp,
-            'is_trusted_proxy' => $this->cidrHit($peerIp, $this->trustedProxyCidrs),
+            'is_trusted_proxy' => $this->cidrHit($peerIp, $this->trustedProxyNetworks),
             'effective_scheme' => $req->getUri()->getScheme(),
             'effective_host' => $req->getUri()->getHost(),
             'effective_port' => $req->getUri()->getPort(),
         ]);
     }
 
-    /**
-     * @param array<string> $cidrs
-     */
-    private function cidrHit(?string $ip, array $cidrs): bool
+    /** @param list<CidrNetwork> $networks */
+    private function cidrHit(?string $ip, array $networks): bool
     {
         return $ip !== null
-            && $cidrs !== []
-            && array_any($cidrs, static fn(string $cidr): bool => IpCidr::match($ip, $cidr));
+            && array_any($networks, static fn(CidrNetwork $network): bool => $network->matches($ip));
     }
 
     private function denyIfBlockedEndUser(EndUser $endUser): void
     {
         $clientIp = $endUser->ip();
-        if ($clientIp !== null && $this->cidrHit($clientIp, $this->denyIpCidrs)) {
+        if ($clientIp !== null && $this->cidrHit($clientIp, $this->denyIpNetworks)) {
             throw HttpException::forbidden("Forbidden – {$clientIp} is not allowed.");
         }
     }
@@ -187,11 +187,7 @@ final class GatewayHardeningMiddleware
             return $response;
         }
 
-        if ($this->redirectAllowedHosts === []) {
-            if (!self::equalsIgnoreCase($host, $req->getUri()->getHost())) {
-                throw HttpException::badRequest('Open redirect blocked');
-            }
-        } elseif (!array_any($this->redirectAllowedHosts, static fn(string $allowed): bool => strcasecmp($allowed, $host) === 0)) {
+        if (!$this->redirectHostAllowed($host, $req->getUri()->getHost())) {
             throw HttpException::badRequest('Open redirect blocked');
         }
 
@@ -206,16 +202,14 @@ final class GatewayHardeningMiddleware
     private function normalizeProxyContext(Request $req): Request
     {
         $peer = $req->getServerParams()['REMOTE_ADDR'] ?? null;
-        if (!is_string($peer) || !$this->cidrHit($peer, $this->trustedProxyCidrs)) {
+        if (!is_string($peer) || !$this->cidrHit($peer, $this->trustedProxyNetworks)) {
             return $req;
         }
 
         return $req->withUri(Uri::fromServerParams($req->getServerParams(), $this->forwardedHeaderMask));
     }
 
-    /**
-     * @return list<string>
-     */
+    /** @return list<string> */
     private function parseConnectionTokens(string $line): array
     {
         if ($line === '') {
@@ -233,10 +227,30 @@ final class GatewayHardeningMiddleware
         return $out;
     }
 
+    private function redirectHostAllowed(string $targetHost, string $requestHost): bool
+    {
+        if ($this->redirectAllowedHosts !== []) {
+            return array_any(
+                $this->redirectAllowedHosts,
+                static fn(string $allowed): bool => strcasecmp(trim($allowed), $targetHost) === 0,
+            );
+        }
+
+        return !$this->allowAllHosts
+            && $this->hostRegex !== []
+            && $this->matchesHost($requestHost)
+            && self::equalsIgnoreCase($targetHost, $requestHost);
+    }
+
     private function redirectIfHttpsEnforced(Request $req): ?Response
     {
         if (!$this->enforceHttps || $req->getUri()->getScheme() === 'https') {
             return null;
+        }
+
+        $host = $req->getUri()->getHost();
+        if ($host === '' || !$this->redirectHostAllowed($host, $host)) {
+            throw HttpException::badRequest('HTTPS redirect requires an explicitly trusted host.');
         }
 
         $port = $this->httpsPort === 443 ? null : $this->httpsPort;

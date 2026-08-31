@@ -6,6 +6,7 @@ namespace Infocyph\Webrick\Router\Runtime;
 
 use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Exceptions\HttpException;
+use Infocyph\Webrick\Request\Core\Uri;
 use Infocyph\Webrick\Request\Core\UriServerParams;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Support\HttpUtils;
@@ -55,13 +56,10 @@ final readonly class RoutingInput
         $path = $request->getUri()->getPath() ?: '/';
         $host = $withHost ? self::normalizeHost($request->getUri()->getHost()) : '*';
 
-        return new self($method, $path, $host);
+        return new self($method, Uri::normalizePath($path), $host);
     }
 
-    /**
-     * @param array<string,mixed> $server
-     * @param array<string,mixed> $form
-     */
+    /** @param array<string,mixed> $server @param array<string,mixed> $form */
     public static function fromServer(array $server, bool $withHost, array $form = []): self
     {
         $host = '*';
@@ -85,7 +83,6 @@ final readonly class RoutingInput
             if (!is_string($value) || trim($value) === '') {
                 continue;
             }
-
             $candidate = HttpMethodEnum::normalize($value);
 
             return in_array($candidate, self::METHOD_OVERRIDE_TARGETS, true) ? $candidate : null;
@@ -96,19 +93,19 @@ final readonly class RoutingInput
 
     private static function normalizeHost(string $raw): string
     {
-        if ($raw === '' || preg_match('/[\x00-\x20]/', $raw) === 1) {
+        $raw = trim($raw);
+        if ($raw === '') {
             throw HttpException::badRequest('Illegal Host header.');
         }
-        $host = strtolower(rtrim($raw, '.'));
-        if (function_exists('idn_to_ascii') && !str_contains($host, 'xn--')) {
-            $ascii = idn_to_ascii($host, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
-            if ($ascii === false) {
-                throw HttpException::badRequest('Invalid IDN host name.');
-            }
-            $host = $ascii;
+
+        try {
+            $host = Uri::fromComponents(host: $raw)->getHost();
+        } catch (\InvalidArgumentException) {
+            throw HttpException::badRequest('Illegal Host header.');
         }
-        if (preg_match('/^[\x21-\x7E]+$/', $host) !== 1) {
-            throw HttpException::badRequest('Host contains non-ASCII bytes.');
+        $host = rtrim(strtolower($host), '.');
+        if ($host === '') {
+            throw HttpException::badRequest('Illegal Host header.');
         }
 
         return $host;
@@ -134,27 +131,10 @@ final readonly class RoutingInput
             $path = (string) ($parts['path'] ?? '/');
         }
 
-        if ($path === '' || $path === '/') {
-            return '/';
-        }
-        if (!str_contains($path, '//') && !str_contains($path, '/.')) {
-            return $path;
-        }
-
-        do {
-            $previous = $path;
-            $path = preg_replace('#(/\.?/)#', '/', $path) ?? $previous;
-            $path = preg_replace('#/(?!\.\.)[^/]+/\.\./#', '/', $path) ?? $previous;
-            $path = preg_replace('#^/\.\.(?=/|$)#', '/', $path) ?? $previous;
-        } while ($path !== $previous);
-
-        return $path;
+        return Uri::normalizePath($path === '' ? '/' : $path);
     }
 
-    /**
-     * @param array<string,mixed> $server
-     * @param array<string,mixed> $form
-     */
+    /** @param array<string,mixed> $server @param array<string,mixed> $form */
     private static function routingMethodFromServer(array $server, array $form): string
     {
         $value = $server['REQUEST_METHOD'] ?? HttpMethodEnum::GET->value;
@@ -170,7 +150,6 @@ final readonly class RoutingInput
         if ($headerOverride !== null) {
             return $headerOverride;
         }
-
         if (!Request::getMethodParamOverride()) {
             return HttpMethodEnum::POST->value;
         }
@@ -184,7 +163,6 @@ final readonly class RoutingInput
         if (!is_string($override)) {
             return HttpMethodEnum::POST->value;
         }
-
         $candidate = HttpMethodEnum::normalize($override);
 
         return in_array($candidate, self::METHOD_OVERRIDE_TARGETS, true)

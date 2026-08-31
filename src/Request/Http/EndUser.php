@@ -12,13 +12,9 @@ use Infocyph\Webrick\Request\Support\IpCidr;
 final class EndUser
 {
     private ?string $cachedNoProxy = null;
-
     private ?string $cachedViaProxy = null;
 
-    /**
-     * @param list<CidrNetwork> $trustedProxyCidrs
-     * @param list<string> $trustedClientIpHeaders
-     */
+    /** @param list<CidrNetwork> $trustedProxyCidrs @param list<string> $trustedClientIpHeaders */
     public function __construct(
         private readonly Request $req,
         private readonly array $trustedProxyCidrs = [],
@@ -26,10 +22,7 @@ final class EndUser
         private readonly array $trustedClientIpHeaders = [],
     ) {}
 
-    /**
-     * @param list<string|CidrNetwork> $cidrs
-     * @param list<string> $trustedClientIpHeaders
-     */
+    /** @param list<string|CidrNetwork> $cidrs @param list<string> $trustedClientIpHeaders */
     public static function from(
         Request $request,
         array $cidrs = [],
@@ -182,21 +175,27 @@ final class EndUser
     /** @return list<string> */
     private function forwardedChain(): array
     {
-        $chain = $this->parseForwarded();
-        if ($chain !== []) {
-            return $chain;
+        if (($this->proxyHeaderFlags() & Request::HEADER_FORWARDED) !== 0) {
+            $header = $this->req->getHeaderLine('Forwarded');
+            if ($header === '') {
+                $serverHeader = $this->req->getServerParams()['HTTP_FORWARDED'] ?? null;
+                $header = is_string($serverHeader) ? $serverHeader : '';
+            }
+            if ($header !== '') {
+                return $this->parseForwardedHeader($header);
+            }
         }
+
         if (($this->proxyHeaderFlags() & Request::HEADER_X_FORWARDED_FOR) === 0) {
             return [];
         }
-
         $line = $this->req->getHeaderLine('X-Forwarded-For');
         if ($line === '') {
             $serverLine = $this->req->getServerParams()['HTTP_X_FORWARDED_FOR'] ?? null;
             $line = is_string($serverLine) ? $serverLine : '';
         }
 
-        return $this->validIpList(explode(',', $line));
+        return $line === '' ? [] : $this->validIpList(explode(',', $line));
     }
 
     private function isTrustedProxy(string $ip): bool
@@ -207,30 +206,53 @@ final class EndUser
         );
     }
 
-    /** @return list<string> */
-    private function parseForwarded(): array
+    private function normalizeForwardedNode(string $raw): ?string
     {
-        if (($this->proxyHeaderFlags() & Request::HEADER_FORWARDED) === 0) {
-            return [];
+        $raw = trim($raw);
+        if (strlen($raw) >= 2 && $raw[0] === '"' && $raw[-1] === '"') {
+            $raw = stripcslashes(substr($raw, 1, -1));
         }
+        if ($raw === '' || strcasecmp($raw, 'unknown') === 0 || str_starts_with($raw, '_')) {
+            return null;
+        }
+        if ($raw[0] === '[') {
+            if (preg_match('/^\[([^\]]+)\](?::\d{1,5})?$/D', $raw, $matches) !== 1) {
+                return null;
+            }
+            $raw = $matches[1];
+        } elseif (filter_var($raw, FILTER_VALIDATE_IP) === false) {
+            if (preg_match('/^([^:]+):\d{1,5}$/D', $raw, $matches) !== 1) {
+                return null;
+            }
+            $raw = $matches[1];
+        }
+        [$candidate] = self::normalizeIpToken($raw);
+        $validated = filter_var($candidate, FILTER_VALIDATE_IP);
 
-        $header = $this->req->getHeaderLine('Forwarded');
-        if ($header === '') {
-            $serverHeader = $this->req->getServerParams()['HTTP_FORWARDED'] ?? null;
-            $header = is_string($serverHeader) ? $serverHeader : '';
-        }
-        if ($header === '' || preg_match_all('/(?:^|[,;]\s*)for=(?:"?\[?)([A-F0-9:.]+)(?:\]?"?)/i', $header, $matches) === false) {
+        return is_string($validated) ? $validated : null;
+    }
+
+    /** @return list<string> */
+    private function parseForwardedHeader(string $header): array
+    {
+        $elements = $this->splitForwardedElements($header);
+        if ($elements === []) {
             return [];
         }
 
         $values = [];
-        foreach ($matches[1] ?? [] as $value) {
-            if (is_string($value)) {
-                $values[] = $value;
+        foreach ($elements as $element) {
+            if (preg_match('/(?:^|;)\s*for\s*=\s*("(?:[^"\\]|\\.)*"|[^;,\s]+)/i', $element, $matches) !== 1) {
+                return [];
             }
+            $node = $this->normalizeForwardedNode($matches[1]);
+            if ($node === null) {
+                return [];
+            }
+            $values[] = $node;
         }
 
-        return $this->validIpList($values);
+        return $values;
     }
 
     private function proxyHeaderFlags(): int
@@ -238,19 +260,63 @@ final class EndUser
         return $this->forwardedHeaderMask ?? Request::getProxyHeaderFlags();
     }
 
-    /**
-     * @param list<string> $values
-     * @return list<string>
-     */
+    /** @return list<string> */
+    private function splitForwardedElements(string $header): array
+    {
+        $out = [];
+        $buffer = '';
+        $quoted = false;
+        $escaped = false;
+        for ($i = 0, $length = strlen($header); $i < $length; $i++) {
+            $char = $header[$i];
+            if ($escaped) {
+                $buffer .= $char;
+                $escaped = false;
+                continue;
+            }
+            if ($quoted && $char === '\\') {
+                $buffer .= $char;
+                $escaped = true;
+                continue;
+            }
+            if ($char === '"') {
+                $quoted = !$quoted;
+                $buffer .= $char;
+                continue;
+            }
+            if ($char === ',' && !$quoted) {
+                if (trim($buffer) === '') {
+                    return [];
+                }
+                $out[] = trim($buffer);
+                $buffer = '';
+                continue;
+            }
+            $buffer .= $char;
+        }
+        if ($quoted || trim($buffer) === '') {
+            return [];
+        }
+        $out[] = trim($buffer);
+
+        return $out;
+    }
+
+    /** @param list<string> $values @return list<string> */
     private function validIpList(array $values): array
     {
         $out = [];
         foreach ($values as $value) {
-            [$candidate] = self::normalizeIpToken(trim($value));
-            $validated = filter_var($candidate, FILTER_VALIDATE_IP);
-            if (is_string($validated)) {
-                $out[] = $validated;
+            $value = trim($value);
+            if ($value === '') {
+                return [];
             }
+            [$candidate] = self::normalizeIpToken($value);
+            $validated = filter_var($candidate, FILTER_VALIDATE_IP);
+            if (!is_string($validated)) {
+                return [];
+            }
+            $out[] = $validated;
         }
 
         return $out;

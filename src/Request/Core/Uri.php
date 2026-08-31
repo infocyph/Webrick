@@ -9,19 +9,12 @@ use InvalidArgumentException;
 final class Uri implements \Stringable
 {
     private string $fragment;
-
     private string $host;
-
     private string $pass;
-
     private string $path;
-
     private ?int $port;
-
     private string $query;
-
     private string $scheme;
-
     private string $user;
 
     public function __construct(string $uri = '')
@@ -35,7 +28,6 @@ final class Uri implements \Stringable
             $this->path = '/';
             $this->query = '';
             $this->fragment = '';
-
             return;
         }
 
@@ -53,7 +45,7 @@ final class Uri implements \Stringable
         $this->pass = $parts['pass'] ?? '';
         $this->host = $rawHost !== '' ? $this->asciiHost($rawHost) : '';
         $this->port = $port === $this->defaultPort($scheme) ? null : $port;
-        $this->path = $this->filterPath($parts['path'] ?? '');
+        $this->path = self::normalizePath($parts['path'] ?? '');
         $this->query = $this->filterQuery($parts['query'] ?? '');
         $this->fragment = $this->filterFragment($parts['fragment'] ?? '');
     }
@@ -101,7 +93,7 @@ final class Uri implements \Stringable
         $uri->pass = $pass;
         $uri->host = $host !== '' ? $uri->asciiHost($host) : '';
         $uri->port = $port === $uri->defaultPort($uri->scheme) ? null : $port;
-        $uri->path = $uri->filterPath($path);
+        $uri->path = self::normalizePath($path);
         $uri->query = $uri->filterQuery($query);
         $uri->fragment = $uri->filterFragment($fragment);
 
@@ -116,6 +108,41 @@ final class Uri implements \Stringable
         [$path, $query, $fragment] = self::splitRequestTarget(UriServerParams::detectRequestUri($srv));
 
         return self::fromComponents($scheme, $host, $port, $path, $query, $fragment);
+    }
+
+    public static function normalizePath(string $path): string
+    {
+        if ($path === '') {
+            return '/';
+        }
+
+        $absolute = $path[0] === '/';
+        $trailingSlash = str_ends_with($path, '/') || str_ends_with($path, '/.') || str_ends_with($path, '/..');
+        $stack = [];
+        foreach (explode('/', $path) as $segment) {
+            if ($segment === '' || $segment === '.') {
+                continue;
+            }
+            if ($segment === '..') {
+                if ($stack !== [] && end($stack) !== '..') {
+                    array_pop($stack);
+                } elseif (!$absolute) {
+                    $stack[] = '..';
+                }
+                continue;
+            }
+            $stack[] = $segment;
+        }
+
+        $normalized = ($absolute ? '/' : '') . implode('/', $stack);
+        if ($normalized === '') {
+            $normalized = $absolute ? '/' : '.';
+        }
+        if ($trailingSlash && $normalized !== '/' && $normalized !== '.') {
+            $normalized .= '/';
+        }
+
+        return $normalized;
     }
 
     public static function normalizeQueryString(string $qs): string
@@ -164,35 +191,12 @@ final class Uri implements \Stringable
         return $authority;
     }
 
-    public function getFragment(): string
-    {
-        return $this->fragment;
-    }
-
-    public function getHost(): string
-    {
-        return $this->host;
-    }
-
-    public function getPath(): string
-    {
-        return $this->path;
-    }
-
-    public function getPort(): ?int
-    {
-        return $this->port;
-    }
-
-    public function getQuery(): string
-    {
-        return $this->query;
-    }
-
-    public function getScheme(): string
-    {
-        return $this->scheme;
-    }
+    public function getFragment(): string { return $this->fragment; }
+    public function getHost(): string { return $this->host; }
+    public function getPath(): string { return $this->path; }
+    public function getPort(): ?int { return $this->port; }
+    public function getQuery(): string { return $this->query; }
+    public function getScheme(): string { return $this->scheme; }
 
     public function getUserInfo(): string
     {
@@ -202,21 +206,18 @@ final class Uri implements \Stringable
     public function withFragment(string $fragment): self
     {
         $fragment = $this->filterFragment($fragment);
-
         return $fragment === $this->fragment ? $this : $this->withComponent('fragment', $fragment);
     }
 
     public function withHost(string $host): self
     {
         $host = $host !== '' ? $this->asciiHost($host) : '';
-
         return $host === $this->host ? $this : $this->withComponent('host', $host);
     }
 
     public function withPath(string $path): self
     {
-        $path = $this->filterPath($path);
-
+        $path = self::normalizePath($path);
         return $path === $this->path ? $this : $this->withComponent('path', $path);
     }
 
@@ -226,14 +227,12 @@ final class Uri implements \Stringable
             throw new InvalidArgumentException("Invalid port: {$port}");
         }
         $port = $port === $this->defaultPort($this->scheme) ? null : $port;
-
         return $port === $this->port ? $this : $this->withComponent('port', $port);
     }
 
     public function withQuery(string $query): self
     {
         $query = $this->filterQuery($query);
-
         return $query === $this->query ? $this : $this->withComponent('query', $query);
     }
 
@@ -285,26 +284,41 @@ final class Uri implements \Stringable
 
     private function asciiHost(string $host): string
     {
-        if (preg_match('/[\x00-\x20\x7f\/\\\\@?#]/', $host) === 1) {
+        if ($host === '' || preg_match('/[\x00-\x20\x7f\/\\\\@?#]/', $host) === 1) {
             throw new InvalidArgumentException("Invalid host: {$host}");
         }
         if ($host[0] === '[') {
-            return strtolower($host);
-        }
-        if (!function_exists('idn_to_ascii')) {
-            return strtolower($host);
+            if (!str_ends_with($host, ']')) {
+                throw new InvalidArgumentException("Invalid host: {$host}");
+            }
+            $ip = substr($host, 1, -1);
+            if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) === false) {
+                throw new InvalidArgumentException("Invalid host: {$host}");
+            }
+            return '[' . strtolower($ip) . ']';
         }
 
-        $ascii = idn_to_ascii(
-            $host,
-            IDNA_NONTRANSITIONAL_TO_ASCII,
-            defined('INTL_IDNA_VARIANT_UTS46') ? INTL_IDNA_VARIANT_UTS46 : 0,
-        );
-        if ($ascii === false) {
+        if (function_exists('idn_to_ascii')) {
+            $ascii = idn_to_ascii(
+                $host,
+                IDNA_NONTRANSITIONAL_TO_ASCII,
+                defined('INTL_IDNA_VARIANT_UTS46') ? INTL_IDNA_VARIANT_UTS46 : 0,
+            );
+            if ($ascii === false) {
+                throw new InvalidArgumentException("Invalid host: {$host}");
+            }
+            $host = $ascii;
+        }
+
+        $host = strtolower($host);
+        if (filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false) {
+            return $host;
+        }
+        if (strlen($host) > 254 || preg_match('/^(?:[a-z0-9_](?:[a-z0-9_-]{0,61}[a-z0-9_])?)(?:\.(?:[a-z0-9_](?:[a-z0-9_-]{0,61}[a-z0-9_])?))*\.?$/D', $host) !== 1) {
             throw new InvalidArgumentException("Invalid host: {$host}");
         }
 
-        return strtolower($ascii);
+        return $host;
     }
 
     private function defaultPort(string $scheme): ?int
@@ -321,18 +335,6 @@ final class Uri implements \Stringable
         return ltrim($fragment, '#');
     }
 
-    private function filterPath(string $path): string
-    {
-        do {
-            $old = $path;
-            $path = preg_replace('#(/\.?/)#', '/', $path) ?? $old;
-            $path = preg_replace('#/(?!\.\.)[^/]+/\.\./#', '/', $path) ?? $old;
-            $path = preg_replace('#^/\.\.(?=/|$)#', '/', $path) ?? $old;
-        } while ($path !== $old);
-
-        return $path === '' ? '/' : $path;
-    }
-
     private function filterQuery(string $query): string
     {
         return ltrim($query, '?');
@@ -342,7 +344,6 @@ final class Uri implements \Stringable
     {
         $clone = clone $this;
         $clone->{$property} = $value;
-
         return $clone;
     }
 }
