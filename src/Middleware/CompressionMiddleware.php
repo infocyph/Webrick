@@ -56,7 +56,25 @@ final readonly class CompressionMiddleware
         private array $excludeTypes = [],
         private array $onlyTypes = [],
         private bool $forceAddVary = true,
-    ) {}
+    ) {
+        if ($this->minBytes < 0 || $this->maxBufferBytes < 0 || $this->maxBufferBytes < $this->minBytes) {
+            throw new \InvalidArgumentException('Compression byte limits must satisfy 0 <= minBytes <= maxBufferBytes.');
+        }
+        if (!in_array($this->etagMode, [
+            self::ETAG_WEAK_ON_ENCODE,
+            self::ETAG_STRONG_DERIVE,
+            self::ETAG_STRONG_RECOMP,
+        ], true)) {
+            throw new \InvalidArgumentException('Unknown compression ETag mode.');
+        }
+        foreach ($this->prefOrder as $algorithm) {
+            if (!is_string($algorithm) || !array_key_exists($algorithm, self::ALGO)) {
+                throw new \InvalidArgumentException('Compression preference order contains an unsupported content coding.');
+            }
+        }
+        self::assertStringList($this->excludeTypes, 'excludeTypes');
+        self::assertStringList($this->onlyTypes, 'onlyTypes');
+    }
 
     /** @param Closure(Request):Response $next */
     public function __invoke(Request $req, Closure $next): Response
@@ -97,6 +115,16 @@ final readonly class CompressionMiddleware
         }
 
         return $this->adjustValidators($req, $encodedResponse, $encoded, $algorithm);
+    }
+
+    /** @param array<array-key,mixed> $values */
+    private static function assertStringList(array $values, string $name): void
+    {
+        foreach ($values as $value) {
+            if (!is_string($value)) {
+                throw new \InvalidArgumentException("Compression {$name} must contain only strings.");
+            }
+        }
     }
 
     /** @return array<string,bool> */
