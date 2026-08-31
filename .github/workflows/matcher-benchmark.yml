@@ -1,0 +1,66 @@
+name: Matcher Reference Benchmark
+
+on:
+  push:
+    branches:
+      - webrick-5/batch-1-correctness
+    paths:
+      - 'src/Router/**'
+      - 'benchmark/**'
+      - 'composer.json'
+      - '.github/workflows/matcher-benchmark.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    name: PHP ${{ matrix.php }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.4', '8.5']
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+          tools: composer:v2
+
+      - name: Install dependencies
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Environment
+        run: |
+          php -v
+          php -i | grep -E '^(opcache.enable|opcache.jit|pcre.jit)' || true
+
+      - name: FastRoute reference - 100 routes
+        run: php benchmark/fastroute_reference.php --routes=100 --iters=100000 --rounds=5 --warmup=10000 | tee benchmark-fastroute-100.txt
+
+      - name: FastRoute reference - 1000 routes
+        run: php benchmark/fastroute_reference.php --routes=1000 --iters=75000 --rounds=5 --warmup=10000 | tee benchmark-fastroute-1000.txt
+
+      - name: FastRoute reference - 5000 routes
+        run: php benchmark/fastroute_reference.php --routes=5000 --iters=40000 --rounds=5 --warmup=5000 | tee benchmark-fastroute-5000.txt
+
+      - name: FastRoute reference - 10000 routes
+        run: php benchmark/fastroute_reference.php --routes=10000 --iters=20000 --rounds=5 --warmup=2500 | tee benchmark-fastroute-10000.txt
+
+      - name: Webrick native matcher benchmark
+        run: php benchmark/hello_matchers.php --iters=75000 --rounds=5 --warmup=10000 | tee benchmark-webrick-native.txt
+
+      - name: Upload benchmark output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: matcher-benchmark-php-${{ matrix.php }}
+          path: benchmark-*.txt
+          if-no-files-found: warn
