@@ -13,7 +13,11 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
  * Sharded canonical-index matcher.
  *
  * @phpstan-type RouteValue CompiledRoute|array<array-key,mixed>|string
- * @phpstan-type MatcherGroup array{static:array<string,array<string,RouteValue>>,dynamic:array<array-key,mixed>}
+ * @phpstan-type VerbMap array<string,RouteValue>
+ * @phpstan-type SegmentSpec array{type:'lit',val:string}|array{type:'var',name:string,regex:string}|array{type:'var',name:string,call:callable-string}
+ * @phpstan-type DynamicEntry array{segments:list<SegmentSpec>,verbs:VerbMap}
+ * @phpstan-type DynamicBuckets array<int,array<string,array<string,DynamicEntry>>>
+ * @phpstan-type MatcherGroup array{static:array<string,VerbMap>,dynamic:DynamicBuckets}
  */
 final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
 {
@@ -210,19 +214,16 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         return $index[$name] ?? null;
     }
 
-    /** @param array<string,MatcherGroup> $groups */
-    private function addDynamicBucket(array &$groups, mixed $count, mixed $prefix, mixed $entries): void
+    /**
+     * @param array<string,MatcherGroup> $groups
+     * @param array<string,DynamicEntry> $entries
+     */
+    private function addDynamicBucket(array &$groups, int $count, string $prefix, array $entries): void
     {
-        if (!is_int($count) || !is_string($prefix) || !is_array($entries)) {
-            return;
-        }
-
         $bucket = $prefix === '*' ? self::SHARD_DYNAMIC : $prefix;
         $groups[$bucket] ??= ['static' => [], 'dynamic' => []];
         foreach ($entries as $path => $entry) {
-            if (is_string($path)) {
-                $groups[$bucket]['dynamic'][$count][$prefix][$path] = $entry;
-            }
+            $groups[$bucket]['dynamic'][$count][$prefix][$path] = $entry;
         }
     }
 
@@ -321,14 +322,11 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
 
     /**
      * @param array<string,MatcherGroup> $groups
-     * @param array<array-key,mixed> $dynamic
+     * @param DynamicBuckets $dynamic
      */
     private function partitionDynamicIndex(array &$groups, array $dynamic): void
     {
         foreach ($dynamic as $count => $prefixes) {
-            if (!is_array($prefixes)) {
-                continue;
-            }
             foreach ($prefixes as $prefix => $entries) {
                 $this->addDynamicBucket($groups, $count, $prefix, $entries);
             }
