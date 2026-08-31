@@ -108,7 +108,7 @@ final class Cookie implements \Stringable
     {
         $cookie = clone $this;
         $cookie->expires = $when->getTimestamp();
-        $cookie->maxAge = max(0, $cookie->expires - time());
+        $cookie->maxAge = null;
 
         return $cookie;
     }
