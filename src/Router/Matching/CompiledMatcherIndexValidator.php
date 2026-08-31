@@ -13,7 +13,7 @@ final class CompiledMatcherIndexValidator
     private function __construct() {}
 
     /** @return array<string,array<string,mixed>> */
-    public static function validateHosts(mixed $raw): array
+    public static function validateHosts(mixed $raw, bool $validateRegex = false): array
     {
         if (!is_array($raw)) {
             throw new \UnexpectedValueException('Compiled matcher hosts must be an array.');
@@ -24,14 +24,14 @@ final class CompiledMatcherIndexValidator
             if (!is_string($host) || $host === '') {
                 throw new \UnexpectedValueException('Compiled matcher host key is invalid.');
             }
-            $hosts[$host] = self::validateGroup($group);
+            $hosts[$host] = self::validateGroup($group, $validateRegex);
         }
 
         return $hosts;
     }
 
     /** @return array{static:array<string,array<string,mixed>>,dynamic:array<string,array<int,array<string,array<string,mixed>>>>} */
-    public static function validateGroup(mixed $raw): array
+    public static function validateGroup(mixed $raw, bool $validateRegex = false): array
     {
         if (!is_array($raw)) {
             throw new \UnexpectedValueException('Compiled matcher group must be an array.');
@@ -39,7 +39,7 @@ final class CompiledMatcherIndexValidator
 
         return [
             'static' => self::validateStatic($raw['static'] ?? null),
-            'dynamic' => self::validateDynamic($raw['dynamic'] ?? null),
+            'dynamic' => self::validateDynamic($raw['dynamic'] ?? null, $validateRegex),
         ];
     }
 
@@ -68,7 +68,7 @@ final class CompiledMatcherIndexValidator
     }
 
     /** @return array<string,array<int,array<string,array<string,mixed>>>> */
-    private static function validateDynamic(mixed $raw): array
+    private static function validateDynamic(mixed $raw, bool $validateRegex): array
     {
         if (!is_array($raw)) {
             throw new \UnexpectedValueException('Compiled matcher dynamic map must be an array.');
@@ -87,7 +87,7 @@ final class CompiledMatcherIndexValidator
                     if (!is_string($prefix)) {
                         throw new \UnexpectedValueException('Compiled matcher prefix bucket is invalid.');
                     }
-                    $dynamic[$method][$count][$prefix] = self::validateBucket($bucket);
+                    $dynamic[$method][$count][$prefix] = self::validateBucket($bucket, $validateRegex);
                 }
             }
         }
@@ -96,7 +96,7 @@ final class CompiledMatcherIndexValidator
     }
 
     /** @return array{pcre:list<array{regex:string,routes:array<string,array{route:mixed,params:array<int,string>}>}>,fallback:list<array{segments:list<array<string,mixed>>,route:mixed}>} */
-    private static function validateBucket(mixed $raw): array
+    private static function validateBucket(mixed $raw, bool $validateRegex): array
     {
         if (!is_array($raw)) {
             throw new \UnexpectedValueException('Compiled matcher dynamic bucket is invalid.');
@@ -110,7 +110,7 @@ final class CompiledMatcherIndexValidator
 
         $pcre = [];
         foreach ($pcreRaw as $chunk) {
-            $pcre[] = self::validateChunk($chunk);
+            $pcre[] = self::validateChunk($chunk, $validateRegex);
         }
 
         $fallback = [];
@@ -128,7 +128,7 @@ final class CompiledMatcherIndexValidator
     }
 
     /** @return array{regex:string,routes:array<string,array{route:mixed,params:array<int,string>}>} */
-    private static function validateChunk(mixed $raw): array
+    private static function validateChunk(mixed $raw, bool $validateRegex): array
     {
         if (!is_array($raw)) {
             throw new \UnexpectedValueException('Compiled matcher PCRE chunk is invalid.');
@@ -139,7 +139,7 @@ final class CompiledMatcherIndexValidator
         if (!is_string($regex) || $regex === '' || !is_array($routesRaw)) {
             throw new \UnexpectedValueException('Compiled matcher PCRE chunk payload is invalid.');
         }
-        if (@preg_match($regex, '') === false) {
+        if ($validateRegex && @preg_match($regex, '') === false) {
             throw new \UnexpectedValueException('Compiled matcher PCRE chunk cannot be compiled.');
         }
 
