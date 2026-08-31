@@ -39,6 +39,15 @@ final readonly class ResponseCacheMiddleware
         private bool $avoidSetCookie = true,
         ?CachePolicy $policy = null,
     ) {
+        if ($this->ttlSeconds < 0 || $this->maxBodyBytes < 0) {
+            throw new \InvalidArgumentException('Response cache TTL and maximum body size must be zero or greater.');
+        }
+        foreach ($this->defaultVary as $header) {
+            if (!is_string($header) || preg_match("/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/D", trim($header)) !== 1) {
+                throw new \InvalidArgumentException('Response cache default Vary values must be valid request header names.');
+            }
+        }
+
         $this->store = $store ?? $this->buildDefaultStore();
         $this->policy = $policy ?? new CachePolicy();
     }
@@ -56,8 +65,9 @@ final readonly class ResponseCacheMiddleware
         $cached = $this->readCache($key);
         if (is_array($cached)) {
             $response = $this->unpack($cached);
-
-            return $head ? self::head($response) : $response;
+            if ($response instanceof Response) {
+                return $head ? self::head($response) : $response;
+            }
         }
 
         $response = $this->invokeNext($next, $req);
@@ -287,15 +297,19 @@ final readonly class ResponseCacheMiddleware
     }
 
     /** @param array<mixed,mixed> $data */
-    private function unpack(array $data): Response
+    private function unpack(array $data): ?Response
     {
-        return new Response(
-            $this->intFromMixed($data['s'] ?? null, StatusEnum::OK->value),
-            $this->stringFromMixed($data['b'] ?? '', ''),
-            $this->normalizeHeaders($data['h'] ?? []),
-            $this->stringFromMixed($data['pv'] ?? '1.1', '1.1'),
-            $this->stringFromMixed($data['rp'] ?? '', ''),
-        );
+        try {
+            return new Response(
+                $this->intFromMixed($data['s'] ?? null, StatusEnum::OK->value),
+                $this->stringFromMixed($data['b'] ?? '', ''),
+                $this->normalizeHeaders($data['h'] ?? []),
+                $this->stringFromMixed($data['pv'] ?? '1.1', '1.1'),
+                $this->stringFromMixed($data['rp'] ?? '', ''),
+            );
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /** @param array<string,mixed> $payload */
