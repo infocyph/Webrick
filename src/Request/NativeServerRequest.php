@@ -14,10 +14,7 @@ use Infocyph\Webrick\Request\Support\PayloadParseState;
 use InvalidArgumentException;
 use RuntimeException;
 
-/**
- * Native Webrick request surface with array/scalar input access and explicit
- * structured-payload parse states.
- */
+/** Native Webrick request surface with explicit structured-payload parse states. */
 class NativeServerRequest extends ServerRequest
 {
     private mixed $jsonPayload = null;
@@ -39,7 +36,7 @@ class NativeServerRequest extends ServerRequest
             : '1.1';
 
         $request = new static(
-            HttpMethodEnum::normalize(is_string($server['REQUEST_METHOD'] ?? null) ? $server['REQUEST_METHOD'] : HttpMethodEnum::GET->value),
+            is_string($server['REQUEST_METHOD'] ?? null) ? $server['REQUEST_METHOD'] : HttpMethodEnum::GET->value,
             UriComponents::fromServerParams($server),
             $server,
             RequestHeaders::extractFromServer($server),
@@ -208,6 +205,7 @@ class NativeServerRequest extends ServerRequest
                 $map[$key] = $entry;
             }
         }
+
         return $map;
     }
 
@@ -222,6 +220,7 @@ class NativeServerRequest extends ServerRequest
         if ($key === null) {
             return $payload;
         }
+
         return is_array($payload) ? ($payload[$key] ?? null) : null;
     }
 }
