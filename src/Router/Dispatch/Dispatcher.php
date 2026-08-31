@@ -413,20 +413,20 @@ final class Dispatcher
 
     private function wrapAliasStringAsMiddleware(string $alias): callable
     {
-        return function (Request $req, Closure $next) use ($alias): Response {
+        return function (Request $request, Closure $next) use ($alias): Response {
             $resolved = $this->resolveAlias($alias);
             if (is_string($resolved)) {
-                return $this->invokeClassMiddleware($resolved, $req, $next);
+                return $this->invokeClassMiddleware($resolved, $request, $next);
             }
             if (is_object($resolved)) {
                 if (!is_callable($resolved)) {
                     throw new InvalidArgumentException('Resolved middleware object (' . $resolved::class . ') is not invokable.');
                 }
 
-                return $this->assertMiddlewareResponse($resolved($req, $next), $resolved::class);
+                return $this->assertMiddlewareResponse($resolved($request, $next), $resolved::class);
             }
 
-            return $this->assertMiddlewareResponse($resolved($req, $next), $alias);
+            return $this->assertMiddlewareResponse($resolved($request, $next), $alias);
         };
     }
 
@@ -436,7 +436,7 @@ final class Dispatcher
             throw new InvalidArgumentException("Middleware class '{$mw}' not found.");
         }
 
-        return fn(Request $req, callable $next): Response => $this->invokeClassMiddleware($mw, $req, $next);
+        return fn(Request $request, callable $next): Response => $this->invokeClassMiddleware($mw, $request, $next);
     }
 
     private function wrapObjectAsMiddleware(object $mw): callable
@@ -445,6 +445,6 @@ final class Dispatcher
             throw new InvalidArgumentException(sprintf('Middleware object %s is not invokable', $mw::class));
         }
 
-        return fn(Request $req, Closure $next): Response => $this->assertMiddlewareResponse($mw($req, $next), $mw::class);
+        return fn(Request $request, Closure $next): Response => $this->assertMiddlewareResponse($mw($request, $next), $mw::class);
     }
 }
