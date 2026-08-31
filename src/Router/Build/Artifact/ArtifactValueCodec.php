@@ -6,6 +6,8 @@ namespace Infocyph\Webrick\Router\Build\Artifact;
 
 use Closure;
 use Infocyph\InterMix\Serializer\ClosureSerializer;
+use ReflectionFunction;
+use ReflectionMethod;
 use UnexpectedValueException;
 
 /** Build/runtime-boundary codec for already-compiled execution descriptors. */
@@ -55,9 +57,15 @@ final class ArtifactValueCodec
             return ['kind' => self::VALUE, 'value' => [$value[0], $value[1]]];
         }
 
-        if (!$value instanceof Closure && is_callable($value)) {
+        if ($value instanceof Closure) {
+            $descriptor = self::staticMethodDescriptor($value);
+            if ($descriptor !== null) {
+                return ['kind' => self::VALUE, 'value' => $descriptor];
+            }
+        } elseif (is_callable($value)) {
             $value = Closure::fromCallable($value);
         }
+
         if (!$value instanceof Closure) {
             throw new UnexpectedValueException(
                 'Compiled artifact values must be scalar callable descriptors or Closures.',
@@ -85,5 +93,33 @@ final class ArtifactValueCodec
         }
 
         throw new UnexpectedValueException('Invalid scalar Webrick artifact value.');
+    }
+
+    /** @return array{0:class-string,1:string}|null */
+    private static function staticMethodDescriptor(Closure $closure): ?array
+    {
+        $reflection = new ReflectionFunction($closure);
+        $calledClass = $reflection->getClosureCalledClass();
+        $method = $reflection->getName();
+
+        if (
+            $calledClass === null
+            || $reflection->getClosureThis() !== null
+            || $method === '{closure}'
+            || $reflection->getStaticVariables() !== []
+            || !method_exists($calledClass->getName(), $method)
+        ) {
+            return null;
+        }
+
+        $methodReflection = new ReflectionMethod($calledClass->getName(), $method);
+        if (!$methodReflection->isPublic() || !$methodReflection->isStatic()) {
+            return null;
+        }
+
+        /** @var class-string $class */
+        $class = $calledClass->getName();
+
+        return [$class, $method];
     }
 }
