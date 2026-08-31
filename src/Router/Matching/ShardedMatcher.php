@@ -10,20 +10,25 @@ use Infocyph\Webrick\Exceptions\RouteNotFoundException;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 
 /**
- * Sharded canonical-index matcher.
+ * Sharded matcher using the same compiled matcher IR/executor as FusedMatcher.
+ *
+ * Canonical route groups exist only on the build side. Persisted shards contain
+ * method-first static maps, combined PCRE chunks and callable fallback lanes.
+ * Sharding changes the loaded working set, not route-discrimination semantics.
  *
  * @phpstan-type RouteValue CompiledRoute|array<array-key,mixed>|string
  * @phpstan-type VerbMap array<string,RouteValue>
  * @phpstan-type SegmentSpec array{type:'lit',val:string}|array{type:'var',name:string,regex:string}|array{type:'var',name:string,call:callable-string}
  * @phpstan-type DynamicEntry array{segments:list<SegmentSpec>,verbs:VerbMap}
  * @phpstan-type DynamicBuckets array<int,array<string,array<string,DynamicEntry>>>
- * @phpstan-type MatcherGroup array{static:array<string,VerbMap>,dynamic:DynamicBuckets}
+ * @phpstan-type CanonicalGroup array{static:array<string,VerbMap>,dynamic:DynamicBuckets}
+ * @phpstan-type CompiledGroup array{static:array<string,array<string,RouteValue>>,dynamic:array<string,mixed>}
  */
 final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
 {
     use MatcherFactoryTrait;
 
-    private const int INDEX_CACHE_VERSION = 6;
+    private const int INDEX_CACHE_VERSION = 7;
 
     private const string SHARD_DYNAMIC = '__dynamic';
 
@@ -53,13 +58,16 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
 
     private bool $cacheWriteEnabled = false;
 
-    private CanonicalMatcherEngine $engine;
+    /** @var array<string,CompiledGroup>|null */
+    private ?array $compiledHosts = null;
+
+    private CompiledMatcherEngine $engine;
 
     private bool $finalized = false;
 
     private CanonicalMatcherIndex $index;
 
-    /** @var array<string,MatcherGroup|null> */
+    /** @var array<string,CompiledGroup|null> */
     private array $loadedGroups = [];
 
     /** @var array<string,true> */
@@ -158,6 +166,8 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             $this->middlewareRequirements = [];
         } elseif ($this->cacheReadable && !$this->index->isEmpty()) {
             $this->preloadProductionGroups();
+        } elseif (!$this->cacheReadable) {
+            $this->compiledHosts = new CompiledMatcherIndexCompiler()->compile($this->index->hosts());
         }
 
         $this->finalized = true;
@@ -184,13 +194,13 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
 
     public function matchCompiled(string $method, string $host, string $path): int|array|MatchOutcome
     {
-        return $this->matchCanonical($method, $host, $path, true);
+        return $this->matchCompiledIr($method, $host, $path, true);
     }
 
     public function matchOutcome(string $method, string $host, string $path): MatchOutcome
     {
         $this->finalize();
-        $outcome = $this->matchCanonical($method, $host, $path, false);
+        $outcome = $this->matchCompiledIr($method, $host, $path, false);
         if (!$outcome instanceof MatchOutcome) {
             throw new \LogicException('Non-compact matcher must return a MatchOutcome.');
         }
@@ -215,7 +225,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     }
 
     /**
-     * @param array<string,MatcherGroup> $groups
+     * @param array<string,CanonicalGroup> $groups
      * @param array<string,DynamicEntry> $entries
      */
     private function addDynamicBucket(array &$groups, int $count, string $prefix, array $entries): void
@@ -230,7 +240,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     private function bootIndex(): void
     {
         $this->index ??= new CanonicalMatcherIndex();
-        $this->engine ??= new CanonicalMatcherEngine();
+        $this->engine ??= new CompiledMatcherEngine();
     }
 
     private function cacheStorageDir(): string
@@ -238,7 +248,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         return $this->activeCacheDir ?? $this->cacheDir;
     }
 
-    /** @return list<MatcherGroup> */
+    /** @return list<CompiledGroup> */
     private function loadCandidateGroups(string $host, string $bucket): array
     {
         $groups = [];
@@ -256,7 +266,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         return $groups;
     }
 
-    /** @return MatcherGroup|null */
+    /** @return CompiledGroup|null */
     private function loadGroup(string $host, string $bucket): ?array
     {
         $file = sharded_matcher_shard_file_path(
@@ -279,10 +289,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         if (!is_array($blob) || ($blob['_version'] ?? null) !== self::INDEX_CACHE_VERSION) {
             throw new \RuntimeException("Stale sharded route cache ({$file}). Rebuild the route cache.");
         }
-        $data = $blob['_data'] ?? null;
-        if (!is_array($data)) {
-            throw new \RuntimeException("Stale sharded route cache ({$file}). Rebuild the route cache.");
-        }
+        $data = CompiledMatcherIndexValidator::validateGroup($blob['_data'] ?? null);
         if ($this->verifyCacheOnLoad) {
             $stored = $blob['_hash'] ?? null;
             if (!is_string($stored) || !hash_equals($stored, hash('xxh128', serialize($data)))) {
@@ -290,18 +297,14 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             }
         }
 
-        $validated = new CanonicalMatcherIndex();
-        $validated->replaceFromCache([$host => $data]);
-        $hosts = $validated->hosts();
-
-        return $this->loadedGroups[$file] = $hosts[$host] ?? null;
+        return $this->loadedGroups[$file] = $data;
     }
 
     /** @return int|array{0:int,1:array<string,string>}|MatchOutcome */
-    private function matchCanonical(string $method, string $host, string $path, bool $compact): int|array|MatchOutcome
+    private function matchCompiledIr(string $method, string $host, string $path, bool $compact): int|array|MatchOutcome
     {
         if (!$this->cacheReadable) {
-            $hosts = $this->index->hosts();
+            $hosts = $this->compiledHosts ?? throw new \LogicException('Sharded matcher must be finalized before compiled dispatch.');
             $hostGroup = $hosts[$host] ?? null;
             $wildcardGroup = $host !== '*' ? ($hosts['*'] ?? null) : null;
 
@@ -321,7 +324,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     }
 
     /**
-     * @param array<string,MatcherGroup> $groups
+     * @param array<string,CanonicalGroup> $groups
      * @param DynamicBuckets $dynamic
      */
     private function partitionDynamicIndex(array &$groups, array $dynamic): void
@@ -334,8 +337,8 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     }
 
     /**
-     * @param MatcherGroup $index
-     * @return array<string,MatcherGroup>
+     * @param CanonicalGroup $index
+     * @return array<string,CanonicalGroup>
      */
     private function partitionHostIndex(array $index): array
     {
@@ -352,7 +355,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         return $groups;
     }
 
-    /** @return array<string,array<string,MatcherGroup>> */
+    /** @return array<string,array<string,CanonicalGroup>> */
     private function partitionIndex(): array
     {
         $groups = [];
@@ -420,7 +423,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         );
     }
 
-    /** @param MatcherGroup $group */
+    /** @param CanonicalGroup $group */
     private function writeGroup(string $host, string $bucket, array $group): void
     {
         $file = sharded_matcher_shard_file_path(
@@ -429,11 +432,13 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             $bucket,
             self::WIN_RESERVED,
         );
-        $this->writePayload($file, $group);
+        $compiled = new CompiledMatcherIndexCompiler()->compile([$host => $group]);
+        $compiledGroup = $compiled[$host] ?? throw new \LogicException('Compiled shard group is missing its host.');
+        $this->writePayload($file, $compiledGroup, true);
     }
 
     /** @param array<array-key,mixed> $payload */
-    private function writePayload(string $file, array $payload): void
+    private function writePayload(string $file, array $payload, bool $compiledGroup = false): void
     {
         $directory = dirname($file);
         if (!is_dir($directory) && !mkdir($directory, 0775, true) && !is_dir($directory)) {
@@ -443,6 +448,9 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         $data = MatcherCachePayloadNormalizer::normalize($payload);
         if (!is_array($data)) {
             throw new \UnexpectedValueException('Normalized sharded matcher cache must be an array.');
+        }
+        if ($compiledGroup) {
+            $data = CompiledMatcherIndexValidator::validateGroup($data);
         }
         $hash = hash('xxh128', serialize($data));
         $php = "<?php\nreturn [\n"
@@ -454,10 +462,13 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         matcher_write_validated_atomic_php_file(
             $file,
             $php,
-            static function (array $blob) use ($hash): void {
+            static function (array $blob) use ($compiledGroup, $hash): void {
                 $data = $blob['_data'] ?? null;
                 if (($blob['_version'] ?? null) !== self::INDEX_CACHE_VERSION || !is_array($data)) {
                     throw new \UnexpectedValueException('Generated sharded matcher payload is invalid.');
+                }
+                if ($compiledGroup) {
+                    $data = CompiledMatcherIndexValidator::validateGroup($data);
                 }
                 if (($blob['_hash'] ?? null) !== $hash || hash('xxh128', serialize($data)) !== $hash) {
                     throw new \UnexpectedValueException('Generated sharded matcher payload hash mismatch.');
