@@ -42,6 +42,32 @@ final class Registry
         'mac' => '/^(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$/',
     ];
 
+    /**
+     * Built-in regex constraints whose normalized inner patterns cannot consume
+     * a path separator and are therefore safe to embed in a whole-path matcher.
+     *
+     * `base64` and `ipv4_cidr` deliberately remain segment-local because their
+     * regexes contain `/`; composing them into a route-wide PCRE would let them
+     * cross a segment boundary and change historical Webrick semantics.
+     *
+     * @var array<string,true>
+     */
+    private const array BUILTIN_COMBINED_PCRE_SAFE = [
+        'uuid' => true,
+        'ulid' => true,
+        'cuid' => true,
+        'slug' => true,
+        'email' => true,
+        'hex' => true,
+        'hexcolor' => true,
+        'semver' => true,
+        'date' => true,
+        'time' => true,
+        'datetime' => true,
+        'ipv4' => true,
+        'mac' => true,
+    ];
+
     /** @var array<string,callable-string> */
     private static array $callableValidators = self::BUILTIN_CALLABLE;
 
@@ -100,8 +126,8 @@ final class Registry
             return true;
         }
 
-        foreach (self::BUILTIN_REGEX as $rule) {
-            $inner = self::regexInner($rule);
+        foreach (self::BUILTIN_COMBINED_PCRE_SAFE as $name => $_safe) {
+            $inner = self::regexInner(self::BUILTIN_REGEX[$name]);
             if ($regex === "#\\A{$inner}\\z#D") {
                 return true;
             }
