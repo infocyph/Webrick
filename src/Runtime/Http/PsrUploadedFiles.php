@@ -6,19 +6,24 @@ namespace Infocyph\Webrick\Runtime\Http;
 
 use Infocyph\Webrick\Interop\Psr7\PsrBodyStreamAdapter;
 use Infocyph\Webrick\Request\Core\UploadedFile;
+use Psr\Http\Message\UploadedFileInterface;
 
+/** @phpstan-type UploadedTree UploadedFile|array<array-key,UploadedTree> */
 final readonly class PsrUploadedFiles
 {
     /**
-     * @return array<string,UploadedFile|array<mixed>>
      * @param mixed $files
+     * @return array<string,UploadedTree>
      */
     public static function normalize(mixed $files): array
     {
         return is_array($files) ? self::map($files) : [];
     }
 
-    /** @param array<mixed> $files @return array<string,UploadedFile|array<mixed>> */
+    /**
+     * @param array<array-key,mixed> $files
+     * @return array<string,UploadedTree>
+     */
     private static function map(array $files): array
     {
         $out = [];
@@ -35,6 +40,7 @@ final readonly class PsrUploadedFiles
         return $out;
     }
 
+    /** @return UploadedTree|null */
     private static function one(mixed $file): UploadedFile|array|null
     {
         if (is_array($file)) {
@@ -48,26 +54,16 @@ final readonly class PsrUploadedFiles
 
             return $out;
         }
-        if (!is_object($file)) {
+        if (!$file instanceof UploadedFileInterface) {
             return null;
         }
-
-        $stream = $file->getStream();
-        if (!is_object($stream)) {
-            return null;
-        }
-
-        $size = $file->getSize();
-        $error = $file->getError();
-        $name = $file->getClientFilename();
-        $type = $file->getClientMediaType();
 
         return new UploadedFile(
-            new PsrBodyStreamAdapter($stream),
-            is_int($size) ? $size : null,
-            is_int($error) ? $error : UPLOAD_ERR_NO_FILE,
-            is_string($name) ? $name : null,
-            is_string($type) ? $type : null,
+            new PsrBodyStreamAdapter($file->getStream()),
+            $file->getSize(),
+            $file->getError(),
+            $file->getClientFilename(),
+            $file->getClientMediaType(),
         );
     }
 }
