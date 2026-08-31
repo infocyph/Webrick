@@ -79,7 +79,7 @@ function addParamTags(string $doc, string $indent, array $tags): string
 
     if (!str_contains($doc, "\n")) {
         $inner = trim(substr($doc, 3, -2));
-        $lines = ["/**"];
+        $lines = ['/**'];
         if ($inner !== '') {
             $lines[] = $indent . ' * ' . $inner;
         }
@@ -105,7 +105,7 @@ function addParamTags(string $doc, string $indent, array $tags): string
 }
 
 $root = dirname(__DIR__);
-$parser = (new ParserFactory())->createForNewestSupportedVersion();
+$parser = new ParserFactory()->createForNewestSupportedVersion();
 $updated = 0;
 
 foreach (phpFiles($root) as $file) {
@@ -122,7 +122,7 @@ foreach (phpFiles($root) as $file) {
     /** @var list<array{start:int,end:int,replacement:string}> $replacements */
     $replacements = [];
     $traverser = new NodeTraverser();
-    $traverser->addVisitor(new class($source, $replacements) extends NodeVisitorAbstract {
+    $traverser->addVisitor(new class ($source, $replacements) extends NodeVisitorAbstract {
         /** @param list<array{start:int,end:int,replacement:string}> $replacements */
         public function __construct(
             private readonly string $source,
