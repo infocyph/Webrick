@@ -9,6 +9,7 @@ use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Exceptions\HttpException;
 use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Response\Headers\CacheControl;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Runtime\Http\RuntimeCapabilities;
 use Infocyph\Webrick\Support\HttpUtils;
@@ -187,9 +188,7 @@ final readonly class CompressionMiddleware
 
     private function hasNoTransform(Response $response): bool
     {
-        $cacheControl = strtolower($response->getHeaderLine('Cache-Control'));
-
-        return $cacheControl !== '' && str_contains($cacheControl, 'no-transform');
+        return isset(CacheControl::directives($response->getHeaderLine('Cache-Control'))['no-transform']);
     }
 
     private function isAllowedByWhitelist(string $contentType): bool
