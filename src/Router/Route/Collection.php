@@ -6,6 +6,7 @@ namespace Infocyph\Webrick\Router\Route;
 
 use ArrayIterator;
 use Infocyph\Webrick\Interfaces\RouteInterface;
+use Infocyph\Webrick\Router\Build\RouteIdentity;
 use IteratorAggregate;
 use LogicException;
 use Traversable;
@@ -21,6 +22,9 @@ final class Collection implements IteratorAggregate
 
     /** @var array<string,list<RouteInterface>> */
     private array $byHandler = [];
+
+    /** @var array<string,RouteInterface> */
+    private array $byIdentity = [];
 
     /** @var array<string,RouteInterface> */
     private array $byName = [];
@@ -214,6 +218,7 @@ final class Collection implements IteratorAggregate
         if (($name = $route->getName()) !== null && $name !== '') {
             $this->byName[$name] = $route;
         }
+        $this->byIdentity[$this->routeIdentity($route)] = $route;
         $this->byPath[$route->getPath()] = $route;
         $this->byHandler[$route->getHandlerId()][] = $route;
     }
@@ -235,6 +240,7 @@ final class Collection implements IteratorAggregate
     {
         $this->byName = [];
         $this->byHandler = [];
+        $this->byIdentity = [];
         $this->byPath = [];
 
         foreach ($this->routes as $route) {
@@ -244,6 +250,12 @@ final class Collection implements IteratorAggregate
                 }
                 $this->byName[$name] = $route;
             }
+
+            $identity = $this->routeIdentity($route);
+            if (isset($this->byIdentity[$identity]) && $this->byIdentity[$identity] !== $route) {
+                throw new LogicException($this->duplicateRouteMessage($route));
+            }
+            $this->byIdentity[$identity] = $route;
             $this->byHandler[$route->getHandlerId()][] = $route;
             $this->byPath[$route->getPath()] = $route;
         }
@@ -259,10 +271,25 @@ final class Collection implements IteratorAggregate
 
     private function resetIndexes(): void
     {
-        [$this->byName, $this->byHandler, $this->byPath, $this->aliases] = [[], [], [], []];
+        [$this->byName, $this->byHandler, $this->byIdentity, $this->byPath, $this->aliases] = [[], [], [], [], []];
         $this->dirty = true;
         $this->compiled = null;
         $this->aliasIndex = null;
+    }
+
+    private function routeIdentity(RouteInterface $route): string
+    {
+        return RouteIdentity::canonicalKey($route->getMethod(), $route->getDomain(), $route->getPath());
+    }
+
+    private function duplicateRouteMessage(RouteInterface $route): string
+    {
+        $domain = $route->getDomain();
+        $target = ($domain === null || $domain === '' || $domain === '*')
+            ? $route->getPath()
+            : $domain . $route->getPath();
+
+        return "Duplicate canonical route: {$route->getMethod()} {$target}";
     }
 
     /** @param list<string> $aliases @return list<string> */
@@ -295,6 +322,11 @@ final class Collection implements IteratorAggregate
 
     private function validateRouteRegistration(RouteInterface $route): void
     {
+        $identity = $this->routeIdentity($route);
+        if (isset($this->byIdentity[$identity]) && $this->byIdentity[$identity] !== $route) {
+            throw new LogicException($this->duplicateRouteMessage($route));
+        }
+
         $name = $route->getName();
         if ($name === null || $name === '') {
             return;
