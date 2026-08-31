@@ -21,6 +21,8 @@ interface MatcherInterface
 
     public function enableCache(string $cacheLocation): self;
 
+    public function enableCacheWrite(bool $enable = true): self;
+
     public function finalize(): void;
 
     /**
