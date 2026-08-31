@@ -15,6 +15,8 @@ final class HeaderPolicy
 
     public const int SINGLE = 0;
 
+    private const string FIELD_NAME_RX = "/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/D";
+
     private static bool $frozen = false;
 
     /** @var array<string,int> */
@@ -72,6 +74,9 @@ final class HeaderPolicy
         if (self::$frozen) {
             throw new \LogicException('Header policy registry is frozen for production runtime.');
         }
+        if (preg_match(self::FIELD_NAME_RX, $header) !== 1) {
+            throw new \InvalidArgumentException('Header policy name must be a valid HTTP field name.');
+        }
         if (!in_array($policy, [self::SINGLE, self::MULTI_LINE, self::MERGE_TOKENS], true)) {
             throw new \InvalidArgumentException('Unknown header merge policy.');
         }
@@ -81,7 +86,11 @@ final class HeaderPolicy
 
     private static function canonicalHeaderToken(string $token): string
     {
-        return implode('-', array_map(ucfirst(...), explode('-', strtolower($token))));
+        if ($token !== '*' && preg_match(self::FIELD_NAME_RX, $token) !== 1) {
+            throw new \InvalidArgumentException('Merged header token must be a valid HTTP field name or wildcard.');
+        }
+
+        return $token === '*' ? '*' : implode('-', array_map(ucfirst(...), explode('-', strtolower($token))));
     }
 
     /** @return list<string> */
