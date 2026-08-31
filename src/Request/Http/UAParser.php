@@ -18,10 +18,8 @@ use Infocyph\Webrick\Request\Request;
  */
 final class UAParser
 {
-    /**
-     * @var array<string, string>
-     */
-    private static array $tokenMap = [
+    /** @var array<string,string> */
+    private const array TOKEN_MAP = [
         'crios' => 'Chrome iOS',
         'fxios' => 'Firefox iOS',
         'edg' => 'Edge',
@@ -61,9 +59,7 @@ final class UAParser
         return $this->ua;
     }
 
-    /**
-     * @return array{browser: string, version: string, platform: string, engine: string}
-     */
+    /** @return array{browser:string,version:string,platform:string,engine:string} */
     public function parse(): array
     {
         [$browser, $version] = $this->browser();
@@ -73,9 +69,7 @@ final class UAParser
         return compact('browser', 'version', 'platform', 'engine');
     }
 
-    /**
-     * @return array{0: string, 1: string}
-     */
+    /** @return array{0:string,1:string} */
     private function browser(): array
     {
         $brands = $this->hint['brands_full'] ?? $this->hint['brands'] ?? null;
@@ -92,13 +86,24 @@ final class UAParser
             }
         }
 
-        foreach (self::$tokenMap as $token => $label) {
+        foreach (self::TOKEN_MAP as $token => $label) {
             if (str_contains($this->uaLower, $token)) {
                 return [$label, $this->extractVersion($token)];
             }
         }
 
         return ['Unknown', ''];
+    }
+
+    private function clientHintValue(string $value): string
+    {
+        $value = trim($value);
+        if (strlen($value) >= 2 && $value[0] === '"' && str_ends_with($value, '"')) {
+            $value = substr($value, 1, -1);
+            $value = str_replace(['\\"', '\\\\'], ['"', '\\'], $value);
+        }
+
+        return trim($value);
     }
 
     private function engine(string $browser): string
@@ -118,13 +123,13 @@ final class UAParser
 
     private function extractVersion(string $token): string
     {
-        /** @var array<string, string> $patterns */
+        /** @var array<string,string> $patterns */
         static $patterns = [
             'crios' => '/crios\/([\d.]+)/i',
             'fxios' => '/fxios\/([\d.]+)/i',
-            'edg' => '/edg[e|a]?[ /]([\d.]+)/i',
-            'opr' => '/(?:opr|opera)[ /]([\d.]+)/i',
-            'vivaldi' => '/vivaldi[ /]([\d.]+)/i',
+            'edg' => '/(?:edg|edga|edgios|edge)[\/]([\d.]+)/i',
+            'opr' => '/(?:opr|opera)[ \/]([\d.]+)/i',
+            'vivaldi' => '/vivaldi[ \/]([\d.]+)/i',
             'brave' => '/brave\/([\d.]+)/i',
             'samsungbrowser' => '/samsungbrowser\/([\d.]+)/i',
             'yabrowser' => '/yabrowser\/([\d.]+)/i',
@@ -136,20 +141,14 @@ final class UAParser
         ];
 
         $pattern = $patterns[$token] ?? null;
-        if ($pattern === null) {
-            return '';
-        }
-
-        if (preg_match($pattern, $this->ua, $matches) !== 1) {
+        if ($pattern === null || preg_match($pattern, $this->ua, $matches) !== 1) {
             return '';
         }
 
         return $matches[1] ?? '';
     }
 
-    /**
-     * @return array<string, string>
-     */
+    /** @return array<string,string> */
     private function parseBrandVersions(string $header): array
     {
         if ($header === '') {
@@ -166,29 +165,25 @@ final class UAParser
         return $brands;
     }
 
-    /**
-     * @phpstan-return HintMap
-     */
+    /** @phpstan-return HintMap */
     private function parseSecCh(Request $req): array
     {
         $hint = [];
 
-        $fullList = $req->getHeaderLine('Sec-CH-UA-Full-Version-List');
-        $fullBrands = $this->parseBrandVersions($fullList);
+        $fullBrands = $this->parseBrandVersions($req->getHeaderLine('Sec-CH-UA-Full-Version-List'));
         if ($fullBrands !== []) {
             $hint['brands_full'] = $fullBrands;
         }
 
-        $uaHint = $req->getHeaderLine('Sec-CH-UA');
-        $brands = $this->parseBrandVersions($uaHint);
+        $brands = $this->parseBrandVersions($req->getHeaderLine('Sec-CH-UA'));
         if ($brands !== []) {
             $hint['brands'] = $brands;
         }
 
         $hint['mobile'] = $req->getHeaderLine('Sec-CH-UA-Mobile') === '?1';
-        $hint['platform'] = $req->getHeaderLine('Sec-CH-UA-Platform');
-        $hint['platformVersion'] = $req->getHeaderLine('Sec-CH-UA-Platform-Version');
-        $hint['fullVersion'] = $req->getHeaderLine('Sec-CH-UA-Full-Version');
+        $hint['platform'] = $this->clientHintValue($req->getHeaderLine('Sec-CH-UA-Platform'));
+        $hint['platformVersion'] = $this->clientHintValue($req->getHeaderLine('Sec-CH-UA-Platform-Version'));
+        $hint['fullVersion'] = $this->clientHintValue($req->getHeaderLine('Sec-CH-UA-Full-Version'));
 
         return $hint;
     }
@@ -217,7 +212,20 @@ final class UAParser
 
     private function platformFromUserAgent(): string
     {
-        /** @var array<string, string> $patterns */
+        if (preg_match('/iPad; CPU OS ([\d_]+)/i', $this->ua, $matches) === 1) {
+            return 'iPadOS ' . str_replace('_', '.', $matches[1]);
+        }
+        if (preg_match('/iPhone OS ([\d_]+)/i', $this->ua, $matches) === 1) {
+            return 'iOS ' . str_replace('_', '.', $matches[1]);
+        }
+        if (preg_match('/Android ([\d.]+)/i', $this->ua, $matches) === 1) {
+            return 'Android ' . $matches[1];
+        }
+        if (preg_match('/Mac OS X ([\d_]+)/i', $this->ua, $matches) === 1) {
+            return 'macOS ' . str_replace('_', '.', $matches[1]);
+        }
+
+        /** @var array<string,string> $patterns */
         $patterns = [
             '/Windows NT 10\.0.*Windows[\/\s]?11/i' => 'Windows 11',
             '/Windows NT 10\.0/i' => 'Windows 10',
@@ -231,22 +239,6 @@ final class UAParser
             if (preg_match($pattern, $this->ua) === 1) {
                 return $label;
             }
-        }
-
-        if (preg_match('/Mac OS X ([\d_]+)/i', $this->ua, $matches) === 1) {
-            return 'macOS ' . str_replace('_', '.', $matches[1]);
-        }
-
-        if (preg_match('/Android ([\d.]+)/i', $this->ua, $matches) === 1) {
-            return 'Android ' . $matches[1];
-        }
-
-        if (preg_match('/iPhone OS ([\d_]+)/i', $this->ua, $matches) === 1) {
-            return 'iOS ' . str_replace('_', '.', $matches[1]);
-        }
-
-        if (preg_match('/iPad; CPU OS ([\d_]+)/i', $this->ua, $matches) === 1) {
-            return 'iPadOS ' . str_replace('_', '.', $matches[1]);
         }
 
         return 'Unknown';

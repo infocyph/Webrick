@@ -27,23 +27,19 @@ final class UploadedFilesNormalizer
         return $out;
     }
 
-    /**
-     * @param array<int|string,mixed> $part
-     */
+    /** @param array<int|string,mixed> $part */
     private static function leafFile(array $part, mixed $tmpName): UploadedFile
     {
-        return new UploadedFile(
-            is_string($tmpName) ? $tmpName : '',
-            isset($part['size']) && is_int($part['size']) ? $part['size'] : null,
-            isset($part['error']) && is_int($part['error']) ? $part['error'] : 0,
-            isset($part['name']) && is_string($part['name']) ? $part['name'] : null,
-            isset($part['type']) && is_string($part['type']) ? $part['type'] : null,
-        );
+        return UploadedFile::fromSpec([
+            'tmp_name' => is_string($tmpName) ? $tmpName : '',
+            'size' => isset($part['size']) && is_int($part['size']) ? $part['size'] : null,
+            'error' => isset($part['error']) && is_int($part['error']) ? $part['error'] : UPLOAD_ERR_NO_FILE,
+            'name' => isset($part['name']) && is_string($part['name']) ? $part['name'] : null,
+            'type' => isset($part['type']) && is_string($part['type']) ? $part['type'] : null,
+        ]);
     }
 
-    /**
-     * @return UploadedFile|array<array-key,mixed>|null
-     */
+    /** @return UploadedFile|array<array-key,mixed>|null */
     private static function normalisePart(mixed $part): UploadedFile|array|null
     {
         if ($part instanceof UploadedFile) {
@@ -106,7 +102,7 @@ final class UploadedFilesNormalizer
             $out[$idx] = UploadedFile::fromSpec([
                 'tmp_name' => is_string($tmpName) ? $tmpName : '',
                 'size' => is_int($size) ? $size : null,
-                'error' => is_int($error) ? $error : 0,
+                'error' => is_int($error) ? $error : UPLOAD_ERR_NO_FILE,
                 'name' => is_string($name) ? $name : null,
                 'type' => is_string($type) ? $type : null,
             ]);

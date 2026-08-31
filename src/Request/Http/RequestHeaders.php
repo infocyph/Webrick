@@ -7,6 +7,7 @@ namespace Infocyph\Webrick\Request\Http;
 use Infocyph\Webrick\Request\Core\ServerRequest;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Request\Support\HeaderBag;
+use Infocyph\Webrick\Support\HttpUtils;
 
 /** Lazy request-header facade. */
 final class RequestHeaders
@@ -24,10 +25,7 @@ final class RequestHeaders
 
     public function __construct(private readonly Request|ServerRequest $req) {}
 
-    /**
-     * @param array<string,mixed> $srv
-     * @return array<string,list<string>>
-     */
+    /** @param array<string,mixed> $srv @return array<string,list<string>> */
     public static function extractFromServer(array $srv): array
     {
         $out = self::viaServerFallback($srv);
@@ -77,15 +75,13 @@ final class RequestHeaders
             return $this->content;
         }
 
-        $contentType = strtolower($this->req->getHeaderLine('Content-Type'));
-        [$type] = explode(';', $contentType, 2);
-        $charset = preg_match('/charset=([^;]+)/', $contentType, $matches) ? trim($matches[1]) : null;
-        $length = $this->req->getHeaderLine('Content-Length');
+        $contentType = $this->req->getHeaderLine('Content-Type');
+        $lengthRaw = trim($this->req->getHeaderLine('Content-Length'));
 
         return $this->content = [
-            'type' => $type ?: null,
-            'charset' => $charset,
-            'length' => $length !== '' ? (int) $length : null,
+            'type' => ($type = HttpUtils::baseMediaType($contentType)) !== '' ? $type : null,
+            'charset' => HttpUtils::contentTypeCharset($contentType),
+            'length' => $lengthRaw === '' ? null : HttpUtils::parseUnsignedDecimal($lengthRaw),
             'md5' => strtolower($this->req->getHeaderLine('Content-Md5')),
         ];
     }
@@ -122,11 +118,7 @@ final class RequestHeaders
         return $this->req->getHeaderLine($name);
     }
 
-    /**
-     * @param array<string,mixed> $srv
-     * @param array<string,list<string>> $out
-     * @param-out array<string,list<string>> $out
-     */
+    /** @param array<string,mixed> $srv @param array<string,list<string>> $out @param-out array<string,list<string>> $out */
     private static function backfillAuthorization(array $srv, array &$out): void
     {
         if (isset($out['Authorization'])) {
@@ -151,11 +143,7 @@ final class RequestHeaders
         }
     }
 
-    /**
-     * @param array<string,mixed> $srv
-     * @param array<string,list<string>> $out
-     * @param-out array<string,list<string>> $out
-     */
+    /** @param array<string,mixed> $srv @param array<string,list<string>> $out @param-out array<string,list<string>> $out */
     private static function backfillContentHeaders(array $srv, array &$out): void
     {
         foreach (['CONTENT_TYPE' => 'Content-Type', 'CONTENT_LENGTH' => 'Content-Length', 'CONTENT_MD5' => 'Content-Md5'] as $serverKey => $header) {
@@ -165,10 +153,7 @@ final class RequestHeaders
         }
     }
 
-    /**
-     * @param array<string,mixed> $srv
-     * @return array<string,list<string>>
-     */
+    /** @param array<string,mixed> $srv @return array<string,list<string>> */
     private static function viaServerFallback(array $srv): array
     {
         $out = [];
@@ -233,18 +218,10 @@ final class RequestHeaders
 
     private function httpDate(string $value): ?int
     {
-        if ($value === '') {
-            return null;
-        }
-        $timestamp = strtotime($value);
-
-        return $timestamp === false ? null : $timestamp;
+        return HttpUtils::parseHttpDate($value);
     }
 
-    /**
-     * @param array<string,list<string>> $headers
-     * @param-out array<string,list<string>> $headers
-     */
+    /** @param array<string,list<string>> $headers @param-out array<string,list<string>> $headers */
     private function injectAuthorisation(array &$headers): void
     {
         if (!isset($headers['Authorization'])) {
@@ -257,14 +234,21 @@ final class RequestHeaders
     {
         $parsed = [];
         foreach (explode(',', $raw) as $segment) {
-            $segment = trim($segment);
-            if ($segment === '') {
+            $parts = array_map(trim(...), explode(';', $segment));
+            $value = array_shift($parts);
+            if ($value === null || $value === '') {
                 continue;
             }
-            [$value, $params] = array_pad(array_map(trim(...), explode(';', $segment, 2)), 2, '');
-            $q = preg_match('/(?:^|;)\s*q=([01](?:\.\d{0,3})?)/i', ';' . $params, $matches)
-                ? (float) $matches[1]
-                : 1.0;
+
+            $q = 1.0;
+            foreach ($parts as $parameter) {
+                if (preg_match('/^q\s*=\s*(.*)$/i', $parameter, $matches) !== 1) {
+                    continue;
+                }
+                $q = HttpUtils::parseQValue($matches[1]) ?? 0.0;
+
+                break;
+            }
             if ($q <= 0.0) {
                 continue;
             }

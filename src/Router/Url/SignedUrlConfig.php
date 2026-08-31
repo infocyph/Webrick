@@ -38,10 +38,7 @@ final readonly class SignedUrlConfig
     /** @var list<string> */
     public array $verificationKeys;
 
-    /**
-     * @param list<string> $ignoredQueryParams
-     * @param list<string> $verificationKeys
-     */
+    /** @param list<string> $ignoredQueryParams @param list<string> $verificationKeys */
     public function __construct(
         ?string $generationKey = null,
         array $verificationKeys = [],
@@ -72,9 +69,7 @@ final readonly class SignedUrlConfig
         );
     }
 
-    /**
-     * @param array<int|string,mixed> $config
-     */
+    /** @param array<int|string,mixed> $config */
     public static function fromArray(array $config): self
     {
         $verificationKeys = $config['verificationKeys'] ?? [];
@@ -90,7 +85,7 @@ final readonly class SignedUrlConfig
         return new self(
             generationKey: \is_string($config['generationKey'] ?? null) ? $config['generationKey'] : null,
             verificationKeys: self::filterStringList($verificationKeys),
-            defaultTtl: \is_int($config['defaultTtl'] ?? null) ? $config['defaultTtl'] : self::normalizeOptionalInt($config['defaultTtl'] ?? null),
+            defaultTtl: self::normalizeOptionalInt($config['defaultTtl'] ?? null, 'defaultTtl'),
             signatureParam: \is_string($config['signatureParam'] ?? null)
                 ? $config['signatureParam']
                 : self::DEFAULT_SIGNATURE_PARAM,
@@ -104,7 +99,7 @@ final readonly class SignedUrlConfig
                 ? $config['payloadMode']
                 : self::MODE_RELATIVE,
             ignoredQueryParams: self::filterStringList($ignoredQueryParams),
-            leeway: self::normalizeOptionalInt($config['leeway'] ?? null) ?? 0,
+            leeway: self::normalizeOptionalInt($config['leeway'] ?? null, 'leeway') ?? 0,
         );
     }
 
@@ -129,10 +124,7 @@ final readonly class SignedUrlConfig
         );
     }
 
-    /**
-     * @param array<int|string,mixed> $values
-     * @return list<string>
-     */
+    /** @param array<int|string,mixed> $values @return list<string> */
     private static function filterStringList(array $values): array
     {
         $filtered = [];
@@ -151,7 +143,6 @@ final readonly class SignedUrlConfig
         if ($algorithm === '') {
             throw new InvalidArgumentException('algorithm must not be empty.');
         }
-
         if (!\in_array($algorithm, \hash_hmac_algos(), true)) {
             throw new InvalidArgumentException("Unsupported HMAC algorithm '{$algorithm}'.");
         }
@@ -159,10 +150,7 @@ final readonly class SignedUrlConfig
         return $algorithm;
     }
 
-    /**
-     * @param list<string> $ignoredQueryParams
-     * @return list<string>
-     */
+    /** @param list<string> $ignoredQueryParams @return list<string> */
     private static function normalizeIgnoredQueryParams(
         array $ignoredQueryParams,
         string $signatureParam,
@@ -174,7 +162,6 @@ final readonly class SignedUrlConfig
             if ($param === '' || $param === $signatureParam || $param === $expiryParam) {
                 continue;
             }
-
             $normalized[$param] = $param;
         }
 
@@ -195,7 +182,6 @@ final readonly class SignedUrlConfig
         if ($value === null) {
             return null;
         }
-
         if ($value < 1) {
             throw new InvalidArgumentException("{$field} must be a positive integer.");
         }
@@ -217,17 +203,24 @@ final readonly class SignedUrlConfig
         return $value;
     }
 
-    private static function normalizeOptionalInt(mixed $value): ?int
+    private static function normalizeOptionalInt(mixed $value, string $field): ?int
     {
+        if ($value === null) {
+            return null;
+        }
         if (\is_int($value)) {
             return $value;
         }
-
-        if (\is_string($value) && $value !== '' && \is_numeric($value)) {
-            return (int) $value;
+        if (!\is_string($value) || \preg_match('/^[0-9]+$/D', $value) !== 1) {
+            throw new InvalidArgumentException("{$field} must be a decimal integer.");
         }
 
-        return null;
+        $parsed = \filter_var($value, \FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
+        if ($parsed === false) {
+            throw new InvalidArgumentException("{$field} is outside the supported integer range.");
+        }
+
+        return (int) $parsed;
     }
 
     private static function normalizeParamName(string $param, string $field): string
@@ -252,10 +245,7 @@ final readonly class SignedUrlConfig
         );
     }
 
-    /**
-     * @param list<string> $verificationKeys
-     * @return list<string>
-     */
+    /** @param list<string> $verificationKeys @return list<string> */
     private static function normalizeVerificationKeys(array $verificationKeys, ?string $generationKey): array
     {
         $normalized = [];
@@ -264,7 +254,6 @@ final readonly class SignedUrlConfig
             if ($key === '') {
                 continue;
             }
-
             $normalized[$key] = $key;
         }
 

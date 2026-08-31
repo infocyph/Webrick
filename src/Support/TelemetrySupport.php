@@ -90,9 +90,11 @@ final class TelemetrySupport
             return null;
         }
 
-        $incoming = trim($req->getHeaderLine($requestIdHeader));
-        if ($incoming !== '' && $respectExistingRequestId) {
-            return $incoming;
+        if ($respectExistingRequestId) {
+            $incoming = self::normalizeRequestId($req->getHeaderLine($requestIdHeader));
+            if ($incoming !== null) {
+                return $incoming;
+            }
         }
 
         try {
@@ -156,5 +158,18 @@ final class TelemetrySupport
         }
 
         return null;
+    }
+
+    private static function normalizeRequestId(string $value): ?string
+    {
+        $value = trim($value);
+        if ($value === '' || strlen($value) > 128) {
+            return null;
+        }
+        if (preg_match("/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/D", $value) !== 1) {
+            return null;
+        }
+
+        return $value;
     }
 }

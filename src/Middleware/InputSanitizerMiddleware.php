@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Middleware;
 
 use Closure;
-use Infocyph\Webrick\Constants\MediaTypeEnum;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Support\HttpUtils;
@@ -30,9 +29,7 @@ final readonly class InputSanitizerMiddleware
         $this->sanitizer = $sanitizer ?? new InputSanitizer();
     }
 
-    /**
-     * @param Closure(Request):Response $next
-     */
+    /** @param Closure(Request):Response $next */
     public function __invoke(Request $req, Closure $next): Response
     {
         if ($this->touchQuery) {
@@ -52,16 +49,11 @@ final readonly class InputSanitizerMiddleware
 
     private function shouldTouchBody(string $contentType): bool
     {
-        $mime = strtolower(strtok($contentType, ';') ?: '');
-
         return (HttpUtils::isFormContentType($contentType) && $this->touchFormBodies)
-            || (str_starts_with($mime, MediaTypeEnum::JSON->base()) && $this->touchJsonBodies);
+            || (HttpUtils::isJsonContentType($contentType) && $this->touchJsonBodies);
     }
 
-    /**
-     * @param array<mixed> $input
-     * @return array<string,mixed>
-     */
+    /** @param array<mixed> $input @return array<string,mixed> */
     private function stringKeyMap(array $input): array
     {
         $result = [];

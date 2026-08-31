@@ -81,10 +81,7 @@ class UrlGenerator
         return \hash_hmac($algorithm, $payload, $key);
     }
 
-    /**
-     * @param array<string,RouteParam> $params
-     * @param array<string,QueryValue> $query
-     */
+    /** @param array<string,RouteParam> $params @param array<string,QueryValue> $query */
     public function action(
         callable|string $handler,
         array $params = [],
@@ -111,10 +108,7 @@ class UrlGenerator
         return $this->signedConfig;
     }
 
-    /**
-     * @param array<string,RouteParam> $params
-     * @param array<string,QueryValue> $query
-     */
+    /** @param array<string,RouteParam> $params @param array<string,QueryValue> $query */
     public function signed(
         string $name,
         array $params = [],
@@ -136,10 +130,7 @@ class UrlGenerator
         );
     }
 
-    /**
-     * @param array<string,RouteParam> $params
-     * @param array<string,QueryValue> $query
-     */
+    /** @param array<string,RouteParam> $params @param array<string,QueryValue> $query */
     public function temporary(
         string $name,
         array $params = [],
@@ -158,10 +149,7 @@ class UrlGenerator
         );
     }
 
-    /**
-     * @param array<string,RouteParam> $params
-     * @param array<string,QueryValue> $query
-     */
+    /** @param array<string,RouteParam> $params @param array<string,QueryValue> $query */
     public function temporaryUntil(
         string $name,
         DateTimeInterface|int $expiresAt,
@@ -182,18 +170,13 @@ class UrlGenerator
         );
     }
 
-    /**
-     * @param array<string,QueryValue> $query
-     */
+    /** @param array<string,QueryValue> $query */
     public function to(string $path, array $query = [], bool $absolute = false): string
     {
         return $this->buildResolvedPath($path, $query, $absolute);
     }
 
-    /**
-     * @param array<string,RouteParam> $params
-     * @param array<string,QueryValue> $query
-     */
+    /** @param array<string,RouteParam> $params @param array<string,QueryValue> $query */
     public function urlFor(
         string $name,
         array $params = [],
@@ -206,9 +189,7 @@ class UrlGenerator
         return $this->buildResolvedPath($path, $query, $absolute, $domain);
     }
 
-    /**
-     * @param array<string,QueryValue> $query
-     */
+    /** @param array<string,QueryValue> $query */
     private function appendQueryString(string $uri, array $query): string
     {
         if ($query === []) {
@@ -224,15 +205,12 @@ class UrlGenerator
         if ($parts === false) {
             throw new InvalidArgumentException("{$field} must be a valid path or URI.");
         }
-
         if (isset($parts['query']) || isset($parts['fragment'])) {
             throw new InvalidArgumentException("{$field} must not contain query or fragment components.");
         }
     }
 
-    /**
-     * @param array<string,QueryValue> $query
-     */
+    /** @param array<string,QueryValue> $query */
     private function assertQueryHasNoReservedParameters(array $query, SignedUrlConfig $config): void
     {
         if (
@@ -273,11 +251,9 @@ class UrlGenerator
         if ($routeDomain === null || $routeDomain === '' || $routeDomain === '*') {
             return ($this->baseUri !== '' ? $this->baseUri : '') . $normalizedPath;
         }
-
         if ($this->isAbsoluteUri($routeDomain) || \str_starts_with($routeDomain, '//')) {
             return \rtrim($routeDomain, '/') . $normalizedPath;
         }
-
         if ($this->baseScheme === '') {
             return '//' . $routeDomain . $normalizedPath;
         }
@@ -290,9 +266,7 @@ class UrlGenerator
             . $normalizedPath;
     }
 
-    /**
-     * @param array<string,QueryValue> $query
-     */
+    /** @param array<string,QueryValue> $query */
     private function buildResolvedPath(
         string $path,
         array $query,
@@ -306,9 +280,7 @@ class UrlGenerator
         return $this->appendQueryString($target, $query);
     }
 
-    /**
-     * @param array<string,QueryValue> $query
-     */
+    /** @param array<string,QueryValue> $query */
     private function buildSignaturePayload(
         string $path,
         array $query,
@@ -322,10 +294,7 @@ class UrlGenerator
         return $this->appendQueryString($target, $query);
     }
 
-    /**
-     * @param array<string,QueryValue> $query
-     * @return array<string,QueryValue>
-     */
+    /** @param array<string,QueryValue> $query @return array<string,QueryValue> */
     private function canonicalizeQuery(array $query): array
     {
         \ksort($query);
@@ -384,10 +353,7 @@ class UrlGenerator
             && $parts['host'] !== '';
     }
 
-    /**
-     * @param array<mixed,mixed> $aliases
-     * @return array<string, array{0:string,1:?string}>
-     */
+    /** @param array<mixed,mixed> $aliases @return array<string, array{0:string,1:?string}> */
     private function normalizeAliasIndex(array $aliases): array
     {
         $normalized = [];
@@ -449,9 +415,7 @@ class UrlGenerator
         return $config->generationKey;
     }
 
-    /**
-     * @return array{0:string,1:?string}
-     */
+    /** @return array{0:string,1:?string} */
     private function requireNamedRoute(string $name): array
     {
         if ($name === '') {
@@ -485,9 +449,7 @@ class UrlGenerator
         return new SignedUrlConfig(payloadMode: $payloadMode)->payloadMode;
     }
 
-    /**
-     * @param array<string,QueryValue> $query
-     */
+    /** @param array<string,QueryValue> $query */
     private function signResolvedPath(
         string $path,
         array $query,
@@ -500,20 +462,27 @@ class UrlGenerator
         $this->assertNoQueryOrFragment($path, 'path');
         $this->assertQueryHasNoReservedParameters($query, $config);
 
-        $signedQuery = $this->canonicalizeQuery($query);
+        $outputQuery = $this->canonicalizeQuery($query);
         if ($expiresAt !== null) {
-            $signedQuery[$config->expiryParam] = $expiresAt;
-            $signedQuery = $this->canonicalizeQuery($signedQuery);
+            $outputQuery[$config->expiryParam] = $expiresAt;
+            $outputQuery = $this->canonicalizeQuery($outputQuery);
         }
 
+        $signatureQuery = $outputQuery;
+        foreach ($config->ignoredQueryParams as $ignoredParam) {
+            unset($signatureQuery[$ignoredParam]);
+        }
+        $signatureQuery = $this->canonicalizeQuery($signatureQuery);
+
         $resolvedPayloadMode = $this->resolvePayloadMode($payloadMode, $config);
-        $signedQuery[$config->signatureParam] = self::makeSignature(
-            $this->buildSignaturePayload($path, $signedQuery, $resolvedPayloadMode, $routeDomain),
+        $outputQuery[$config->signatureParam] = self::makeSignature(
+            $this->buildSignaturePayload($path, $signatureQuery, $resolvedPayloadMode, $routeDomain),
             $this->requireGenerationKey(),
             $config->algorithm,
         );
+        $outputQuery = $this->canonicalizeQuery($outputQuery);
 
-        return $this->buildResolvedPath($path, $signedQuery, $absolute, $routeDomain);
+        return $this->buildResolvedPath($path, $outputQuery, $absolute, $routeDomain);
     }
 
     /**

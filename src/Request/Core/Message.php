@@ -69,12 +69,13 @@ abstract class Message
     {
         $norm = $this->norm($name);
         $values = $this->normalizeHeaderValues($value);
+        if ($values === []) {
+            return $this;
+        }
         if (!$this->hasHeader($norm)) {
             return $this->withHeader($norm, $values);
         }
-        if ($values === [] || array_diff($values, $this->headers[$norm]) === []) {
-            return $this;
-        }
+
         $clone = clone $this;
         $clone->headers[$norm] = array_merge($this->headers[$norm], $values);
 

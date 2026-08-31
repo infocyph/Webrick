@@ -20,15 +20,13 @@ use RuntimeException;
 /** Small shared response micro-cache using native string response bodies. */
 final readonly class ResponseCacheMiddleware
 {
-    private const string CACHE_KEY_PREFIX = 'webrick.hr.v2.';
+    private const string CACHE_KEY_PREFIX = 'webrick.hr.v3.';
 
     private CachePolicy $policy;
 
     private CacheItemPoolInterface $store;
 
-    /**
-     * @param list<string> $defaultVary
-     */
+    /** @param list<string> $defaultVary */
     public function __construct(
         ?CacheItemPoolInterface $store = null,
         private int $ttlSeconds = 10,
@@ -44,9 +42,7 @@ final readonly class ResponseCacheMiddleware
         $this->policy = $policy ?? new CachePolicy();
     }
 
-    /**
-     * @param Closure(Request):Response $next
-     */
+    /** @param Closure(Request):Response $next */
     public function __invoke(Request $req, Closure $next): Response
     {
         $method = HttpMethodEnum::normalize($req->getMethod());
@@ -174,6 +170,7 @@ final readonly class ResponseCacheMiddleware
     private function makeKey(Request $req, string $method): string
     {
         $uri = $req->getUri();
+        $scheme = strtolower($uri->getScheme() ?: 'http');
         $host = strtolower($uri->getHost() ?: 'localhost');
         if ($uri->getPort() !== null) {
             $host .= ':' . $uri->getPort();
@@ -188,6 +185,7 @@ final readonly class ResponseCacheMiddleware
         ksort($pairs, SORT_STRING);
         $nul = "\0";
         $buffer = $method . $nul
+            . $scheme . $nul
             . $host . $nul
             . ($uri->getPath() ?: '/') . $nul
             . $query . $nul
@@ -202,17 +200,13 @@ final readonly class ResponseCacheMiddleware
         return self::CACHE_KEY_PREFIX . $this->base64UrlHash($buffer);
     }
 
-    /**
-     * @return array<string,list<string>>
-     */
+    /** @return array<string,list<string>> */
     private function normalizeHeaders(mixed $value): array
     {
         return is_array($value) ? Utils::normalizeHeaderValueLists($value) : [];
     }
 
-    /**
-     * @return array{s:int,h:array<string,list<string>>,b:string,pv:string,rp:string}
-     */
+    /** @return array{s:int,h:array<string,list<string>>,b:string,pv:string,rp:string} */
     private function pack(Response $response): array
     {
         return [
@@ -235,9 +229,7 @@ final readonly class ResponseCacheMiddleware
         }
     }
 
-    /**
-     * @return array<string,string>
-     */
+    /** @return array<string,string> */
     private function resolveVaryPairs(Request $req): array
     {
         $explicit = self::explicitVaryPairs($req->getAttribute('vary.pairs'));
@@ -305,9 +297,7 @@ final readonly class ResponseCacheMiddleware
         );
     }
 
-    /**
-     * @param array<string,mixed> $payload
-     */
+    /** @param array<string,mixed> $payload */
     private function writeCache(string $key, array $payload, int $ttl): void
     {
         try {

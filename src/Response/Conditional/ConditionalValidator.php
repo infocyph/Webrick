@@ -7,6 +7,7 @@ namespace Infocyph\Webrick\Response\Conditional;
 use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Support\HttpUtils;
 
 /** Unified conditional-header evaluator (RFC 9110 §13). */
 final readonly class ConditionalValidator
@@ -163,12 +164,7 @@ final readonly class ConditionalValidator
 
     private function parseDate(string $httpDate): ?int
     {
-        if ($httpDate === '') {
-            return null;
-        }
-        $timestamp = strtotime($httpDate);
-
-        return $timestamp === false ? null : $timestamp;
+        return HttpUtils::parseHttpDate($httpDate);
     }
 
     private function representationExists(): ?bool

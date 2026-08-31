@@ -14,6 +14,7 @@ use Infocyph\Webrick\Response\Conditional\Outcome;
 use Infocyph\Webrick\Response\Headers\CacheControl;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Support\Etag;
+use Infocyph\Webrick\Support\HttpUtils;
 
 /** Conditional-request and validator middleware without implicit filesystem discovery. */
 final readonly class CacheValidatorsMiddleware
@@ -68,12 +69,7 @@ final readonly class CacheValidatorsMiddleware
 
     private static function parseLastModified(string $value): ?int
     {
-        if ($value === '') {
-            return null;
-        }
-        $timestamp = strtotime($value);
-
-        return $timestamp === false ? null : $timestamp;
+        return HttpUtils::parseHttpDate($value);
     }
 
     private function applyResponsePreconditions(Request $req, Response $resp): Response

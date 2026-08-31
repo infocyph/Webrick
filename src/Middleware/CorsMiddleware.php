@@ -11,16 +11,10 @@ use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Definition\Attribute\Cors;
 
-/**
- * CORS-only middleware with deny/disabled defaults.
- */
+/** CORS-only middleware with deny/disabled defaults. */
 final readonly class CorsMiddleware
 {
-    /**
-     * @param list<string> $origins
-     * @param string|list<string> $allowHeaders
-     * @param string|list<string> $exposeHeaders
-     */
+    /** @param list<string> $origins @param string|list<string> $allowHeaders @param string|list<string> $exposeHeaders */
     public function __construct(
         private array $origins = [],
         private string $methods = 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
@@ -33,9 +27,7 @@ final readonly class CorsMiddleware
         $this->validatePolicy($this->policy());
     }
 
-    /**
-     * @param Closure(Request):Response $next
-     */
+    /** @param Closure(Request):Response $next */
     public function __invoke(Request $req, Closure $next): Response
     {
         $policy = $this->routePolicy($req);
@@ -63,15 +55,12 @@ final readonly class CorsMiddleware
         return $this->applyActualHeaders($next($req), $policy, $acao);
     }
 
-    /**
-     * @param list<string> $origins
-     */
+    /** @param list<string> $origins */
     private function allowedOrigin(string $origin, array $origins, bool $credentials): ?string
     {
         if ($origin === 'null') {
             return in_array('null', $origins, true) ? 'null' : null;
         }
-
         if (in_array('*', $origins, true)) {
             return $credentials ? null : '*';
         }
@@ -85,9 +74,7 @@ final readonly class CorsMiddleware
         return null;
     }
 
-    /**
-     * @param array{origins:list<string>,methods:string,allowHeaders:string|list<string>,exposeHeaders:string|list<string>,maxAgeSeconds:int,allowCredentials:bool,allowPrivateNetwork:bool} $policy
-     */
+    /** @param array{origins:list<string>,methods:string,allowHeaders:string|list<string>,exposeHeaders:string|list<string>,maxAgeSeconds:int,allowCredentials:bool,allowPrivateNetwork:bool} $policy */
     private function applyActualHeaders(Response $response, array $policy, string $acao): Response
     {
         $response = $response->withSmartHeader('Access-Control-Allow-Origin', $acao);
@@ -114,13 +101,18 @@ final readonly class CorsMiddleware
         if ($policy['maxAgeSeconds'] > 0) {
             $response = $response->withSmartHeader('Access-Control-Max-Age', (string) $policy['maxAgeSeconds']);
         }
-        if ($policy['allowPrivateNetwork'] && strtolower($req->getHeaderLine('Access-Control-Request-Private-Network')) === 'true') {
+
+        $privateNetworkRequested = strtolower(trim($req->getHeaderLine('Access-Control-Request-Private-Network'))) === 'true';
+        if ($policy['allowPrivateNetwork'] && $privateNetworkRequested) {
             $response = $response->withSmartHeader('Access-Control-Allow-Private-Network', 'true');
         }
 
         $response = $response->withSmartHeader('Vary', 'Access-Control-Request-Method');
         if ($requested !== '') {
             $response = $response->withSmartHeader('Vary', 'Access-Control-Request-Headers');
+        }
+        if ($policy['allowPrivateNetwork'] || $req->hasHeader('Access-Control-Request-Private-Network')) {
+            $response = $response->withSmartHeader('Vary', 'Access-Control-Request-Private-Network');
         }
 
         return $acao === '*' ? $response : $response->withSmartHeader('Vary', 'Origin');
@@ -196,9 +188,7 @@ final readonly class CorsMiddleware
         ];
     }
 
-    /**
-     * @param array{origins:list<string>,methods:string,allowHeaders:string|list<string>,exposeHeaders:string|list<string>,maxAgeSeconds:int,allowCredentials:bool,allowPrivateNetwork:bool} $policy
-     */
+    /** @param array{origins:list<string>,methods:string,allowHeaders:string|list<string>,exposeHeaders:string|list<string>,maxAgeSeconds:int,allowCredentials:bool,allowPrivateNetwork:bool} $policy */
     private function preflightResponse(Request $req, array $policy, string $acao): Response
     {
         $requestedMethod = HttpMethodEnum::normalize(trim($req->getHeaderLine('Access-Control-Request-Method')));
@@ -217,9 +207,7 @@ final readonly class CorsMiddleware
         return $this->applyPreflightHeaders($response, $req, $policy, $requestedHeaders, $allowedHeaders, $acao);
     }
 
-    /**
-     * @return array{origins:list<string>,methods:string,allowHeaders:string|list<string>,exposeHeaders:string|list<string>,maxAgeSeconds:int,allowCredentials:bool,allowPrivateNetwork:bool}
-     */
+    /** @return array{origins:list<string>,methods:string,allowHeaders:string|list<string>,exposeHeaders:string|list<string>,maxAgeSeconds:int,allowCredentials:bool,allowPrivateNetwork:bool} */
     private function routePolicy(Request $req): array
     {
         $policy = $this->policy();
@@ -240,9 +228,7 @@ final readonly class CorsMiddleware
         return $policy;
     }
 
-    /**
-     * @param array{origins:list<string>,methods:string,allowHeaders:string|list<string>,exposeHeaders:string|list<string>,maxAgeSeconds:int,allowCredentials:bool,allowPrivateNetwork:bool} $policy
-     */
+    /** @param array{origins:list<string>,methods:string,allowHeaders:string|list<string>,exposeHeaders:string|list<string>,maxAgeSeconds:int,allowCredentials:bool,allowPrivateNetwork:bool} $policy */
     private function validatePolicy(array $policy): void
     {
         if ($policy['allowCredentials'] && in_array('*', $policy['origins'], true)) {

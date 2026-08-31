@@ -7,6 +7,8 @@ namespace Infocyph\Webrick\Middleware;
 use Closure;
 use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Exceptions\HttpException;
+use Infocyph\Webrick\Interfaces\BodyStream;
+use Infocyph\Webrick\Request\Core\StringBody;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Runtime\Http\RuntimeCapabilities;
@@ -59,7 +61,7 @@ final readonly class RequestLimitsMiddleware
         }
 
         $this->rejectForHeaderLimits($req);
-        $this->rejectForBodyLimit($req);
+        $req = $this->enforceBodyLimit($req);
 
         return $next($req);
     }
@@ -91,50 +93,13 @@ final readonly class RequestLimitsMiddleware
         return str_starts_with($protocol, 'HTTP/1.') ? ['Connection' => 'close'] : [];
     }
 
-    private function hasTransferCoding(Request $req): bool
-    {
-        $line = strtolower($req->getHeaderLine('Transfer-Encoding'));
-        if ($line === '') {
-            return false;
-        }
-
-        foreach (explode(',', $line) as $token) {
-            $token = trim($token);
-            if ($token !== '' && $token !== 'identity' && $token !== 'trailers') {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private function parseContentLength(string $raw): ?int
-    {
-        $raw = trim($raw);
-        if ($raw === '' || preg_match('/^[0-9]+$/D', $raw) !== 1) {
-            return null;
-        }
-
-        $value = filter_var($raw, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
-
-        return $value === false ? PHP_INT_MAX : (int) $value;
-    }
-
-    private function payloadTooLargeException(Request $req): HttpException
-    {
-        return HttpException::payloadTooLarge(
-            'Payload exceeds maximum allowed size.',
-            $this->connectionCloseHeaders($req),
-        );
-    }
-
-    private function rejectForBodyLimit(Request $req): void
+    private function enforceBodyLimit(Request $req): Request
     {
         if (
             $this->resolvedBodyLimit <= 0
             || !isset($this->bodyVerbSet[HttpMethodEnum::normalize($req->getMethod())])
         ) {
-            return;
+            return $req;
         }
 
         $transferCoded = $this->hasTransferCoding($req);
@@ -159,11 +124,95 @@ final readonly class RequestLimitsMiddleware
             }
         }
 
-        $actual = $req->getBody()->getSize();
-        $actual ??= strlen($req->raw());
+        $body = $req->getBody();
+        $actual = $body->getSize();
+        if ($actual !== null) {
+            if ($actual > $this->resolvedBodyLimit) {
+                throw $this->payloadTooLargeException($req);
+            }
+
+            return $req;
+        }
+
+        [$actual, $buffer] = $this->measureUnknownBody($req, $body);
         if ($actual > $this->resolvedBodyLimit) {
             throw $this->payloadTooLargeException($req);
         }
+
+        return $buffer === null ? $req : $req->withBody(new StringBody($buffer));
+    }
+
+    private function hasTransferCoding(Request $req): bool
+    {
+        $line = strtolower($req->getHeaderLine('Transfer-Encoding'));
+        if ($line === '') {
+            return false;
+        }
+
+        foreach (explode(',', $line) as $token) {
+            $token = trim($token);
+            if ($token !== '' && $token !== 'identity' && $token !== 'trailers') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** @return array{0:int,1:?string} */
+    private function measureUnknownBody(Request $req, BodyStream $body): array
+    {
+        $seekable = $body->isSeekable();
+        $position = null;
+        if ($seekable) {
+            $position = $body->tell();
+            $body->rewind();
+        }
+
+        $buffer = '';
+        try {
+            while (!$body->eof()) {
+                $chunk = $body->read(8192);
+                if ($chunk === '') {
+                    if ($body->eof()) {
+                        break;
+                    }
+                    throw HttpException::badRequest(
+                        'Unable to read request body while enforcing limits.',
+                        $this->connectionCloseHeaders($req),
+                    );
+                }
+                $buffer .= $chunk;
+                if (strlen($buffer) > $this->resolvedBodyLimit) {
+                    throw $this->payloadTooLargeException($req);
+                }
+            }
+        } finally {
+            if ($seekable && $position !== null) {
+                $body->seek($position);
+            }
+        }
+
+        return [strlen($buffer), $seekable ? null : $buffer];
+    }
+
+    private function parseContentLength(string $raw): ?int
+    {
+        if ($raw === '' || preg_match('/^[0-9]+$/D', $raw) !== 1) {
+            return null;
+        }
+
+        $value = filter_var($raw, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
+
+        return $value === false ? PHP_INT_MAX : (int) $value;
+    }
+
+    private function payloadTooLargeException(Request $req): HttpException
+    {
+        return HttpException::payloadTooLarge(
+            'Payload exceeds maximum allowed size.',
+            $this->connectionCloseHeaders($req),
+        );
     }
 
     private function rejectForHeaderLimits(Request $req): void

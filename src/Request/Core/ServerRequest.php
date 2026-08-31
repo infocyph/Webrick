@@ -97,11 +97,7 @@ class ServerRequest extends Message
         $this->query = server_request_query_parameters($query, $this->uri);
 
         if (!$this->hasHeader('Host') && $this->uri->getHost() !== '') {
-            $host = $this->uri->getHost();
-            if ($this->uri->getPort() !== null) {
-                $host .= ':' . $this->uri->getPort();
-            }
-            $this->headers['Host'] = [$host];
+            $this->headers['Host'] = [self::uriHostHeader($this->uri)];
         }
     }
 
@@ -430,10 +426,10 @@ class ServerRequest extends Message
             if ($uri->getHost() === '') {
                 unset($clone->headers['Host']);
             } else {
-                $clone->headers['Host'] = [$uri->getHost() . ($uri->getPort() !== null ? ':' . $uri->getPort() : '')];
+                $clone->headers['Host'] = [self::uriHostHeader($uri)];
             }
         } elseif ($uri->getHost() !== '' && !$clone->hasHeader('Host')) {
-            $clone->headers['Host'] = [$uri->getHost()];
+            $clone->headers['Host'] = [self::uriHostHeader($uri)];
         }
 
         return $clone;
@@ -447,10 +443,7 @@ class ServerRequest extends Message
         return is_string($value) ? $value : $default;
     }
 
-    /**
-     * @param array<array-key,mixed> $value
-     * @return array<string,mixed>
-     */
+    /** @param array<array-key,mixed> $value @return array<string,mixed> */
     private static function stringMap(array $value): array
     {
         $map = [];
@@ -461,6 +454,11 @@ class ServerRequest extends Message
         }
 
         return $map;
+    }
+
+    private static function uriHostHeader(Uri $uri): string
+    {
+        return $uri->getHost() . ($uri->getPort() !== null ? ':' . $uri->getPort() : '');
     }
 
     private function buildVariableMap(): void
@@ -527,10 +525,7 @@ class ServerRequest extends Message
     }
 }
 
-/**
- * @param array<string,mixed>|null $query
- * @return array<string,mixed>
- */
+/** @param array<string,mixed>|null $query @return array<string,mixed> */
 function server_request_query_parameters(?array $query, Uri $uri): array
 {
     if ($query !== null) {
@@ -545,10 +540,7 @@ function server_request_query_parameters(?array $query, Uri $uri): array
     return server_request_string_map($uriQuery);
 }
 
-/**
- * @param array<array-key,mixed> $value
- * @return array<string,mixed>
- */
+/** @param array<array-key,mixed> $value @return array<string,mixed> */
 function server_request_string_map(array $value): array
 {
     $map = [];

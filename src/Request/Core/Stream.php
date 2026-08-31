@@ -50,8 +50,6 @@ final class Stream implements BodyStream
             return '';
         }
 
-        // Non-seekable streams cannot preserve/restore a cursor. Return the
-        // remaining bytes from the current position instead of failing on rewind.
         if (!$this->isSeekable()) {
             $data = stream_get_contents($handle);
 
@@ -201,9 +199,7 @@ final class Stream implements BodyStream
         return $bytes;
     }
 
-    /**
-     * @return resource
-     */
+    /** @return resource */
     private static function openFileObject(SplFileObject $file)
     {
         if (!$file->isReadable()) {
@@ -217,17 +213,27 @@ final class Stream implements BodyStream
         return $handle;
     }
 
-    /**
-     * @return resource
-     */
+    /** @return resource */
     private static function openMemory(string $payload)
     {
         $handle = fopen('php://temp', 'r+');
         if (!is_resource($handle)) {
             throw new RuntimeException('Unable to open temporary stream');
         }
+
         if ($payload !== '') {
-            if (fwrite($handle, $payload) === false || rewind($handle) === false) {
+            $offset = 0;
+            $length = strlen($payload);
+            while ($offset < $length) {
+                $written = fwrite($handle, substr($payload, $offset));
+                if ($written === false || $written === 0) {
+                    fclose($handle);
+
+                    throw new RuntimeException('Unable to initialize temporary stream');
+                }
+                $offset += $written;
+            }
+            if (rewind($handle) === false) {
                 fclose($handle);
 
                 throw new RuntimeException('Unable to initialize temporary stream');

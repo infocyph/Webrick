@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Request\Http;
 
+use Infocyph\Webrick\Support\HttpUtils;
+
 /** Fast request content negotiator for Accept-family headers with q=0 exclusions preserved. */
 final readonly class ContentNegotiator
 {
@@ -139,17 +141,19 @@ final readonly class ContentNegotiator
         $entries = [];
         foreach (self::splitCsv($raw) as $order => $segment) {
             $parts = array_map(trim(...), explode(';', $segment));
-            $value = strtolower(array_shift($parts));
+            $value = strtolower((string) array_shift($parts));
             if ($value === '') {
                 continue;
             }
+
             $q = 1.0;
             foreach ($parts as $param) {
-                if (preg_match('/^q=([01](?:\.\d{0,3})?)$/i', $param, $matches) === 1) {
-                    $q = max(0.0, min(1.0, (float) $matches[1]));
-
-                    break;
+                if (preg_match('/^q\s*=\s*(.*)$/i', $param, $matches) !== 1) {
+                    continue;
                 }
+                $q = HttpUtils::parseQValue($matches[1]) ?? 0.0;
+
+                break;
             }
             $entries[] = [
                 'value' => $value,
