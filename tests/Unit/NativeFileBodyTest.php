@@ -21,7 +21,9 @@ test('file responses preserve native file identity', function (): void {
             ->and($file?->length())->toBe(6)
             ->and((string) $file)->toBe('abcdef');
     } finally {
-        @unlink($path);
+        if (is_file($path) && !unlink($path)) {
+            throw new RuntimeException("Unable to remove temporary test file: {$path}");
+        }
     }
 });
 
@@ -42,6 +44,8 @@ test('range responses preserve native offset and length', function (): void {
             ->and($file?->length())->toBe(3)
             ->and((string) $file)->toBe('cde');
     } finally {
-        @unlink($path);
+        if (is_file($path) && !unlink($path)) {
+            throw new RuntimeException("Unable to remove temporary test file: {$path}");
+        }
     }
 });
