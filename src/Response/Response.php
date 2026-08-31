@@ -15,28 +15,19 @@ use Infocyph\Webrick\Request\Support\HeaderBag;
 use Infocyph\Webrick\Response\Body\FileBody;
 use Infocyph\Webrick\Response\Headers\CacheControl;
 use Infocyph\Webrick\Response\Headers\ContentDisposition;
-use Infocyph\Webrick\Response\Internal\LazyJsonStream;
 use Infocyph\Webrick\Response\Internal\Utils;
 use Infocyph\Webrick\Response\Negotiation\ContentTypeNegotiator;
 use Infocyph\Webrick\Response\Range\RangeResponder;
 use JsonSerializable;
 use RuntimeException;
 
-/**
- * Immutable HTTP response optimized for native string and file bodies.
- *
- * Normal text/HTML/JSON stays as a PHP string until a stream-compatibility
- * boundary explicitly asks for getBody(). File/range responses retain path
- * identity so persistent runtimes may use native file transports.
- */
+/** Immutable HTTP response optimized for native string and file bodies. */
 class Response
 {
     use MacroMix;
 
     private BodyStream|string $body;
-
     private ?BodyStream $bodyFacade = null;
-
     private HeaderBag $headers;
 
     /** @var null|\Closure(): (iterable<string>|string) */
@@ -55,7 +46,6 @@ class Response
     ) {
         $this->headers = new HeaderBag($headers);
         $this->body = $body ?? '';
-        $this->reasonPhrase ??= self::statusText($this->statusCode);
     }
 
     /** @param array<string,string|list<string>> $headers */
@@ -179,11 +169,8 @@ class Response
         int $depth = 512,
     ): self {
         $headers += ['Content-Type' => MediaTypeEnum::JSON->base() . '; charset=utf-8'];
-        if ($data instanceof JsonSerializable) {
-            return new self($status, new LazyJsonStream($data, $flags, $depth), $headers);
-        }
-
-        $json = json_encode($data, $flags, $depth);
+        $payload = $data instanceof JsonSerializable ? $data->jsonSerialize() : $data;
+        $json = json_encode($payload, $flags, $depth);
         if ($json === false) {
             throw new RuntimeException('JSON encode error: ' . json_last_error_msg());
         }
@@ -300,10 +287,7 @@ class Response
         return CacheControl::fromHeaderBag($this->headers);
     }
 
-    /**
-     * Compatibility/interoperability boundary. Native string bodies allocate a
-     * StringBody only when a caller explicitly asks for stream semantics.
-     */
+    /** Native string bodies allocate a StringBody only at stream interop boundaries. */
     public function getBody(): BodyStream
     {
         if ($this->body instanceof BodyStream) {
@@ -323,14 +307,14 @@ class Response
         return $this->body instanceof FileBody ? $this->body : null;
     }
 
-    public function getHeader(string $n): array
+    public function getHeader(string $name): array
     {
-        return $this->headers->get($n);
+        return $this->headers->get($name);
     }
 
-    public function getHeaderLine(string $n): string
+    public function getHeaderLine(string $name): string
     {
-        return $this->headers->getHeaderLine($n);
+        return $this->headers->getHeaderLine($name);
     }
 
     /** @return array<string,list<string>> */
@@ -352,7 +336,7 @@ class Response
 
     public function getReasonPhrase(): string
     {
-        return $this->reasonPhrase ?? '';
+        return $this->reasonPhrase ?? self::statusText($this->statusCode);
     }
 
     public function getStatusCode(): int
@@ -365,9 +349,9 @@ class Response
         return is_string($this->body) ? $this->body : null;
     }
 
-    public function hasHeader(string $n): bool
+    public function hasHeader(string $name): bool
     {
-        return $this->headers->has($n);
+        return $this->headers->has($name);
     }
 
     public function isStreaming(): bool
@@ -380,9 +364,9 @@ class Response
         return is_string($this->body);
     }
 
-    public function withAddedHeader(string $n, string|array $v): self
+    public function withAddedHeader(string $name, string|array $value): self
     {
-        return $this->copy(headers: $this->headers->withAdded($n, $v));
+        return $this->copy(headers: $this->headers->withAdded($name, $value));
     }
 
     public function withBody(BodyStream|string $body): self
@@ -403,19 +387,19 @@ class Response
         return $this->withHeader('Cache-Control', (string) $cache);
     }
 
-    public function withHeader(string $n, string|array $v): self
+    public function withHeader(string $name, string|array $value): self
     {
-        return $this->copy(headers: $this->headers->with($n, $v));
+        return $this->copy(headers: $this->headers->with($name, $value));
     }
 
-    public function withoutHeader(string $n): self
+    public function withoutHeader(string $name): self
     {
-        return $this->copy(headers: $this->headers->without($n));
+        return $this->copy(headers: $this->headers->without($name));
     }
 
-    public function withProtocolVersion(string $v): self
+    public function withProtocolVersion(string $version): self
     {
-        return $this->copy(protocolVersion: $v);
+        return $this->copy(protocolVersion: $version);
     }
 
     public function withSmartHeader(string $name, string $value): self
