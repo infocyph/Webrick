@@ -15,7 +15,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
     use MatcherCacheLifecycleTrait;
     use MatcherFactoryTrait;
 
-    private const int INDEX_CACHE_VERSION = 8;
+    private const int INDEX_CACHE_VERSION = 9;
 
     /** @var array<string,array{0:string,1:?string}> */
     private array $alias = [];
