@@ -418,7 +418,11 @@ final readonly class ErrorHandler
     private function resolveStatus(Throwable $error): int
     {
         if ($error instanceof HttpExceptionInterface) {
-            return $error->getStatusCode();
+            $status = $error->getStatusCode();
+
+            return StatusEnum::isErrorCode($status)
+                ? $status
+                : StatusEnum::INTERNAL_SERVER_ERROR->value;
         }
 
         return $this->mappedExceptionStatus($error) ?? StatusEnum::INTERNAL_SERVER_ERROR->value;
