@@ -5,16 +5,16 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Interop\Psr7;
 
 use Infocyph\Webrick\Interfaces\BodyStream;
-use RuntimeException;
+use Psr\Http\Message\StreamInterface;
 
-/** Optional duck-typed PSR stream boundary without a core psr/http-message dependency. */
+/** Optional PSR stream boundary used only when psr/http-message is installed. */
 final readonly class PsrBodyStreamAdapter implements BodyStream
 {
-    public function __construct(private object $stream) {}
+    public function __construct(private StreamInterface $stream) {}
 
     public function __toString(): string
     {
-        return (string) $this->stream;
+        return $this->stream->__toString();
     }
 
     public function close(): void
@@ -29,17 +29,12 @@ final readonly class PsrBodyStreamAdapter implements BodyStream
 
     public function eof(): bool
     {
-        return (bool) $this->stream->eof();
+        return $this->stream->eof();
     }
 
     public function getContents(): string
     {
-        $contents = $this->stream->getContents();
-        if (!is_string($contents)) {
-            throw new RuntimeException('PSR stream getContents() must return string.');
-        }
-
-        return $contents;
+        return $this->stream->getContents();
     }
 
     public function getMetadata(?string $key = null): mixed
@@ -49,34 +44,27 @@ final readonly class PsrBodyStreamAdapter implements BodyStream
 
     public function getSize(): ?int
     {
-        $size = $this->stream->getSize();
-
-        return is_int($size) ? $size : null;
+        return $this->stream->getSize();
     }
 
     public function isReadable(): bool
     {
-        return (bool) $this->stream->isReadable();
+        return $this->stream->isReadable();
     }
 
     public function isSeekable(): bool
     {
-        return (bool) $this->stream->isSeekable();
+        return $this->stream->isSeekable();
     }
 
     public function isWritable(): bool
     {
-        return (bool) $this->stream->isWritable();
+        return $this->stream->isWritable();
     }
 
     public function read(int $length): string
     {
-        $data = $this->stream->read($length);
-        if (!is_string($data)) {
-            throw new RuntimeException('PSR stream read() must return string.');
-        }
-
-        return $data;
+        return $this->stream->read($length);
     }
 
     public function rewind(): void
@@ -91,21 +79,11 @@ final readonly class PsrBodyStreamAdapter implements BodyStream
 
     public function tell(): int
     {
-        $position = $this->stream->tell();
-        if (!is_int($position)) {
-            throw new RuntimeException('PSR stream tell() must return int.');
-        }
-
-        return $position;
+        return $this->stream->tell();
     }
 
     public function write(string $string): int
     {
-        $written = $this->stream->write($string);
-        if (!is_int($written)) {
-            throw new RuntimeException('PSR stream write() must return int.');
-        }
-
-        return $written;
+        return $this->stream->write($string);
     }
 }
