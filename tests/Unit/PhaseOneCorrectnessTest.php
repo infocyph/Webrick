@@ -11,7 +11,6 @@ use Infocyph\Webrick\Request\Http\EndUser;
 use Infocyph\Webrick\Request\Http\RequestHeaders;
 use Infocyph\Webrick\Response\Cookies\Cookie;
 use Infocyph\Webrick\Response\Cookies\CookieJar;
-use Infocyph\Webrick\Response\Emitter\SwooleEmitter;
 use Infocyph\Webrick\Response\Headers\HeaderPolicy;
 use Infocyph\Webrick\Response\Range\ByteRangeStream;
 use Infocyph\Webrick\Response\Range\RangeParseStatus;
@@ -22,17 +21,19 @@ use Infocyph\Webrick\Router\Definition\Attribute\Produces;
 use Infocyph\Webrick\Router\Kernel\ErrorHandler;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 use Infocyph\Webrick\Router\Route\Route;
+use Infocyph\Webrick\Runtime\Http\SwooleRuntimeAdapter;
 
 describe('Webrick 5 Phase 1 correctness and security invariants', function () {
     it('keeps native Swoole transport state request-local', function () {
-        $reflection = new ReflectionClass(SwooleEmitter::class);
+        $reflection = new ReflectionClass(SwooleRuntimeAdapter::class);
         $propertyTypes = [];
         foreach ($reflection->getProperties() as $property) {
             $type = $property->getType();
             $propertyTypes[] = $type instanceof ReflectionNamedType ? $type->getName() : null;
         }
 
-        expect($propertyTypes)->not->toContain('Swoole\\Http\\Response');
+        expect($propertyTypes)->not->toContain('Swoole\\Http\\Response')
+            ->and($propertyTypes)->not->toContain('OpenSwoole\\HTTP\\Response');
     });
 
     it('keeps reusable gateway middleware free of current EndUser state', function () {
@@ -58,7 +59,7 @@ describe('Webrick 5 Phase 1 correctness and security invariants', function () {
         });
 
         try {
-            $response = (new ErrorHandler(capturePhpErrors: true))->handle(
+            $response = (new ErrorHandler())->handle(
                 mockRequest('GET', '/'),
                 static function (): Response {
                     trigger_error('phase-one-probe', E_USER_WARNING);
