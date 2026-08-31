@@ -75,6 +75,9 @@ enum HttpMethodEnum: string
         if ($verb === '') {
             return '';
         }
+        if (preg_match("/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/D", $verb) !== 1) {
+            throw new \InvalidArgumentException('Invalid HTTP method token.');
+        }
 
         $known = self::tryFrom(strtoupper($verb));
 
@@ -83,7 +86,9 @@ enum HttpMethodEnum: string
 
     public static function tryFromString(string $verb): ?self
     {
-        return self::tryFrom(strtoupper(trim($verb)));
+        $normalized = self::normalize($verb);
+
+        return $normalized === '' ? null : self::tryFrom(strtoupper($normalized));
     }
 
     public function allowsBody(): bool
