@@ -4,15 +4,11 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Response\Headers;
 
-/**
- * Field-specific response header combination policy.
- */
+/** Field-specific response header combination policy, mutable only before production freeze. */
 final class HeaderPolicy
 {
     public const int MERGE_TOKENS = 2;
-
     public const int MULTI_LINE = 1;
-
     public const int SINGLE = 0;
 
     /** @var array<string,int> */
@@ -31,11 +27,18 @@ final class HeaderPolicy
         'cache-control' => self::MERGE_TOKENS,
     ];
 
+    private static bool $frozen = false;
+
     private function __construct() {}
 
     public static function for(string $header): int
     {
         return self::$map[strtolower($header)] ?? self::SINGLE;
+    }
+
+    public static function freeze(): void
+    {
+        self::$frozen = true;
     }
 
     public static function mergeCsv(string $name, string $existing, string $incoming): string
@@ -62,6 +65,9 @@ final class HeaderPolicy
 
     public static function register(string $header, int $policy): void
     {
+        if (self::$frozen) {
+            throw new \LogicException('Header policy registry is frozen for production runtime.');
+        }
         if (!in_array($policy, [self::SINGLE, self::MULTI_LINE, self::MERGE_TOKENS], true)) {
             throw new \InvalidArgumentException('Unknown header merge policy.');
         }
@@ -71,14 +77,10 @@ final class HeaderPolicy
 
     private static function canonicalHeaderToken(string $token): string
     {
-        $parts = explode('-', strtolower($token));
-
-        return implode('-', array_map(ucfirst(...), $parts));
+        return implode('-', array_map(ucfirst(...), explode('-', strtolower($token))));
     }
 
-    /**
-     * @return list<string>
-     */
+    /** @return list<string> */
     private static function normalizeCsv(string $lowerName, string $csv): array
     {
         $out = [];
@@ -87,7 +89,6 @@ final class HeaderPolicy
             if ($token === '') {
                 continue;
             }
-
             $out[] = match ($lowerName) {
                 'allow', 'access-control-allow-methods' => strtoupper($token),
                 'access-control-allow-headers', 'vary' => self::canonicalHeaderToken($token),
