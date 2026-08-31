@@ -16,7 +16,7 @@ describe('ErrorHandler', function () {
             headers: ['Accept' => 'text/plain'],
         );
 
-        $response = (new ErrorHandler(capturePhpErrors: false))->handle(
+        $response = (new ErrorHandler())->handle(
             $request,
             static fn(): Response => throw HttpException::badRequest('Missing signature'),
         );
@@ -30,7 +30,7 @@ describe('ErrorHandler', function () {
     it('preserves exception-provided headers when rendering', function () {
         $request = Request::fake(method: 'GET', uri: '/throttled');
 
-        $response = (new ErrorHandler(capturePhpErrors: false))->handle(
+        $response = (new ErrorHandler())->handle(
             $request,
             static fn(): Response => throw HttpException::tooManyRequests('Too Many Requests', [
                 'Retry-After' => '30',
@@ -52,7 +52,6 @@ describe('ErrorHandler', function () {
         );
 
         $handler = new ErrorHandler(
-            capturePhpErrors: false,
             responseRenderer: static function (Request $request, \Throwable $e, int $status, array $headers): Response {
                 expect($request->getUri()->getPath())->toBe('/signed')
                     ->and($status)->toBe(403)
@@ -84,7 +83,6 @@ describe('ErrorHandler', function () {
 
                 return new NullLogger();
             },
-            capturePhpErrors: false,
         );
 
         $response = $handler->handle(Request::fake(), static fn(): Response => Response::json(['ok' => true]));
