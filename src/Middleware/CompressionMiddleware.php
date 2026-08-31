@@ -11,6 +11,7 @@ use Infocyph\Webrick\Exceptions\HttpException;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Runtime\Http\RuntimeCapabilities;
+use Infocyph\Webrick\Support\HttpUtils;
 
 /** Portable response compression fallback for runtimes that do not own compression. */
 final readonly class CompressionMiddleware
@@ -284,18 +285,19 @@ final readonly class CompressionMiddleware
         $quality = [];
         foreach (explode(',', $header) as $segment) {
             $parts = array_map(trim(...), explode(';', $segment));
-            $token = strtolower(array_shift($parts));
+            $token = strtolower((string) array_shift($parts));
             if ($token === '') {
                 continue;
             }
 
             $q = 1.0;
             foreach ($parts as $parameter) {
-                if (preg_match('/^q\s*=\s*(0(?:\.\d{0,3})?|1(?:\.0{0,3})?)$/i', $parameter, $match) === 1) {
-                    $q = (float) $match[1];
-
-                    break;
+                if (preg_match('/^q\s*=\s*(.*)$/i', $parameter, $match) !== 1) {
+                    continue;
                 }
+                $q = HttpUtils::parseQValue($match[1]) ?? 0.0;
+
+                break;
             }
             $quality[$token] = max($quality[$token] ?? 0.0, $q);
         }
