@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Infocyph\InterMix\DI\Container;
+use Infocyph\InterMix\DI\Invoker;
 use Infocyph\Webrick\Middleware\TelemetryMiddleware;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
@@ -11,27 +13,13 @@ use Infocyph\Webrick\Router\Matching\ShardedMatcher;
 use Infocyph\Webrick\Support\TraceContext;
 use Psr\Log\NullLogger;
 
+function telemetryTestInvoker(): Invoker
+{
+    return Invoker::with(new Container('webrick.tests.telemetry'));
+}
+
 beforeEach(function () {
     $this->logger = new TestLogger;
-
-    $cacheDir = sys_get_temp_dir() . '/webrick-test-routes-' . uniqid();
-    if (!is_dir($cacheDir)) {
-        mkdir($cacheDir, 0777, true);
-    }
-    $this->cacheDir = $cacheDir;
-});
-
-afterEach(function () {
-    if (isset($this->cacheDir) && is_dir($this->cacheDir)) {
-        $files = new RecursiveIteratorIterator(
-            new RecursiveDirectoryIterator($this->cacheDir, RecursiveDirectoryIterator::SKIP_DOTS),
-            RecursiveIteratorIterator::CHILD_FIRST,
-        );
-        foreach ($files as $file) {
-            $file->isDir() ? rmdir($file->getRealPath()) : unlink($file->getRealPath());
-        }
-        rmdir($this->cacheDir);
-    }
 });
 
 describe('TelemetryMiddleware - End-to-End Integration', function () {
@@ -50,7 +38,7 @@ describe('TelemetryMiddleware - End-to-End Integration', function () {
                     ]);
                 });
             },
-            routeCache: $this->cacheDir,
+            invoker: telemetryTestInvoker(),
             preGlobal: [
                 new TelemetryMiddleware(
                     log: $this->logger,
@@ -92,7 +80,7 @@ describe('TelemetryMiddleware - End-to-End Integration', function () {
                     ]);
                 });
             },
-            routeCache: $this->cacheDir,
+            invoker: telemetryTestInvoker(),
             preGlobal: [new TelemetryMiddleware($this->logger)],
         );
 
@@ -123,7 +111,7 @@ describe('TelemetryMiddleware - End-to-End Integration', function () {
                     ]);
                 });
             },
-            routeCache: $this->cacheDir,
+            invoker: telemetryTestInvoker(),
             preGlobal: [new TelemetryMiddleware($this->logger, respectIncomingTraceparent: true)],
         );
 
@@ -155,7 +143,7 @@ describe('TelemetryMiddleware - End-to-End Integration', function () {
                     ]);
                 });
             },
-            routeCache: $this->cacheDir,
+            invoker: telemetryTestInvoker(),
             preGlobal: [new TelemetryMiddleware($this->logger)],
         );
 
@@ -181,7 +169,7 @@ describe('TelemetryMiddleware - Performance Timing', function () {
                     return Response::json(['ok' => true]);
                 });
             },
-            routeCache: $this->cacheDir,
+            invoker: telemetryTestInvoker(),
             preGlobal: [new TelemetryMiddleware($this->logger, addXResponseTime: true)],
         );
 
@@ -201,7 +189,7 @@ describe('TelemetryMiddleware - Performance Timing', function () {
             register: function () {
                 Route::get('/api/test', fn() => Response::json(['ok' => true]));
             },
-            routeCache: $this->cacheDir,
+            invoker: telemetryTestInvoker(),
             preGlobal: [new TelemetryMiddleware($this->logger, addServerTiming: true)],
         );
 
@@ -220,7 +208,7 @@ describe('TelemetryMiddleware - Configuration Scenarios', function () {
             register: function () {
                 Route::get('/health', fn() => Response::json(['status' => 'ok']));
             },
-            routeCache: $this->cacheDir,
+            invoker: telemetryTestInvoker(),
             preGlobal: [
                 new TelemetryMiddleware(
                     log: $this->logger,
@@ -253,7 +241,7 @@ describe('TelemetryMiddleware - Configuration Scenarios', function () {
             register: function () {
                 Route::get('/test', fn() => Response::json(['ok' => true]));
             },
-            routeCache: $this->cacheDir,
+            invoker: telemetryTestInvoker(),
             preGlobal: [
                 new TelemetryMiddleware(
                     log: $this->logger,
