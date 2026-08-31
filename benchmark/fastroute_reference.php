@@ -11,6 +11,7 @@ use Infocyph\Webrick\Router\Matching\FusedMatcher;
 use Infocyph\Webrick\Router\Matching\GeneratedMatcher;
 use Infocyph\Webrick\Router\Matching\MatcherInterface;
 use Infocyph\Webrick\Router\Matching\MatchOutcome;
+use Infocyph\Webrick\Router\Matching\MatchOutcomeType;
 use Infocyph\Webrick\Router\Matching\ShardedMatcher;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 use Infocyph\Webrick\Router\Route\Route;
@@ -66,11 +67,11 @@ $lastDynamic = max(0, $dynamicCount - 1);
 $middleDynamic = intdiv($lastDynamic, 2);
 
 $scenarios = [
-    'static-last' => ['GET', '/bench/static/route-' . $lastStatic, true],
-    'dynamic-middle' => ['GET', '/bench/dynamic/item-' . $middleDynamic . '/42', true],
-    'dynamic-last' => ['GET', '/bench/dynamic/item-' . $lastDynamic . '/42', true],
-    'not-found' => ['GET', '/bench/dynamic/missing/42', false],
-    'method-not-allowed' => ['POST', '/bench/dynamic/item-' . $lastDynamic . '/42', false],
+    'static-last' => ['GET', '/bench/static/route-' . $lastStatic],
+    'dynamic-middle' => ['GET', '/bench/dynamic/item-' . $middleDynamic . '/42'],
+    'dynamic-last' => ['GET', '/bench/dynamic/item-' . $lastDynamic . '/42'],
+    'not-found' => ['GET', '/bench/dynamic/missing/42'],
+    'method-not-allowed' => ['POST', '/bench/dynamic/item-' . $lastDynamic . '/42'],
 ];
 
 $fastCollector = new FastRouteCollector(new FastRouteParser(), new FastRouteMarkDataGenerator());
@@ -159,7 +160,12 @@ function webrickChecksum(MatcherInterface $matcher, string $method, string $path
         return $result[0] + 17;
     }
     if ($result instanceof MatchOutcome) {
-        return $result->type->value + 31;
+        return match ($result->type) {
+            MatchOutcomeType::FOUND => 32,
+            MatchOutcomeType::NOT_FOUND => 33,
+            MatchOutcomeType::METHOD_NOT_ALLOWED => 34,
+            MatchOutcomeType::AUTO_OPTIONS => 35,
+        };
     }
 
     throw new LogicException('Unexpected matcher benchmark result.');
