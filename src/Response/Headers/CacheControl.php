@@ -109,25 +109,10 @@ final class CacheControl implements \Stringable
             return new self();
         }
 
-        $parts = [];
-        foreach (self::splitCsvRespectingQuotes($line) as $raw) {
-            $token = trim($raw);
-            if ($token === '') {
-                continue;
-            }
-            $position = strpos($token, '=');
-            if ($position === false) {
-                $parts[strtolower($token)] = null;
+        $model = self::parseModel($line);
+        self::normalizeModel($model);
 
-                continue;
-            }
-            $name = strtolower(trim(substr($token, 0, $position)));
-            if ($name !== '') {
-                $parts[$name] = trim(substr($token, $position + 1));
-            }
-        }
-
-        return new self($parts);
+        return new self(self::partsFromLine(self::modelToLine($model)));
     }
 
     public static function new(): self
@@ -365,6 +350,30 @@ final class CacheControl implements \Stringable
         return $model;
     }
 
+    /** @return array<string,string|null> */
+    private static function partsFromLine(string $line): array
+    {
+        $parts = [];
+        foreach (self::splitCsvRespectingQuotes($line) as $raw) {
+            $token = trim($raw);
+            if ($token === '') {
+                continue;
+            }
+            $position = strpos($token, '=');
+            if ($position === false) {
+                $parts[strtolower($token)] = null;
+
+                continue;
+            }
+            $name = strtolower(trim(substr($token, 0, $position)));
+            if ($name !== '') {
+                $parts[$name] = trim(substr($token, $position + 1));
+            }
+        }
+
+        return $parts;
+    }
+
     /** @param array<string,string|null> $parts @return array{0:array<string,string|null>,1:array<string,string|null>} */
     private static function partitionParts(array $parts): array
     {
@@ -446,15 +455,11 @@ final class CacheControl implements \Stringable
 
     private static function toDeltaSeconds(string $value): ?int
     {
-        if ($value === '') {
-            return null;
-        }
-        $digits = ltrim($value, '+');
-        if ($digits === '' || !ctype_digit($digits)) {
+        if ($value === '' || !ctype_digit($value)) {
             return null;
         }
 
-        $number = filter_var($digits, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
+        $number = filter_var($value, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
 
         return $number === false ? null : (int) $number;
     }
