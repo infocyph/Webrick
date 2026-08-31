@@ -9,21 +9,13 @@ use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
 use Infocyph\Webrick\Exceptions\RouteNotFoundException;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 
-/**
- * Sharded canonical-index matcher.
- *
- * Development keeps one canonical in-memory index. Production cache mode loads
- * only the requested first-literal shard plus the dedicated first-variable
- * dynamic shard, fixing root-dynamic patterns such as `/{id}`.
- */
+/** Sharded canonical-index matcher. */
 final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
 {
     use MatcherFactoryTrait;
 
-    private const int INDEX_CACHE_VERSION = 5;
-
+    private const int INDEX_CACHE_VERSION = 6;
     private const string SHARD_DYNAMIC = '__dynamic';
-
     private const string SHARD_ROOT = '__root';
 
     /** @var list<string> */
@@ -34,29 +26,18 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     ];
 
     private ?string $activeCacheDir = null;
-
     /** @var array<string,array{0:string,1:?string}> */
     private array $alias = [];
-
     private ?bool $aliasLoaded = null;
-
     private string $cacheDir = '';
-
     private bool $cacheEnabled = false;
-
     private bool $cacheReadable = false;
-
     private bool $cacheWriteEnabled = false;
-
     private CanonicalMatcherEngine $engine;
-
     private bool $finalized = false;
-
     private CanonicalMatcherIndex $index;
-
     /** @var array<string,array{static:array<mixed>,dynamic:array<mixed>}|null> */
     private array $loadedGroups = [];
-
     /** @var array<string,true> */
     private array $middlewareRequirements = [];
 
@@ -160,7 +141,8 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     public function match(string $method, string $host, string $path): array
     {
         $verb = HttpMethodEnum::normalize($method);
-        $outcome = $this->matchOutcome($verb, strtolower($host ?: '*'), $path === '' ? '/' : $path);
+        $path = $path === '' ? '/' : $path;
+        $outcome = $this->matchOutcome($verb, strtolower($host ?: '*'), $path);
         if ($outcome->type === MatchOutcomeType::FOUND) {
             return [$outcome->requireRoute(), $outcome->params];
         }
@@ -171,29 +153,18 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         throw new RouteNotFoundException($verb, $path);
     }
 
+    public function matchCompiledOutcome(string $method, string $host, string $path): MatchOutcome
+    {
+        $this->finalize();
+
+        return $this->matchCanonical($method, $host, $path, true);
+    }
+
     public function matchOutcome(string $method, string $host, string $path): MatchOutcome
     {
-        if (!$this->finalized) {
-            $this->finalize();
-        }
+        $this->finalize();
 
-        if (!$this->cacheReadable) {
-            $hosts = $this->index->hosts();
-
-            return $this->engine->matchSingle(
-                $hosts[$host] ?? null,
-                $host !== '*' ? ($hosts['*'] ?? null) : null,
-                $method,
-                $path,
-            );
-        }
-
-        $bucket = CanonicalMatcherIndex::prefixForPath($path);
-        $bucket = $bucket === '' ? self::SHARD_ROOT : $bucket;
-        $hostGroups = $this->loadCandidateGroups($host, $bucket);
-        $wildcardGroups = $host !== '*' ? $this->loadCandidateGroups('*', $bucket) : [];
-
-        return $this->engine->match($hostGroups, $wildcardGroups, $method, $path);
+        return $this->matchCanonical($method, $host, $path, false);
     }
 
     /** @return list<string> */
@@ -211,6 +182,28 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         $index = $this->aliasIndex();
 
         return $index[$name] ?? null;
+    }
+
+    private function matchCanonical(string $method, string $host, string $path, bool $indexOnly): MatchOutcome
+    {
+        if (!$this->cacheReadable) {
+            $hosts = $this->index->hosts();
+            $hostGroup = $hosts[$host] ?? null;
+            $wildcardGroup = $host !== '*' ? ($hosts['*'] ?? null) : null;
+
+            return $indexOnly
+                ? $this->engine->matchSingleCompiled($hostGroup, $wildcardGroup, $method, $path)
+                : $this->engine->matchSingle($hostGroup, $wildcardGroup, $method, $path);
+        }
+
+        $bucket = CanonicalMatcherIndex::prefixForPath($path);
+        $bucket = $bucket === '' ? self::SHARD_ROOT : $bucket;
+        $hostGroups = $this->loadCandidateGroups($host, $bucket);
+        $wildcardGroups = $host !== '*' ? $this->loadCandidateGroups('*', $bucket) : [];
+
+        return $indexOnly
+            ? $this->engine->matchCompiled($hostGroups, $wildcardGroups, $method, $path)
+            : $this->engine->match($hostGroups, $wildcardGroups, $method, $path);
     }
 
     private function cacheStorageDir(): string
@@ -298,9 +291,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         );
     }
 
-    /**
-     * @return array<string,array<string,array{static:array<mixed>,dynamic:array<mixed>}>>
-     */
+    /** @return array<string,array<string,array{static:array<mixed>,dynamic:array<mixed>}>> */
     private function partitionIndex(): array
     {
         $groups = [];
