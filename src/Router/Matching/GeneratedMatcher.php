@@ -112,6 +112,13 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         return $index[$name] ?? null;
     }
 
+    private static function removeTemporaryMatcherFile(string $file): void
+    {
+        if (is_file($file) && !unlink($file)) {
+            throw new \RuntimeException("Failed to remove temporary matcher file {$file}");
+        }
+    }
+
     private function bootIndex(): void
     {
         $this->index ??= new CanonicalMatcherIndex();
@@ -300,13 +307,6 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
             true,
         );
         $this->cacheLoaded = true;
-    }
-
-    private static function removeTemporaryMatcherFile(string $file): void
-    {
-        if (is_file($file) && !unlink($file)) {
-            throw new \RuntimeException("Failed to remove temporary matcher file {$file}");
-        }
     }
 
     /** @param list<array<string,mixed>> $segments */
