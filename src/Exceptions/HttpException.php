@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Exceptions;
 
 use Infocyph\Webrick\Constants\StatusEnum;
+use Infocyph\Webrick\Request\Support\HeaderBag;
 use InvalidArgumentException;
 use Throwable;
 
@@ -52,6 +53,7 @@ class HttpException extends \RuntimeException implements HttpExceptionInterface
         if (!StatusEnum::isErrorCode($statusCode)) {
             throw new InvalidArgumentException("HTTP exception status must be between 400 and 599, got {$statusCode}.");
         }
+        new HeaderBag($this->headers);
 
         $resolvedPublicMessage = $publicMessage ?? (StatusEnum::text($statusCode) ?: 'HTTP Error');
         parent::__construct($message !== '' ? $message : $resolvedPublicMessage, 0, $previous);
