@@ -13,6 +13,7 @@ use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Cache\CachePolicy;
 use Infocyph\Webrick\Response\Internal\Utils;
 use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Support\HttpUtils;
 use Infocyph\Webrick\Support\VaryContext;
 use Psr\Cache\CacheItemPoolInterface;
 use RuntimeException;
@@ -154,7 +155,7 @@ final readonly class ResponseCacheMiddleware
             return $value;
         }
 
-        return is_string($value) && preg_match('/^[0-9]+$/D', $value) === 1 ? (int) $value : $default;
+        return is_string($value) ? (HttpUtils::parseUnsignedDecimal($value) ?? $default) : $default;
     }
 
     private function invokeNext(Closure $next, Request $req): Response
