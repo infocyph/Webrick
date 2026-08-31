@@ -41,7 +41,21 @@ final readonly class InputSanitizer
         private ?int $maxBytes = null,
         private array $skipKeys = [],
         private array $skipKeyPatterns = [],
-    ) {}
+    ) {
+        if ($this->maxBytes !== null && $this->maxBytes < 0) {
+            throw new \InvalidArgumentException('Input sanitizer maxBytes must be >= 0 or null.');
+        }
+        foreach ($this->skipKeys as $key) {
+            if (!is_string($key)) {
+                throw new \InvalidArgumentException('Input sanitizer skip keys must be strings.');
+            }
+        }
+        foreach ($this->skipKeyPatterns as $pattern) {
+            if (!is_string($pattern) || $pattern === '' || @preg_match($pattern, '') === false) {
+                throw new \InvalidArgumentException('Input sanitizer skip-key patterns must be valid non-empty PCRE expressions.');
+            }
+        }
+    }
 
     /**
      * Recursively sanitize a (possibly nested) array payload.
@@ -104,7 +118,7 @@ final readonly class InputSanitizer
             $s = preg_replace('/[ \t]+/u', ' ', $s) ?? $s;                      // collapse HT/space
         }
 
-        if ($this->maxBytes !== null && $this->maxBytes > 0) {
+        if ($this->maxBytes !== null) {
             $s = function_exists('mb_strcut')
                 ? mb_strcut($s, 0, $this->maxBytes, 'UTF-8')
                 : substr($s, 0, $this->maxBytes);
@@ -118,7 +132,7 @@ final readonly class InputSanitizer
      *
      * Matches when:
      * - The key is exactly in $skipKeys, or
-     * - Any pattern in $skipKeyPatterns matches the key (PCRE; invalid patterns are ignored).
+     * - Any pattern in $skipKeyPatterns matches the key.
      *
      * @param string $key The array key to test.
      * @return bool True when the key should be skipped.
@@ -129,6 +143,6 @@ final readonly class InputSanitizer
             return true;
         }
 
-        return array_any($this->skipKeyPatterns, fn($rx) => $rx !== '' && preg_match($rx, $key) === 1);
+        return array_any($this->skipKeyPatterns, fn(string $rx): bool => preg_match($rx, $key) === 1);
     }
 }
