@@ -4,11 +4,16 @@ on:
   push:
     branches: [ "webrick-5/batch-1-correctness" ]
 
+permissions:
+  contents: write
+
 jobs:
   diagnostics:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -19,6 +24,20 @@ jobs:
 
       - name: Install dependencies
         run: composer update --no-interaction --prefer-dist --no-progress --prefer-stable
+
+      - name: Apply one-shot PHPDoc parameter repair
+        if: github.event.head_commit.message != 'docs: normalize PHPDoc parameter tags'
+        shell: bash
+        run: |
+          php tools/fix_phpdoc_params.php
+          if git diff --quiet -- benchmark benchmarks src routes.php index.php; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add benchmark benchmarks src routes.php index.php 2>/dev/null || true
+          git commit -m "docs: normalize PHPDoc parameter tags"
+          git push origin HEAD:webrick-5/batch-1-correctness
 
       - name: Collect strict diagnostics
         shell: bash
