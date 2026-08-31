@@ -2,7 +2,7 @@
 
 This file is the **live TODO/checklist** for Webrick 5.0.
 
-The full engineering design, rationale, detailed requirements, file disposition, benchmark matrix, and release gates remain in [`webrick-5-major-release-plan-details.md`](./webrick-5-major-release-plan-details.md).
+The full engineering design, rationale, detailed requirements, file disposition, benchmark matrix, and release gates remain in [`webrick-5-major-release-plan-details.md`](./webrick-5-major-release-plan-details.md). Phase 8's final deletion/retention decisions are recorded in [`webrick-5-phase-8-completion.md`](./webrick-5-phase-8-completion.md).
 
 ## Governing workflow
 
@@ -93,8 +93,8 @@ Commits: `efeb09b`, `737554b`, `f9d48ee`, `a272420`
 - [x] Callable constraints validated at build/cache-load and directly invoked at runtime.
 - [x] `MatcherInterface::matchOutcome()` natively owns FOUND/404/405/OPTIONS/HEAD semantics.
 - [x] Compiled kernel calls matcher directly; `MatcherOutcomeAdapter` removed.
-- [x] Legacy trie/helper physical deletion deferred to measured Phase 8 cleanup.
-- [x] Matcher-mode retention/removal deferred to Phase 8 benchmark evidence.
+- [x] Legacy trie/helper physical deletion completed during Phase 8 cleanup.
+- [x] Retained matcher modes reviewed during Phase 8; final benchmark certification remains deferred.
 - [x] **Phase 4 implementation complete.**
 - [x] **Phase 4 feature complete.**
 - [ ] **Phase 4 consolidated certification** — deferred.
@@ -110,17 +110,15 @@ Commits: `5f7964e`, `b044e44`, `3c534a1`, `0c27cb8`, `d5d3773`, `03f003a`
 - [x] Ordinary text/HTML/eager JSON remains a native PHP string inside `Response`.
 - [x] `StringBody` supplies stream-compatible semantics only when an interop caller explicitly requests a body stream.
 - [x] `Response::getBodySize()`, `getStringBody()`, and `isStringBody()` expose the cheap native representation.
-- [x] Lazy JSON encodes once into `StringBody`; it no longer creates a second temp stream.
+- [x] Lazy/temp-stream JSON compatibility paths removed; native/lazy representation no longer creates a second temp stream.
 - [x] Unchanged immutable response clones share `HeaderBag`; headers are validated/normalized at the boundary rather than cloned repeatedly.
 - [x] Resource-backed `Stream::__toString()` handles non-seekable streams without attempting an impossible rewind.
 
 ### Output path
 
 - [x] Classic SAPI `DefaultEmitter` writes string-backed responses directly without `getBody()` or stream allocation.
-- [x] Existing Swoole emitter sends native string bodies directly.
-- [x] Existing RoadRunner bridge keeps native strings native.
-- [x] Existing Workerman bridge keeps native strings native.
-- [x] Full runtime-adapter replacement remains correctly owned by Phase 6.
+- [x] Persistent engines use explicit runtime adapters with native string/file/stream paths.
+- [x] Legacy engine emitter discovery removed in Phase 8.
 
 ### Native Request representation
 
@@ -142,7 +140,7 @@ Commits: `5f7964e`, `b044e44`, `3c534a1`, `0c27cb8`, `d5d3773`, `03f003a`
 - [x] `psr/http-message` and `psr/http-factory` remain optional Composer suggestions, not hot-path dependencies.
 - [x] `Response::view()` no longer reaches a global InterMix container.
 - [x] Injected `ViewResponder` + `ViewFactoryInterface` owns view rendering; `Response` remains a value/output type.
-- [x] Remaining old `Request\Psr7` normalizer filenames are non-message compatibility utilities only; physical relocation/deletion is reserved for Phase 8 cleanup.
+- [x] Remaining stale `Request\Psr7` normalizer files/references removed during Phase 8.
 - [x] **Phase 5 implementation complete.**
 - [x] **Phase 5 feature complete.**
 - [ ] **Phase 5 consolidated certification** — deferred.
@@ -185,7 +183,7 @@ Phase 5 commits include: `f46c994`, `75c7030`, `2e928e9`, `1077c27`, `015fec7`, 
 - [x] InterMix production runtime remains host-owned and worker-shared; Webrick opens explicit request scopes only when compiled capabilities require them.
 - [x] Request/native transport state is never stored in static current-request/current-response fields or reusable middleware.
 - [x] Persistent-runtime isolation coverage includes one-time materialization, unique native handles/scope IDs, interleaved Fibers, weak-reference release, and FileBody/range metadata.
-- [x] Legacy emitter discovery remains compatibility-only and is reserved for measured Phase 8 deletion; compiled production runtime uses the adapter path.
+- [x] Legacy emitter discovery physically removed during Phase 8; compiled production uses runtime adapters.
 - [x] **Phase 6 implementation complete.**
 - [x] **Phase 6 feature complete.**
 - [ ] **Phase 6 consolidated certification / long-worker soak validation** — deferred.
@@ -231,10 +229,64 @@ Phase 7 implementation span: `b416189` … `8e88301`
 
 ---
 
-## Remaining feature phases
+## Phase 8 — benchmark-driven deletion / final optimization
 
-- [ ] **Phase 8 — benchmark-driven deletion/final optimization**
+### Runtime / compatibility deletion
+
+- [x] Removed `AutoEmitter` and legacy engine-specific emitter discovery; persistent engines use boot-selected runtime adapters.
+- [x] Removed `NormalizeMethodMiddleware`; method normalization occurs once at transport/request boundaries.
+- [x] Removed stale pseudo-PSR request normalizers/references and duplicate native request normalization.
+- [x] Reduced `HeaderBag` / request normalization work after the native request rewrite.
+- [x] Removed obsolete root route-cache compatibility/example script and runtime URL-cache binder.
+
+### Canonical negotiation / error boundary
+
+- [x] One canonical `ContentNegotiator` owns normal middleware, `Request::prefers()`, `Response::auto()`, and error-format negotiation.
+- [x] Deleted duplicate `Response\Negotiation\ContentTypeNegotiator`.
+- [x] Corrected Accept wildcard handling so response negotiation returns concrete server representations.
+- [x] Removed arbitrary exception status/property/method/code inference; only `HttpExceptionInterface` or explicit maps define HTTP status.
+- [x] Removed generic Allow-header introspection and redundant default 404/405 exception maps.
+- [x] Removed per-request PHP-error compatibility switches; `PhpErrorBridge` is explicit process/worker bootstrap state.
+- [x] Bounded request IDs and preserved HEAD/non-debug error guarantees.
+
+### DI/runtime ownership deletion
+
+- [x] `RouterKernel` is registrar/development-only and requires a host-owned `Invoker`.
+- [x] Removed hidden `Container::instance('intermix')` fallback and kernel-owned provider imports.
+- [x] Removed duplicate/hidden Webrick application graph ownership.
+- [x] Removed request-scope compatibility toggle and singleton-current-Request fallback; development requests always use explicit scopes.
+- [x] Removed development-kernel route-cache boot and alias-only registrar fallback.
+- [x] Scoped development `Router` facade registration instead of leaving mutable current-registrar global state installed.
+- [x] `CompiledRouterKernel` retains explicit host-supplied `ProductionContainer`; environment/fingerprint inputs validate artifacts only.
+
+### Build plane / cache tooling
+
+- [x] `RouteCache::build()` is a pure matcher-cache build operation and no longer boots a request kernel or DI runtime.
+- [x] Matcher cache write lifecycle is explicit on `MatcherInterface`.
+- [x] Matcher-cache CLI no longer exposes runtime/alias-fallback options.
+- [x] Matcher cache remains separate from the complete `ReleaseCompiler` production artifact.
+- [x] Mandatory global helper Composer autoload remains removed; `src/functions.php` is opt-in only.
+
+### Retention decisions
+
+- [x] Retain Generated/Fused/Sharded modes pending release benchmark certification; each represents a distinct cache/runtime strategy.
+- [x] Retain `MatcherFactoryTrait`, `MatcherCacheLifecycleTrait`, and `MatcherCachePayloadNormalizer` because they centralize real shared behavior rather than compatibility forwarding.
+- [x] Retain explicit PSR-7 interoperability, optional CacheLayer adapter, SAPI/CLI emitters, and process-level `PhpErrorBridge` as meaningful boundaries.
+- [x] Public bootstrap/runtime/cache/middleware documentation aligned to the final v5 architecture.
+- [x] Full Phase 8 deletion/retention disposition recorded in [`webrick-5-phase-8-completion.md`](./webrick-5-phase-8-completion.md).
+- [x] **Phase 8 implementation complete.**
+- [x] **Phase 8 feature complete.**
+- [ ] **Phase 8 benchmark/release-gate certification** — deferred to consolidated stabilization.
+
+Phase 8 implementation span: `8e88301` … `04b8a86`
+
+---
+
+## Remaining work
+
 - [ ] **Consolidated stabilization and release certification**
+
+No further planned feature phase remains before certification. Do not treat the Phase 8 completion checkbox as release approval: the deferred QA, static analysis, CI, concurrency/soak, and benchmark gates below must pass before 5.0.0.
 
 ---
 
