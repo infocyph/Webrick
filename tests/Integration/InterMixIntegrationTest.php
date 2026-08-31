@@ -16,7 +16,6 @@ use Infocyph\Webrick\Router\Dispatch\MiddlewareAliases;
 use Infocyph\Webrick\Router\Dispatch\MiddlewarePipeline;
 use Infocyph\Webrick\Router\Kernel\RouterKernel;
 use Infocyph\Webrick\Router\Matching\FusedMatcher;
-use Psr\Container\ContainerInterface;
 use Psr\Log\NullLogger;
 
 if (! class_exists('InterMixFreshController', false)) {
@@ -315,9 +314,9 @@ describe('InterMix integration', function () {
 
         $kernel = intermixKernelForTest(
             static function (Registrar $r): void {
-                $r->get('/view', static function (ContainerInterface $container, ViewResponder $views): Response {
-                    if (! $container instanceof Container) {
-                        throw new RuntimeException('Expected InterMix container instance.');
+                $r->get('/view', static function (ViewFactoryInterface $resolvedFactory, ViewResponder $views): Response {
+                    if ($resolvedFactory->render('probe', ['name' => 'Host']) !== '<h1>probe: Host</h1>') {
+                        throw new RuntimeException('Expected the host-bound view factory.');
                     }
 
                     return $views->render('hello', ['name' => 'Ada']);
