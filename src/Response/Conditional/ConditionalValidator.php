@@ -215,6 +215,9 @@ final readonly class ConditionalValidator
             }
             $token .= $char;
         }
+        if ($quoted || $escaped) {
+            return [];
+        }
         self::appendToken($tokens, $token);
 
         return $tokens;
