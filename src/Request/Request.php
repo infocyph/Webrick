@@ -342,6 +342,7 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
     /** @param list<string>|null $supported */
     public function locale(?array $supported = null, string $fallback = 'en', bool $cache = true): string
     {
+        $fallback = self::normalizeLocale($fallback);
         if ($cache && $supported === null && $this->cachedLocale !== null) {
             return $this->cachedLocale;
         }
@@ -351,18 +352,23 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
             return $fallback;
         }
         if ($supported === null) {
-            return $this->cachedLocale = strtolower(substr($languages[0], 0, 5));
+            $locale = self::normalizeLocale($languages[0]);
+            if ($cache) {
+                $this->cachedLocale = $locale;
+            }
+
+            return $locale;
         }
 
         $supported = self::normalizeLocaleList($supported);
         foreach ($languages as $language) {
             $language = self::normalizeLocale($language);
-            $primary = substr($language, 0, 2);
+            $primary = self::primaryLocale($language);
             if (in_array($language, $supported, true)) {
-                return $this->cachedLocale = $language;
+                return $language;
             }
             if (in_array($primary, $supported, true)) {
-                return $this->cachedLocale = $primary;
+                return $primary;
             }
         }
 
@@ -531,6 +537,13 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return array_values(array_unique($normalized));
     }
 
+    private static function primaryLocale(string $locale): string
+    {
+        $separator = strpos($locale, '-');
+
+        return $separator === false ? $locale : substr($locale, 0, $separator);
+    }
+
     /** @param string|list<string> $value @return list<string> */
     private static function stringList(string|array $value): array
     {
@@ -569,7 +582,7 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         if (in_array($candidate, $supported, true)) {
             return $candidate;
         }
-        $primary = substr($candidate, 0, 2);
+        $primary = self::primaryLocale($candidate);
 
         return in_array($primary, $supported, true) ? $primary : null;
     }
