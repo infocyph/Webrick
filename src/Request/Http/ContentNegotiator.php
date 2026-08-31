@@ -138,9 +138,17 @@ final readonly class ContentNegotiator
             return $default === null ? [] : [['value' => $default, 'q' => 1.0, 'specificity' => 0, 'order' => 0]];
         }
 
+        $segments = HttpUtils::splitQuoted($raw, ',');
+        if ($segments === null) {
+            return [];
+        }
+
         $entries = [];
-        foreach (self::splitCsv($raw) as $order => $segment) {
-            $parts = array_map(trim(...), explode(';', $segment));
+        foreach ($segments as $order => $segment) {
+            $parts = HttpUtils::splitQuoted($segment, ';');
+            if ($parts === null) {
+                continue;
+            }
             $value = strtolower((string) array_shift($parts));
             if ($value === '') {
                 continue;
@@ -198,50 +206,6 @@ final readonly class ContentNegotiator
         }
 
         return str_contains($value, '*') ? 1 : 2;
-    }
-
-    /** @return list<string> */
-    private static function splitCsv(string $raw): array
-    {
-        $out = [];
-        $buffer = '';
-        $quoted = false;
-        $escaped = false;
-        for ($i = 0, $length = strlen($raw); $i < $length; $i++) {
-            $char = $raw[$i];
-            if ($escaped) {
-                $buffer .= $char;
-                $escaped = false;
-
-                continue;
-            }
-            if ($quoted && $char === '\\') {
-                $buffer .= $char;
-                $escaped = true;
-
-                continue;
-            }
-            if ($char === '"') {
-                $quoted = !$quoted;
-                $buffer .= $char;
-
-                continue;
-            }
-            if ($char === ',' && !$quoted) {
-                if (trim($buffer) !== '') {
-                    $out[] = trim($buffer);
-                }
-                $buffer = '';
-
-                continue;
-            }
-            $buffer .= $char;
-        }
-        if (trim($buffer) !== '') {
-            $out[] = trim($buffer);
-        }
-
-        return $out;
     }
 
     private static function tokenMatch(string $candidate, string $accepted): bool
