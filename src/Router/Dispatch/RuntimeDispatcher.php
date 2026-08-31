@@ -142,7 +142,9 @@ final class RuntimeDispatcher
             return $value;
         }
 
-        return get_debug_type($value);
+        throw new UnexpectedValueException(
+            'Unsupported handler response type: ' . get_debug_type($value) . '.',
+        );
     }
 
     /**
