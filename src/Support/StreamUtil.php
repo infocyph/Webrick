@@ -30,6 +30,8 @@ final class StreamUtil
         $position = $s->tell();
 
         try {
+            $s->rewind();
+
             return strlen($s->getContents());
         } finally {
             $s->seek($position);
