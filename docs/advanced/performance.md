@@ -48,16 +48,16 @@ application, deployment mode and runtime configuration.
 ### ✅ **2. Prebuild Route Cache** (High Impact)
 ```bash
 # In CI/build step
-php ./webrick route:cache --cache=.route-cache --routes=routes.php
+php ./webrick route:cache --matcher=fused --cache=.route-cache/fused.php --routes=routes.php
 ```
 
-Ship `.route-cache/` with your artifact.
+Ship the generated route-cache artifact with your release.
 ```php
 $kernel = RouterKernel::bootWithRegistrar(
     log: $logger,
-    matcher: ShardedMatcher::make(),
+    matcher: FusedMatcher::make(),
     register: $register,
-    routeCache: __DIR__ . '/.route-cache'  // Pre-built
+    routeCache: __DIR__ . '/.route-cache/fused.php'  // Pre-built
 );
 ```
 
@@ -65,9 +65,9 @@ Measure cache generation, cached kernel boot and matched-route dispatch as three
 separate costs. Cache generation may become slower when that removes validation,
 reflection and serialization from normal requests.
 
-Webrick validates staged cache artifacts before publication. Sharded mode
+Fused and Generated modes publish a single PHP matcher artifact. Sharded mode
 publishes an immutable generation through one atomic manifest switch, so a
-partial generation is never selected by a new kernel.
+partial shard generation is never selected by a new kernel.
 
 Upload specifications remain raw until uploaded files are requested. Webrick
 still opens the PSR-compatible request body stream for every method, including
@@ -78,17 +78,28 @@ parsing remains gated to applicable non-POST methods and content types.
 
 ### ✅ **3. Select a Matcher from Representative Measurements**
 ```php
-$matcher = ShardedMatcher::make();
+$matcher = FusedMatcher::make();
 ```
 
-Sharded is a useful starting point for substantial applications because it
-loads selected immutable shards and can improve OPcache locality. Route count
-alone does not determine the winner: benchmark Fused, Generated and Sharded
-with the application's static/dynamic mix, prefixes, domains, OPcache settings,
-worker lifetime and traffic distribution.
-For a middleware-free route, Webrick uses a direct dispatch lane and does not
-allocate a middleware pipeline. Adding any pre-global, route, or post-global
-middleware intentionally selects the full ordered pipeline.
+Use Fused as the normal starting point and canonical comparison baseline. It
+keeps one consolidated canonical routing structure and avoids the generated-code
+and shard-management tradeoffs of the specialized modes.
+
+Evaluate Generated when maximum matcher throughput matters. It specializes the
+canonical index into executable PHP dispatch code, but the result can increase
+artifact size, OPcache usage and worker boot cost as route sets grow.
+
+Evaluate Sharded for very large route sets when reducing the per-worker routing
+working set or improving locality is materially valuable. Sharding can require
+first-use shard loading, so measure both cold and warm behavior and include the
+filesystem, OPcache and worker-lifetime model in the comparison.
+
+Route count alone does not determine the winner: benchmark Fused, Generated and
+Sharded with the application's static/dynamic mix, prefixes, domains, OPcache
+settings, worker lifetime and traffic distribution. For a middleware-free route,
+Webrick uses a direct dispatch lane and does not allocate a middleware pipeline.
+Adding any pre-global, route, or post-global middleware intentionally selects the
+full ordered pipeline.
 
 ---
 
@@ -287,7 +298,7 @@ final class TimingMiddleware
 
 - [ ] OPcache enabled (`validate_timestamps=0`)
 - [ ] Route cache prebuilt in CI
-- [ ] Fused, Generated and Sharded measured with representative routes
+- [ ] Fused used as the baseline matcher and Generated/Sharded measured when their specialization is relevant
 - [ ] Compression enabled (app OR edge, not both)
 - [ ] Response cache for hot GETs
 - [ ] PHP-FPM sized by memory
