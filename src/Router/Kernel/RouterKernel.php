@@ -9,10 +9,8 @@ use Infocyph\InterMix\DI\Container;
 use Infocyph\InterMix\DI\Invoker;
 use Infocyph\InterMix\DI\Support\DirectFactory;
 use Infocyph\Webrick\Constants\HttpMethodEnum;
-use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Exceptions\HttpException;
 use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
-use Infocyph\Webrick\Exceptions\RouteNotFoundException;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Definition\Registrar;
@@ -170,10 +168,6 @@ final class RouterKernel
             logger: $this->log,
             debug: $this->debug,
             requestIdHeader: 'X-Request-Id',
-            exceptionMap: [
-                RouteNotFoundException::class => StatusEnum::NOT_FOUND->value,
-                MethodNotAllowedException::class => StatusEnum::METHOD_NOT_ALLOWED->value,
-            ],
         );
     }
 
@@ -364,8 +358,10 @@ final class RouterKernel
             urlBaseUri: $this->normalizeUrlBaseUri($options['urlBaseUri'] ?? null),
         );
 
-        Router::setInstance($registrar);
-        ($this->register)($registrar);
+        Router::withScopedInstance(
+            $registrar,
+            fn(Registrar $active): mixed => ($this->register)($active),
+        );
 
         $compiled = $routes->compile()->all();
         if ($compiled === []) {
