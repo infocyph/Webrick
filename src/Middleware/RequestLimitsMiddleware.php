@@ -102,7 +102,7 @@ final readonly class RequestLimitsMiddleware
             return $req;
         }
 
-        $transferCoded = $this->hasTransferCoding($req);
+        $transferCoded = trim($req->getHeaderLine('Transfer-Encoding')) !== '';
         $contentLength = trim($req->getHeaderLine('Content-Length'));
         if ($transferCoded && $contentLength !== '') {
             throw HttpException::badRequest(
@@ -140,23 +140,6 @@ final readonly class RequestLimitsMiddleware
         }
 
         return $buffer === null ? $req : $req->withBody(new StringBody($buffer));
-    }
-
-    private function hasTransferCoding(Request $req): bool
-    {
-        $line = strtolower($req->getHeaderLine('Transfer-Encoding'));
-        if ($line === '') {
-            return false;
-        }
-
-        foreach (explode(',', $line) as $token) {
-            $token = trim($token);
-            if ($token !== '' && $token !== 'identity' && $token !== 'trailers') {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /** @return array{0:int,1:?string} */
