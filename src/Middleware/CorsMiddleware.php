@@ -195,6 +195,7 @@ final readonly class CorsMiddleware
     private function preflightResponse(Request $req, array $policy, string $acao): Response
     {
         $rawRequestedMethod = trim($req->getHeaderLine('Access-Control-Request-Method'));
+
         try {
             $requestedMethod = HttpMethodEnum::normalize($rawRequestedMethod);
         } catch (\InvalidArgumentException) {

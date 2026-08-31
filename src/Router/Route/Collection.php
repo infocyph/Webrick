@@ -223,6 +223,16 @@ final class Collection implements IteratorAggregate
         $this->byHandler[$route->getHandlerId()][] = $route;
     }
 
+    private function duplicateRouteMessage(RouteInterface $route): string
+    {
+        $domain = $route->getDomain();
+        $target = ($domain === null || $domain === '' || $domain === '*')
+            ? $route->getPath()
+            : $domain . $route->getPath();
+
+        return "Duplicate canonical route: {$route->getMethod()} {$target}";
+    }
+
     private function normalizeAlias(RouteInterface $route, string $alias): string
     {
         $alias = trim($alias);
@@ -280,16 +290,6 @@ final class Collection implements IteratorAggregate
     private function routeIdentity(RouteInterface $route): string
     {
         return RouteIdentity::canonicalKey($route->getMethod(), $route->getDomain(), $route->getPath());
-    }
-
-    private function duplicateRouteMessage(RouteInterface $route): string
-    {
-        $domain = $route->getDomain();
-        $target = ($domain === null || $domain === '' || $domain === '*')
-            ? $route->getPath()
-            : $domain . $route->getPath();
-
-        return "Duplicate canonical route: {$route->getMethod()} {$target}";
     }
 
     /** @param list<string> $aliases @return list<string> */

@@ -19,7 +19,7 @@ final class RouteCacheCleaner
             throw new \RuntimeException("Route cache directory does not resolve to an existing directory: {$dir}");
         }
 
-        $canonical = rtrim($canonical, "/\\");
+        $canonical = rtrim($canonical, '/\\');
         if ($canonical === '') {
             $canonical = DIRECTORY_SEPARATOR;
         }
@@ -31,7 +31,7 @@ final class RouteCacheCleaner
         $cwd = getcwd();
         $cwd = $cwd === false ? false : realpath($cwd);
         if ($cwd !== false) {
-            $cwd = rtrim($cwd, "/\\");
+            $cwd = rtrim($cwd, '/\\');
             if ($canonical === $cwd || $canonical === dirname($cwd)) {
                 throw new \RuntimeException("Refusing to clear current or parent working directory: {$canonical}");
             }

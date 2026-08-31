@@ -31,7 +31,7 @@ final class Language
         $parts = [];
         foreach (explode(',', $accept) as $order => $segment) {
             $tokens = array_map(trim(...), explode(';', $segment));
-            $tag = strtolower((string) array_shift($tokens));
+            $tag = strtolower(array_shift($tokens));
             if ($tag === '') {
                 continue;
             }

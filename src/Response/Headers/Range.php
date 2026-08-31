@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Response\Headers;
 
-use Infocyph\Webrick\Response\Range\RangeParseStatus;
 use Infocyph\Webrick\Response\Range\RangeParser;
+use Infocyph\Webrick\Response\Range\RangeParseStatus;
 
 /** RFC 9110 single-byte-range value object backed by the canonical range parser. */
 final readonly class Range

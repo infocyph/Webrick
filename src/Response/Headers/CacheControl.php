@@ -381,6 +381,22 @@ final class CacheControl implements \Stringable
         return $model;
     }
 
+    /** @param array<string,string|null> $parts @return array{0:array<string,string|null>,1:array<string,string|null>} */
+    private static function partitionParts(array $parts): array
+    {
+        $standard = [];
+        $extensions = [];
+        foreach ($parts as $name => $value) {
+            if (isset(self::BOOL_TOKENS[$name]) || isset(self::PRIVACY_TOKENS[$name]) || isset(self::NUM_TOKENS[$name])) {
+                $standard[$name] = $value;
+            } else {
+                $extensions[$name] = $value;
+            }
+        }
+
+        return [$standard, $extensions];
+    }
+
     /** @return array<string,string|null> */
     private static function partsFromLine(string $line): array
     {
@@ -403,22 +419,6 @@ final class CacheControl implements \Stringable
         }
 
         return $parts;
-    }
-
-    /** @param array<string,string|null> $parts @return array{0:array<string,string|null>,1:array<string,string|null>} */
-    private static function partitionParts(array $parts): array
-    {
-        $standard = [];
-        $extensions = [];
-        foreach ($parts as $name => $value) {
-            if (isset(self::BOOL_TOKENS[$name]) || isset(self::PRIVACY_TOKENS[$name]) || isset(self::NUM_TOKENS[$name])) {
-                $standard[$name] = $value;
-            } else {
-                $extensions[$name] = $value;
-            }
-        }
-
-        return [$standard, $extensions];
     }
 
     /** @param array<string,true> $fields */

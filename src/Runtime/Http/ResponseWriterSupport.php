@@ -60,6 +60,7 @@ final readonly class ResponseWriterSupport
                 if ($body->eof()) {
                     break;
                 }
+
                 throw new RuntimeException('Response body stream made no read progress before EOF.');
             }
             yield $chunk;

@@ -275,7 +275,7 @@ class Response
         int $status = StatusEnum::OK->value,
         array $headers = [],
     ): self {
-        $bag = (new HeaderBag($headers))->without('Content-Length');
+        $bag = new HeaderBag($headers)->without('Content-Length');
         $bag = self::withDefaults($bag, [
             'Cache-Control' => 'no-store',
             'X-Accel-Buffering' => 'no',
@@ -551,18 +551,6 @@ class Response
         return $headers;
     }
 
-    /** @param array<string,string> $defaults */
-    private static function withDefaults(HeaderBag $bag, array $defaults): HeaderBag
-    {
-        foreach ($defaults as $name => $value) {
-            if (!$bag->has($name)) {
-                $bag = $bag->with($name, $value);
-            }
-        }
-
-        return $bag;
-    }
-
     private static function statusText(int $code): string
     {
         return StatusEnum::text($code);
@@ -575,6 +563,18 @@ class Response
         }
 
         return 'W/' . Utils::generateEtag(($size ?? -1) . '|' . ($mtime ?? -1) . '|' . $name);
+    }
+
+    /** @param array<string,string> $defaults */
+    private static function withDefaults(HeaderBag $bag, array $defaults): HeaderBag
+    {
+        foreach ($defaults as $name => $value) {
+            if (!$bag->has($name)) {
+                $bag = $bag->with($name, $value);
+            }
+        }
+
+        return $bag;
     }
 
     private function copy(

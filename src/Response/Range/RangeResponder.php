@@ -196,7 +196,7 @@ final readonly class RangeResponder
     private static function normalizeHeaders(array $headers): array
     {
         $normalized = [];
-        foreach ((new HeaderBag($headers))->all() as $name => $values) {
+        foreach (new HeaderBag($headers)->all() as $name => $values) {
             if ($values !== []) {
                 $normalized[$name] = $values[count($values) - 1];
             }

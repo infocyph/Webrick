@@ -102,24 +102,6 @@ final readonly class PsrBridge
         return $body;
     }
 
-    /**
-     * @param array<array-key,UploadedFile|array<array-key,mixed>> $files
-     * @return array<array-key,UploadedFileInterface|array<array-key,mixed>>
-     */
-    private function convertUploadedFiles(array $files): array
-    {
-        $converted = [];
-        foreach ($files as $key => $file) {
-            if ($file instanceof UploadedFile) {
-                $converted[$key] = $this->convertUploadedFile($file);
-            } elseif (is_array($file)) {
-                $converted[$key] = $this->convertUploadedFiles($file);
-            }
-        }
-
-        return $converted;
-    }
-
     private function convertUploadedFile(UploadedFile $file): UploadedFileInterface
     {
         $factory = $this->uploadedFiles
@@ -139,6 +121,24 @@ final readonly class PsrBridge
         );
     }
 
+    /**
+     * @param array<array-key,UploadedFile|array<array-key,mixed>> $files
+     * @return array<array-key,UploadedFileInterface|array<array-key,mixed>>
+     */
+    private function convertUploadedFiles(array $files): array
+    {
+        $converted = [];
+        foreach ($files as $key => $file) {
+            if ($file instanceof UploadedFile) {
+                $converted[$key] = $this->convertUploadedFile($file);
+            } elseif (is_array($file)) {
+                $converted[$key] = $this->convertUploadedFiles($file);
+            }
+        }
+
+        return $converted;
+    }
+
     private function readStreamPreservingPosition(BodyStream $stream): string
     {
         if (!$stream->isSeekable()) {
@@ -146,6 +146,7 @@ final readonly class PsrBridge
         }
 
         $position = $stream->tell();
+
         try {
             $stream->rewind();
 

@@ -14,9 +14,9 @@ final class FileBody implements BodyStream
 {
     private readonly int $length;
 
-    private int $position = 0;
-
     private readonly int $sourceSize;
+
+    private int $position = 0;
 
     private ?Stream $stream = null;
 
@@ -48,6 +48,7 @@ final class FileBody implements BodyStream
     public function __toString(): string
     {
         $position = $this->position;
+
         try {
             $this->rewind();
 

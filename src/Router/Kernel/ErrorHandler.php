@@ -59,6 +59,19 @@ final readonly class ErrorHandler
         }
     }
 
+    /** @return array<string,string> */
+    private static function singleValueHeaders(HeaderBag $bag): array
+    {
+        $headers = [];
+        foreach ($bag->all() as $name => $values) {
+            if ($values !== []) {
+                $headers[$name] = $values[count($values) - 1];
+            }
+        }
+
+        return $headers;
+    }
+
     /**
      * @return array<string,string>
      */
@@ -429,19 +442,6 @@ final readonly class ErrorHandler
         }
 
         return $this->mappedExceptionStatus($error) ?? StatusEnum::INTERNAL_SERVER_ERROR->value;
-    }
-
-    /** @return array<string,string> */
-    private static function singleValueHeaders(HeaderBag $bag): array
-    {
-        $headers = [];
-        foreach ($bag->all() as $name => $values) {
-            if ($values !== []) {
-                $headers[$name] = $values[count($values) - 1];
-            }
-        }
-
-        return $headers;
     }
 
     private function xmlError(

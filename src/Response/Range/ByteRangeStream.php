@@ -39,6 +39,7 @@ final class ByteRangeStream implements BodyStream
     public function __toString(): string
     {
         $position = $this->position;
+
         try {
             $this->rewind();
 

@@ -150,6 +150,7 @@ final readonly class RequestLimitsMiddleware
         }
 
         $buffer = '';
+
         try {
             while (!$body->eof()) {
                 $chunk = $body->read(8192);
@@ -157,6 +158,7 @@ final readonly class RequestLimitsMiddleware
                     if ($body->eof()) {
                         break;
                     }
+
                     throw HttpException::badRequest(
                         'Unable to read request body while enforcing limits.',
                         $this->connectionCloseHeaders($req),
