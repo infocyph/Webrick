@@ -214,7 +214,7 @@ final readonly class CompiledRouterKernel
         ?Request &$request,
         ?RuntimeRequestContext $runtimeContext = null,
     ): Response {
-        $outcome = $this->matcher->matchOutcome($routing->method, $routing->host, $routing->path);
+        $outcome = $this->matcher->matchCompiledOutcome($routing->method, $routing->host, $routing->path);
 
         if ($outcome->type === MatchOutcomeType::AUTO_OPTIONS) {
             return self::automaticOptionsResponse($outcome->allowed);
@@ -226,8 +226,7 @@ final readonly class CompiledRouterKernel
             throw new RouteNotFoundException($routing->method, $routing->path);
         }
 
-        $route = $outcome->requireRoute();
-        $plan = $this->artifact->planFor($route);
+        $plan = $this->artifact->planForIndex($outcome->requireRouteIndex());
         $pipeline = $plan->kind === ExecutionKind::MIDDLEWARE_PIPELINE || $this->hasGlobalMiddleware;
 
         if (!$pipeline && !$plan->requiresRequest()) {
