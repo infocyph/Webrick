@@ -141,8 +141,13 @@ final readonly class CompiledRouterArtifact
 
     public function planFor(CompiledRoute $route): ExecutionPlan
     {
-        return $this->plansByIndex[$route->getIndex()]
-            ?? throw new UnexpectedValueException('Matched route has no compiled execution plan.');
+        return $this->planForIndex($route->getIndex());
+    }
+
+    public function planForIndex(int $routeIndex): ExecutionPlan
+    {
+        return $this->plansByIndex[$routeIndex]
+            ?? throw new UnexpectedValueException('Matched route index has no compiled execution plan.');
     }
 
     /** @param array<string,mixed> $payload @return array<mixed> */
