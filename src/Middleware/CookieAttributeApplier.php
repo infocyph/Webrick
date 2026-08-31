@@ -15,34 +15,26 @@ final readonly class CookieAttributeApplier
         private ?string $defaultSameSite,
     ) {}
 
-    /**
-     * @param array<string,bool|string> $attrs
-     */
+    /** @param array<string,bool|string> $attrs */
     public function apply(Cookie $cookie, array $attrs): Cookie
     {
         $cookie = $this->applyPathDomainAndExpiryAttrs($cookie, $attrs);
         $cookie = $this->applySameSiteAttr($cookie, $attrs);
         $cookie = $this->applySecureAttr($cookie, $attrs);
+        $cookie = $this->applyHttpOnlyAttr($cookie, $attrs);
 
-        return $this->applyHttpOnlyAttr($cookie, $attrs);
+        return $this->hasFlag($attrs, 'partitioned') ? $cookie->partitioned() : $cookie;
     }
 
-    /**
-     * @param array<string,bool|string> $attrs
-     */
+    /** @param array<string,bool|string> $attrs */
     private function applyHttpOnlyAttr(Cookie $cookie, array $attrs): Cookie
     {
-        $hasHttpOnly = (isset($attrs['httponly']) && $attrs['httponly'] === true) || $this->hasFlag($attrs, 'httponly');
-        if ($this->forceHttpOnly || $hasHttpOnly) {
-            return $cookie->httpOnly();
-        }
+        $hasHttpOnly = $this->hasFlag($attrs, 'httponly');
 
-        return $cookie;
+        return $this->forceHttpOnly || $hasHttpOnly ? $cookie->httpOnly() : $cookie;
     }
 
-    /**
-     * @param array<string,bool|string> $attrs
-     */
+    /** @param array<string,bool|string> $attrs */
     private function applyPathDomainAndExpiryAttrs(Cookie $cookie, array $attrs): Cookie
     {
         if (isset($attrs['path']) && \is_string($attrs['path'])) {
@@ -64,50 +56,35 @@ final readonly class CookieAttributeApplier
         return $cookie;
     }
 
-    /**
-     * @param array<string,bool|string> $attrs
-     */
+    /** @param array<string,bool|string> $attrs */
     private function applySameSiteAttr(Cookie $cookie, array $attrs): Cookie
     {
         if (isset($attrs['samesite']) && \is_string($attrs['samesite'])) {
             return $cookie->sameSite($attrs['samesite']);
         }
 
-        return $this->defaultSameSite !== null
-            ? $cookie->sameSite($this->defaultSameSite)
-            : $cookie;
+        return $this->defaultSameSite !== null ? $cookie->sameSite($this->defaultSameSite) : $cookie;
     }
 
-    /**
-     * @param array<string,bool|string> $attrs
-     */
+    /** @param array<string,bool|string> $attrs */
     private function applySecureAttr(Cookie $cookie, array $attrs): Cookie
     {
-        $hasSecure = (isset($attrs['secure']) && $attrs['secure'] === true) || $this->hasFlag($attrs, 'secure');
-        if ($this->forceSecure || $this->isSameSiteNone($attrs) || $hasSecure) {
+        if ($this->forceSecure || $this->isSameSiteNone($attrs) || $this->hasFlag($attrs, 'secure') || $this->hasFlag($attrs, 'partitioned')) {
             return $cookie->secure();
         }
 
         return $cookie;
     }
 
-    /**
-     * @param array<string,bool|string> $attrs
-     */
+    /** @param array<string,bool|string> $attrs */
     private function hasFlag(array $attrs, string $flag): bool
     {
-        return array_any($attrs, fn($v, $k) => $k === $flag && $v === true);
+        return isset($attrs[$flag]) && $attrs[$flag] === true;
     }
 
-    /**
-     * @param array<string,bool|string> $attrs
-     */
+    /** @param array<string,bool|string> $attrs */
     private function isSameSiteNone(array $attrs): bool
     {
-        if (!isset($attrs['samesite'])) {
-            return false;
-        }
-
-        return strcasecmp((string) $attrs['samesite'], 'none') === 0;
+        return isset($attrs['samesite']) && strcasecmp((string) $attrs['samesite'], 'none') === 0;
     }
 }

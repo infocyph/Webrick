@@ -9,16 +9,11 @@ use Infocyph\Webrick\Interfaces\BodyStream;
 /** Lean immutable HTTP-message base used by the native request model. */
 abstract class Message
 {
-    private const int NORMALIZATION_CACHE_LIMIT = 256;
-
     protected BodyStream $body;
-
     /** @var array<string,list<string>> */
     protected array $headers;
 
-    /**
-     * @param array<string,string|array<int,string>> $headers
-     */
+    /** @param array<string,string|array<int,string>> $headers */
     protected function __construct(
         array $headers = [],
         ?BodyStream $body = null,
@@ -29,44 +24,16 @@ abstract class Message
     }
 
     protected function __clone(): void {}
-
-    public function getBody(): BodyStream
-    {
-        return $this->body;
-    }
-
-    /**
-     * @return list<string>
-     */
-    public function getHeader(string $name): array
-    {
-        return $this->headers[$this->norm($name)] ?? [];
-    }
-
-    public function getHeaderLine(string $name): string
-    {
-        return implode(',', $this->getHeader($name));
-    }
-
+    public function getBody(): BodyStream { return $this->body; }
+    /** @return list<string> */
+    public function getHeader(string $name): array { return $this->headers[$this->norm($name)] ?? []; }
+    public function getHeaderLine(string $name): string { return implode(',', $this->getHeader($name)); }
     /** @return array<string,list<string>> */
-    public function getHeaders(): array
-    {
-        return $this->headers;
-    }
+    public function getHeaders(): array { return $this->headers; }
+    public function getProtocolVersion(): string { return $this->protocol; }
+    public function hasHeader(string $name): bool { return isset($this->headers[$this->norm($name)]); }
 
-    public function getProtocolVersion(): string
-    {
-        return $this->protocol;
-    }
-
-    public function hasHeader(string $name): bool
-    {
-        return isset($this->headers[$this->norm($name)]);
-    }
-
-    /**
-     * @param string|array<int,string> $value
-     */
+    /** @param string|array<int,string> $value */
     public function withAddedHeader(string $name, string|array $value): static
     {
         $norm = $this->norm($name);
@@ -77,7 +44,6 @@ abstract class Message
         if ($values === [] || array_diff($values, $this->headers[$norm]) === []) {
             return $this;
         }
-
         $clone = clone $this;
         $clone->headers[$norm] = array_merge($this->headers[$norm], $values);
 
@@ -86,16 +52,10 @@ abstract class Message
 
     public function withBody(BodyStream $body): static
     {
-        if ($body === $this->body) {
-            return $this;
-        }
-
-        return $this->withPropertyValue('body', $body);
+        return $body === $this->body ? $this : $this->withPropertyValue('body', $body);
     }
 
-    /**
-     * @param string|array<int,string> $value
-     */
+    /** @param string|array<int,string> $value */
     public function withHeader(string $name, string|array $value): static
     {
         $norm = $this->norm($name);
@@ -112,7 +72,6 @@ abstract class Message
         if (!$this->hasHeader($name)) {
             return $this;
         }
-
         $clone = clone $this;
         unset($clone->headers[$this->norm($name)]);
 
@@ -121,34 +80,15 @@ abstract class Message
 
     public function withProtocolVersion(string $version): static
     {
-        if ($version === $this->protocol) {
-            return $this;
-        }
-
-        return $this->withPropertyValue('protocol', $version);
+        return $version === $this->protocol ? $this : $this->withPropertyValue('protocol', $version);
     }
 
     private function norm(string $name): string
     {
-        /** @var array<string,string> $cache */
-        static $cache = [];
-
-        if (isset($cache[$name])) {
-            return $cache[$name];
-        }
-
-        $normalized = ucwords(strtolower($name), '-');
-        if (count($cache) < self::NORMALIZATION_CACHE_LIMIT) {
-            $cache[$name] = $normalized;
-        }
-
-        return $normalized;
+        return ucwords(strtolower($name), '-');
     }
 
-    /**
-     * @param array<string,string|array<int,string>> $headers
-     * @return array<string,list<string>>
-     */
+    /** @param array<string,string|array<int,string>> $headers @return array<string,list<string>> */
     private function normalise(array $headers): array
     {
         $normalized = [];
@@ -159,9 +99,7 @@ abstract class Message
         return $normalized;
     }
 
-    /**
-     * @return list<string>
-     */
+    /** @return list<string> */
     private function normalizeHeaderValues(mixed $value): array
     {
         if (is_string($value)) {
@@ -183,9 +121,7 @@ abstract class Message
         return $normalized;
     }
 
-    /**
-     * @param list<string> $value
-     */
+    /** @param list<string> $value */
     private function withMappedHeaderValue(string $name, array $value): static
     {
         $clone = clone $this;

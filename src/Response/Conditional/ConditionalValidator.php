@@ -28,16 +28,15 @@ final readonly class ConditionalValidator
         if ($this->failsIfMatch($req) || (!$ifMatchPresent && $this->failsIfUnmodSince($req))) {
             return new Outcome(Outcome::FAIL, self::HTTP_PRECONDITION, $echo);
         }
-
         if ($this->hitsIfNoneMatch($req)) {
             $method = HttpMethodEnum::normalize($req->getMethod());
-            if ($method === HttpMethodEnum::GET->value || $method === HttpMethodEnum::HEAD->value) {
-                return new Outcome(Outcome::HIT, self::HTTP_NOT_MODIFIED, $echo);
-            }
 
-            return new Outcome(Outcome::FAIL, self::HTTP_PRECONDITION, $echo);
+            return new Outcome(
+                $method === HttpMethodEnum::GET->value || $method === HttpMethodEnum::HEAD->value ? Outcome::HIT : Outcome::FAIL,
+                $method === HttpMethodEnum::GET->value || $method === HttpMethodEnum::HEAD->value ? self::HTTP_NOT_MODIFIED : self::HTTP_PRECONDITION,
+                $echo,
+            );
         }
-
         if ($this->hitsIfModSince($req)) {
             return new Outcome(Outcome::HIT, self::HTTP_NOT_MODIFIED, $echo);
         }
@@ -51,21 +50,26 @@ final readonly class ConditionalValidator
         if ($ifRange === '') {
             return true;
         }
-
         if (preg_match('/^(?:W\/)?"/', $ifRange) === 1) {
             return $this->etag !== null && self::strongEtagEquals($this->etag, $ifRange);
         }
-
         $date = $this->parseDate($ifRange);
 
         return $date !== null && $this->lastModified !== null && $this->lastModified <= $date;
     }
 
+    private function representationExists(): ?bool
+    {
+        if ($this->representationExists !== null) {
+            return $this->representationExists;
+        }
+
+        return $this->etag !== null || $this->lastModified !== null ? true : null;
+    }
+
     private static function strongEtagEquals(string $current, string $candidate): bool
     {
-        return !str_starts_with($candidate, 'W/')
-            && !str_starts_with($current, 'W/')
-            && $candidate === $current;
+        return !str_starts_with($candidate, 'W/') && !str_starts_with($current, 'W/') && $candidate === $current;
     }
 
     private static function weakEtagEquals(string $current, string $candidate): bool
@@ -95,8 +99,7 @@ final readonly class ConditionalValidator
     /** @param list<string>|string $candidates */
     private function etagEquals(string $current, array|string $candidates, bool $strong): bool
     {
-        $tokens = is_array($candidates) ? $candidates : [$candidates];
-        foreach ($tokens as $candidate) {
+        foreach (is_array($candidates) ? $candidates : [$candidates] as $candidate) {
             if ($candidate === '*') {
                 return true;
             }
@@ -115,13 +118,10 @@ final readonly class ConditionalValidator
             return false;
         }
         if (in_array('*', $candidates, true)) {
-            return $this->representationExists !== true;
-        }
-        if ($this->etag === null) {
-            return true;
+            return $this->representationExists() !== true;
         }
 
-        return !$this->etagEquals($this->etag, $candidates, true);
+        return $this->etag === null || !$this->etagEquals($this->etag, $candidates, true);
     }
 
     private function failsIfUnmodSince(Request $req): bool
@@ -137,10 +137,10 @@ final readonly class ConditionalValidator
     private function hitsIfModSince(Request $req): bool
     {
         $method = HttpMethodEnum::normalize($req->getMethod());
-        if ($method !== HttpMethodEnum::GET->value && $method !== HttpMethodEnum::HEAD->value) {
-            return false;
-        }
-        if ($req->getHeaderLine('If-None-Match') !== '' || $this->lastModified === null) {
+        if (($method !== HttpMethodEnum::GET->value && $method !== HttpMethodEnum::HEAD->value)
+            || $req->getHeaderLine('If-None-Match') !== ''
+            || $this->lastModified === null
+        ) {
             return false;
         }
         $since = $this->parseDate($req->getHeaderLine('If-Modified-Since'));
@@ -155,7 +155,7 @@ final readonly class ConditionalValidator
             return false;
         }
         if (in_array('*', $candidates, true)) {
-            return $this->representationExists === true || ($this->representationExists === null && $this->etag !== null);
+            return $this->representationExists() === true;
         }
 
         return $this->etag !== null && $this->etagEquals($this->etag, $candidates, false);
@@ -182,9 +182,7 @@ final readonly class ConditionalValidator
         $token = '';
         $quoted = false;
         $escaped = false;
-        $length = strlen($list);
-
-        for ($i = 0; $i < $length; $i++) {
+        for ($i = 0, $length = strlen($list); $i < $length; $i++) {
             $char = $list[$i];
             if ($escaped) {
                 $token .= $char;
@@ -202,8 +200,7 @@ final readonly class ConditionalValidator
                 continue;
             }
             if ($char === ',' && !$quoted) {
-                $value = trim($token);
-                if ($value !== '') {
+                if (($value = trim($token)) !== '') {
                     $tokens[] = $value;
                 }
                 $token = '';
@@ -211,9 +208,7 @@ final readonly class ConditionalValidator
             }
             $token .= $char;
         }
-
-        $value = trim($token);
-        if ($value !== '') {
+        if (($value = trim($token)) !== '') {
             $tokens[] = $value;
         }
 

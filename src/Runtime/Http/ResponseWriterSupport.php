@@ -22,18 +22,15 @@ final readonly class ResponseWriterSupport
     public static function allowsBody(Response $response, RuntimeRequestContext $context): bool
     {
         return $context->routing->method !== HttpMethodEnum::HEAD->value
-            && !StatusEnum::isEmptyCode($response->getStatusCode());
+            && !self::statusHasNoContent($response->getStatusCode());
     }
 
-    /**
-     * @return iterable<string>
-     */
+    /** @return iterable<string> */
     public static function chunks(Response $response, int $chunkSize = 65_536): iterable
     {
         $producer = $response->getProducer();
         if ($producer !== null) {
             yield from self::nonEmptyChunks($producer());
-
             return;
         }
 
@@ -42,7 +39,6 @@ final readonly class ResponseWriterSupport
             if ($string !== '') {
                 yield $string;
             }
-
             return;
         }
 
@@ -73,12 +69,14 @@ final readonly class ResponseWriterSupport
         return $lower !== 'te' || strtolower(trim($value)) === 'trailers';
     }
 
-    /**
-     * @return Generator<array{0:string,1:string}>
-     */
+    /** @return Generator<array{0:string,1:string}> */
     public static function headers(Response $response, bool $http2 = false): Generator
     {
+        $status = $response->getStatusCode();
         foreach ($response->getHeaders() as $name => $values) {
+            if (strtolower($name) === 'content-length' && self::forbidsContentLength($status)) {
+                continue;
+            }
             foreach ($values as $value) {
                 if (self::headerAllowed($name, $value, $http2)) {
                     yield [$name, $value];
@@ -89,17 +87,28 @@ final readonly class ResponseWriterSupport
 
     public static function knownLength(Response $response): ?int
     {
-        if ($response->isStreaming() || StatusEnum::isEmptyCode($response->getStatusCode())) {
+        if ($response->isStreaming() || self::statusHasNoContent($response->getStatusCode())) {
             return null;
         }
 
         return $response->getBodySize();
     }
 
-    /**
-     * @param iterable<string> $chunks
-     * @return iterable<string>
-     */
+    private static function forbidsContentLength(int $status): bool
+    {
+        return ($status >= 100 && $status < 200)
+            || $status === StatusEnum::NO_CONTENT->value;
+    }
+
+    private static function statusHasNoContent(int $status): bool
+    {
+        return ($status >= 100 && $status < 200)
+            || $status === StatusEnum::NO_CONTENT->value
+            || $status === StatusEnum::RESET_CONTENT->value
+            || $status === StatusEnum::NOT_MODIFIED->value;
+    }
+
+    /** @param iterable<string> $chunks @return iterable<string> */
     private static function nonEmptyChunks(iterable $chunks): iterable
     {
         foreach ($chunks as $chunk) {

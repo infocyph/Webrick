@@ -15,7 +15,7 @@ final class EndUser
     private ?string $cachedViaProxy = null;
 
     /**
-     * @param list<string|CidrNetwork> $trustedProxyCidrs
+     * @param list<CidrNetwork> $trustedProxyCidrs
      * @param list<string> $trustedClientIpHeaders
      */
     public function __construct(
@@ -35,7 +35,16 @@ final class EndUser
         ?int $forwardedHeaderMask = null,
         array $trustedClientIpHeaders = [],
     ): self {
-        return new self($request, $cidrs, $forwardedHeaderMask, $trustedClientIpHeaders);
+        if ($cidrs === []) {
+            $cidrs = Request::getTrustedProxyCidrs();
+        }
+
+        $networks = [];
+        foreach ($cidrs as $cidr) {
+            $networks[] = $cidr instanceof CidrNetwork ? $cidr : IpCidr::compile($cidr);
+        }
+
+        return new self($request, $networks, $forwardedHeaderMask, $trustedClientIpHeaders);
     }
 
     /** @param list<string> $cidrs */
@@ -195,7 +204,7 @@ final class EndUser
     {
         return array_any(
             $this->trustedProxyCidrs,
-            static fn(string|CidrNetwork $cidr): bool => IpCidr::match($ip, $cidr),
+            static fn(CidrNetwork $network): bool => $network->matches($ip),
         );
     }
 

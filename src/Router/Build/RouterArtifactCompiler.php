@@ -11,16 +11,28 @@ use RuntimeException;
 /** Emits the Webrick half of a coordinated production release bundle. */
 final class RouterArtifactCompiler
 {
-    /**
-     * @return array{path:string,meta:string,sha256:string,fingerprint:string,routes:int}
-     */
+    /** @return array{path:string,meta:string,sha256:string,fingerprint:string,routes:int} */
     public function compile(RouterBuildResult $build, string $path): array
     {
-        $fingerprint = $this->fingerprint($build);
         $plans = [];
         foreach ($build->plans as $routeId => $plan) {
             $plans[$routeId] = $plan->toPayload();
         }
+        $routes = array_map(MatcherRouteMetadata::encode(...), $build->routes->all());
+        $preGlobal = array_map(ArtifactValueCodec::encode(...), $build->preGlobal);
+        $postGlobal = array_map(ArtifactValueCodec::encode(...), $build->postGlobal);
+        $fingerprint = self::fingerprintPayload(
+            $build->environment,
+            $build->configFingerprint,
+            $build->hasDomainRoutes,
+            $routes,
+            $plans,
+            $build->aliases,
+            $preGlobal,
+            $postGlobal,
+            $build->preGlobalTags,
+            $build->postGlobalTags,
+        );
 
         $payload = [
             'format' => CompiledRouterArtifact::FORMAT_VERSION,
@@ -28,11 +40,11 @@ final class RouterArtifactCompiler
             'config_fingerprint' => $build->configFingerprint,
             'artifact_fingerprint' => $fingerprint,
             'has_domain_routes' => $build->hasDomainRoutes,
-            'routes' => array_map(MatcherRouteMetadata::encode(...), $build->routes->all()),
+            'routes' => $routes,
             'plans' => $plans,
             'aliases' => $build->aliases,
-            'pre_global' => array_map(ArtifactValueCodec::encode(...), $build->preGlobal),
-            'post_global' => array_map(ArtifactValueCodec::encode(...), $build->postGlobal),
+            'pre_global' => $preGlobal,
+            'post_global' => $postGlobal,
             'pre_global_tags' => $build->preGlobalTags,
             'post_global_tags' => $build->postGlobalTags,
         ];
@@ -65,31 +77,61 @@ final class RouterArtifactCompiler
 
     public function fingerprint(RouterBuildResult $build): string
     {
-        $routeMeta = [];
-        foreach ($build->routes as $route) {
-            $routeId = RouteIdentity::forRoute($route);
-            $plan = $build->plans[$routeId] ?? throw new RuntimeException('Missing compiled execution plan.');
-            $routeMeta[] = [
-                $routeId,
-                $route->getMethod(),
-                $route->getDomain(),
-                $route->getPath(),
-                $plan->kind->value,
-                $plan->terminalKind->value,
-                $plan->capabilities,
-                $plan->routeArguments,
-            ];
+        $plans = [];
+        foreach ($build->plans as $routeId => $plan) {
+            $plans[$routeId] = $plan->toPayload();
         }
+
+        return self::fingerprintPayload(
+            $build->environment,
+            $build->configFingerprint,
+            $build->hasDomainRoutes,
+            array_map(MatcherRouteMetadata::encode(...), $build->routes->all()),
+            $plans,
+            $build->aliases,
+            array_map(ArtifactValueCodec::encode(...), $build->preGlobal),
+            array_map(ArtifactValueCodec::encode(...), $build->postGlobal),
+            $build->preGlobalTags,
+            $build->postGlobalTags,
+        );
+    }
+
+    /**
+     * @param list<mixed> $routes
+     * @param array<string,array<string,mixed>> $plans
+     * @param array<string,array{0:string,1:?string}> $aliases
+     * @param list<mixed> $preGlobal
+     * @param list<mixed> $postGlobal
+     * @param list<string> $preGlobalTags
+     * @param list<string> $postGlobalTags
+     */
+    public static function fingerprintPayload(
+        string $environment,
+        string $configFingerprint,
+        bool $hasDomainRoutes,
+        array $routes,
+        array $plans,
+        array $aliases,
+        array $preGlobal,
+        array $postGlobal,
+        array $preGlobalTags,
+        array $postGlobalTags,
+    ): string {
+        ksort($plans, SORT_STRING);
+        ksort($aliases, SORT_STRING);
 
         return hash('sha256', serialize([
             CompiledRouterArtifact::FORMAT_VERSION,
-            $build->environment,
-            $build->configFingerprint,
-            $routeMeta,
-            $build->aliases,
-            $build->preGlobalTags,
-            $build->postGlobalTags,
-            $build->hasDomainRoutes,
+            $environment,
+            $configFingerprint,
+            $hasDomainRoutes,
+            $routes,
+            $plans,
+            $aliases,
+            $preGlobal,
+            $postGlobal,
+            $preGlobalTags,
+            $postGlobalTags,
         ]));
     }
 
@@ -106,7 +148,6 @@ final class RouterArtifactCompiler
         }
         if (!rename($temporary, $path)) {
             @unlink($temporary);
-
             throw new RuntimeException("Unable to publish Webrick artifact '{$path}'.");
         }
     }
