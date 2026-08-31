@@ -1,142 +1,112 @@
 # Quick Start
 
-Build a small app with the current Webrick runtime flow: boot the kernel, register routes through the `Route` facade, add middleware aliases and generate signed URLs.
+This quick start uses the Webrick 5 development boundary: the application owns InterMix and gives Webrick an `Invoker`. Production compilation is a separate step.
 
-## 1. Front controller
+## 1. Build the application graph
 
 ```php
-<?php
+use Infocyph\InterMix\DI\Invoker;
+use Infocyph\Webrick\Webrick;
 
-declare(strict_types=1);
+$builder = Webrick::standaloneDevelopment();
+// Add application providers/definitions to $builder here.
+$container = $builder->development();
+$invoker = Invoker::with($container);
+```
 
-use Infocyph\Webrick\Middleware\CompressionMiddleware;
-use Infocyph\Webrick\Middleware\GatewayHardeningMiddleware;
-use Infocyph\Webrick\Middleware\NegotiationMiddleware;
-use Infocyph\Webrick\Middleware\ThrottleMiddleware;
-use Infocyph\Webrick\Middleware\VerifySignedUrlMiddleware;
+A framework integration should use its existing application-owned `ContainerBuilder` instead of `standaloneDevelopment()`.
+
+## 2. Register routes and boot development
+
+```php
 use Infocyph\Webrick\Request\Request;
-use Infocyph\Webrick\Response\Emitter\AutoEmitter;
+use Infocyph\Webrick\Response\Emitter\DefaultEmitter;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Definition\Registrar;
-use Infocyph\Webrick\Router\Dispatch\MiddlewareAliases;
 use Infocyph\Webrick\Router\Facade\Router as Route;
 use Infocyph\Webrick\Router\Kernel\RouterKernel;
-use Infocyph\Webrick\Router\Matching\ShardedMatcher;
-use Infocyph\Webrick\Router\Url\SignedUrlConfig;
+use Infocyph\Webrick\Router\Matching\GeneratedMatcher;
 use Psr\Log\NullLogger;
 
-require __DIR__ . '/../vendor/autoload.php';
-
-$signKey = $_ENV['WEBRICK_SIGN_KEY']
-    ?? throw new RuntimeException('WEBRICK_SIGN_KEY is required');
-$baseUri = $_ENV['WEBRICK_URL_BASE_URI'] ?? 'http://localhost';
-$signedUrls = new SignedUrlConfig(
-    generationKey: $signKey,
-    verificationKeys: [$signKey],
-    defaultTtl: 900,
+$kernel = RouterKernel::bootWithRegistrar(
+    log: new NullLogger(),
+    matcher: GeneratedMatcher::make(),
+    register: static function (Registrar $registrar): void {
+        Route::get('/ping', static fn() => Response::plaintext('pong', 200), 'ping');
+        Route::get('/hello/{name}', static fn(string $name) => Response::json([
+            'hello' => $name,
+        ]), 'hello');
+    },
+    invoker: $invoker,
 );
+
+$request = Request::fromGlobals();
+(new DefaultEmitter())->emit($kernel->handle($request), $request);
+```
+
+`RouterKernel` is registrar/development-only. It always enters a request scope and never creates or selects an InterMix container itself.
+
+## 3. Middleware aliases
+
+```php
+use Infocyph\Webrick\Middleware\ThrottleMiddleware;
+use Infocyph\Webrick\Router\Dispatch\MiddlewareAliases;
 
 MiddlewareAliases::register(
     'throttle',
     static fn(...$params) => new ThrottleMiddleware(
-        max: (int) ($params[0] ?? 60),
-        window: (int) ($params[1] ?? 60),
+        (int) ($params[0] ?? 60),
+        (int) ($params[1] ?? 60),
     ),
 );
-MiddlewareAliases::register(
-    'verifySignedUrl',
-    static fn() => new VerifySignedUrlMiddleware($signKey, 5),
+
+Route::get('/limited', static fn() => Response::json(['ok' => true]), [
+    'middleware' => ['throttle:30,60'],
+]);
+```
+
+Register aliases before route compilation. Production resolves/validates the supported middleware graph before traffic.
+
+## 4. Signed URLs
+
+Configure URL services through registrar options:
+
+```php
+use Infocyph\Webrick\Router\Url\SignedUrlConfig;
+
+$signed = new SignedUrlConfig(
+    generationKey: $_ENV['WEBRICK_SIGN_KEY'],
+    verificationKeys: [$_ENV['WEBRICK_SIGN_KEY']],
+    defaultTtl: 900,
 );
 
 $kernel = RouterKernel::bootWithRegistrar(
-    log: new NullLogger(),
-    matcher: ShardedMatcher::make(),
-    register: static function (Registrar $registrar): void {
-        unset($registrar);
-
-        Route::get('/ping', fn() => Response::plaintext('pong', 200), 'ping');
-        Route::get('/hello/{name}', fn(string $name) => Response::json(['hello' => $name]), 'hello');
-        Route::get('/protected', fn() => Response::json(['ok' => true]), [
-            'as' => 'protected',
-            'middleware' => ['verifySignedUrl'],
-        ]);
-        Route::get('/download/{file}', fn(string $file) => Response::attachment(__DIR__ . '/../files/' . $file, $file), [
-            'as' => 'download',
-            'middleware' => ['verifySignedUrl', 'throttle:30,60'],
-        ]);
-
-        Route::group(prefix: '/api', callback: static function (): void {
-            Route::get('/status', fn() => Response::json(['status' => 'ok']), 'api.status');
-        });
-    },
-    routeCache: __DIR__ . '/../.route-cache',
+    log: $logger,
+    matcher: GeneratedMatcher::make(),
+    register: $register,
+    invoker: $invoker,
     registrarOptions: [
         'exposeUrlServices' => true,
-        'signKey' => $signKey,
-        'signedDefaultTtl' => 900,
-        'signedUrlConfig' => $signedUrls,
-        'urlBaseUri' => $baseUri,
+        'signedUrlConfig' => $signed,
+        'urlBaseUri' => 'https://example.com',
     ],
-    preGlobal: [
-        GatewayHardeningMiddleware::class,
-        NegotiationMiddleware::class,
-    ],
-    postGlobal: [
-        CompressionMiddleware::class,
-    ],
-    fallbackAliasesFromRegistrar: true,
-);
-
-(new AutoEmitter())->emit($kernel->handle(Request::fromGlobals()));
-```
-
-The kernel keeps the signing configuration above and lazily creates cached URL
-services on the first URL helper call. A custom `bindUrlServices` callback is
-only needed when replacing that default behavior.
-
-## 2. Generate URLs
-
-```php
-use Infocyph\Webrick\Router\Facade\Router as Route;
-use Infocyph\Webrick\Router\Url\SignedUrlConfig;
-
-$url = Route::urlFor('download', ['file' => 'report.csv']);
-$signed = Route::signedUrlFor('protected');
-$temp = Route::temporaryUrlFor('download', ['file' => 'report.csv'], ttl: 900);
-$until = Route::temporaryUrlUntil('download', new DateTimeImmutable('+15 minutes'), ['file' => 'report.csv']);
-$absolutePayload = Route::signedUrlFor(
-    'download',
-    ['file' => 'report.csv'],
-    absolute: true,
-    payloadMode: SignedUrlConfig::MODE_ABSOLUTE,
 );
 ```
 
-## 3. Build route cache
+Then use `Route::urlFor()`, `Route::signedUrlFor()`, `Route::temporaryUrlFor()` or `Route::temporaryUrlUntil()`.
+
+## 5. Matcher cache tooling
+
+Matcher caches can be generated independently of a request kernel:
 
 ```bash
-php ./webrick route:cache --matcher=sharded --cache=.route-cache --routes=routes.php
+php ./webrick route:cache --matcher=generated --cache=.route-cache/generated.php --routes=routes.php
 ```
 
-Switch to fused cache with `FusedMatcher::make()` and pass a single file such
-as `.route-cache/fused.php` as `routeCache`. Generated mode likewise uses
-`GeneratedMatcher::make()` with a file such as `.route-cache/generated.php`.
+This is not the compiled production application artifact. It only prepares matcher state.
 
-## 4. Run locally
+## 6. Production
 
-```bash
-php -S 127.0.0.1:8080 -t public
-```
+Use `RouteCompiler` / `ReleaseCompiler` to compile the Webrick artifact together with the application-owned InterMix runtime, then boot `CompiledRouterKernel` with that `ProductionContainer`.
 
-Open:
-
-- `http://127.0.0.1:8080/ping`
-- `http://127.0.0.1:8080/hello/Alice`
-- `http://127.0.0.1:8080/api/status`
-
-## 5. Notes
-
-- String middleware like `verifySignedUrl` and `throttle:30,60` requires alias registration first.
-- If you do not want aliases, pass middleware instances directly in the route options array.
-- When you generate absolute URLs, set `urlBaseUri` to your real application origin.
-- Signed URLs reserve the signature and expiry query keys from the active `SignedUrlConfig`.
+See [Framework Integration](framework-integration.md), [Route Cache](../reference/route-cache.md), and [Response Emitters and Runtime Adapters](../reference/emitters.md).
