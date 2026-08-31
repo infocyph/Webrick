@@ -9,6 +9,10 @@ use Infocyph\Webrick\Interfaces\BodyStream;
 /** Lean immutable HTTP-message base used by the native request model. */
 abstract class Message
 {
+    private const string INVALID_HEADER_NAME = "/[^!#$%&'*+.^_`|~0-9A-Za-z-]/";
+
+    private const string INVALID_HEADER_VALUE = '/[\x00-\x08\x0A-\x1F\x7F]/';
+
     protected BodyStream $body;
 
     /** @var array<string,list<string>> */
@@ -112,6 +116,10 @@ abstract class Message
 
     private function norm(string $name): string
     {
+        if ($name === '' || preg_match(self::INVALID_HEADER_NAME, $name) === 1) {
+            throw new \InvalidArgumentException('Invalid HTTP header name.');
+        }
+
         return ucwords(strtolower($name), '-');
     }
 
@@ -135,12 +143,15 @@ abstract class Message
      */
     private function normalizeHeaderValues(string|array $value): array
     {
-        if (is_string($value)) {
-            return [$value];
-        }
-
+        $values = is_string($value) ? [$value] : $value;
         $normalized = [];
-        foreach ($value as $item) {
+        foreach ($values as $item) {
+            if (!is_string($item)) {
+                throw new \InvalidArgumentException('HTTP header values must be strings or lists of strings.');
+            }
+            if (preg_match(self::INVALID_HEADER_VALUE, $item) === 1) {
+                throw new \InvalidArgumentException('HTTP header values must not contain control characters.');
+            }
             $normalized[] = $item;
         }
 

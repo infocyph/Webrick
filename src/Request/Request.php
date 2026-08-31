@@ -23,13 +23,9 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
     use MacroMix;
 
     public const HEADER_FORWARDED = 0b10000;
-
     public const HEADER_X_FORWARDED_FOR = 0b00001;
-
     public const HEADER_X_FORWARDED_HOST = 0b00010;
-
     public const HEADER_X_FORWARDED_PORT = 0b01000;
-
     public const HEADER_X_FORWARDED_PROTO = 0b00100;
 
     private static int $trustedHeaderFlags = 0;
@@ -49,6 +45,12 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
 
     /** @var list<string>|null */
     private ?array $cachedSegments = null;
+
+    protected function __clone(): void
+    {
+        parent::__clone();
+        $this->resetDerivedCaches();
+    }
 
     public function __toString(): string
     {
@@ -227,10 +229,7 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return [$fallback, 'default'];
     }
 
-    /**
-     * @param string|list<string> $keys
-     * @return array<string,mixed>
-     */
+    /** @param string|list<string> $keys @return array<string,mixed> */
     public function except(string|array $keys): array
     {
         return self::stringMap(array_diff_key($this->all(), array_flip(self::stringList($keys))));
@@ -410,10 +409,7 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         throw new InvalidArgumentException('Request is immutable');
     }
 
-    /**
-     * @param string|list<string> $keys
-     * @return array<string,mixed>
-     */
+    /** @param string|list<string> $keys @return array<string,mixed> */
     public function only(string|array $keys): array
     {
         return array_intersect_key($this->all(), array_flip(self::stringList($keys)));
@@ -471,10 +467,7 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return EndUser::from($this, self::$trustedProxyNetworks)->parseUserAgent();
     }
 
-    /**
-     * @param array<string,string> $rules
-     * @return array<string,mixed>
-     */
+    /** @param array<string,string> $rules @return array<string,mixed> */
     public function validate(array $rules): array
     {
         foreach ($rules as $field => $rule) {
@@ -500,39 +493,27 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
     #[\Override]
     public function withCookieParams(array $cookies): static
     {
-        $request = parent::withCookieParams($cookies);
-        $request->resetDerivedCaches();
-
-        return $request;
+        return parent::withCookieParams($cookies);
     }
 
     /** @param array<string,mixed>|object|null $data */
     #[\Override]
     public function withParsedBody(object|array|null $data): static
     {
-        $request = parent::withParsedBody($data);
-        $request->resetDerivedCaches();
-
-        return $request;
+        return parent::withParsedBody($data);
     }
 
     /** @param array<string,mixed> $query */
     #[\Override]
     public function withQueryParams(array $query): static
     {
-        $request = parent::withQueryParams($query);
-        $request->resetDerivedCaches();
-
-        return $request;
+        return parent::withQueryParams($query);
     }
 
     #[\Override]
     public function withUri(Uri $uri, bool $preserveHost = false): static
     {
-        $request = parent::withUri($uri, $preserveHost);
-        $request->resetDerivedCaches();
-
-        return $request;
+        return parent::withUri($uri, $preserveHost);
     }
 
     private static function normalizeLocale(string $locale): string
@@ -540,10 +521,7 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return strtolower(str_replace('_', '-', trim($locale)));
     }
 
-    /**
-     * @param list<string> $locales
-     * @return list<string>
-     */
+    /** @param list<string> $locales @return list<string> */
     private static function normalizeLocaleList(array $locales): array
     {
         $normalized = [];
@@ -554,19 +532,13 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return array_values(array_unique($normalized));
     }
 
-    /**
-     * @param string|list<string> $value
-     * @return list<string>
-     */
+    /** @param string|list<string> $value @return list<string> */
     private static function stringList(string|array $value): array
     {
         return is_string($value) ? [$value] : $value;
     }
 
-    /**
-     * @param array<array-key,mixed> $value
-     * @return array<string,mixed>
-     */
+    /** @param array<array-key,mixed> $value @return array<string,mixed> */
     private static function stringMap(array $value): array
     {
         $map = [];

@@ -25,6 +25,12 @@ class NativeServerRequest extends ServerRequest
 
     private ?PayloadParseState $xmlState = null;
 
+    protected function __clone(): void
+    {
+        parent::__clone();
+        $this->resetPayloadCaches();
+    }
+
     public static function createFromGlobals(): self
     {
         $server = self::stringMap($_SERVER);
@@ -47,7 +53,7 @@ class NativeServerRequest extends ServerRequest
             $httpVersion,
             self::stringMap($_POST),
             self::stringMap($_FILES),
-            query: $_GET !== [] ? self::stringMap($_GET) : null,
+            query: self::stringMap($_GET),
             cookies: self::stringMap($_COOKIE),
         );
 
@@ -123,13 +129,7 @@ class NativeServerRequest extends ServerRequest
      */
     public function withParsedBody(object|array|null $data): static
     {
-        $request = parent::withParsedBody($data);
-        $request->jsonPayload = null;
-        $request->jsonState = null;
-        $request->xmlPayload = null;
-        $request->xmlState = null;
-
-        return $request;
+        return parent::withParsedBody($data);
     }
 
     public function xmlParseState(): PayloadParseState
@@ -237,5 +237,13 @@ class NativeServerRequest extends ServerRequest
             $this->xmlPayload = null;
             $this->xmlState = PayloadParseState::INVALID;
         }
+    }
+
+    private function resetPayloadCaches(): void
+    {
+        $this->jsonPayload = null;
+        $this->jsonState = null;
+        $this->xmlPayload = null;
+        $this->xmlState = null;
     }
 }

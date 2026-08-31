@@ -26,6 +26,8 @@ class ServerRequest extends Message
         HttpMethodEnum::TRACE->value,
     ];
 
+    private const array VARIABLE_ORDER = ['P', 'G', 'C', 'S', 'E'];
+
     private static bool $methodOverrideConfigurationFrozen = false;
 
     private static bool $methodParamOverride = false;
@@ -110,6 +112,15 @@ class ServerRequest extends Message
         }
     }
 
+    protected function __clone(): void
+    {
+        parent::__clone();
+        $this->headersFacade = null;
+        $this->rawBody = null;
+        $this->effectiveMethod = null;
+        $this->refreshVariableMap();
+    }
+
     public function __get(string $key): mixed
     {
         $this->buildVariableMap();
@@ -153,7 +164,7 @@ class ServerRequest extends Message
             $httpVersion,
             self::stringMap($_POST),
             self::stringMap($_FILES),
-            query: $_GET !== [] ? self::stringMap($_GET) : null,
+            query: self::stringMap($_GET),
             cookies: self::stringMap($_COOKIE),
         );
 
@@ -359,7 +370,6 @@ class ServerRequest extends Message
     {
         $clone = clone $this;
         $clone->method = HttpMethodEnum::normalize($method);
-        $clone->effectiveMethod = null;
 
         return $clone;
     }
@@ -381,7 +391,6 @@ class ServerRequest extends Message
     {
         $clone = clone $this;
         $clone->parsed = $data;
-        $clone->effectiveMethod = null;
         $clone->refreshVariableMap();
 
         return $clone;
@@ -425,9 +434,11 @@ class ServerRequest extends Message
         $clone = clone $this;
         $clone->uri = $uri;
         if (!$preserveHost) {
-            $clone->headers['Host'] = $uri->getHost() === ''
-                ? []
-                : [$uri->getHost() . ($uri->getPort() !== null ? ':' . $uri->getPort() : '')];
+            if ($uri->getHost() === '') {
+                unset($clone->headers['Host']);
+            } else {
+                $clone->headers['Host'] = [$uri->getHost() . ($uri->getPort() !== null ? ':' . $uri->getPort() : '')];
+            }
         } elseif ($uri->getHost() !== '' && !$clone->hasHeader('Host')) {
             $clone->headers['Host'] = [$uri->getHost()];
         }
@@ -465,7 +476,6 @@ class ServerRequest extends Message
             return;
         }
 
-        $order = $this->determineVariableOrder();
         /** @var array<string,array<string,mixed>> $sources */
         $sources = [
             'G' => $this->query,
@@ -476,39 +486,17 @@ class ServerRequest extends Message
         /** @var array<string,mixed> $map */
         $map = [];
 
-        foreach ($order as $source) {
+        foreach (self::VARIABLE_ORDER as $source) {
             if ($source === 'E') {
                 $map += self::stringMap($_ENV);
 
                 continue;
             }
-            if (isset($sources[$source])) {
-                $map += $sources[$source];
-            }
+            $map += $sources[$source] ?? [];
         }
 
         $this->variableMap = $map;
-        $this->checkEnv = in_array('E', $order, true);
-    }
-
-    /** @return list<string> */
-    private function determineVariableOrder(): array
-    {
-        $variables = strtoupper((string) preg_replace('/[^EGPCS]/', '', ini_get('variables_order') ?: 'EGPCS'));
-        $request = strtoupper((string) preg_replace('/[^GPC]/', '', ini_get('request_order') ?: ''));
-        $order = str_split($variables);
-        if ($request === '') {
-            return $order;
-        }
-
-        $order = array_values(array_diff($order, ['G', 'P', 'C']));
-        $anchor = array_search('E', $order, true);
-        $insert = $anchor === false ? 0 : $anchor + 1;
-        foreach (array_reverse(str_split($request)) as $source) {
-            array_splice($order, $insert, 0, $source);
-        }
-
-        return $order;
+        $this->checkEnv = true;
     }
 
     private function isFormPost(): bool
@@ -553,10 +541,10 @@ class ServerRequest extends Message
 function server_request_query_parameters(?array $query, Uri $uri): array
 {
     if ($query !== null) {
-        return $query;
+        return server_request_string_map($query);
     }
     if ($uri->getQuery() === '') {
-        return server_request_string_map($_GET);
+        return [];
     }
 
     parse_str($uri->getQuery(), $uriQuery);
