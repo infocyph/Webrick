@@ -26,7 +26,7 @@ final class FileBody implements BodyStream
         if ($path === '' || !is_file($path) || !is_readable($path)) {
             throw new RuntimeException("Unreadable response file: {$path}");
         }
-        if ($offset < 0 || $length !== null && $length < 0) {
+        if ($offset < 0 || ($length !== null && $length < 0)) {
             throw new \InvalidArgumentException('File body offset/length must be non-negative.');
         }
 
