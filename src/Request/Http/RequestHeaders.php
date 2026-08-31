@@ -233,8 +233,8 @@ final class RequestHeaders
     private function parseAccept(string $raw): array
     {
         $parsed = [];
-        foreach (explode(',', $raw) as $segment) {
-            $parts = array_map(trim(...), explode(';', $segment));
+        foreach (self::splitQuoted($raw, ',') as $segment) {
+            $parts = self::splitQuoted($segment, ';');
             $value = array_shift($parts);
             if ($value === null || $value === '') {
                 continue;
@@ -261,6 +261,56 @@ final class RequestHeaders
         $values = array_column($parsed, 'value');
 
         return $values;
+    }
+
+    /** @return list<string> */
+    private static function splitQuoted(string $raw, string $delimiter): array
+    {
+        $parts = [];
+        $buffer = '';
+        $quoted = false;
+        $escaped = false;
+        for ($i = 0, $length = strlen($raw); $i < $length; ++$i) {
+            $char = $raw[$i];
+            if ($escaped) {
+                $buffer .= $char;
+                $escaped = false;
+
+                continue;
+            }
+            if ($quoted && $char === '\\') {
+                $buffer .= $char;
+                $escaped = true;
+
+                continue;
+            }
+            if ($char === '"') {
+                $quoted = !$quoted;
+                $buffer .= $char;
+
+                continue;
+            }
+            if ($char === $delimiter && !$quoted) {
+                $token = trim($buffer);
+                if ($token !== '') {
+                    $parts[] = $token;
+                }
+                $buffer = '';
+
+                continue;
+            }
+            $buffer .= $char;
+        }
+
+        if ($quoted || $escaped) {
+            return [];
+        }
+        $token = trim($buffer);
+        if ($token !== '') {
+            $parts[] = $token;
+        }
+
+        return $parts;
     }
 
     /** @return array<string,mixed> */
