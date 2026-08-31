@@ -1,50 +1,59 @@
 # Middleware
 
-Webrick’s pipeline is **pre‑global → handler → post‑global**. Place each middleware where it has the most effect with minimal cost.
+Webrick’s pipeline is **pre-global → route middleware → handler → post-global unwind**. Keep the portable stack small and let compiled production prepare route/global middleware before traffic.
 
 ## Core sets
-- **Pre‑global**: Cache Validators, Gateway Hardening, Normalize Method, Negotiation, Throttle, Cookies, Telemetry
-- **Post‑global**: Compression, Vary Accumulator, Policies/CORS, Dev Linter (if any)
+
+- **Pre-global**: gateway hardening, request limits, throttle, optional cookie encryption, negotiation, response cache, cache validators, telemetry where required.
+- **Post-global**: compression, CORS/security policy application, Vary accumulation.
+- **Development/test only**: response linter.
+- **Explicit transformation only**: input sanitizer. Do not register blanket sanitization as a security control.
+
+HTTP method normalization is performed at the request/runtime boundary once. There is no `NormalizeMethodMiddleware` in Webrick 5.
 
 ## Why order matters
-- Validators early → cheap 304/412 short‑circuit.
-- Negotiation before body building → consistent `Content-Type`/`Content-Language`.
-- Compression late → avoid re‑encoding and get correct ETag semantics.
-- Vary accumulation last → dedupe/merge tokens from everything before it.
+
+- Reject invalid/oversized requests before expensive application work.
+- Negotiate before handlers that consume negotiated request attributes.
+- Cache/validator middleware can short-circuit before body construction.
+- Compression runs after representation construction.
+- Vary accumulation observes every policy that changes the selected representation.
 
 ## Quick links
-- 👉 [Cache Validators](./cache-validators.md)
-- 👉 [Compression](./compression.md)
-- 👉 [Cookies](./cookie-encryption.md)
-- 👉 [Negotiation](./negotiation.md)
-- 👉 [CORS & Policies](./cors-and-policies.md)
-- 👉 [Gateway Hardening](./gateway-hardening.md)
-- 👉 [Normalize Method](./normalize-method.md)
-- 👉 [Throttle](./throttle.md)
-- 👉 [Telemetry](./telemetry.md)
-- 👉 [Vary Accumulator](./vary-accumulator.md)
 
-## Example pipeline (recommended)
+- [Cache Validators](./cache-validators.md)
+- [Compression](./compression.md)
+- [Cookie Encryption](./cookie-encryption.md)
+- [Negotiation](./negotiation.md)
+- [CORS & Policies](./cors-and-policies.md)
+- [Gateway Hardening](./gateway-hardening.md)
+- [Input Sanitizer](./input-sanitizer.md)
+- [Maintenance Mode](./maintenance-mode.md)
+- [Request Limits](./request-limits.md)
+- [Response Cache](./response-cache.md)
+- [Response Linter](./response-linter.md)
+- [Throttle](./throttle.md)
+- [Telemetry](./telemetry.md)
+- [Vary Accumulator](./vary-accumulator.md)
+
+## Example development stack
 
 ```php
 preGlobal: [
-  \Infocyph\Webrick\Middleware\CacheValidatorsMiddleware::class,
-  \Infocyph\Webrick\Middleware\GatewayHardeningMiddleware::class,
-  \Infocyph\Webrick\Middleware\NormalizeMethodMiddleware::class,
-  \Infocyph\Webrick\Middleware\NegotiationMiddleware::class,
-  // optional: throttle/cookies/telemetry
+    \Infocyph\Webrick\Middleware\GatewayHardeningMiddleware::class,
+    \Infocyph\Webrick\Middleware\RequestLimitsMiddleware::class,
+    \Infocyph\Webrick\Middleware\NegotiationMiddleware::class,
+    \Infocyph\Webrick\Middleware\ResponseCacheMiddleware::class,
+    \Infocyph\Webrick\Middleware\CacheValidatorsMiddleware::class,
 ],
 postGlobal: [
-  \Infocyph\Webrick\Middleware\CompressionMiddleware::class,
-  \Infocyph\Webrick\Middleware\VaryAccumulatorMiddleware::class,
-  // optional: Policies/CORS
+    \Infocyph\Webrick\Middleware\CompressionMiddleware::class,
+    \Infocyph\Webrick\Middleware\CorsAndPoliciesMiddleware::class,
+    \Infocyph\Webrick\Middleware\VaryAccumulatorMiddleware::class,
 ]
 ```
 
-## Troubleshooting
-- 406s? Client `Accept` header has no overlap; use `Response::auto()`.
-- Stale content? Confirm validators are attached and clock skew isn’t extreme.
-- Cache poisoning? Ensure `Vary` covers what you negotiate (language, encoding, etc.).
+Production should compile the selected middleware graph through `RouteCompiler` / `ReleaseCompiler` and boot `CompiledRouterKernel`.
 
 ```{toctree}
 :maxdepth: 2
@@ -61,7 +70,6 @@ gateway-hardening
 input-sanitizer
 maintenance-mode
 negotiation
-normalize-method
 request-limits
 response-cache
 response-linter
