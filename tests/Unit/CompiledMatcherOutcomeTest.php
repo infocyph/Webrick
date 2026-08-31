@@ -6,6 +6,7 @@ use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Matching\FusedMatcher;
 use Infocyph\Webrick\Router\Matching\GeneratedMatcher;
 use Infocyph\Webrick\Router\Matching\MatcherInterface;
+use Infocyph\Webrick\Router\Matching\MatchOutcome;
 use Infocyph\Webrick\Router\Matching\MatchOutcomeType;
 use Infocyph\Webrick\Router\Matching\ShardedMatcher;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
@@ -17,7 +18,7 @@ dataset('compiled outcome matchers', [
     'generated' => [static fn(): MatcherInterface => GeneratedMatcher::make()],
 ]);
 
-it('returns only the compiled route index for static hits', function (Closure $factory): void {
+it('returns only the compiled route index for parameter-free hits', function (Closure $factory): void {
     $route = CompiledRoute::fromRoute(new Route(
         'GET',
         '/health',
@@ -27,15 +28,10 @@ it('returns only the compiled route index for static hits', function (Closure $f
     $matcher->add($route);
     $matcher->finalize();
 
-    $outcome = $matcher->matchCompiledOutcome('GET', '*', '/health');
-
-    expect($outcome->type)->toBe(MatchOutcomeType::FOUND)
-        ->and($outcome->route)->toBeNull()
-        ->and($outcome->requireRouteIndex())->toBe($route->getIndex())
-        ->and($outcome->params)->toBe([]);
+    expect($matcher->matchCompiled('GET', '*', '/health'))->toBe($route->getIndex());
 })->with('compiled outcome matchers');
 
-it('preserves dynamic params without materializing the route', function (Closure $factory): void {
+it('returns route index and dynamic params without materializing the route', function (Closure $factory): void {
     $route = CompiledRoute::fromRoute(new Route(
         'GET',
         '/users/{id}',
@@ -45,15 +41,11 @@ it('preserves dynamic params without materializing the route', function (Closure
     $matcher->add($route);
     $matcher->finalize();
 
-    $outcome = $matcher->matchCompiledOutcome('GET', '*', '/users/42');
-
-    expect($outcome->type)->toBe(MatchOutcomeType::FOUND)
-        ->and($outcome->route)->toBeNull()
-        ->and($outcome->requireRouteIndex())->toBe($route->getIndex())
-        ->and($outcome->params)->toBe(['id' => '42']);
+    expect($matcher->matchCompiled('GET', '*', '/users/42'))
+        ->toBe([$route->getIndex(), ['id' => '42']]);
 })->with('compiled outcome matchers');
 
-it('preserves head fallback on the index-only path', function (Closure $factory): void {
+it('uses the get route index for head fallback without allocating a success outcome', function (Closure $factory): void {
     $route = CompiledRoute::fromRoute(new Route(
         'GET',
         '/resource',
@@ -63,10 +55,54 @@ it('preserves head fallback on the index-only path', function (Closure $factory)
     $matcher->add($route);
     $matcher->finalize();
 
-    $outcome = $matcher->matchCompiledOutcome('HEAD', '*', '/resource');
+    expect($matcher->matchCompiled('HEAD', '*', '/resource'))->toBe($route->getIndex());
+})->with('compiled outcome matchers');
 
-    expect($outcome->type)->toBe(MatchOutcomeType::FOUND)
-        ->and($outcome->route)->toBeNull()
-        ->and($outcome->requireRouteIndex())->toBe($route->getIndex())
-        ->and($outcome->headFallback)->toBeTrue();
+it('keeps automatic options as an explicit control outcome', function (Closure $factory): void {
+    $route = CompiledRoute::fromRoute(new Route(
+        'GET',
+        '/resource',
+        static fn(): Response => Response::plaintext('ok'),
+    ));
+    $matcher = $factory();
+    $matcher->add($route);
+    $matcher->finalize();
+
+    $outcome = $matcher->matchCompiled('OPTIONS', '*', '/resource');
+
+    expect($outcome)->toBeInstanceOf(MatchOutcome::class)
+        ->and($outcome->type)->toBe(MatchOutcomeType::AUTO_OPTIONS)
+        ->and($outcome->allowed)->toContain('GET', 'HEAD');
+})->with('compiled outcome matchers');
+
+it('keeps method misses as explicit control outcomes', function (Closure $factory): void {
+    $route = CompiledRoute::fromRoute(new Route(
+        'GET',
+        '/resource',
+        static fn(): Response => Response::plaintext('ok'),
+    ));
+    $matcher = $factory();
+    $matcher->add($route);
+    $matcher->finalize();
+
+    $outcome = $matcher->matchCompiled('POST', '*', '/resource');
+
+    expect($outcome)->toBeInstanceOf(MatchOutcome::class)
+        ->and($outcome->type)->toBe(MatchOutcomeType::METHOD_NOT_ALLOWED);
+})->with('compiled outcome matchers');
+
+it('keeps not found as an explicit control outcome', function (Closure $factory): void {
+    $route = CompiledRoute::fromRoute(new Route(
+        'GET',
+        '/resource',
+        static fn(): Response => Response::plaintext('ok'),
+    ));
+    $matcher = $factory();
+    $matcher->add($route);
+    $matcher->finalize();
+
+    $outcome = $matcher->matchCompiled('GET', '*', '/missing');
+
+    expect($outcome)->toBeInstanceOf(MatchOutcome::class)
+        ->and($outcome->type)->toBe(MatchOutcomeType::NOT_FOUND);
 })->with('compiled outcome matchers');
