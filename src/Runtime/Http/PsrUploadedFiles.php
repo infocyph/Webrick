@@ -9,7 +9,10 @@ use Infocyph\Webrick\Request\Core\UploadedFile;
 
 final readonly class PsrUploadedFiles
 {
-    /** @return array<string,UploadedFile|array<mixed>> */
+    /**
+     * @return array<string,UploadedFile|array<mixed>>
+     * @param mixed $files
+     */
     public static function normalize(mixed $files): array
     {
         return is_array($files) ? self::map($files) : [];

@@ -25,7 +25,11 @@ final readonly class ResponseWriterSupport
             && !StatusEnum::isEmptyCode($response->getStatusCode());
     }
 
-    /** @return iterable<string> */
+    /**
+     * @return iterable<string>
+     * @param Response $response
+     * @param int $chunkSize
+     */
     public static function chunks(Response $response, int $chunkSize = 65_536): iterable
     {
         $producer = $response->getProducer();
@@ -89,7 +93,11 @@ final readonly class ResponseWriterSupport
         return $lower !== 'te' || strtolower(trim($value)) === 'trailers';
     }
 
-    /** @return Generator<array{0:string,1:string}> */
+    /**
+     * @return Generator<array{0:string,1:string}>
+     * @param Response $response
+     * @param bool $http2
+     */
     public static function headers(Response $response, bool $http2 = false): Generator
     {
         foreach ($response->getHeaders() as $name => $values) {

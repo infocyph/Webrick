@@ -148,6 +148,7 @@ enum MediaTypeEnum: string
 
     /**
      * Whether the given media type is JSON or structured-suffix +json.
+     * @param string $type
      */
     public static function isJsonLike(string $type): bool
     {

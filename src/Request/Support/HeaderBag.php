@@ -58,7 +58,10 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
         return $this->map[$this->norm($name)][0] ?? null;
     }
 
-    /** @return list<string> */
+    /**
+     * @return list<string>
+     * @param string $name
+     */
     public function get(string $name): array
     {
         return $this->map[$this->norm($name)] ?? [];
@@ -105,7 +108,10 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
         throw new \LogicException('HeaderBag is immutable');
     }
 
-    /** @return string|list<string>|null */
+    /**
+     * @return string|list<string>|null
+     * @param string $name
+     */
     public function value(string $name): string|array|null
     {
         $all = $this->get($name);
@@ -116,7 +122,10 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
         return count($all) === 1 ? $all[0] : $all;
     }
 
-    /** @param string|array<int,string> $value */
+    /**
+     * @param string|array<int,string> $value
+     * @param string $name
+     */
     public function with(string $name, string|array $value): self
     {
         $copy = clone $this;
@@ -125,7 +134,10 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
         return $copy;
     }
 
-    /** @param string|array<array-key,mixed> $value */
+    /**
+     * @param string|array<array-key,mixed> $value
+     * @param string $name
+     */
     public function withAdded(string $name, string|array $value): self
     {
         $normalized = $this->norm($name);
@@ -162,6 +174,7 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
     /**
      * Cache hits are values already validated at the trust boundary, so they may
      * bypass the header-name regex on subsequent requests in persistent workers.
+     * @param string $name
      */
     private function norm(string $name): string
     {
@@ -196,7 +209,10 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
         return $values;
     }
 
-    /** @param string|array<array-key,mixed> $value */
+    /**
+     * @param string|array<array-key,mixed> $value
+     * @param string $name
+     */
     private function set(string $name, string|array $value): void
     {
         $this->map[$this->norm($name)] = $this->normalizeValues($value);

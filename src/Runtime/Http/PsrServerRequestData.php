@@ -21,7 +21,10 @@ final readonly class PsrServerRequestData
         return new PsrBodyStreamAdapter($stream);
     }
 
-    /** @return array<string,string|list<string>> */
+    /**
+     * @return array<string,string|list<string>>
+     * @param object $request
+     */
     public static function headers(object $request): array
     {
         $headers = $request->getHeaders();
@@ -46,7 +49,10 @@ final readonly class PsrServerRequestData
         return $out;
     }
 
-    /** @return array<string,mixed> */
+    /**
+     * @return array<string,mixed>
+     * @param object $request
+     */
     public static function server(object $request): array
     {
         $params = $request->getServerParams();
@@ -78,13 +84,21 @@ final readonly class PsrServerRequestData
         return $server;
     }
 
-    /** @return array<string,mixed> */
+    /**
+     * @return array<string,mixed>
+     * @param mixed $value
+     */
     public static function stringMapResult(mixed $value): array
     {
         return is_array($value) ? self::stringMap($value) : [];
     }
 
-    /** @param array<string,mixed> $server */
+    /**
+     * @param array<string,mixed> $server
+     * @param object $request
+     * @param string $name
+     * @param string $target
+     */
     private static function copyHeader(array &$server, object $request, string $name, string $target): void
     {
         $value = $request->getHeaderLine($name);

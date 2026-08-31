@@ -93,7 +93,10 @@ final class Collection implements IteratorAggregate
         $this->aliasIndex = null;
     }
 
-    /** @param string[] $aliases */
+    /**
+     * @param string[] $aliases
+     * @param RouteInterface $route
+     */
     public function addAliases(RouteInterface $route, array $aliases): void
     {
         foreach ($aliases as $alias) {
@@ -156,7 +159,10 @@ final class Collection implements IteratorAggregate
         return $this->dirty;
     }
 
-    /** @return list<RouteInterface> */
+    /**
+     * @return list<RouteInterface>
+     * @param callable|string $handler
+     */
     public function findAllByHandler(callable|string $handler): array
     {
         $id = Route::fingerprint($handler);
@@ -225,7 +231,10 @@ final class Collection implements IteratorAggregate
         $this->aliasIndex = null;
     }
 
-    /** @return array{0:string,1:?string}|null */
+    /**
+     * @return array{0:string,1:?string}|null
+     * @param string $name
+     */
     public function resolveAlias(string $name): ?array
     {
         $index = $this->aliasIndex();

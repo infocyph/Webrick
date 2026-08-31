@@ -39,7 +39,11 @@ final class RuntimeDispatcher
         $this->preparePipelines($artifact);
     }
 
-    /** @param array<string,string> $vars */
+    /**
+     * @param array<string,string> $vars
+     * @param ExecutionPlan $plan
+     * @param Request $request
+     */
     public function dispatch(ExecutionPlan $plan, Request $request, array $vars): Response
     {
         $attributes = $this->routeAttributes[$plan->routeId] ?? [];
@@ -57,7 +61,10 @@ final class RuntimeDispatcher
             : $this->invokeTerminal($plan, $request, $vars);
     }
 
-    /** @param array<string,string> $vars */
+    /**
+     * @param array<string,string> $vars
+     * @param ExecutionPlan $plan
+     */
     public function dispatchDirectRouteArgs(ExecutionPlan $plan, array $vars): Response
     {
         /** @var callable $handler */
@@ -80,6 +87,7 @@ final class RuntimeDispatcher
      * request- and middleware-free.
      *
      * @param array<string,string> $vars
+     * @param ExecutionPlan $plan
      */
     public function dispatchWithoutRequest(ExecutionPlan $plan, array $vars): Response
     {
@@ -107,7 +115,11 @@ final class RuntimeDispatcher
         return ($this->pipelines[$routeId] ?? null)?->requiresScope() ?? false;
     }
 
-    /** @param array<string,string> $vars */
+    /**
+     * @param array<string,string> $vars
+     * @param ExecutionPlan $plan
+     * @param Request $request
+     */
     private function invokeTerminal(ExecutionPlan $plan, Request $request, array $vars): Response
     {
         if (!$plan->requiresRequest() && $plan->terminalKind !== ExecutionKind::DIRECT_REQUEST) {
@@ -132,7 +144,10 @@ final class RuntimeDispatcher
         return $this->response($result);
     }
 
-    /** @return array<array-key,mixed>|bool|float|int|JsonSerializable|string|null */
+    /**
+     * @return array<array-key,mixed>|bool|float|int|JsonSerializable|string|null
+     * @param mixed $value
+     */
     private function normalizeResponsePayload(mixed $value): array|bool|float|int|JsonSerializable|string|null
     {
         if (is_array($value) || $value instanceof JsonSerializable) {
@@ -145,7 +160,10 @@ final class RuntimeDispatcher
         return get_debug_type($value);
     }
 
-    /** @param array<string,string> $vars @return list<string> */
+    /**
+     * @param array<string,string> $vars @return list<string>
+     * @param ExecutionPlan $plan
+     */
     private function orderedRouteArguments(ExecutionPlan $plan, array $vars): array
     {
         $arguments = [];
@@ -204,7 +222,10 @@ final class RuntimeDispatcher
             : Response::json($this->normalizeResponsePayload($result));
     }
 
-    /** @return array<string,string> */
+    /**
+     * @return array<string,string>
+     * @param Request $request
+     */
     private function routeVariables(Request $request): array
     {
         $value = $request->getAttribute('route_params', []);
@@ -222,7 +243,10 @@ final class RuntimeDispatcher
         return $variables;
     }
 
-    /** @param list<mixed> $explicit @param list<string> $tags @return list<mixed> */
+    /**
+     * @param list<mixed> $explicit @param list<string> $tags @return list<mixed>
+     * @param array $explicit
+     */
     private function withTagged(array $explicit, array $tags): array
     {
         foreach ($tags as $tag) {

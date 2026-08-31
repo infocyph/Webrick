@@ -61,6 +61,7 @@ final readonly class RoutingInput
     /**
      * @param array<string,mixed> $server
      * @param array<string,mixed> $form
+     * @param bool $withHost
      */
     public static function fromServer(array $server, bool $withHost, array $form = []): self
     {

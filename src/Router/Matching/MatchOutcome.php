@@ -20,6 +20,9 @@ final readonly class MatchOutcome
     /**
      * @param RouteParams $params
      * @param list<string> $allowed
+     * @param MatchOutcomeType $type
+     * @param ?CompiledRoute $route
+     * @param bool $headFallback
      */
     private function __construct(
         public MatchOutcomeType $type,
@@ -35,7 +38,11 @@ final readonly class MatchOutcome
         return new self(MatchOutcomeType::AUTO_OPTIONS, allowed: $allowed);
     }
 
-    /** @param RouteParams $params */
+    /**
+     * @param RouteParams $params
+     * @param CompiledRoute $route
+     * @param bool $headFallback
+     */
     public static function found(CompiledRoute $route, array $params = [], bool $headFallback = false): self
     {
         return new self(MatchOutcomeType::FOUND, $route, $params, headFallback: $headFallback);

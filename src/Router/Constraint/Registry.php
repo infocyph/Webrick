@@ -72,7 +72,10 @@ final class Registry
         return self::$frozen;
     }
 
-    /** @return array<string,string> */
+    /**
+     * @return array<string,string>
+     * @param string $name
+     */
     public static function getValidatorSpec(string $name): array
     {
         $key = strtolower($name);
@@ -145,7 +148,10 @@ final class Registry
         return $modifiers === '' ? $inner : '(?' . $modifiers . ':' . $inner . ')';
     }
 
-    /** @return array{0:string,1:string}|null */
+    /**
+     * @return array{0:string,1:string}|null
+     * @param string $rule
+     */
     private static function splitDelimitedRegex(string $rule): ?array
     {
         $length = strlen($rule);

@@ -26,6 +26,8 @@ final class Dispatcher
     /**
      * @param array<class-string|object|callable|string> $preGlobalRaw
      * @param array<class-string|object|callable|string> $postGlobalRaw
+     * @param Invoker $invoker
+     * @param bool $useInvoker
      */
     public function __construct(
         private readonly Invoker $invoker,
@@ -34,7 +36,11 @@ final class Dispatcher
         private readonly array $postGlobalRaw = [],
     ) {}
 
-    /** @param array<string,mixed> $vars */
+    /**
+     * @param array<string,mixed> $vars
+     * @param CompiledRoute $route
+     * @param Request $request
+     */
     public function dispatch(CompiledRoute $route, Request $request, array $vars): Response
     {
         $request = $this->attachRouteAttributes($route, $request, $vars);
@@ -74,7 +80,11 @@ final class Dispatcher
         return $result;
     }
 
-    /** @param array<string,mixed> $vars */
+    /**
+     * @param array<string,mixed> $vars
+     * @param CompiledRoute $route
+     * @param Request $request
+     */
     private function attachRouteAttributes(CompiledRoute $route, Request $request, array $vars): Request
     {
         $attrs = [
@@ -96,7 +106,10 @@ final class Dispatcher
         return $request->withAttributes($attrs);
     }
 
-    /** @return Closure(Request):Response */
+    /**
+     * @return Closure(Request):Response
+     * @param CompiledRoute $route
+     */
     private function buildFinalHandler(CompiledRoute $route): Closure
     {
         $handler = $route->getHandler();
@@ -155,7 +168,10 @@ final class Dispatcher
         return $ctor === null || array_all($ctor->getParameters(), fn($param) => $param->isOptional());
     }
 
-    /** @return array{0:class-string,1:string}|null */
+    /**
+     * @return array{0:class-string,1:string}|null
+     * @param mixed $handler
+     */
     private function classMethodArrayHandler(mixed $handler): ?array
     {
         if (
@@ -171,7 +187,10 @@ final class Dispatcher
         return [$handler[0], $handler[1]];
     }
 
-    /** @param Closure(Request):Response $final */
+    /**
+     * @param Closure(Request):Response $final
+     * @param CompiledRoute $route
+     */
     private function compilePipelineForRoute(CompiledRoute $route, Closure $final): MiddlewarePipeline
     {
         [$preInv, $postInv] = $this->filteredGlobalsFor($route);
@@ -200,7 +219,10 @@ final class Dispatcher
             : Response::json($this->normalizeResponsePayload($result));
     }
 
-    /** @return array{0:list<callable>,1:list<callable>} */
+    /**
+     * @return array{0:list<callable>,1:list<callable>}
+     * @param CompiledRoute $route
+     */
     private function filteredGlobalsFor(CompiledRoute $route): array
     {
         $routeClasses = $this->routeMiddlewareClasses($route);
@@ -273,7 +295,10 @@ final class Dispatcher
         return $this->assertMiddlewareResponse($callable($req, $next), $class);
     }
 
-    /** @param array<string,mixed> $callArgs */
+    /**
+     * @param array<string,mixed> $callArgs
+     * @param mixed $handler
+     */
     private function invokeRouteHandler(mixed $handler, array $callArgs): mixed
     {
         $classMethod = $this->classMethodArrayHandler($handler);
@@ -315,7 +340,10 @@ final class Dispatcher
         return $name !== '' && MiddlewareAliases::has($name);
     }
 
-    /** @return array<string,mixed> */
+    /**
+     * @return array<string,mixed>
+     * @param mixed $value
+     */
     private function normalizeNamedArguments(mixed $value): array
     {
         if (!is_array($value)) {
@@ -332,7 +360,10 @@ final class Dispatcher
         return $normalized;
     }
 
-    /** @return array<array-key,mixed>|bool|float|int|JsonSerializable|string|null */
+    /**
+     * @return array<array-key,mixed>|bool|float|int|JsonSerializable|string|null
+     * @param mixed $value
+     */
     private function normalizeResponsePayload(mixed $value): array|bool|float|int|JsonSerializable|string|null
     {
         if (is_array($value) || $value instanceof JsonSerializable) {
@@ -345,7 +376,10 @@ final class Dispatcher
         return get_debug_type($value);
     }
 
-    /** @return array{0:class-string,1:string}|null */
+    /**
+     * @return array{0:class-string,1:string}|null
+     * @param string $handler
+     */
     private function parseClassMethodStringHandler(string $handler): ?array
     {
         if (!str_contains($handler, '::') && !str_contains($handler, '@')) {
@@ -368,7 +402,10 @@ final class Dispatcher
         return $this->resolvedAliases[$alias] ??= MiddlewareAliases::resolveString($alias);
     }
 
-    /** @return array<string,true> */
+    /**
+     * @return array<string,true>
+     * @param CompiledRoute $route
+     */
     private function routeMiddlewareClasses(CompiledRoute $route): array
     {
         $set = [];
@@ -387,7 +424,10 @@ final class Dispatcher
         return $set;
     }
 
-    /** @param array<string,true> $routeClasses */
+    /**
+     * @param array<string,true> $routeClasses
+     * @param mixed $mw
+     */
     private function shouldKeepGlobalEntry(mixed $mw, array $routeClasses): bool
     {
         if (is_string($mw) && class_exists($mw)) {

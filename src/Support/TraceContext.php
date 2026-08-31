@@ -32,6 +32,8 @@ final class TraceContext
 
     /**
      * Compatibility constructor for callers that explicitly retain the context.
+     * @param Request $request
+     * @param bool $otelAvailable
      */
     public static function initialize(Request $request, bool $otelAvailable = false): RequestContext
     {

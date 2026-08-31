@@ -76,7 +76,11 @@ final class HeaderPolicy
         return implode('-', array_map(ucfirst(...), $parts));
     }
 
-    /** @return list<string> */
+    /**
+     * @return list<string>
+     * @param string $lowerName
+     * @param string $csv
+     */
     private static function normalizeCsv(string $lowerName, string $csv): array
     {
         $out = [];

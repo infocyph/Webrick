@@ -108,6 +108,10 @@ final class Router
      * Bind URL generation services to the Route facade.
      *
      * @param Collection|array<string, array{0:string,1:?string}>|(Closure():(Collection|array<string, array{0:string,1:?string}>)) $routes
+     * @param ?string $signKey
+     * @param ?int $defaultTtl
+     * @param ?SignedUrlConfig $signedUrlConfig
+     * @param string $baseUri
      */
     public static function bindUrlServices(
         Collection|array|Closure $routes,
@@ -218,6 +222,10 @@ final class Router
      *
      * @param array<string,mixed> $params
      * @param array<string,mixed> $query
+     * @param string $name
+     * @param ?int $ttl
+     * @param bool $absolute
+     * @param ?string $payloadMode
      */
     public static function signedUrlFor(
         string $name,
@@ -242,6 +250,10 @@ final class Router
      *
      * @param array<string,mixed> $params
      * @param array<string,mixed> $query
+     * @param string $name
+     * @param ?int $ttl
+     * @param bool $absolute
+     * @param ?string $payloadMode
      */
     public static function temporaryUrlFor(
         string $name,
@@ -268,6 +280,10 @@ final class Router
      *
      * @param array<string,mixed> $params
      * @param array<string,mixed> $query
+     * @param string $name
+     * @param DateTimeInterface|int $expiresAt
+     * @param bool $absolute
+     * @param ?string $payloadMode
      */
     public static function temporaryUrlUntil(
         string $name,
@@ -294,6 +310,8 @@ final class Router
      *
      * @param array<string,mixed> $params
      * @param array<string,mixed> $query
+     * @param string $name
+     * @param bool $absolute
      */
     public static function urlFor(
         string $name,
@@ -321,6 +339,7 @@ final class Router
      * @param Registrar $router Registrar to use for the duration of the callback
      * @param Closure $callback Callback to execute while $router is scoped
      * @return mixed The callback return value (any type)
+     * @param Closure $callback
      */
     public static function withScopedInstance(Registrar $router, Closure $callback): mixed
     {
@@ -387,6 +406,7 @@ final class Router
 
     /**
      * @return Collection|array<string, array{0:string,1:?string}>
+     * @param mixed $routes
      */
     private static function normalizeLazyRouteSource(mixed $routes): Collection|array
     {
@@ -465,6 +485,8 @@ final class Router
     /**
      * @param RouteHandler $handler
      * @param string|RouteOptions|null $nameOrOpts
+     * @param string $verb
+     * @param string $path
      */
     private static function verb(
         string $verb,

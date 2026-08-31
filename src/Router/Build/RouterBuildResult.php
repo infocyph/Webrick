@@ -15,6 +15,10 @@ final readonly class RouterBuildResult
      * @param list<mixed> $postGlobal
      * @param list<string> $preGlobalTags
      * @param list<string> $postGlobalTags
+     * @param CompiledCollection $routes
+     * @param bool $hasDomainRoutes
+     * @param string $environment
+     * @param string $configFingerprint
      */
     public function __construct(
         public CompiledCollection $routes,

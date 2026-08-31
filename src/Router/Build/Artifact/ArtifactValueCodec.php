@@ -49,7 +49,10 @@ final class ArtifactValueCodec
         return self::decodeClosure($payload['value']);
     }
 
-    /** @return array{kind:string,value:mixed} */
+    /**
+     * @return array{kind:string,value:mixed}
+     * @param mixed $value
+     */
     public static function encode(mixed $value): array
     {
         if (is_string($value)) {
@@ -90,7 +93,10 @@ final class ArtifactValueCodec
         );
     }
 
-    /** @return array{0:object,1:string}|null */
+    /**
+     * @return array{0:object,1:string}|null
+     * @param Closure $closure
+     */
     private static function boundMethodDescriptor(Closure $closure): ?array
     {
         $reflection = new ReflectionFunction($closure);
@@ -122,7 +128,10 @@ final class ArtifactValueCodec
         }
     }
 
-    /** @return array{0:string,1:string}|string */
+    /**
+     * @return array{0:string,1:string}|string
+     * @param mixed $value
+     */
     private static function decodeValue(mixed $value): array|string
     {
         if (is_string($value)) {
@@ -142,7 +151,10 @@ final class ArtifactValueCodec
         throw new UnexpectedValueException('Invalid scalar Webrick artifact value.');
     }
 
-    /** @return array{kind:string,value:string} */
+    /**
+     * @return array{kind:string,value:string}
+     * @param callable $callable
+     */
     private static function encodeCallable(callable $callable): array
     {
         $transport = static fn(): callable => $callable;
@@ -150,7 +162,10 @@ final class ArtifactValueCodec
         return ['kind' => self::CALLABLE, 'value' => ClosureSerializer::serialize($transport)];
     }
 
-    /** @return array{0:class-string,1:string}|null */
+    /**
+     * @return array{0:class-string,1:string}|null
+     * @param Closure $closure
+     */
     private static function staticMethodDescriptor(Closure $closure): ?array
     {
         $reflection = new ReflectionFunction($closure);

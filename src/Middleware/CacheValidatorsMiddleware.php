@@ -18,7 +18,12 @@ use Infocyph\Webrick\Support\Etag;
 /** Conditional-request and validator middleware without implicit filesystem discovery. */
 final readonly class CacheValidatorsMiddleware
 {
-    /** @param null|Closure(Request):array{0:string|null,1:int|null} $metaProvider */
+    /**
+     * @param null|Closure(Request):array{0:string|null,1:int|null} $metaProvider
+     * @param bool $autoEtagWhenMissing
+     * @param bool $includeQueryInEtag
+     * @param int $autoEtagMinSize
+     */
     public function __construct(
         private ?Closure $metaProvider = null,
         private bool $autoEtagWhenMissing = true,
@@ -26,7 +31,10 @@ final readonly class CacheValidatorsMiddleware
         private int $autoEtagMinSize = 2048,
     ) {}
 
-    /** @param Closure(Request):Response $next */
+    /**
+     * @param Closure(Request):Response $next
+     * @param Request $req
+     */
     public function __invoke(Request $req, Closure $next): Response
     {
         $getOrHead = $this->isGetOrHead($req);
@@ -71,7 +79,10 @@ final readonly class CacheValidatorsMiddleware
         return $this->maybeShortCircuit($result, true) ?? $resp;
     }
 
-    /** @param array<string,string> $headers */
+    /**
+     * @param array<string,string> $headers
+     * @param Response $resp
+     */
     private function ensureValidatorHeaders(Response $resp, array $headers): Response
     {
         foreach ($headers as $name => $value) {
@@ -83,7 +94,10 @@ final readonly class CacheValidatorsMiddleware
         return $resp;
     }
 
-    /** @return array{0:ConditionalValidator,1:Outcome} */
+    /**
+     * @return array{0:ConditionalValidator,1:Outcome}
+     * @param Request $req
+     */
     private function evaluatePreconditions(Request $req): array
     {
         [$etag, $lastModified] = $this->metaProvider instanceof Closure

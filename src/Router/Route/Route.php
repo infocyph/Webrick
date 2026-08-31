@@ -41,6 +41,10 @@ final class Route implements RouteInterface
 
     /**
      * @param array{0:object|string,1:string}|string|callable $handler
+     * @param string $method
+     * @param string $path
+     * @param ?string $domain
+     * @param ?string $name
      */
     public function __construct(
         private readonly string $method,

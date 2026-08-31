@@ -179,6 +179,7 @@ final readonly class ConditionalValidator
     /**
      * Check if the request has a valid If-Modified-Since header
      * and the resource has not been modified since then.
+     * @param Request $req
      */
     private function hitsIfModSince(Request $req): bool
     {
@@ -201,6 +202,7 @@ final readonly class ConditionalValidator
      * Check whether If-None-Match selects the current representation.
      *
      * Method-specific 304/412 behavior is decided by evaluate().
+     * @param Request $req
      */
     private function hitsIfNoneMatch(Request $req): bool
     {
@@ -213,6 +215,7 @@ final readonly class ConditionalValidator
 
     /**
      * Parses an HTTP date string into a Unix epoch.
+     * @param string $httpDate
      */
     private function parseDate(string $httpDate): ?int
     {
@@ -227,6 +230,7 @@ final readonly class ConditionalValidator
 
     /**
      * @return list<string>|null
+     * @param string $list
      */
     private function tokenize(string $list): ?array
     {

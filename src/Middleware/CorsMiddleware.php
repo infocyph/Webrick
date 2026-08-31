@@ -20,6 +20,10 @@ final readonly class CorsMiddleware
      * @param list<string> $origins
      * @param string|list<string> $allowHeaders
      * @param string|list<string> $exposeHeaders
+     * @param string $methods
+     * @param int $maxAgeSeconds
+     * @param bool $allowCredentials
+     * @param bool $allowPrivateNetwork
      */
     public function __construct(
         private array $origins = [],
@@ -33,7 +37,10 @@ final readonly class CorsMiddleware
         $this->validatePolicy($this->policy());
     }
 
-    /** @param Closure(Request):Response $next */
+    /**
+     * @param Closure(Request):Response $next
+     * @param Request $req
+     */
     public function __invoke(Request $req, Closure $next): Response
     {
         $policy = $this->routePolicy($req);
@@ -61,7 +68,11 @@ final readonly class CorsMiddleware
         return $this->applyActualHeaders($next($req), $policy, $acao);
     }
 
-    /** @param list<string> $origins */
+    /**
+     * @param list<string> $origins
+     * @param string $origin
+     * @param bool $credentials
+     */
     private function allowedOrigin(string $origin, array $origins, bool $credentials): ?string
     {
         if ($origin === 'null') {
@@ -83,6 +94,8 @@ final readonly class CorsMiddleware
 
     /**
      * @param array{origins:list<string>,methods:string,allowHeaders:string|list<string>,exposeHeaders:string|list<string>,maxAgeSeconds:int,allowCredentials:bool,allowPrivateNetwork:bool} $policy
+     * @param Response $response
+     * @param string $acao
      */
     private function applyActualHeaders(Response $response, array $policy, string $acao): Response
     {
@@ -171,6 +184,8 @@ final readonly class CorsMiddleware
 
     /**
      * @param array{origins:list<string>,methods:string,allowHeaders:string|list<string>,exposeHeaders:string|list<string>,maxAgeSeconds:int,allowCredentials:bool,allowPrivateNetwork:bool} $policy
+     * @param Request $req
+     * @param string $acao
      */
     private function preflightResponse(Request $req, array $policy, string $acao): Response
     {
@@ -221,7 +236,10 @@ final readonly class CorsMiddleware
         return $acao === '*' ? $response : $response->withSmartHeader('Vary', 'Origin');
     }
 
-    /** @return array{origins:list<string>,methods:string,allowHeaders:string|list<string>,exposeHeaders:string|list<string>,maxAgeSeconds:int,allowCredentials:bool,allowPrivateNetwork:bool} */
+    /**
+     * @return array{origins:list<string>,methods:string,allowHeaders:string|list<string>,exposeHeaders:string|list<string>,maxAgeSeconds:int,allowCredentials:bool,allowPrivateNetwork:bool}
+     * @param Request $req
+     */
     private function routePolicy(Request $req): array
     {
         $policy = $this->policy();

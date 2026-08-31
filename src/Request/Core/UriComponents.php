@@ -7,7 +7,10 @@ namespace Infocyph\Webrick\Request\Core;
 /** Construct validated request URIs directly from transport components. */
 final class UriComponents
 {
-    /** @param array<string,mixed> $server */
+    /**
+     * @param array<string,mixed> $server
+     * @param ?int $trustedProxyFlags
+     */
     public static function fromServerParams(array $server, ?int $trustedProxyFlags = null): Uri
     {
         $scheme = UriServerParams::detectScheme($server, $trustedProxyFlags);

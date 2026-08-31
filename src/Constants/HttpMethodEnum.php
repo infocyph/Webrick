@@ -65,7 +65,10 @@ enum HttpMethodEnum: string
             ?? throw new \InvalidArgumentException("Unsupported method: {$verb}");
     }
 
-    /** Known and extension methods share the same canonical uppercase representation. */
+    /**
+     * Known and extension methods share the same canonical uppercase representation.
+     * @param string $verb
+     */
     public static function normalize(string $verb): string
     {
         return strtoupper(trim($verb));

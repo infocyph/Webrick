@@ -22,7 +22,10 @@ abstract class AbstractMatcher
         return false;
     }
 
-    /** Enable or disable persisted-cache verification at boot. */
+    /**
+     * Enable or disable persisted-cache verification at boot.
+     * @param bool $enable
+     */
     public function verifyCacheOnLoad(bool $enable = true): static
     {
         $this->verifyCacheOnLoad = $enable;
@@ -30,7 +33,10 @@ abstract class AbstractMatcher
         return $this;
     }
 
-    /** Normalize a configured route host once at route-build time. */
+    /**
+     * Normalize a configured route host once at route-build time.
+     * @param ?string $raw
+     */
     protected function canonicalRouteHost(?string $raw): string
     {
         if ($raw === null || $raw === '' || $raw === '*') {
@@ -57,6 +63,7 @@ abstract class AbstractMatcher
 
     /**
      * @param array<mixed,mixed> $values
+     * @param int $depth
      */
     protected function exportArray(array $values, int $depth = 0): string
     {

@@ -31,6 +31,15 @@ final class CompiledRoute implements RouteInterface
      * @param MiddlewareList $middleware
      * @param list<string> $variables
      * @param list<SegmentSpec> $segments
+     * @param string $method
+     * @param string $path
+     * @param ?string $domain
+     * @param ?string $name
+     * @param bool $dynamic
+     * @param string $regex
+     * @param int $index
+     * @param ?Cors $corsPolicy
+     * @param ?Produces $produces
      */
     public function __construct(
         private readonly string $method,
@@ -272,7 +281,10 @@ final class CompiledRoute implements RouteInterface
         ];
     }
 
-    /** @return list<SegmentSpec> */
+    /**
+     * @return list<SegmentSpec>
+     * @param string $path
+     */
     private static function explodeLiterals(string $path): array
     {
         $segments = [];
@@ -285,13 +297,19 @@ final class CompiledRoute implements RouteInterface
         return $segments;
     }
 
-    /** @return list<string> */
+    /**
+     * @return list<string>
+     * @param string $path
+     */
     private static function explodeRawSegments(string $path): array
     {
         return explode('/', trim($path, '/'));
     }
 
-    /** @return array{0:string,1:list<string>,2:true,3:list<SegmentSpec>} */
+    /**
+     * @return array{0:string,1:list<string>,2:true,3:list<SegmentSpec>}
+     * @param string $path
+     */
     private static function parseDynamicPath(string $path): array
     {
         $vars = [];
@@ -321,13 +339,19 @@ final class CompiledRoute implements RouteInterface
         return [self::buildAnchoredPattern($patternBuf), $vars, true, $segments];
     }
 
-    /** @return array{0:string,1:list<string>,2:bool,3:list<SegmentSpec>} */
+    /**
+     * @return array{0:string,1:list<string>,2:bool,3:list<SegmentSpec>}
+     * @param string $path
+     */
     private static function parsePath(string $path): array
     {
         return str_contains($path, '{') ? self::parseDynamicPath($path) : self::parseStaticPath($path);
     }
 
-    /** @return array{0:non-empty-string,1:?non-empty-string}|null */
+    /**
+     * @return array{0:non-empty-string,1:?non-empty-string}|null
+     * @param string $raw
+     */
     private static function parsePlaceholder(string $raw): ?array
     {
         static $placeholderRegex = '/^\{([A-Za-z_]\w*)(?::([^}]+))?}$/';
@@ -343,7 +367,10 @@ final class CompiledRoute implements RouteInterface
         return [$name, $constraint];
     }
 
-    /** @return array{0:string,1:list<string>,2:false,3:list<SegmentSpec>} */
+    /**
+     * @return array{0:string,1:list<string>,2:false,3:list<SegmentSpec>}
+     * @param string $path
+     */
     private static function parseStaticPath(string $path): array
     {
         $segments = self::explodeLiterals($path);
@@ -360,6 +387,8 @@ final class CompiledRoute implements RouteInterface
     /**
      * @param MiddlewareList|null $middleware
      * @return array<mixed>
+     * @param ?string $domain
+     * @param ?string $name
      */
     private function copyProps(
         ?string $domain = null,

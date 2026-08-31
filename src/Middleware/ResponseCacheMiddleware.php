@@ -26,7 +26,17 @@ final readonly class ResponseCacheMiddleware
 
     private CacheItemPoolInterface $store;
 
-    /** @param list<string> $defaultVary */
+    /**
+     * @param list<string> $defaultVary
+     * @param ?CacheItemPoolInterface $store
+     * @param int $ttlSeconds
+     * @param bool $includeQuery
+     * @param int $maxBodyBytes
+     * @param bool $skipWhenPersonalized
+     * @param bool $respectResponseCacheControl
+     * @param bool $avoidSetCookie
+     * @param ?CachePolicy $policy
+     */
     public function __construct(
         ?CacheItemPoolInterface $store = null,
         private int $ttlSeconds = 10,
@@ -42,7 +52,10 @@ final readonly class ResponseCacheMiddleware
         $this->policy = $policy ?? new CachePolicy();
     }
 
-    /** @param Closure(Request):Response $next */
+    /**
+     * @param Closure(Request):Response $next
+     * @param Request $req
+     */
     public function __invoke(Request $req, Closure $next): Response
     {
         $method = HttpMethodEnum::normalize($req->getMethod());
@@ -181,13 +194,19 @@ final readonly class ResponseCacheMiddleware
         return self::CACHE_KEY_PREFIX . $this->base64UrlHash($buffer);
     }
 
-    /** @return array<string,list<string>> */
+    /**
+     * @return array<string,list<string>>
+     * @param mixed $value
+     */
     private function normalizeHeaders(mixed $value): array
     {
         return is_array($value) ? Utils::normalizeHeaderValueLists($value) : [];
     }
 
-    /** @return array{s:int,h:array<string,list<string>>,b:string,pv:string,rp:string} */
+    /**
+     * @return array{s:int,h:array<string,list<string>>,b:string,pv:string,rp:string}
+     * @param Response $response
+     */
     private function pack(Response $response): array
     {
         return [
@@ -210,7 +229,10 @@ final readonly class ResponseCacheMiddleware
         }
     }
 
-    /** @return array<string,string> */
+    /**
+     * @return array<string,string>
+     * @param Request $req
+     */
     private function resolveVaryPairs(Request $req): array
     {
         $explicit = $req->getAttribute('vary.pairs');
@@ -286,7 +308,11 @@ final readonly class ResponseCacheMiddleware
         );
     }
 
-    /** @param array<string,mixed> $payload */
+    /**
+     * @param array<string,mixed> $payload
+     * @param string $key
+     * @param int $ttl
+     */
     private function writeCache(string $key, array $payload, int $ttl): void
     {
         try {

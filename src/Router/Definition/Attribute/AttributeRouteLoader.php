@@ -40,6 +40,7 @@ final class AttributeRouteLoader
      * Fast path: if you already know the FQCNs, this is the most efficient route.
      *
      * @param list<class-string> $classes
+     * @param Registrar $registrar
      */
     public static function register(Registrar $registrar, array $classes): void
     {
@@ -59,6 +60,7 @@ final class AttributeRouteLoader
      *
      * @param array<string,string> $roots e.g. ['App\\Http\\Controllers\\' => __DIR__.'/app/Http/Controllers']
      * @param null|callable(SplFileInfo):bool $filter optional file filter (return true to include the file)
+     * @param Registrar $registrar
      */
     public static function registerFromDirs(Registrar $registrar, array $roots, ?callable $filter = null): void
     {
@@ -77,6 +79,9 @@ final class AttributeRouteLoader
      *   middleware:list<class-string|object>,
      *   attributes:array{produces?:Produces,cors?:Cors}
      * }
+     * @param Route $rAttr
+     * @param ?Produces $prod
+     * @param ?Cors $cors
      */
     private static function buildOptions(Route $rAttr, array $methodMw, ?Produces $prod, ?Cors $cors): array
     {
@@ -157,6 +162,9 @@ final class AttributeRouteLoader
      *   middleware:list<class-string|object>,
      *   attributes:array{produces?:Produces,cors?:Cors}
      * } $opts
+     * @param Registrar $r
+     * @param string $path
+     * @param array $opts
      */
     private static function emitRoutes(
         Registrar $r,
@@ -206,6 +214,8 @@ final class AttributeRouteLoader
 
     /**
      * Try Composer autoload first; if that fails, include the file directly.
+     * @param SplFileInfo $file
+     * @param string $fqcn
      */
     private static function loadClassIfNeeded(SplFileInfo $file, string $fqcn): void
     {
@@ -266,7 +276,10 @@ final class AttributeRouteLoader
 
     /* ───────────────────────────── Registration ─────────────────────────────── */
 
-    /** @param class-string $fqcn */
+    /**
+     * @param class-string $fqcn
+     * @param Registrar $registrar
+     */
     private static function registerClass(Registrar $registrar, string $fqcn): void
     {
         $rc = new ReflectionClass($fqcn);
@@ -293,6 +306,9 @@ final class AttributeRouteLoader
     /**
      * @param ReflectionClass<object> $rc
      * @param class-string $fqcn
+     * @param Registrar $r
+     * @param ?Produces $classProd
+     * @param ?Cors $classCors
      */
     private static function registerPublicMethods(
         Registrar $r,
@@ -326,6 +342,7 @@ final class AttributeRouteLoader
 
     /**
      * @return class-string|null
+     * @param string $fqcn
      */
     private static function resolveConcreteClass(string $fqcn): ?string
     {
@@ -339,7 +356,10 @@ final class AttributeRouteLoader
         return $rc->isAbstract() || $rc->isInterface() ? null : $resolved;
     }
 
-    /** @param null|callable(SplFileInfo):bool $filter */
+    /**
+     * @param null|callable(SplFileInfo):bool $filter
+     * @param SplFileInfo $file
+     */
     private static function shouldSkipFile(SplFileInfo $file, ?callable $filter): bool
     {
         if ($file->getExtension() !== 'php') {

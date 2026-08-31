@@ -41,6 +41,9 @@ class UrlGenerator
     /**
      * @param string $baseUri Base URI used for absolute URL generation.
      * @param Collection|array<string, array{0:string,1:?string}> $routes Route collection or cached alias index.
+     * @param ?string $secret
+     * @param ?int $defaultTtl
+     * @param ?SignedUrlConfig $signedConfig
      */
     public function __construct(
         string $baseUri,
@@ -84,6 +87,8 @@ class UrlGenerator
     /**
      * @param array<string,RouteParam> $params
      * @param array<string,QueryValue> $query
+     * @param callable|string $handler
+     * @param bool $absolute
      */
     public function action(
         callable|string $handler,
@@ -114,6 +119,10 @@ class UrlGenerator
     /**
      * @param array<string,RouteParam> $params
      * @param array<string,QueryValue> $query
+     * @param string $name
+     * @param ?int $ttl
+     * @param bool $absolute
+     * @param ?string $payloadMode
      */
     public function signed(
         string $name,
@@ -139,6 +148,10 @@ class UrlGenerator
     /**
      * @param array<string,RouteParam> $params
      * @param array<string,QueryValue> $query
+     * @param string $name
+     * @param ?int $ttl
+     * @param bool $absolute
+     * @param ?string $payloadMode
      */
     public function temporary(
         string $name,
@@ -161,6 +174,10 @@ class UrlGenerator
     /**
      * @param array<string,RouteParam> $params
      * @param array<string,QueryValue> $query
+     * @param string $name
+     * @param DateTimeInterface|int $expiresAt
+     * @param bool $absolute
+     * @param ?string $payloadMode
      */
     public function temporaryUntil(
         string $name,
@@ -184,6 +201,8 @@ class UrlGenerator
 
     /**
      * @param array<string,QueryValue> $query
+     * @param string $path
+     * @param bool $absolute
      */
     public function to(string $path, array $query = [], bool $absolute = false): string
     {
@@ -193,6 +212,8 @@ class UrlGenerator
     /**
      * @param array<string,RouteParam> $params
      * @param array<string,QueryValue> $query
+     * @param string $name
+     * @param bool $absolute
      */
     public function urlFor(
         string $name,
@@ -208,6 +229,7 @@ class UrlGenerator
 
     /**
      * @param array<string,QueryValue> $query
+     * @param string $uri
      */
     private function appendQueryString(string $uri, array $query): string
     {
@@ -232,6 +254,7 @@ class UrlGenerator
 
     /**
      * @param array<string,QueryValue> $query
+     * @param SignedUrlConfig $config
      */
     private function assertQueryHasNoReservedParameters(array $query, SignedUrlConfig $config): void
     {
@@ -292,6 +315,9 @@ class UrlGenerator
 
     /**
      * @param array<string,QueryValue> $query
+     * @param string $path
+     * @param bool $absolute
+     * @param ?string $routeDomain
      */
     private function buildResolvedPath(
         string $path,
@@ -308,6 +334,9 @@ class UrlGenerator
 
     /**
      * @param array<string,QueryValue> $query
+     * @param string $path
+     * @param string $payloadMode
+     * @param ?string $routeDomain
      */
     private function buildSignaturePayload(
         string $path,
@@ -451,6 +480,7 @@ class UrlGenerator
 
     /**
      * @return array{0:string,1:?string}
+     * @param string $name
      */
     private function requireNamedRoute(string $name): array
     {
@@ -487,6 +517,11 @@ class UrlGenerator
 
     /**
      * @param array<string,QueryValue> $query
+     * @param string $path
+     * @param ?int $expiresAt
+     * @param bool $absolute
+     * @param ?string $payloadMode
+     * @param ?string $routeDomain
      */
     private function signResolvedPath(
         string $path,

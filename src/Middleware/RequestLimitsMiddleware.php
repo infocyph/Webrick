@@ -20,7 +20,12 @@ final readonly class RequestLimitsMiddleware
 
     private int $resolvedBodyLimit;
 
-    /** @param list<string> $bodyLimitVerbs */
+    /**
+     * @param list<string> $bodyLimitVerbs
+     * @param int $maxHeaderBytes
+     * @param int $maxHeaderCount
+     * @param ?int $maxBodyBytes
+     */
     public function __construct(
         private int $maxHeaderBytes = 8192,
         private int $maxHeaderCount = 100,
@@ -50,7 +55,10 @@ final readonly class RequestLimitsMiddleware
         $this->resolvedBodyLimit = $maxBodyBytes ?? self::phpIniBytes(ini_get('post_max_size'));
     }
 
-    /** @param Closure(Request):Response $next */
+    /**
+     * @param Closure(Request):Response $next
+     * @param Request $req
+     */
     public function __invoke(Request $req, Closure $next): Response
     {
         $capabilities = $req->getAttribute(RuntimeCapabilities::ATTRIBUTE);

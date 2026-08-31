@@ -104,7 +104,21 @@ final readonly class CompiledRouterKernel
         );
     }
 
-    /** Trusted digest must originate outside the runtime-writable artifact boundary. */
+    /**
+     * Trusted digest must originate outside the runtime-writable artifact boundary.
+     * @param LoggerInterface $log
+     * @param MatcherInterface $matcher
+     * @param ProductionContainer $container
+     * @param string $artifactPath
+     * @param string $trustedSha256
+     * @param string $environment
+     * @param string $configFingerprint
+     * @param ?ErrorHandler $errorHandler
+     * @param string $urlBaseUri
+     * @param ?string $signKey
+     * @param ?int $signedDefaultTtl
+     * @param ?SignedUrlConfig $signedUrlConfig
+     */
     public static function fromPrevalidatedArtifact(
         LoggerInterface $log,
         MatcherInterface $matcher,
@@ -247,7 +261,12 @@ final readonly class CompiledRouterKernel
         );
     }
 
-    /** @param array<string,string> $vars */
+    /**
+     * @param array<string,string> $vars
+     * @param RoutingInput $routing
+     * @param ExecutionPlan $plan
+     * @param ?RuntimeRequestContext $runtimeContext
+     */
     private function dispatchWithoutRequest(
         RoutingInput $routing,
         ExecutionPlan $plan,
@@ -273,7 +292,13 @@ final readonly class CompiledRouterKernel
         return $response;
     }
 
-    /** @param array<string,string> $vars */
+    /**
+     * @param array<string,string> $vars
+     * @param RoutingInput $routing
+     * @param ExecutionPlan $plan
+     * @param Request $request
+     * @param ?RuntimeRequestContext $runtimeContext
+     */
     private function dispatchWithRequest(
         RoutingInput $routing,
         ExecutionPlan $plan,
@@ -324,6 +349,8 @@ final readonly class CompiledRouterKernel
     /**
      * @throws MethodNotAllowedException
      * @throws RouteNotFoundException
+     * @param MatchOutcome $outcome
+     * @param RoutingInput $routing
      */
     private function throwOrReturnControlOutcome(MatchOutcome $outcome, RoutingInput $routing): void
     {

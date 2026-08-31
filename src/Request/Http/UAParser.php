@@ -149,6 +149,7 @@ final class UAParser
 
     /**
      * @return array<string, string>
+     * @param string $header
      */
     private function parseBrandVersions(string $header): array
     {
@@ -168,6 +169,7 @@ final class UAParser
 
     /**
      * @phpstan-return HintMap
+     * @param Request $req
      */
     private function parseSecCh(Request $req): array
     {

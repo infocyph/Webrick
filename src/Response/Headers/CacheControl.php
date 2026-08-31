@@ -349,6 +349,8 @@ final class CacheControl implements \Stringable
     /**
      * @param list<string> $parts
      * @param array<string,true> $fields
+     * @param bool $enabled
+     * @param string $name
      */
     private static function appendFieldToken(array &$parts, bool $enabled, string $name, array $fields): void
     {
@@ -359,6 +361,8 @@ final class CacheControl implements \Stringable
 
     /**
      * @param list<string> $parts
+     * @param bool $enabled
+     * @param string $token
      */
     private static function appendFlagToken(array &$parts, bool $enabled, string $token): void
     {
@@ -452,6 +456,7 @@ final class CacheControl implements \Stringable
 
     /**
      * @param CcModel $m
+     * @param string $k
      */
     private static function ingestBareToken(array &$m, string $k): void
     {
@@ -492,6 +497,7 @@ final class CacheControl implements \Stringable
 
     /**
      * @param CcModel $m
+     * @param string $raw
      */
     private static function ingestModelToken(array &$m, string $raw): void
     {
@@ -514,6 +520,8 @@ final class CacheControl implements \Stringable
 
     /**
      * @param CcModel $m
+     * @param string $k
+     * @param string $v
      */
     private static function ingestValuedToken(array &$m, string $k, string $v): void
     {
@@ -634,6 +642,7 @@ final class CacheControl implements \Stringable
      *
      * @param CcModel $base The base associative array to merge into.
      * @param CcModel $inc The associative array to merge into $base.
+     * @param array $inc
      */
     private static function mergePrivacy(array &$base, array $inc): void
     {
@@ -727,6 +736,7 @@ final class CacheControl implements \Stringable
      *   fields: array{ no-cache: array<string,true>, private: array<string,true> },
      *   ext: array<string,string|null>
      * }
+     * @param string $line
      */
     private static function parseModel(string $line): array
     {

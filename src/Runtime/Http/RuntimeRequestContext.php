@@ -20,7 +20,13 @@ final class RuntimeRequestContext
 {
     private ?Request $request = null;
 
-    /** @param Closure():Request $requestFactory */
+    /**
+     * @param Closure():Request $requestFactory
+     * @param RoutingInput $routing
+     * @param RuntimeCapabilities $capabilities
+     * @param mixed $nativeRequest
+     * @param mixed $nativeResponse
+     */
     public function __construct(
         public readonly RoutingInput $routing,
         private readonly Closure $requestFactory,

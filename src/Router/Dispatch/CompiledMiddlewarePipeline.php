@@ -18,7 +18,11 @@ final readonly class CompiledMiddlewarePipeline
 
     private bool $requiresScope;
 
-    /** @param list<mixed> $middleware @param Closure(Request):Response $terminal */
+    /**
+     * @param list<mixed> $middleware @param Closure(Request):Response $terminal
+     * @param array $middleware
+     * @param InterMixRuntime $runtime
+     */
     public function __construct(array $middleware, Closure $terminal, InterMixRuntime $runtime)
     {
         $invokers = [];
@@ -55,7 +59,11 @@ final readonly class CompiledMiddlewarePipeline
         return $this->requiresScope;
     }
 
-    /** @return array{0:Closure(Request,Closure):mixed,1:bool} */
+    /**
+     * @return array{0:Closure(Request,Closure):mixed,1:bool}
+     * @param InterMixRuntime $runtime
+     * @param mixed $descriptor
+     */
     private static function compileInvoker(InterMixRuntime $runtime, mixed $descriptor): array
     {
         if (is_callable($descriptor) && (!is_string($descriptor) || function_exists($descriptor))) {

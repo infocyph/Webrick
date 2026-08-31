@@ -53,6 +53,8 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
      * @param array<string,mixed> $query
      * @param array<string,mixed> $post
      * @param array<string,string|list<string>> $headers
+     * @param string $method
+     * @param string $uri
      */
     public static function fake(
         array $query = [],
@@ -103,7 +105,10 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         );
     }
 
-    /** @param list<string> $cidrs */
+    /**
+     * @param list<string> $cidrs
+     * @param ?int $headerFlags
+     */
     public static function setTrustedProxies(array $cidrs, ?int $headerFlags = null): void
     {
         self::$trustedProxyCidrs = $cidrs;
@@ -157,6 +162,7 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
      * @param array<int,string> $supported
      * @param array<int,string> $sources
      * @return array{0:string,1:string}
+     * @param string $fallback
      */
     public function detectLocale(
         array $supported,
@@ -281,7 +287,11 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return $this->all();
     }
 
-    /** @param list<string>|null $supported */
+    /**
+     * @param list<string>|null $supported
+     * @param string $fallback
+     * @param bool $cache
+     */
     public function locale(?array $supported = null, string $fallback = 'en', bool $cache = true): string
     {
         if ($cache && $supported === null && $this->cachedLocale !== null) {
@@ -503,7 +513,10 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         };
     }
 
-    /** @param list<string> $supported */
+    /**
+     * @param list<string> $supported
+     * @param ?string $raw
+     */
     private function pickLocale(?string $raw, array $supported): ?string
     {
         if ($raw === null || $raw === '') {
@@ -539,7 +552,10 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return $this->pickLocale($this->resolveLocaleScalar($this->cookie('locale'), $this->cookie('lang')), $supported);
     }
 
-    /** @param list<string> $supported */
+    /**
+     * @param list<string> $supported
+     * @param string $fallback
+     */
     private function resolveLocaleFromHeader(array $supported, string $fallback): ?string
     {
         return $this->pickLocale($this->locale($supported, $fallback, true), $supported);

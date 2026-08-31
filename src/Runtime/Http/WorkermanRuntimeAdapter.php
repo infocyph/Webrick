@@ -33,7 +33,11 @@ final readonly class WorkermanRuntimeAdapter implements RuntimeAdapterInterface
         );
     }
 
-    /** Resolve Workerman's HTTP response protocol classes once during worker boot. */
+    /**
+     * Resolve Workerman's HTTP response protocol classes once during worker boot.
+     * @param bool $transportCompression
+     * @param bool $transportRequestLimits
+     */
     public static function current(
         bool $transportCompression = false,
         bool $transportRequestLimits = false,
@@ -135,7 +139,10 @@ final readonly class WorkermanRuntimeAdapter implements RuntimeAdapterInterface
         $this->send($connection, new $chunkClass(''));
     }
 
-    /** @return array<string,string|array<int,string>> */
+    /**
+     * @return array<string,string|array<int,string>>
+     * @param Response $response
+     */
     private function headerMap(Response $response): array
     {
         $headers = [];
@@ -146,7 +153,11 @@ final readonly class WorkermanRuntimeAdapter implements RuntimeAdapterInterface
         return $headers;
     }
 
-    /** @param array<string,string|array<int,string>> $headers */
+    /**
+     * @param array<string,string|array<int,string>> $headers
+     * @param int $status
+     * @param string $body
+     */
     private function response(int $status, array $headers, string $body): object
     {
         $class = $this->responseClass;

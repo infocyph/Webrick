@@ -23,6 +23,7 @@ final readonly class NegotiationMiddleware
      * @param list<string> $produces
      * @param list<string> $charsets
      * @param list<string> $locales
+     * @param string $localeFallback
      */
     public function __construct(
         array $produces = [],
@@ -35,7 +36,10 @@ final readonly class NegotiationMiddleware
             : ['+json', MediaTypeEnum::JSON->value, MediaTypeEnum::HTML->base()];
     }
 
-    /** @param Closure(Request):Response $next */
+    /**
+     * @param Closure(Request):Response $next
+     * @param Request $req
+     */
     public function __invoke(Request $req, Closure $next): Response
     {
         [$produces, $charsets] = $this->resolveRouteOverrides($req);
@@ -108,7 +112,10 @@ final readonly class NegotiationMiddleware
         return $response->withSmartHeader('Content-Type', rtrim($existing) . '; charset=' . $charset);
     }
 
-    /** @return array{0:Request,1:string} */
+    /**
+     * @return array{0:Request,1:string}
+     * @param Request $req
+     */
     private function negotiateLocale(Request $req): array
     {
         [$locale, $source] = $req->detectLocale(
@@ -130,6 +137,7 @@ final readonly class NegotiationMiddleware
      * @param list<string> $produces
      * @param list<string> $charsets
      * @return array{0:Request,1:string,2:?string}
+     * @param Request $req
      */
     private function negotiateTypeAndCharset(Request $req, array $produces, array $charsets): array
     {
@@ -170,7 +178,10 @@ final readonly class NegotiationMiddleware
         return [$req, $type, $charset];
     }
 
-    /** @param list<string> $candidates */
+    /**
+     * @param list<string> $candidates
+     * @param ContentNegotiator $negotiator
+     */
     private function pickCharset(ContentNegotiator $negotiator, array $candidates): ?string
     {
         foreach ($candidates as $charset) {
@@ -182,7 +193,10 @@ final readonly class NegotiationMiddleware
         return null;
     }
 
-    /** @return array{0:list<string>,1:list<string>} */
+    /**
+     * @return array{0:list<string>,1:list<string>}
+     * @param Request $req
+     */
     private function resolveRouteOverrides(Request $req): array
     {
         $produces = $this->produces;

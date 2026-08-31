@@ -6,7 +6,11 @@ namespace Infocyph\Webrick\Runtime\Http;
 
 final readonly class SwooleNativeRequest
 {
-    /** @return array<string,mixed> */
+    /**
+     * @return array<string,mixed>
+     * @param object $source
+     * @param string $property
+     */
     public static function arrayProperty(object $source, string $property): array
     {
         $value = $source->{$property} ?? null;
@@ -14,7 +18,10 @@ final readonly class SwooleNativeRequest
         return is_array($value) ? self::stringMap($value) : [];
     }
 
-    /** @return array<string,string|list<string>> */
+    /**
+     * @return array<string,string|list<string>>
+     * @param object $request
+     */
     public static function headers(object $request): array
     {
         $headers = self::arrayProperty($request, 'header');
@@ -51,7 +58,10 @@ final readonly class SwooleNativeRequest
         return is_string($body) ? $body : '';
     }
 
-    /** @return array<string,mixed> */
+    /**
+     * @return array<string,mixed>
+     * @param object $request
+     */
     public static function server(object $request): array
     {
         $native = self::arrayProperty($request, 'server');
@@ -85,7 +95,12 @@ final readonly class SwooleNativeRequest
         return $server;
     }
 
-    /** @param array<string,mixed> $server @param array<string,mixed> $headers */
+    /**
+     * @param array<string,mixed> $server @param array<string,mixed> $headers
+     * @param array $server
+     * @param string $source
+     * @param string $target
+     */
     private static function copyHeader(array &$server, array $headers, string $source, string $target): void
     {
         $value = $headers[$source] ?? null;
@@ -107,7 +122,11 @@ final readonly class SwooleNativeRequest
         return $out;
     }
 
-    /** @param array<string,mixed> $source */
+    /**
+     * @param array<string,mixed> $source
+     * @param string $key
+     * @param string $default
+     */
     private static function stringValue(array $source, string $key, string $default = ''): string
     {
         $value = $source[$key] ?? null;

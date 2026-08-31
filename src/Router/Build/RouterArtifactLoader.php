@@ -30,6 +30,10 @@ final class RouterArtifactLoader
     /**
      * Use only when the artifact directory is immutable and the trusted digest
      * comes from deployment control-plane metadata.
+     * @param string $path
+     * @param string $trustedSha256
+     * @param string $expectedEnvironment
+     * @param string $expectedConfigFingerprint
      */
     public function loadPrevalidated(
         string $path,
@@ -59,6 +63,9 @@ final class RouterArtifactLoader
 
     /**
      * @param array{format:int,environment:string,config_fingerprint:string,artifact_fingerprint:string,sha256:string} $meta
+     * @param string $path
+     * @param string $expectedEnvironment
+     * @param string $expectedConfigFingerprint
      */
     private function loadPayload(
         string $path,
@@ -92,7 +99,10 @@ final class RouterArtifactLoader
         return $artifact;
     }
 
-    /** @return array{format:int,environment:string,config_fingerprint:string,artifact_fingerprint:string,sha256:string} */
+    /**
+     * @return array{format:int,environment:string,config_fingerprint:string,artifact_fingerprint:string,sha256:string}
+     * @param string $path
+     */
     private function readMeta(string $path): array
     {
         $metaPath = $path . '.meta.json';

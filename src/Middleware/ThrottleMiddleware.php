@@ -25,6 +25,15 @@ final readonly class ThrottleMiddleware
     /**
      * @param Closure(Request):string|null $identifierResolver
      * @param Closure(Request):bool|null $bypass
+     * @param int $max
+     * @param int $window
+     * @param ?CacheItemPoolInterface $pool
+     * @param bool $retryAsDate
+     * @param bool $emitStandardRateLimit
+     * @param string $scope
+     * @param string $costAttribute
+     * @param ?AtomicCounterInterface $counterStore
+     * @param bool $allowApproximateFallback
      */
     public function __construct(
         private int $max = 1,
@@ -54,7 +63,10 @@ final readonly class ThrottleMiddleware
         $this->pool = $counterStore === null ? ($pool ?? $this->buildDefaultPool()) : null;
     }
 
-    /** @param Closure(Request):Response $next */
+    /**
+     * @param Closure(Request):Response $next
+     * @param Request $req
+     */
     public function __invoke(Request $req, Closure $next): Response
     {
         if ($this->bypass !== null && ($this->bypass)($req) === true) {
@@ -112,7 +124,11 @@ final readonly class ThrottleMiddleware
         return $this->pool ?? throw new \LogicException('Approximate throttle cache pool is unavailable.');
     }
 
-    /** @return array{0:string,1:int} */
+    /**
+     * @return array{0:string,1:int}
+     * @param Request $req
+     * @param int $now
+     */
     private function deriveKeyAndReset(Request $req, int $now): array
     {
         $identifier = $this->identifierResolver !== null
@@ -139,7 +155,12 @@ final readonly class ThrottleMiddleware
         return $default;
     }
 
-    /** @return array{hits:int,reset:int} @throws InvalidArgumentException */
+    /**
+     * @return array{hits:int,reset:int} @throws InvalidArgumentException
+     * @param string $key
+     * @param int $reset
+     * @param int $now
+     */
     private function loadApproximate(string $key, int $reset, int $now): array
     {
         $item = $this->cachePool()->getItem($key);
@@ -159,7 +180,10 @@ final readonly class ThrottleMiddleware
         ];
     }
 
-    /** @param array{hits:int,reset:int} $payload @throws InvalidArgumentException */
+    /**
+     * @param array{hits:int,reset:int} $payload @throws InvalidArgumentException
+     * @param string $key
+     */
     private function persistApproximate(string $key, array $payload): void
     {
         $pool = $this->cachePool();
@@ -176,7 +200,13 @@ final readonly class ThrottleMiddleware
         return $this->intFromMixed($request->getServerParams()['REQUEST_TIME'] ?? null, time());
     }
 
-    /** @throws InvalidArgumentException */
+    /**
+     * @throws InvalidArgumentException
+     * @param string $key
+     * @param int $resetAt
+     * @param int $now
+     * @param int $cost
+     */
     private function reserveCapacity(string $key, int $resetAt, int $now, int $cost): int
     {
         if ($this->counterStore !== null) {

@@ -28,7 +28,10 @@ final readonly class CachePolicy
         StatusEnum::NOT_IMPLEMENTED->value => true,
     ];
 
-    /** @return array<string,true|string> */
+    /**
+     * @return array<string,true|string>
+     * @param string $line
+     */
     public static function directives(string $line): array
     {
         if ($line === '') {

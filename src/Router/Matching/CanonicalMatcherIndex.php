@@ -113,7 +113,10 @@ final class CanonicalMatcherIndex
         $this->hosts = $hosts;
     }
 
-    /** @return array<int,array<string,array<string,array{segments:list<array<string,mixed>>,verbs:array<string,CompiledRoute|array<mixed>|string>}>>> */
+    /**
+     * @return array<int,array<string,array<string,array{segments:list<array<string,mixed>>,verbs:array<string,CompiledRoute|array<mixed>|string>}>>>
+     * @param mixed $raw
+     */
     private function normalizeDynamic(mixed $raw): array
     {
         if (!is_array($raw)) {
@@ -149,7 +152,11 @@ final class CanonicalMatcherIndex
         return $dynamic;
     }
 
-    /** @return list<array<string,mixed>> */
+    /**
+     * @return list<array<string,mixed>>
+     * @param mixed $raw
+     * @param int $expectedCount
+     */
     private function normalizeSegments(mixed $raw, int $expectedCount): array
     {
         if (!is_array($raw) || !array_is_list($raw) || count($raw) !== $expectedCount) {
@@ -188,7 +195,10 @@ final class CanonicalMatcherIndex
         return $segments;
     }
 
-    /** @return array<string,array<string,CompiledRoute|array<mixed>|string>> */
+    /**
+     * @return array<string,array<string,CompiledRoute|array<mixed>|string>>
+     * @param mixed $raw
+     */
     private function normalizeStatic(mixed $raw): array
     {
         if (!is_array($raw)) {

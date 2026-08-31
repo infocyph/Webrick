@@ -20,6 +20,9 @@ final readonly class ErrorHandler
     /**
      * @param array<class-string,int> $exceptionMap
      * @param null|callable(Request,Throwable,int,array<string,string>):mixed $responseRenderer
+     * @param LoggerInterface|Closure|null $logger
+     * @param bool $debug
+     * @param string $requestIdHeader
      */
     public function __construct(
         private LoggerInterface|\Closure|null $logger = null,
@@ -29,7 +32,10 @@ final readonly class ErrorHandler
         private mixed $responseRenderer = null,
     ) {}
 
-    /** @param callable(Request):Response $core */
+    /**
+     * @param callable(Request):Response $core
+     * @param Request $request
+     */
     public function handle(Request $request, callable $core): Response
     {
         try {
@@ -43,7 +49,11 @@ final readonly class ErrorHandler
         }
     }
 
-    /** @return array<string,string> */
+    /**
+     * @return array<string,string>
+     * @param Request $request
+     * @param Throwable $error
+     */
     private function buildRenderHeaders(Request $request, Throwable $error): array
     {
         $headers = [
@@ -59,7 +69,10 @@ final readonly class ErrorHandler
         return array_replace($headers, $this->exceptionHeaders($error));
     }
 
-    /** @return array{exception:class-string<Throwable>,file:string} */
+    /**
+     * @return array{exception:class-string<Throwable>,file:string}
+     * @param Throwable $error
+     */
     private function debugMeta(Throwable $error): array
     {
         return [
@@ -68,7 +81,10 @@ final readonly class ErrorHandler
         ];
     }
 
-    /** @return array<string,string> */
+    /**
+     * @return array<string,string>
+     * @param Throwable $error
+     */
     private function exceptionHeaders(Throwable $error): array
     {
         return $error instanceof HttpExceptionInterface ? $error->getHeaders() : [];
@@ -195,7 +211,16 @@ final readonly class ErrorHandler
         );
     }
 
-    /** @param array<string,string> $headers */
+    /**
+     * @param array<string,string> $headers
+     * @param string $wanted
+     * @param Request $request
+     * @param Throwable $error
+     * @param int $status
+     * @param string $reason
+     * @param string $message
+     * @param string $requestId
+     */
     private function renderByType(
         string $wanted,
         Request $request,
@@ -236,7 +261,14 @@ final readonly class ErrorHandler
         return $this->renderPlain($error, $status, $reason, $message, $requestId, $headers);
     }
 
-    /** @param array<string,string> $headers */
+    /**
+     * @param array<string,string> $headers
+     * @param Throwable $error
+     * @param int $status
+     * @param string $reason
+     * @param string $message
+     * @param string $requestId
+     */
     private function renderJson(
         Throwable $error,
         int $status,
@@ -256,7 +288,14 @@ final readonly class ErrorHandler
         return Response::json($payload, $status, $headers);
     }
 
-    /** @param array<string,string> $headers */
+    /**
+     * @param array<string,string> $headers
+     * @param Throwable $error
+     * @param int $status
+     * @param string $reason
+     * @param string $message
+     * @param string $requestId
+     */
     private function renderPlain(
         Throwable $error,
         int $status,
@@ -278,7 +317,15 @@ final readonly class ErrorHandler
         return Response::plaintext(implode("\n", $lines), $status, $headers);
     }
 
-    /** @param array<string,string> $headers */
+    /**
+     * @param array<string,string> $headers
+     * @param Request $request
+     * @param Throwable $error
+     * @param int $status
+     * @param string $reason
+     * @param string $message
+     * @param string $requestId
+     */
     private function renderProblemJson(
         Request $request,
         Throwable $error,
@@ -311,7 +358,12 @@ final readonly class ErrorHandler
         return Response::create($json === false ? '{}' : $json, $status, $headers);
     }
 
-    /** @param array<string,string> $headers */
+    /**
+     * @param array<string,string> $headers
+     * @param Request $request
+     * @param Throwable $error
+     * @param int $status
+     */
     private function renderWithOverride(
         Request $request,
         Throwable $error,

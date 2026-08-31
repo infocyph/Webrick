@@ -201,7 +201,10 @@ final class Stream implements BodyStream
         return $bytes;
     }
 
-    /** @return resource */
+    /**
+     * @return resource
+     * @param SplFileObject $file
+     */
     private static function openFileObject(SplFileObject $file)
     {
         if (!$file->isReadable()) {
@@ -215,7 +218,10 @@ final class Stream implements BodyStream
         return $handle;
     }
 
-    /** @return resource */
+    /**
+     * @return resource
+     * @param string $payload
+     */
     private static function openMemory(string $payload)
     {
         $handle = fopen('php://temp', 'r+');

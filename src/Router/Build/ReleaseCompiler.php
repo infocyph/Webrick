@@ -25,6 +25,13 @@ final readonly class ReleaseCompiler
      * @param array<int,string> $preGlobalTags
      * @param array<int,string> $postGlobalTags
      * @return array<string,mixed>
+     * @param ContainerBuilder $builder
+     * @param Closure $register
+     * @param string $environment
+     * @param string $configFingerprint
+     * @param string $intermixPath
+     * @param string $routerPath
+     * @param string $releaseManifestPath
      */
     public function compile(
         ContainerBuilder $builder,

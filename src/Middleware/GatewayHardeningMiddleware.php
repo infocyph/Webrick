@@ -52,6 +52,10 @@ final class GatewayHardeningMiddleware
      * @param list<string> $trustedHosts
      * @param list<string> $redirectAllowedHosts
      * @param list<string> $trustedClientIpHeaders Explicit vendor client-IP header names.
+     * @param ?int $forwardedHeaderMask
+     * @param bool $enforceHttps
+     * @param int $httpsPort
+     * @param bool $stripHopByHop
      */
     public function __construct(
         private readonly array $trustedProxyCidrs = [],
@@ -69,7 +73,10 @@ final class GatewayHardeningMiddleware
         $this->hostRegex = self::compileHostRegex($this->trustedHosts);
     }
 
-    /** @param Closure(Request):Response $next */
+    /**
+     * @param Closure(Request):Response $next
+     * @param Request $req
+     */
     public function __invoke(Request $req, Closure $next): Response
     {
         $req = $this->normalizeProxyContext($req);
@@ -148,7 +155,10 @@ final class GatewayHardeningMiddleware
         ]);
     }
 
-    /** @param array<string> $cidrs */
+    /**
+     * @param array<string> $cidrs
+     * @param ?string $ip
+     */
     private function cidrHit(?string $ip, array $cidrs): bool
     {
         return $ip !== null
@@ -209,7 +219,10 @@ final class GatewayHardeningMiddleware
         return $req->withUri(Uri::fromServerParams($req->getServerParams(), $this->forwardedHeaderMask));
     }
 
-    /** @return list<string> */
+    /**
+     * @return list<string>
+     * @param string $line
+     */
     private function parseConnectionTokens(string $line): array
     {
         if ($line === '') {

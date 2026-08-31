@@ -62,7 +62,10 @@ final class HandlerCompiler
         return $compiled;
     }
 
-    /** @param list<string> $routeArguments */
+    /**
+     * @param list<string> $routeArguments
+     * @param ReflectionFunctionAbstract $reflection
+     */
     private function allRequiredParametersAreRouteArguments(ReflectionFunctionAbstract $reflection, array $routeArguments): bool
     {
         $set = array_fill_keys($routeArguments, true);
@@ -70,7 +73,14 @@ final class HandlerCompiler
         return array_all($reflection->getParameters(), fn($parameter) => !(!$parameter->isOptional() && !isset($set[$parameter->getName()])));
     }
 
-    /** @param list<string> $routeArguments */
+    /**
+     * @param list<string> $routeArguments
+     * @param CompiledRoute $route
+     * @param ReflectionFunctionAbstract $reflection
+     * @param ExecutionKind $kind
+     * @param ExecutionKind $terminalKind
+     * @param bool $middlewareRequiresScope
+     */
     private function capabilities(
         CompiledRoute $route,
         ReflectionFunctionAbstract $reflection,
@@ -215,7 +225,10 @@ final class HandlerCompiler
         );
     }
 
-    /** @param list<string> $routeVariables @return list<string> */
+    /**
+     * @param list<string> $routeVariables @return list<string>
+     * @param ReflectionFunctionAbstract $reflection
+     */
     private function routeArgumentNames(ReflectionFunctionAbstract $reflection, array $routeVariables): array
     {
         if ($routeVariables === []) {
@@ -234,7 +247,11 @@ final class HandlerCompiler
         return $arguments;
     }
 
-    /** @param list<string> $routeArguments */
+    /**
+     * @param list<string> $routeArguments
+     * @param mixed $handler
+     * @param ReflectionFunctionAbstract $reflection
+     */
     private function terminalKind(
         mixed $handler,
         ReflectionFunctionAbstract $reflection,

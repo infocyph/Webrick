@@ -473,6 +473,9 @@ function progressPercent(int $completed, int $total, bool $forceNewline = false)
  *   routes:list<CompiledRoute>,
  *   assertHit:callable(array{0:CompiledRoute,1:array<string,string>}):bool
  * }
+ * @param array $routeSet
+ * @param array $template
+ * @param int $routeCount
  */
 function makeScenario(array $routeSet, array $template, array $routes, int $routeCount): array
 {
@@ -518,6 +521,16 @@ function makeScenario(array $routeSet, array $template, array $routes, int $rout
  *   best_ns_op:float,
  *   avg_ns_op:float
  * }
+ * @param array $spec
+ * @param array $scenario
+ * @param bool $useCache
+ * @param ?string $cacheRoot
+ * @param ?string $cacheNamespace
+ * @param int $iterations
+ * @param int $rounds
+ * @param int $warmup
+ * @param int $completedMatcherTasks
+ * @param int $totalMatcherTasks
  */
 function runScenarioMatcher(
     array $spec,
@@ -573,6 +586,16 @@ function runScenarioMatcher(
  *   best_ns_op:float,
  *   avg_ns_op:float
  * }
+ * @param string $name
+ * @param callable $factory
+ * @param int $iterations
+ * @param int $rounds
+ * @param int $warmup
+ * @param string $method
+ * @param string $host
+ * @param string $path
+ * @param callable $assertHit
+ * @param ?callable $progress
  */
 function benchMatcher(
     string $name,
@@ -650,6 +673,11 @@ function benchMatcher(
  *   best_ns_op:float,
  *   avg_ns_op:float
  * }
+ * @param string $name
+ * @param callable $callable
+ * @param int $iterations
+ * @param int $rounds
+ * @param int $warmup
  */
 function benchCallable(
     string $name,
@@ -693,6 +721,7 @@ function benchCallable(
  *   best_ns_op:float,
  *   avg_ns_op:float
  * }|null $row
+ * @param ?array $row
  */
 function formatMetricCell(?array $row): string
 {
@@ -708,6 +737,7 @@ function formatMetricCell(?array $row): string
  *
  * @param string $matcher One of MatcherModeEnum::values().
  * @param callable(Registrar):void $register
+ * @param string $cachePath
  */
 function buildBenchmarkCache(string $matcher, string $cachePath, callable $register): void
 {
@@ -758,6 +788,10 @@ function clearBenchmarkCache(string $matcher, string $cachePath): void
  *   factory:callable():MatcherInterface,
  *   name:string
  * } $spec
+ * @param array $scenario
+ * @param bool $useCache
+ * @param string $cachePath
+ * @param array $spec
  */
 function buildScenarioMatcher(array $scenario, bool $useCache, string $cachePath, array $spec): MatcherInterface
 {
@@ -781,6 +815,7 @@ function buildScenarioMatcher(array $scenario, bool $useCache, string $cachePath
 
 /**
  * Registration callback for project `routes.php` + attribute fixture routes.
+ * @param Registrar $registrar
  */
 function registerIndexRoutes(Registrar $registrar): void
 {
@@ -825,6 +860,7 @@ function registerIndexRoutes(Registrar $registrar): void
 
 /**
  * Registration callback that mirrors route-cache closure demo routes.
+ * @param Registrar $registrar
  */
 function registerRouteCacheExampleRoutes(Registrar $registrar): void
 {

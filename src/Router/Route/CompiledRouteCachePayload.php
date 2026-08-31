@@ -53,13 +53,17 @@ final class CompiledRouteCachePayload
     /**
      * @param callable-string $call
      * @return array{type:'var',name:string,call:callable-string}
+     * @param string $name
      */
     private static function callSegment(string $name, string $call): array
     {
         return ['type' => 'var', 'name' => $name, 'call' => $call];
     }
 
-    /** @return CorsPayload|null */
+    /**
+     * @return CorsPayload|null
+     * @param mixed $value
+     */
     private static function cors(mixed $value): ?array
     {
         if ($value === null) {
@@ -80,7 +84,10 @@ final class CompiledRouteCachePayload
         ];
     }
 
-    /** @return array{0:string,1:string}|string */
+    /**
+     * @return array{0:string,1:string}|string
+     * @param mixed $value
+     */
     private static function handler(mixed $value): array|string
     {
         if (is_string($value)) {
@@ -102,7 +109,10 @@ final class CompiledRouteCachePayload
         return $value;
     }
 
-    /** @return array{type:'lit',val:string} */
+    /**
+     * @return array{type:'lit',val:string}
+     * @param string $value
+     */
     private static function literalSegment(string $value): array
     {
         return ['type' => 'lit', 'val' => $value];
@@ -123,7 +133,10 @@ final class CompiledRouteCachePayload
         return $value === null ? null : self::string($value);
     }
 
-    /** @return string|list<string>|null */
+    /**
+     * @return string|list<string>|null
+     * @param mixed $value
+     */
     private static function nullableStringList(mixed $value): array|string|null
     {
         if ($value === null || is_string($value)) {
@@ -133,7 +146,10 @@ final class CompiledRouteCachePayload
         return self::stringList($value);
     }
 
-    /** @return ProducesPayload|null */
+    /**
+     * @return ProducesPayload|null
+     * @param mixed $value
+     */
     private static function produces(mixed $value): ?array
     {
         if ($value === null) {
@@ -156,13 +172,20 @@ final class CompiledRouteCachePayload
         ];
     }
 
-    /** @return array{type:'var',name:string,regex:string} */
+    /**
+     * @return array{type:'var',name:string,regex:string}
+     * @param string $name
+     * @param string $regex
+     */
     private static function regexSegment(string $name, string $regex): array
     {
         return ['type' => 'var', 'name' => $name, 'regex' => $regex];
     }
 
-    /** @return list<SegmentSpec> */
+    /**
+     * @return list<SegmentSpec>
+     * @param mixed $value
+     */
     private static function segments(mixed $value): array
     {
         if (!is_array($value) || !array_is_list($value)) {
@@ -214,7 +237,10 @@ final class CompiledRouteCachePayload
         return $value;
     }
 
-    /** @return list<string> */
+    /**
+     * @return list<string>
+     * @param mixed $value
+     */
     private static function stringList(mixed $value): array
     {
         if (!is_array($value) || !array_is_list($value)) {

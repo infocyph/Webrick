@@ -24,7 +24,10 @@ final class MatcherRouteMetadata
         return CompiledRoute::fromCachePayload($payload);
     }
 
-    /** @return array<mixed> */
+    /**
+     * @return array<mixed>
+     * @param CompiledRoute $route
+     */
     public static function encode(CompiledRoute $route): array
     {
         $cors = $route->getCorsPolicy();

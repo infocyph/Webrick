@@ -30,7 +30,10 @@ final readonly class InputSanitizerMiddleware
         $this->sanitizer = $sanitizer ?? new InputSanitizer();
     }
 
-    /** @param Closure(Request):Response $next */
+    /**
+     * @param Closure(Request):Response $next
+     * @param Request $req
+     */
     public function __invoke(Request $req, Closure $next): Response
     {
         if ($this->touchQuery) {

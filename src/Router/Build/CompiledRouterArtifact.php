@@ -25,6 +25,10 @@ final readonly class CompiledRouterArtifact
      * @param list<mixed> $postGlobal
      * @param list<string> $preGlobalTags
      * @param list<string> $postGlobalTags
+     * @param bool $hasDomainRoutes
+     * @param string $environment
+     * @param string $configFingerprint
+     * @param string $artifactFingerprint
      */
     public function __construct(
         public array $routes,
@@ -168,7 +172,10 @@ final readonly class CompiledRouterArtifact
         return $aliases;
     }
 
-    /** @param array<string,mixed> $payload @return array<mixed> */
+    /**
+     * @param array<string,mixed> $payload @return array<mixed>
+     * @param string $key
+     */
     private static function arrayField(array $payload, string $key): array
     {
         $value = $payload[$key] ?? null;

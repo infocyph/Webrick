@@ -17,6 +17,7 @@ final class ShardedCacheGeneration
 
     /**
      * @return array{0:string,1:string}
+     * @param string $cacheDir
      */
     public static function create(string $cacheDir): array
     {
@@ -29,7 +30,11 @@ final class ShardedCacheGeneration
         return [$generation, $cacheDir . \DIRECTORY_SEPARATOR . $generation];
     }
 
-    /** @return list<string> */
+    /**
+     * @return list<string>
+     * @param string $cacheDir
+     * @param int $version
+     */
     public static function middlewareRequirements(string $cacheDir, int $version): array
     {
         $active = self::resolve($cacheDir, $version);
@@ -48,7 +53,12 @@ final class ShardedCacheGeneration
         return matcher_normalize_middleware_requirements($blob['_middleware'] ?? []);
     }
 
-    /** @param list<string> $middleware */
+    /**
+     * @param list<string> $middleware
+     * @param string $cacheDir
+     * @param int $version
+     * @param string $generation
+     */
     public static function publish(string $cacheDir, int $version, string $generation, array $middleware): void
     {
         self::writeMetadata($cacheDir, $version, $generation, $middleware);
@@ -160,7 +170,12 @@ final class ShardedCacheGeneration
         return self::activeDirectory($cacheDir, $generation);
     }
 
-    /** @param list<string> $middleware */
+    /**
+     * @param list<string> $middleware
+     * @param string $cacheDir
+     * @param int $version
+     * @param string $generation
+     */
     private static function writeMetadata(string $cacheDir, int $version, string $generation, array $middleware): void
     {
         $file = $cacheDir . \DIRECTORY_SEPARATOR . $generation . \DIRECTORY_SEPARATOR . self::METADATA;

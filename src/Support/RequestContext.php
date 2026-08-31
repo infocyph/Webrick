@@ -77,7 +77,10 @@ final readonly class RequestContext
         return $this->attributeString('trace.parent_span_id');
     }
 
-    /** @return array<string,string> */
+    /**
+     * @return array<string,string>
+     * @param bool $includeRequestId
+     */
     public function propagationHeaders(bool $includeRequestId = true): array
     {
         $headers = [];

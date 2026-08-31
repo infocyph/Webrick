@@ -48,6 +48,8 @@ function registrar_merge_middleware_with_alias_overrides(array $group, array $ro
  * @param string|array<string,mixed>|Closure|null $domain
  * @param list<mixed>|Closure $middleware
  * @return array{0:?string,1:?string,2:list<string|object>,3:?string,4:Closure}
+ * @param string|Closure|null $namePrefix
+ * @param ?Closure $callback
  */
 function registrar_normalize_group_inputs(
     array|string|null $prefix,
@@ -205,6 +207,7 @@ function registrar_normalize_resolved_middleware(mixed $resolved): string|object
  *   produces?:\Infocyph\Webrick\Router\Definition\Attribute\Produces,
  *   cors?:\Infocyph\Webrick\Router\Definition\Attribute\Cors
  * }
+ * @param mixed $attrs
  */
 function registrar_normalize_route_attributes(mixed $attrs): array
 {
@@ -237,6 +240,7 @@ function registrar_normalize_string_list(array $items): array
 
 /**
  * @return array<string,string>
+ * @param mixed $value
  */
 function registrar_normalize_string_map(mixed $value): array
 {
@@ -249,6 +253,7 @@ function registrar_normalize_string_map(mixed $value): array
 
 /**
  * @return array{__alias:true,key:non-empty-string,params:list<string>}|null
+ * @param string $s
  */
 function registrar_parse_alias_spec(string $s): ?array
 {
@@ -308,6 +313,8 @@ function registrar_resolve_alias_item(array $item): string
  * @param string|array<mixed>|Closure|null $domain
  * @param array<mixed>|Closure $middleware
  * @return array{0:?string,1:array<mixed>,2:?string,3:?Closure}
+ * @param string|Closure|null $namePrefix
+ * @param ?Closure $callback
  */
 function registrar_resolve_implicit_group_callback(
     string|array|Closure|null $domain,
@@ -335,6 +342,7 @@ function registrar_resolve_implicit_group_callback(
 
 /**
  * @return array<mixed>
+ * @param mixed $value
  */
 function registrar_to_array(mixed $value): array
 {

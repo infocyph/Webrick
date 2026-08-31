@@ -11,7 +11,11 @@ use RuntimeException;
 /** Emits the Webrick half of a coordinated production release bundle. */
 final class RouterArtifactCompiler
 {
-    /** @return array{path:string,meta:string,sha256:string,fingerprint:string,routes:int} */
+    /**
+     * @return array{path:string,meta:string,sha256:string,fingerprint:string,routes:int}
+     * @param RouterBuildResult $build
+     * @param string $path
+     */
     public function compile(RouterBuildResult $build, string $path): array
     {
         $fingerprint = $this->fingerprint($build);

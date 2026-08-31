@@ -180,7 +180,10 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
             . '}';
     }
 
-    /** @param list<string> $middleware */
+    /**
+     * @param list<string> $middleware
+     * @param string $code
+     */
     private function cacheHash(string $code, array $middleware): string
     {
         return hash('xxh128', serialize([$code, $middleware]));
@@ -309,7 +312,10 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         $this->cacheLoaded = true;
     }
 
-    /** @param list<array<string,mixed>> $segments */
+    /**
+     * @param list<array<string,mixed>> $segments
+     * @param string $indent
+     */
     private function renderCondition(array $segments, string $indent): string
     {
         $checks = [];
@@ -333,7 +339,10 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         return $checks === [] ? 'true' : implode(" &&\n" . $indent, $checks);
     }
 
-    /** @param array<string,array{segments:list<array<string,mixed>>,verbs:array<string,int>}> $entries */
+    /**
+     * @param array<string,array{segments:list<array<string,mixed>>,verbs:array<string,int>}> $entries
+     * @param string $indent
+     */
     private function renderDynamicEntries(array $entries, string $indent): string
     {
         $code = '';
@@ -348,7 +357,10 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         return $code;
     }
 
-    /** @param array<int,array<string,array<string,array{segments:list<array<string,mixed>>,verbs:array<string,int>}>>> $dynamic */
+    /**
+     * @param array<int,array<string,array<string,array{segments:list<array<string,mixed>>,verbs:array<string,int>}>>> $dynamic
+     * @param string $indent
+     */
     private function renderDynamicIndex(array $dynamic, string $indent): string
     {
         if ($dynamic === []) {
@@ -390,7 +402,10 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         return '[' . implode(', ', $pairs) . ']';
     }
 
-    /** @param array<string,array<string,int>> $static */
+    /**
+     * @param array<string,array<string,int>> $static
+     * @param string $indent
+     */
     private function renderStaticIndex(array $static, string $indent): string
     {
         if ($static === []) {
@@ -407,7 +422,11 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         return $code . $indent . "}\n";
     }
 
-    /** @param array<string,int> $verbs */
+    /**
+     * @param array<string,int> $verbs
+     * @param string $indent
+     * @param bool $hasParams
+     */
     private function renderVerbDispatch(array $verbs, string $indent, bool $hasParams): string
     {
         $materialize = '\\' . __NAMESPACE__ . '\\matcher_materialize_cached_route';
@@ -442,7 +461,10 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         return $code . $indent . "}\n";
     }
 
-    /** @param array<int,mixed> $payloads */
+    /**
+     * @param array<int,mixed> $payloads
+     * @param mixed $route
+     */
     private function routeIndex(mixed $route, array &$payloads): int
     {
         $index = $route instanceof CompiledRoute ? $route->getIndex() : ExecutableRoutePayload::routeIndex($route);

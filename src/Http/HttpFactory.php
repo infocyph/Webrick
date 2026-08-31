@@ -17,7 +17,11 @@ use RuntimeException;
 /** Native Webrick HTTP-value factory; deliberately not advertised as PSR-17. */
 final class HttpFactory
 {
-    /** @param array<string,mixed> $serverParams */
+    /**
+     * @param array<string,mixed> $serverParams
+     * @param string $method
+     * @param Uri|string $uri
+     */
     public function createRequest(string $method, Uri|string $uri, array $serverParams = []): Request
     {
         return new Request(

@@ -37,6 +37,10 @@ class Response
 
     /**
      * @param array<string,string|list<string>> $headers
+     * @param int $statusCode
+     * @param BodyStream|string|null $body
+     * @param string $protocolVersion
+     * @param ?string $reasonPhrase
      */
     public function __construct(
         private int $statusCode = StatusEnum::OK->value,
@@ -49,7 +53,12 @@ class Response
         $this->body = $body ?? '';
     }
 
-    /** @param array<string,string|list<string>> $headers */
+    /**
+     * @param array<string,string|list<string>> $headers
+     * @param string|Stream $file
+     * @param string $name
+     * @param ?string $mime
+     */
     public static function attachment(
         string|Stream $file,
         string $name,
@@ -73,6 +82,10 @@ class Response
     /**
      * @param array<array-key,mixed>|JsonSerializable|string|int|float|bool|null $data
      * @param array<string,string|list<string>> $headers
+     * @param Request $r
+     * @param int $status
+     * @param int $flags
+     * @param int $depth
      */
     public static function auto(
         Request $r,
@@ -111,13 +124,22 @@ class Response
         return new self($status, $json, $headers);
     }
 
-    /** @param array<string,string|list<string>> $headers */
+    /**
+     * @param array<string,string|list<string>> $headers
+     * @param string $content
+     * @param int $status
+     */
     public static function create(string $content = '', int $status = StatusEnum::OK->value, array $headers = []): self
     {
         return new self($status, $content, $headers);
     }
 
-    /** @param array<string,string|list<string>> $headers */
+    /**
+     * @param array<string,string|list<string>> $headers
+     * @param string|Stream $file
+     * @param ?string $name
+     * @param ?string $mime
+     */
     public static function download(
         string|Stream $file,
         ?string $name = null,
@@ -129,7 +151,10 @@ class Response
         return self::attachment($file, $name, $mime, $headers);
     }
 
-    /** @param array<string,string|list<string>> $headers */
+    /**
+     * @param array<string,string|list<string>> $headers
+     * @param int $code
+     */
     public static function empty(int $code, array $headers = []): self
     {
         $headers += ['Content-Length' => '0'];
@@ -137,7 +162,12 @@ class Response
         return new self($code, '', $headers);
     }
 
-    /** @param array<string,string|list<string>> $headers */
+    /**
+     * @param array<string,string|list<string>> $headers
+     * @param string|Stream $file
+     * @param ?string $name
+     * @param ?string $mime
+     */
     public static function inline(
         string|Stream $file,
         ?string $name = null,
@@ -162,6 +192,9 @@ class Response
     /**
      * @param array<array-key,mixed>|JsonSerializable|string|int|float|bool|null $data
      * @param array<string,string|list<string>> $headers
+     * @param int $status
+     * @param int $flags
+     * @param int $depth
      */
     public static function json(
         JsonSerializable|array|string|int|float|bool|null $data,
@@ -186,7 +219,11 @@ class Response
         return self::empty(StatusEnum::NO_CONTENT->value, $headers);
     }
 
-    /** @param array<string,string|list<string>> $headers */
+    /**
+     * @param array<string,string|list<string>> $headers
+     * @param string $msg
+     * @param int $code
+     */
     public static function plaintext(string $msg, int $code = StatusEnum::BAD_REQUEST->value, array $headers = []): self
     {
         $headers = ['Content-Type' => $headers['Content-Type'] ?? MediaTypeEnum::PLAIN->value] + $headers;
@@ -194,7 +231,13 @@ class Response
         return new self($code, $msg, $headers);
     }
 
-    /** @param array<string,string> $headers */
+    /**
+     * @param array<string,string> $headers
+     * @param Request $req
+     * @param string $absolutePath
+     * @param ?string $name
+     * @param ?string $mime
+     */
     public static function rangedDownload(
         Request $req,
         string $absolutePath,
@@ -208,7 +251,12 @@ class Response
         return self::rangedFile($req, $absolutePath, $mime, $headers);
     }
 
-    /** @param array<string,string> $headers */
+    /**
+     * @param array<string,string> $headers
+     * @param Request $req
+     * @param string $absolutePath
+     * @param ?string $mime
+     */
     public static function rangedFile(
         Request $req,
         string $absolutePath,
@@ -238,6 +286,7 @@ class Response
     /**
      * @param callable(): (iterable<string>|string)|iterable<string> $producer
      * @param array<string,string|list<string>> $headers
+     * @param int $status
      */
     public static function stream(
         callable|iterable $producer,
@@ -256,7 +305,12 @@ class Response
         return $response;
     }
 
-    /** @param array<string,string|list<string>> $headers */
+    /**
+     * @param array<string,string|list<string>> $headers
+     * @param string|Stream $file
+     * @param ?string $name
+     * @param string $mime
+     */
     public static function streamDownload(
         string|Stream $file,
         ?string $name = null,
@@ -421,7 +475,11 @@ class Response
         );
     }
 
-    /** @return array<string,string> */
+    /**
+     * @return array<string,string>
+     * @param string $name
+     * @param string $mime
+     */
     private static function baseDownloadHeaders(string $name, string $mime): array
     {
         return [
@@ -440,7 +498,10 @@ class Response
         return $explicit ?? MediaTypeEnum::fromFilename($name)->value;
     }
 
-    /** @return array{0:?int,1:?int} */
+    /**
+     * @return array{0:?int,1:?int}
+     * @param string|Stream $file
+     */
     private static function metaFor(string|Stream $file): array
     {
         if (!is_string($file)) {
@@ -487,6 +548,8 @@ class Response
     /**
      * @param array<string,string> $target
      * @param array<string,string|list<string>> $caller
+     * @param string $name
+     * @param ?string $value
      */
     private static function putIfAbsent(array &$target, string $name, ?string $value, array $caller): void
     {

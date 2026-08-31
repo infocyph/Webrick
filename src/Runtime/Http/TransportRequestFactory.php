@@ -20,6 +20,7 @@ final readonly class TransportRequestFactory
      * @param array<string,mixed> $files
      * @param array<string,mixed> $query
      * @param array<string,mixed> $cookies
+     * @param string|BodyStream $body
      */
     public static function fromParts(
         array $server,
@@ -47,7 +48,11 @@ final readonly class TransportRequestFactory
         );
     }
 
-    /** @param array<string,mixed> $source */
+    /**
+     * @param array<string,mixed> $source
+     * @param string $key
+     * @param string $default
+     */
     private static function stringValue(array $source, string $key, string $default = ''): string
     {
         $value = $source[$key] ?? null;

@@ -22,7 +22,10 @@ final readonly class OpenTelemetryHandler
 
     public function __construct(private TelemetryOptions $options) {}
 
-    /** @param Closure(Request):Response $next */
+    /**
+     * @param Closure(Request):Response $next
+     * @param Request $req
+     */
     public function handle(Request $req, Closure $next): Response
     {
         $startNs = hrtime(true);
@@ -195,7 +198,11 @@ final readonly class OpenTelemetryHandler
             : ($req->getUri()->getPath() ?: '/'));
     }
 
-    /** @param list<mixed> $args */
+    /**
+     * @param list<mixed> $args
+     * @param object $target
+     * @param string $method
+     */
     private function call(object $target, string $method, array $args = []): mixed
     {
         if (!method_exists($target, $method)) {
@@ -205,7 +212,11 @@ final readonly class OpenTelemetryHandler
         return $target->{$method}(...$args);
     }
 
-    /** @param list<mixed> $args */
+    /**
+     * @param list<mixed> $args
+     * @param object $target
+     * @param string $method
+     */
     private function callObject(object $target, string $method, array $args = []): object
     {
         $result = $this->call($target, $method, $args);
@@ -216,7 +227,11 @@ final readonly class OpenTelemetryHandler
         return $result;
     }
 
-    /** @param list<mixed> $args */
+    /**
+     * @param list<mixed> $args
+     * @param string $class
+     * @param string $method
+     */
     private function callStatic(string $class, string $method, array $args = []): mixed
     {
         if (!method_exists($class, $method)) {
@@ -226,7 +241,11 @@ final readonly class OpenTelemetryHandler
         return $class::$method(...$args);
     }
 
-    /** @param list<mixed> $args */
+    /**
+     * @param list<mixed> $args
+     * @param string $class
+     * @param string $method
+     */
     private function callStaticObject(string $class, string $method, array $args = []): object
     {
         $result = $this->callStatic($class, $method, $args);
@@ -247,7 +266,10 @@ final readonly class OpenTelemetryHandler
         );
     }
 
-    /** @return array{0:string,1:string} */
+    /**
+     * @return array{0:string,1:string}
+     * @param object $span
+     */
     private function extractTraceContext(object $span): array
     {
         $context = $this->callObject($span, 'getContext');
@@ -258,7 +280,10 @@ final readonly class OpenTelemetryHandler
         ];
     }
 
-    /** @return array<string,string> */
+    /**
+     * @return array<string,string>
+     * @param Request $req
+     */
     private function headersToCarrier(Request $req): array
     {
         $carrier = [];
@@ -297,7 +322,11 @@ final readonly class OpenTelemetryHandler
         return $this->otelIntConstant(self::OTEL_STATUS_OK, 1, 'OpenTelemetry StatusCode::STATUS_OK');
     }
 
-    /** @param bool|int|float|string|array<int|string,mixed>|null $value */
+    /**
+     * @param bool|int|float|string|array<int|string,mixed>|null $value
+     * @param object $span
+     * @param string $key
+     */
     private function setSpanAttribute(object $span, string $key, bool|int|float|string|array|null $value): void
     {
         $this->call($span, 'setAttribute', [$key, $value]);

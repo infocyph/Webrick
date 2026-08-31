@@ -17,6 +17,7 @@ final readonly class CookieAttributeApplier
 
     /**
      * @param array<string,bool|string> $attrs
+     * @param Cookie $cookie
      */
     public function apply(Cookie $cookie, array $attrs): Cookie
     {
@@ -29,6 +30,7 @@ final readonly class CookieAttributeApplier
 
     /**
      * @param array<string,bool|string> $attrs
+     * @param Cookie $cookie
      */
     private function applyHttpOnlyAttr(Cookie $cookie, array $attrs): Cookie
     {
@@ -42,6 +44,7 @@ final readonly class CookieAttributeApplier
 
     /**
      * @param array<string,bool|string> $attrs
+     * @param Cookie $cookie
      */
     private function applyPathDomainAndExpiryAttrs(Cookie $cookie, array $attrs): Cookie
     {
@@ -66,6 +69,7 @@ final readonly class CookieAttributeApplier
 
     /**
      * @param array<string,bool|string> $attrs
+     * @param Cookie $cookie
      */
     private function applySameSiteAttr(Cookie $cookie, array $attrs): Cookie
     {
@@ -80,6 +84,7 @@ final readonly class CookieAttributeApplier
 
     /**
      * @param array<string,bool|string> $attrs
+     * @param Cookie $cookie
      */
     private function applySecureAttr(Cookie $cookie, array $attrs): Cookie
     {
@@ -93,6 +98,7 @@ final readonly class CookieAttributeApplier
 
     /**
      * @param array<string,bool|string> $attrs
+     * @param string $flag
      */
     private function hasFlag(array $attrs, string $flag): bool
     {

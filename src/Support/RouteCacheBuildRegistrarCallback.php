@@ -14,6 +14,11 @@ final readonly class RouteCacheBuildRegistrarCallback
     /**
      * @param array<string,string> $attributeDirs
      * @param list<class-string> $attributeClasses
+     * @param mixed $userRegister
+     * @param string $routesFile
+     * @param LoggerInterface $logger
+     * @param string $baseDir
+     * @param ?string $signKey
      */
     public function __construct(
         private mixed $userRegister,

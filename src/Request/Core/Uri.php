@@ -91,7 +91,17 @@ final class Uri implements \Stringable
         return new self($raw);
     }
 
-    /** Construct directly from already separated transport components. */
+    /**
+     * Construct directly from already separated transport components.
+     * @param string $scheme
+     * @param string $host
+     * @param ?int $port
+     * @param string $path
+     * @param string $query
+     * @param string $fragment
+     * @param string $user
+     * @param string $pass
+     */
     public static function fromComponents(
         string $scheme = '',
         string $host = '',
@@ -119,7 +129,10 @@ final class Uri implements \Stringable
         return $uri;
     }
 
-    /** @param array<string,mixed> $srv */
+    /**
+     * @param array<string,mixed> $srv
+     * @param ?int $trustedProxyFlags
+     */
     public static function fromServerParams(array $srv, ?int $trustedProxyFlags = null): self
     {
         $scheme = UriServerParams::detectScheme($srv, $trustedProxyFlags);

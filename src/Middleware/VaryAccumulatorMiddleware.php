@@ -13,7 +13,10 @@ use Infocyph\Webrick\Support\VaryContext;
 /** Merge request-local Vary requirements once after downstream execution. */
 final class VaryAccumulatorMiddleware
 {
-    /** @param Closure(Request):Response $next */
+    /**
+     * @param Closure(Request):Response $next
+     * @param Request $req
+     */
     public function __invoke(Request $req, Closure $next): Response
     {
         $req = self::ensureContext($req);
@@ -63,7 +66,11 @@ final class VaryAccumulatorMiddleware
         return $r;
     }
 
-    /** @return list<string> */
+    /**
+     * @return list<string>
+     * @param Request $r
+     * @param bool $normalized
+     */
     public static function peek(Request $r, bool $normalized = true): array
     {
         $tokens = self::context($r)?->all() ?? [];
@@ -103,7 +110,10 @@ final class VaryAccumulatorMiddleware
         return in_array('*', self::splitTokens($line), true);
     }
 
-    /** @param list<string> $base @param list<string> $extra @return list<string> */
+    /**
+     * @param list<string> $base @param list<string> $extra @return list<string>
+     * @param array $base
+     */
     private static function merge(array $base, array $extra): array
     {
         $seen = array_fill_keys(array_map(strtolower(...), $base), true);
@@ -125,7 +135,10 @@ final class VaryAccumulatorMiddleware
         return self::merge([], $tokens);
     }
 
-    /** @return list<string> */
+    /**
+     * @return list<string>
+     * @param string $line
+     */
     private static function splitTokens(string $line): array
     {
         if ($line === '') {
@@ -143,7 +156,11 @@ final class VaryAccumulatorMiddleware
         return $tokens;
     }
 
-    /** @return list<string> */
+    /**
+     * @return list<string>
+     * @param Request $req
+     * @param Response $resp
+     */
     private function inferAutoTokens(Request $req, Response $resp): array
     {
         $tokens = [];

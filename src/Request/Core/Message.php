@@ -18,6 +18,8 @@ abstract class Message
 
     /**
      * @param array<string,string|array<int,string>> $headers
+     * @param ?BodyStream $body
+     * @param string $protocol
      */
     protected function __construct(
         array $headers = [],
@@ -35,7 +37,10 @@ abstract class Message
         return $this->body;
     }
 
-    /** @return list<string> */
+    /**
+     * @return list<string>
+     * @param string $name
+     */
     public function getHeader(string $name): array
     {
         return $this->headers[$this->norm($name)] ?? [];
@@ -62,7 +67,10 @@ abstract class Message
         return isset($this->headers[$this->norm($name)]);
     }
 
-    /** @param string|array<int,string> $value */
+    /**
+     * @param string|array<int,string> $value
+     * @param string $name
+     */
     public function withAddedHeader(string $name, string|array $value): static
     {
         $norm = $this->norm($name);
@@ -89,7 +97,10 @@ abstract class Message
         return $this->withPropertyValue('body', $body);
     }
 
-    /** @param string|array<int,string> $value */
+    /**
+     * @param string|array<int,string> $value
+     * @param string $name
+     */
     public function withHeader(string $name, string|array $value): static
     {
         $norm = $this->norm($name);
@@ -153,7 +164,10 @@ abstract class Message
         return $normalized;
     }
 
-    /** @return list<string> */
+    /**
+     * @return list<string>
+     * @param mixed $value
+     */
     private function normalizeHeaderValues(mixed $value): array
     {
         if (is_string($value)) {
@@ -175,7 +189,10 @@ abstract class Message
         return $normalized;
     }
 
-    /** @param list<string> $value */
+    /**
+     * @param list<string> $value
+     * @param string $name
+     */
     private function withMappedHeaderValue(string $name, array $value): static
     {
         $clone = clone $this;

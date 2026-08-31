@@ -100,7 +100,10 @@ final class RouteCache
         return self::clearSharded(rtrim($cachePath, '/\\'), (bool) ($options['aggressive'] ?? false));
     }
 
-    /** @param array<string,mixed> $options @return array<string,mixed> */
+    /**
+     * @param array<string,mixed> $options @return array<string,mixed>
+     * @param string $key
+     */
     private static function assocArrayOption(array $options, string $key): array
     {
         $value = $options[$key] ?? [];
@@ -118,7 +121,10 @@ final class RouteCache
         return $out;
     }
 
-    /** @param array<string,mixed> $options @return list<class-string> */
+    /**
+     * @param array<string,mixed> $options @return list<class-string>
+     * @param string $key
+     */
     private static function classListOption(array $options, string $key): array
     {
         $value = $options[$key] ?? [];
@@ -167,7 +173,11 @@ final class RouteCache
         return $ok && $removed;
     }
 
-    /** @return array{0:bool,1:bool} */
+    /**
+     * @return array{0:bool,1:bool}
+     * @param SplFileInfo $path
+     * @param string $root
+     */
     private static function clearEntry(\SplFileInfo $path, string $root): array
     {
         $pathname = $path->getPathname();
@@ -237,6 +247,11 @@ final class RouteCache
     /**
      * @param array<string,string> $attributeDirs
      * @param list<class-string> $attributeClasses
+     * @param mixed $userRegister
+     * @param string $routesFile
+     * @param LoggerInterface $logger
+     * @param string $baseDir
+     * @param ?string $signKey
      */
     private static function makeBuildRegisterClosure(
         mixed $userRegister,
@@ -258,7 +273,11 @@ final class RouteCache
         ));
     }
 
-    /** @param array<string,string> $dirs @return array<string,string> */
+    /**
+     * @param array<string,string> $dirs @return array<string,string>
+     * @param string $cwd
+     * @param LoggerInterface $logger
+     */
     private static function normalizeAttributeDirs(array $dirs, string $cwd, LoggerInterface $logger): array
     {
         $out = [];
@@ -294,7 +313,10 @@ final class RouteCache
         return is_string($value) && $value !== '' ? $value : null;
     }
 
-    /** @param array<string,mixed> $options */
+    /**
+     * @param array<string,mixed> $options
+     * @param string $key
+     */
     private static function nullableStringOption(array $options, string $key): ?string
     {
         $value = $options[$key] ?? null;
@@ -340,6 +362,7 @@ final class RouteCache
     /**
      * @param array<string,mixed> $options
      * @return array{register:\Closure(Registrar):void,registrarOptions:array<string,mixed>,signKey:?string,signedDefaultTtl:int,signedUrlConfig:?SignedUrlConfig,urlBaseUri:string}
+     * @param LoggerInterface $logger
      */
     private static function resolveBuildInputs(array $options, LoggerInterface $logger): array
     {
@@ -382,6 +405,7 @@ final class RouteCache
     /**
      * @param array<string,mixed> $options
      * @return array{0:MatcherModeEnum,1:MatcherInterface,2:string}
+     * @param string $cachePath
      */
     private static function resolveBuildMatcher(array $options, string $cachePath): array
     {
@@ -415,7 +439,10 @@ final class RouteCache
         return true;
     }
 
-    /** @param array<string,mixed> $options */
+    /**
+     * @param array<string,mixed> $options
+     * @param string $key
+     */
     private static function signedUrlConfigOption(array $options, string $key): ?SignedUrlConfig
     {
         $value = $options[$key] ?? null;
@@ -426,7 +453,10 @@ final class RouteCache
         return is_array($value) && $value !== [] ? SignedUrlConfig::fromArray($value) : null;
     }
 
-    /** @param array<string,mixed> $options @return array<string,string> */
+    /**
+     * @param array<string,mixed> $options @return array<string,string>
+     * @param string $key
+     */
     private static function stringMapOption(array $options, string $key): array
     {
         $value = $options[$key] ?? [];
@@ -444,7 +474,10 @@ final class RouteCache
         return $map;
     }
 
-    /** @param array<string,mixed> $options */
+    /**
+     * @param array<string,mixed> $options
+     * @param string $key
+     */
     private static function stringOption(array $options, string $key): string
     {
         $value = $options[$key] ?? '';

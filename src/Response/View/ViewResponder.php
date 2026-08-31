@@ -19,6 +19,9 @@ final readonly class ViewResponder
     /**
      * @param array<string,mixed> $data
      * @param array<string,string|list<string>> $headers
+     * @param string $view
+     * @param int $status
+     * @param ?string $charset
      */
     public function render(
         string $view,

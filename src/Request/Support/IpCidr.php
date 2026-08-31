@@ -15,6 +15,8 @@ final class IpCidr
      * Checks if an IP address matches a CIDR.
      *
      * Malformed addresses, masks, and mixed IP families fail closed.
+     * @param string $ip
+     * @param string $cidr
      */
     public static function match(string $ip, string $cidr): bool
     {
@@ -53,6 +55,9 @@ final class IpCidr
 
     /**
      * @return array{0:string,1:int}|null
+     * @param string $cidr
+     * @param int $defaultMask
+     * @param int $maxMask
      */
     private static function splitCidr(string $cidr, int $defaultMask, int $maxMask): ?array
     {
@@ -75,6 +80,8 @@ final class IpCidr
 
     /**
      * Check if an IPv4 address matches a CIDR.
+     * @param string $ip
+     * @param string $cidr
      */
     private static function v4(string $ip, string $cidr): bool
     {
@@ -95,6 +102,8 @@ final class IpCidr
 
     /**
      * Check if an IPv6 address matches a CIDR.
+     * @param string $ip
+     * @param string $cidr
      */
     private static function v6(string $ip, string $cidr): bool
     {

@@ -23,6 +23,8 @@ final class EndUser
     /**
      * @param list<string> $trustedProxyCidrs
      * @param list<string> $trustedClientIpHeaders Explicit vendor/client-IP header names, e.g. ['CF-Connecting-IP'].
+     * @param Request $req
+     * @param ?int $forwardedHeaderMask
      */
     public function __construct(
         private readonly Request $req,
@@ -34,6 +36,8 @@ final class EndUser
     /**
      * @param list<string> $cidrs
      * @param list<string> $trustedClientIpHeaders
+     * @param Request $request
+     * @param ?int $forwardedHeaderMask
      */
     public static function from(
         Request $request,
@@ -155,7 +159,10 @@ final class EndUser
         return is_string($masked) ? $masked : null;
     }
 
-    /** @return array{0:string,1:bool} */
+    /**
+     * @return array{0:string,1:bool}
+     * @param string $ip
+     */
     private static function normalizeIpToken(string $ip): array
     {
         $wrapped = str_starts_with($ip, '[') && str_ends_with($ip, ']');

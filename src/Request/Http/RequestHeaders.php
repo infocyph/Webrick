@@ -46,7 +46,10 @@ final class RequestHeaders
         return $out;
     }
 
-    /** @return ($key is null ? AcceptMap : list<string>) */
+    /**
+     * @return ($key is null ? AcceptMap : list<string>)
+     * @param ?string $key
+     */
     public function accept(?string $key = null): array
     {
         if ($this->accept === null) {
@@ -194,7 +197,10 @@ final class RequestHeaders
         return $out;
     }
 
-    /** @return list<string> */
+    /**
+     * @return list<string>
+     * @param string $value
+     */
     private function csv(string $value): array
     {
         if ($value === '') {
@@ -221,7 +227,10 @@ final class RequestHeaders
         self::backfillAuthorization($this->serverParams(), $headers);
     }
 
-    /** @return list<string> */
+    /**
+     * @return list<string>
+     * @param string $raw
+     */
     private function parseAccept(string $raw): array
     {
         $parsed = [];

@@ -11,6 +11,7 @@ final class UriServerParams
     /**
      * @param array<string, mixed> $server
      * @return array{0: string, 1: int|null}
+     * @param ?int $trustedProxyFlags
      */
     public static function detectHostPort(array $server, ?int $trustedProxyFlags = null): array
     {
@@ -46,6 +47,7 @@ final class UriServerParams
 
     /**
      * @param array<string, mixed> $server
+     * @param ?int $trustedProxyFlags
      */
     public static function detectScheme(array $server, ?int $trustedProxyFlags = null): string
     {
@@ -65,6 +67,7 @@ final class UriServerParams
     /**
      * @param array<string, mixed> $server
      * @return array{0: string, 1: int|null}|null
+     * @param ?int $trustedProxyFlags
      */
     private static function detectForwardedHost(array $server, ?int $trustedProxyFlags): ?array
     {
@@ -93,6 +96,7 @@ final class UriServerParams
 
     /**
      * @param array<string, mixed> $server
+     * @param string $key
      */
     private static function firstServerCsvToken(array $server, string $key): ?string
     {
@@ -106,7 +110,10 @@ final class UriServerParams
         return $first === '' ? null : $first;
     }
 
-    /** @param array<string, mixed> $server */
+    /**
+     * @param array<string, mixed> $server
+     * @param ?int $trustedProxyFlags
+     */
     private static function forwardedPort(array $server, ?int $trustedProxyFlags): ?int
     {
         if (!self::proxyFlagEnabled(Request::HEADER_X_FORWARDED_PORT, $server, $trustedProxyFlags)) {
@@ -127,6 +134,7 @@ final class UriServerParams
 
     /**
      * @param array<string, mixed> $server
+     * @param ?int $trustedProxyFlags
      */
     private static function protoFromForwarded(array $server, ?int $trustedProxyFlags): ?string
     {
@@ -169,6 +177,7 @@ final class UriServerParams
 
     /**
      * @param array<string, mixed> $server
+     * @param ?int $trustedProxyFlags
      */
     private static function protoFromXForwarded(array $server, ?int $trustedProxyFlags): ?string
     {
@@ -186,7 +195,11 @@ final class UriServerParams
         return $first === 'https' ? 'https' : ($first === 'http' ? 'http' : null);
     }
 
-    /** @param array<string, mixed> $server */
+    /**
+     * @param array<string, mixed> $server
+     * @param int $flag
+     * @param ?int $trustedProxyFlags
+     */
     private static function proxyFlagEnabled(int $flag, array $server, ?int $trustedProxyFlags): bool
     {
         if ($trustedProxyFlags !== null) {
@@ -199,6 +212,7 @@ final class UriServerParams
 
     /**
      * @param array<string, mixed> $server
+     * @param string $key
      */
     private static function serverString(array $server, string $key): ?string
     {
@@ -220,6 +234,7 @@ final class UriServerParams
 
     /**
      * @return array{0: string, 1: int|null}
+     * @param string $value
      */
     private static function splitHostPort(string $value): array
     {

@@ -21,7 +21,10 @@ final readonly class InterMixRuntime
         return $this->container;
     }
 
-    /** @return array<string,mixed> */
+    /**
+     * @return array<string,mixed>
+     * @param string $tag
+     */
     public function findByTag(string $tag): array
     {
         return $this->container->findByTag($tag);
@@ -53,7 +56,11 @@ final readonly class InterMixRuntime
         return $this->container->resolveNow($spec, $parameters);
     }
 
-    /** @param array<string,mixed> $instances */
+    /**
+     * @param array<string,mixed> $instances
+     * @param string $scope
+     * @param callable $callback
+     */
     public function withinScope(string $scope, callable $callback, array $instances = []): mixed
     {
         return $this->container->withinScope($scope, $callback, $instances);

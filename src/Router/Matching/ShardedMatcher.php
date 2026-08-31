@@ -202,7 +202,11 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         return $this->activeCacheDir ?? $this->cacheDir;
     }
 
-    /** @return list<array{static:array<mixed>,dynamic:array<mixed>}> */
+    /**
+     * @return list<array{static:array<mixed>,dynamic:array<mixed>}>
+     * @param string $host
+     * @param string $bucket
+     */
     private function loadCandidateGroups(string $host, string $bucket): array
     {
         $groups = [];
@@ -220,7 +224,11 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         return $groups;
     }
 
-    /** @return array{static:array<mixed>,dynamic:array<mixed>}|null */
+    /**
+     * @return array{static:array<mixed>,dynamic:array<mixed>}|null
+     * @param string $host
+     * @param string $bucket
+     */
     private function loadGroup(string $host, string $bucket): ?array
     {
         $file = sharded_matcher_shard_file_path(
@@ -256,7 +264,13 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         return $this->loadedGroups[$file] = $hosts[$host] ?? null;
     }
 
-    /** @return int|array{0:int,1:array<string,string>}|MatchOutcome */
+    /**
+     * @return int|array{0:int,1:array<string,string>}|MatchOutcome
+     * @param string $method
+     * @param string $host
+     * @param string $path
+     * @param bool $compact
+     */
     private function matchCanonical(string $method, string $host, string $path, bool $compact): int|array|MatchOutcome
     {
         if (!$this->cacheReadable) {
@@ -345,7 +359,11 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         );
     }
 
-    /** @param array{static:array<mixed>,dynamic:array<mixed>} $group */
+    /**
+     * @param array{static:array<mixed>,dynamic:array<mixed>} $group
+     * @param string $host
+     * @param string $bucket
+     */
     private function writeGroup(string $host, string $bucket, array $group): void
     {
         $file = sharded_matcher_shard_file_path(
@@ -357,7 +375,10 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         $this->writePayload($file, $group);
     }
 
-    /** @param array<mixed> $payload */
+    /**
+     * @param array<mixed> $payload
+     * @param string $file
+     */
     private function writePayload(string $file, array $payload): void
     {
         $directory = dirname($file);

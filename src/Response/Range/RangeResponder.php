@@ -15,7 +15,12 @@ use Infocyph\Webrick\Response\Response;
 /** Build 200/206/416 responses for seekable resources. */
 final readonly class RangeResponder
 {
-    /** @param array<string,string> $headers */
+    /**
+     * @param array<string,string> $headers
+     * @param Request $req
+     * @param string $absolutePath
+     * @param string $mediaType
+     */
     public static function forFile(
         Request $req,
         string $absolutePath,
@@ -78,7 +83,14 @@ final readonly class RangeResponder
         );
     }
 
-    /** @param array<string,string> $headers */
+    /**
+     * @param array<string,string> $headers
+     * @param mixed $source
+     * @param int $totalLength
+     * @param RangeParseResult|SimpleRange|null $range
+     * @param string $mediaType
+     * @param ?Request $req
+     */
     public static function fromSeekable(
         mixed $source,
         int $totalLength,
