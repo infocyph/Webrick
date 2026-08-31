@@ -16,6 +16,8 @@ final class FileBody implements BodyStream
 
     private int $position = 0;
 
+    private readonly int $sourceSize;
+
     private ?Stream $stream = null;
 
     public function __construct(
@@ -34,6 +36,7 @@ final class FileBody implements BodyStream
         if ($size === false || $offset > $size) {
             throw new RuntimeException("Unable to resolve response file size: {$path}");
         }
+        $this->sourceSize = $size;
 
         $available = $size - $offset;
         if ($length !== null && $length > $available) {
@@ -167,6 +170,11 @@ final class FileBody implements BodyStream
         if ($this->stream !== null) {
             $this->stream->seek($this->offset + $target);
         }
+    }
+
+    public function sourceSize(): int
+    {
+        return $this->sourceSize;
     }
 
     public function tell(): int
