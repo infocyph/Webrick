@@ -154,7 +154,7 @@ describe('CookieEncryptionMiddleware', function () {
         $oldWriter = new CookieEncryptionMiddleware([$old, $current]);
         $reader = new CookieEncryptionMiddleware([$old, $current]);
         $currentWriter = new CookieEncryptionMiddleware([$old, $current]);
-        $currentWriter->rotateToKid(1);
+        $currentWriter = $currentWriter->rotateToKid(1);
 
         expect(decryptedCookieForTest($reader, encryptedCookieForTest($oldWriter, 'old-value')))->toBe('old-value')
             ->and(decryptedCookieForTest($reader, encryptedCookieForTest($currentWriter, 'current-value')))
