@@ -4,18 +4,18 @@ on:
   schedule:
     - cron: "0 0 * * 0"
   push:
-    branches: [ "main", "master" ]
+    branches: [ "main", "master", "webrick-5/batch-1-correctness" ]
   pull_request:
-    branches: [ "main", "master", "develop", "development" ]
+    branches: [ "main", "master", "develop", "development", "webrick-5/batch-1-correctness" ]
 
 jobs:
   phpforge:
     uses: infocyph/phpforge/.github/workflows/security-standards.yml@main
     with:
+      fail_on_skipped_tests: true
       integration_services: '[]'
       service_topologies: '{}'
     permissions:
       security-events: write
       actions: read
       contents: read
-
