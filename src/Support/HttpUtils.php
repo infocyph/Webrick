@@ -121,4 +121,58 @@ final class HttpUtils
 
         return $parsed === false ? null : (int) $parsed;
     }
+
+    /** @return list<string>|null Null means malformed quoted-string syntax. */
+    public static function splitQuoted(string $raw, string $delimiter): ?array
+    {
+        if (strlen($delimiter) !== 1) {
+            throw new \InvalidArgumentException('HTTP list delimiter must be exactly one character.');
+        }
+
+        $parts = [];
+        $buffer = '';
+        $quoted = false;
+        $escaped = false;
+        for ($i = 0, $length = strlen($raw); $i < $length; $i++) {
+            $char = $raw[$i];
+            if ($escaped) {
+                $buffer .= $char;
+                $escaped = false;
+
+                continue;
+            }
+            if ($quoted && $char === '\\') {
+                $buffer .= $char;
+                $escaped = true;
+
+                continue;
+            }
+            if ($char === '"') {
+                $quoted = !$quoted;
+                $buffer .= $char;
+
+                continue;
+            }
+            if ($char === $delimiter && !$quoted) {
+                $token = trim($buffer);
+                if ($token !== '') {
+                    $parts[] = $token;
+                }
+                $buffer = '';
+
+                continue;
+            }
+            $buffer .= $char;
+        }
+
+        if ($quoted || $escaped) {
+            return null;
+        }
+        $token = trim($buffer);
+        if ($token !== '') {
+            $parts[] = $token;
+        }
+
+        return $parts;
+    }
 }
