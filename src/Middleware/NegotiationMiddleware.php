@@ -188,7 +188,9 @@ final readonly class NegotiationMiddleware
 
         if ($attribute instanceof Produces) {
             $produces = $attribute->types !== [] ? $attribute->types : $produces;
-            $charsets = $attribute->charsets !== [] ? $attribute->charsets : $charsets;
+            if ($attribute->charsets !== null && $attribute->charsets !== []) {
+                $charsets = $attribute->charsets;
+            }
         }
 
         return [$produces, $charsets];

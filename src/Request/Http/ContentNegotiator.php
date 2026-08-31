@@ -48,30 +48,14 @@ final readonly class ContentNegotiator
             if ($candidate === '') {
                 continue;
             }
-            $normalized = strtolower($candidate);
-            if ($normalized[0] === '+') {
-                $suffix = $normalized;
-                foreach ($this->accept as $entry) {
-                    if ($entry['q'] <= 0.0 || str_contains($entry['value'], '*') || !str_ends_with($entry['value'], $suffix)) {
-                        continue;
-                    }
-                    if ($entry['q'] > $bestQ || ($entry['q'] === $bestQ && $index < $bestIndex)) {
-                        $best = $entry['value'];
-                        $bestQ = $entry['q'];
-                        $bestIndex = $index;
-                    }
-                }
 
+            $selection = $this->candidateSelection($candidate);
+            if ($selection === null || $selection['q'] <= 0.0) {
                 continue;
             }
-
-            $q = self::quality($normalized, $this->accept, true);
-            if ($q <= 0.0) {
-                continue;
-            }
-            if ($q > $bestQ || ($q === $bestQ && $index < $bestIndex)) {
-                $best = $candidate;
-                $bestQ = $q;
+            if ($selection['q'] > $bestQ || ($selection['q'] === $bestQ && $index < $bestIndex)) {
+                $best = $selection['value'];
+                $bestQ = $selection['q'];
                 $bestIndex = $index;
             }
         }
@@ -107,6 +91,17 @@ final readonly class ContentNegotiator
     public function wantsZstd(): bool
     {
         return $this->supportsEncoding('zstd');
+    }
+
+    /** @return array{value:string,q:float}|null */
+    private function candidateSelection(string $candidate): ?array
+    {
+        $normalized = strtolower($candidate);
+        if (!str_starts_with($normalized, '+')) {
+            return ['value' => $candidate, 'q' => self::quality($normalized, $this->accept, true)];
+        }
+
+        return $this->suffixSelection($normalized);
     }
 
     private static function mimeMatch(string $candidate, string $accepted): bool
@@ -207,6 +202,22 @@ final readonly class ContentNegotiator
         }
 
         return 2;
+    }
+
+    /** @return array{value:string,q:float}|null */
+    private function suffixSelection(string $suffix): ?array
+    {
+        $best = null;
+        foreach ($this->accept as $entry) {
+            if ($entry['q'] <= 0.0 || str_contains($entry['value'], '*') || !str_ends_with($entry['value'], $suffix)) {
+                continue;
+            }
+            if ($best === null || $entry['q'] > $best['q']) {
+                $best = ['value' => $entry['value'], 'q' => $entry['q']];
+            }
+        }
+
+        return $best;
     }
 
     private static function tokenMatch(string $candidate, string $accepted): bool

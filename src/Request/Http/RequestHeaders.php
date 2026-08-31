@@ -24,7 +24,10 @@ final class RequestHeaders
 
     public function __construct(private readonly Request|ServerRequest $req) {}
 
-    /** @param array<string,mixed> $srv @return array<string,list<string>> */
+    /**
+     * @param array<string,mixed> $srv
+     * @return array<string,list<string>>
+     */
     public static function extractFromServer(array $srv): array
     {
         $out = self::viaServerFallback($srv);
@@ -119,7 +122,11 @@ final class RequestHeaders
         return $this->req->getHeaderLine($name);
     }
 
-    /** @param array<string,mixed> $srv @param array<string,list<string>> $out */
+    /**
+     * @param array<string,mixed> $srv
+     * @param array<string,list<string>> $out
+     * @param-out array<string,list<string>> $out
+     */
     private static function backfillAuthorization(array $srv, array &$out): void
     {
         if (isset($out['Authorization'])) {
@@ -144,7 +151,11 @@ final class RequestHeaders
         }
     }
 
-    /** @param array<string,mixed> $srv @param array<string,list<string>> $out */
+    /**
+     * @param array<string,mixed> $srv
+     * @param array<string,list<string>> $out
+     * @param-out array<string,list<string>> $out
+     */
     private static function backfillContentHeaders(array $srv, array &$out): void
     {
         foreach (['CONTENT_TYPE' => 'Content-Type', 'CONTENT_LENGTH' => 'Content-Length', 'CONTENT_MD5' => 'Content-Md5'] as $serverKey => $header) {
@@ -154,7 +165,10 @@ final class RequestHeaders
         }
     }
 
-    /** @param array<string,mixed> $srv @return array<string,list<string>> */
+    /**
+     * @param array<string,mixed> $srv
+     * @return array<string,list<string>>
+     */
     private static function viaServerFallback(array $srv): array
     {
         $out = [];
@@ -164,7 +178,12 @@ final class RequestHeaders
             }
             $name = str_replace(' ', '-', ucwords(strtolower(strtr(substr($key, 5), '_', ' '))));
             if (is_array($value)) {
-                $parts = array_values(array_filter($value, is_string(...)));
+                $parts = [];
+                foreach ($value as $item) {
+                    if (is_string($item)) {
+                        $parts[] = $item;
+                    }
+                }
                 $out[$name] = [implode(',', $parts)];
             } elseif (is_string($value)) {
                 $out[$name] = [$value];
@@ -182,15 +201,23 @@ final class RequestHeaders
         }
         $parts = preg_split('/\s*,\s*/', $value);
 
-        return is_array($parts) ? $parts : [];
+        return is_array($parts) ? array_values($parts) : [];
     }
 
     private function httpDate(string $value): ?int
     {
-        return $value === '' ? null : (strtotime($value) ?: null);
+        if ($value === '') {
+            return null;
+        }
+        $timestamp = strtotime($value);
+
+        return $timestamp === false ? null : $timestamp;
     }
 
-    /** @param array<string,list<string>> $headers */
+    /**
+     * @param array<string,list<string>> $headers
+     * @param-out array<string,list<string>> $headers
+     */
     private function injectAuthorisation(array &$headers): void
     {
         if (!isset($headers['Authorization'])) {
@@ -219,7 +246,10 @@ final class RequestHeaders
 
         usort($parsed, static fn(array $a, array $b): int => [$b['q'], $a['wild']] <=> [$a['q'], $b['wild']]);
 
-        return array_column($parsed, 'value');
+        /** @var list<string> $values */
+        $values = array_column($parsed, 'value');
+
+        return $values;
     }
 
     /** @return array<string,mixed> */

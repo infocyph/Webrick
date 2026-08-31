@@ -225,17 +225,22 @@ enum StatusEnum: int
 
     public function reason(): string
     {
+        /** @var array<int,string> $irregular */
         static $irregular = [
             self::MULTI_STATUS->value => 'Multi-Status',
             self::NON_AUTHORITATIVE_INFO->value => 'Non-Authoritative Information',
             self::IM_A_TEAPOT->value => "I'm a teapot",
             self::NETWORK_AUTH_REQUIRED->value => 'Network Authentication Required',
         ];
+        /** @var array<int,string> $cache */
         static $cache = [];
 
         $code = $this->value;
+        if (isset($irregular[$code])) {
+            return $irregular[$code];
+        }
 
-        return $irregular[$code] ?? $cache[$code] ??= ucwords(strtolower(str_replace('_', ' ', $this->name)));
+        return $cache[$code] ??= ucwords(strtolower(str_replace('_', ' ', $this->name)));
     }
 
     public function series(): int

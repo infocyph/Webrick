@@ -11,7 +11,12 @@ use Infocyph\Webrick\Response\Headers\HeaderPolicy;
 use IteratorAggregate;
 use Traversable;
 
-/** Immutable, case-insensitive header store shared by Request and Response. */
+/**
+ * Immutable, case-insensitive header store shared by Request and Response.
+ *
+ * @implements ArrayAccess<string,list<string>>
+ * @implements IteratorAggregate<string,list<string>>
+ */
 final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
 {
     private const string INVALID_HEADER_NAME = "/[^!#$%&'*+.^_`|~0-9A-Za-z-]/";
@@ -120,9 +125,12 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
     public function withAdded(string $name, string|array $value): self
     {
         $normalized = $this->norm($name);
-        $values = $this->normalizeValues($value);
         $copy = clone $this;
-        $copy->map[$normalized] = array_merge($copy->map[$normalized] ?? [], $values);
+        $current = $copy->map[$normalized] ?? [];
+        foreach ($this->normalizeValues($value) as $item) {
+            $current[] = $item;
+        }
+        $copy->map[$normalized] = $current;
 
         return $copy;
     }
@@ -163,6 +171,7 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
         if (!is_array($value)) {
             throw new \InvalidArgumentException('HTTP header values must be strings or lists of strings.');
         }
+
         $values = [];
         foreach ($value as $item) {
             if (!is_string($item)) {
@@ -174,17 +183,20 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
         return $values;
     }
 
-    /** @param string|list<string> $value @return list<string> */
+    /**
+     * @param string|list<string> $value
+     * @return list<string>
+     */
     private function normalizeValues(string|array $value): array
     {
         $values = is_array($value) ? $value : [$value];
         foreach ($values as $item) {
-            if (!is_string($item) || preg_match(self::INVALID_HEADER_VALUE, $item) === 1) {
+            if (preg_match(self::INVALID_HEADER_VALUE, $item) === 1) {
                 throw new \InvalidArgumentException('HTTP header values must be valid strings without control characters.');
             }
         }
 
-        return array_values($values);
+        return $values;
     }
 
     /** @param string|list<string> $value */

@@ -55,7 +55,11 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return json_encode($this->all(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     }
 
-    /** @param array<string,mixed> $query @param array<string,mixed> $post @param array<string,string|list<string>> $headers */
+    /**
+     * @param array<string,mixed> $query
+     * @param array<string,mixed> $post
+     * @param array<string,string|list<string>> $headers
+     */
     public static function fake(
         array $query = [],
         array $post = [],
@@ -192,14 +196,19 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return $value ?? $default;
     }
 
-    /** @param array<int,string> $supported @param array<int,string> $sources @return array{0:string,1:string} */
+    /**
+     * @param list<string> $supported
+     * @param list<string> $sources
+     * @return array{0:string,1:string}
+     */
     public function detectLocale(
         array $supported,
         string $fallback = 'en',
         array $sources = ['attr', 'route', 'query', 'cookie', 'header', 'default'],
     ): array {
-        $supported = array_values(array_unique(array_map(self::normalizeLocale(...), $supported)));
+        $supported = self::normalizeLocaleList($supported);
         $fallback = self::normalizeLocale($fallback);
+
         foreach ($sources as $source) {
             $hit = match ($source) {
                 'attr' => $this->resolveLocaleFromAttr($supported),
@@ -218,7 +227,10 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return [$fallback, 'default'];
     }
 
-    /** @param string|list<string> $keys @return array<string,mixed> */
+    /**
+     * @param string|list<string> $keys
+     * @return array<string,mixed>
+     */
     public function except(string|array $keys): array
     {
         return self::stringMap(array_diff_key($this->all(), array_flip(self::stringList($keys))));
@@ -252,7 +264,13 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
     /** @param string|list<string> $keys */
     public function has(string|array $keys): bool
     {
-        return array_all(self::stringList($keys), fn($key) => $this->data($key) !== null);
+        foreach (self::stringList($keys) as $key) {
+            if ($this->data($key) === null) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     public function hasFile(string $key): bool
@@ -294,7 +312,10 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
     /** @param string|list<string> $verbs */
     public function isMethod(string|array $verbs): bool
     {
-        $normalized = array_map(HttpMethodEnum::normalize(...), self::stringList($verbs));
+        $normalized = [];
+        foreach (self::stringList($verbs) as $verb) {
+            $normalized[] = HttpMethodEnum::normalize($verb);
+        }
 
         return in_array(HttpMethodEnum::normalize($this->getEffectiveMethod()), $normalized, true);
     }
@@ -321,6 +342,7 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         if ($cache && $supported === null && $this->cachedLocale !== null) {
             return $this->cachedLocale;
         }
+
         $languages = $this->headers()->accept('Accept-Language');
         if ($languages === []) {
             return $fallback;
@@ -328,7 +350,8 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         if ($supported === null) {
             return $this->cachedLocale = strtolower(substr($languages[0], 0, 5));
         }
-        $supported = array_map(self::normalizeLocale(...), $supported);
+
+        $supported = self::normalizeLocaleList($supported);
         foreach ($languages as $language) {
             $language = self::normalizeLocale($language);
             $primary = substr($language, 0, 2);
@@ -387,7 +410,10 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         throw new InvalidArgumentException('Request is immutable');
     }
 
-    /** @param string|list<string> $keys @return array<string,mixed> */
+    /**
+     * @param string|list<string> $keys
+     * @return array<string,mixed>
+     */
     public function only(string|array $keys): array
     {
         return array_intersect_key($this->all(), array_flip(self::stringList($keys)));
@@ -409,8 +435,13 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
     public function routeIs(string|array $patterns): bool
     {
         $target = $this->getRequestTarget();
+        foreach (self::stringList($patterns) as $pattern) {
+            if (preg_match('#^' . str_replace('\\*', '.*', preg_quote($pattern, '#')) . '$#', $target) === 1) {
+                return true;
+            }
+        }
 
-        return array_any(self::stringList($patterns), fn(string $pattern): bool => preg_match('#^' . str_replace('\\*', '.*', preg_quote($pattern, '#')) . '$#', $target) === 1);
+        return false;
     }
 
     public function segment(int $index, mixed $default = null): mixed
@@ -421,7 +452,10 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
     /** @return list<string> */
     public function segments(): array
     {
-        return $this->cachedSegments ??= array_values(array_filter(explode('/', $this->getUri()->getPath()), static fn(string $segment): bool => $segment !== ''));
+        return $this->cachedSegments ??= array_values(array_filter(
+            explode('/', $this->getUri()->getPath()),
+            static fn(string $segment): bool => $segment !== '',
+        ));
     }
 
     public function string(string $key, string $default = ''): string
@@ -437,7 +471,10 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return EndUser::from($this, self::$trustedProxyNetworks)->parseUserAgent();
     }
 
-    /** @param array<string,string> $rules @return array<string,mixed> */
+    /**
+     * @param array<string,string> $rules
+     * @return array<string,mixed>
+     */
     public function validate(array $rules): array
     {
         foreach ($rules as $field => $rule) {
@@ -459,6 +496,7 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return $this->expectsXml();
     }
 
+    /** @param array<string,mixed> $cookies */
     #[\Override]
     public function withCookieParams(array $cookies): static
     {
@@ -478,6 +516,7 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return $request;
     }
 
+    /** @param array<string,mixed> $query */
     #[\Override]
     public function withQueryParams(array $query): static
     {
@@ -501,13 +540,33 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return strtolower(str_replace('_', '-', trim($locale)));
     }
 
-    /** @param string|list<string> $value @return list<string> */
-    private static function stringList(string|array $value): array
+    /**
+     * @param list<string> $locales
+     * @return list<string>
+     */
+    private static function normalizeLocaleList(array $locales): array
     {
-        return is_string($value) ? [$value] : array_values($value);
+        $normalized = [];
+        foreach ($locales as $locale) {
+            $normalized[] = self::normalizeLocale($locale);
+        }
+
+        return array_values(array_unique($normalized));
     }
 
-    /** @param array<mixed> $value @return array<string,mixed> */
+    /**
+     * @param string|list<string> $value
+     * @return list<string>
+     */
+    private static function stringList(string|array $value): array
+    {
+        return is_string($value) ? [$value] : $value;
+    }
+
+    /**
+     * @param array<array-key,mixed> $value
+     * @return array<string,mixed>
+     */
     private static function stringMap(array $value): array
     {
         $map = [];
@@ -562,7 +621,10 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
     /** @param list<string> $supported */
     private function resolveLocaleFromCookie(array $supported): ?string
     {
-        return $this->pickLocale($this->resolveLocaleScalar($this->cookie('locale'), $this->cookie('lang')), $supported);
+        return $this->pickLocale(
+            $this->resolveLocaleScalar($this->cookie('locale'), $this->cookie('lang')),
+            $supported,
+        );
     }
 
     /** @param list<string> $supported */
@@ -574,7 +636,10 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
     /** @param list<string> $supported */
     private function resolveLocaleFromQuery(array $supported): ?string
     {
-        return $this->pickLocale($this->resolveLocaleScalar($this->query('locale'), $this->query('lang')), $supported);
+        return $this->pickLocale(
+            $this->resolveLocaleScalar($this->query('locale'), $this->query('lang')),
+            $supported,
+        );
     }
 
     /** @param list<string> $supported */

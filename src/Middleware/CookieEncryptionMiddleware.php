@@ -195,11 +195,16 @@ final class CookieEncryptionMiddleware
         return $frame === null ? null : $this->decryptFrame($baseName, $frame);
     }
 
-    /** @param array<string,mixed> $cookies @return array<string,mixed> */
+    /**
+     * @param array<string,mixed> $cookies
+     * @return array<string,mixed>
+     */
     private function decryptAll(array $cookies): array
     {
         $pattern = '/^(' . preg_quote($this->cookiePrefix, '/') . '[^.]+)(?:\.p(\d+))?$/';
+        /** @var array<string,mixed> $out */
         $out = [];
+        /** @var array<string,array<int,string>> $assemblies */
         $assemblies = [];
         foreach ($cookies as $name => $value) {
             if (!is_string($value)) {
@@ -325,7 +330,10 @@ final class CookieEncryptionMiddleware
         return base64_encode(self::V1_BYTE . $mode . chr($this->kidByte()) . $iv . $tag . $ciphertext);
     }
 
-    /** @return array<int,string> @throws RandomException|LengthException|RuntimeException */
+    /**
+     * @return array<int,string>
+     * @throws RandomException|LengthException|RuntimeException
+     */
     private function encryptSegments(string $baseName, string $plaintext): array
     {
         $cipher = $this->encryptBlob($baseName, $plaintext);
@@ -377,7 +385,7 @@ final class CookieEncryptionMiddleware
     /** @return int<0,255> */
     private function kidByte(): int
     {
-        if ($this->kid < 0 || $this->kid > 255) {
+        if ($this->kid > 255) {
             throw new RuntimeException('Key id must be within byte range.');
         }
 

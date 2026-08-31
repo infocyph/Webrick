@@ -15,7 +15,10 @@ final class EndUser
 
     private ?string $cachedViaProxy = null;
 
-    /** @param list<CidrNetwork> $trustedProxyCidrs @param list<string> $trustedClientIpHeaders */
+    /**
+     * @param list<CidrNetwork> $trustedProxyCidrs
+     * @param list<string> $trustedClientIpHeaders
+     */
     public function __construct(
         private readonly Request $req,
         private readonly array $trustedProxyCidrs = [],
@@ -23,9 +26,16 @@ final class EndUser
         private readonly array $trustedClientIpHeaders = [],
     ) {}
 
-    /** @param list<string|CidrNetwork> $cidrs @param list<string> $trustedClientIpHeaders */
-    public static function from(Request $request, array $cidrs = [], ?int $forwardedHeaderMask = null, array $trustedClientIpHeaders = []): self
-    {
+    /**
+     * @param list<string|CidrNetwork> $cidrs
+     * @param list<string> $trustedClientIpHeaders
+     */
+    public static function from(
+        Request $request,
+        array $cidrs = [],
+        ?int $forwardedHeaderMask = null,
+        array $trustedClientIpHeaders = [],
+    ): self {
         if ($cidrs === []) {
             return new self($request, Request::getTrustedProxyNetworks(), $forwardedHeaderMask, $trustedClientIpHeaders);
         }
@@ -46,7 +56,7 @@ final class EndUser
 
     public function anonymize(string $ip): string
     {
-        [$plainIp,$wrapped] = self::normalizeIpToken($ip);
+        [$plainIp, $wrapped] = self::normalizeIpToken($ip);
         $maskedIp = self::maskedIp($plainIp) ?? $plainIp;
 
         return $wrapped ? '[' . $maskedIp . ']' : $maskedIp;
@@ -85,6 +95,7 @@ final class EndUser
         if ($peer === null || !$this->isTrustedProxy($peer)) {
             return $this->cachedViaProxy = $peer;
         }
+
         $chain = $this->forwardedChain();
         if ($chain === []) {
             $vendor = $this->explicitVendorClientIp();
@@ -92,11 +103,13 @@ final class EndUser
                 $chain[] = $vendor;
             }
         }
+
         $candidate = $peer;
-        for ($i = count($chain) - 1;$i >= 0;$i--) {
+        for ($i = count($chain) - 1; $i >= 0; $i--) {
             if (!$this->isTrustedProxy($candidate)) {
                 break;
-            }$candidate = $chain[$i];
+            }
+            $candidate = $chain[$i];
         }
 
         return $this->cachedViaProxy = $candidate;
@@ -125,7 +138,9 @@ final class EndUser
         if ($bin === false) {
             return null;
         }
-        $mask = strlen($bin) === 4 ? inet_pton('255.255.255.0') : inet_pton('ffff:ffff:ffff:ffff:0:0:0:0');
+        $mask = strlen($bin) === 4
+            ? inet_pton('255.255.255.0')
+            : inet_pton('ffff:ffff:ffff:ffff:0:0:0:0');
         if (!is_string($mask)) {
             return null;
         }
@@ -144,7 +159,7 @@ final class EndUser
             $plainIp = substr($plainIp, 0, $zonePos);
         }
 
-        return [$plainIp,$wrapped];
+        return [$plainIp, $wrapped];
     }
 
     private function explicitVendorClientIp(): ?string
@@ -153,7 +168,8 @@ final class EndUser
             $value = trim($this->req->getHeaderLine($header));
             if ($value === '') {
                 continue;
-            }$first = trim(explode(',', $value, 2)[0]);
+            }
+            $first = trim(explode(',', $value, 2)[0]);
             $validated = filter_var($first, FILTER_VALIDATE_IP);
             if (is_string($validated)) {
                 return $validated;
@@ -173,6 +189,7 @@ final class EndUser
         if (($this->proxyHeaderFlags() & Request::HEADER_X_FORWARDED_FOR) === 0) {
             return [];
         }
+
         $line = $this->req->getHeaderLine('X-Forwarded-For');
         if ($line === '') {
             $serverLine = $this->req->getServerParams()['HTTP_X_FORWARDED_FOR'] ?? null;
@@ -184,7 +201,10 @@ final class EndUser
 
     private function isTrustedProxy(string $ip): bool
     {
-        return array_any($this->trustedProxyCidrs, static fn(CidrNetwork $network): bool => $network->matches($ip));
+        return array_any(
+            $this->trustedProxyCidrs,
+            static fn(CidrNetwork $network): bool => $network->matches($ip),
+        );
     }
 
     /** @return list<string> */
@@ -193,6 +213,7 @@ final class EndUser
         if (($this->proxyHeaderFlags() & Request::HEADER_FORWARDED) === 0) {
             return [];
         }
+
         $header = $this->req->getHeaderLine('Forwarded');
         if ($header === '') {
             $serverHeader = $this->req->getServerParams()['HTTP_FORWARDED'] ?? null;
@@ -202,7 +223,14 @@ final class EndUser
             return [];
         }
 
-        return $this->validIpList($matches[1]);
+        $values = [];
+        foreach ($matches[1] ?? [] as $value) {
+            if (is_string($value)) {
+                $values[] = $value;
+            }
+        }
+
+        return $this->validIpList($values);
     }
 
     private function proxyHeaderFlags(): int
@@ -210,7 +238,10 @@ final class EndUser
         return $this->forwardedHeaderMask ?? Request::getProxyHeaderFlags();
     }
 
-    /** @param array<int,string> $values @return list<string> */
+    /**
+     * @param list<string> $values
+     * @return list<string>
+     */
     private function validIpList(array $values): array
     {
         $out = [];

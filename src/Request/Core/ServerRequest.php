@@ -14,7 +14,17 @@ use InvalidArgumentException;
 /** Native Webrick server-request model. */
 class ServerRequest extends Message
 {
-    private const array VALID = [HttpMethodEnum::GET->value,HttpMethodEnum::POST->value,HttpMethodEnum::PUT->value,HttpMethodEnum::DELETE->value,HttpMethodEnum::PATCH->value,HttpMethodEnum::HEAD->value,HttpMethodEnum::OPTIONS->value,HttpMethodEnum::CONNECT->value,HttpMethodEnum::TRACE->value];
+    private const array VALID = [
+        HttpMethodEnum::GET->value,
+        HttpMethodEnum::POST->value,
+        HttpMethodEnum::PUT->value,
+        HttpMethodEnum::DELETE->value,
+        HttpMethodEnum::PATCH->value,
+        HttpMethodEnum::HEAD->value,
+        HttpMethodEnum::OPTIONS->value,
+        HttpMethodEnum::CONNECT->value,
+        HttpMethodEnum::TRACE->value,
+    ];
 
     private static bool $methodOverrideConfigurationFrozen = false;
 
@@ -42,26 +52,55 @@ class ServerRequest extends Message
 
     private string $method;
 
+    /** @var array<string,mixed>|object|null */
+    private array|object|null $parsed;
+
     /** @var array<string,mixed> */
     private array $query;
 
     private ?string $rawBody = null;
+
+    private ?string $requestTarget;
+
+    /** @var array<string,mixed> */
+    private array $server;
 
     private Uri $uri;
 
     /** @var array<string,mixed>|null */
     private ?array $variableMap = null;
 
-    /** @param array<string,mixed> $server @param array<string,string|list<string>> $headers @param array<string,mixed>|object|null $parsed @param array<string,mixed> $files @param array<string,mixed>|null $query @param array<string,mixed> $cookies */
-    public function __construct(string $method, Uri|string $uri, private array $server = [], array $headers = [], ?BodyStream $body = null, string $httpVer = '1.1', private array|object|null $parsed = null, array $files = [], private ?string $requestTarget = null, ?array $query = null, array $cookies = [])
-    {
+    /**
+     * @param array<string,mixed> $server
+     * @param array<string,string|list<string>> $headers
+     * @param array<string,mixed>|object|null $parsed
+     * @param array<string,mixed> $files
+     * @param array<string,mixed>|null $query
+     * @param array<string,mixed> $cookies
+     */
+    public function __construct(
+        string $method,
+        Uri|string $uri,
+        array $server = [],
+        array $headers = [],
+        ?BodyStream $body = null,
+        string $httpVer = '1.1',
+        array|object|null $parsed = null,
+        array $files = [],
+        ?string $requestTarget = null,
+        ?array $query = null,
+        array $cookies = [],
+    ) {
         parent::__construct($headers, $body, $httpVer);
         $this->method = HttpMethodEnum::normalize($method);
         $this->uri = $uri instanceof Uri ? $uri : new Uri($uri);
         $this->server = self::stringMap($server);
+        $this->parsed = $parsed;
         $this->filesSpec = self::stringMap($files);
+        $this->requestTarget = $requestTarget;
         $this->cookie = self::stringMap($cookies);
         $this->query = server_request_query_parameters($query, $this->uri);
+
         if (!$this->hasHeader('Host') && $this->uri->getHost() !== '') {
             $host = $this->uri->getHost();
             if ($this->uri->getPort() !== null) {
@@ -101,11 +140,34 @@ class ServerRequest extends Message
         if (!is_resource($bodyHandle)) {
             throw new \RuntimeException('Unable to open request input stream.');
         }
+
         $body = new Stream($bodyHandle);
         $protocol = self::serverString($server, 'SERVER_PROTOCOL');
         $httpVersion = str_starts_with($protocol, 'HTTP/') ? substr($protocol, 5) : '1.1';
-        $request = new self(self::serverString($server, 'REQUEST_METHOD', HttpMethodEnum::GET->value), Uri::fromServerParams($server), $server, RequestHeaders::extractFromServer($server), $body, $httpVersion, self::stringMap($_POST), self::stringMap($_FILES), query: $_GET !== [] ? self::stringMap($_GET) : null, cookies: self::stringMap($_COOKIE));
-        if (in_array($request->method, [HttpMethodEnum::PUT->value,HttpMethodEnum::PATCH->value,HttpMethodEnum::DELETE->value], true) && str_contains(strtolower($request->getHeaderLine('Content-Type')), MediaTypeEnum::FORM_URLENCODED->value)) {
+        $request = new self(
+            self::serverString($server, 'REQUEST_METHOD', HttpMethodEnum::GET->value),
+            Uri::fromServerParams($server),
+            $server,
+            RequestHeaders::extractFromServer($server),
+            $body,
+            $httpVersion,
+            self::stringMap($_POST),
+            self::stringMap($_FILES),
+            query: $_GET !== [] ? self::stringMap($_GET) : null,
+            cookies: self::stringMap($_COOKIE),
+        );
+
+        if (
+            in_array(
+                $request->method,
+                [HttpMethodEnum::PUT->value, HttpMethodEnum::PATCH->value, HttpMethodEnum::DELETE->value],
+                true,
+            )
+            && str_contains(
+                strtolower($request->getHeaderLine('Content-Type')),
+                MediaTypeEnum::FORM_URLENCODED->value,
+            )
+        ) {
             parse_str((string) $body, $form);
             $request = $request->withParsedBody(self::stringMap($form));
         }
@@ -177,13 +239,16 @@ class ServerRequest extends Message
         if ($this->effectiveMethod !== null) {
             return $this->effectiveMethod;
         }
+
         $verb = $this->method;
         if (!in_array($verb, self::VALID, true)) {
             return $this->effectiveMethod = $verb;
         }
 
         return $this->effectiveMethod = match ($verb) {
-            HttpMethodEnum::HEAD->value => HttpMethodEnum::GET->value,HttpMethodEnum::POST->value => $this->methodOverride() ?? HttpMethodEnum::POST->value,default => $verb
+            HttpMethodEnum::HEAD->value => HttpMethodEnum::GET->value,
+            HttpMethodEnum::POST->value => $this->methodOverride() ?? HttpMethodEnum::POST->value,
+            default => $verb,
         };
     }
 
@@ -208,12 +273,14 @@ class ServerRequest extends Message
     {
         if ($this->requestTarget !== null) {
             return $this->requestTarget;
-        } $target = $this->uri->getPath() ?: '/';
+        }
+
+        $target = $this->uri->getPath() ?: '/';
         if ($this->uri->getQuery() !== '') {
             $target .= '?' . $this->uri->getQuery();
         }
 
-return $target;
+        return $target;
     }
 
     /** @return array<string,mixed> */
@@ -222,7 +289,7 @@ return $target;
         return $this->server;
     }
 
-    /** @return array<string,UploadedFile|array<mixed>> */
+    /** @return array<string,UploadedFile|array<array-key,mixed>> */
     public function getUploadedFiles(): array
     {
         return $this->filesHydrated ??= UploadedFilesNormalizer::normalise($this->filesSpec);
@@ -268,12 +335,14 @@ return $target;
     {
         if ($attributes === []) {
             return $this;
-        } $clone = clone $this;
+        }
+
+        $clone = clone $this;
         foreach ($attributes as $name => $value) {
             $clone->attributes[$name] = $value;
         }
 
-return $clone;
+        return $clone;
     }
 
     /** @param array<string,mixed> $cookies */
@@ -299,7 +368,9 @@ return $clone;
     {
         if (!array_key_exists($name, $this->attributes)) {
             return $this;
-        } $clone = clone $this;
+        }
+
+        $clone = clone $this;
         unset($clone->attributes[$name]);
 
         return $clone;
@@ -330,7 +401,9 @@ return $clone;
     {
         if (preg_match('#\s#', $requestTarget) === 1) {
             throw new InvalidArgumentException('Whitespace in request-target');
-        } $clone = clone $this;
+        }
+
+        $clone = clone $this;
         $clone->requestTarget = $requestTarget;
 
         return $clone;
@@ -352,12 +425,14 @@ return $clone;
         $clone = clone $this;
         $clone->uri = $uri;
         if (!$preserveHost) {
-            $clone->headers['Host'] = $uri->getHost() === '' ? [] : [$uri->getHost() . ($uri->getPort() !== null ? ':' . $uri->getPort() : '')];
+            $clone->headers['Host'] = $uri->getHost() === ''
+                ? []
+                : [$uri->getHost() . ($uri->getPort() !== null ? ':' . $uri->getPort() : '')];
         } elseif ($uri->getHost() !== '' && !$clone->hasHeader('Host')) {
             $clone->headers['Host'] = [$uri->getHost()];
         }
 
-return $clone;
+        return $clone;
     }
 
     /** @param array<string,mixed> $server */
@@ -368,7 +443,10 @@ return $clone;
         return is_string($value) ? $value : $default;
     }
 
-    /** @param array<mixed> $value @return array<string,mixed> */
+    /**
+     * @param array<array-key,mixed> $value
+     * @return array<string,mixed>
+     */
     private static function stringMap(array $value): array
     {
         $map = [];
@@ -378,25 +456,38 @@ return $clone;
             }
         }
 
-return $map;
+        return $map;
     }
 
     private function buildVariableMap(): void
     {
         if ($this->variableMap !== null) {
             return;
-        } $order = $this->determineVariableOrder();
-        $sources = ['G' => $this->query,'P' => is_array($this->parsed) ? self::stringMap($this->parsed) : [],'C' => $this->cookie,'S' => $this->server];
+        }
+
+        $order = $this->determineVariableOrder();
+        /** @var array<string,array<string,mixed>> $sources */
+        $sources = [
+            'G' => $this->query,
+            'P' => is_array($this->parsed) ? self::stringMap($this->parsed) : [],
+            'C' => $this->cookie,
+            'S' => $this->server,
+        ];
+        /** @var array<string,mixed> $map */
         $map = [];
+
         foreach ($order as $source) {
             if ($source === 'E') {
                 $map += self::stringMap($_ENV);
 
                 continue;
-            } if (isset($sources[$source])) {
+            }
+            if (isset($sources[$source])) {
                 $map += $sources[$source];
             }
-        } $this->variableMap = $map;
+        }
+
+        $this->variableMap = $map;
         $this->checkEnv = in_array('E', $order, true);
     }
 
@@ -408,19 +499,22 @@ return $map;
         $order = str_split($variables);
         if ($request === '') {
             return $order;
-        } $order = array_values(array_diff($order, ['G','P','C']));
+        }
+
+        $order = array_values(array_diff($order, ['G', 'P', 'C']));
         $anchor = array_search('E', $order, true);
         $insert = $anchor === false ? 0 : $anchor + 1;
         foreach (array_reverse(str_split($request)) as $source) {
             array_splice($order, $insert, 0, $source);
         }
 
-return $order;
+        return $order;
     }
 
     private function isFormPost(): bool
     {
-        return $this->method === HttpMethodEnum::POST->value && HttpUtils::isFormContentType($this->getHeaderLine('Content-Type'));
+        return $this->method === HttpMethodEnum::POST->value
+            && HttpUtils::isFormContentType($this->getHeaderLine('Content-Type'));
     }
 
     private function methodOverride(): ?string
@@ -430,7 +524,9 @@ return $order;
             $candidate = HttpMethodEnum::normalize($header);
 
             return in_array($candidate, self::VALID, true) ? $candidate : null;
-        } if (self::$methodParamOverride && $this->isFormPost()) {
+        }
+
+        if (self::$methodParamOverride && $this->isFormPost()) {
             $parsed = $this->parsed;
             $override = is_array($parsed) ? ($parsed['_method'] ?? null) : null;
             if (is_string($override)) {
@@ -440,7 +536,7 @@ return $order;
             }
         }
 
-return null;
+        return null;
     }
 
     private function refreshVariableMap(): void
@@ -450,18 +546,28 @@ return null;
     }
 }
 
-/** @param array<string,mixed>|null $query @return array<string,mixed> */
+/**
+ * @param array<string,mixed>|null $query
+ * @return array<string,mixed>
+ */
 function server_request_query_parameters(?array $query, Uri $uri): array
 {
     if ($query !== null) {
         return $query;
-    } if ($uri->getQuery() === '') {
+    }
+    if ($uri->getQuery() === '') {
         return server_request_string_map($_GET);
-    } parse_str($uri->getQuery(), $uriQuery);
+    }
+
+    parse_str($uri->getQuery(), $uriQuery);
 
     return server_request_string_map($uriQuery);
 }
-/** @param array<mixed> $value @return array<string,mixed> */
+
+/**
+ * @param array<array-key,mixed> $value
+ * @return array<string,mixed>
+ */
 function server_request_string_map(array $value): array
 {
     $map = [];
@@ -471,5 +577,5 @@ function server_request_string_map(array $value): array
         }
     }
 
-return $map;
+    return $map;
 }

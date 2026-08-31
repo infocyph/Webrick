@@ -76,7 +76,9 @@ enum HttpMethodEnum: string
             return '';
         }
 
-        return self::tryFrom(strtoupper($verb))?->value ?? $verb;
+        $known = self::tryFrom(strtoupper($verb));
+
+        return $known instanceof self ? $known->value : $verb;
     }
 
     public static function tryFromString(string $verb): ?self

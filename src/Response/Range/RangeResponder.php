@@ -24,44 +24,13 @@ final readonly class RangeResponder
         string $mediaType = 'application/octet-stream',
         array $headers = [],
     ): Response {
-        if (!is_file($absolutePath) || !is_readable($absolutePath)) {
+        $metadata = self::fileMetadata($absolutePath, $headers);
+        if ($metadata === null) {
             return new Response(StatusEnum::NOT_FOUND->value);
         }
 
-        $size = filesize($absolutePath);
-        if ($size === false) {
-            return new Response(StatusEnum::NOT_FOUND->value);
-        }
-        $mtime = filemtime($absolutePath);
-        $lastModified = $mtime === false ? null : $mtime;
-        $length = max(0, $size);
-
-        $headers += [
-            'Accept-Ranges' => 'bytes',
-            'ETag' => 'W/"' . dechex($length) . '-' . dechex($lastModified ?? 0) . '"',
-        ];
-        if ($lastModified !== null) {
-            $headers += ['Last-Modified' => Utils::httpDate($lastModified)];
-        }
-
-        $method = HttpMethodEnum::normalize($req->getMethod());
-        $rangeLine = $method === HttpMethodEnum::GET->value
-            ? $req->getHeaderLine('Range')
-            : '';
-
-        if ($rangeLine !== '' && $req->getHeaderLine('If-Range') !== '') {
-            $etag = $headers['ETag'] ?? null;
-            $headerLastModified = isset($headers['Last-Modified']) ? strtotime($headers['Last-Modified']) : false;
-            $validator = new ConditionalValidator(
-                is_string($etag) && $etag !== '' ? $etag : null,
-                $headerLastModified === false ? null : $headerLastModified,
-                true,
-            );
-            if (!$validator->isRangeFresh($req)) {
-                $rangeLine = '';
-            }
-        }
-
+        [$length, $headers] = $metadata;
+        $rangeLine = self::fileRangeLine($req, $headers);
         $result = RangeParser::parse($rangeLine, $length);
 
         return self::buildFileResponse($absolutePath, $mediaType, $headers, $length, $result);
@@ -174,6 +143,58 @@ final readonly class RangeResponder
         );
     }
 
+    /**
+     * @param array<string,string> $headers
+     * @return array{0:int,1:array<string,string>}|null
+     */
+    private static function fileMetadata(string $absolutePath, array $headers): ?array
+    {
+        if (!is_file($absolutePath) || !is_readable($absolutePath)) {
+            return null;
+        }
+
+        $size = filesize($absolutePath);
+        if ($size === false) {
+            return null;
+        }
+
+        $mtime = filemtime($absolutePath);
+        $lastModified = $mtime === false ? null : $mtime;
+        $length = max(0, $size);
+        $headers += [
+            'Accept-Ranges' => 'bytes',
+            'ETag' => 'W/"' . dechex($length) . '-' . dechex($lastModified ?? 0) . '"',
+        ];
+        if ($lastModified !== null) {
+            $headers += ['Last-Modified' => Utils::httpDate($lastModified)];
+        }
+
+        return [$length, $headers];
+    }
+
+    /** @param array<string,string> $headers */
+    private static function fileRangeLine(Request $req, array $headers): string
+    {
+        if (HttpMethodEnum::normalize($req->getMethod()) !== HttpMethodEnum::GET->value) {
+            return '';
+        }
+
+        $rangeLine = $req->getHeaderLine('Range');
+        if ($rangeLine === '' || $req->getHeaderLine('If-Range') === '') {
+            return $rangeLine;
+        }
+
+        $etag = $headers['ETag'] ?? null;
+        $headerLastModified = isset($headers['Last-Modified']) ? strtotime($headers['Last-Modified']) : false;
+        $validator = new ConditionalValidator(
+            is_string($etag) && $etag !== '' ? $etag : null,
+            $headerLastModified === false ? null : $headerLastModified,
+            true,
+        );
+
+        return $validator->isRangeFresh($req) ? $rangeLine : '';
+    }
+
     private static function isSeekable(mixed $source): bool
     {
         if ($source instanceof Stream) {
@@ -185,7 +206,7 @@ final readonly class RangeResponder
 
         $metadata = stream_get_meta_data($source);
 
-        return $metadata['seekable'] ?? false;
+        return (bool) $metadata['seekable'];
     }
 
     private static function normalizeResult(

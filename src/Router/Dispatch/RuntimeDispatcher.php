@@ -39,9 +39,7 @@ final class RuntimeDispatcher
         $this->preparePipelines($artifact);
     }
 
-    /**
-     * @param array<string,string> $vars
-     */
+    /** @param array<string,string> $vars */
     public function dispatch(ExecutionPlan $plan, Request $request, array $vars): Response
     {
         $attributes = $this->routeAttributes[$plan->routeId] ?? [];
@@ -59,9 +57,7 @@ final class RuntimeDispatcher
             : $this->invokeTerminal($plan, $request, $vars);
     }
 
-    /**
-     * @param array<string,string> $vars
-     */
+    /** @param array<string,string> $vars */
     public function dispatchDirectRouteArgs(ExecutionPlan $plan, array $vars): Response
     {
         /** @var callable $handler */
@@ -111,9 +107,7 @@ final class RuntimeDispatcher
         return ($this->pipelines[$routeId] ?? null)?->requiresScope() ?? false;
     }
 
-    /**
-     * @param array<string,string> $vars
-     */
+    /** @param array<string,string> $vars */
     private function invokeTerminal(ExecutionPlan $plan, Request $request, array $vars): Response
     {
         if (!$plan->requiresRequest() && $plan->terminalKind !== ExecutionKind::DIRECT_REQUEST) {
@@ -138,9 +132,7 @@ final class RuntimeDispatcher
         return $this->response($result);
     }
 
-    /**
-     * @return array<array-key,mixed>|bool|float|int|JsonSerializable|string|null
-     */
+    /** @return array<array-key,mixed>|bool|float|int|JsonSerializable|string|null */
     private function normalizeResponsePayload(mixed $value): array|bool|float|int|JsonSerializable|string|null
     {
         if (is_array($value) || $value instanceof JsonSerializable) {
@@ -170,10 +162,24 @@ final class RuntimeDispatcher
         return $arguments;
     }
 
+    /** @return list<mixed> */
+    private function pipelineMiddleware(ExecutionPlan $plan): array
+    {
+        $middleware = $this->preGlobal;
+        foreach ($plan->middleware as $entry) {
+            $middleware[] = $entry;
+        }
+        foreach ($this->postGlobal as $entry) {
+            $middleware[] = $entry;
+        }
+
+        return $middleware;
+    }
+
     private function preparePipelines(CompiledRouterArtifact $artifact): void
     {
         foreach ($artifact->plans as $routeId => $plan) {
-            $middleware = [...$this->preGlobal, ...$plan->middleware, ...$this->postGlobal];
+            $middleware = $this->pipelineMiddleware($plan);
             if ($middleware === []) {
                 continue;
             }
@@ -215,9 +221,7 @@ final class RuntimeDispatcher
             : Response::json($this->normalizeResponsePayload($result));
     }
 
-    /**
-     * @return array<string,string>
-     */
+    /** @return array<string,string> */
     private function routeVariables(Request $request): array
     {
         $value = $request->getAttribute('route_params', []);

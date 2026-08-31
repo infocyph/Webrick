@@ -14,7 +14,9 @@ abstract class Message
     /** @var array<string,list<string>> */
     protected array $headers;
 
-    /** @param array<string,string|array<int,string>> $headers */
+    /**
+     * @param array<string,string|list<string>> $headers
+     */
     protected function __construct(
         array $headers = [],
         ?BodyStream $body = null,
@@ -58,7 +60,7 @@ abstract class Message
         return isset($this->headers[$this->norm($name)]);
     }
 
-    /** @param string|array<int,string> $value */
+    /** @param string|list<string> $value */
     public function withAddedHeader(string $name, string|array $value): static
     {
         $norm = $this->norm($name);
@@ -80,7 +82,7 @@ abstract class Message
         return $body === $this->body ? $this : $this->withPropertyValue('body', $body);
     }
 
-    /** @param string|array<int,string> $value */
+    /** @param string|list<string> $value */
     public function withHeader(string $name, string|array $value): static
     {
         $norm = $this->norm($name);
@@ -113,7 +115,10 @@ abstract class Message
         return ucwords(strtolower($name), '-');
     }
 
-    /** @param array<string,string|array<int,string>> $headers @return array<string,list<string>> */
+    /**
+     * @param array<string,string|list<string>> $headers
+     * @return array<string,list<string>>
+     */
     private function normalise(array $headers): array
     {
         $normalized = [];
@@ -124,23 +129,19 @@ abstract class Message
         return $normalized;
     }
 
-    /** @return list<string> */
-    private function normalizeHeaderValues(mixed $value): array
+    /**
+     * @param string|list<string> $value
+     * @return list<string>
+     */
+    private function normalizeHeaderValues(string|array $value): array
     {
         if (is_string($value)) {
             return [$value];
         }
-        if (!is_array($value)) {
-            return is_scalar($value) ? [(string) $value] : [];
-        }
 
         $normalized = [];
         foreach ($value as $item) {
-            if (is_string($item)) {
-                $normalized[] = $item;
-            } elseif (is_scalar($item)) {
-                $normalized[] = (string) $item;
-            }
+            $normalized[] = $item;
         }
 
         return $normalized;
