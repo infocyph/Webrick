@@ -9,6 +9,7 @@ use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Support\HttpUtils;
 use Infocyph\Webrick\Support\StreamUtil;
 use RuntimeException;
 
@@ -102,13 +103,14 @@ final readonly class ResponseLinterMiddleware
             return;
         }
 
-        if (preg_match('/^[0-9]+$/D', $line) !== 1) {
+        $declared = HttpUtils::parseUnsignedDecimal($line);
+        if ($declared === null) {
             throw new RuntimeException('Linter: invalid Content-Length header');
         }
-        if ($len >= 0 && (int) $line !== $len) {
+        if ($len >= 0 && $declared !== $len) {
             throw new RuntimeException(sprintf(
                 'Linter: Content-Length (%d) does not match body bytes (%d)',
-                (int) $line,
+                $declared,
                 $len,
             ));
         }
