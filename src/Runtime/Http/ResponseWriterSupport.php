@@ -8,6 +8,7 @@ use Generator;
 use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Response\Response;
+use RuntimeException;
 use UnexpectedValueException;
 
 final readonly class ResponseWriterSupport
@@ -56,7 +57,10 @@ final readonly class ResponseWriterSupport
         while (!$body->eof()) {
             $chunk = $body->read($chunkSize);
             if ($chunk === '') {
-                break;
+                if ($body->eof()) {
+                    break;
+                }
+                throw new RuntimeException('Response body stream made no read progress before EOF.');
             }
             yield $chunk;
         }
