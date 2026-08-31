@@ -5,24 +5,18 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Request\Http;
 
 use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Request\Support\CidrNetwork;
 use Infocyph\Webrick\Request\Support\IpCidr;
 
-/**
- * Resolve the end-user address through an explicitly trusted proxy chain.
- *
- * Forwarded hops are consumed right-to-left. A header is never trusted unless
- * the immediate peer is trusted, and vendor-specific client-IP headers are
- * disabled unless explicitly configured.
- */
+/** Resolve the end-user address through an explicitly trusted proxy chain. */
 final class EndUser
 {
     private ?string $cachedNoProxy = null;
-
     private ?string $cachedViaProxy = null;
 
     /**
-     * @param list<string> $trustedProxyCidrs
-     * @param list<string> $trustedClientIpHeaders Explicit vendor/client-IP header names, e.g. ['CF-Connecting-IP'].
+     * @param list<string|CidrNetwork> $trustedProxyCidrs
+     * @param list<string> $trustedClientIpHeaders
      */
     public function __construct(
         private readonly Request $req,
@@ -32,7 +26,7 @@ final class EndUser
     ) {}
 
     /**
-     * @param list<string> $cidrs
+     * @param list<string|CidrNetwork> $cidrs
      * @param list<string> $trustedClientIpHeaders
      */
     public static function from(
@@ -44,11 +38,7 @@ final class EndUser
         return new self($request, $cidrs, $forwardedHeaderMask, $trustedClientIpHeaders);
     }
 
-    /**
-     * Legacy configuration hook. New code should pass trusted CIDRs explicitly.
-     *
-     * @param list<string> $cidrs
-     */
+    /** @param list<string> $cidrs */
     public static function setTrustedProxies(array $cidrs): void
     {
         Request::setTrustedProxies($cidrs);
@@ -82,7 +72,6 @@ final class EndUser
         if (!is_string($ip)) {
             return null;
         }
-
         $validated = filter_var($ip, FILTER_VALIDATE_IP);
 
         return $this->cachedNoProxy = is_string($validated) ? $validated : null;
@@ -112,7 +101,6 @@ final class EndUser
             if (!$this->isTrustedProxy($candidate)) {
                 break;
             }
-
             $candidate = $chain[$i];
         }
 
@@ -142,22 +130,18 @@ final class EndUser
         if ($bin === false) {
             return null;
         }
-
         $mask = strlen($bin) === 4
             ? inet_pton('255.255.255.0')
             : inet_pton('ffff:ffff:ffff:ffff:0:0:0:0');
         if (!is_string($mask)) {
             return null;
         }
-
         $masked = inet_ntop($bin & $mask);
 
         return is_string($masked) ? $masked : null;
     }
 
-    /**
-     * @return array{0:string,1:bool}
-     */
+    /** @return array{0:string,1:bool} */
     private static function normalizeIpToken(string $ip): array
     {
         $wrapped = str_starts_with($ip, '[') && str_ends_with($ip, ']');
@@ -177,7 +161,6 @@ final class EndUser
             if ($value === '') {
                 continue;
             }
-
             $first = trim(explode(',', $value, 2)[0]);
             $validated = filter_var($first, FILTER_VALIDATE_IP);
             if (is_string($validated)) {
@@ -195,7 +178,6 @@ final class EndUser
         if ($chain !== []) {
             return $chain;
         }
-
         if (($this->proxyHeaderFlags() & Request::HEADER_X_FORWARDED_FOR) === 0) {
             return [];
         }
@@ -213,7 +195,7 @@ final class EndUser
     {
         return array_any(
             $this->trustedProxyCidrs,
-            static fn(string $cidr): bool => IpCidr::match($ip, $cidr),
+            static fn(string|CidrNetwork $cidr): bool => IpCidr::match($ip, $cidr),
         );
     }
 
@@ -241,10 +223,7 @@ final class EndUser
         return $this->forwardedHeaderMask ?? Request::getProxyHeaderFlags();
     }
 
-    /**
-     * @param array<int,string> $values
-     * @return list<string>
-     */
+    /** @param array<int,string> $values @return list<string> */
     private function validIpList(array $values): array
     {
         $out = [];

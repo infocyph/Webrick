@@ -27,17 +27,12 @@ class Response
     use MacroMix;
 
     private BodyStream|string $body;
-
     private ?BodyStream $bodyFacade = null;
-
     private HeaderBag $headers;
-
     /** @var null|\Closure():iterable<string> */
     private ?\Closure $producer = null;
 
-    /**
-     * @param array<string,string|list<string>> $headers
-     */
+    /** @param array<string,string|list<string>> $headers */
     public function __construct(
         private int $statusCode = StatusEnum::OK->value,
         BodyStream|string|null $body = null,
@@ -49,9 +44,7 @@ class Response
         $this->body = $body ?? '';
     }
 
-    /**
-     * @param array<string,string|list<string>> $headers
-     */
+    /** @param array<string,string|list<string>> $headers */
     public static function attachment(
         string|Stream $file,
         string $name,
@@ -92,8 +85,7 @@ class Response
         ]) ?? MediaTypeEnum::JSON->base();
 
         if (MediaTypeEnum::isJsonLike($want)) {
-            $jsonData = is_array($data) ? self::mixedMap($data) : $data;
-            $response = self::json($jsonData, $status, $headers, $flags, $depth);
+            $response = self::json($data, $status, $headers, $flags, $depth);
 
             return $want === MediaTypeEnum::JSON->base()
                 ? $response
@@ -114,17 +106,13 @@ class Response
         return new self($status, $json, $headers);
     }
 
-    /**
-     * @param array<string,string|list<string>> $headers
-     */
+    /** @param array<string,string|list<string>> $headers */
     public static function create(string $content = '', int $status = StatusEnum::OK->value, array $headers = []): self
     {
         return new self($status, $content, $headers);
     }
 
-    /**
-     * @param array<string,string|list<string>> $headers
-     */
+    /** @param array<string,string|list<string>> $headers */
     public static function download(
         string|Stream $file,
         ?string $name = null,
@@ -136,19 +124,19 @@ class Response
         return self::attachment($file, $name, $mime, $headers);
     }
 
-    /**
-     * @param array<string,string|list<string>> $headers
-     */
+    /** @param array<string,string|list<string>> $headers */
     public static function empty(int $code, array $headers = []): self
     {
-        $headers += ['Content-Length' => '0'];
+        if (!StatusEnum::isEmptyCode($code)) {
+            $headers += ['Content-Length' => '0'];
+        } else {
+            unset($headers['Content-Length'], $headers['content-length']);
+        }
 
         return new self($code, '', $headers);
     }
 
-    /**
-     * @param array<string,string|list<string>> $headers
-     */
+    /** @param array<string,string|list<string>> $headers */
     public static function inline(
         string|Stream $file,
         ?string $name = null,
@@ -198,9 +186,7 @@ class Response
         return self::empty(StatusEnum::NO_CONTENT->value, $headers);
     }
 
-    /**
-     * @param array<string,string|list<string>> $headers
-     */
+    /** @param array<string,string|list<string>> $headers */
     public static function plaintext(string $msg, int $code = StatusEnum::BAD_REQUEST->value, array $headers = []): self
     {
         $headers = ['Content-Type' => $headers['Content-Type'] ?? MediaTypeEnum::PLAIN->value] + $headers;
@@ -208,9 +194,7 @@ class Response
         return new self($code, $msg, $headers);
     }
 
-    /**
-     * @param array<string,string> $headers
-     */
+    /** @param array<string,string> $headers */
     public static function rangedDownload(
         Request $req,
         string $absolutePath,
@@ -224,9 +208,7 @@ class Response
         return self::rangedFile($req, $absolutePath, $mime, $headers);
     }
 
-    /**
-     * @param array<string,string> $headers
-     */
+    /** @param array<string,string> $headers */
     public static function rangedFile(
         Request $req,
         string $absolutePath,
@@ -274,9 +256,7 @@ class Response
         return $response;
     }
 
-    /**
-     * @param array<string,string|list<string>> $headers
-     */
+    /** @param array<string,string|list<string>> $headers */
     public static function streamDownload(
         string|Stream $file,
         ?string $name = null,
@@ -309,7 +289,6 @@ class Response
         return CacheControl::fromHeaderBag($this->headers);
     }
 
-    /** Native string bodies allocate a StringBody only at stream interop boundaries. */
     public function getBody(): BodyStream
     {
         if ($this->body instanceof BodyStream) {
@@ -444,9 +423,7 @@ class Response
         );
     }
 
-    /**
-     * @return array<string,string>
-     */
+    /** @return array<string,string> */
     private static function baseDownloadHeaders(string $name, string $mime): array
     {
         return [
@@ -457,7 +434,7 @@ class Response
 
     private static function formatHttpDate(?int $mtime): ?string
     {
-        return $mtime ? gmdate('D, d M Y H:i:s', $mtime) . ' GMT' : null;
+        return $mtime !== null ? gmdate('D, d M Y H:i:s', $mtime) . ' GMT' : null;
     }
 
     private static function inferMime(string $name, ?string $explicit): string
@@ -465,39 +442,28 @@ class Response
         return $explicit ?? MediaTypeEnum::fromFilename($name)->value;
     }
 
-    /**
-     * @return array{0:?int,1:?int}
-     */
+    /** @return array{0:?int,1:?int} */
     private static function metaFor(string|Stream $file): array
     {
         if (!is_string($file)) {
             return [null, null];
         }
 
-        return [filesize($file) ?: null, filemtime($file) ?: null];
-    }
+        $size = filesize($file);
+        $mtime = filemtime($file);
 
-    /**
-     * @param array<mixed> $value
-     * @return array<string,mixed>
-     */
-    private static function mixedMap(array $value): array
-    {
-        $out = [];
-        foreach ($value as $key => $item) {
-            if (is_string($key)) {
-                $out[$key] = $item;
-            }
-        }
-
-        return $out;
+        return [$size === false ? null : $size, $mtime === false ? null : $mtime];
     }
 
     private static function mtimeFromStream(Stream $stream): ?int
     {
         $uri = $stream->getMetadata('uri');
+        if (!is_string($uri) || $uri === '' || !is_file($uri)) {
+            return null;
+        }
+        $mtime = filemtime($uri);
 
-        return is_string($uri) && $uri !== '' && is_file($uri) ? (filemtime($uri) ?: null) : null;
+        return $mtime === false ? null : $mtime;
     }
 
     /**

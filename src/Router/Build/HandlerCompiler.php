@@ -264,7 +264,7 @@ final class HandlerCompiler
         }
 
         $parameters = $reflection->getParameters();
-        if ($parameters === [] || array_all($parameters, static fn(ReflectionParameter $parameter): bool => $parameter->isOptional())) {
+        if ($parameters === []) {
             return ExecutionKind::DIRECT_ZERO_ARG;
         }
         if (count($parameters) === 1 && $this->parameterIsRequest($parameters[0])) {
@@ -272,6 +272,9 @@ final class HandlerCompiler
         }
         if ($routeArguments !== [] && $this->allRequiredParametersAreRouteArguments($reflection, $routeArguments)) {
             return ExecutionKind::DIRECT_ROUTE_ARGS;
+        }
+        if (array_all($parameters, static fn(ReflectionParameter $parameter): bool => $parameter->isOptional())) {
+            return ExecutionKind::DIRECT_ZERO_ARG;
         }
 
         return ExecutionKind::COMPILED_INVOKE;

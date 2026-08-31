@@ -19,7 +19,10 @@ use Infocyph\Webrick\Support\Etag;
 final readonly class CacheValidatorsMiddleware
 {
     /**
-     * @param null|Closure(Request):array{0:string|null,1:int|null} $metaProvider
+     * Metadata provider returns [etag, lastModified, representationExists?].
+     * The existence flag is required for exact If-Match/If-None-Match "*" semantics.
+     *
+     * @param null|Closure(Request):array{0:string|null,1:int|null,2?:bool} $metaProvider
      */
     public function __construct(
         private ?Closure $metaProvider = null,
@@ -28,9 +31,7 @@ final readonly class CacheValidatorsMiddleware
         private int $autoEtagMinSize = 2048,
     ) {}
 
-    /**
-     * @param Closure(Request):Response $next
-     */
+    /** @param Closure(Request):Response $next */
     public function __invoke(Request $req, Closure $next): Response
     {
         $getOrHead = $this->isGetOrHead($req);
@@ -60,7 +61,6 @@ final readonly class CacheValidatorsMiddleware
         if ($value === '') {
             return null;
         }
-
         $timestamp = strtotime($value);
 
         return $timestamp === false ? null : $timestamp;
@@ -70,14 +70,16 @@ final readonly class CacheValidatorsMiddleware
     {
         $etag = trim($resp->getHeaderLine('ETag'));
         $lastModified = self::parseLastModified($resp->getHeaderLine('Last-Modified'));
-        $result = new ConditionalValidator($etag === '' ? null : $etag, $lastModified)->evaluate($req);
+        $result = new ConditionalValidator(
+            $etag === '' ? null : $etag,
+            $lastModified,
+            true,
+        )->evaluate($req);
 
         return $this->maybeShortCircuit($result, true) ?? $resp;
     }
 
-    /**
-     * @param array<string,string> $headers
-     */
+    /** @param array<string,string> $headers */
     private function ensureValidatorHeaders(Response $resp, array $headers): Response
     {
         foreach ($headers as $name => $value) {
@@ -89,15 +91,16 @@ final readonly class CacheValidatorsMiddleware
         return $resp;
     }
 
-    /**
-     * @return array{0:ConditionalValidator,1:Outcome}
-     */
+    /** @return array{0:ConditionalValidator,1:Outcome} */
     private function evaluatePreconditions(Request $req): array
     {
-        [$etag, $lastModified] = $this->metaProvider instanceof Closure
+        $meta = $this->metaProvider instanceof Closure
             ? ($this->metaProvider)($req)
             : [null, null];
-        $validator = new ConditionalValidator($etag, $lastModified);
+        $etag = $meta[0] ?? null;
+        $lastModified = $meta[1] ?? null;
+        $exists = $meta[2] ?? null;
+        $validator = new ConditionalValidator($etag, $lastModified, $exists);
 
         return [$validator, $validator->evaluate($req)];
     }

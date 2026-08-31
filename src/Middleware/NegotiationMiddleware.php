@@ -35,9 +35,7 @@ final readonly class NegotiationMiddleware
             : ['+json', MediaTypeEnum::JSON->value, MediaTypeEnum::HTML->base()];
     }
 
-    /**
-     * @param Closure(Request):Response $next
-     */
+    /** @param Closure(Request):Response $next */
     public function __invoke(Request $req, Closure $next): Response
     {
         [$produces, $charsets] = $this->resolveRouteOverrides($req);
@@ -69,10 +67,7 @@ final readonly class NegotiationMiddleware
     /** @param list<string> $types */
     private function charsetMattersForAny(array $types): bool
     {
-        return array_any(
-            $types,
-            fn(string $type): bool => $this->charsetMattersFor(strtolower($type)),
-        );
+        return array_any($types, fn(string $type): bool => $this->charsetMattersFor(strtolower($type)));
     }
 
     private function composeContentType(string $type, ?string $charset): string
@@ -89,7 +84,7 @@ final readonly class NegotiationMiddleware
 
     private function ensureContentType(Response $response, string $type, ?string $charset): Response
     {
-        if (in_array($response->getStatusCode(), [StatusEnum::NO_CONTENT->value, StatusEnum::NOT_MODIFIED->value], true)) {
+        if (StatusEnum::isEmptyCode($response->getStatusCode())) {
             return $response;
         }
 
@@ -110,9 +105,7 @@ final readonly class NegotiationMiddleware
         return $response->withSmartHeader('Content-Type', rtrim($existing) . '; charset=' . $charset);
     }
 
-    /**
-     * @return array{0:Request,1:string}
-     */
+    /** @return array{0:Request,1:string} */
     private function negotiateLocale(Request $req): array
     {
         [$locale, $source] = $req->detectLocale(
@@ -141,13 +134,8 @@ final readonly class NegotiationMiddleware
         $type = $negotiator->preferred($produces);
         if ($type === null) {
             $req = VaryAccumulatorMiddleware::add($req, 'Accept');
-            $headers = [
-                'Content-Type' => MediaTypeEnum::PLAIN->value,
-                'Vary' => 'Accept',
-            ];
-
+            $headers = ['Content-Type' => MediaTypeEnum::PLAIN->value, 'Vary' => 'Accept'];
             if ($req->getHeaderLine('Accept-Charset') !== '' && $this->charsetMattersForAny($produces)) {
-                VaryAccumulatorMiddleware::add($req, 'Accept-Charset');
                 $headers['Vary'] = 'Accept, Accept-Charset';
             }
 
@@ -157,11 +145,16 @@ final readonly class NegotiationMiddleware
         $req = VaryAccumulatorMiddleware::add($req, 'Accept');
         $lowerType = strtolower($type);
         $charset = null;
+        $explicitCharset = $req->getHeaderLine('Accept-Charset') !== '' && $this->charsetMattersFor($lowerType);
 
-        if ($req->getHeaderLine('Accept-Charset') !== '' && $this->charsetMattersFor($lowerType)) {
+        if ($explicitCharset) {
             $charset = $this->pickCharset($negotiator, $charsets);
-            if ($charset !== null) {
-                $req = VaryAccumulatorMiddleware::add($req, 'Accept-Charset');
+            $req = VaryAccumulatorMiddleware::add($req, 'Accept-Charset');
+            if ($charset === null) {
+                throw HttpException::notAcceptable(
+                    'No acceptable charset.',
+                    ['Content-Type' => MediaTypeEnum::PLAIN->value, 'Vary' => 'Accept, Accept-Charset'],
+                );
             }
         }
 
@@ -174,9 +167,7 @@ final readonly class NegotiationMiddleware
         return [$req, $type, $charset];
     }
 
-    /**
-     * @param list<string> $candidates
-     */
+    /** @param list<string> $candidates */
     private function pickCharset(ContentNegotiator $negotiator, array $candidates): ?string
     {
         foreach ($candidates as $charset) {
@@ -188,9 +179,7 @@ final readonly class NegotiationMiddleware
         return null;
     }
 
-    /**
-     * @return array{0:list<string>,1:list<string>}
-     */
+    /** @return array{0:list<string>,1:list<string>} */
     private function resolveRouteOverrides(Request $req): array
     {
         $produces = $this->produces;
@@ -202,6 +191,6 @@ final readonly class NegotiationMiddleware
             $charsets = $attribute->charsets !== [] ? $attribute->charsets : $charsets;
         }
 
-        return [$produces, $charsets ?? []];
+        return [$produces, $charsets];
     }
 }

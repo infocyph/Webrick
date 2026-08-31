@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router\Build;
 
+use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Interfaces\RouteInterface;
 
 final class RouteIdentity
@@ -12,7 +13,7 @@ final class RouteIdentity
 
     public static function canonicalKey(string $method, ?string $domain, string $path): string
     {
-        return strtoupper($method) . "\0" . self::canonicalDomain($domain) . "\0" . $path;
+        return HttpMethodEnum::normalize($method) . "\0" . self::canonicalDomain($domain) . "\0" . $path;
     }
 
     public static function forRoute(RouteInterface $route): string

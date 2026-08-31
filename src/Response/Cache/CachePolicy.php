@@ -16,7 +16,6 @@ final readonly class CachePolicy
         StatusEnum::OK->value => true,
         StatusEnum::NON_AUTHORITATIVE_INFO->value => true,
         StatusEnum::NO_CONTENT->value => true,
-        StatusEnum::PARTIAL_CONTENT->value => true,
         StatusEnum::MULTIPLE_CHOICES->value => true,
         StatusEnum::MOVED_PERMANENTLY->value => true,
         StatusEnum::PERMANENT_REDIRECT->value => true,
@@ -28,9 +27,7 @@ final readonly class CachePolicy
         StatusEnum::NOT_IMPLEMENTED->value => true,
     ];
 
-    /**
-     * @return array<string,true|string>
-     */
+    /** @return array<string,true|string> */
     public static function directives(string $line): array
     {
         if ($line === '') {
@@ -45,7 +42,6 @@ final readonly class CachePolicy
             }
             if (!str_contains($segment, '=')) {
                 $directives[strtolower($segment)] = true;
-
                 continue;
             }
 
@@ -60,6 +56,9 @@ final readonly class CachePolicy
     {
         $method = HttpMethodEnum::normalize($request->getMethod());
         if ($method !== HttpMethodEnum::GET->value && $method !== HttpMethodEnum::HEAD->value) {
+            return false;
+        }
+        if ($request->hasHeader('Range') || $request->hasHeader('If-Range')) {
             return false;
         }
         if ($request->hasHeader('Authorization') || $request->hasHeader('Cookie')) {

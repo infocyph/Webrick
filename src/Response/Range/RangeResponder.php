@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Response\Range;
 
+use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Body\FileBody;
+use Infocyph\Webrick\Response\Conditional\ConditionalValidator;
 use Infocyph\Webrick\Response\Headers\Range as SimpleRange;
 use Infocyph\Webrick\Response\Internal\Utils;
 use Infocyph\Webrick\Response\Response;
@@ -15,9 +17,7 @@ use Infocyph\Webrick\Response\Response;
 /** Build 200/206/416 responses for seekable resources. */
 final readonly class RangeResponder
 {
-    /**
-     * @param array<string,string> $headers
-     */
+    /** @param array<string,string> $headers */
     public static function forFile(
         Request $req,
         string $absolutePath,
@@ -32,52 +32,39 @@ final readonly class RangeResponder
         if ($size === false) {
             return new Response(StatusEnum::NOT_FOUND->value);
         }
-        $mtime = filemtime($absolutePath) ?: time();
+        $mtime = filemtime($absolutePath);
+        $lastModified = $mtime === false ? null : $mtime;
         $length = max(0, $size);
 
         $headers += [
             'Accept-Ranges' => 'bytes',
-            'ETag' => 'W/"' . dechex($length) . '-' . dechex($mtime) . '"',
-            'Last-Modified' => Utils::httpDate($mtime),
+            'ETag' => 'W/"' . dechex($length) . '-' . dechex($lastModified ?? 0) . '"',
         ];
+        if ($lastModified !== null) {
+            $headers += ['Last-Modified' => Utils::httpDate($lastModified)];
+        }
 
-        $result = RangeParser::parse($req->getHeaderLine('Range'), $length);
-        if ($result->status === RangeParseStatus::UNSATISFIABLE) {
-            unset(
-                $headers['Content-Type'],
-                $headers['Content-Encoding'],
-                $headers['Content-Language'],
-                $headers['Content-Length'],
+        $method = HttpMethodEnum::normalize($req->getMethod());
+        $rangeLine = $method === HttpMethodEnum::GET->value
+            ? $req->getHeaderLine('Range')
+            : '';
+
+        if ($rangeLine !== '' && $req->getHeaderLine('If-Range') !== '') {
+            $etag = $headers['ETag'] ?? null;
+            $headerLastModified = isset($headers['Last-Modified']) ? strtotime($headers['Last-Modified']) : false;
+            $validator = new ConditionalValidator(
+                is_string($etag) && $etag !== '' ? $etag : null,
+                $headerLastModified === false ? null : $headerLastModified,
+                true,
             );
-            $headers['Content-Range'] = "bytes */{$length}";
-            $headers['Content-Length'] = '0';
-
-            return new Response(StatusEnum::RANGE_NOT_SATISFIABLE->value, '', $headers);
+            if (!$validator->isRangeFresh($req)) {
+                $rangeLine = '';
+            }
         }
 
-        if ($result->status !== RangeParseStatus::SATISFIABLE) {
-            $headers += [
-                'Content-Type' => $mediaType,
-                'Content-Length' => (string) $length,
-            ];
+        $result = RangeParser::parse($rangeLine, $length);
 
-            return new Response(StatusEnum::OK->value, new FileBody($absolutePath), $headers);
-        }
-
-        $resolved = $result->requireRange();
-        $partialLength = $resolved->length();
-        $headers += [
-            'Content-Range' => $resolved->contentRange(),
-            'Content-Length' => (string) $partialLength,
-            'Content-Type' => $mediaType,
-            'Accept-Ranges' => 'bytes',
-        ];
-
-        return new Response(
-            StatusEnum::PARTIAL_CONTENT->value,
-            new FileBody($absolutePath, $resolved->start, $partialLength),
-            $headers,
-        );
+        return self::buildFileResponse($absolutePath, $mediaType, $headers, $length, $result);
     }
 
     /**
@@ -141,6 +128,52 @@ final readonly class RangeResponder
         );
     }
 
+    /** @param array<string,string> $headers */
+    private static function buildFileResponse(
+        string $absolutePath,
+        string $mediaType,
+        array $headers,
+        int $length,
+        RangeParseResult $result,
+    ): Response {
+        if ($result->status === RangeParseStatus::UNSATISFIABLE) {
+            unset(
+                $headers['Content-Type'],
+                $headers['Content-Encoding'],
+                $headers['Content-Language'],
+                $headers['Content-Length'],
+            );
+            $headers['Content-Range'] = "bytes */{$length}";
+            $headers['Content-Length'] = '0';
+
+            return new Response(StatusEnum::RANGE_NOT_SATISFIABLE->value, '', $headers);
+        }
+
+        if ($result->status !== RangeParseStatus::SATISFIABLE) {
+            $headers += [
+                'Content-Type' => $mediaType,
+                'Content-Length' => (string) $length,
+            ];
+
+            return new Response(StatusEnum::OK->value, new FileBody($absolutePath), $headers);
+        }
+
+        $resolved = $result->requireRange();
+        $partialLength = $resolved->length();
+        $headers += [
+            'Content-Range' => $resolved->contentRange(),
+            'Content-Length' => (string) $partialLength,
+            'Content-Type' => $mediaType,
+            'Accept-Ranges' => 'bytes',
+        ];
+
+        return new Response(
+            StatusEnum::PARTIAL_CONTENT->value,
+            new FileBody($absolutePath, $resolved->start, $partialLength),
+            $headers,
+        );
+    }
+
     private static function isSeekable(mixed $source): bool
     {
         if ($source instanceof Stream) {
@@ -152,7 +185,7 @@ final readonly class RangeResponder
 
         $metadata = stream_get_meta_data($source);
 
-        return $metadata['seekable'];
+        return (bool) ($metadata['seekable'] ?? false);
     }
 
     private static function normalizeResult(
@@ -166,8 +199,14 @@ final readonly class RangeResponder
         if ($range instanceof SimpleRange) {
             return RangeParseResult::satisfiable($range);
         }
+        if (!$req instanceof Request || HttpMethodEnum::normalize($req->getMethod()) !== HttpMethodEnum::GET->value) {
+            return RangeParseResult::none();
+        }
+        if ($req->getHeaderLine('If-Range') !== '') {
+            return RangeParseResult::none();
+        }
 
-        return RangeParser::parse($req?->getHeaderLine('Range') ?? '', $totalLength);
+        return RangeParser::parse($req->getHeaderLine('Range'), $totalLength);
     }
 
     private static function wrapSeekable(mixed $source, ?int $start = null, ?int $length = null): ByteRangeStream|Stream

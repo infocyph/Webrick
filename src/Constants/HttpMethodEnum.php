@@ -8,49 +8,27 @@ namespace Infocyph\Webrick\Constants;
 enum HttpMethodEnum: string
 {
     case BAN = 'BAN';
-
     case CONNECT = 'CONNECT';
-
     case COPY = 'COPY';
-
     case DELETE = 'DELETE';
-
     case GET = 'GET';
-
     case HEAD = 'HEAD';
-
     case LINK = 'LINK';
-
     case LOCK = 'LOCK';
-
     case MKCALENDAR = 'MKCALENDAR';
-
     case MKCOL = 'MKCOL';
-
     case MOVE = 'MOVE';
-
     case OPTIONS = 'OPTIONS';
-
     case PATCH = 'PATCH';
-
     case POST = 'POST';
-
     case PROPFIND = 'PROPFIND';
-
     case PROPPATCH = 'PROPPATCH';
-
     case PURGE = 'PURGE';
-
     case PUT = 'PUT';
-
     case REPORT = 'REPORT';
-
     case SEARCH = 'SEARCH';
-
     case TRACE = 'TRACE';
-
     case UNLINK = 'UNLINK';
-
     case UNLOCK = 'UNLOCK';
 
     /** @return array<int,self> */
@@ -66,16 +44,22 @@ enum HttpMethodEnum: string
     }
 
     /**
-     * Known and extension methods share the same canonical uppercase representation.
+     * Known Webrick methods are canonicalized to their registered uppercase form.
+     * Unknown extension methods preserve their case because HTTP method tokens are case-sensitive.
      */
     public static function normalize(string $verb): string
     {
-        return strtoupper(trim($verb));
+        $verb = trim($verb);
+        if ($verb === '') {
+            return '';
+        }
+
+        return self::tryFrom(strtoupper($verb))?->value ?? $verb;
     }
 
     public static function tryFromString(string $verb): ?self
     {
-        return self::tryFrom(strtoupper($verb));
+        return self::tryFrom(strtoupper(trim($verb)));
     }
 
     public function allowsBody(): bool
