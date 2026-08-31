@@ -21,7 +21,16 @@ final class DefaultEmitter extends BaseEmitter
     public function __construct(
         private readonly string $finishMode = self::FINISH_NONE,
         private readonly bool $chunked = false,
-    ) {}
+    ) {
+        if (!in_array($this->finishMode, [
+            self::FINISH_NONE,
+            self::FINISH_FASTCGI,
+            self::FINISH_FRANKENPHP,
+            self::FINISH_LITESPEED,
+        ], true)) {
+            throw new \InvalidArgumentException('Unknown response finish mode.');
+        }
+    }
 
     #[\Override]
     public function emit(Response $response, ?Request $request = null): void
