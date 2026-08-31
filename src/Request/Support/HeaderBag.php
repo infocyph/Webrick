@@ -15,6 +15,7 @@ use Traversable;
 final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
 {
     private const string INVALID_HEADER_NAME = "/[^!#$%&'*+.^_`|~0-9A-Za-z-]/";
+
     private const string INVALID_HEADER_VALUE = '/[\x00-\x08\x0A-\x1F\x7F]/';
 
     /** @var array<string,list<string>> */
@@ -32,27 +33,76 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
     }
 
     /** @return array<string,list<string>> */
-    public function all(): array { return $this->map; }
-    public function count(): int { return count($this->map); }
-    public function first(string $name): ?string { return $this->map[$this->norm($name)][0] ?? null; }
+    public function all(): array
+    {
+        return $this->map;
+    }
+
+    public function count(): int
+    {
+        return count($this->map);
+    }
+
+    public function first(string $name): ?string
+    {
+        return $this->map[$this->norm($name)][0] ?? null;
+    }
+
     /** @return list<string> */
-    public function get(string $name): array { return $this->map[$this->norm($name)] ?? []; }
-    public function getHeaderLine(string $name): string { return ($values = $this->get($name)) ? implode(',', $values) : ''; }
+    public function get(string $name): array
+    {
+        return $this->map[$this->norm($name)] ?? [];
+    }
+
+    public function getHeaderLine(string $name): string
+    {
+        return ($values = $this->get($name)) ? implode(',', $values) : '';
+    }
+
     /** @return Traversable<string,list<string>> */
-    public function getIterator(): Traversable { return new ArrayIterator($this->map); }
-    public function has(string $name): bool { return isset($this->map[$this->norm($name)]); }
-    public function line(string $name): ?string { return ($values = $this->get($name)) ? implode(',', $values) : null; }
-    public function offsetExists(mixed $offset): bool { return is_string($offset) && $this->has($offset); }
+    public function getIterator(): Traversable
+    {
+        return new ArrayIterator($this->map);
+    }
+
+    public function has(string $name): bool
+    {
+        return isset($this->map[$this->norm($name)]);
+    }
+
+    public function line(string $name): ?string
+    {
+        return ($values = $this->get($name)) ? implode(',', $values) : null;
+    }
+
+    public function offsetExists(mixed $offset): bool
+    {
+        return is_string($offset) && $this->has($offset);
+    }
+
     /** @return list<string> */
-    public function offsetGet(mixed $offset): array { return is_string($offset) ? $this->get($offset) : []; }
-    public function offsetSet(mixed $offset, mixed $value): void { throw new \LogicException('HeaderBag is immutable'); }
-    public function offsetUnset(mixed $offset): void { throw new \LogicException('HeaderBag is immutable'); }
+    public function offsetGet(mixed $offset): array
+    {
+        return is_string($offset) ? $this->get($offset) : [];
+    }
+
+    public function offsetSet(mixed $offset, mixed $value): void
+    {
+        throw new \LogicException('HeaderBag is immutable');
+    }
+
+    public function offsetUnset(mixed $offset): void
+    {
+        throw new \LogicException('HeaderBag is immutable');
+    }
 
     /** @return string|list<string>|null */
     public function value(string $name): string|array|null
     {
         $all = $this->get($name);
-        if ($all === []) { return null; }
+        if ($all === []) {
+            return null;
+        }
 
         return count($all) === 1 ? $all[0] : $all;
     }
@@ -107,7 +157,9 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
     /** @return string|list<string> */
     private function normalizeSeedValue(mixed $value): string|array
     {
-        if (is_string($value)) { return $value; }
+        if (is_string($value)) {
+            return $value;
+        }
         if (!is_array($value)) {
             throw new \InvalidArgumentException('HTTP header values must be strings or lists of strings.');
         }

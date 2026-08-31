@@ -8,27 +8,49 @@ namespace Infocyph\Webrick\Constants;
 enum HttpMethodEnum: string
 {
     case BAN = 'BAN';
+
     case CONNECT = 'CONNECT';
+
     case COPY = 'COPY';
+
     case DELETE = 'DELETE';
+
     case GET = 'GET';
+
     case HEAD = 'HEAD';
+
     case LINK = 'LINK';
+
     case LOCK = 'LOCK';
+
     case MKCALENDAR = 'MKCALENDAR';
+
     case MKCOL = 'MKCOL';
+
     case MOVE = 'MOVE';
+
     case OPTIONS = 'OPTIONS';
+
     case PATCH = 'PATCH';
+
     case POST = 'POST';
+
     case PROPFIND = 'PROPFIND';
+
     case PROPPATCH = 'PROPPATCH';
+
     case PURGE = 'PURGE';
+
     case PUT = 'PUT';
+
     case REPORT = 'REPORT';
+
     case SEARCH = 'SEARCH';
+
     case TRACE = 'TRACE';
+
     case UNLINK = 'UNLINK';
+
     case UNLOCK = 'UNLOCK';
 
     /** @return array<int,self> */

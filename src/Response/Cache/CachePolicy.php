@@ -42,6 +42,7 @@ final readonly class CachePolicy
             }
             if (!str_contains($segment, '=')) {
                 $directives[strtolower($segment)] = true;
+
                 continue;
             }
 

@@ -10,6 +10,7 @@ use Infocyph\Webrick\Interfaces\BodyStream;
 abstract class Message
 {
     protected BodyStream $body;
+
     /** @var array<string,list<string>> */
     protected array $headers;
 
@@ -24,14 +25,38 @@ abstract class Message
     }
 
     protected function __clone(): void {}
-    public function getBody(): BodyStream { return $this->body; }
+
+    public function getBody(): BodyStream
+    {
+        return $this->body;
+    }
+
     /** @return list<string> */
-    public function getHeader(string $name): array { return $this->headers[$this->norm($name)] ?? []; }
-    public function getHeaderLine(string $name): string { return implode(',', $this->getHeader($name)); }
+    public function getHeader(string $name): array
+    {
+        return $this->headers[$this->norm($name)] ?? [];
+    }
+
+    public function getHeaderLine(string $name): string
+    {
+        return implode(',', $this->getHeader($name));
+    }
+
     /** @return array<string,list<string>> */
-    public function getHeaders(): array { return $this->headers; }
-    public function getProtocolVersion(): string { return $this->protocol; }
-    public function hasHeader(string $name): bool { return isset($this->headers[$this->norm($name)]); }
+    public function getHeaders(): array
+    {
+        return $this->headers;
+    }
+
+    public function getProtocolVersion(): string
+    {
+        return $this->protocol;
+    }
+
+    public function hasHeader(string $name): bool
+    {
+        return isset($this->headers[$this->norm($name)]);
+    }
 
     /** @param string|array<int,string> $value */
     public function withAddedHeader(string $name, string|array $value): static

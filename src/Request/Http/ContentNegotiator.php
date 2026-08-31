@@ -9,10 +9,13 @@ final readonly class ContentNegotiator
 {
     /** @var list<array{value:string,q:float,specificity:int,order:int}> */
     private array $accept;
+
     /** @var list<array{value:string,q:float,specificity:int,order:int}> */
     private array $charsets;
+
     /** @var list<array{value:string,q:float,specificity:int,order:int}> */
     private array $encodings;
+
     /** @var list<array{value:string,q:float,specificity:int,order:int}> */
     private array $languages;
 
@@ -58,6 +61,7 @@ final readonly class ContentNegotiator
                         $bestIndex = $index;
                     }
                 }
+
                 continue;
             }
 
@@ -105,6 +109,34 @@ final readonly class ContentNegotiator
         return $this->supportsEncoding('zstd');
     }
 
+    private static function mimeMatch(string $candidate, string $accepted): bool
+    {
+        if ($candidate === $accepted || $accepted === '*/*') {
+            return true;
+        }
+
+        $slash = strpos($accepted, '/');
+        if ($slash === false) {
+            return false;
+        }
+
+        $type = substr($accepted, 0, $slash);
+        $subtype = substr($accepted, $slash + 1);
+        if ($subtype === '*') {
+            return str_starts_with($candidate, $type . '/');
+        }
+        if (!str_starts_with($subtype, '*+')) {
+            return false;
+        }
+
+        $prefix = $type . '/';
+        $suffix = substr($subtype, 1);
+
+        return str_starts_with($candidate, $prefix)
+            && str_ends_with($candidate, $suffix)
+            && strlen($candidate) > strlen($prefix) + strlen($suffix);
+    }
+
     /**
      * @return list<array{value:string,q:float,specificity:int,order:int}>
      */
@@ -117,7 +149,7 @@ final readonly class ContentNegotiator
         $entries = [];
         foreach (explode(',', $raw) as $order => $segment) {
             $parts = array_map(trim(...), explode(';', $segment));
-            $value = strtolower((string) array_shift($parts));
+            $value = strtolower(array_shift($parts));
             if ($value === '') {
                 continue;
             }
@@ -125,6 +157,7 @@ final readonly class ContentNegotiator
             foreach ($parts as $param) {
                 if (preg_match('/^q=([01](?:\.\d{0,3})?)$/i', $param, $matches) === 1) {
                     $q = max(0.0, min(1.0, (float) $matches[1]));
+
                     break;
                 }
             }
@@ -183,33 +216,5 @@ final readonly class ContentNegotiator
         }
 
         return str_contains($candidate, '-') && str_starts_with($candidate, $accepted . '-');
-    }
-
-    private static function mimeMatch(string $candidate, string $accepted): bool
-    {
-        if ($candidate === $accepted || $accepted === '*/*') {
-            return true;
-        }
-
-        $slash = strpos($accepted, '/');
-        if ($slash === false) {
-            return false;
-        }
-
-        $type = substr($accepted, 0, $slash);
-        $subtype = substr($accepted, $slash + 1);
-        if ($subtype === '*') {
-            return str_starts_with($candidate, $type . '/');
-        }
-        if (!str_starts_with($subtype, '*+')) {
-            return false;
-        }
-
-        $prefix = $type . '/';
-        $suffix = substr($subtype, 1);
-
-        return str_starts_with($candidate, $prefix)
-            && str_ends_with($candidate, $suffix)
-            && strlen($candidate) > strlen($prefix) + strlen($suffix);
     }
 }

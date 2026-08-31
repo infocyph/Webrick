@@ -51,6 +51,32 @@ final class RouterArtifactLoader
         }
     }
 
+    /** @param array<string,mixed> $payload */
+    private function calculatePayloadFingerprint(array $payload): string
+    {
+        foreach (['routes', 'plans', 'aliases', 'pre_global', 'post_global', 'pre_global_tags', 'post_global_tags'] as $field) {
+            if (!is_array($payload[$field] ?? null)) {
+                throw new UnexpectedValueException("Malformed Webrick router artifact field '{$field}'.");
+            }
+        }
+        if (!is_string($payload['environment'] ?? null) || !is_string($payload['config_fingerprint'] ?? null) || !is_bool($payload['has_domain_routes'] ?? null)) {
+            throw new UnexpectedValueException('Malformed Webrick router artifact identity fields.');
+        }
+
+        return RouterArtifactCompiler::fingerprintPayload(
+            $payload['environment'],
+            $payload['config_fingerprint'],
+            $payload['has_domain_routes'],
+            array_values($payload['routes']),
+            $payload['plans'],
+            $payload['aliases'],
+            array_values($payload['pre_global']),
+            array_values($payload['post_global']),
+            array_values($payload['pre_global_tags']),
+            array_values($payload['post_global_tags']),
+        );
+    }
+
     /** @param array{format:int,environment:string,config_fingerprint:string,artifact_fingerprint:string,sha256:string} $meta */
     private function loadPayload(
         string $path,
@@ -91,32 +117,6 @@ final class RouterArtifactLoader
         }
 
         return $artifact;
-    }
-
-    /** @param array<string,mixed> $payload */
-    private function calculatePayloadFingerprint(array $payload): string
-    {
-        foreach (['routes', 'plans', 'aliases', 'pre_global', 'post_global', 'pre_global_tags', 'post_global_tags'] as $field) {
-            if (!is_array($payload[$field] ?? null)) {
-                throw new UnexpectedValueException("Malformed Webrick router artifact field '{$field}'.");
-            }
-        }
-        if (!is_string($payload['environment'] ?? null) || !is_string($payload['config_fingerprint'] ?? null) || !is_bool($payload['has_domain_routes'] ?? null)) {
-            throw new UnexpectedValueException('Malformed Webrick router artifact identity fields.');
-        }
-
-        return RouterArtifactCompiler::fingerprintPayload(
-            $payload['environment'],
-            $payload['config_fingerprint'],
-            $payload['has_domain_routes'],
-            array_values($payload['routes']),
-            $payload['plans'],
-            $payload['aliases'],
-            array_values($payload['pre_global']),
-            array_values($payload['post_global']),
-            array_values($payload['pre_global_tags']),
-            array_values($payload['post_global_tags']),
-        );
     }
 
     /** @return array{format:int,environment:string,config_fingerprint:string,artifact_fingerprint:string,sha256:string} */

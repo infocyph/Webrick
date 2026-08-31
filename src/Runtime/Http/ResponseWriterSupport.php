@@ -31,6 +31,7 @@ final readonly class ResponseWriterSupport
         $producer = $response->getProducer();
         if ($producer !== null) {
             yield from self::nonEmptyChunks($producer());
+
             return;
         }
 
@@ -39,6 +40,7 @@ final readonly class ResponseWriterSupport
             if ($string !== '') {
                 yield $string;
             }
+
             return;
         }
 
@@ -100,14 +102,6 @@ final readonly class ResponseWriterSupport
             || $status === StatusEnum::NO_CONTENT->value;
     }
 
-    private static function statusHasNoContent(int $status): bool
-    {
-        return ($status >= 100 && $status < 200)
-            || $status === StatusEnum::NO_CONTENT->value
-            || $status === StatusEnum::RESET_CONTENT->value
-            || $status === StatusEnum::NOT_MODIFIED->value;
-    }
-
     /** @param iterable<string> $chunks @return iterable<string> */
     private static function nonEmptyChunks(iterable $chunks): iterable
     {
@@ -116,5 +110,13 @@ final readonly class ResponseWriterSupport
                 yield $chunk;
             }
         }
+    }
+
+    private static function statusHasNoContent(int $status): bool
+    {
+        return ($status >= 100 && $status < 200)
+            || $status === StatusEnum::NO_CONTENT->value
+            || $status === StatusEnum::RESET_CONTENT->value
+            || $status === StatusEnum::NOT_MODIFIED->value;
     }
 }

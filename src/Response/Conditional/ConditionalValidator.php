@@ -12,6 +12,7 @@ use Infocyph\Webrick\Request\Request;
 final readonly class ConditionalValidator
 {
     private const int HTTP_NOT_MODIFIED = StatusEnum::NOT_MODIFIED->value;
+
     private const int HTTP_PRECONDITION = StatusEnum::PRECONDITION_FAILED->value;
 
     public function __construct(
@@ -56,15 +57,6 @@ final readonly class ConditionalValidator
         $date = $this->parseDate($ifRange);
 
         return $date !== null && $this->lastModified !== null && $this->lastModified <= $date;
-    }
-
-    private function representationExists(): ?bool
-    {
-        if ($this->representationExists !== null) {
-            return $this->representationExists;
-        }
-
-        return $this->etag !== null || $this->lastModified !== null ? true : null;
     }
 
     private static function strongEtagEquals(string $current, string $candidate): bool
@@ -171,6 +163,15 @@ final readonly class ConditionalValidator
         return $timestamp === false ? null : $timestamp;
     }
 
+    private function representationExists(): ?bool
+    {
+        if ($this->representationExists !== null) {
+            return $this->representationExists;
+        }
+
+        return $this->etag !== null || $this->lastModified !== null ? true : null;
+    }
+
     /** @return list<string>|null */
     private function tokenize(string $list): ?array
     {
@@ -187,16 +188,19 @@ final readonly class ConditionalValidator
             if ($escaped) {
                 $token .= $char;
                 $escaped = false;
+
                 continue;
             }
             if ($quoted && $char === '\\') {
                 $token .= $char;
                 $escaped = true;
+
                 continue;
             }
             if ($char === '"') {
                 $quoted = !$quoted;
                 $token .= $char;
+
                 continue;
             }
             if ($char === ',' && !$quoted) {
@@ -204,6 +208,7 @@ final readonly class ConditionalValidator
                     $tokens[] = $value;
                 }
                 $token = '';
+
                 continue;
             }
             $token .= $char;

@@ -34,9 +34,13 @@ use Throwable;
 final readonly class CompiledRouterKernel
 {
     private RuntimeDispatcher $dispatcher;
+
     private ErrorHandler $errorHandler;
+
     private bool $hasGlobalMiddleware;
+
     private MatcherInterface $matcher;
+
     private InterMixRuntime $runtime;
 
     private function __construct(
@@ -84,7 +88,8 @@ final readonly class CompiledRouterKernel
         ?SignedUrlConfig $signedUrlConfig = null,
     ): self {
         $artifact = new RouterArtifactLoader()->load($artifactPath, $environment, $configFingerprint);
-        return new self($log,$artifact,$matcher,$container,$errorHandler,$urlBaseUri,$signKey,$signedDefaultTtl,$signedUrlConfig);
+
+        return new self($log, $artifact, $matcher, $container, $errorHandler, $urlBaseUri, $signKey, $signedDefaultTtl, $signedUrlConfig);
     }
 
     public static function fromPrevalidatedArtifact(
@@ -101,108 +106,170 @@ final readonly class CompiledRouterKernel
         ?int $signedDefaultTtl = null,
         ?SignedUrlConfig $signedUrlConfig = null,
     ): self {
-        $artifact = new RouterArtifactLoader()->loadPrevalidated($artifactPath,$trustedSha256,$environment,$configFingerprint);
-        return new self($log,$artifact,$matcher,$container,$errorHandler,$urlBaseUri,$signKey,$signedDefaultTtl,$signedUrlConfig);
+        $artifact = new RouterArtifactLoader()->loadPrevalidated($artifactPath, $trustedSha256, $environment, $configFingerprint);
+
+        return new self($log, $artifact, $matcher, $container, $errorHandler, $urlBaseUri, $signKey, $signedDefaultTtl, $signedUrlConfig);
     }
 
     public function handle(?Request $request = null): Response
     {
         try {
-            $routing = $request instanceof Request ? RoutingInput::fromRequest($request,$this->artifact->hasDomainRoutes) : RoutingInput::fromGlobals($this->artifact->hasDomainRoutes);
-            $response = $this->dispatchRoutingInput($routing,$request);
+            $routing = $request instanceof Request ? RoutingInput::fromRequest($request, $this->artifact->hasDomainRoutes) : RoutingInput::fromGlobals($this->artifact->hasDomainRoutes);
+            $response = $this->dispatchRoutingInput($routing, $request);
+
             return $routing->method === HttpMethodEnum::HEAD->value ? self::headResponse($response) : $response;
         } catch (Throwable $exception) {
-            $response = $this->renderException($exception,$request);
+            $response = $this->renderException($exception, $request);
+
             return isset($routing) && $routing->method === HttpMethodEnum::HEAD->value ? self::headResponse($response) : $response;
         }
     }
 
     public function handleRuntime(RuntimeRequestContext $context): Response
     {
-        $request=null;
-        try { return $this->dispatchRoutingInput($context->routing,$request,$context); }
-        catch(Throwable $exception){ return $this->renderException($exception,$request,$context); }
+        $request = null;
+
+        try {
+            return $this->dispatchRoutingInput($context->routing, $request, $context);
+        } catch (Throwable $exception) {
+            return $this->renderException($exception, $request, $context);
+        }
     }
 
-    public function requiresHostRouting(): bool { return $this->artifact->hasDomainRoutes; }
+    public function requiresHostRouting(): bool
+    {
+        return $this->artifact->hasDomainRoutes;
+    }
 
     /** @param list<string> $allowed */
     private static function automaticOptionsResponse(array $allowed): Response
     {
-        $methods=[];
-        foreach($allowed as $method){$method=HttpMethodEnum::normalize($method);if($method!==''){$methods[$method]=true;}}
-        if(isset($methods[HttpMethodEnum::GET->value])){$methods[HttpMethodEnum::HEAD->value]=true;}
-        $methods[HttpMethodEnum::OPTIONS->value]=true;
-        return Response::noContent(['Allow'=>implode(', ',array_keys($methods))]);
+        $methods = [];
+        foreach ($allowed as $method) {
+            $method = HttpMethodEnum::normalize($method);
+            if ($method !== '') {
+                $methods[$method] = true;
+            }
+        }
+        if (isset($methods[HttpMethodEnum::GET->value])) {
+            $methods[HttpMethodEnum::HEAD->value] = true;
+        }
+        $methods[HttpMethodEnum::OPTIONS->value] = true;
+
+        return Response::noContent(['Allow' => implode(', ', array_keys($methods))]);
     }
 
     private static function headResponse(Response $response): Response
     {
-        if(!$response->hasHeader('Content-Length')){$size=$response->getBodySize();if($size!==null){$response=$response->withHeader('Content-Length',(string)$size);}}
+        if (!$response->hasHeader('Content-Length')) {
+            $size = $response->getBodySize();
+            if ($size !== null) {
+                $response = $response->withHeader('Content-Length', (string) $size);
+            }
+        }
+
         return $response->withBody('');
     }
 
-    private static function scopeId(RoutingInput $routing,?RuntimeRequestContext $runtimeContext): string
+    private static function scopeId(RoutingInput $routing, ?RuntimeRequestContext $runtimeContext): string
     {
-        return $runtimeContext?->scopeId() ?? 'webrick.request.'.spl_object_id($routing);
+        return $runtimeContext?->scopeId() ?? 'webrick.request.' . spl_object_id($routing);
     }
 
-    private function dispatchRoutingInput(RoutingInput $routing,?Request &$request,?RuntimeRequestContext $runtimeContext=null): Response
+    private function dispatchRoutingInput(RoutingInput $routing, ?Request &$request, ?RuntimeRequestContext $runtimeContext = null): Response
     {
-        $match=$this->matchRoutingInput($routing);
-        if(is_int($match)){$routeIndex=$match;$vars=[];}
-        elseif(is_array($match)){$routeIndex=$match[0];$vars=$match[1];}
-        else{$this->throwOrReturnControlOutcome($match,$routing);return self::automaticOptionsResponse($match->allowed);}
+        $match = $this->matchRoutingInput($routing);
+        if (is_int($match)) {
+            $routeIndex = $match;
+            $vars = [];
+        } elseif (is_array($match)) {
+            $routeIndex = $match[0];
+            $vars = $match[1];
+        } else {
+            $this->throwOrReturnControlOutcome($match, $routing);
 
-        $plan=$this->artifact->planForIndex($routeIndex);
-        $pipeline=$plan->kind===ExecutionKind::MIDDLEWARE_PIPELINE||$this->hasGlobalMiddleware;
-        if(!$pipeline&&!$plan->requiresRequest()){return $this->dispatchWithoutRequest($routing,$plan,$vars,$runtimeContext);}
+            return self::automaticOptionsResponse($match->allowed);
+        }
+
+        $plan = $this->artifact->planForIndex($routeIndex);
+        $pipeline = $plan->kind === ExecutionKind::MIDDLEWARE_PIPELINE || $this->hasGlobalMiddleware;
+        if (!$pipeline && !$plan->requiresRequest()) {
+            return $this->dispatchWithoutRequest($routing, $plan, $vars, $runtimeContext);
+        }
         $request ??= $runtimeContext?->request() ?? Request::fromGlobals();
-        return $this->dispatchWithRequest($routing,$plan,$request,$vars,$runtimeContext);
+
+        return $this->dispatchWithRequest($routing, $plan, $request, $vars, $runtimeContext);
     }
 
     /** @param array<string,string> $vars */
-    private function dispatchWithoutRequest(RoutingInput $routing,ExecutionPlan $plan,array $vars,?RuntimeRequestContext $runtimeContext): Response
+    private function dispatchWithoutRequest(RoutingInput $routing, ExecutionPlan $plan, array $vars, ?RuntimeRequestContext $runtimeContext): Response
     {
-        if(!$plan->requiresScope()){
-            return match($plan->terminalKind){
-                ExecutionKind::DIRECT_ZERO_ARG=>$this->dispatcher->dispatchDirectZeroArg($plan),
-                ExecutionKind::DIRECT_ROUTE_ARGS=>$this->dispatcher->dispatchDirectRouteArgs($plan,$vars),
-                default=>$this->dispatcher->dispatchWithoutRequest($plan,$vars),
+        if (!$plan->requiresScope()) {
+            return match ($plan->terminalKind) {
+                ExecutionKind::DIRECT_ZERO_ARG => $this->dispatcher->dispatchDirectZeroArg($plan),
+                ExecutionKind::DIRECT_ROUTE_ARGS => $this->dispatcher->dispatchDirectRouteArgs($plan, $vars),
+                default => $this->dispatcher->dispatchWithoutRequest($plan, $vars),
             };
         }
-        $response=$this->runtime->withinScope(self::scopeId($routing,$runtimeContext),fn()=>$this->dispatcher->dispatchWithoutRequest($plan,$vars));
-        if(!$response instanceof Response){throw new \RuntimeException('Compiled request scope must return Response.');}
+        $response = $this->runtime->withinScope(self::scopeId($routing, $runtimeContext), fn() => $this->dispatcher->dispatchWithoutRequest($plan, $vars));
+        if (!$response instanceof Response) {
+            throw new \RuntimeException('Compiled request scope must return Response.');
+        }
+
         return $response;
     }
 
     /** @param array<string,string> $vars */
-    private function dispatchWithRequest(RoutingInput $routing,ExecutionPlan $plan,Request $request,array $vars,?RuntimeRequestContext $runtimeContext): Response
+    private function dispatchWithRequest(RoutingInput $routing, ExecutionPlan $plan, Request $request, array $vars, ?RuntimeRequestContext $runtimeContext): Response
     {
-        $requiresScope=$plan->requiresScope()||$this->dispatcher->pipelineRequiresScope($plan->routeId);
-        if(!$requiresScope){return $this->dispatcher->dispatch($plan,$request,$vars);}
-        $response=$this->runtime->withinScope(self::scopeId($routing,$runtimeContext),fn()=>$this->dispatcher->dispatch($plan,$request,$vars),[Request::class=>$request]);
-        if(!$response instanceof Response){throw new \RuntimeException('Compiled request scope must return Response.');}
+        $requiresScope = $plan->requiresScope() || $this->dispatcher->pipelineRequiresScope($plan->routeId);
+        if (!$requiresScope) {
+            return $this->dispatcher->dispatch($plan, $request, $vars);
+        }
+        $response = $this->runtime->withinScope(self::scopeId($routing, $runtimeContext), fn() => $this->dispatcher->dispatch($plan, $request, $vars), [Request::class => $request]);
+        if (!$response instanceof Response) {
+            throw new \RuntimeException('Compiled request scope must return Response.');
+        }
+
         return $response;
     }
 
     /** @return int|array{0:int,1:array<string,string>}|MatchOutcome */
     private function matchRoutingInput(RoutingInput $routing): int|array|MatchOutcome
     {
-        if($routing->method===''||$routing->host===''||$routing->path===''){throw new \LogicException('Routing input must be canonical before compiled matching.');}
-        return $this->matcher->matchCompiled($routing->method,$routing->host,$routing->path);
+        if ($routing->method === '' || $routing->host === '' || $routing->path === '') {
+            throw new \LogicException('Routing input must be canonical before compiled matching.');
+        }
+
+        return $this->matcher->matchCompiled($routing->method, $routing->host, $routing->path);
     }
 
-    private function renderException(Throwable $exception,?Request $request,?RuntimeRequestContext $runtimeContext=null): Response
+    private function renderException(Throwable $exception, ?Request $request, ?RuntimeRequestContext $runtimeContext = null): Response
     {
-        if(!$request instanceof Request){try{$request=$runtimeContext?->request()??Request::fromGlobals();}catch(Throwable){$request=Request::fake();}}
-        return $this->errorHandler->handle($request,static function(Request $activeRequest) use($exception):Response{unset($activeRequest);throw $exception;});
+        if (!$request instanceof Request) {
+            try {
+                $request = $runtimeContext?->request() ?? Request::fromGlobals();
+            } catch (Throwable) {
+                $request = Request::fake();
+            }
+        }
+
+        return $this->errorHandler->handle($request, static function (Request $activeRequest) use ($exception): Response {
+            unset($activeRequest);
+
+            throw $exception;
+        });
     }
 
-    private function throwOrReturnControlOutcome(MatchOutcome $outcome,RoutingInput $routing): void
+    private function throwOrReturnControlOutcome(MatchOutcome $outcome, RoutingInput $routing): void
     {
-        if($outcome->type===MatchOutcomeType::AUTO_OPTIONS){return;}
-        if($outcome->type===MatchOutcomeType::METHOD_NOT_ALLOWED){throw new MethodNotAllowedException($routing->method,$routing->path,$outcome->allowed);}
+        if ($outcome->type === MatchOutcomeType::AUTO_OPTIONS) {
+            return;
+        }
+        if ($outcome->type === MatchOutcomeType::METHOD_NOT_ALLOWED) {
+            throw new MethodNotAllowedException($routing->method,$routing->path,$outcome->allowed);
+        }
+
         throw new RouteNotFoundException($routing->method,$routing->path);
     }
 }

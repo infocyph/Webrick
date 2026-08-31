@@ -27,8 +27,11 @@ class Response
     use MacroMix;
 
     private BodyStream|string $body;
+
     private ?BodyStream $bodyFacade = null;
+
     private HeaderBag $headers;
+
     /** @var null|\Closure():iterable<string> */
     private ?\Closure $producer = null;
 

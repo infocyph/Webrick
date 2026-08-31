@@ -13,9 +13,12 @@ final class RequestHeaders
 {
     /** @var array<string,list<string>>|null */
     private ?array $accept = null;
+
     private ?HeaderBag $all = null;
+
     /** @var array{type:?string,charset:?string,length:?int,md5:string}|null */
     private ?array $content = null;
+
     /** @var array<string,mixed>|null */
     private ?array $dep = null;
 
@@ -46,11 +49,6 @@ final class RequestHeaders
         }
 
         return $key === null ? $this->accept : ($this->accept[$key] ?? []);
-    }
-
-    public function raw(string $name): string
-    {
-        return $this->req->getHeaderLine($name);
     }
 
     public function all(): HeaderBag
@@ -116,6 +114,11 @@ final class RequestHeaders
         return $key ? ($dep[$key] ?? []) : $dep;
     }
 
+    public function raw(string $name): string
+    {
+        return $this->req->getHeaderLine($name);
+    }
+
     /** @param array<string,mixed> $srv @param array<string,list<string>> $out */
     private static function backfillAuthorization(array $srv, array &$out): void
     {
@@ -125,12 +128,14 @@ final class RequestHeaders
         $authorization = $srv['HTTP_AUTHORIZATION'] ?? $srv['REDIRECT_HTTP_AUTHORIZATION'] ?? null;
         if (is_string($authorization) && $authorization !== '') {
             $out['Authorization'] = [$authorization];
+
             return;
         }
         $user = $srv['PHP_AUTH_USER'] ?? null;
         if (is_string($user) && $user !== '') {
             $password = $srv['PHP_AUTH_PW'] ?? '';
             $out['Authorization'] = ['Basic ' . base64_encode($user . ':' . (is_string($password) ? $password : ''))];
+
             return;
         }
         $digest = $srv['PHP_AUTH_DIGEST'] ?? null;

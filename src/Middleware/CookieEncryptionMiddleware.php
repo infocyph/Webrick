@@ -19,22 +19,34 @@ use RuntimeException;
 final class CookieEncryptionMiddleware
 {
     private const string CACHE_PREFIX = 'enc_cookie.';
+
     private const string MODE_BROTLI = 'b';
+
     private const string MODE_GZIP = 'g';
+
     private const string MODE_NONE = '0';
+
     private const string MODE_STORE = 'S:';
+
     private const string MODE_ZSTD = 'z';
+
     private const string STORE_BLOB_V1 = 'C1:';
+
     private const string STORE_SEP = ':';
+
     private const string V1_BYTE = '1';
 
     private static bool $hasBrotli = false;
+
     private static bool $hasGzip = false;
+
     private static bool $hasZstd = false;
 
     private readonly CookieAttributeApplier $cookieAttributeApplier;
+
     /** @var list<string> */
     private readonly array $keys;
+
     private readonly int $kid;
 
     /** @param string|array<int,string> $keyOrKeys */
@@ -195,6 +207,7 @@ final class CookieEncryptionMiddleware
             }
             if (!preg_match($pattern, $name, $matches)) {
                 $out[$name] = $value;
+
                 continue;
             }
             $assemblies[$matches[1]][(int) ($matches[2] ?? 1)] = $value;
@@ -276,6 +289,7 @@ final class CookieEncryptionMiddleware
             $parts = $this->parseSetCookie($line);
             if ($parts === null || !str_starts_with($parts['name'], $this->cookiePrefix)) {
                 $jar = $jar->raw($line);
+
                 continue;
             }
 
@@ -409,7 +423,7 @@ final class CookieEncryptionMiddleware
     private function parseSetCookie(string $line): ?array
     {
         $chunks = array_map(trim(...), explode(';', $line));
-        if ($chunks === [] || !str_contains($chunks[0], '=')) {
+        if (!str_contains($chunks[0], '=')) {
             return null;
         }
         [$name, $value] = explode('=', $chunks[0], 2);

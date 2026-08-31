@@ -8,8 +8,12 @@ namespace Infocyph\Webrick\Response\Headers;
 final class HeaderPolicy
 {
     public const int MERGE_TOKENS = 2;
+
     public const int MULTI_LINE = 1;
+
     public const int SINGLE = 0;
+
+    private static bool $frozen = false;
 
     /** @var array<string,int> */
     private static array $map = [
@@ -26,8 +30,6 @@ final class HeaderPolicy
         'access-control-allow-headers' => self::MERGE_TOKENS,
         'cache-control' => self::MERGE_TOKENS,
     ];
-
-    private static bool $frozen = false;
 
     private function __construct() {}
 

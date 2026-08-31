@@ -23,21 +23,30 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
     use MacroMix;
 
     public const HEADER_FORWARDED = 0b10000;
+
     public const HEADER_X_FORWARDED_FOR = 0b00001;
+
     public const HEADER_X_FORWARDED_HOST = 0b00010;
+
     public const HEADER_X_FORWARDED_PORT = 0b01000;
+
     public const HEADER_X_FORWARDED_PROTO = 0b00100;
 
-    private static bool $trustedProxyConfigurationFrozen = false;
     private static int $trustedHeaderFlags = 0;
+
     /** @var list<string> */
     private static array $trustedProxyCidrs = [];
+
+    private static bool $trustedProxyConfigurationFrozen = false;
+
     /** @var list<CidrNetwork> */
     private static array $trustedProxyNetworks = [];
 
     /** @var array<string,mixed>|null */
     private ?array $cachedAll = null;
+
     private ?string $cachedLocale = null;
+
     /** @var list<string>|null */
     private ?array $cachedSegments = null;
 
@@ -66,6 +75,11 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         );
     }
 
+    public static function freezeTrustedProxyConfiguration(): void
+    {
+        self::$trustedProxyConfigurationFrozen = true;
+    }
+
     public static function fromGlobals(): self
     {
         $native = parent::createFromGlobals();
@@ -82,11 +96,6 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
             query: $native->getQueryParams(),
             cookies: $native->getCookieParams(),
         );
-    }
-
-    public static function freezeTrustedProxyConfiguration(): void
-    {
-        self::$trustedProxyConfigurationFrozen = true;
     }
 
     public static function getProxyHeaderFlags(): int
@@ -159,10 +168,14 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
     public function boolean(string $key, bool $default = false): bool
     {
         $value = filter_var($this->data($key), FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE);
+
         return $value ?? $default;
     }
 
-    public function canonicalQuery(): string { return Uri::normalizeQueryString($this->getUri()->getQuery()); }
+    public function canonicalQuery(): string
+    {
+        return Uri::normalizeQueryString($this->getUri()->getQuery());
+    }
 
     public function data(string $dot, mixed $default = null): mixed
     {
@@ -211,8 +224,17 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return self::stringMap(array_diff_key($this->all(), array_flip(self::stringList($keys))));
     }
 
-    #[\Override] public function expectsJson(): bool { return parent::expectsJson(); }
-    #[\Override] public function expectsXml(): bool { return parent::expectsXml(); }
+    #[\Override]
+    public function expectsJson(): bool
+    {
+        return parent::expectsJson();
+    }
+
+    #[\Override]
+    public function expectsXml(): bool
+    {
+        return parent::expectsXml();
+    }
 
     /** @param string|list<string> $keys */
     public function filled(string|array $keys): bool
@@ -223,6 +245,7 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
                 return false;
             }
         }
+
         return true;
     }
 
@@ -232,40 +255,65 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return array_all(self::stringList($keys), fn($key) => $this->data($key) !== null);
     }
 
-    public function hasFile(string $key): bool { return $this->file($key) !== null; }
+    public function hasFile(string $key): bool
+    {
+        return $this->file($key) !== null;
+    }
 
     public function header(string $name, ?string $default = null): ?string
     {
         $line = $this->getHeaderLine($name);
+
         return $line !== '' ? $line : $default;
     }
 
-    public function input(string $key, mixed $default = null): mixed { return $this->data($key, $default); }
+    public function input(string $key, mixed $default = null): mixed
+    {
+        return $this->data($key, $default);
+    }
 
     public function int(string $key, int $default = 0): int
     {
         $value = filter_var($this->data($key), FILTER_VALIDATE_INT);
+
         return $value !== false ? $value : $default;
     }
 
     public function ip(bool $proxyAware = false): ?string
     {
         $user = EndUser::from($this, self::$trustedProxyNetworks);
+
         return $proxyAware ? $user->ipViaProxy() : $user->ipNoProxy();
     }
 
-    public function isJson(): bool { return preg_match('#(?:application|text)/(?:[^\s;]+\+)?json#i', $this->getHeaderLine('Content-Type')) === 1; }
+    public function isJson(): bool
+    {
+        return preg_match('#(?:application|text)/(?:[^\s;]+\+)?json#i', $this->getHeaderLine('Content-Type')) === 1;
+    }
 
     /** @param string|list<string> $verbs */
     public function isMethod(string|array $verbs): bool
     {
         $normalized = array_map(HttpMethodEnum::normalize(...), self::stringList($verbs));
+
         return in_array(HttpMethodEnum::normalize($this->getEffectiveMethod()), $normalized, true);
     }
 
-    public function isSecure(): bool { return $this->getUri()->getScheme() === 'https'; }
-    public function isXml(): bool { return preg_match('#(?:application|text)/(?:[^\s;]+\+)?xml#i', $this->getHeaderLine('Content-Type')) === 1; }
-    /** @return array<string,mixed> */ public function jsonSerialize(): array { return $this->all(); }
+    public function isSecure(): bool
+    {
+        return $this->getUri()->getScheme() === 'https';
+    }
+
+    public function isXml(): bool
+    {
+        return preg_match('#(?:application|text)/(?:[^\s;]+\+)?xml#i', $this->getHeaderLine('Content-Type')) === 1;
+    }
+
+    /** @return array<string,mixed> */
+    public function jsonSerialize(): array
+    {
+        return $this->all();
+    }
 
     /** @param list<string>|null $supported */
     public function locale(?array $supported = null, string $fallback = 'en', bool $cache = true): string
@@ -305,48 +353,89 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
     {
         $parsed = $this->getParsedBody();
         $body = is_array($parsed) ? $parsed : [];
+
         return $this->withParsedBody(self::stringMap(array_merge($body, $data)));
     }
 
-    /** @param string|list<string> $keys */ public function missing(string|array $keys): bool { return !$this->has($keys); }
+    /** @param string|list<string> $keys */
+    public function missing(string|array $keys): bool
+    {
+        return !$this->has($keys);
+    }
 
     public function offsetExists(mixed $offset): bool
     {
         $key = self::toStringKey($offset);
+
         return $key !== null && $this->data($key) !== null;
     }
+
     public function offsetGet(mixed $offset): mixed
     {
         $key = self::toStringKey($offset);
+
         return $key === null ? null : $this->data($key);
     }
-    public function offsetSet(mixed $offset, mixed $value): void { throw new InvalidArgumentException('Request is immutable'); }
-    public function offsetUnset(mixed $offset): void { throw new InvalidArgumentException('Request is immutable'); }
+
+    public function offsetSet(mixed $offset, mixed $value): void
+    {
+        throw new InvalidArgumentException('Request is immutable');
+    }
+
+    public function offsetUnset(mixed $offset): void
+    {
+        throw new InvalidArgumentException('Request is immutable');
+    }
 
     /** @param string|list<string> $keys @return array<string,mixed> */
-    public function only(string|array $keys): array { return array_intersect_key($this->all(), array_flip(self::stringList($keys))); }
-    /** @param list<string> $mimeTypes */ public function prefers(array $mimeTypes): ?string { return new ContentNegotiator($this->headers())->preferred($mimeTypes); }
-    /** @param array<string,mixed> $data */ public function replace(array $data): self { return $this->withParsedBody($data); }
+    public function only(string|array $keys): array
+    {
+        return array_intersect_key($this->all(), array_flip(self::stringList($keys)));
+    }
+
+    /** @param list<string> $mimeTypes */
+    public function prefers(array $mimeTypes): ?string
+    {
+        return new ContentNegotiator($this->headers())->preferred($mimeTypes);
+    }
+
+    /** @param array<string,mixed> $data */
+    public function replace(array $data): self
+    {
+        return $this->withParsedBody($data);
+    }
 
     /** @param string|list<string> $patterns */
     public function routeIs(string|array $patterns): bool
     {
         $target = $this->getRequestTarget();
+
         return array_any(self::stringList($patterns), fn(string $pattern): bool => preg_match('#^' . str_replace('\\*', '.*', preg_quote($pattern, '#')) . '$#', $target) === 1);
     }
 
-    public function segment(int $index, mixed $default = null): mixed { return $this->segments()[$index - 1] ?? $default; }
+    public function segment(int $index, mixed $default = null): mixed
+    {
+        return $this->segments()[$index - 1] ?? $default;
+    }
+
     /** @return list<string> */
     public function segments(): array
     {
         return $this->cachedSegments ??= array_values(array_filter(explode('/', $this->getUri()->getPath()), static fn(string $segment): bool => $segment !== ''));
     }
+
     public function string(string $key, string $default = ''): string
     {
         $value = $this->data($key);
+
         return is_string($value) ? $value : $default;
     }
-    /** @return array<string,string> */ public function ua(): array { return EndUser::from($this, self::$trustedProxyNetworks)->parseUserAgent(); }
+
+    /** @return array<string,string> */
+    public function ua(): array
+    {
+        return EndUser::from($this, self::$trustedProxyNetworks)->parseUserAgent();
+    }
 
     /** @param array<string,string> $rules @return array<string,mixed> */
     public function validate(array $rules): array
@@ -356,17 +445,26 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
                 throw new InvalidArgumentException("Field '{$field}' is required");
             }
         }
+
         return $this->only(array_keys($rules));
     }
 
-    public function wantsJson(): bool { return $this->expectsJson(); }
-    public function wantsXml(): bool { return $this->expectsXml(); }
+    public function wantsJson(): bool
+    {
+        return $this->expectsJson();
+    }
+
+    public function wantsXml(): bool
+    {
+        return $this->expectsXml();
+    }
 
     #[\Override]
     public function withCookieParams(array $cookies): static
     {
         $request = parent::withCookieParams($cookies);
         $request->resetDerivedCaches();
+
         return $request;
     }
 
@@ -376,6 +474,7 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
     {
         $request = parent::withParsedBody($data);
         $request->resetDerivedCaches();
+
         return $request;
     }
 
@@ -384,6 +483,7 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
     {
         $request = parent::withQueryParams($query);
         $request->resetDerivedCaches();
+
         return $request;
     }
 
@@ -392,21 +492,34 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
     {
         $request = parent::withUri($uri, $preserveHost);
         $request->resetDerivedCaches();
+
         return $request;
     }
 
-    private static function normalizeLocale(string $locale): string { return strtolower(str_replace('_', '-', trim($locale))); }
+    private static function normalizeLocale(string $locale): string
+    {
+        return strtolower(str_replace('_', '-', trim($locale)));
+    }
+
     /** @param string|list<string> $value @return list<string> */
-    private static function stringList(string|array $value): array { return is_string($value) ? [$value] : array_values($value); }
+    private static function stringList(string|array $value): array
+    {
+        return is_string($value) ? [$value] : array_values($value);
+    }
+
     /** @param array<mixed> $value @return array<string,mixed> */
     private static function stringMap(array $value): array
     {
         $map = [];
         foreach ($value as $key => $item) {
-            if (is_string($key)) { $map[$key] = $item; }
+            if (is_string($key)) {
+                $map[$key] = $item;
+            }
         }
+
         return $map;
     }
+
     private static function toStringKey(mixed $key): ?string
     {
         return match (true) {
@@ -419,10 +532,15 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
     /** @param list<string> $supported */
     private function pickLocale(?string $raw, array $supported): ?string
     {
-        if ($raw === null || $raw === '') { return null; }
+        if ($raw === null || $raw === '') {
+            return null;
+        }
         $candidate = self::normalizeLocale($raw);
-        if (in_array($candidate, $supported, true)) { return $candidate; }
+        if (in_array($candidate, $supported, true)) {
+            return $candidate;
+        }
         $primary = substr($candidate, 0, 2);
+
         return in_array($primary, $supported, true) ? $primary : null;
     }
 
@@ -437,31 +555,40 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
     private function resolveLocaleFromAttr(array $supported): ?string
     {
         $value = $this->getAttribute('locale') ?? $this->getAttribute('lang');
+
         return is_string($value) ? $this->pickLocale($value, $supported) : null;
     }
+
     /** @param list<string> $supported */
     private function resolveLocaleFromCookie(array $supported): ?string
     {
         return $this->pickLocale($this->resolveLocaleScalar($this->cookie('locale'), $this->cookie('lang')), $supported);
     }
+
     /** @param list<string> $supported */
     private function resolveLocaleFromHeader(array $supported, string $fallback): ?string
     {
         return $this->pickLocale($this->locale($supported, $fallback, true), $supported);
     }
+
     /** @param list<string> $supported */
     private function resolveLocaleFromQuery(array $supported): ?string
     {
         return $this->pickLocale($this->resolveLocaleScalar($this->query('locale'), $this->query('lang')), $supported);
     }
+
     /** @param list<string> $supported */
     private function resolveLocaleFromRoute(array $supported): ?string
     {
         $params = $this->getAttribute('route_params');
-        if (!is_array($params)) { return null; }
+        if (!is_array($params)) {
+            return null;
+        }
         $value = $params['locale'] ?? $params['lang'] ?? null;
+
         return is_string($value) ? $this->pickLocale($value, $supported) : null;
     }
+
     private function resolveLocaleScalar(mixed $primary, mixed $fallback): string
     {
         return is_string($primary) ? $primary : (is_string($fallback) ? $fallback : '');

@@ -11,6 +11,45 @@ use RuntimeException;
 /** Emits the Webrick half of a coordinated production release bundle. */
 final class RouterArtifactCompiler
 {
+    /**
+     * @param list<mixed> $routes
+     * @param array<string,array<string,mixed>> $plans
+     * @param array<string,array{0:string,1:?string}> $aliases
+     * @param list<mixed> $preGlobal
+     * @param list<mixed> $postGlobal
+     * @param list<string> $preGlobalTags
+     * @param list<string> $postGlobalTags
+     */
+    public static function fingerprintPayload(
+        string $environment,
+        string $configFingerprint,
+        bool $hasDomainRoutes,
+        array $routes,
+        array $plans,
+        array $aliases,
+        array $preGlobal,
+        array $postGlobal,
+        array $preGlobalTags,
+        array $postGlobalTags,
+    ): string {
+        ksort($plans, SORT_STRING);
+        ksort($aliases, SORT_STRING);
+
+        return hash('sha256', serialize([
+            CompiledRouterArtifact::FORMAT_VERSION,
+            $environment,
+            $configFingerprint,
+            $hasDomainRoutes,
+            $routes,
+            $plans,
+            $aliases,
+            $preGlobal,
+            $postGlobal,
+            $preGlobalTags,
+            $postGlobalTags,
+        ]));
+    }
+
     /** @return array{path:string,meta:string,sha256:string,fingerprint:string,routes:int} */
     public function compile(RouterBuildResult $build, string $path): array
     {
@@ -96,45 +135,6 @@ final class RouterArtifactCompiler
         );
     }
 
-    /**
-     * @param list<mixed> $routes
-     * @param array<string,array<string,mixed>> $plans
-     * @param array<string,array{0:string,1:?string}> $aliases
-     * @param list<mixed> $preGlobal
-     * @param list<mixed> $postGlobal
-     * @param list<string> $preGlobalTags
-     * @param list<string> $postGlobalTags
-     */
-    public static function fingerprintPayload(
-        string $environment,
-        string $configFingerprint,
-        bool $hasDomainRoutes,
-        array $routes,
-        array $plans,
-        array $aliases,
-        array $preGlobal,
-        array $postGlobal,
-        array $preGlobalTags,
-        array $postGlobalTags,
-    ): string {
-        ksort($plans, SORT_STRING);
-        ksort($aliases, SORT_STRING);
-
-        return hash('sha256', serialize([
-            CompiledRouterArtifact::FORMAT_VERSION,
-            $environment,
-            $configFingerprint,
-            $hasDomainRoutes,
-            $routes,
-            $plans,
-            $aliases,
-            $preGlobal,
-            $postGlobal,
-            $preGlobalTags,
-            $postGlobalTags,
-        ]));
-    }
-
     private function writeAtomic(string $path, string $contents): void
     {
         $directory = dirname($path);
@@ -148,6 +148,7 @@ final class RouterArtifactCompiler
         }
         if (!rename($temporary, $path)) {
             @unlink($temporary);
+
             throw new RuntimeException("Unable to publish Webrick artifact '{$path}'.");
         }
     }

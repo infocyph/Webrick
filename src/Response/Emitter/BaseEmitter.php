@@ -14,6 +14,7 @@ use Infocyph\Webrick\Response\Response;
 abstract class BaseEmitter implements EmitterInterface
 {
     protected const CHUNK_SIZE = 8_192;
+
     protected const H2_HOP_BY_HOP = [
         'connection' => true,
         'keep-alive' => true,
@@ -35,16 +36,19 @@ abstract class BaseEmitter implements EmitterInterface
         $this->sendHeadersCommon($response, $size, $isStreaming, $allowsBody);
         if (!$allowsBody) {
             $this->finish();
+
             return;
         }
         if ($isStreaming) {
             $this->emitStreaming($response);
             $this->finish();
+
             return;
         }
         if ($this->isSmallTempStream($body, $size)) {
             $this->emitSmall($body);
             $this->finish();
+
             return;
         }
 
@@ -107,10 +111,12 @@ abstract class BaseEmitter implements EmitterInterface
     {
         if (\function_exists('fastcgi_finish_request')) {
             fastcgi_finish_request();
+
             return;
         }
         if (\function_exists('litespeed_finish_request')) {
             litespeed_finish_request();
+
             return;
         }
         if (\function_exists('frankenphp_finish_request')) {
@@ -302,6 +308,7 @@ abstract class BaseEmitter implements EmitterInterface
             if ($out !== '') {
                 $this->write($out);
             }
+
             return;
         }
         if (\is_scalar($out)) {
