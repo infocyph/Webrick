@@ -11,6 +11,7 @@ use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Request\Core\UriComponents;
 use Infocyph\Webrick\Request\Http\RequestHeaders;
 use Infocyph\Webrick\Request\Support\PayloadParseState;
+use Infocyph\Webrick\Support\HttpUtils;
 use InvalidArgumentException;
 use RuntimeException;
 
@@ -59,7 +60,8 @@ class NativeServerRequest extends ServerRequest
 
         if (
             in_array($request->getMethod(), [HttpMethodEnum::PUT->value, HttpMethodEnum::PATCH->value, HttpMethodEnum::DELETE->value], true)
-            && str_contains(strtolower($request->getHeaderLine('Content-Type')), MediaTypeEnum::FORM_URLENCODED->value)
+            && HttpUtils::baseMediaType($request->getHeaderLine('Content-Type'))
+                === MediaTypeEnum::FORM_URLENCODED->base()
         ) {
             parse_str((string) $body, $form);
             $request = $request->withParsedBody(self::stringMap($form));
@@ -174,12 +176,12 @@ class NativeServerRequest extends ServerRequest
 
     private function isJsonContentType(): bool
     {
-        return preg_match('#(?:application|text)/(?:[^\s;]+\+)?json(?:\s*;|$)#i', $this->getHeaderLine('Content-Type')) === 1;
+        return HttpUtils::isJsonContentType($this->getHeaderLine('Content-Type'));
     }
 
     private function isXmlContentType(): bool
     {
-        return preg_match('#(?:application|text)/(?:[^\s;]+\+)?xml(?:\s*;|$)#i', $this->getHeaderLine('Content-Type')) === 1;
+        return HttpUtils::isXmlContentType($this->getHeaderLine('Content-Type'));
     }
 
     private function parseJson(): void
