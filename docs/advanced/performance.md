@@ -87,6 +87,14 @@ compiled method-first/static-map and combined-PCRE route-discrimination engine.
 Fused keeps that compiled IR in one artifact and provides the strongest general
 warm-dispatch behavior.
 
+The shared compiled matcher uses an **approximate 48-route PCRE chunk target**.
+Contiguous precedence-safe PCRE runs are evenly redistributed around the target
+instead of being rigidly sliced. The PHP 8.4 tuning run showed 48 as the best
+balanced setting across middle hits, late hits and misses; 64 only narrowly
+improved late/miss cases while regressing middle hits. Treat this as compiler
+tuning rather than an application-facing knob and rebuild matcher artifacts after
+Webrick upgrades.
+
 Use Sharded when very large route sets make cold boot or startup working set the
 primary constraint. On the 5,000-route matcher profile, Sharded cold boot was
 measured in tens of microseconds while Fused loaded the full artifact in roughly
