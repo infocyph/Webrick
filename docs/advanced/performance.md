@@ -81,18 +81,24 @@ parsing remains gated to applicable non-POST methods and content types.
 $matcher = FusedMatcher::make();
 ```
 
-Use Fused as the normal starting point and canonical comparison baseline. It
-keeps one consolidated canonical routing structure and avoids the generated-code
-and shard-management tradeoffs of the specialized modes.
+Use Fused as the default/general production matcher and canonical comparison
+baseline. The Webrick 5 matcher revision moved Fused and Sharded onto the same
+compiled method-first/static-map and combined-PCRE route-discrimination engine.
+Fused keeps that compiled IR in one artifact and provides the strongest general
+warm-dispatch behavior.
 
-Evaluate Generated when maximum matcher throughput matters. It specializes the
-canonical index into executable PHP dispatch code, but the result can increase
-artifact size, OPcache usage and worker boot cost as route sets grow.
+Use Sharded when very large route sets make cold boot or startup working set the
+primary constraint. On the 5,000-route matcher profile, Sharded cold boot was
+measured in tens of microseconds while Fused loaded the full artifact in roughly
+60 ms; however, Sharded paid a much slower first shard hit and its warm dispatch
+was materially slower. Sharding is therefore a startup/working-set strategy,
+not a blanket throughput strategy.
 
-Evaluate Sharded for very large route sets when reducing the per-worker routing
-working set or improving locality is materially valuable. Sharding can require
-first-use shard loading, so measure both cold and warm behavior and include the
-filesystem, OPcache and worker-lifetime model in the comparison.
+Generated is no longer the recommended "maximum matcher throughput" mode. It can
+still be competitive on small/simple route sets, especially static lookups, but
+the Webrick 5 1k/5k/10k scale benchmarks showed steep degradation on dynamic,
+404 and 405 paths as route counts increased. Use it only when the application's
+actual route corpus proves a repeatable advantage.
 
 Route count alone does not determine the winner: benchmark Fused, Generated and
 Sharded with the application's static/dynamic mix, prefixes, domains, OPcache
@@ -298,7 +304,7 @@ final class TimingMiddleware
 
 - [ ] OPcache enabled (`validate_timestamps=0`)
 - [ ] Route cache prebuilt in CI
-- [ ] Fused used as the baseline matcher and Generated/Sharded measured when their specialization is relevant
+- [ ] Fused used as the default matcher; Sharded used for measured startup/working-set needs; Generated used only when the actual route corpus proves a benefit
 - [ ] Compression enabled (app OR edge, not both)
 - [ ] Response cache for hot GETs
 - [ ] PHP-FPM sized by memory
