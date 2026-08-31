@@ -33,15 +33,19 @@ final class ByteRangeStream implements BodyStream
 
     public function __toString(): string
     {
+        $position = $this->position;
         try {
-            $position = $this->position;
             $this->rewind();
-            $contents = $this->getContents();
-            $this->seek($position);
 
-            return $contents;
+            return $this->getContents();
         } catch (Throwable) {
             return '';
+        } finally {
+            try {
+                $this->seek($position);
+            } catch (Throwable) {
+                // String conversion must not throw because position restoration failed.
+            }
         }
     }
 
