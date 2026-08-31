@@ -13,6 +13,16 @@ use Traversable;
 /**
  * In-memory collection of Route DTOs used during router build-time.
  *
+ * Responsibilities:
+ *  - Accept RouteInterface instances during registration (add, addAlias, addAliases).
+ *  - Provide fast lookups by primary name, alias, handler id and path.
+ *  - Produce a compiled, immutable CompiledCollection via compile().
+ *  - Expose a flat alias index for URL helper generation and cache export.
+ *
+ * Lifecycle:
+ *  - Build phase: collection is mutable and indices are kept up-to-date.
+ *  - Freeze phase: compile() produces a CompiledCollection and prevents further mutation.
+ *
  * @implements IteratorAggregate<int, RouteInterface>
  */
 final class Collection implements IteratorAggregate
@@ -182,12 +192,16 @@ final class Collection implements IteratorAggregate
 
     public function nameDomain(string $name): ?string
     {
-        return $this->findByName($name)?->getDomain();
+        $route = $this->findByName($name);
+
+        return $route?->getDomain();
     }
 
     public function namePath(string $name): ?string
     {
-        return $this->findByName($name)?->getPath();
+        $route = $this->findByName($name);
+
+        return $route?->getPath();
     }
 
     public function remove(RouteInterface $route): void
@@ -195,7 +209,7 @@ final class Collection implements IteratorAggregate
         $this->assertMutable();
 
         $this->routes = array_values(
-            array_filter($this->routes, static fn(RouteInterface $entry): bool => $entry !== $route),
+            array_filter($this->routes, static fn($entry) => $entry !== $route),
         );
         $this->rebuildIndices();
 
@@ -212,40 +226,50 @@ final class Collection implements IteratorAggregate
     /** @return array{0:string,1:?string}|null */
     public function resolveAlias(string $name): ?array
     {
-        return $this->aliasIndex()[$name] ?? null;
+        $index = $this->aliasIndex();
+
+        return $index[$name] ?? null;
     }
 
     private function assertMutable(): void
     {
         if ($this->frozen) {
-            throw new LogicException('Route collection is frozen after compile().');
+            throw new LogicException('Route collection already compiled – further mutation prohibited.');
         }
     }
 
     private function rebuildIndices(): void
     {
         $this->byName = [];
-        $this->byPath = [];
         $this->byHandler = [];
+        $this->byPath = [];
 
         foreach ($this->routes as $route) {
             if (($name = $route->getName()) !== null && $name !== '') {
+                if ((isset($this->byName[$name]) && $this->byName[$name] !== $route)
+                    || isset($this->aliases[$name])) {
+                    throw new LogicException("Duplicate route name during rebuild: {$name}");
+                }
                 $this->byName[$name] = $route;
             }
-            $this->byPath[$route->getPath()] = $route;
             $this->byHandler[$route->getHandlerId()][] = $route;
+            $this->byPath[$route->getPath()] = $route;
         }
+
+        foreach (array_keys($this->aliases) as $alias) {
+            $route = $this->aliases[$alias];
+            if (!in_array($route, $this->routes, true) || isset($this->byName[$alias])) {
+                unset($this->aliases[$alias]);
+            }
+        }
+
+        $this->aliasIndex = null;
     }
 
     private function resetIndexes(): void
     {
-        $this->aliases = [];
+        [$this->byName, $this->byHandler, $this->byPath, $this->aliases] = [[], [], [], []];
+        $this->dirty = true;
         $this->aliasIndex = null;
-        $this->byHandler = [];
-        $this->byName = [];
-        $this->byPath = [];
-        $this->compiled = null;
-        $this->dirty = false;
-        $this->frozen = false;
     }
 }
