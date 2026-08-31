@@ -13,6 +13,7 @@ use Infocyph\Webrick\Request\Http\Csrf;
 use Infocyph\Webrick\Request\Http\EndUser;
 use Infocyph\Webrick\Request\Support\CidrNetwork;
 use Infocyph\Webrick\Request\Support\IpCidr;
+use Infocyph\Webrick\Support\HttpUtils;
 use InvalidArgumentException;
 use JsonSerializable;
 use Stringable;
@@ -191,7 +192,12 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
     {
         $segments = explode('.', $dot);
         $key = array_shift($segments);
-        $value = parent::__get($key);
+        $input = $this->all();
+        if ($key === null || !array_key_exists($key, $input)) {
+            return $default;
+        }
+
+        $value = $input[$key];
         foreach ($segments as $segment) {
             if (!is_array($value) || !array_key_exists($segment, $value)) {
                 return $default;
@@ -303,7 +309,7 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
 
     public function isJson(): bool
     {
-        return preg_match('#(?:application|text)/(?:[^\s;]+\+)?json#i', $this->getHeaderLine('Content-Type')) === 1;
+        return HttpUtils::isJsonContentType($this->getHeaderLine('Content-Type'));
     }
 
     /** @param string|list<string> $verbs */
@@ -324,7 +330,7 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
 
     public function isXml(): bool
     {
-        return preg_match('#(?:application|text)/(?:[^\s;]+\+)?xml#i', $this->getHeaderLine('Content-Type')) === 1;
+        return HttpUtils::isXmlContentType($this->getHeaderLine('Content-Type'));
     }
 
     /** @return array<string,mixed> */
