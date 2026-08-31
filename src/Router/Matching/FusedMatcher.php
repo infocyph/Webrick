@@ -9,37 +9,23 @@ use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
 use Infocyph\Webrick\Exceptions\RouteNotFoundException;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 
-/**
- * Compact in-memory matcher backed by the canonical matcher index.
- *
- * Static lookup is exact and occurs before any path segmentation. Dynamic
- * lookup uses segment-count and first-literal prefix buckets shared with the
- * generated and sharded backends.
- */
+/** Compact in-memory matcher backed by the canonical matcher index. */
 final class FusedMatcher extends AbstractMatcher implements MatcherInterface
 {
     use MatcherCacheLifecycleTrait;
     use MatcherFactoryTrait;
 
-    private const int INDEX_CACHE_VERSION = 5;
+    private const int INDEX_CACHE_VERSION = 6;
 
     /** @var array<string,array{0:string,1:?string}> */
     private array $alias = [];
-
     private bool $cacheEnabled = false;
-
     private string $cacheFile = '';
-
     private bool $cacheLoaded = false;
-
     private bool $cacheWriteEnabled = false;
-
     private CanonicalMatcherEngine $engine;
-
     private bool $finalized = false;
-
     private CanonicalMatcherIndex $index;
-
     /** @var array<string,true> */
     private array $middlewareRequirements = [];
 
@@ -82,7 +68,8 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
     public function match(string $method, string $host, string $path): array
     {
         $verb = HttpMethodEnum::normalize($method);
-        $outcome = $this->matchOutcome($verb, strtolower($host ?: '*'), $path === '' ? '/' : $path);
+        $path = $path === '' ? '/' : $path;
+        $outcome = $this->matchOutcome($verb, strtolower($host ?: '*'), $path);
 
         if ($outcome->type === MatchOutcomeType::FOUND) {
             return [$outcome->requireRoute(), $outcome->params];
@@ -94,12 +81,22 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         throw new RouteNotFoundException($verb, $path);
     }
 
+    public function matchCompiledOutcome(string $method, string $host, string $path): MatchOutcome
+    {
+        $this->finalize();
+        $hosts = $this->index->hosts();
+
+        return $this->engine->matchSingleCompiled(
+            $hosts[$host] ?? null,
+            $host !== '*' ? ($hosts['*'] ?? null) : null,
+            $method,
+            $path,
+        );
+    }
+
     public function matchOutcome(string $method, string $host, string $path): MatchOutcome
     {
-        if (!$this->finalized) {
-            $this->finalize();
-        }
-
+        $this->finalize();
         $hosts = $this->index->hosts();
 
         return $this->engine->matchSingle(
