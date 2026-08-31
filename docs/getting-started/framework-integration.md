@@ -1,24 +1,21 @@
 # Framework Integration
 
-Webrick can run as the application's HTTP kernel or as a routed sub-application
-inside Laravel, Symfony, Slim, a custom framework, or a persistent worker. The
-integration boundary is explicit so the host keeps control of its own request,
-response, middleware and container lifecycle.
+Webrick can run as the application's HTTP kernel or as a routed sub-application inside Foundation/Infbyte, Laravel, Symfony, Slim, a custom framework, or a persistent worker. The host owns container composition, configuration, request adaptation and final response emission.
 
 ## Integration contract
 
-An embedding integration has four jobs:
+An embedding integration has four responsibilities:
 
-1. Construct one Webrick `RouterKernel` for the application or worker lifecycle.
-2. Convert the host request into `Infocyph\Webrick\Request\Request`.
-3. Pass that request to `RouterKernel::handle()`.
-4. Convert the returned Webrick `Response` to the host response type.
+1. Own and configure the application's InterMix `ContainerBuilder`.
+2. Compile/boot the appropriate Webrick kernel once for the process or worker.
+3. Convert the host request to a Webrick `Request` when the native Webrick runtime adapter is not used.
+4. Convert/return the Webrick `Response` when the host owns emission.
 
 ```php
 final class WebrickBridge
 {
     public function __construct(
-        private RouterKernel $kernel,
+        private CompiledRouterKernel $kernel,
         private HostRequestAdapter $requests,
         private HostResponseAdapter $responses,
     ) {}
@@ -26,184 +23,123 @@ final class WebrickBridge
     public function handle(object $hostRequest): object
     {
         $request = $this->requests->toWebrick($hostRequest);
-        $response = $this->kernel->handle($request);
 
-        return $this->responses->fromWebrick($response);
+        return $this->responses->fromWebrick($this->kernel->handle($request));
     }
 }
 ```
 
-`HostRequestAdapter` and `HostResponseAdapter` represent application-owned
-adapters in this example; they are not Webrick classes. The adapter should
-preserve the method, URI, headers, protocol version, body, cookies, query
-parameters, uploaded files, server parameters and any runtime response handle
-needed by the selected server.
+The example adapters are host classes, not Webrick classes.
 
-Webrick's request and response classes expose PSR-7-style immutable methods, but
-they do not implement the PSR-7 interfaces. Do not rely on interface type
-compatibility. Conversion must be explicit.
+## One application graph
 
-## Boot once
-
-Kernel construction warms routes, imports service providers, composes global
-middleware descriptors and prepares the error boundary. It belongs in
-application bootstrap, a service-provider singleton, or worker startup—not in
-the per-request adapter:
+Webrick depends directly on InterMix but does not own a second graph. Contribute Webrick/application providers to the host builder before selecting development or production runtime:
 
 ```php
+use Infocyph\InterMix\DI\ContainerBuilder;
+use Infocyph\Webrick\Webrick;
+
+$builder = ContainerBuilder::create('application');
+Webrick::contributeTo($builder, $webrickProviders);
+// Host registrations continue on the same $builder.
+```
+
+Do not make Webrick import providers during kernel construction. Do not use a process-global container alias as an implicit integration boundary.
+
+## Development boot
+
+Development/registrar mode receives an explicit application `Invoker`:
+
+```php
+use Infocyph\InterMix\DI\Invoker;
+
+$container = $builder->development();
+$invoker = Invoker::with($container);
+
 $kernel = RouterKernel::bootWithRegistrar(
     log: $logger,
-    matcher: ShardedMatcher::make(),
-    register: static function (Registrar $registrar): void {
-        require __DIR__ . '/routes.php';
-    },
-    routeCache: __DIR__ . '/cache/routes',
-    registrarOptions: [
-        'signKey' => $config->signedUrlKey,
-        'signedDefaultTtl' => 900,
-        'urlBaseUri' => $config->applicationUrl,
-    ],
+    matcher: GeneratedMatcher::make(),
+    register: $register,
+    invoker: $invoker,
+    preGlobal: $preGlobal,
+    postGlobal: $postGlobal,
 );
 ```
 
-When a valid cache exists, Webrick boots the matcher from the artifact. URL
-alias data remains lazy until a URL helper is called.
+`RouterKernel` always creates a request scope and seeds the active `Request` into that scope. There is no option to bind the current request as a singleton.
 
-## Decide which middleware layer owns a concern
+## Production boot
 
-Use the host framework's middleware for concerns that must surround every host
-request, including requests that never enter Webrick. Use Webrick route
-middleware for concerns that apply only to selected Webrick routes.
+Build Webrick and InterMix as one release set with `ReleaseCompiler`. At worker/process startup the host selects its InterMix `ProductionContainer` and supplies it to `CompiledRouterKernel`:
 
-Examples:
+```php
+$container = $builder->productionPrevalidated(
+    $release['intermix']['path'],
+    $release['intermix']['sha256'],
+);
+
+$kernel = CompiledRouterKernel::fromPrevalidatedArtifact(
+    log: $logger,
+    matcher: GeneratedMatcher::make(),
+    container: $container,
+    artifactPath: $release['webrick']['path'],
+    trustedSha256: $release['webrick']['sha256'],
+    environment: $release['environment'],
+    configFingerprint: $release['config_fingerprint'],
+);
+```
+
+The environment/fingerprint values validate the artifact. They do not make Webrick choose a runtime.
+
+## Middleware ownership
+
+Use host middleware for concerns that surround every host request. Use Webrick route middleware for concerns that apply to Webrick routes.
 
 | Concern | Recommended owner |
 | --- | --- |
-| Host-wide session or tenant setup | Host middleware |
-| Authentication only on selected Webrick routes | Webrick route middleware |
-| Host request ID needed by every subsystem | Host middleware, copied by the adapter |
-| Webrick signed URL verification | Webrick route middleware |
-| Compression already performed by the host/server | Host/server; omit Webrick compression |
+| Host session/tenant bootstrap | Host |
+| Authentication on selected Webrick routes | Webrick route middleware |
+| Host-wide request ID | Host, copied/adapted into Webrick context |
+| Signed URL verification | Webrick |
+| Transport compression already supplied by server | Server/runtime adapter |
+| Webrick response negotiation/cache policy | Webrick |
 
-Avoid registering authentication, database, cache, telemetry, or session
-middleware globally merely because the host package provides it. Route-only
-middleware stays off unrelated request paths.
+Avoid globally enabling optional middleware merely because a package exists.
 
-## Bridge a host middleware family lazily
+## Lazy host middleware aliases
 
-When a framework owns aliases such as `auth`, `auth:admin`, or `tenant:paid`,
-register one lazy family resolver during application bootstrap:
+A host can expose alias families during bootstrap:
 
 ```php
-use Infocyph\Webrick\Router\Dispatch\MiddlewareAliases;
-
 MiddlewareAliases::registerResolver(
-    supports: static fn(string $alias): bool => in_array(
-        $alias,
-        ['auth', 'tenant'],
-        true,
-    ),
+    supports: static fn(string $alias): bool => in_array($alias, ['auth', 'tenant'], true),
     resolve: static fn(string $alias, string ...$parameters) =>
         $hostMiddlewareBridge->resolve($alias, $parameters),
     name: 'host.middleware',
 );
 ```
 
-The resolver is consulted only for a matching alias. The resolved middleware is
-then used when Webrick compiles that route's pipeline. A stable resolver name
-allows worker bootstrap to replace the integration without accumulating
-duplicate resolvers.
+Compiled production validates the supported descriptors before traffic. Dynamic host integrations should remain explicit dynamic islands rather than silently falling back to a second container/runtime.
 
-## Container integration
+## Persistent runtimes
 
-Webrick dispatches through InterMix. Pass an existing InterMix container or
-invoker to share registrations:
+Swoole/OpenSwoole, RoadRunner and Workerman use the classes under `Runtime\Http`. The runtime adapter is chosen once at worker bootstrap and owns native request/response handles and transport capabilities.
 
-```php
-$kernel = RouterKernel::bootWithRegistrar(
-    log: $logger,
-    matcher: FusedMatcher::make(),
-    register: $register,
-    routeCache: __DIR__ . '/cache/routes.php',
-    container: $container,
-    serviceProviders: [
-        RoutingServiceProvider::class,
-    ],
-    preGlobalTags: ['webrick.middleware.pre'],
-    postGlobalTags: ['webrick.middleware.post'],
-);
-```
-
-For a non-InterMix host container, register small factories or adapter services
-in InterMix at bootstrap. Do not copy the host's entire service graph or eagerly
-resolve optional services.
-
-Tagged middleware may use InterMix direct factories. Webrick keeps the service
-unresolved during kernel boot and resolves it inside the active request scope,
-so singleton, scoped and transient lifetimes retain their InterMix semantics:
-
-```php
-use Infocyph\InterMix\DI\Container;
-use Infocyph\InterMix\DI\Support\LifetimeEnum;
-
-$container->bindFactory(
-    AuthMiddleware::class,
-    static fn(Container $container): AuthMiddleware => new AuthMiddleware(
-        $container->get(AuthService::class),
-    ),
-    LifetimeEnum::Scoped,
-    ['webrick.middleware.pre'],
-);
-```
-
-Each tagged definition must resolve to callable middleware with the standard
-`(Request $request, Closure $next): Response` contract.
-
-Controller behavior:
-
-- `[Controller::class, 'staticMethod']` is called without allocating a controller.
-- `[Controller::class, 'instanceMethod']` is constructed through InterMix.
-- Invokable classes and class-string middleware are resolved only when their
-  route pipeline is needed.
-
-## Request-scope ownership
-
-The default `requestScopeEnabled: true` creates and leaves one InterMix scope
-around each `handle()` call. This is the safe default, including for RoadRunner,
-Swoole and Workerman. The active `Request` is seeded directly into that scope,
-so request injection does not rewrite container definitions on each call.
-
-Use `requestScopeEnabled: false` only when the embedding integration has an
-equivalent scope lifecycle and deliberately owns cleanup. Disabling Webrick's
-scope without a host replacement can leak request-bound state across requests.
+Webrick opens an InterMix request scope only when the compiled execution plan needs one. Native request/response state remains request-local and must never be kept in singleton middleware or static current-request/current-response fields.
 
 ## Response ownership
 
-Choose one response owner:
+Choose exactly one owner:
 
-- Standalone Webrick: emit the returned response with a Webrick emitter.
-- Embedded Webrick: convert and return it to the host; the host emits it.
-- Native persistent server integration: attach the native response callback or
-  object to the request, then use the matching Webrick emitter.
+- synchronous standalone SAPI: Webrick `DefaultEmitter`;
+- CLI: `CliEmitter`;
+- persistent server: Webrick runtime adapter;
+- embedded framework: host response adapter/emitter.
 
-Never emit in Webrick and then return the same response to a host framework for
-a second emission.
+Never emit a response in Webrick and then hand the same response to a host for a second emission.
 
-## Cache and deployment
+## Matcher cache vs production artifact
 
-The route definitions used by the cache build must match runtime registration.
-Build the selected artifact in CI or deployment:
+`RouteCache::build()` / `webrick route:cache` builds matcher cache only. It does not boot a kernel or DI runtime. The complete production application artifact is created by `ReleaseCompiler` and includes the compiled route execution plans/global middleware metadata coordinated with InterMix.
 
-```bash
-php ./webrick route:cache \
-  --matcher=sharded \
-  --cache=var/cache/webrick \
-  --routes=routes/webrick.php
-```
-
-Deploy the generated PHP artifacts with application code and keep them
-read-only during normal requests. Rebuild after changing Webrick, routes,
-handler classes, middleware descriptors, signing configuration, or cache mode.
-
-See [Matcher](../reference/matcher.md), [Route Cache](../reference/route-cache.md),
-and [Response Emitters](../reference/emitters.md).
+See [Matcher](../reference/matcher.md), [Route Cache](../reference/route-cache.md), and [Response Emitters and Runtime Adapters](../reference/emitters.md).
