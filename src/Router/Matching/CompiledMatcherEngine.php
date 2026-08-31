@@ -18,7 +18,7 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
  * reserved for miss, automatic OPTIONS and 405 handling.
  *
  * @phpstan-type RouteValue CompiledRoute|array<array-key,mixed>|string
- * @phpstan-type FastRouteEntry array{route:RouteValue,params:array<int,string>}
+ * @phpstan-type FastRouteEntry array{route:RouteValue,params:array<string,string>}
  * @phpstan-type PcreStep array{type:'pcre',regex:string,routes:array<string,FastRouteEntry>}
  * @phpstan-type FallbackStep array{type:'fallback',segments:list<array<string,mixed>>,route:RouteValue}
  * @phpstan-type DynamicBucket array{steps:list<PcreStep|FallbackStep>}
@@ -231,15 +231,12 @@ final class CompiledMatcherEngine
                 }
                 $entry = $step['routes'][$mark];
                 $params = [];
-                if ($entry['params'] !== []) {
-                    $segments ??= self::pathSegments($path);
-                    foreach ($entry['params'] as $position => $name) {
-                        $piece = $segments[$position] ?? null;
-                        if (!is_string($piece)) {
-                            throw new \UnexpectedValueException('Compiled matcher parameter position is unavailable.');
-                        }
-                        $params[$name] = $piece;
+                foreach ($entry['params'] as $capture => $name) {
+                    $piece = $matches[$capture] ?? null;
+                    if (!is_string($piece)) {
+                        throw new \UnexpectedValueException('Compiled matcher parameter capture is unavailable.');
                     }
+                    $params[$name] = $piece;
                 }
 
                 return ['route' => $entry['route'], 'params' => $params];
