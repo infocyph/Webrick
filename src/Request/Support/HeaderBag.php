@@ -35,10 +35,10 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
     public function __construct(array $seed = [])
     {
         foreach ($seed as $name => $value) {
-            if (!is_string($name) || (!is_string($value) && !is_array($value))) {
-                throw new \InvalidArgumentException('HTTP headers must use string names and string or array values.');
+            if (!is_string($name)) {
+                throw new \InvalidArgumentException('HTTP headers must use string names.');
             }
-            $this->set($name, $value);
+            $this->set($name, $this->normalizeSeedValue($value));
         }
     }
 
@@ -88,15 +88,19 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
         return ($values = $this->get($name)) ? implode(',', $values) : null;
     }
 
+    /** @param string $offset */
     public function offsetExists(mixed $offset): bool
     {
-        return is_string($offset) && $this->has($offset);
+        return $this->has($offset);
     }
 
-    /** @return list<string> */
+    /**
+     * @param string $offset
+     * @return list<string>
+     */
     public function offsetGet(mixed $offset): array
     {
-        return is_string($offset) ? $this->get($offset) : [];
+        return $this->get($offset);
     }
 
     public function offsetSet(mixed $offset, mixed $value): void
@@ -192,6 +196,27 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
         }
 
         return $normalized;
+    }
+
+    /** @return string|list<string> */
+    private function normalizeSeedValue(mixed $value): string|array
+    {
+        if (is_string($value)) {
+            return $value;
+        }
+        if (!is_array($value)) {
+            throw new \InvalidArgumentException('HTTP header values must be strings or lists of strings.');
+        }
+
+        $values = [];
+        foreach ($value as $item) {
+            if (!is_string($item)) {
+                throw new \InvalidArgumentException('HTTP header values must be strings or lists of strings.');
+            }
+            $values[] = $item;
+        }
+
+        return $values;
     }
 
     /**

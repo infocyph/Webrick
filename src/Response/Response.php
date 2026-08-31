@@ -85,7 +85,7 @@ class Response
      * @param Request $r
      * @param int $status
      * @param int $flags
-     * @param int $depth
+     * @param positive-int $depth
      */
     public static function auto(
         Request $r,
@@ -194,7 +194,7 @@ class Response
      * @param array<string,string|list<string>> $headers
      * @param int $status
      * @param int $flags
-     * @param int $depth
+     * @param positive-int $depth
      */
     public static function json(
         JsonSerializable|array|string|int|float|bool|null $data,
@@ -363,6 +363,7 @@ class Response
         return $this->body instanceof FileBody ? $this->body : null;
     }
 
+    /** @return list<string> */
     public function getHeader(string $name): array
     {
         return $this->headers->get($name);
@@ -420,6 +421,7 @@ class Response
         return is_string($this->body);
     }
 
+    /** @param string|list<string> $value */
     public function withAddedHeader(string $name, string|array $value): self
     {
         return $this->copy(headers: $this->headers->withAdded($name, $value));
@@ -443,6 +445,7 @@ class Response
         return $this->withHeader('Cache-Control', (string) $cache);
     }
 
+    /** @param string|list<string> $value */
     public function withHeader(string $name, string|array $value): self
     {
         return $this->copy(headers: $this->headers->with($name, $value));
@@ -511,7 +514,10 @@ class Response
         return [filesize($file) ?: null, filemtime($file) ?: null];
     }
 
-    /** @param array<mixed> $value @return array<string,mixed> */
+    /**
+     * @param array<mixed> $value
+     * @return array<string,mixed>
+     */
     private static function mixedMap(array $value): array
     {
         $out = [];

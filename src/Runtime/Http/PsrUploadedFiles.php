@@ -8,12 +8,11 @@ use Infocyph\Webrick\Interop\Psr7\PsrBodyStreamAdapter;
 use Infocyph\Webrick\Request\Core\UploadedFile;
 use Psr\Http\Message\UploadedFileInterface;
 
-/** @phpstan-type UploadedTree UploadedFile|array<array-key,UploadedTree> */
 final readonly class PsrUploadedFiles
 {
     /**
      * @param mixed $files
-     * @return array<string,UploadedTree>
+     * @return array<string,UploadedFile|array<array-key,mixed>>
      */
     public static function normalize(mixed $files): array
     {
@@ -22,7 +21,7 @@ final readonly class PsrUploadedFiles
 
     /**
      * @param array<array-key,mixed> $files
-     * @return array<string,UploadedTree>
+     * @return array<string,UploadedFile|array<array-key,mixed>>
      */
     private static function map(array $files): array
     {
@@ -41,8 +40,8 @@ final readonly class PsrUploadedFiles
     }
 
     /**
-     * @return UploadedTree|null
      * @param mixed $file
+     * @return UploadedFile|array<array-key,mixed>|null
      */
     private static function one(mixed $file): UploadedFile|array|null
     {

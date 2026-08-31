@@ -23,7 +23,12 @@ final readonly class PsrServerRequestData
      */
     public static function headers(ServerRequestInterface $request): array
     {
-        return $request->getHeaders();
+        $headers = [];
+        foreach ($request->getHeaders() as $name => $values) {
+            $headers[$name] = array_values($values);
+        }
+
+        return $headers;
     }
 
     /**

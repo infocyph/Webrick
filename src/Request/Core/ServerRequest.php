@@ -417,7 +417,10 @@ class ServerRequest extends Message
         return is_string($value) ? $value : $default;
     }
 
-    /** @param array<mixed> $value @return array<string,mixed> */
+    /**
+     * @param array<mixed> $value
+     * @return array<string,mixed>
+     */
     private static function stringMap(array $value): array
     {
         $map = [];
@@ -534,7 +537,10 @@ function server_request_query_parameters(?array $query, Uri $uri): array
     return server_request_string_map($uriQuery);
 }
 
-/** @param array<mixed> $value @return array<string,mixed> */
+/**
+ * @param array<mixed> $value
+ * @return array<string,mixed>
+ */
 function server_request_string_map(array $value): array
 {
     $map = [];
