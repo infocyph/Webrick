@@ -59,6 +59,8 @@ final readonly class RoadRunnerRuntimeAdapter implements RuntimeAdapterInterface
         mixed $nativeResponse = null,
         bool $withHost = false,
     ): RuntimeRequestContext {
+        unset($nativeResponse);
+
         if (!is_object($nativeRequest)) {
             throw new RuntimeException('RoadRunner runtime requires a PSR-style server request object.');
         }
