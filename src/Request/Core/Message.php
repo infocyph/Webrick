@@ -13,6 +13,8 @@ abstract class Message
 
     private const string INVALID_HEADER_VALUE = '/[\x00-\x08\x0A-\x1F\x7F]/';
 
+    private const string PROTOCOL_VERSION_RX = '/^[0-9]+(?:\.[0-9]+)?$/D';
+
     protected BodyStream $body;
 
     /** @var array<string,list<string>> */
@@ -26,6 +28,7 @@ abstract class Message
         ?BodyStream $body = null,
         protected string $protocol = '1.1',
     ) {
+        self::assertProtocolVersion($this->protocol);
         $this->headers = $this->normalise($headers);
         $this->body = $body ?? new StringBody('');
     }
@@ -112,7 +115,16 @@ abstract class Message
 
     public function withProtocolVersion(string $version): static
     {
+        self::assertProtocolVersion($version);
+
         return $version === $this->protocol ? $this : $this->withPropertyValue('protocol', $version);
+    }
+
+    private static function assertProtocolVersion(string $version): void
+    {
+        if (preg_match(self::PROTOCOL_VERSION_RX, $version) !== 1) {
+            throw new \InvalidArgumentException('Invalid HTTP protocol version.');
+        }
     }
 
     private function norm(string $name): string
