@@ -18,7 +18,7 @@ final readonly class TransportRequestFactory
      * @param array<string,string|list<string>> $headers
      * @param array<string,mixed>|object|null $parsed
      * @param array<string,mixed> $files
-     * @param array<string,mixed> $query
+     * @param array<string,mixed>|null $query
      * @param array<string,mixed> $cookies
      */
     public static function fromParts(
@@ -27,7 +27,7 @@ final readonly class TransportRequestFactory
         string|BodyStream $body = '',
         array|object|null $parsed = null,
         array $files = [],
-        array $query = [],
+        ?array $query = null,
         array $cookies = [],
     ): Request {
         $protocol = self::stringValue($server, 'SERVER_PROTOCOL', 'HTTP/1.1');
