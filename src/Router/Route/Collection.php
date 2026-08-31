@@ -15,17 +15,25 @@ final class Collection implements IteratorAggregate
 {
     /** @var array<string,RouteInterface> */
     private array $aliases = [];
+
     /** @var array<string,array{0:string,1:?string}>|null */
     private ?array $aliasIndex = null;
+
     /** @var array<string,list<RouteInterface>> */
     private array $byHandler = [];
+
     /** @var array<string,RouteInterface> */
     private array $byName = [];
+
     /** @var array<string,RouteInterface> */
     private array $byPath = [];
+
     private ?CompiledCollection $compiled = null;
+
     private bool $dirty = false;
+
     private bool $frozen = false;
+
     /** @var list<RouteInterface> */
     private array $routes = [];
 
@@ -93,7 +101,10 @@ final class Collection implements IteratorAggregate
     }
 
     /** @return list<RouteInterface> */
-    public function all(): array { return $this->routes; }
+    public function all(): array
+    {
+        return $this->routes;
+    }
 
     public function clear(): void
     {
@@ -120,7 +131,10 @@ final class Collection implements IteratorAggregate
         return $this->compiled;
     }
 
-    public function dirty(): bool { return $this->dirty; }
+    public function dirty(): bool
+    {
+        return $this->dirty;
+    }
 
     /** @return list<RouteInterface> */
     public function findAllByHandler(callable|string $handler): array
@@ -138,15 +152,31 @@ final class Collection implements IteratorAggregate
         return $this->byName[$name] ?? $this->aliases[$name] ?? null;
     }
 
-    public function frozen(): bool { return $this->frozen; }
+    public function frozen(): bool
+    {
+        return $this->frozen;
+    }
 
     /** @return Traversable<int,RouteInterface> */
-    public function getIterator(): Traversable { return new ArrayIterator($this->routes); }
+    public function getIterator(): Traversable
+    {
+        return new ArrayIterator($this->routes);
+    }
 
-    public function hasPath(string $path): bool { return isset($this->byPath[$path]); }
+    public function hasPath(string $path): bool
+    {
+        return isset($this->byPath[$path]);
+    }
 
-    public function nameDomain(string $name): ?string { return $this->findByName($name)?->getDomain(); }
-    public function namePath(string $name): ?string { return $this->findByName($name)?->getPath(); }
+    public function nameDomain(string $name): ?string
+    {
+        return $this->findByName($name)?->getDomain();
+    }
+
+    public function namePath(string $name): ?string
+    {
+        return $this->findByName($name)?->getPath();
+    }
 
     public function remove(RouteInterface $route): void
     {

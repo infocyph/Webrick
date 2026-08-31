@@ -160,9 +160,7 @@ final readonly class RequestLimitsMiddleware
         }
 
         $actual = $req->getBody()->getSize();
-        if ($actual === null) {
-            $actual = strlen($req->raw());
-        }
+        $actual ??= strlen($req->raw());
         if ($actual > $this->resolvedBodyLimit) {
             throw $this->payloadTooLargeException($req);
         }

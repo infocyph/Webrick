@@ -152,6 +152,7 @@ final class UploadedFile
         }
 
         $completed = false;
+
         try {
             while (!$source->eof()) {
                 $chunk = $source->read(65_536);

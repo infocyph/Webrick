@@ -12,6 +12,7 @@ use Infocyph\Webrick\Request\Support\IpCidr;
 final class EndUser
 {
     private ?string $cachedNoProxy = null;
+
     private ?string $cachedViaProxy = null;
 
     /** @param list<CidrNetwork> $trustedProxyCidrs @param list<string> $trustedClientIpHeaders */
@@ -272,16 +273,19 @@ final class EndUser
             if ($escaped) {
                 $buffer .= $char;
                 $escaped = false;
+
                 continue;
             }
             if ($quoted && $char === '\\') {
                 $buffer .= $char;
                 $escaped = true;
+
                 continue;
             }
             if ($char === '"') {
                 $quoted = !$quoted;
                 $buffer .= $char;
+
                 continue;
             }
             if ($char === ',' && !$quoted) {
@@ -290,6 +294,7 @@ final class EndUser
                 }
                 $out[] = trim($buffer);
                 $buffer = '';
+
                 continue;
             }
             $buffer .= $char;

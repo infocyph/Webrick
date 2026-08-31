@@ -144,13 +144,8 @@ final readonly class CorsMiddleware
     private function methodAllowed(string $method, string $methods): bool
     {
         $method = HttpMethodEnum::normalize(trim($method));
-        foreach (explode(',', $methods) as $allowed) {
-            if (HttpMethodEnum::normalize(trim($allowed)) === $method) {
-                return true;
-            }
-        }
 
-        return false;
+        return array_any(explode(',', $methods), fn($allowed) => HttpMethodEnum::normalize(trim($allowed)) === $method);
     }
 
     private function originMatches(string $origin, string $allowed): bool
@@ -255,25 +250,6 @@ final readonly class CorsMiddleware
         }
     }
 
-    /** @param array<string,mixed>|false $parts */
-    private function validOriginParts(array|false $parts): bool
-    {
-        if (!is_array($parts)) {
-            return false;
-        }
-        if (!is_string($parts['scheme'] ?? null) || $parts['scheme'] === '' || !is_string($parts['host'] ?? null) || $parts['host'] === '') {
-            return false;
-        }
-
-        foreach (['user', 'pass', 'path', 'query', 'fragment'] as $part) {
-            if (isset($parts[$part]) && $parts[$part] !== '') {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
     /** @param string|list<string> $configured */
     private function validateRequestedHeaders(string $requested, string|array $configured): string
     {
@@ -290,5 +266,18 @@ final readonly class CorsMiddleware
         }
 
         return $allowed;
+    }
+
+    /** @param array<string,mixed>|false $parts */
+    private function validOriginParts(array|false $parts): bool
+    {
+        if (!is_array($parts)) {
+            return false;
+        }
+        if (!is_string($parts['scheme'] ?? null) || $parts['scheme'] === '' || !is_string($parts['host'] ?? null) || $parts['host'] === '') {
+            return false;
+        }
+
+        return array_all(['user', 'pass', 'path', 'query', 'fragment'], fn($part) => !(isset($parts[$part]) && $parts[$part] !== ''));
     }
 }

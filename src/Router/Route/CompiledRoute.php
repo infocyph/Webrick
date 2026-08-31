@@ -18,7 +18,9 @@ final class CompiledRoute implements RouteInterface
     use RouteCoreAccessors;
 
     public const int CACHE_PAYLOAD_VERSION = 2;
+
     private const string PLACEHOLDER_REGEX = '/^\{([A-Za-z_]\w*)(?::([^}]+))?}$/';
+
     private static int $autoIdx = 0;
 
     /** @var array{0:object|string,1:string}|string|callable */
@@ -129,17 +131,52 @@ final class CompiledRoute implements RouteInterface
         );
     }
 
-    public function getCorsPolicy(): ?Cors { return $this->corsPolicy; }
-    public function getHandlerId(): string { return Route::fingerprint($this->handler); }
-    public function getIndex(): int { return $this->index; }
-    public function getPathLength(): int { return $this->path === '/' ? 0 : substr_count($this->path, '/'); }
-    public function getProduces(): ?Produces { return $this->produces; }
-    public function getRegex(): string { return $this->regex; }
+    public function getCorsPolicy(): ?Cors
+    {
+        return $this->corsPolicy;
+    }
+
+    public function getHandlerId(): string
+    {
+        return Route::fingerprint($this->handler);
+    }
+
+    public function getIndex(): int
+    {
+        return $this->index;
+    }
+
+    public function getPathLength(): int
+    {
+        return $this->path === '/' ? 0 : substr_count($this->path, '/');
+    }
+
+    public function getProduces(): ?Produces
+    {
+        return $this->produces;
+    }
+
+    public function getRegex(): string
+    {
+        return $this->regex;
+    }
+
     /** @return list<SegmentSpec> */
-    public function getSegments(): array { return $this->segments; }
+    public function getSegments(): array
+    {
+        return $this->segments;
+    }
+
     /** @return list<string> */
-    public function getVariables(): array { return $this->variables; }
-    public function isDynamic(): bool { return $this->dynamic; }
+    public function getVariables(): array
+    {
+        return $this->variables;
+    }
+
+    public function isDynamic(): bool
+    {
+        return $this->dynamic;
+    }
 
     /** @return array<mixed> */
     public function toCachePayload(): array
@@ -227,6 +264,7 @@ final class CompiledRoute implements RouteInterface
             $spec = ConstraintRegistry::getValidatorSpec($constraint);
             if (isset($spec['regex'])) {
                 $inner = $spec['regex'];
+
                 return [
                     ['type' => 'var', 'name' => $name, 'regex' => "#\\A{$inner}\\z#D"],
                     "({$inner})",
@@ -234,6 +272,7 @@ final class CompiledRoute implements RouteInterface
             }
             /** @var callable-string $call */
             $call = $spec['callable'];
+
             return [
                 ['type' => 'var', 'name' => $name, 'call' => $call],
                 '([^/]+)',
@@ -255,6 +294,7 @@ final class CompiledRoute implements RouteInterface
                 $segments[] = ['type' => 'lit', 'val' => $segment];
             }
         }
+
         return $segments;
     }
 
@@ -288,6 +328,7 @@ final class CompiledRoute implements RouteInterface
                 [$segmentSpec, $pieceRegex] = self::buildVarSegment($name, $constraint);
                 $segments[] = $segmentSpec;
                 $patternBuf[] = $pieceRegex;
+
                 continue;
             }
 
@@ -310,6 +351,7 @@ final class CompiledRoute implements RouteInterface
         if (preg_match(self::PLACEHOLDER_REGEX, $raw, $matches) !== 1) {
             return null;
         }
+
         return [$matches[1], $matches[2] ?? null];
     }
 
@@ -318,6 +360,7 @@ final class CompiledRoute implements RouteInterface
     {
         $segments = self::explodeLiterals($path);
         $pattern = '#\A' . ($path === '/' ? '/' : self::quoteIfNeeded($path)) . '\z#D';
+
         return [$pattern, [], false, $segments];
     }
 
@@ -331,6 +374,7 @@ final class CompiledRoute implements RouteInterface
         if (!is_bool($value)) {
             throw new \UnexpectedValueException('Invalid dynamic flag in compiled route state.');
         }
+
         return $value;
     }
 
@@ -339,6 +383,7 @@ final class CompiledRoute implements RouteInterface
         if ($value === null || $value instanceof Cors) {
             return $value;
         }
+
         throw new \UnexpectedValueException('Invalid CORS policy in compiled route state.');
     }
 
@@ -351,6 +396,7 @@ final class CompiledRoute implements RouteInterface
         if (is_array($value) && count($value) === 2 && (is_object($value[0]) || is_string($value[0])) && is_string($value[1])) {
             return [$value[0], $value[1]];
         }
+
         throw new \UnexpectedValueException('Invalid handler in compiled route state.');
     }
 
@@ -359,6 +405,7 @@ final class CompiledRoute implements RouteInterface
         if (!is_int($value)) {
             throw new \UnexpectedValueException('Invalid route index in compiled route state.');
         }
+
         return $value;
     }
 
@@ -373,10 +420,13 @@ final class CompiledRoute implements RouteInterface
             $descriptor = self::stateHandler($entry);
             if (is_string($descriptor) || is_object($descriptor) || is_array($descriptor)) {
                 $middleware[] = $descriptor;
+
                 continue;
             }
+
             throw new \UnexpectedValueException('Invalid middleware descriptor in compiled route state.');
         }
+
         return $middleware;
     }
 
@@ -385,6 +435,7 @@ final class CompiledRoute implements RouteInterface
         if ($value === null || is_string($value)) {
             return $value;
         }
+
         throw new \UnexpectedValueException('Invalid nullable string in compiled route state.');
     }
 
@@ -393,6 +444,7 @@ final class CompiledRoute implements RouteInterface
         if ($value === null || $value instanceof Produces) {
             return $value;
         }
+
         throw new \UnexpectedValueException('Invalid Produces policy in compiled route state.');
     }
 
@@ -402,6 +454,7 @@ final class CompiledRoute implements RouteInterface
         if (!is_array($value) || !array_is_list($value)) {
             throw new \UnexpectedValueException('Invalid segments in compiled route state.');
         }
+
         return CompiledRouteCachePayload::validate([
             self::CACHE_PAYLOAD_VERSION, 'GET', '/', '__state__', null, [], null, false, '', [], 0, null, null, $value,
         ])[13];
@@ -412,6 +465,7 @@ final class CompiledRoute implements RouteInterface
         if (!is_string($value)) {
             throw new \UnexpectedValueException('Invalid string in compiled route state.');
         }
+
         return $value;
     }
 
@@ -425,6 +479,7 @@ final class CompiledRoute implements RouteInterface
         foreach ($value as $entry) {
             $variables[] = self::stateString($entry);
         }
+
         return $variables;
     }
 

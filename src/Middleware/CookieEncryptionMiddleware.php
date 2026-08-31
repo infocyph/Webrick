@@ -16,38 +16,50 @@ use Random\RandomException;
 use RuntimeException;
 
 /** Authenticated cookie encryption with immutable key selection. */
-final class CookieEncryptionMiddleware
+final readonly class CookieEncryptionMiddleware
 {
     private const string CACHE_PREFIX = 'enc_cookie.';
+
     private const string MODE_BROTLI = 'b';
+
     private const string MODE_GZIP = 'g';
+
     private const string MODE_NONE = '0';
+
     private const string MODE_STORE = 'S:';
+
     private const string MODE_ZSTD = 'z';
+
     private const string STORE_BLOB_V1 = 'C1:';
+
     private const string STORE_SEP = ':';
+
     private const string V1_BYTE = '1';
 
-    private readonly CookieAttributeApplier $cookieAttributeApplier;
-    private readonly bool $hasBrotli;
-    private readonly bool $hasGzip;
-    private readonly bool $hasZstd;
+    private CookieAttributeApplier $cookieAttributeApplier;
+
+    private bool $hasBrotli;
+
+    private bool $hasGzip;
+
+    private bool $hasZstd;
 
     /** @var list<string> */
-    private readonly array $keys;
-    private readonly int $kid;
+    private array $keys;
+
+    private int $kid;
 
     /** @param string|array<int,string> $keyOrKeys */
     public function __construct(
         string|array $keyOrKeys,
-        private readonly string $cookiePrefix = 'enc_',
-        private readonly int $maxBytes = 3_800,
-        private readonly ?CacheItemPoolInterface $store = null,
-        private readonly int $storeTtl = 86_400,
-        private readonly bool $dropOnDecryptFailure = true,
-        private readonly bool $forceSecure = true,
-        private readonly bool $forceHttpOnly = true,
-        private readonly ?string $defaultSameSite = 'Lax',
+        private string $cookiePrefix = 'enc_',
+        private int $maxBytes = 3_800,
+        private ?CacheItemPoolInterface $store = null,
+        private int $storeTtl = 86_400,
+        private bool $dropOnDecryptFailure = true,
+        private bool $forceSecure = true,
+        private bool $forceHttpOnly = true,
+        private ?string $defaultSameSite = 'Lax',
         int $activeKid = 0,
     ) {
         $keys = is_array($keyOrKeys) ? array_values($keyOrKeys) : [$keyOrKeys];
@@ -194,6 +206,7 @@ final class CookieEncryptionMiddleware
             }
             if (!preg_match($pattern, $name, $matches)) {
                 $out[$name] = $value;
+
                 continue;
             }
             $assemblies[$matches[1]][(int) ($matches[2] ?? 1)] = $value;
@@ -205,6 +218,7 @@ final class CookieEncryptionMiddleware
                 if (!$this->dropOnDecryptFailure) {
                     $out[$base] = null;
                 }
+
                 continue;
             }
             $plain = $this->decrypt($base, implode('', $parts));
@@ -282,6 +296,7 @@ final class CookieEncryptionMiddleware
             $parts = $this->parseSetCookie($line);
             if ($parts === null || !str_starts_with($parts['name'], $this->cookiePrefix)) {
                 $jar = $jar->raw($line);
+
                 continue;
             }
 
@@ -299,33 +314,6 @@ final class CookieEncryptionMiddleware
         }
 
         return $jar->apply($response->withoutHeader('Set-Cookie'));
-    }
-
-    /** @param array<string,bool|string> $attrs @param array<string,mixed> $incoming */
-    private function expireStaleSegments(
-        CookieJar $jar,
-        string $baseName,
-        int $lastIndex,
-        array $attrs,
-        array $incoming,
-    ): CookieJar {
-        $pattern = '/^' . preg_quote($baseName, '/') . '\.p(\d+)$/D';
-        foreach ($incoming as $name => $_value) {
-            if (!is_string($name) || preg_match($pattern, $name, $matches) !== 1) {
-                continue;
-            }
-            $index = (int) $matches[1];
-            if ($index <= $lastIndex) {
-                continue;
-            }
-            $cookie = $this->cookieAttributeApplier->apply(
-                Cookie::make($name, '', secure: false, httpOnly: false),
-                $attrs,
-            )->expire();
-            $jar = $jar->add($cookie);
-        }
-
-        return $jar;
     }
 
     /** @throws RandomException|RuntimeException */
@@ -362,6 +350,7 @@ final class CookieEncryptionMiddleware
         if (count($parts) <= 10) {
             /** @var array<int,string> $combined */
             $combined = array_combine(range(1, count($parts)), $parts);
+
             return $combined;
         }
         if ($this->store !== null) {
@@ -376,6 +365,33 @@ final class CookieEncryptionMiddleware
         }
 
         throw new LengthException('Encrypted cookie exceeds safe size even after chunking; enable server-side storage or reduce payload.');
+    }
+
+    /** @param array<string,bool|string> $attrs @param array<string,mixed> $incoming */
+    private function expireStaleSegments(
+        CookieJar $jar,
+        string $baseName,
+        int $lastIndex,
+        array $attrs,
+        array $incoming,
+    ): CookieJar {
+        $pattern = '/^' . preg_quote($baseName, '/') . '\.p(\d+)$/D';
+        foreach ($incoming as $name => $_value) {
+            if (!is_string($name) || preg_match($pattern, $name, $matches) !== 1) {
+                continue;
+            }
+            $index = (int) $matches[1];
+            if ($index <= $lastIndex) {
+                continue;
+            }
+            $cookie = $this->cookieAttributeApplier->apply(
+                Cookie::make($name, '', secure: false, httpOnly: false),
+                $attrs,
+            )->expire();
+            $jar = $jar->add($cookie);
+        }
+
+        return $jar;
     }
 
     private function fromStore(string $id): mixed
@@ -452,7 +468,7 @@ final class CookieEncryptionMiddleware
     private function parseSetCookie(string $line): ?array
     {
         $chunks = array_map(trim(...), explode(';', $line));
-        if ($chunks === [] || !str_contains($chunks[0], '=')) {
+        if (!str_contains($chunks[0], '=')) {
             return null;
         }
         [$name, $value] = explode('=', $chunks[0], 2);

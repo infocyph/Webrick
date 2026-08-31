@@ -14,7 +14,7 @@ use Infocyph\Webrick\Request\Support\IpCidr;
 use Infocyph\Webrick\Response\Response;
 
 /** Gateway/front-door hardening with request-local proxy state. */
-final class GatewayHardeningMiddleware
+final readonly class GatewayHardeningMiddleware
 {
     private const int DEFAULT_FORWARDED_HEADER_MASK = Request::HEADER_FORWARDED
         | Request::HEADER_X_FORWARDED_FOR
@@ -27,17 +27,18 @@ final class GatewayHardeningMiddleware
         'te', 'trailer', 'transfer-encoding', 'upgrade',
     ];
 
-    private readonly bool $allowAllHosts;
-    private readonly int $forwardedHeaderMask;
+    private bool $allowAllHosts;
+
+    /** @var list<CidrNetwork> */
+    private array $denyIpNetworks;
+
+    private int $forwardedHeaderMask;
 
     /** @var list<string> */
-    private readonly array $hostRegex;
+    private array $hostRegex;
 
     /** @var list<CidrNetwork> */
-    private readonly array $trustedProxyNetworks;
-
-    /** @var list<CidrNetwork> */
-    private readonly array $denyIpNetworks;
+    private array $trustedProxyNetworks;
 
     /**
      * @param list<string> $trustedProxyCidrs
@@ -49,13 +50,13 @@ final class GatewayHardeningMiddleware
     public function __construct(
         array $trustedProxyCidrs = [],
         array $denyIpCidrs = [],
-        private readonly array $trustedHosts = [],
+        private array $trustedHosts = [],
         ?int $forwardedHeaderMask = null,
-        private readonly bool $enforceHttps = true,
-        private readonly int $httpsPort = 443,
-        private readonly bool $stripHopByHop = true,
-        private readonly array $redirectAllowedHosts = [],
-        private readonly array $trustedClientIpHeaders = [],
+        private bool $enforceHttps = true,
+        private int $httpsPort = 443,
+        private bool $stripHopByHop = true,
+        private array $redirectAllowedHosts = [],
+        private array $trustedClientIpHeaders = [],
     ) {
         if ($httpsPort < 1 || $httpsPort > 65535) {
             throw new \InvalidArgumentException('httpsPort must be between 1 and 65535.');

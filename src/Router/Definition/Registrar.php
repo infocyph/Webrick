@@ -202,6 +202,7 @@ final readonly class Registrar
     private function computeFullPath(string $path): string
     {
         $fullPrefix = ltrim($this->scope->getPrefix(), '/');
+
         return '/' . ltrim($fullPrefix . '/' . ltrim($path, '/'), '/');
     }
 
@@ -241,6 +242,7 @@ final readonly class Registrar
         if ($except !== null && in_array($key, $except, true)) {
             return false;
         }
+
         return true;
     }
 

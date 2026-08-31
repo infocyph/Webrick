@@ -118,6 +118,7 @@ final class CacheControl implements \Stringable
             $position = strpos($token, '=');
             if ($position === false) {
                 $parts[strtolower($token)] = null;
+
                 continue;
             }
             $name = strtolower(trim(substr($token, 0, $position)));
@@ -409,16 +410,19 @@ final class CacheControl implements \Stringable
             if ($escaped) {
                 $buffer .= $char;
                 $escaped = false;
+
                 continue;
             }
             if ($quoted && $char === '\\') {
                 $buffer .= $char;
                 $escaped = true;
+
                 continue;
             }
             if ($char === '"') {
                 $quoted = !$quoted;
                 $buffer .= $char;
+
                 continue;
             }
             if ($char === ',' && !$quoted) {
@@ -427,6 +431,7 @@ final class CacheControl implements \Stringable
                     $out[] = $token;
                 }
                 $buffer = '';
+
                 continue;
             }
             $buffer .= $char;

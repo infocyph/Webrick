@@ -28,6 +28,7 @@ final class StreamUtil
         }
 
         $position = $s->tell();
+
         try {
             return strlen($s->getContents());
         } finally {

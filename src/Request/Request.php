@@ -23,9 +23,13 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
     use MacroMix;
 
     public const HEADER_FORWARDED = 0b10000;
+
     public const HEADER_X_FORWARDED_FOR = 0b00001;
+
     public const HEADER_X_FORWARDED_HOST = 0b00010;
+
     public const HEADER_X_FORWARDED_PORT = 0b01000;
+
     public const HEADER_X_FORWARDED_PROTO = 0b00100;
 
     private static int $trustedHeaderFlags = 0;
@@ -263,13 +267,7 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
     /** @param string|list<string> $keys */
     public function has(string|array $keys): bool
     {
-        foreach (self::stringList($keys) as $key) {
-            if ($this->data($key) === null) {
-                return false;
-            }
-        }
-
-        return true;
+        return array_all(self::stringList($keys), fn($key) => !($this->data($key) === null));
     }
 
     public function hasFile(string $key): bool
@@ -431,13 +429,8 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
     public function routeIs(string|array $patterns): bool
     {
         $target = $this->getRequestTarget();
-        foreach (self::stringList($patterns) as $pattern) {
-            if (preg_match('#^' . str_replace('\\*', '.*', preg_quote($pattern, '#')) . '$#', $target) === 1) {
-                return true;
-            }
-        }
 
-        return false;
+        return array_any(self::stringList($patterns), fn($pattern) => preg_match('#^' . str_replace('\\*', '.*', preg_quote($pattern, '#')) . '$#', $target) === 1);
     }
 
     public function segment(int $index, mixed $default = null): mixed

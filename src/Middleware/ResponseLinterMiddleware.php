@@ -17,9 +17,9 @@ final readonly class ResponseLinterMiddleware
 {
     public const int BODY_REQUIRES_CTYPE = 0b00001;
 
-    public const int NO_BODY_STATUSES = 0b00010;
-
     public const int COMPRESSED_NEEDS_VARY = 0b00100;
+
+    public const int CONTENT_LENGTH_MATCH = 0b10000;
 
     /**
      * Kept for source compatibility. Strong ETags are legal for encoded representations
@@ -27,7 +27,7 @@ final readonly class ResponseLinterMiddleware
      */
     public const int ETAG_WEAK_WHEN_ENCODING = 0b01000;
 
-    public const int CONTENT_LENGTH_MATCH = 0b10000;
+    public const int NO_BODY_STATUSES = 0b00010;
 
     private int $checks;
 

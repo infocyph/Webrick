@@ -54,15 +54,10 @@ class ServerRequest extends Message
 
     private string $method;
 
-    /** @var array<string,mixed>|object|null */
-    private array|object|null $parsed;
-
     /** @var array<string,mixed> */
     private array $query;
 
     private ?string $rawBody = null;
-
-    private ?string $requestTarget;
 
     /** @var array<string,mixed> */
     private array $server;
@@ -87,9 +82,9 @@ class ServerRequest extends Message
         array $headers = [],
         ?BodyStream $body = null,
         string $httpVer = '1.1',
-        array|object|null $parsed = null,
+        private array|object|null $parsed = null,
         array $files = [],
-        ?string $requestTarget = null,
+        private ?string $requestTarget = null,
         ?array $query = null,
         array $cookies = [],
     ) {
@@ -97,9 +92,7 @@ class ServerRequest extends Message
         $this->method = HttpMethodEnum::normalize($method);
         $this->uri = $uri instanceof Uri ? $uri : new Uri($uri);
         $this->server = self::stringMap($server);
-        $this->parsed = $parsed;
         $this->filesSpec = self::stringMap($files);
-        $this->requestTarget = $requestTarget;
         $this->cookie = self::stringMap($cookies);
         $this->query = server_request_query_parameters($query, $this->uri);
 

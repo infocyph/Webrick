@@ -16,7 +16,9 @@ use Infocyph\Webrick\Runtime\Http\RuntimeCapabilities;
 final readonly class CompressionMiddleware
 {
     public const string ETAG_STRONG_DERIVE = 'derive-strong';
+
     public const string ETAG_STRONG_RECOMP = 'recompute-strong';
+
     public const string ETAG_WEAK_ON_ENCODE = 'weak-on-encode';
 
     private const array ALGO = [
@@ -282,7 +284,7 @@ final readonly class CompressionMiddleware
         $quality = [];
         foreach (explode(',', $header) as $segment) {
             $parts = array_map(trim(...), explode(';', $segment));
-            $token = strtolower((string) array_shift($parts));
+            $token = strtolower(array_shift($parts));
             if ($token === '') {
                 continue;
             }
@@ -291,6 +293,7 @@ final readonly class CompressionMiddleware
             foreach ($parts as $parameter) {
                 if (preg_match('/^q\s*=\s*(0(?:\.\d{0,3})?|1(?:\.0{0,3})?)$/i', $parameter, $match) === 1) {
                     $q = (float) $match[1];
+
                     break;
                 }
             }

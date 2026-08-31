@@ -9,12 +9,19 @@ use InvalidArgumentException;
 final class Uri implements \Stringable
 {
     private string $fragment;
+
     private string $host;
+
     private string $pass;
+
     private string $path;
+
     private ?int $port;
+
     private string $query;
+
     private string $scheme;
+
     private string $user;
 
     public function __construct(string $uri = '')
@@ -28,6 +35,7 @@ final class Uri implements \Stringable
             $this->path = '/';
             $this->query = '';
             $this->fragment = '';
+
             return;
         }
 
@@ -129,6 +137,7 @@ final class Uri implements \Stringable
                 } elseif (!$absolute) {
                     $stack[] = '..';
                 }
+
                 continue;
             }
             $stack[] = $segment;
@@ -191,12 +200,35 @@ final class Uri implements \Stringable
         return $authority;
     }
 
-    public function getFragment(): string { return $this->fragment; }
-    public function getHost(): string { return $this->host; }
-    public function getPath(): string { return $this->path; }
-    public function getPort(): ?int { return $this->port; }
-    public function getQuery(): string { return $this->query; }
-    public function getScheme(): string { return $this->scheme; }
+    public function getFragment(): string
+    {
+        return $this->fragment;
+    }
+
+    public function getHost(): string
+    {
+        return $this->host;
+    }
+
+    public function getPath(): string
+    {
+        return $this->path;
+    }
+
+    public function getPort(): ?int
+    {
+        return $this->port;
+    }
+
+    public function getQuery(): string
+    {
+        return $this->query;
+    }
+
+    public function getScheme(): string
+    {
+        return $this->scheme;
+    }
 
     public function getUserInfo(): string
     {
@@ -206,18 +238,21 @@ final class Uri implements \Stringable
     public function withFragment(string $fragment): self
     {
         $fragment = $this->filterFragment($fragment);
+
         return $fragment === $this->fragment ? $this : $this->withComponent('fragment', $fragment);
     }
 
     public function withHost(string $host): self
     {
         $host = $host !== '' ? $this->asciiHost($host) : '';
+
         return $host === $this->host ? $this : $this->withComponent('host', $host);
     }
 
     public function withPath(string $path): self
     {
         $path = self::normalizePath($path);
+
         return $path === $this->path ? $this : $this->withComponent('path', $path);
     }
 
@@ -227,12 +262,14 @@ final class Uri implements \Stringable
             throw new InvalidArgumentException("Invalid port: {$port}");
         }
         $port = $port === $this->defaultPort($this->scheme) ? null : $port;
+
         return $port === $this->port ? $this : $this->withComponent('port', $port);
     }
 
     public function withQuery(string $query): self
     {
         $query = $this->filterQuery($query);
+
         return $query === $this->query ? $this : $this->withComponent('query', $query);
     }
 
@@ -295,6 +332,7 @@ final class Uri implements \Stringable
             if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) === false) {
                 throw new InvalidArgumentException("Invalid host: {$host}");
             }
+
             return '[' . strtolower($ip) . ']';
         }
 
@@ -344,6 +382,7 @@ final class Uri implements \Stringable
     {
         $clone = clone $this;
         $clone->{$property} = $value;
+
         return $clone;
     }
 }

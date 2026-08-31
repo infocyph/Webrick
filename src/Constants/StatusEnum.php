@@ -245,11 +245,8 @@ enum StatusEnum: int
         static $cache = [];
 
         $code = $this->value;
-        if (isset($irregular[$code])) {
-            return $irregular[$code];
-        }
 
-        return $cache[$code] ??= ucwords(strtolower(str_replace('_', ' ', $this->name)));
+        return $irregular[$code] ?? $cache[$code] ??= ucwords(strtolower(str_replace('_', ' ', $this->name)));
     }
 
     public function series(): int

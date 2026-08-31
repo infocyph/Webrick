@@ -201,21 +201,25 @@ final class UriServerParams
             if ($escaped) {
                 $buffer .= $char;
                 $escaped = false;
+
                 continue;
             }
             if ($quoted && $char === '\\') {
                 $buffer .= $char;
                 $escaped = true;
+
                 continue;
             }
             if ($char === '"') {
                 $quoted = !$quoted;
                 $buffer .= $char;
+
                 continue;
             }
             if ($char === ',' && !$quoted) {
                 $tokens[] = trim($buffer);
                 $buffer = '';
+
                 continue;
             }
             $buffer .= $char;

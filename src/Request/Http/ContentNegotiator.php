@@ -8,15 +8,20 @@ namespace Infocyph\Webrick\Request\Http;
 final readonly class ContentNegotiator
 {
     private const string MATCH_LANGUAGE = 'language';
+
     private const string MATCH_MEDIA = 'media';
+
     private const string MATCH_TOKEN = 'token';
 
     /** @var list<array{value:string,q:float,specificity:int,order:int}> */
     private array $accept;
+
     /** @var list<array{value:string,q:float,specificity:int,order:int}> */
     private array $charsets;
+
     /** @var list<array{value:string,q:float,specificity:int,order:int}> */
     private array $encodings;
+
     /** @var list<array{value:string,q:float,specificity:int,order:int}> */
     private array $languages;
 
@@ -28,8 +33,15 @@ final readonly class ContentNegotiator
         $this->languages = self::parse($headers->raw('Accept-Language'));
     }
 
-    public function acceptsLatin1(): bool { return $this->supportsCharset('iso-8859-1'); }
-    public function acceptsUtf8(): bool { return $this->supportsCharset('utf-8'); }
+    public function acceptsLatin1(): bool
+    {
+        return $this->supportsCharset('iso-8859-1');
+    }
+
+    public function acceptsUtf8(): bool
+    {
+        return $this->supportsCharset('utf-8');
+    }
 
     /** @param list<string> $candidates */
     public function preferred(array $candidates): ?string
@@ -70,19 +82,19 @@ final readonly class ContentNegotiator
         return $this->languages === [] || self::quality(strtolower($language), $this->languages, self::MATCH_LANGUAGE) > 0.0;
     }
 
-    public function wantsBrotli(): bool { return $this->supportsEncoding('br'); }
-    public function wantsGzip(): bool { return $this->supportsEncoding('gzip'); }
-    public function wantsZstd(): bool { return $this->supportsEncoding('zstd'); }
-
-    /** @return array{value:string,q:float}|null */
-    private function candidateSelection(string $candidate): ?array
+    public function wantsBrotli(): bool
     {
-        $normalized = strtolower($candidate);
-        if (!str_starts_with($normalized, '+')) {
-            return ['value' => $candidate, 'q' => self::quality($normalized, $this->accept, self::MATCH_MEDIA)];
-        }
+        return $this->supportsEncoding('br');
+    }
 
-        return $this->suffixSelection($normalized);
+    public function wantsGzip(): bool
+    {
+        return $this->supportsEncoding('gzip');
+    }
+
+    public function wantsZstd(): bool
+    {
+        return $this->supportsEncoding('zstd');
     }
 
     private static function languageMatch(string $candidate, string $accepted): bool
@@ -127,7 +139,7 @@ final readonly class ContentNegotiator
         $entries = [];
         foreach (self::splitCsv($raw) as $order => $segment) {
             $parts = array_map(trim(...), explode(';', $segment));
-            $value = strtolower((string) array_shift($parts));
+            $value = strtolower(array_shift($parts));
             if ($value === '') {
                 continue;
             }
@@ -135,6 +147,7 @@ final readonly class ContentNegotiator
             foreach ($parts as $param) {
                 if (preg_match('/^q=([01](?:\.\d{0,3})?)$/i', $param, $matches) === 1) {
                     $q = max(0.0, min(1.0, (float) $matches[1]));
+
                     break;
                 }
             }
@@ -179,6 +192,7 @@ final readonly class ContentNegotiator
         if ($value === '*' || $value === '*/*') {
             return 0;
         }
+
         return str_contains($value, '*') ? 1 : 2;
     }
 
@@ -194,16 +208,19 @@ final readonly class ContentNegotiator
             if ($escaped) {
                 $buffer .= $char;
                 $escaped = false;
+
                 continue;
             }
             if ($quoted && $char === '\\') {
                 $buffer .= $char;
                 $escaped = true;
+
                 continue;
             }
             if ($char === '"') {
                 $quoted = !$quoted;
                 $buffer .= $char;
+
                 continue;
             }
             if ($char === ',' && !$quoted) {
@@ -211,6 +228,7 @@ final readonly class ContentNegotiator
                     $out[] = trim($buffer);
                 }
                 $buffer = '';
+
                 continue;
             }
             $buffer .= $char;
@@ -220,6 +238,22 @@ final readonly class ContentNegotiator
         }
 
         return $out;
+    }
+
+    private static function tokenMatch(string $candidate, string $accepted): bool
+    {
+        return $accepted === '*' || $candidate === $accepted;
+    }
+
+    /** @return array{value:string,q:float}|null */
+    private function candidateSelection(string $candidate): ?array
+    {
+        $normalized = strtolower($candidate);
+        if (!str_starts_with($normalized, '+')) {
+            return ['value' => $candidate, 'q' => self::quality($normalized, $this->accept, self::MATCH_MEDIA)];
+        }
+
+        return $this->suffixSelection($normalized);
     }
 
     /** @return array{value:string,q:float}|null */
@@ -236,10 +270,5 @@ final readonly class ContentNegotiator
         }
 
         return $best;
-    }
-
-    private static function tokenMatch(string $candidate, string $accepted): bool
-    {
-        return $accepted === '*' || $candidate === $accepted;
     }
 }
