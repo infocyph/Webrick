@@ -10,6 +10,7 @@ use Infocyph\InterMix\DI\Support\ServiceProviderInterface;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Response\View\ViewFactoryInterface;
+use Infocyph\Webrick\Response\View\ViewResponder;
 use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Dispatch\MiddlewareAliases;
 use Infocyph\Webrick\Router\Dispatch\MiddlewarePipeline;
@@ -300,28 +301,30 @@ describe('InterMix integration', function () {
             ->toBe('{"request":true,"marker":"direct-terminal"}');
     });
 
-    it('uses the same host container for route DI and Response::view', function () {
-        $kernel = intermixKernelForTest(static function (Registrar $r): void {
-            $r->get('/view', static function (ContainerInterface $container): Response {
-                if (! $container instanceof Container) {
-                    throw new RuntimeException('Expected InterMix container instance.');
-                }
+    it('uses the same host container for route DI and view rendering', function () {
+        $container = Container::instance('intermix');
+        $factory = new class implements ViewFactoryInterface
+        {
+            public function render(string $view, array $data = []): string
+            {
+                return "<h1>{$view}: ".($data['name'] ?? 'n/a').'</h1>';
+            }
+        };
+        $container->definitions()->bind(ViewFactoryInterface::class, $factory, LifetimeEnum::Singleton);
+        $container->definitions()->bind(ViewResponder::class, new ViewResponder($factory), LifetimeEnum::Singleton);
 
-                $container->definitions()->bind(
-                    ViewFactoryInterface::class,
-                    new class implements ViewFactoryInterface
-                    {
-                        public function render(string $view, array $data = []): string
-                        {
-                            return "<h1>{$view}: ".($data['name'] ?? 'n/a').'</h1>';
-                        }
-                    },
-                    LifetimeEnum::Singleton,
-                );
+        $kernel = intermixKernelForTest(
+            static function (Registrar $r): void {
+                $r->get('/view', static function (ContainerInterface $container, ViewResponder $views): Response {
+                    if (! $container instanceof Container) {
+                        throw new RuntimeException('Expected InterMix container instance.');
+                    }
 
-                return Response::view('hello', ['name' => 'Ada']);
-            });
-        });
+                    return $views->render('hello', ['name' => 'Ada']);
+                });
+            },
+            options: ['container' => $container],
+        );
 
         $response = $kernel->handle(mockRequest('GET', '/view'));
 
