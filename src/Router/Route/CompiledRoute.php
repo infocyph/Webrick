@@ -11,7 +11,7 @@ use Infocyph\Webrick\Router\Definition\Attribute\Produces;
 
 /**
  * @psalm-type SegmentSpec = array{type:'lit',val:string}|array{type:'var',name:string,regex:string}|array{type:'var',name:string,call:callable-string}
- * @psalm-type MiddlewareList = list<string|object>
+ * @psalm-type MiddlewareList = list<string|object|array{0:object|string,1:string}>
  */
 final class CompiledRoute implements RouteInterface
 {
@@ -19,12 +19,12 @@ final class CompiledRoute implements RouteInterface
 
     public const int CACHE_PAYLOAD_VERSION = 2;
 
+    private const string PLACEHOLDER_REGEX = '/^\{([A-Za-z_]\w*)(?::([^}]+))?}$/';
+
     private static int $autoIdx = 0;
 
     /** @var array{0:object|string,1:string}|string|callable */
     private readonly mixed $handler;
-
-    private readonly string $handlerId;
 
     /**
      * @param array{0:object|string,1:string}|string|callable $handler
@@ -48,13 +48,26 @@ final class CompiledRoute implements RouteInterface
         private readonly array $segments,
     ) {
         $this->handler = $handler;
-        $this->handlerId = Route::fingerprint($handler);
     }
 
     /** @param array<mixed> $data */
     public static function __set_state(array $data): self
     {
-        return new self(...$data);
+        return new self(
+            method: self::stateString($data['method'] ?? null),
+            path: self::stateString($data['path'] ?? null),
+            handler: self::stateHandler($data['handler'] ?? null),
+            domain: self::stateNullableString($data['domain'] ?? null),
+            middleware: self::stateMiddleware($data['middleware'] ?? null),
+            name: self::stateNullableString($data['name'] ?? null),
+            dynamic: self::stateBool($data['dynamic'] ?? null),
+            regex: self::stateString($data['regex'] ?? null),
+            variables: self::stateStringList($data['variables'] ?? null),
+            index: self::stateInt($data['index'] ?? null),
+            corsPolicy: self::stateCors($data['corsPolicy'] ?? null),
+            produces: self::stateProduces($data['produces'] ?? null),
+            segments: self::stateSegments($data['segments'] ?? null),
+        );
     }
 
     /** @param array<mixed> $payload */
@@ -123,6 +136,11 @@ final class CompiledRoute implements RouteInterface
         return $this->corsPolicy;
     }
 
+    public function getHandlerId(): string
+    {
+        return Route::fingerprint($this->handler);
+    }
+
     public function getIndex(): int
     {
         return $this->index;
@@ -164,11 +182,14 @@ final class CompiledRoute implements RouteInterface
     public function toCachePayload(): array
     {
         $handler = $this->handler;
-        if (!is_string($handler) && (!is_array($handler) || !is_string($handler[0]))) {
+        if (is_string($handler)) {
+            return $this->toCachePayloadWithHandler($handler);
+        }
+        if (!is_array($handler) || !is_string($handler[0])) {
             throw new \LogicException('Object-backed route handlers cannot use scalar cache payloads.');
         }
 
-        return $this->toCachePayloadWithHandler($handler);
+        return $this->toCachePayloadWithHandler([$handler[0], $handler[1]]);
     }
 
     /**
@@ -201,7 +222,7 @@ final class CompiledRoute implements RouteInterface
             $this->variables,
             $this->index,
             $cors instanceof Cors ? [
-                'origins' => array_values($cors->origins),
+                'origins' => $cors->origins,
                 'methods' => $cors->methods,
                 'headers' => $cors->headers,
                 'exposeHeaders' => $cors->exposeHeaders,
@@ -210,8 +231,8 @@ final class CompiledRoute implements RouteInterface
                 'allowPrivateNetwork' => $cors->allowPrivateNetwork,
             ] : null,
             $produces instanceof Produces ? [
-                'types' => array_values($produces->types),
-                'charsets' => $produces->charsets === null ? null : array_values($produces->charsets),
+                'types' => $produces->types,
+                'charsets' => $produces->charsets,
             ] : null,
             $this->segments,
         ];
@@ -340,15 +361,12 @@ final class CompiledRoute implements RouteInterface
      */
     private static function parsePlaceholder(string $raw): ?array
     {
-        static $placeholderRegex = '/^\{([A-Za-z_]\w*)(?::([^}]+))?}$/';
-        if (preg_match($placeholderRegex, $raw, $matches) !== 1) {
+        if (preg_match(self::PLACEHOLDER_REGEX, $raw, $matches) !== 1) {
             return null;
         }
 
-        /** @var non-empty-string $name */
         $name = $matches[1];
-        /** @var ?non-empty-string $constraint */
-        $constraint = isset($matches[2]) && $matches[2] !== '' ? $matches[2] : null;
+        $constraint = $matches[2] ?? null;
 
         return [$name, $constraint];
     }
@@ -369,9 +387,125 @@ final class CompiledRoute implements RouteInterface
         return strpbrk($value, '^$.[]|()?*+{}\\') !== false ? preg_quote($value, '#') : $value;
     }
 
+    private static function stateBool(mixed $value): bool
+    {
+        if (!is_bool($value)) {
+            throw new \UnexpectedValueException('Invalid dynamic flag in compiled route state.');
+        }
+
+        return $value;
+    }
+
+    private static function stateCors(mixed $value): ?Cors
+    {
+        if ($value === null || $value instanceof Cors) {
+            return $value;
+        }
+
+        throw new \UnexpectedValueException('Invalid CORS policy in compiled route state.');
+    }
+
+    /** @return array{object|string,string}|string|callable */
+    private static function stateHandler(mixed $value): array|string|callable
+    {
+        if (is_string($value) || is_callable($value)) {
+            return $value;
+        }
+        if (is_array($value) && count($value) === 2 && (is_object($value[0]) || is_string($value[0])) && is_string($value[1])) {
+            return [$value[0], $value[1]];
+        }
+
+        throw new \UnexpectedValueException('Invalid handler in compiled route state.');
+    }
+
+    private static function stateInt(mixed $value): int
+    {
+        if (!is_int($value)) {
+            throw new \UnexpectedValueException('Invalid route index in compiled route state.');
+        }
+
+        return $value;
+    }
+
+    /** @return MiddlewareList */
+    private static function stateMiddleware(mixed $value): array
+    {
+        if (!is_array($value) || !array_is_list($value)) {
+            throw new \UnexpectedValueException('Invalid middleware in compiled route state.');
+        }
+
+        $middleware = [];
+        foreach ($value as $entry) {
+            $descriptor = self::stateHandler($entry);
+            if (is_string($descriptor) || is_object($descriptor) || is_array($descriptor)) {
+                $middleware[] = $descriptor;
+
+                continue;
+            }
+
+            throw new \UnexpectedValueException('Invalid middleware descriptor in compiled route state.');
+        }
+
+        return $middleware;
+    }
+
+    private static function stateNullableString(mixed $value): ?string
+    {
+        if ($value === null || is_string($value)) {
+            return $value;
+        }
+
+        throw new \UnexpectedValueException('Invalid nullable string in compiled route state.');
+    }
+
+    private static function stateProduces(mixed $value): ?Produces
+    {
+        if ($value === null || $value instanceof Produces) {
+            return $value;
+        }
+
+        throw new \UnexpectedValueException('Invalid Produces policy in compiled route state.');
+    }
+
+    /** @return list<SegmentSpec> */
+    private static function stateSegments(mixed $value): array
+    {
+        if (!is_array($value) || !array_is_list($value)) {
+            throw new \UnexpectedValueException('Invalid segments in compiled route state.');
+        }
+
+        return CompiledRouteCachePayload::validate([
+            self::CACHE_PAYLOAD_VERSION, 'GET', '/', '__state__', null, [], null, false, '', [], 0, null, null, $value,
+        ])[13];
+    }
+
+    private static function stateString(mixed $value): string
+    {
+        if (!is_string($value)) {
+            throw new \UnexpectedValueException('Invalid string in compiled route state.');
+        }
+
+        return $value;
+    }
+
+    /** @return list<string> */
+    private static function stateStringList(mixed $value): array
+    {
+        if (!is_array($value) || !array_is_list($value)) {
+            throw new \UnexpectedValueException('Invalid variables in compiled route state.');
+        }
+
+        $variables = [];
+        foreach ($value as $entry) {
+            $variables[] = self::stateString($entry);
+        }
+
+        return $variables;
+    }
+
     /**
      * @param MiddlewareList|null $middleware
-     * @return array<mixed>
+     * @return array{0:string,1:string,2:array{0:object|string,1:string}|string|callable,3:?string,4:MiddlewareList,5:?string,6:bool,7:string,8:list<string>,9:int,10:?Cors,11:?Produces,12:list<SegmentSpec>}
      */
     private function copyProps(
         ?string $domain = null,

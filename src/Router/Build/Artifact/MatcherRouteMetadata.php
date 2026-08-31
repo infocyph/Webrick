@@ -45,7 +45,7 @@ final class MatcherRouteMetadata
             $route->getVariables(),
             $route->getIndex(),
             $cors instanceof Cors ? [
-                'origins' => array_values($cors->origins),
+                'origins' => $cors->origins,
                 'methods' => $cors->methods,
                 'headers' => $cors->headers,
                 'exposeHeaders' => $cors->exposeHeaders,
@@ -54,8 +54,8 @@ final class MatcherRouteMetadata
                 'allowPrivateNetwork' => $cors->allowPrivateNetwork,
             ] : null,
             $produces instanceof Produces ? [
-                'types' => array_values($produces->types),
-                'charsets' => $produces->charsets === null ? null : array_values($produces->charsets),
+                'types' => $produces->types,
+                'charsets' => $produces->charsets,
             ] : null,
             $route->getSegments(),
         ];

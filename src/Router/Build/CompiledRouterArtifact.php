@@ -55,17 +55,7 @@ final readonly class CompiledRouterArtifact
     /** @param array<string,mixed> $payload */
     public static function fromPayload(array $payload): self
     {
-        if (($payload['format'] ?? null) !== self::FORMAT_VERSION) {
-            throw new UnexpectedValueException('Unsupported Webrick router artifact format.');
-        }
-        foreach (['environment', 'config_fingerprint', 'artifact_fingerprint'] as $key) {
-            if (!is_string($payload[$key] ?? null) || $payload[$key] === '') {
-                throw new UnexpectedValueException("Malformed Webrick router artifact field '{$key}'.");
-            }
-        }
-        if (!is_bool($payload['has_domain_routes'] ?? null)) {
-            throw new UnexpectedValueException('Malformed Webrick domain-routing capability.');
-        }
+        [$hasDomainRoutes, $environment, $configFingerprint, $artifactFingerprint] = self::header($payload);
 
         $routes = [];
         $routeIds = [];
@@ -102,10 +92,10 @@ final readonly class CompiledRouterArtifact
             postGlobal: self::decodedList(self::arrayField($payload, 'post_global')),
             preGlobalTags: self::stringList(self::arrayField($payload, 'pre_global_tags')),
             postGlobalTags: self::stringList(self::arrayField($payload, 'post_global_tags')),
-            hasDomainRoutes: $payload['has_domain_routes'],
-            environment: $payload['environment'],
-            configFingerprint: $payload['config_fingerprint'],
-            artifactFingerprint: $payload['artifact_fingerprint'],
+            hasDomainRoutes: $hasDomainRoutes,
+            environment: $environment,
+            configFingerprint: $configFingerprint,
+            artifactFingerprint: $artifactFingerprint,
         );
     }
 
@@ -150,7 +140,10 @@ final readonly class CompiledRouterArtifact
             ?? throw new UnexpectedValueException('Matched route index has no compiled execution plan.');
     }
 
-    /** @param array<mixed> $payload @return array<string,array{0:string,1:?string}> */
+    /**
+     * @param array<array-key,mixed> $payload
+     * @return array<string,array{string,string|null}>
+     */
     private static function aliases(array $payload): array
     {
         $aliases = [];
@@ -169,7 +162,8 @@ final readonly class CompiledRouterArtifact
     }
 
     /**
-     * @param array<string,mixed> $payload @return array<mixed>
+     * @param array<string,mixed> $payload
+     * @return array<array-key,mixed>
      */
     private static function arrayField(array $payload, string $key): array
     {
@@ -181,13 +175,45 @@ final readonly class CompiledRouterArtifact
         return $value;
     }
 
-    /** @param array<mixed> $payload @return list<mixed> */
+    /**
+     * @param array<array-key,mixed> $payload
+     * @return list<mixed>
+     */
     private static function decodedList(array $payload): array
     {
         return array_map(ArtifactValueCodec::decode(...), array_values($payload));
     }
 
-    /** @param array<mixed> $payload @return list<string> */
+    /**
+     * @param array<string,mixed> $payload
+     * @return array{bool,string,string,string}
+     */
+    private static function header(array $payload): array
+    {
+        if (($payload['format'] ?? null) !== self::FORMAT_VERSION) {
+            throw new UnexpectedValueException('Unsupported Webrick router artifact format.');
+        }
+        foreach (['environment', 'config_fingerprint', 'artifact_fingerprint'] as $key) {
+            if (!is_string($payload[$key] ?? null) || $payload[$key] === '') {
+                throw new UnexpectedValueException("Malformed Webrick router artifact field '{$key}'.");
+            }
+        }
+        if (!is_bool($payload['has_domain_routes'] ?? null)) {
+            throw new UnexpectedValueException('Malformed Webrick domain-routing capability.');
+        }
+
+        return [
+            $payload['has_domain_routes'],
+            $payload['environment'],
+            $payload['config_fingerprint'],
+            $payload['artifact_fingerprint'],
+        ];
+    }
+
+    /**
+     * @param array<array-key,mixed> $payload
+     * @return list<string>
+     */
     private static function stringList(array $payload): array
     {
         $values = [];

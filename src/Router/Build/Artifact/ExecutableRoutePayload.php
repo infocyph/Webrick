@@ -19,13 +19,13 @@ final class ExecutableRoutePayload
             throw new \UnexpectedValueException('Invalid executable route payload.');
         }
         $metadata = MatcherRouteMetadata::decode($payload['route'] ?? null);
-        $handler = ArtifactValueCodec::decode($payload['handler'] ?? null);
+        $handler = self::decodeHandler($payload['handler'] ?? null);
         $middlewarePayload = $payload['middleware'] ?? null;
         if (!is_array($middlewarePayload) || !array_is_list($middlewarePayload)) {
             throw new \UnexpectedValueException('Invalid executable route middleware payload.');
         }
 
-        $middleware = array_map(ArtifactValueCodec::decode(...), $middlewarePayload);
+        $middleware = self::decodeMiddleware($middlewarePayload);
 
         return new CompiledRoute(
             method: $metadata->getMethod(),
@@ -53,7 +53,7 @@ final class ExecutableRoutePayload
             'version' => self::VERSION,
             'route' => MatcherRouteMetadata::encode($route),
             'handler' => ArtifactValueCodec::encode($route->getHandler()),
-            'middleware' => array_map(ArtifactValueCodec::encode(...), array_values($route->getMiddlewares())),
+            'middleware' => array_map(ArtifactValueCodec::encode(...), $route->getMiddlewares()),
         ];
     }
 
@@ -66,5 +66,47 @@ final class ExecutableRoutePayload
         $index = $payload['route'][10] ?? null;
 
         return is_int($index) ? $index : null;
+    }
+
+    /**
+     * @return array{object|string,string}|string|callable
+     */
+    private static function decodeHandler(mixed $payload): array|string|callable
+    {
+        $handler = ArtifactValueCodec::decode($payload);
+        if (is_string($handler) || is_callable($handler)) {
+            return $handler;
+        }
+        if (is_array($handler) && count($handler) === 2 && (is_object($handler[0]) || is_string($handler[0])) && is_string($handler[1])) {
+            return [$handler[0], $handler[1]];
+        }
+
+        throw new \UnexpectedValueException('Invalid executable route handler.');
+    }
+
+    /**
+     * @param list<mixed> $payload
+     * @return list<object|string|array{object|string,string}>
+     */
+    private static function decodeMiddleware(array $payload): array
+    {
+        $middleware = [];
+        foreach ($payload as $entry) {
+            $descriptor = ArtifactValueCodec::decode($entry);
+            if (is_string($descriptor) || is_object($descriptor)) {
+                $middleware[] = $descriptor;
+
+                continue;
+            }
+            if (is_array($descriptor) && count($descriptor) === 2 && (is_object($descriptor[0]) || is_string($descriptor[0])) && is_string($descriptor[1])) {
+                $middleware[] = [$descriptor[0], $descriptor[1]];
+
+                continue;
+            }
+
+            throw new \UnexpectedValueException('Invalid executable route middleware descriptor.');
+        }
+
+        return $middleware;
     }
 }

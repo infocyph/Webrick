@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Runtime\Http;
 
+use RuntimeException;
+
 final readonly class WorkermanNativeRequest
 {
     /**
@@ -11,7 +13,7 @@ final readonly class WorkermanNativeRequest
      */
     public static function cookies(object $request): array
     {
-        return self::stringMap($request->cookie());
+        return self::stringMap(self::call($request, 'cookie'));
     }
 
     /**
@@ -19,7 +21,7 @@ final readonly class WorkermanNativeRequest
      */
     public static function files(object $request): array
     {
-        return self::stringMap($request->file());
+        return self::stringMap(self::call($request, 'file'));
     }
 
     /**
@@ -27,7 +29,7 @@ final readonly class WorkermanNativeRequest
      */
     public static function headers(object $request): array
     {
-        $headers = self::stringMap($request->header());
+        $headers = self::stringMap(self::call($request, 'header'));
         $out = [];
         foreach ($headers as $name => $value) {
             if (is_string($value)) {
@@ -43,7 +45,7 @@ final readonly class WorkermanNativeRequest
      */
     public static function post(object $request): array
     {
-        return self::stringMap($request->post());
+        return self::stringMap(self::call($request, 'post'));
     }
 
     /**
@@ -51,12 +53,12 @@ final readonly class WorkermanNativeRequest
      */
     public static function query(object $request): array
     {
-        return self::stringMap($request->get());
+        return self::stringMap(self::call($request, 'get'));
     }
 
     public static function rawBody(object $request): string
     {
-        $body = $request->rawBody();
+        $body = self::call($request, 'rawBody');
 
         return is_string($body) ? $body : '';
     }
@@ -66,13 +68,14 @@ final readonly class WorkermanNativeRequest
      */
     public static function server(object $request, object $connection): array
     {
-        $headers = self::stringMap($request->header());
-        $scheme = (($connection->worker->transport ?? null) === 'ssl') ? 'https' : 'http';
+        $headers = self::stringMap(self::call($request, 'header'));
+        $worker = self::property($connection, 'worker');
+        $scheme = (is_object($worker) && self::property($worker, 'transport') === 'ssl') ? 'https' : 'http';
         $server = [
-            'REQUEST_METHOD' => (string) $request->method(),
-            'REQUEST_URI' => (string) $request->uri(),
-            'SERVER_PROTOCOL' => 'HTTP/' . $request->protocolVersion(),
-            'REMOTE_ADDR' => (string) $connection->getRemoteIp(),
+            'REQUEST_METHOD' => self::string(self::call($request, 'method')),
+            'REQUEST_URI' => self::string(self::call($request, 'uri')),
+            'SERVER_PROTOCOL' => 'HTTP/' . self::string(self::call($request, 'protocolVersion')),
+            'REMOTE_ADDR' => self::string(self::call($connection, 'getRemoteIp')),
             'REQUEST_SCHEME' => $scheme,
         ];
 
@@ -89,8 +92,18 @@ final readonly class WorkermanNativeRequest
         return $server;
     }
 
+    private static function call(object $target, string $method): mixed
+    {
+        if (!method_exists($target, $method)) {
+            throw new RuntimeException("Workerman native object does not support {$method}().");
+        }
+
+        return $target->{$method}();
+    }
+
     /**
-     * @param array<string,mixed> $server @param array<string,mixed> $headers
+     * @param array<string,mixed> $server
+     * @param array<string,mixed> $headers
      */
     private static function copyHeader(array &$server, array $headers, string $source, string $target): void
     {
@@ -98,6 +111,16 @@ final readonly class WorkermanNativeRequest
         if (is_string($value)) {
             $server[$target] = $value;
         }
+    }
+
+    private static function property(object $target, string $property): mixed
+    {
+        return $target->{$property} ?? null;
+    }
+
+    private static function string(mixed $value): string
+    {
+        return is_string($value) || is_int($value) || is_float($value) ? (string) $value : '';
     }
 
     /**

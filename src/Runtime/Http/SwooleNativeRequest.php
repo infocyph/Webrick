@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Runtime\Http;
 
+use RuntimeException;
+
 final readonly class SwooleNativeRequest
 {
     /**
@@ -50,7 +52,7 @@ final readonly class SwooleNativeRequest
 
     public static function rawBody(object $request): string
     {
-        $body = $request->rawContent();
+        $body = self::call($request, 'rawContent');
 
         return is_string($body) ? $body : '';
     }
@@ -91,8 +93,18 @@ final readonly class SwooleNativeRequest
         return $server;
     }
 
+    private static function call(object $target, string $method): mixed
+    {
+        if (!method_exists($target, $method)) {
+            throw new RuntimeException("Swoole native request does not support {$method}().");
+        }
+
+        return $target->{$method}();
+    }
+
     /**
-     * @param array<string,mixed> $server @param array<string,mixed> $headers
+     * @param array<string,mixed> $server
+     * @param array<string,mixed> $headers
      */
     private static function copyHeader(array &$server, array $headers, string $source, string $target): void
     {
@@ -102,7 +114,10 @@ final readonly class SwooleNativeRequest
         }
     }
 
-    /** @param array<mixed> $value @return array<string,mixed> */
+    /**
+     * @param array<array-key,mixed> $value
+     * @return array<string,mixed>
+     */
     private static function stringMap(array $value): array
     {
         $out = [];

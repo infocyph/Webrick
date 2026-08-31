@@ -62,6 +62,7 @@ abstract class AbstractMatcher
     /**
      * @param array<mixed,mixed> $values
      */
+    /** @param array<array-key,mixed> $values */
     protected function exportArray(array $values, int $depth = 0): string
     {
         $indent = str_repeat('    ', $depth);

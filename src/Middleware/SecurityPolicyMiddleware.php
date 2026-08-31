@@ -10,7 +10,7 @@ use Infocyph\Webrick\Response\Headers\SecurityHeaders;
 use Infocyph\Webrick\Response\Response;
 
 /**
- * Security response policies separated from CORS semantics.
+ * HTTP response policies separated from CORS semantics.
  */
 final readonly class SecurityPolicyMiddleware
 {

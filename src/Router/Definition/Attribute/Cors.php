@@ -34,7 +34,7 @@ final readonly class Cors
             throw new InvalidArgumentException('CORS max age cannot be negative.');
         }
         foreach ($this->origins as $origin) {
-            if (!is_string($origin) || trim($origin) === '') {
+            if (trim($origin) === '') {
                 throw new InvalidArgumentException('CORS origins must be non-empty strings.');
             }
         }

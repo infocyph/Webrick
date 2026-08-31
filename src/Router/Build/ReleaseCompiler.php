@@ -20,10 +20,10 @@ final readonly class ReleaseCompiler
 
     /**
      * @param array<string,mixed> $registrarOptions
-     * @param array<int,mixed> $preGlobal
-     * @param array<int,mixed> $postGlobal
-     * @param array<int,string> $preGlobalTags
-     * @param array<int,string> $postGlobalTags
+     * @param list<mixed> $preGlobal
+     * @param list<mixed> $postGlobal
+     * @param list<string> $preGlobalTags
+     * @param list<string> $postGlobalTags
      * @return array<string,mixed>
      */
     public function compile(

@@ -113,9 +113,16 @@ final class CanonicalMatcherIndex
         $this->hosts = $hosts;
     }
 
-    /**
-     * @return array<int,array<string,array<string,array{segments:list<array<string,mixed>>,verbs:array<string,CompiledRoute|array<mixed>|string>}>>>
-     */
+    private static function routePath(mixed $path): string
+    {
+        if (!is_string($path)) {
+            throw new UnexpectedValueException('Invalid canonical dynamic route path.');
+        }
+
+        return $path;
+    }
+
+    /** @return DynamicBuckets */
     private function normalizeDynamic(mixed $raw): array
     {
         if (!is_array($raw)) {
@@ -132,18 +139,7 @@ final class CanonicalMatcherIndex
                     throw new UnexpectedValueException('Invalid canonical dynamic prefix bucket.');
                 }
                 foreach ($entries as $path => $entry) {
-                    if (!is_string($path) || !is_array($entry)) {
-                        throw new UnexpectedValueException('Invalid canonical dynamic route entry.');
-                    }
-                    $segments = $this->normalizeSegments($entry['segments'] ?? null, $count);
-                    $verbs = matcher_normalize_compiled_route_map($entry['verbs'] ?? null);
-                    if ($verbs === []) {
-                        throw new UnexpectedValueException('Canonical dynamic route requires at least one verb.');
-                    }
-                    $dynamic[$count][$prefix][$path] = [
-                        'segments' => $segments,
-                        'verbs' => $verbs,
-                    ];
+                    $dynamic[$count][$prefix][self::routePath($path)] = $this->normalizeDynamicEntry($entry, $count);
                 }
             }
         }
@@ -151,9 +147,25 @@ final class CanonicalMatcherIndex
         return $dynamic;
     }
 
-    /**
-     * @return list<array<string,mixed>>
-     */
+    /** @return DynamicEntry */
+    private function normalizeDynamicEntry(mixed $entry, int $count): array
+    {
+        if (!is_array($entry)) {
+            throw new UnexpectedValueException('Invalid canonical dynamic route entry.');
+        }
+
+        $verbs = matcher_normalize_compiled_route_map($entry['verbs'] ?? null);
+        if ($verbs === []) {
+            throw new UnexpectedValueException('Canonical dynamic route requires at least one verb.');
+        }
+
+        return [
+            'segments' => $this->normalizeSegments($entry['segments'] ?? null, $count),
+            'verbs' => $verbs,
+        ];
+    }
+
+    /** @return list<SegmentSpec> */
     private function normalizeSegments(mixed $raw, int $expectedCount): array
     {
         if (!is_array($raw) || !array_is_list($raw) || count($raw) !== $expectedCount) {

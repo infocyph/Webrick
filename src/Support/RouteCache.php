@@ -55,7 +55,9 @@ final class RouteCache
 
         Router::withScopedInstance(
             $registrar,
-            static fn(Registrar $active): mixed => ($inputs['register'])($active),
+            static function (Registrar $active) use ($inputs): void {
+                ($inputs['register'])($active);
+            },
         );
 
         $compiled = $routes->compile()->all();
@@ -94,14 +96,15 @@ final class RouteCache
         }
 
         if ($mode !== MatcherModeEnum::SHARDED) {
-            return self::rmFile($cachePath);
+            return RouteCacheCleaner::removeFile($cachePath);
         }
 
         return self::clearSharded(rtrim($cachePath, '/\\'), (bool) ($options['aggressive'] ?? false));
     }
 
     /**
-     * @param array<string,mixed> $options @return array<string,mixed>
+     * @param array<string,mixed> $options
+     * @return array<string,mixed>
      */
     private static function assocArrayOption(array $options, string $key): array
     {
@@ -121,7 +124,8 @@ final class RouteCache
     }
 
     /**
-     * @param array<string,mixed> $options @return list<class-string>
+     * @param array<string,mixed> $options
+     * @return list<class-string>
      */
     private static function classListOption(array $options, string $key): array
     {
@@ -135,61 +139,13 @@ final class RouteCache
             if (!is_string($className) || trim($className) === '') {
                 continue;
             }
-            /** @var class-string $className */
-            $classes[] = trim($className);
+            $className = trim($className);
+            if (class_exists($className)) {
+                $classes[] = $className;
+            }
         }
 
         return $classes;
-    }
-
-    private static function clearDirPreservingGitignore(string $dir): bool
-    {
-        if (!is_dir($dir)) {
-            return false;
-        }
-
-        $removed = false;
-        $ok = true;
-        $root = str_replace('\\', '/', rtrim($dir, '/\\'));
-        $iterator = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS),
-            \RecursiveIteratorIterator::CHILD_FIRST,
-        );
-
-        foreach ($iterator as $path) {
-            if (!$path instanceof \SplFileInfo) {
-                $ok = false;
-
-                continue;
-            }
-
-            [$entryOk, $entryRemoved] = self::clearEntry($path, $root);
-            $ok = $ok && $entryOk;
-            $removed = $removed || $entryRemoved;
-        }
-
-        return $ok && $removed;
-    }
-
-    /**
-     * @return array{0:bool,1:bool}
-     */
-    private static function clearEntry(\SplFileInfo $path, string $root): array
-    {
-        $pathname = $path->getPathname();
-        if ($path->isLink()) {
-            return [true, self::rmFile($pathname)];
-        }
-        if ($path->isDir()) {
-            $deleted = self::removeDirectory($pathname);
-
-            return [$deleted, $deleted];
-        }
-        if (self::isRootGitignore($pathname, $root)) {
-            return [true, false];
-        }
-
-        return [true, self::rmFile($pathname)];
     }
 
     private static function clearSharded(string $dir, bool $aggressive): bool
@@ -198,23 +154,23 @@ final class RouteCache
             return false;
         }
         if ($aggressive) {
-            return self::clearDirPreservingGitignore($dir);
+            return RouteCacheCleaner::clearDirectoryPreservingGitignore($dir);
         }
 
         $removed = false;
         foreach (['__root.php', '__aliases.php', '__manifest.php', '__current'] as $known) {
-            $removed = self::rmFile($dir . DIRECTORY_SEPARATOR . $known) || $removed;
+            $removed = RouteCacheCleaner::removeFile($dir . DIRECTORY_SEPARATOR . $known) || $removed;
         }
         foreach (glob($dir . DIRECTORY_SEPARATOR . '*.php') ?: [] as $php) {
             if (in_array(basename($php), ['__root.php', '__aliases.php', '__routes.php', '__generated.php'], true)) {
                 continue;
             }
-            $removed = self::rmFile($php) || $removed;
+            $removed = RouteCacheCleaner::removeFile($php) || $removed;
         }
         foreach (glob($dir . DIRECTORY_SEPARATOR . 'generation-*', GLOB_ONLYDIR) ?: [] as $generation) {
-            $generationRemoved = self::clearDirPreservingGitignore($generation);
+            $generationRemoved = RouteCacheCleaner::clearDirectoryPreservingGitignore($generation);
             if (is_dir($generation)) {
-                self::removeDirectory($generation);
+                RouteCacheCleaner::removeDirectory($generation);
                 $generationRemoved = true;
             }
             $removed = $generationRemoved || $removed;
@@ -223,6 +179,7 @@ final class RouteCache
         return $removed;
     }
 
+    /** @param array<string,mixed> $options */
     private static function intOption(array $options, string $key, int $default): int
     {
         $value = $options[$key] ?? null;
@@ -231,13 +188,6 @@ final class RouteCache
         }
 
         return is_string($value) && $value !== '' && is_numeric($value) ? (int) $value : $default;
-    }
-
-    private static function isRootGitignore(string $path, string $root): bool
-    {
-        $normalized = str_replace('\\', '/', $path);
-
-        return basename($normalized) === '.gitignore' && dirname($normalized) === $root;
     }
 
     /**
@@ -265,7 +215,8 @@ final class RouteCache
     }
 
     /**
-     * @param array<string,string> $dirs @return array<string,string>
+     * @param array<string,string> $dirs
+     * @return array<string,string>
      */
     private static function normalizeAttributeDirs(array $dirs, string $cwd, LoggerInterface $logger): array
     {
@@ -310,18 +261,6 @@ final class RouteCache
         $value = $options[$key] ?? null;
 
         return is_string($value) ? $value : null;
-    }
-
-    private static function removeDirectory(string $path): bool
-    {
-        if (!is_writable(dirname($path))) {
-            throw new \RuntimeException("Route cache directory is not writable: {$path}");
-        }
-        if (!rmdir($path)) {
-            throw new \RuntimeException("Unable to remove route cache directory: {$path}");
-        }
-
-        return true;
     }
 
     private static function resolveBuildBaseDir(string $routesFile): string
@@ -409,22 +348,6 @@ final class RouteCache
         ];
     }
 
-    private static function rmFile(string $file): bool
-    {
-        if (!is_file($file) && !is_link($file)) {
-            return false;
-        }
-        $directory = dirname($file);
-        if (!is_writable($directory)) {
-            throw new \RuntimeException("Route cache directory is not writable: {$directory}");
-        }
-        if (!unlink($file)) {
-            throw new \RuntimeException("Unable to remove route cache file: {$file}");
-        }
-
-        return true;
-    }
-
     /**
      * @param array<string,mixed> $options
      */
@@ -439,7 +362,8 @@ final class RouteCache
     }
 
     /**
-     * @param array<string,mixed> $options @return array<string,string>
+     * @param array<string,mixed> $options
+     * @return array<string,string>
      */
     private static function stringMapOption(array $options, string $key): array
     {

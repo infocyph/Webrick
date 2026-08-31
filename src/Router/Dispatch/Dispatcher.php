@@ -139,7 +139,7 @@ final class Dispatcher
     }
 
     /**
-     * @param array<class-string|object|callable|string> $list
+     * @param array<class-string|object|callable|string|array{0:object|string,1:string}> $list
      * @return list<callable(Request, Closure(Request):Response):Response>
      */
     private function buildInvokables(array $list): array

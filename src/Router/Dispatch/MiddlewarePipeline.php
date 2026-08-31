@@ -30,7 +30,7 @@ use UnexpectedValueException;
  * Example:
  *     function(Request $req, callable $next): Response
  *
- * Notes:
+ * Additional details:
  *  - The final handler (last) is a callable that accepts a Request and returns
  *    any value which will be normalized to Response (or an exception thrown).
  *

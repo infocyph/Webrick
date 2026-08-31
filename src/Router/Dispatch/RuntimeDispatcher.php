@@ -94,7 +94,7 @@ final class RuntimeDispatcher
         return match ($plan->terminalKind) {
             ExecutionKind::DIRECT_ZERO_ARG => $this->dispatchDirectZeroArg($plan),
             ExecutionKind::DIRECT_ROUTE_ARGS => $this->dispatchDirectRouteArgs($plan, $vars),
-            ExecutionKind::COMPILED_INVOKE => $this->response($this->runtime->resolveNow($plan->handler, $vars)),
+            ExecutionKind::COMPILED_INVOKE => $this->response($this->runtime->resolveNow($plan->resolverSpec(), $vars)),
             ExecutionKind::DIRECT_REQUEST, ExecutionKind::MIDDLEWARE_PIPELINE => throw new UnexpectedValueException(
                 'Execution plan cannot run without Request.',
             ),
@@ -125,7 +125,7 @@ final class RuntimeDispatcher
         $result = match ($plan->terminalKind) {
             ExecutionKind::DIRECT_REQUEST => $direct($request),
             ExecutionKind::COMPILED_INVOKE => $this->runtime->resolveNow(
-                $plan->handler,
+                $plan->resolverSpec(),
                 $vars + ['request' => $request],
             ),
             ExecutionKind::DIRECT_ZERO_ARG => $direct(),
@@ -154,7 +154,8 @@ final class RuntimeDispatcher
     }
 
     /**
-     * @param array<string,string> $vars @return list<string>
+     * @param array<string,string> $vars
+     * @return list<string>
      */
     private function orderedRouteArguments(ExecutionPlan $plan, array $vars): array
     {
@@ -235,7 +236,9 @@ final class RuntimeDispatcher
     }
 
     /**
-     * @param list<mixed> $explicit @param list<string> $tags @return list<mixed>
+     * @param list<mixed> $explicit
+     * @param list<string> $tags
+     * @return list<mixed>
      */
     private function withTagged(array $explicit, array $tags): array
     {

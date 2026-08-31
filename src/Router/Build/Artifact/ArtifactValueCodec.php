@@ -70,17 +70,7 @@ final class ArtifactValueCodec
         }
 
         if ($value instanceof Closure) {
-            $staticDescriptor = self::staticMethodDescriptor($value);
-            if ($staticDescriptor !== null) {
-                return ['kind' => self::VALUE, 'value' => $staticDescriptor];
-            }
-
-            $boundDescriptor = self::boundMethodDescriptor($value);
-            if ($boundDescriptor !== null) {
-                return self::encodeCallable($boundDescriptor);
-            }
-
-            return ['kind' => self::CLOSURE, 'value' => ClosureSerializer::serialize($value)];
+            return self::encodeClosure($value);
         }
 
         if (is_callable($value)) {
@@ -156,6 +146,22 @@ final class ArtifactValueCodec
         $transport = static fn(): callable => $callable;
 
         return ['kind' => self::CALLABLE, 'value' => ClosureSerializer::serialize($transport)];
+    }
+
+    /** @return array{kind:string,value:mixed} */
+    private static function encodeClosure(Closure $closure): array
+    {
+        $staticDescriptor = self::staticMethodDescriptor($closure);
+        if ($staticDescriptor !== null) {
+            return ['kind' => self::VALUE, 'value' => $staticDescriptor];
+        }
+
+        $boundDescriptor = self::boundMethodDescriptor($closure);
+        if ($boundDescriptor !== null && is_callable($boundDescriptor)) {
+            return self::encodeCallable($boundDescriptor);
+        }
+
+        return ['kind' => self::CLOSURE, 'value' => ClosureSerializer::serialize($closure)];
     }
 
     /**

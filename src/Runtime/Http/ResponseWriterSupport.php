@@ -32,25 +32,7 @@ final readonly class ResponseWriterSupport
     {
         $producer = $response->getProducer();
         if ($producer !== null) {
-            $output = $producer();
-            if (is_iterable($output)) {
-                foreach ($output as $chunk) {
-                    if (is_string($chunk) && $chunk !== '') {
-                        yield $chunk;
-                    } elseif (is_scalar($chunk)) {
-                        $value = (string) $chunk;
-                        if ($value !== '') {
-                            yield $value;
-                        }
-                    }
-                }
-
-                return;
-            }
-
-            if (is_string($output) && $output !== '') {
-                yield $output;
-            }
+            yield from self::nonEmptyChunks($producer());
 
             return;
         }
@@ -112,5 +94,18 @@ final readonly class ResponseWriterSupport
         }
 
         return $response->getBodySize();
+    }
+
+    /**
+     * @param iterable<string> $chunks
+     * @return iterable<string>
+     */
+    private static function nonEmptyChunks(iterable $chunks): iterable
+    {
+        foreach ($chunks as $chunk) {
+            if ($chunk !== '') {
+                yield $chunk;
+            }
+        }
     }
 }

@@ -7,7 +7,6 @@ namespace Infocyph\Webrick\Runtime\Http;
 use Closure;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Router\Runtime\RoutingInput;
-use RuntimeException;
 
 /**
  * Request-local runtime state.
@@ -38,9 +37,6 @@ final class RuntimeRequestContext
         }
 
         $request = ($this->requestFactory)();
-        if (!$request instanceof Request) {
-            throw new RuntimeException('Runtime request factory must return Request.');
-        }
 
         return $this->request = $request->withAttribute(RuntimeCapabilities::ATTRIBUTE, $this->capabilities);
     }

@@ -12,6 +12,8 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
  * Shared runtime semantic engine for canonical matcher indexes.
  *
  * @phpstan-type CompiledMatch int|array{0:int,1:array<string,string>}|MatchOutcome
+ * @phpstan-type RouteValue CompiledRoute|array<array-key,mixed>|string
+ * @phpstan-type MatcherGroup array{static:array<string,array<string,RouteValue>>,dynamic:array<mixed>}
  */
 final class CanonicalMatcherEngine
 {
@@ -19,8 +21,8 @@ final class CanonicalMatcherEngine
     private array $materialized = [];
 
     /**
-     * @param list<array{static:array<string,array<string,CompiledRoute|array<mixed>>>,dynamic:array<mixed>}> $hostGroups
-     * @param list<array{static:array<string,array<string,CompiledRoute|array<mixed>>>,dynamic:array<mixed>}> $wildcardGroups
+     * @param list<MatcherGroup> $hostGroups
+     * @param list<MatcherGroup> $wildcardGroups
      */
     public function match(array $hostGroups, array $wildcardGroups, string $method, string $path): MatchOutcome
     {
@@ -31,8 +33,8 @@ final class CanonicalMatcherEngine
     }
 
     /**
-     * @param list<array{static:array<string,array<string,CompiledRoute|array<mixed>>>,dynamic:array<mixed>}> $hostGroups
-     * @param list<array{static:array<string,array<string,CompiledRoute|array<mixed>>>,dynamic:array<mixed>}> $wildcardGroups
+     * @param list<MatcherGroup> $hostGroups
+     * @param list<MatcherGroup> $wildcardGroups
      * @return CompiledMatch
      */
     public function matchCompiled(array $hostGroups, array $wildcardGroups, string $method, string $path): int|array|MatchOutcome
@@ -41,8 +43,8 @@ final class CanonicalMatcherEngine
     }
 
     /**
-     * @param array{static:array<string,array<string,CompiledRoute|array<mixed>>>,dynamic:array<mixed>}|null $hostGroup
-     * @param array{static:array<string,array<string,CompiledRoute|array<mixed>>>,dynamic:array<mixed>}|null $wildcardGroup
+     * @param MatcherGroup|null $hostGroup
+     * @param MatcherGroup|null $wildcardGroup
      */
     public function matchSingle(
         ?array $hostGroup,
@@ -57,8 +59,8 @@ final class CanonicalMatcherEngine
     }
 
     /**
-     * @param array{static:array<string,array<string,CompiledRoute|array<mixed>>>,dynamic:array<mixed>}|null $hostGroup
-     * @param array{static:array<string,array<string,CompiledRoute|array<mixed>>>,dynamic:array<mixed>}|null $wildcardGroup
+     * @param MatcherGroup|null $hostGroup
+     * @param MatcherGroup|null $wildcardGroup
      * @return CompiledMatch
      */
     public function matchSingleCompiled(
@@ -68,6 +70,21 @@ final class CanonicalMatcherEngine
         string $path,
     ): int|array|MatchOutcome {
         return $this->matchSingleGroup($hostGroup, $wildcardGroup, $method, $path, true);
+    }
+
+    /**
+     * @return array{segments:list<array<string,mixed>>,verbs:array<string,RouteValue>}|null
+     */
+    private static function dynamicEntry(mixed $entry): ?array
+    {
+        if (!is_array($entry)) {
+            return null;
+        }
+
+        $segments = self::segmentList($entry['segments'] ?? null);
+        $verbs = self::verbMap($entry['verbs'] ?? null);
+
+        return $segments === null || $verbs === null ? null : ['segments' => $segments, 'verbs' => $verbs];
     }
 
     /**
@@ -99,6 +116,31 @@ final class CanonicalMatcherEngine
         return $index;
     }
 
+    /** @return list<array<string,mixed>>|null */
+    private static function segmentList(mixed $segments): ?array
+    {
+        if (!is_array($segments) || !array_is_list($segments)) {
+            return null;
+        }
+
+        $normalized = [];
+        foreach ($segments as $segment) {
+            if (!is_array($segment)) {
+                return null;
+            }
+            $spec = [];
+            foreach ($segment as $key => $value) {
+                if (!is_string($key)) {
+                    return null;
+                }
+                $spec[$key] = $value;
+            }
+            $normalized[] = $spec;
+        }
+
+        return $normalized;
+    }
+
     /**
      * @return list<string>
      */
@@ -113,13 +155,35 @@ final class CanonicalMatcherEngine
         return $trimmed === '' ? [] : explode('/', $trimmed);
     }
 
+    /** @return array<string,RouteValue>|null */
+    private static function verbMap(mixed $verbs): ?array
+    {
+        if (!is_array($verbs)) {
+            return null;
+        }
+
+        $map = [];
+        foreach ($verbs as $verb => $route) {
+            if (!is_string($verb) || (!is_string($route) && !is_array($route) && !$route instanceof CompiledRoute)) {
+                return null;
+            }
+            $map[$verb] = $route;
+        }
+
+        return $map;
+    }
+
     /**
+     * @param array<string,bool> $allowed
+     */
+    /**
+     * @param array<string,RouteValue> $verbs
      * @param array<string,bool> $allowed
      */
     private function addAllowed(array $verbs, array &$allowed): void
     {
         foreach ($verbs as $verb => $_route) {
-            if (is_string($verb) && $verb !== '') {
+            if ($verb !== '') {
                 $allowed[$verb] = true;
             }
         }
@@ -157,7 +221,8 @@ final class CanonicalMatcherEngine
         bool $compact,
     ): int|array|MatchOutcome|null {
         foreach ($entries as $entry) {
-            if (!is_array($entry) || !is_array($entry['segments'] ?? null) || !is_array($entry['verbs'] ?? null)) {
+            $entry = self::dynamicEntry($entry);
+            if ($entry === null) {
                 continue;
             }
             $params = $this->matchSegments($entry['segments'], $segments);
@@ -188,7 +253,11 @@ final class CanonicalMatcherEngine
         array &$allowed,
         bool $compact,
     ): int|array|MatchOutcome|null {
-        $bucket = $group['dynamic'][count($segments)] ?? null;
+        $dynamic = $group['dynamic'] ?? null;
+        if (!is_array($dynamic)) {
+            return null;
+        }
+        $bucket = $dynamic[count($segments)] ?? null;
         if (!is_array($bucket)) {
             return null;
         }
@@ -212,8 +281,8 @@ final class CanonicalMatcherEngine
     }
 
     /**
-     * @param list<array{static:array<string,array<string,CompiledRoute|array<mixed>>>,dynamic:array<mixed>}> $hostGroups
-     * @param list<array{static:array<string,array<string,CompiledRoute|array<mixed>>>,dynamic:array<mixed>}> $wildcardGroups
+     * @param list<MatcherGroup> $hostGroups
+     * @param list<MatcherGroup> $wildcardGroups
      * @return CompiledMatch
      */
     private function matchGroups(
@@ -267,41 +336,17 @@ final class CanonicalMatcherEngine
         $params = [];
         foreach ($specs as $index => $spec) {
             $piece = $segments[$index] ?? null;
-            if (!is_string($piece) || !is_array($spec)) {
+            if (!is_string($piece) || !CanonicalSegmentMatcher::matches($spec, $piece, $params)) {
                 return null;
             }
-            if (($spec['type'] ?? null) === 'lit') {
-                if (($spec['val'] ?? null) !== $piece) {
-                    return null;
-                }
-
-                continue;
-            }
-
-            $name = $spec['name'] ?? null;
-            if (($spec['type'] ?? null) !== 'var' || !is_string($name)) {
-                return null;
-            }
-            if (isset($spec['regex'])) {
-                if (!is_string($spec['regex']) || preg_match($spec['regex'], $piece) !== 1) {
-                    return null;
-                }
-            } else {
-                /** @var callable-string $call */
-                $call = $spec['call'];
-                if (!$call($piece)) {
-                    return null;
-                }
-            }
-            $params[$name] = $piece;
         }
 
         return $params;
     }
 
     /**
-     * @param array{static:array<string,array<string,CompiledRoute|array<mixed>>>,dynamic:array<mixed>}|null $hostGroup
-     * @param array{static:array<string,array<string,CompiledRoute|array<mixed>>>,dynamic:array<mixed>}|null $wildcardGroup
+     * @param MatcherGroup|null $hostGroup
+     * @param MatcherGroup|null $wildcardGroup
      * @return CompiledMatch
      */
     private function matchSingleGroup(
@@ -357,8 +402,13 @@ final class CanonicalMatcherEngine
         array &$allowed,
         bool $compact,
     ): int|array|MatchOutcome|null {
-        $verbs = $group['static'][$path] ?? null;
-        if (!is_array($verbs)) {
+        $static = $group['static'] ?? null;
+        if (!is_array($static)) {
+            return null;
+        }
+        $verbs = $static[$path] ?? null;
+        $verbs = self::verbMap($verbs);
+        if ($verbs === null) {
             return null;
         }
 
@@ -387,7 +437,7 @@ final class CanonicalMatcherEngine
     }
 
     /**
-     * @param array<string,CompiledRoute|array<mixed>> $verbs
+     * @param array<string,RouteValue> $verbs
      * @param array<string,string> $params
      * @return CompiledMatch|null
      */

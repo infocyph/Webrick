@@ -152,7 +152,7 @@ final readonly class RangeResponder
 
         $metadata = stream_get_meta_data($source);
 
-        return $metadata['seekable'] ?? false;
+        return $metadata['seekable'];
     }
 
     private static function normalizeResult(

@@ -38,7 +38,7 @@ final class Stream implements BodyStream
 
         $this->handle = $handle;
         $metadata = stream_get_meta_data($handle);
-        $mode = is_string($metadata['mode'] ?? null) ? $metadata['mode'] : '';
+        $mode = $metadata['mode'];
         $this->readable = strpbrk($mode, 'r+') !== false;
         $this->writable = strpbrk($mode, 'waxc+') !== false;
     }
@@ -123,7 +123,7 @@ final class Stream implements BodyStream
         }
         $stat = fstat($this->handle);
 
-        return is_array($stat) && is_int($stat['size'] ?? null) ? $stat['size'] : null;
+        return is_array($stat) ? $stat['size'] : null;
     }
 
     public function isReadable(): bool
@@ -138,7 +138,7 @@ final class Stream implements BodyStream
         }
         $metadata = stream_get_meta_data($this->handle);
 
-        return $metadata['seekable'] ?? false;
+        return $metadata['seekable'];
     }
 
     public function isWritable(): bool

@@ -70,6 +70,9 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
     public function match(string $method, string $host, string $path): array
     {
         $verb = HttpMethodEnum::normalize($method);
+        if ($verb === '') {
+            throw new \InvalidArgumentException('HTTP method must be non-empty.');
+        }
         $path = $path === '' ? '/' : $path;
         $outcome = $this->matchOutcome($verb, strtolower($host ?: '*'), $path);
 
@@ -108,6 +111,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         );
     }
 
+    /** @return array{string,string|null}|null */
     public function resolveAlias(string $name): ?array
     {
         $index = $this->aliasIndex();
@@ -121,6 +125,11 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         $this->engine ??= new CanonicalMatcherEngine();
     }
 
+    /**
+     * @param array<array-key,mixed> $hosts
+     * @param array<array-key,mixed> $alias
+     * @param array<array-key,mixed> $middleware
+     */
     private function cacheHash(array $hosts, array $alias, array $middleware): string
     {
         return hash('xxh128', serialize([$hosts, $alias, $middleware]));
@@ -134,6 +143,9 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         }
 
         $hosts = MatcherCachePayloadNormalizer::normalize($this->index->hosts());
+        if (!is_array($hosts)) {
+            throw new \UnexpectedValueException('Normalized fused matcher cache must be an array.');
+        }
         $middleware = array_keys($this->middlewareRequirements);
         $hash = $this->cacheHash($hosts, $this->alias, $middleware);
         $php = "<?php\nreturn [\n"

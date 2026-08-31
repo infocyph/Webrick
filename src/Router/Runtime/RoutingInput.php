@@ -148,7 +148,7 @@ final readonly class RoutingInput
             $path = preg_replace('#^/\.\.(?=/|$)#', '/', $path) ?? $previous;
         } while ($path !== $previous);
 
-        return $path === '' ? '/' : $path;
+        return $path;
     }
 
     /**

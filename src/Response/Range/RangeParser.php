@@ -24,7 +24,11 @@ final class RangeParser
             return RangeParseResult::malformed();
         }
 
-        $spec = trim($unitMatch[1]);
+        return self::parseSpec(trim($unitMatch[1]), $resourceLen);
+    }
+
+    private static function parseSpec(string $spec, int $resourceLen): RangeParseResult
+    {
         if (str_contains($spec, ',')) {
             return RangeParseResult::multiple();
         }

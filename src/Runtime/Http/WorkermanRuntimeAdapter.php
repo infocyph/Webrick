@@ -40,11 +40,8 @@ final readonly class WorkermanRuntimeAdapter implements RuntimeAdapterInterface
         bool $transportCompression = false,
         bool $transportRequestLimits = false,
     ): self {
-        $response = 'Workerman\\Protocols\\Http\\Response';
-        $chunk = 'Workerman\\Protocols\\Http\\Chunk';
-        if (!class_exists($response) || !class_exists($chunk)) {
-            throw new RuntimeException('Workerman 4+ HTTP Response and Chunk classes are required.');
-        }
+        $response = self::requiredClass('Workerman\\Protocols\\Http\\Response');
+        $chunk = self::requiredClass('Workerman\\Protocols\\Http\\Chunk');
 
         return new self($response, $chunk, $transportCompression, $transportRequestLimits);
     }
@@ -114,7 +111,7 @@ final readonly class WorkermanRuntimeAdapter implements RuntimeAdapterInterface
 
         $file = $response->getFileBody();
         if ($file !== null && $file->offset() === 0 && $file->length() === filesize($file->path())) {
-            $native = $this->response($response->getStatusCode(), $headers, '')->withFile($file->path());
+            $native = $this->withFile($this->response($response->getStatusCode(), $headers, ''), $file->path());
             $this->send($connection, $native);
 
             return;
@@ -135,6 +132,27 @@ final readonly class WorkermanRuntimeAdapter implements RuntimeAdapterInterface
             $this->send($connection, new $chunkClass($chunk));
         }
         $this->send($connection, new $chunkClass(''));
+    }
+
+    /**
+     * @return class-string
+     */
+    private static function requiredClass(string $class): string
+    {
+        if (!class_exists($class)) {
+            throw new RuntimeException('Workerman 4+ HTTP Response and Chunk classes are required.');
+        }
+
+        return $class;
+    }
+
+    private function call(object $target, string $method, mixed ...$arguments): mixed
+    {
+        if (!method_exists($target, $method)) {
+            throw new RuntimeException("Workerman native object does not support {$method}().");
+        }
+
+        return $target->{$method}(...$arguments);
     }
 
     /**
@@ -162,8 +180,18 @@ final readonly class WorkermanRuntimeAdapter implements RuntimeAdapterInterface
 
     private function send(object $connection, object|string $payload): void
     {
-        if ($connection->send($payload) === false) {
+        if ($this->call($connection, 'send', $payload) === false) {
             throw new RuntimeException('Workerman connection send failed.');
         }
+    }
+
+    private function withFile(object $response, string $path): object
+    {
+        $result = $this->call($response, 'withFile', $path);
+        if (!is_object($result)) {
+            throw new RuntimeException('Workerman response withFile() failed.');
+        }
+
+        return $result;
     }
 }

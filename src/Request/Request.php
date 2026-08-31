@@ -75,7 +75,20 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
 
     public static function fromGlobals(): self
     {
-        return static::createFromGlobals();
+        $native = parent::createFromGlobals();
+
+        return new self(
+            $native->getMethod(),
+            $native->getUri(),
+            $native->getServerParams(),
+            $native->getHeaders(),
+            $native->getBody(),
+            $native->getProtocolVersion(),
+            $native->getParsedBody(),
+            $native->getUploadedFiles(),
+            query: $native->getQueryParams(),
+            cookies: $native->getCookieParams(),
+        );
     }
 
     public static function getProxyHeaderFlags(): int

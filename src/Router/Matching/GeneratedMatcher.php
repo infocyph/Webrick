@@ -8,7 +8,6 @@ use Closure;
 use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
 use Infocyph\Webrick\Exceptions\RouteNotFoundException;
-use Infocyph\Webrick\Router\Build\Artifact\ExecutableRoutePayload;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 
 /** Generated matcher compiled from the canonical matcher index. */
@@ -75,6 +74,9 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
     public function match(string $method, string $host, string $path): array
     {
         $verb = HttpMethodEnum::normalize($method);
+        if ($verb === '') {
+            throw new \InvalidArgumentException('HTTP method must be non-empty.');
+        }
         $path = $path === '' ? '/' : $path;
         $outcome = $this->matchOutcome($verb, strtolower($host ?: '*'), $path);
 
@@ -105,6 +107,7 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         return $outcome;
     }
 
+    /** @return array{string,string|null}|null */
     public function resolveAlias(string $name): ?array
     {
         $index = $this->aliasIndex();
@@ -256,30 +259,7 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
      */
     private function generationData(): array
     {
-        $payloads = [];
-        $hosts = [];
-
-        foreach ($this->index->hosts() as $host => $index) {
-            $hosts[$host] = ['static' => [], 'dynamic' => []];
-            foreach ($index['static'] as $path => $verbs) {
-                foreach ($verbs as $verb => $route) {
-                    $hosts[$host]['static'][$path][$verb] = $this->routeIndex($route, $payloads);
-                }
-            }
-            foreach ($index['dynamic'] as $count => $prefixes) {
-                foreach ($prefixes as $prefix => $entries) {
-                    foreach ($entries as $path => $entry) {
-                        $mapped = ['segments' => $entry['segments'], 'verbs' => []];
-                        foreach ($entry['verbs'] as $verb => $route) {
-                            $mapped['verbs'][$verb] = $this->routeIndex($route, $payloads);
-                        }
-                        $hosts[$host]['dynamic'][$count][$prefix][$path] = $mapped;
-                    }
-                }
-            }
-        }
-
-        return [$payloads, $hosts];
+        return new GeneratedMatcherIndexCompiler()->compile($this->index->hosts());
     }
 
     private function loadCacheBlob(): void
@@ -452,23 +432,5 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         }
 
         return $code . $indent . "}\n";
-    }
-
-    /**
-     * @param array<int,mixed> $payloads
-     */
-    private function routeIndex(mixed $route, array &$payloads): int
-    {
-        $index = $route instanceof CompiledRoute ? $route->getIndex() : ExecutableRoutePayload::routeIndex($route);
-        if ($index === null) {
-            throw new \UnexpectedValueException('Generated matcher route is missing its compiled index.');
-        }
-        if (!array_key_exists($index, $payloads)) {
-            $payloads[$index] = $route instanceof CompiledRoute
-                ? MatcherCachePayloadNormalizer::normalize($route)
-                : $route;
-        }
-
-        return $index;
     }
 }

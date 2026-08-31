@@ -15,7 +15,7 @@ use Infocyph\Webrick\Router\Url\SignedUrlConfig;
  * This file is included inside the $register closure in index.php,
  * so the variable $registrar (Registrar) is available.
  *
- * NOTE: DemoController and UsersController are declared in index.php (global namespace),
+ * DemoController and UsersController are declared in index.php (global namespace),
  * so we can reference them directly here.
  */
 

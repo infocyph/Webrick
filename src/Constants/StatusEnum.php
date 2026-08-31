@@ -208,7 +208,7 @@ enum StatusEnum: int
     /**
      * Heuristic: whether the response is cacheable by default.
      *
-     * Notes:
+     * Additional details:
      * - Some codes are cacheable only when explicit Expires/Cache-Control headers exist,
      *   or when heuristics are permitted (see inline comments).
      *

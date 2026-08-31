@@ -73,10 +73,15 @@ final class RouterArtifactLoader
             throw new RuntimeException('Webrick router artifact configuration fingerprint mismatch.');
         }
 
-        /**  */
         $payload = require $path;
         if (!is_array($payload)) {
             throw new UnexpectedValueException('Compiled Webrick router artifact must return an array.');
+        }
+
+        foreach ($payload as $key => $_value) {
+            if (!is_string($key)) {
+                throw new UnexpectedValueException('Compiled Webrick router artifact must use string keys.');
+            }
         }
 
         $artifact = CompiledRouterArtifact::fromPayload($payload);

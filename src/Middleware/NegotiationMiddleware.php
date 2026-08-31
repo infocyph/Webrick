@@ -202,6 +202,6 @@ final readonly class NegotiationMiddleware
             $charsets = $attribute->charsets !== [] ? $attribute->charsets : $charsets;
         }
 
-        return [$produces, $charsets];
+        return [$produces, $charsets ?? []];
     }
 }

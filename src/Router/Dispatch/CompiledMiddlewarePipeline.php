@@ -49,7 +49,12 @@ final readonly class CompiledMiddlewarePipeline
 
     public function handle(Request $request): Response
     {
-        return ($this->pipeline)($request);
+        $response = ($this->pipeline)($request);
+        if (!$response instanceof Response) {
+            throw new UnexpectedValueException('Compiled middleware pipeline must return ' . Response::class . '.');
+        }
+
+        return $response;
     }
 
     public function requiresScope(): bool

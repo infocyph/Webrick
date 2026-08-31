@@ -32,7 +32,7 @@ class Response
 
     private HeaderBag $headers;
 
-    /** @var null|\Closure(): (iterable<string>|string) */
+    /** @var null|\Closure():iterable<string> */
     private ?\Closure $producer = null;
 
     /**
@@ -346,7 +346,7 @@ class Response
         return $this->headers->all();
     }
 
-    /** @return null|\Closure(): (iterable<string>|string) */
+    /** @return null|\Closure():iterable<string> */
     public function getProducer(): ?\Closure
     {
         return $this->producer;
@@ -500,11 +500,16 @@ class Response
         return is_string($uri) && $uri !== '' && is_file($uri) ? (filemtime($uri) ?: null) : null;
     }
 
-    /** @param callable(): (iterable<string>|string)|iterable<string> $producer */
+    /**
+     * @param callable(): (iterable<string>|string)|iterable<string> $producer
+     * @return \Closure():iterable<string>
+     */
     private static function normalizeProducer(callable|iterable $producer): \Closure
     {
         if (is_iterable($producer)) {
-            return static fn() => $producer;
+            return static function () use ($producer): iterable {
+                yield from $producer;
+            };
         }
 
         return static function () use ($producer): iterable {

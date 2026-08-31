@@ -300,6 +300,7 @@ final class Uri implements \Stringable
         return $clone;
     }
 
+    /** @return array{string,string,string} */
     private static function splitRequestTarget(string $target): array
     {
         $fragment = '';

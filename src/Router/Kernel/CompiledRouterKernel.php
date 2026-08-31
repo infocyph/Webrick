@@ -217,7 +217,7 @@ final readonly class CompiledRouterKernel
         ?Request &$request,
         ?RuntimeRequestContext $runtimeContext = null,
     ): Response {
-        $match = $this->matcher->matchCompiled($routing->method, $routing->host, $routing->path);
+        $match = $this->matchRoutingInput($routing);
 
         if (is_int($match)) {
             $routeIndex = $match;
@@ -302,6 +302,18 @@ final readonly class CompiledRouterKernel
         }
 
         return $response;
+    }
+
+    /**
+     * @return int|array{0:int,1:array<string,string>}|MatchOutcome
+     */
+    private function matchRoutingInput(RoutingInput $routing): int|array|MatchOutcome
+    {
+        if ($routing->method === '' || $routing->host === '' || $routing->path === '') {
+            throw new \LogicException('Routing input must be canonical before compiled matching.');
+        }
+
+        return $this->matcher->matchCompiled($routing->method, $routing->host, $routing->path);
     }
 
     private function renderException(

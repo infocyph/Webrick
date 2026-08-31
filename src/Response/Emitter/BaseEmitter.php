@@ -155,13 +155,7 @@ abstract class BaseEmitter implements EmitterInterface
         $fn = $response->getProducer();
         $out = $fn ? $fn() : [];
 
-        if ($out instanceof \Generator || is_iterable($out)) {
-            $this->emitIterableOutput($out);
-
-            return;
-        }
-
-        $this->emitScalarOutput($out);
+        $this->emitIterableOutput($out);
     }
 
     /**

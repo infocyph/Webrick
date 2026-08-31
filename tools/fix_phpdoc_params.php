@@ -119,14 +119,13 @@ foreach (phpFiles($root) as $file) {
         continue;
     }
 
-    /** @var list<array{start:int,end:int,replacement:string}> $replacements */
-    $replacements = [];
     $traverser = new NodeTraverser();
-    $traverser->addVisitor(new class ($source, $replacements) extends NodeVisitorAbstract {
-        /** @param list<array{start:int,end:int,replacement:string}> $replacements */
+    $visitor = new class ($source) extends NodeVisitorAbstract {
+        /** @var list<array{start:int,end:int,replacement:string}> */
+        private array $replacements = [];
+
         public function __construct(
             private readonly string $source,
-            private array &$replacements,
         ) {}
 
         public function enterNode(Node $node): null
@@ -142,7 +141,7 @@ foreach (phpFiles($root) as $file) {
 
             $text = $doc->getText();
             preg_match_all('/@param\b[^\r\n]*\$([A-Za-z_][A-Za-z0-9_]*)/', $text, $matches);
-            $documented = array_fill_keys($matches[1] ?? [], true);
+            $documented = array_fill_keys($matches[1], true);
             $tags = [];
 
             foreach ($node->getParams() as $param) {
@@ -180,8 +179,16 @@ foreach (phpFiles($root) as $file) {
 
             return null;
         }
-    });
+
+        /** @return list<array{start:int,end:int,replacement:string}> */
+        public function replacements(): array
+        {
+            return $this->replacements;
+        }
+    };
+    $traverser->addVisitor($visitor);
     $traverser->traverse($nodes);
+    $replacements = $visitor->replacements();
 
     if ($replacements === []) {
         continue;

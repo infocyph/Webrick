@@ -86,6 +86,7 @@ final readonly class RequestLimitsMiddleware
         };
     }
 
+    /** @return array<string,string> */
     private function connectionCloseHeaders(Request $req): array
     {
         $protocol = $req->getServerParams()['SERVER_PROTOCOL'] ?? 'HTTP/1.1';

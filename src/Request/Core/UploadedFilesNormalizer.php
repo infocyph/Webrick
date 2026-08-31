@@ -41,7 +41,9 @@ final class UploadedFilesNormalizer
         );
     }
 
-    /** @param array<int|string,mixed> $part */
+    /**
+     * @return UploadedFile|array<array-key,mixed>|null
+     */
     private static function normalisePart(mixed $part): UploadedFile|array|null
     {
         if ($part instanceof UploadedFile) {
@@ -75,7 +77,7 @@ final class UploadedFilesNormalizer
 
     /**
      * @param array{tmp_name:array<int|string,mixed>,size:array<int|string,mixed>,error:array<int|string,mixed>,name:array<int|string,mixed>,type:array<int|string,mixed>} $bag
-     * @return array<mixed,UploadedFile|array<mixed>>
+     * @return array<array-key,UploadedFile|array<array-key,mixed>>
      */
     private static function unwindNestedFiles(array $bag): array
     {

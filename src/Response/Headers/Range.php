@@ -22,7 +22,7 @@ final readonly class Range
      * @param int $end Inclusive end offset.
      * @param int $length Total length of the resource (must be positive).
      *
-     * Note: callers should ensure 0 <= $start <= $end < $length. The constructor
+     * Callers should ensure 0 <= $start <= $end < $length. The constructor
      * does not perform heavy validation to stay allocation-light on the hot-path.
      */
     public function __construct(

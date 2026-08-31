@@ -13,7 +13,7 @@
  * - v1: 0x31 '1' | MODE(1) | KID(1) | IV(12) | TAG(16) | CT(...)
  * - v0: MODE(1)  | IV(12)  | TAG(16) | CT(...)
  *
- * Notes:
+ * Additional details:
  * - Only cookies whose names start with $cookiePrefix are encrypted/decrypted.
  * - AAD binds ciphertext to its logical cookie name + KID + compression mode.
  * - Compression mode byte: '0' none, 'z' zstd, 'b' brotli, 'g' gzip.

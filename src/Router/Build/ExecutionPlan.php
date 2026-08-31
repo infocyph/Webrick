@@ -99,6 +99,21 @@ final readonly class ExecutionPlan
         return RouteCapability::has($this->capabilities, RouteCapability::SCOPE);
     }
 
+    /**
+     * @return array<mixed>|callable|string|null
+     */
+    public function resolverSpec(): array|callable|string|null
+    {
+        if ($this->handler === null || is_string($this->handler) || is_callable($this->handler)) {
+            return $this->handler;
+        }
+        if (is_array($this->handler)) {
+            return $this->handler;
+        }
+
+        throw new UnexpectedValueException('Execution-plan handler is not a resolver descriptor.');
+    }
+
     /** @return array<string,mixed> */
     public function toPayload(): array
     {

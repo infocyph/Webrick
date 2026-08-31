@@ -23,7 +23,9 @@ final readonly class PsrServerRequestData
     {
         $headers = [];
         foreach ($request->getHeaders() as $name => $values) {
-            $headers[$name] = array_values($values);
+            if (is_string($name)) {
+                $headers[$name] = array_values($values);
+            }
         }
 
         return $headers;

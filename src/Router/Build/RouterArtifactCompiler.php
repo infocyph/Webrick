@@ -40,7 +40,7 @@ final class RouterArtifactCompiler
         $php = "<?php\n\ndeclare(strict_types=1);\n\nreturn " . var_export($payload, true) . ";\n";
         $this->writeAtomic($path, $php);
         $sha256 = hash_file('sha256', $path);
-        if (!is_string($sha256) || $sha256 === '') {
+        if (!is_string($sha256)) {
             throw new RuntimeException('Unable to hash generated Webrick router artifact.');
         }
 

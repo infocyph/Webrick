@@ -102,6 +102,30 @@ final readonly class CorsMiddleware
         return $acao === '*' ? $response : $response->withSmartHeader('Vary', 'Origin');
     }
 
+    /** @param array{origins:list<string>,methods:string,allowHeaders:string|list<string>,exposeHeaders:string|list<string>,maxAgeSeconds:int,allowCredentials:bool,allowPrivateNetwork:bool} $policy */
+    private function applyPreflightHeaders(Response $response, Request $req, array $policy, string $requested, string $allowed, string $acao): Response
+    {
+        if ($policy['allowCredentials']) {
+            $response = $response->withSmartHeader('Access-Control-Allow-Credentials', 'true');
+        }
+        if ($requested !== '') {
+            $response = $response->withSmartHeader('Access-Control-Allow-Headers', $allowed === '*' ? $requested : $allowed);
+        }
+        if ($policy['maxAgeSeconds'] > 0) {
+            $response = $response->withSmartHeader('Access-Control-Max-Age', (string) $policy['maxAgeSeconds']);
+        }
+        if ($policy['allowPrivateNetwork'] && strtolower($req->getHeaderLine('Access-Control-Request-Private-Network')) === 'true') {
+            $response = $response->withSmartHeader('Access-Control-Allow-Private-Network', 'true');
+        }
+
+        $response = $response->withSmartHeader('Vary', 'Access-Control-Request-Method');
+        if ($requested !== '') {
+            $response = $response->withSmartHeader('Vary', 'Access-Control-Request-Headers');
+        }
+
+        return $acao === '*' ? $response : $response->withSmartHeader('Vary', 'Origin');
+    }
+
     /** @param string|list<string> $value */
     private function csv(string|array $value): string
     {
@@ -184,45 +208,14 @@ final readonly class CorsMiddleware
         }
 
         $requestedHeaders = $this->csv($req->getHeaderLine('Access-Control-Request-Headers'));
-        $allowedHeaders = $this->csv($policy['allowHeaders']);
-        if ($requestedHeaders !== '' && $allowedHeaders !== '*') {
-            $allowedSet = array_fill_keys(array_map(strtolower(...), array_map(trim(...), explode(',', $allowedHeaders))), true);
-            foreach (array_map(trim(...), explode(',', $requestedHeaders)) as $header) {
-                if (!isset($allowedSet[strtolower($header)])) {
-                    throw HttpException::forbidden('CORS request header is not allowed.');
-                }
-            }
-        }
+        $allowedHeaders = $this->validateRequestedHeaders($requestedHeaders, $policy['allowHeaders']);
 
         $response = Response::noContent([
             'Access-Control-Allow-Origin' => $acao,
             'Access-Control-Allow-Methods' => $requestedMethod,
         ]);
-        if ($policy['allowCredentials']) {
-            $response = $response->withSmartHeader('Access-Control-Allow-Credentials', 'true');
-        }
-        if ($requestedHeaders !== '') {
-            $response = $response->withSmartHeader(
-                'Access-Control-Allow-Headers',
-                $allowedHeaders === '*' ? $requestedHeaders : $allowedHeaders,
-            );
-        }
-        if ($policy['maxAgeSeconds'] > 0) {
-            $response = $response->withSmartHeader('Access-Control-Max-Age', (string) $policy['maxAgeSeconds']);
-        }
-        if (
-            $policy['allowPrivateNetwork']
-            && strtolower($req->getHeaderLine('Access-Control-Request-Private-Network')) === 'true'
-        ) {
-            $response = $response->withSmartHeader('Access-Control-Allow-Private-Network', 'true');
-        }
 
-        $response = $response->withSmartHeader('Vary', 'Access-Control-Request-Method');
-        if ($requestedHeaders !== '') {
-            $response = $response->withSmartHeader('Vary', 'Access-Control-Request-Headers');
-        }
-
-        return $acao === '*' ? $response : $response->withSmartHeader('Vary', 'Origin');
+        return $this->applyPreflightHeaders($response, $req, $policy, $requestedHeaders, $allowedHeaders, $acao);
     }
 
     /**
@@ -256,5 +249,23 @@ final readonly class CorsMiddleware
         if ($policy['allowCredentials'] && in_array('*', $policy['origins'], true)) {
             throw new \InvalidArgumentException('CORS credentials require explicit origins; wildcard origin is not allowed.');
         }
+    }
+
+    /** @param string|list<string> $configured */
+    private function validateRequestedHeaders(string $requested, string|array $configured): string
+    {
+        $allowed = $this->csv($configured);
+        if ($requested === '' || $allowed === '*') {
+            return $allowed;
+        }
+
+        $allowedSet = array_fill_keys(array_map(strtolower(...), array_map(trim(...), explode(',', $allowed))), true);
+        foreach (array_map(trim(...), explode(',', $requested)) as $header) {
+            if (!isset($allowedSet[strtolower($header)])) {
+                throw HttpException::forbidden('CORS request header is not allowed.');
+            }
+        }
+
+        return $allowed;
     }
 }

@@ -9,7 +9,11 @@ use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
 use Infocyph\Webrick\Exceptions\RouteNotFoundException;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 
-/** Sharded canonical-index matcher. */
+/**
+ * Sharded canonical-index matcher.
+ *
+ * @phpstan-type MatcherGroup array{static:array<string,array<string,CompiledRoute|array<array-key,mixed>|string>>,dynamic:array<int,array<string,array<string,mixed>>>}
+ */
 final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
 {
     use MatcherFactoryTrait;
@@ -48,7 +52,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
 
     private CanonicalMatcherIndex $index;
 
-    /** @var array<string,array{static:array<mixed>,dynamic:array<mixed>}|null> */
+    /** @var array<string,MatcherGroup|null> */
     private array $loadedGroups = [];
 
     /** @var array<string,true> */
@@ -148,6 +152,9 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     public function match(string $method, string $host, string $path): array
     {
         $verb = HttpMethodEnum::normalize($method);
+        if ($verb === '') {
+            throw new \InvalidArgumentException('HTTP method must be non-empty.');
+        }
         $path = $path === '' ? '/' : $path;
         $outcome = $this->matchOutcome($verb, strtolower($host ?: '*'), $path);
         if ($outcome->type === MatchOutcomeType::FOUND) {
@@ -184,11 +191,28 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         return ShardedCacheGeneration::middlewareRequirements($this->cacheDir, self::INDEX_CACHE_VERSION);
     }
 
+    /** @return array{string,string|null}|null */
     public function resolveAlias(string $name): ?array
     {
         $index = $this->aliasIndex();
 
         return $index[$name] ?? null;
+    }
+
+    /** @param array<string,MatcherGroup> $groups */
+    private function addDynamicBucket(array &$groups, mixed $count, mixed $prefix, mixed $entries): void
+    {
+        if (!is_int($count) || !is_string($prefix) || !is_array($entries)) {
+            return;
+        }
+
+        $bucket = $prefix === '*' ? self::SHARD_DYNAMIC : $prefix;
+        $groups[$bucket] ??= ['static' => [], 'dynamic' => []];
+        foreach ($entries as $path => $entry) {
+            if (is_string($path)) {
+                $groups[$bucket]['dynamic'][$count][$prefix][$path] = $entry;
+            }
+        }
     }
 
     private function bootIndex(): void
@@ -203,7 +227,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     }
 
     /**
-     * @return list<array{static:array<mixed>,dynamic:array<mixed>}>
+     * @return list<MatcherGroup>
      */
     private function loadCandidateGroups(string $host, string $bucket): array
     {
@@ -223,7 +247,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     }
 
     /**
-     * @return array{static:array<mixed>,dynamic:array<mixed>}|null
+     * @return MatcherGroup|null
      */
     private function loadGroup(string $host, string $bucket): ?array
     {
@@ -285,26 +309,47 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             : $this->engine->match($hostGroups, $wildcardGroups, $method, $path);
     }
 
-    /** @return array<string,array<string,array{static:array<mixed>,dynamic:array<mixed>}>> */
+    /**
+     * @param array<string,MatcherGroup> $groups
+     * @param array<mixed> $dynamic
+     */
+    private function partitionDynamicIndex(array &$groups, array $dynamic): void
+    {
+        foreach ($dynamic as $count => $prefixes) {
+            if (!is_array($prefixes)) {
+                continue;
+            }
+            foreach ($prefixes as $prefix => $entries) {
+                $this->addDynamicBucket($groups, $count, $prefix, $entries);
+            }
+        }
+    }
+
+    /**
+     * @param MatcherGroup $index
+     * @return array<string,MatcherGroup>
+     */
+    private function partitionHostIndex(array $index): array
+    {
+        $groups = [];
+        foreach ($index['static'] as $path => $verbs) {
+            $bucket = CanonicalMatcherIndex::prefixForPath($path);
+            $bucket = $bucket === '' ? self::SHARD_ROOT : $bucket;
+            $groups[$bucket] ??= ['static' => [], 'dynamic' => []];
+            $groups[$bucket]['static'][$path] = $verbs;
+        }
+
+        $this->partitionDynamicIndex($groups, $index['dynamic']);
+
+        return $groups;
+    }
+
+    /** @return array<string,array<string,MatcherGroup>> */
     private function partitionIndex(): array
     {
         $groups = [];
         foreach ($this->index->hosts() as $host => $index) {
-            foreach ($index['static'] as $path => $verbs) {
-                $bucket = CanonicalMatcherIndex::prefixForPath($path);
-                $bucket = $bucket === '' ? self::SHARD_ROOT : $bucket;
-                $groups[$host][$bucket] ??= ['static' => [], 'dynamic' => []];
-                $groups[$host][$bucket]['static'][$path] = $verbs;
-            }
-            foreach ($index['dynamic'] as $count => $prefixes) {
-                foreach ($prefixes as $prefix => $entries) {
-                    $bucket = $prefix === '*' ? self::SHARD_DYNAMIC : $prefix;
-                    $groups[$host][$bucket] ??= ['static' => [], 'dynamic' => []];
-                    foreach ($entries as $path => $entry) {
-                        $groups[$host][$bucket]['dynamic'][$count][$prefix][$path] = $entry;
-                    }
-                }
-            }
+            $groups[$host] = $this->partitionHostIndex($index);
         }
 
         return $groups;
@@ -352,7 +397,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     }
 
     /**
-     * @param array{static:array<mixed>,dynamic:array<mixed>} $group
+     * @param MatcherGroup $group
      */
     private function writeGroup(string $host, string $bucket, array $group): void
     {
@@ -376,6 +421,9 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         }
 
         $data = MatcherCachePayloadNormalizer::normalize($payload);
+        if (!is_array($data)) {
+            throw new \UnexpectedValueException('Normalized sharded matcher cache must be an array.');
+        }
         $hash = hash('xxh128', serialize($data));
         $php = "<?php\nreturn [\n"
             . "    '_version' => " . self::INDEX_CACHE_VERSION . ",\n"

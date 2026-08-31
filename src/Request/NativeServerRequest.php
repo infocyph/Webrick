@@ -25,7 +25,7 @@ class NativeServerRequest extends ServerRequest
 
     private ?PayloadParseState $xmlState = null;
 
-    public static function createFromGlobals(): static
+    public static function createFromGlobals(): self
     {
         $server = self::stringMap($_SERVER);
         $handle = fopen('php://input', 'rb') ?: fopen('php://temp', 'rb');
@@ -38,7 +38,7 @@ class NativeServerRequest extends ServerRequest
             ? substr($protocol, 5)
             : '1.1';
 
-        $request = new static(
+        $request = new self(
             is_string($server['REQUEST_METHOD'] ?? null) ? $server['REQUEST_METHOD'] : HttpMethodEnum::GET->value,
             UriComponents::fromServerParams($server),
             $server,
@@ -118,6 +118,9 @@ class NativeServerRequest extends ServerRequest
         return self::valueFromMap($this->getServerParams(), $key);
     }
 
+    /**
+     * @param array<string,mixed>|object|null $data
+     */
     public function withParsedBody(object|array|null $data): static
     {
         $request = parent::withParsedBody($data);
@@ -136,7 +139,10 @@ class NativeServerRequest extends ServerRequest
             : PayloadParseState::NOT_APPLICABLE);
     }
 
-    /** @param array<mixed> $value @return array<string,mixed> */
+    /**
+     * @param array<array-key,mixed> $value
+     * @return array<string,mixed>
+     */
     private static function stringMap(array $value): array
     {
         $map = [];

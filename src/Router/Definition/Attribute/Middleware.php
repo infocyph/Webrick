@@ -27,7 +27,7 @@ final readonly class Middleware
      *    is intended to be read by the routing/dispatch layer when assembling
      *    middleware for a route or controller.
      *
-     * Notes:
+     * Additional details:
      *  - The attribute is repeatable; multiple Middleware attributes on the same
      *    target will be processed in declaration order.
      *

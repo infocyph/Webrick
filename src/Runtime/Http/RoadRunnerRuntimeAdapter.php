@@ -9,6 +9,7 @@ use Generator;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Runtime\RoutingInput;
+use Psr\Http\Message\ServerRequestInterface;
 use RuntimeException;
 
 /**
@@ -61,7 +62,7 @@ final readonly class RoadRunnerRuntimeAdapter implements RuntimeAdapterInterface
     ): RuntimeRequestContext {
         unset($nativeResponse);
 
-        if (!is_object($nativeRequest)) {
+        if (!$nativeRequest instanceof ServerRequestInterface) {
             throw new RuntimeException('RoadRunner runtime requires a PSR-style server request object.');
         }
 
@@ -70,8 +71,7 @@ final readonly class RoadRunnerRuntimeAdapter implements RuntimeAdapterInterface
         $parsed = null;
         $resolveParsed = static function () use ($nativeRequest, &$parsedResolved, &$parsed): array|object|null {
             if (!$parsedResolved) {
-                $value = $nativeRequest->getParsedBody();
-                $parsed = is_array($value) || is_object($value) ? $value : null;
+                $parsed = self::parsedBody($nativeRequest);
                 $parsedResolved = true;
             }
 
@@ -148,5 +148,18 @@ final readonly class RoadRunnerRuntimeAdapter implements RuntimeAdapterInterface
     private static function generator(iterable $chunks): Generator
     {
         yield from $chunks;
+    }
+
+    /**
+     * @return array<string,mixed>|object|null
+     */
+    private static function parsedBody(ServerRequestInterface $request): array|object|null
+    {
+        $body = $request->getParsedBody();
+        if (is_array($body)) {
+            return PsrServerRequestData::stringMapResult($body);
+        }
+
+        return is_object($body) ? $body : null;
     }
 }

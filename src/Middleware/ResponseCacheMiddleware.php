@@ -74,6 +74,23 @@ final readonly class ResponseCacheMiddleware
         return $response;
     }
 
+    /** @return array<string,string> */
+    private static function explicitVaryPairs(mixed $value): array
+    {
+        if (!is_array($value)) {
+            return [];
+        }
+
+        $pairs = [];
+        foreach ($value as $name => $headerValue) {
+            if (is_string($name) && is_string($headerValue)) {
+                $pairs[$name] = $headerValue;
+            }
+        }
+
+        return $pairs;
+    }
+
     private static function head(Response $response): Response
     {
         if (!$response->hasHeader('Content-Length')) {
@@ -223,17 +240,9 @@ final readonly class ResponseCacheMiddleware
      */
     private function resolveVaryPairs(Request $req): array
     {
-        $explicit = $req->getAttribute('vary.pairs');
-        if (is_array($explicit) && $explicit !== []) {
-            $pairs = [];
-            foreach ($explicit as $name => $value) {
-                if (is_string($name) && is_string($value)) {
-                    $pairs[$name] = $value;
-                }
-            }
-            if ($pairs !== []) {
-                return $pairs;
-            }
+        $explicit = self::explicitVaryPairs($req->getAttribute('vary.pairs'));
+        if ($explicit !== []) {
+            return $explicit;
         }
 
         $context = $req->getAttribute(VaryContext::ATTRIBUTE);

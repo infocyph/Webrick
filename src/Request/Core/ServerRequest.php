@@ -40,7 +40,7 @@ class ServerRequest extends Message
 
     private ?UploadedFileCollection $filesCollection = null;
 
-    /** @var array<string,UploadedFile|array<mixed>>|null */
+    /** @var array<string,UploadedFile|array<array-key,mixed>>|null */
     private ?array $filesHydrated = null;
 
     /** @var array<string,mixed> */
@@ -121,7 +121,7 @@ class ServerRequest extends Message
         throw new InvalidArgumentException('Request is immutable');
     }
 
-    public static function createFromGlobals(): static
+    public static function createFromGlobals(): self
     {
         $server = self::stringMap($_SERVER);
         $bodyHandle = fopen('php://input', 'rb') ?: fopen('php://temp', 'rb');
@@ -132,7 +132,7 @@ class ServerRequest extends Message
         $protocol = self::serverString($server, 'SERVER_PROTOCOL');
         $httpVersion = str_starts_with($protocol, 'HTTP/') ? substr($protocol, 5) : '1.1';
 
-        $request = new static(
+        $request = new self(
             self::serverString($server, 'REQUEST_METHOD', HttpMethodEnum::GET->value),
             Uri::fromServerParams($server),
             $server,
@@ -176,6 +176,9 @@ class ServerRequest extends Message
         return str_contains(strtolower($this->getHeaderLine('Accept')), 'xml');
     }
 
+    /**
+     * @return UploadedFile|array<array-key,mixed>|null
+     */
     public function file(?string $key = null): UploadedFile|array|null
     {
         $files = $this->getUploadedFiles();
@@ -228,6 +231,9 @@ class ServerRequest extends Message
         return $this->method;
     }
 
+    /**
+     * @return array<string,mixed>|object|null
+     */
     public function getParsedBody(): array|object|null
     {
         return $this->parsed;
@@ -343,6 +349,9 @@ class ServerRequest extends Message
         return $clone;
     }
 
+    /**
+     * @param array<string,mixed>|object|null $data
+     */
     public function withParsedBody(object|array|null $data): static
     {
         $clone = clone $this;
@@ -432,8 +441,7 @@ class ServerRequest extends Message
             return;
         }
 
-        static $order = null;
-        $order ??= $this->determineVariableOrder();
+        $order = $this->determineVariableOrder();
         $sources = [
             'G' => $this->query,
             'P' => is_array($this->parsed) ? self::stringMap($this->parsed) : [],

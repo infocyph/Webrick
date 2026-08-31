@@ -87,45 +87,9 @@ final readonly class SapiRuntimeAdapter implements RuntimeAdapterInterface
 
     public function write(Response $response, RuntimeRequestContext $context): void
     {
-        $allowsBody = ResponseWriterSupport::allowsBody($response, $context);
-        $size = ResponseWriterSupport::knownLength($response);
-
-        if (!headers_sent()) {
-            http_response_code($response->getStatusCode());
-            header_remove('X-Powered-By');
-
-            $protocol = $_SERVER['SERVER_PROTOCOL'] ?? 'HTTP/1.1';
-            $http2 = is_string($protocol) && str_starts_with($protocol, 'HTTP/2');
-            foreach (ResponseWriterSupport::headers($response, $http2) as [$name, $value]) {
-                header("{$name}: {$value}", false);
-            }
-
-            if (!$response->hasHeader('Content-Length') && $size !== null) {
-                header('Content-Length: ' . $size, false);
-            }
-        }
-
-        if ($allowsBody) {
-            $output = fopen('php://output', 'wb');
-            if (!is_resource($output)) {
-                throw new RuntimeException('Unable to open the SAPI output stream.');
-            }
-
-            try {
-                $string = $response->getStringBody();
-                if ($string !== null) {
-                    self::writeChunk($output, $string);
-                } else {
-                    foreach (ResponseWriterSupport::chunks($response) as $chunk) {
-                        self::writeChunk($output, $chunk);
-                        if ($response->isStreaming()) {
-                            flush();
-                        }
-                    }
-                }
-            } finally {
-                fclose($output);
-            }
+        $this->sendHeaders($response);
+        if (ResponseWriterSupport::allowsBody($response, $context)) {
+            $this->writeBody($response);
         }
 
         $this->finish();
@@ -155,5 +119,51 @@ final readonly class SapiRuntimeAdapter implements RuntimeAdapterInterface
             self::FINISH_LITESPEED => function_exists('litespeed_finish_request') ? litespeed_finish_request() : null,
             default => null,
         };
+    }
+
+    private function sendHeaders(Response $response): void
+    {
+        if (headers_sent()) {
+            return;
+        }
+
+        http_response_code($response->getStatusCode());
+        header_remove('X-Powered-By');
+        $protocol = $_SERVER['SERVER_PROTOCOL'] ?? 'HTTP/1.1';
+        $http2 = is_string($protocol) && str_starts_with($protocol, 'HTTP/2');
+        foreach (ResponseWriterSupport::headers($response, $http2) as [$name, $value]) {
+            header("{$name}: {$value}", false);
+        }
+
+        $size = ResponseWriterSupport::knownLength($response);
+        if (!$response->hasHeader('Content-Length') && $size !== null) {
+            header('Content-Length: ' . $size, false);
+        }
+    }
+
+    private function writeBody(Response $response): void
+    {
+        $output = fopen('php://output', 'wb');
+        if (!is_resource($output)) {
+            throw new RuntimeException('Unable to open the SAPI output stream.');
+        }
+
+        try {
+            $string = $response->getStringBody();
+            if ($string !== null) {
+                self::writeChunk($output, $string);
+
+                return;
+            }
+
+            foreach (ResponseWriterSupport::chunks($response) as $chunk) {
+                self::writeChunk($output, $chunk);
+                if ($response->isStreaming()) {
+                    flush();
+                }
+            }
+        } finally {
+            fclose($output);
+        }
     }
 }

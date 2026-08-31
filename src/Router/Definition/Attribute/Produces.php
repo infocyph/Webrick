@@ -25,12 +25,12 @@ final readonly class Produces
             throw new InvalidArgumentException('Produces must declare at least one media type.');
         }
         foreach ($this->types as $type) {
-            if (!is_string($type) || trim($type) === '') {
+            if (trim($type) === '') {
                 throw new InvalidArgumentException('Produces media types must be non-empty strings.');
             }
         }
         foreach ($this->charsets ?? [] as $charset) {
-            if (!is_string($charset) || trim($charset) === '') {
+            if (trim($charset) === '') {
                 throw new InvalidArgumentException('Produces charsets must be non-empty strings.');
             }
         }

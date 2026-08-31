@@ -89,43 +89,47 @@ final readonly class SwooleRuntimeAdapter implements RuntimeAdapterInterface
             throw new RuntimeException('Swoole transport handles are unavailable.');
         }
 
-        if ($native->status($response->getStatusCode()) === false) {
-            throw new RuntimeException('Swoole response status failed.');
-        }
-
-        $http2 = SwooleNativeRequest::isHttp2($request);
-        foreach ($response->getHeaders() as $name => $values) {
-            $allowed = [];
-            foreach ($values as $value) {
-                if (ResponseWriterSupport::headerAllowed($name, $value, $http2)) {
-                    $allowed[] = $value;
-                }
-            }
-            if ($allowed !== [] && $native->header($name, count($allowed) === 1 ? $allowed[0] : $allowed) === false) {
-                throw new RuntimeException("Swoole response header failed: {$name}");
-            }
-        }
-
-        $size = ResponseWriterSupport::knownLength($response);
-        if (
-            !$response->hasHeader('Content-Length')
-            && $size !== null
-            && $native->header('Content-Length', (string) $size) === false
-        ) {
-            throw new RuntimeException('Swoole Content-Length header failed.');
-        }
+        $this->setStatus($native, $response->getStatusCode());
+        $this->writeHeaders($native, $response, SwooleNativeRequest::isHttp2($request));
 
         if (!ResponseWriterSupport::allowsBody($response, $context)) {
-            if ($native->end('') === false) {
-                throw new RuntimeException('Swoole response end failed.');
-            }
+            $this->end($native, '');
 
             return;
         }
 
+        $this->writeBody($native, $response);
+    }
+
+    private function call(object $target, string $method, mixed ...$arguments): mixed
+    {
+        if (!method_exists($target, $method)) {
+            throw new RuntimeException("Swoole native response does not support {$method}().");
+        }
+
+        return $target->{$method}(...$arguments);
+    }
+
+    private function end(object $native, ?string $body = null): void
+    {
+        $arguments = $body === null ? [] : [$body];
+        if ($this->call($native, 'end', ...$arguments) === false) {
+            throw new RuntimeException('Swoole response end failed.');
+        }
+    }
+
+    private function setStatus(object $native, int $status): void
+    {
+        if ($this->call($native, 'status', $status) === false) {
+            throw new RuntimeException('Swoole response status failed.');
+        }
+    }
+
+    private function writeBody(object $native, Response $response): void
+    {
         $file = $response->getFileBody();
         if ($file !== null) {
-            if ($native->sendfile($file->path(), $file->offset(), $file->length()) === false) {
+            if ($this->call($native, 'sendfile', $file->path(), $file->offset(), $file->length()) === false) {
                 throw new RuntimeException('Swoole sendfile() failed.');
             }
 
@@ -134,20 +138,50 @@ final readonly class SwooleRuntimeAdapter implements RuntimeAdapterInterface
 
         $string = $response->getStringBody();
         if ($string !== null && !$response->isStreaming()) {
-            if ($native->end($string) === false) {
-                throw new RuntimeException('Swoole response end failed.');
-            }
+            $this->end($native, $string);
 
             return;
         }
 
         foreach (ResponseWriterSupport::chunks($response) as $chunk) {
-            if ($native->write($chunk) === false) {
+            if ($this->call($native, 'write', $chunk) === false) {
                 throw new RuntimeException('Swoole response write failed.');
             }
         }
-        if ($native->end() === false) {
-            throw new RuntimeException('Swoole response end failed.');
+        $this->end($native);
+    }
+
+    /**
+     * @param list<string> $values
+     */
+    private function writeHeader(object $native, string $name, array $values, bool $http2): void
+    {
+        $allowed = array_values(array_filter(
+            $values,
+            static fn(string $value): bool => ResponseWriterSupport::headerAllowed($name, $value, $http2),
+        ));
+        if ($allowed === []) {
+            return;
+        }
+
+        if ($this->call($native, 'header', $name, count($allowed) === 1 ? $allowed[0] : $allowed) === false) {
+            throw new RuntimeException("Swoole response header failed: {$name}");
+        }
+    }
+
+    private function writeHeaders(object $native, Response $response, bool $http2): void
+    {
+        foreach ($response->getHeaders() as $name => $values) {
+            $this->writeHeader($native, $name, $values, $http2);
+        }
+
+        $size = ResponseWriterSupport::knownLength($response);
+        if (
+            !$response->hasHeader('Content-Length')
+            && $size !== null
+            && $this->call($native, 'header', 'Content-Length', (string) $size) === false
+        ) {
+            throw new RuntimeException('Swoole Content-Length header failed.');
         }
     }
 }
