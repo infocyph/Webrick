@@ -5,6 +5,10 @@ on:
     branches:
       - webrick-5/batch-1-correctness
     paths:
+      - 'src/Router/Matching/**'
+      - 'src/Router/Constraint/**'
+      - 'benchmark/fastroute_reference.php'
+      - 'benchmark/matcher_sanity.php'
       - '.github/workflows/matcher-benchmark-smoke.yml'
   workflow_dispatch:
 
