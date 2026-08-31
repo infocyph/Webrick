@@ -137,7 +137,7 @@ final class CompiledMatcherIndexValidator
         return ['type' => 'fallback', 'segments' => $segments, 'route' => $route];
     }
 
-    /** @return array{type:'pcre',regex:string,routes:array<string,array{route:mixed,params:array<int,string>}>} */
+    /** @return array{type:'pcre',regex:string,routes:array<string,array{route:mixed,params:array<string,string>}>} */
     private static function validatePcreStep(array $raw, bool $validateRegex): array
     {
         $regex = $raw['regex'] ?? null;
@@ -168,7 +168,7 @@ final class CompiledMatcherIndexValidator
         return ['type' => 'pcre', 'regex' => $regex, 'routes' => $routes];
     }
 
-    /** @return array<int,string> */
+    /** @return array<string,string> */
     private static function validateParams(mixed $raw): array
     {
         if (!is_array($raw)) {
@@ -176,11 +176,16 @@ final class CompiledMatcherIndexValidator
         }
 
         $params = [];
-        foreach ($raw as $position => $name) {
-            if (!is_int($position) || $position < 0 || !is_string($name) || $name === '') {
-                throw new \UnexpectedValueException('Compiled matcher parameter position is invalid.');
+        foreach ($raw as $capture => $name) {
+            if (
+                !is_string($capture)
+                || preg_match('/^[A-Za-z][A-Za-z0-9_]*$/D', $capture) !== 1
+                || !is_string($name)
+                || $name === ''
+            ) {
+                throw new \UnexpectedValueException('Compiled matcher parameter capture is invalid.');
             }
-            $params[$position] = $name;
+            $params[$capture] = $name;
         }
 
         return $params;
