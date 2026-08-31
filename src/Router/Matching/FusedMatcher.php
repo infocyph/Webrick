@@ -28,7 +28,10 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
 
     private bool $cacheWriteEnabled = false;
 
-    private CanonicalMatcherEngine $engine;
+    /** @var array<string,array<string,mixed>>|null */
+    private ?array $compiledHosts = null;
+
+    private CompiledMatcherEngine $engine;
 
     private bool $finalized = false;
 
@@ -64,6 +67,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
             $this->loadCacheBlob();
         }
 
+        $this->compiledHosts = new CompiledMatcherIndexCompiler()->compile($this->index->hosts());
         $this->finalized = true;
     }
 
@@ -88,7 +92,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
 
     public function matchCompiled(string $method, string $host, string $path): int|array|MatchOutcome
     {
-        $hosts = $this->index->hosts();
+        $hosts = $this->compiledHosts ?? throw new \LogicException('Fused matcher must be finalized before compiled dispatch.');
 
         return $this->engine->matchSingleCompiled(
             $hosts[$host] ?? null,
@@ -101,7 +105,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
     public function matchOutcome(string $method, string $host, string $path): MatchOutcome
     {
         $this->finalize();
-        $hosts = $this->index->hosts();
+        $hosts = $this->compiledHosts ?? throw new \LogicException('Fused matcher was not compiled.');
 
         return $this->engine->matchSingle(
             $hosts[$host] ?? null,
@@ -122,7 +126,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
     private function bootIndex(): void
     {
         $this->index ??= new CanonicalMatcherIndex();
-        $this->engine ??= new CanonicalMatcherEngine();
+        $this->engine ??= new CompiledMatcherEngine();
     }
 
     /**
