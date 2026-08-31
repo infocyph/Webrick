@@ -124,10 +124,15 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
     /** @param string|list<string> $value */
     public function withAdded(string $name, string|array $value): self
     {
+        $values = $this->normalizeValues($value);
+        if ($values === []) {
+            return $this;
+        }
+
         $normalized = $this->norm($name);
         $copy = clone $this;
         $current = $copy->map[$normalized] ?? [];
-        foreach ($this->normalizeValues($value) as $item) {
+        foreach ($values as $item) {
             $current[] = $item;
         }
         $copy->map[$normalized] = $current;
@@ -191,6 +196,9 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
     {
         $values = is_array($value) ? $value : [$value];
         foreach ($values as $item) {
+            if (!is_string($item)) {
+                throw new \InvalidArgumentException('HTTP header values must be strings or lists of strings.');
+            }
             if (preg_match(self::INVALID_HEADER_VALUE, $item) === 1) {
                 throw new \InvalidArgumentException('HTTP header values must be valid strings without control characters.');
             }
