@@ -43,6 +43,7 @@ class Response
         private string $protocolVersion = '1.1',
         private ?string $reasonPhrase = null,
     ) {
+        self::assertStatus($this->statusCode);
         $this->headers = new HeaderBag($headers);
         $this->body = $body ?? '';
     }
@@ -59,13 +60,21 @@ class Response
         $size ??= $body->getSize();
         $mtime ??= $body instanceof Stream ? self::mtimeFromStream($body) : null;
         $mime = self::inferMime($name, $mime);
-        $defaults = self::baseDownloadHeaders($name, $mime);
+        $bag = self::withDefaults(new HeaderBag($headers), self::baseDownloadHeaders($name, $mime));
 
-        self::putIfAbsent($defaults, 'Content-Length', $size !== null ? (string) $size : null, $headers);
-        self::putIfAbsent($defaults, 'Last-Modified', self::formatHttpDate($mtime), $headers);
-        self::putIfAbsent($defaults, 'ETag', self::weakEtagFromMeta($size, $mtime, $name), $headers);
+        if ($size !== null && !$bag->has('Content-Length')) {
+            $bag = $bag->with('Content-Length', (string) $size);
+        }
+        $lastModified = self::formatHttpDate($mtime);
+        if ($lastModified !== null && !$bag->has('Last-Modified')) {
+            $bag = $bag->with('Last-Modified', $lastModified);
+        }
+        $etag = self::weakEtagFromMeta($size, $mtime, $name);
+        if ($etag !== null && !$bag->has('ETag')) {
+            $bag = $bag->with('ETag', $etag);
+        }
 
-        return new self(StatusEnum::OK->value, $body, $defaults + $headers);
+        return new self(StatusEnum::OK->value, $body, $bag->all());
     }
 
     /**
@@ -108,9 +117,9 @@ class Response
         if ($json === false) {
             throw new RuntimeException('JSON encode error: ' . json_last_error_msg());
         }
-        $headers = ['Content-Type' => $headers['Content-Type'] ?? MediaTypeEnum::PLAIN->value] + $headers;
+        $bag = self::withDefaults(new HeaderBag($headers), ['Content-Type' => MediaTypeEnum::PLAIN->value]);
 
-        return new self($status, $json, $headers);
+        return new self($status, $json, $bag->all());
     }
 
     /** @param array<string,string|list<string>> $headers */
@@ -134,16 +143,16 @@ class Response
     /** @param array<string,string|list<string>> $headers */
     public static function empty(int $code, array $headers = []): self
     {
+        $bag = new HeaderBag($headers);
         if (($code >= 100 && $code < 200) || $code === StatusEnum::NO_CONTENT->value) {
-            unset($headers['Content-Length'], $headers['content-length']);
+            $bag = $bag->without('Content-Length');
         } elseif ($code === StatusEnum::RESET_CONTENT->value) {
-            unset($headers['content-length']);
-            $headers['Content-Length'] = '0';
-        } elseif ($code !== StatusEnum::NOT_MODIFIED->value) {
-            $headers += ['Content-Length' => '0'];
+            $bag = $bag->with('Content-Length', '0');
+        } elseif ($code !== StatusEnum::NOT_MODIFIED->value && !$bag->has('Content-Length')) {
+            $bag = $bag->with('Content-Length', '0');
         }
 
-        return new self($code, '', $headers);
+        return new self($code, '', $bag->all());
     }
 
     /** @param array<string,string|list<string>> $headers */
@@ -156,16 +165,16 @@ class Response
         $name ??= is_string($file) ? basename($file) : 'inline';
         $body = is_string($file) ? new FileBody($file) : $file;
         $mime ??= MediaTypeEnum::fromFilename($name)->value;
-        $defaults = [
+        $bag = self::withDefaults(new HeaderBag($headers), [
             'Content-Type' => $mime,
             'Content-Disposition' => ContentDisposition::inline($name),
-        ];
+        ]);
         $size = $body->getSize();
-        if ($size !== null && !isset($headers['Content-Length'])) {
-            $defaults['Content-Length'] = (string) $size;
+        if ($size !== null && !$bag->has('Content-Length')) {
+            $bag = $bag->with('Content-Length', (string) $size);
         }
 
-        return new self(StatusEnum::OK->value, $body, $defaults + $headers);
+        return new self(StatusEnum::OK->value, $body, $bag->all());
     }
 
     /**
@@ -180,14 +189,17 @@ class Response
         int $flags = JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE,
         int $depth = 512,
     ): self {
-        $headers += ['Content-Type' => MediaTypeEnum::JSON->base() . '; charset=utf-8'];
+        $bag = self::withDefaults(
+            new HeaderBag($headers),
+            ['Content-Type' => MediaTypeEnum::JSON->base() . '; charset=utf-8'],
+        );
         $payload = $data instanceof JsonSerializable ? $data->jsonSerialize() : $data;
         $json = json_encode($payload, $flags, $depth);
         if ($json === false) {
             throw new RuntimeException('JSON encode error: ' . json_last_error_msg());
         }
 
-        return new self($status, $json, $headers);
+        return new self($status, $json, $bag->all());
     }
 
     /** @param array<string,string|list<string>> $headers */
@@ -199,9 +211,9 @@ class Response
     /** @param array<string,string|list<string>> $headers */
     public static function plaintext(string $msg, int $code = StatusEnum::BAD_REQUEST->value, array $headers = []): self
     {
-        $headers = ['Content-Type' => $headers['Content-Type'] ?? MediaTypeEnum::PLAIN->value] + $headers;
+        $bag = self::withDefaults(new HeaderBag($headers), ['Content-Type' => MediaTypeEnum::PLAIN->value]);
 
-        return new self($code, $msg, $headers);
+        return new self($code, $msg, $bag->all());
     }
 
     /** @param array<string,string> $headers */
@@ -213,9 +225,12 @@ class Response
         array $headers = [],
     ): self {
         $name ??= basename($absolutePath);
-        $headers += ['Content-Disposition' => ContentDisposition::attachment($name)];
+        $bag = self::withDefaults(
+            new HeaderBag($headers),
+            ['Content-Disposition' => ContentDisposition::attachment($name)],
+        );
 
-        return self::rangedFile($req, $absolutePath, $mime, $headers);
+        return self::rangedFile($req, $absolutePath, $mime, self::singleValueHeaders($bag));
     }
 
     /** @param array<string,string> $headers */
@@ -254,13 +269,13 @@ class Response
         int $status = StatusEnum::OK->value,
         array $headers = [],
     ): self {
-        unset($headers['Content-Length'], $headers['content-length']);
-        $headers = [
-            'Cache-Control' => $headers['Cache-Control'] ?? 'no-store',
-            'X-Accel-Buffering' => $headers['X-Accel-Buffering'] ?? 'no',
-        ] + $headers;
+        $bag = (new HeaderBag($headers))->without('Content-Length');
+        $bag = self::withDefaults($bag, [
+            'Cache-Control' => 'no-store',
+            'X-Accel-Buffering' => 'no',
+        ]);
 
-        $response = new self($status, '', $headers);
+        $response = new self($status, '', $bag->all());
         $response->producer = self::normalizeProducer($producer);
 
         return $response;
@@ -283,15 +298,15 @@ class Response
             $name ??= 'download';
         }
 
-        $headers += [
+        $bag = self::withDefaults(new HeaderBag($headers), [
             'Content-Type' => $mime,
             'Content-Disposition' => ContentDisposition::attachment($name),
-        ];
+        ]);
         if ($length !== null) {
-            $headers['Content-Length'] = (string) $length;
+            $bag = $bag->with('Content-Length', (string) $length);
         }
 
-        return new self(StatusEnum::OK->value, $body, $headers);
+        return new self(StatusEnum::OK->value, $body, $bag->all());
     }
 
     public function cache(): CacheControl
@@ -423,14 +438,19 @@ class Response
 
     public function withStatus(int $code, string $reasonPhrase = ''): self
     {
-        if ($code < 100 || $code > 599) {
-            throw new RuntimeException("Invalid HTTP status: {$code}");
-        }
+        self::assertStatus($code);
 
         return $this->copy(
             statusCode: $code,
             reasonPhrase: $reasonPhrase !== '' ? $reasonPhrase : self::statusText($code),
         );
+    }
+
+    private static function assertStatus(int $code): void
+    {
+        if ($code < 100 || $code > 599) {
+            throw new RuntimeException("Invalid HTTP status: {$code}");
+        }
     }
 
     /** @return array<string,string> */
@@ -495,12 +515,29 @@ class Response
         };
     }
 
-    /** @param array<string,string> $target @param array<string,string|list<string>> $caller */
-    private static function putIfAbsent(array &$target, string $name, ?string $value, array $caller): void
+    /** @return array<string,string> */
+    private static function singleValueHeaders(HeaderBag $bag): array
     {
-        if ($value !== null && !array_key_exists($name, $caller)) {
-            $target[$name] = $value;
+        $headers = [];
+        foreach ($bag->all() as $name => $values) {
+            if ($values !== []) {
+                $headers[$name] = $values[count($values) - 1];
+            }
         }
+
+        return $headers;
+    }
+
+    /** @param array<string,string> $defaults */
+    private static function withDefaults(HeaderBag $bag, array $defaults): HeaderBag
+    {
+        foreach ($defaults as $name => $value) {
+            if (!$bag->has($name)) {
+                $bag = $bag->with($name, $value);
+            }
+        }
+
+        return $bag;
     }
 
     private static function statusText(int $code): string
