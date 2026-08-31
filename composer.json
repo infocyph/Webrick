@@ -33,6 +33,7 @@
     "require-dev": {
         "infocyph/cachelayer": "^3.2",
         "infocyph/phpforge": "dev-main@dev",
+        "nikic/fast-route": "^1.3",
         "opis/closure": "^4.5",
         "psr/http-factory": "^1.1",
         "psr/http-message": "^2.0"
