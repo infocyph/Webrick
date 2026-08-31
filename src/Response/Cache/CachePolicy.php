@@ -7,7 +7,9 @@ namespace Infocyph\Webrick\Response\Cache;
 use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Response\Headers\CacheControl;
 use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Support\HttpUtils;
 
 /** Shared-cache policy used by response-cache middleware. */
 final readonly class CachePolicy
@@ -30,27 +32,7 @@ final readonly class CachePolicy
     /** @return array<string,true|string> */
     public static function directives(string $line): array
     {
-        if ($line === '') {
-            return [];
-        }
-
-        $directives = [];
-        foreach (explode(',', $line) as $segment) {
-            $segment = trim($segment);
-            if ($segment === '') {
-                continue;
-            }
-            if (!str_contains($segment, '=')) {
-                $directives[strtolower($segment)] = true;
-
-                continue;
-            }
-
-            [$name, $value] = array_map(trim(...), explode('=', $segment, 2));
-            $directives[strtolower($name)] = trim($value, "\"'");
-        }
-
-        return $directives;
+        return CacheControl::directives($line);
     }
 
     public function lookupAllowed(Request $request, bool $skipPersonalized = true): bool
@@ -116,8 +98,6 @@ final readonly class CachePolicy
 
     private static function seconds(mixed $value): ?int
     {
-        return is_string($value) && preg_match('/^[0-9]+$/D', $value) === 1
-            ? (int) $value
-            : null;
+        return is_string($value) ? HttpUtils::parseUnsignedDecimal($value) : null;
     }
 }
