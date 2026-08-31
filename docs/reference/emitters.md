@@ -1,137 +1,77 @@
-# Response Emitters
+# Response Emitters and Runtime Adapters
 
-An emitter transfers a Webrick `Response` to the active PHP or server runtime.
-Emission is a boundary concern: standalone applications use an emitter, while
-applications embedded in another framework normally return an adapted response
-to that framework.
+Webrick 5 separates classic SAPI emission from persistent-server transport adapters. Runtime selection is explicit at bootstrap; there is no `AutoEmitter` and no per-request environment/extension discovery.
 
-## Available emitters
+## Classic emitters
 
-| Emitter | Runtime | Required request attribute |
-| --- | --- | --- |
-| `DefaultEmitter` | PHP-FPM, FrankenPHP, LiteSpeed, Nginx Unit, generic SAPI | None |
-| `CliEmitter` | CLI and phpdbg | None |
-| `SwooleEmitter` | Swoole HTTP server | `swoole.response` |
-| `RoadRunnerEmitter` | RoadRunner bridge | `roadrunner.respond` |
-| `WorkermanEmitter` | Workerman | `workerman.response` or `workerman.connection` |
-| `AutoEmitter` | Selects and memoizes one of the above | Depends on selected emitter |
-
-## Automatic selection
-
-```php
-use Infocyph\Webrick\Response\Emitter\AutoEmitter;
-
-$emitter = new AutoEmitter();
-$emitter->emit($response, $request);
-```
-
-`AutoEmitter` selects once and reuses that emitter for later calls. This avoids
-repeating environment detection in a persistent worker. Create a separate
-`AutoEmitter` if one process intentionally serves requests through different
-runtime transports.
-
-Known synchronous SAPIs (`apache2handler` and PHP's `cli-server`) select the
-default emitter before Webrick probes optional asynchronous runtimes. This
-keeps extension and bridge detection out of their normal response path.
-
-Pass a non-empty third argument to select an emitter explicitly for that call:
-
-```php
-$emitter->emit($response, $request, 'swoole');
-```
-
-The default third argument is `''`, which uses automatic detection. Explicit
-selections apply only to that call and do not replace the automatic selection.
-
-| Value | Selected behavior |
+| Class | Target |
 | --- | --- |
-| `swoole` | `SwooleEmitter` |
-| `roadrunner` | `RoadRunnerEmitter` |
-| `workerman` | `WorkermanEmitter` |
-| `frankenphp` | `DefaultEmitter` with FrankenPHP finishing |
-| `lsapi` | `DefaultEmitter` with LiteSpeed finishing |
-| `unit` | `DefaultEmitter` with FastCGI finishing |
-| `fpm` | `DefaultEmitter` with FastCGI finishing |
-| `cli` | `CliEmitter` |
-| `default` | Generic `DefaultEmitter` |
-
-Unknown non-empty values also fall back to generic `DefaultEmitter`.
-
-## Swoole
-
-Attach the native response before calling the kernel:
+| `DefaultEmitter` | PHP-FPM, FrankenPHP, LiteSpeed, Nginx Unit, Apache and generic synchronous SAPIs |
+| `CliEmitter` | CLI/phpdbg |
 
 ```php
-$request = $request->withAttribute('swoole.response', $swooleResponse);
-$response = $kernel->handle($request);
+use Infocyph\Webrick\Response\Emitter\DefaultEmitter;
 
-(new SwooleEmitter())->emit($response, $request);
+(new DefaultEmitter())->emit($response, $request);
 ```
 
-The attribute must be an instance of `Swoole\Http\Response`. Swoole owns HTTP
-framing, so Webrick does not emit a transfer-encoding header.
+`DefaultEmitter` can be configured with an explicit finish mode for FastCGI, FrankenPHP or LiteSpeed. The application chooses that mode at bootstrap; Webrick does not infer it for every request.
 
-## RoadRunner
+## Persistent runtimes
 
-The RoadRunner integration uses an application-provided callable:
+Swoole/OpenSwoole, RoadRunner and Workerman use the runtime API under `Infocyph\Webrick\Runtime\Http`:
+
+- `RuntimeAdapterInterface`
+- `RuntimeServer`
+- `SwooleRuntimeAdapter`
+- `RoadRunnerRuntimeAdapter`
+- `WorkermanRuntimeAdapter`
+
+The adapter owns native request extraction and response writing. Native response handles are request-local and never stored in static current-response fields.
 
 ```php
-$request = $request->withAttribute(
-    'roadrunner.respond',
-    static function (int $status, array $headers, string|iterable $body) use ($worker): void {
-        $worker->respond($status, $headers, $body);
-    },
-);
-
-$response = $kernel->handle($request);
-(new RoadRunnerEmitter())->emit($response, $request);
+$server = new RuntimeServer($adapter, $compiledKernel);
+$server->run();
 ```
 
-The callable signature is:
+The concrete host/bootstrap supplies the adapter's native server callbacks/objects as required by that runtime.
 
-```php
-function (int $status, array $headers, string|iterable $body): void
-```
+## Runtime capabilities
 
-Webrick sends an empty body for `HEAD`, `204` and `304` responses.
+Adapters expose transport capabilities so Webrick can avoid duplicate work. Depending on the runtime, the transport may own:
 
-## Workerman
+- request-size enforcement;
+- response compression;
+- native file/sendfile paths;
+- chunk/stream framing;
+- native response completion.
 
-Attach either:
+Portable middleware checks these capabilities and bypasses work already owned by the transport.
 
-- `workerman.response`: an object supporting `withStatus()`, `withHeader()` and
-  `end()`, or
-- `workerman.connection`: an object supporting `send()`.
+## Files and streaming
 
-```php
-$request = $request->withAttribute('workerman.connection', $connection);
-$response = $kernel->handle($request);
-
-(new WorkermanEmitter())->emit($response, $request);
-```
-
-The connection fallback builds the HTTP envelope and adds `Content-Length` when
-it is absent.
+- Swoole/OpenSwoole uses native `end()`, checked `write()`, and `sendfile(path, offset, length)` where available.
+- RoadRunner uses the boot-injected responder and supports string/generator output plus optional configured sendfile delegation.
+- Workerman uses native response/file support for whole files and explicit chunk streaming otherwise.
+- Writer failures are surfaced; they are not silently ignored.
 
 ## Embedded frameworks
 
-If Laravel, Symfony, Slim, or another host owns response emission, do not use
-these emitters. Convert the Webrick response to the host response type and
-return it:
+If Laravel, Symfony, Slim, Foundation/Infbyte or another host owns response emission, do not use a Webrick emitter. Adapt and return the response to the host:
 
 ```php
-return $responseAdapter->fromWebrick($kernel->handle($webrickRequest));
+$webrickResponse = $kernel->handle($webrickRequest);
+
+return $responseAdapter->fromWebrick($webrickResponse);
 ```
 
-This prevents duplicate headers, duplicate bodies and premature FastCGI or
-worker completion.
+Exactly one layer should own final headers/body emission, compression and transport completion.
 
 ## Operational rules
 
-- Reuse an emitter for a stable runtime.
-- Pass the same request used by the kernel when a runtime emitter needs request
-  attributes.
-- Do not share a native response object between requests.
-- Let only one layer perform compression and final emission.
-- Test streaming and `HEAD`, `204`, `304`, file and error responses in the
-  actual target runtime.
+- Select the runtime once at process/worker bootstrap.
+- Never share a native request/response handle across requests.
+- Keep transport state out of reusable middleware and static registries.
+- Let the transport own framing when it provides a native response API.
+- Use `DefaultEmitter` only for synchronous SAPI boundaries.
+- Use persistent-runtime adapters with `CompiledRouterKernel` for long-lived workers.
