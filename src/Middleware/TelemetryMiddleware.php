@@ -6,6 +6,7 @@ namespace Infocyph\Webrick\Middleware;
 
 use Closure;
 use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Request\Support\HeaderBag;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Support\OpenTelemetryHandler;
 use Infocyph\Webrick\Support\TelemetryOptions;
@@ -39,6 +40,14 @@ final readonly class TelemetryMiddleware
         private string $otelServiceName = 'webrick-app',
         private string $otelServiceVersion = '1.0.0',
     ) {
+        new HeaderBag([
+            $this->requestIdHeader => 'probe',
+            $this->traceIdHeader => 'probe',
+        ]);
+        if ($this->nelTtlSeconds < 0) {
+            throw new \InvalidArgumentException('NEL TTL must be zero or greater.');
+        }
+
         $this->otelAvailable = $this->enableOtelIntegration
             && class_exists('OpenTelemetry\\API\\Globals')
             && class_exists('OpenTelemetry\\API\\Trace\\SpanKind');
