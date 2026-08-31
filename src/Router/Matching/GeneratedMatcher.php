@@ -186,7 +186,7 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
             throw new \RuntimeException('Failed to allocate temporary matcher file.');
         }
         if (file_put_contents($file, "<?php return {$code};\n", LOCK_EX) === false) {
-            @unlink($file);
+            self::removeTemporaryMatcherFile($file);
 
             throw new \RuntimeException('Failed to write generated matcher source.');
         }
@@ -194,7 +194,7 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         try {
             $fn = require $file;
         } finally {
-            @unlink($file);
+            self::removeTemporaryMatcherFile($file);
         }
         if (!$fn instanceof Closure) {
             throw new \RuntimeException('Generated matcher source did not return a Closure.');
@@ -300,6 +300,13 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
             true,
         );
         $this->cacheLoaded = true;
+    }
+
+    private static function removeTemporaryMatcherFile(string $file): void
+    {
+        if (is_file($file) && !unlink($file)) {
+            throw new \RuntimeException("Failed to remove temporary matcher file {$file}");
+        }
     }
 
     /** @param list<array<string,mixed>> $segments */
