@@ -116,7 +116,7 @@ final readonly class RoadRunnerRuntimeAdapter implements RuntimeAdapterInterface
             $file !== null
             && $this->sendfileMiddleware
             && $file->offset() === 0
-            && $file->length() === filesize($file->path())
+            && $file->length() === $file->sourceSize()
         ) {
             $headers['X-Sendfile'] = [$file->path()];
             ($this->respond)($response->getStatusCode(), '', $headers, true);
