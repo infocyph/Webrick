@@ -62,7 +62,6 @@ final readonly class CompiledRouterKernel
         $this->errorHandler = $errorHandler ?? new ErrorHandler(
             logger: $log,
             debug: false,
-            capturePhpErrors: false,
             exceptionMap: [
                 RouteNotFoundException::class => StatusEnum::NOT_FOUND->value,
                 MethodNotAllowedException::class => StatusEnum::METHOD_NOT_ALLOWED->value,
@@ -153,13 +152,13 @@ final readonly class CompiledRouterKernel
             $response = $this->dispatchRoutingInput($routing, $request);
 
             return $routing->method === HttpMethodEnum::HEAD->value
-                ? self::legacyHeadResponse($response)
+                ? self::headResponse($response)
                 : $response;
         } catch (Throwable $exception) {
             $response = $this->renderException($exception, $request);
 
             return isset($routing) && $routing->method === HttpMethodEnum::HEAD->value
-                ? self::legacyHeadResponse($response)
+                ? self::headResponse($response)
                 : $response;
         }
     }
@@ -198,7 +197,7 @@ final readonly class CompiledRouterKernel
         return Response::noContent(['Allow' => implode(', ', array_keys($methods))]);
     }
 
-    private static function legacyHeadResponse(Response $response): Response
+    private static function headResponse(Response $response): Response
     {
         if (!$response->hasHeader('Content-Length')) {
             $size = $response->getBodySize();
