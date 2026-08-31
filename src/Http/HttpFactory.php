@@ -19,8 +19,6 @@ final class HttpFactory
 {
     /**
      * @param array<string,mixed> $serverParams
-     * @param string $method
-     * @param Uri|string $uri
      */
     public function createRequest(string $method, Uri|string $uri, array $serverParams = []): Request
     {

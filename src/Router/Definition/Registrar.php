@@ -66,7 +66,6 @@ final readonly class Registrar
 
     /**
      * @param array{0:mixed,1:mixed,2?:mixed} $args
-     * @param string $method
      */
     public function __call(string $method, array $args): mixed
     {
@@ -89,8 +88,6 @@ final readonly class Registrar
      * @param string|GroupInput|null $prefix
      * @param string|GroupInput|Closure|null $domain
      * @param list<mixed>|Closure $middleware
-     * @param string|Closure|null $namePrefix
-     * @param ?Closure $callback
      */
     public function group(
         array|string|null $prefix = null,
@@ -132,9 +129,6 @@ final readonly class Registrar
 
     /**
      * @param array<string,mixed> $opts
-     * @param string $name
-     * @param string $prefix
-     * @param string $ctrl
      */
     public function resource(string $name, string $prefix, string $ctrl, array $opts = []): void
     {
@@ -159,8 +153,6 @@ final readonly class Registrar
     /**
      * @param RouteHandler $handler
      * @param string|RouteOptions|null $nameOrOpts
-     * @param string $verb
-     * @param string $path
      */
     private function add(
         string $verb,
@@ -183,8 +175,6 @@ final readonly class Registrar
 
     /**
      * @param RouteAttributes $attributes
-     * @param Route $route
-     * @param ?string $name
      */
     private function applyPerCallOptions(Route $route, ?string $name, array $attributes): Route
     {
@@ -207,8 +197,6 @@ final readonly class Registrar
 
     /**
      * @return list<ResourceSpecRow>
-     * @param string $param
-     * @param string $patchAction
      */
     private function buildResourceSpec(string $param, string $patchAction): array
     {
@@ -234,7 +222,6 @@ final readonly class Registrar
     /**
      * @param RawMiddlewareList $extraMw
      * @param list<string> $aliases
-     * @param Route $route
      */
     private function decorateWithScope(Route $route, array $extraMw, array &$aliases): Route
     {
@@ -265,7 +252,6 @@ final readonly class Registrar
     /**
      * @param list<string>|null $only
      * @param list<string>|null $except
-     * @param string $key
      */
     private function includeResourceKey(string $key, ?array $only, ?array $except): bool
     {
@@ -281,8 +267,6 @@ final readonly class Registrar
 
     /**
      * @param RouteHandler $handler
-     * @param string $verb
-     * @param string $fullPath
      */
     private function instantiateRoute(string $verb, string $fullPath, array|string|callable $handler): Route
     {
@@ -320,8 +304,6 @@ final readonly class Registrar
      * @param string|GroupInput|Closure|null $domain
      * @param list<mixed>|Closure $middleware
      * @return array{0:?string,1:?string,2:RawMiddlewareList,3:?string,4:Closure}
-     * @param string|Closure|null $namePrefix
-     * @param ?Closure $callback
      */
     private function normalizeGroupInputs(
         array|string|null $prefix,
@@ -345,7 +327,6 @@ final readonly class Registrar
     /**
      * @param array{0:mixed,1:mixed,2?:mixed} $args
      * @return array{0:string,1:RouteHandler,2:string|RouteOptions|null}
-     * @param string $method
      */
     private function normalizeVerbCallArgs(string $method, array $args): array
     {
@@ -385,7 +366,6 @@ final readonly class Registrar
 
     /**
      * @param list<string> $aliases
-     * @param Route $route
      */
     private function registerRouteAndAliases(Route $route, array $aliases): void
     {
@@ -398,7 +378,6 @@ final readonly class Registrar
     /**
      * @phpstan-param list<RawMiddlewareEntry|AliasSpec> $list
      * @phpstan-return MiddlewareList
-     * @param array $list
      */
     private function resolveAliasMiddleware(array $list): array
     {
@@ -408,8 +387,6 @@ final readonly class Registrar
     /**
      * @param RouteHandler $handler
      * @param string|RouteOptions|null $nameOrOpts
-     * @param HttpMethodEnum $method
-     * @param string $path
      */
     private function verb(
         HttpMethodEnum $method,

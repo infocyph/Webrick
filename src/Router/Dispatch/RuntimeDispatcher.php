@@ -41,8 +41,6 @@ final class RuntimeDispatcher
 
     /**
      * @param array<string,string> $vars
-     * @param ExecutionPlan $plan
-     * @param Request $request
      */
     public function dispatch(ExecutionPlan $plan, Request $request, array $vars): Response
     {
@@ -63,7 +61,6 @@ final class RuntimeDispatcher
 
     /**
      * @param array<string,string> $vars
-     * @param ExecutionPlan $plan
      */
     public function dispatchDirectRouteArgs(ExecutionPlan $plan, array $vars): Response
     {
@@ -87,7 +84,6 @@ final class RuntimeDispatcher
      * request- and middleware-free.
      *
      * @param array<string,string> $vars
-     * @param ExecutionPlan $plan
      */
     public function dispatchWithoutRequest(ExecutionPlan $plan, array $vars): Response
     {
@@ -117,8 +113,6 @@ final class RuntimeDispatcher
 
     /**
      * @param array<string,string> $vars
-     * @param ExecutionPlan $plan
-     * @param Request $request
      */
     private function invokeTerminal(ExecutionPlan $plan, Request $request, array $vars): Response
     {
@@ -146,7 +140,6 @@ final class RuntimeDispatcher
 
     /**
      * @return array<array-key,mixed>|bool|float|int|JsonSerializable|string|null
-     * @param mixed $value
      */
     private function normalizeResponsePayload(mixed $value): array|bool|float|int|JsonSerializable|string|null
     {
@@ -162,7 +155,6 @@ final class RuntimeDispatcher
 
     /**
      * @param array<string,string> $vars @return list<string>
-     * @param ExecutionPlan $plan
      */
     private function orderedRouteArguments(ExecutionPlan $plan, array $vars): array
     {
@@ -224,7 +216,6 @@ final class RuntimeDispatcher
 
     /**
      * @return array<string,string>
-     * @param Request $request
      */
     private function routeVariables(Request $request): array
     {
@@ -245,7 +236,6 @@ final class RuntimeDispatcher
 
     /**
      * @param list<mixed> $explicit @param list<string> $tags @return list<mixed>
-     * @param array $explicit
      */
     private function withTagged(array $explicit, array $tags): array
     {

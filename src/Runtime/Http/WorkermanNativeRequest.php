@@ -8,7 +8,6 @@ final readonly class WorkermanNativeRequest
 {
     /**
      * @return array<string,mixed>
-     * @param object $request
      */
     public static function cookies(object $request): array
     {
@@ -17,7 +16,6 @@ final readonly class WorkermanNativeRequest
 
     /**
      * @return array<string,mixed>
-     * @param object $request
      */
     public static function files(object $request): array
     {
@@ -26,7 +24,6 @@ final readonly class WorkermanNativeRequest
 
     /**
      * @return array<string,string|list<string>>
-     * @param object $request
      */
     public static function headers(object $request): array
     {
@@ -43,7 +40,6 @@ final readonly class WorkermanNativeRequest
 
     /**
      * @return array<string,mixed>
-     * @param object $request
      */
     public static function post(object $request): array
     {
@@ -52,7 +48,6 @@ final readonly class WorkermanNativeRequest
 
     /**
      * @return array<string,mixed>
-     * @param object $request
      */
     public static function query(object $request): array
     {
@@ -68,8 +63,6 @@ final readonly class WorkermanNativeRequest
 
     /**
      * @return array<string,mixed>
-     * @param object $request
-     * @param object $connection
      */
     public static function server(object $request, object $connection): array
     {
@@ -98,9 +91,6 @@ final readonly class WorkermanNativeRequest
 
     /**
      * @param array<string,mixed> $server @param array<string,mixed> $headers
-     * @param array $server
-     * @param string $source
-     * @param string $target
      */
     private static function copyHeader(array &$server, array $headers, string $source, string $target): void
     {
@@ -112,7 +102,6 @@ final readonly class WorkermanNativeRequest
 
     /**
      * @return array<string,mixed>
-     * @param mixed $value
      */
     private static function stringMap(mixed $value): array
     {

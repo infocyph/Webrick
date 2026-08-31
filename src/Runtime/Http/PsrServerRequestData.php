@@ -11,14 +11,12 @@ use Psr\Http\Message\ServerRequestInterface;
 /** PSR-7 server-request extraction used only at interop runtimes. */
 final readonly class PsrServerRequestData
 {
-    /** @param ServerRequestInterface $request */
     public static function body(ServerRequestInterface $request): BodyStream
     {
         return new PsrBodyStreamAdapter($request->getBody());
     }
 
     /**
-     * @param ServerRequestInterface $request
      * @return array<string,list<string>>
      */
     public static function headers(ServerRequestInterface $request): array
@@ -32,7 +30,6 @@ final readonly class PsrServerRequestData
     }
 
     /**
-     * @param ServerRequestInterface $request
      * @return array<string,mixed>
      */
     public static function server(ServerRequestInterface $request): array
@@ -66,7 +63,6 @@ final readonly class PsrServerRequestData
     }
 
     /**
-     * @param mixed $value
      * @return array<string,mixed>
      */
     public static function stringMapResult(mixed $value): array
@@ -76,9 +72,6 @@ final readonly class PsrServerRequestData
 
     /**
      * @param array<string,mixed> $server
-     * @param ServerRequestInterface $request
-     * @param string $name
-     * @param string $target
      */
     private static function copyHeader(array &$server, ServerRequestInterface $request, string $name, string $target): void
     {

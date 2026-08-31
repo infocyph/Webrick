@@ -26,7 +26,6 @@ final class MatcherRouteMetadata
 
     /**
      * @return array<mixed>
-     * @param CompiledRoute $route
      */
     public static function encode(CompiledRoute $route): array
     {

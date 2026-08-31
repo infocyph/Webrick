@@ -24,7 +24,6 @@ final readonly class OpenTelemetryHandler
 
     /**
      * @param Closure(Request):Response $next
-     * @param Request $req
      */
     public function handle(Request $req, Closure $next): Response
     {
@@ -200,8 +199,6 @@ final readonly class OpenTelemetryHandler
 
     /**
      * @param list<mixed> $args
-     * @param object $target
-     * @param string $method
      */
     private function call(object $target, string $method, array $args = []): mixed
     {
@@ -214,8 +211,6 @@ final readonly class OpenTelemetryHandler
 
     /**
      * @param list<mixed> $args
-     * @param object $target
-     * @param string $method
      */
     private function callObject(object $target, string $method, array $args = []): object
     {
@@ -229,8 +224,6 @@ final readonly class OpenTelemetryHandler
 
     /**
      * @param list<mixed> $args
-     * @param string $class
-     * @param string $method
      */
     private function callStatic(string $class, string $method, array $args = []): mixed
     {
@@ -243,8 +236,6 @@ final readonly class OpenTelemetryHandler
 
     /**
      * @param list<mixed> $args
-     * @param string $class
-     * @param string $method
      */
     private function callStaticObject(string $class, string $method, array $args = []): object
     {
@@ -268,7 +259,6 @@ final readonly class OpenTelemetryHandler
 
     /**
      * @return array{0:string,1:string}
-     * @param object $span
      */
     private function extractTraceContext(object $span): array
     {
@@ -282,7 +272,6 @@ final readonly class OpenTelemetryHandler
 
     /**
      * @return array<string,string>
-     * @param Request $req
      */
     private function headersToCarrier(Request $req): array
     {
@@ -324,8 +313,6 @@ final readonly class OpenTelemetryHandler
 
     /**
      * @param bool|int|float|string|array<int|string,mixed>|null $value
-     * @param object $span
-     * @param string $key
      */
     private function setSpanAttribute(object $span, string $key, bool|int|float|string|array|null $value): void
     {

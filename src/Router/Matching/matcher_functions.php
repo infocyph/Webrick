@@ -30,8 +30,6 @@ function matcher_should_warm_opcache(): bool
  * only then atomically replace the active cache file.
  *
  * @param callable(array<mixed>):void $validate
- * @param string $file
- * @param string $php
  */
 function matcher_write_validated_atomic_php_file(string $file, string $php, callable $validate): void
 {
@@ -75,7 +73,6 @@ function matcher_materialize_cached_route(mixed $payload): CompiledRoute
 
 /**
  * @param array<string,array{0:string,1:?string}> $aliasIndex
- * @param CompiledRoute $route
  */
 function matcher_capture_route_alias(array &$aliasIndex, CompiledRoute $route): void
 {
@@ -87,7 +84,6 @@ function matcher_capture_route_alias(array &$aliasIndex, CompiledRoute $route): 
 
 /**
  * @param array<string,true> $requirements
- * @param CompiledRoute $route
  */
 function matcher_capture_middleware_requirements(array &$requirements, CompiledRoute $route): void
 {
@@ -104,7 +100,6 @@ function matcher_capture_middleware_requirements(array &$requirements, CompiledR
 
 /**
  * @return list<string>
- * @param mixed $raw
  */
 function matcher_normalize_middleware_requirements(mixed $raw): array
 {
@@ -128,7 +123,6 @@ function matcher_normalize_middleware_requirements(mixed $raw): array
 
 /**
  * @return array<string,array{0:string,1:?string}>
- * @param mixed $raw
  */
 function matcher_normalize_alias_pairs(mixed $raw): array
 {
@@ -154,7 +148,6 @@ function matcher_normalize_alias_pairs(mixed $raw): array
 
 /**
  * @return array<string,CompiledRoute|array<mixed>>
- * @param mixed $verbs
  */
 function matcher_normalize_compiled_route_map(mixed $verbs): array
 {
@@ -172,9 +165,6 @@ function matcher_normalize_compiled_route_map(mixed $verbs): array
 
 /**
  * @param list<string> $winReserved
- * @param string $cacheDir
- * @param string $hostKey
- * @param string $bucket
  */
 function sharded_matcher_shard_file_path(string $cacheDir, string $hostKey, string $bucket, array $winReserved): string
 {
@@ -188,7 +178,6 @@ function sharded_matcher_shard_file_path(string $cacheDir, string $hostKey, stri
 
 /**
  * @param list<string> $winReserved
- * @param string $value
  */
 function sharded_matcher_sanitize_for_filename(string $value, array $winReserved): string
 {

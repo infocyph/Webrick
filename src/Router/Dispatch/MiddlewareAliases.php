@@ -64,7 +64,6 @@ final class MiddlewareAliases
     /**
      * @param callable(string):bool $supports
      * @param callable(string,string...):(callable|object|string) $resolve
-     * @param ?string $name
      */
     public static function registerResolver(callable $supports, callable $resolve, ?string $name = null): void
     {

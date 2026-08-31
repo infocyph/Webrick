@@ -15,7 +15,6 @@ final class VaryAccumulatorMiddleware
 {
     /**
      * @param Closure(Request):Response $next
-     * @param Request $req
      */
     public function __invoke(Request $req, Closure $next): Response
     {
@@ -67,8 +66,6 @@ final class VaryAccumulatorMiddleware
     }
 
     /**
-     * @param Request $r
-     * @param bool $normalized
      * @return list<string>
      */
     public static function peek(Request $r, bool $normalized = true): array
@@ -140,7 +137,6 @@ final class VaryAccumulatorMiddleware
     }
 
     /**
-     * @param string $line
      * @return list<string>
      */
     private static function splitTokens(string $line): array
@@ -161,8 +157,6 @@ final class VaryAccumulatorMiddleware
     }
 
     /**
-     * @param Request $req
-     * @param Response $resp
      * @return list<string>
      */
     private function inferAutoTokens(Request $req, Response $resp): array

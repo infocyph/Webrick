@@ -53,8 +53,6 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
      * @param array<string,mixed> $query
      * @param array<string,mixed> $post
      * @param array<string,string|list<string>> $headers
-     * @param string $method
-     * @param string $uri
      */
     public static function fake(
         array $query = [],
@@ -107,7 +105,6 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
 
     /**
      * @param list<string> $cidrs
-     * @param ?int $headerFlags
      */
     public static function setTrustedProxies(array $cidrs, ?int $headerFlags = null): void
     {
@@ -162,7 +159,6 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
      * @param array<int,string> $supported
      * @param array<int,string> $sources
      * @return array{0:string,1:string}
-     * @param string $fallback
      */
     public function detectLocale(
         array $supported,
@@ -227,13 +223,7 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
     /** @param string|list<string> $keys */
     public function has(string|array $keys): bool
     {
-        foreach (self::stringList($keys) as $key) {
-            if ($this->data($key) === null) {
-                return false;
-            }
-        }
-
-        return true;
+        return array_all(self::stringList($keys), fn($key) => !($this->data($key) === null));
     }
 
     public function hasFile(string $key): bool
@@ -301,8 +291,6 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
 
     /**
      * @param list<string>|null $supported
-     * @param string $fallback
-     * @param bool $cache
      */
     public function locale(?array $supported = null, string $fallback = 'en', bool $cache = true): string
     {
@@ -545,7 +533,6 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
 
     /**
      * @param list<string> $supported
-     * @param ?string $raw
      */
     private function pickLocale(?string $raw, array $supported): ?string
     {
@@ -584,7 +571,6 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
 
     /**
      * @param list<string> $supported
-     * @param string $fallback
      */
     private function resolveLocaleFromHeader(array $supported, string $fallback): ?string
     {

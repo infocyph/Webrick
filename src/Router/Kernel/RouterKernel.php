@@ -44,14 +44,6 @@ final class RouterKernel
      * @param array<int,mixed> $postGlobal
      * @param array<int,string> $preGlobalTags
      * @param array<int,string> $postGlobalTags
-     * @param LoggerInterface $log
-     * @param MatcherInterface $matcher
-     * @param Closure $register
-     * @param Invoker $invoker
-     * @param bool $invokerOnMiddleware
-     * @param ?ErrorHandler $errorHandler
-     * @param ?Closure $bindUrlServices
-     * @param bool $debug
      */
     public function __construct(
         private readonly LoggerInterface $log,
@@ -90,14 +82,6 @@ final class RouterKernel
      * @param array<int,mixed> $postGlobal
      * @param array<int,string> $preGlobalTags
      * @param array<int,string> $postGlobalTags
-     * @param LoggerInterface $log
-     * @param MatcherInterface $matcher
-     * @param Closure $register
-     * @param Invoker $invoker
-     * @param bool $invokerOnMiddleware
-     * @param ?ErrorHandler $errorHandler
-     * @param ?Closure $bindUrlServices
-     * @param bool $debug
      */
     public static function bootWithRegistrar(
         LoggerInterface $log,
@@ -222,8 +206,6 @@ final class RouterKernel
 
     /**
      * @return Closure(Request, Closure(Request):Response):Response
-     * @param Container $container
-     * @param string $id
      */
     private function lazyTaggedFactoryMiddleware(Container $container, string $id): Closure
     {
@@ -248,7 +230,6 @@ final class RouterKernel
 
     /**
      * @return array{0:CompiledRoute,1:array<string,mixed>}
-     * @param Request $req
      */
     private function matchRoute(Request $req): array
     {

@@ -28,14 +28,6 @@ final readonly class ResponseCacheMiddleware
 
     /**
      * @param list<string> $defaultVary
-     * @param ?CacheItemPoolInterface $store
-     * @param int $ttlSeconds
-     * @param bool $includeQuery
-     * @param int $maxBodyBytes
-     * @param bool $skipWhenPersonalized
-     * @param bool $respectResponseCacheControl
-     * @param bool $avoidSetCookie
-     * @param ?CachePolicy $policy
      */
     public function __construct(
         ?CacheItemPoolInterface $store = null,
@@ -54,7 +46,6 @@ final readonly class ResponseCacheMiddleware
 
     /**
      * @param Closure(Request):Response $next
-     * @param Request $req
      */
     public function __invoke(Request $req, Closure $next): Response
     {
@@ -196,7 +187,6 @@ final readonly class ResponseCacheMiddleware
 
     /**
      * @return array<string,list<string>>
-     * @param mixed $value
      */
     private function normalizeHeaders(mixed $value): array
     {
@@ -205,7 +195,6 @@ final readonly class ResponseCacheMiddleware
 
     /**
      * @return array{s:int,h:array<string,list<string>>,b:string,pv:string,rp:string}
-     * @param Response $response
      */
     private function pack(Response $response): array
     {
@@ -231,7 +220,6 @@ final readonly class ResponseCacheMiddleware
 
     /**
      * @return array<string,string>
-     * @param Request $req
      */
     private function resolveVaryPairs(Request $req): array
     {
@@ -310,8 +298,6 @@ final readonly class ResponseCacheMiddleware
 
     /**
      * @param array<string,mixed> $payload
-     * @param string $key
-     * @param int $ttl
      */
     private function writeCache(string $key, array $payload, int $ttl): void
     {

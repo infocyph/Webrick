@@ -26,8 +26,6 @@ final class Dispatcher
     /**
      * @param array<class-string|object|callable|string> $preGlobalRaw
      * @param array<class-string|object|callable|string> $postGlobalRaw
-     * @param Invoker $invoker
-     * @param bool $useInvoker
      */
     public function __construct(
         private readonly Invoker $invoker,
@@ -38,8 +36,6 @@ final class Dispatcher
 
     /**
      * @param array<string,mixed> $vars
-     * @param CompiledRoute $route
-     * @param Request $request
      */
     public function dispatch(CompiledRoute $route, Request $request, array $vars): Response
     {
@@ -82,8 +78,6 @@ final class Dispatcher
 
     /**
      * @param array<string,mixed> $vars
-     * @param CompiledRoute $route
-     * @param Request $request
      */
     private function attachRouteAttributes(CompiledRoute $route, Request $request, array $vars): Request
     {
@@ -108,7 +102,6 @@ final class Dispatcher
 
     /**
      * @return Closure(Request):Response
-     * @param CompiledRoute $route
      */
     private function buildFinalHandler(CompiledRoute $route): Closure
     {
@@ -170,7 +163,6 @@ final class Dispatcher
 
     /**
      * @return array{0:class-string,1:string}|null
-     * @param mixed $handler
      */
     private function classMethodArrayHandler(mixed $handler): ?array
     {
@@ -189,7 +181,6 @@ final class Dispatcher
 
     /**
      * @param Closure(Request):Response $final
-     * @param CompiledRoute $route
      */
     private function compilePipelineForRoute(CompiledRoute $route, Closure $final): MiddlewarePipeline
     {
@@ -221,7 +212,6 @@ final class Dispatcher
 
     /**
      * @return array{0:list<callable>,1:list<callable>}
-     * @param CompiledRoute $route
      */
     private function filteredGlobalsFor(CompiledRoute $route): array
     {
@@ -297,7 +287,6 @@ final class Dispatcher
 
     /**
      * @param array<string,mixed> $callArgs
-     * @param mixed $handler
      */
     private function invokeRouteHandler(mixed $handler, array $callArgs): mixed
     {
@@ -342,7 +331,6 @@ final class Dispatcher
 
     /**
      * @return array<string,mixed>
-     * @param mixed $value
      */
     private function normalizeNamedArguments(mixed $value): array
     {
@@ -362,7 +350,6 @@ final class Dispatcher
 
     /**
      * @return array<array-key,mixed>|bool|float|int|JsonSerializable|string|null
-     * @param mixed $value
      */
     private function normalizeResponsePayload(mixed $value): array|bool|float|int|JsonSerializable|string|null
     {
@@ -378,7 +365,6 @@ final class Dispatcher
 
     /**
      * @return array{0:class-string,1:string}|null
-     * @param string $handler
      */
     private function parseClassMethodStringHandler(string $handler): ?array
     {
@@ -404,7 +390,6 @@ final class Dispatcher
 
     /**
      * @return array<string,true>
-     * @param CompiledRoute $route
      */
     private function routeMiddlewareClasses(CompiledRoute $route): array
     {
@@ -426,7 +411,6 @@ final class Dispatcher
 
     /**
      * @param array<string,true> $routeClasses
-     * @param mixed $mw
      */
     private function shouldKeepGlobalEntry(mixed $mw, array $routeClasses): bool
     {

@@ -115,7 +115,6 @@ final class CanonicalMatcherIndex
 
     /**
      * @return array<int,array<string,array<string,array{segments:list<array<string,mixed>>,verbs:array<string,CompiledRoute|array<mixed>|string>}>>>
-     * @param mixed $raw
      */
     private function normalizeDynamic(mixed $raw): array
     {
@@ -154,8 +153,6 @@ final class CanonicalMatcherIndex
 
     /**
      * @return list<array<string,mixed>>
-     * @param mixed $raw
-     * @param int $expectedCount
      */
     private function normalizeSegments(mixed $raw, int $expectedCount): array
     {
@@ -197,7 +194,6 @@ final class CanonicalMatcherIndex
 
     /**
      * @return array<string,array<string,CompiledRoute|array<mixed>|string>>
-     * @param mixed $raw
      */
     private function normalizeStatic(mixed $raw): array
     {

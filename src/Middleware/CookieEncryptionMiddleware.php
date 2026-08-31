@@ -165,7 +165,6 @@ final class CookieEncryptionMiddleware
      *
      * @param Closure(Request):Response $next
      * @return Response Response with encrypted Set-Cookie headers.
-     * @param Request $req
      */
     public function __invoke(Request $req, Closure $next): Response
     {
@@ -397,7 +396,6 @@ final class CookieEncryptionMiddleware
 
     /**
      * @param array{mode:string,kid:?int,iv:string,tag:string,ct:string} $frame
-     * @param string $baseName
      */
     private function decryptFrame(string $baseName, array $frame): mixed
     {
@@ -579,7 +577,6 @@ final class CookieEncryptionMiddleware
 
     /**
      * @return list<array{0:int,1:string}>
-     * @param ?int $kid
      */
     private function keysToTry(?int $kid): array
     {
@@ -609,7 +606,6 @@ final class CookieEncryptionMiddleware
 
     /**
      * @return array{mode:string,kid:?int,iv:string,tag:string,ct:string}|null
-     * @param string $cipher
      */
     private function parseCipherFrame(string $cipher): ?array
     {
@@ -687,7 +683,6 @@ final class CookieEncryptionMiddleware
 
     /**
      * @return array{cipher:?string,plain:mixed,hasPlain:bool}
-     * @param string $cipher
      */
     private function resolveCipherInput(string $cipher): array
     {

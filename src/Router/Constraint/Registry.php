@@ -74,7 +74,6 @@ final class Registry
 
     /**
      * @return array<string,string>
-     * @param string $name
      */
     public static function getValidatorSpec(string $name): array
     {
@@ -150,7 +149,6 @@ final class Registry
 
     /**
      * @return array{0:string,1:string}|null
-     * @param string $rule
      */
     private static function splitDelimitedRegex(string $rule): ?array
     {

@@ -17,7 +17,6 @@ final class ShardedCacheGeneration
 
     /**
      * @return array{0:string,1:string}
-     * @param string $cacheDir
      */
     public static function create(string $cacheDir): array
     {
@@ -32,8 +31,6 @@ final class ShardedCacheGeneration
 
     /**
      * @return list<string>
-     * @param string $cacheDir
-     * @param int $version
      */
     public static function middlewareRequirements(string $cacheDir, int $version): array
     {
@@ -55,9 +52,6 @@ final class ShardedCacheGeneration
 
     /**
      * @param list<string> $middleware
-     * @param string $cacheDir
-     * @param int $version
-     * @param string $generation
      */
     public static function publish(string $cacheDir, int $version, string $generation, array $middleware): void
     {
@@ -172,9 +166,6 @@ final class ShardedCacheGeneration
 
     /**
      * @param list<string> $middleware
-     * @param string $cacheDir
-     * @param int $version
-     * @param string $generation
      */
     private static function writeMetadata(string $cacheDir, int $version, string $generation, array $middleware): void
     {

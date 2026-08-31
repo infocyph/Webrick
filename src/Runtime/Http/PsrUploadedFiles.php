@@ -11,7 +11,6 @@ use Psr\Http\Message\UploadedFileInterface;
 final readonly class PsrUploadedFiles
 {
     /**
-     * @param mixed $files
      * @return array<string,UploadedFile|array<array-key,mixed>>
      */
     public static function normalize(mixed $files): array
@@ -40,7 +39,6 @@ final readonly class PsrUploadedFiles
     }
 
     /**
-     * @param mixed $file
      * @return UploadedFile|array<array-key,mixed>|null
      */
     private static function one(mixed $file): UploadedFile|array|null

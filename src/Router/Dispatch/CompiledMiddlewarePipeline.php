@@ -20,8 +20,6 @@ final readonly class CompiledMiddlewarePipeline
 
     /**
      * @param list<mixed> $middleware @param Closure(Request):Response $terminal
-     * @param array $middleware
-     * @param InterMixRuntime $runtime
      */
     public function __construct(array $middleware, Closure $terminal, InterMixRuntime $runtime)
     {
@@ -61,8 +59,6 @@ final readonly class CompiledMiddlewarePipeline
 
     /**
      * @return array{0:Closure(Request,Closure):mixed,1:bool}
-     * @param InterMixRuntime $runtime
-     * @param mixed $descriptor
      */
     private static function compileInvoker(InterMixRuntime $runtime, mixed $descriptor): array
     {

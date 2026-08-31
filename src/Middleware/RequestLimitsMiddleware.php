@@ -22,9 +22,6 @@ final readonly class RequestLimitsMiddleware
 
     /**
      * @param list<string> $bodyLimitVerbs
-     * @param int $maxHeaderBytes
-     * @param int $maxHeaderCount
-     * @param ?int $maxBodyBytes
      */
     public function __construct(
         private int $maxHeaderBytes = 8192,
@@ -57,7 +54,6 @@ final readonly class RequestLimitsMiddleware
 
     /**
      * @param Closure(Request):Response $next
-     * @param Request $req
      */
     public function __invoke(Request $req, Closure $next): Response
     {

@@ -204,8 +204,6 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
 
     /**
      * @return list<array{static:array<mixed>,dynamic:array<mixed>}>
-     * @param string $host
-     * @param string $bucket
      */
     private function loadCandidateGroups(string $host, string $bucket): array
     {
@@ -226,8 +224,6 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
 
     /**
      * @return array{static:array<mixed>,dynamic:array<mixed>}|null
-     * @param string $host
-     * @param string $bucket
      */
     private function loadGroup(string $host, string $bucket): ?array
     {
@@ -266,10 +262,6 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
 
     /**
      * @return int|array{0:int,1:array<string,string>}|MatchOutcome
-     * @param string $method
-     * @param string $host
-     * @param string $path
-     * @param bool $compact
      */
     private function matchCanonical(string $method, string $host, string $path, bool $compact): int|array|MatchOutcome
     {
@@ -361,8 +353,6 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
 
     /**
      * @param array{static:array<mixed>,dynamic:array<mixed>} $group
-     * @param string $host
-     * @param string $bucket
      */
     private function writeGroup(string $host, string $bucket, array $group): void
     {
@@ -377,7 +367,6 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
 
     /**
      * @param array<mixed> $payload
-     * @param string $file
      */
     private function writePayload(string $file, array $payload): void
     {

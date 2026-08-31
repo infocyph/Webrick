@@ -24,7 +24,6 @@ abstract class AbstractMatcher
 
     /**
      * Enable or disable persisted-cache verification at boot.
-     * @param bool $enable
      */
     public function verifyCacheOnLoad(bool $enable = true): static
     {
@@ -35,7 +34,6 @@ abstract class AbstractMatcher
 
     /**
      * Normalize a configured route host once at route-build time.
-     * @param ?string $raw
      */
     protected function canonicalRouteHost(?string $raw): string
     {
@@ -63,7 +61,6 @@ abstract class AbstractMatcher
 
     /**
      * @param array<mixed,mixed> $values
-     * @param int $depth
      */
     protected function exportArray(array $values, int $depth = 0): string
     {

@@ -23,7 +23,6 @@ final readonly class NegotiationMiddleware
      * @param list<string> $produces
      * @param list<string> $charsets
      * @param list<string> $locales
-     * @param string $localeFallback
      */
     public function __construct(
         array $produces = [],
@@ -38,7 +37,6 @@ final readonly class NegotiationMiddleware
 
     /**
      * @param Closure(Request):Response $next
-     * @param Request $req
      */
     public function __invoke(Request $req, Closure $next): Response
     {
@@ -114,7 +112,6 @@ final readonly class NegotiationMiddleware
 
     /**
      * @return array{0:Request,1:string}
-     * @param Request $req
      */
     private function negotiateLocale(Request $req): array
     {
@@ -137,7 +134,6 @@ final readonly class NegotiationMiddleware
      * @param list<string> $produces
      * @param list<string> $charsets
      * @return array{0:Request,1:string,2:?string}
-     * @param Request $req
      */
     private function negotiateTypeAndCharset(Request $req, array $produces, array $charsets): array
     {
@@ -180,7 +176,6 @@ final readonly class NegotiationMiddleware
 
     /**
      * @param list<string> $candidates
-     * @param ContentNegotiator $negotiator
      */
     private function pickCharset(ContentNegotiator $negotiator, array $candidates): ?string
     {
@@ -195,7 +190,6 @@ final readonly class NegotiationMiddleware
 
     /**
      * @return array{0:list<string>,1:list<string>}
-     * @param Request $req
      */
     private function resolveRouteOverrides(Request $req): array
     {

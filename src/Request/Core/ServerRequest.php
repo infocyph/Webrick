@@ -67,11 +67,6 @@ class ServerRequest extends Message
      * @param array<string,mixed> $files
      * @param array<string,mixed>|null $query
      * @param array<string,mixed> $cookies
-     * @param string $method
-     * @param Uri|string $uri
-     * @param ?BodyStream $body
-     * @param string $httpVer
-     * @param ?string $requestTarget
      */
     public function __construct(
         string $method,
@@ -407,8 +402,6 @@ class ServerRequest extends Message
 
     /**
      * @param array<string,mixed> $server
-     * @param string $key
-     * @param string $default
      */
     private static function serverString(array $server, string $key, string $default = ''): string
     {
@@ -521,7 +514,6 @@ class ServerRequest extends Message
 /**
  * @param array<string,mixed>|null $query
  * @return array<string,mixed>
- * @param Uri $uri
  */
 function server_request_query_parameters(?array $query, Uri $uri): array
 {

@@ -37,10 +37,6 @@ class Response
 
     /**
      * @param array<string,string|list<string>> $headers
-     * @param int $statusCode
-     * @param BodyStream|string|null $body
-     * @param string $protocolVersion
-     * @param ?string $reasonPhrase
      */
     public function __construct(
         private int $statusCode = StatusEnum::OK->value,
@@ -55,9 +51,6 @@ class Response
 
     /**
      * @param array<string,string|list<string>> $headers
-     * @param string|Stream $file
-     * @param string $name
-     * @param ?string $mime
      */
     public static function attachment(
         string|Stream $file,
@@ -82,9 +75,6 @@ class Response
     /**
      * @param array<array-key,mixed>|JsonSerializable|string|int|float|bool|null $data
      * @param array<string,string|list<string>> $headers
-     * @param Request $r
-     * @param int $status
-     * @param int $flags
      * @param positive-int $depth
      */
     public static function auto(
@@ -126,8 +116,6 @@ class Response
 
     /**
      * @param array<string,string|list<string>> $headers
-     * @param string $content
-     * @param int $status
      */
     public static function create(string $content = '', int $status = StatusEnum::OK->value, array $headers = []): self
     {
@@ -136,9 +124,6 @@ class Response
 
     /**
      * @param array<string,string|list<string>> $headers
-     * @param string|Stream $file
-     * @param ?string $name
-     * @param ?string $mime
      */
     public static function download(
         string|Stream $file,
@@ -153,7 +138,6 @@ class Response
 
     /**
      * @param array<string,string|list<string>> $headers
-     * @param int $code
      */
     public static function empty(int $code, array $headers = []): self
     {
@@ -164,9 +148,6 @@ class Response
 
     /**
      * @param array<string,string|list<string>> $headers
-     * @param string|Stream $file
-     * @param ?string $name
-     * @param ?string $mime
      */
     public static function inline(
         string|Stream $file,
@@ -192,8 +173,6 @@ class Response
     /**
      * @param array<array-key,mixed>|JsonSerializable|string|int|float|bool|null $data
      * @param array<string,string|list<string>> $headers
-     * @param int $status
-     * @param int $flags
      * @param positive-int $depth
      */
     public static function json(
@@ -221,8 +200,6 @@ class Response
 
     /**
      * @param array<string,string|list<string>> $headers
-     * @param string $msg
-     * @param int $code
      */
     public static function plaintext(string $msg, int $code = StatusEnum::BAD_REQUEST->value, array $headers = []): self
     {
@@ -233,10 +210,6 @@ class Response
 
     /**
      * @param array<string,string> $headers
-     * @param Request $req
-     * @param string $absolutePath
-     * @param ?string $name
-     * @param ?string $mime
      */
     public static function rangedDownload(
         Request $req,
@@ -253,9 +226,6 @@ class Response
 
     /**
      * @param array<string,string> $headers
-     * @param Request $req
-     * @param string $absolutePath
-     * @param ?string $mime
      */
     public static function rangedFile(
         Request $req,
@@ -286,7 +256,6 @@ class Response
     /**
      * @param callable(): (iterable<string>|string)|iterable<string> $producer
      * @param array<string,string|list<string>> $headers
-     * @param int $status
      */
     public static function stream(
         callable|iterable $producer,
@@ -307,9 +276,6 @@ class Response
 
     /**
      * @param array<string,string|list<string>> $headers
-     * @param string|Stream $file
-     * @param ?string $name
-     * @param string $mime
      */
     public static function streamDownload(
         string|Stream $file,
@@ -480,8 +446,6 @@ class Response
 
     /**
      * @return array<string,string>
-     * @param string $name
-     * @param string $mime
      */
     private static function baseDownloadHeaders(string $name, string $mime): array
     {
@@ -503,7 +467,6 @@ class Response
 
     /**
      * @return array{0:?int,1:?int}
-     * @param string|Stream $file
      */
     private static function metaFor(string|Stream $file): array
     {
@@ -554,8 +517,6 @@ class Response
     /**
      * @param array<string,string> $target
      * @param array<string,string|list<string>> $caller
-     * @param string $name
-     * @param ?string $value
      */
     private static function putIfAbsent(array &$target, string $name, ?string $value, array $caller): void
     {

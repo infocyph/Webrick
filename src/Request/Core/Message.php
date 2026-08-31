@@ -18,8 +18,6 @@ abstract class Message
 
     /**
      * @param array<string,string|array<int,string>> $headers
-     * @param ?BodyStream $body
-     * @param string $protocol
      */
     protected function __construct(
         array $headers = [],
@@ -39,7 +37,6 @@ abstract class Message
 
     /**
      * @return list<string>
-     * @param string $name
      */
     public function getHeader(string $name): array
     {
@@ -69,7 +66,6 @@ abstract class Message
 
     /**
      * @param string|array<int,string> $value
-     * @param string $name
      */
     public function withAddedHeader(string $name, string|array $value): static
     {
@@ -99,7 +95,6 @@ abstract class Message
 
     /**
      * @param string|array<int,string> $value
-     * @param string $name
      */
     public function withHeader(string $name, string|array $value): static
     {
@@ -166,7 +161,6 @@ abstract class Message
 
     /**
      * @return list<string>
-     * @param mixed $value
      */
     private function normalizeHeaderValues(mixed $value): array
     {
@@ -191,7 +185,6 @@ abstract class Message
 
     /**
      * @param list<string> $value
-     * @param string $name
      */
     private function withMappedHeaderValue(string $name, array $value): static
     {

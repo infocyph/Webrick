@@ -203,7 +203,6 @@ final class Stream implements BodyStream
 
     /**
      * @return resource
-     * @param SplFileObject $file
      */
     private static function openFileObject(SplFileObject $file)
     {
@@ -220,7 +219,6 @@ final class Stream implements BodyStream
 
     /**
      * @return resource
-     * @param string $payload
      */
     private static function openMemory(string $payload)
     {

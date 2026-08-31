@@ -41,10 +41,6 @@ class HttpException extends \RuntimeException implements HttpExceptionInterface
 
     /**
      * @param array<string,string> $headers
-     * @param int $statusCode
-     * @param string $message
-     * @param ?string $publicMessage
-     * @param ?Throwable $previous
      */
     public function __construct(
         private readonly int $statusCode,
@@ -65,7 +61,6 @@ class HttpException extends \RuntimeException implements HttpExceptionInterface
 
     /**
      * @param list<mixed> $args
-     * @param string $method
      */
     public static function __callStatic(string $method, array $args): self
     {
@@ -104,8 +99,6 @@ class HttpException extends \RuntimeException implements HttpExceptionInterface
 
     /**
      * @param array<string,string> $headers
-     * @param StatusEnum $status
-     * @param string $message
      */
     private static function fromStatus(StatusEnum $status, string $message, array $headers = []): self
     {

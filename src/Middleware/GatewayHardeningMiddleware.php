@@ -52,10 +52,6 @@ final class GatewayHardeningMiddleware
      * @param list<string> $trustedHosts
      * @param list<string> $redirectAllowedHosts
      * @param list<string> $trustedClientIpHeaders Explicit vendor client-IP header names.
-     * @param ?int $forwardedHeaderMask
-     * @param bool $enforceHttps
-     * @param int $httpsPort
-     * @param bool $stripHopByHop
      */
     public function __construct(
         private readonly array $trustedProxyCidrs = [],
@@ -75,7 +71,6 @@ final class GatewayHardeningMiddleware
 
     /**
      * @param Closure(Request):Response $next
-     * @param Request $req
      */
     public function __invoke(Request $req, Closure $next): Response
     {
@@ -157,7 +152,6 @@ final class GatewayHardeningMiddleware
 
     /**
      * @param array<string> $cidrs
-     * @param ?string $ip
      */
     private function cidrHit(?string $ip, array $cidrs): bool
     {
@@ -221,7 +215,6 @@ final class GatewayHardeningMiddleware
 
     /**
      * @return list<string>
-     * @param string $line
      */
     private function parseConnectionTokens(string $line): array
     {

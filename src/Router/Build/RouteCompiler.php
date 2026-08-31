@@ -23,9 +23,6 @@ final readonly class RouteCompiler
      * @param array<int,mixed> $postGlobal
      * @param array<int,string> $preGlobalTags
      * @param array<int,string> $postGlobalTags
-     * @param Closure $register
-     * @param string $environment
-     * @param string $configFingerprint
      */
     public function compile(
         Closure $register,

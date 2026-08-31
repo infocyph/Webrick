@@ -14,8 +14,6 @@ final class CliEmitter implements EmitterInterface
 {
     /**
      * Dumps an HTTP-like envelope to STDOUT.
-     * @param Response $response
-     * @param ?Request $request
      */
     // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundInImplementedInterfaceAfterLastUsed -- Required by EmitterInterface.
     public function emit(

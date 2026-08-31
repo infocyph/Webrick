@@ -39,7 +39,6 @@ final class UploadedFile
      *   name?: string|null,
      *   type?: string|null
      * } $spec
-     * @param array $spec
      */
     public static function fromSpec(array $spec): self
     {

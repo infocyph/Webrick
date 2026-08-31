@@ -78,8 +78,6 @@ final class HeaderPolicy
 
     /**
      * @return list<string>
-     * @param string $lowerName
-     * @param string $csv
      */
     private static function normalizeCsv(string $lowerName, string $csv): array
     {

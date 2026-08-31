@@ -29,9 +29,6 @@ final readonly class RoadRunnerRuntimeAdapter implements RuntimeAdapterInterface
 
     /**
      * @param callable(int,string|Generator,array<string,list<string>>,bool):void $respond
-     * @param bool $sendfileMiddleware
-     * @param bool $transportCompression
-     * @param bool $transportRequestLimits
      */
     public function __construct(
         callable $respond,

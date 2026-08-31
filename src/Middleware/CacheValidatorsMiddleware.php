@@ -20,9 +20,6 @@ final readonly class CacheValidatorsMiddleware
 {
     /**
      * @param null|Closure(Request):array{0:string|null,1:int|null} $metaProvider
-     * @param bool $autoEtagWhenMissing
-     * @param bool $includeQueryInEtag
-     * @param int $autoEtagMinSize
      */
     public function __construct(
         private ?Closure $metaProvider = null,
@@ -33,7 +30,6 @@ final readonly class CacheValidatorsMiddleware
 
     /**
      * @param Closure(Request):Response $next
-     * @param Request $req
      */
     public function __invoke(Request $req, Closure $next): Response
     {
@@ -81,7 +77,6 @@ final readonly class CacheValidatorsMiddleware
 
     /**
      * @param array<string,string> $headers
-     * @param Response $resp
      */
     private function ensureValidatorHeaders(Response $resp, array $headers): Response
     {
@@ -96,7 +91,6 @@ final readonly class CacheValidatorsMiddleware
 
     /**
      * @return array{0:ConditionalValidator,1:Outcome}
-     * @param Request $req
      */
     private function evaluatePreconditions(Request $req): array
     {

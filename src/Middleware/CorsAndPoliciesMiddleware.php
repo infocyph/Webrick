@@ -24,13 +24,6 @@ final readonly class CorsAndPoliciesMiddleware
      * @param string|list<string> $exposeHeaders
      * @param list<string> $acceptCh
      * @param list<string> $timingAllowOrigins
-     * @param string $methods
-     * @param int $maxAgeSeconds
-     * @param bool $allowCredentials
-     * @param bool $allowPrivateNetwork
-     * @param bool $hsts
-     * @param bool $hstsIncludeSubdomains
-     * @param ?string $csp
      */
     public function __construct(
         array $origins = [],
@@ -66,7 +59,6 @@ final readonly class CorsAndPoliciesMiddleware
 
     /**
      * @param Closure(Request):Response $next
-     * @param Request $req
      */
     public function __invoke(Request $req, Closure $next): Response
     {

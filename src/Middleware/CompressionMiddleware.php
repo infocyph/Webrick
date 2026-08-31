@@ -45,14 +45,6 @@ final readonly class CompressionMiddleware
      * @param list<string> $prefOrder
      * @param list<string> $excludeTypes
      * @param list<string> $onlyTypes
-     * @param int $minBytes
-     * @param string $etagMode
-     * @param int $gzipLevel
-     * @param int $brotliQuality
-     * @param int $zstdLevel
-     * @param string $etagDeriveSalt
-     * @param int $maxBufferBytes
-     * @param bool $forceAddVary
      */
     public function __construct(
         private int $minBytes = 1400,
@@ -70,7 +62,6 @@ final readonly class CompressionMiddleware
 
     /**
      * @param Closure(Request):Response $next
-     * @param Request $req
      */
     public function __invoke(Request $req, Closure $next): Response
     {
@@ -286,7 +277,6 @@ final readonly class CompressionMiddleware
 
     /**
      * @return array<string,float>
-     * @param string $header
      */
     private function parseAcceptEncoding(string $header): array
     {
@@ -314,7 +304,6 @@ final readonly class CompressionMiddleware
 
     /**
      * @return array{0:string,1:bool}
-     * @param string $etag
      */
     private function parseEtag(string $etag): array
     {

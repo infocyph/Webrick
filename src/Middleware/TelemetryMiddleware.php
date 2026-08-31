@@ -51,7 +51,6 @@ final readonly class TelemetryMiddleware
 
     /**
      * @param Closure(Request):Response $next
-     * @param Request $req
      */
     public function __invoke(Request $req, Closure $next): Response
     {
@@ -131,8 +130,6 @@ final readonly class TelemetryMiddleware
 
     /**
      * @param array{trace_id:string,parent_span_id:string,flags:string,tracestate:string,span_id:string} $trace
-     * @param Response $resp
-     * @param ?string $requestId
      */
     private function addCorrelationHeaders(Response $resp, array $trace, ?string $requestId): Response
     {
@@ -178,7 +175,6 @@ final readonly class TelemetryMiddleware
 
     /**
      * @param Closure(Request):Response $next
-     * @param Request $req
      */
     private function delegateToOtel(Request $req, Closure $next): Response
     {
@@ -197,7 +193,6 @@ final readonly class TelemetryMiddleware
 
     /**
      * @return array{0:string,1:string,2:string,3:string}
-     * @param Request $req
      */
     private function extractTraceContext(Request $req): array
     {
@@ -224,7 +219,6 @@ final readonly class TelemetryMiddleware
 
     /**
      * @param Closure(Request):Response $next
-     * @param Request $req
      */
     private function handleMinimal(Request $req, Closure $next): Response
     {
@@ -264,7 +258,6 @@ final readonly class TelemetryMiddleware
 
     /**
      * @return array{0:Request,1:array{trace_id:string,parent_span_id:string,flags:string,tracestate:string,span_id:string},2:?string}
-     * @param Request $req
      */
     private function prepareContext(Request $req): array
     {

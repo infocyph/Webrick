@@ -67,7 +67,6 @@ enum HttpMethodEnum: string
 
     /**
      * Known and extension methods share the same canonical uppercase representation.
-     * @param string $verb
      */
     public static function normalize(string $verb): string
     {

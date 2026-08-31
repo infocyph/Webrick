@@ -41,8 +41,6 @@ abstract class BaseEmitter implements EmitterInterface
      * of at most {@see CHUNK_SIZE} bytes until the stream is exhausted.
      *
      * If the response body is not a stream, it will be emitted in its entirety.
-     * @param Response $response
-     * @param ?Request $request
      */
     public function emit(Response $response, ?Request $request = null): void
     {
@@ -85,7 +83,6 @@ abstract class BaseEmitter implements EmitterInterface
      * Otherwise, it returns true.
      *
      * @return bool True if the current request allows a response body, false otherwise.
-     * @param Response $response
      */
     protected function allowsBodyForCurrentRequest(Response $response): bool
     {
@@ -107,7 +104,6 @@ abstract class BaseEmitter implements EmitterInterface
      * write each chunk to the output stream, and then call flush on
      * the output stream to ensure that the data is written to the
      * underlying stream.
-     * @param BodyStream $body
      */
     protected function emitFromBody(BodyStream $body): void
     {
@@ -130,7 +126,6 @@ abstract class BaseEmitter implements EmitterInterface
      * This method is designed to be used with small files, as it will
      * read the file in chunks and write them to the output stream
      * directly, without storing the entire file in memory.
-     * @param BodyStream $body
      */
     protected function emitSmall(BodyStream $body): void
     {
@@ -152,7 +147,6 @@ abstract class BaseEmitter implements EmitterInterface
      * This method is designed to be used with large files, as it will
      * read the file in chunks and write them to the output stream
      * directly, without storing the entire file in memory.
-     * @param Response $response
      */
     protected function emitStreaming(Response $response): void
     {
@@ -243,8 +237,6 @@ abstract class BaseEmitter implements EmitterInterface
      *
      * A small temporary stream is a stream that is stored in memory and is smaller than the chunk size (CHUNK_SIZE).
      * If the body stream is seekable, it will be rewound to the beginning before being emitted.
-     * @param BodyStream $body
-     * @param ?int $size
      */
     protected function isSmallTempStream(BodyStream $body, ?int $size): bool
     {
@@ -297,8 +289,6 @@ abstract class BaseEmitter implements EmitterInterface
      *
      * @param int|null $size the known size of the response body, or null if unknown
      * @param bool $isStreaming whether the response body is a streaming resource
-     * @param Response $response
-     * @param ?bool $allowsBody
      */
     protected function sendHeadersCommon(
         Response $response,
@@ -343,8 +333,6 @@ abstract class BaseEmitter implements EmitterInterface
      * This method is a low-level output method that should only be used by
      * advanced users who know what they are doing. Most users should use
      * the higher-level `withHeader()` method instead.
-     * @param string $name
-     * @param string $value
      */
     protected function sendRawHeader(string $name, string $value): void
     {
@@ -375,7 +363,6 @@ abstract class BaseEmitter implements EmitterInterface
      *
      * @param string $name The key to retrieve from $_SERVER.
      * @return mixed The value associated with the key or the entire $_SERVER array if `$name` is `null`.
-     * @param string $name
      */
     protected function serverVar(string $name): mixed
     {
@@ -388,7 +375,6 @@ abstract class BaseEmitter implements EmitterInterface
      * This method is a low-level response method that should only be used by
      * advanced users who know what they are doing. Most users should use
      * the higher-level `withStatus()` method instead.
-     * @param int $code
      */
     protected function setStatusCode(int $code): void
     {
@@ -403,8 +389,6 @@ abstract class BaseEmitter implements EmitterInterface
      * Otherwise, it returns true.
      *
      * @return bool True if the current request allows a response body, false otherwise.
-     * @param Response $response
-     * @param ?Request $request
      */
     protected function shouldEmitBody(Response $response, ?Request $request = null): bool
     {
@@ -475,7 +459,6 @@ abstract class BaseEmitter implements EmitterInterface
      *
      * This method should never be overridden by subclasses, as it is
      * the lowest-level output method that must be used by all emitters.
-     * @param string $chunk
      */
     protected function write(string $chunk): void
     {

@@ -95,7 +95,6 @@ final class Collection implements IteratorAggregate
 
     /**
      * @param string[] $aliases
-     * @param RouteInterface $route
      */
     public function addAliases(RouteInterface $route, array $aliases): void
     {
@@ -161,7 +160,6 @@ final class Collection implements IteratorAggregate
 
     /**
      * @return list<RouteInterface>
-     * @param callable|string $handler
      */
     public function findAllByHandler(callable|string $handler): array
     {
@@ -233,7 +231,6 @@ final class Collection implements IteratorAggregate
 
     /**
      * @return array{0:string,1:?string}|null
-     * @param string $name
      */
     public function resolveAlias(string $name): ?array
     {

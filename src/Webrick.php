@@ -19,7 +19,6 @@ final class Webrick
 
     /**
      * @param array<int,class-string<ServiceProviderInterface>|ServiceProviderInterface> $providers
-     * @param ContainerBuilder $builder
      */
     public static function contributeTo(ContainerBuilder $builder, array $providers = []): ContainerBuilder
     {
@@ -40,7 +39,6 @@ final class Webrick
      * path and must receive a host-selected compiled InterMix runtime.
      *
      * @param array<int,class-string<ServiceProviderInterface>|ServiceProviderInterface> $providers
-     * @param string $environment
      */
     public static function standaloneDevelopment(string $environment = 'dev', array $providers = []): ContainerBuilder
     {

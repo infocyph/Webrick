@@ -53,7 +53,6 @@ final class CompiledRouteCachePayload
     /**
      * @param callable-string $call
      * @return array{type:'var',name:string,call:callable-string}
-     * @param string $name
      */
     private static function callSegment(string $name, string $call): array
     {
@@ -62,7 +61,6 @@ final class CompiledRouteCachePayload
 
     /**
      * @return CorsPayload|null
-     * @param mixed $value
      */
     private static function cors(mixed $value): ?array
     {
@@ -86,7 +84,6 @@ final class CompiledRouteCachePayload
 
     /**
      * @return array{0:string,1:string}|string
-     * @param mixed $value
      */
     private static function handler(mixed $value): array|string
     {
@@ -111,7 +108,6 @@ final class CompiledRouteCachePayload
 
     /**
      * @return array{type:'lit',val:string}
-     * @param string $value
      */
     private static function literalSegment(string $value): array
     {
@@ -135,7 +131,6 @@ final class CompiledRouteCachePayload
 
     /**
      * @return string|list<string>|null
-     * @param mixed $value
      */
     private static function nullableStringList(mixed $value): array|string|null
     {
@@ -148,7 +143,6 @@ final class CompiledRouteCachePayload
 
     /**
      * @return ProducesPayload|null
-     * @param mixed $value
      */
     private static function produces(mixed $value): ?array
     {
@@ -174,8 +168,6 @@ final class CompiledRouteCachePayload
 
     /**
      * @return array{type:'var',name:string,regex:string}
-     * @param string $name
-     * @param string $regex
      */
     private static function regexSegment(string $name, string $regex): array
     {
@@ -184,7 +176,6 @@ final class CompiledRouteCachePayload
 
     /**
      * @return list<SegmentSpec>
-     * @param mixed $value
      */
     private static function segments(mixed $value): array
     {
@@ -239,7 +230,6 @@ final class CompiledRouteCachePayload
 
     /**
      * @return list<string>
-     * @param mixed $value
      */
     private static function stringList(mixed $value): array
     {

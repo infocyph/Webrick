@@ -21,9 +21,6 @@ final readonly class SecurityPolicyMiddleware
     /**
      * @param list<string> $acceptCh
      * @param list<string> $timingAllowOrigins
-     * @param bool $hsts
-     * @param bool $hstsIncludeSubdomains
-     * @param ?string $csp
      */
     public function __construct(
         private bool $hsts = true,
@@ -42,7 +39,6 @@ final readonly class SecurityPolicyMiddleware
 
     /**
      * @param Closure(Request):Response $next
-     * @param Request $req
      */
     public function __invoke(Request $req, Closure $next): Response
     {

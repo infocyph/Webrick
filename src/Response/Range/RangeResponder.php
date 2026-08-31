@@ -17,9 +17,6 @@ final readonly class RangeResponder
 {
     /**
      * @param array<string,string> $headers
-     * @param Request $req
-     * @param string $absolutePath
-     * @param string $mediaType
      */
     public static function forFile(
         Request $req,
@@ -85,11 +82,6 @@ final readonly class RangeResponder
 
     /**
      * @param array<string,string> $headers
-     * @param mixed $source
-     * @param int $totalLength
-     * @param RangeParseResult|SimpleRange|null $range
-     * @param string $mediaType
-     * @param ?Request $req
      */
     public static function fromSeekable(
         mixed $source,

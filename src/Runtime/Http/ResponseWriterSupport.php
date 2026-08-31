@@ -27,8 +27,6 @@ final readonly class ResponseWriterSupport
 
     /**
      * @return iterable<string>
-     * @param Response $response
-     * @param int $chunkSize
      */
     public static function chunks(Response $response, int $chunkSize = 65_536): iterable
     {
@@ -95,8 +93,6 @@ final readonly class ResponseWriterSupport
 
     /**
      * @return Generator<array{0:string,1:string}>
-     * @param Response $response
-     * @param bool $http2
      */
     public static function headers(Response $response, bool $http2 = false): Generator
     {

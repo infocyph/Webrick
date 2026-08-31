@@ -79,7 +79,6 @@ final readonly class RequestContext
 
     /**
      * @return array<string,string>
-     * @param bool $includeRequestId
      */
     public function propagationHeaders(bool $includeRequestId = true): array
     {

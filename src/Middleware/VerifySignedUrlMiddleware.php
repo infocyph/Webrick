@@ -18,8 +18,6 @@ final readonly class VerifySignedUrlMiddleware
     /**
      * @param array<string,mixed>|list<string>|SignedUrlConfig|string $config
      * @param list<string> $ignoredQueryParams
-     * @param int|string|null $leeway
-     * @param ?string $payloadMode
      */
     public function __construct(
         array|SignedUrlConfig|string $config,
@@ -32,7 +30,6 @@ final readonly class VerifySignedUrlMiddleware
 
     /**
      * @param Closure(Request):Response $next
-     * @param Request $request
      */
     public function __invoke(Request $request, Closure $next): Response
     {
@@ -75,7 +72,6 @@ final readonly class VerifySignedUrlMiddleware
 
     /**
      * @param array<string,mixed> $query
-     * @param Request $request
      */
     private function buildPayload(Request $request, array $query): string
     {
@@ -109,8 +105,6 @@ final readonly class VerifySignedUrlMiddleware
     /**
      * @param array<string,mixed>|list<string>|SignedUrlConfig|string $config
      * @param list<string> $ignoredQueryParams
-     * @param int|string|null $leeway
-     * @param ?string $payloadMode
      */
     private function normalizeConfig(
         array|SignedUrlConfig|string $config,

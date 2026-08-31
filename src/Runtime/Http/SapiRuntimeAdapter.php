@@ -42,8 +42,6 @@ final readonly class SapiRuntimeAdapter implements RuntimeAdapterInterface
 
     /**
      * Resolve the synchronous SAPI once during application bootstrap.
-     * @param bool $transportCompression
-     * @param bool $transportRequestLimits
      */
     public static function current(
         bool $transportCompression = false,
@@ -135,7 +133,6 @@ final readonly class SapiRuntimeAdapter implements RuntimeAdapterInterface
 
     /**
      * @param resource $output
-     * @param string $chunk
      */
     private static function writeChunk(mixed $output, string $chunk): void
     {

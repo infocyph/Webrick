@@ -48,7 +48,6 @@ final class RequestHeaders
 
     /**
      * @return ($key is null ? AcceptMap : list<string>)
-     * @param ?string $key
      */
     public function accept(?string $key = null): array
     {
@@ -199,7 +198,6 @@ final class RequestHeaders
 
     /**
      * @return list<string>
-     * @param string $value
      */
     private function csv(string $value): array
     {
@@ -229,7 +227,6 @@ final class RequestHeaders
 
     /**
      * @return list<string>
-     * @param string $raw
      */
     private function parseAccept(string $raw): array
     {

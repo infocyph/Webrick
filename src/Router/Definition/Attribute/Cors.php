@@ -17,10 +17,6 @@ final readonly class Cors
      * @param list<string> $origins
      * @param string|list<string>|null $headers
      * @param string|list<string>|null $exposeHeaders
-     * @param ?string $methods
-     * @param ?int $maxAgeSeconds
-     * @param ?bool $allowCredentials
-     * @param ?bool $allowPrivateNetwork
      */
     public function __construct(
         public array $origins,

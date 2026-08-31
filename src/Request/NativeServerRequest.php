@@ -151,7 +151,6 @@ class NativeServerRequest extends ServerRequest
 
     /**
      * @param array<string,mixed> $map
-     * @param ?string $key
      */
     private static function valueFromMap(array $map, ?string $key): mixed
     {

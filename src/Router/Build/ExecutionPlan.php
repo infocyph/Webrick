@@ -13,11 +13,6 @@ final readonly class ExecutionPlan
     /**
      * @param list<mixed> $middleware
      * @param list<string> $routeArguments
-     * @param string $routeId
-     * @param ExecutionKind $kind
-     * @param ExecutionKind $terminalKind
-     * @param mixed $handler
-     * @param int $capabilities
      */
     public function __construct(
         public string $routeId,

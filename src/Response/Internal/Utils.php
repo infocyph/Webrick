@@ -40,7 +40,6 @@ final class Utils
     /**
      * @param array<mixed> $headers
      * @return array<string, string|list<string>>
-     * @param bool $wrapSingleValues
      */
     public static function normalizeHeaderMap(array $headers, bool $wrapSingleValues = false): array
     {

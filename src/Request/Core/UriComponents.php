@@ -9,7 +9,6 @@ final class UriComponents
 {
     /**
      * @param array<string,mixed> $server
-     * @param ?int $trustedProxyFlags
      */
     public static function fromServerParams(array $server, ?int $trustedProxyFlags = null): Uri
     {

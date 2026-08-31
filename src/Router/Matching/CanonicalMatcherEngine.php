@@ -21,8 +21,6 @@ final class CanonicalMatcherEngine
     /**
      * @param list<array{static:array<string,array<string,CompiledRoute|array<mixed>>>,dynamic:array<mixed>}> $hostGroups
      * @param list<array{static:array<string,array<string,CompiledRoute|array<mixed>>>,dynamic:array<mixed>}> $wildcardGroups
-     * @param string $method
-     * @param string $path
      */
     public function match(array $hostGroups, array $wildcardGroups, string $method, string $path): MatchOutcome
     {
@@ -36,8 +34,6 @@ final class CanonicalMatcherEngine
      * @param list<array{static:array<string,array<string,CompiledRoute|array<mixed>>>,dynamic:array<mixed>}> $hostGroups
      * @param list<array{static:array<string,array<string,CompiledRoute|array<mixed>>>,dynamic:array<mixed>}> $wildcardGroups
      * @return CompiledMatch
-     * @param string $method
-     * @param string $path
      */
     public function matchCompiled(array $hostGroups, array $wildcardGroups, string $method, string $path): int|array|MatchOutcome
     {
@@ -47,8 +43,6 @@ final class CanonicalMatcherEngine
     /**
      * @param array{static:array<string,array<string,CompiledRoute|array<mixed>>>,dynamic:array<mixed>}|null $hostGroup
      * @param array{static:array<string,array<string,CompiledRoute|array<mixed>>>,dynamic:array<mixed>}|null $wildcardGroup
-     * @param string $method
-     * @param string $path
      */
     public function matchSingle(
         ?array $hostGroup,
@@ -66,8 +60,6 @@ final class CanonicalMatcherEngine
      * @param array{static:array<string,array<string,CompiledRoute|array<mixed>>>,dynamic:array<mixed>}|null $hostGroup
      * @param array{static:array<string,array<string,CompiledRoute|array<mixed>>>,dynamic:array<mixed>}|null $wildcardGroup
      * @return CompiledMatch
-     * @param string $method
-     * @param string $path
      */
     public function matchSingleCompiled(
         ?array $hostGroup,
@@ -80,7 +72,6 @@ final class CanonicalMatcherEngine
 
     /**
      * @param array<string,bool> $allowed
-     * @param string $method
      */
     private static function missOutcome(string $method, array $allowed): MatchOutcome
     {
@@ -110,7 +101,6 @@ final class CanonicalMatcherEngine
 
     /**
      * @return list<string>
-     * @param string $path
      */
     private static function segments(string $path): array
     {
@@ -125,7 +115,6 @@ final class CanonicalMatcherEngine
 
     /**
      * @param array<string,bool> $allowed
-     * @param array $verbs
      */
     private function addAllowed(array $verbs, array &$allowed): void
     {
@@ -142,9 +131,6 @@ final class CanonicalMatcherEngine
     /**
      * @param array<string,string> $params
      * @return int|array{0:int,1:array<string,string>}|MatchOutcome
-     * @param mixed $value
-     * @param bool $headFallback
-     * @param bool $compact
      */
     private function found(mixed $value, array $params, bool $headFallback, bool $compact): int|array|MatchOutcome
     {
@@ -162,8 +148,6 @@ final class CanonicalMatcherEngine
      * @param list<string> $segments
      * @param array<string,bool> $allowed
      * @return CompiledMatch|null
-     * @param string $method
-     * @param bool $compact
      */
     private function matchDynamicEntries(
         array $entries,
@@ -195,9 +179,6 @@ final class CanonicalMatcherEngine
      * @param list<string> $segments
      * @param array<string,bool> $allowed
      * @return CompiledMatch|null
-     * @param string $method
-     * @param string $prefix
-     * @param bool $compact
      */
     private function matchDynamicGroup(
         array $group,
@@ -234,9 +215,6 @@ final class CanonicalMatcherEngine
      * @param list<array{static:array<string,array<string,CompiledRoute|array<mixed>>>,dynamic:array<mixed>}> $hostGroups
      * @param list<array{static:array<string,array<string,CompiledRoute|array<mixed>>>,dynamic:array<mixed>}> $wildcardGroups
      * @return CompiledMatch
-     * @param string $method
-     * @param string $path
-     * @param bool $compact
      */
     private function matchGroups(
         array $hostGroups,
@@ -325,9 +303,6 @@ final class CanonicalMatcherEngine
      * @param array{static:array<string,array<string,CompiledRoute|array<mixed>>>,dynamic:array<mixed>}|null $hostGroup
      * @param array{static:array<string,array<string,CompiledRoute|array<mixed>>>,dynamic:array<mixed>}|null $wildcardGroup
      * @return CompiledMatch
-     * @param string $method
-     * @param string $path
-     * @param bool $compact
      */
     private function matchSingleGroup(
         ?array $hostGroup,
@@ -374,9 +349,6 @@ final class CanonicalMatcherEngine
      * @param array<string,mixed> $group
      * @param array<string,bool> $allowed
      * @return CompiledMatch|null
-     * @param string $method
-     * @param string $path
-     * @param bool $compact
      */
     private function matchStaticGroup(
         array $group,
@@ -418,8 +390,6 @@ final class CanonicalMatcherEngine
      * @param array<string,CompiledRoute|array<mixed>> $verbs
      * @param array<string,string> $params
      * @return CompiledMatch|null
-     * @param string $method
-     * @param bool $compact
      */
     private function selectVerb(array $verbs, string $method, array $params, bool $compact): int|array|MatchOutcome|null
     {

@@ -41,13 +41,6 @@ final readonly class SignedUrlConfig
     /**
      * @param list<string> $ignoredQueryParams
      * @param list<string> $verificationKeys
-     * @param ?string $generationKey
-     * @param ?int $defaultTtl
-     * @param string $signatureParam
-     * @param string $expiryParam
-     * @param string $algorithm
-     * @param string $payloadMode
-     * @param int $leeway
      */
     public function __construct(
         ?string $generationKey = null,
@@ -169,8 +162,6 @@ final readonly class SignedUrlConfig
     /**
      * @param list<string> $ignoredQueryParams
      * @return list<string>
-     * @param string $signatureParam
-     * @param string $expiryParam
      */
     private static function normalizeIgnoredQueryParams(
         array $ignoredQueryParams,
@@ -264,7 +255,6 @@ final readonly class SignedUrlConfig
     /**
      * @param list<string> $verificationKeys
      * @return list<string>
-     * @param ?string $generationKey
      */
     private static function normalizeVerificationKeys(array $verificationKeys, ?string $generationKey): array
     {

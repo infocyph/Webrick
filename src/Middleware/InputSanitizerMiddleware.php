@@ -32,7 +32,6 @@ final readonly class InputSanitizerMiddleware
 
     /**
      * @param Closure(Request):Response $next
-     * @param Request $req
      */
     public function __invoke(Request $req, Closure $next): Response
     {

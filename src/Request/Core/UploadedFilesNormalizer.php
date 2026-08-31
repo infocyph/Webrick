@@ -29,7 +29,6 @@ final class UploadedFilesNormalizer
 
     /**
      * @param array<int|string,mixed> $part
-     * @param mixed $tmpName
      */
     private static function leafFile(array $part, mixed $tmpName): UploadedFile
     {

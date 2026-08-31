@@ -168,7 +168,6 @@ enum StatusEnum: int
      * Check if a status code belongs to HTTP error ranges (4xx or 5xx).
      *
      * Unknown extension codes in the 4xx/5xx space are treated as errors too.
-     * @param int $code
      */
     public static function isErrorCode(int $code): bool
     {
@@ -179,7 +178,6 @@ enum StatusEnum: int
      * Check if a status code belongs to the HTTP server-error range (5xx).
      *
      * Unknown extension codes in the 5xx space are treated as server errors too.
-     * @param int $code
      */
     public static function isServerErrorCode(int $code): bool
     {

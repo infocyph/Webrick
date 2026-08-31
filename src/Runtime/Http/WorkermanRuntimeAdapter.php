@@ -35,8 +35,6 @@ final readonly class WorkermanRuntimeAdapter implements RuntimeAdapterInterface
 
     /**
      * Resolve Workerman's HTTP response protocol classes once during worker boot.
-     * @param bool $transportCompression
-     * @param bool $transportRequestLimits
      */
     public static function current(
         bool $transportCompression = false,
@@ -141,7 +139,6 @@ final readonly class WorkermanRuntimeAdapter implements RuntimeAdapterInterface
 
     /**
      * @return array<string,string|array<int,string>>
-     * @param Response $response
      */
     private function headerMap(Response $response): array
     {
@@ -155,8 +152,6 @@ final readonly class WorkermanRuntimeAdapter implements RuntimeAdapterInterface
 
     /**
      * @param array<string,string|array<int,string>> $headers
-     * @param int $status
-     * @param string $body
      */
     private function response(int $status, array $headers, string $body): object
     {

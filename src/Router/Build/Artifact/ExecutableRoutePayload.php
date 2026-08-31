@@ -46,7 +46,6 @@ final class ExecutableRoutePayload
 
     /**
      * @return array{version:int,route:array<mixed>,handler:array{kind:string,value:mixed},middleware:list<array{kind:string,value:mixed}>}
-     * @param CompiledRoute $route
      */
     public static function encode(CompiledRoute $route): array
     {

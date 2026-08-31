@@ -32,9 +32,6 @@ interface MatcherInterface
      *
      * @throws RouteNotFoundException
      * @throws MethodNotAllowedException
-     * @param string $method
-     * @param string $host
-     * @param string $path
      */
     public function match(string $method, string $host, string $path): array;
 

@@ -182,7 +182,6 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
 
     /**
      * @param list<string> $middleware
-     * @param string $code
      */
     private function cacheHash(string $code, array $middleware): string
     {
@@ -314,7 +313,6 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
 
     /**
      * @param list<array<string,mixed>> $segments
-     * @param string $indent
      */
     private function renderCondition(array $segments, string $indent): string
     {
@@ -341,7 +339,6 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
 
     /**
      * @param array<string,array{segments:list<array<string,mixed>>,verbs:array<string,int>}> $entries
-     * @param string $indent
      */
     private function renderDynamicEntries(array $entries, string $indent): string
     {
@@ -359,7 +356,6 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
 
     /**
      * @param array<int,array<string,array<string,array{segments:list<array<string,mixed>>,verbs:array<string,int>}>>> $dynamic
-     * @param string $indent
      */
     private function renderDynamicIndex(array $dynamic, string $indent): string
     {
@@ -404,7 +400,6 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
 
     /**
      * @param array<string,array<string,int>> $static
-     * @param string $indent
      */
     private function renderStaticIndex(array $static, string $indent): string
     {
@@ -424,8 +419,6 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
 
     /**
      * @param array<string,int> $verbs
-     * @param string $indent
-     * @param bool $hasParams
      */
     private function renderVerbDispatch(array $verbs, string $indent, bool $hasParams): string
     {
@@ -463,7 +456,6 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
 
     /**
      * @param array<int,mixed> $payloads
-     * @param mixed $route
      */
     private function routeIndex(mixed $route, array &$payloads): int
     {

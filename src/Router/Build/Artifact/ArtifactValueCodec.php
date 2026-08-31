@@ -51,7 +51,6 @@ final class ArtifactValueCodec
 
     /**
      * @return array{kind:string,value:mixed}
-     * @param mixed $value
      */
     public static function encode(mixed $value): array
     {
@@ -95,7 +94,6 @@ final class ArtifactValueCodec
 
     /**
      * @return array{0:object,1:string}|null
-     * @param Closure $closure
      */
     private static function boundMethodDescriptor(Closure $closure): ?array
     {
@@ -130,7 +128,6 @@ final class ArtifactValueCodec
 
     /**
      * @return array{0:string,1:string}|string
-     * @param mixed $value
      */
     private static function decodeValue(mixed $value): array|string
     {
@@ -153,7 +150,6 @@ final class ArtifactValueCodec
 
     /**
      * @return array{kind:string,value:string}
-     * @param callable $callable
      */
     private static function encodeCallable(callable $callable): array
     {
@@ -164,7 +160,6 @@ final class ArtifactValueCodec
 
     /**
      * @return array{0:class-string,1:string}|null
-     * @param Closure $closure
      */
     private static function staticMethodDescriptor(Closure $closure): ?array
     {

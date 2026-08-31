@@ -23,7 +23,6 @@ final readonly class InterMixRuntime
 
     /**
      * @return array<string,mixed>
-     * @param string $tag
      */
     public function findByTag(string $tag): array
     {
@@ -58,8 +57,6 @@ final readonly class InterMixRuntime
 
     /**
      * @param array<string,mixed> $instances
-     * @param string $scope
-     * @param callable $callback
      */
     public function withinScope(string $scope, callable $callback, array $instances = []): mixed
     {

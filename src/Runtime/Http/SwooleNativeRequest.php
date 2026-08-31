@@ -8,8 +8,6 @@ final readonly class SwooleNativeRequest
 {
     /**
      * @return array<string,mixed>
-     * @param object $source
-     * @param string $property
      */
     public static function arrayProperty(object $source, string $property): array
     {
@@ -20,7 +18,6 @@ final readonly class SwooleNativeRequest
 
     /**
      * @return array<string,string|list<string>>
-     * @param object $request
      */
     public static function headers(object $request): array
     {
@@ -60,7 +57,6 @@ final readonly class SwooleNativeRequest
 
     /**
      * @return array<string,mixed>
-     * @param object $request
      */
     public static function server(object $request): array
     {
@@ -97,9 +93,6 @@ final readonly class SwooleNativeRequest
 
     /**
      * @param array<string,mixed> $server @param array<string,mixed> $headers
-     * @param array $server
-     * @param string $source
-     * @param string $target
      */
     private static function copyHeader(array &$server, array $headers, string $source, string $target): void
     {
@@ -124,8 +117,6 @@ final readonly class SwooleNativeRequest
 
     /**
      * @param array<string,mixed> $source
-     * @param string $key
-     * @param string $default
      */
     private static function stringValue(array $source, string $key, string $default = ''): string
     {

@@ -30,7 +30,6 @@ final readonly class CachePolicy
 
     /**
      * @return array<string,true|string>
-     * @param string $line
      */
     public static function directives(string $line): array
     {

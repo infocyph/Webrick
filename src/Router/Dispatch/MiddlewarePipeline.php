@@ -84,7 +84,6 @@ final class MiddlewarePipeline
      * @param bool $invokeFinalWithInvoker Whether the terminal handler uses the DI invoker.
      *
      * @throws InvalidArgumentException If any entry in $stack is not callable.
-     * @param Invoker $invoker
      */
     public function __construct(
         array $stack,
