@@ -313,7 +313,11 @@ final readonly class CompiledRouterKernel
 
         return $this->errorHandler->handle(
             $request,
-            static fn(Request $_): Response => throw $exception,
+            static function (Request $activeRequest) use ($exception): Response {
+                unset($activeRequest);
+
+                throw $exception;
+            },
         );
     }
 
