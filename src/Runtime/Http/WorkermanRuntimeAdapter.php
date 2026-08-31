@@ -104,7 +104,7 @@ final readonly class WorkermanRuntimeAdapter implements RuntimeAdapterInterface
         }
 
         $file = $response->getFileBody();
-        if ($file !== null && $file->offset() === 0 && $file->length() === filesize($file->path())) {
+        if ($file !== null && $file->offset() === 0 && $file->length() === $file->sourceSize()) {
             $native = $this->withFile($this->response($response->getStatusCode(), $headers, ''), $file->path());
             $this->send($connection, $native);
 
