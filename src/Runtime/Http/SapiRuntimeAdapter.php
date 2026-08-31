@@ -7,6 +7,7 @@ namespace Infocyph\Webrick\Runtime\Http;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Runtime\RoutingInput;
+use RuntimeException;
 
 /** Classic SAPI/FPM/FrankenPHP response runtime selected once at bootstrap. */
 final readonly class SapiRuntimeAdapter implements RuntimeAdapterInterface
@@ -73,6 +74,8 @@ final readonly class SapiRuntimeAdapter implements RuntimeAdapterInterface
         mixed $nativeResponse = null,
         bool $withHost = false,
     ): RuntimeRequestContext {
+        unset($nativeRequest, $nativeResponse);
+
         return new RuntimeRequestContext(
             RoutingInput::fromGlobals($withHost),
             static fn(): Request => Request::fromGlobals(),
@@ -101,20 +104,43 @@ final readonly class SapiRuntimeAdapter implements RuntimeAdapterInterface
         }
 
         if ($allowsBody) {
-            $string = $response->getStringBody();
-            if ($string !== null) {
-                echo $string;
-            } else {
-                foreach (ResponseWriterSupport::chunks($response) as $chunk) {
-                    echo $chunk;
-                    if ($response->isStreaming()) {
-                        flush();
+            $output = fopen('php://output', 'wb');
+            if (!is_resource($output)) {
+                throw new RuntimeException('Unable to open the SAPI output stream.');
+            }
+
+            try {
+                $string = $response->getStringBody();
+                if ($string !== null) {
+                    self::writeChunk($output, $string);
+                } else {
+                    foreach (ResponseWriterSupport::chunks($response) as $chunk) {
+                        self::writeChunk($output, $chunk);
+                        if ($response->isStreaming()) {
+                            flush();
+                        }
                     }
                 }
+            } finally {
+                fclose($output);
             }
         }
 
         $this->finish();
+    }
+
+    /** @param resource $output */
+    private static function writeChunk(mixed $output, string $chunk): void
+    {
+        $length = strlen($chunk);
+        $offset = 0;
+        while ($offset < $length) {
+            $written = fwrite($output, substr($chunk, $offset));
+            if ($written === false || $written === 0) {
+                throw new RuntimeException('Unable to write the complete SAPI response body.');
+            }
+            $offset += $written;
+        }
     }
 
     private function finish(): void
