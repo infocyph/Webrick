@@ -108,7 +108,9 @@ final class CompiledMatcherIndexCompiler
                 ];
             }
 
-            $regex = '~\\A(?:' . implode('|', $alternatives) . ')\\z~D';
+            // J allows different route constraints to reuse named groups inside
+            // separate alternatives without changing their original semantics.
+            $regex = '~(?J)\\A(?:' . implode('|', $alternatives) . ')\\z~D';
             if (@preg_match($regex, '') === false) {
                 throw new \UnexpectedValueException('Failed to compile combined matcher PCRE chunk.');
             }
