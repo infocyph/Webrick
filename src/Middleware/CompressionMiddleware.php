@@ -293,7 +293,7 @@ final readonly class CompressionMiddleware
         $quality = [];
         foreach (explode(',', $header) as $segment) {
             $parts = array_map(trim(...), explode(';', $segment));
-            $token = strtolower(array_shift($parts) ?? '');
+            $token = strtolower(array_shift($parts));
             if ($token === '') {
                 continue;
             }

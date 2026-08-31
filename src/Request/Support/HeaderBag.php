@@ -93,7 +93,8 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
         return is_string($offset) && $this->has($offset);
     }
 
-    public function offsetGet(mixed $offset): mixed
+    /** @return list<string> */
+    public function offsetGet(mixed $offset): array
     {
         return is_string($offset) ? $this->get($offset) : [];
     }
@@ -123,7 +124,7 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
     }
 
     /**
-     * @param string|array<int,string> $value
+     * @param string|list<string> $value
      * @param string $name
      */
     public function with(string $name, string|array $value): self
@@ -135,7 +136,7 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
     }
 
     /**
-     * @param string|array<array-key,mixed> $value
+     * @param string|list<string> $value
      * @param string $name
      */
     public function withAdded(string $name, string|array $value): self
@@ -193,14 +194,14 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
         return $normalized;
     }
 
-    /** @param string|array<array-key,mixed> $value @return list<string> */
+    /**
+     * @param string|list<string> $value
+     * @return list<string>
+     */
     private function normalizeValues(string|array $value): array
     {
-        $values = is_array($value) ? array_values($value) : [$value];
+        $values = is_array($value) ? $value : [$value];
         foreach ($values as $item) {
-            if (!is_string($item)) {
-                throw new \InvalidArgumentException('HTTP header values must be strings.');
-            }
             if (preg_match(self::INVALID_HEADER_VALUE, $item) === 1) {
                 throw new \InvalidArgumentException('HTTP header values must not contain control characters.');
             }
@@ -210,7 +211,7 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
     }
 
     /**
-     * @param string|array<array-key,mixed> $value
+     * @param string|list<string> $value
      * @param string $name
      */
     private function set(string $name, string|array $value): void

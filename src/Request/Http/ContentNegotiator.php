@@ -102,10 +102,18 @@ final readonly class ContentNegotiator
         return $this->supportsEncoding('zstd');
     }
 
-    /** @param list<string> $values @return list<string> */
+    /**
+     * @param list<string> $values
+     * @return list<string>
+     */
     private static function lower(array $values): array
     {
-        return array_map(strtolower(...), $values);
+        $lower = [];
+        foreach ($values as $value) {
+            $lower[] = strtolower($value);
+        }
+
+        return $lower;
     }
 
     private static function mimeMatch(string $candidate, string $accepted): bool

@@ -59,7 +59,10 @@ final readonly class InputSanitizerMiddleware
             || (str_starts_with($mime, MediaTypeEnum::JSON->base()) && $this->touchJsonBodies);
     }
 
-    /** @param array<mixed> $input @return array<string,mixed> */
+    /**
+     * @param array<mixed> $input
+     * @return array<string,mixed>
+     */
     private function stringKeyMap(array $input): array
     {
         $result = [];

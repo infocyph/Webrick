@@ -146,7 +146,7 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
     {
         $segments = explode('.', $dot);
         $key = array_shift($segments);
-        $value = is_string($key) ? parent::__get($key) : null;
+        $value = parent::__get($key);
 
         foreach ($segments as $segment) {
             if (!is_array($value) || !array_key_exists($segment, $value)) {
@@ -190,7 +190,10 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return [$fallback, 'default'];
     }
 
-    /** @param string|list<string> $keys @return array<string,mixed> */
+    /**
+     * @param string|list<string> $keys
+     * @return array<string,mixed>
+     */
     public function except(string|array $keys): array
     {
         return self::stringMap(array_diff_key($this->all(), array_flip(self::stringList($keys))));
@@ -224,7 +227,13 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
     /** @param string|list<string> $keys */
     public function has(string|array $keys): bool
     {
-        return array_all(self::stringList($keys), fn(string $key): bool => $this->data($key) !== null);
+        foreach (self::stringList($keys) as $key) {
+            if ($this->data($key) === null) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     public function hasFile(string $key): bool
@@ -266,7 +275,10 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
     /** @param string|list<string> $verbs */
     public function isMethod(string|array $verbs): bool
     {
-        $normalized = array_map(HttpMethodEnum::normalize(...), self::stringList($verbs));
+        $normalized = [];
+        foreach (self::stringList($verbs) as $verb) {
+            $normalized[] = HttpMethodEnum::normalize($verb);
+        }
 
         return in_array(HttpMethodEnum::normalize($this->getEffectiveMethod()), $normalized, true);
     }
@@ -321,9 +333,9 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return $fallback;
     }
 
-    public function matchesCsrfToken(?string $token = null): bool
+    public function matchesCsrfToken(Csrf $csrf, ?string $token = null): bool
     {
-        return $token !== null ? Csrf::matchesValue($token) : Csrf::matches($this);
+        return $token !== null ? $csrf->matchesValue($token) : $csrf->matches($this);
     }
 
     /** @param array<string,mixed> $data */
@@ -365,13 +377,16 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         throw new InvalidArgumentException('Request is immutable');
     }
 
-    /** @param string|list<string> $keys @return array<string,mixed> */
+    /**
+     * @param string|list<string> $keys
+     * @return array<string,mixed>
+     */
     public function only(string|array $keys): array
     {
         return array_intersect_key($this->all(), array_flip(self::stringList($keys)));
     }
 
-    /** @param string[] $mimeTypes */
+    /** @param list<string> $mimeTypes */
     public function prefers(array $mimeTypes): ?string
     {
         return new ContentNegotiator($this->headers())->preferred($mimeTypes);
@@ -388,7 +403,7 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
     {
         $target = $this->getRequestTarget();
 
-        return array_any(self::stringList($patterns), fn($pattern) => preg_match('#^' . str_replace('\\*', '.*', preg_quote($pattern, '#')) . '$#', $target) === 1);
+        return array_any(self::stringList($patterns), fn(string $pattern): bool => preg_match('#^' . str_replace('\\*', '.*', preg_quote($pattern, '#')) . '$#', $target) === 1);
     }
 
     public function segment(int $index, mixed $default = null): mixed
@@ -418,7 +433,10 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return EndUser::from($this)->parseUserAgent();
     }
 
-    /** @param array<string,string> $rules @return array<string,mixed> */
+    /**
+     * @param array<string,string> $rules
+     * @return array<string,mixed>
+     */
     public function validate(array $rules): array
     {
         foreach ($rules as $field => $rule) {
@@ -449,6 +467,7 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return $request;
     }
 
+    /** @param array<string,mixed>|object|null $data */
     #[\Override]
     public function withParsedBody(object|array|null $data): static
     {
@@ -481,17 +500,28 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return strtolower(str_replace('_', '-', trim($locale)));
     }
 
-    /** @param string|array<mixed> $value @return list<string> */
+    /**
+     * @param string|list<string> $value
+     * @return list<string>
+     */
     private static function stringList(string|array $value): array
     {
         if (is_string($value)) {
             return [$value];
         }
 
-        return array_values(array_filter($value, is_string(...)));
+        $strings = [];
+        foreach ($value as $item) {
+            $strings[] = $item;
+        }
+
+        return $strings;
     }
 
-    /** @param array<mixed> $value @return array<string,mixed> */
+    /**
+     * @param array<mixed> $value
+     * @return array<string,mixed>
+     */
     private static function stringMap(array $value): array
     {
         $map = [];
