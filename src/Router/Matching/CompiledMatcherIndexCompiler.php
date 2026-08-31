@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router\Matching;
 
+use Infocyph\Webrick\Router\Constraint\Registry as ConstraintRegistry;
+
 /**
  * Converts the canonical route index into the request-time matcher IR.
  *
  * Static routes become method-first exact-path maps. Dynamic regex routes are
- * compiled into bounded MARK-based PCRE chunks. Routes containing callable
- * constraints stay in a narrow method-specific fallback lane.
+ * compiled into bounded MARK-based PCRE chunks. Routes containing callable or
+ * arbitrary user-regex constraints stay in a narrow method-specific fallback
+ * lane so their historical segment-level semantics remain unchanged.
  *
  * @phpstan-type RouteValue mixed
  * @phpstan-type SegmentSpec array<string,mixed>
@@ -108,8 +111,8 @@ final class CompiledMatcherIndexCompiler
                 ];
             }
 
-            // J allows different route constraints to reuse named groups inside
-            // separate alternatives without changing their original semantics.
+            // J allows different built-in route constraints to reuse named
+            // groups inside separate alternatives without capture conflicts.
             $regex = '~(?J)\\A(?:' . implode('|', $alternatives) . ')\\z~D';
             if (@preg_match($regex, '') === false) {
                 throw new \UnexpectedValueException('Failed to compile combined matcher PCRE chunk.');
@@ -147,7 +150,11 @@ final class CompiledMatcherIndexCompiler
     private function isPcreCompilable(array $segments): bool
     {
         foreach ($segments as $segment) {
-            if (($segment['type'] ?? null) === 'var' && !isset($segment['regex'])) {
+            if (($segment['type'] ?? null) !== 'var') {
+                continue;
+            }
+            $regex = $segment['regex'] ?? null;
+            if (!is_string($regex) || !ConstraintRegistry::isCombinedPcreSafeSegmentRegex($regex)) {
                 return false;
             }
         }
@@ -200,7 +207,7 @@ final class CompiledMatcherIndexCompiler
             }
             $regex = $segment['regex'] ?? null;
             if (!is_string($regex)) {
-                throw new \LogicException('Callable matcher segment cannot enter the PCRE fast lane.');
+                throw new \LogicException('Non-PCRE matcher segment cannot enter the PCRE fast lane.');
             }
             $parts[] = '(?:' . self::segmentRegexInner($regex) . ')';
         }
