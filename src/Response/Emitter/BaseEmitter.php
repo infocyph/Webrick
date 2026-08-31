@@ -70,7 +70,11 @@ abstract class BaseEmitter implements EmitterInterface
             $body->rewind();
         }
         while (!$body->eof()) {
-            $this->write($body->read(self::CHUNK_SIZE));
+            $chunk = $body->read(self::CHUNK_SIZE);
+            if ($chunk === '') {
+                break;
+            }
+            $this->write($chunk);
             $this->flush();
         }
     }
