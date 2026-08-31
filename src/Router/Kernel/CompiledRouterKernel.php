@@ -19,6 +19,7 @@ use Infocyph\Webrick\Router\Constraint\Registry as ConstraintRegistry;
 use Infocyph\Webrick\Router\Dispatch\MiddlewareAliases;
 use Infocyph\Webrick\Router\Dispatch\RuntimeDispatcher;
 use Infocyph\Webrick\Router\Matching\MatcherInterface;
+use Infocyph\Webrick\Router\Matching\MatchOutcome;
 use Infocyph\Webrick\Router\Matching\MatchOutcomeType;
 use Infocyph\Webrick\Router\Runtime\RoutingInput;
 use Infocyph\Webrick\Router\Url\SignedUrlConfig;
@@ -214,23 +215,25 @@ final readonly class CompiledRouterKernel
         ?Request &$request,
         ?RuntimeRequestContext $runtimeContext = null,
     ): Response {
-        $outcome = $this->matcher->matchCompiledOutcome($routing->method, $routing->host, $routing->path);
+        $match = $this->matcher->matchCompiled($routing->method, $routing->host, $routing->path);
 
-        if ($outcome->type === MatchOutcomeType::AUTO_OPTIONS) {
-            return self::automaticOptionsResponse($outcome->allowed);
-        }
-        if ($outcome->type === MatchOutcomeType::METHOD_NOT_ALLOWED) {
-            throw new MethodNotAllowedException($routing->method, $routing->path, $outcome->allowed);
-        }
-        if ($outcome->type === MatchOutcomeType::NOT_FOUND) {
-            throw new RouteNotFoundException($routing->method, $routing->path);
+        if (is_int($match)) {
+            $routeIndex = $match;
+            $vars = [];
+        } elseif (is_array($match)) {
+            $routeIndex = $match[0];
+            $vars = $match[1];
+        } else {
+            $this->throwOrReturnControlOutcome($match, $routing);
+
+            return self::automaticOptionsResponse($match->allowed);
         }
 
-        $plan = $this->artifact->planForIndex($outcome->requireRouteIndex());
+        $plan = $this->artifact->planForIndex($routeIndex);
         $pipeline = $plan->kind === ExecutionKind::MIDDLEWARE_PIPELINE || $this->hasGlobalMiddleware;
 
         if (!$pipeline && !$plan->requiresRequest()) {
-            return $this->dispatchWithoutRequest($routing, $plan, $outcome->params, $runtimeContext);
+            return $this->dispatchWithoutRequest($routing, $plan, $vars, $runtimeContext);
         }
 
         $request ??= $runtimeContext?->request() ?? Request::fromGlobals();
@@ -239,9 +242,25 @@ final readonly class CompiledRouterKernel
             $routing,
             $plan,
             $request,
-            $outcome->params,
+            $vars,
             $runtimeContext,
         );
+    }
+
+    /**
+     * @throws MethodNotAllowedException
+     * @throws RouteNotFoundException
+     */
+    private function throwOrReturnControlOutcome(MatchOutcome $outcome, RoutingInput $routing): void
+    {
+        if ($outcome->type === MatchOutcomeType::AUTO_OPTIONS) {
+            return;
+        }
+        if ($outcome->type === MatchOutcomeType::METHOD_NOT_ALLOWED) {
+            throw new MethodNotAllowedException($routing->method, $routing->path, $outcome->allowed);
+        }
+
+        throw new RouteNotFoundException($routing->method, $routing->path);
     }
 
     /** @param array<string,string> $vars */
