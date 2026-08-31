@@ -13,13 +13,13 @@ describe('TraceContext request-local behavior', function () {
             ->withAttribute('request_id', 'request-a');
 
         $context = TraceContext::initialize($request);
-        TraceContext::clear();
 
         expect($context)
             ->toBeInstanceOf(RequestContext::class)
             ->and($context->traceId())->toBe('trace-a')
             ->and($context->spanId())->toBe('span-a')
-            ->and($context->requestId())->toBe('request-a');
+            ->and($context->requestId())->toBe('request-a')
+            ->and(TraceContext::fromRequest($request))->toBeNull();
     });
 
     it('attaches independent contexts to independent requests', function () {
