@@ -10,66 +10,72 @@ use Psr\Log\NullLogger;
 $autoload = $GLOBALS['_composer_autoload_path'] ?? __DIR__ . '/vendor/autoload.php';
 require $autoload;
 
-function out(string $msg): void
-{
-    fwrite(STDOUT, $msg);
-}
-
-function err(string $msg): void
-{
-    fwrite(STDERR, $msg);
-}
-
-// -----------------------------
-// Tiny argv parser (no getopt)
-// -----------------------------
-/**
- * @param array<int,string> $argv
- * @return array{cmd:string, args:array<int,string>, opts:array<string,string|bool>}
- */
+/** @param array<int,string> $argv @return array{cmd:string,opts:array<string,string|bool>} */
 function parse_argv(array $argv): array
 {
-    array_shift($argv); // script name
-    $cmd = $argv[0] ?? 'help';
-    $args = [];
+    array_shift($argv);
+    $cmd = array_shift($argv) ?? 'help';
     $opts = [];
+    $pending = null;
 
-    // consume subcommand (if present)
-    if (!empty($argv)) {
-        array_shift($argv);
-    }
-
-    // parse the rest
-    $expectValueFor = null;
     foreach ($argv as $token) {
-        if ($expectValueFor !== null) {
-            $opts[$expectValueFor] = $token;
-            $expectValueFor = null;
+        if ($pending !== null) {
+            $opts[$pending] = $token;
+            $pending = null;
+            continue;
+        }
+        if (!str_starts_with($token, '--')) {
             continue;
         }
 
-        if (str_starts_with($token, '--')) {
-            $eq = strpos($token, '=');
-            if ($eq !== false) {
-                $k = substr($token, 2, $eq - 2);
-                $v = substr($token, $eq + 1);
-                $opts[$k] = $v;
-            } else {
-                $k = substr($token, 2);
-                // if next token isn’t another --opt, we’ll capture it on next loop
-                $expectValueFor = $k;
-                // but for boolean flags like --verbose with no value given at all,
-                // we’ll default them to true after the loop
-                $opts[$k] = $opts[$k] ?? true;
-            }
+        $option = substr($token, 2);
+        $equals = strpos($option, '=');
+        if ($equals !== false) {
+            $opts[substr($option, 0, $equals)] = substr($option, $equals + 1);
             continue;
         }
 
-        // plain arg
-        $args[] = $token;
+        $pending = $option;
+        $opts[$option] = true;
     }
 
-    return ['cmd' => $cmd, 'args' => $args, 'opts' => $opts];
+    return ['cmd' => $cmd, 'opts' => $opts];
+}
+
+function out(string $message): void
+{
+    fwrite(STDOUT, $message);
+}
+
+function err(string $message): void
+{
+    fwrite(STDERR, $message);
+}
+
+/** @return array<string,string> */
+function parse_attribute_dirs(mixed $value): array
+{
+    if (!is_string($value) || $value === '') {
+        return [];
+    }
+
+    $dirs = [];
+    foreach (array_filter(array_map(trim(...), explode(',', $value))) as $pair) {
+        [$namespace, $dir] = array_pad(explode('=', $pair, 2), 2, '');
+        if ($namespace !== '' && $dir !== '') {
+            $dirs[$namespace] = $dir;
+        }
+    }
+
+    return $dirs;
+}
+
+/** @return list<string> */
+function parse_attribute_classes(mixed $value): array
+{
+    return is_string($value) && $value !== ''
+        ? array_values(array_filter(array_map(trim(...), explode(',', $value))))
+        : [];
 }
 
 $parsed = parse_argv($_SERVER['argv'] ?? []);
@@ -78,110 +84,69 @@ $opts = $parsed['opts'];
 $matcherValues = implode('|', MatcherModeEnum::values());
 
 $usage = <<<TXT
-    Webrick CLI (no-getopt)
+Webrick matcher-cache CLI
 
-    USAGE:
-      webrick route:cache  --matcher={$matcherValues} --cache=PATH --routes=PATH [--signkey=KEY] [--ttl=900] [--alias-fallback=1|0] [--attr-dirs="Ns\\\\=dir,..."] [--attr-classes="FQCN1,FQCN2"] [--verbose=1]
-      webrick route:clear  --matcher={$matcherValues} --cache=PATH [--aggressive=1|0]
+USAGE:
+  webrick route:cache --matcher={$matcherValues} --cache=PATH --routes=PATH [--signkey=KEY] [--ttl=900] [--attr-dirs="Ns\\=dir,..."] [--attr-classes="FQCN1,FQCN2"]
+  webrick route:clear --matcher={$matcherValues} --cache=PATH [--aggressive=1|0]
 
-    NOTES:
-    - Sharded matcher: --cache is a directory (e.g. ./.route-cache)
-    - Fused/Generated: --cache is a file     (e.g. ./.route-cache/__routes.php)
-    - Sharded clear --aggressive=1 purges cache artifacts recursively but preserves root .gitignore
-    - Composer usage:  composer run webrick -- route:cache --cache=.route-cache ...
-    TXT;
+NOTES:
+  - route:cache builds matcher cache only; it does not boot a request kernel or DI runtime.
+  - Sharded cache uses a directory; fused/generated cache uses a PHP file.
+  - Production release artifacts are built through Router\\Build\\ReleaseCompiler.
+TXT;
 
-switch ($cmd) {
-    case 'route:cache':
-        {
-            $cache = (string)($opts['cache'] ?? (__DIR__ . '/.route-cache'));
-            $routes = (string)($opts['routes'] ?? (__DIR__ . '/routes.php'));
-            $matcher = isset($opts['matcher']) ? strtolower((string)$opts['matcher']) : null;
-            if ($matcher !== null && !in_array($matcher, MatcherModeEnum::values(), true)) {
-                err("✖ invalid matcher '{$matcher}'. allowed: " . implode(', ', MatcherModeEnum::values()) . "\n");
-                exit(2);
-            }
-            $signKey = isset($opts['signkey']) ? (string)$opts['signkey'] : null;
-            $ttl = (int)($opts['ttl'] ?? 900);
-            $alias = filter_var((string)($opts['alias-fallback'] ?? '1'), FILTER_VALIDATE_BOOL);
-            $verbose = filter_var((string)($opts['verbose'] ?? '0'), FILTER_VALIDATE_BOOL);
+if ($cmd === 'route:cache') {
+    $cache = (string) ($opts['cache'] ?? (__DIR__ . '/.route-cache'));
+    $routes = (string) ($opts['routes'] ?? (__DIR__ . '/routes.php'));
+    $matcher = isset($opts['matcher']) ? strtolower((string) $opts['matcher']) : null;
+    if ($matcher !== null && !in_array($matcher, MatcherModeEnum::values(), true)) {
+        err("Invalid matcher '{$matcher}'. Allowed: " . implode(', ', MatcherModeEnum::values()) . "\n");
+        exit(2);
+    }
 
-            // --attr-dirs: "Ns\\=dir,Other\\=dir2"
-            $attributeDirs = [];
-            if (!empty($opts['attr-dirs'])) {
-                $raw = (string)$opts['attr-dirs'];
-                foreach (array_filter(array_map('trim', explode(',', $raw))) as $pair) {
-                    [$ns, $dir] = explode('=', $pair, 2) + [1 => ''];
-                    if ($ns !== '' && $dir !== '') {
-                        $attributeDirs[$ns] = $dir;
-                    }
-                }
-            }
+    try {
+        $sentinel = RouteCache::build([
+            'matcher' => $matcher,
+            'cache' => $cache,
+            'routes' => $routes,
+            'signKey' => isset($opts['signkey']) ? (string) $opts['signkey'] : null,
+            'signedDefaultTtl' => (int) ($opts['ttl'] ?? 900),
+            'registrarOptions' => ['autoSlashRedirect' => false],
+            'attributeDirs' => parse_attribute_dirs($opts['attr-dirs'] ?? null),
+            'attributeClasses' => parse_attribute_classes($opts['attr-classes'] ?? null),
+            'logger' => new NullLogger(),
+        ]);
+    } catch (Throwable $error) {
+        err("route:cache failed: {$error->getMessage()}\n");
+        exit(2);
+    }
 
-            // --attr-classes: "A\\B\\C, X\\Y\\Z"
-            $attributeClasses = [];
-            if (!empty($opts['attr-classes'])) {
-                $attributeClasses = array_values(
-                    array_filter(array_map('trim', explode(',', (string)$opts['attr-classes']))),
-                );
-            }
-
-            if ($verbose) {
-                out("CMD: route:cache\n");
-                out("OPTS: " . json_encode($opts, JSON_UNESCAPED_SLASHES) . "\n");
-            }
-
-            try {
-                $sentinel = RouteCache::build([
-                    'matcher' => $matcher,
-                    'cache' => $cache,
-                    'routes' => $routes,
-                    'signKey' => $signKey,
-                    'signedDefaultTtl' => $ttl,
-                    'registrarOptions' => [
-                        'autoSlashRedirect' => false,
-                        'exposeUrlServices' => true,
-                    ],
-                    'fallbackAliasesFromRegistrar' => $alias,
-                    'attributeDirs' => $attributeDirs,
-                    'attributeClasses' => $attributeClasses,
-                    'logger' => new NullLogger(),
-                ]);
-            } catch (\Throwable $e) {
-                err("✖ route:cache failed: {$e->getMessage()}\n");
-                exit(2);
-            }
-
-            out("✔ Route cache ready at: {$sentinel}\n");
-            exit(0);
-        }
-
-    case 'route:clear':
-        {
-            $cache = (string)($opts['cache'] ?? (__DIR__ . '/.route-cache'));
-            $matcher = isset($opts['matcher']) ? strtolower((string)$opts['matcher']) : null;
-            if ($matcher !== null && !in_array($matcher, MatcherModeEnum::values(), true)) {
-                err("✖ invalid matcher '{$matcher}'. allowed: " . implode(', ', MatcherModeEnum::values()) . "\n");
-                exit(4);
-            }
-            $aggressive = filter_var((string)($opts['aggressive'] ?? '0'), FILTER_VALIDATE_BOOL);
-
-            try {
-                $removed = RouteCache::clear([
-                    'matcher' => $matcher,
-                    'cache' => $cache,
-                    'aggressive' => $aggressive,
-                ]);
-            } catch (\Throwable $e) {
-                err("✖ route:clear failed: {$e->getMessage()}\n");
-                exit(4);
-            }
-
-            out($removed ? "✔ Route cache cleared: {$cache}\n" : "ℹ Nothing to clear at: {$cache}\n");
-            exit(0);
-        }
-
-    default:
-        out($usage . PHP_EOL);
-        exit(0);
+    out("Matcher cache ready at: {$sentinel}\n");
+    exit(0);
 }
+
+if ($cmd === 'route:clear') {
+    $cache = (string) ($opts['cache'] ?? (__DIR__ . '/.route-cache'));
+    $matcher = isset($opts['matcher']) ? strtolower((string) $opts['matcher']) : null;
+    if ($matcher !== null && !in_array($matcher, MatcherModeEnum::values(), true)) {
+        err("Invalid matcher '{$matcher}'. Allowed: " . implode(', ', MatcherModeEnum::values()) . "\n");
+        exit(4);
+    }
+
+    try {
+        $removed = RouteCache::clear([
+            'matcher' => $matcher,
+            'cache' => $cache,
+            'aggressive' => filter_var((string) ($opts['aggressive'] ?? '0'), FILTER_VALIDATE_BOOL),
+        ]);
+    } catch (Throwable $error) {
+        err("route:clear failed: {$error->getMessage()}\n");
+        exit(4);
+    }
+
+    out($removed ? "Matcher cache cleared: {$cache}\n" : "Nothing to clear at: {$cache}\n");
+    exit(0);
+}
+
+out($usage . PHP_EOL);
