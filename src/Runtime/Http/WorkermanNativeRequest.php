@@ -8,25 +8,19 @@ use RuntimeException;
 
 final readonly class WorkermanNativeRequest
 {
-    /**
-     * @return array<string,mixed>
-     */
+    /** @return array<string,mixed> */
     public static function cookies(object $request): array
     {
         return self::stringMap(self::call($request, 'cookie'));
     }
 
-    /**
-     * @return array<string,mixed>
-     */
+    /** @return array<string,mixed> */
     public static function files(object $request): array
     {
         return self::stringMap(self::call($request, 'file'));
     }
 
-    /**
-     * @return array<string,string|list<string>>
-     */
+    /** @return array<string,string|list<string>> */
     public static function headers(object $request): array
     {
         $headers = self::stringMap(self::call($request, 'header'));
@@ -40,17 +34,20 @@ final readonly class WorkermanNativeRequest
         return $out;
     }
 
-    /**
-     * @return array<string,mixed>
-     */
+    public static function isHttp2(object $request): bool
+    {
+        $version = self::string(self::call($request, 'protocolVersion'));
+
+        return str_starts_with($version, '2');
+    }
+
+    /** @return array<string,mixed> */
     public static function post(object $request): array
     {
         return self::stringMap(self::call($request, 'post'));
     }
 
-    /**
-     * @return array<string,mixed>
-     */
+    /** @return array<string,mixed> */
     public static function query(object $request): array
     {
         return self::stringMap(self::call($request, 'get'));
@@ -63,9 +60,7 @@ final readonly class WorkermanNativeRequest
         return is_string($body) ? $body : '';
     }
 
-    /**
-     * @return array<string,mixed>
-     */
+    /** @return array<string,mixed> */
     public static function server(object $request, object $connection): array
     {
         $headers = self::stringMap(self::call($request, 'header'));
@@ -101,10 +96,7 @@ final readonly class WorkermanNativeRequest
         return $target->{$method}();
     }
 
-    /**
-     * @param array<string,mixed> $server
-     * @param array<string,mixed> $headers
-     */
+    /** @param array<string,mixed> $server @param array<string,mixed> $headers */
     private static function copyHeader(array &$server, array $headers, string $source, string $target): void
     {
         $value = $headers[$source] ?? null;
@@ -123,9 +115,7 @@ final readonly class WorkermanNativeRequest
         return is_string($value) || is_int($value) || is_float($value) ? (string) $value : '';
     }
 
-    /**
-     * @return array<string,mixed>
-     */
+    /** @return array<string,mixed> */
     private static function stringMap(mixed $value): array
     {
         if (!is_array($value)) {

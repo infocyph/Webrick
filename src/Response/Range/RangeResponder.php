@@ -36,9 +36,7 @@ final readonly class RangeResponder
         return self::buildFileResponse($absolutePath, $mediaType, $headers, $length, $result);
     }
 
-    /**
-     * @param array<string,string> $headers
-     */
+    /** @param array<string,string> $headers */
     public static function fromSeekable(
         mixed $source,
         int $totalLength,
@@ -53,12 +51,7 @@ final readonly class RangeResponder
 
         $result = self::normalizeResult($range, $req, $totalLength);
         if ($result->status === RangeParseStatus::UNSATISFIABLE) {
-            unset(
-                $headers['Content-Type'],
-                $headers['Content-Encoding'],
-                $headers['Content-Language'],
-                $headers['Content-Length'],
-            );
+            unset($headers['Content-Type'], $headers['Content-Encoding'], $headers['Content-Language']);
             $headers['Content-Range'] = "bytes */{$totalLength}";
             $headers['Content-Length'] = '0';
 
@@ -66,12 +59,11 @@ final readonly class RangeResponder
         }
 
         if ($result->status !== RangeParseStatus::SATISFIABLE) {
-            $headers += [
-                'Content-Type' => $mediaType,
-                'Content-Length' => (string) $totalLength,
-            ];
+            unset($headers['Content-Range']);
+            $headers['Content-Type'] ??= $mediaType;
+            $headers['Content-Length'] = (string) $totalLength;
             if (self::isSeekable($source)) {
-                $headers += ['Accept-Ranges' => 'bytes'];
+                $headers['Accept-Ranges'] = 'bytes';
             }
 
             return new Response(StatusEnum::OK->value, self::wrapSeekable($source), $headers);
@@ -83,12 +75,10 @@ final readonly class RangeResponder
 
         $resolved = $result->requireRange();
         $partialLength = $resolved->length();
-        $headers += [
-            'Content-Range' => $resolved->contentRange(),
-            'Content-Length' => (string) $partialLength,
-            'Content-Type' => $mediaType,
-            'Accept-Ranges' => 'bytes',
-        ];
+        $headers['Content-Range'] = $resolved->contentRange();
+        $headers['Content-Length'] = (string) $partialLength;
+        $headers['Content-Type'] ??= $mediaType;
+        $headers['Accept-Ranges'] = 'bytes';
 
         return new Response(
             StatusEnum::PARTIAL_CONTENT->value,
@@ -106,12 +96,7 @@ final readonly class RangeResponder
         RangeParseResult $result,
     ): Response {
         if ($result->status === RangeParseStatus::UNSATISFIABLE) {
-            unset(
-                $headers['Content-Type'],
-                $headers['Content-Encoding'],
-                $headers['Content-Language'],
-                $headers['Content-Length'],
-            );
+            unset($headers['Content-Type'], $headers['Content-Encoding'], $headers['Content-Language']);
             $headers['Content-Range'] = "bytes */{$length}";
             $headers['Content-Length'] = '0';
 
@@ -119,22 +104,20 @@ final readonly class RangeResponder
         }
 
         if ($result->status !== RangeParseStatus::SATISFIABLE) {
-            $headers += [
-                'Content-Type' => $mediaType,
-                'Content-Length' => (string) $length,
-            ];
+            unset($headers['Content-Range']);
+            $headers['Content-Type'] ??= $mediaType;
+            $headers['Content-Length'] = (string) $length;
+            $headers['Accept-Ranges'] = 'bytes';
 
             return new Response(StatusEnum::OK->value, new FileBody($absolutePath), $headers);
         }
 
         $resolved = $result->requireRange();
         $partialLength = $resolved->length();
-        $headers += [
-            'Content-Range' => $resolved->contentRange(),
-            'Content-Length' => (string) $partialLength,
-            'Content-Type' => $mediaType,
-            'Accept-Ranges' => 'bytes',
-        ];
+        $headers['Content-Range'] = $resolved->contentRange();
+        $headers['Content-Length'] = (string) $partialLength;
+        $headers['Content-Type'] ??= $mediaType;
+        $headers['Accept-Ranges'] = 'bytes';
 
         return new Response(
             StatusEnum::PARTIAL_CONTENT->value,
@@ -143,10 +126,7 @@ final readonly class RangeResponder
         );
     }
 
-    /**
-     * @param array<string,string> $headers
-     * @return array{0:int,1:array<string,string>}|null
-     */
+    /** @param array<string,string> $headers @return array{0:int,1:array<string,string>}|null */
     private static function fileMetadata(string $absolutePath, array $headers): ?array
     {
         if (!is_file($absolutePath) || !is_readable($absolutePath)) {
@@ -161,12 +141,10 @@ final readonly class RangeResponder
         $mtime = filemtime($absolutePath);
         $lastModified = $mtime === false ? null : $mtime;
         $length = max(0, $size);
-        $headers += [
-            'Accept-Ranges' => 'bytes',
-            'ETag' => 'W/"' . dechex($length) . '-' . dechex($lastModified ?? 0) . '"',
-        ];
+        $headers['Accept-Ranges'] = 'bytes';
+        $headers['ETag'] ??= 'W/"' . dechex($length) . '-' . dechex($lastModified ?? 0) . '"';
         if ($lastModified !== null) {
-            $headers += ['Last-Modified' => Utils::httpDate($lastModified)];
+            $headers['Last-Modified'] ??= Utils::httpDate($lastModified);
         }
 
         return [$length, $headers];

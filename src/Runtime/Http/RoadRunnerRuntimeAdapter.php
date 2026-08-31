@@ -12,13 +12,7 @@ use Infocyph\Webrick\Router\Runtime\RoutingInput;
 use Psr\Http\Message\ServerRequestInterface;
 use RuntimeException;
 
-/**
- * RoadRunner worker adapter.
- *
- * The host injects its already-created worker responder once at bootstrap.
- * Webrick never creates a competing worker/container and never discovers RR on
- * the request path.
- */
+/** RoadRunner worker adapter with bootstrap-selected responder. */
 final readonly class RoadRunnerRuntimeAdapter implements RuntimeAdapterInterface
 {
     /** @var Closure(int,string|Generator,array<string,list<string>>,bool):void */
@@ -28,9 +22,7 @@ final readonly class RoadRunnerRuntimeAdapter implements RuntimeAdapterInterface
 
     private bool $sendfileMiddleware;
 
-    /**
-     * @param callable(int,string|Generator,array<string,list<string>>,bool):void $respond
-     */
+    /** @param callable(int,string|Generator,array<string,list<string>>,bool):void $respond */
     public function __construct(
         callable $respond,
         bool $sendfileMiddleware = false,
@@ -104,9 +96,12 @@ final readonly class RoadRunnerRuntimeAdapter implements RuntimeAdapterInterface
 
     public function write(Response $response, RuntimeRequestContext $context): void
     {
-        $headers = $response->getHeaders();
+        $nativeRequest = $context->nativeRequest;
+        $http2 = $nativeRequest instanceof ServerRequestInterface
+            && str_starts_with($nativeRequest->getProtocolVersion(), '2');
+        $headers = ResponseWriterSupport::headerMap($response, $http2);
         $size = ResponseWriterSupport::knownLength($response);
-        if (!$response->hasHeader('Content-Length') && $size !== null) {
+        if (!isset($headers['Content-Length']) && $size !== null) {
             $headers['Content-Length'] = [(string) $size];
         }
 
@@ -150,9 +145,7 @@ final readonly class RoadRunnerRuntimeAdapter implements RuntimeAdapterInterface
         yield from $chunks;
     }
 
-    /**
-     * @return array<string,mixed>|object|null
-     */
+    /** @return array<string,mixed>|object|null */
     private static function parsedBody(ServerRequestInterface $request): array|object|null
     {
         $body = $request->getParsedBody();

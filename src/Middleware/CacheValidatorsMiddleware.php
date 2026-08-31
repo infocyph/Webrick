@@ -20,7 +20,7 @@ final readonly class CacheValidatorsMiddleware
 {
     /**
      * Metadata provider returns [etag, lastModified, representationExists?].
-     * The existence flag is required for exact If-Match/If-None-Match "*" semantics.
+     * Unsafe conditional requests require this authoritative pre-mutation state.
      *
      * @param null|Closure(Request):array{0:string|null,1:int|null,2?:bool} $metaProvider
      */
@@ -35,13 +35,21 @@ final readonly class CacheValidatorsMiddleware
     public function __invoke(Request $req, Closure $next): Response
     {
         $getOrHead = $this->isGetOrHead($req);
-        [$validator, $preconditions] = $this->evaluatePreconditions($req);
-        $shortCircuit = $this->maybeShortCircuit($preconditions, $getOrHead);
-        if ($shortCircuit !== null) {
-            return $shortCircuit;
+        $preconditions = null;
+
+        if ($this->metaProvider instanceof Closure) {
+            [$validator, $preconditions] = $this->evaluatePreconditions($req);
+            $shortCircuit = $this->maybeShortCircuit($preconditions, $getOrHead);
+            if ($shortCircuit !== null) {
+                return $shortCircuit;
+            }
+            $req = $this->maybeDropStaleRangeHeader($req, $validator, $getOrHead);
+        } elseif (!$getOrHead && $this->hasUnsafePreconditions($req)) {
+            throw new \LogicException(
+                'Unsafe conditional requests require CacheValidatorsMiddleware metadata provider before mutation.',
+            );
         }
 
-        $req = $this->maybeDropStaleRangeHeader($req, $validator, $getOrHead);
         $resp = $next($req);
         if ($req->getAttribute('personalized') === true) {
             $resp = $resp->withCache(static fn(CacheControl $cache): CacheControl => $cache->private());
@@ -50,7 +58,9 @@ final readonly class CacheValidatorsMiddleware
             return $resp;
         }
 
-        $resp = $this->ensureValidatorHeaders($resp, $preconditions->headers);
+        if ($preconditions instanceof Outcome) {
+            $resp = $this->ensureValidatorHeaders($resp, $preconditions->headers);
+        }
         $resp = $this->maybeAttachAutoEtag($resp, $req);
 
         return $this->applyResponsePreconditions($req, $resp);
@@ -70,10 +80,12 @@ final readonly class CacheValidatorsMiddleware
     {
         $etag = trim($resp->getHeaderLine('ETag'));
         $lastModified = self::parseLastModified($resp->getHeaderLine('Last-Modified'));
+        $status = $resp->getStatusCode();
+        $exists = $status !== StatusEnum::NOT_FOUND->value && $status !== StatusEnum::GONE->value;
         $result = new ConditionalValidator(
             $etag === '' ? null : $etag,
             $lastModified,
-            true,
+            $exists,
         )->evaluate($req);
 
         return $this->maybeShortCircuit($result, true) ?? $resp;
@@ -94,15 +106,20 @@ final readonly class CacheValidatorsMiddleware
     /** @return array{0:ConditionalValidator,1:Outcome} */
     private function evaluatePreconditions(Request $req): array
     {
-        $meta = $this->metaProvider instanceof Closure
-            ? ($this->metaProvider)($req)
-            : [null, null];
+        $meta = ($this->metaProvider)($req);
         $etag = $meta[0] ?? null;
         $lastModified = $meta[1] ?? null;
         $exists = $meta[2] ?? null;
         $validator = new ConditionalValidator($etag, $lastModified, $exists);
 
         return [$validator, $validator->evaluate($req)];
+    }
+
+    private function hasUnsafePreconditions(Request $req): bool
+    {
+        return $req->getHeaderLine('If-Match') !== ''
+            || $req->getHeaderLine('If-None-Match') !== ''
+            || $req->getHeaderLine('If-Unmodified-Since') !== '';
     }
 
     private function isGetOrHead(Request $req): bool

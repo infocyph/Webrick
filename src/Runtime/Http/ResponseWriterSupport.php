@@ -71,6 +71,17 @@ final readonly class ResponseWriterSupport
         return $lower !== 'te' || strtolower(trim($value)) === 'trailers';
     }
 
+    /** @return array<string,list<string>> */
+    public static function headerMap(Response $response, bool $http2 = false): array
+    {
+        $headers = [];
+        foreach (self::headers($response, $http2) as [$name, $value]) {
+            $headers[$name][] = $value;
+        }
+
+        return $headers;
+    }
+
     /** @return Generator<int,array{0:string,1:string},void,void> */
     public static function headers(Response $response, bool $http2 = false): Generator
     {
@@ -102,10 +113,7 @@ final readonly class ResponseWriterSupport
             || $status === StatusEnum::NO_CONTENT->value;
     }
 
-    /**
-     * @param iterable<string> $chunks
-     * @return Generator<int,string,void,void>
-     */
+    /** @param iterable<string> $chunks @return Generator<int,string,void,void> */
     private static function nonEmptyChunks(iterable $chunks): iterable
     {
         foreach ($chunks as $chunk) {

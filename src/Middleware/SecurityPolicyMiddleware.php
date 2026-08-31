@@ -9,19 +9,14 @@ use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Headers\SecurityHeaders;
 use Infocyph\Webrick\Response\Response;
 
-/**
- * HTTP response policies separated from CORS semantics.
- */
+/** HTTP response policies separated from CORS semantics. */
 final readonly class SecurityPolicyMiddleware
 {
     private ?string $acceptChHeader;
 
     private ?string $timingAllowOriginHeader;
 
-    /**
-     * @param list<string> $acceptCh
-     * @param list<string> $timingAllowOrigins
-     */
+    /** @param list<string> $acceptCh @param list<string> $timingAllowOrigins */
     public function __construct(
         private bool $hsts = true,
         private bool $hstsIncludeSubdomains = true,
@@ -37,15 +32,14 @@ final readonly class SecurityPolicyMiddleware
         };
     }
 
-    /**
-     * @param Closure(Request):Response $next
-     */
+    /** @param Closure(Request):Response $next */
     public function __invoke(Request $req, Closure $next): Response
     {
         $response = SecurityHeaders::tight(
             $next($req),
             hsts: $this->hsts,
             includeSubs: $this->hstsIncludeSubdomains,
+            secureRequest: $req->isSecure(),
         );
 
         if ($this->csp !== null && $this->csp !== '' && !$response->hasHeader('Content-Security-Policy')) {

@@ -7,6 +7,7 @@ namespace Infocyph\Webrick\Middleware;
 use Closure;
 use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Constants\StatusEnum;
+use Infocyph\Webrick\Exceptions\HttpException;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Runtime\Http\RuntimeCapabilities;
@@ -15,12 +16,9 @@ use Infocyph\Webrick\Runtime\Http\RuntimeCapabilities;
 final readonly class CompressionMiddleware
 {
     public const string ETAG_STRONG_DERIVE = 'derive-strong';
-
     public const string ETAG_STRONG_RECOMP = 'recompute-strong';
-
     public const string ETAG_WEAK_ON_ENCODE = 'weak-on-encode';
 
-    /** encoder => function */
     private const array ALGO = [
         'br' => 'brotli_compress',
         'deflate' => 'gzdeflate',
@@ -41,11 +39,7 @@ final readonly class CompressionMiddleware
         'video/',
     ];
 
-    /**
-     * @param list<string> $prefOrder
-     * @param list<string> $excludeTypes
-     * @param list<string> $onlyTypes
-     */
+    /** @param list<string> $prefOrder @param list<string> $excludeTypes @param list<string> $onlyTypes */
     public function __construct(
         private int $minBytes = 1400,
         private array $prefOrder = ['zstd', 'br', 'gzip'],
@@ -60,9 +54,7 @@ final readonly class CompressionMiddleware
         private bool $forceAddVary = true,
     ) {}
 
-    /**
-     * @param Closure(Request):Response $next
-     */
+    /** @param Closure(Request):Response $next */
     public function __invoke(Request $req, Closure $next): Response
     {
         $capabilities = $req->getAttribute(RuntimeCapabilities::ATTRIBUTE);
@@ -76,8 +68,14 @@ final readonly class CompressionMiddleware
         }
 
         $algorithm = $this->negotiate($req->getHeaderLine('Accept-Encoding'));
+        if ($algorithm === false) {
+            throw HttpException::notAcceptable(
+                'No acceptable content coding is available.',
+                ['Vary' => 'Accept-Encoding'],
+            );
+        }
         if ($algorithm === null) {
-            return $resp;
+            return $this->forceAddVary ? $resp->withSmartHeader('Vary', 'Accept-Encoding') : $resp;
         }
 
         $raw = $resp->getStringBody();
@@ -86,7 +84,7 @@ final readonly class CompressionMiddleware
         }
         $encoded = $this->encode($raw, $algorithm);
         if ($encoded === false) {
-            return $resp;
+            return $this->forceAddVary ? $resp->withSmartHeader('Vary', 'Accept-Encoding') : $resp;
         }
 
         $encodedResponse = $this->applyEncoded($resp, $encoded, $algorithm);
@@ -239,7 +237,8 @@ final readonly class CompressionMiddleware
         return $mime === $pattern;
     }
 
-    private function negotiate(string $header): ?string
+    /** string=encoder, null=identity, false=not acceptable */
+    private function negotiate(string $header): string|false|null
     {
         if (trim($header) === '') {
             return null;
@@ -247,6 +246,9 @@ final readonly class CompressionMiddleware
 
         $quality = $this->parseAcceptEncoding($header);
         $wildcard = $quality['*'] ?? null;
+        $identityQ = array_key_exists('identity', $quality)
+            ? $quality['identity']
+            : ($wildcard === 0.0 ? 0.0 : 1.0);
         $best = null;
         $bestQ = 0.0;
         $available = self::availableAlgorithms();
@@ -264,26 +266,23 @@ final readonly class CompressionMiddleware
             }
         }
 
-        if ($best === null || $bestQ <= 0.0) {
+        if ($best !== null && $bestQ > 0.0 && $identityQ <= $bestQ) {
+            return $best;
+        }
+        if ($identityQ > 0.0) {
             return null;
         }
 
-        if (array_key_exists('identity', $quality) && $quality['identity'] > $bestQ) {
-            return null;
-        }
-
-        return $best;
+        return false;
     }
 
-    /**
-     * @return array<string,float>
-     */
+    /** @return array<string,float> */
     private function parseAcceptEncoding(string $header): array
     {
         $quality = [];
         foreach (explode(',', $header) as $segment) {
             $parts = array_map(trim(...), explode(';', $segment));
-            $token = strtolower(array_shift($parts));
+            $token = strtolower((string) array_shift($parts));
             if ($token === '') {
                 continue;
             }
@@ -292,7 +291,6 @@ final readonly class CompressionMiddleware
             foreach ($parts as $parameter) {
                 if (preg_match('/^q\s*=\s*(0(?:\.\d{0,3})?|1(?:\.0{0,3})?)$/i', $parameter, $match) === 1) {
                     $q = (float) $match[1];
-
                     break;
                 }
             }
@@ -302,9 +300,7 @@ final readonly class CompressionMiddleware
         return $quality;
     }
 
-    /**
-     * @return array{0:string,1:bool}
-     */
+    /** @return array{0:string,1:bool} */
     private function parseEtag(string $etag): array
     {
         $value = trim($etag);

@@ -20,9 +20,7 @@ final readonly class RequestLimitsMiddleware
 
     private int $resolvedBodyLimit;
 
-    /**
-     * @param list<string> $bodyLimitVerbs
-     */
+    /** @param list<string> $bodyLimitVerbs */
     public function __construct(
         private int $maxHeaderBytes = 8192,
         private int $maxHeaderCount = 100,
@@ -52,9 +50,7 @@ final readonly class RequestLimitsMiddleware
         $this->resolvedBodyLimit = $maxBodyBytes ?? self::phpIniBytes(ini_get('post_max_size'));
     }
 
-    /**
-     * @param Closure(Request):Response $next
-     */
+    /** @param Closure(Request):Response $next */
     public function __invoke(Request $req, Closure $next): Response
     {
         $capabilities = $req->getAttribute(RuntimeCapabilities::ATTRIBUTE);
@@ -137,24 +133,37 @@ final readonly class RequestLimitsMiddleware
         if (
             $this->resolvedBodyLimit <= 0
             || !isset($this->bodyVerbSet[HttpMethodEnum::normalize($req->getMethod())])
-            || $this->hasTransferCoding($req)
         ) {
             return;
         }
 
+        $transferCoded = $this->hasTransferCoding($req);
         $contentLength = trim($req->getHeaderLine('Content-Length'));
-        if ($contentLength === '') {
-            return;
-        }
-
-        $length = $this->parseContentLength($contentLength);
-        if ($length === null) {
+        if ($transferCoded && $contentLength !== '') {
             throw HttpException::badRequest(
-                'Invalid Content-Length header.',
+                'Transfer-Encoding and Content-Length must not be combined.',
                 $this->connectionCloseHeaders($req),
             );
         }
-        if ($length > $this->resolvedBodyLimit) {
+
+        if ($contentLength !== '') {
+            $length = $this->parseContentLength($contentLength);
+            if ($length === null) {
+                throw HttpException::badRequest(
+                    'Invalid Content-Length header.',
+                    $this->connectionCloseHeaders($req),
+                );
+            }
+            if ($length > $this->resolvedBodyLimit) {
+                throw $this->payloadTooLargeException($req);
+            }
+        }
+
+        $actual = $req->getBody()->getSize();
+        if ($actual === null) {
+            $actual = strlen($req->raw());
+        }
+        if ($actual > $this->resolvedBodyLimit) {
             throw $this->payloadTooLargeException($req);
         }
     }

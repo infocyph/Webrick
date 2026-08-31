@@ -30,17 +30,13 @@ final readonly class SwooleRuntimeAdapter implements RuntimeAdapterInterface
         );
     }
 
-    public static function openSwoole(
-        bool $transportCompression = false,
-        bool $transportRequestLimits = false,
-    ): self {
+    public static function openSwoole(bool $transportCompression = false, bool $transportRequestLimits = false): self
+    {
         return new self('openswoole', $transportCompression, $transportRequestLimits);
     }
 
-    public static function swoole(
-        bool $transportCompression = false,
-        bool $transportRequestLimits = false,
-    ): self {
+    public static function swoole(bool $transportCompression = false, bool $transportRequestLimits = false): self
+    {
         return new self('swoole', $transportCompression, $transportRequestLimits);
     }
 
@@ -49,11 +45,8 @@ final readonly class SwooleRuntimeAdapter implements RuntimeAdapterInterface
         return $this->runtimeCapabilities;
     }
 
-    public function context(
-        mixed $nativeRequest = null,
-        mixed $nativeResponse = null,
-        bool $withHost = false,
-    ): RuntimeRequestContext {
+    public function context(mixed $nativeRequest = null, mixed $nativeResponse = null, bool $withHost = false): RuntimeRequestContext
+    {
         if (!is_object($nativeRequest) || !is_object($nativeResponse)) {
             throw new RuntimeException('Swoole runtime requires native request and response objects.');
         }
@@ -151,37 +144,26 @@ final readonly class SwooleRuntimeAdapter implements RuntimeAdapterInterface
         $this->end($native);
     }
 
-    /**
-     * @param list<string> $values
-     */
-    private function writeHeader(object $native, string $name, array $values, bool $http2): void
+    /** @param list<string> $values */
+    private function writeHeader(object $native, string $name, array $values): void
     {
-        $allowed = array_values(array_filter(
-            $values,
-            static fn(string $value): bool => ResponseWriterSupport::headerAllowed($name, $value, $http2),
-        ));
-        if ($allowed === []) {
+        if ($values === []) {
             return;
         }
-
-        if ($this->call($native, 'header', $name, count($allowed) === 1 ? $allowed[0] : $allowed) === false) {
+        if ($this->call($native, 'header', $name, count($values) === 1 ? $values[0] : $values) === false) {
             throw new RuntimeException("Swoole response header failed: {$name}");
         }
     }
 
     private function writeHeaders(object $native, Response $response, bool $http2): void
     {
-        foreach ($response->getHeaders() as $name => $values) {
-            $this->writeHeader($native, $name, $values, $http2);
-        }
-
+        $headers = ResponseWriterSupport::headerMap($response, $http2);
         $size = ResponseWriterSupport::knownLength($response);
-        if (
-            !$response->hasHeader('Content-Length')
-            && $size !== null
-            && $this->call($native, 'header', 'Content-Length', (string) $size) === false
-        ) {
-            throw new RuntimeException('Swoole Content-Length header failed.');
+        if (!isset($headers['Content-Length']) && $size !== null) {
+            $headers['Content-Length'] = [(string) $size];
+        }
+        foreach ($headers as $name => $values) {
+            $this->writeHeader($native, $name, $values);
         }
     }
 }

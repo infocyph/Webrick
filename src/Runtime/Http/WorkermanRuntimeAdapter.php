@@ -33,13 +33,8 @@ final readonly class WorkermanRuntimeAdapter implements RuntimeAdapterInterface
         );
     }
 
-    /**
-     * Resolve Workerman's HTTP response protocol classes once during worker boot.
-     */
-    public static function current(
-        bool $transportCompression = false,
-        bool $transportRequestLimits = false,
-    ): self {
+    public static function current(bool $transportCompression = false, bool $transportRequestLimits = false): self
+    {
         $response = self::requiredClass('Workerman\\Protocols\\Http\\Response');
         $chunk = self::requiredClass('Workerman\\Protocols\\Http\\Chunk');
 
@@ -51,11 +46,8 @@ final readonly class WorkermanRuntimeAdapter implements RuntimeAdapterInterface
         return $this->runtimeCapabilities;
     }
 
-    public function context(
-        mixed $nativeRequest = null,
-        mixed $nativeResponse = null,
-        bool $withHost = false,
-    ): RuntimeRequestContext {
+    public function context(mixed $nativeRequest = null, mixed $nativeResponse = null, bool $withHost = false): RuntimeRequestContext
+    {
         if (!is_object($nativeRequest) || !is_object($nativeResponse)) {
             throw new RuntimeException('Workerman runtime requires Request and Connection objects.');
         }
@@ -93,13 +85,15 @@ final readonly class WorkermanRuntimeAdapter implements RuntimeAdapterInterface
     public function write(Response $response, RuntimeRequestContext $context): void
     {
         $connection = $context->nativeResponse;
-        if (!is_object($connection)) {
-            throw new RuntimeException('Workerman connection is unavailable.');
+        $request = $context->nativeRequest;
+        if (!is_object($connection) || !is_object($request)) {
+            throw new RuntimeException('Workerman transport handles are unavailable.');
         }
 
-        $headers = $this->headerMap($response);
+        $http2 = WorkermanNativeRequest::isHttp2($request);
+        $headers = $this->headerMap($response, $http2);
         $size = ResponseWriterSupport::knownLength($response);
-        if (!$response->hasHeader('Content-Length') && $size !== null) {
+        if (!isset($headers['Content-Length']) && $size !== null) {
             $headers['Content-Length'] = (string) $size;
         }
 
@@ -125,7 +119,9 @@ final readonly class WorkermanRuntimeAdapter implements RuntimeAdapterInterface
         }
 
         unset($headers['Content-Length']);
-        $headers['Transfer-Encoding'] = 'chunked';
+        if (!$http2) {
+            $headers['Transfer-Encoding'] = 'chunked';
+        }
         $this->send($connection, $this->response($response->getStatusCode(), $headers, ''));
         $chunkClass = $this->chunkClass;
         foreach (ResponseWriterSupport::chunks($response) as $chunk) {
@@ -134,9 +130,7 @@ final readonly class WorkermanRuntimeAdapter implements RuntimeAdapterInterface
         $this->send($connection, new $chunkClass(''));
     }
 
-    /**
-     * @return class-string
-     */
+    /** @return class-string */
     private static function requiredClass(string $class): string
     {
         if (!class_exists($class)) {
@@ -155,22 +149,18 @@ final readonly class WorkermanRuntimeAdapter implements RuntimeAdapterInterface
         return $target->{$method}(...$arguments);
     }
 
-    /**
-     * @return array<string,string|array<int,string>>
-     */
-    private function headerMap(Response $response): array
+    /** @return array<string,string|array<int,string>> */
+    private function headerMap(Response $response, bool $http2): array
     {
         $headers = [];
-        foreach ($response->getHeaders() as $name => $values) {
+        foreach (ResponseWriterSupport::headerMap($response, $http2) as $name => $values) {
             $headers[$name] = count($values) === 1 ? $values[0] : $values;
         }
 
         return $headers;
     }
 
-    /**
-     * @param array<string,string|array<int,string>> $headers
-     */
+    /** @param array<string,string|array<int,string>> $headers */
     private function response(int $status, array $headers, string $body): object
     {
         $class = $this->responseClass;
