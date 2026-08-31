@@ -6,13 +6,15 @@ The complete production application artifact is a separate concern handled by `R
 
 ## Modes
 
-| Matcher | Cache location | Output |
-| --- | --- | --- |
-| `generated` | PHP file | generated matcher code/data |
-| `fused` | PHP file | compact fused matcher data |
-| `sharded` | directory | immutable generation + manifest/shards |
+| Matcher | Cache location | Output | Intended role |
+| --- | --- | --- | --- |
+| `fused` | PHP file | compact fused matcher data | default baseline for normal applications |
+| `generated` | PHP file | generated matcher code/data | throughput specialization after benchmark validation |
+| `sharded` | directory | immutable generation + manifest/shards | very large route sets where working-set or memory reduction is measurable |
 
-Prefer an explicit `matcher` value in deployment tooling.
+Prefer an explicit `matcher` value in deployment tooling. Start from `fused` unless representative production-like measurements justify one of the specialized modes.
+
+Generated should be selected for a demonstrated matcher-throughput advantage after accounting for generated artifact size, OPcache footprint and worker boot cost. Sharded should be selected when a very large route table benefits measurably from loading relevant route groups rather than keeping one consolidated routing structure in the worker; include first-use shard loading, filesystem behavior and worker lifetime in that comparison.
 
 ## PHP API
 
@@ -20,8 +22,8 @@ Prefer an explicit `matcher` value in deployment tooling.
 use Infocyph\Webrick\Support\RouteCache;
 
 $artifact = RouteCache::build([
-    'matcher' => 'generated',
-    'cache' => __DIR__ . '/../.route-cache/generated.php',
+    'matcher' => 'fused',
+    'cache' => __DIR__ . '/../.route-cache/fused.php',
     'routes' => __DIR__ . '/../routes.php',
     'attributeDirs' => [
         'App\\Http\\' => __DIR__ . '/../src/Http',
@@ -51,8 +53,8 @@ There are no runtime middleware, alias-fallback, DI-container, or URL-service bi
 ## CLI
 
 ```bash
-php ./webrick route:cache --matcher=generated --cache=.route-cache/generated.php --routes=routes.php
 php ./webrick route:cache --matcher=fused --cache=.route-cache/fused.php --routes=routes.php
+php ./webrick route:cache --matcher=generated --cache=.route-cache/generated.php --routes=routes.php
 php ./webrick route:cache --matcher=sharded --cache=.route-cache --routes=routes.php
 ```
 
@@ -80,8 +82,8 @@ They do not contain application service instances, current request state, resolv
 ## Clearing
 
 ```bash
-php ./webrick route:clear --matcher=generated --cache=.route-cache/generated.php
 php ./webrick route:clear --matcher=fused --cache=.route-cache/fused.php
+php ./webrick route:clear --matcher=generated --cache=.route-cache/generated.php
 php ./webrick route:clear --matcher=sharded --cache=.route-cache
 ```
 
