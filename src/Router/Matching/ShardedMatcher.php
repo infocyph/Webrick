@@ -13,7 +13,7 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
  * Sharded matcher using the same compiled matcher IR/executor as FusedMatcher.
  *
  * Canonical route groups exist only on the build side. Persisted shards contain
- * method-first static maps, combined PCRE chunks and callable fallback lanes.
+ * method-first static maps, ordered combined-PCRE/fallback steps and route data.
  * Sharding changes the loaded working set, not route-discrimination semantics.
  *
  * @phpstan-type RouteValue CompiledRoute|array<array-key,mixed>|string
@@ -28,7 +28,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
 {
     use MatcherFactoryTrait;
 
-    private const int INDEX_CACHE_VERSION = 7;
+    private const int INDEX_CACHE_VERSION = 8;
 
     private const string SHARD_DYNAMIC = '__dynamic';
 
