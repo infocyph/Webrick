@@ -46,13 +46,17 @@ function matcher_write_validated_atomic_php_file(string $file, string $php, call
         }
         $validate($blob);
     } catch (\Throwable $exception) {
-        @unlink($tmp);
+        if (is_file($tmp) && !unlink($tmp)) {
+            throw new \RuntimeException("Failed to remove invalid cache temp file {$tmp}", 0, $exception);
+        }
 
         throw new \RuntimeException('Generated cache validation failed before publication.', 0, $exception);
     }
 
     if (!rename($tmp, $file)) {
-        @unlink($tmp);
+        if (is_file($tmp) && !unlink($tmp)) {
+            throw new \RuntimeException("Failed to clean cache temp file {$tmp} after publication failure.");
+        }
 
         throw new \RuntimeException("Failed to move cache file into place {$file}");
     }
