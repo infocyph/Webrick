@@ -30,7 +30,7 @@ final class CompiledMatcherIndexValidator
         return $hosts;
     }
 
-    /** @return array{static:array<string,array<string,mixed>>,static_ids:array<string,array<string,int>>,dynamic:array<string,array<int,array<string,array<string,mixed>>>>} */
+    /** @return array{static:array<string,array<string,mixed>>,static_ids:array<string,array<string,int>>,static_allowed:array<string,list<string>>,dynamic:array<string,array<int,array<string,array<string,mixed>>>>,dynamic_allowed:array<int,array<string,array<string,mixed>>>} */
     public static function validateGroup(mixed $raw, bool $validateRegex = false): array
     {
         if (!is_array($raw)) {
@@ -43,7 +43,9 @@ final class CompiledMatcherIndexValidator
         return [
             'static' => $static,
             'static_ids' => $staticIds,
+            'static_allowed' => self::validateStaticAllowed($raw['static_allowed'] ?? null, $static),
             'dynamic' => self::validateDynamic($raw['dynamic'] ?? null, $validateRegex),
+            'dynamic_allowed' => self::validateDynamicAllowed($raw['dynamic_allowed'] ?? null, $validateRegex),
         ];
     }
 
@@ -109,6 +111,47 @@ final class CompiledMatcherIndexValidator
         return $ids;
     }
 
+    /**
+     * @param array<string,array<string,mixed>> $static
+     * @return array<string,list<string>>
+     */
+    private static function validateStaticAllowed(mixed $raw, array $static): array
+    {
+        if (!is_array($raw)) {
+            throw new \UnexpectedValueException('Compiled matcher static allowed-method map must be an array.');
+        }
+
+        $allowed = [];
+        foreach ($raw as $path => $methods) {
+            if (!is_string($path)) {
+                throw new \UnexpectedValueException('Compiled matcher static allowed-method path is invalid.');
+            }
+            $allowed[$path] = self::validateMethodList($methods);
+        }
+
+        $paths = [];
+        foreach ($static as $method => $methodPaths) {
+            foreach ($methodPaths as $path => $_route) {
+                $paths[$path][$method] = true;
+                if ($method === 'GET') {
+                    $paths[$path]['HEAD'] = true;
+                }
+            }
+        }
+        foreach ($paths as $path => $methods) {
+            if (!isset($allowed[$path])) {
+                throw new \UnexpectedValueException('Compiled matcher static allowed-method map is incomplete.');
+            }
+            foreach (array_keys($methods) as $method) {
+                if (!in_array($method, $allowed[$path], true)) {
+                    throw new \UnexpectedValueException('Compiled matcher static allowed-method map does not cover its static routes.');
+                }
+            }
+        }
+
+        return $allowed;
+    }
+
     /** @return array<string,array<int,array<string,array<string,mixed>>>> */
     private static function validateDynamic(mixed $raw, bool $validateRegex): array
     {
@@ -135,6 +178,88 @@ final class CompiledMatcherIndexValidator
         }
 
         return $dynamic;
+    }
+
+    /** @return array<int,array<string,array<string,mixed>>> */
+    private static function validateDynamicAllowed(mixed $raw, bool $validateRegex): array
+    {
+        if (!is_array($raw)) {
+            throw new \UnexpectedValueException('Compiled matcher dynamic allowed-method map must be an array.');
+        }
+
+        $allowed = [];
+        foreach ($raw as $count => $prefixes) {
+            if (!is_int($count) || $count < 0 || !is_array($prefixes)) {
+                throw new \UnexpectedValueException('Compiled matcher allowed-method segment-count bucket is invalid.');
+            }
+            foreach ($prefixes as $prefix => $bucket) {
+                if (!is_string($prefix)) {
+                    throw new \UnexpectedValueException('Compiled matcher allowed-method prefix bucket is invalid.');
+                }
+                $allowed[$count][$prefix] = self::validateAllowedBucket($bucket, $validateRegex);
+            }
+        }
+
+        return $allowed;
+    }
+
+    /** @return array<string,mixed> */
+    private static function validateAllowedBucket(mixed $raw, bool $validateRegex): array
+    {
+        if (!is_array($raw)) {
+            throw new \UnexpectedValueException('Compiled matcher allowed-method bucket is invalid.');
+        }
+        $type = $raw['type'] ?? null;
+        if ($type === 'fallback') {
+            return ['type' => 'fallback'];
+        }
+        if ($type !== 'literal') {
+            throw new \UnexpectedValueException('Compiled matcher allowed-method bucket type is invalid.');
+        }
+
+        $segment = $raw['segment'] ?? null;
+        $groupsRaw = $raw['groups'] ?? null;
+        if (!is_int($segment) || $segment < 0 || !is_array($groupsRaw) || $groupsRaw === []) {
+            throw new \UnexpectedValueException('Compiled matcher allowed-method literal dispatch is invalid.');
+        }
+
+        $groups = [];
+        foreach ($groupsRaw as $literal => $entry) {
+            if (!is_string($literal) || !is_array($entry)) {
+                throw new \UnexpectedValueException('Compiled matcher allowed-method literal group is invalid.');
+            }
+            $regex = $entry['regex'] ?? null;
+            if (!is_string($regex) || $regex === '') {
+                throw new \UnexpectedValueException('Compiled matcher allowed-method route predicate is invalid.');
+            }
+            if ($validateRegex && @preg_match($regex, '') === false) {
+                throw new \UnexpectedValueException('Compiled matcher allowed-method route predicate cannot be compiled.');
+            }
+            $groups[$literal] = [
+                'regex' => $regex,
+                'methods' => self::validateMethodList($entry['methods'] ?? null),
+            ];
+        }
+
+        return ['type' => 'literal', 'segment' => $segment, 'groups' => $groups];
+    }
+
+    /** @return list<string> */
+    private static function validateMethodList(mixed $raw): array
+    {
+        if (!is_array($raw) || !array_is_list($raw) || $raw === []) {
+            throw new \UnexpectedValueException('Compiled matcher allowed-method list is invalid.');
+        }
+
+        $methods = [];
+        foreach ($raw as $method) {
+            if (!is_string($method) || $method === '' || isset($methods[$method])) {
+                throw new \UnexpectedValueException('Compiled matcher allowed-method token is invalid or duplicated.');
+            }
+            $methods[$method] = true;
+        }
+
+        return array_keys($methods);
     }
 
     /** @return array<string,mixed> */
