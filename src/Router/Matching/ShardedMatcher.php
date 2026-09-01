@@ -22,13 +22,13 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
  * @phpstan-type DynamicEntry array{segments:list<SegmentSpec>,verbs:VerbMap}
  * @phpstan-type DynamicBuckets array<int,array<string,array<string,DynamicEntry>>>
  * @phpstan-type CanonicalGroup array{static:array<string,VerbMap>,dynamic:DynamicBuckets}
- * @phpstan-type CompiledGroup array{static:array<string,array<string,RouteValue>>,static_ids:array<string,array<string,int>>,dynamic:array<string,mixed>}
+ * @phpstan-type CompiledGroup array{static:array<string,array<string,RouteValue>>,static_ids:array<string,array<string,int>>,static_allowed:array<string,list<string>>,dynamic:array<string,mixed>,dynamic_allowed:array<int,array<string,array<string,mixed>>>}
  */
 final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
 {
     use MatcherFactoryTrait;
 
-    private const int INDEX_CACHE_VERSION = 12;
+    private const int INDEX_CACHE_VERSION = 13;
 
     private const string SHARD_DYNAMIC = '__dynamic';
 
