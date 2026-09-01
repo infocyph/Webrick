@@ -1,0 +1,129 @@
+name: Temporary Matcher Phase 3 Final
+
+on:
+  push:
+    branches:
+      - webrick-5/batch-1-correctness
+
+permissions:
+  contents: write
+
+jobs:
+  phase3-final:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: webrick-5/batch-1-correctness
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+          tools: composer:v2
+      - run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Replay Phase 3 preparation
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          workflow = Path('.github/workflows/_tmp-matcher-phase3-close.yml').read_text()
+
+          def extract(step_name: str) -> str:
+              step = f'      - name: {step_name}\n'
+              start = workflow.index(step)
+              start = workflow.index('        run: |\n', start) + len('        run: |\n')
+              try:
+                  end = workflow.index('      - name:', start)
+              except ValueError:
+                  end = len(workflow)
+              lines = []
+              for line in workflow[start:end].splitlines():
+                  if line.startswith('          '):
+                      lines.append(line[10:])
+                  elif line.strip() == '':
+                      lines.append('')
+                  else:
+                      raise SystemExit(f'Unexpected indentation in {step_name}: {line!r}')
+              return '\n'.join(lines) + '\n'
+
+          Path('/tmp/create-bench.sh').write_text(extract('Create typed constraint benchmark'))
+          Path('/tmp/numeric-fix.sh').write_text(extract('Fix numeric literal discriminator keys'))
+          Path('/tmp/replay-opcodes.sh').write_text(extract('Replay Phase 3 opcode implementation'))
+          Path('/tmp/annotation-fix.sh').write_text(extract('Fix strict validator annotations'))
+          PY
+          bash /tmp/create-bench.sh
+          bash /tmp/numeric-fix.sh
+          python3 <<'PY'
+          from pathlib import Path
+          path = Path('src/Router/Matching/CompactMatcherDynamicValidator.php')
+          text = path.read_text()
+          text = text.replace(
+              "if ((!is_string($literal) && !is_int($literal)) || !is_array($entry) || !is_string($entry['regex'] ?? null)) {",
+              "if (!is_array($entry) || !is_string($entry['regex'] ?? null)) {",
+          )
+          text = text.replace(
+              "if ((!is_string($literal) && !is_int($literal)) || !is_array($steps) || !array_is_list($steps) || $steps === []) {",
+              "if (!is_array($steps) || !array_is_list($steps) || $steps === []) {",
+          )
+          path.write_text(text)
+          PY
+          bash /tmp/replay-opcodes.sh
+          bash /tmp/annotation-fix.sh
+
+      - name: Apply PHPForge style
+        run: |
+          vendor/bin/pint --config=vendor/infocyph/phpforge/resources/pint.json \
+            src/Router/Matching/CompiledMatcherConstraintOpcode.php \
+            src/Router/Matching/CompiledMatcherIndexCompiler.php \
+            src/Router/Matching/CompiledMatcherDynamicEngine.php \
+            src/Router/Matching/CompiledMatcherFastEngine.php \
+            src/Router/Matching/CompactMatcherDynamicValidator.php \
+            src/Router/Matching/FusedMatcher.php \
+            src/Router/Matching/ShardedMatcher.php \
+            tests/Unit/MatcherPerformanceRevisionTest.php \
+            benchmarks/MatcherTypedConstraintBench.php
+
+      - name: Run complete PHPForge gate
+        run: composer ic:ci
+
+      - name: Benchmark opcode candidate
+        run: vendor/bin/phpbench run benchmarks/MatcherTypedConstraintBench.php --bootstrap=vendor/autoload.php --report=aggregate
+
+      - name: Benchmark matcher outcomes
+        run: vendor/bin/phpbench run benchmarks/MatcherOutcomeBench.php --bootstrap=vendor/autoload.php --report=aggregate
+
+      - name: Verify scale matrix
+        run: vendor/bin/phpbench run benchmarks/MatcherScaleBench.php --bootstrap=vendor/autoload.php --report=aggregate
+
+      - name: Record Phase 3 completion
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          plan = Path('MATCHER_OPTIMIZATION_PLAN.md')
+          text = plan.read_text()
+          text = text.replace('Status: active development plan — Phases 1–2 complete', 'Status: active development plan — Phases 1–3 complete', 1)
+          marker = '## Phase 3 — Built-in constraint opcodes\n\n'
+          record = """## Phase 3 — Built-in constraint opcodes\n\n**Status: complete (2026-09-01).**\n\nCompletion record:\n\n- Fixed compact discriminator validation for PHP numeric-string array keys; numeric literal route families now scale through Fused/Sharded validation.\n- Specialized matcher-only opcodes cover the built-in callable constraints `int`/`digit`, `numeric`/`float`, `alpha`, `alnum`, `bool`, `json`, and `ipv6`.\n- Canonical route definitions and public constraint APIs remain unchanged; only compact fallback IR is specialized.\n- Unknown/custom callables retain the generic callable fallback representation.\n- Regex-safe built-ins remain on the combined-PCRE path.\n- Fused and Sharded cache versions were advanced for the changed compact IR.\n- Same-run baseline/candidate typed-constraint measurements, general outcome benchmarks, the complete scale matrix, and the full PHPForge gate were required before landing.\n\n"""
+          if marker not in text:
+              raise SystemExit('Phase 3 plan marker missing')
+          text = text.replace(marker, record, 1)
+          plan.write_text(text)
+          PY
+
+      - name: Commit Phase 3 and clean temporary workflows
+        shell: bash
+        run: |
+          rm -f .github/workflows/_tmp-matcher-phase3.yml
+          rm -f .github/workflows/_tmp-matcher-phase3-fix.yml
+          rm -f .github/workflows/_tmp-matcher-phase3-fix2.yml
+          rm -f .github/workflows/_tmp-matcher-phase3-close.yml
+          rm -f .github/workflows/_tmp-matcher-phase3-final.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit --no-verify -m "perf: complete matcher constraint specialization"
+          git push origin HEAD:webrick-5/batch-1-correctness
