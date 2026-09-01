@@ -1,0 +1,62 @@
+name: Temporary Matcher Phases 7-9
+
+on:
+  push:
+    branches:
+      - webrick-5/batch-1-correctness
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: webrick-5/batch-1-correctness
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+          tools: composer:v2
+      - run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Format envelope profiler
+        run: vendor/bin/pint --config=vendor/infocyph/phpforge/resources/pint.json benchmark/matcher_envelope.php
+
+      - name: Run full PHPForge gate
+        run: composer ic:ci
+
+      - name: Profile matcher envelope
+        shell: bash
+        run: |
+          set -euo pipefail
+          for routes in 1000 5000 10000; do
+            for matcher in fused generated sharded; do
+              php benchmark/matcher_envelope.php --matcher="$matcher" --routes="$routes" --warm-iters=25000
+            done
+          done
+
+      - name: Profile Fused and Sharded cache residency
+        run: |
+          php benchmark/matcher_profile.php --routes=1000 --warm-iters=25000
+          php benchmark/matcher_profile.php --routes=5000 --warm-iters=25000
+          php benchmark/matcher_profile.php --routes=10000 --warm-iters=25000
+
+      - name: Run matcher outcome and scale matrices
+        run: |
+          vendor/bin/phpbench run benchmarks/MatcherOutcomeBench.php --bootstrap=vendor/autoload.php --report=aggregate
+          vendor/bin/phpbench run benchmarks/MatcherScaleBench.php --bootstrap=vendor/autoload.php --report=aggregate
+          vendor/bin/phpbench run benchmarks/MatcherMemoryBench.php --bootstrap=vendor/autoload.php --report=aggregate
+
+      - name: Commit validated profiler and remove temporary runner
+        shell: bash
+        run: |
+          rm -f .github/workflows/_tmp-matcher-phases7-9.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit --no-verify -m "bench: validate matcher integration envelope"
+          git push origin HEAD:webrick-5/batch-1-correctness
