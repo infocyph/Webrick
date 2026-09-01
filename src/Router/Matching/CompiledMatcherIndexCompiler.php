@@ -22,6 +22,12 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
  * Large all-PCRE families may additionally receive a build-time-selected
  * literal-segment discriminator when it sharply reduces the candidate set.
  *
+ * Miss handling receives its own build-time metadata. Exact static paths carry
+ * their complete allowed-method set. Dynamic buckets receive a method-
+ * independent literal discriminator only when one literal segment uniquely
+ * identifies every canonical route shape; ambiguous families retain the
+ * general cross-method fallback so 405/OPTIONS semantics stay exact.
+ *
  * @phpstan-type RouteValue mixed
  * @phpstan-type SegmentSpec array<string,mixed>
  * @phpstan-type CanonicalDynamicEntry array{segments:list<SegmentSpec>,verbs:array<string,RouteValue>}
@@ -30,6 +36,8 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
  * @phpstan-type FastDispatchEntry array{id:int,params:list<string>}
  * @phpstan-type FastDispatchStep array{regex:string,routes:array<string,FastDispatchEntry>}
  * @phpstan-type FastDispatch array{segment:int,groups:array<string,list<FastDispatchStep>>}
+ * @phpstan-type AllowedLiteralEntry array{regex:string,methods:list<string>}
+ * @phpstan-type AllowedBucket array{type:'literal',segment:int,groups:array<string,AllowedLiteralEntry>}|array{type:'fallback'}
  * @phpstan-type FallbackStep array{type:'fallback',segments:list<SegmentSpec>,route:RouteValue,id:int}
  * @phpstan-type DynamicStep PcreStep|FallbackStep
  * @phpstan-type DynamicBucket array{steps:list<DynamicStep>,fast_dispatch?:FastDispatch}
@@ -52,17 +60,20 @@ final class CompiledMatcherIndexCompiler
 
     /**
      * @param array<string,array{static:array<string,array<string,mixed>>,dynamic:array<int,array<string,array<string,CanonicalDynamicEntry>>>}> $indexes
-     * @return array<string,array{static:array<string,array<string,RouteValue>>,static_ids:array<string,array<string,int>>,dynamic:array<string,array<int,array<string,DynamicBucket>>>}>
+     * @return array<string,array{static:array<string,array<string,RouteValue>>,static_ids:array<string,array<string,int>>,static_allowed:array<string,list<string>>,dynamic:array<string,array<int,array<string,DynamicBucket>>>,dynamic_allowed:array<int,array<string,AllowedBucket>>}>
      */
     public function compile(array $indexes): array
     {
         $compiled = [];
         foreach ($indexes as $host => $index) {
-            [$static, $staticIds] = $this->compileStatic($index['static']);
+            [$static, $staticIds, $staticAllowed] = $this->compileStatic($index['static']);
+            [$dynamic, $dynamicAllowed] = $this->compileDynamic($index['dynamic']);
             $compiled[$host] = [
                 'static' => $static,
                 'static_ids' => $staticIds,
-                'dynamic' => $this->compileDynamic($index['dynamic']),
+                'static_allowed' => $staticAllowed,
+                'dynamic' => $dynamic,
+                'dynamic_allowed' => $dynamicAllowed,
             ];
         }
 
@@ -86,14 +97,17 @@ final class CompiledMatcherIndexCompiler
 
     /**
      * @param array<int,array<string,array<string,CanonicalDynamicEntry>>> $dynamic
-     * @return array<string,array<int,array<string,DynamicBucket>>>
+     * @return array{0:array<string,array<int,array<string,DynamicBucket>>>,1:array<int,array<string,AllowedBucket>>}
      */
     private function compileDynamic(array $dynamic): array
     {
         $methods = [];
+        $allowed = [];
 
         foreach ($dynamic as $count => $prefixes) {
             foreach ($prefixes as $prefix => $entries) {
+                $allowed[$count][$prefix] = $this->compileAllowedBucket($entries);
+
                 /** @var array<string,list<array{segments:list<SegmentSpec>,route:RouteValue,id:int,pcre:bool}>> $ordered */
                 $ordered = [];
 
@@ -116,7 +130,71 @@ final class CompiledMatcherIndexCompiler
             }
         }
 
-        return $methods;
+        return [$methods, $allowed];
+    }
+
+    /**
+     * A method-independent dynamic miss accelerator is emitted only when every
+     * canonical route in the bucket is PCRE-safe and one literal segment has a
+     * unique value per route shape. A selected literal therefore identifies at
+     * most one canonical shape, so its complete method set can be returned
+     * without losing overlapping-route Allow semantics.
+     *
+     * @param array<string,CanonicalDynamicEntry> $entries
+     * @return AllowedBucket
+     */
+    private function compileAllowedBucket(array $entries): array
+    {
+        $routeCount = count($entries);
+        if ($routeCount < 4) {
+            return ['type' => 'fallback'];
+        }
+
+        $routes = array_values($entries);
+        foreach ($routes as $entry) {
+            if (!$this->isPcreCompilable($entry['segments'])) {
+                return ['type' => 'fallback'];
+            }
+        }
+
+        $segmentCount = count($routes[0]['segments'] ?? []);
+        $bestSegment = null;
+        $bestDistinct = 1;
+        for ($segment = 0; $segment < $segmentCount; $segment++) {
+            $values = [];
+            $allLiteral = true;
+            foreach ($routes as $entry) {
+                $spec = $entry['segments'][$segment] ?? null;
+                if (!is_array($spec) || ($spec['type'] ?? null) !== 'lit' || !is_string($spec['val'] ?? null)) {
+                    $allLiteral = false;
+                    break;
+                }
+                $values[$spec['val']] = true;
+            }
+            if (!$allLiteral) {
+                continue;
+            }
+            $distinct = count($values);
+            if ($distinct > $bestDistinct) {
+                $bestDistinct = $distinct;
+                $bestSegment = $segment;
+            }
+        }
+
+        if ($bestSegment === null || $bestDistinct !== $routeCount) {
+            return ['type' => 'fallback'];
+        }
+
+        $groups = [];
+        foreach ($routes as $entry) {
+            $literal = $entry['segments'][$bestSegment]['val'];
+            $groups[$literal] = [
+                'regex' => $this->routePredicateRegex($entry['segments']),
+                'methods' => self::allowedMethods($entry['verbs']),
+            ];
+        }
+
+        return ['type' => 'literal', 'segment' => $bestSegment, 'groups' => $groups];
     }
 
     /**
@@ -169,9 +247,6 @@ final class CompiledMatcherIndexCompiler
             return null;
         }
 
-        // Do not add a classifier merely to replace one large chunk with a
-        // similarly large group. Require the average selected candidate family
-        // to fit within at most half of the current balanced PCRE target.
         if ((int) ceil($routeCount / $bestDistinct) > max(1, intdiv($this->chunkSize, 2))) {
             return null;
         }
@@ -329,6 +404,23 @@ final class CompiledMatcherIndexCompiler
             'fast_regex' => $fastRegex,
             'routes' => $routeMap,
         ];
+    }
+
+    /** @param array<string,RouteValue> $verbs */
+    private static function allowedMethods(array $verbs): array
+    {
+        $allowed = [];
+        foreach ($verbs as $method => $_route) {
+            if ($method === '') {
+                continue;
+            }
+            $allowed[$method] = true;
+            if ($method === 'GET') {
+                $allowed['HEAD'] = true;
+            }
+        }
+
+        return array_keys($allowed);
     }
 
     private static function escapeDelimiter(string $pattern, string $delimiter): string
@@ -496,6 +588,43 @@ final class CompiledMatcherIndexCompiler
         return ['/*' . implode('/', $parts) . '/*', $params];
     }
 
+    /** @param list<SegmentSpec> $segments */
+    private function routePredicateRegex(array $segments): string
+    {
+        if ($segments === []) {
+            return '~\\A/*\\z~D';
+        }
+
+        $parts = [];
+        foreach ($segments as $segment) {
+            $type = $segment['type'] ?? null;
+            if ($type === 'lit') {
+                $literal = $segment['val'] ?? null;
+                if (!is_string($literal)) {
+                    throw new \UnexpectedValueException('Compiled matcher literal is invalid.');
+                }
+                $parts[] = preg_quote($literal, '~');
+                continue;
+            }
+            if ($type !== 'var') {
+                throw new \UnexpectedValueException('Compiled matcher segment type is invalid.');
+            }
+
+            $regex = $segment['regex'] ?? null;
+            if (!is_string($regex)) {
+                throw new \LogicException('Non-PCRE matcher segment cannot enter allowed-method fast dispatch.');
+            }
+            $parts[] = '(?:' . self::nonCapturingInner(self::segmentRegexInner($regex)) . ')';
+        }
+
+        $regex = '~\\A/*' . implode('/', $parts) . '/*\\z~D';
+        if (@preg_match($regex, '') === false) {
+            throw new \UnexpectedValueException('Failed to compile allowed-method route predicate.');
+        }
+
+        return $regex;
+    }
+
     private static function routeIndex(mixed $route): int
     {
         $index = $route instanceof CompiledRoute
@@ -525,19 +654,21 @@ final class CompiledMatcherIndexCompiler
 
     /**
      * @param array<string,array<string,RouteValue>> $static
-     * @return array{0:array<string,array<string,RouteValue>>,1:array<string,array<string,int>>}
+     * @return array{0:array<string,array<string,RouteValue>>,1:array<string,array<string,int>>,2:array<string,list<string>>}
      */
     private function compileStatic(array $static): array
     {
         $compiled = [];
         $ids = [];
+        $allowed = [];
         foreach ($static as $path => $verbs) {
+            $allowed[$path] = self::allowedMethods($verbs);
             foreach ($verbs as $method => $route) {
                 $compiled[$method][$path] = $route;
                 $ids[$method][$path] = self::routeIndex($route);
             }
         }
 
-        return [$compiled, $ids];
+        return [$compiled, $ids, $allowed];
     }
 }
