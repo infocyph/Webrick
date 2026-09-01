@@ -6,15 +6,25 @@ The complete production application artifact is a separate concern handled by `R
 
 ## Modes
 
-| Matcher | Cache location | Output | Measured role |
-| --- | --- | --- | --- |
-| `fused` | PHP file | precompiled fused matcher IR | **default/general production matcher** |
-| `generated` | PHP file | generated matcher code/data | **niche generated-code mode; use only when the actual route corpus proves an advantage** |
-| `sharded` | directory | immutable generation + manifest/shards using the Fused matcher IR | **very-large-route / cold-boot / working-set specialization** |
+| Matcher | Cache location | Output | Measured role | Approximate route-count guidance |
+| --- | --- | --- | --- | --- |
+| `fused` | PHP file | precompiled fused matcher IR | **default/general production matcher** | **Any size; default from tens through 10,000+ routes.** |
+| `generated` | PHP file | generated matcher code/data | **small, benchmark-proven topology specialization** | **Most interesting below ~100 routes; sometimes useful into the hundreds or around ~1,000 when mostly static/distinct.** |
+| `sharded` | directory | immutable generation + manifest/shards using the Fused matcher IR | **very-large-route / cold-boot / working-set specialization** | **Usually start evaluating around ~5,000+ routes; increasingly relevant around 10,000+ when startup/working-set dominates.** |
 
 Prefer an explicit `matcher` value in deployment tooling. Start from `fused` unless representative production-like measurements justify a specialized mode.
 
-The Webrick 5 matcher revision benchmarks showed that Generated can remain attractive on small/simple route sets but scales poorly on large dynamic and miss-heavy corpora, so it is no longer the general throughput recommendation. Sharded uses the same route-discrimination engine as Fused and should be selected when a large route table benefits materially from lazy shard loading, extremely cheap cold boot or reduced startup working set. Include first-use shard loading, filesystem behavior, warm-dispatch cost and worker lifetime in that comparison.
+The route counts above are deliberately approximate. They indicate **when a mode becomes worth benchmarking**, not a hard switch point. A dense shared-prefix dynamic corpus can make Fused preferable even at a few hundred routes. Conversely, a small mostly-static/distinct corpus can make Generated worthwhile. At several thousand routes, Sharded becomes relevant only when its cold-boot/lazy-working-set advantage matters more than Fused's faster warm dispatch.
+
+A practical starting guide is:
+
+- **below ~100 routes:** Fused remains the safe default; benchmark Generated for mostly static/distinct applications;
+- **~100–1,000 routes:** normally Fused; Generated only when the actual route topology proves a repeatable advantage;
+- **~1,000–5,000 routes:** strongly prefer Fused unless a measured deployment constraint says otherwise;
+- **~5,000–10,000 routes:** keep Fused for warm throughput, but start comparing Sharded when cache boot or loaded state matters;
+- **10,000+ routes:** benchmark Fused and Sharded side by side; Generated is not a general large-route option.
+
+The Webrick 5 matcher revision benchmarks showed that Generated can remain attractive on small/simple route sets but scales poorly on large dynamic and miss-heavy corpora, and its generated function can become expensive even for static dispatch once the route set grows large. Sharded uses the same route-discrimination engine as Fused and should be selected when a large route table benefits materially from lazy shard loading, extremely cheap cold boot or reduced startup working set. Include first-use shard loading, filesystem behavior, warm-dispatch cost and worker lifetime in that comparison.
 
 ## PHP API
 
@@ -112,4 +122,4 @@ Do not confuse matcher cache with the strict Webrick production artifact. `Relea
 - Publish complete release sets atomically from the deployment layer.
 - Keep runtime artifacts read-only to serving workers where possible.
 - Rebuild matcher caches and production release artifacts after a Webrick major upgrade or route-schema change.
-- Use Fused by default; switch to Sharded for measured startup/working-set needs or Generated only for a route corpus that actually proves a benefit.
+- Use Fused by default at any route count; benchmark Generated mainly for small/simple corpora and begin evaluating Sharded around several thousand routes when startup/working-set cost becomes material.
