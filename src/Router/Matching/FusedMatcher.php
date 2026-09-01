@@ -68,6 +68,15 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
             return;
         }
 
+        $this->bootEngines();
+        if ($this->canBootFromCache()) {
+            $this->loadCacheBlob();
+            $this->selectFastDefaultGroup();
+            $this->finalized = true;
+
+            return;
+        }
+
         $this->bootIndex();
         if ($this->cacheEnabled && $this->cacheWriteEnabled && !$this->index->isEmpty()) {
             $this->dumpCache();
@@ -76,11 +85,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
             $this->loadCacheBlob();
         }
         $this->compiledHosts ??= $this->compileHosts();
-
-        if (count($this->compiledHosts) === 1 && isset($this->compiledHosts['*'])) {
-            $this->fastDefaultGroup = $this->compiledHosts['*'];
-        }
-
+        $this->selectFastDefaultGroup();
         $this->finalized = true;
     }
 
@@ -140,11 +145,16 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         return $index[$name] ?? null;
     }
 
+    private function bootEngines(): void
+    {
+        $this->engine ??= new CompiledMatcherEngine();
+        $this->fastEngine ??= new CompiledMatcherFastEngine();
+    }
+
     private function bootIndex(): void
     {
         $this->index ??= new CanonicalMatcherIndex();
-        $this->engine ??= new CompiledMatcherEngine();
-        $this->fastEngine ??= new CompiledMatcherFastEngine();
+        $this->bootEngines();
     }
 
     /**
@@ -245,5 +255,12 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
             true,
         );
         $this->cacheLoaded = true;
+    }
+
+    private function selectFastDefaultGroup(): void
+    {
+        if ($this->compiledHosts !== null && count($this->compiledHosts) === 1 && isset($this->compiledHosts['*'])) {
+            $this->fastDefaultGroup = $this->compiledHosts['*'];
+        }
     }
 }
