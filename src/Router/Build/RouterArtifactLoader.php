@@ -125,24 +125,6 @@ final class RouterArtifactLoader
 
     /**
      * @param array<string,mixed> $payload
-     * @return array<int,mixed>
-     */
-    private static function indexedRoutes(array $payload): array
-    {
-        $routes = [];
-        foreach (self::arrayField($payload, 'routes_by_index') as $index => $route) {
-            if (!is_int($index) || !is_array($route)) {
-                throw new UnexpectedValueException('Malformed indexed route payload.');
-            }
-            $routes[$index] = $route;
-        }
-        ksort($routes, SORT_NUMERIC);
-
-        return $routes;
-    }
-
-    /**
-     * @param array<string,mixed> $payload
      * @return array<int,array<string,mixed>>
      */
     private static function indexedPlans(array $payload): array
@@ -164,6 +146,24 @@ final class RouterArtifactLoader
         ksort($plans, SORT_NUMERIC);
 
         return $plans;
+    }
+
+    /**
+     * @param array<string,mixed> $payload
+     * @return array<int,mixed>
+     */
+    private static function indexedRoutes(array $payload): array
+    {
+        $routes = [];
+        foreach (self::arrayField($payload, 'routes_by_index') as $index => $route) {
+            if (!is_int($index) || !is_array($route)) {
+                throw new UnexpectedValueException('Malformed indexed route payload.');
+            }
+            $routes[$index] = $route;
+        }
+        ksort($routes, SORT_NUMERIC);
+
+        return $routes;
     }
 
     /**

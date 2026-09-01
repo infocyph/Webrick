@@ -188,12 +188,10 @@ final class RuntimeDispatcher
     /** @return list<mixed> */
     private function postGlobal(): array
     {
-        if ($this->postGlobal === null) {
-            $this->postGlobal = $this->withTagged(
-                $this->artifact->postGlobal(),
-                $this->artifact->postGlobalTags,
-            );
-        }
+        $this->postGlobal ??= $this->withTagged(
+            $this->artifact->postGlobal(),
+            $this->artifact->postGlobalTags,
+        );
 
         return $this->postGlobal;
     }
@@ -201,12 +199,10 @@ final class RuntimeDispatcher
     /** @return list<mixed> */
     private function preGlobal(): array
     {
-        if ($this->preGlobal === null) {
-            $this->preGlobal = $this->withTagged(
-                $this->artifact->preGlobal(),
-                $this->artifact->preGlobalTags,
-            );
-        }
+        $this->preGlobal ??= $this->withTagged(
+            $this->artifact->preGlobal(),
+            $this->artifact->preGlobalTags,
+        );
 
         return $this->preGlobal;
     }

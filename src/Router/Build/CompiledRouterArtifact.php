@@ -26,18 +26,6 @@ final class CompiledRouterArtifact
     /** @var list<mixed>|null */
     private ?array $preGlobal = null;
 
-    /** @var list<mixed> */
-    private array $postGlobalPayload;
-
-    /** @var list<mixed> */
-    private array $preGlobalPayload;
-
-    /** @var array<int,array<string,mixed>> */
-    private array $planPayloadsByIndex;
-
-    /** @var array<int,mixed> */
-    private array $routePayloadsByIndex;
-
     /**
      * @param array<int,mixed> $routePayloadsByIndex
      * @param array<int,array<string,mixed>> $planPayloadsByIndex
@@ -47,24 +35,7 @@ final class CompiledRouterArtifact
      * @param list<string> $preGlobalTags
      * @param list<string> $postGlobalTags
      */
-    private function __construct(
-        array $routePayloadsByIndex,
-        array $planPayloadsByIndex,
-        public readonly array $aliases,
-        array $preGlobalPayload,
-        array $postGlobalPayload,
-        public readonly array $preGlobalTags,
-        public readonly array $postGlobalTags,
-        public readonly bool $hasDomainRoutes,
-        public readonly string $environment,
-        public readonly string $configFingerprint,
-        public readonly string $artifactFingerprint,
-    ) {
-        $this->routePayloadsByIndex = $routePayloadsByIndex;
-        $this->planPayloadsByIndex = $planPayloadsByIndex;
-        $this->preGlobalPayload = $preGlobalPayload;
-        $this->postGlobalPayload = $postGlobalPayload;
-    }
+    private function __construct(private array $routePayloadsByIndex, private array $planPayloadsByIndex, public readonly array $aliases, private readonly array $preGlobalPayload, private readonly array $postGlobalPayload, public readonly array $preGlobalTags, public readonly array $postGlobalTags, public readonly bool $hasDomainRoutes, public readonly string $environment, public readonly string $configFingerprint, public readonly string $artifactFingerprint) {}
 
     /**
      * Trusted payloads receive constant-time header/top-level checks only. Full
@@ -149,9 +120,7 @@ final class CompiledRouterArtifact
     /** @return list<mixed> */
     public function postGlobal(): array
     {
-        if ($this->postGlobal === null) {
-            $this->postGlobal = self::decodedList($this->postGlobalPayload);
-        }
+        $this->postGlobal ??= self::decodedList($this->postGlobalPayload);
 
         return $this->postGlobal;
     }
@@ -159,9 +128,7 @@ final class CompiledRouterArtifact
     /** @return list<mixed> */
     public function preGlobal(): array
     {
-        if ($this->preGlobal === null) {
-            $this->preGlobal = self::decodedList($this->preGlobalPayload);
-        }
+        $this->preGlobal ??= self::decodedList($this->preGlobalPayload);
 
         return $this->preGlobal;
     }
