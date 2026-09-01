@@ -16,7 +16,9 @@ jobs:
         with:
           ref: webrick-5/batch-1-correctness
       - name: Finalize matcher optimization plan
-        run: python3 .github/scripts/_tmp_finalize_matcher_plan.py
+        run: |
+          python3 .github/scripts/_tmp_finalize_matcher_plan.py
+          sed -i 's/Status: complete — Phases 1–9 closed (2026-09-01)  $/Status: complete — Phases 1–9 closed (2026-09-01)/' MATCHER_OPTIMIZATION_PLAN.md
       - name: Validate plan diff
         run: |
           git diff --check
