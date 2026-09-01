@@ -182,15 +182,16 @@ final class CompiledMatcherIndexValidator
         return ['type' => 'fallback', 'segments' => $segments, 'route' => $route, 'id' => $id];
     }
 
-    /** @return array{type:'pcre',regex:string,routes:array<string,array{route:mixed,id:int,params:array<string,string>}>} */
+    /** @return array{type:'pcre',regex:string,fast_regex:string,routes:array<string,array{route:mixed,id:int,params:array<string,string>,fast_params:list<string>}>} */
     private static function validatePcreStep(array $raw, bool $validateRegex): array
     {
         $regex = $raw['regex'] ?? null;
+        $fastRegex = $raw['fast_regex'] ?? null;
         $routesRaw = $raw['routes'] ?? null;
-        if (!is_string($regex) || $regex === '' || !is_array($routesRaw)) {
+        if (!is_string($regex) || $regex === '' || !is_string($fastRegex) || $fastRegex === '' || !is_array($routesRaw)) {
             throw new \UnexpectedValueException('Compiled matcher PCRE step payload is invalid.');
         }
-        if ($validateRegex && @preg_match($regex, '') === false) {
+        if ($validateRegex && (@preg_match($regex, '') === false || @preg_match($fastRegex, '') === false)) {
             throw new \UnexpectedValueException('Compiled matcher PCRE step cannot be compiled.');
         }
 
@@ -208,13 +209,32 @@ final class CompiledMatcherIndexValidator
                 'route' => $route,
                 'id' => $id,
                 'params' => self::validateParams($entry['params'] ?? null),
+                'fast_params' => self::validateFastParams($entry['fast_params'] ?? null),
             ];
         }
         if ($routes === []) {
             throw new \UnexpectedValueException('Compiled matcher PCRE step has no routes.');
         }
 
-        return ['type' => 'pcre', 'regex' => $regex, 'routes' => $routes];
+        return ['type' => 'pcre', 'regex' => $regex, 'fast_regex' => $fastRegex, 'routes' => $routes];
+    }
+
+    /** @return list<string> */
+    private static function validateFastParams(mixed $raw): array
+    {
+        if (!is_array($raw) || !array_is_list($raw)) {
+            throw new \UnexpectedValueException('Compiled matcher positional parameter list is invalid.');
+        }
+
+        $params = [];
+        foreach ($raw as $name) {
+            if (!is_string($name) || $name === '') {
+                throw new \UnexpectedValueException('Compiled matcher positional parameter name is invalid.');
+            }
+            $params[] = $name;
+        }
+
+        return $params;
     }
 
     /** @return array<string,string> */
