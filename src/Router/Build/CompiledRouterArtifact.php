@@ -17,6 +17,9 @@ final readonly class CompiledRouterArtifact
     /** @var array<int,ExecutionPlan> */
     private array $plansByIndex;
 
+    /** @var array<string,array<string,mixed>> */
+    private array $routeAttributes;
+
     /**
      * @param list<CompiledRoute> $routes
      * @param array<string,ExecutionPlan> $plans
@@ -40,6 +43,7 @@ final readonly class CompiledRouterArtifact
         public string $artifactFingerprint,
     ) {
         $plansByIndex = [];
+        $routeAttributes = [];
         foreach ($routes as $route) {
             $index = $route->getIndex();
             if (isset($plansByIndex[$index])) {
@@ -52,8 +56,22 @@ final readonly class CompiledRouterArtifact
                 throw new UnexpectedValueException('Missing route execution plan.');
             }
             $plansByIndex[$index] = $plan;
+
+            $attributes = [];
+            $cors = $route->getCorsPolicy();
+            if ($cors !== null) {
+                $attributes['cors_policy'] = $cors;
+            }
+            $produces = $route->getProduces();
+            if ($produces !== null) {
+                $attributes['produces'] = $produces;
+            }
+            if ($attributes !== []) {
+                $routeAttributes[$routeId] = $attributes;
+            }
         }
         $this->plansByIndex = $plansByIndex;
+        $this->routeAttributes = $routeAttributes;
     }
 
     /** @param array<string,mixed> $payload */
@@ -125,6 +143,12 @@ final readonly class CompiledRouterArtifact
         }
 
         return $plan;
+    }
+
+    /** @return array<string,mixed> */
+    public function routeAttributes(string $routeId): array
+    {
+        return $this->routeAttributes[$routeId] ?? [];
     }
 
     /**
