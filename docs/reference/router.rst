@@ -168,4 +168,4 @@ Matcher cache vs compiled artifact
 
 The full production graph is built by ``ReleaseCompiler``, which coordinates Webrick execution plans with the host application's InterMix compiled runtime and release manifest.
 
-See `Matcher <matcher.md>`__, `Matcher Cache <route-cache.md>`__, `Middleware <middleware.md>`__, and `Emitters/Runtime Adapters <emitters.md>`__.
+See `Matcher <matcher.rst>`__, `Matcher Cache <route-cache.rst>`__, `Middleware <middleware.rst>`__, and `Emitters/Runtime Adapters <emitters.rst>`__.

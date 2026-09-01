@@ -116,4 +116,4 @@ This is not the compiled production application artifact. It only prepares match
 
 Use ``RouteCompiler`` / ``ReleaseCompiler`` to compile the Webrick artifact together with the application-owned InterMix runtime, then boot ``CompiledRouterKernel`` with that ``ProductionContainer``.
 
-See `Framework Integration <framework-integration.md>`__, `Route Cache <../reference/route-cache.rst>`__, and `Response Emitters and Runtime Adapters <../reference/emitters.rst>`__.
+See `Framework Integration <framework-integration.rst>`__, `Route Cache <../reference/route-cache.rst>`__, and `Response Emitters and Runtime Adapters <../reference/emitters.rst>`__.

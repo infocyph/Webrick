@@ -87,16 +87,16 @@ Middleware instances shared by a worker must not hold current-request state. Req
 Deep dives
 ----------
 
-- ```compression.md`` <compression.md>`__
-- ```cache-validators.md`` <cache-validators.md>`__
-- ```vary-accumulator.md`` <vary-accumulator.md>`__
-- ```cors-and-policies.md`` <cors-and-policies.md>`__
-- ```throttle.md`` <throttle.md>`__
-- ```request-limits.md`` <request-limits.md>`__
-- ```cookie-encryption.md`` <cookie-encryption.md>`__
-- ```maintenance-mode.md`` <maintenance-mode.md>`__
-- ```telemetry.md`` <telemetry.md>`__
-- ```input-sanitizer.md`` <input-sanitizer.md>`__
-- ```negotiation.md`` <negotiation.md>`__
-- ```response-cache.md`` <response-cache.md>`__
-- ```response-linter.md`` <response-linter.md>`__
+- :doc:`compression`
+- :doc:`cache-validators`
+- :doc:`vary-accumulator`
+- :doc:`cors-and-policies`
+- :doc:`throttle`
+- :doc:`request-limits`
+- :doc:`cookie-encryption`
+- :doc:`maintenance-mode`
+- :doc:`telemetry`
+- :doc:`input-sanitizer`
+- :doc:`negotiation`
+- :doc:`response-cache`
+- :doc:`response-linter`

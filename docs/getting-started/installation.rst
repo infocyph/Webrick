@@ -102,7 +102,7 @@ Use ``Router\Build\ReleaseCompiler`` to create the coordinated InterMix + Webric
 
 See:
 
-- `Quick Start <quickstart.md>`__
-- `Framework Integration <framework-integration.md>`__
+- `Quick Start <quickstart.rst>`__
+- `Framework Integration <framework-integration.rst>`__
 - `Matcher Cache Reference <../reference/route-cache.rst>`__
 - `Deployments <../deployments/index.rst>`__
