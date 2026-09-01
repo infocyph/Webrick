@@ -1,6 +1,6 @@
 # Webrick Matcher Optimization Plan
 
-Status: active development plan — Phase 1 complete  
+Status: active development plan — Phases 1–2 complete  
 Branch: `webrick-5/batch-1-correctness`
 
 ## Objective
@@ -146,6 +146,32 @@ Benchmark at least two implementations:
 2. one-pass offset scanner.
 
 Reject the scanner if PHP-level scanning is slower than the current C-backed string primitives on representative route sets.
+
+**Status: complete (2026-09-01) — scanner rejected by benchmark.**
+
+Decision record:
+
+- The current C-backed string strategy remains the production design: `trim()`, `strpos()`, `substr_count()`, and lazy `explode()` only when segment materialization is actually required.
+- A PHP one-pass scanner was benchmarked for segment count + first-prefix extraction and for a materialized request-path view. It was slower for every representative path shape.
+- A second candidate that avoided `explode()` by walking to one selected segment with repeated `strpos()` calls was also slower for every tested segment position, including the first segment.
+- No `PathView` object/array is introduced. Allocating a per-request path representation would add cost to PCRE-only dynamic hits that currently never need segment materialization.
+- `MatcherPathInspectionBench` now permanently retains the current-vs-one-pass comparison so this rejected direction remains reproducible.
+- This phase intentionally makes no production matcher change: the acceptance rule required a measured win, and none was present.
+
+PHP 8.4.25 experiment results (GitHub runner, opcache disabled):
+
+| Inspection case | Current | Candidate | Result |
+| --- | ---: | ---: | --- |
+| shape, shallow path | 0.285 µs | 0.529 µs one-pass | current ~46% lower latency |
+| shape, medium path | 0.288 µs | 0.672 µs one-pass | current ~57% lower latency |
+| shape, deep path | 0.296 µs | 1.264 µs one-pass | current ~77% lower latency |
+| shape + segments, shallow | 0.491 µs | 0.659 µs one-pass view | current ~25% lower latency |
+| shape + segments, medium | 0.518 µs | 0.855 µs one-pass view | current ~39% lower latency |
+| shape + segments, deep | 0.591 µs | 1.533 µs one-pass view | current ~61% lower latency |
+| selected segment, shallow | 0.250 µs explode/index | 0.416 µs offset walk | current ~40% lower latency |
+| selected segment, deep middle | 0.352 µs explode/index | 0.577 µs offset walk | current ~39% lower latency |
+
+Phase 3 therefore starts from the existing lazy path materialization model. Constraint specialization must improve matcher work without depending on a PHP-level request-path scanner.
 
 ## Phase 3 — Built-in constraint opcodes
 
