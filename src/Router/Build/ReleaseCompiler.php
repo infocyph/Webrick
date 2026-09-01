@@ -13,6 +13,8 @@ use RuntimeException;
  */
 final readonly class ReleaseCompiler
 {
+    private const int RELEASE_FORMAT = 2;
+
     public function __construct(
         private RouteCompiler $routes = new RouteCompiler(),
         private RouterArtifactCompiler $routerArtifacts = new RouterArtifactCompiler(),
@@ -68,12 +70,12 @@ final readonly class ReleaseCompiler
         $webrick = $this->routerArtifacts->compile($routerBuild, $routerPath);
 
         $manifest = [
-            'format' => 1,
+            'format' => self::RELEASE_FORMAT,
             'environment' => $environment,
             'config_fingerprint' => $configFingerprint,
             'intermix' => [
                 'path' => $intermixPath,
-                'sha256' => $intermix['sha256'],
+                'digest' => $intermix['digest'],
                 'compiled' => $intermix['compiled'],
                 'skipped' => $intermix['skipped'],
             ],
