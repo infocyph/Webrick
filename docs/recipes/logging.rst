@@ -22,6 +22,7 @@ One-Off Configuration
                emitTraceparentHeader: true,
            ),
        ],
+       invoker: $invoker,
    );
 
 Prefer this when:
@@ -52,6 +53,7 @@ Reusable Profile
        matcher: $matcher,
        register: $register,
        preGlobal: [$telemetry],
+       invoker: $invoker,
    );
 
 Prefer this when:

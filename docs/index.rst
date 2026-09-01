@@ -44,7 +44,7 @@ Current boot pattern
 
            Route::get('/', fn() => Response::plaintext('Hello Webrick', 200), 'home');
        },
-       routeCache: __DIR__ . '/.route-cache',
+       invoker: $invoker,
    );
 
    (new AutoEmitter())->emit($kernel->handle(Request::fromGlobals()));

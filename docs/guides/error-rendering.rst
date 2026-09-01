@@ -36,6 +36,7 @@ If you do nothing, ``RouterKernel`` uses ``ErrorHandler`` with built-in renderin
 
    $kernel = RouterKernel::bootWithRegistrar(
        // ...
+       invoker: $invoker,
    );
 
 Default rendering behavior:
@@ -47,7 +48,7 @@ Default rendering behavior:
 - retains diagnostic exception details for compatibility
 - converts PHP warnings/notices inside the request boundary for compatibility
 
-Set ``debug: false`` for public production traffic. Set ``capturePhpErrors: false`` when lifecycle-wide error conversion already exists or warnings must follow the host runtime's handler; the compatibility default installs and restores a PHP error handler around every request. Both options may be passed to ``RouterKernel::bootWithRegistrar()`` when using the default boundary, or directly to a custom ``ErrorHandler``.
+Set ``debug: false`` for public production traffic. ``debug`` may be passed to ``RouterKernel::bootWithRegistrar()`` or directly to a custom ``ErrorHandler``. Process-level PHP warning/error conversion is deliberately separate from the per-request HTTP renderer: install ``PhpErrorBridge`` once at host/process bootstrap when that behavior is desired, and leave an existing host error handler in control otherwise.
 
 The logger may be a PSR-3 instance or a zero-argument closure returning one. The closure is invoked only after an exception reaches the boundary, so a successful request does not construct an error-only logger. A custom response renderer is likewise called only while rendering an error.
 
@@ -93,6 +94,7 @@ Pass your own ``ErrorHandler`` into ``RouterKernel::bootWithRegistrar(...)`` whe
        matcher: $matcher,
        register: $register,
        errorHandler: $errorHandler,
+       invoker: $invoker,
    );
 
 Important behavior:

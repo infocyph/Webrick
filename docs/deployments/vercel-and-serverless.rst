@@ -67,8 +67,8 @@ Front controller tweaks
 
    $kernel = RouterKernel::bootWithRegistrar(
      /* ... */
-     routeCache: __DIR__ . '/../.route-cache', // shipped with artifact
      /* ... */
+       invoker: $invoker,
    );
 
 What to avoid / adapt

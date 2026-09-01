@@ -42,13 +42,13 @@ Boot the kernel
 
            Route::get('/', fn() => Response::plaintext('Hello Webrick', 200), 'home');
        },
-       routeCache: __DIR__ . '/.route-cache',
        registrarOptions: [
            'exposeUrlServices' => true,
            'signKey' => $_ENV['WEBRICK_SIGN_KEY'] ?? 'dev-key-change-me',
            'signedDefaultTtl' => 300,
            'urlBaseUri' => $_ENV['WEBRICK_URL_BASE_URI'] ?? 'http://localhost',
        ],
+       invoker: $invoker,
    );
 
    (new AutoEmitter())->emit($kernel->handle(Request::fromGlobals()));

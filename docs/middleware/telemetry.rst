@@ -72,6 +72,7 @@ Basic Setup
            TelemetryMiddleware::class,  // Add as first middleware
            // ... other middleware
        ]
+       invoker: $invoker,
    );
 
 With Custom Configuration
@@ -98,6 +99,7 @@ With Custom Configuration
        matcher: ShardedMatcher::make(),
        register: $register,
        preGlobal: $preGlobal
+       invoker: $invoker,
    );
 
 OpenTelemetry Mode (Full Observability)

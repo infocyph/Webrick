@@ -28,6 +28,7 @@ Register it in ``postGlobal`` so your handler and earlier middleware finish sett
        postGlobal: [
            \Infocyph\Webrick\Middleware\CompressionMiddleware::class,
        ],
+       invoker: $invoker,
    );
 
 Configuration

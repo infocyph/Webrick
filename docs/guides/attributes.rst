@@ -140,7 +140,7 @@ In your front controller or route builder:
        log: new NullLogger(),
        matcher: ShardedMatcher::make(),
        register: $register,
-       routeCache: __DIR__ . '/../.route-cache',
+       invoker: $invoker,
    );
 
 How It Works
@@ -562,6 +562,7 @@ Integration Test with Kernel
                register: fn($r) => AttributeRouteLoader::registerFromDirs($r, [
                    'App\\Http\\Routes\\' => __DIR__ . '/../src/Http/Routes',
                ])
+               invoker: $invoker,
            );
        }
 

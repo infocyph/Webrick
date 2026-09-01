@@ -66,7 +66,7 @@ Ship the generated route-cache artifact with your release.
        log: $logger,
        matcher: FusedMatcher::make(),
        register: $register,
-       routeCache: __DIR__ . '/.route-cache/fused.php'  // Pre-built
+       invoker: $invoker,
    );
 
 Measure cache generation, cached kernel boot and matched-route dispatch as three separate costs. Cache generation may become slower when that removes validation, reflection and serialization from normal requests.

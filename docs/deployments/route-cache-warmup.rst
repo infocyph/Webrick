@@ -57,12 +57,12 @@ Boot from the same path
        register: static function (Registrar $registrar): void {
            require __DIR__ . '/../routes/web.php';
        },
-       routeCache: $routeCache,
        registrarOptions: [
            'signKey' => $_ENV['WEBRICK_SIGN_KEY'] ?? null,
            'signedDefaultTtl' => 900,
            'urlBaseUri' => $_ENV['APP_URL'] ?? '',
        ],
+       invoker: $invoker,
    );
 
 Use ``FusedMatcher::make()`` or ``GeneratedMatcher::make()`` and its exact build file for the other modes. Matcher factories are always zero-argument.

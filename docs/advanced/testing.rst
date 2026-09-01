@@ -174,6 +174,7 @@ Example: Signed URLs
                    'signKey' => $this->signKey,
                    'signedDefaultTtl' => 900
                ]
+               invoker: $invoker,
            );
        }
 

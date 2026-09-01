@@ -608,7 +608,7 @@ All ``with*`` methods return new instance:
 
 .. code:: php
 
-   $request1 = Request::createFromGlobals();
+   $request1 = Request::fromGlobals();
    $request2 = $request1->withHeader('X-Custom', 'value');
 
    // $request1 unchanged

@@ -61,7 +61,6 @@ Current capabilities:
            unset($registrar);
            require __DIR__ . '/../routes.php';
        },
-       routeCache: __DIR__ . '/../.route-cache',
        registrarOptions: [
            'exposeUrlServices' => true,
            'signKey' => $signKey,
@@ -69,7 +68,7 @@ Current capabilities:
            'signedUrlConfig' => $signedUrls,
            'urlBaseUri' => $baseUri,
        ],
-       fallbackAliasesFromRegistrar: true,
+       invoker: $invoker,
    );
 
 ``signKey``, ``signedDefaultTtl``, ``signedUrlConfig`` and ``urlBaseUri`` remain part of kernel configuration. When booting from cache, Webrick defers alias loading and ``UrlGenerator`` construction until the first URL helper call. Provide ``bindUrlServices`` only to replace the default binding behavior.
