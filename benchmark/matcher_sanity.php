@@ -144,6 +144,24 @@ foreach ($factories as $name => $factory) {
         $name . ': explicit OPTIONS route was replaced by automatic OPTIONS.',
     );
 
+    $richHead = assertOutcome(
+        $matcher->matchOutcome('HEAD', '*', '/resource/1'),
+        MatchOutcomeType::FOUND,
+        $name . ': rich HEAD outcome failed.',
+    );
+    assertSameValue($get->getIndex(), $richHead->requireRoute()->getIndex(), $name . ': rich HEAD resolved wrong route.');
+    assertSameValue(['id' => '1'], $richHead->params, $name . ': rich HEAD params changed.');
+    assertSameValue(true, $richHead->headFallback, $name . ': rich HEAD fallback flag was lost.');
+
+    $richDynamic = assertOutcome(
+        $matcher->matchOutcome('GET', '*', '/catalog/family-63/9'),
+        MatchOutcomeType::FOUND,
+        $name . ': rich adaptive outcome failed.',
+    );
+    assertSameValue($adaptive[63]->getIndex(), $richDynamic->requireRoute()->getIndex(), $name . ': rich adaptive route ID changed.');
+    assertSameValue(['id' => '9'], $richDynamic->params, $name . ': rich adaptive params changed.');
+    assertSameValue(false, $richDynamic->headFallback, $name . ': rich GET incorrectly marked HEAD fallback.');
+
     $methodMiss = assertOutcome(
         $matcher->matchCompiled('DELETE', '*', '/resource/1'),
         MatchOutcomeType::METHOD_NOT_ALLOWED,
