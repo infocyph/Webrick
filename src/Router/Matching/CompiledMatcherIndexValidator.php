@@ -137,7 +137,7 @@ final class CompiledMatcherIndexValidator
         return $dynamic;
     }
 
-    /** @return array{steps:list<array<string,mixed>>} */
+    /** @return array<string,mixed> */
     private static function validateBucket(mixed $raw, bool $validateRegex): array
     {
         if (!is_array($raw)) {
@@ -154,7 +154,72 @@ final class CompiledMatcherIndexValidator
             $steps[] = self::validateStep($step, $validateRegex);
         }
 
-        return ['steps' => $steps];
+        $bucket = ['steps' => $steps];
+        if (array_key_exists('fast_dispatch', $raw)) {
+            $bucket['fast_dispatch'] = self::validateFastDispatch($raw['fast_dispatch'], $validateRegex);
+        }
+
+        return $bucket;
+    }
+
+    /** @return array{segment:int,groups:array<string,list<array{regex:string,routes:array<string,array{id:int,params:list<string>}>}>>} */
+    private static function validateFastDispatch(mixed $raw, bool $validateRegex): array
+    {
+        if (!is_array($raw)) {
+            throw new \UnexpectedValueException('Compiled matcher adaptive dispatch is invalid.');
+        }
+        $segment = $raw['segment'] ?? null;
+        $groupsRaw = $raw['groups'] ?? null;
+        if (!is_int($segment) || $segment < 0 || !is_array($groupsRaw) || $groupsRaw === []) {
+            throw new \UnexpectedValueException('Compiled matcher adaptive dispatch metadata is invalid.');
+        }
+
+        $groups = [];
+        foreach ($groupsRaw as $literal => $stepsRaw) {
+            if (!is_string($literal) || !is_array($stepsRaw) || !array_is_list($stepsRaw) || $stepsRaw === []) {
+                throw new \UnexpectedValueException('Compiled matcher adaptive literal group is invalid.');
+            }
+            $steps = [];
+            foreach ($stepsRaw as $stepRaw) {
+                $steps[] = self::validateFastDispatchStep($stepRaw, $validateRegex);
+            }
+            $groups[$literal] = $steps;
+        }
+
+        return ['segment' => $segment, 'groups' => $groups];
+    }
+
+    /** @return array{regex:string,routes:array<string,array{id:int,params:list<string>}>} */
+    private static function validateFastDispatchStep(mixed $raw, bool $validateRegex): array
+    {
+        if (!is_array($raw)) {
+            throw new \UnexpectedValueException('Compiled matcher adaptive PCRE step is invalid.');
+        }
+        $regex = $raw['regex'] ?? null;
+        $routesRaw = $raw['routes'] ?? null;
+        if (!is_string($regex) || $regex === '' || !is_array($routesRaw) || $routesRaw === []) {
+            throw new \UnexpectedValueException('Compiled matcher adaptive PCRE payload is invalid.');
+        }
+        if ($validateRegex && @preg_match($regex, '') === false) {
+            throw new \UnexpectedValueException('Compiled matcher adaptive PCRE cannot be compiled.');
+        }
+
+        $routes = [];
+        foreach ($routesRaw as $mark => $entry) {
+            if (!is_string($mark) || $mark === '' || !is_array($entry)) {
+                throw new \UnexpectedValueException('Compiled matcher adaptive route map is invalid.');
+            }
+            $id = $entry['id'] ?? null;
+            if (!is_int($id) || $id < 0) {
+                throw new \UnexpectedValueException('Compiled matcher adaptive route ID is invalid.');
+            }
+            $routes[$mark] = [
+                'id' => $id,
+                'params' => self::validateFastParams($entry['params'] ?? null),
+            ];
+        }
+
+        return ['regex' => $regex, 'routes' => $routes];
     }
 
     /** @return array<string,mixed> */
