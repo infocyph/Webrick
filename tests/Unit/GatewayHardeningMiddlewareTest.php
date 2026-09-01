@@ -74,6 +74,31 @@ test('gateway normalizes trusted proxy context before security checks', function
     expect($response->getStatusCode())->toBe(200);
 });
 
+test('gateway resolves an IPv6 client through an IPv6 trusted proxy', function (): void {
+    $gateway = new GatewayHardeningMiddleware(
+        trustedProxyCidrs: ['2001:db8:feed::/48'],
+        trustedHosts: ['origin.example'],
+        enforceHttps: false,
+    );
+    $request = gatewayRequest([
+        'REMOTE_ADDR' => '2001:db8:feed:1::9',
+        'HTTP_HOST' => 'origin.example',
+        'SERVER_PORT' => '80',
+        'REQUEST_URI' => '/resource',
+        'HTTP_FORWARDED' => 'for="[2001:db8:abcd::42]"',
+    ]);
+
+    $response = $gateway($request, static function (Request $normalized): Response {
+        expect($normalized->getAttribute('client_ip'))->toBe('2001:db8:abcd::42')
+            ->and($normalized->getAttribute('peer_ip'))->toBe('2001:db8:feed:1::9')
+            ->and($normalized->getAttribute('is_trusted_proxy'))->toBeTrue();
+
+        return Response::json(['ok' => true]);
+    });
+
+    expect($response->getStatusCode())->toBe(200);
+});
+
 test('gateway keeps proxy policies isolated between instances', function (): void {
     $trusting = new GatewayHardeningMiddleware(
         trustedProxyCidrs: ['10.0.0.0/8'],

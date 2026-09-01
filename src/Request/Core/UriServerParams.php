@@ -9,15 +9,14 @@ use Infocyph\Webrick\Request\Request;
 final class UriServerParams
 {
     /**
-     * @param array<string, mixed> $server
-     * @return array{0: string, 1: int|null}
+     * @param array<string,mixed> $server
+     * @return array{0:string,1:int|null}
      */
     public static function detectHostPort(array $server, ?int $trustedProxyFlags = null): array
     {
         $forwardedHost = self::detectForwardedHost($server, $trustedProxyFlags);
         if ($forwardedHost !== null) {
             [$host, $port] = $forwardedHost;
-
             $port ??= self::forwardedPort($server, $trustedProxyFlags);
 
             return [$host, $port];
@@ -25,9 +24,7 @@ final class UriServerParams
 
         $rawHost = self::serverString($server, 'HTTP_HOST') ?? self::serverString($server, 'SERVER_NAME') ?? 'localhost';
         [$host, $port] = self::splitHostPort($rawHost);
-
         $port = self::forwardedPort($server, $trustedProxyFlags) ?? $port;
-
         $serverPort = self::serverString($server, 'SERVER_PORT');
         if ($port === null && $serverPort !== null) {
             $port = self::normPort($serverPort);
@@ -36,35 +33,27 @@ final class UriServerParams
         return [$host, $port];
     }
 
-    /**
-     * @param array<string, mixed> $server
-     */
+    /** @param array<string,mixed> $server */
     public static function detectRequestUri(array $server): string
     {
         return self::serverString($server, 'REQUEST_URI') ?? '/';
     }
 
-    /**
-     * @param array<string, mixed> $server
-     */
+    /** @param array<string,mixed> $server */
     public static function detectScheme(array $server, ?int $trustedProxyFlags = null): string
     {
         $fromForwarded = self::protoFromForwarded($server, $trustedProxyFlags);
         if ($fromForwarded !== null) {
             return $fromForwarded;
         }
-
         $fromXForwarded = self::protoFromXForwarded($server, $trustedProxyFlags);
-        if ($fromXForwarded !== null) {
-            return $fromXForwarded;
-        }
 
-        return self::protoFromServer($server);
+        return $fromXForwarded ?? self::protoFromServer($server);
     }
 
     /**
-     * @param array<string, mixed> $server
-     * @return array{0: string, 1: int|null}|null
+     * @param array<string,mixed> $server
+     * @return array{0:string,1:int|null}|null
      */
     private static function detectForwardedHost(array $server, ?int $trustedProxyFlags): ?array
     {
@@ -72,13 +61,9 @@ final class UriServerParams
         if (
             self::proxyFlagEnabled(Request::HEADER_FORWARDED, $server, $trustedProxyFlags)
             && $forwarded !== null
-            && preg_match('/host=(?:"([^"]+)"|([^;,\s]+))/i', $forwarded, $matches) === 1
+            && preg_match('/(?:^|;)\s*host=(?:"([^"]+)"|([^;,\s]+))/i', $forwarded, $matches) === 1
         ) {
-            $quoted = $matches[1];
-            $raw = $quoted;
-            if ($raw === '' && isset($matches[2])) {
-                $raw = $matches[2];
-            }
+            $raw = $matches[1] !== '' ? $matches[1] : $matches[2];
 
             return self::splitHostPort(trim($raw));
         }
@@ -91,9 +76,7 @@ final class UriServerParams
         return null;
     }
 
-    /**
-     * @param array<string, mixed> $server
-     */
+    /** @param array<string,mixed> $server */
     private static function firstServerCsvToken(array $server, string $key): ?string
     {
         $value = self::serverString($server, $key);
@@ -101,12 +84,16 @@ final class UriServerParams
             return null;
         }
 
-        $first = trim(explode(',', $value)[0]);
+        $tokens = self::splitCsv($value);
+        if ($tokens === []) {
+            return null;
+        }
+        $first = trim($tokens[0]);
 
         return $first === '' ? null : $first;
     }
 
-    /** @param array<string, mixed> $server */
+    /** @param array<string,mixed> $server */
     private static function forwardedPort(array $server, ?int $trustedProxyFlags): ?int
     {
         if (!self::proxyFlagEnabled(Request::HEADER_X_FORWARDED_PORT, $server, $trustedProxyFlags)) {
@@ -120,37 +107,34 @@ final class UriServerParams
 
     private static function normPort(string $port): ?int
     {
+        if (preg_match('/^[0-9]{1,5}$/D', trim($port)) !== 1) {
+            return null;
+        }
         $number = (int) $port;
 
         return ($number > 0 && $number <= 65535) ? $number : null;
     }
 
-    /**
-     * @param array<string, mixed> $server
-     */
+    /** @param array<string,mixed> $server */
     private static function protoFromForwarded(array $server, ?int $trustedProxyFlags): ?string
     {
         if (!self::proxyFlagEnabled(Request::HEADER_FORWARDED, $server, $trustedProxyFlags)) {
             return null;
         }
 
-        $first = self::firstServerCsvToken($server, 'HTTP_FORWARDED');
-        if ($first === null) {
+        $last = self::firstServerCsvToken($server, 'HTTP_FORWARDED');
+        if ($last === null) {
             return null;
         }
-
-        if (preg_match('/proto="?([a-z]+)"?/i', $first, $matches) === 1) {
-            $protocol = strtolower($matches[1]);
-
-            return ($protocol === 'https' || $protocol === 'http') ? $protocol : null;
+        if (preg_match('/(?:^|;)\s*proto="?([a-z]+)"?/i', $last, $matches) !== 1) {
+            return null;
         }
+        $protocol = strtolower($matches[1]);
 
-        return null;
+        return ($protocol === 'https' || $protocol === 'http') ? $protocol : null;
     }
 
-    /**
-     * @param array<string, mixed> $server
-     */
+    /** @param array<string,mixed> $server */
     private static function protoFromServer(array $server): string
     {
         $httpsValue = self::serverString($server, 'HTTPS');
@@ -159,34 +143,31 @@ final class UriServerParams
         $serverPort = self::serverString($server, 'SERVER_PORT');
 
         $https
-            = ($httpsValue !== null && strtolower($httpsValue) === 'on')
+            = ($httpsValue !== null && in_array(strtolower($httpsValue), ['on', '1'], true))
             || ($requestScheme !== null && strtolower($requestScheme) === 'https')
-            || ($frontEndHttps !== null && strtolower($frontEndHttps) === 'on')
+            || ($frontEndHttps !== null && in_array(strtolower($frontEndHttps), ['on', '1'], true))
             || ($serverPort !== null && self::normPort($serverPort) === 443);
 
         return $https ? 'https' : 'http';
     }
 
-    /**
-     * @param array<string, mixed> $server
-     */
+    /** @param array<string,mixed> $server */
     private static function protoFromXForwarded(array $server, ?int $trustedProxyFlags): ?string
     {
         if (!self::proxyFlagEnabled(Request::HEADER_X_FORWARDED_PROTO, $server, $trustedProxyFlags)) {
             return null;
         }
 
-        $first = self::firstServerCsvToken($server, 'HTTP_X_FORWARDED_PROTO');
-        if ($first === null) {
+        $last = self::firstServerCsvToken($server, 'HTTP_X_FORWARDED_PROTO');
+        if ($last === null) {
             return null;
         }
+        $last = strtolower($last);
 
-        $first = strtolower($first);
-
-        return $first === 'https' ? 'https' : ($first === 'http' ? 'http' : null);
+        return $last === 'https' ? 'https' : ($last === 'http' ? 'http' : null);
     }
 
-    /** @param array<string, mixed> $server */
+    /** @param array<string,mixed> $server */
     private static function proxyFlagEnabled(int $flag, array $server, ?int $trustedProxyFlags): bool
     {
         if ($trustedProxyFlags !== null) {
@@ -197,20 +178,16 @@ final class UriServerParams
             && (Request::getProxyHeaderFlags() & $flag) !== 0;
     }
 
-    /**
-     * @param array<string, mixed> $server
-     */
+    /** @param array<string,mixed> $server */
     private static function serverString(array $server, string $key): ?string
     {
         if (!array_key_exists($key, $server)) {
             return null;
         }
-
         $value = $server[$key];
         if (is_string($value)) {
             return $value;
         }
-
         if (is_int($value) || is_float($value) || is_bool($value)) {
             return (string) $value;
         }
@@ -218,9 +195,49 @@ final class UriServerParams
         return null;
     }
 
-    /**
-     * @return array{0: string, 1: int|null}
-     */
+    /** @return list<string> */
+    private static function splitCsv(string $value): array
+    {
+        $tokens = [];
+        $buffer = '';
+        $quoted = false;
+        $escaped = false;
+        for ($i = 0, $length = strlen($value); $i < $length; $i++) {
+            $char = $value[$i];
+            if ($escaped) {
+                $buffer .= $char;
+                $escaped = false;
+
+                continue;
+            }
+            if ($quoted && $char === '\\') {
+                $buffer .= $char;
+                $escaped = true;
+
+                continue;
+            }
+            if ($char === '"') {
+                $quoted = !$quoted;
+                $buffer .= $char;
+
+                continue;
+            }
+            if ($char === ',' && !$quoted) {
+                $tokens[] = trim($buffer);
+                $buffer = '';
+
+                continue;
+            }
+            $buffer .= $char;
+        }
+        if (trim($buffer) !== '') {
+            $tokens[] = trim($buffer);
+        }
+
+        return $tokens;
+    }
+
+    /** @return array{0:string,1:int|null} */
     private static function splitHostPort(string $value): array
     {
         $value = trim($value);
@@ -240,9 +257,7 @@ final class UriServerParams
         }
 
         if (preg_match('/^(?<host>[^:]+):(?<port>\d{1,5})$/', $value, $matches) === 1) {
-            $port = self::normPort($matches['port']);
-
-            return [$matches['host'], $port];
+            return [$matches['host'], self::normPort($matches['port'])];
         }
 
         return [$value, null];

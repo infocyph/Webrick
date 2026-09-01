@@ -1,10 +1,11 @@
 <?php
 
-// tests/Feature/TelemetryMiddlewareTest.php
-
 declare(strict_types=1);
 
+use Infocyph\InterMix\DI\Container;
+use Infocyph\InterMix\DI\Invoker;
 use Infocyph\Webrick\Middleware\TelemetryMiddleware;
+use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Facade\Router as Route;
 use Infocyph\Webrick\Router\Kernel\RouterKernel;
@@ -12,49 +13,32 @@ use Infocyph\Webrick\Router\Matching\ShardedMatcher;
 use Infocyph\Webrick\Support\TraceContext;
 use Psr\Log\NullLogger;
 
+function telemetryTestInvoker(): Invoker
+{
+    return Invoker::with(new Container('webrick.tests.telemetry'));
+}
+
 beforeEach(function () {
-    TraceContext::clear();
     $this->logger = new TestLogger;
-
-    // Clear route cache before each test
-    $cacheDir = sys_get_temp_dir().'/webrick-test-routes-'.uniqid();
-    if (! is_dir($cacheDir)) {
-        mkdir($cacheDir, 0777, true);
-    }
-    $this->cacheDir = $cacheDir;
-});
-
-afterEach(function () {
-    TraceContext::clear();
-
-    // Clean up cache directory
-    if (isset($this->cacheDir) && is_dir($this->cacheDir)) {
-        $files = new RecursiveIteratorIterator(
-            new RecursiveDirectoryIterator($this->cacheDir, RecursiveDirectoryIterator::SKIP_DOTS),
-            RecursiveIteratorIterator::CHILD_FIRST
-        );
-        foreach ($files as $file) {
-            $file->isDir() ? rmdir($file->getRealPath()) : unlink($file->getRealPath());
-        }
-        rmdir($this->cacheDir);
-    }
 });
 
 describe('TelemetryMiddleware - End-to-End Integration', function () {
-    test('complete request lifecycle with telemetry', function () {
+    test('complete request lifecycle with explicit request context', function () {
         $kernel = RouterKernel::bootWithRegistrar(
             log: new NullLogger,
             matcher: ShardedMatcher::make(),
             register: function () {
-                Route::get('/api/lifecycle', function () {
+                Route::get('/api/lifecycle', function (Request $request) {
+                    $context = TraceContext::require($request);
+
                     return Response::json([
-                        'trace_id' => TraceContext::getTraceId(),
-                        'span_id' => TraceContext::getSpanId(),
-                        'request_id' => TraceContext::getRequestId(),
+                        'trace_id' => $context->traceId(),
+                        'span_id' => $context->spanId(),
+                        'request_id' => $context->requestId(),
                     ]);
                 });
             },
-            routeCache: $this->cacheDir,
+            invoker: telemetryTestInvoker(),
             preGlobal: [
                 new TelemetryMiddleware(
                     log: $this->logger,
@@ -66,8 +50,7 @@ describe('TelemetryMiddleware - End-to-End Integration', function () {
             ],
         );
 
-        $request = mockRequest('GET', '/api/lifecycle');
-        $response = $kernel->handle($request);
+        $response = $kernel->handle(mockRequest('GET', '/api/lifecycle'));
         $data = json_decode((string) $response->getBody(), true);
 
         expect($response->getStatusCode())->toBe(200)
@@ -77,127 +60,100 @@ describe('TelemetryMiddleware - End-to-End Integration', function () {
             ->and($response->hasHeader('Trace-Id'))->toBeTrue()
             ->and($data['trace_id'])->toBeString()
             ->and($data['span_id'])->toBeString()
-            ->and($data['request_id'])->toBeString()
-            ->and(TraceContext::isAvailable())->toBeFalse();
+            ->and($data['request_id'])->toBeString();
     });
 
-    test('trace context available in controllers', function () {
+    test('explicit trace context helpers are available in handlers', function () {
         $kernel = RouterKernel::bootWithRegistrar(
             log: new NullLogger,
             matcher: ShardedMatcher::make(),
             register: function () {
-                Route::get('/api/test', function () {
+                Route::get('/api/test', function (Request $request) {
+                    $context = TraceContext::require($request);
+
                     return Response::json([
-                        'trace_available' => TraceContext::isAvailable(),
-                        'trace_id' => TraceContext::getTraceId(),
-                        'span_id' => TraceContext::getSpanId(),
-                        'request_id' => TraceContext::getRequestId(),
-                        'log_context' => TraceContext::getLogContext(),
-                        'propagation_headers' => TraceContext::getPropagationHeaders(),
+                        'trace_id' => $context->traceId(),
+                        'span_id' => $context->spanId(),
+                        'request_id' => $context->requestId(),
+                        'log_context' => $context->logContext(),
+                        'propagation_headers' => $context->propagationHeaders(),
                     ]);
                 });
             },
-            routeCache: $this->cacheDir,
-            preGlobal: [
-                new TelemetryMiddleware($this->logger),
-            ]
+            invoker: telemetryTestInvoker(),
+            preGlobal: [new TelemetryMiddleware($this->logger)],
         );
 
-        $request = mockRequest('GET', '/api/test');
-        $response = $kernel->handle($request);
-
-        expect($response->getStatusCode())->toBe(200);
-
+        $response = $kernel->handle(mockRequest('GET', '/api/test'));
         $data = json_decode((string) $response->getBody(), true);
 
-        expect($data['trace_available'])
-            ->toBeTrue()
-            ->and($data['trace_id'])->not
-            ->toBeNull()
-            ->and($data['span_id'])->not
-            ->toBeNull()
-            ->and($data['request_id'])->not
-            ->toBeNull()
+        expect($response->getStatusCode())->toBe(200)
+            ->and($data['trace_id'])->not->toBeNull()
+            ->and($data['span_id'])->not->toBeNull()
+            ->and($data['request_id'])->not->toBeNull()
             ->and($data['log_context'])->toContain('trace=')
             ->and($data['propagation_headers'])->toHaveKey('traceparent')
             ->and($data['propagation_headers'])->toHaveKey('X-Trace-Id');
     });
 
-    test('distributed tracing with incoming traceparent', function () {
+    test('distributed tracing preserves trace and parent span', function () {
         $kernel = RouterKernel::bootWithRegistrar(
             log: new NullLogger,
             matcher: ShardedMatcher::make(),
             register: function () {
-                Route::get('/api/service-b', function () {
+                Route::get('/api/service-b', function (Request $request) {
+                    $context = TraceContext::require($request);
+
                     return Response::json([
-                        'service' => 'B',
-                        'trace_id' => TraceContext::getTraceId(),
-                        'span_id' => TraceContext::getSpanId(),
-                        'parent_span_id' => TraceContext::getParentSpanId(),
+                        'trace_id' => $context->traceId(),
+                        'span_id' => $context->spanId(),
+                        'parent_span_id' => $context->parentSpanId(),
                     ]);
                 });
             },
-            routeCache: $this->cacheDir,
-            preGlobal: [
-                new TelemetryMiddleware($this->logger, respectIncomingTraceparent: true),
-            ]
+            invoker: telemetryTestInvoker(),
+            preGlobal: [new TelemetryMiddleware($this->logger, respectIncomingTraceparent: true)],
         );
 
         $incomingTraceId = str_repeat('a', 32);
         $incomingSpanId = str_repeat('b', 16);
-
-        $request = mockRequest('GET', '/api/service-b', headers: [
+        $response = $kernel->handle(mockRequest('GET', '/api/service-b', headers: [
             'traceparent' => "00-{$incomingTraceId}-{$incomingSpanId}-01",
-        ]);
-
-        $response = $kernel->handle($request);
-
-        expect($response->getStatusCode())->toBe(200);
-
+        ]));
         $data = json_decode((string) $response->getBody(), true);
 
-        // Same trace ID (distributed trace)
-        expect($data['trace_id'])
-            ->toBe($incomingTraceId)
-            ->and($data['span_id'])->not
-            ->toBe($incomingSpanId)
+        expect($response->getStatusCode())->toBe(200)
+            ->and($data['trace_id'])->toBe($incomingTraceId)
+            ->and($data['span_id'])->not->toBe($incomingSpanId)
             ->and($data['span_id'])->toHaveLength(16)
             ->and($data['parent_span_id'])->toBe($incomingSpanId);
-
-        // New span ID (child span)
-
-        // Parent span ID preserved
     });
 
-    test('trace IDs are generated from request attributes', function () {
-        // This test verifies that the middleware generates trace IDs
-        // The actual uniqueness depends on random_bytes() which may be
-        // deterministic in test environments
-
+    test('trace IDs are generated per request context', function () {
         $kernel = RouterKernel::bootWithRegistrar(
             log: new NullLogger,
             matcher: ShardedMatcher::make(),
             register: function () {
-                Route::get('/api/request', fn () => Response::json([
-                    'trace_id' => TraceContext::getTraceId(),
-                    'has_trace' => TraceContext::getTraceId() !== null,
-                ]));
+                Route::get('/api/request', function (Request $request) {
+                    $traceId = TraceContext::require($request)->traceId();
+
+                    return Response::json([
+                        'trace_id' => $traceId,
+                        'has_trace' => $traceId !== null,
+                    ]);
+                });
             },
-            routeCache: $this->cacheDir,
-            preGlobal: [
-                new TelemetryMiddleware($this->logger),
-            ]
+            invoker: telemetryTestInvoker(),
+            preGlobal: [new TelemetryMiddleware($this->logger)],
         );
 
-        $request = mockRequest('GET', '/api/request');
-        $response = $kernel->handle($request);
+        $response = $kernel->handle(mockRequest('GET', '/api/request'));
         $data = json_decode((string) $response->getBody(), true);
 
-        expect($response->getStatusCode())
-            ->toBe(200)
+        expect($response->getStatusCode())->toBe(200)
             ->and($data['has_trace'])->toBeTrue()
             ->and($data['trace_id'])->toHaveLength(32)
-            ->and(ctype_xdigit($data['trace_id']))->toBeTrue();
+            ->and(preg_match('/\A[0-9a-f]{32}\z/D', $data['trace_id']))->toBe(1);
     });
 });
 
@@ -208,28 +164,22 @@ describe('TelemetryMiddleware - Performance Timing', function () {
             matcher: ShardedMatcher::make(),
             register: function () {
                 Route::get('/api/slow', function () {
-                    usleep(50000); // 50ms
+                    usleep(50000);
 
                     return Response::json(['ok' => true]);
                 });
             },
-            routeCache: $this->cacheDir,
-            preGlobal: [
-                new TelemetryMiddleware($this->logger, addXResponseTime: true),
-            ]
+            invoker: telemetryTestInvoker(),
+            preGlobal: [new TelemetryMiddleware($this->logger, addXResponseTime: true)],
         );
 
-        $request = mockRequest('GET', '/api/slow');
-        $response = $kernel->handle($request);
-
-        expect($response->getStatusCode())->toBe(200);
-
+        $response = $kernel->handle(mockRequest('GET', '/api/slow'));
         $timing = $response->getHeaderLine('X-Response-Time');
-        expect($timing)->toMatch('/^\d+\.\d+ms$/');
-
         preg_match('/^(\d+\.\d+)ms$/', $timing, $matches);
-        $duration = (float) $matches[1];
-        expect($duration)->toBeGreaterThan(40); // Allow some variance
+
+        expect($response->getStatusCode())->toBe(200)
+            ->and($timing)->toMatch('/^\d+\.\d+ms$/')
+            ->and((float) $matches[1])->toBeGreaterThan(40);
     });
 
     test('Server-Timing header format is correct', function () {
@@ -237,21 +187,16 @@ describe('TelemetryMiddleware - Performance Timing', function () {
             log: new NullLogger,
             matcher: ShardedMatcher::make(),
             register: function () {
-                Route::get('/api/test', fn () => Response::json(['ok' => true]));
+                Route::get('/api/test', fn() => Response::json(['ok' => true]));
             },
-            routeCache: $this->cacheDir,
-            preGlobal: [
-                new TelemetryMiddleware($this->logger, addServerTiming: true),
-            ]
+            invoker: telemetryTestInvoker(),
+            preGlobal: [new TelemetryMiddleware($this->logger, addServerTiming: true)],
         );
 
-        $request = mockRequest('GET', '/api/test');
-        $response = $kernel->handle($request);
+        $response = $kernel->handle(mockRequest('GET', '/api/test'));
 
-        expect($response->getStatusCode())->toBe(200);
-
-        $serverTiming = $response->getHeaderLine('Server-Timing');
-        expect($serverTiming)->toMatch('/^app;dur=\d+\.\d+$/');
+        expect($response->getStatusCode())->toBe(200)
+            ->and($response->getHeaderLine('Server-Timing'))->toMatch('/^app;dur=\d+\.\d+$/');
     });
 });
 
@@ -261,9 +206,9 @@ describe('TelemetryMiddleware - Configuration Scenarios', function () {
             log: new NullLogger,
             matcher: ShardedMatcher::make(),
             register: function () {
-                Route::get('/health', fn () => Response::json(['status' => 'ok']));
+                Route::get('/health', fn() => Response::json(['status' => 'ok']));
             },
-            routeCache: $this->cacheDir,
+            invoker: telemetryTestInvoker(),
             preGlobal: [
                 new TelemetryMiddleware(
                     log: $this->logger,
@@ -275,30 +220,28 @@ describe('TelemetryMiddleware - Configuration Scenarios', function () {
                     respectIncomingTraceparent: true,
                     enableOtelIntegration: true,
                     otelServiceName: 'production-api',
-                    otelServiceVersion: '1.0.0'
+                    otelServiceVersion: '1.0.0',
                 ),
-            ]
+            ],
         );
 
-        $request = mockRequest('GET', '/health');
-        $response = $kernel->handle($request);
+        $response = $kernel->handle(mockRequest('GET', '/health'));
 
-        expect($response->getStatusCode())
-            ->toBe(200)
+        expect($response->getStatusCode())->toBe(200)
             ->and($response->hasHeader('X-Response-Time'))->toBeTrue()
             ->and($response->hasHeader('Server-Timing'))->toBeTrue()
             ->and($response->hasHeader('X-Request-Id'))->toBeTrue()
             ->and($response->hasHeader('Trace-Id'))->toBeTrue();
     });
 
-    test('development configuration (minimal headers)', function () {
+    test('development configuration with minimal response telemetry', function () {
         $kernel = RouterKernel::bootWithRegistrar(
             log: new NullLogger,
             matcher: ShardedMatcher::make(),
             register: function () {
-                Route::get('/test', fn () => Response::json(['ok' => true]));
+                Route::get('/test', fn() => Response::json(['ok' => true]));
             },
-            routeCache: $this->cacheDir,
+            invoker: telemetryTestInvoker(),
             preGlobal: [
                 new TelemetryMiddleware(
                     log: $this->logger,
@@ -306,16 +249,14 @@ describe('TelemetryMiddleware - Configuration Scenarios', function () {
                     addServerTiming: false,
                     emitRequestId: true,
                     emitTraceIdHeader: false,
-                    enableOtelIntegration: false
+                    enableOtelIntegration: false,
                 ),
-            ]
+            ],
         );
 
-        $request = mockRequest('GET', '/test');
-        $response = $kernel->handle($request);
+        $response = $kernel->handle(mockRequest('GET', '/test'));
 
-        expect($response->getStatusCode())
-            ->toBe(200)
+        expect($response->getStatusCode())->toBe(200)
             ->and($response->hasHeader('X-Response-Time'))->toBeFalse()
             ->and($response->hasHeader('Server-Timing'))->toBeFalse()
             ->and($response->hasHeader('X-Request-Id'))->toBeTrue()

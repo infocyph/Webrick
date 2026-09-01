@@ -7,156 +7,102 @@ namespace Infocyph\Webrick\Request\Http;
 use Infocyph\Webrick\Request\Request;
 
 /**
- * Tiny CSRF helper with masked-token semantics.
+ * CSRF token service with injected persistence.
  *
- * Example:
- * $cookie = Csrf::maskedToken();
- * if (!Csrf::matches($request)) {
- *     throw new \RuntimeException('419 CSRF mismatch');
- * }
+ * Proof is accepted from explicit headers or the parsed request body. Cookies
+ * are transport only and are never accepted as proof. Query-string tokens are
+ * disabled by default and must be explicitly enabled.
  */
-final class Csrf
+final readonly class Csrf
 {
-    /**
-     * Size of the raw random string (in **bytes**).
-     * 32 bytes → 64-hex-char plain token, 128-char masked token.
-     */
     private const int TOKEN_BYTES = 32;
 
-    /**
-     * Private constructor to prevent instantiation of this class.
-     */
-    private function __construct() {}
+    public function __construct(
+        private CsrfTokenStoreInterface $store,
+        private bool $allowQueryToken = false,
+        private string $field = '_token',
+    ) {}
 
-    /**
-     * Returns a masked CSRF token (128 hex chars) that contains the following components:
-     *   - A random 64-hex-char mask
-     *   - The SHA-3-256 HMAC of the concatenation of the mask and the plain token
-     *
-     * This format provides both a secure and efficient way to verify the token.
-     * The empty key argument to `hash_hmac` ensures that the HMAC computation is constant-time.
-     *
-     * @return string The masked CSRF token.
-     */
-    public static function maskedToken(): string
+    public static function withSession(string $key = '_token', bool $allowQueryToken = false): self
+    {
+        return new self(new SessionCsrfTokenStore($key), $allowQueryToken, $key);
+    }
+
+    public function maskedToken(): string
     {
         $mask = bin2hex(random_bytes(self::TOKEN_BYTES));
 
-        // Empty key ⇒ pure SHA-256, but `hash_hmac` is constant-time.
-        return $mask . hash_hmac('sha3-256', $mask . self::token(), '');
+        return $mask . hash_hmac('sha256', $mask, $this->token());
     }
 
-    /**
-     * Check if the given CSRF token matches the stored value.
-     *
-     * The CSRF token is extracted from the request using {@see extractFromRequest}.
-     * The extracted token is then compared with the stored value using
-     * {@see matchesValue}.
-     *
-     * @param Request $req The request object to extract the CSRF token from.
-     * @return bool True if the token matches, false otherwise.
-     */
-    public static function matches(Request $req): bool
+    public function matches(Request $req): bool
     {
-        return self::matchesValue(self::extractFromRequest($req));
+        return $this->matchesValue($this->extractFromRequest($req));
     }
 
-    /**
-     * Compares the given CSRF token against the stored value.
-     *
-     * Handles both plain and masked tokens. If the given token is a masked
-     * token, it will be verified using HMAC-SHA3-256. Plain tokens are compared
-     * directly.
-     *
-     * @param ?string $sent The CSRF token to compare.
-     * @return bool True if the token matches, false otherwise.
-     */
-    public static function matchesValue(?string $sent): bool
+    public function matchesValue(?string $sent): bool
     {
-        $stored = self::sessionToken();
-        if (!$sent || !$stored) {
+        $stored = $this->store->get();
+        if ($sent === null || $sent === '' || $stored === null || $stored === '') {
             return false;
         }
 
-        $hexLen = self::TOKEN_BYTES * 2; // 64
-        $maskedLen = $hexLen * 2;           // 128
+        $hexLen = self::TOKEN_BYTES * 2;
+        if (strlen($sent) === $hexLen * 2 && strlen($stored) === $hexLen) {
+            $mask = substr($sent, 0, $hexLen);
+            $digest = substr($sent, $hexLen);
 
-        // Masked token → verify HMAC(mask · stored)
-        if (\strlen($sent) === $maskedLen && \strlen($stored) === $hexLen) {
-            $mask = \substr($sent, 0, $hexLen);
-            $hashed = \substr($sent, $hexLen);
-
-            return \hash_equals(
-                $hashed,
-                \hash_hmac('sha3-256', $mask . $stored, ''),
-            );
+            return self::isHex($mask)
+                && self::isHex($digest)
+                && hash_equals($digest, hash_hmac('sha256', $mask, $stored));
         }
 
-        // Plain comparison
-        return \hash_equals($stored, $sent);
+        return hash_equals($stored, $sent);
     }
 
-    /**
-     * Retrieves the CSRF token from the session, or generates a new one if it does not exist.
-     *
-     * @return string The CSRF token as a 64-hex-char string.
-     */
-    public static function token(): string
+    public function token(): string
     {
-        $stored = self::sessionToken();
-        if ($stored !== null) {
+        $stored = $this->store->get();
+        if ($stored !== null && $stored !== '') {
             return $stored;
         }
 
         $token = bin2hex(random_bytes(self::TOKEN_BYTES));
-        $_SESSION['_token'] = $token;
+        $this->store->put($token);
 
         return $token;
     }
 
-    /**
-     * Extract the CSRF token from the request (in this order):
-     *   1. Header ('X-CSRF-TOKEN' or 'X-XSRF-TOKEN')
-     *   2. Form field ('_token')
-     *   3. Query param ('_token')
-     *   4. Cookie ('XSRF-TOKEN')
-     *
-     * @return string|null Token value if found, or null if not.
-     */
-    private static function extractFromRequest(Request $req): ?string
+    private static function isHex(string $value): bool
     {
-        // 1) Explicit header
-        $hdr = $req->getHeaderLine('X-CSRF-TOKEN')
-            ?: $req->getHeaderLine('X-XSRF-TOKEN');
-        if ($hdr !== '') {
-            return $hdr;
+        return $value !== '' && preg_match('/\A[0-9a-f]+\z/iD', $value) === 1;
+    }
+
+    private function extractFromRequest(Request $req): ?string
+    {
+        $header = $req->getHeaderLine('X-CSRF-TOKEN');
+        if ($header === '') {
+            $header = $req->getHeaderLine('X-XSRF-TOKEN');
+        }
+        if ($header !== '') {
+            return $header;
         }
 
-        // 2) Form field wins over query param
         $body = $req->getParsedBody();
-        if (\is_array($body)) {
-            $bodyToken = $body['_token'] ?? null;
-            if (\is_string($bodyToken) && $bodyToken !== '') {
+        if (is_array($body)) {
+            $bodyToken = $body[$this->field] ?? null;
+            if (is_string($bodyToken) && $bodyToken !== '') {
                 return $bodyToken;
             }
         }
 
-        \parse_str($req->getUri()->getQuery(), $q);
-        $queryToken = $q['_token'] ?? null;
-        if (\is_string($queryToken) && $queryToken !== '') {
-            return $queryToken;
+        if (!$this->allowQueryToken) {
+            return null;
         }
 
-        // 3) Cookie
-        $cookie = $req->getCookieParams()['XSRF-TOKEN'] ?? null;
+        parse_str($req->getUri()->getQuery(), $query);
+        $queryToken = $query[$this->field] ?? null;
 
-        return \is_string($cookie) && $cookie !== '' ? $cookie : null;
-    }
-
-    private static function sessionToken(): ?string
-    {
-        $stored = $_SESSION['_token'] ?? null;
-
-        return \is_string($stored) && $stored !== '' ? $stored : null;
+        return is_string($queryToken) && $queryToken !== '' ? $queryToken : null;
     }
 }

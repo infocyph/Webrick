@@ -4,46 +4,72 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Response\Range;
 
-use Infocyph\Webrick\Response\Headers\Range as SimpleRange;
+use Infocyph\Webrick\Response\Headers\Range;
 
 /**
- * Thin façade around the lightweight `Headers\Range` parser.
- *
- * Gives you either a parsed **single** range or `null`
- * (invalid / multi-range not supported).
- *
- * ```php
- * $r = RangeParser::parse($req->getHeaderLine('Range'), $length);
- * if ($r) {
- *     // $r->start, $r->end, $r->length()
- * }
- * ```
+ * RFC-style parser for one byte range with explicit outcome semantics.
  */
 final class RangeParser
 {
-    /**
-     * Parse a raw HTTP "Range" header and return a single range object.
-     *
-     * Delegates to Infocyph\Webrick\Response\Headers\Range::parse() and returns
-     * the parsed Range value object for the first satisfiable byte-range.
-     * Returns null when the header is malformed, requests multipart ranges,
-     * or the requested range is unsatisfiable for the given resource length.
-     *
-     * @param string $raw Raw "Range" header value (e.g. "bytes=0-499")
-     * @param int $resourceLen Total size of the resource in bytes (positive integer)
-     * @return SimpleRange|null Parsed Range instance or null if invalid / unsatisfiable
-     */
-    public static function parse(string $raw, int $resourceLen): ?SimpleRange
+    public static function parse(string $raw, int $resourceLen): RangeParseResult
     {
-        if ($resourceLen < 1) {
-            return null;
-        }
-
         $raw = trim($raw);
         if ($raw === '') {
-            return null;
+            return RangeParseResult::none();
+        }
+        if ($resourceLen < 0) {
+            throw new \InvalidArgumentException('Resource length cannot be negative.');
+        }
+        if (!preg_match('/^bytes=(.+)$/i', $raw, $unitMatch)) {
+            return RangeParseResult::malformed();
         }
 
-        return SimpleRange::parse($raw, $resourceLen);
+        return self::parseSpec(trim($unitMatch[1]), $resourceLen);
+    }
+
+    private static function parseSpec(string $spec, int $resourceLen): RangeParseResult
+    {
+        if (str_contains($spec, ',')) {
+            return RangeParseResult::multiple();
+        }
+        if (!preg_match('/^(\d*)-(\d*)$/', $spec, $match)) {
+            return RangeParseResult::malformed();
+        }
+
+        $rawStart = $match[1];
+        $rawEnd = $match[2];
+        if ($rawStart === '' && $rawEnd === '') {
+            return RangeParseResult::malformed();
+        }
+        if ($resourceLen === 0) {
+            return RangeParseResult::unsatisfiable();
+        }
+
+        if ($rawStart === '') {
+            $suffixLength = (int) $rawEnd;
+            if ($suffixLength <= 0) {
+                return RangeParseResult::unsatisfiable();
+            }
+
+            $start = max(0, $resourceLen - $suffixLength);
+
+            return RangeParseResult::satisfiable(new Range($start, $resourceLen - 1, $resourceLen));
+        }
+
+        $start = (int) $rawStart;
+        if ($start >= $resourceLen) {
+            return RangeParseResult::unsatisfiable();
+        }
+
+        if ($rawEnd === '') {
+            return RangeParseResult::satisfiable(new Range($start, $resourceLen - 1, $resourceLen));
+        }
+
+        $end = (int) $rawEnd;
+        if ($end < $start) {
+            return RangeParseResult::malformed();
+        }
+
+        return RangeParseResult::satisfiable(new Range($start, min($end, $resourceLen - 1), $resourceLen));
     }
 }

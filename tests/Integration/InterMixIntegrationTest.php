@@ -10,12 +10,12 @@ use Infocyph\InterMix\DI\Support\ServiceProviderInterface;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Response\View\ViewFactoryInterface;
+use Infocyph\Webrick\Response\View\ViewResponder;
 use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Dispatch\MiddlewareAliases;
 use Infocyph\Webrick\Router\Dispatch\MiddlewarePipeline;
 use Infocyph\Webrick\Router\Kernel\RouterKernel;
 use Infocyph\Webrick\Router\Matching\FusedMatcher;
-use Psr\Container\ContainerInterface;
 use Psr\Log\NullLogger;
 
 if (! class_exists('InterMixFreshController', false)) {
@@ -128,7 +128,9 @@ if (! class_exists('InterMixTestProvider', false)) {
 }
 
 /**
- * @param  array<string,mixed>  $options
+ * Test host bootstrap for the v5 development kernel.
+ *
+ * @param array<string,mixed> $options
  */
 function intermixKernelForTest(Closure $register, array $preGlobal = [], array $options = []): RouterKernel
 {
@@ -136,29 +138,40 @@ function intermixKernelForTest(Closure $register, array $preGlobal = [], array $
         'serviceProviders' => [],
         'preGlobalTags' => ['webrick.middleware.pre'],
         'postGlobalTags' => ['webrick.middleware.post'],
-        'requestScopeEnabled' => true,
         'container' => null,
         'invoker' => null,
     ];
     $opts = $options + $defaults;
+    $container = $opts['container'] instanceof Container
+        ? $opts['container']
+        : Container::instance('intermix');
+
+    foreach ($opts['serviceProviders'] as $providerClass) {
+        if (!is_string($providerClass) || !is_a($providerClass, ServiceProviderInterface::class, true)) {
+            throw new InvalidArgumentException('Test service providers must implement ServiceProviderInterface.');
+        }
+
+        $provider = new $providerClass();
+        $provider->register($container);
+    }
+
+    $invoker = $opts['invoker'] instanceof Invoker
+        ? $opts['invoker']
+        : Invoker::with($container);
 
     return RouterKernel::bootWithRegistrar(
         log: new NullLogger,
         matcher: FusedMatcher::make(),
         register: $register,
-        routeCache: null,
+        invoker: $invoker,
         registrarOptions: [
             'autoSlashRedirect' => false,
             'exposeUrlServices' => false,
         ],
         preGlobal: $preGlobal,
         postGlobal: [],
-        serviceProviders: $opts['serviceProviders'],
         preGlobalTags: $opts['preGlobalTags'],
         postGlobalTags: $opts['postGlobalTags'],
-        requestScopeEnabled: $opts['requestScopeEnabled'],
-        container: $opts['container'],
-        invoker: $opts['invoker'],
     );
 }
 
@@ -261,8 +274,8 @@ describe('InterMix integration', function () {
                 ->toHaveStatus(200)
                 ->and($response->getHeaderLine('X-DI-Marker'))->toBe('wired-compiled');
         } finally {
-            if (is_file($compiled)) {
-                unlink($compiled);
+            if (is_file($compiled) && !unlink($compiled)) {
+                throw new RuntimeException("Unable to remove compiled InterMix fixture: {$compiled}");
             }
         }
     });
@@ -287,28 +300,30 @@ describe('InterMix integration', function () {
             ->toBe('{"request":true,"marker":"direct-terminal"}');
     });
 
-    it('uses the same container for route DI and Response::view', function () {
-        $kernel = intermixKernelForTest(static function (Registrar $r): void {
-            $r->get('/view', static function (ContainerInterface $container): Response {
-                if (! $container instanceof Container) {
-                    throw new RuntimeException('Expected InterMix container instance.');
-                }
+    it('uses the same host container for route DI and view rendering', function () {
+        $container = Container::instance('intermix');
+        $factory = new class implements ViewFactoryInterface
+        {
+            public function render(string $view, array $data = []): string
+            {
+                return "<h1>{$view}: ".($data['name'] ?? 'n/a').'</h1>';
+            }
+        };
+        $container->definitions()->bind(ViewFactoryInterface::class, $factory, LifetimeEnum::Singleton);
+        $container->definitions()->bind(ViewResponder::class, new ViewResponder($factory), LifetimeEnum::Singleton);
 
-                $container->definitions()->bind(
-                    ViewFactoryInterface::class,
-                    new class implements ViewFactoryInterface
-                    {
-                        public function render(string $view, array $data = []): string
-                        {
-                            return "<h1>{$view}: ".($data['name'] ?? 'n/a').'</h1>';
-                        }
-                    },
-                    LifetimeEnum::Singleton,
-                );
+        $kernel = intermixKernelForTest(
+            static function (Registrar $r): void {
+                $r->get('/view', static function (ViewFactoryInterface $resolvedFactory, ViewResponder $views): Response {
+                    if ($resolvedFactory->render('probe', ['name' => 'Host']) !== '<h1>probe: Host</h1>') {
+                        throw new RuntimeException('Expected the host-bound view factory.');
+                    }
 
-                return Response::view('hello', ['name' => 'Ada']);
-            });
-        });
+                    return $views->render('hello', ['name' => 'Ada']);
+                });
+            },
+            options: ['container' => $container],
+        );
 
         $response = $kernel->handle(mockRequest('GET', '/view'));
 
@@ -317,7 +332,7 @@ describe('InterMix integration', function () {
             ->and((string) $response->getBody())->toContain('hello: Ada');
     });
 
-    it('imports service providers during kernel boot', function () {
+    it('uses services imported by the host before kernel boot', function () {
         $kernel = intermixKernelForTest(
             static function (Registrar $r): void {
                 $r->get('/provider', static function (InterMixProvidedService $service): Response {
@@ -337,7 +352,7 @@ describe('InterMix integration', function () {
             ->and($body['value'] ?? null)->toBe('from-provider');
     });
 
-    it('auto-composes tagged global middleware from InterMix container', function () {
+    it('auto-composes tagged global middleware from the host InterMix container', function () {
         $kernel = intermixKernelForTest(
             static function (Registrar $r): void {
                 $r->get('/tagged', static fn () => Response::json(['ok' => true]));

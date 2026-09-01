@@ -1,114 +1,252 @@
 # Webrick
 
-A framework-neutral HTTP routing kernel for PHP with deploy-time route compilation,
-lazy middleware resolution, signed URLs, response helpers and emitters for
-traditional and persistent runtimes.
+A fast, framework-neutral HTTP routing kernel for PHP 8.4+ with deploy-time
+compilation, persistent-runtime adapters, signed URLs, native response bodies,
+and production-grade middleware.
 
 [![Security & Standards](https://github.com/infocyph/Webrick/actions/workflows/security-standards.yml/badge.svg)](https://github.com/infocyph/Webrick/actions/workflows/security-standards.yml)
-![Packagist Downloads](https://img.shields.io/packagist/dt/infocyph/webrick?color=green\&link=https%3A%2F%2Fpackagist.org%2Fpackages%2Finfocyph%2Fwebrick)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+![Packagist Downloads](https://img.shields.io/packagist/dt/infocyph/webrick?color=green)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 ![Packagist Version](https://img.shields.io/packagist/v/infocyph/webrick)
 ![Packagist PHP Version](https://img.shields.io/packagist/dependency-v/infocyph/webrick/php)
-![GitHub Code Size](https://img.shields.io/github/languages/code-size/infocyph/Webrick)
-[![Documentation](https://img.shields.io/badge/Documentation-Webrick-blue?logo=readthedocs&logoColor=white)](https://docs.infocyph.com/projects/webrick/en/latest/)
 
-## Highlights
+## Webrick 5 architecture
 
-- Fast routing: named routes, groups, domains, resources, attribute discovery
-- Framework-neutral: run Webrick standalone or mount it behind another framework's request/response adapter
-- Deploy-time compilation: sharded, fused and generated PHP route-cache artifacts
-- Validated cache publication: exact format versions, staged PHP validation and atomic activation
-- Lean cached dispatch: class handlers and string middleware stay scalar until the matched route is materialized
-- Safe callable caching: public static first-class callables become scalar descriptors; stateful closures keep serializer semantics
-- Lazy optional services: middleware alias families and URL generation are resolved only when used
-- DI-aware dispatch: constructor and method injection through InterMix, with request scopes and service providers
-- Signed URLs: permanent, TTL-based, or explicit-expiry links
-- Rich signing controls: relative or absolute payloads, ignored query params, key rotation, custom signature params and algorithms
-- Central error boundary: framework middleware throws typed HTTP exceptions and the kernel renders them just before emission
-- User controllers and user middleware can still return `Response` directly; only framework-owned rejection paths are exception-driven
-- Response helpers: JSON, plaintext, redirects, streaming, ranged file/download responses, views
-- Middleware pipeline: negotiation, compression, throttling, validators, telemetry, cookie encryption and more
-- Runtime emitters: PHP-FPM, FrankenPHP, LiteSpeed, Nginx Unit, CLI, Swoole, RoadRunner and Workerman
+Webrick has two explicit planes:
+
+- **Development/build plane** — `Registrar`, `RouteCompiler`, matcher-cache tools,
+  reflection and route discovery are allowed here.
+- **Compiled production plane** — `CompiledRouterKernel` consumes a verified
+  Webrick artifact plus the **host-selected** InterMix `ProductionContainer`.
+
+The application owns its InterMix graph. Webrick never silently selects a
+container, imports application providers into a hidden graph, or infers a DI
+runtime from an environment string.
+
+### Highlights
+
+- Three measured matcher modes: Fused as the general default, Generated as a low-thousands/simple-topology specialization, and Sharded for lazy cache residency.
+- Explicit match outcomes for FOUND / 404 / 405 / automatic OPTIONS handling.
+- Lazy request promotion and capability-driven compiled dispatch.
+- Native string and file response bodies; stream objects only at interop boundaries.
+- SAPI/CLI emitters plus dedicated Swoole/OpenSwoole, RoadRunner and Workerman runtime adapters.
+- Request-local state and explicit InterMix scopes for persistent workers.
+- Signed/temporary URLs, range requests, conditional responses and cache policy handling.
+- Negotiation, compression, response cache, throttling, telemetry, request limits,
+  CORS/security policies and optional cookie encryption.
+- Optional PSR-7 and CacheLayer interoperability without making either part of the hot core.
 
 ## Requirements
 
 - PHP 8.4+
 - Composer 2.x
+- InterMix `^10.0.2`
 
-## Installation
+Install:
 
 ```bash
 composer require infocyph/webrick
 ```
 
-Core routing does not install or initialize CacheLayer. Add CacheLayer only when using
-`ResponseCacheMiddleware`, the default throttle cache backend, or CacheLayer's
-atomic counter backend:
+CacheLayer remains optional:
 
 ```bash
 composer require infocyph/cachelayer
 ```
 
-`ThrottleMiddleware` can also run without CacheLayer when the application
-supplies its own PSR-6 cache pool.
+Use it only when an application chooses the CacheLayer-backed response-cache or
+atomic-counter integration. Webrick core does not initialize CacheLayer.
 
-Webrick is a library, not an application skeleton. Its directory layout,
-configuration source, container composition and deployment entry point remain
-under the host application's control.
+## Development boot
 
-## Minimal Boot Example
+The host creates the InterMix graph and passes an `Invoker` to the registrar
+kernel:
 
 ```php
 <?php
 
 declare(strict_types=1);
 
+use Infocyph\InterMix\DI\Invoker;
 use Infocyph\Webrick\Request\Request;
-use Infocyph\Webrick\Response\Emitter\AutoEmitter;
+use Infocyph\Webrick\Response\Emitter\DefaultEmitter;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Facade\Router as Route;
 use Infocyph\Webrick\Router\Kernel\RouterKernel;
-use Infocyph\Webrick\Router\Matching\ShardedMatcher;
+use Infocyph\Webrick\Router\Matching\GeneratedMatcher;
+use Infocyph\Webrick\Webrick;
 use Psr\Log\NullLogger;
 
 require __DIR__ . '/vendor/autoload.php';
 
+$builder = Webrick::standaloneDevelopment();
+// Register the application's services/providers on $builder here.
+$container = $builder->development();
+$invoker = Invoker::with($container);
+
 $kernel = RouterKernel::bootWithRegistrar(
     log: new NullLogger(),
-    matcher: ShardedMatcher::make(),
+    matcher: GeneratedMatcher::make(),
     register: static function (Registrar $registrar): void {
-        unset($registrar);
-
-        Route::get('/', static fn() => Response::plaintext('Hello Webrick', 200), 'home');
-        Route::get('/api/users/{id:int}', static fn(Request $request, string $id) => Response::json([
+        Route::get('/', static fn() => Response::plaintext('Hello Webrick', 200));
+        Route::get('/users/{id:int}', static fn(string $id) => Response::json([
             'id' => (int) $id,
-            'method' => $request->getMethod(),
         ]), 'users.show');
     },
-    routeCache: __DIR__ . '/.route-cache',
+    invoker: $invoker,
 );
 
-(new AutoEmitter())->emit($kernel->handle(Request::fromGlobals()));
+$request = Request::fromGlobals();
+(new DefaultEmitter())->emit($kernel->handle($request), $request);
 ```
 
-For deployable route caches, prefer a controller class-string or
-`[Controller::class, 'method']` handler. Static controller methods avoid a
-controller allocation; non-static methods are constructed through InterMix.
-Closures and object-backed handlers remain supported through the serializer
-fallback, but they are not the cheapest cache representation.
+`RouterKernel` is intentionally the development/registrar path. It always uses
+request scoping and never stores the active request as a container singleton.
 
-Route-cache builds validate staged executable PHP before activation. Sharded
-builds publish an immutable generation through a small manifest, so an
-incomplete build cannot replace the generation used by live workers.
-On systems that support symbolic links, a tiny atomic `__current` pointer keeps
-generation selection out of PHP cache hydration; the manifest remains the
-portable fallback.
+## Production compilation
 
-## Use Inside Another Framework
+Production uses coordinated Webrick + InterMix release artifacts. The host owns
+one `ContainerBuilder`; Webrick contributes to that same graph rather than
+creating a second one.
 
-Keep one `RouterKernel` for the application or worker lifecycle and adapt only at
-the HTTP boundary:
+```php
+use Infocyph\InterMix\DI\ContainerBuilder;
+use Infocyph\Webrick\Router\Build\ReleaseCompiler;
+
+$builder = ContainerBuilder::create('app');
+// Register every application definition/provider before compilation.
+
+$manifest = (new ReleaseCompiler())->compile(
+    builder: $builder,
+    register: $register,
+    environment: 'production',
+    configFingerprint: $configFingerprint,
+    intermixPath: __DIR__ . '/var/intermix.php',
+    routerPath: __DIR__ . '/var/webrick.php',
+    releaseManifestPath: __DIR__ . '/var/release.json',
+    registrarOptions: $registrarOptions,
+    preGlobal: $preGlobal,
+    postGlobal: $postGlobal,
+);
+```
+
+Artifact publication is atomic at each file boundary. Deploy the InterMix
+artifact, Webrick artifact and release manifest as one immutable release set,
+then replace workers only after the full set is available.
+
+## Compiled production boot
+
+The host recreates the same builder configuration, chooses the InterMix
+production runtime, and gives it to Webrick explicitly:
+
+```php
+use Infocyph\Webrick\Router\Kernel\CompiledRouterKernel;
+use Infocyph\Webrick\Router\Matching\GeneratedMatcher;
+use Psr\Log\NullLogger;
+
+$release = json_decode(file_get_contents(__DIR__ . '/var/release.json'), true, flags: JSON_THROW_ON_ERROR);
+
+$container = $builder->productionPrevalidated(
+    $release['intermix']['path'],
+    $release['intermix']['sha256'],
+);
+
+$kernel = CompiledRouterKernel::fromPrevalidatedArtifact(
+    log: new NullLogger(),
+    matcher: GeneratedMatcher::make(),
+    container: $container,
+    artifactPath: $release['webrick']['path'],
+    trustedSha256: $release['webrick']['sha256'],
+    environment: $release['environment'],
+    configFingerprint: $release['config_fingerprint'],
+);
+```
+
+Use `fromCompiledArtifact()` instead when a trusted external digest is not
+available. Prevalidated mode is only appropriate when the digest comes from
+immutable deployment metadata outside the runtime-writable artifact boundary.
+
+## Persistent runtimes
+
+Swoole/OpenSwoole, RoadRunner and Workerman use `RuntimeAdapterInterface` and
+`RuntimeServer`. Runtime choice is explicit at worker bootstrap; Webrick does
+not perform per-request environment or extension discovery.
+
+Runtime adapters own native request/response handles, transport compression,
+request-size capabilities, streaming and sendfile behavior. Request state is
+never stored in static current-request/current-response fields.
+
+Classic synchronous SAPIs use `DefaultEmitter`; CLI uses `CliEmitter`. If a host
+framework owns response emission, return/adapt the Webrick response instead of
+emitting it twice.
+
+## Matcher cache tooling
+
+`route:cache` now means **matcher cache only**. It is a build-plane optimization
+and does not boot a request kernel or DI container:
+
+```bash
+php ./webrick route:cache --matcher=generated --cache=.route-cache/generated.php --routes=routes.php
+php ./webrick route:cache --matcher=fused --cache=.route-cache/fused.php --routes=routes.php
+php ./webrick route:cache --matcher=sharded --cache=.route-cache --routes=routes.php
+```
+
+Clear matcher cache artifacts with:
+
+```bash
+php ./webrick route:clear --matcher=sharded --cache=.route-cache --aggressive=1
+```
+
+Compiled production release artifacts are a separate concern and are produced
+through `ReleaseCompiler`.
+
+## URL generation
+
+```php
+use DateTimeImmutable;
+use Infocyph\Webrick\Router\Facade\Router as Route;
+use Infocyph\Webrick\Router\Url\SignedUrlConfig;
+
+$url = Route::urlFor('users.show', ['id' => 42]);
+$signed = Route::signedUrlFor('users.show', ['id' => 42]);
+$temp = Route::temporaryUrlFor('users.show', ['id' => 42], ttl: 900);
+$until = Route::temporaryUrlUntil(
+    'users.show',
+    new DateTimeImmutable('+15 minutes'),
+    ['id' => 42],
+);
+
+$absolute = Route::signedUrlFor(
+    'users.show',
+    ['id' => 42],
+    absolute: true,
+    payloadMode: SignedUrlConfig::MODE_ABSOLUTE,
+);
+```
+
+Signing and verification share deterministic URI/query normalization. Key
+rotation, ignored query parameters, leeway and absolute/relative payload modes
+are configured through `SignedUrlConfig`.
+
+## Middleware
+
+Compiled production middleware is resolved and prepared before traffic. Empty
+middleware routes retain a direct zero-pipeline path. Direct closures/functions
+avoid DI scope work when their compiled execution plan does not require it.
+
+Input sanitization is explicit transformation, not blanket security. Cookie
+encryption, OpenTelemetry and CacheLayer-backed features remain optional.
+`ResponseLinterMiddleware` is development/test tooling and should not be
+registered in production.
+
+## Interoperability
+
+Webrick's native `Request` and `Response` are optimized internal HTTP types. PSR
+interop is explicit through `Interop\Psr7`; installing PSR HTTP interfaces and a
+factory is optional.
+
+When embedding Webrick in another framework:
 
 ```php
 $webrickRequest = $requestAdapter->toWebrick($frameworkRequest);
@@ -117,212 +255,29 @@ $webrickResponse = $kernel->handle($webrickRequest);
 return $responseAdapter->fromWebrick($webrickResponse);
 ```
 
-Webrick's `Request` and `Response` expose familiar PSR-7-style message methods,
-but they do not implement the PSR-7 interfaces. A host framework must therefore
-provide the explicit adapters shown above. Do not emit the response from
-Webrick when the host framework owns emission.
-
-See documentation for container, middleware, request-scope and persistent-worker guidance.
-
-## Production-Oriented Boot Example
-
-```php
-<?php
-
-declare(strict_types=1);
-
-use Infocyph\Webrick\Middleware\CompressionMiddleware;
-use Infocyph\Webrick\Middleware\GatewayHardeningMiddleware;
-use Infocyph\Webrick\Middleware\NegotiationMiddleware;
-use Infocyph\Webrick\Middleware\ThrottleMiddleware;
-use Infocyph\Webrick\Middleware\VerifySignedUrlMiddleware;
-use Infocyph\Webrick\Request\Request;
-use Infocyph\Webrick\Response\Emitter\AutoEmitter;
-use Infocyph\Webrick\Response\Response;
-use Infocyph\Webrick\Router\Definition\Registrar;
-use Infocyph\Webrick\Router\Dispatch\MiddlewareAliases;
-use Infocyph\Webrick\Router\Facade\Router as Route;
-use Infocyph\Webrick\Router\Kernel\RouterKernel;
-use Infocyph\Webrick\Router\Matching\ShardedMatcher;
-use Infocyph\Webrick\Router\Url\SignedUrlConfig;
-use Psr\Log\NullLogger;
-
-require __DIR__ . '/vendor/autoload.php';
-
-$signKey = $_ENV['WEBRICK_SIGN_KEY']
-    ?? throw new RuntimeException('WEBRICK_SIGN_KEY is required');
-$baseUri = $_ENV['WEBRICK_URL_BASE_URI'] ?? 'http://localhost';
-$signedUrls = new SignedUrlConfig(
-    generationKey: $signKey,
-    verificationKeys: [$signKey],
-    defaultTtl: 900,
-);
-
-MiddlewareAliases::register(
-    'throttle',
-    static fn(...$params) => new ThrottleMiddleware(
-        max: (int) ($params[0] ?? 60),
-        window: (int) ($params[1] ?? 60),
-    ),
-);
-MiddlewareAliases::register(
-    'verifySignedUrl',
-    static fn() => new VerifySignedUrlMiddleware($signKey, 5),
-);
-
-$kernel = RouterKernel::bootWithRegistrar(
-    log: new NullLogger(),
-    matcher: ShardedMatcher::make(),
-    register: static function (Registrar $registrar): void {
-        unset($registrar);
-
-        Route::get('/users/{id:int}', fn(string $id) => Response::json(['id' => (int) $id]), 'users.show');
-        Route::get('/files/{file}', fn(string $file) => Response::attachment(__DIR__ . '/files/' . $file, $file), [
-            'as' => 'files.show',
-            'middleware' => ['verifySignedUrl'],
-        ]);
-    },
-    routeCache: __DIR__ . '/.route-cache',
-    registrarOptions: [
-        'exposeUrlServices' => true,
-        'signKey' => $signKey,
-        'signedDefaultTtl' => 900,
-        'signedUrlConfig' => $signedUrls,
-        'urlBaseUri' => $baseUri,
-    ],
-    preGlobal: [
-        GatewayHardeningMiddleware::class,
-        NegotiationMiddleware::class,
-    ],
-    postGlobal: [
-        CompressionMiddleware::class,
-    ],
-    fallbackAliasesFromRegistrar: true,
-);
-
-(new AutoEmitter())->emit($kernel->handle(Request::fromGlobals()));
-```
-
-The signing configuration is preserved in `registrarOptions`. On cached boot,
-the default URL binding defers alias loading and `UrlGenerator` construction
-until the first URL helper call. Supply `bindUrlServices` only when an
-integration needs to replace that default binding behavior.
-
-## URL Generation
-
-```php
-use DateTimeImmutable;
-use Infocyph\Webrick\Router\Facade\Router as Route;
-use Infocyph\Webrick\Router\Url\SignedUrlConfig;
-
-$url = Route::urlFor('users.show', ['id' => 42]);
-$absolute = Route::urlFor('users.show', ['id' => 42], absolute: true);
-
-$signed = Route::signedUrlFor('files.show', ['file' => 'report.pdf']);
-$temp = Route::temporaryUrlFor('files.show', ['file' => 'report.pdf'], ttl: 900);
-$until = Route::temporaryUrlUntil('files.show', new DateTimeImmutable('+15 minutes'), ['file' => 'report.pdf']);
-
-$absolutePayload = Route::signedUrlFor(
-    'files.show',
-    ['file' => 'report.pdf'],
-    absolute: true,
-    payloadMode: SignedUrlConfig::MODE_ABSOLUTE,
-);
-```
-
-Framework-owned failures such as invalid signed URLs, negotiation failures, throttling, request limits, bad Host headers and maintenance mode now throw typed HTTP exceptions internally. `RouterKernel` catches them at the top-level error boundary and renders the final HTTP response there. Your controllers and user middleware can still return `Response` objects with explicit status codes directly.
-
-The demo app also includes `/api/error-demo`, which throws a framework HTTP exception and is rendered as JSON through a custom error boundary override.
-
-You can also customize the final exception-to-response conversion by supplying your own `ErrorHandler`:
-
-```php
-use Infocyph\Webrick\Request\Request;
-use Infocyph\Webrick\Response\Response;
-use Infocyph\Webrick\Router\Kernel\ErrorHandler;
-use Throwable;
-
-$errorHandler = new ErrorHandler(
-    responseRenderer: static function (Request $request, Throwable $e, int $status, array $headers): ?Response {
-        if (!str_starts_with($request->getUri()->getPath(), '/api/')) {
-            return null;
-        }
-
-        return Response::json([
-            'error' => $e->getMessage(),
-            'status' => $status,
-            'path' => $request->getUri()->getPath(),
-        ], $status, $headers);
-    },
-);
-```
-
-## Route Cache
-
-Build cache artifacts during CI or deploy. Cache creation may spend more work so
-the request path does less:
-
-```bash
-php ./webrick route:cache --matcher=sharded --cache=.route-cache --routes=routes.php
-php ./webrick route:cache --matcher=fused --cache=.route-cache/fused.php --routes=routes.php
-php ./webrick route:cache --matcher=generated --cache=.route-cache/generated.php --routes=routes.php
-```
-
-Clear them when needed:
-
-```bash
-php ./webrick route:clear --matcher=sharded --cache=.route-cache
-```
-
-All matcher factories are zero-argument. Pass the cache directory or file only
-as `routeCache:` when booting the kernel.
-
-For the major release, rebuild every route-cache artifact after updating;
-cache formats are internal deployment artifacts and are not portable across
-major versions.
+The host remains responsible for its application lifecycle, container,
+configuration, logging and final response emission.
 
 ## Benchmarks
 
-The two benchmark directories serve different workflows:
+- `benchmark/` contains the standalone matcher/control runner.
+- `benchmarks/` contains structured PhpBench benchmarks for matcher, dispatch,
+  cache, ETag and signed-URL behavior.
 
-- `benchmark/` contains the standalone executable matcher runner for quick
-  local comparisons and smoke checks.
-- `benchmarks/` contains the structured PhpBench suite for repeatable matcher,
-  cache-lifecycle, kernel-dispatch, signed-URL, and ETag measurements.
-
-Keep build and boot results separate from steady-state request measurements.
-Record PHP, extension, hardware, route-set, warmup, and iteration details when
-publishing results.
+Use same-run ratios against controls and judge sustainable successful full HTTP
+throughput, not isolated microbenchmark wins.
 
 ## Security
 
-Do not disclose suspected vulnerabilities in a public issue, discussion or pull request. Follow [SECURITY.md](SECURITY.md) and use [GitHub private vulnerability reporting](https://github.com/infocyph/Webrick/security/advisories/new).
+Do not disclose suspected vulnerabilities in a public issue, discussion or pull
+request. Follow [SECURITY.md](SECURITY.md) and use GitHub private vulnerability
+reporting.
 
-Webrick is protected by [PHPForge](https://github.com/infocyph/PHPForge), which provides automated tests, static and taint analysis, dependency auditing, architecture checks and release-readiness gates. Automated controls do not replace responsible disclosure or manual review.
+Webrick uses PHPForge for automated tests, static/taint analysis, dependency
+auditing, architecture checks and release-readiness gates.
 
+## Documentation
 
----
+Full documentation: https://docs.infocyph.com/projects/webrick/
 
-<div align="center">
-  <sub><strong>Made with ❤️ for the PHP community</strong></sub><br />
-  <sub><a href="LICENSE">MIT Licensed</a></sub><br />
-  <a href="https://docs.infocyph.com/projects/Webrick/">Documentation</a> •
-  <a href="SECURITY.md">Security</a> •
-  <a href="CODE_OF_CONDUCT.md">Code of Conduct</a> •
-  <a href="CONTRIBUTING.md">Contributing</a><br />
-  <span title="Issue templates" aria-label="Issue templates">🗂️</span>
-  <a href="https://github.com/infocyph/Webrick/issues/new?template=bug_report.yml">Bug</a> •
-  <a href="https://github.com/infocyph/Webrick/issues/new?template=feature_request.yml">Feature</a> •
-  <a href="https://github.com/infocyph/Webrick/issues/new?template=docs_improvement.yml">Documentation</a> •
-  <a href="https://github.com/infocyph/Webrick/issues/new?template=question.yml">Question</a> •
-  <a href="https://github.com/infocyph/Webrick/issues/new?template=ci_failure.yml">CI failure</a><br />
-  <span title="Pull request templates" aria-label="Pull request templates">🔀</span>
-  <a href="https://github.com/infocyph/Webrick/compare/main...HEAD?quick_pull=1&amp;template=PULL_REQUEST_TEMPLATE.md">General</a> •
-  <a href="https://github.com/infocyph/Webrick/compare/main...HEAD?quick_pull=1&amp;template=bug_fix.md">Bug fix</a> •
-  <a href="https://github.com/infocyph/Webrick/compare/main...HEAD?quick_pull=1&amp;template=feature.md">Feature</a> •
-  <a href="https://github.com/infocyph/Webrick/compare/main...HEAD?quick_pull=1&amp;template=refactor.md">Refactor</a> •
-  <a href="https://github.com/infocyph/Webrick/compare/main...HEAD?quick_pull=1&amp;template=performance.md">Performance</a> •
-  <a href="https://github.com/infocyph/Webrick/compare/main...HEAD?quick_pull=1&amp;template=security_reliability.md">Security &amp; reliability</a> •
-  <a href="https://github.com/infocyph/Webrick/compare/main...HEAD?quick_pull=1&amp;template=documentation.md">Documentation</a> •
-  <a href="https://github.com/infocyph/Webrick/compare/main...HEAD?quick_pull=1&amp;template=maintenance.md">Maintenance</a>
-</div>
+Webrick is MIT licensed. See [LICENSE](LICENSE).

@@ -3,9 +3,7 @@
 declare(strict_types=1);
 
 use Infocyph\Webrick\Request\Request;
-use Infocyph\Webrick\Response\Emitter\AutoEmitter;
 use Infocyph\Webrick\Response\Emitter\BaseEmitter;
-use Infocyph\Webrick\Response\Emitter\DefaultEmitter;
 use Infocyph\Webrick\Response\Response;
 
 test('base emitter sends a known content length and writes the body once', function (): void {
@@ -100,11 +98,4 @@ test('base emitter preserves streaming chunk order', function (): void {
     $emitter->emit($response, Request::fake());
 
     expect($emitter->output)->toBe('first-second');
-});
-
-test('auto emitter gives its explicit emit argument priority over SAPI detection', function (): void {
-    $picker = new ReflectionMethod(AutoEmitter::class, 'pick');
-    $selected = $picker->invoke(new AutoEmitter(), null, 'default');
-
-    expect($selected)->toBeInstanceOf(DefaultEmitter::class);
 });

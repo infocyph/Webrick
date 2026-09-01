@@ -6,6 +6,7 @@ namespace Infocyph\Webrick\Benchmarks;
 
 use Closure;
 use Infocyph\InterMix\DI\Container;
+use Infocyph\InterMix\DI\Invoker;
 use Infocyph\InterMix\DI\Support\LifetimeEnum;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
@@ -33,22 +34,18 @@ final class KernelDispatchBench
     public function setUp(): void
     {
         $this->request = Request::fake(uri: 'http://localhost/bench');
-        $closureContainer = Container::instance('webrick.benchmark.closure');
-        $closureContainer->unset();
+
         $this->closureKernel = $this->kernel(
-            $closureContainer,
+            new Container('webrick.benchmark.closure'),
             static fn(): Response => Response::json(['ok' => true]),
         );
 
-        $staticContainer = Container::instance('webrick.benchmark.static');
-        $staticContainer->unset();
         $this->staticControllerKernel = $this->kernel(
-            $staticContainer,
+            new Container('webrick.benchmark.static'),
             [self::class, 'staticResponse'],
         );
 
-        $factoryContainer = Container::instance('webrick.benchmark.factory');
-        $factoryContainer->unset();
+        $factoryContainer = new Container('webrick.benchmark.factory');
         $factoryContainer->bindFactory(
             'benchmark.middleware',
             static fn(): Closure => static fn(
@@ -106,11 +103,11 @@ final class KernelDispatchBench
             register: static function (Registrar $registrar) use ($handler): void {
                 $registrar->get('/bench', $handler);
             },
+            invoker: Invoker::with($container),
             registrarOptions: [
                 'autoSlashRedirect' => false,
                 'exposeUrlServices' => false,
             ],
-            container: $container,
         );
     }
 }

@@ -4,32 +4,37 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Response\Emitter;
 
+use Infocyph\Webrick\Constants\HttpMethodEnum;
+use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Runtime\Http\ResponseWriterSupport;
 
-/**
- * For unit tests or CLI scripts: dumps an HTTP-like envelope to STDOUT.
- */
+/** For unit tests or CLI scripts: dumps an HTTP-like envelope to STDOUT. */
 final class CliEmitter implements EmitterInterface
 {
-    /**
-     * Dumps an HTTP-like envelope to STDOUT.
-     */
-    // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundInImplementedInterfaceAfterLastUsed -- Required by EmitterInterface.
-    public function emit(
-        Response $response,
-        ?Request $request = null,
-    ): void {
+    public function emit(Response $response, ?Request $request = null): void
+    {
         $status = $response->getStatusCode() . ' ' . $response->getReasonPhrase();
-        $ver = $response->getProtocolVersion();
+        $output = 'HTTP/' . $response->getProtocolVersion() . " {$status}\n";
 
-        $output = "HTTP/$ver $status\n";
-        foreach ($response->getHeaders() as $n => $vals) {
-            foreach ($vals as $v) {
-                $output .= "{$n}: {$v}\n";
+        foreach (ResponseWriterSupport::headers($response) as [$name, $value]) {
+            $output .= "{$name}: {$value}\n";
+        }
+        $output .= "\n";
+
+        $method = $request instanceof Request
+            ? HttpMethodEnum::normalize($request->getMethod())
+            : null;
+        if ($method !== HttpMethodEnum::HEAD->value && !StatusEnum::isEmptyCode($response->getStatusCode())) {
+            foreach (ResponseWriterSupport::chunks($response) as $chunk) {
+                $output .= $chunk;
             }
         }
-        $output .= "\n" . $response->getBody();
-        file_put_contents('php://stdout', $output, FILE_APPEND);
+
+        $written = file_put_contents('php://stdout', $output, FILE_APPEND);
+        if ($written === false || $written !== strlen($output)) {
+            throw new \RuntimeException('Unable to write complete CLI response output.');
+        }
     }
 }

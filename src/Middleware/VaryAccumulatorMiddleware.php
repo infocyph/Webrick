@@ -1,16 +1,5 @@
 <?php
 
-/**
- * Webrick - Middleware: Vary header accumulator.
- *
- * Aggregates and normalizes Vary header tokens produced across the pipeline.
- * - Callers can register additional request-header tokens the response varies on.
- * - The middleware merges downstream Vary values, registered tokens, and
- *   auto-inferred tokens (e.g., from CORS, content encoding/language).
- * - It canonicalizes tokens to Title-Case, dedupes case-insensitively, and
- *   removes the Vary header entirely if the final token list is empty.
- */
-
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Middleware;
@@ -19,190 +8,119 @@ use Closure;
 use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Support\VaryContext;
 
-/**
- * Middleware that collects and emits a canonical Vary header.
- *
- * Usage:
- * - At call sites, use VaryAccumulatorMiddleware::add($req, 'Accept-Language')
- *   or ::addIf($req, $condition, 'HeaderA', 'HeaderB').
- * - The middleware then merges these with any downstream Vary values and
- *   auto-inferred tokens, producing a stable, deduped, Title-Case header.
- */
+/** Merge request-local Vary requirements once after downstream execution. */
 final class VaryAccumulatorMiddleware
 {
     /**
-     * Request attribute key used to carry queued vary tokens.
-     */
-    private const string ATTR = '__vary_tokens';
-
-    /**
-     * Merge tokens from downstream Vary header, queued tokens, and auto-inference.
-     *
-     * Rules:
-     * - If downstream already has "Vary: *", leave as-is.
-     * - Otherwise, normalize and dedupe tokens across sources.
-     * - Auto-infer Accept-Encoding, Accept-Language, and preflight request headers
-     *   when applicable (CORS reflection and OPTIONS preflight).
-     * - If the final list is empty, remove Vary; else set the canonicalized list.
-     *
-     * @param Request $req Incoming request.
      * @param Closure(Request):Response $next
-     * @return Response The updated response with a canonical Vary header.
      */
     public function __invoke(Request $req, Closure $next): Response
     {
+        $req = self::ensureContext($req);
         $resp = $next($req);
-
-        $currentVary = $resp->getHeaderLine('Vary');
-        if (self::hasStar($currentVary)) {
+        $current = $resp->getHeaderLine('Vary');
+        if (self::hasStar($current)) {
             return $resp;
         }
 
-        $tokens = $this->collectMergedTokens($req, $resp);
+        $tokens = self::normalize(self::splitTokens($current));
+        $context = self::context($req);
+        if ($context !== null) {
+            $tokens = self::merge($tokens, $context->all());
+        }
+        $tokens = self::merge($tokens, $this->inferAutoTokens($req, $resp));
 
+        if (in_array('*', $tokens, true)) {
+            return $current === '*' ? $resp : $resp->withHeader('Vary', '*');
+        }
         if ($tokens === []) {
-            return $currentVary === '' ? $resp : $resp->withoutHeader('Vary');
+            return $current === '' ? $resp : $resp->withoutHeader('Vary');
         }
 
         $final = implode(', ', $tokens);
 
-        return $final === $currentVary
-            ? $resp
-            : $resp->withHeader('Vary', $final);
+        return $final === $current ? $resp : $resp->withHeader('Vary', $final);
     }
 
-    /**
-     * Queue one or more request-header names that the response will vary on.
-     *
-     * Accepts plain tokens or comma-separated lists. Values are stored on the
-     * request for later merging by the middleware.
-     *
-     * @param Request $r The current request (immutable carrier).
-     * @param string ...$headers One or more header tokens or CSV strings.
-     * @return Request A new request instance with tokens queued.
-     */
     public static function add(Request $r, string ...$headers): Request
     {
-        $pending = $r->getAttribute(self::ATTR);
-        $added = self::coerceTokens($pending);
-        foreach ($headers as $h) {
-            foreach (self::splitTokens($h) as $tok) {
-                if ($tok !== '') {
-                    $added[] = $tok;
-                }
-            }
-        }
+        $r = self::ensureContext($r);
+        self::context($r)?->add(...$headers);
 
-        return $r->withAttribute(self::ATTR, $added);
+        return $r;
     }
 
-    /**
-     * Conditionally queue vary tokens, avoiding call-site branching.
-     *
-     * @param Request $r The current request.
-     * @param bool $when Whether to add the tokens.
-     * @param string ...$headers Header tokens or CSV strings to queue when $when is true.
-     * @return Request The original request or a new instance with tokens queued.
-     */
     public static function addIf(Request $r, bool $when, string ...$headers): Request
     {
         return $when ? self::add($r, ...$headers) : $r;
     }
 
-    /**
-     * TEST HELPER: Clear any queued vary tokens on the request.
-     *
-     * @param Request $r The current request.
-     * @return Request A new request with an empty token list.
-     */
     public static function clear(Request $r): Request
     {
-        return $r->withAttribute(self::ATTR, []);
+        $r = self::ensureContext($r);
+        self::context($r)?->clear();
+
+        return $r;
     }
 
     /**
-     * TEST HELPER: Inspect queued tokens on the request.
-     *
-     * @param Request $r The current request.
-     * @param bool $normalized When true, return canonical Title-Case tokens with dedupe.
-     * @return array<int,string> Token list (possibly normalized).
+     * @return list<string>
      */
     public static function peek(Request $r, bool $normalized = true): array
     {
-        $pending = self::coerceTokens($r->getAttribute(self::ATTR));
-        if ($pending === []) {
-            return [];
-        }
+        $tokens = self::context($r)?->all() ?? [];
 
-        return $normalized ? self::normalize($pending) : $pending;
+        return $normalized ? self::normalize($tokens) : $tokens;
     }
 
-    /**
-     * Canonicalize a header name to Title-Case (e.g., "accept-encoding" → "Accept-Encoding").
-     *
-     * @param string $t Raw header token.
-     * @return string Canonical Title-Case token or empty string if input is blank.
-     */
-    private static function canonical(string $t): string
+    private static function canonical(string $token): string
     {
-        $t = trim($t);
-        if ($t === '') {
+        $token = trim($token);
+        if ($token === '') {
             return '';
         }
-        $parts = array_map(
-            static fn(string $p) => $p === '' ? '' : ucfirst(strtolower($p)),
-            explode('-', $t),
-        );
 
-        return implode('-', $parts);
+        return implode('-', array_map(
+            static fn(string $part): string => $part === '' ? '' : ucfirst(strtolower($part)),
+            explode('-', $token),
+        ));
     }
 
-    /**
-     * @return array<int,string>
-     */
-    private static function coerceTokens(mixed $value): array
+    private static function context(Request $request): ?VaryContext
     {
-        if (!\is_array($value)) {
-            return [];
-        }
+        $context = $request->getAttribute(VaryContext::ATTRIBUTE);
 
-        $tokens = [];
-        foreach ($value as $item) {
-            if (\is_string($item) && $item !== '') {
-                $tokens[] = $item;
-            }
-        }
-
-        return $tokens;
+        return $context instanceof VaryContext ? $context : null;
     }
 
-    /**
-     * Check whether the Vary line contains a bare star (*).
-     *
-     * @param string $line Vary header value.
-     * @return bool True if "*" appears as a token; false otherwise.
-     */
+    private static function ensureContext(Request $request): Request
+    {
+        return self::context($request) instanceof VaryContext
+            ? $request
+            : $request->withAttribute(VaryContext::ATTRIBUTE, new VaryContext());
+    }
+
     private static function hasStar(string $line): bool
     {
-        return array_any(self::splitTokens($line), fn($t) => $t === '*');
+        return in_array('*', self::splitTokens($line), true);
     }
 
     /**
-     * Merge two token lists, preserving base order and de-duplicating.
-     *
-     * @param array<int,string> $base Existing canonical tokens.
-     * @param array<int,string> $extra Additional canonical tokens to append if missing.
-     * @return array<int,string> Merged token list.
+     * @param list<string> $base
+     * @param list<string> $extra
+     * @return list<string>
      */
     private static function merge(array $base, array $extra): array
     {
-        $keys = array_fill_keys(array_map(strtolower(...), $base), true);
-        foreach ($extra as $t) {
-            $k = strtolower($t);
-            if (!isset($keys[$k])) {
-                $keys[$k] = true;
-                $base[] = $t;
+        $seen = array_fill_keys(array_map(strtolower(...), $base), true);
+        foreach ($extra as $token) {
+            $canonical = self::canonical($token);
+            $key = strtolower($canonical);
+            if ($canonical !== '' && !isset($seen[$key])) {
+                $seen[$key] = true;
+                $base[] = $canonical;
             }
         }
 
@@ -210,73 +128,40 @@ final class VaryAccumulatorMiddleware
     }
 
     /**
-     * Normalize tokens by canonicalizing to Title-Case and de-duplicating case-insensitively.
-     *
-     * @param array<int,string> $tokens Input tokens.
-     * @return array<int,string> Canonicalized, deduped tokens.
+     * @param list<string> $tokens
+     * @return list<string>
      */
     private static function normalize(array $tokens): array
     {
-        $seen = [];
-        $out = [];
-        foreach ($tokens as $t) {
-            $norm = self::canonical($t);
-            $key = strtolower($norm);
-            if ($norm !== '' && !isset($seen[$key])) {
-                $seen[$key] = true;
-                $out[] = $norm;
-            }
-        }
-
-        return $out;
+        return self::merge([], $tokens);
     }
 
-    /* ───────────────────────── helpers ───────────────────────── */
-
     /**
-     * Split a comma-separated header list into trimmed tokens.
-     *
-     * @param string $line Raw header line string.
-     * @return array<int,string> Token list (empty when $line is empty).
+     * @return list<string>
      */
     private static function splitTokens(string $line): array
     {
         if ($line === '') {
             return [];
         }
-        $out = [];
-        foreach (explode(',', $line) as $t) {
-            $t = trim($t);
-            if ($t !== '') {
-                $out[] = $t;
+
+        $tokens = [];
+        foreach (explode(',', $line) as $token) {
+            $token = trim($token);
+            if ($token !== '') {
+                $tokens[] = $token;
             }
         }
 
-        return $out;
+        return $tokens;
     }
 
     /**
-     * @return array<int,string>
-     */
-    private function collectMergedTokens(Request $req, Response $resp): array
-    {
-        $tokens = self::normalize(self::splitTokens($resp->getHeaderLine('Vary')));
-
-        $pending = self::coerceTokens($req->getAttribute(self::ATTR));
-        if ($pending !== []) {
-            $tokens = self::merge($tokens, self::normalize($pending));
-        }
-
-        return self::merge($tokens, $this->inferAutoTokens($req, $resp));
-    }
-
-    /**
-     * @return array<int,string>
+     * @return list<string>
      */
     private function inferAutoTokens(Request $req, Response $resp): array
     {
         $tokens = [];
-
         if ($resp->hasHeader('Content-Encoding')) {
             $tokens[] = 'Accept-Encoding';
         }
@@ -284,8 +169,8 @@ final class VaryAccumulatorMiddleware
             $tokens[] = 'Accept-Language';
         }
 
-        $acao = trim($resp->getHeaderLine('Access-Control-Allow-Origin'));
-        if ($acao === '' || $acao === '*') {
+        $allowOrigin = trim($resp->getHeaderLine('Access-Control-Allow-Origin'));
+        if ($allowOrigin === '' || $allowOrigin === '*') {
             return $tokens;
         }
 
@@ -293,7 +178,6 @@ final class VaryAccumulatorMiddleware
         if (HttpMethodEnum::normalize($req->getMethod()) !== HttpMethodEnum::OPTIONS->value) {
             return $tokens;
         }
-
         if ($req->getHeaderLine('Access-Control-Request-Method') !== '') {
             $tokens[] = 'Access-Control-Request-Method';
         }

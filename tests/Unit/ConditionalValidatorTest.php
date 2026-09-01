@@ -37,6 +37,39 @@ describe('ConditionalValidator', function () {
             ->and($outcome->http)->toBe(StatusEnum::NOT_MODIFIED->value);
     });
 
+    it('returns 412 when If-None-Match matches on an unsafe method', function () {
+        $validator = new ConditionalValidator('"tag"');
+        $outcome = $validator->evaluate(mockRequest('PUT', '/', ['If-None-Match' => 'W/"tag"']));
+
+        expect($outcome->state)
+            ->toBe(Outcome::FAIL)
+            ->and($outcome->http)->toBe(StatusEnum::PRECONDITION_FAILED->value);
+    });
+
+    it('ignores If-Unmodified-Since when If-Match is present and succeeds', function () {
+        $validator = new ConditionalValidator('"tag"', 1_700_000_000);
+        $outcome = $validator->evaluate(mockRequest('PUT', '/', [
+            'If-Match' => '"tag"',
+            'If-Unmodified-Since' => 'Thu, 01 Jan 1970 00:00:00 GMT',
+        ]));
+
+        expect($outcome->state)
+            ->toBe(Outcome::PASS)
+            ->and($outcome->http)->toBe(0);
+    });
+
+    it('gives If-None-Match precedence over If-Modified-Since', function () {
+        $validator = new ConditionalValidator('"tag"', 1_700_000_000);
+        $outcome = $validator->evaluate(mockRequest('GET', '/', [
+            'If-None-Match' => '"different"',
+            'If-Modified-Since' => 'Wed, 01 Jan 2031 00:00:00 GMT',
+        ]));
+
+        expect($outcome->state)
+            ->toBe(Outcome::PASS)
+            ->and($outcome->http)->toBe(0);
+    });
+
     it('preserves the unix epoch as a valid last-modified value', function () {
         $validator = new ConditionalValidator(lastModified: 0);
         $outcome = $validator->evaluate(mockRequest('GET', '/', [

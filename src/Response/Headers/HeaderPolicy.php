@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Response\Headers;
 
+use Infocyph\Webrick\Constants\HttpMethodEnum;
+
+/** Field-specific response header combination policy, mutable only before production freeze. */
 final class HeaderPolicy
 {
     public const int MERGE_TOKENS = 2;
@@ -12,78 +15,53 @@ final class HeaderPolicy
 
     public const int SINGLE = 0;
 
-    /** @var array<string,int> lowercase-header => policy */
+    private const string FIELD_NAME_RX = "/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/D";
+
+    private static bool $frozen = false;
+
+    /** @var array<string,int> */
     private static array $map = [
         'content-length' => self::SINGLE,
         'content-type' => self::SINGLE,
         'etag' => self::SINGLE,
         'last-modified' => self::SINGLE,
         'location' => self::SINGLE,
-
         'set-cookie' => self::MULTI_LINE,
         'link' => self::MULTI_LINE,
-
+        'allow' => self::MERGE_TOKENS,
         'vary' => self::MERGE_TOKENS,
         'access-control-allow-methods' => self::MERGE_TOKENS,
         'access-control-allow-headers' => self::MERGE_TOKENS,
         'cache-control' => self::MERGE_TOKENS,
     ];
 
-    /**
-     * Private constructor to prevent instantiation.
-     *
-     * The class provides only static helpers; creating an instance is not intended.
-     */
     private function __construct() {}
 
-    /**
-     * Return the merge policy for a header name.
-     *
-     * Looks up a header name (case-insensitive) and returns one of the
-     * policy constants: SINGLE, MULTI_LINE or MERGE_TOKENS. Unknown headers
-     * default to SINGLE.
-     *
-     * @param string $header Header name (e.g. "Cache-Control")
-     * @return int One of the HeaderPolicy::* constants
-     */
     public static function for(string $header): int
     {
         return self::$map[strtolower($header)] ?? self::SINGLE;
     }
 
-    /* ---------------- NEW: central merge for CSV headers ---------------- */
-    // Infocyph\Webrick\Response\Headers\HeaderPolicy
-    /**
-     * Merge two comma-separated header values into a canonical representation.
-     *
-     * - If $existing is empty, returns the normalized tokens from $incoming.
-     * - Cache-Control is handled specially via CacheControl::canonicalizeMerge.
-     * - For other headers tokens are normalized, de-duplicated (case-insensitive)
-     *   and returned as a single comma+space separated string.
-     *
-     * @param string $name Header name (used to select special-case logic)
-     * @param string $existing Current header value (may be empty)
-     * @param string $incoming New header value to merge in
-     * @return string Merged header string, or other canonical form returned by special cases
-     */
+    public static function freeze(): void
+    {
+        self::$frozen = true;
+    }
+
     public static function mergeCsv(string $name, string $existing, string $incoming): string
     {
-        if ($existing === '') {
-            return implode(', ', self::normalizeCsv($incoming));
-        }
-
-        if (strtolower($name) === 'cache-control') {
+        $lowerName = strtolower($name);
+        if ($lowerName === 'cache-control') {
             return CacheControl::canonicalizeMerge($existing, $incoming);
         }
 
         $seen = [];
         $out = [];
-        foreach ([self::normalizeCsv($existing), self::normalizeCsv($incoming)] as $list) {
-            foreach ($list as $tok) {
-                $k = strtolower($tok);
-                if (!isset($seen[$k])) {
-                    $seen[$k] = true;
-                    $out[] = $tok;
+        foreach ([$existing, $incoming] as $value) {
+            foreach (self::normalizeCsv($lowerName, $value) as $token) {
+                $key = self::tokenKey($lowerName, $token);
+                if (!isset($seen[$key])) {
+                    $seen[$key] = true;
+                    $out[] = $token;
                 }
             }
         }
@@ -91,39 +69,62 @@ final class HeaderPolicy
         return implode(', ', $out);
     }
 
-    /**
-     * Register or override the merge policy for a header name.
-     *
-     * This allows adding custom header handling rules at runtime. The
-     * header name is stored in lowercase.
-     *
-     * @param string $header Header name to register (case-insensitive)
-     * @param int $policy One of the HeaderPolicy::* constants
-     */
     public static function register(string $header, int $policy): void
     {
+        if (self::$frozen) {
+            throw new \LogicException('Header policy registry is frozen for production runtime.');
+        }
+        if (preg_match(self::FIELD_NAME_RX, $header) !== 1) {
+            throw new \InvalidArgumentException('Header policy name must be a valid HTTP field name.');
+        }
+        if (!in_array($policy, [self::SINGLE, self::MULTI_LINE, self::MERGE_TOKENS], true)) {
+            throw new \InvalidArgumentException('Unknown header merge policy.');
+        }
+
         self::$map[strtolower($header)] = $policy;
     }
 
-    /**
-     * Normalize a comma-separated header value into an array of tokens.
-     *
-     * - Splits on commas, trims tokens and removes empty entries.
-     * - Normalizes hyphenated tokens to Title-Case (e.g. "accept-encoding" -> "Accept-Encoding").
-     *
-     * @param string $csv Comma-separated header value
-     * @return array<int,string> Array of normalized token strings
-     */
-    private static function normalizeCsv(string $csv): array
+    private static function canonicalHeaderToken(string $token): string
     {
-        $toks = array_map(trim(...), explode(',', $csv));
-        $toks = array_values(array_filter($toks, fn($t) => $t !== ''));
+        if ($token !== '*' && preg_match(self::FIELD_NAME_RX, $token) !== 1) {
+            throw new \InvalidArgumentException('Merged header token must be a valid HTTP field name or wildcard.');
+        }
 
-        // Title-Case typical header tokens (Accept-Encoding, Origin, etc.)
-        return array_map(static function (string $t): string {
-            $parts = array_map(fn($part) => $part === '' ? '' : ucfirst(strtolower($part)), explode('-', $t));
+        return $token === '*' ? '*' : implode('-', array_map(ucfirst(...), explode('-', strtolower($token))));
+    }
 
-            return implode('-', $parts);
-        }, $toks);
+    private static function canonicalMethodToken(string $token): string
+    {
+        if (preg_match(self::FIELD_NAME_RX, $token) !== 1) {
+            throw new \InvalidArgumentException('Merged method token must be a valid HTTP method token.');
+        }
+
+        return HttpMethodEnum::normalize($token);
+    }
+
+    /** @return list<string> */
+    private static function normalizeCsv(string $lowerName, string $csv): array
+    {
+        $out = [];
+        foreach (explode(',', $csv) as $token) {
+            $token = trim($token);
+            if ($token === '') {
+                continue;
+            }
+            $out[] = match ($lowerName) {
+                'allow', 'access-control-allow-methods' => self::canonicalMethodToken($token),
+                'access-control-allow-headers', 'vary' => self::canonicalHeaderToken($token),
+                default => $token,
+            };
+        }
+
+        return $out;
+    }
+
+    private static function tokenKey(string $lowerName, string $token): string
+    {
+        return $lowerName === 'allow' || $lowerName === 'access-control-allow-methods'
+            ? $token
+            : strtolower($token);
     }
 }

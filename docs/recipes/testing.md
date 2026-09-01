@@ -1,3 +1,0 @@
-# Testing Recipe
-
-Coming soon...

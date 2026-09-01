@@ -26,11 +26,13 @@ trait RouteCoreAccessors
         return $this->method;
     }
 
+    /** @return list<string|object|array{0:object|string,1:string}> */
     public function getMiddleware(): array
     {
         return $this->middleware;
     }
 
+    /** @return list<string|object|array{0:object|string,1:string}> */
     public function getMiddlewares(): array
     {
         return $this->middleware;

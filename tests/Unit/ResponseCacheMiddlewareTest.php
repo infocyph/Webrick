@@ -3,15 +3,16 @@
 declare(strict_types=1);
 
 use Infocyph\CacheLayer\Cache\Cache;
-use Infocyph\CacheLayer\Cache\CacheInterface;
 use Infocyph\Webrick\Middleware\ResponseCacheMiddleware;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
+use Psr\Cache\CacheItemInterface;
+use Psr\Cache\CacheItemPoolInterface;
 
 test('response cache fails open when its backend cannot read', function (): void {
-    $store = $this->createMock(CacheInterface::class);
-    $store->expects($this->once())
-        ->method('get')
+    $store = $this->createMock(CacheItemPoolInterface::class);
+    $store->expects($this->exactly(2))
+        ->method('getItem')
         ->willThrowException(new RuntimeException('cache read unavailable'));
     $middleware = new ResponseCacheMiddleware($store);
     $calls = 0;
@@ -30,10 +31,15 @@ test('response cache fails open when its backend cannot read', function (): void
 });
 
 test('response cache preserves the response when its backend cannot write', function (): void {
-    $store = $this->createMock(CacheInterface::class);
-    $store->expects($this->once())->method('get')->willReturn(null);
+    $item = $this->createMock(CacheItemInterface::class);
+    $item->method('isHit')->willReturn(false);
+    $item->method('set')->willReturnSelf();
+    $item->method('expiresAfter')->willReturnSelf();
+
+    $store = $this->createMock(CacheItemPoolInterface::class);
+    $store->expects($this->exactly(2))->method('getItem')->willReturn($item);
     $store->expects($this->once())
-        ->method('set')
+        ->method('save')
         ->willThrowException(new RuntimeException('cache write unavailable'));
     $middleware = new ResponseCacheMiddleware($store);
 
@@ -46,7 +52,7 @@ test('response cache preserves the response when its backend cannot write', func
         ->and((string) $response->getBody())->toBe('{"ok":true}');
 });
 
-test('response cache serves a CacheLayer 3.1 hit without invoking the handler again', function (): void {
+test('response cache serves a CacheLayer hit without invoking the handler again', function (): void {
     $middleware = new ResponseCacheMiddleware(Cache::memory('webrick-response-hit'));
     $request = Request::fake(uri: 'http://localhost/cache-hit');
     $calls = 0;
@@ -126,14 +132,19 @@ test('response cache canonicalizes query order and isolates host port and negoti
         ->and($calls)->toBe(4);
 });
 
-test('response cache keys are versioned and valid for CacheLayer 3.1', function (): void {
-    $store = $this->createMock(CacheInterface::class);
-    $store->expects($this->once())
-        ->method('get')
-        ->with($this->callback(static fn(string $key): bool => str_starts_with($key, 'webrick.hr.v1.')
+test('response cache keys are versioned bounded PSR-6 keys', function (): void {
+    $item = $this->createMock(CacheItemInterface::class);
+    $item->method('isHit')->willReturn(false);
+    $item->method('set')->willReturnSelf();
+    $item->method('expiresAfter')->willReturnSelf();
+
+    $store = $this->createMock(CacheItemPoolInterface::class);
+    $store->expects($this->exactly(2))
+        ->method('getItem')
+        ->with($this->callback(static fn(string $key): bool => str_starts_with($key, 'webrick.hr.v3.')
             && strlen($key) <= 64))
-        ->willReturn(null);
-    $store->expects($this->once())->method('set')->willReturn(true);
+        ->willReturn($item);
+    $store->expects($this->once())->method('save')->willReturn(true);
 
     $middleware = new ResponseCacheMiddleware($store);
     $middleware(
@@ -142,13 +153,13 @@ test('response cache keys are versioned and valid for CacheLayer 3.1', function 
     );
 });
 
-test('response cache keeps explicit HEAD and GET representations isolated', function (): void {
+test('response cache reuses GET representation for HEAD without executing the handler again', function (): void {
     $middleware = new ResponseCacheMiddleware(Cache::memory('webrick-head-get'));
     $calls = 0;
     $next = static function (Request $request) use (&$calls): Response {
         ++$calls;
 
-        return Response::create($request->getMethod() === 'HEAD' ? 'head-handler' : 'get-handler')
+        return Response::create('get-handler')
             ->withHeader('X-Handler-Method', $request->getMethod());
     };
 
@@ -157,7 +168,9 @@ test('response cache keeps explicit HEAD and GET representations isolated', func
     $getHit = $middleware(Request::fake(method: 'GET', uri: 'https://example.test/resource'), $next);
 
     expect($get->getHeaderLine('X-Handler-Method'))->toBe('GET')
-        ->and($head->getHeaderLine('X-Handler-Method'))->toBe('HEAD')
+        ->and($head->getHeaderLine('X-Handler-Method'))->toBe('GET')
+        ->and((string) $head->getBody())->toBe('')
+        ->and($head->getHeaderLine('Content-Length'))->toBe((string) strlen('get-handler'))
         ->and($getHit->getHeaderLine('X-Handler-Method'))->toBe('GET')
-        ->and($calls)->toBe(2);
+        ->and($calls)->toBe(1);
 });

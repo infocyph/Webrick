@@ -1,85 +1,50 @@
 <?php
 
-/**
- * Webrick - Response linter middleware.
- *
- * Performs strict runtime checks to catch common HTTP response pitfalls during
- * development and testing. Controlled via bitmask flags or a single boolean.
- *
- * Recommended order (dev/test only):
- *   … → Compression → CorsAndPolicies → VaryAccumulator → ResponseLinter
- */
-
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Middleware;
 
 use Closure;
+use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Support\HttpUtils;
 use Infocyph\Webrick\Support\StreamUtil;
 use RuntimeException;
 
-/**
- * Strict response validator for common HTTP footguns.
- *
- * Flags:
- * - BODY_REQUIRES_CTYPE: Non-empty body must have Content-Type header.
- * - NO_BODY_STATUSES: Status 204/304 must not include a response body.
- * - COMPRESSED_NEEDS_VARY: Content-Encoding implies Vary: Accept-Encoding.
- * - ETAG_WEAK_WHEN_ENCODING: Strong ETag is invalid when Content-Encoding is present.
- * - CONTENT_LENGTH_MATCH: Content-Length must match actual byte length (when knowable).
- */
+/** Strict development-time response validator aligned with emitted HTTP semantics. */
 final readonly class ResponseLinterMiddleware
 {
-    /** bit-flags */
     public const int BODY_REQUIRES_CTYPE = 0b00001;
 
-    public const int COMPRESSED_NEEDS_VARY = 0b00100;       // Content-Encoding ⇒ Vary: Accept-Encoding
+    public const int COMPRESSED_NEEDS_VARY = 0b00100;
 
-    public const int CONTENT_LENGTH_MATCH = 0b10000;        // Content-Length must match actual bytes (when knowable)
-
-    public const int ETAG_WEAK_WHEN_ENCODING = 0b01000;     // Content-Encoding ⇒ ETag MUST be weak
-
-    public const int NO_BODY_STATUSES = 0b00010;            // 204/304 must have empty body
+    public const int CONTENT_LENGTH_MATCH = 0b10000;
 
     /**
-     * Enabled checks bitmask.
+     * Kept for source compatibility. Strong ETags are legal for encoded representations
+     * when they identify the encoded octets, so this flag intentionally adds no rejection.
      */
+    public const int ETAG_WEAK_WHEN_ENCODING = 0b01000;
+
+    public const int NO_BODY_STATUSES = 0b00010;
+
     private int $checks;
 
-    /**
-     * Configure which checks are active.
-     *
-     * When $checks is a boolean:
-     * - true enables all checks
-     * - false disables all checks
-     *
-     * @param int|bool $checks Bitmask of flags; true ⇒ all checks, false ⇒ none.
-     */
     public function __construct(int|bool $checks = false)
     {
-        $this->checks = \is_bool($checks)
+        $this->checks = is_bool($checks)
             ? ($checks ? (
                 self::BODY_REQUIRES_CTYPE
                 | self::NO_BODY_STATUSES
                 | self::COMPRESSED_NEEDS_VARY
-                | self::ETAG_WEAK_WHEN_ENCODING
                 | self::CONTENT_LENGTH_MATCH
             ) : 0)
             : $checks;
     }
 
-    /**
-     * Run response checks after invoking the next handler.
-     *
-     * @param Request $req Incoming request.
-     * @param Closure(Request):Response $next
-     * @return Response Possibly unmodified response; exceptions thrown on violations.
-     *
-     * @throws RuntimeException If any enabled check fails.
-     */
+    /** @param Closure(Request):Response $next */
     public function __invoke(Request $req, Closure $next): Response
     {
         $resp = $next($req);
@@ -87,150 +52,110 @@ final readonly class ResponseLinterMiddleware
             return $resp;
         }
 
-        $len = StreamUtil::byteLength($resp->getBody(), 0);
+        $len = StreamUtil::byteLength($resp->getBody(), -1);
 
-        // 1) non-empty body requires Content-Type
         if (($this->checks & self::BODY_REQUIRES_CTYPE) !== 0) {
             $this->assertContentTypeIfBody($resp, $len);
         }
-
-        // 2) 204/304 must not have a body
         if (($this->checks & self::NO_BODY_STATUSES) !== 0) {
             $this->assertNoBodyOnStatuses($resp, $len);
         }
-
-        // 3) compressed replies must declare Vary: Accept-Encoding
         if (($this->checks & self::COMPRESSED_NEEDS_VARY) !== 0) {
             $this->assertVaryOnCompressed($resp);
         }
-
-        // 4) when octets are transformed (Content-Encoding), strong ETag is illegal
-        if (($this->checks & self::ETAG_WEAK_WHEN_ENCODING) !== 0) {
-            $this->assertWeakEtagWhenEncoded($resp);
-        }
-
-        // 5) Content-Length (if present) must match actual bytes when knowable
         if (($this->checks & self::CONTENT_LENGTH_MATCH) !== 0) {
-            $this->assertContentLengthMatches($resp, $len);
+            $this->assertContentLengthMatches($req, $resp, $len);
         }
 
         return $resp;
     }
 
-    /**
-     * Validate Content-Length against actual byte length (when knowable).
-     *
-     * Skips check when Transfer-Encoding is present or when length is missing/zero.
-     *
-     * @param Response $r Response to inspect.
-     * @param int $len Actual body byte length.
-     *
-     * @throws RuntimeException If Content-Length is numeric and mismatches $len.
-     */
-    private function assertContentLengthMatches(Response $r, int $len): void
+    private static function forbidsContentLength(int $status): bool
     {
-        // If TE is present, ignore (length is controlled by transfer-coding).
-        if ($r->hasHeader('Transfer-Encoding')) {
+        return ($status >= 100 && $status < 200) || $status === StatusEnum::NO_CONTENT->value;
+    }
+
+    private function assertContentLengthMatches(Request $req, Response $resp, int $len): void
+    {
+        if ($resp->hasHeader('Transfer-Encoding')) {
             return;
         }
-        $cl = trim($r->getHeaderLine('Content-Length'));
-        if ($cl === '' || $len === 0) {
+
+        $code = $resp->getStatusCode();
+        $line = trim($resp->getHeaderLine('Content-Length'));
+
+        if (self::forbidsContentLength($code)) {
+            if ($line !== '') {
+                throw new RuntimeException("Linter: Content-Length is forbidden on {$code}");
+            }
+
             return;
         }
-        if (ctype_digit($cl) && (int) $cl !== $len) {
-            throw new RuntimeException(
-                sprintf(
-                    'Linter: Content-Length (%d) does not match body bytes (%d)',
-                    (int) $cl,
-                    $len,
-                ),
-            );
+
+        if ($code === StatusEnum::RESET_CONTENT->value) {
+            if ($line !== '' && $line !== '0') {
+                throw new RuntimeException('Linter: 205 Content-Length must be 0 when present');
+            }
+
+            return;
+        }
+
+        if (
+            $code === StatusEnum::NOT_MODIFIED->value
+            || HttpMethodEnum::normalize($req->getMethod()) === HttpMethodEnum::HEAD->value
+            || $line === ''
+        ) {
+            return;
+        }
+
+        $declared = HttpUtils::parseUnsignedDecimal($line);
+        if ($declared === null) {
+            throw new RuntimeException('Linter: invalid Content-Length header');
+        }
+        if ($len >= 0 && $declared !== $len) {
+            throw new RuntimeException(sprintf(
+                'Linter: Content-Length (%d) does not match body bytes (%d)',
+                $declared,
+                $len,
+            ));
         }
     }
 
-    /* ───────────────────────── helpers ───────────────────────── */
-    /**
-     * Ensure non-empty bodies have a Content-Type header.
-     *
-     * @param Response $r Response to inspect.
-     * @param int $len Body byte length.
-     *
-     * @throws RuntimeException If len > 0 and Content-Type is missing.
-     */
-    private function assertContentTypeIfBody(Response $r, int $len): void
+    private function assertContentTypeIfBody(Response $resp, int $len): void
     {
-        if ($len > 0 && $r->getHeaderLine('Content-Type') === '') {
+        if ($len > 0 && !StatusEnum::isEmptyCode($resp->getStatusCode()) && $resp->getHeaderLine('Content-Type') === '') {
             throw new RuntimeException('Linter: non-empty body without Content-Type');
         }
     }
 
-    /**
-     * Disallow bodies on 204/304 status codes.
-     *
-     * @param Response $r Response to inspect.
-     * @param int $len Body byte length.
-     *
-     * @throws RuntimeException If a body is present for 204 or 304 responses.
-     */
-    private function assertNoBodyOnStatuses(Response $r, int $len): void
+    private function assertNoBodyOnStatuses(Response $resp, int $len): void
     {
-        if ($len === 0) {
+        if ($len <= 0 || !StatusEnum::isEmptyCode($resp->getStatusCode())) {
             return;
         }
-        $code = $r->getStatusCode();
-        if (\in_array($code, [StatusEnum::NO_CONTENT->value, StatusEnum::NOT_MODIFIED->value], true)) {
-            throw new RuntimeException("Linter: body not allowed on {$code}");
-        }
+
+        throw new RuntimeException("Linter: body not allowed on {$resp->getStatusCode()}");
     }
 
-    /**
-     * Ensure compressed responses imply Vary: Accept-Encoding.
-     *
-     * @param Response $r Response to inspect.
-     *
-     * @throws RuntimeException If Content-Encoding is set but Vary lacks Accept-Encoding.
-     */
-    private function assertVaryOnCompressed(Response $r): void
+    private function assertVaryOnCompressed(Response $resp): void
     {
-        if (!$r->hasHeader('Content-Encoding')) {
+        if (!$resp->hasHeader('Content-Encoding')) {
             return;
         }
-        if (!$this->lineHasToken($r->getHeaderLine('Vary'), 'accept-encoding')) {
+        if (!$this->lineHasToken($resp->getHeaderLine('Vary'), 'accept-encoding')) {
             throw new RuntimeException('Linter: compressed reply missing Vary: Accept-Encoding');
         }
     }
 
-    /**
-     * Enforce weak ETag when Content-Encoding is present.
-     *
-     * @param Response $r Response to inspect.
-     *
-     * @throws RuntimeException If a strong ETag is used with Content-Encoding.
-     */
-    private function assertWeakEtagWhenEncoded(Response $r): void
-    {
-        if (!$r->hasHeader('Content-Encoding') || !$r->hasHeader('ETag')) {
-            return;
-        }
-        $etag = trim($r->getHeaderLine('ETag'));
-        if ($etag !== '' && !\str_starts_with($etag, 'W/')) {
-            throw new RuntimeException('Linter: strong ETag with Content-Encoding; make it weak (W/…).');
-        }
-    }
-
-    /**
-     * Case-insensitive membership check within a comma-separated header value.
-     *
-     * @param string $line Raw header value (possibly CSV).
-     * @param string $needleLower Lower-cased token to search for.
-     * @return bool True if token is present; false otherwise.
-     */
     private function lineHasToken(string $line, string $needleLower): bool
     {
         if ($line === '') {
             return false;
         }
 
-        return array_any(explode(',', $line), fn($tok) => \strtolower(trim($tok)) === $needleLower);
+        return array_any(
+            explode(',', $line),
+            static fn(string $token): bool => strtolower(trim($token)) === $needleLower,
+        );
     }
 }

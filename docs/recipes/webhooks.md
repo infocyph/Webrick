@@ -1,3 +1,0 @@
-# Webhooks Recipe
-
-Coming soon...

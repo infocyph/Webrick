@@ -1,15 +1,5 @@
 <?php
 
-/**
- * Webrick - Request limits middleware.
- *
- * Enforces hard caps on incoming request header size (431), header field count (431),
- * and body size (413). Safe for HTTP/2 (never emits hop-by-hop "Connection" header
- * on H2). Body size enforcement is based on Content-Length; when Transfer-Encoding
- * (e.g., chunked) is present, the middleware does not pre-reject because the length
- * is not known up front.
- */
-
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Middleware;
@@ -17,165 +7,186 @@ namespace Infocyph\Webrick\Middleware;
 use Closure;
 use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Exceptions\HttpException;
+use Infocyph\Webrick\Interfaces\BodyStream;
+use Infocyph\Webrick\Request\Core\StringBody;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Runtime\Http\RuntimeCapabilities;
 use InvalidArgumentException;
 
-/**
- * Apply request caps for headers (bytes and field count) and body size.
- *
- * Behavior notes:
- * - Header bytes and header field count apply to every request.
- * - Body size applies to configured HTTP methods only and relies on Content-Length.
- * - If Transfer-Encoding is present (other than "trailers"), body size is not pre-enforced here.
- * - On violation, responds with appropriate status (431/413) and may add "Connection: close"
- *   for HTTP/1.x only.
- */
+/** Portable request-limit fallback when the transport has not already enforced limits. */
 final readonly class RequestLimitsMiddleware
 {
-    /**
-     * Construct the middleware with limit settings.
-     *
-     * @param int $maxHeaderBytes Maximum total header bytes; 0 disables the byte check.
-     * @param int $maxHeaderCount Maximum number of header fields; 0 disables the count check
-     *                            (fields counted as each header value line).
-     * @param int|null $maxBodyBytes Maximum allowed body bytes; null uses ini_get('post_max_size').
-     * @param array<int,string> $bodyLimitVerbs HTTP methods to which the body limit applies (uppercased compare).
-     * @param bool $violateOnUnknownBody When true and neither Content-Length nor transfer-coding is present,
-     *                                   treat as violation for configured verbs.
-     */
+    /** @var array<string,true> */
+    private array $bodyVerbSet;
+
+    private int $resolvedBodyLimit;
+
+    /** @param list<string> $bodyLimitVerbs */
     public function __construct(
         private int $maxHeaderBytes = 8192,
         private int $maxHeaderCount = 100,
-        private ?int $maxBodyBytes = null,
-        private array $bodyLimitVerbs = [
+        ?int $maxBodyBytes = null,
+        array $bodyLimitVerbs = [
             HttpMethodEnum::POST->value,
             HttpMethodEnum::PUT->value,
             HttpMethodEnum::PATCH->value,
             HttpMethodEnum::DELETE->value,
         ],
-        private bool $violateOnUnknownBody = true,
     ) {
-        if ($this->maxHeaderBytes < 0) {
-            throw new InvalidArgumentException('maxHeaderBytes must be >= 0.');
+        if ($maxHeaderBytes < 0 || $maxHeaderCount < 0) {
+            throw new InvalidArgumentException('Header limits must be >= 0.');
         }
-        if ($this->maxHeaderCount < 0) {
-            throw new InvalidArgumentException('maxHeaderCount must be >= 0.');
-        }
-        if ($this->maxBodyBytes !== null && $this->maxBodyBytes < 0) {
+        if ($maxBodyBytes !== null && $maxBodyBytes < 0) {
             throw new InvalidArgumentException('maxBodyBytes must be >= 0 when provided.');
         }
+
+        $verbs = [];
+        foreach ($bodyLimitVerbs as $verb) {
+            $normalized = HttpMethodEnum::normalize($verb);
+            if ($normalized !== '') {
+                $verbs[$normalized] = true;
+            }
+        }
+        $this->bodyVerbSet = $verbs;
+        $this->resolvedBodyLimit = $maxBodyBytes ?? self::phpIniBytes(ini_get('post_max_size'));
     }
 
-    /**
-     * Enforce header/body limits and return 431/413 when violated.
-     *
-     * Steps:
-     * 0) Enforce header field count (431).
-     * 1) Enforce header byte size (431).
-     * 2) Enforce body size (413) based on Content-Length; do not pre-reject when Transfer-Encoding (e.g., chunked).
-     *
-     * @param Request $req Incoming request.
-     * @param Closure(Request):Response $next
-     * @return Response Response from next handler or an error response on violation.
-     */
+    /** @param Closure(Request):Response $next */
     public function __invoke(Request $req, Closure $next): Response
     {
+        $capabilities = $req->getAttribute(RuntimeCapabilities::ATTRIBUTE);
+        if ($capabilities instanceof RuntimeCapabilities && $capabilities->transportRequestLimits) {
+            return $next($req);
+        }
+
         $this->rejectForHeaderLimits($req);
-        $this->rejectForBodyLimit($req);
+        $req = $this->enforceBodyLimit($req);
 
         return $next($req);
     }
 
-    /**
-     * Convert a php.ini size string (e.g., "8M", "1G") to bytes.
-     *
-     * @param string|false $val Value returned by ini_get().
-     * @return int Byte count (0 for empty/false).
-     */
-    private static function phpIniBytes(string|false $val): int
+    private static function phpIniBytes(string|false $value): int
     {
-        if ($val === false) {
+        if ($value === false || trim($value) === '') {
             return 0;
         }
-        $val = \trim($val);
-        if ($val === '') {
-            return 0;
-        }
-        $unit = \strtolower(substr($val, -1));
-        $num = (int) $val;
+
+        $value = trim($value);
+        $unit = strtolower(substr($value, -1));
+        $number = (int) $value;
 
         return match ($unit) {
-            'g' => $num * 1024 * 1024 * 1024,
-            'm' => $num * 1024 * 1024,
-            'k' => $num * 1024,
-            default => (int) $val,
+            'g' => $number * 1024 * 1024 * 1024,
+            'm' => $number * 1024 * 1024,
+            'k' => $number * 1024,
+            default => $number,
         };
     }
 
-    private function appliesBodyLimitToMethod(Request $req): bool
+    /** @phpstan-impure */
+    private function atEnd(BodyStream $body): bool
     {
-        return \in_array(HttpMethodEnum::normalize($req->getMethod()), $this->bodyLimitVerbs, true);
+        return $body->eof();
     }
 
-    /**
-     * Add "Connection: close" only for HTTP/1.x responses; never for HTTP/2.
-     *
-     * @param Request $req The incoming request (for protocol detection).
-     * @return Response Response with "Connection: close" for HTTP/1.x; unchanged for HTTP/2.
-     */
-    /**
-     * @return array<string,string>
-     */
+    /** @return array<string,string> */
     private function connectionCloseHeaders(Request $req): array
     {
-        $serverProtocol = $req->getServerParams()['SERVER_PROTOCOL'] ?? 'HTTP/1.1';
-        $proto = \is_string($serverProtocol) ? strtoupper($serverProtocol) : 'HTTP/1.1';
-        if (\str_starts_with($proto, 'HTTP/1.')) {
-            return ['Connection' => 'close'];
-        }
-
-        return [];
+        return str_starts_with($req->getProtocolVersion(), '1.') ? ['Connection' => 'close'] : [];
     }
 
-    private function hasTransferCoding(Request $req): bool
+    private function enforceBodyLimit(Request $req): Request
     {
-        $teLine = \strtolower($req->getHeaderLine('Transfer-Encoding'));
-        if ($teLine === '') {
-            return false;
+        if (
+            $this->resolvedBodyLimit <= 0
+            || !isset($this->bodyVerbSet[HttpMethodEnum::normalize($req->getMethod())])
+        ) {
+            return $req;
         }
 
-        foreach (\explode(',', $teLine) as $tok) {
-            $tok = \trim($tok);
-            if ($tok !== '' && $tok !== 'identity' && $tok !== 'trailers') {
-                return true;
+        $transferCoded = trim($req->getHeaderLine('Transfer-Encoding')) !== '';
+        $contentLength = trim($req->getHeaderLine('Content-Length'));
+        if ($transferCoded && $contentLength !== '') {
+            throw HttpException::badRequest(
+                'Transfer-Encoding and Content-Length must not be combined.',
+                $this->connectionCloseHeaders($req),
+            );
+        }
+
+        if ($contentLength !== '') {
+            $length = $this->parseContentLength($contentLength);
+            if ($length === null) {
+                throw HttpException::badRequest(
+                    'Invalid Content-Length header.',
+                    $this->connectionCloseHeaders($req),
+                );
+            }
+            if ($length > $this->resolvedBodyLimit) {
+                throw $this->payloadTooLargeException($req);
             }
         }
 
-        return false;
+        $body = $req->getBody();
+        $actual = $body->getSize();
+        if ($actual !== null) {
+            if ($actual > $this->resolvedBodyLimit) {
+                throw $this->payloadTooLargeException($req);
+            }
+
+            return $req;
+        }
+
+        [$actual, $buffer] = $this->measureUnknownBody($req, $body);
+        if ($actual > $this->resolvedBodyLimit) {
+            throw $this->payloadTooLargeException($req);
+        }
+
+        return $buffer === null ? $req : $req->withBody(new StringBody($buffer));
     }
 
-    private function headerValueLength(mixed $value): int
+    /** @return array{0:int,1:?string} */
+    private function measureUnknownBody(Request $req, BodyStream $body): array
     {
-        if (\is_string($value)) {
-            return \strlen($value);
-        }
-        if (\is_scalar($value)) {
-            return \strlen((string) $value);
+        $seekable = $body->isSeekable();
+        $position = null;
+        if ($seekable) {
+            $position = $body->tell();
+            $body->rewind();
         }
 
-        return 0;
+        $buffer = '';
+
+        try {
+            while (!$this->atEnd($body)) {
+                $chunk = $body->read(8192);
+                if ($chunk === '') {
+                    if ($this->atEnd($body)) {
+                        break;
+                    }
+
+                    throw HttpException::badRequest(
+                        'Unable to read request body while enforcing limits.',
+                        $this->connectionCloseHeaders($req),
+                    );
+                }
+                $buffer .= $chunk;
+                if (strlen($buffer) > $this->resolvedBodyLimit) {
+                    throw $this->payloadTooLargeException($req);
+                }
+            }
+        } finally {
+            if ($seekable) {
+                $body->seek($position);
+            }
+        }
+
+        return [strlen($buffer), $seekable ? null : $buffer];
     }
 
-    /**
-     * Parse Content-Length as a strict non-negative integer.
-     *
-     * Returns null for invalid grammar; returns PHP_INT_MAX when numeric but out of platform range.
-     */
     private function parseContentLength(string $raw): ?int
     {
-        $raw = trim($raw);
-        if ($raw === '' || !ctype_digit($raw)) {
+        if ($raw === '' || preg_match('/^[0-9]+$/D', $raw) !== 1) {
             return null;
         }
 
@@ -192,39 +203,6 @@ final readonly class RequestLimitsMiddleware
         );
     }
 
-    private function rejectForBodyLimit(Request $req): void
-    {
-        $limit = $this->resolveBodyLimit();
-        if ($limit <= 0 || !$this->appliesBodyLimitToMethod($req)) {
-            return;
-        }
-
-        if ($this->hasTransferCoding($req)) {
-            return;
-        }
-
-        $cl = trim($req->getHeaderLine('Content-Length'));
-        if ($cl === '') {
-            if ($this->violateOnUnknownBody) {
-                throw $this->payloadTooLargeException($req);
-            }
-
-            return;
-        }
-
-        $len = $this->parseContentLength($cl);
-        if ($len === null) {
-            throw HttpException::badRequest(
-                'Invalid Content-Length header.',
-                $this->connectionCloseHeaders($req),
-            );
-        }
-
-        if ($len > $limit) {
-            throw $this->payloadTooLargeException($req);
-        }
-    }
-
     private function rejectForHeaderLimits(Request $req): void
     {
         if ($this->maxHeaderCount <= 0 && $this->maxHeaderBytes <= 0) {
@@ -234,51 +212,21 @@ final readonly class RequestLimitsMiddleware
         $bytes = 0;
         $fields = 0;
         foreach ($req->getHeaders() as $name => $values) {
-            $nameBytes = \strlen($name) + 2;
-            $fields += \count($values);
+            $nameBytes = strlen($name) + 2;
+            $fields += count($values);
             foreach ($values as $value) {
-                $bytes += $nameBytes + $this->headerValueLength($value);
+                $bytes += $nameBytes + strlen($value);
             }
         }
 
-        $this->rejectIfLimitExceeded(
-            $req,
-            $this->maxHeaderCount,
-            $fields,
-            'Too many header fields',
-        );
-        $this->rejectIfLimitExceeded(
-            $req,
-            $this->maxHeaderBytes,
-            $bytes,
-            'Request headers too large',
-        );
+        $this->rejectIfLimitExceeded($req, $this->maxHeaderCount, $fields, 'Too many header fields');
+        $this->rejectIfLimitExceeded($req, $this->maxHeaderBytes, $bytes, 'Request headers too large');
     }
 
     private function rejectIfLimitExceeded(Request $req, int $limit, int $current, string $message): void
     {
-        if ($limit <= 0 || $current <= $limit) {
-            return;
+        if ($limit > 0 && $current > $limit) {
+            throw HttpException::requestHeaderFieldsTooLarge($message, $this->connectionCloseHeaders($req));
         }
-
-        throw HttpException::requestHeaderFieldsTooLarge($message, $this->connectionCloseHeaders($req));
-    }
-
-    /* ───────────────────────── helpers ─────────────────────────── */
-
-    /**
-     * Resolve the body size limit in bytes.
-     *
-     * Uses $this->maxBodyBytes when set; otherwise converts ini "post_max_size" to bytes.
-     *
-     * @return int Body limit in bytes (0 means disabled).
-     */
-    private function resolveBodyLimit(): int
-    {
-        if ($this->maxBodyBytes !== null) {
-            return $this->maxBodyBytes;
-        }
-
-        return self::phpIniBytes(\ini_get('post_max_size'));
     }
 }

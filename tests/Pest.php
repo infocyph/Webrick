@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
-use Infocyph\Webrick\Support\TraceContext;
 
 /*
 |--------------------------------------------------------------------------
@@ -111,9 +110,6 @@ expect()->extend('toHaveServerTimingHeader', function () {
 /**
  * Create a mock request with trace attributes.
  */
-/**
- * Create a mock request with trace attributes.
- */
 function mockRequestWithTrace(
     string $method = 'GET',
     string $uri = '/',
@@ -193,38 +189,3 @@ function buildTraceparent(string $traceId, string $spanId, string $flags = '01')
 {
     return sprintf('00-%s-%s-%s', $traceId, $spanId, $flags);
 }
-
-/**
- * Verify trace context is properly initialized.
- */
-function assertTraceContextInitialized(): void
-{
-    expect(TraceContext::isAvailable())
-        ->toBeTrue('TraceContext should be initialized')
-        ->and(TraceContext::getTraceId())->not
-        ->toBeNull('Trace ID should not be null')
-        ->and(TraceContext::getSpanId())->not->toBeNull('Span ID should not be null');
-}
-
-/**
- * Verify trace context is properly cleared.
- */
-function assertTraceContextCleared(): void
-{
-    expect(TraceContext::isAvailable())
-        ->toBeFalse('TraceContext should be cleared')
-        ->and(TraceContext::getTraceId())->toBeNull('Trace ID should be null')
-        ->and(TraceContext::getSpanId())->toBeNull('Span ID should be null');
-}
-
-/*
-|--------------------------------------------------------------------------
-| Global Cleanup - Trace Context
-|--------------------------------------------------------------------------
-| Clear TraceContext after each test to prevent state leakage between tests.
-|--------------------------------------------------------------------------
-*/
-
-uses()->afterEach(function () {
-    TraceContext::clear();
-})->in('Unit', 'Feature', 'Integration');

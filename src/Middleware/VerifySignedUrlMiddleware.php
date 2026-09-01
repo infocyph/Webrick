@@ -10,6 +10,7 @@ use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Url\SignedUrlConfig;
 use Infocyph\Webrick\Router\Url\UrlGenerator;
+use Infocyph\Webrick\Support\HttpUtils;
 
 final readonly class VerifySignedUrlMiddleware
 {
@@ -28,9 +29,7 @@ final readonly class VerifySignedUrlMiddleware
         $this->config = $this->normalizeConfig($config, $leeway, $ignoredQueryParams, $payloadMode);
     }
 
-    /**
-     * @param Closure(Request):Response $next
-     */
+    /** @param Closure(Request):Response $next */
     public function __invoke(Request $request, Closure $next): Response
     {
         $query = $request->getQueryParams();
@@ -43,13 +42,12 @@ final readonly class VerifySignedUrlMiddleware
         }
         unset($query[$signatureParam]);
 
-        if (isset($query[$expiryParam])) {
-            $expiresAt = $query[$expiryParam];
-            if (!\is_scalar($expiresAt) || !\is_numeric((string) $expiresAt)) {
+        if (array_key_exists($expiryParam, $query)) {
+            $expiresAt = $this->parseExpiry($query[$expiryParam]);
+            if ($expiresAt === null) {
                 throw HttpException::badRequest('Invalid expiration');
             }
-
-            if (\time() > ((int) $expiresAt + $this->config->leeway)) {
+            if (\time() > ($expiresAt + $this->config->leeway)) {
                 throw HttpException::gone('URL expired');
             }
         }
@@ -70,9 +68,7 @@ final readonly class VerifySignedUrlMiddleware
         throw HttpException::forbidden('Invalid signature');
     }
 
-    /**
-     * @param array<string,mixed> $query
-     */
+    /** @param array<string,mixed> $query */
     private function buildPayload(Request $request, array $query): string
     {
         $target = $this->config->payloadMode === SignedUrlConfig::MODE_ABSOLUTE
@@ -141,16 +137,29 @@ final readonly class VerifySignedUrlMiddleware
         if ($leeway === null) {
             return $default;
         }
-
         if (\is_int($leeway)) {
+            if ($leeway < 0) {
+                throw new \InvalidArgumentException('leeway must be zero or greater.');
+            }
+
             return $leeway;
         }
 
-        if ($leeway !== '' && \is_numeric($leeway)) {
-            return (int) $leeway;
+        $parsed = HttpUtils::parseUnsignedDecimal($leeway);
+        if ($parsed === null) {
+            throw new \InvalidArgumentException('leeway must be a decimal integer.');
         }
 
-        return $default;
+        return $parsed;
+    }
+
+    private function parseExpiry(mixed $value): ?int
+    {
+        if (\is_int($value)) {
+            return $value >= 0 ? $value : null;
+        }
+
+        return \is_string($value) ? HttpUtils::parseUnsignedDecimal($value) : null;
     }
 
     private function requestAbsoluteTarget(Request $request): string

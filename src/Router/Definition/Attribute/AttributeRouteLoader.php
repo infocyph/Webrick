@@ -265,8 +265,9 @@ final class AttributeRouteLoader
     }
 
     /* ───────────────────────────── Registration ─────────────────────────────── */
-
-    /** @param class-string $fqcn */
+    /**
+     * @param class-string $fqcn
+     */
     private static function registerClass(Registrar $registrar, string $fqcn): void
     {
         $rc = new ReflectionClass($fqcn);
@@ -339,7 +340,9 @@ final class AttributeRouteLoader
         return $rc->isAbstract() || $rc->isInterface() ? null : $resolved;
     }
 
-    /** @param null|callable(SplFileInfo):bool $filter */
+    /**
+     * @param null|callable(SplFileInfo):bool $filter
+     */
     private static function shouldSkipFile(SplFileInfo $file, ?callable $filter): bool
     {
         if ($file->getExtension() !== 'php') {

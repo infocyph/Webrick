@@ -2,22 +2,13 @@
 
 /**
  * Webrick - Media (MIME) type enumeration and helpers.
- *
- * Defines canonical media types used across the Webrick stack and provides utilities
- * to resolve a media type from file extensions or filenames, as well as helpers for
- * textual classification and header/charset retrieval.
  */
 
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Constants;
 
-/**
- * Canonical media (MIME) types with convenience helpers.
- *
- * Includes commonly used textual, image, and application types. Utility methods
- * support resolution by extension/filename, textual checks, and header formatting.
- */
+/** Canonical media (MIME) types with convenience helpers. */
 enum MediaTypeEnum: string
 {
     case AVIF = 'image/avif';
@@ -30,7 +21,7 @@ enum MediaTypeEnum: string
 
     case HTML = 'text/html; charset=utf-8';
 
-    case JAVASCRIPT = 'text/javascript';          // or 'application/javascript' if you prefer
+    case JAVASCRIPT = 'text/javascript';
 
     case JPEG = 'image/jpeg';
 
@@ -42,8 +33,6 @@ enum MediaTypeEnum: string
 
     case NDJSON = 'application/x-ndjson';
 
-    /* ------------ canonical cases ------------ */
-    // generic
     case OCTET = 'application/octet-stream';
 
     case PDF = 'application/pdf';
@@ -62,19 +51,9 @@ enum MediaTypeEnum: string
 
     case XML = 'application/xml';
 
-    /**
-     * Resolve a MediaType enum case from a file extension.
-     *
-     * - Handles irregular aliases (e.g., "jpg" → "jpeg", "htm" → "html").
-     * - Uses a small memo cache for repeat lookups.
-     * - Defaults to MediaType::OCTET when unknown.
-     *
-     * @param string $ext File extension (e.g., "jpg", "json").
-     * @return self Resolved MediaType enum case.
-     */
     public static function fromExtension(string $ext): self
     {
-        /** @var array<string, string> $alias */
+        /** @var array<string,string> $alias */
         static $alias = [
             'jpg' => 'jpeg',
             'htm' => 'html',
@@ -89,7 +68,7 @@ enum MediaTypeEnum: string
             'jsonl' => 'ndjson',
         ];
 
-        /** @var array<string, self> $map */
+        /** @var array<string,self> $map */
         static $map = [
             'avif' => self::AVIF,
             'csv' => self::CSV,
@@ -111,31 +90,12 @@ enum MediaTypeEnum: string
             'xml' => self::XML,
         ];
 
-        /** @var array<string, self> $cache */
-        static $cache = [];
-
         $ext = strtolower($ext);
-        if (isset($cache[$ext])) {
-            return $cache[$ext];
-        }
-
         $key = $alias[$ext] ?? $ext;
-        if (!isset($map[$key])) {
-            return self::OCTET;
-        }
 
-        return $cache[$ext] = $map[$key];
+        return $map[$key] ?? self::OCTET;
     }
 
-    /**
-     * Resolve a MediaType enum case from a file name.
-     *
-     * Finds the last '.' in the file name and resolves from the extension part.
-     * If there is no '.', defaults to MediaType::OCTET.
-     *
-     * @param string $file File name (e.g., "example.jpg", "document.json").
-     * @return self Resolved MediaType enum case.
-     */
     public static function fromFilename(string $file): self
     {
         $dot = strrpos($file, '.');
@@ -146,9 +106,6 @@ enum MediaTypeEnum: string
         return self::fromExtension(substr($file, $dot + 1));
     }
 
-    /**
-     * Whether the given media type is JSON or structured-suffix +json.
-     */
     public static function isJsonLike(string $type): bool
     {
         $base = strtolower(trim(explode(';', $type, 2)[0]));
@@ -156,9 +113,13 @@ enum MediaTypeEnum: string
         return $base === self::JSON->base() || str_ends_with($base, '+json');
     }
 
-    /**
-     * Get the media type without parameters (e.g. "text/html").
-     */
+    public static function isXmlLike(string $type): bool
+    {
+        $base = strtolower(trim(explode(';', $type, 2)[0]));
+
+        return $base === self::XML->base() || $base === 'text/xml' || str_ends_with($base, '+xml');
+    }
+
     public function base(): string
     {
         $parts = explode(';', $this->value, 2);
@@ -166,40 +127,22 @@ enum MediaTypeEnum: string
         return strtolower(trim($parts[0]));
     }
 
-    /**
-     * Extract the character set from the media type header value.
-     *
-     * Example:
-     * - "text/html; charset=utf-8" → "utf-8"
-     *
-     * @return string|null The charset value, or null if no charset parameter is present.
-     */
     public function charset(): ?string
     {
-        return preg_match('/charset=([^;]+)/i', $this->value, $m) ? $m[1] : null;
+        return preg_match('/charset=([^;]+)/i', $this->value, $m) ? trim($m[1], " \t\n\r\0\x0B\"") : null;
     }
 
-    /**
-     * Get the HTTP header value for this media type.
-     *
-     * @return string Header-ready media type string.
-     */
     public function header(): string
     {
         return $this->value;
     }
 
-    /**
-     * Determine whether the media type is textual.
-     *
-     * A type is considered textual when it starts with "text/" or equals JSON/XML.
-     *
-     * @return bool True if textual; false otherwise.
-     */
     public function isTextual(): bool
     {
-        return str_starts_with($this->base(), 'text/')
-            || $this === self::JSON
-            || $this === self::XML;
+        $base = $this->base();
+
+        return str_starts_with($base, 'text/')
+            || self::isJsonLike($base)
+            || self::isXmlLike($base);
     }
 }

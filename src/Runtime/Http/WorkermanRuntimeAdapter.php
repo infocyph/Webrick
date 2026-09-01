@@ -1,0 +1,187 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Infocyph\Webrick\Runtime\Http;
+
+use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Router\Runtime\RoutingInput;
+use RuntimeException;
+
+/** Workerman 4+ adapter with compatibility resolved once at bootstrap. */
+final readonly class WorkermanRuntimeAdapter implements RuntimeAdapterInterface
+{
+    private RuntimeCapabilities $runtimeCapabilities;
+
+    private function __construct(
+        /** @var class-string */
+        private string $responseClass,
+        /** @var class-string */
+        private string $chunkClass,
+        bool $transportCompression,
+        bool $transportRequestLimits,
+    ) {
+        $this->runtimeCapabilities = new RuntimeCapabilities(
+            name: 'workerman',
+            persistent: true,
+            concurrent: false,
+            nativeStreaming: true,
+            nativeFile: true,
+            transportCompression: $transportCompression,
+            transportRequestLimits: $transportRequestLimits,
+        );
+    }
+
+    public static function current(bool $transportCompression = false, bool $transportRequestLimits = false): self
+    {
+        $response = self::requiredClass('Workerman\\Protocols\\Http\\Response');
+        $chunk = self::requiredClass('Workerman\\Protocols\\Http\\Chunk');
+
+        return new self($response, $chunk, $transportCompression, $transportRequestLimits);
+    }
+
+    public function capabilities(): RuntimeCapabilities
+    {
+        return $this->runtimeCapabilities;
+    }
+
+    public function context(mixed $nativeRequest = null, mixed $nativeResponse = null, bool $withHost = false): RuntimeRequestContext
+    {
+        if (!is_object($nativeRequest) || !is_object($nativeResponse)) {
+            throw new RuntimeException('Workerman runtime requires Request and Connection objects.');
+        }
+
+        $server = WorkermanNativeRequest::server($nativeRequest, $nativeResponse);
+        $postResolved = false;
+        $post = [];
+        $resolvePost = static function () use ($nativeRequest, &$postResolved, &$post): array {
+            if (!$postResolved) {
+                $post = WorkermanNativeRequest::post($nativeRequest);
+                $postResolved = true;
+            }
+
+            return $post;
+        };
+        $form = RoutingFormInput::resolve($server, $resolvePost);
+
+        return new RuntimeRequestContext(
+            RoutingInput::fromServer($server, $withHost, $form),
+            static fn(): Request => TransportRequestFactory::fromParts(
+                $server,
+                WorkermanNativeRequest::headers($nativeRequest),
+                WorkermanNativeRequest::rawBody($nativeRequest),
+                $resolvePost(),
+                WorkermanNativeRequest::files($nativeRequest),
+                WorkermanNativeRequest::query($nativeRequest),
+                WorkermanNativeRequest::cookies($nativeRequest),
+            ),
+            $this->runtimeCapabilities,
+            $nativeRequest,
+            $nativeResponse,
+        );
+    }
+
+    public function write(Response $response, RuntimeRequestContext $context): void
+    {
+        $connection = $context->nativeResponse;
+        $request = $context->nativeRequest;
+        if (!is_object($connection) || !is_object($request)) {
+            throw new RuntimeException('Workerman transport handles are unavailable.');
+        }
+
+        $http2 = WorkermanNativeRequest::isHttp2($request);
+        $headers = $this->headerMap($response, $http2);
+        $size = ResponseWriterSupport::knownLength($response);
+        if (!isset($headers['Content-Length']) && $size !== null) {
+            $headers['Content-Length'] = (string) $size;
+        }
+
+        if (!ResponseWriterSupport::allowsBody($response, $context)) {
+            $this->send($connection, $this->response($response->getStatusCode(), $headers, ''));
+
+            return;
+        }
+
+        $file = $response->getFileBody();
+        if ($file !== null && $file->offset() === 0 && $file->length() === $file->sourceSize()) {
+            $native = $this->withFile($this->response($response->getStatusCode(), $headers, ''), $file->path());
+            $this->send($connection, $native);
+
+            return;
+        }
+
+        $string = $response->getStringBody();
+        if ($string !== null && !$response->isStreaming()) {
+            $this->send($connection, $this->response($response->getStatusCode(), $headers, $string));
+
+            return;
+        }
+
+        unset($headers['Content-Length']);
+        if (!$http2) {
+            $headers['Transfer-Encoding'] = 'chunked';
+        }
+        $this->send($connection, $this->response($response->getStatusCode(), $headers, ''));
+        $chunkClass = $this->chunkClass;
+        foreach (ResponseWriterSupport::chunks($response) as $chunk) {
+            $this->send($connection, new $chunkClass($chunk));
+        }
+        $this->send($connection, new $chunkClass(''));
+    }
+
+    /** @return class-string */
+    private static function requiredClass(string $class): string
+    {
+        if (!class_exists($class)) {
+            throw new RuntimeException('Workerman 4+ HTTP Response and Chunk classes are required.');
+        }
+
+        return $class;
+    }
+
+    private function call(object $target, string $method, mixed ...$arguments): mixed
+    {
+        if (!method_exists($target, $method)) {
+            throw new RuntimeException("Workerman native object does not support {$method}().");
+        }
+
+        return $target->{$method}(...$arguments);
+    }
+
+    /** @return array<string,string|array<int,string>> */
+    private function headerMap(Response $response, bool $http2): array
+    {
+        $headers = [];
+        foreach (ResponseWriterSupport::headerMap($response, $http2) as $name => $values) {
+            $headers[$name] = count($values) === 1 ? $values[0] : $values;
+        }
+
+        return $headers;
+    }
+
+    /** @param array<string,string|array<int,string>> $headers */
+    private function response(int $status, array $headers, string $body): object
+    {
+        $class = $this->responseClass;
+
+        return new $class($status, $headers, $body);
+    }
+
+    private function send(object $connection, object|string $payload): void
+    {
+        if ($this->call($connection, 'send', $payload) === false) {
+            throw new RuntimeException('Workerman connection send failed.');
+        }
+    }
+
+    private function withFile(object $response, string $path): object
+    {
+        $result = $this->call($response, 'withFile', $path);
+        if (!is_object($result)) {
+            throw new RuntimeException('Workerman response withFile() failed.');
+        }
+
+        return $result;
+    }
+}

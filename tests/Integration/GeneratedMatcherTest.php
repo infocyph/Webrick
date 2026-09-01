@@ -2,22 +2,22 @@
 
 declare(strict_types=1);
 
+use Infocyph\InterMix\DI\Container;
+use Infocyph\InterMix\DI\Invoker;
 use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
 use Infocyph\Webrick\Exceptions\RouteNotFoundException;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Definition\Registrar;
+use Infocyph\Webrick\Router\Dispatch\Dispatcher;
 use Infocyph\Webrick\Router\Dispatch\MiddlewareAliases;
-use Infocyph\Webrick\Router\Kernel\RouterKernel;
 use Infocyph\Webrick\Router\Matching\FusedMatcher;
 use Infocyph\Webrick\Router\Matching\GeneratedMatcher;
 use Infocyph\Webrick\Router\Matching\MatcherInterface;
 use Infocyph\Webrick\Router\Matching\ShardedMatcher;
-use Infocyph\Webrick\Router\Route\Collection;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 use Infocyph\Webrick\Router\Route\Route;
 use Infocyph\Webrick\Support\RouteCache;
-use Psr\Log\NullLogger;
 
 dataset('cached matcher modes', [
     'sharded' => ['sharded', static fn(): MatcherInterface => ShardedMatcher::make()],
@@ -57,6 +57,20 @@ final class CachedInstanceMethodHandlerFixture
     {
         return ['handler' => 'instance'];
     }
+}
+
+function cachedMatcherDispatcher(string $scope): Dispatcher
+{
+    return new Dispatcher(
+        Invoker::with(new Container('webrick.tests.matcher.' . $scope . '.' . bin2hex(random_bytes(4)))),
+    );
+}
+
+function cachedMatcherPath(string $prefix, string $mode): string
+{
+    $path = sys_get_temp_dir() . DIRECTORY_SEPARATOR . $prefix . '-' . $mode . '-' . uniqid('', true);
+
+    return $mode === 'sharded' ? $path : $path . '.php';
 }
 
 test('GeneratedMatcher matches static and dynamic routes', function (): void {
@@ -117,26 +131,10 @@ test('GeneratedMatcher boots from generated cache file', function (): void {
         expect($hit->getPath())->toBe('/hello')
             ->and($params)->toBe([])
             ->and($reader->resolveAlias('hello.route'))->toBe(['/hello', 'example.com']);
-
-        $registrations = 0;
-        $aliases = [];
-        RouterKernel::bootWithRegistrar(
-            log: new NullLogger(),
-            matcher: GeneratedMatcher::make(),
-            register: static function () use (&$registrations): void {
-                $registrations++;
-            },
-            routeCache: $file,
-            bindUrlServices: static function (Collection $routes) use (&$aliases): void {
-                $aliases = $routes->aliasIndex();
-            },
-            fallbackAliasesFromRegistrar: false,
-        );
-
-        expect($registrations)->toBe(0)
-            ->and($aliases['hello.route'])->toBe(['/hello', 'example.com']);
     } finally {
-        unlink($file);
+        if (is_file($file)) {
+            unlink($file);
+        }
     }
 });
 
@@ -226,21 +224,9 @@ test('all matcher cache builds coexist across refreshes', function (): void {
     };
 
     try {
-        RouteCache::build([
-            'matcher' => 'fused',
-            'cache' => $fused,
-            'register' => $register,
-        ]);
-        RouteCache::build([
-            'matcher' => 'generated',
-            'cache' => $generated,
-            'register' => $register,
-        ]);
-        RouteCache::build([
-            'matcher' => 'sharded',
-            'cache' => $directory,
-            'register' => $register,
-        ]);
+        RouteCache::build(['matcher' => 'fused', 'cache' => $fused, 'register' => $register]);
+        RouteCache::build(['matcher' => 'generated', 'cache' => $generated, 'register' => $register]);
+        RouteCache::build(['matcher' => 'sharded', 'cache' => $directory, 'register' => $register]);
 
         expect(is_file($sharded))->toBeTrue()
             ->and(is_file($fused))->toBeTrue()
@@ -251,11 +237,7 @@ test('all matcher cache builds coexist across refreshes', function (): void {
             ['generated', $generated],
             ['sharded', $directory],
         ] as [$matcher, $cache]) {
-            RouteCache::build([
-                'matcher' => $matcher,
-                'cache' => $cache,
-                'register' => $register,
-            ]);
+            RouteCache::build(['matcher' => $matcher, 'cache' => $cache, 'register' => $register]);
 
             expect(is_file($sharded))->toBeTrue()
                 ->and(is_file($fused))->toBeTrue()
@@ -273,51 +255,11 @@ test('all matcher cache builds coexist across refreshes', function (): void {
     }
 });
 
-test('default hot-cache URL services defer alias fallback until first use', function (): void {
-    $file = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'webrick-lazy-alias-' . uniqid('', true) . '.php';
-
-    try {
-        RouteCache::build([
-            'matcher' => 'generated',
-            'cache' => $file,
-            'register' => static function (Registrar $registrar): void {
-                $registrar->get('/cached', static fn(): Response => Response::json(['ok' => true]));
-            },
-        ]);
-
-        $registrations = 0;
-        $kernel = RouterKernel::bootWithRegistrar(
-            log: new NullLogger(),
-            matcher: GeneratedMatcher::make(),
-            register: static function (Registrar $registrar) use (&$registrations): void {
-                $registrations++;
-                $registrar->get('/fallback', static fn(): string => 'ok', 'fallback.route');
-            },
-            routeCache: $file,
-        );
-
-        expect($registrations)->toBe(0)
-            ->and($kernel->handle(Request::fake(uri: 'http://localhost/cached'))->getStatusCode())->toBe(200)
-            ->and($registrations)->toBe(0)
-            ->and(\Infocyph\Webrick\Router\Facade\Router::urlFor('fallback.route'))->toBe('/fallback')
-            ->and($registrations)->toBe(1);
-    } finally {
-        \Infocyph\Webrick\Router\Facade\Router::reset();
-        if (is_file($file)) {
-            unlink($file);
-        }
-    }
-});
-
-test('fresh route caches boot and lazily dispatch alias middleware', function (
+test('fresh route caches dispatch alias middleware lazily without development kernel boot', function (
     string $mode,
     Closure $makeMatcher,
 ): void {
-    $cache = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'webrick-fresh-' . $mode . '-' . uniqid('', true);
-    if ($mode !== 'sharded') {
-        $cache .= '.php';
-    }
-
+    $cache = cachedMatcherPath('webrick-fresh', $mode);
     $resolved = 0;
     MiddlewareAliases::reset();
     MiddlewareAliases::register('lazy', static function () use (&$resolved): Closure {
@@ -338,29 +280,18 @@ test('fresh route caches boot and lazily dispatch alias middleware', function (
             },
         ]);
 
-        expect($resolved)->toBe(0);
-
-        $registrations = 0;
-        $aliases = [];
-        $matcher = $makeMatcher();
-        $kernel = RouterKernel::bootWithRegistrar(
-            log: new NullLogger(),
-            matcher: $matcher,
-            register: static function () use (&$registrations): void {
-                $registrations++;
-            },
-            routeCache: $cache,
-            bindUrlServices: static function (Collection $routes) use (&$aliases): void {
-                $aliases = $routes->aliasIndex();
-            },
-            fallbackAliasesFromRegistrar: false,
-        );
-
-        expect($registrations)->toBe(0)
-            ->and($aliases['cached.route'])->toBe(['/cached', null])
+        $matcher = $makeMatcher()->enableCache($cache);
+        expect($matcher->canBootFromCache())->toBeTrue();
+        $matcher->finalize();
+        expect($matcher->resolveAlias('cached.route'))->toBe(['/cached', null])
             ->and($resolved)->toBe(0);
 
-        $response = $kernel->handle(Request::fake(uri: 'http://localhost/cached'));
+        [$route, $vars] = $matcher->match('GET', 'localhost', '/cached');
+        $response = cachedMatcherDispatcher($mode)->dispatch(
+            $route,
+            Request::fake(uri: 'http://localhost/cached'),
+            $vars,
+        );
 
         expect($response->getStatusCode())->toBe(200)
             ->and($resolved)->toBe(1);
@@ -378,10 +309,7 @@ test('class-handler caches use scalar route payloads in every matcher mode', fun
     string $mode,
     Closure $makeMatcher,
 ): void {
-    $cache = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'webrick-scalar-' . $mode . '-' . uniqid('', true);
-    if ($mode !== 'sharded') {
-        $cache .= '.php';
-    }
+    $cache = cachedMatcherPath('webrick-scalar', $mode);
 
     try {
         RouteCache::build([
@@ -394,15 +322,12 @@ test('class-handler caches use scalar route payloads in every matcher mode', fun
 
         $matcher = $makeMatcher()->enableCache($cache);
         $matcher->finalize();
-        [$route] = $matcher->match('GET', 'localhost', '/class-handler');
-        $kernel = RouterKernel::bootWithRegistrar(
-            log: new NullLogger(),
-            matcher: $makeMatcher(),
-            register: static function (): void {},
-            routeCache: $cache,
-            fallbackAliasesFromRegistrar: false,
+        [$route, $vars] = $matcher->match('GET', 'localhost', '/class-handler');
+        $response = cachedMatcherDispatcher($mode)->dispatch(
+            $route,
+            Request::fake(uri: 'http://localhost/class-handler'),
+            $vars,
         );
-        $response = $kernel->handle(Request::fake(uri: 'http://localhost/class-handler'));
 
         expect($route->getHandler())->toBe([CachedClassHandlerFixture::class, 'handle'])
             ->and((string) $response->getBody())->toBe('{"ok":true}');
@@ -419,10 +344,7 @@ test('safe first-class static handlers become native cache descriptors in every 
     string $mode,
     Closure $makeMatcher,
 ): void {
-    $cache = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'webrick-first-class-' . $mode . '-' . uniqid('', true);
-    if ($mode !== 'sharded') {
-        $cache .= '.php';
-    }
+    $cache = cachedMatcherPath('webrick-first-class', $mode);
 
     try {
         RouteCache::build([
@@ -437,24 +359,28 @@ test('safe first-class static handlers become native cache descriptors in every 
 
         $matcher = $makeMatcher()->enableCache($cache);
         $matcher->finalize();
-        [$staticRoute] = $matcher->match('GET', 'localhost', '/static-callable');
-        [$capturedRoute] = $matcher->match('GET', 'localhost', '/captured-closure');
+        [$staticRoute, $staticVars] = $matcher->match('GET', 'localhost', '/static-callable');
+        [$capturedRoute, $capturedVars] = $matcher->match('GET', 'localhost', '/captured-closure');
 
         expect($staticRoute->getHandler())
             ->toBe([CachedLateStaticHandlerFixture::class, 'identify'])
             ->and($capturedRoute->getHandler())->toBeInstanceOf(Closure::class);
 
-        $kernel = RouterKernel::bootWithRegistrar(
-            log: new NullLogger(),
-            matcher: $makeMatcher(),
-            register: static function (): void {},
-            routeCache: $cache,
-            fallbackAliasesFromRegistrar: false,
+        $dispatcher = cachedMatcherDispatcher($mode);
+        $staticResponse = $dispatcher->dispatch(
+            $staticRoute,
+            Request::fake(uri: 'http://localhost/static-callable'),
+            $staticVars,
+        );
+        $capturedResponse = $dispatcher->dispatch(
+            $capturedRoute,
+            Request::fake(uri: 'http://localhost/captured-closure'),
+            $capturedVars,
         );
 
-        expect((string) $kernel->handle(Request::fake(uri: 'http://localhost/static-callable'))->getBody())
+        expect((string) $staticResponse->getBody())
             ->toBe('{"class":"' . CachedLateStaticHandlerFixture::class . '"}')
-            ->and((string) $kernel->handle(Request::fake(uri: 'http://localhost/captured-closure'))->getBody())
+            ->and((string) $capturedResponse->getBody())
             ->toBe('{"value":"kept"}');
     } finally {
         RouteCache::clear([
@@ -469,10 +395,7 @@ test('object-backed handlers retain their binding in every matcher mode', functi
     string $mode,
     Closure $makeMatcher,
 ): void {
-    $cache = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'webrick-object-handler-' . $mode . '-' . uniqid('', true);
-    if ($mode !== 'sharded') {
-        $cache .= '.php';
-    }
+    $cache = cachedMatcherPath('webrick-object-handler', $mode);
 
     try {
         RouteCache::build([
@@ -484,18 +407,25 @@ test('object-backed handlers retain their binding in every matcher mode', functi
             },
         ]);
 
-        $kernel = RouterKernel::bootWithRegistrar(
-            log: new NullLogger(),
-            matcher: $makeMatcher(),
-            register: static function (): void {},
-            routeCache: $cache,
-            fallbackAliasesFromRegistrar: false,
+        $matcher = $makeMatcher()->enableCache($cache);
+        $matcher->finalize();
+        [$invokable, $invokableVars] = $matcher->match('GET', 'localhost', '/invokable');
+        [$instance, $instanceVars] = $matcher->match('GET', 'localhost', '/instance');
+        $dispatcher = cachedMatcherDispatcher($mode);
+
+        $invokableResponse = $dispatcher->dispatch(
+            $invokable,
+            Request::fake(uri: 'http://localhost/invokable'),
+            $invokableVars,
+        );
+        $instanceResponse = $dispatcher->dispatch(
+            $instance,
+            Request::fake(uri: 'http://localhost/instance'),
+            $instanceVars,
         );
 
-        expect((string) $kernel->handle(Request::fake(uri: 'http://localhost/invokable'))->getBody())
-            ->toBe('{"handler":"invokable"}')
-            ->and((string) $kernel->handle(Request::fake(uri: 'http://localhost/instance'))->getBody())
-            ->toBe('{"handler":"instance"}');
+        expect((string) $invokableResponse->getBody())->toBe('{"handler":"invokable"}')
+            ->and((string) $instanceResponse->getBody())->toBe('{"handler":"instance"}');
     } finally {
         RouteCache::clear([
             'matcher' => $mode,
@@ -509,10 +439,7 @@ test('route caches expose only registered middleware alias requirements', functi
     string $mode,
     Closure $makeMatcher,
 ): void {
-    $cache = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'webrick-middleware-meta-' . $mode . '-' . uniqid('', true);
-    if ($mode !== 'sharded') {
-        $cache .= '.php';
-    }
+    $cache = cachedMatcherPath('webrick-middleware-meta', $mode);
     MiddlewareAliases::register('auth', static fn(): Closure => static fn(
         Request $request,
         Closure $next,
@@ -568,10 +495,7 @@ test('stale cache formats fail clearly in every matcher mode', function (
     string $mode,
     Closure $makeMatcher,
 ): void {
-    $cache = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'webrick-stale-' . $mode . '-' . uniqid('', true);
-    if ($mode !== 'sharded') {
-        $cache .= '.php';
-    }
+    $cache = cachedMatcherPath('webrick-stale', $mode);
 
     try {
         RouteCache::build([

@@ -25,30 +25,32 @@
         }
     ],
     "require": {
-        "php": ">=8.4",
-        "infocyph/arraykit": "^5.1.1",
-        "infocyph/intermix": "^9.2",
+        "php": "^8.4",
+        "infocyph/intermix": "^10.0.2",
         "psr/cache": "^3.0",
         "psr/log": "^3.0.2"
     },
     "require-dev": {
         "infocyph/cachelayer": "^3.2",
-        "infocyph/phpforge": "dev-main@dev"
+        "infocyph/phpforge": "dev-main@dev",
+        "opis/closure": "^4.5",
+        "psr/http-factory": "^1.1",
+        "psr/http-message": "^2.0"
     },
     "suggest": {
-        "infocyph/cachelayer": "Required by response-cache middleware and the default throttle cache backend.",
+        "infocyph/cachelayer": "Required by response-cache middleware and the CacheLayer atomic-counter adapter.",
         "open-telemetry/exporter-otlp": "Export traces to OpenTelemetry collectors (Jaeger, Zipkin, etc.)",
-        "open-telemetry/sdk": "Full OpenTelemetry tracing with automatic span export (auto-detected by TelemetryMiddleware)"
+        "open-telemetry/sdk": "Full OpenTelemetry tracing with automatic span export (auto-detected by TelemetryMiddleware)",
+        "opis/closure": "Required only when compiling route or middleware Closures into persistent artifacts through InterMix.",
+        "psr/http-factory": "Optional PSR-17 factories for Webrick's explicit PSR-7 interoperability bridge.",
+        "psr/http-message": "Optional PSR-7 message interfaces for interoperability adapters."
     },
     "minimum-stability": "stable",
     "prefer-stable": true,
     "autoload": {
         "psr-4": {
             "Infocyph\\Webrick\\": "src/"
-        },
-        "files": [
-            "src/functions.php"
-        ]
+        }
     },
     "autoload-dev": {
         "psr-4": {

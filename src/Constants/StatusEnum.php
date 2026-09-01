@@ -1,22 +1,10 @@
 <?php
 
-/**
- * Webrick - HTTP status code enumeration and helpers.
- *
- * Defines a comprehensive set of HTTP status codes and provides convenience
- * methods to resolve reason phrases, determine code series, classify responses
- * (informational/success/redirect/client-error/server-error), and evaluate body
- * allowance and cacheability. Also includes static utilities for code-to-text
- * conversion and emptiness checks.
- */
-
 declare(strict_types=1);
 
 namespace Infocyph\Webrick\Constants;
 
-/**
- * HTTP status codes as int-backed enum with convenience helpers.
- */
+/** HTTP status codes as int-backed enum with convenience helpers. */
 enum StatusEnum: int
 {
     case ACCEPTED = 202;
@@ -25,14 +13,12 @@ enum StatusEnum: int
 
     case BAD_GATEWAY = 502;
 
-    /* 4xx */
     case BAD_REQUEST = 400;
 
-    case BANDWIDTH_LIMIT_EXCEEDED = 509;  // project-specific
+    case BANDWIDTH_LIMIT_EXCEEDED = 509;
 
     case CONFLICT = 409;
 
-    /* 1xx */
     case CONTINUE = 100;
 
     case CREATED = 201;
@@ -59,7 +45,6 @@ enum StatusEnum: int
 
     case INSUFFICIENT_STORAGE = 507;
 
-    /* 5xx */
     case INTERNAL_SERVER_ERROR = 500;
 
     case LENGTH_REQUIRED = 411;
@@ -76,7 +61,6 @@ enum StatusEnum: int
 
     case MULTI_STATUS = 207;
 
-    /* 3xx */
     case MULTIPLE_CHOICES = 300;
 
     case NETWORK_AUTH_REQUIRED = 511;
@@ -95,7 +79,6 @@ enum StatusEnum: int
 
     case NOT_MODIFIED = 304;
 
-    /* 2xx */
     case OK = 200;
 
     case PARTIAL_CONTENT = 206;
@@ -150,88 +133,46 @@ enum StatusEnum: int
 
     case VARIANT_ALSO_NEGOTIATES = 506;
 
-    /**
-     * Check if the given status code is "empty" (no body).
-     *
-     * If not recognized, checks whether it lies in the 1xx range.
-     *
-     * @param int $code HTTP status code to check.
-     * @return bool True if empty; false otherwise.
-     */
     public static function isEmptyCode(int $code): bool
     {
-        return self::tryFrom($code)?->isEmpty()
-            ?? ($code >= 100 && $code < 200);
+        return ($code >= 100 && $code < 200)
+            || $code === self::NO_CONTENT->value
+            || $code === self::RESET_CONTENT->value
+            || $code === self::NOT_MODIFIED->value;
     }
 
-    /**
-     * Check if a status code belongs to HTTP error ranges (4xx or 5xx).
-     *
-     * Unknown extension codes in the 4xx/5xx space are treated as errors too.
-     */
     public static function isErrorCode(int $code): bool
     {
         return $code >= self::BAD_REQUEST->value && $code < 600;
     }
 
-    /**
-     * Check if a status code belongs to the HTTP server-error range (5xx).
-     *
-     * Unknown extension codes in the 5xx space are treated as server errors too.
-     */
     public static function isServerErrorCode(int $code): bool
     {
         return $code >= self::INTERNAL_SERVER_ERROR->value && $code < 600;
     }
 
-    /**
-     * Get the reason phrase for the given status code.
-     *
-     * @param int $code HTTP status code.
-     * @return string Reason phrase (empty string if unknown).
-     */
     public static function text(int $code): string
     {
         return self::tryFrom($code)?->reason() ?? '';
     }
 
-    /**
-     * Whether a response body is allowed for this status code.
-     *
-     * @return bool True if a body is allowed; false if the response is empty.
-     */
     public function allowsBody(): bool
     {
         return !$this->isEmpty();
     }
 
-    /**
-     * Heuristic: whether the response is cacheable by default.
-     *
-     * Notes:
-     * - Some codes are cacheable only when explicit Expires/Cache-Control headers exist,
-     *   or when heuristics are permitted (see inline comments).
-     *
-     * @return bool True if cacheable by default; false otherwise.
-     */
     public function isCacheable(): bool
     {
         return match ($this) {
             self::OK, self::NON_AUTHORITATIVE_INFO, self::NO_CONTENT,
             self::PARTIAL_CONTENT, self::MULTIPLE_CHOICES,
             self::MOVED_PERMANENTLY, self::GONE,
-            self::UNAUTHORIZED, self::FORBIDDEN,           // if explicit Expires/Cache-Control
-            self::FOUND, self::SEE_OTHER                   // if heuristics allowed
-            => true,
+            self::UNAUTHORIZED, self::FORBIDDEN,
+            self::FOUND, self::SEE_OTHER => true,
             default => false,
         };
     }
 
-    /**
-     * Strict default-cacheable set (subset of isCacheable()).
-     *
-     * @return bool True if cacheable by default in stricter sense; false otherwise.
-     */
     public function isCacheableByDefault(): bool
     {
         return match ($this) {
@@ -244,128 +185,70 @@ enum StatusEnum: int
         };
     }
 
-    /**
-     * Check if the status code is client error (400–499).
-     *
-     * @return bool True for client errors; false otherwise.
-     */
     public function isClientError(): bool
     {
         return $this->series() === 4;
     }
 
-    /**
-     * Check if the response is considered "empty" (no body).
-     *
-     * Empty responses include:
-     * - 1xx (except 101 Switching Protocols)
-     * - 204 No Content
-     * - 205 Reset Content
-     * - 304 Not Modified
-     *
-     * @return bool True if empty; false otherwise.
-     */
     public function isEmpty(): bool
     {
-        return ($this->isInformational() && $this !== self::SWITCHING_PROTOCOLS)
+        return $this->isInformational()
             || $this === self::NO_CONTENT
             || $this === self::RESET_CONTENT
             || $this === self::NOT_MODIFIED;
     }
 
-    /**
-     * Check if the status code is informational (100–199).
-     *
-     * @return bool True for informational; false otherwise.
-     */
     public function isInformational(): bool
     {
         return $this->series() === 1;
     }
 
-    /**
-     * Check if the status code is redirect (300–399).
-     *
-     * @return bool True for redirects; false otherwise.
-     */
     public function isRedirect(): bool
     {
-        return $this->series() === 3;
+        return match ($this) {
+            self::MULTIPLE_CHOICES,
+            self::MOVED_PERMANENTLY,
+            self::FOUND,
+            self::SEE_OTHER,
+            self::USE_PROXY,
+            self::TEMPORARY_REDIRECT,
+            self::PERMANENT_REDIRECT => true,
+            default => false,
+        };
     }
 
-    /**
-     * Check if the status code is server error (500–599).
-     *
-     * @return bool True for server errors; false otherwise.
-     */
     public function isServerError(): bool
     {
         return $this->series() === 5;
     }
 
-    /**
-     * Check if the status code is success (200–299).
-     *
-     * @return bool True for success; false otherwise.
-     */
     public function isSuccess(): bool
     {
         return $this->series() === 2;
     }
 
-    /**
-     * Whether a Location header is expected (201 Created or any 3xx).
-     *
-     * @return bool True if Location should be included; false otherwise.
-     */
     public function needsLocationHeader(): bool
     {
         return $this === self::CREATED || $this->isRedirect();
     }
 
-    /**
-     * Get the human-readable reason phrase for this status code.
-     *
-     * Falls back to a derived phrase from the enum name when not explicitly listed.
-     *
-     * @return string Reason phrase for the status code (empty string if unknown).
-     */
     public function reason(): string
     {
-        /* ① Irregular spellings we can’t derive automatically */
-        /** @var array<int, string> $irregular */
+        /** @var array<int,string> $irregular */
         static $irregular = [
             self::MULTI_STATUS->value => 'Multi-Status',
             self::NON_AUTHORITATIVE_INFO->value => 'Non-Authoritative Information',
             self::IM_A_TEAPOT->value => "I'm a teapot",
             self::NETWORK_AUTH_REQUIRED->value => 'Network Authentication Required',
         ];
-
-        /* ② Per-worker memoisation for the regular cases */
-        /** @var array<int, string> $cache */
-        static $cache = []; // int code → string phrase
+        /** @var array<int,string> $cache */
+        static $cache = [];
 
         $code = $this->value;
-        if (isset($irregular[$code])) {
-            return $irregular[$code];
-        }
-        if (isset($cache[$code])) {
-            return $cache[$code];
-        }
 
-        /* ③ First time we see this code → derive & memoise */
-        $cache[$code] = ucwords(
-            strtolower(str_replace('_', ' ', $this->name)),
-        );
-
-        return $cache[$code];
+        return $irregular[$code] ?? $cache[$code] ??= ucwords(strtolower(str_replace('_', ' ', $this->name)));
     }
 
-    /**
-     * Return the status code series (1xx, 2xx, 3xx, etc.) as an integer.
-     *
-     * @return int Series of the status code (e.g., 2 for 2xx).
-     */
     public function series(): int
     {
         return intdiv($this->value, 100);

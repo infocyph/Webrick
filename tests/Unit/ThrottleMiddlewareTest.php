@@ -5,7 +5,9 @@ declare(strict_types=1);
 use Infocyph\CacheLayer\Counter\AtomicCounterStoreInterface;
 use Infocyph\CacheLayer\Counter\AtomicCounterValue;
 use Infocyph\Webrick\Exceptions\HttpException;
+use Infocyph\Webrick\Interop\CacheLayer\AtomicCounterAdapter;
 use Infocyph\Webrick\Middleware\ThrottleMiddleware;
+use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 
 final class PcntlFileAtomicCounterStore implements AtomicCounterStoreInterface
@@ -101,7 +103,8 @@ describe('ThrottleMiddleware', function () {
         $this->middleware = new ThrottleMiddleware(
             max: 3,
             window: 60,
-            pool: $this->cache
+            pool: $this->cache,
+            allowApproximateFallback: true,
         );
     });
 
@@ -114,7 +117,8 @@ describe('ThrottleMiddleware', function () {
         $middleware = new ThrottleMiddleware(
             max: 3,
             window: 60,
-            pool: $this->cache
+            pool: $this->cache,
+            allowApproximateFallback: true,
         );
 
         $request = mockRequest('GET', '/test');
@@ -137,16 +141,12 @@ describe('ThrottleMiddleware', function () {
 
     it('blocks requests over limit', function () {
         $request = mockRequest('GET', '/test');
-        // Keep the backing cache expiry safely ahead of the real clock for this fixed-window assertion.
-        $_SERVER['REQUEST_TIME'] = time() + 60;
         $next = fn () => Response::json(['ok' => true]);
 
-        // Make 3 requests (limit)
         for ($i = 0; $i < 3; $i++) {
             ($this->middleware)($request, $next);
         }
 
-        // 4th request should be throttled
         try {
             ($this->middleware)($request, $next);
             $this->fail('Expected throttle middleware to throw an HttpException.');
@@ -166,24 +166,20 @@ describe('ThrottleMiddleware', function () {
         $middleware = new ThrottleMiddleware(
             max: 5,
             window: 60,
-            pool: $this->cache
+            pool: $this->cache,
+            allowApproximateFallback: true,
         );
 
         $request = mockRequest('GET', '/test');
-        // Keep the backing cache expiry safely ahead of the real clock for this fixed-window assertion.
-        $_SERVER['REQUEST_TIME'] = time() + 60;
         $next = fn () => Response::json(['ok' => true]);
 
-        // Request with cost 2 (total: 2)
         $request1 = $request->withAttribute('rate_cost.thm', 2);
         $response1 = $middleware($request1, $next);
         expect($response1)->toHaveStatus(200);
 
-        // Request with cost 2 again (total: 4)
         $response2 = $middleware($request1, $next);
         expect($response2)->toHaveStatus(200);
 
-        // Request with cost 2 more (total: 6, exceeds limit of 5)
         expect(fn() => $middleware($request1, $next))
             ->toThrow(HttpException::class);
     });
@@ -193,13 +189,13 @@ describe('ThrottleMiddleware', function () {
             max: 1,
             window: 60,
             pool: $this->cache,
-            bypass: fn ($req) => $req->getHeaderLine('X-Admin-Key') === 'secret'
+            bypass: fn ($req) => $req->getHeaderLine('X-Admin-Key') === 'secret',
+            allowApproximateFallback: true,
         );
 
         $request = mockRequest('GET', '/test', ['X-Admin-Key' => 'secret']);
         $next = fn () => Response::json(['ok' => true]);
 
-        // Should not be throttled even after multiple requests
         for ($i = 0; $i < 5; $i++) {
             $response = $middleware($request, $next);
             expect($response)->toHaveStatus(200);
@@ -245,7 +241,11 @@ describe('ThrottleMiddleware', function () {
                 return new AtomicCounterValue($this->value, $this->value === $by);
             }
         };
-        $middleware = new ThrottleMiddleware(max: 2, window: 60, counterStore: $counter);
+        $middleware = new ThrottleMiddleware(
+            max: 2,
+            window: 60,
+            counterStore: new AtomicCounterAdapter($counter),
+        );
         $request = mockRequest('GET', '/atomic');
         $next = static fn () => Response::json(['ok' => true]);
 
@@ -260,31 +260,34 @@ describe('ThrottleMiddleware', function () {
         $path = tempnam(sys_get_temp_dir(), 'webrick-counter-');
         expect($path)->toBeString();
         $store = new PcntlFileAtomicCounterStore($path);
+        $counter = new AtomicCounterAdapter($store);
         $next = static fn() => Response::json(['ok' => true]);
-        $global = new ThrottleMiddleware(max: 10, window: 60, counterStore: $store, scope: 'global');
-        $login = new ThrottleMiddleware(max: 10, window: 60, counterStore: $store, scope: 'login');
+        $global = new ThrottleMiddleware(max: 10, window: 60, counterStore: $counter, scope: 'global');
+        $login = new ThrottleMiddleware(max: 10, window: 60, counterStore: $counter, scope: 'login');
         $firstWindow = time();
-        $firstClient = mockRequest('GET', '/scope')->withAttribute('client_ip', '192.0.2.1');
-        $otherClient = mockRequest('GET', '/scope')->withAttribute('client_ip', '192.0.2.2');
+        $firstClient = (new Request('GET', 'http://localhost/scope', ['REQUEST_TIME' => $firstWindow]))
+            ->withAttribute('client_ip', '192.0.2.1');
+        $otherClient = (new Request('GET', 'http://localhost/scope', ['REQUEST_TIME' => $firstWindow]))
+            ->withAttribute('client_ip', '192.0.2.2');
+        $nextWindowClient = (new Request('GET', 'http://localhost/scope', ['REQUEST_TIME' => $firstWindow + 60]))
+            ->withAttribute('client_ip', '192.0.2.1');
 
         try {
-            $_SERVER['REQUEST_TIME'] = $firstWindow;
             $global($firstClient, $next);
             $globalKey = $store->lastKey;
             $login($firstClient, $next);
             $loginKey = $store->lastKey;
             $global($otherClient, $next);
             $otherClientKey = $store->lastKey;
-            $_SERVER['REQUEST_TIME'] = $firstWindow + 60;
-            $global($firstClient, $next);
+            $global($nextWindowClient, $next);
             $nextWindowKey = $store->lastKey;
 
-            expect($globalKey)->toStartWith('webrick.th.v1.')
+            expect($globalKey)->toStartWith('webrick.th.v2.')
                 ->and(strlen($globalKey))->toBeLessThanOrEqual(64)
                 ->and(array_unique([$globalKey, $loginKey, $otherClientKey, $nextWindowKey]))->toHaveCount(4);
         } finally {
-            if (is_file($path)) {
-                unlink($path);
+            if (is_file($path) && !unlink($path)) {
+                throw new RuntimeException("Unable to remove atomic-counter fixture: {$path}");
             }
         }
     });
@@ -301,7 +304,6 @@ describe('ThrottleMiddleware', function () {
         $attemptsPerWorker = 50;
         $limit = 100;
         $children = [];
-        $_SERVER['REQUEST_TIME'] = time();
 
         try {
             for ($worker = 0; $worker < $workers; $worker++) {
@@ -320,7 +322,7 @@ describe('ThrottleMiddleware', function () {
                 $middleware = new ThrottleMiddleware(
                     max: $limit,
                     window: 60,
-                    counterStore: new PcntlFileAtomicCounterStore($counterPath),
+                    counterStore: new AtomicCounterAdapter(new PcntlFileAtomicCounterStore($counterPath)),
                     scope: 'concurrency',
                 );
                 $request = mockRequest('GET', '/concurrency')->withAttribute('client_ip', '198.51.100.10');
@@ -365,12 +367,12 @@ describe('ThrottleMiddleware', function () {
                 ->and($counterEntry['value'] ?? null)->toBe($workers * $attemptsPerWorker);
         } finally {
             foreach (glob($directory . '/*') ?: [] as $file) {
-                if (is_file($file)) {
-                    unlink($file);
+                if (is_file($file) && !unlink($file)) {
+                    throw new RuntimeException("Unable to remove throttle test fixture: {$file}");
                 }
             }
-            if (is_dir($directory)) {
-                rmdir($directory);
+            if (is_dir($directory) && !rmdir($directory)) {
+                throw new RuntimeException("Unable to remove throttle test directory: {$directory}");
             }
         }
     });

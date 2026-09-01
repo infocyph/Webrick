@@ -4,111 +4,80 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Request\Support;
 
-final class IpCidr
+/** Immutable IPv4 or IPv6 CIDR network for repeated membership checks. */
+final readonly class IpCidr
 {
-    private const int MEMO_LIMIT = 256;
+    private function __construct(
+        private string $network,
+        private int $mask,
+        private int $bytes,
+    ) {}
 
-    /** @var array<string,bool> */
-    private static array $memo = [];
-
-    /**
-     * Checks if an IP address matches a CIDR.
-     *
-     * This function first checks if the result is already cached.
-     * If not, it checks if the CIDR contains an IPv6 address (indicated by a colon).
-     * If so, it calls the v6 method, otherwise it calls the v4 method.
-     * The result is then cached for future use.
-     *
-     * @param string $ip The IP address to check.
-     * @param string $cidr The CIDR to check against.
-     * @return bool Whether the address matches the CIDR.
-     */
-    public static function match(string $ip, string $cidr): bool
+    public static function from(string $cidr): self
     {
-        $key = $ip . '|' . $cidr;
-        if (isset(self::$memo[$key])) {
-            return self::$memo[$key];
+        $cidr = trim($cidr);
+        if ($cidr === '') {
+            throw new \InvalidArgumentException('CIDR must not be empty.');
         }
 
-        $result = str_contains($cidr, ':')
-            ? self::v6($ip, $cidr)
-            : self::v4($ip, $cidr);
-
-        if (count(self::$memo) < self::MEMO_LIMIT) {
-            self::$memo[$key] = $result;
+        $slash = strpos($cidr, '/');
+        $address = $slash === false ? $cidr : substr($cidr, 0, $slash);
+        $packed = inet_pton($address);
+        if ($packed === false) {
+            throw new \InvalidArgumentException("Invalid CIDR address '{$cidr}'.");
         }
 
-        return $result;
+        $bytes = strlen($packed);
+        $maxMask = $bytes === 4 ? 32 : ($bytes === 16 ? 128 : 0);
+        if ($maxMask === 0) {
+            throw new \InvalidArgumentException("Unsupported CIDR address family '{$cidr}'.");
+        }
+
+        $mask = $maxMask;
+        if ($slash !== false) {
+            $rawMask = substr($cidr, $slash + 1);
+            if ($rawMask === '' || preg_match('/^[0-9]+$/D', $rawMask) !== 1) {
+                throw new \InvalidArgumentException("Invalid CIDR mask '{$cidr}'.");
+            }
+            $mask = (int) $rawMask;
+            if ($mask > $maxMask) {
+                throw new \InvalidArgumentException("CIDR mask exceeds address width '{$cidr}'.");
+            }
+        }
+
+        return new self($packed, $mask, $bytes);
     }
 
-    private static function matchPackedNetwork(string $ipBin, string $netBin, int $mask): bool
+    public static function match(string $ip, string|self $cidr): bool
     {
-        $bytes = intdiv($mask, 8);
-        if ($bytes > 0 && substr_compare($ipBin, $netBin, 0, $bytes) !== 0) {
+        try {
+            $network = $cidr instanceof self ? $cidr : self::from($cidr);
+        } catch (\InvalidArgumentException) {
             return false;
         }
 
-        $rem = $mask % 8;
-        if ($rem === 0) {
+        return $network->matches($ip);
+    }
+
+    public function matches(string $ip): bool
+    {
+        $packed = inet_pton($ip);
+        if ($packed === false || strlen($packed) !== $this->bytes) {
+            return false;
+        }
+
+        $wholeBytes = intdiv($this->mask, 8);
+        if ($wholeBytes > 0 && substr_compare($packed, $this->network, 0, $wholeBytes) !== 0) {
+            return false;
+        }
+
+        $remaining = $this->mask % 8;
+        if ($remaining === 0) {
             return true;
         }
 
-        $bitmask = (0xFF << (8 - $rem)) & 0xFF;
+        $bitmask = (0xFF << (8 - $remaining)) & 0xFF;
 
-        return (ord($ipBin[$bytes]) & $bitmask) === (ord($netBin[$bytes]) & $bitmask);
-    }
-
-    /**
-     * @return array{0:string,1:int}
-     */
-    private static function splitCidr(string $cidr, int $defaultMask): array
-    {
-        if (!str_contains($cidr, '/')) {
-            return [$cidr, $defaultMask];
-        }
-
-        [$subnet, $mask] = explode('/', $cidr, 2);
-
-        return [$subnet, (int) $mask];
-    }
-
-    /**
-     * Check if an IPv4 address matches a CIDR.
-     *
-     * @param string $ip The IPv4 address to check.
-     * @param string $cidr The CIDR to check against.
-     * @return bool Whether the address matches the CIDR.
-     */
-    private static function v4(string $ip, string $cidr): bool
-    {
-        [$subnet, $mask] = self::splitCidr($cidr, 32);
-
-        $ipBin = inet_pton($ip);
-        $netBin = inet_pton($subnet);
-        if ($ipBin === false || $netBin === false || strlen($ipBin) !== 4) {
-            return false;
-        }
-
-        return self::matchPackedNetwork($ipBin, $netBin, $mask);
-    }
-
-    /**
-     * Check if an IPv6 address matches a CIDR.
-     *
-     * @param string $ip The IPv6 address to check.
-     * @param string $cidr The CIDR to check against.
-     * @return bool Whether the address matches the CIDR.
-     */
-    private static function v6(string $ip, string $cidr): bool
-    {
-        [$subnet, $mask] = self::splitCidr($cidr, 128);
-
-        $ipBin = inet_pton($ip);
-        $netBin = inet_pton($subnet);
-        if ($ipBin === false || $netBin === false) {
-            return false;
-        }
-
-        return self::matchPackedNetwork($ipBin, $netBin, $mask);
+        return (ord($packed[$wholeBytes]) & $bitmask) === (ord($this->network[$wholeBytes]) & $bitmask);
     }
 }

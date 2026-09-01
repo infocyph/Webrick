@@ -29,7 +29,9 @@ final class ShardedCacheGeneration
         return [$generation, $cacheDir . \DIRECTORY_SEPARATOR . $generation];
     }
 
-    /** @return list<string> */
+    /**
+     * @return list<string>
+     */
     public static function middlewareRequirements(string $cacheDir, int $version): array
     {
         $active = self::resolve($cacheDir, $version);
@@ -48,7 +50,9 @@ final class ShardedCacheGeneration
         return matcher_normalize_middleware_requirements($blob['_middleware'] ?? []);
     }
 
-    /** @param list<string> $middleware */
+    /**
+     * @param list<string> $middleware
+     */
     public static function publish(string $cacheDir, int $version, string $generation, array $middleware): void
     {
         self::writeMetadata($cacheDir, $version, $generation, $middleware);
@@ -160,7 +164,9 @@ final class ShardedCacheGeneration
         return self::activeDirectory($cacheDir, $generation);
     }
 
-    /** @param list<string> $middleware */
+    /**
+     * @param list<string> $middleware
+     */
     private static function writeMetadata(string $cacheDir, int $version, string $generation, array $middleware): void
     {
         $file = $cacheDir . \DIRECTORY_SEPARATOR . $generation . \DIRECTORY_SEPARATOR . self::METADATA;

@@ -4,25 +4,12 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Response\Headers;
 
-/**
- * Choose best language for response and build related headers.
- *
- * Simple prefix-match algorithm, no q-value weighting (keep hot-path fast).
- */
+use Infocyph\Webrick\Support\HttpUtils;
+
+/** Choose the best language for a response and build related headers. */
 final class Language
 {
-    /**
-     * Build the Content-Language and Vary headers for the chosen language.
-     *
-     * Returns an array of header tuples suitable for appending to a response:
-     * [
-     *   ['Content-Language', $chosen],
-     *   ['Vary', 'Accept-Language'],
-     * ]
-     *
-     * @param string $chosen The selected language tag (result of negotiate()).
-     * @return array<int, array{string,string}> Array of header name/value pairs.
-     */
+    /** @return array<int,array{string,string}> */
     public static function headers(string $chosen): array
     {
         return [
@@ -31,54 +18,69 @@ final class Language
         ];
     }
 
-    /**
-     * Determine the best matching language from an Accept-Language header.
-     *
-     * Behaviour:
-     * - $supported is an ordered list of supported language tags (e.g. ['en', 'fr', 'bn-BD']).
-     * - Parses $accept for language ranges and optional q-values (e.g. "da, en-gb;q=0.8, en;q=0.7").
-     * - Ignores entries with q=0.
-     * - Supports wildcard '*' and prefix matches: exact match, "en" ↔ "en-US" prefix matching.
-     * - Chooses the first supported language that matches the highest-preference client range.
-     * - If $accept is empty or no range matches, returns the first entry from $supported.
-     *
-     * @param string[] $supported Ordered list of supported language tags.
-     * @param string $accept Raw Accept-Language header value.
-     * @return string Selected language tag from $supported.
-     */
+    /** @param string[] $supported */
     public static function negotiate(array $supported, string $accept): string
     {
-        if ($accept === '') {                       // header missing → first config entry
+        if ($supported === []) {
+            throw new \InvalidArgumentException('At least one supported language is required.');
+        }
+        if ($accept === '') {
             return $supported[0];
         }
 
-        /* --- 1. parse “da, en-gb;q=0.8, en;q=0.7” → [['da',1],['en-gb',0.8]…] ---- */
-        $parts = [];
-        foreach (explode(',', $accept) as $seg) {
-            [$tag, $params] = array_map(trim(...), explode(';', $seg, 2) + [1 => '']);
-            $q = (float) (preg_match('/q=([\d.]+)/', $params, $m) ? $m[1] : 1);
-            if ($q === 0.0) {
-                continue;
-            }            // “not acceptable” shortcut
-            $parts[] = [strtolower($tag), $q];
-        }
-        usort($parts, fn($a, $b) => $b[1] <=> $a[1]); // highest-q first
-
-        /* --- 2. best-match against supported list ------------------------------ */
-        foreach ($parts as [$pref]) {
+        foreach (self::preferences($accept) as $preference) {
+            $pref = $preference['tag'];
             foreach ($supported as $lang) {
-                $low = strtolower($lang);
-                if (
-                    $pref === '*'          // wildcard
-                    || $pref === $low          // exact
-                    || str_starts_with($pref, $low . '-')          // “en-US” vs “en”
-                    || str_starts_with($low, $pref . '-')                 // “en” vs “en-US”
-                ) {
-                    return $lang;                          // first hit wins
+                if (self::matches($pref, $lang)) {
+                    return $lang;
                 }
             }
         }
 
-        return $supported[0];                              // nothing matched – fallback
+        return $supported[0];
+    }
+
+    private static function matches(string $preference, string $language): bool
+    {
+        $language = strtolower($language);
+
+        return $preference === '*'
+            || $preference === $language
+            || str_starts_with($preference, $language . '-')
+            || str_starts_with($language, $preference . '-');
+    }
+
+    /** @return list<array{tag:string,q:float,order:int}> */
+    private static function preferences(string $accept): array
+    {
+        $parts = [];
+        foreach (explode(',', $accept) as $order => $segment) {
+            $tokens = array_map(trim(...), explode(';', $segment));
+            $tag = strtolower(array_shift($tokens));
+            if ($tag === '') {
+                continue;
+            }
+
+            $q = 1.0;
+            foreach ($tokens as $parameter) {
+                if (preg_match('/^q\s*=\s*(.*)$/i', $parameter, $matches) !== 1) {
+                    continue;
+                }
+                $q = HttpUtils::parseQValue($matches[1]) ?? 0.0;
+
+                break;
+            }
+            if ($q <= 0.0) {
+                continue;
+            }
+            $parts[] = ['tag' => $tag, 'q' => $q, 'order' => $order];
+        }
+
+        usort(
+            $parts,
+            static fn(array $a, array $b): int => $b['q'] <=> $a['q'] ?: $a['order'] <=> $b['order'],
+        );
+
+        return $parts;
     }
 }

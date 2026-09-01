@@ -6,6 +6,8 @@ use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Cookies\Cookie;
 use Infocyph\Webrick\Response\Cookies\CookieJar;
 use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Response\View\ViewFactoryInterface;
+use Infocyph\Webrick\Response\View\ViewResponder;
 use Infocyph\Webrick\Router\Facade\Router as RouteFacade;
 use Infocyph\Webrick\Router\Route\Collection;
 use Infocyph\Webrick\Router\Route\Route;
@@ -26,7 +28,6 @@ describe('Response', function () {
 
         expect($response)->toHaveStatus(200);
 
-        // Content-Type includes charset
         $ct = $response->getHeaderLine('Content-Type');
         expect($ct)->toContain('application/json');
 
@@ -84,7 +85,6 @@ describe('Response', function () {
 
         expect($response->getHeader('X-Custom'))->toBe(['value1', 'value2']);
 
-        // Header line separator (no space after comma in PSR-7)
         $line = $response->getHeaderLine('X-Custom');
         expect($line)
             ->toContain('value1')
@@ -105,7 +105,6 @@ describe('Response', function () {
             ->withSmartHeader('X-Test', 'first')
             ->withSmartHeader('X-Test', 'second');
 
-        // withSmartHeader replaces by default
         expect($response->getHeader('X-Test'))->toBe(['second']);
     });
 
@@ -194,20 +193,35 @@ describe('Response', function () {
             ->toThrow(LogicException::class);
     });
 
-    it('supports global route() helper', function () {
+    it('supports the opt-in global route() helper', function () {
+        require_once __DIR__ . '/../../src/functions.php';
+
         $routes = new Collection;
         $route = (new Route('GET', '/users/{id}', fn () => Response::noContent()))
             ->withName('users.show');
         $routes->add($route);
 
-        RouteFacade::bindUrlServices($routes, 'test-sign-key', 60);
+        try {
+            RouteFacade::bindUrlServices($routes, 'test-sign-key', 60);
 
-        expect(route('users.show', ['id' => 7]))->toBe('/users/7')
-            ->and(route('users.show', ['id' => 7], ['tab' => 'profile']))->toBe('/users/7?tab=profile');
+            expect(route('users.show', ['id' => 7]))->toBe('/users/7')
+                ->and(route('users.show', ['id' => 7], ['tab' => 'profile']))->toBe('/users/7?tab=profile');
+        } finally {
+            RouteFacade::resetUrlServices();
+        }
     });
 
-    it('throws when view factory is not bound', function () {
-        expect(fn () => Response::view('home', [], 200, [], 'utf-8', '__missing_view_factory__'))
-            ->toThrow(RuntimeException::class);
+    it('renders views through the explicit view responder boundary', function () {
+        $factory = new class implements ViewFactoryInterface {
+            public function render(string $view, array $data = []): string
+            {
+                return '<h1>' . $view . ': ' . ($data['name'] ?? 'n/a') . '</h1>';
+            }
+        };
+        $response = (new ViewResponder($factory))->render('home', ['name' => 'Ada']);
+
+        expect($response)->toHaveStatus(200)
+            ->and($response->getHeaderLine('Content-Type'))->toBe('text/html; charset=utf-8')
+            ->and((string) $response->getBody())->toBe('<h1>home: Ada</h1>');
     });
 });

@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Infocyph\InterMix\DI\Container;
+use Infocyph\InterMix\DI\Invoker;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Definition\Registrar;
@@ -18,6 +20,7 @@ function dispatchResponsePayloadForTest(mixed $payload, array $middleware = []):
         register: static function (Registrar $registrar) use ($middleware, $payload): void {
             $registrar->get('/payload', static fn(): mixed => $payload, ['middleware' => $middleware]);
         },
+        invoker: Invoker::with(new Container('webrick.tests.dispatcher-payload')),
     );
 
     return $kernel->handle(mockRequest('GET', '/payload'));

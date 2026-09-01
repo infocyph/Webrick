@@ -7,43 +7,21 @@ use Infocyph\Webrick\Request\Core\Uri;
 use Infocyph\Webrick\Request\Support\HeaderBag;
 use Infocyph\Webrick\Request\Support\IpCidr;
 
-/** @return array<mixed> */
-function staticArrayProperty(string $class, string $property): array
-{
-    $reflection = new ReflectionProperty($class, $property);
-    $value = $reflection->getValue();
-
-    return is_array($value) ? $value : [];
-}
-
-function resetStaticArrayProperty(string $class, string $property): void
-{
-    $reflection = new ReflectionProperty($class, $property);
-    $reflection->setValue(null, []);
-}
-
 describe('Persistent worker cache bounds', function () {
-    afterEach(function () {
-        resetStaticArrayProperty(HeaderBag::class, 'normCache');
-        resetStaticArrayProperty(IpCidr::class, 'memo');
-        resetStaticArrayProperty(Uri::class, 'asciiCache');
-        resetStaticArrayProperty(GatewayHardeningMiddleware::class, 'hostRegexCache');
-    });
+    it('keeps request-derived caches out of static process state and bounds configuration caches', function () {
+        expect(property_exists(HeaderBag::class, 'normCache'))->toBeFalse()
+            ->and(property_exists(IpCidr::class, 'memo'))->toBeFalse()
+            ->and(property_exists(Uri::class, 'asciiCache'))->toBeFalse();
 
-    it('bounds request-derived and configuration caches', function () {
         for ($i = 0; $i < 320; ++$i) {
             new HeaderBag(['X-Audit-' . $i => 'value']);
             new Uri('https://host-' . $i . '.example/path');
             IpCidr::match('10.' . intdiv($i, 256) . '.' . ($i % 256) . '.1', '10.0.0.0/8');
         }
 
-        for ($i = 0; $i < 80; ++$i) {
-            new GatewayHardeningMiddleware(trustedHosts: ['host-' . $i . '.example']);
-        }
+        $gateway = new GatewayHardeningMiddleware(trustedHosts: ['host-79.example']);
+        $reflection = new ReflectionProperty($gateway, 'hostRegex');
 
-        expect(staticArrayProperty(HeaderBag::class, 'normCache'))->toHaveCount(256)
-            ->and(staticArrayProperty(IpCidr::class, 'memo'))->toHaveCount(256)
-            ->and(staticArrayProperty(Uri::class, 'asciiCache'))->toHaveCount(256)
-            ->and(staticArrayProperty(GatewayHardeningMiddleware::class, 'hostRegexCache'))->toHaveCount(64);
+        expect($reflection->getValue($gateway))->toHaveCount(1);
     });
 });
