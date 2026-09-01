@@ -72,8 +72,8 @@ final class ReleaseManifestLoader
             || $webrick['path'] === ''
             || !is_string($webrick['sha256'] ?? null)
             || preg_match('/^[a-f0-9]{64}$/D', $webrick['sha256']) !== 1
-            || !is_string($webrick['artifact_fingerprint'] ?? null)
-            || $webrick['artifact_fingerprint'] === ''
+            || !is_string($webrick['fingerprint'] ?? null)
+            || $webrick['fingerprint'] === ''
         ) {
             throw new UnexpectedValueException('Malformed Webrick router release metadata.');
         }
