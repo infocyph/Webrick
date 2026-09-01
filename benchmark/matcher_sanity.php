@@ -33,6 +33,15 @@ function assertOutcome(mixed $actual, MatchOutcomeType $type, string $message): 
     return $actual;
 }
 
+function assertAllowed(MatchOutcome $outcome, array $expected, string $message): void
+{
+    foreach ($expected as $allowed) {
+        if (!in_array($allowed, $outcome->allowed, true)) {
+            throw new RuntimeException($message . ': missing allowed method ' . $allowed . '.');
+        }
+    }
+}
+
 /** @var array<string,Closure():MatcherInterface> $factories */
 $factories = [
     'Fused' => static fn(): MatcherInterface => FusedMatcher::make(),
@@ -49,14 +58,37 @@ foreach ($factories as $name => $factory) {
     $later = sanityRoute('GET', '/pick/{value}', $name . '-later');
     $post = sanityRoute('POST', '/resource/{id}', $name . '-post');
     $get = sanityRoute('GET', '/resource/{id}', $name . '-get');
+    $staticGet = sanityRoute('GET', '/static-resource', $name . '-static-get');
+    $staticPatch = sanityRoute('PATCH', '/static-resource', $name . '-static-patch');
+    $overlapGet = sanityRoute('GET', '/overlap/{value}', $name . '-overlap-get');
+    $overlapPost = sanityRoute('POST', '/overlap/{value:slug}', $name . '-overlap-post');
+    $explicitOptions = sanityRoute('OPTIONS', '/explicit/{id}', $name . '-explicit-options');
 
     $adaptive = [];
     for ($i = 0; $i < 64; $i++) {
         $adaptive[] = sanityRoute('GET', '/catalog/family-' . $i . '/{id}', $name . '-adaptive-' . $i);
     }
+    $adaptivePost = sanityRoute('POST', '/catalog/family-63/{id}', $name . '-adaptive-post');
 
     $matcher = $factory();
-    foreach ([$regex, $semver, $hexcolor, $ipv4, $callable, $precedence, $later, $post, $get, ...$adaptive] as $route) {
+    foreach ([
+        $regex,
+        $semver,
+        $hexcolor,
+        $ipv4,
+        $callable,
+        $precedence,
+        $later,
+        $post,
+        $get,
+        $staticGet,
+        $staticPatch,
+        $overlapGet,
+        $overlapPost,
+        $explicitOptions,
+        ...$adaptive,
+        $adaptivePost,
+    ] as $route) {
         $matcher->add($route);
     }
     $matcher->finalize();
@@ -106,39 +138,53 @@ foreach ($factories as $name => $factory) {
         $matcher->matchCompiled('HEAD', '*', '/resource/1'),
         $name . ': HEAD-to-GET fallback failed.',
     );
+    assertSameValue(
+        [$explicitOptions->getIndex(), ['id' => '1']],
+        $matcher->matchCompiled('OPTIONS', '*', '/explicit/1'),
+        $name . ': explicit OPTIONS route was replaced by automatic OPTIONS.',
+    );
 
     $methodMiss = assertOutcome(
         $matcher->matchCompiled('DELETE', '*', '/resource/1'),
         MatchOutcomeType::METHOD_NOT_ALLOWED,
         $name . ': 405 outcome failed.',
     );
-    foreach (['GET', 'HEAD', 'POST'] as $allowed) {
-        if (!in_array($allowed, $methodMiss->allowed, true)) {
-            throw new RuntimeException($name . ': missing allowed method ' . $allowed . '.');
-        }
-    }
+    assertAllowed($methodMiss, ['GET', 'HEAD', 'POST'], $name . ': dynamic fallback 405');
+
+    $staticMethodMiss = assertOutcome(
+        $matcher->matchCompiled('DELETE', '*', '/static-resource'),
+        MatchOutcomeType::METHOD_NOT_ALLOWED,
+        $name . ': compiled static 405 outcome failed.',
+    );
+    assertAllowed($staticMethodMiss, ['GET', 'HEAD', 'PATCH'], $name . ': compiled static 405');
 
     $adaptiveMethodMiss = assertOutcome(
-        $matcher->matchCompiled('POST', '*', '/catalog/family-63/9'),
+        $matcher->matchCompiled('DELETE', '*', '/catalog/family-63/9'),
         MatchOutcomeType::METHOD_NOT_ALLOWED,
-        $name . ': adaptive 405 outcome failed.',
+        $name . ': adaptive compiled 405 outcome failed.',
     );
-    foreach (['GET', 'HEAD'] as $allowed) {
-        if (!in_array($allowed, $adaptiveMethodMiss->allowed, true)) {
-            throw new RuntimeException($name . ': adaptive 405 missing ' . $allowed . '.');
-        }
-    }
+    assertAllowed($adaptiveMethodMiss, ['GET', 'HEAD', 'POST'], $name . ': adaptive compiled 405');
+
+    $overlapMethodMiss = assertOutcome(
+        $matcher->matchCompiled('DELETE', '*', '/overlap/abc'),
+        MatchOutcomeType::METHOD_NOT_ALLOWED,
+        $name . ': overlapping dynamic 405 outcome failed.',
+    );
+    assertAllowed($overlapMethodMiss, ['GET', 'HEAD', 'POST'], $name . ': overlapping dynamic 405');
 
     $options = assertOutcome(
         $matcher->matchCompiled('OPTIONS', '*', '/resource/1'),
         MatchOutcomeType::AUTO_OPTIONS,
         $name . ': automatic OPTIONS failed.',
     );
-    foreach (['GET', 'HEAD', 'POST'] as $allowed) {
-        if (!in_array($allowed, $options->allowed, true)) {
-            throw new RuntimeException($name . ': automatic OPTIONS missing ' . $allowed . '.');
-        }
-    }
+    assertAllowed($options, ['GET', 'HEAD', 'POST'], $name . ': automatic OPTIONS');
+
+    $adaptiveOptions = assertOutcome(
+        $matcher->matchCompiled('OPTIONS', '*', '/catalog/family-63/9'),
+        MatchOutcomeType::AUTO_OPTIONS,
+        $name . ': adaptive automatic OPTIONS failed.',
+    );
+    assertAllowed($adaptiveOptions, ['GET', 'HEAD', 'POST'], $name . ': adaptive automatic OPTIONS');
 
     assertOutcome(
         $matcher->matchCompiled('GET', '*', '/catalog/family-missing/9'),
