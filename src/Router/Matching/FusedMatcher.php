@@ -15,7 +15,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
     use MatcherCacheLifecycleTrait;
     use MatcherFactoryTrait;
 
-    private const int INDEX_CACHE_VERSION = 9;
+    private const int INDEX_CACHE_VERSION = 10;
 
     /** @var array<string,array{0:string,1:?string}> */
     private array $alias = [];
@@ -32,6 +32,8 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
     private ?array $compiledHosts = null;
 
     private CompiledMatcherEngine $engine;
+
+    private CompiledMatcherFastEngine $fastEngine;
 
     private bool $finalized = false;
 
@@ -96,7 +98,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
     {
         $hosts = $this->compiledHosts ?? throw new \LogicException('Fused matcher must be finalized before compiled dispatch.');
 
-        return $this->engine->matchSingleCompiled(
+        return $this->fastEngine->matchSingle(
             $hosts[$host] ?? null,
             $host !== '*' ? ($hosts['*'] ?? null) : null,
             $method,
@@ -129,6 +131,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
     {
         $this->index ??= new CanonicalMatcherIndex();
         $this->engine ??= new CompiledMatcherEngine();
+        $this->fastEngine ??= new CompiledMatcherFastEngine();
     }
 
     /**
