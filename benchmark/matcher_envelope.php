@@ -54,7 +54,7 @@ function envelopeDirectorySize(string $path): int
 
     $size = 0;
     foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($path, FilesystemIterator::SKIP_DOTS)) as $file) {
-        if ($file instanceof SplFileInfo && $file->isFile()) {
+        if ($file->isFile()) {
             $size += $file->getSize();
         }
     }
@@ -62,7 +62,6 @@ function envelopeDirectorySize(string $path): int
     return $size;
 }
 
-/** @return FusedMatcher|GeneratedMatcher|ShardedMatcher */
 function envelopeMatcher(string $name): MatcherInterface
 {
     return match ($name) {
@@ -128,9 +127,9 @@ mkdir($root, 0775, true);
 try {
     $builder = envelopeMatcher($matcherName);
     $builder->enableCache($cache)->enableCacheWrite();
-    $targetPath = envelopePopulate($builder, $routeCount);
 
     $buildStart = hrtime(true);
+    $targetPath = envelopePopulate($builder, $routeCount);
     $builder->finalize();
     $buildMs = (hrtime(true) - $buildStart) / 1_000_000;
     $artifactBytes = envelopeDirectorySize($cache);
