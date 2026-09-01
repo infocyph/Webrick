@@ -18,6 +18,18 @@ final readonly class ReleaseCompiler
         private RouterArtifactCompiler $routerArtifacts = new RouterArtifactCompiler(),
     ) {}
 
+    public static function runtimeManifestPath(string $releaseManifestPath): string
+    {
+        $path = trim($releaseManifestPath);
+        if ($path === '') {
+            throw new \InvalidArgumentException('Release manifest path must not be empty.');
+        }
+
+        return str_ends_with(strtolower($path), '.json')
+            ? substr($path, 0, -5) . '.php'
+            : $path . '.php';
+    }
+
     /**
      * @param array<string,mixed> $registrarOptions
      * @param list<mixed> $preGlobal
@@ -81,18 +93,6 @@ final readonly class ReleaseCompiler
             'release_manifest' => $releaseManifestPath,
             'release_runtime_manifest' => $runtimeManifestPath,
         ];
-    }
-
-    public static function runtimeManifestPath(string $releaseManifestPath): string
-    {
-        $path = trim($releaseManifestPath);
-        if ($path === '') {
-            throw new \InvalidArgumentException('Release manifest path must not be empty.');
-        }
-
-        return str_ends_with(strtolower($path), '.json')
-            ? substr($path, 0, -5) . '.php'
-            : $path . '.php';
     }
 
     private function writeAtomic(string $path, string $contents): void

@@ -163,20 +163,6 @@ final class RuntimeDispatcher
         return $arguments;
     }
 
-    /** @return list<mixed> */
-    private function pipelineMiddleware(ExecutionPlan $plan): array
-    {
-        $middleware = $this->preGlobal;
-        foreach ($plan->middleware as $entry) {
-            $middleware[] = $entry;
-        }
-        foreach ($this->postGlobal as $entry) {
-            $middleware[] = $entry;
-        }
-
-        return $middleware;
-    }
-
     private function pipelineFor(ExecutionPlan $plan): ?CompiledMiddlewarePipeline
     {
         if (isset($this->pipelines[$plan->routeId])) {
@@ -197,6 +183,20 @@ final class RuntimeDispatcher
             ),
             $this->runtime,
         );
+    }
+
+    /** @return list<mixed> */
+    private function pipelineMiddleware(ExecutionPlan $plan): array
+    {
+        $middleware = $this->preGlobal;
+        foreach ($plan->middleware as $entry) {
+            $middleware[] = $entry;
+        }
+        foreach ($this->postGlobal as $entry) {
+            $middleware[] = $entry;
+        }
+
+        return $middleware;
     }
 
     private function response(mixed $result): Response
