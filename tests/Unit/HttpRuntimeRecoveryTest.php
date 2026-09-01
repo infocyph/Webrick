@@ -49,12 +49,11 @@ it('prefers the php runtime manifest and falls back to json', function (): void 
             'artifact_fingerprint' => 'router-fingerprint',
         ],
     ];
+    $runtime = $base;
+    $runtime['environment'] = 'php';
 
     file_put_contents($jsonPath, json_encode($base, JSON_THROW_ON_ERROR));
-    file_put_contents(
-        $phpPath,
-        "<?php\nreturn " . var_export($base + ['environment' => 'php'], true) . ";\n",
-    );
+    file_put_contents($phpPath, "<?php\nreturn " . var_export($runtime, true) . ";\n");
 
     try {
         $loader = new ReleaseManifestLoader();
@@ -77,7 +76,7 @@ it('prefers the php runtime manifest and falls back to json', function (): void 
 
 it('renders a known routing throwable without requiring a throw catch trampoline', function (): void {
     $handler = new ErrorHandler();
-    $request = Request::fake('POST', '/known');
+    $request = Request::fake(method: 'POST', uri: '/known');
     $error = new MethodNotAllowedException('POST', '/known', ['GET']);
 
     $response = $handler->renderThrowable($request, $error);
