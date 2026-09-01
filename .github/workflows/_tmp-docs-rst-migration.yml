@@ -35,6 +35,12 @@ jobs:
           import pypandoc
 
           docs = Path('docs')
+          engineering_notes = {
+              'webrick-5-deep-correctness-completion.rst',
+              'webrick-5-deep-correctness-revision.rst',
+              'webrick-5-major-release-plan-details.rst',
+              'webrick-5-matcher-fast-route-optimization-completion.rst',
+          }
 
           fence = re.compile(
               r"```\{(?P<kind>toctree|note|warning|tip|important|caution|seealso)\}\s*\n(?P<body>.*?)\n```",
@@ -91,11 +97,18 @@ jobs:
               for marker, replacement in directives.items():
                   rst = rst.replace(marker, replacement)
 
+              # Pandoc emits explicit targets for GFM heading IDs. Sphinx already
+              # supplies document-scoped section labels, and common headings such
+              # as "Do" / "Don't" otherwise collide across the documentation set.
+              rst = re.sub(r'(?m)^\.\. _[^\n]+:\s*\n(?:\s*\n)?', '', rst)
+
               # Keep repository/document links valid after the extension migration.
               rst = re.sub(r'(?P<target>(?:\.?\.?/|[A-Za-z0-9_.-]+/)[^\s<>`]*?)\.md(?P<tail>(?:#[^\s<>`]*)?)', r'\g<target>.rst\g<tail>', rst)
               rst = re.sub(r'(?P<target>\./[^\s<>`]*?)\.md(?P<tail>(?:#[^\s<>`]*)?)', r'\g<target>.rst\g<tail>', rst)
 
               target = source.with_suffix('.rst')
+              if target.name in engineering_notes and target.parent == docs:
+                  rst = ':orphan:\n\n' + rst.lstrip()
               target.write_text(rst.rstrip() + '\n', encoding='utf-8')
               source.unlink()
           PY
@@ -173,7 +186,7 @@ jobs:
             exit 1
           fi
           python -m pip install --disable-pip-version-check -r docs/requirements.txt
-          python -m sphinx -W --keep-going -b html docs /tmp/webrick-docs-html
+          WEBRICK_DOCS_OFFLINE=1 python -m sphinx -W --keep-going -b html docs /tmp/webrick-docs-html
 
       - name: Commit migrated documentation
         shell: bash
