@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  phase3-benchmark:
+  phase3-typed-baseline:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -21,80 +21,86 @@ jobs:
           coverage: none
           tools: composer:v2
       - run: composer install --no-interaction --no-progress --prefer-dist
-      - name: Create Phase 3 experiment benchmark
+      - name: Create typed-route baseline benchmark
         shell: bash
         run: |
-          cat > benchmarks/MatcherConstraintOpcodeExperimentBench.php <<'PHP'
+          cat > benchmarks/MatcherTypedConstraintExperimentBench.php <<'PHP'
           <?php
 
           declare(strict_types=1);
 
           namespace Infocyph\Webrick\Benchmarks;
 
-          use Infocyph\Webrick\Router\Constraint\Registry;
+          use Infocyph\Webrick\Constants\MatcherModeEnum;
+          use Infocyph\Webrick\Router\Matching\FusedMatcher;
+          use Infocyph\Webrick\Router\Matching\GeneratedMatcher;
+          use Infocyph\Webrick\Router\Matching\MatcherInterface;
+          use Infocyph\Webrick\Router\Matching\ShardedMatcher;
+          use Infocyph\Webrick\Router\Route\CompiledRoute;
+          use Infocyph\Webrick\Router\Route\Route;
           use PhpBench\Attributes as Bench;
 
-          #[Bench\Groups(['matcher', 'matcher-constraint-phase3'])]
-          #[Bench\Iterations(7)]
-          #[Bench\Revs(20000)]
-          #[Bench\Warmup(2)]
-          final class MatcherConstraintOpcodeExperimentBench
+          #[Bench\Groups(['matcher', 'matcher-typed-constraint-phase3'])]
+          #[Bench\Iterations(5)]
+          #[Bench\Revs(3000)]
+          #[Bench\Warmup(1)]
+          final class MatcherTypedConstraintExperimentBench
           {
-              #[Bench\ParamProviders('provideCases')]
-              public function benchCallable(array $params): void
-              {
-                  $call = (string) $params['call'];
-                  $result = is_callable($call) && $call((string) $params['value']);
-                  self::guard($result);
-              }
+              /** @var array<string,MatcherInterface> */
+              private static array $matchers = [];
 
               #[Bench\ParamProviders('provideCases')]
-              public function benchOpcode(array $params): void
+              public function benchTypedConstraint(array $params): void
               {
-                  $result = self::opcode((int) $params['op'], (string) $params['value']);
-                  self::guard($result);
+                  $matcher = self::matcher((string) $params['matcher']);
+                  $matcher->matchCompiled('GET', '*', (string) $params['path']);
               }
 
-              /** @return iterable<string,array{op:int,call:string,value:string}> */
+              /** @return iterable<string,array{matcher:string,path:string}> */
               public function provideCases(): iterable
               {
-                  yield 'int-hit' => ['op' => 1, 'call' => 'ctype_digit', 'value' => '123456'];
-                  yield 'int-miss' => ['op' => 1, 'call' => 'ctype_digit', 'value' => '12x456'];
-                  yield 'numeric-hit' => ['op' => 2, 'call' => 'is_numeric', 'value' => '-123.45e2'];
-                  yield 'numeric-miss' => ['op' => 2, 'call' => 'is_numeric', 'value' => '12x'];
-                  yield 'alpha-hit' => ['op' => 3, 'call' => 'ctype_alpha', 'value' => 'Benchmark'];
-                  yield 'alpha-miss' => ['op' => 3, 'call' => 'ctype_alpha', 'value' => 'Bench42'];
-                  yield 'alnum-hit' => ['op' => 4, 'call' => 'ctype_alnum', 'value' => 'Bench42'];
-                  yield 'alnum-miss' => ['op' => 4, 'call' => 'ctype_alnum', 'value' => 'Bench-42'];
-                  yield 'bool-hit' => ['op' => 5, 'call' => Registry::class . '::isBoolString', 'value' => 'false'];
-                  yield 'bool-miss' => ['op' => 5, 'call' => Registry::class . '::isBoolString', 'value' => 'maybe'];
-                  yield 'json-hit' => ['op' => 6, 'call' => 'json_validate', 'value' => '{"ok":true}'];
-                  yield 'json-miss' => ['op' => 6, 'call' => 'json_validate', 'value' => '{nope}'];
-                  yield 'ipv6-hit' => ['op' => 7, 'call' => Registry::class . '::isIpv6String', 'value' => '2001:db8::1'];
-                  yield 'ipv6-miss' => ['op' => 7, 'call' => Registry::class . '::isIpv6String', 'value' => 'not-ipv6'];
-              }
-
-              private static function guard(bool $result): void
-              {
-                  if ($result && PHP_INT_SIZE === 0) {
-                      throw new \LogicException('Unreachable benchmark guard.');
+                  foreach ([
+                      MatcherModeEnum::FUSED->value,
+                      MatcherModeEnum::GENERATED->value,
+                      MatcherModeEnum::SHARDED->value,
+                  ] as $matcher) {
+                      yield $matcher . '-int-hit' => ['matcher' => $matcher, 'path' => '/typed/int/123456'];
+                      yield $matcher . '-int-miss' => ['matcher' => $matcher, 'path' => '/typed/int/12x456'];
+                      yield $matcher . '-numeric-hit' => ['matcher' => $matcher, 'path' => '/typed/numeric/-123.45e2'];
+                      yield $matcher . '-alpha-hit' => ['matcher' => $matcher, 'path' => '/typed/alpha/Benchmark'];
+                      yield $matcher . '-alnum-hit' => ['matcher' => $matcher, 'path' => '/typed/alnum/Bench42'];
+                      yield $matcher . '-bool-hit' => ['matcher' => $matcher, 'path' => '/typed/bool/FALSE'];
+                      yield $matcher . '-json-hit' => ['matcher' => $matcher, 'path' => '/typed/json/{"ok":true}'];
+                      yield $matcher . '-ipv6-hit' => ['matcher' => $matcher, 'path' => '/typed/ipv6/2001:db8::1'];
                   }
               }
 
-              private static function opcode(int $op, string $value): bool
+              private static function matcher(string $mode): MatcherInterface
               {
-                  return match ($op) {
-                      1 => ctype_digit($value),
-                      2 => is_numeric($value),
-                      3 => ctype_alpha($value),
-                      4 => ctype_alnum($value),
-                      5 => $value === 'true' || $value === 'false' || $value === '0' || $value === '1',
-                      6 => json_validate($value),
-                      7 => filter_var($value, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) !== false,
-                      default => false,
+                  if (isset(self::$matchers[$mode])) {
+                      return self::$matchers[$mode];
+                  }
+
+                  $matcher = match ($mode) {
+                      MatcherModeEnum::FUSED->value => FusedMatcher::make(),
+                      MatcherModeEnum::GENERATED->value => GeneratedMatcher::make(),
+                      MatcherModeEnum::SHARDED->value => ShardedMatcher::make(),
+                      default => throw new \LogicException('Unsupported matcher mode.'),
                   };
+
+                  $index = 0;
+                  foreach (['int', 'numeric', 'alpha', 'alnum', 'bool', 'json', 'ipv6'] as $constraint) {
+                      $route = CompiledRoute::fromRoute(
+                          new Route('GET', "/typed/{$constraint}/{value:{$constraint}}", 'typed-handler'),
+                          $index++,
+                      );
+                      $matcher->add($route);
+                  }
+                  $matcher->finalize();
+
+                  return self::$matchers[$mode] = $matcher;
               }
           }
           PHP
-      - name: Run Phase 3 opcode experiment
-        run: vendor/bin/phpbench run benchmarks/MatcherConstraintOpcodeExperimentBench.php --bootstrap=vendor/autoload.php --report=aggregate
+      - name: Run typed-route baseline
+        run: vendor/bin/phpbench run benchmarks/MatcherTypedConstraintExperimentBench.php --bootstrap=vendor/autoload.php --report=aggregate
