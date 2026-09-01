@@ -132,7 +132,10 @@ final class RuntimeDispatcher
         );
     }
 
-    /** @param array<string,string> $vars @return list<string> */
+    /**
+     * @param array<string,string> $vars
+     * @return list<string>
+     */
     private function orderedRouteArguments(ExecutionPlan $plan, array $vars): array
     {
         $arguments = [];
@@ -185,19 +188,27 @@ final class RuntimeDispatcher
     /** @return list<mixed> */
     private function postGlobal(): array
     {
-        return $this->postGlobal ??= $this->withTagged(
-            $this->artifact->postGlobal(),
-            $this->artifact->postGlobalTags,
-        );
+        if ($this->postGlobal === null) {
+            $this->postGlobal = $this->withTagged(
+                $this->artifact->postGlobal(),
+                $this->artifact->postGlobalTags,
+            );
+        }
+
+        return $this->postGlobal;
     }
 
     /** @return list<mixed> */
     private function preGlobal(): array
     {
-        return $this->preGlobal ??= $this->withTagged(
-            $this->artifact->preGlobal(),
-            $this->artifact->preGlobalTags,
-        );
+        if ($this->preGlobal === null) {
+            $this->preGlobal = $this->withTagged(
+                $this->artifact->preGlobal(),
+                $this->artifact->preGlobalTags,
+            );
+        }
+
+        return $this->preGlobal;
     }
 
     private function response(mixed $result): Response
@@ -225,7 +236,11 @@ final class RuntimeDispatcher
         return $variables;
     }
 
-    /** @param list<mixed> $explicit @param list<string> $tags @return list<mixed> */
+    /**
+     * @param list<mixed> $explicit
+     * @param list<string> $tags
+     * @return list<mixed>
+     */
     private function withTagged(array $explicit, array $tags): array
     {
         foreach ($tags as $tag) {
