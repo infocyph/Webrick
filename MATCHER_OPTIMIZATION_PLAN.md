@@ -1,6 +1,6 @@
 # Webrick Matcher Optimization Plan
 
-Status: active development plan — Phases 1–3 complete  
+Status: active development plan — Phases 1–4 complete  
 Branch: `webrick-5/batch-1-correctness`
 
 ## Objective
@@ -212,6 +212,10 @@ Rules:
 - Do not replace PCRE-backed constraints merely for architectural neatness; benchmark them.
 
 ## Phase 4 — Recursive adaptive discriminator
+
+**Status: complete — candidate rejected by benchmark (2026-09-01).**
+
+A bounded second literal discriminator was implemented and measured on a 16×16 literal family, then reverted because it did not clear the required performance gate. The one-level `fast_dispatch` remains the production design. Metrics: fused-hit: 2.259 -> 2.260 us (1.000x); fused-miss: 2.686 -> 2.665 us (0.992x); sharded-hit: 2.304 -> 2.333 us (1.013x); sharded-miss: 2.805 -> 2.790 us (0.995x); average ratio: 1.000x.
 
 Goal: generalize today's single literal `fast_dispatch` optimization into a shallow build-time decision structure.
 
