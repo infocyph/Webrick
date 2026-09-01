@@ -30,15 +30,19 @@ final class CompiledMatcherIndexValidator
         return $hosts;
     }
 
-    /** @return array{static:array<string,array<string,mixed>>,dynamic:array<string,array<int,array<string,array<string,mixed>>>>} */
+    /** @return array{static:array<string,array<string,mixed>>,static_ids:array<string,array<string,int>>,dynamic:array<string,array<int,array<string,array<string,mixed>>>>} */
     public static function validateGroup(mixed $raw, bool $validateRegex = false): array
     {
         if (!is_array($raw)) {
             throw new \UnexpectedValueException('Compiled matcher group must be an array.');
         }
 
+        $static = self::validateStatic($raw['static'] ?? null);
+        $staticIds = self::validateStaticIds($raw['static_ids'] ?? null, $static);
+
         return [
-            'static' => self::validateStatic($raw['static'] ?? null),
+            'static' => $static,
+            'static_ids' => $staticIds,
             'dynamic' => self::validateDynamic($raw['dynamic'] ?? null, $validateRegex),
         ];
     }
@@ -65,6 +69,44 @@ final class CompiledMatcherIndexValidator
         }
 
         return $static;
+    }
+
+    /**
+     * @param array<string,array<string,mixed>> $static
+     * @return array<string,array<string,int>>
+     */
+    private static function validateStaticIds(mixed $raw, array $static): array
+    {
+        if (!is_array($raw)) {
+            throw new \UnexpectedValueException('Compiled matcher compact static map must be an array.');
+        }
+
+        $ids = [];
+        foreach ($raw as $method => $paths) {
+            if (!is_string($method) || $method === '' || !is_array($paths)) {
+                throw new \UnexpectedValueException('Compiled matcher compact static method map is invalid.');
+            }
+            foreach ($paths as $path => $id) {
+                if (!is_string($path) || !is_int($id) || $id < 0) {
+                    throw new \UnexpectedValueException('Compiled matcher compact static route ID is invalid.');
+                }
+                $route = $static[$method][$path] ?? null;
+                if ($route === null || self::routeIndex($route) !== $id) {
+                    throw new \UnexpectedValueException('Compiled matcher compact static route ID does not match its route payload.');
+                }
+                $ids[$method][$path] = $id;
+            }
+        }
+
+        foreach ($static as $method => $paths) {
+            foreach ($paths as $path => $_route) {
+                if (!isset($ids[$method][$path])) {
+                    throw new \UnexpectedValueException('Compiled matcher compact static map is incomplete.');
+                }
+            }
+        }
+
+        return $ids;
     }
 
     /** @return array<string,array<int,array<string,array<string,mixed>>>> */
@@ -132,12 +174,15 @@ final class CompiledMatcherIndexValidator
 
         $segments = self::validateSegments($raw['segments'] ?? null);
         $route = $raw['route'] ?? null;
-        self::validateRoute($route);
+        $id = $raw['id'] ?? null;
+        if (!is_int($id) || $id < 0 || self::validateRoute($route) !== $id) {
+            throw new \UnexpectedValueException('Compiled matcher fallback route ID is invalid.');
+        }
 
-        return ['type' => 'fallback', 'segments' => $segments, 'route' => $route];
+        return ['type' => 'fallback', 'segments' => $segments, 'route' => $route, 'id' => $id];
     }
 
-    /** @return array{type:'pcre',regex:string,routes:array<string,array{route:mixed,params:array<string,string>}>} */
+    /** @return array{type:'pcre',regex:string,routes:array<string,array{route:mixed,id:int,params:array<string,string>}>} */
     private static function validatePcreStep(array $raw, bool $validateRegex): array
     {
         $regex = $raw['regex'] ?? null;
@@ -155,9 +200,13 @@ final class CompiledMatcherIndexValidator
                 throw new \UnexpectedValueException('Compiled matcher PCRE route map is invalid.');
             }
             $route = $entry['route'] ?? null;
-            self::validateRoute($route);
+            $id = $entry['id'] ?? null;
+            if (!is_int($id) || $id < 0 || self::validateRoute($route) !== $id) {
+                throw new \UnexpectedValueException('Compiled matcher PCRE route ID is invalid.');
+            }
             $routes[$mark] = [
                 'route' => $route,
+                'id' => $id,
                 'params' => self::validateParams($entry['params'] ?? null),
             ];
         }
@@ -226,13 +275,21 @@ final class CompiledMatcherIndexValidator
         return $segments;
     }
 
-    private static function validateRoute(mixed $route): void
+    private static function routeIndex(mixed $route): int
     {
-        if ($route instanceof CompiledRoute) {
-            return;
-        }
-        if (!is_array($route) || ExecutableRoutePayload::routeIndex($route) === null) {
+        $index = $route instanceof CompiledRoute
+            ? $route->getIndex()
+            : ExecutableRoutePayload::routeIndex($route);
+
+        if (!is_int($index) || $index < 0) {
             throw new \UnexpectedValueException('Compiled matcher route payload is invalid.');
         }
+
+        return $index;
+    }
+
+    private static function validateRoute(mixed $route): int
+    {
+        return self::routeIndex($route);
     }
 }
