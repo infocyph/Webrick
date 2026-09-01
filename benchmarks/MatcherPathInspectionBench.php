@@ -7,10 +7,8 @@ namespace Infocyph\Webrick\Benchmarks;
 use PhpBench\Attributes as Bench;
 
 /**
- * Baseline for the string/array work currently performed around compact
- * dynamic dispatch. Phase 2 compares these C-backed string primitives with a
- * one-pass path scanner; this benchmark intentionally contains no alternative
- * implementation yet.
+ * Measures path inspection around compact dynamic dispatch and preserves the
+ * rejected Phase 2 PHP scanner beside the retained C-backed string strategy.
  */
 #[Bench\Groups(['matcher', 'matcher-path-inspection'])]
 #[Bench\Iterations(5)]
@@ -79,13 +77,111 @@ final class MatcherPathInspectionBench
         }
     }
 
+    #[Bench\ParamProviders('providePaths')]
+    public function benchCurrentShapeAndSegments(array $params): void
+    {
+        $path = (string) $params['path'];
+        $trimmed = trim($path, '/');
+        if ($trimmed === '') {
+            $count = 0;
+            $prefix = '';
+            $segments = [];
+        } else {
+            $slash = strpos($trimmed, '/');
+            $prefix = $slash === false ? $trimmed : substr($trimmed, 0, $slash);
+            $count = substr_count($trimmed, '/') + 1;
+            $segments = explode('/', $trimmed);
+        }
+
+        self::guardCombined($count, $prefix, $segments);
+    }
+
+    #[Bench\ParamProviders('providePaths')]
+    public function benchOnePassPathShape(array $params): void
+    {
+        $path = (string) $params['path'];
+        [$start, $end] = self::trimBounds($path);
+        if ($start === $end) {
+            $count = 0;
+            $prefix = '';
+        } else {
+            $count = 1;
+            $prefixEnd = $end;
+            for ($index = $start; $index < $end; ++$index) {
+                if ($path[$index] !== '/') {
+                    continue;
+                }
+                if ($prefixEnd === $end) {
+                    $prefixEnd = $index;
+                }
+                ++$count;
+            }
+            $prefix = substr($path, $start, $prefixEnd - $start);
+        }
+
+        if ($count < 0 || $prefix === "\0") {
+            throw new \LogicException('Unreachable benchmark guard.');
+        }
+    }
+
+    #[Bench\ParamProviders('providePaths')]
+    public function benchOnePassViewAndMaterialize(array $params): void
+    {
+        $path = (string) $params['path'];
+        [$start, $end] = self::trimBounds($path);
+        if ($start === $end) {
+            $count = 0;
+            $prefix = '';
+            $segments = [];
+        } else {
+            $segments = [];
+            $segmentStart = $start;
+            for ($index = $start; $index < $end; ++$index) {
+                if ($path[$index] !== '/') {
+                    continue;
+                }
+                $segments[] = substr($path, $segmentStart, $index - $segmentStart);
+                $segmentStart = $index + 1;
+            }
+            $segments[] = substr($path, $segmentStart, $end - $segmentStart);
+            $count = count($segments);
+            $prefix = $segments[0];
+        }
+
+        self::guardCombined($count, $prefix, $segments);
+    }
+
     /** @return iterable<string, array{path:string}> */
     public function providePaths(): iterable
     {
         yield 'root' => ['path' => '/'];
         yield 'single' => ['path' => '/users'];
         yield 'shallow-dynamic' => ['path' => '/users/42'];
+        yield 'medium-dynamic' => ['path' => '/api/v1/users/42'];
         yield 'deep-dynamic' => ['path' => '/api/v1/accounts/42/orders/900/items/benchmark'];
         yield 'normalized-extra-slashes' => ['path' => '//api/v1/users/42//'];
+    }
+
+    /** @param list<string> $segments */
+    private static function guardCombined(int $count, string $prefix, array $segments): void
+    {
+        if ($count < 0 || $prefix === "\0" || count($segments) < 0) {
+            throw new \LogicException('Unreachable benchmark guard.');
+        }
+    }
+
+    /** @return array{0:int,1:int} */
+    private static function trimBounds(string $path): array
+    {
+        $start = 0;
+        $end = strlen($path);
+        while ($start < $end && $path[$start] === '/') {
+            ++$start;
+        }
+        while ($end > $start && $path[$end - 1] === '/') {
+            --$end;
+        }
+
+        return [$start, $end];
     }
 }
