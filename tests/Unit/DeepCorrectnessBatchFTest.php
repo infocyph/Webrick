@@ -24,9 +24,9 @@ use Infocyph\Webrick\Runtime\Http\ResponseWriterSupport;
 use Infocyph\Webrick\Support\HttpUtils;
 
 it('validates response protocol versions and custom reason phrases', function () {
-    expect(fn() => new Response(200, '', [], '1.x'))
+    expect(fn () => new Response(200, '', [], '1.x'))
         ->toThrow(InvalidArgumentException::class)
-        ->and(fn() => new Response(200, '', [], '1.1', "OK\rInjected"))
+        ->and(fn () => new Response(200, '', [], '1.1', "OK\rInjected"))
         ->toThrow(InvalidArgumentException::class);
 });
 
@@ -75,14 +75,14 @@ it('uses one quote-aware HTTP list splitter for malformed quoted syntax', functi
 });
 
 it('validates framework http exception headers immediately', function () {
-    expect(fn() => new HttpException(400, 'bad', ['Bad Header' => 'value']))
+    expect(fn () => new HttpException(400, 'bad', ['Bad Header' => 'value']))
         ->toThrow(InvalidArgumentException::class);
 });
 
 it('validates error handler wire configuration at bootstrap', function () {
-    expect(fn() => new ErrorHandler(requestIdHeader: 'Bad Header'))
+    expect(fn () => new ErrorHandler(requestIdHeader: 'Bad Header'))
         ->toThrow(InvalidArgumentException::class)
-        ->and(fn() => new ErrorHandler(exceptionMap: [RuntimeException::class => 200]))
+        ->and(fn () => new ErrorHandler(exceptionMap: [RuntimeException::class => 200]))
         ->toThrow(InvalidArgumentException::class);
 });
 
@@ -127,9 +127,9 @@ it('honors exception response headers case-insensitively', function () {
 });
 
 it('rejects malformed compression configuration at bootstrap', function () {
-    expect(fn() => new CompressionMiddleware(etagMode: 'unknown'))
+    expect(fn () => new CompressionMiddleware(etagMode: 'unknown'))
         ->toThrow(InvalidArgumentException::class)
-        ->and(fn() => new CompressionMiddleware(minBytes: 10, maxBufferBytes: 9))
+        ->and(fn () => new CompressionMiddleware(minBytes: 10, maxBufferBytes: 9))
         ->toThrow(InvalidArgumentException::class);
 });
 
@@ -140,14 +140,14 @@ it('rejects any transfer-encoding combined with content-length', function () {
         method: 'POST',
     );
 
-    expect(fn() => $middleware($request, static fn(Request $req): Response => Response::create('ok')))
+    expect(fn () => $middleware($request, static fn (): Response => Response::create('ok')))
         ->toThrow(HttpException::class);
 });
 
 it('rejects malformed wildcard cors origins', function () {
     $middleware = new CorsMiddleware(origins: ['*']);
     $request = Request::fake(headers: ['Origin' => 'not-an-origin']);
-    $response = $middleware($request, static fn(Request $req): Response => Response::create('ok'));
+    $response = $middleware($request, static fn (): Response => Response::create('ok'));
 
     expect($response->hasHeader('Access-Control-Allow-Origin'))->toBeFalse();
 });
@@ -162,21 +162,21 @@ it('turns malformed cors requested methods into controlled http errors', functio
         method: 'OPTIONS',
     );
 
-    expect(fn() => $middleware($request, static fn(Request $req): Response => Response::create('ok')))
+    expect(fn () => $middleware($request, static fn (): Response => Response::create('ok')))
         ->toThrow(HttpException::class);
 });
 
 it('validates response cache configuration before resolving a default store', function () {
-    expect(fn() => new ResponseCacheMiddleware(ttlSeconds: -1))
+    expect(fn () => new ResponseCacheMiddleware(ttlSeconds: -1))
         ->toThrow(InvalidArgumentException::class)
-        ->and(fn() => new ResponseCacheMiddleware(defaultVary: ['Bad Header']))
+        ->and(fn () => new ResponseCacheMiddleware(defaultVary: ['Bad Header']))
         ->toThrow(InvalidArgumentException::class);
 });
 
 it('validates telemetry header names and nel ttl at bootstrap', function () {
-    expect(fn() => new TelemetryMiddleware(requestIdHeader: 'Bad Header'))
+    expect(fn () => new TelemetryMiddleware(requestIdHeader: 'Bad Header'))
         ->toThrow(InvalidArgumentException::class)
-        ->and(fn() => new TelemetryMiddleware(nelTtlSeconds: -1))
+        ->and(fn () => new TelemetryMiddleware(nelTtlSeconds: -1))
         ->toThrow(InvalidArgumentException::class);
 });
 
@@ -231,6 +231,8 @@ it('rejects zero-progress non-eof response streams instead of truncating them', 
 
         public function read(int $length): string
         {
+            unset($length);
+
             return '';
         }
 
@@ -245,11 +247,13 @@ it('rejects zero-progress non-eof response streams instead of truncating them', 
 
         public function write(string $string): int
         {
+            unset($string);
+
             return 0;
         }
     };
 
-    expect(fn() => iterator_to_array(ResponseWriterSupport::chunks(new Response(200, $body))))
+    expect(fn () => iterator_to_array(ResponseWriterSupport::chunks(new Response(200, $body))))
         ->toThrow(RuntimeException::class);
 });
 
@@ -257,6 +261,6 @@ it('rejects overflowing content-length values in the response linter', function 
     $linter = new ResponseLinterMiddleware(ResponseLinterMiddleware::CONTENT_LENGTH_MATCH);
     $response = new Response(200, 'x', ['Content-Length' => '999999999999999999999999999']);
 
-    expect(fn() => $linter(Request::fake(), static fn(Request $req): Response => $response))
+    expect(fn () => $linter(Request::fake(), static fn (): Response => $response))
         ->toThrow(RuntimeException::class);
 });
