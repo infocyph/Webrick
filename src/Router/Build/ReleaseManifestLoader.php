@@ -70,10 +70,10 @@ final class ReleaseManifestLoader
         if (
             !is_string($webrick['path'] ?? null)
             || $webrick['path'] === ''
-            || !is_string($webrick['sha256'] ?? null)
-            || preg_match('/^[a-f0-9]{64}$/D', $webrick['sha256']) !== 1
+            || !is_string($webrick['digest'] ?? null)
+            || preg_match('/^[a-f0-9]{32}$/D', $webrick['digest']) !== 1
             || !is_string($webrick['fingerprint'] ?? null)
-            || $webrick['fingerprint'] === ''
+            || preg_match('/^[a-f0-9]{32}$/D', $webrick['fingerprint']) !== 1
         ) {
             throw new UnexpectedValueException('Malformed Webrick router release metadata.');
         }
