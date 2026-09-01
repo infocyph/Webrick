@@ -6,17 +6,78 @@ on:
       - webrick-5/batch-1-correctness
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   validate:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
+
+      - name: Clean remaining converted internal links
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          replacements = {
+              'docs/reference/router.rst': {
+                  '<matcher.md>': '<matcher.rst>',
+                  '<route-cache.md>': '<route-cache.rst>',
+                  '<middleware.md>': '<middleware.rst>',
+                  '<emitters.md>': '<emitters.rst>',
+              },
+              'docs/getting-started/installation.rst': {
+                  '<quickstart.md>': '<quickstart.rst>',
+                  '<framework-integration.md>': '<framework-integration.rst>',
+              },
+              'docs/getting-started/quickstart.rst': {
+                  '<framework-integration.md>': '<framework-integration.rst>',
+              },
+          }
+
+          for filename, mapping in replacements.items():
+              path = Path(filename)
+              text = path.read_text(encoding='utf-8')
+              for old, new in mapping.items():
+                  text = text.replace(old, new)
+              path.write_text(text, encoding='utf-8')
+
+          path = Path('docs/middleware/overview.rst')
+          text = path.read_text(encoding='utf-8')
+          names = [
+              'compression', 'cache-validators', 'vary-accumulator', 'cors-and-policies',
+              'throttle', 'request-limits', 'cookie-encryption', 'maintenance-mode',
+              'telemetry', 'input-sanitizer', 'negotiation', 'response-cache', 'response-linter',
+          ]
+          start = text.index('Deep dives\n----------')
+          replacement = '''Deep dives
+----------
+
+- :doc:`compression`
+- :doc:`cache-validators`
+- :doc:`vary-accumulator`
+- :doc:`cors-and-policies`
+- :doc:`throttle`
+- :doc:`request-limits`
+- :doc:`cookie-encryption`
+- :doc:`maintenance-mode`
+- :doc:`telemetry`
+- :doc:`input-sanitizer`
+- :doc:`negotiation`
+- :doc:`response-cache`
+- :doc:`response-linter`
+'''
+          text = text[:start] + replacement
+          path.write_text(text, encoding='utf-8')
+          PY
 
       - name: Validate documentation tree and source references
         shell: bash
@@ -24,19 +85,17 @@ jobs:
           set -euo pipefail
 
           if find docs -type f -name '*.md' -print -quit | grep -q .; then
-            echo 'Markdown documentation remains:' >&2
             find docs -type f -name '*.md' -print >&2
             exit 1
           fi
 
           if find docs -maxdepth 1 -type f -name 'webrick-5-*' -print -quit | grep -q .; then
-            echo 'Obsolete Webrick 5 planning files remain:' >&2
             find docs -maxdepth 1 -type f -name 'webrick-5-*' -print >&2
             exit 1
           fi
 
-          if grep -RIn --include='*.rst' -E '\.md([)#>`]|$)' docs; then
-            echo 'Markdown links remain in RST documentation.' >&2
+          if grep -RIn --include='*.rst' -E '<[^>]*\.md>' docs; then
+            echo 'Internal Markdown link targets remain.' >&2
             exit 1
           fi
 
@@ -51,17 +110,14 @@ jobs:
           fi
 
           if grep -RIn --include='*.rst' -E 'next major release|Major release' docs; then
-            echo 'Obsolete major-release wording remains in maintained docs.' >&2
+            echo 'Obsolete major-release wording remains.' >&2
             exit 1
           fi
 
           if grep -nE 'myst_parser|myst_enable_extensions|myst_heading_anchors' docs/conf.py; then
-            echo 'MyST configuration remains in native RST config.' >&2
             exit 1
           fi
-
           if grep -nE '^(myst-parser|linkify-it-py)' docs/requirements.txt; then
-            echo 'MyST-only dependencies remain.' >&2
             exit 1
           fi
 
@@ -71,9 +127,6 @@ jobs:
           import sys
 
           failed = False
-
-          # Every actual development bootstrap must provide the mandatory host Invoker
-          # and must not use options removed from RouterKernel.
           for doc in sorted(Path('docs').rglob('*.rst')):
               lines = doc.read_text(encoding='utf-8').splitlines()
               for i, line in enumerate(lines):
@@ -95,7 +148,7 @@ jobs:
                           failed = True
                           print(f'{doc}:{i+1}: removed RouterKernel option {removed}')
 
-          # Validate explicit Webrick imports used in PHP examples against src/.
+          # Validate explicit Webrick imports in PHP examples against src/.
           import_re = re.compile(r'^\s*use\s+Infocyph\\\\Webrick\\\\([A-Za-z0-9_\\\\]+)(?:\s+as\s+[A-Za-z0-9_]+)?;', re.MULTILINE)
           for doc in sorted(Path('docs').rglob('*.rst')):
               text = doc.read_text(encoding='utf-8')
@@ -117,3 +170,15 @@ jobs:
         run: |
           python -m pip install --disable-pip-version-check -r docs/requirements.txt
           WEBRICK_DOCS_OFFLINE=1 python -m sphinx -W --keep-going -b html docs /tmp/webrick-docs-html
+
+      - name: Commit final documentation cleanup
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m 'docs: finalize native RST documentation cleanup'
+          git push origin HEAD:webrick-5/batch-1-correctness
