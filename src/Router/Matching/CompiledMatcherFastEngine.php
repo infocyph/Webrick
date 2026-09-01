@@ -16,8 +16,11 @@ use Infocyph\Webrick\Constants\HttpMethodEnum;
  *
  * @phpstan-type FastRouteEntry array{route:mixed,id:int,params:array<string,string>,fast_params:list<string>}
  * @phpstan-type PcreStep array{type:'pcre',regex:string,fast_regex:string,routes:array<string,FastRouteEntry>}
+ * @phpstan-type FastDispatchEntry array{id:int,params:list<string>}
+ * @phpstan-type FastDispatchStep array{regex:string,routes:array<string,FastDispatchEntry>}
+ * @phpstan-type FastDispatch array{segment:int,groups:array<string,list<FastDispatchStep>>}
  * @phpstan-type FallbackStep array{type:'fallback',segments:list<array<string,mixed>>,route:mixed,id:int}
- * @phpstan-type DynamicBucket array{steps:list<PcreStep|FallbackStep>}
+ * @phpstan-type DynamicBucket array{steps:list<PcreStep|FallbackStep>,fast_dispatch?:FastDispatch}
  * @phpstan-type MatcherGroup array{static:array<string,array<string,mixed>>,static_ids:array<string,array<string,int>>,dynamic:array<string,array<int,array<string,DynamicBucket>>>}
  * @phpstan-type CompiledMatch int|array{0:int,1:array<string,string>}|MatchOutcome
  */
@@ -211,12 +214,60 @@ final class CompiledMatcherFastEngine
     }
 
     /**
+     * @param list<FastDispatchStep> $steps
+     * @return array{0:int,1:array<string,string>}|null
+     */
+    private static function findFastDispatchSteps(array $steps, string $path): ?array
+    {
+        foreach ($steps as $step) {
+            $matches = [];
+            $status = preg_match($step['regex'], $path, $matches);
+            if ($status === false) {
+                throw new \RuntimeException('Adaptive matcher PCRE failed during dispatch.');
+            }
+            if ($status !== 1) {
+                continue;
+            }
+
+            $mark = $matches['MARK'] ?? null;
+            if (!is_string($mark) || !isset($step['routes'][$mark])) {
+                throw new \UnexpectedValueException('Adaptive matcher PCRE returned an unknown route mark.');
+            }
+            $entry = $step['routes'][$mark];
+            $params = [];
+            foreach ($entry['params'] as $offset => $name) {
+                $piece = $matches[$offset + 1] ?? null;
+                if (!is_string($piece)) {
+                    throw new \UnexpectedValueException('Adaptive matcher positional parameter capture is unavailable.');
+                }
+                $params[$name] = $piece;
+            }
+
+            return [$entry['id'], $params];
+        }
+
+        return null;
+    }
+
+    /**
      * @param DynamicBucket $bucket
      * @param list<string>|null $segments
      * @return array{0:int,1:array<string,string>}|null
      */
     private function findDynamicBucket(array $bucket, string $path, ?array &$segments): ?array
     {
+        $dispatch = $bucket['fast_dispatch'] ?? null;
+        if (is_array($dispatch)) {
+            $segments ??= self::pathSegments($path);
+            $value = $segments[$dispatch['segment']] ?? null;
+            if (!is_string($value)) {
+                return null;
+            }
+            $steps = $dispatch['groups'][$value] ?? null;
+
+            return is_array($steps) ? self::findFastDispatchSteps($steps, $path) : null;
+        }
+
         foreach ($bucket['steps'] as $step) {
             if ($step['type'] === 'pcre') {
                 $matches = [];
