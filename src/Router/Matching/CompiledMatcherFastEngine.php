@@ -26,6 +26,13 @@ use Infocyph\Webrick\Constants\HttpMethodEnum;
  */
 final class CompiledMatcherFastEngine
 {
+    private readonly CompiledMatcherDynamicEngine $dynamic;
+
+    public function __construct()
+    {
+        $this->dynamic = new CompiledMatcherDynamicEngine();
+    }
+
     /**
      * @param list<MatcherGroup> $hostGroups
      * @param list<MatcherGroup> $wildcardGroups
@@ -43,12 +50,11 @@ final class CompiledMatcherFastEngine
         }
 
         [$count, $prefix] = self::pathShape($path);
-        $dynamic = new CompiledMatcherDynamicEngine();
-        $hit = $dynamic->matchGroups($hostGroups, $method, $path, $count, $prefix);
+        $hit = $this->dynamic->matchGroups($hostGroups, $method, $path, $count, $prefix);
         if ($hit !== null) {
             return $hit;
         }
-        $hit = $dynamic->matchGroups($wildcardGroups, $method, $path, $count, $prefix);
+        $hit = $this->dynamic->matchGroups($wildcardGroups, $method, $path, $count, $prefix);
         if ($hit !== null) {
             return $hit;
         }
@@ -58,8 +64,8 @@ final class CompiledMatcherFastEngine
         self::collectCompiledStaticAllowed($hostGroups, $path, $skip, $allowed);
         self::collectCompiledStaticAllowed($wildcardGroups, $path, $skip, $allowed);
         $segments = null;
-        $dynamic->collectAllowedGroups($hostGroups, $path, $count, $prefix, $skip, $allowed, $segments);
-        $dynamic->collectAllowedGroups($wildcardGroups, $path, $count, $prefix, $skip, $allowed, $segments);
+        $this->dynamic->collectAllowedGroups($hostGroups, $path, $count, $prefix, $skip, $allowed, $segments);
+        $this->dynamic->collectAllowedGroups($wildcardGroups, $path, $count, $prefix, $skip, $allowed, $segments);
 
         return self::missOutcome($method, $allowed);
     }
@@ -89,8 +95,7 @@ final class CompiledMatcherFastEngine
         }
 
         [$count, $prefix] = self::pathShape($path);
-        $dynamic = new CompiledMatcherDynamicEngine();
-        $hit = self::matchSingleDynamic($dynamic, $hostGroup, $wildcardGroup, $method, $path, $count, $prefix);
+        $hit = $this->matchSingleDynamic($hostGroup, $wildcardGroup, $method, $path, $count, $prefix);
         if ($hit !== null) {
             return $hit;
         }
@@ -105,10 +110,10 @@ final class CompiledMatcherFastEngine
         }
         $segments = null;
         if ($hostGroup !== null) {
-            $dynamic->collectAllowedGroup($hostGroup, $path, $count, $prefix, $skip, $allowed, $segments);
+            $this->dynamic->collectAllowedGroup($hostGroup, $path, $count, $prefix, $skip, $allowed, $segments);
         }
         if ($wildcardGroup !== null) {
-            $dynamic->collectAllowedGroup($wildcardGroup, $path, $count, $prefix, $skip, $allowed, $segments);
+            $this->dynamic->collectAllowedGroup($wildcardGroup, $path, $count, $prefix, $skip, $allowed, $segments);
         }
 
         return self::missOutcome($method, $allowed);
@@ -169,8 +174,7 @@ final class CompiledMatcherFastEngine
      * @param MatcherGroup|null $wildcardGroup
      * @return int|array{0:int,1:array<string,string>}|null
      */
-    private static function matchSingleDynamic(
-        CompiledMatcherDynamicEngine $dynamic,
+    private function matchSingleDynamic(
         ?array $hostGroup,
         ?array $wildcardGroup,
         string $method,
@@ -178,11 +182,14 @@ final class CompiledMatcherFastEngine
         int $count,
         string $prefix,
     ): int|array|null {
-        foreach ([$hostGroup, $wildcardGroup] as $group) {
-            if ($group === null) {
-                continue;
+        if ($hostGroup !== null) {
+            $hit = $this->dynamic->matchRequested($hostGroup, $method, $path, $count, $prefix);
+            if ($hit !== null) {
+                return $hit;
             }
-            $hit = $dynamic->matchRequested($group, $method, $path, $count, $prefix);
+        }
+        if ($wildcardGroup !== null) {
+            $hit = $this->dynamic->matchRequested($wildcardGroup, $method, $path, $count, $prefix);
             if ($hit !== null) {
                 return $hit;
             }
