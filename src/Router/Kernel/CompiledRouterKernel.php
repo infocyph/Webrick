@@ -34,6 +34,10 @@ use Throwable;
 /** Strict production kernel backed only by verified compiled artifacts. */
 final readonly class CompiledRouterKernel
 {
+    private RoutingControlRenderer $controlRenderer;
+
+    private bool $directRoutingErrors;
+
     private RuntimeDispatcher $dispatcher;
 
     private ErrorHandler $errorHandler;
@@ -68,7 +72,9 @@ final readonly class CompiledRouterKernel
         $this->runtime = new InterMixRuntime($container);
         $this->dispatcher = new RuntimeDispatcher($this->runtime, $artifact);
         $this->hasGlobalMiddleware = $this->dispatcher->hasGlobalMiddleware();
+        $this->directRoutingErrors = $errorHandler === null;
         $this->errorHandler = $errorHandler ?? new ErrorHandler(logger: $log, debug: false);
+        $this->controlRenderer = new RoutingControlRenderer($log);
         $this->profiler?->mark('dispatcher_boot');
 
         UrlGeneratorRegistry::bind(new UrlGenerator($urlBaseUri, $artifact->aliases, $signKey, $signedDefaultTtl, $signedUrlConfig));
@@ -117,7 +123,7 @@ final readonly class CompiledRouterKernel
         MatcherInterface $matcher,
         ProductionContainer $container,
         string $artifactPath,
-        string $trustedSha256,
+        string $trustedArtifactFingerprint,
         string $environment,
         string $configFingerprint,
         ?ErrorHandler $errorHandler = null,
@@ -129,7 +135,7 @@ final readonly class CompiledRouterKernel
     ): self {
         $artifact = new RouterArtifactLoader()->loadPrevalidated(
             $artifactPath,
-            $trustedSha256,
+            $trustedArtifactFingerprint,
             $environment,
             $configFingerprint,
         );
@@ -241,6 +247,9 @@ final readonly class CompiledRouterKernel
     ): Response {
         if ($outcome->type === MatchOutcomeType::AUTO_OPTIONS) {
             return self::automaticOptionsResponse($outcome->allowed);
+        }
+        if ($this->directRoutingErrors) {
+            return $this->controlRenderer->render($routing, $outcome);
         }
 
         $request ??= $runtimeContext?->request() ?? Request::fromGlobals();
