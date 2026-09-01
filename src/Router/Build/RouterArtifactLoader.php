@@ -76,7 +76,10 @@ final class RouterArtifactLoader
         return $aliases;
     }
 
-    /** @param array<string,mixed> $payload @return array<array-key,mixed> */
+    /**
+     * @param array<string,mixed> $payload
+     * @return array<array-key,mixed>
+     */
     private static function arrayField(array $payload, string $field): array
     {
         $value = $payload[$field] ?? null;
@@ -120,7 +123,10 @@ final class RouterArtifactLoader
         }
     }
 
-    /** @param array<string,mixed> $payload @return array<int,mixed> */
+    /**
+     * @param array<string,mixed> $payload
+     * @return array<int,mixed>
+     */
     private static function indexedRoutes(array $payload): array
     {
         $routes = [];
@@ -135,7 +141,10 @@ final class RouterArtifactLoader
         return $routes;
     }
 
-    /** @param array<string,mixed> $payload @return array<int,array<string,mixed>> */
+    /**
+     * @param array<string,mixed> $payload
+     * @return array<int,array<string,mixed>>
+     */
     private static function indexedPlans(array $payload): array
     {
         $plans = [];
@@ -157,7 +166,10 @@ final class RouterArtifactLoader
         return $plans;
     }
 
-    /** @param array<string,mixed> $payload @return list<string> */
+    /**
+     * @param array<string,mixed> $payload
+     * @return list<string>
+     */
     private static function stringListField(array $payload, string $field): array
     {
         $values = [];
