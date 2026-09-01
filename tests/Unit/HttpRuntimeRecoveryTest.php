@@ -46,7 +46,7 @@ it('prefers the php runtime manifest and falls back to json', function (): void 
         'webrick' => [
             'path' => '/tmp/webrick.php',
             'sha256' => $sha,
-            'artifact_fingerprint' => 'router-fingerprint',
+            'fingerprint' => 'router-fingerprint',
         ],
     ];
     $runtime = $base;
