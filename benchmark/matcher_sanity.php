@@ -63,6 +63,9 @@ foreach ($factories as $name => $factory) {
     $overlapGet = sanityRoute('GET', '/overlap/{value}', $name . '-overlap-get');
     $overlapPost = sanityRoute('POST', '/overlap/{value:slug}', $name . '-overlap-post');
     $explicitOptions = sanityRoute('OPTIONS', '/explicit/{id}', $name . '-explicit-options');
+    $extension = sanityRoute('SYNCX', '/extension/{id}', $name . '-extension');
+    $hostExact = CompiledRoute::fromRoute(new Route('GET', '/hosted/{id}', $name . '-host-exact', 'api.example.test'));
+    $hostWildcard = sanityRoute('GET', '/hosted/{id}', $name . '-host-wildcard');
 
     $adaptive = [];
     for ($i = 0; $i < 64; $i++) {
@@ -86,6 +89,9 @@ foreach ($factories as $name => $factory) {
         $overlapGet,
         $overlapPost,
         $explicitOptions,
+        $extension,
+        $hostExact,
+        $hostWildcard,
         ...$adaptive,
         $adaptivePost,
     ] as $route) {
@@ -142,6 +148,21 @@ foreach ($factories as $name => $factory) {
         [$explicitOptions->getIndex(), ['id' => '1']],
         $matcher->matchCompiled('OPTIONS', '*', '/explicit/1'),
         $name . ': explicit OPTIONS route was replaced by automatic OPTIONS.',
+    );
+    assertSameValue(
+        [$extension->getIndex(), ['id' => '5']],
+        $matcher->matchCompiled('SYNCX', '*', '/extension/5'),
+        $name . ': extension HTTP method failed.',
+    );
+    assertSameValue(
+        [$hostExact->getIndex(), ['id' => '3']],
+        $matcher->matchCompiled('GET', 'api.example.test', '/hosted/3'),
+        $name . ': exact host did not override wildcard host.',
+    );
+    assertSameValue(
+        [$hostWildcard->getIndex(), ['id' => '4']],
+        $matcher->matchCompiled('GET', 'www.example.test', '/hosted/4'),
+        $name . ': wildcard host fallback failed.',
     );
 
     $richHead = assertOutcome(
