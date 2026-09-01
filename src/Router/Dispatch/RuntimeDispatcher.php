@@ -96,8 +96,13 @@ final class RuntimeDispatcher
         return $this->preGlobal !== [] || $this->postGlobal !== [];
     }
 
-    public function pipelineRequiresScope(ExecutionPlan $plan): bool
+    public function pipelineRequiresScope(string $routeId): bool
     {
+        $plan = $this->artifact->plans[$routeId] ?? null;
+        if (!$plan instanceof ExecutionPlan) {
+            return false;
+        }
+
         return $this->pipelineFor($plan)?->requiresScope() ?? false;
     }
 
