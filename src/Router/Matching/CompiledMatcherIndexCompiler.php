@@ -16,15 +16,15 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
  * combined into MARK-based PCRE chunks, while callable/arbitrary-regex routes
  * remain individual fallback steps that act as precedence barriers.
  *
- * The rich route payload remains available for match()/matchOutcome(), while
- * the compact production lane receives deterministic scalar route IDs directly
- * and never has to rediscover an ID from a route object/payload after a hit.
+ * Rich route payload/named-capture data remains available for matchOutcome(),
+ * while compact production dispatch receives deterministic scalar route IDs
+ * plus a positional branch-reset PCRE that avoids named-capture bookkeeping.
  *
  * @phpstan-type RouteValue mixed
  * @phpstan-type SegmentSpec array<string,mixed>
  * @phpstan-type CanonicalDynamicEntry array{segments:list<SegmentSpec>,verbs:array<string,RouteValue>}
- * @phpstan-type FastRouteEntry array{route:RouteValue,id:int,params:array<string,string>}
- * @phpstan-type PcreStep array{type:'pcre',regex:string,routes:array<string,FastRouteEntry>}
+ * @phpstan-type FastRouteEntry array{route:RouteValue,id:int,params:array<string,string>,fast_params:list<string>}
+ * @phpstan-type PcreStep array{type:'pcre',regex:string,fast_regex:string,routes:array<string,FastRouteEntry>}
  * @phpstan-type FallbackStep array{type:'fallback',segments:list<SegmentSpec>,route:RouteValue,id:int}
  * @phpstan-type DynamicStep PcreStep|FallbackStep
  * @phpstan-type DynamicBucket array{steps:list<DynamicStep>}
@@ -141,10 +141,6 @@ final class CompiledMatcherIndexCompiler
     }
 
     /**
-     * Evenly partitions one precedence-safe PCRE run around the configured
-     * approximate target, following the same balancing principle used by
-     * FastRoute rather than rigidly slicing at the target boundary.
-     *
      * @param non-empty-list<array{segments:list<SegmentSpec>,route:RouteValue,id:int}> $routes
      * @return non-empty-list<PcreStep>
      */
@@ -169,27 +165,35 @@ final class CompiledMatcherIndexCompiler
     private function compilePcreStep(array $routes): array
     {
         $alternatives = [];
+        $fastAlternatives = [];
         $routeMap = [];
 
         foreach ($routes as $index => $entry) {
             $mark = 'r' . $index;
             [$pattern, $params] = $this->routePattern($entry['segments'], $index);
+            [$fastPattern, $fastParams] = $this->routePatternPositional($entry['segments']);
             $alternatives[] = '(?:' . $pattern . ')(*MARK:' . $mark . ')';
+            $fastAlternatives[] = '(?:' . $fastPattern . ')(*MARK:' . $mark . ')';
             $routeMap[$mark] = [
                 'route' => $entry['route'],
                 'id' => $entry['id'],
                 'params' => $params,
+                'fast_params' => $fastParams,
             ];
         }
 
-        // J allows different built-in route constraints to reuse named groups
-        // inside separate alternatives without capture conflicts.
         $regex = '~(?J)\\A(?:' . implode('|', $alternatives) . ')\\z~D';
-        if (@preg_match($regex, '') === false) {
+        $fastRegex = '~\\A(?|' . implode('|', $fastAlternatives) . ')\\z~D';
+        if (@preg_match($regex, '') === false || @preg_match($fastRegex, '') === false) {
             throw new \UnexpectedValueException('Failed to compile combined matcher PCRE chunk.');
         }
 
-        return ['type' => 'pcre', 'regex' => $regex, 'routes' => $routeMap];
+        return [
+            'type' => 'pcre',
+            'regex' => $regex,
+            'fast_regex' => $fastRegex,
+            'routes' => $routeMap,
+        ];
     }
 
     private static function escapeDelimiter(string $pattern, string $delimiter): string
@@ -231,6 +235,51 @@ final class CompiledMatcherIndexCompiler
     }
 
     /**
+     * Converts ordinary capture groups inside Webrick's allowlisted combined-
+     * PCRE-safe segment patterns into non-capturing groups so each outer route
+     * parameter owns exactly one predictable positional capture. Arbitrary user
+     * regexes never reach this function.
+     */
+    private static function nonCapturingInner(string $inner): string
+    {
+        $out = '';
+        $length = strlen($inner);
+        $escaped = false;
+        $class = false;
+
+        for ($i = 0; $i < $length; $i++) {
+            $char = $inner[$i];
+            if ($escaped) {
+                $out .= $char;
+                $escaped = false;
+                continue;
+            }
+            if ($char === '\\') {
+                $out .= $char;
+                $escaped = true;
+                continue;
+            }
+            if ($char === '[') {
+                $class = true;
+                $out .= $char;
+                continue;
+            }
+            if ($char === ']' && $class) {
+                $class = false;
+                $out .= $char;
+                continue;
+            }
+            if (!$class && $char === '(' && ($inner[$i + 1] ?? '') !== '?') {
+                $out .= '(?:';
+                continue;
+            }
+            $out .= $char;
+        }
+
+        return $out;
+    }
+
+    /**
      * @param list<SegmentSpec> $segments
      * @return array{0:string,1:array<string,string>}
      */
@@ -252,7 +301,6 @@ final class CompiledMatcherIndexCompiler
                     throw new \UnexpectedValueException('Compiled matcher literal is invalid.');
                 }
                 $parts[] = preg_quote($literal, '~');
-
                 continue;
             }
             if ($type !== 'var') {
@@ -268,6 +316,46 @@ final class CompiledMatcherIndexCompiler
             $capture = 'w' . $routeOrdinal . 'p' . $parameterOrdinal++;
             $parts[] = '(?<' . $capture . '>' . self::segmentRegexInner($regex) . ')';
             $params[$capture] = $name;
+        }
+
+        return ['/*' . implode('/', $parts) . '/*', $params];
+    }
+
+    /**
+     * @param list<SegmentSpec> $segments
+     * @return array{0:string,1:list<string>}
+     */
+    private function routePatternPositional(array $segments): array
+    {
+        if ($segments === []) {
+            return ['/*', []];
+        }
+
+        $parts = [];
+        $params = [];
+        foreach ($segments as $segment) {
+            $type = $segment['type'] ?? null;
+            if ($type === 'lit') {
+                $literal = $segment['val'] ?? null;
+                if (!is_string($literal)) {
+                    throw new \UnexpectedValueException('Compiled matcher literal is invalid.');
+                }
+                $parts[] = preg_quote($literal, '~');
+                continue;
+            }
+            if ($type !== 'var') {
+                throw new \UnexpectedValueException('Compiled matcher segment type is invalid.');
+            }
+
+            $regex = $segment['regex'] ?? null;
+            $name = $segment['name'] ?? null;
+            if (!is_string($regex) || !is_string($name) || $name === '') {
+                throw new \LogicException('Non-PCRE matcher segment cannot enter the positional fast lane.');
+            }
+
+            $inner = self::nonCapturingInner(self::segmentRegexInner($regex));
+            $parts[] = '(' . $inner . ')';
+            $params[] = $name;
         }
 
         return ['/*' . implode('/', $parts) . '/*', $params];
