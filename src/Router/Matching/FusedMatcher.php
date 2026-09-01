@@ -33,6 +33,9 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
 
     private CompiledMatcherEngine $engine;
 
+    /** @var array<string,mixed>|null */
+    private ?array $fastDefaultGroup = null;
+
     private CompiledMatcherFastEngine $fastEngine;
 
     private bool $finalized = false;
@@ -72,6 +75,10 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
             $this->compiledHosts = new CompiledMatcherIndexCompiler()->compile($this->index->hosts());
         }
 
+        if (count($this->compiledHosts) === 1 && isset($this->compiledHosts['*'])) {
+            $this->fastDefaultGroup = $this->compiledHosts['*'];
+        }
+
         $this->finalized = true;
     }
 
@@ -96,6 +103,10 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
 
     public function matchCompiled(string $method, string $host, string $path): int|array|MatchOutcome
     {
+        if ($this->fastDefaultGroup !== null) {
+            return $this->fastEngine->matchSingle($this->fastDefaultGroup, null, $method, $path);
+        }
+
         $hosts = $this->compiledHosts ?? throw new \LogicException('Fused matcher must be finalized before compiled dispatch.');
 
         return $this->fastEngine->matchSingle(
