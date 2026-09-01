@@ -69,6 +69,9 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
 
     private CanonicalMatcherIndex $index;
 
+    /** @var array<string,array<string,list<CompiledGroup>>> */
+    private array $loadedCandidateGroups = [];
+
     /** @var array<string,CompiledGroup|null> */
     private array $loadedGroups = [];
 
@@ -139,6 +142,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         $this->activeCacheDir = null;
         $this->cacheReadable = false;
         $this->cachePreloaded = false;
+        $this->loadedCandidateGroups = [];
 
         return $this;
     }
@@ -256,19 +260,8 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     /** @return list<CompiledGroup> */
     private function loadCandidateGroups(string $host, string $bucket): array
     {
-        $groups = [];
-        $primary = $this->loadGroup($host, $bucket);
-        if ($primary !== null) {
-            $groups[] = $primary;
-        }
-        if ($bucket !== self::SHARD_DYNAMIC) {
-            $dynamic = $this->loadGroup($host, self::SHARD_DYNAMIC);
-            if ($dynamic !== null) {
-                $groups[] = $dynamic;
-            }
-        }
-
-        return $groups;
+        return $this->loadedCandidateGroups[$host][$bucket]
+            ??= $this->resolveCandidateGroups($host, $bucket);
     }
 
     /**
@@ -428,6 +421,24 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             $this->cacheDir,
             self::INDEX_CACHE_VERSION,
         );
+    }
+
+    /** @return list<CompiledGroup> */
+    private function resolveCandidateGroups(string $host, string $bucket): array
+    {
+        $groups = [];
+        $primary = $this->loadGroup($host, $bucket);
+        if ($primary !== null) {
+            $groups[] = $primary;
+        }
+        if ($bucket !== self::SHARD_DYNAMIC) {
+            $dynamic = $this->loadGroup($host, self::SHARD_DYNAMIC);
+            if ($dynamic !== null) {
+                $groups[] = $dynamic;
+            }
+        }
+
+        return $groups;
     }
 
     /** @param CanonicalGroup $group */
