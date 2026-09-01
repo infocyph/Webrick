@@ -41,17 +41,17 @@ it('prefers the php runtime manifest and falls back to json', function (): void 
 
     $jsonPath = $directory . '/release.json';
     $phpPath = $directory . '/release.php';
-    $sha256 = str_repeat('a', 64);
-    $xxh128 = str_repeat('b', 32);
+    $intermixDigest = str_repeat('a', 32);
+    $webrickDigest = str_repeat('b', 32);
     $base = [
-        'format' => 1,
+        'format' => 2,
         'environment' => 'json',
         'config_fingerprint' => 'cfg',
-        'intermix' => ['path' => '/tmp/intermix.php', 'sha256' => $sha256],
+        'intermix' => ['path' => '/tmp/intermix.php', 'digest' => $intermixDigest],
         'webrick' => [
             'path' => '/tmp/webrick.php',
-            'digest' => $xxh128,
-            'fingerprint' => $xxh128,
+            'digest' => $webrickDigest,
+            'fingerprint' => $webrickDigest,
         ],
     ];
     $runtime = $base;
@@ -70,6 +70,37 @@ it('prefers the php runtime manifest and falls back to json', function (): void 
         if (is_file($phpPath)) {
             unlink($phpPath);
         }
+        if (is_file($jsonPath)) {
+            unlink($jsonPath);
+        }
+        if (is_dir($directory)) {
+            rmdir($directory);
+        }
+    }
+});
+
+it('rejects the legacy InterMix sha256 release contract', function (): void {
+    $directory = sys_get_temp_dir() . '/webrick-legacy-intermix-manifest-' . bin2hex(random_bytes(6));
+    expect(mkdir($directory, 0775, true))->toBeTrue();
+
+    $jsonPath = $directory . '/release.json';
+    $digest = str_repeat('b', 32);
+    file_put_contents($jsonPath, json_encode([
+        'format' => 2,
+        'environment' => 'production',
+        'config_fingerprint' => 'cfg',
+        'intermix' => ['path' => '/tmp/intermix.php', 'sha256' => str_repeat('a', 64)],
+        'webrick' => [
+            'path' => '/tmp/webrick.php',
+            'digest' => $digest,
+            'fingerprint' => $digest,
+        ],
+    ], JSON_THROW_ON_ERROR));
+
+    try {
+        expect(fn() => new ReleaseManifestLoader()->load($jsonPath))
+            ->toThrow(UnexpectedValueException::class, 'Malformed InterMix release metadata');
+    } finally {
         if (is_file($jsonPath)) {
             unlink($jsonPath);
         }
