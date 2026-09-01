@@ -11,7 +11,6 @@ use Infocyph\Webrick\Request\Core\Uri;
 use Infocyph\Webrick\Request\Http\ContentNegotiator;
 use Infocyph\Webrick\Request\Http\Csrf;
 use Infocyph\Webrick\Request\Http\EndUser;
-use Infocyph\Webrick\Request\Support\CidrNetwork;
 use Infocyph\Webrick\Request\Support\IpCidr;
 use Infocyph\Webrick\Support\HttpUtils;
 use InvalidArgumentException;
@@ -40,7 +39,7 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
 
     private static bool $trustedProxyConfigurationFrozen = false;
 
-    /** @var list<CidrNetwork> */
+    /** @var list<IpCidr> */
     private static array $trustedProxyNetworks = [];
 
     /** @var array<string,mixed>|null */
@@ -120,7 +119,7 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return self::$trustedProxyCidrs;
     }
 
-    /** @return list<CidrNetwork> */
+    /** @return list<IpCidr> */
     public static function getTrustedProxyNetworks(): array
     {
         return self::$trustedProxyNetworks;
@@ -136,7 +135,7 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
 
         return array_any(
             self::$trustedProxyNetworks,
-            static fn(CidrNetwork $network): bool => $network->matches($peer),
+            static fn(IpCidr $network): bool => $network->matches($peer),
         );
     }
 
@@ -154,7 +153,7 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
             if ($cidr === '') {
                 throw new InvalidArgumentException('Trusted proxy CIDR must not be empty.');
             }
-            $networks[] = IpCidr::compile($cidr);
+            $networks[] = IpCidr::from($cidr);
             $normalized[] = $cidr;
         }
         self::$trustedProxyCidrs = $normalized;

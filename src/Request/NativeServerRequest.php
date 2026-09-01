@@ -8,7 +8,8 @@ use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Constants\MediaTypeEnum;
 use Infocyph\Webrick\Request\Core\ServerRequest;
 use Infocyph\Webrick\Request\Core\Stream;
-use Infocyph\Webrick\Request\Core\UriComponents;
+use Infocyph\Webrick\Request\Core\Uri;
+use Infocyph\Webrick\Request\Core\UriServerParams;
 use Infocyph\Webrick\Request\Http\RequestHeaders;
 use Infocyph\Webrick\Request\Support\PayloadParseState;
 use Infocyph\Webrick\Support\HttpUtils;
@@ -47,7 +48,7 @@ class NativeServerRequest extends ServerRequest
 
         $request = new self(
             is_string($server['REQUEST_METHOD'] ?? null) ? $server['REQUEST_METHOD'] : HttpMethodEnum::GET->value,
-            UriComponents::fromServerParams($server),
+            self::uriFromServerParams($server),
             $server,
             RequestHeaders::extractFromServer($server),
             $body,
@@ -155,6 +156,24 @@ class NativeServerRequest extends ServerRequest
         }
 
         return $map;
+    }
+
+    /** @param array<string,mixed> $server */
+    private static function uriFromServerParams(array $server): Uri
+    {
+        $scheme = UriServerParams::detectScheme($server);
+        [$host, $port] = UriServerParams::detectHostPort($server);
+        $requestUri = UriServerParams::detectRequestUri($server);
+        $queryPosition = strpos($requestUri, '?');
+        $path = $queryPosition === false ? $requestUri : (substr($requestUri, 0, $queryPosition) ?: '');
+        $query = $queryPosition === false ? '' : (substr($requestUri, $queryPosition + 1) ?: '');
+
+        return new Uri()
+            ->withScheme($scheme)
+            ->withHost($host)
+            ->withPort($port)
+            ->withPath($path === '' ? '/' : $path)
+            ->withQuery($query);
     }
 
     /**

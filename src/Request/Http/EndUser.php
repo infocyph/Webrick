@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Request\Http;
 
 use Infocyph\Webrick\Request\Request;
-use Infocyph\Webrick\Request\Support\CidrNetwork;
 use Infocyph\Webrick\Request\Support\IpCidr;
 
 /** Resolve the end-user address through an explicitly trusted proxy chain. */
@@ -16,7 +15,7 @@ final class EndUser
     private ?string $cachedViaProxy = null;
 
     /**
-     * @param list<CidrNetwork> $trustedProxyCidrs
+     * @param list<IpCidr> $trustedProxyCidrs
      * @param list<string> $trustedClientIpHeaders
      */
     public function __construct(
@@ -27,7 +26,7 @@ final class EndUser
     ) {}
 
     /**
-     * @param list<string|CidrNetwork> $cidrs
+     * @param list<string|IpCidr> $cidrs
      * @param list<string> $trustedClientIpHeaders
      */
     public static function from(
@@ -42,7 +41,7 @@ final class EndUser
 
         $networks = [];
         foreach ($cidrs as $cidr) {
-            $networks[] = $cidr instanceof CidrNetwork ? $cidr : IpCidr::compile($cidr);
+            $networks[] = $cidr instanceof IpCidr ? $cidr : IpCidr::from($cidr);
         }
 
         return new self($request, $networks, $forwardedHeaderMask, $trustedClientIpHeaders);
@@ -209,7 +208,7 @@ final class EndUser
     {
         return array_any(
             $this->trustedProxyCidrs,
-            static fn(CidrNetwork $network): bool => $network->matches($ip),
+            static fn(IpCidr $network): bool => $network->matches($ip),
         );
     }
 

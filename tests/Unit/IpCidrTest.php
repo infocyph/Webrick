@@ -17,6 +17,16 @@ describe('IpCidr', function () {
             ->and(IpCidr::match('2001:db8::2', '2001:db8::1/128'))->toBeFalse();
     });
 
+    it('matches partial IPv4 and IPv6 network prefixes', function () {
+        $ipv4 = IpCidr::from('198.51.100.0/25');
+        $ipv6 = IpCidr::from('2001:db8:abcd:1200::/56');
+
+        expect($ipv4->matches('198.51.100.127'))->toBeTrue()
+            ->and($ipv4->matches('198.51.100.128'))->toBeFalse()
+            ->and($ipv6->matches('2001:db8:abcd:12ff::1'))->toBeTrue()
+            ->and($ipv6->matches('2001:db8:abcd:1300::1'))->toBeFalse();
+    });
+
     it('fails closed for invalid IPv4 masks', function (string $cidr) {
         expect(IpCidr::match('203.0.113.9', $cidr))->toBeFalse();
     })->with([

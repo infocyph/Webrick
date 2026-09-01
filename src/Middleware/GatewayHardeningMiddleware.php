@@ -9,7 +9,6 @@ use Infocyph\Webrick\Exceptions\HttpException;
 use Infocyph\Webrick\Request\Core\Uri;
 use Infocyph\Webrick\Request\Http\EndUser;
 use Infocyph\Webrick\Request\Request;
-use Infocyph\Webrick\Request\Support\CidrNetwork;
 use Infocyph\Webrick\Request\Support\IpCidr;
 use Infocyph\Webrick\Response\Response;
 
@@ -29,7 +28,7 @@ final readonly class GatewayHardeningMiddleware
 
     private bool $allowAllHosts;
 
-    /** @var list<CidrNetwork> */
+    /** @var list<IpCidr> */
     private array $denyIpNetworks;
 
     private int $forwardedHeaderMask;
@@ -37,7 +36,7 @@ final readonly class GatewayHardeningMiddleware
     /** @var list<string> */
     private array $hostRegex;
 
-    /** @var list<CidrNetwork> */
+    /** @var list<IpCidr> */
     private array $trustedProxyNetworks;
 
     /**
@@ -124,7 +123,7 @@ final readonly class GatewayHardeningMiddleware
 
     /**
      * @param list<string> $cidrs
-     * @return list<CidrNetwork>
+     * @return list<IpCidr>
      */
     private static function compileNetworks(array $cidrs): array
     {
@@ -134,7 +133,7 @@ final readonly class GatewayHardeningMiddleware
             if ($cidr === '') {
                 throw new \InvalidArgumentException('CIDR entries must not be empty.');
             }
-            $networks[] = IpCidr::compile($cidr);
+            $networks[] = IpCidr::from($cidr);
         }
 
         return $networks;
@@ -160,11 +159,11 @@ final readonly class GatewayHardeningMiddleware
         ]);
     }
 
-    /** @param list<CidrNetwork> $networks */
+    /** @param list<IpCidr> $networks */
     private function cidrHit(?string $ip, array $networks): bool
     {
         return $ip !== null
-            && array_any($networks, static fn(CidrNetwork $network): bool => $network->matches($ip));
+            && array_any($networks, static fn(IpCidr $network): bool => $network->matches($ip));
     }
 
     private function denyIfBlockedEndUser(EndUser $endUser): void
