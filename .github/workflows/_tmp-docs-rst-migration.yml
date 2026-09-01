@@ -24,59 +24,16 @@ jobs:
       - name: Clean remaining converted internal links
         shell: bash
         run: |
-          python <<'PY'
+          sed -i 's/<matcher\.md>/<matcher.rst>/g; s/<route-cache\.md>/<route-cache.rst>/g; s/<middleware\.md>/<middleware.rst>/g; s/<emitters\.md>/<emitters.rst>/g' docs/reference/router.rst
+          sed -i 's/<quickstart\.md>/<quickstart.rst>/g; s/<framework-integration\.md>/<framework-integration.rst>/g' docs/getting-started/installation.rst
+          sed -i 's/<framework-integration\.md>/<framework-integration.rst>/g' docs/getting-started/quickstart.rst
+          python - <<'PY'
           from pathlib import Path
-
-          replacements = {
-              'docs/reference/router.rst': {
-                  '<matcher.md>': '<matcher.rst>',
-                  '<route-cache.md>': '<route-cache.rst>',
-                  '<middleware.md>': '<middleware.rst>',
-                  '<emitters.md>': '<emitters.rst>',
-              },
-              'docs/getting-started/installation.rst': {
-                  '<quickstart.md>': '<quickstart.rst>',
-                  '<framework-integration.md>': '<framework-integration.rst>',
-              },
-              'docs/getting-started/quickstart.rst': {
-                  '<framework-integration.md>': '<framework-integration.rst>',
-              },
-          }
-
-          for filename, mapping in replacements.items():
-              path = Path(filename)
-              text = path.read_text(encoding='utf-8')
-              for old, new in mapping.items():
-                  text = text.replace(old, new)
-              path.write_text(text, encoding='utf-8')
-
           path = Path('docs/middleware/overview.rst')
           text = path.read_text(encoding='utf-8')
-          names = [
-              'compression', 'cache-validators', 'vary-accumulator', 'cors-and-policies',
-              'throttle', 'request-limits', 'cookie-encryption', 'maintenance-mode',
-              'telemetry', 'input-sanitizer', 'negotiation', 'response-cache', 'response-linter',
-          ]
           start = text.index('Deep dives\n----------')
-          replacement = '''Deep dives
-----------
-
-- :doc:`compression`
-- :doc:`cache-validators`
-- :doc:`vary-accumulator`
-- :doc:`cors-and-policies`
-- :doc:`throttle`
-- :doc:`request-limits`
-- :doc:`cookie-encryption`
-- :doc:`maintenance-mode`
-- :doc:`telemetry`
-- :doc:`input-sanitizer`
-- :doc:`negotiation`
-- :doc:`response-cache`
-- :doc:`response-linter`
-'''
-          text = text[:start] + replacement
-          path.write_text(text, encoding='utf-8')
+          replacement = "Deep dives\n----------\n\n- :doc:`compression`\n- :doc:`cache-validators`\n- :doc:`vary-accumulator`\n- :doc:`cors-and-policies`\n- :doc:`throttle`\n- :doc:`request-limits`\n- :doc:`cookie-encryption`\n- :doc:`maintenance-mode`\n- :doc:`telemetry`\n- :doc:`input-sanitizer`\n- :doc:`negotiation`\n- :doc:`response-cache`\n- :doc:`response-linter`\n"
+          path.write_text(text[:start] + replacement, encoding='utf-8')
           PY
 
       - name: Validate documentation tree and source references
@@ -84,36 +41,25 @@ jobs:
         run: |
           set -euo pipefail
 
-          if find docs -type f -name '*.md' -print -quit | grep -q .; then
-            find docs -type f -name '*.md' -print >&2
-            exit 1
-          fi
-
-          if find docs -maxdepth 1 -type f -name 'webrick-5-*' -print -quit | grep -q .; then
-            find docs -maxdepth 1 -type f -name 'webrick-5-*' -print >&2
-            exit 1
-          fi
+          test -z "$(find docs -type f -name '*.md' -print -quit)"
+          test -z "$(find docs -maxdepth 1 -type f -name 'webrick-5-*' -print -quit)"
 
           if grep -RIn --include='*.rst' -E '<[^>]*\.md>' docs; then
             echo 'Internal Markdown link targets remain.' >&2
             exit 1
           fi
-
           if grep -RIn --include='*.rst' -E 'TraceContext::(get[A-Z]|isAvailable|isOtelMode|isSampled)' docs; then
             echo 'Removed process-global TraceContext API remains documented.' >&2
             exit 1
           fi
-
           if grep -RIn --include='*.rst' -E 'Request::createFromGlobals|capturePhpErrors|fallbackAliasesFromRegistrar' docs; then
             echo 'Removed API/options remain documented.' >&2
             exit 1
           fi
-
           if grep -RIn --include='*.rst' -E 'next major release|Major release' docs; then
             echo 'Obsolete major-release wording remains.' >&2
             exit 1
           fi
-
           if grep -nE 'myst_parser|myst_enable_extensions|myst_heading_anchors' docs/conf.py; then
             exit 1
           fi
@@ -121,7 +67,7 @@ jobs:
             exit 1
           fi
 
-          python <<'PY'
+          python - <<'PY'
           from pathlib import Path
           import re
           import sys
@@ -148,7 +94,6 @@ jobs:
                           failed = True
                           print(f'{doc}:{i+1}: removed RouterKernel option {removed}')
 
-          # Validate explicit Webrick imports in PHP examples against src/.
           import_re = re.compile(r'^\s*use\s+Infocyph\\\\Webrick\\\\([A-Za-z0-9_\\\\]+)(?:\s+as\s+[A-Za-z0-9_]+)?;', re.MULTILINE)
           for doc in sorted(Path('docs').rglob('*.rst')):
               text = doc.read_text(encoding='utf-8')
