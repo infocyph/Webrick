@@ -26,24 +26,24 @@ final class CompiledRouterArtifact
     /** @var list<mixed>|null */
     private ?array $preGlobal = null;
 
-    /** @var array<array-key,mixed> */
+    /** @var list<mixed> */
     private array $postGlobalPayload;
 
-    /** @var array<array-key,mixed> */
+    /** @var list<mixed> */
     private array $preGlobalPayload;
 
-    /** @var array<array-key,mixed> */
+    /** @var array<int,array<string,mixed>> */
     private array $planPayloadsByIndex;
 
-    /** @var array<array-key,mixed> */
+    /** @var array<int,mixed> */
     private array $routePayloadsByIndex;
 
     /**
-     * @param array<array-key,mixed> $routePayloadsByIndex
-     * @param array<array-key,mixed> $planPayloadsByIndex
+     * @param array<int,mixed> $routePayloadsByIndex
+     * @param array<int,array<string,mixed>> $planPayloadsByIndex
      * @param array<string,array{0:string,1:string|null}> $aliases
-     * @param array<array-key,mixed> $preGlobalPayload
-     * @param array<array-key,mixed> $postGlobalPayload
+     * @param list<mixed> $preGlobalPayload
+     * @param list<mixed> $postGlobalPayload
      * @param list<string> $preGlobalTags
      * @param list<string> $postGlobalTags
      */
@@ -84,7 +84,17 @@ final class CompiledRouterArtifact
         $preGlobalTags = self::arrayField($payload, 'pre_global_tags');
         $postGlobalTags = self::arrayField($payload, 'post_global_tags');
 
+        if (!$trusted) {
+            self::validateAliases($aliases);
+            self::validateTags($preGlobalTags);
+            self::validateTags($postGlobalTags);
+        }
+
+        /** @var array<int,mixed> $routes */
+        /** @var array<int,array<string,mixed>> $plans */
         /** @var array<string,array{0:string,1:string|null}> $aliases */
+        /** @var list<mixed> $preGlobal */
+        /** @var list<mixed> $postGlobal */
         /** @var list<string> $preGlobalTags */
         /** @var list<string> $postGlobalTags */
         $artifact = new self(
@@ -102,7 +112,7 @@ final class CompiledRouterArtifact
         );
 
         if (!$trusted) {
-            $artifact->validateDeep();
+            $artifact->validateRoutePlanTables();
         }
 
         return $artifact;
@@ -139,13 +149,21 @@ final class CompiledRouterArtifact
     /** @return list<mixed> */
     public function postGlobal(): array
     {
-        return $this->postGlobal ??= self::decodedList($this->postGlobalPayload);
+        if ($this->postGlobal === null) {
+            $this->postGlobal = self::decodedList($this->postGlobalPayload);
+        }
+
+        return $this->postGlobal;
     }
 
     /** @return list<mixed> */
     public function preGlobal(): array
     {
-        return $this->preGlobal ??= self::decodedList($this->preGlobalPayload);
+        if ($this->preGlobal === null) {
+            $this->preGlobal = self::decodedList($this->preGlobalPayload);
+        }
+
+        return $this->preGlobal;
     }
 
     /** @return array<string,mixed> */
@@ -165,16 +183,17 @@ final class CompiledRouterArtifact
         return $attributes;
     }
 
-    /** Decode every matcher route only for cold/non-cached matcher construction. @return list<CompiledRoute> */
+    /**
+     * Decode every matcher route only for cold/non-cached matcher construction.
+     *
+     * @return list<CompiledRoute>
+     */
     public function routes(): array
     {
         $routes = [];
         $indexes = array_keys($this->routePayloadsByIndex);
         sort($indexes, SORT_NUMERIC);
         foreach ($indexes as $index) {
-            if (!is_int($index)) {
-                throw new UnexpectedValueException('Compiled route index must be an integer.');
-            }
             $routes[] = $this->routeForIndex($index);
         }
 
@@ -195,7 +214,10 @@ final class CompiledRouterArtifact
         return $value;
     }
 
-    /** @param array<array-key,mixed> $payload @return list<mixed> */
+    /**
+     * @param list<mixed> $payload
+     * @return list<mixed>
+     */
     private static function decodedList(array $payload): array
     {
         $values = [];
@@ -206,7 +228,10 @@ final class CompiledRouterArtifact
         return $values;
     }
 
-    /** @param array<string,mixed> $payload @return array{0:bool,1:string,2:string,3:string} */
+    /**
+     * @param array<string,mixed> $payload
+     * @return array{0:bool,1:string,2:string,3:string}
+     */
     private static function header(array $payload): array
     {
         if (($payload['format'] ?? null) !== self::FORMAT_VERSION) {
@@ -233,6 +258,31 @@ final class CompiledRouterArtifact
         return [$hasDomainRoutes, $environment, $configFingerprint, $artifactFingerprint];
     }
 
+    /** @param array<array-key,mixed> $aliases */
+    private static function validateAliases(array $aliases): void
+    {
+        foreach ($aliases as $name => $tuple) {
+            if (!is_string($name) || $name === '' || !is_array($tuple)) {
+                throw new UnexpectedValueException('Invalid alias index in Webrick router artifact.');
+            }
+            $path = $tuple[0] ?? null;
+            $domain = $tuple[1] ?? null;
+            if (!is_string($path) || ($domain !== null && !is_string($domain))) {
+                throw new UnexpectedValueException('Invalid alias entry in Webrick router artifact.');
+            }
+        }
+    }
+
+    /** @param array<array-key,mixed> $tags */
+    private static function validateTags(array $tags): void
+    {
+        foreach ($tags as $tag) {
+            if (!is_string($tag) || $tag === '') {
+                throw new UnexpectedValueException('Invalid middleware tag in Webrick router artifact.');
+            }
+        }
+    }
+
     private function routeForIndex(int $routeIndex): CompiledRoute
     {
         if (isset($this->decodedRoutes[$routeIndex])) {
@@ -248,32 +298,14 @@ final class CompiledRouterArtifact
         return $this->decodedRoutes[$routeIndex] = $route;
     }
 
-    private function validateDeep(): void
+    private function validateRoutePlanTables(): void
     {
-        foreach ($this->aliases as $name => $tuple) {
-            if (!is_string($name) || $name === '' || !is_array($tuple)) {
-                throw new UnexpectedValueException('Invalid alias index in Webrick router artifact.');
-            }
-            $path = $tuple[0] ?? null;
-            $domain = $tuple[1] ?? null;
-            if (!is_string($path) || ($domain !== null && !is_string($domain))) {
-                throw new UnexpectedValueException('Invalid alias entry in Webrick router artifact.');
-            }
-        }
-        foreach ([$this->preGlobalTags, $this->postGlobalTags] as $tags) {
-            foreach ($tags as $tag) {
-                if (!is_string($tag) || $tag === '') {
-                    throw new UnexpectedValueException('Invalid middleware tag in Webrick router artifact.');
-                }
-            }
-        }
-
         if (count($this->routePayloadsByIndex) !== count($this->planPayloadsByIndex)) {
             throw new UnexpectedValueException('Every compiled route must have exactly one execution plan.');
         }
 
         foreach ($this->routePayloadsByIndex as $index => $_payload) {
-            if (!is_int($index) || !array_key_exists($index, $this->planPayloadsByIndex)) {
+            if (!array_key_exists($index, $this->planPayloadsByIndex)) {
                 throw new UnexpectedValueException('Compiled route/plan index mismatch.');
             }
             $route = $this->routeForIndex($index);
