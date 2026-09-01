@@ -16,27 +16,24 @@ use UnexpectedValueException;
 /** Runtime-plane dispatcher for already-compiled route execution plans. */
 final class RuntimeDispatcher
 {
-    /** @var list<mixed> */
-    private readonly array $postGlobal;
-
-    /** @var list<mixed> */
-    private readonly array $preGlobal;
-
     /** @var array<string,CompiledMiddlewarePipeline> */
     private array $pipelines = [];
+
+    /** @var list<mixed>|null */
+    private ?array $postGlobal = null;
+
+    /** @var list<mixed>|null */
+    private ?array $preGlobal = null;
 
     public function __construct(
         private readonly InterMixRuntime $runtime,
         private readonly CompiledRouterArtifact $artifact,
-    ) {
-        $this->preGlobal = $this->withTagged($artifact->preGlobal, $artifact->preGlobalTags);
-        $this->postGlobal = $this->withTagged($artifact->postGlobal, $artifact->postGlobalTags);
-    }
+    ) {}
 
     /** @param array<string,string> $vars */
-    public function dispatch(ExecutionPlan $plan, Request $request, array $vars): Response
+    public function dispatch(int $routeIndex, ExecutionPlan $plan, Request $request, array $vars): Response
     {
-        $attributes = $this->artifact->routeAttributes($plan->routeId);
+        $attributes = $this->artifact->routeAttributesForIndex($routeIndex);
         if ($vars !== []) {
             $attributes['route_params'] = $vars;
         }
@@ -68,13 +65,7 @@ final class RuntimeDispatcher
         return $this->response($handler());
     }
 
-    /**
-     * Execute a compiled terminal without materializing Request. The kernel owns
-     * scope selection; this method only enforces that the plan itself is
-     * request- and middleware-free.
-     *
-     * @param array<string,string> $vars
-     */
+    /** @param array<string,string> $vars */
     public function dispatchWithoutRequest(ExecutionPlan $plan, array $vars): Response
     {
         if ($plan->requiresRequest() || $plan->kind === ExecutionKind::MIDDLEWARE_PIPELINE) {
@@ -93,16 +84,11 @@ final class RuntimeDispatcher
 
     public function hasGlobalMiddleware(): bool
     {
-        return $this->preGlobal !== [] || $this->postGlobal !== [];
+        return $this->artifact->hasGlobalMiddleware();
     }
 
-    public function pipelineRequiresScope(string $routeId): bool
+    public function pipelineRequiresScope(ExecutionPlan $plan): bool
     {
-        $plan = $this->artifact->plans[$routeId] ?? null;
-        if (!$plan instanceof ExecutionPlan) {
-            return false;
-        }
-
         return $this->pipelineFor($plan)?->requiresScope() ?? false;
     }
 
@@ -146,10 +132,7 @@ final class RuntimeDispatcher
         );
     }
 
-    /**
-     * @param array<string,string> $vars
-     * @return list<string>
-     */
+    /** @param array<string,string> $vars @return list<string> */
     private function orderedRouteArguments(ExecutionPlan $plan, array $vars): array
     {
         $arguments = [];
@@ -188,15 +171,33 @@ final class RuntimeDispatcher
     /** @return list<mixed> */
     private function pipelineMiddleware(ExecutionPlan $plan): array
     {
-        $middleware = $this->preGlobal;
+        $middleware = $this->preGlobal();
         foreach ($plan->middleware as $entry) {
             $middleware[] = $entry;
         }
-        foreach ($this->postGlobal as $entry) {
+        foreach ($this->postGlobal() as $entry) {
             $middleware[] = $entry;
         }
 
         return $middleware;
+    }
+
+    /** @return list<mixed> */
+    private function postGlobal(): array
+    {
+        return $this->postGlobal ??= $this->withTagged(
+            $this->artifact->postGlobal(),
+            $this->artifact->postGlobalTags,
+        );
+    }
+
+    /** @return list<mixed> */
+    private function preGlobal(): array
+    {
+        return $this->preGlobal ??= $this->withTagged(
+            $this->artifact->preGlobal(),
+            $this->artifact->preGlobalTags,
+        );
     }
 
     private function response(mixed $result): Response
@@ -224,11 +225,7 @@ final class RuntimeDispatcher
         return $variables;
     }
 
-    /**
-     * @param list<mixed> $explicit
-     * @param list<string> $tags
-     * @return list<mixed>
-     */
+    /** @param list<mixed> $explicit @param list<string> $tags @return list<mixed> */
     private function withTagged(array $explicit, array $tags): array
     {
         foreach ($tags as $tag) {
