@@ -19,8 +19,6 @@ API Development
 ~~~~~~~~~~~~~~~
 
 - `RESTful API <./api.rst>`__ - Build a complete REST API
-- `Webhooks <./webhooks.rst>`__ - Receive and validate webhook payloads
-- `Pagination <./pagination.rst>`__ - Efficient data pagination patterns
 
 File Operations
 ~~~~~~~~~~~~~~~
@@ -31,7 +29,6 @@ File Operations
 Data & Search
 ~~~~~~~~~~~~~
 
-- `Search with Filters <./search.rst>`__ - Build flexible search endpoints
 - `Caching Strategies <./caching.rst>`__ - Optimize with smart caching
 
 Operations
@@ -39,7 +36,6 @@ Operations
 
 - `Error Handling <./error-handling.rst>`__ - Centralized error management
 - `Logging & Monitoring <./logging.rst>`__ - Telemetry middleware and reusable logging profiles
-- `Testing <./testing.rst>`__ - Unit and integration testing strategies
 
 --------------
 
@@ -81,11 +77,7 @@ Have a useful pattern? Consider contributing! Recipes should be:
    file-upload
    head-handling
    logging
-   pagination
    rate-limiting
-   search
    streaming-downloads
-   testing
    throttling
    trailing-slash
-   webhooks

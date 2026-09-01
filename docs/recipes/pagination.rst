@@ -1,4 +1,0 @@
-Pagination Recipe
-=================
-
-Coming soon...

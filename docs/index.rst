@@ -7,7 +7,7 @@ What you get
 ------------
 
 - Routing: named routes, groups, domains, resources, constraints and attribute discovery.
-- Matchers: Fused as the general production default, Generated for measured small-route wins, and Sharded for large cold-start/working-set tradeoffs.
+- Matchers: Fused as the general production default, Generated for benchmark-proven simple-route wins into the low thousands, and Sharded for large cold-start/working-set tradeoffs.
 - Signed URLs: relative or absolute signing, TTL or explicit expiry, ignored query parameters and key rotation.
 - Error boundary: typed HTTP exceptions, negotiated error rendering and an optional process-level ``PhpErrorBridge``.
 - Middleware: explicit pre-global/post-global stacks, aliases, tagged application middleware and compiled execution plans.

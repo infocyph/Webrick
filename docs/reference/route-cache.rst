@@ -8,29 +8,39 @@ The complete production application artifact is a separate concern handled by ``
 Modes
 -----
 
-+---------------+----------------+-------------------------------------------------------------------+---------------------------------------------------------------+------------------------------------------------------------------------------------------------------------------------------+
-| Matcher       | Cache location | Output                                                            | Measured role                                                 | Approximate route-count guidance                                                                                             |
-+===============+================+===================================================================+===============================================================+==============================================================================================================================+
-| ``fused``     | PHP file       | precompiled fused matcher IR                                      | **default/general production matcher**                        | **Any size; default from tens through 10,000+ routes.**                                                                      |
-+---------------+----------------+-------------------------------------------------------------------+---------------------------------------------------------------+------------------------------------------------------------------------------------------------------------------------------+
-| ``generated`` | PHP file       | generated matcher code/data                                       | **small, benchmark-proven topology specialization**           | **Most interesting below ~100 routes; sometimes useful into the hundreds or around ~1,000 when mostly static/distinct.**     |
-+---------------+----------------+-------------------------------------------------------------------+---------------------------------------------------------------+------------------------------------------------------------------------------------------------------------------------------+
-| ``sharded``   | directory      | immutable generation + manifest/shards using the Fused matcher IR | **very-large-route / cold-boot / working-set specialization** | **Usually start evaluating around ~5,000+ routes; increasingly relevant around 10,000+ when startup/working-set dominates.** |
-+---------------+----------------+-------------------------------------------------------------------+---------------------------------------------------------------+------------------------------------------------------------------------------------------------------------------------------+
+.. list-table:: Matcher-cache modes
+   :header-rows: 1
+   :widths: 14 16 25 45
 
-Prefer an explicit ``matcher`` value in deployment tooling. Start from ``fused`` unless representative production-like measurements justify a specialized mode.
+   * - Matcher
+     - Cache location
+     - Measured role
+     - Approximate guidance
+   * - ``fused``
+     - PHP file
+     - **default/general production matcher**
+     - Valid across the measured range; generally the safer warm-latency/artifact choice from roughly 2,250 routes onward.
+   * - ``generated``
+     - PHP file
+     - **small-to-medium/simple-topology specialization**
+     - Strong measured candidate through roughly 1,500 routes in the current synthetic envelope and near parity around 1,750–2,000; benchmark explicitly beyond that.
+   * - ``sharded``
+     - directory
+     - **cold-boot / bounded-working-set specialization**
+     - Evaluate once several-thousand-route cache boot or loaded state becomes material; particularly useful when workers touch only part of a large table.
 
-The route counts above are deliberately approximate. They indicate **when a mode becomes worth benchmarking**, not a hard switch point. A dense shared-prefix dynamic corpus can make Fused preferable even at a few hundred routes. Conversely, a small mostly-static/distinct corpus can make Generated worthwhile. At several thousand routes, Sharded becomes relevant only when its cold-boot/lazy-working-set advantage matters more than Fused's faster warm dispatch.
+Prefer an explicit ``matcher`` value in deployment tooling. Start from ``fused`` when the route topology has not been measured, but do not dismiss Generated for low-thousands simple route tables: the completed crossover study widened its evidence-based envelope substantially.
 
 A practical starting guide is:
 
-- **below ~100 routes:** Fused remains the safe default; benchmark Generated for mostly static/distinct applications;
-- **~100–1,000 routes:** normally Fused; Generated only when the actual route topology proves a repeatable advantage;
-- **~1,000–5,000 routes:** strongly prefer Fused unless a measured deployment constraint says otherwise;
-- **~5,000–10,000 routes:** keep Fused for warm throughput, but start comparing Sharded when cache boot or loaded state matters;
-- **10,000+ routes:** benchmark Fused and Sharded side by side; Generated is not a general large-route option.
+- **below ~1,000 routes:** Fused is the safe default; Generated is a strong benchmark candidate for simple/static/distinct route sets;
+- **~1,000–1,500 routes:** benchmark Fused and Generated; the current synthetic envelope materially favored Generated;
+- **~1,500–2,250 routes:** treat this as a crossover zone and benchmark both;
+- **~2,250–5,000 routes:** normally prefer Fused; keep Generated only for a repeatable topology-specific win and begin considering Sharded if startup/working-set pressure appears;
+- **~5,000–10,000 routes:** Fused for fully resident warm throughput, Sharded for lazy boot/residency; Generated is not a general choice;
+- **10,000+ routes:** benchmark Fused and Sharded side by side.
 
-The Webrick 5 matcher revision benchmarks showed that Generated can remain attractive on small/simple route sets but scales poorly on large dynamic and miss-heavy corpora, and its generated function can become expensive even for static dispatch once the route set grows large. Sharded uses the same route-discrimination engine as Fused and should be selected when a large route table benefits materially from lazy shard loading, extremely cheap cold boot or reduced startup working set. Include first-use shard loading, filesystem behavior, warm-dispatch cost and worker lifetime in that comparison.
+Route count is not an automatic selector. Generated showed non-monotonic isolated results at some larger sizes, but at 5,000 routes the current envelope also exposed a severe generated-code cliff: about **69.001 µs** warm versus **1.745 µs** Fused, with a roughly **26.04 MB** cache artifact versus **9.76 MB** Fused. Sharded's final cached candidate-group memoization reduced its warm overhead substantially, bringing 5,000/10,000-route warm measurements to roughly **2.24/2.41 µs** while retaining lazy first-shard loading.
 
 PHP API
 -------
@@ -148,4 +158,4 @@ Deployment rules
 - Publish complete release sets atomically from the deployment layer.
 - Keep runtime artifacts read-only to serving workers where possible.
 - Rebuild matcher caches and production release artifacts after a Webrick major upgrade or route-schema change.
-- Use Fused by default at any route count; benchmark Generated mainly for small/simple corpora and begin evaluating Sharded around several thousand routes when startup/working-set cost becomes material.
+- Use Fused as the general default; benchmark Generated seriously for simple route sets into the low thousands, and evaluate Sharded around several thousand routes when startup/working-set cost becomes material.

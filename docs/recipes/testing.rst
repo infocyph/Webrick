@@ -1,4 +1,0 @@
-Testing Recipe
-==============
-
-Coming soon...

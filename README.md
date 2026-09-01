@@ -25,7 +25,7 @@ runtime from an environment string.
 
 ### Highlights
 
-- Static-first generated routing with fused and sharded alternatives.
+- Three measured matcher modes: Fused as the general default, Generated as a low-thousands/simple-topology specialization, and Sharded for lazy cache residency.
 - Explicit match outcomes for FOUND / 404 / 405 / automatic OPTIONS handling.
 - Lazy request promotion and capability-driven compiled dispatch.
 - Native string and file response bodies; stream objects only at interop boundaries.
