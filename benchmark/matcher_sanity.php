@@ -50,8 +50,13 @@ foreach ($factories as $name => $factory) {
     $post = sanityRoute('POST', '/resource/{id}', $name . '-post');
     $get = sanityRoute('GET', '/resource/{id}', $name . '-get');
 
+    $adaptive = [];
+    for ($i = 0; $i < 64; $i++) {
+        $adaptive[] = sanityRoute('GET', '/catalog/family-' . $i . '/{id}', $name . '-adaptive-' . $i);
+    }
+
     $matcher = $factory();
-    foreach ([$regex, $semver, $hexcolor, $ipv4, $callable, $precedence, $later, $post, $get] as $route) {
+    foreach ([$regex, $semver, $hexcolor, $ipv4, $callable, $precedence, $later, $post, $get, ...$adaptive] as $route) {
         $matcher->add($route);
     }
     $matcher->finalize();
@@ -87,6 +92,16 @@ foreach ($factories as $name => $factory) {
         $name . ': registration precedence changed.',
     );
     assertSameValue(
+        [$adaptive[0]->getIndex(), ['id' => '7']],
+        $matcher->matchCompiled('GET', '*', '/catalog/family-0/7'),
+        $name . ': adaptive first literal group failed.',
+    );
+    assertSameValue(
+        [$adaptive[63]->getIndex(), ['id' => '9']],
+        $matcher->matchCompiled('GET', '*', '/catalog/family-63/9'),
+        $name . ': adaptive last literal group failed.',
+    );
+    assertSameValue(
         [$get->getIndex(), ['id' => '1']],
         $matcher->matchCompiled('HEAD', '*', '/resource/1'),
         $name . ': HEAD-to-GET fallback failed.',
@@ -103,6 +118,17 @@ foreach ($factories as $name => $factory) {
         }
     }
 
+    $adaptiveMethodMiss = assertOutcome(
+        $matcher->matchCompiled('POST', '*', '/catalog/family-63/9'),
+        MatchOutcomeType::METHOD_NOT_ALLOWED,
+        $name . ': adaptive 405 outcome failed.',
+    );
+    foreach (['GET', 'HEAD'] as $allowed) {
+        if (!in_array($allowed, $adaptiveMethodMiss->allowed, true)) {
+            throw new RuntimeException($name . ': adaptive 405 missing ' . $allowed . '.');
+        }
+    }
+
     $options = assertOutcome(
         $matcher->matchCompiled('OPTIONS', '*', '/resource/1'),
         MatchOutcomeType::AUTO_OPTIONS,
@@ -114,6 +140,11 @@ foreach ($factories as $name => $factory) {
         }
     }
 
+    assertOutcome(
+        $matcher->matchCompiled('GET', '*', '/catalog/family-missing/9'),
+        MatchOutcomeType::NOT_FOUND,
+        $name . ': adaptive not-found outcome failed.',
+    );
     assertOutcome(
         $matcher->matchCompiled('GET', '*', '/missing'),
         MatchOutcomeType::NOT_FOUND,
