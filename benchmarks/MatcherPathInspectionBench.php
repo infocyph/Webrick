@@ -37,22 +37,6 @@ final class MatcherPathInspectionBench
         }
     }
 
-    #[Bench\ParamProviders('providePaths')]
-    public function benchCurrentSegmentMaterialization(array $params): void
-    {
-        $path = (string) $params['path'];
-        if ($path === '/' || $path === '') {
-            $segments = [];
-        } else {
-            $trimmed = trim($path, '/');
-            $segments = $trimmed === '' ? [] : explode('/', $trimmed);
-        }
-
-        if (count($segments) < 0) {
-            throw new \LogicException('Unreachable benchmark guard.');
-        }
-    }
-
     public function benchCurrentPositionalParameterCapture(): void
     {
         $entry = ['id' => 42, 'params' => ['group', 'id', 'slug']];
@@ -75,6 +59,22 @@ final class MatcherPathInspectionBench
 
         $result = [$entry['id'], $captured];
         if ($result[0] !== 42) {
+            throw new \LogicException('Unreachable benchmark guard.');
+        }
+    }
+
+    #[Bench\ParamProviders('providePaths')]
+    public function benchCurrentSegmentMaterialization(array $params): void
+    {
+        $path = (string) $params['path'];
+        if ($path === '/' || $path === '') {
+            $segments = [];
+        } else {
+            $trimmed = trim($path, '/');
+            $segments = $trimmed === '' ? [] : explode('/', $trimmed);
+        }
+
+        if (count($segments) < 0) {
             throw new \LogicException('Unreachable benchmark guard.');
         }
     }

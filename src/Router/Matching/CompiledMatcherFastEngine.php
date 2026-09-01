@@ -24,9 +24,9 @@ use Infocyph\Webrick\Constants\HttpMethodEnum;
  * @phpstan-type MatcherGroup array{routes:array<int,mixed>,static:array<string,array<string,int>>,static_allowed:array<string,list<string>>,dynamic:array<string,array<int,array<string,DynamicBucket>>>,dynamic_allowed:array<int,array<string,AllowedBucket>>}
  * @phpstan-type CompiledMatch int|array{0:int,1:array<string,string>}|MatchOutcome
  */
-final class CompiledMatcherFastEngine
+final readonly class CompiledMatcherFastEngine
 {
-    private readonly CompiledMatcherDynamicEngine $dynamic;
+    private CompiledMatcherDynamicEngine $dynamic;
 
     public function __construct()
     {
@@ -169,35 +169,6 @@ final class CompiledMatcherFastEngine
         }
     }
 
-    /**
-     * @param MatcherGroup|null $hostGroup
-     * @param MatcherGroup|null $wildcardGroup
-     * @return int|array{0:int,1:array<string,string>}|null
-     */
-    private function matchSingleDynamic(
-        ?array $hostGroup,
-        ?array $wildcardGroup,
-        string $method,
-        string $path,
-        int $count,
-        string $prefix,
-    ): int|array|null {
-        if ($hostGroup !== null) {
-            $hit = $this->dynamic->matchRequested($hostGroup, $method, $path, $count, $prefix);
-            if ($hit !== null) {
-                return $hit;
-            }
-        }
-        if ($wildcardGroup !== null) {
-            $hit = $this->dynamic->matchRequested($wildcardGroup, $method, $path, $count, $prefix);
-            if ($hit !== null) {
-                return $hit;
-            }
-        }
-
-        return null;
-    }
-
     /** @param list<MatcherGroup> $groups */
     private static function matchStaticGroups(array $groups, string $method, string $path): ?int
     {
@@ -254,5 +225,34 @@ final class CompiledMatcherFastEngine
         $prefix = $slash === false ? $trimmed : substr($trimmed, 0, $slash);
 
         return [substr_count($trimmed, '/') + 1, $prefix];
+    }
+
+    /**
+     * @param MatcherGroup|null $hostGroup
+     * @param MatcherGroup|null $wildcardGroup
+     * @return int|array{0:int,1:array<string,string>}|null
+     */
+    private function matchSingleDynamic(
+        ?array $hostGroup,
+        ?array $wildcardGroup,
+        string $method,
+        string $path,
+        int $count,
+        string $prefix,
+    ): int|array|null {
+        if ($hostGroup !== null) {
+            $hit = $this->dynamic->matchRequested($hostGroup, $method, $path, $count, $prefix);
+            if ($hit !== null) {
+                return $hit;
+            }
+        }
+        if ($wildcardGroup !== null) {
+            $hit = $this->dynamic->matchRequested($wildcardGroup, $method, $path, $count, $prefix);
+            if ($hit !== null) {
+                return $hit;
+            }
+        }
+
+        return null;
     }
 }

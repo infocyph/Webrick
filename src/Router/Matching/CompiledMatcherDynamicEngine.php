@@ -165,6 +165,95 @@ final class CompiledMatcherDynamicEngine
     }
 
     /**
+     * @param list<FastDispatchStep> $steps
+     * @return array{0:int,1:array<string,string>}|null
+     */
+    private static function findFastDispatchSteps(array $steps, string $path): ?array
+    {
+        foreach ($steps as $step) {
+            $hit = self::findPcreStep($step, $path);
+            if ($hit !== null) {
+                return $hit;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param PcreStep|FastDispatchStep $step
+     * @return array{0:int,1:array<string,string>}|null
+     */
+    private static function findPcreStep(array $step, string $path): ?array
+    {
+        $matches = [];
+        $status = preg_match($step['regex'], $path, $matches);
+        if ($status === false) {
+            throw new \RuntimeException('Compiled matcher PCRE failed during dispatch.');
+        }
+        if ($status !== 1) {
+            return null;
+        }
+
+        $mark = $matches['MARK'] ?? null;
+        if (!is_string($mark) || !isset($step['routes'][$mark])) {
+            throw new \UnexpectedValueException('Compiled matcher PCRE returned an unknown route mark.');
+        }
+
+        return self::captureParams($step['routes'][$mark], $matches);
+    }
+
+    /**
+     * @param list<array<string,mixed>> $specs
+     * @param list<string> $segments
+     * @return array<string,string>|null
+     */
+    private static function matchFallbackSegments(array $specs, array $segments): ?array
+    {
+        $params = [];
+        foreach ($specs as $index => $spec) {
+            $piece = $segments[$index] ?? null;
+            if (!is_string($piece)) {
+                return null;
+            }
+            if (($spec['type'] ?? null) === 'lit') {
+                if (($spec['val'] ?? null) !== $piece) {
+                    return null;
+                }
+
+                continue;
+            }
+
+            $name = $spec['name'] ?? null;
+            if (($spec['type'] ?? null) !== 'var' || !is_string($name)) {
+                return null;
+            }
+            $matches = isset($spec['regex'])
+                ? is_string($spec['regex']) && preg_match($spec['regex'], $piece) === 1
+                : is_callable($spec['call'] ?? null) && ($spec['call'])($piece);
+            if (!$matches) {
+                return null;
+            }
+
+            $params[$name] = $piece;
+        }
+
+        return $params;
+    }
+
+    /** @return list<string> */
+    private static function pathSegments(string $path): array
+    {
+        if ($path === '/' || $path === '') {
+            return [];
+        }
+
+        $trimmed = trim($path, '/');
+
+        return $trimmed === '' ? [] : explode('/', $trimmed);
+    }
+
+    /**
      * @param AllowedBucket $bucket
      * @param array<string,true> $skip
      * @param array<string,bool> $allowed
@@ -266,6 +355,18 @@ final class CompiledMatcherDynamicEngine
     }
 
     /**
+     * @param FallbackStep $step
+     * @param list<string> $segments
+     * @return array{0:int,1:array<string,string>}|null
+     */
+    private function findFallbackStep(array $step, array &$segments): ?array
+    {
+        $params = self::matchFallbackSegments($step['segments'], $segments);
+
+        return $params === null ? null : [$step['id'], $params];
+    }
+
+    /**
      * @param FastDispatch $dispatch
      * @param list<string> $segments
      * @return array{0:int,1:array<string,string>}|null
@@ -279,57 +380,6 @@ final class CompiledMatcherDynamicEngine
         $steps = $dispatch['groups'][$value] ?? null;
 
         return $steps === null ? null : self::findFastDispatchSteps($steps, $path);
-    }
-
-    /**
-     * @param list<FastDispatchStep> $steps
-     * @return array{0:int,1:array<string,string>}|null
-     */
-    private static function findFastDispatchSteps(array $steps, string $path): ?array
-    {
-        foreach ($steps as $step) {
-            $hit = self::findPcreStep($step, $path);
-            if ($hit !== null) {
-                return $hit;
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * @param PcreStep|FastDispatchStep $step
-     * @return array{0:int,1:array<string,string>}|null
-     */
-    private static function findPcreStep(array $step, string $path): ?array
-    {
-        $matches = [];
-        $status = preg_match($step['regex'], $path, $matches);
-        if ($status === false) {
-            throw new \RuntimeException('Compiled matcher PCRE failed during dispatch.');
-        }
-        if ($status !== 1) {
-            return null;
-        }
-
-        $mark = $matches['MARK'] ?? null;
-        if (!is_string($mark) || !isset($step['routes'][$mark])) {
-            throw new \UnexpectedValueException('Compiled matcher PCRE returned an unknown route mark.');
-        }
-
-        return self::captureParams($step['routes'][$mark], $matches);
-    }
-
-    /**
-     * @param FallbackStep $step
-     * @param list<string> $segments
-     * @return array{0:int,1:array<string,string>}|null
-     */
-    private function findFallbackStep(array $step, array &$segments): ?array
-    {
-        $params = self::matchFallbackSegments($step['segments'], $segments);
-
-        return $params === null ? null : [$step['id'], $params];
     }
 
     /**
@@ -366,55 +416,5 @@ final class CompiledMatcherDynamicEngine
         }
 
         return null;
-    }
-
-    /**
-     * @param list<array<string,mixed>> $specs
-     * @param list<string> $segments
-     * @return array<string,string>|null
-     */
-    private static function matchFallbackSegments(array $specs, array $segments): ?array
-    {
-        $params = [];
-        foreach ($specs as $index => $spec) {
-            $piece = $segments[$index] ?? null;
-            if (!is_string($piece)) {
-                return null;
-            }
-            if (($spec['type'] ?? null) === 'lit') {
-                if (($spec['val'] ?? null) !== $piece) {
-                    return null;
-                }
-
-                continue;
-            }
-
-            $name = $spec['name'] ?? null;
-            if (($spec['type'] ?? null) !== 'var' || !is_string($name)) {
-                return null;
-            }
-            $matches = isset($spec['regex'])
-                ? is_string($spec['regex']) && preg_match($spec['regex'], $piece) === 1
-                : is_callable($spec['call'] ?? null) && ($spec['call'])($piece);
-            if (!$matches) {
-                return null;
-            }
-
-            $params[$name] = $piece;
-        }
-
-        return $params;
-    }
-
-    /** @return list<string> */
-    private static function pathSegments(string $path): array
-    {
-        if ($path === '/' || $path === '') {
-            return [];
-        }
-
-        $trimmed = trim($path, '/');
-
-        return $trimmed === '' ? [] : explode('/', $trimmed);
     }
 }

@@ -38,6 +38,18 @@ final class MatcherOutcomeBench
                 'host' => 'localhost',
                 'path' => '/hello/benchmark',
             ],
+            'static-404' => [
+                'route_set' => 'route-cache',
+                'method' => 'GET',
+                'host' => 'localhost',
+                'path' => '/missing',
+            ],
+            'dynamic-head-fallback' => [
+                'route_set' => 'route-cache',
+                'method' => 'HEAD',
+                'host' => 'localhost',
+                'path' => '/hello/benchmark',
+            ],
             'dynamic-404' => [
                 'route_set' => 'route-cache',
                 'method' => 'GET',

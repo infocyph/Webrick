@@ -1,6 +1,6 @@
 # Webrick Matcher Optimization Plan
 
-Status: active development plan  
+Status: active development plan — Phase 1 complete  
 Branch: `webrick-5/batch-1-correctness`
 
 ## Objective
@@ -67,6 +67,38 @@ PCRE remains an accelerator for route families where PCRE2 is the best execution
 ## Phase 1 — Hot executor cleanup
 
 Goal: remove avoidable request-time allocations/branches before changing the IR so later benchmarks measure the algorithm rather than incidental executor overhead.
+
+**Status: complete (2026-09-01).**
+
+Completion record:
+
+- `CompiledMatcherFastEngine` now reuses one `CompiledMatcherDynamicEngine`; request dispatch no longer constructs that executor repeatedly.
+- Single-host dynamic dispatch no longer creates a temporary host/wildcard pair array.
+- `CompiledMatcherDynamicEngine` directly checks exact-prefix then wildcard buckets instead of building temporary candidate arrays.
+- Fast PCRE dispatch no longer creates a temporary step-wrapper array.
+- Added `MatcherOutcomeBench` coverage for static/dynamic hits, static/dynamic 404, HEAD fallback, 405, automatic OPTIONS, and domain-dynamic hits across all three matcher modes.
+- Added `MatcherPathInspectionBench` as the Phase 2 baseline for path shape, segment materialization, and positional parameter capture.
+- A fixed-candidate Sharded compact-dispatch prototype was tested, but intentionally not retained in Phase 1: it pushed `ShardedMatcher` beyond the repository's cognitive-complexity limits without a measured before/after gain sufficient to justify the extra branch surface. Shard-candidate representation should be revisited only as part of the adaptive IR/residency work.
+- PHP 8.4 validation passed the complete PHPForge code test suite: **419 tests / 1089 assertions**.
+
+Measured PHP 8.4.25 baseline (GitHub runner, opcache disabled):
+
+| Case | Fused | Generated | Sharded |
+| --- | ---: | ---: | ---: |
+| static hit | 0.371 µs | 0.282 µs | 0.459 µs |
+| dynamic hit | 1.807 µs | 0.608 µs | 1.884 µs |
+| dynamic 404 | 1.532 µs | 0.692 µs | 1.620 µs |
+| dynamic 405 | 3.106 µs | 1.202 µs | 3.260 µs |
+| automatic OPTIONS | 3.174 µs | 1.107 µs | 3.322 µs |
+| domain dynamic hit | 2.176 µs | 0.616 µs | 2.225 µs |
+
+Path-inspection baseline:
+
+- current path-shape extraction: roughly **0.084–0.166 µs** across root through deep/extra-slash paths;
+- deep-path segment materialization: **0.287 µs**;
+- positional three-parameter capture: **0.290 µs**.
+
+These numbers set a deliberately high acceptance bar for Phase 2: a PHP-level scanner must beat the existing C-backed string primitives in end-to-end matcher dispatch, not merely provide a cleaner abstraction.
 
 ### 1.1 Dynamic-engine lifetime
 
