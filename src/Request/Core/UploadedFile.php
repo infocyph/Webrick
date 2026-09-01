@@ -118,6 +118,18 @@ final class UploadedFile
         $this->moved = true;
     }
 
+    /** @param callable():bool $operation */
+    private static function attemptFilesystemOperation(callable $operation): bool
+    {
+        set_error_handler(static fn(): bool => true);
+
+        try {
+            return $operation();
+        } finally {
+            restore_error_handler();
+        }
+    }
+
     private function assertOkAndNotMoved(): void
     {
         if ($this->err !== UPLOAD_ERR_OK) {
@@ -137,20 +149,6 @@ final class UploadedFile
         $directory = dirname($path);
         if (!is_dir($directory) || !is_writable($directory)) {
             throw new RuntimeException("Upload target directory must exist and be writable: {$directory}");
-        }
-    }
-
-    /** @param callable():bool $operation */
-    private static function attemptFilesystemOperation(callable $operation): bool
-    {
-        set_error_handler(static function (): bool {
-            return true;
-        });
-
-        try {
-            return $operation();
-        } finally {
-            restore_error_handler();
         }
     }
 
@@ -192,7 +190,7 @@ final class UploadedFile
         } finally {
             fclose($out);
             if (!$completed && is_file($targetPath)) {
-                self::attemptFilesystemOperation(static fn (): bool => unlink($targetPath));
+                self::attemptFilesystemOperation(static fn(): bool => unlink($targetPath));
             }
         }
     }
@@ -207,16 +205,16 @@ final class UploadedFile
             return;
         }
 
-        if (self::attemptFilesystemOperation(static fn (): bool => rename($sourcePath, $targetPath))) {
+        if (self::attemptFilesystemOperation(static fn(): bool => rename($sourcePath, $targetPath))) {
             return;
         }
-        if (!self::attemptFilesystemOperation(static fn (): bool => copy($sourcePath, $targetPath))) {
-            self::attemptFilesystemOperation(static fn (): bool => unlink($targetPath));
+        if (!self::attemptFilesystemOperation(static fn(): bool => copy($sourcePath, $targetPath))) {
+            self::attemptFilesystemOperation(static fn(): bool => unlink($targetPath));
 
             throw new RuntimeException("Failed to copy uploaded file to {$targetPath}");
         }
-        if (!self::attemptFilesystemOperation(static fn (): bool => unlink($sourcePath))) {
-            self::attemptFilesystemOperation(static fn (): bool => unlink($targetPath));
+        if (!self::attemptFilesystemOperation(static fn(): bool => unlink($sourcePath))) {
+            self::attemptFilesystemOperation(static fn(): bool => unlink($targetPath));
 
             throw new RuntimeException("Failed to remove uploaded source after copying to {$targetPath}");
         }
