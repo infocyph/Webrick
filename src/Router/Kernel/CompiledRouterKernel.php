@@ -233,6 +233,24 @@ final readonly class CompiledRouterKernel
         return $runtimeContext?->scopeId() ?? 'webrick.request.' . spl_object_id($routing);
     }
 
+    private function controlOutcomeResponse(
+        MatchOutcome $outcome,
+        RoutingInput $routing,
+        ?Request &$request,
+        ?RuntimeRequestContext $runtimeContext,
+    ): Response {
+        if ($outcome->type === MatchOutcomeType::AUTO_OPTIONS) {
+            return self::automaticOptionsResponse($outcome->allowed);
+        }
+
+        $request ??= $runtimeContext?->request() ?? Request::fromGlobals();
+        $error = $outcome->type === MatchOutcomeType::METHOD_NOT_ALLOWED
+            ? new MethodNotAllowedException($routing->method, $routing->path, $outcome->allowed)
+            : new RouteNotFoundException($routing->method, $routing->path);
+
+        return $this->errorHandler->renderThrowable($request, $error);
+    }
+
     private function dispatchRoutingInput(
         RoutingInput $routing,
         ?Request &$request,
@@ -248,8 +266,7 @@ final readonly class CompiledRouterKernel
             $routeIndex = $match[0];
             $vars = $match[1];
         } else {
-            $this->throwOrReturnControlOutcome($match, $routing);
-            $response = self::automaticOptionsResponse($match->allowed);
+            $response = $this->controlOutcomeResponse($match, $routing, $request, $runtimeContext);
             $this->profiler?->mark('dispatch');
 
             return $response;
@@ -342,25 +359,6 @@ final readonly class CompiledRouterKernel
             }
         }
 
-        return $this->errorHandler->handle(
-            $request,
-            static function (Request $activeRequest) use ($exception): Response {
-                unset($activeRequest);
-
-                throw $exception;
-            },
-        );
-    }
-
-    private function throwOrReturnControlOutcome(MatchOutcome $outcome, RoutingInput $routing): void
-    {
-        if ($outcome->type === MatchOutcomeType::AUTO_OPTIONS) {
-            return;
-        }
-        if ($outcome->type === MatchOutcomeType::METHOD_NOT_ALLOWED) {
-            throw new MethodNotAllowedException($routing->method, $routing->path, $outcome->allowed);
-        }
-
-        throw new RouteNotFoundException($routing->method, $routing->path);
+        return $this->errorHandler->renderThrowable($request, $exception);
     }
 }
