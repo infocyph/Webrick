@@ -22,13 +22,13 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
  * @phpstan-type DynamicEntry array{segments:list<SegmentSpec>,verbs:VerbMap}
  * @phpstan-type DynamicBuckets array<int,array<string,array<string,DynamicEntry>>>
  * @phpstan-type CanonicalGroup array{static:array<string,VerbMap>,dynamic:DynamicBuckets}
- * @phpstan-type CompiledGroup array{static:array<string,array<string,RouteValue>>,dynamic:array<string,mixed>}
+ * @phpstan-type CompiledGroup array{static:array<string,array<string,RouteValue>>,static_ids:array<string,array<string,int>>,dynamic:array<string,mixed>}
  */
 final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
 {
     use MatcherFactoryTrait;
 
-    private const int INDEX_CACHE_VERSION = 9;
+    private const int INDEX_CACHE_VERSION = 10;
 
     private const string SHARD_DYNAMIC = '__dynamic';
 
@@ -62,6 +62,8 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     private ?array $compiledHosts = null;
 
     private CompiledMatcherEngine $engine;
+
+    private CompiledMatcherFastEngine $fastEngine;
 
     private bool $finalized = false;
 
@@ -241,6 +243,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     {
         $this->index ??= new CanonicalMatcherIndex();
         $this->engine ??= new CompiledMatcherEngine();
+        $this->fastEngine ??= new CompiledMatcherFastEngine();
     }
 
     private function cacheStorageDir(): string
@@ -309,7 +312,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             $wildcardGroup = $host !== '*' ? ($hosts['*'] ?? null) : null;
 
             return $compact
-                ? $this->engine->matchSingleCompiled($hostGroup, $wildcardGroup, $method, $path)
+                ? $this->fastEngine->matchSingle($hostGroup, $wildcardGroup, $method, $path)
                 : $this->engine->matchSingle($hostGroup, $wildcardGroup, $method, $path);
         }
 
@@ -319,7 +322,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         $wildcardGroups = $host !== '*' ? $this->loadCandidateGroups('*', $bucket) : [];
 
         return $compact
-            ? $this->engine->matchCompiled($hostGroups, $wildcardGroups, $method, $path)
+            ? $this->fastEngine->match($hostGroups, $wildcardGroups, $method, $path)
             : $this->engine->match($hostGroups, $wildcardGroups, $method, $path);
     }
 
