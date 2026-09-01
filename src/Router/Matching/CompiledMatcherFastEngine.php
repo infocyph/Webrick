@@ -14,8 +14,8 @@ use Infocyph\Webrick\Constants\HttpMethodEnum;
  * or branches between rich/compact result representations after a successful
  * match.
  *
- * @phpstan-type FastRouteEntry array{route:mixed,id:int,params:array<string,string>}
- * @phpstan-type PcreStep array{type:'pcre',regex:string,routes:array<string,FastRouteEntry>}
+ * @phpstan-type FastRouteEntry array{route:mixed,id:int,params:array<string,string>,fast_params:list<string>}
+ * @phpstan-type PcreStep array{type:'pcre',regex:string,fast_regex:string,routes:array<string,FastRouteEntry>}
  * @phpstan-type FallbackStep array{type:'fallback',segments:list<array<string,mixed>>,route:mixed,id:int}
  * @phpstan-type DynamicBucket array{steps:list<PcreStep|FallbackStep>}
  * @phpstan-type MatcherGroup array{static:array<string,array<string,mixed>>,static_ids:array<string,array<string,int>>,dynamic:array<string,array<int,array<string,DynamicBucket>>>}
@@ -180,19 +180,13 @@ final class CompiledMatcherFastEngine
             : MatchOutcome::methodNotAllowed($methods);
     }
 
-    /**
-     * @param MatcherGroup $group
-     * @return int|null
-     */
+    /** @param MatcherGroup $group */
     private static function matchStaticMethod(array $group, string $method, string $path): ?int
     {
         return $group['static_ids'][$method][$path] ?? null;
     }
 
-    /**
-     * @param MatcherGroup $group
-     * @return int|null
-     */
+    /** @param MatcherGroup $group */
     private static function matchStaticRequested(array $group, string $method, string $path): ?int
     {
         $hit = self::matchStaticMethod($group, $method, $path);
@@ -203,10 +197,7 @@ final class CompiledMatcherFastEngine
         return self::matchStaticMethod($group, HttpMethodEnum::GET->value, $path);
     }
 
-    /**
-     * @param list<MatcherGroup> $groups
-     * @return int|null
-     */
+    /** @param list<MatcherGroup> $groups */
     private static function matchStaticGroups(array $groups, string $method, string $path): ?int
     {
         foreach ($groups as $group) {
@@ -229,7 +220,7 @@ final class CompiledMatcherFastEngine
         foreach ($bucket['steps'] as $step) {
             if ($step['type'] === 'pcre') {
                 $matches = [];
-                $status = preg_match($step['regex'], $path, $matches);
+                $status = preg_match($step['fast_regex'], $path, $matches);
                 if ($status === false) {
                     throw new \RuntimeException('Compiled matcher PCRE failed during dispatch.');
                 }
@@ -243,10 +234,10 @@ final class CompiledMatcherFastEngine
                 }
                 $entry = $step['routes'][$mark];
                 $params = [];
-                foreach ($entry['params'] as $capture => $name) {
-                    $piece = $matches[$capture] ?? null;
+                foreach ($entry['fast_params'] as $offset => $name) {
+                    $piece = $matches[$offset + 1] ?? null;
                     if (!is_string($piece)) {
-                        throw new \UnexpectedValueException('Compiled matcher parameter capture is unavailable.');
+                        throw new \UnexpectedValueException('Compiled matcher positional parameter capture is unavailable.');
                     }
                     $params[$name] = $piece;
                 }
@@ -300,10 +291,7 @@ final class CompiledMatcherFastEngine
             : null;
     }
 
-    /**
-     * @param MatcherGroup $group
-     * @return int|array{0:int,1:array<string,string>}|null
-     */
+    /** @param MatcherGroup $group */
     private function matchDynamicRequested(
         array $group,
         string $method,
@@ -332,10 +320,7 @@ final class CompiledMatcherFastEngine
         return $entry === null ? null : ($entry[1] === [] ? $entry[0] : $entry);
     }
 
-    /**
-     * @param list<MatcherGroup> $groups
-     * @return int|array{0:int,1:array<string,string>}|null
-     */
+    /** @param list<MatcherGroup> $groups */
     private function matchDynamicGroups(
         array $groups,
         string $method,
