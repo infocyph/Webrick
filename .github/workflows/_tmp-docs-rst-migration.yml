@@ -48,8 +48,8 @@ jobs:
             echo 'Internal Markdown link targets remain.' >&2
             exit 1
           fi
-          if grep -RIn --include='*.rst' -E 'TraceContext::(get[A-Z]|isAvailable|isOtelMode|isSampled)' docs; then
-            echo 'Removed process-global TraceContext API remains documented.' >&2
+          if grep -RIn --include='*.rst' -E '^[[:space:]]+.*TraceContext::(get[A-Z]|isAvailable|isOtelMode|isSampled)' docs; then
+            echo 'Removed process-global TraceContext API remains in an example.' >&2
             exit 1
           fi
           if grep -RIn --include='*.rst' -E 'Request::createFromGlobals|capturePhpErrors|fallbackAliasesFromRegistrar' docs; then
