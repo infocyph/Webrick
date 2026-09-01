@@ -211,7 +211,7 @@ final readonly class CompiledRouterKernel
                 default => $this->dispatcher->dispatchWithoutRequest($plan, $vars),
             };
         }
-        $response = $this->runtime->withinScope(self::scopeId($routing, $runtimeContext), fn () => $this->dispatcher->dispatchWithoutRequest($plan, $vars));
+        $response = $this->runtime->withinScope(self::scopeId($routing, $runtimeContext), fn() => $this->dispatcher->dispatchWithoutRequest($plan, $vars));
         if (!$response instanceof Response) {
             throw new \RuntimeException('Compiled request scope must return Response.');
         }
@@ -226,7 +226,7 @@ final readonly class CompiledRouterKernel
         if (!$requiresScope) {
             return $this->dispatcher->dispatch($plan, $request, $vars);
         }
-        $response = $this->runtime->withinScope(self::scopeId($routing, $runtimeContext), fn () => $this->dispatcher->dispatch($plan, $request, $vars), [Request::class => $request]);
+        $response = $this->runtime->withinScope(self::scopeId($routing, $runtimeContext), fn() => $this->dispatcher->dispatch($plan, $request, $vars), [Request::class => $request]);
         if (!$response instanceof Response) {
             throw new \RuntimeException('Compiled request scope must return Response.');
         }
