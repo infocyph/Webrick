@@ -58,85 +58,11 @@ final class CompactMatcherDynamicValidator
         return $allowed;
     }
 
-    /**
-     * @param array<array-key,mixed> $raw
-     * @param array<int,mixed> $routes
-     * @return array<int,array<string,DynamicBucket>>
-     */
-    private static function validateCounts(array $raw, array $routes, bool $validateRegex): array
+    private static function assertRegex(string $regex, bool $validateRegex, string $message): void
     {
-        $counts = [];
-        foreach ($raw as $count => $prefixes) {
-            if (!is_int($count) || $count < 0 || !is_array($prefixes)) {
-                throw new \UnexpectedValueException('Compact matcher segment-count map is invalid.');
-            }
-            $counts[$count] = self::validatePrefixes($prefixes, $routes, $validateRegex);
+        if ($validateRegex && preg_match($regex, '') === false) {
+            throw new \UnexpectedValueException($message);
         }
-
-        return $counts;
-    }
-
-    /**
-     * @param array<array-key,mixed> $raw
-     * @param array<int,mixed> $routes
-     * @return array<string,DynamicBucket>
-     */
-    private static function validatePrefixes(array $raw, array $routes, bool $validateRegex): array
-    {
-        $prefixes = [];
-        foreach ($raw as $prefix => $bucket) {
-            if (!is_string($prefix)) {
-                throw new \UnexpectedValueException('Compact matcher prefix bucket is invalid.');
-            }
-            $prefixes[$prefix] = self::validateBucket($bucket, $routes, $validateRegex);
-        }
-
-        return $prefixes;
-    }
-
-    /**
-     * @param array<int,mixed> $routes
-     * @return DynamicBucket
-     */
-    private static function validateBucket(mixed $raw, array $routes, bool $validateRegex): array
-    {
-        if (!is_array($raw)) {
-            throw new \UnexpectedValueException('Compact matcher dynamic bucket is invalid.');
-        }
-
-        $stepsRaw = $raw['steps'] ?? null;
-        if (!is_array($stepsRaw) || !array_is_list($stepsRaw) || $stepsRaw === []) {
-            throw new \UnexpectedValueException('Compact matcher dynamic steps are invalid.');
-        }
-
-        $steps = [];
-        foreach ($stepsRaw as $step) {
-            $steps[] = self::validateStep($step, $routes, $validateRegex);
-        }
-
-        $bucket = ['steps' => $steps];
-        if (array_key_exists('fast_dispatch', $raw)) {
-            $bucket['fast_dispatch'] = self::validateFastDispatch($raw['fast_dispatch'], $routes, $validateRegex);
-        }
-
-        return $bucket;
-    }
-
-    /**
-     * @param array<array-key,mixed> $raw
-     * @return array<string,AllowedBucket>
-     */
-    private static function validateAllowedPrefixes(array $raw, bool $validateRegex): array
-    {
-        $prefixes = [];
-        foreach ($raw as $prefix => $bucket) {
-            if (!is_string($prefix)) {
-                throw new \UnexpectedValueException('Compact matcher allowed-method prefix bucket is invalid.');
-            }
-            $prefixes[$prefix] = self::validateAllowedBucket($bucket, $validateRegex);
-        }
-
-        return $prefixes;
     }
 
     /** @return AllowedBucket */
@@ -186,6 +112,88 @@ final class CompactMatcherDynamicValidator
     }
 
     /**
+     * @param array<array-key,mixed> $raw
+     * @return array<string,AllowedBucket>
+     */
+    private static function validateAllowedPrefixes(array $raw, bool $validateRegex): array
+    {
+        $prefixes = [];
+        foreach ($raw as $prefix => $bucket) {
+            if (!is_string($prefix)) {
+                throw new \UnexpectedValueException('Compact matcher allowed-method prefix bucket is invalid.');
+            }
+            $prefixes[$prefix] = self::validateAllowedBucket($bucket, $validateRegex);
+        }
+
+        return $prefixes;
+    }
+
+    /**
+     * @param array<int,mixed> $routes
+     * @return DynamicBucket
+     */
+    private static function validateBucket(mixed $raw, array $routes, bool $validateRegex): array
+    {
+        if (!is_array($raw)) {
+            throw new \UnexpectedValueException('Compact matcher dynamic bucket is invalid.');
+        }
+
+        $stepsRaw = $raw['steps'] ?? null;
+        if (!is_array($stepsRaw) || !array_is_list($stepsRaw) || $stepsRaw === []) {
+            throw new \UnexpectedValueException('Compact matcher dynamic steps are invalid.');
+        }
+
+        $steps = [];
+        foreach ($stepsRaw as $step) {
+            $steps[] = self::validateStep($step, $routes, $validateRegex);
+        }
+
+        $bucket = ['steps' => $steps];
+        if (array_key_exists('fast_dispatch', $raw)) {
+            $bucket['fast_dispatch'] = self::validateFastDispatch($raw['fast_dispatch'], $routes, $validateRegex);
+        }
+
+        return $bucket;
+    }
+
+    /**
+     * @param array<array-key,mixed> $raw
+     * @param array<int,mixed> $routes
+     * @return array<int,array<string,DynamicBucket>>
+     */
+    private static function validateCounts(array $raw, array $routes, bool $validateRegex): array
+    {
+        $counts = [];
+        foreach ($raw as $count => $prefixes) {
+            if (!is_int($count) || $count < 0 || !is_array($prefixes)) {
+                throw new \UnexpectedValueException('Compact matcher segment-count map is invalid.');
+            }
+            $counts[$count] = self::validatePrefixes($prefixes, $routes, $validateRegex);
+        }
+
+        return $counts;
+    }
+
+    /**
+     * @param array<array-key,mixed> $raw
+     * @param array<int,mixed> $routes
+     * @return FallbackStep
+     */
+    private static function validateFallbackStep(array $raw, array $routes): array
+    {
+        $id = $raw['id'] ?? null;
+        if (!is_int($id) || !array_key_exists($id, $routes)) {
+            throw new \UnexpectedValueException('Compact matcher fallback route ID is invalid.');
+        }
+
+        return [
+            'type' => 'fallback',
+            'segments' => self::validateSegments($raw['segments'] ?? null),
+            'id' => $id,
+        ];
+    }
+
+    /**
      * @param array<int,mixed> $routes
      * @return FastDispatch
      */
@@ -226,6 +234,22 @@ final class CompactMatcherDynamicValidator
     }
 
     /**
+     * @param array<int,mixed> $routes
+     * @return FastDispatchStep
+     */
+    private static function validateFastStep(mixed $raw, array $routes, bool $validateRegex): array
+    {
+        if (!is_array($raw) || !is_string($raw['regex'] ?? null) || !is_array($raw['routes'] ?? null)) {
+            throw new \UnexpectedValueException('Compact matcher adaptive PCRE step is invalid.');
+        }
+
+        $regex = $raw['regex'];
+        self::assertRegex($regex, $validateRegex, 'Compact matcher adaptive PCRE cannot be compiled.');
+
+        return ['regex' => $regex, 'routes' => self::validateRouteMap($raw['routes'], $routes)];
+    }
+
+    /**
      * @param list<mixed> $raw
      * @param array<int,mixed> $routes
      * @return list<FastDispatchStep>
@@ -240,20 +264,76 @@ final class CompactMatcherDynamicValidator
         return $steps;
     }
 
-    /**
-     * @param array<int,mixed> $routes
-     * @return FastDispatchStep
-     */
-    private static function validateFastStep(mixed $raw, array $routes, bool $validateRegex): array
+    /** @return list<string> */
+    private static function validateMethodList(mixed $raw): array
     {
-        if (!is_array($raw) || !is_string($raw['regex'] ?? null) || !is_array($raw['routes'] ?? null)) {
-            throw new \UnexpectedValueException('Compact matcher adaptive PCRE step is invalid.');
+        if (!is_array($raw) || !array_is_list($raw) || $raw === []) {
+            throw new \UnexpectedValueException('Compact matcher method list is invalid.');
         }
 
-        $regex = $raw['regex'];
-        self::assertRegex($regex, $validateRegex, 'Compact matcher adaptive PCRE cannot be compiled.');
+        $seen = [];
+        foreach ($raw as $method) {
+            if (!is_string($method) || $method === '' || isset($seen[$method])) {
+                throw new \UnexpectedValueException('Compact matcher method token is invalid or duplicated.');
+            }
+            $seen[$method] = true;
+        }
 
-        return ['regex' => $regex, 'routes' => self::validateRouteMap($raw['routes'], $routes)];
+        return array_keys($seen);
+    }
+
+    /** @return list<string> */
+    private static function validateParams(mixed $raw): array
+    {
+        if (!is_array($raw) || !array_is_list($raw)) {
+            throw new \UnexpectedValueException('Compact matcher parameter list is invalid.');
+        }
+
+        $params = [];
+        foreach ($raw as $name) {
+            if (!is_string($name) || $name === '') {
+                throw new \UnexpectedValueException('Compact matcher parameter name is invalid.');
+            }
+            $params[] = $name;
+        }
+
+        return $params;
+    }
+
+    /**
+     * @param array<array-key,mixed> $raw
+     * @param array<int,mixed> $routes
+     * @return PcreStep
+     */
+    private static function validatePcreStep(array $raw, array $routes, bool $validateRegex): array
+    {
+        $regex = $raw['regex'] ?? null;
+        $map = $raw['routes'] ?? null;
+        if (!is_string($regex) || $regex === '' || !is_array($map) || $map === []) {
+            throw new \UnexpectedValueException('Compact matcher PCRE step is invalid.');
+        }
+
+        self::assertRegex($regex, $validateRegex, 'Compact matcher PCRE cannot be compiled.');
+
+        return ['type' => 'pcre', 'regex' => $regex, 'routes' => self::validateRouteMap($map, $routes)];
+    }
+
+    /**
+     * @param array<array-key,mixed> $raw
+     * @param array<int,mixed> $routes
+     * @return array<string,DynamicBucket>
+     */
+    private static function validatePrefixes(array $raw, array $routes, bool $validateRegex): array
+    {
+        $prefixes = [];
+        foreach ($raw as $prefix => $bucket) {
+            if (!is_string($prefix)) {
+                throw new \UnexpectedValueException('Compact matcher prefix bucket is invalid.');
+            }
+            $prefixes[$prefix] = self::validateBucket($bucket, $routes, $validateRegex);
+        }
+
+        return $prefixes;
     }
 
     /**
@@ -279,60 +359,6 @@ final class CompactMatcherDynamicValidator
         return $map;
     }
 
-    /**
-     * @param array<int,mixed> $routes
-     * @return PcreStep|FallbackStep
-     */
-    private static function validateStep(mixed $raw, array $routes, bool $validateRegex): array
-    {
-        if (!is_array($raw)) {
-            throw new \UnexpectedValueException('Compact matcher dynamic step is invalid.');
-        }
-
-        return match ($raw['type'] ?? null) {
-            'pcre' => self::validatePcreStep($raw, $routes, $validateRegex),
-            'fallback' => self::validateFallbackStep($raw, $routes),
-            default => throw new \UnexpectedValueException('Compact matcher dynamic step type is invalid.'),
-        };
-    }
-
-    /**
-     * @param array<array-key,mixed> $raw
-     * @param array<int,mixed> $routes
-     * @return PcreStep
-     */
-    private static function validatePcreStep(array $raw, array $routes, bool $validateRegex): array
-    {
-        $regex = $raw['regex'] ?? null;
-        $map = $raw['routes'] ?? null;
-        if (!is_string($regex) || $regex === '' || !is_array($map) || $map === []) {
-            throw new \UnexpectedValueException('Compact matcher PCRE step is invalid.');
-        }
-
-        self::assertRegex($regex, $validateRegex, 'Compact matcher PCRE cannot be compiled.');
-
-        return ['type' => 'pcre', 'regex' => $regex, 'routes' => self::validateRouteMap($map, $routes)];
-    }
-
-    /**
-     * @param array<array-key,mixed> $raw
-     * @param array<int,mixed> $routes
-     * @return FallbackStep
-     */
-    private static function validateFallbackStep(array $raw, array $routes): array
-    {
-        $id = $raw['id'] ?? null;
-        if (!is_int($id) || !array_key_exists($id, $routes)) {
-            throw new \UnexpectedValueException('Compact matcher fallback route ID is invalid.');
-        }
-
-        return [
-            'type' => 'fallback',
-            'segments' => self::validateSegments($raw['segments'] ?? null),
-            'id' => $id,
-        ];
-    }
-
     /** @return list<array<string,mixed>> */
     private static function validateSegments(mixed $raw): array
     {
@@ -352,46 +378,20 @@ final class CompactMatcherDynamicValidator
         return $segments;
     }
 
-    /** @return list<string> */
-    private static function validateParams(mixed $raw): array
+    /**
+     * @param array<int,mixed> $routes
+     * @return PcreStep|FallbackStep
+     */
+    private static function validateStep(mixed $raw, array $routes, bool $validateRegex): array
     {
-        if (!is_array($raw) || !array_is_list($raw)) {
-            throw new \UnexpectedValueException('Compact matcher parameter list is invalid.');
+        if (!is_array($raw)) {
+            throw new \UnexpectedValueException('Compact matcher dynamic step is invalid.');
         }
 
-        $params = [];
-        foreach ($raw as $name) {
-            if (!is_string($name) || $name === '') {
-                throw new \UnexpectedValueException('Compact matcher parameter name is invalid.');
-            }
-            $params[] = $name;
-        }
-
-        return $params;
-    }
-
-    /** @return list<string> */
-    private static function validateMethodList(mixed $raw): array
-    {
-        if (!is_array($raw) || !array_is_list($raw) || $raw === []) {
-            throw new \UnexpectedValueException('Compact matcher method list is invalid.');
-        }
-
-        $seen = [];
-        foreach ($raw as $method) {
-            if (!is_string($method) || $method === '' || isset($seen[$method])) {
-                throw new \UnexpectedValueException('Compact matcher method token is invalid or duplicated.');
-            }
-            $seen[$method] = true;
-        }
-
-        return array_keys($seen);
-    }
-
-    private static function assertRegex(string $regex, bool $validateRegex, string $message): void
-    {
-        if ($validateRegex && preg_match($regex, '') === false) {
-            throw new \UnexpectedValueException($message);
-        }
+        return match ($raw['type'] ?? null) {
+            'pcre' => self::validatePcreStep($raw, $routes, $validateRegex),
+            'fallback' => self::validateFallbackStep($raw, $routes),
+            default => throw new \UnexpectedValueException('Compact matcher dynamic step type is invalid.'),
+        };
     }
 }
