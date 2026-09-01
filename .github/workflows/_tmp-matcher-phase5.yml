@@ -1,0 +1,68 @@
+name: Temporary Matcher Phase 5
+
+on:
+  push:
+    branches:
+      - webrick-5/batch-1-correctness
+
+permissions:
+  contents: write
+
+jobs:
+  phase5:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: webrick-5/batch-1-correctness
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+          tools: composer:v2
+      - run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Benchmark Phase 5 baseline
+        run: vendor/bin/phpbench run benchmarks/MatcherMethodTerminalBench.php --bootstrap=vendor/autoload.php --report=aggregate | tee /tmp/phase5-baseline.txt
+
+      - name: Apply single-shape method terminal candidate
+        run: |
+          python3 .github/scripts/_tmp_matcher_phase5.py patch
+          vendor/bin/pint --config=vendor/infocyph/phpforge/resources/pint.json \
+            src/Router/Matching/CompiledMatcherIndexCompiler.php \
+            src/Router/Matching/CompiledMatcherDynamicEngine.php \
+            src/Router/Matching/CompiledMatcherFastEngine.php \
+            src/Router/Matching/CompactMatcherDynamicValidator.php \
+            src/Router/Matching/FusedMatcher.php \
+            src/Router/Matching/ShardedMatcher.php \
+            tests/Unit/MatcherPerformanceRevisionTest.php \
+            benchmarks/MatcherMethodTerminalBench.php
+
+      - name: Benchmark Phase 5 candidate
+        run: vendor/bin/phpbench run benchmarks/MatcherMethodTerminalBench.php --bootstrap=vendor/autoload.php --report=aggregate | tee /tmp/phase5-candidate.txt
+
+      - name: Decide Phase 5 retention
+        run: python3 .github/scripts/_tmp_matcher_phase5.py decide
+
+      - name: Record Phase 5 result
+        run: python3 .github/scripts/_tmp_matcher_phase5.py record
+
+      - name: Run Phase 5 final quality gate
+        run: composer ic:ci
+
+      - name: Run Phase 5 regression benchmarks
+        run: |
+          vendor/bin/phpbench run benchmarks/MatcherOutcomeBench.php --bootstrap=vendor/autoload.php --report=aggregate
+          vendor/bin/phpbench run benchmarks/MatcherScaleBench.php --bootstrap=vendor/autoload.php --report=aggregate
+
+      - name: Commit Phase 5 and remove temporary runner
+        shell: bash
+        run: |
+          rm -f .github/workflows/_tmp-matcher-phase5.yml
+          rm -f .github/scripts/_tmp_matcher_phase5.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit --no-verify -m "perf: complete matcher method terminal phase"
+          git push origin HEAD:webrick-5/batch-1-correctness
