@@ -1,6 +1,6 @@
 # Webrick Matcher Optimization Plan
 
-Status: active development plan — Phases 1–5 complete  
+Status: active development plan — Phases 1–6 complete  
 Branch: `webrick-5/batch-1-correctness`
 
 ## Objective
@@ -271,6 +271,10 @@ Expected benefit:
 Do not adopt this representation if it complicates custom-method correctness or materially increases common-hit memory.
 
 ## Phase 6 — Adaptive PCRE policy
+
+**Status: complete — retained the 48-route PCRE chunk target (2026-09-01).**
+
+Chunk targets 24, 48, and 96 were measured on the same runner using a 243-route all-PCRE family whose literal cardinality deliberately stays below the `fast_dispatch` threshold. The global target changes only when a candidate improves the aggregate by at least 5% without making a hit more than 3% slower. No candidate cleared that gate, so the existing target remains 48. Metrics: chunk 24: average 4.311 us;   fused-early-hit: 1.841 us;   fused-late-hit: 5.335 us;   fused-miss: 5.754 us;   sharded-early-hit: 1.898 us;   sharded-late-hit: 5.267 us;   sharded-miss: 5.769 us; chunk 48: average 3.663 us;   fused-early-hit: 1.864 us;   fused-late-hit: 4.317 us;   fused-miss: 4.668 us;   sharded-early-hit: 1.963 us;   sharded-late-hit: 4.364 us;   sharded-miss: 4.800 us; chunk 96: average 3.426 us;   fused-early-hit: 1.967 us;   fused-late-hit: 3.886 us;   fused-miss: 4.342 us;   sharded-early-hit: 2.062 us;   sharded-late-hit: 3.944 us;   sharded-miss: 4.353 us; chosen chunk: 48.
 
 Goal: make PCRE chunking/discrimination route-family aware rather than controlled primarily by one global chunk target.
 
