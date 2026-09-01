@@ -52,7 +52,7 @@ final class RouterArtifactCompiler
         ]));
     }
 
-    /** @return array{path:string,meta:string,sha256:string,fingerprint:string,routes:int} */
+    /** @return array{path:string,meta:string,digest:string,fingerprint:string,routes:int} */
     public function compile(RouterBuildResult $build, string $path): array
     {
         [$routes, $plans] = $this->indexedRuntimePayloads($build);
@@ -88,9 +88,9 @@ final class RouterArtifactCompiler
 
         $php = "<?php\n\ndeclare(strict_types=1);\n\nreturn " . var_export($payload, true) . ";\n";
         $this->writeAtomic($path, $php);
-        $sha256 = hash_file('sha256', $path);
-        if (!is_string($sha256)) {
-            throw new RuntimeException('Unable to hash generated Webrick router artifact.');
+        $digest = hash_file('xxh128', $path);
+        if (!is_string($digest)) {
+            throw new RuntimeException('Unable to fingerprint generated Webrick router artifact.');
         }
 
         $metaPath = $path . '.meta.json';
@@ -99,14 +99,14 @@ final class RouterArtifactCompiler
             'environment' => $build->environment,
             'config_fingerprint' => $build->configFingerprint,
             'artifact_fingerprint' => $fingerprint,
-            'sha256' => $sha256,
+            'digest' => $digest,
         ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n";
         $this->writeAtomic($metaPath, $meta);
 
         return [
             'path' => $path,
             'meta' => $metaPath,
-            'sha256' => $sha256,
+            'digest' => $digest,
             'fingerprint' => $fingerprint,
             'routes' => count($routes),
         ];
