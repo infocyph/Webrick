@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Infocyph\Webrick\Router\Matching\CanonicalMatcherIndex;
 use Infocyph\Webrick\Router\Matching\CompiledMatcherEngine;
 use Infocyph\Webrick\Router\Matching\CompiledMatcherIndexCompiler;
+use Infocyph\Webrick\Router\Matching\CompiledMatcherIrCompactor;
 use Infocyph\Webrick\Router\Matching\MatchOutcome;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 use Infocyph\Webrick\Router\Route\Route;
@@ -65,7 +66,8 @@ fwrite(STDOUT, sprintf("%8s %-18s %14s %14s\n", 'chunk', 'scenario', 'median ns/
 fwrite(STDOUT, str_repeat('-', 60) . "\n");
 
 foreach ([8, 16, 24, 32, 48, 64] as $chunkSize) {
-    $hosts = (new CompiledMatcherIndexCompiler($chunkSize))->compile($index->hosts());
+    $compiled = (new CompiledMatcherIndexCompiler($chunkSize))->compile($index->hosts());
+    $hosts = CompiledMatcherIrCompactor::compactHosts($compiled);
     $group = $hosts['*'];
     $engine = new CompiledMatcherEngine();
 
