@@ -50,12 +50,18 @@ final readonly class ErrorHandler
         try {
             return $core($request);
         } catch (Throwable $error) {
-            $status = $this->resolveStatus($error);
-            $response = $this->render($request, $error, $status);
-            $this->log($error, $request, $status);
-
-            return $response;
+            return $this->renderThrowable($request, $error);
         }
+    }
+
+    /** Render an already-known error without an additional throw/catch trampoline. */
+    public function renderThrowable(Request $request, Throwable $error): Response
+    {
+        $status = $this->resolveStatus($error);
+        $response = $this->render($request, $error, $status);
+        $this->log($error, $request, $status);
+
+        return $response;
     }
 
     /** @return array<string,string> */
