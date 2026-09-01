@@ -1,0 +1,459 @@
+name: Temporary Matcher Phase 4
+
+on:
+  push:
+    branches:
+      - webrick-5/batch-1-correctness
+
+permissions:
+  contents: write
+
+jobs:
+  phase4:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: webrick-5/batch-1-correctness
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+          tools: composer:v2
+      - run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Create Phase 4 benchmark
+        shell: bash
+        run: |
+          cat > benchmarks/MatcherAdaptiveDecisionBench.php <<'PHP'
+          <?php
+
+          declare(strict_types=1);
+
+          namespace Infocyph\Webrick\Benchmarks;
+
+          use Infocyph\Webrick\Constants\MatcherModeEnum;
+          use Infocyph\Webrick\Router\Matching\FusedMatcher;
+          use Infocyph\Webrick\Router\Matching\MatcherInterface;
+          use Infocyph\Webrick\Router\Matching\ShardedMatcher;
+          use Infocyph\Webrick\Router\Route\CompiledRoute;
+          use Infocyph\Webrick\Router\Route\Route;
+          use PhpBench\Attributes as Bench;
+
+          #[Bench\Groups(['matcher', 'matcher-adaptive-decision'])]
+          #[Bench\Iterations(7)]
+          #[Bench\Revs(3000)]
+          #[Bench\Warmup(2)]
+          final class MatcherAdaptiveDecisionBench
+          {
+              /** @var array<string,MatcherInterface> */
+              private static array $matchers = [];
+
+              #[Bench\ParamProviders('provideCases')]
+              public function benchAdaptiveDecision(array $params): void
+              {
+                  self::matcher((string) $params['matcher'])
+                      ->matchCompiled('GET', '*', (string) $params['path']);
+              }
+
+              /** @return iterable<string,array{matcher:string,path:string}> */
+              public function provideCases(): iterable
+              {
+                  foreach ([MatcherModeEnum::FUSED->value, MatcherModeEnum::SHARDED->value] as $matcher) {
+                      yield $matcher . '-hit' => [
+                          'matcher' => $matcher,
+                          'path' => '/adaptive/g15/r15/deadbeef',
+                      ];
+                      yield $matcher . '-miss' => [
+                          'matcher' => $matcher,
+                          'path' => '/adaptive/g15/r15/not-hex',
+                      ];
+                  }
+              }
+
+              private static function matcher(string $mode): MatcherInterface
+              {
+                  if (isset(self::$matchers[$mode])) {
+                      return self::$matchers[$mode];
+                  }
+
+                  $matcher = match ($mode) {
+                      MatcherModeEnum::FUSED->value => FusedMatcher::make(),
+                      MatcherModeEnum::SHARDED->value => ShardedMatcher::make(),
+                      default => throw new \LogicException('Unsupported matcher mode.'),
+                  };
+
+                  $index = 0;
+                  for ($group = 0; $group < 16; ++$group) {
+                      for ($route = 0; $route < 16; ++$route) {
+                          $matcher->add(CompiledRoute::fromRoute(
+                              new Route('GET', "/adaptive/g{$group}/r{$route}/{id:hex}", 'adaptive-handler'),
+                              $index++,
+                          ));
+                      }
+                  }
+                  $matcher->finalize();
+
+                  return self::$matchers[$mode] = $matcher;
+              }
+          }
+          PHP
+
+      - name: Benchmark Phase 4 baseline
+        run: vendor/bin/phpbench run benchmarks/MatcherAdaptiveDecisionBench.php --bootstrap=vendor/autoload.php --report=aggregate | tee /tmp/phase4-baseline.txt
+
+      - name: Apply bounded two-level decision candidate
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          compiler = Path('src/Router/Matching/CompiledMatcherIndexCompiler.php')
+          text = compiler.read_text()
+          text = text.replace(
+              " * @phpstan-type FastDispatch array{segment:int,groups:array<array-key,list<FastDispatchStep>>}\n",
+              " * @phpstan-type FastDispatchChild array{segment:int,groups:array<array-key,list<FastDispatchStep>>}\n * @phpstan-type FastDispatch array{segment:int,groups:array<array-key,list<FastDispatchStep>>,nested?:array<array-key,FastDispatchChild>}\n",
+              1,
+          )
+          text = text.replace(
+              "private static function bestLiteralSegment(array $routes): ?array\n    {\n        $best = null;\n        foreach ($routes[0]['segments'] as $segment => $_spec) {",
+              "private static function bestLiteralSegment(array $routes, ?int $exclude = null): ?array\n    {\n        $best = null;\n        foreach ($routes[0]['segments'] as $segment => $_spec) {\n            if ($segment === $exclude) {\n                continue;\n            }",
+              1,
+          )
+          marker = "    /**\n     * Builds a compact-only literal discriminator when one segment is literal\n"
+          nested = r'''    /**
+     * @param non-empty-list<array{segments:list<SegmentSpec>,route:RouteValue,id:int}> $routes
+     * @return FastDispatchChild|null
+     */
+    private function compileNestedFastLiteralDispatch(array $routes, int $exclude): ?array
+    {
+        $routeCount = count($routes);
+        if ($routeCount < 8) {
+            return null;
+        }
+
+        $selection = self::bestLiteralSegment($routes, $exclude);
+        if ($selection === null || $selection['distinct'] < 4) {
+            return null;
+        }
+        if ((int) ceil($routeCount / $selection['distinct']) > max(1, intdiv($routeCount, 2))) {
+            return null;
+        }
+
+        /** @var array<array-key,non-empty-list<array{segments:list<SegmentSpec>,route:RouteValue,id:int}>> $groups */
+        $groups = [];
+        foreach ($routes as $entry) {
+            $key = self::literalSegment($entry['segments'], $selection['segment'])
+                ?? throw new \UnexpectedValueException('Compiled matcher nested literal segment is invalid.');
+            $groups[$key][] = $entry;
+        }
+
+        $compiled = [];
+        foreach ($groups as $key => $group) {
+            $compiled[$key] = $this->compileBalancedFastDispatchSteps($group);
+        }
+
+        return ['segment' => $selection['segment'], 'groups' => $compiled];
+    }
+
+'''
+          if marker not in text:
+              raise SystemExit('Phase 4 compiler insertion marker missing')
+          text = text.replace(marker, nested + marker, 1)
+          old = r'''        /** @var array<string,list<array{segments:list<SegmentSpec>,route:RouteValue,id:int}>> $groups */
+        $groups = [];
+        foreach ($routes as $entry) {
+            $key = self::literalSegment($entry['segments'], $selection['segment'])
+                ?? throw new \UnexpectedValueException('Compiled matcher literal segment is invalid.');
+            $groups[$key][] = [
+                'segments' => $entry['segments'],
+                'route' => $entry['route'],
+                'id' => $entry['id'],
+            ];
+        }
+
+        $compiled = [];
+        foreach ($groups as $key => $group) {
+            $compiled[$key] = $this->compileBalancedFastDispatchSteps($group);
+        }
+
+        return ['segment' => $selection['segment'], 'groups' => $compiled];
+'''
+          new = r'''        /** @var array<array-key,non-empty-list<array{segments:list<SegmentSpec>,route:RouteValue,id:int}>> $groups */
+        $groups = [];
+        foreach ($routes as $entry) {
+            $key = self::literalSegment($entry['segments'], $selection['segment'])
+                ?? throw new \UnexpectedValueException('Compiled matcher literal segment is invalid.');
+            $groups[$key][] = [
+                'segments' => $entry['segments'],
+                'route' => $entry['route'],
+                'id' => $entry['id'],
+            ];
+        }
+
+        $compiled = [];
+        $nested = [];
+        foreach ($groups as $key => $group) {
+            $child = $this->compileNestedFastLiteralDispatch($group, $selection['segment']);
+            if ($child !== null) {
+                $nested[$key] = $child;
+                continue;
+            }
+            $compiled[$key] = $this->compileBalancedFastDispatchSteps($group);
+        }
+
+        $dispatch = ['segment' => $selection['segment'], 'groups' => $compiled];
+        if ($nested !== []) {
+            $dispatch['nested'] = $nested;
+        }
+
+        return $dispatch;
+'''
+          if old not in text:
+              raise SystemExit('Phase 4 fast dispatch replacement marker missing')
+          compiler.write_text(text.replace(old, new, 1))
+
+          for filename in ['src/Router/Matching/CompiledMatcherDynamicEngine.php', 'src/Router/Matching/CompiledMatcherFastEngine.php']:
+              path = Path(filename)
+              text = path.read_text()
+              text = text.replace(
+                  " * @phpstan-type FastDispatch array{segment:int,groups:array<array-key,list<FastDispatchStep>>}\n",
+                  " * @phpstan-type FastDispatchChild array{segment:int,groups:array<array-key,list<FastDispatchStep>>}\n * @phpstan-type FastDispatch array{segment:int,groups:array<array-key,list<FastDispatchStep>>,nested?:array<array-key,FastDispatchChild>}\n",
+                  1,
+              )
+              path.write_text(text)
+
+          engine = Path('src/Router/Matching/CompiledMatcherDynamicEngine.php')
+          text = engine.read_text()
+          old = r'''        $steps = $dispatch['groups'][$value] ?? null;
+
+        return $steps === null ? null : self::findFastDispatchSteps($steps, $path);
+'''
+          new = r'''        $steps = $dispatch['groups'][$value] ?? null;
+        if ($steps !== null) {
+            return self::findFastDispatchSteps($steps, $path);
+        }
+
+        $child = $dispatch['nested'][$value] ?? null;
+        if (!is_array($child)) {
+            return null;
+        }
+        $childValue = $segments[$child['segment']] ?? null;
+        if (!is_string($childValue)) {
+            return null;
+        }
+        $steps = $child['groups'][$childValue] ?? null;
+
+        return $steps === null ? null : self::findFastDispatchSteps($steps, $path);
+'''
+          if old not in text:
+              raise SystemExit('Phase 4 engine replacement marker missing')
+          engine.write_text(text.replace(old, new, 1))
+
+          validator = Path('src/Router/Matching/CompactMatcherDynamicValidator.php')
+          text = validator.read_text()
+          text = text.replace(
+              " * @phpstan-import-type FastDispatchStep from CompiledMatcherFastEngine\n",
+              " * @phpstan-import-type FastDispatchStep from CompiledMatcherFastEngine\n * @phpstan-import-type FastDispatchChild from CompiledMatcherFastEngine\n",
+              1,
+          )
+          old = r'''        $segment = $raw['segment'] ?? null;
+        $groups = $raw['groups'] ?? null;
+        if (!is_int($segment) || $segment < 0 || !is_array($groups) || $groups === []) {
+            throw new \UnexpectedValueException('Compact matcher adaptive metadata is invalid.');
+        }
+
+        return [
+            'segment' => $segment,
+            'groups' => self::validateFastGroups($groups, $routes, $validateRegex),
+        ];
+'''
+          new = r'''        $segment = $raw['segment'] ?? null;
+        $groups = $raw['groups'] ?? null;
+        $nested = $raw['nested'] ?? [];
+        if (!is_int($segment) || $segment < 0 || !is_array($groups) || !is_array($nested)
+            || ($groups === [] && $nested === [])) {
+            throw new \UnexpectedValueException('Compact matcher adaptive metadata is invalid.');
+        }
+
+        $dispatch = [
+            'segment' => $segment,
+            'groups' => self::validateFastGroups($groups, $routes, $validateRegex),
+        ];
+        if ($nested !== []) {
+            $dispatch['nested'] = self::validateNestedFastGroups($nested, $routes, $validateRegex);
+        }
+
+        return $dispatch;
+'''
+          if old not in text:
+              raise SystemExit('Phase 4 validator dispatch marker missing')
+          text = text.replace(old, new, 1)
+          marker = "    /**\n     * @param array<array-key,mixed> $raw\n     * @param array<int,mixed> $routes\n     * @return array<array-key,list<FastDispatchStep>>\n     */\n    private static function validateFastGroups"
+          methods = r'''    /**
+     * @param array<int,mixed> $routes
+     * @return FastDispatchChild
+     */
+    private static function validateFastChild(mixed $raw, array $routes, bool $validateRegex): array
+    {
+        if (!is_array($raw)) {
+            throw new \UnexpectedValueException('Compact matcher nested adaptive dispatch is invalid.');
+        }
+        $segment = $raw['segment'] ?? null;
+        $groups = $raw['groups'] ?? null;
+        if (!is_int($segment) || $segment < 0 || !is_array($groups) || $groups === []) {
+            throw new \UnexpectedValueException('Compact matcher nested adaptive metadata is invalid.');
+        }
+
+        return [
+            'segment' => $segment,
+            'groups' => self::validateFastGroups($groups, $routes, $validateRegex),
+        ];
+    }
+
+    /**
+     * @param array<array-key,mixed> $raw
+     * @param array<int,mixed> $routes
+     * @return array<array-key,FastDispatchChild>
+     */
+    private static function validateNestedFastGroups(array $raw, array $routes, bool $validateRegex): array
+    {
+        $groups = [];
+        foreach ($raw as $literal => $child) {
+            $groups[$literal] = self::validateFastChild($child, $routes, $validateRegex);
+        }
+
+        return $groups;
+    }
+
+'''
+          if marker not in text:
+              raise SystemExit('Phase 4 validator method insertion marker missing')
+          validator.write_text(text.replace(marker, methods + marker, 1))
+
+          for filename in ['src/Router/Matching/FusedMatcher.php', 'src/Router/Matching/ShardedMatcher.php']:
+              path = Path(filename)
+              text = path.read_text().replace('private const int INDEX_CACHE_VERSION = 15;', 'private const int INDEX_CACHE_VERSION = 16;', 1)
+              path.write_text(text)
+
+          test = Path('tests/Unit/MatcherPerformanceRevisionTest.php')
+          with test.open('a') as stream:
+              stream.write(r'''
+
+it('preserves matching semantics through a second adaptive literal decision', function (Closure $factory): void {
+    $matcher = $factory();
+    $index = 0;
+    for ($group = 0; $group < 16; ++$group) {
+        for ($route = 0; $route < 16; ++$route) {
+            $matcher->add(matcherRevisionRoute('GET', "/adaptive/g{$group}/r{$route}/{id:hex}", $index++));
+        }
+    }
+    $matcher->finalize();
+
+    expect($matcher->matchCompiled('GET', '*', '/adaptive/g15/r15/deadbeef'))->toBeArray()
+        ->and($matcher->matchCompiled('GET', '*', '/adaptive/g15/r15/not-hex'))->toBeInstanceOf(\Infocyph\Webrick\Router\Matching\MatchOutcome::class);
+})->with('compiled pcre ir matchers');
+''')
+          PY
+
+      - name: Apply candidate style
+        run: |
+          vendor/bin/pint --config=vendor/infocyph/phpforge/resources/pint.json \
+            src/Router/Matching/CompiledMatcherIndexCompiler.php \
+            src/Router/Matching/CompiledMatcherDynamicEngine.php \
+            src/Router/Matching/CompiledMatcherFastEngine.php \
+            src/Router/Matching/CompactMatcherDynamicValidator.php \
+            src/Router/Matching/FusedMatcher.php \
+            src/Router/Matching/ShardedMatcher.php \
+            tests/Unit/MatcherPerformanceRevisionTest.php \
+            benchmarks/MatcherAdaptiveDecisionBench.php
+
+      - name: Benchmark Phase 4 candidate
+        run: vendor/bin/phpbench run benchmarks/MatcherAdaptiveDecisionBench.php --bootstrap=vendor/autoload.php --report=aggregate | tee /tmp/phase4-candidate.txt
+
+      - name: Decide Phase 4 retention
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import re
+          from pathlib import Path
+
+          def parse(path):
+              text = Path(path).read_text()
+              result = {}
+              for case in ('fused-hit', 'fused-miss', 'sharded-hit', 'sharded-miss'):
+                  pattern = rf'\| MatcherAdaptiveDecisionBench \| benchAdaptiveDecision \| {case}\s+\|[^\n]*?\|\s*([0-9.]+)μs\s*\|'
+                  match = re.search(pattern, text)
+                  if not match:
+                      raise SystemExit(f'Unable to parse {case} from {path}')
+                  result[case] = float(match.group(1))
+              return result
+
+          baseline = parse('/tmp/phase4-baseline.txt')
+          candidate = parse('/tmp/phase4-candidate.txt')
+          ratios = {key: candidate[key] / baseline[key] for key in baseline}
+          average = sum(ratios.values()) / len(ratios)
+          hit_ok = ratios['fused-hit'] <= 1.03 and ratios['sharded-hit'] <= 1.03
+          retain = average <= 0.97 and hit_ok
+          Path('/tmp/phase4-decision').write_text('retain' if retain else 'reject')
+          Path('/tmp/phase4-metrics').write_text(
+              '\n'.join(f'{key}: {baseline[key]:.3f} -> {candidate[key]:.3f} us ({ratios[key]:.3f}x)' for key in baseline)
+              + f'\naverage ratio: {average:.3f}x\n'
+          )
+          print(Path('/tmp/phase4-metrics').read_text())
+          print('decision:', 'retain' if retain else 'reject')
+          PY
+
+      - name: Revert rejected candidate
+        shell: bash
+        run: |
+          if [ "$(cat /tmp/phase4-decision)" = "reject" ]; then
+            git checkout -- \
+              src/Router/Matching/CompiledMatcherIndexCompiler.php \
+              src/Router/Matching/CompiledMatcherDynamicEngine.php \
+              src/Router/Matching/CompiledMatcherFastEngine.php \
+              src/Router/Matching/CompactMatcherDynamicValidator.php \
+              src/Router/Matching/FusedMatcher.php \
+              src/Router/Matching/ShardedMatcher.php \
+              tests/Unit/MatcherPerformanceRevisionTest.php
+            rm -f benchmarks/MatcherAdaptiveDecisionBench.php
+          fi
+
+      - name: Record Phase 4 result
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          decision = Path('/tmp/phase4-decision').read_text().strip()
+          metrics = Path('/tmp/phase4-metrics').read_text().strip().replace('\n', '; ')
+          plan = Path('MATCHER_OPTIMIZATION_PLAN.md')
+          text = plan.read_text()
+          text = text.replace('Status: active development plan — Phases 1–3 complete', 'Status: active development plan — Phases 1–4 complete', 1)
+          marker = '## Phase 4 — Recursive adaptive discriminator\n\n'
+          if decision == 'retain':
+              body = f"""## Phase 4 — Recursive adaptive discriminator\n\n**Status: complete — retained bounded two-level decision DAG (2026-09-01).**\n\nThe existing one-level `fast_dispatch` was extended by at most one secondary literal discriminator. Recursion is deliberately capped at two decisions; leaves remain the existing balanced PCRE steps. The candidate was retained only after same-run A/B measurement on a 16×16 literal family. Metrics: {metrics}.\n\n"""
+          else:
+              body = f"""## Phase 4 — Recursive adaptive discriminator\n\n**Status: complete — candidate rejected by benchmark (2026-09-01).**\n\nA bounded second literal discriminator was implemented and measured on a 16×16 literal family, then reverted because it did not clear the required performance gate. The one-level `fast_dispatch` remains the production design. Metrics: {metrics}.\n\n"""
+          if marker not in text:
+              raise SystemExit('Phase 4 plan marker missing')
+          plan.write_text(text.replace(marker, body, 1))
+          PY
+
+      - name: Run Phase 4 final quality gate
+        run: composer ic:ci
+
+      - name: Run Phase 4 regression benchmarks
+        run: |
+          vendor/bin/phpbench run benchmarks/MatcherOutcomeBench.php --bootstrap=vendor/autoload.php --report=aggregate
+          vendor/bin/phpbench run benchmarks/MatcherScaleBench.php --bootstrap=vendor/autoload.php --report=aggregate
+
+      - name: Commit Phase 4 and remove workflow
+        shell: bash
+        run: |
+          rm -f .github/workflows/_tmp-matcher-phase4.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit --no-verify -m "perf: complete matcher adaptive decision phase"
+          git push origin HEAD:webrick-5/batch-1-correctness
