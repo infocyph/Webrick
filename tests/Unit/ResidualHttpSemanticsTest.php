@@ -32,13 +32,13 @@ describe('Residual HTTP semantics', function () {
                 'Access-Control-Request-Method' => 'Foo',
             ],
         );
-        $response = $middleware($request, static fn(Request $request): Response => Response::create('downstream'));
+        $response = $middleware($request, static fn (): Response => Response::create('downstream'));
 
         expect($response->getStatusCode())->toBe(204)
             ->and($response->getHeaderLine('Access-Control-Allow-Methods'))->toBe('Foo');
 
         $wrongCase = $request->withHeader('Access-Control-Request-Method', 'FOO');
-        expect(fn() => $middleware($wrongCase, static fn(Request $request): Response => Response::create('downstream')))
+        expect(fn () => $middleware($wrongCase, static fn (): Response => Response::create('downstream')))
             ->toThrow(HttpException::class);
     });
 
@@ -52,7 +52,7 @@ describe('Residual HTTP semantics', function () {
             ],
         );
 
-        expect(fn() => $middleware($request, static fn(Request $request): Response => Response::create('downstream')))
+        expect(fn () => $middleware($request, static fn (): Response => Response::create('downstream')))
             ->toThrow(HttpException::class);
     });
 
