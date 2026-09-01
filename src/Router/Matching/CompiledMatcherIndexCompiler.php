@@ -19,15 +19,20 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
  * Rich route payload/named-capture data remains available for matchOutcome(),
  * while compact production dispatch receives deterministic scalar route IDs
  * plus a positional branch-reset PCRE that avoids named-capture bookkeeping.
+ * Large all-PCRE families may additionally receive a build-time-selected
+ * literal-segment discriminator when it sharply reduces the candidate set.
  *
  * @phpstan-type RouteValue mixed
  * @phpstan-type SegmentSpec array<string,mixed>
  * @phpstan-type CanonicalDynamicEntry array{segments:list<SegmentSpec>,verbs:array<string,RouteValue>}
  * @phpstan-type FastRouteEntry array{route:RouteValue,id:int,params:array<string,string>,fast_params:list<string>}
  * @phpstan-type PcreStep array{type:'pcre',regex:string,fast_regex:string,routes:array<string,FastRouteEntry>}
+ * @phpstan-type FastDispatchEntry array{id:int,params:list<string>}
+ * @phpstan-type FastDispatchStep array{regex:string,routes:array<string,FastDispatchEntry>}
+ * @phpstan-type FastDispatch array{segment:int,groups:array<string,list<FastDispatchStep>>}
  * @phpstan-type FallbackStep array{type:'fallback',segments:list<SegmentSpec>,route:RouteValue,id:int}
  * @phpstan-type DynamicStep PcreStep|FallbackStep
- * @phpstan-type DynamicBucket array{steps:list<DynamicStep>}
+ * @phpstan-type DynamicBucket array{steps:list<DynamicStep>,fast_dispatch?:FastDispatch}
  */
 final class CompiledMatcherIndexCompiler
 {
@@ -65,6 +70,21 @@ final class CompiledMatcherIndexCompiler
     }
 
     /**
+     * @param list<array{segments:list<SegmentSpec>,route:RouteValue,id:int,pcre:bool}> $routes
+     * @return DynamicBucket
+     */
+    private function compileBucket(array $routes): array
+    {
+        $bucket = ['steps' => $this->compileSteps($routes)];
+        $dispatch = $this->compileFastLiteralDispatch($routes);
+        if ($dispatch !== null) {
+            $bucket['fast_dispatch'] = $dispatch;
+        }
+
+        return $bucket;
+    }
+
+    /**
      * @param array<int,array<string,array<string,CanonicalDynamicEntry>>> $dynamic
      * @return array<string,array<int,array<string,DynamicBucket>>>
      */
@@ -91,14 +111,129 @@ final class CompiledMatcherIndexCompiler
                 }
 
                 foreach ($ordered as $method => $routes) {
-                    $methods[$method][$count][$prefix] = [
-                        'steps' => $this->compileSteps($routes),
-                    ];
+                    $methods[$method][$count][$prefix] = $this->compileBucket($routes);
                 }
             }
         }
 
         return $methods;
+    }
+
+    /**
+     * Builds a compact-only literal discriminator when one segment is literal
+     * in every route, has enough distinct values to materially shrink the
+     * candidate set, and the entire family is safe for combined PCRE matching.
+     * Distinct literal values are disjoint, so grouping cannot alter route
+     * precedence; order remains intact inside each selected group.
+     *
+     * @param list<array{segments:list<SegmentSpec>,route:RouteValue,id:int,pcre:bool}> $routes
+     * @return FastDispatch|null
+     */
+    private function compileFastLiteralDispatch(array $routes): ?array
+    {
+        $routeCount = count($routes);
+        if ($routeCount <= $this->chunkSize) {
+            return null;
+        }
+        foreach ($routes as $entry) {
+            if (!$entry['pcre']) {
+                return null;
+            }
+        }
+
+        $segmentCount = count($routes[0]['segments'] ?? []);
+        $bestSegment = null;
+        $bestDistinct = 1;
+        for ($segment = 0; $segment < $segmentCount; $segment++) {
+            $values = [];
+            $allLiteral = true;
+            foreach ($routes as $entry) {
+                $spec = $entry['segments'][$segment] ?? null;
+                if (!is_array($spec) || ($spec['type'] ?? null) !== 'lit' || !is_string($spec['val'] ?? null)) {
+                    $allLiteral = false;
+                    break;
+                }
+                $values[$spec['val']] = true;
+            }
+            if (!$allLiteral) {
+                continue;
+            }
+            $distinct = count($values);
+            if ($distinct > $bestDistinct) {
+                $bestDistinct = $distinct;
+                $bestSegment = $segment;
+            }
+        }
+
+        if ($bestSegment === null || $bestDistinct < 4) {
+            return null;
+        }
+
+        // Do not add a classifier merely to replace one large chunk with a
+        // similarly large group. Require the average selected candidate family
+        // to fit within at most half of the current balanced PCRE target.
+        if ((int) ceil($routeCount / $bestDistinct) > max(1, intdiv($this->chunkSize, 2))) {
+            return null;
+        }
+
+        /** @var array<string,list<array{segments:list<SegmentSpec>,route:RouteValue,id:int}>> $groups */
+        $groups = [];
+        foreach ($routes as $entry) {
+            $key = $entry['segments'][$bestSegment]['val'];
+            $groups[$key][] = [
+                'segments' => $entry['segments'],
+                'route' => $entry['route'],
+                'id' => $entry['id'],
+            ];
+        }
+
+        $compiled = [];
+        foreach ($groups as $key => $group) {
+            $compiled[$key] = $this->compileBalancedFastDispatchSteps($group);
+        }
+
+        return ['segment' => $bestSegment, 'groups' => $compiled];
+    }
+
+    /**
+     * @param non-empty-list<array{segments:list<SegmentSpec>,route:RouteValue,id:int}> $routes
+     * @return non-empty-list<FastDispatchStep>
+     */
+    private function compileBalancedFastDispatchSteps(array $routes): array
+    {
+        $count = count($routes);
+        $parts = max(1, (int) round($count / $this->chunkSize));
+        $size = (int) ceil($count / $parts);
+        $steps = [];
+
+        foreach (array_chunk($routes, $size) as $chunk) {
+            $steps[] = $this->compileFastDispatchStep($chunk);
+        }
+
+        return $steps;
+    }
+
+    /**
+     * @param non-empty-list<array{segments:list<SegmentSpec>,route:RouteValue,id:int}> $routes
+     * @return FastDispatchStep
+     */
+    private function compileFastDispatchStep(array $routes): array
+    {
+        $alternatives = [];
+        $routeMap = [];
+        foreach ($routes as $index => $entry) {
+            $mark = 'r' . $index;
+            [$pattern, $params] = $this->routePatternPositional($entry['segments']);
+            $alternatives[] = '(?:' . $pattern . ')(*MARK:' . $mark . ')';
+            $routeMap[$mark] = ['id' => $entry['id'], 'params' => $params];
+        }
+
+        $regex = '~\\A(?|' . implode('|', $alternatives) . ')\\z~D';
+        if (@preg_match($regex, '') === false) {
+            throw new \UnexpectedValueException('Failed to compile adaptive matcher PCRE chunk.');
+        }
+
+        return ['regex' => $regex, 'routes' => $routeMap];
     }
 
     /**
