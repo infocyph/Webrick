@@ -67,14 +67,14 @@ jobs:
         }
 
         return match ($segment['type']) {
-"""
+          """
           new = """        if (!is_array($segment) || !is_string($segment['type'] ?? null)) {
             throw new \\UnexpectedValueException('Compact matcher fallback segment is invalid.');
         }
 
         /** @var array<string,mixed> $segment */
         return match ($segment['type']) {
-"""
+          """
           if old not in text:
               raise SystemExit('Validator associative-array assertion marker missing')
           path.write_text(text.replace(old, new, 1))
