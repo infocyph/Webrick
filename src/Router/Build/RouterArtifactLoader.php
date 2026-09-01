@@ -17,31 +17,41 @@ final class RouterArtifactLoader
     ): CompiledRouterArtifact {
         self::assertExpectedIdentity($expectedEnvironment, $expectedConfigFingerprint);
         $meta = $this->readMeta($path);
-        $sha256 = hash_file('sha256', $path);
-        if (!is_string($sha256) || !hash_equals($meta['sha256'], $sha256)) {
-            throw new RuntimeException('Webrick router artifact SHA-256 mismatch.');
+        $digest = hash_file('xxh128', $path);
+        if (!is_string($digest) || !hash_equals($meta['digest'], $digest)) {
+            throw new RuntimeException('Webrick router artifact digest mismatch.');
         }
 
-        return $this->loadPayload($path, $meta, $expectedEnvironment, $expectedConfigFingerprint);
+        return $this->loadVerifiedPayload($path, $meta, $expectedEnvironment, $expectedConfigFingerprint);
     }
 
     public function loadPrevalidated(
         string $path,
-        string $trustedSha256,
+        string $trustedArtifactFingerprint,
         string $expectedEnvironment,
         string $expectedConfigFingerprint,
     ): CompiledRouterArtifact {
         self::assertExpectedIdentity($expectedEnvironment, $expectedConfigFingerprint);
-        if (!preg_match('/^[a-f0-9]{64}$/D', $trustedSha256)) {
-            throw new UnexpectedValueException('Trusted Webrick SHA-256 must be a lowercase hexadecimal digest.');
+        if (preg_match('/^[a-f0-9]{32}$/D', $trustedArtifactFingerprint) !== 1) {
+            throw new UnexpectedValueException('Trusted Webrick artifact fingerprint must be a lowercase xxh128 digest.');
         }
 
-        $meta = $this->readMeta($path);
-        if (!hash_equals($trustedSha256, $meta['sha256'])) {
-            throw new RuntimeException('Trusted Webrick digest does not match the release manifest.');
+        $payload = $this->requirePayload($path);
+        $payloadFingerprint = $payload['artifact_fingerprint'] ?? null;
+        if (!is_string($payloadFingerprint) || !hash_equals($trustedArtifactFingerprint, $payloadFingerprint)) {
+            throw new RuntimeException('Trusted Webrick artifact fingerprint does not match the release manifest.');
         }
 
-        return $this->loadPayload($path, $meta, $expectedEnvironment, $expectedConfigFingerprint);
+        $artifact = CompiledRouterArtifact::fromPayload($payload, trusted: true);
+        if (
+            $artifact->environment !== $expectedEnvironment
+            || !hash_equals($artifact->configFingerprint, $expectedConfigFingerprint)
+            || !hash_equals($artifact->artifactFingerprint, $trustedArtifactFingerprint)
+        ) {
+            throw new RuntimeException('Webrick router artifact identity mismatch.');
+        }
+
+        return $artifact;
     }
 
     /**
@@ -80,6 +90,18 @@ final class RouterArtifactLoader
         return $value;
     }
 
+    /** @param array{format:int,environment:string,config_fingerprint:string,artifact_fingerprint:string,digest:string} $meta */
+    private static function assertArtifactIdentity(CompiledRouterArtifact $artifact, array $meta): void
+    {
+        if (
+            $artifact->environment !== $meta['environment']
+            || !hash_equals($artifact->configFingerprint, $meta['config_fingerprint'])
+            || !hash_equals($artifact->artifactFingerprint, $meta['artifact_fingerprint'])
+        ) {
+            throw new RuntimeException('Webrick router artifact metadata/payload mismatch.');
+        }
+    }
+
     private static function assertExpectedIdentity(string $environment, string $configFingerprint): void
     {
         if (trim($environment) === '' || trim($configFingerprint) === '') {
@@ -87,38 +109,61 @@ final class RouterArtifactLoader
         }
     }
 
-    /**
-     * @param array<string,mixed> $payload
-     * @return list<mixed>
-     */
-    private static function listField(array $payload, string $field): array
-    {
-        return array_values(self::arrayField($payload, $field));
+    /** @param array{format:int,environment:string,config_fingerprint:string,artifact_fingerprint:string,digest:string} $meta */
+    private static function assertMetaIdentity(
+        array $meta,
+        string $expectedEnvironment,
+        string $expectedConfigFingerprint,
+    ): void {
+        if ($meta['environment'] !== $expectedEnvironment) {
+            throw new RuntimeException('Webrick router artifact environment mismatch.');
+        }
+        if (!hash_equals($expectedConfigFingerprint, $meta['config_fingerprint'])) {
+            throw new RuntimeException('Webrick router artifact configuration fingerprint mismatch.');
+        }
     }
 
     /**
      * @param array<string,mixed> $payload
-     * @return array<string,array<string,mixed>>
+     * @return array<int,array<string,mixed>>
      */
-    private static function planPayloads(array $payload, string $field): array
+    private static function indexedPlans(array $payload): array
     {
         $plans = [];
-        foreach (self::arrayField($payload, $field) as $routeId => $plan) {
-            if (!is_string($routeId) || !is_array($plan)) {
-                throw new UnexpectedValueException("Malformed Webrick router artifact field '{$field}'.");
+        foreach (self::arrayField($payload, 'plans_by_index') as $index => $plan) {
+            if (!is_int($index) || !is_array($plan)) {
+                throw new UnexpectedValueException('Malformed indexed execution-plan payload.');
             }
-
             $normalized = [];
             foreach ($plan as $key => $value) {
                 if (!is_string($key)) {
-                    throw new UnexpectedValueException("Malformed Webrick router artifact field '{$field}'.");
+                    throw new UnexpectedValueException('Malformed indexed execution-plan payload.');
                 }
                 $normalized[$key] = $value;
             }
-            $plans[$routeId] = $normalized;
+            $plans[$index] = $normalized;
         }
+        ksort($plans, SORT_NUMERIC);
 
         return $plans;
+    }
+
+    /**
+     * @param array<string,mixed> $payload
+     * @return array<int,mixed>
+     */
+    private static function indexedRoutes(array $payload): array
+    {
+        $routes = [];
+        foreach (self::arrayField($payload, 'routes_by_index') as $index => $route) {
+            if (!is_int($index) || !is_array($route)) {
+                throw new UnexpectedValueException('Malformed indexed route payload.');
+            }
+            $routes[$index] = $route;
+        }
+        ksort($routes, SORT_NUMERIC);
+
+        return $routes;
     }
 
     /**
@@ -152,43 +197,25 @@ final class RouterArtifactLoader
             $environment,
             $configFingerprint,
             $hasDomainRoutes,
-            self::listField($payload, 'routes'),
-            self::planPayloads($payload, 'plans'),
+            self::indexedRoutes($payload),
+            self::indexedPlans($payload),
             self::aliasPayloads($payload, 'aliases'),
-            self::listField($payload, 'pre_global'),
-            self::listField($payload, 'post_global'),
+            array_values(self::arrayField($payload, 'pre_global')),
+            array_values(self::arrayField($payload, 'post_global')),
             self::stringListField($payload, 'pre_global_tags'),
             self::stringListField($payload, 'post_global_tags'),
         );
     }
 
-    /** @param array{format:int,environment:string,config_fingerprint:string,artifact_fingerprint:string,sha256:string} $meta */
-    private function loadPayload(
+    /** @param array{format:int,environment:string,config_fingerprint:string,artifact_fingerprint:string,digest:string} $meta */
+    private function loadVerifiedPayload(
         string $path,
         array $meta,
         string $expectedEnvironment,
         string $expectedConfigFingerprint,
     ): CompiledRouterArtifact {
-        if ($meta['environment'] !== $expectedEnvironment) {
-            throw new RuntimeException('Webrick router artifact environment mismatch.');
-        }
-        if (!hash_equals($expectedConfigFingerprint, $meta['config_fingerprint'])) {
-            throw new RuntimeException('Webrick router artifact configuration fingerprint mismatch.');
-        }
-
-        $payload = require $path;
-        if (!is_array($payload)) {
-            throw new UnexpectedValueException('Compiled Webrick router artifact must return an array.');
-        }
-
-        $normalizedPayload = [];
-        foreach ($payload as $key => $value) {
-            if (!is_string($key)) {
-                throw new UnexpectedValueException('Compiled Webrick router artifact must use string keys.');
-            }
-            $normalizedPayload[$key] = $value;
-        }
-        $payload = $normalizedPayload;
+        self::assertMetaIdentity($meta, $expectedEnvironment, $expectedConfigFingerprint);
+        $payload = $this->requirePayload($path);
 
         $calculated = $this->calculatePayloadFingerprint($payload);
         $payloadFingerprint = $payload['artifact_fingerprint'] ?? null;
@@ -200,18 +227,12 @@ final class RouterArtifactLoader
         }
 
         $artifact = CompiledRouterArtifact::fromPayload($payload);
-        if (
-            $artifact->environment !== $meta['environment']
-            || !hash_equals($artifact->configFingerprint, $meta['config_fingerprint'])
-            || !hash_equals($artifact->artifactFingerprint, $meta['artifact_fingerprint'])
-        ) {
-            throw new RuntimeException('Webrick router artifact metadata/payload mismatch.');
-        }
+        self::assertArtifactIdentity($artifact, $meta);
 
         return $artifact;
     }
 
-    /** @return array{format:int,environment:string,config_fingerprint:string,artifact_fingerprint:string,sha256:string} */
+    /** @return array{format:int,environment:string,config_fingerprint:string,artifact_fingerprint:string,digest:string} */
     private function readMeta(string $path): array
     {
         $metaPath = $path . '.meta.json';
@@ -230,7 +251,9 @@ final class RouterArtifactLoader
             || !is_string($meta['environment'] ?? null)
             || !is_string($meta['config_fingerprint'] ?? null)
             || !is_string($meta['artifact_fingerprint'] ?? null)
-            || !is_string($meta['sha256'] ?? null)
+            || preg_match('/^[a-f0-9]{32}$/D', $meta['artifact_fingerprint']) !== 1
+            || !is_string($meta['digest'] ?? null)
+            || preg_match('/^[a-f0-9]{32}$/D', $meta['digest']) !== 1
         ) {
             throw new UnexpectedValueException('Malformed Webrick router artifact metadata.');
         }
@@ -240,7 +263,27 @@ final class RouterArtifactLoader
             'environment' => $meta['environment'],
             'config_fingerprint' => $meta['config_fingerprint'],
             'artifact_fingerprint' => $meta['artifact_fingerprint'],
-            'sha256' => $meta['sha256'],
+            'digest' => $meta['digest'],
         ];
+    }
+
+    /** @return array<string,mixed> */
+    private function requirePayload(string $path): array
+    {
+        if (!is_file($path)) {
+            throw new RuntimeException('Compiled Webrick router artifact is missing.');
+        }
+
+        $payload = require $path;
+        if (!is_array($payload)) {
+            throw new UnexpectedValueException('Compiled Webrick router artifact must return an array.');
+        }
+        foreach ($payload as $key => $_value) {
+            if (!is_string($key)) {
+                throw new UnexpectedValueException('Compiled Webrick router artifact must use string keys.');
+            }
+        }
+
+        return $payload;
     }
 }

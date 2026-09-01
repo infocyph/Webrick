@@ -7,13 +7,14 @@ namespace Infocyph\Webrick\Router\Build;
 use Infocyph\Webrick\Router\Build\Artifact\ArtifactValueCodec;
 use Infocyph\Webrick\Router\Build\Artifact\MatcherRouteMetadata;
 use RuntimeException;
+use UnexpectedValueException;
 
 /** Emits the Webrick half of a coordinated production release bundle. */
 final class RouterArtifactCompiler
 {
     /**
-     * @param list<mixed> $routes
-     * @param array<string,array<string,mixed>> $plans
+     * @param array<int,mixed> $routes
+     * @param array<int,array<string,mixed>> $plans
      * @param array<string,array{0:string,1:?string}> $aliases
      * @param list<mixed> $preGlobal
      * @param list<mixed> $postGlobal
@@ -32,10 +33,11 @@ final class RouterArtifactCompiler
         array $preGlobalTags,
         array $postGlobalTags,
     ): string {
-        ksort($plans, SORT_STRING);
+        ksort($routes, SORT_NUMERIC);
+        ksort($plans, SORT_NUMERIC);
         ksort($aliases, SORT_STRING);
 
-        return hash('sha256', serialize([
+        return hash('xxh128', serialize([
             CompiledRouterArtifact::FORMAT_VERSION,
             $environment,
             $configFingerprint,
@@ -50,14 +52,10 @@ final class RouterArtifactCompiler
         ]));
     }
 
-    /** @return array{path:string,meta:string,sha256:string,fingerprint:string,routes:int} */
+    /** @return array{path:string,meta:string,digest:string,fingerprint:string,routes:int} */
     public function compile(RouterBuildResult $build, string $path): array
     {
-        $plans = [];
-        foreach ($build->plans as $routeId => $plan) {
-            $plans[$routeId] = $plan->toPayload();
-        }
-        $routes = array_map(MatcherRouteMetadata::encode(...), $build->routes->all());
+        [$routes, $plans] = $this->indexedRuntimePayloads($build);
         $preGlobal = array_map(ArtifactValueCodec::encode(...), $build->preGlobal);
         $postGlobal = array_map(ArtifactValueCodec::encode(...), $build->postGlobal);
         $fingerprint = self::fingerprintPayload(
@@ -79,8 +77,8 @@ final class RouterArtifactCompiler
             'config_fingerprint' => $build->configFingerprint,
             'artifact_fingerprint' => $fingerprint,
             'has_domain_routes' => $build->hasDomainRoutes,
-            'routes' => $routes,
-            'plans' => $plans,
+            'routes_by_index' => $routes,
+            'plans_by_index' => $plans,
             'aliases' => $build->aliases,
             'pre_global' => $preGlobal,
             'post_global' => $postGlobal,
@@ -90,9 +88,9 @@ final class RouterArtifactCompiler
 
         $php = "<?php\n\ndeclare(strict_types=1);\n\nreturn " . var_export($payload, true) . ";\n";
         $this->writeAtomic($path, $php);
-        $sha256 = hash_file('sha256', $path);
-        if (!is_string($sha256)) {
-            throw new RuntimeException('Unable to hash generated Webrick router artifact.');
+        $digest = hash_file('xxh128', $path);
+        if (!is_string($digest)) {
+            throw new RuntimeException('Unable to fingerprint generated Webrick router artifact.');
         }
 
         $metaPath = $path . '.meta.json';
@@ -101,31 +99,28 @@ final class RouterArtifactCompiler
             'environment' => $build->environment,
             'config_fingerprint' => $build->configFingerprint,
             'artifact_fingerprint' => $fingerprint,
-            'sha256' => $sha256,
+            'digest' => $digest,
         ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n";
         $this->writeAtomic($metaPath, $meta);
 
         return [
             'path' => $path,
             'meta' => $metaPath,
-            'sha256' => $sha256,
+            'digest' => $digest,
             'fingerprint' => $fingerprint,
-            'routes' => count($build->routes->all()),
+            'routes' => count($routes),
         ];
     }
 
     public function fingerprint(RouterBuildResult $build): string
     {
-        $plans = [];
-        foreach ($build->plans as $routeId => $plan) {
-            $plans[$routeId] = $plan->toPayload();
-        }
+        [$routes, $plans] = $this->indexedRuntimePayloads($build);
 
         return self::fingerprintPayload(
             $build->environment,
             $build->configFingerprint,
             $build->hasDomainRoutes,
-            array_map(MatcherRouteMetadata::encode(...), $build->routes->all()),
+            $routes,
             $plans,
             $build->aliases,
             array_map(ArtifactValueCodec::encode(...), $build->preGlobal),
@@ -133,6 +128,30 @@ final class RouterArtifactCompiler
             $build->preGlobalTags,
             $build->postGlobalTags,
         );
+    }
+
+    /** @return array{0:array<int,mixed>,1:array<int,array<string,mixed>>} */
+    private function indexedRuntimePayloads(RouterBuildResult $build): array
+    {
+        $routes = [];
+        $plans = [];
+        foreach ($build->routes->all() as $route) {
+            $index = $route->getIndex();
+            if (isset($routes[$index]) || isset($plans[$index])) {
+                throw new UnexpectedValueException('Duplicate compiled route index during artifact generation.');
+            }
+            $routeId = RouteIdentity::forRoute($route);
+            $plan = $build->plans[$routeId] ?? null;
+            if (!$plan instanceof ExecutionPlan) {
+                throw new UnexpectedValueException('Missing execution plan during artifact generation.');
+            }
+            $routes[$index] = MatcherRouteMetadata::encode($route);
+            $plans[$index] = $plan->toPayload();
+        }
+        ksort($routes, SORT_NUMERIC);
+        ksort($plans, SORT_NUMERIC);
+
+        return [$routes, $plans];
     }
 
     private function writeAtomic(string $path, string $contents): void

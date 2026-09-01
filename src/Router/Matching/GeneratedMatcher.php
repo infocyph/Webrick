@@ -56,6 +56,12 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         if ($this->finalized) {
             return;
         }
+        if ($this->canBootFromCache()) {
+            $this->loadCacheBlob();
+            $this->finalized = true;
+
+            return;
+        }
 
         $this->bootIndex();
         if ($this->cacheEnabled && $this->cacheWriteEnabled && !$this->index->isEmpty()) {

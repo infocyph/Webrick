@@ -160,6 +160,14 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             return;
         }
 
+        $this->bootEngines();
+        if ($this->canBootFromCache()) {
+            $this->cacheReadable = true;
+            $this->finalized = true;
+
+            return;
+        }
+
         $this->bootIndex();
         if ($this->cacheEnabled && $this->cacheWriteEnabled) {
             $this->publishGeneration();
@@ -245,11 +253,16 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         }
     }
 
+    private function bootEngines(): void
+    {
+        $this->engine ??= new CompiledMatcherEngine();
+        $this->fastEngine ??= new CompiledMatcherFastEngine();
+    }
+
     private function bootIndex(): void
     {
         $this->index ??= new CanonicalMatcherIndex();
-        $this->engine ??= new CompiledMatcherEngine();
-        $this->fastEngine ??= new CompiledMatcherFastEngine();
+        $this->bootEngines();
     }
 
     private function cacheStorageDir(): string

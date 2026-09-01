@@ -13,10 +13,24 @@ use RuntimeException;
  */
 final readonly class ReleaseCompiler
 {
+    private const int RELEASE_FORMAT = 2;
+
     public function __construct(
         private RouteCompiler $routes = new RouteCompiler(),
         private RouterArtifactCompiler $routerArtifacts = new RouterArtifactCompiler(),
     ) {}
+
+    public static function runtimeManifestPath(string $releaseManifestPath): string
+    {
+        $path = trim($releaseManifestPath);
+        if ($path === '') {
+            throw new \InvalidArgumentException('Release manifest path must not be empty.');
+        }
+
+        return str_ends_with(strtolower($path), '.json')
+            ? substr($path, 0, -5) . '.php'
+            : $path . '.php';
+    }
 
     /**
      * @param array<string,mixed> $registrarOptions
@@ -56,12 +70,12 @@ final readonly class ReleaseCompiler
         $webrick = $this->routerArtifacts->compile($routerBuild, $routerPath);
 
         $manifest = [
-            'format' => 1,
+            'format' => self::RELEASE_FORMAT,
             'environment' => $environment,
             'config_fingerprint' => $configFingerprint,
             'intermix' => [
                 'path' => $intermixPath,
-                'sha256' => $intermix['sha256'],
+                'digest' => $intermix['digest'],
                 'compiled' => $intermix['compiled'],
                 'skipped' => $intermix['skipped'],
             ],
@@ -71,7 +85,16 @@ final readonly class ReleaseCompiler
         $json = json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n";
         $this->writeAtomic($releaseManifestPath, $json);
 
-        return $manifest + ['release_manifest' => $releaseManifestPath];
+        $runtimeManifestPath = self::runtimeManifestPath($releaseManifestPath);
+        $runtime = "<?php\n\ndeclare(strict_types=1);\n\nreturn "
+            . var_export($manifest, true)
+            . ";\n";
+        $this->writeAtomic($runtimeManifestPath, $runtime);
+
+        return $manifest + [
+            'release_manifest' => $releaseManifestPath,
+            'release_runtime_manifest' => $runtimeManifestPath,
+        ];
     }
 
     private function writeAtomic(string $path, string $contents): void
