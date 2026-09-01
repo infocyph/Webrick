@@ -83,37 +83,51 @@ $matcher = FusedMatcher::make();
 
 Use Fused as the default/general production matcher and canonical comparison
 baseline. The Webrick 5 matcher revision moved Fused and Sharded onto the same
-compiled method-first/static-map and combined-PCRE route-discrimination engine.
-Fused keeps that compiled IR in one artifact and provides the strongest general
-warm-dispatch behavior.
+compact compiled route-discrimination engine. Fused keeps that compiled IR in
+one artifact and provides the strongest general warm-dispatch behavior.
 
-The shared compiled matcher uses an **approximate 48-route PCRE chunk target**.
-Contiguous precedence-safe PCRE runs are evenly redistributed around the target
-instead of being rigidly sliced. The PHP 8.4 tuning run showed 48 as the best
-balanced setting across middle hits, late hits and misses; 64 only narrowly
-improved late/miss cases while regressing middle hits. Treat this as compiler
-tuning rather than an application-facing knob and rebuild matcher artifacts after
-Webrick upgrades.
+Use these route-count bands only as **benchmarking heuristics**, not hard
+switches:
 
-Use Sharded when very large route sets make cold boot or startup working set the
-primary constraint. On the 5,000-route matcher profile, Sharded cold boot was
-measured in tens of microseconds while Fused loaded the full artifact in roughly
-60 ms; however, Sharded paid a much slower first shard hit and its warm dispatch
-was materially slower. Sharding is therefore a startup/working-set strategy,
+| Approximate route count | Recommended starting point | When another matcher becomes interesting |
+| ---: | --- | --- |
+| **< 100** | `FusedMatcher` | Benchmark Generated for mostly-static, isolated or strongly distinct route sets. |
+| **100–1,000** | `FusedMatcher` | Generated can still win static/distinct cases, but dense shared-prefix dynamic families already favor Fused strongly. |
+| **1,000–5,000** | `FusedMatcher` | Generated should be exceptional and benchmark-proven; Sharded usually matters only if startup/working-set pressure is already visible. |
+| **5,000–10,000** | `FusedMatcher` for warm throughput | Start benchmarking Sharded if route-cache boot, per-worker loaded state or deployment startup is becoming material. |
+| **10,000+** | Benchmark Fused and Sharded | Fused favors warm request speed; Sharded favors lazy startup/working-set behavior. Generated is not a general large-route strategy. |
+
+Generated is therefore a **small-route specialization**, not the recommended
+"maximum matcher throughput" mode. It was fastest on Webrick's small native
+corpus and on some 100/1,000-route static or strongly distinct cases, but dense
+shared-prefix dynamic families degraded much earlier. At 5,000 and 10,000 routes,
+the generated function itself became large enough that even static dispatch was
+measured in tens of microseconds while Fused stayed around a few hundred
+nanoseconds. As a practical rule, Generated is most worth trying below roughly
+**100 routes**, can remain useful into the hundreds and occasionally around
+**1,000 routes**, and should always be re-benchmarked after substantial route-set
+growth.
+
+Sharded becomes increasingly relevant when very large route sets make cold boot
+or startup working set the primary constraint. Begin measuring it around roughly
+**5,000 routes** when those costs become visible. Around **10,000+ routes**, a
+Fused-vs-Sharded deployment benchmark is recommended rather than assuming one
+artifact shape is universally better. The Webrick 5 5,000-route matcher profile
+showed dramatically cheaper Sharded cold boot, but also a slower first shard hit
+and slower warm dispatch. Sharding is therefore a startup/working-set strategy,
 not a blanket throughput strategy.
 
-Generated is no longer the recommended "maximum matcher throughput" mode. It can
-still be competitive on small/simple route sets, especially static lookups, but
-the Webrick 5 1k/5k/10k scale benchmarks showed steep degradation on dynamic,
-404 and 405 paths as route counts increased. Use it only when the application's
-actual route corpus proves a repeatable advantage.
+Fused remains valid across the whole range. The 10,000-route certification kept
+its structured dynamic, 404 and 405 dispatch around a few microseconds while the
+reference FastRoute and Generated paths grew substantially with the corpus. A
+large route count alone is therefore not a reason to leave Fused.
 
-Route count alone does not determine the winner: benchmark Fused, Generated and
-Sharded with the application's static/dynamic mix, prefixes, domains, OPcache
-settings, worker lifetime and traffic distribution. For a middleware-free route,
-Webrick uses a direct dispatch lane and does not allocate a middleware pipeline.
-Adding any pre-global, route, or post-global middleware intentionally selects the
-full ordered pipeline.
+Route count alone never determines the winner: benchmark with the application's
+static/dynamic mix, shared versus distinct prefixes, domains, OPcache settings,
+worker lifetime, filesystem and traffic distribution. For a middleware-free
+route, Webrick uses a direct dispatch lane and does not allocate a middleware
+pipeline. Adding any pre-global, route, or post-global middleware intentionally
+selects the full ordered pipeline.
 
 ---
 
@@ -312,7 +326,7 @@ final class TimingMiddleware
 
 - [ ] OPcache enabled (`validate_timestamps=0`)
 - [ ] Route cache prebuilt in CI
-- [ ] Fused used as the default matcher; Sharded used for measured startup/working-set needs; Generated used only when the actual route corpus proves a benefit
+- [ ] Fused used as the default matcher at any size; Generated benchmarked mainly for small/simple corpora; Sharded evaluated around several thousand routes when startup/working-set needs become material
 - [ ] Compression enabled (app OR edge, not both)
 - [ ] Response cache for hot GETs
 - [ ] PHP-FPM sized by memory
