@@ -1,4 +1,4 @@
-name: Temporary docs contract fixer
+name: Temporary final docs validation
 
 on:
   push:
@@ -6,85 +6,74 @@ on:
       - webrick-5/batch-1-correctness
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  fix:
-    if: github.actor != 'github-actions[bot]'
+  validate:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
 
-      - name: Align docs with current kernel and request APIs
+      - name: Validate documentation tree and source references
         shell: bash
         run: |
+          set -euo pipefail
+
+          if find docs -type f -name '*.md' -print -quit | grep -q .; then
+            echo 'Markdown documentation remains:' >&2
+            find docs -type f -name '*.md' -print >&2
+            exit 1
+          fi
+
+          if find docs -maxdepth 1 -type f -name 'webrick-5-*' -print -quit | grep -q .; then
+            echo 'Obsolete Webrick 5 planning files remain:' >&2
+            find docs -maxdepth 1 -type f -name 'webrick-5-*' -print >&2
+            exit 1
+          fi
+
+          if grep -RIn --include='*.rst' -E '\.md([)#>`]|$)' docs; then
+            echo 'Markdown links remain in RST documentation.' >&2
+            exit 1
+          fi
+
+          if grep -RIn --include='*.rst' -E 'TraceContext::(get[A-Z]|isAvailable|isOtelMode|isSampled)' docs; then
+            echo 'Removed process-global TraceContext API remains documented.' >&2
+            exit 1
+          fi
+
+          if grep -RIn --include='*.rst' -E 'Request::createFromGlobals|capturePhpErrors|fallbackAliasesFromRegistrar' docs; then
+            echo 'Removed API/options remain documented.' >&2
+            exit 1
+          fi
+
+          if grep -RIn --include='*.rst' -E 'next major release|Major release' docs; then
+            echo 'Obsolete major-release wording remains in maintained docs.' >&2
+            exit 1
+          fi
+
+          if grep -nE 'myst_parser|myst_enable_extensions|myst_heading_anchors' docs/conf.py; then
+            echo 'MyST configuration remains in native RST config.' >&2
+            exit 1
+          fi
+
+          if grep -nE '^(myst-parser|linkify-it-py)' docs/requirements.txt; then
+            echo 'MyST-only dependencies remain.' >&2
+            exit 1
+          fi
+
           python <<'PY'
           from pathlib import Path
           import re
-
-          for doc in sorted(Path('docs').rglob('*.rst')):
-              text = doc.read_text(encoding='utf-8')
-              text = text.replace('Request::createFromGlobals()', 'Request::fromGlobals()')
-
-              old_error = (
-                  'Set ``debug: false`` for public production traffic. Set ``capturePhpErrors: false`` when lifecycle-wide error conversion already exists or warnings must follow the host runtime\'s handler; the compatibility default installs and restores a PHP error handler around every request. Both options may be passed to ``RouterKernel::bootWithRegistrar()`` when using the default boundary, or directly to a custom ``ErrorHandler``.'
-              )
-              new_error = (
-                  'Set ``debug: false`` for public production traffic. ``debug`` may be passed to ``RouterKernel::bootWithRegistrar()`` or directly to a custom ``ErrorHandler``. Process-level PHP warning/error conversion is deliberately separate from the per-request HTTP renderer: install ``PhpErrorBridge`` once at host/process bootstrap when that behavior is desired, and leave an existing host error handler in control otherwise.'
-              )
-              text = text.replace(old_error, new_error)
-
-              lines = text.splitlines()
-              out = []
-              i = 0
-              while i < len(lines):
-                  line = lines[i]
-                  if 'RouterKernel::bootWithRegistrar(' not in line or '=' not in line:
-                      out.append(line)
-                      i += 1
-                      continue
-
-                  block = [line]
-                  depth = line.count('(') - line.count(')')
-                  i += 1
-                  while i < len(lines) and depth > 0:
-                      block.append(lines[i])
-                      depth += lines[i].count('(') - lines[i].count(')')
-                      i += 1
-
-                  # Removed v5 development-kernel options.
-                  block = [
-                      b for b in block
-                      if 'routeCache:' not in b
-                      and 'fallbackAliasesFromRegistrar:' not in b
-                      and 'capturePhpErrors:' not in b
-                  ]
-
-                  if not any('invoker:' in b for b in block):
-                      close_idx = len(block) - 1
-                      close_indent = re.match(r'\s*', block[close_idx]).group(0)
-                      arg_indent = close_indent + '    '
-                      block.insert(close_idx, f'{arg_indent}invoker: $invoker,')
-
-                  out.extend(block)
-
-              doc.write_text('\n'.join(out).rstrip() + '\n', encoding='utf-8')
-          PY
-
-      - name: Validate corrected boot contracts
-        shell: bash
-        run: |
-          python <<'PY'
-          from pathlib import Path
           import sys
 
           failed = False
+
+          # Every actual development bootstrap must provide the mandatory host Invoker
+          # and must not use options removed from RouterKernel.
           for doc in sorted(Path('docs').rglob('*.rst')):
               lines = doc.read_text(encoding='utf-8').splitlines()
               for i, line in enumerate(lines):
@@ -98,37 +87,33 @@ jobs:
                       depth += lines[j].count('(') - lines[j].count(')')
                       j += 1
                   text = '\n'.join(block)
-                  bad = []
                   if 'invoker:' not in text:
-                      bad.append('missing invoker')
-                  for token in ('routeCache:', 'fallbackAliasesFromRegistrar:', 'capturePhpErrors:'):
-                      if token in text:
-                          bad.append(token)
-                  if bad:
                       failed = True
-                      print(f'{doc}:{i+1}: {bad}')
+                      print(f'{doc}:{i+1}: missing mandatory invoker')
+                  for removed in ('routeCache:', 'capturePhpErrors:', 'fallbackAliasesFromRegistrar:'):
+                      if removed in text:
+                          failed = True
+                          print(f'{doc}:{i+1}: removed RouterKernel option {removed}')
+
+          # Validate explicit Webrick imports used in PHP examples against src/.
+          import_re = re.compile(r'^\s*use\s+Infocyph\\\\Webrick\\\\([A-Za-z0-9_\\\\]+)(?:\s+as\s+[A-Za-z0-9_]+)?;', re.MULTILINE)
+          for doc in sorted(Path('docs').rglob('*.rst')):
+              text = doc.read_text(encoding='utf-8')
+              for match in import_re.finditer(text):
+                  rel = Path(*match.group(1).split('\\\\')).with_suffix('.php')
+                  if not (Path('src') / rel).is_file():
+                      failed = True
+                      line = text.count('\n', 0, match.start()) + 1
+                      print(f'{doc}:{line}: missing source for Infocyph\\Webrick\\{match.group(1)}')
+
           if failed:
               sys.exit(1)
           PY
 
-          if grep -RIn --include='*.rst' 'Request::createFromGlobals' docs; then
-            exit 1
-          fi
+          echo "RST files: $(find docs -type f -name '*.rst' | wc -l)"
 
-      - name: Build native RST documentation
+      - name: Build Read the Docs sources with warnings as errors
         shell: bash
         run: |
           python -m pip install --disable-pip-version-check -r docs/requirements.txt
           WEBRICK_DOCS_OFFLINE=1 python -m sphinx -W --keep-going -b html docs /tmp/webrick-docs-html
-
-      - name: Commit documentation corrections
-        shell: bash
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add docs
-          if git diff --cached --quiet; then
-            exit 0
-          fi
-          git commit -m 'docs: align examples with current Webrick runtime contracts'
-          git push origin HEAD:webrick-5/batch-1-correctness
