@@ -21,7 +21,7 @@ function matcherRevisionRoute(string $method, string $path, string $handler = 'm
 function matcherRevisionRemoveTree(string $path): void
 {
     if (is_link($path) || is_file($path)) {
-        @unlink($path);
+        unlink($path);
 
         return;
     }
@@ -32,17 +32,17 @@ function matcherRevisionRemoveTree(string $path): void
     foreach (new FilesystemIterator($path, FilesystemIterator::SKIP_DOTS) as $entry) {
         $entryPath = $entry->getPathname();
         if ($entry->isLink() || $entry->isFile()) {
-            @unlink($entryPath);
+            unlink($entryPath);
         } elseif ($entry->isDir()) {
             matcherRevisionRemoveTree($entryPath);
         }
     }
-    @rmdir($path);
+    rmdir($path);
 }
 
 dataset('compiled pcre ir matchers', [
-    'fused' => [static fn(): MatcherInterface => FusedMatcher::make()],
-    'sharded' => [static fn(): MatcherInterface => ShardedMatcher::make()],
+    'fused' => [static fn (): MatcherInterface => FusedMatcher::make()],
+    'sharded' => [static fn (): MatcherInterface => ShardedMatcher::make()],
 ]);
 
 it('compiles safe regex routes into pcre steps and callable constraints into fallback steps', function (): void {
@@ -198,7 +198,7 @@ it('keeps 405 and automatic options semantics on dynamic misses', function (Clos
         ->and($options->allowed)->toContain('GET', 'HEAD', 'POST');
 })->with('compiled pcre ir matchers');
 
-it('boots fused version 8 cache directly into ordered compiled matcher ir', function (): void {
+it('boots fused version 14 cache directly into ordered compiled matcher ir', function (): void {
     $root = sys_get_temp_dir() . '/webrick-fused-ir-' . bin2hex(random_bytes(6));
     $cache = $root . '/routes.php';
     mkdir($root, 0775, true);
@@ -224,7 +224,7 @@ it('boots fused version 8 cache directly into ordered compiled matcher ir', func
     }
 });
 
-it('boots sharded version 8 cache directly into ordered compiled matcher shards', function (): void {
+it('boots sharded version 14 cache directly into ordered compiled matcher shards', function (): void {
     $root = sys_get_temp_dir() . '/webrick-sharded-ir-' . bin2hex(random_bytes(6));
     mkdir($root, 0775, true);
 
