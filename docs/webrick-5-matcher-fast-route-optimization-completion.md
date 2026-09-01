@@ -178,10 +178,10 @@ generated functions eventually hurt even static dispatch.
 The matcher implementation/performance program is **complete**:
 
 - Stages 1–7 are closed and classified;
-- semantic matcher sanity gates pass;
+- semantic matcher sanity gates passed during development;
 - the final 100/1,000/5,000/10,000 comparative matrix completed on PHP 8.4 and 8.5;
-- capability-specific matcher benchmarking is included in the benchmark tooling;
-- the heavyweight matcher reference workflow is restored to manual dispatch;
+- capability-specific Webrick matcher benchmarks remain available for local regression/performance work;
+- the temporary FastRoute dev dependency, comparison benchmark, and matcher-only GitHub Actions workflows were removed after certification;
 - public matcher guidance reflects the measured portfolio and approximate route-count evaluation bands.
 
 Full project QA, static analysis, coding style, dependency architecture and
