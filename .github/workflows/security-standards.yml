@@ -19,3 +19,16 @@ jobs:
       actions: read
       contents: read
 
+  comment-diagnostics:
+    name: PHPProbe comment diagnostics
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+          tools: composer:v2
+      - run: composer install --no-interaction --no-progress --prefer-dist
+      - name: Print PHPProbe comment findings
+        run: php vendor/bin/phpprobe comments --config vendor/infocyph/phpforge/resources/phpprobe.json --explain
