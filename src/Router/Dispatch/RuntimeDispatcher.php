@@ -9,7 +9,6 @@ use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Build\CompiledRouterArtifact;
 use Infocyph\Webrick\Router\Build\ExecutionKind;
 use Infocyph\Webrick\Router\Build\ExecutionPlan;
-use Infocyph\Webrick\Router\Build\RouteIdentity;
 use Infocyph\Webrick\Runtime\InterMixRuntime;
 use JsonSerializable;
 use UnexpectedValueException;
@@ -26,23 +25,18 @@ final class RuntimeDispatcher
     /** @var array<string,CompiledMiddlewarePipeline> */
     private array $pipelines = [];
 
-    /** @var array<string,array<string,mixed>> */
-    private array $routeAttributes = [];
-
     public function __construct(
         private readonly InterMixRuntime $runtime,
-        CompiledRouterArtifact $artifact,
+        private readonly CompiledRouterArtifact $artifact,
     ) {
         $this->preGlobal = $this->withTagged($artifact->preGlobal, $artifact->preGlobalTags);
         $this->postGlobal = $this->withTagged($artifact->postGlobal, $artifact->postGlobalTags);
-        $this->prepareRouteAttributes($artifact);
-        $this->preparePipelines($artifact);
     }
 
     /** @param array<string,string> $vars */
     public function dispatch(ExecutionPlan $plan, Request $request, array $vars): Response
     {
-        $attributes = $this->routeAttributes[$plan->routeId] ?? [];
+        $attributes = $this->artifact->routeAttributes($plan->routeId);
         if ($vars !== []) {
             $attributes['route_params'] = $vars;
         }
@@ -50,7 +44,7 @@ final class RuntimeDispatcher
             $request = $request->withAttributes($attributes);
         }
 
-        $pipeline = $this->pipelines[$plan->routeId] ?? null;
+        $pipeline = $this->pipelineFor($plan);
 
         return $pipeline instanceof CompiledMiddlewarePipeline
             ? $pipeline->handle($request)
@@ -102,9 +96,9 @@ final class RuntimeDispatcher
         return $this->preGlobal !== [] || $this->postGlobal !== [];
     }
 
-    public function pipelineRequiresScope(string $routeId): bool
+    public function pipelineRequiresScope(ExecutionPlan $plan): bool
     {
-        return ($this->pipelines[$routeId] ?? null)?->requiresScope() ?? false;
+        return $this->pipelineFor($plan)?->requiresScope() ?? false;
     }
 
     /** @param array<string,string> $vars */
@@ -178,42 +172,26 @@ final class RuntimeDispatcher
         return $middleware;
     }
 
-    private function preparePipelines(CompiledRouterArtifact $artifact): void
+    private function pipelineFor(ExecutionPlan $plan): ?CompiledMiddlewarePipeline
     {
-        foreach ($artifact->plans as $routeId => $plan) {
-            $middleware = $this->pipelineMiddleware($plan);
-            if ($middleware === []) {
-                continue;
-            }
-
-            $this->pipelines[$routeId] = new CompiledMiddlewarePipeline(
-                $middleware,
-                fn(Request $current): Response => $this->invokeTerminal(
-                    $plan,
-                    $current,
-                    $this->routeVariables($current),
-                ),
-                $this->runtime,
-            );
+        if (isset($this->pipelines[$plan->routeId])) {
+            return $this->pipelines[$plan->routeId];
         }
-    }
 
-    private function prepareRouteAttributes(CompiledRouterArtifact $artifact): void
-    {
-        foreach ($artifact->routes as $route) {
-            $attributes = [];
-            $cors = $route->getCorsPolicy();
-            if ($cors !== null) {
-                $attributes['cors_policy'] = $cors;
-            }
-            $produces = $route->getProduces();
-            if ($produces !== null) {
-                $attributes['produces'] = $produces;
-            }
-            if ($attributes !== []) {
-                $this->routeAttributes[RouteIdentity::forRoute($route)] = $attributes;
-            }
+        $middleware = $this->pipelineMiddleware($plan);
+        if ($middleware === []) {
+            return null;
         }
+
+        return $this->pipelines[$plan->routeId] = new CompiledMiddlewarePipeline(
+            $middleware,
+            fn(Request $current): Response => $this->invokeTerminal(
+                $plan,
+                $current,
+                $this->routeVariables($current),
+            ),
+            $this->runtime,
+        );
     }
 
     private function response(mixed $result): Response
