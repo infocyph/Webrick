@@ -2,11 +2,19 @@
 
 declare(strict_types=1);
 
-/** Internal PCRE construction helpers for the compiled matcher IR. */
+namespace Infocyph\Webrick\Router\Matching;
+
+use Infocyph\Webrick\Router\Constraint\Registry as ConstraintRegistry;
+use LogicException;
+use UnexpectedValueException;
+
+/**
+ * Internal PCRE construction helpers for the compiled matcher IR.
+ *
+ * @phpstan-type SegmentSpec array<string,mixed>
+ */
 final class CompiledMatcherPatternCompiler
 {
-    /** @phpstan-type SegmentSpec array<string,mixed> */
-
     /** @param list<SegmentSpec> $segments */
     public static function isCompilable(array $segments): bool
     {
@@ -14,8 +22,9 @@ final class CompiledMatcherPatternCompiler
             if (($segment['type'] ?? null) !== 'var') {
                 continue;
             }
+
             $regex = $segment['regex'] ?? null;
-            if (!is_string($regex) || !\Infocyph\Webrick\Router\Constraint\Registry::isCombinedPcreSafeSegmentRegex($regex)) {
+            if (!is_string($regex) || !ConstraintRegistry::isCombinedPcreSafeSegmentRegex($regex)) {
                 return false;
             }
         }
@@ -41,20 +50,22 @@ final class CompiledMatcherPatternCompiler
             if ($type === 'lit') {
                 $literal = $segment['val'] ?? null;
                 if (!is_string($literal)) {
-                    throw new \UnexpectedValueException('Compiled matcher literal is invalid.');
+                    throw new UnexpectedValueException('Compiled matcher literal is invalid.');
                 }
                 $parts[] = preg_quote($literal, '~');
 
                 continue;
             }
             if ($type !== 'var') {
-                throw new \UnexpectedValueException('Compiled matcher segment type is invalid.');
+                throw new UnexpectedValueException('Compiled matcher segment type is invalid.');
             }
+
             $regex = $segment['regex'] ?? null;
             $name = $segment['name'] ?? null;
             if (!is_string($regex) || !is_string($name) || $name === '') {
-                throw new \LogicException('Non-PCRE matcher segment cannot enter the PCRE fast lane.');
+                throw new LogicException('Non-PCRE matcher segment cannot enter the PCRE fast lane.');
             }
+
             $capture = 'w' . $routeOrdinal . 'p' . $parameterOrdinal++;
             $parts[] = '(?<' . $capture . '>' . self::segmentInner($regex) . ')';
             $params[$capture] = $name;
@@ -80,20 +91,22 @@ final class CompiledMatcherPatternCompiler
             if ($type === 'lit') {
                 $literal = $segment['val'] ?? null;
                 if (!is_string($literal)) {
-                    throw new \UnexpectedValueException('Compiled matcher literal is invalid.');
+                    throw new UnexpectedValueException('Compiled matcher literal is invalid.');
                 }
                 $parts[] = preg_quote($literal, '~');
 
                 continue;
             }
             if ($type !== 'var') {
-                throw new \UnexpectedValueException('Compiled matcher segment type is invalid.');
+                throw new UnexpectedValueException('Compiled matcher segment type is invalid.');
             }
+
             $regex = $segment['regex'] ?? null;
             $name = $segment['name'] ?? null;
             if (!is_string($regex) || !is_string($name) || $name === '') {
-                throw new \LogicException('Non-PCRE matcher segment cannot enter the positional fast lane.');
+                throw new LogicException('Non-PCRE matcher segment cannot enter the positional fast lane.');
             }
+
             $parts[] = '(' . self::nonCapturing(self::segmentInner($regex)) . ')';
             $params[] = $name;
         }
@@ -114,21 +127,22 @@ final class CompiledMatcherPatternCompiler
             if ($type === 'lit') {
                 $literal = $segment['val'] ?? null;
                 if (!is_string($literal)) {
-                    throw new \UnexpectedValueException('Compiled matcher literal is invalid.');
+                    throw new UnexpectedValueException('Compiled matcher literal is invalid.');
                 }
                 $parts[] = preg_quote($literal, '~');
 
                 continue;
             }
             if ($type !== 'var' || !is_string($segment['regex'] ?? null)) {
-                throw new \LogicException('Non-PCRE matcher segment cannot enter allowed-method fast dispatch.');
+                throw new LogicException('Non-PCRE matcher segment cannot enter allowed-method fast dispatch.');
             }
+
             $parts[] = '(?:' . self::nonCapturing(self::segmentInner($segment['regex'])) . ')';
         }
 
         $regex = '~\\A/*' . implode('/', $parts) . '/*\\z~D';
-        if (@preg_match($regex, '') === false) {
-            throw new \UnexpectedValueException('Failed to compile allowed-method route predicate.');
+        if (preg_match($regex, '') === false) {
+            throw new UnexpectedValueException('Failed to compile allowed-method route predicate.');
         }
 
         return $regex;
@@ -193,11 +207,12 @@ final class CompiledMatcherPatternCompiler
     private static function segmentInner(string $regex): string
     {
         if (!str_starts_with($regex, '#\\A') || !str_ends_with($regex, '\\z#D')) {
-            throw new \UnexpectedValueException('Compiled matcher segment regex has an unsupported form.');
+            throw new UnexpectedValueException('Compiled matcher segment regex has an unsupported form.');
         }
+
         $inner = substr($regex, 3, -4);
         if ($inner === '') {
-            throw new \UnexpectedValueException('Compiled matcher segment regex cannot be empty.');
+            throw new UnexpectedValueException('Compiled matcher segment regex cannot be empty.');
         }
 
         return self::escapeDelimiter($inner, '~');
