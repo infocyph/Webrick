@@ -26,7 +26,6 @@ jobs:
         run: |
           python3 <<'PY'
           from pathlib import Path
-
           workflow = Path('.github/workflows/_tmp-matcher-phase3.yml').read_text()
           step = '      - name: Implement built-in constraint opcodes\n'
           start = workflow.index(step)
@@ -49,7 +48,6 @@ jobs:
         run: |
           python3 <<'PY'
           from pathlib import Path
-
           path = Path('src/Router/Matching/CompactMatcherDynamicValidator.php')
           text = path.read_text()
           replacements = {
@@ -61,20 +59,8 @@ jobs:
               if old not in text:
                   raise SystemExit(f'Validator annotation marker missing: {old}')
               text = text.replace(old, new, 1)
-
-          old = """        if (!is_array($segment) || !is_string($segment['type'] ?? null)) {
-            throw new \\UnexpectedValueException('Compact matcher fallback segment is invalid.');
-        }
-
-        return match ($segment['type']) {
-          """
-          new = """        if (!is_array($segment) || !is_string($segment['type'] ?? null)) {
-            throw new \\UnexpectedValueException('Compact matcher fallback segment is invalid.');
-        }
-
-        /** @var array<string,mixed> $segment */
-        return match ($segment['type']) {
-          """
+          old = "        if (!is_array($segment) || !is_string($segment['type'] ?? null)) {\n            throw new \\UnexpectedValueException('Compact matcher fallback segment is invalid.');\n        }\n\n        return match ($segment['type']) {\n"
+          new = "        if (!is_array($segment) || !is_string($segment['type'] ?? null)) {\n            throw new \\UnexpectedValueException('Compact matcher fallback segment is invalid.');\n        }\n\n        /** @var array<string,mixed> $segment */\n        return match ($segment['type']) {\n"
           if old not in text:
               raise SystemExit('Validator associative-array assertion marker missing')
           path.write_text(text.replace(old, new, 1))
