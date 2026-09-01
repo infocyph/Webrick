@@ -80,23 +80,24 @@ Completion record:
 - Added `MatcherPathInspectionBench` as the Phase 2 baseline for path shape, segment materialization, and positional parameter capture.
 - A fixed-candidate Sharded compact-dispatch prototype was tested, but intentionally not retained in Phase 1: it pushed `ShardedMatcher` beyond the repository's cognitive-complexity limits without a measured before/after gain sufficient to justify the extra branch surface. Shard-candidate representation should be revisited only as part of the adaptive IR/residency work.
 - PHP 8.4 validation passed the complete PHPForge code test suite: **419 tests / 1089 assertions**.
+- The complete PHPForge CI gate passed after the final retained-code formatting: PHPProbe, Pest, Pint, PHPCS, Deptrac, PHPStan, Psalm, Rector, and Composer Normalize.
 
-Measured PHP 8.4.25 baseline (GitHub runner, opcache disabled):
+Final retained-code PHP 8.4.25 baseline (GitHub runner, opcache disabled):
 
 | Case | Fused | Generated | Sharded |
 | --- | ---: | ---: | ---: |
-| static hit | 0.371 µs | 0.282 µs | 0.459 µs |
-| dynamic hit | 1.807 µs | 0.608 µs | 1.884 µs |
-| dynamic 404 | 1.532 µs | 0.692 µs | 1.620 µs |
-| dynamic 405 | 3.106 µs | 1.202 µs | 3.260 µs |
-| automatic OPTIONS | 3.174 µs | 1.107 µs | 3.322 µs |
-| domain dynamic hit | 2.176 µs | 0.616 µs | 2.225 µs |
+| static hit | 0.389 µs | 0.294 µs | 0.481 µs |
+| dynamic hit | 1.875 µs | 0.696 µs | 1.949 µs |
+| dynamic 404 | 1.564 µs | 0.743 µs | 1.737 µs |
+| dynamic 405 | 3.252 µs | 1.166 µs | 3.333 µs |
+| automatic OPTIONS | 3.220 µs | 1.188 µs | 3.312 µs |
+| domain dynamic hit | 2.250 µs | 0.687 µs | 2.294 µs |
 
 Path-inspection baseline:
 
-- current path-shape extraction: roughly **0.084–0.166 µs** across root through deep/extra-slash paths;
-- deep-path segment materialization: **0.287 µs**;
-- positional three-parameter capture: **0.290 µs**.
+- current path-shape extraction: roughly **0.077–0.172 µs** across root through deep/extra-slash paths;
+- deep-path segment materialization: **0.269 µs**;
+- positional three-parameter capture: **0.291 µs**.
 
 These numbers set a deliberately high acceptance bar for Phase 2: a PHP-level scanner must beat the existing C-backed string primitives in end-to-end matcher dispatch, not merely provide a cleaner abstraction.
 
