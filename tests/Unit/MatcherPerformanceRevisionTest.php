@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Infocyph\Webrick\Router\Constraint\Registry as ConstraintRegistry;
 use Infocyph\Webrick\Router\Matching\CanonicalMatcherIndex;
+use Infocyph\Webrick\Router\Matching\CompiledMatcherConstraintOpcode;
 use Infocyph\Webrick\Router\Matching\CompiledMatcherIndexCompiler;
 use Infocyph\Webrick\Router\Matching\FusedMatcher;
 use Infocyph\Webrick\Router\Matching\MatcherInterface;
@@ -41,11 +42,11 @@ function matcherRevisionRemoveTree(string $path): void
 }
 
 dataset('compiled pcre ir matchers', [
-    'fused' => [static fn (): MatcherInterface => FusedMatcher::make()],
-    'sharded' => [static fn (): MatcherInterface => ShardedMatcher::make()],
+    'fused' => [static fn(): MatcherInterface => FusedMatcher::make()],
+    'sharded' => [static fn(): MatcherInterface => ShardedMatcher::make()],
 ]);
 
-it('compiles safe regex routes into pcre steps and callable constraints into fallback steps', function (): void {
+it('compiles safe regex routes and specializes built-in callable fallback segments', function (): void {
     $index = new CanonicalMatcherIndex();
     $index->add('*', matcherRevisionRoute('GET', '/users/{name}'));
     $index->add('*', matcherRevisionRoute('GET', '/orders/{id:int}'));
@@ -57,7 +58,9 @@ it('compiles safe regex routes into pcre steps and callable constraints into fal
     expect($userSteps)->toHaveCount(1)
         ->and($userSteps[0]['type'])->toBe('pcre')
         ->and($orderSteps)->toHaveCount(1)
-        ->and($orderSteps[0]['type'])->toBe('fallback');
+        ->and($orderSteps[0]['type'])->toBe('fallback')
+        ->and($orderSteps[0]['segments'][1]['type'])->toBe('op')
+        ->and($orderSteps[0]['segments'][1]['code'])->toBe(CompiledMatcherConstraintOpcode::DIGIT);
 });
 
 it('keeps slash-consuming built-in regex constraints out of whole-path pcre', function (): void {
@@ -111,7 +114,7 @@ it('dispatches regex dynamic routes through the shared compiled matcher engine',
         ->toBe([$route->getIndex(), ['name' => 'hasan']]);
 })->with('compiled pcre ir matchers');
 
-it('keeps callable route constraints on the shared fallback lane', function (Closure $factory): void {
+it('dispatches built-in callable constraints through the specialized fallback lane', function (Closure $factory): void {
     $route = matcherRevisionRoute('GET', '/orders/{id:int}');
     $matcher = $factory();
     $matcher->add($route);
@@ -124,6 +127,59 @@ it('keeps callable route constraints on the shared fallback lane', function (Clo
     expect($miss)->toBeInstanceOf(MatchOutcome::class)
         ->and($miss->type)->toBe(MatchOutcomeType::NOT_FOUND);
 })->with('compiled pcre ir matchers');
+
+it('accepts numeric literal discriminator keys in compact matcher metadata', function (Closure $factory): void {
+    $matcher = $factory();
+    for ($index = 0; $index < 80; ++$index) {
+        $matcher->add(matcherRevisionRoute('GET', "/numeric-key/{$index}/{id:hex}"));
+    }
+    $matcher->finalize();
+
+    $hit = $matcher->matchCompiled('GET', '*', '/numeric-key/57/deadbeef');
+    expect($hit)->toBeArray();
+})->with('compiled pcre ir matchers');
+
+it('preserves every built-in callable constraint semantic through matcher opcodes', function (Closure $factory): void {
+    $cases = [
+        ['int', '123456', '12x456'],
+        ['digit', '123456', '12x456'],
+        ['numeric', '-123.45e2', '12x'],
+        ['float', '-123.45', '12x'],
+        ['alpha', 'Benchmark', 'Bench42'],
+        ['alnum', 'Bench42', 'Bench-42'],
+        ['bool', 'FALSE', 'maybe'],
+        ['json', '{"ok":true}', '{nope}'],
+        ['ipv6', '2001:db8::1', 'not-ipv6'],
+    ];
+
+    foreach ($cases as [$constraint, $hitValue, $missValue]) {
+        $route = matcherRevisionRoute('GET', "/typed/{$constraint}/{value:{$constraint}}");
+        $matcher = $factory();
+        $matcher->add($route);
+        $matcher->finalize();
+
+        expect($matcher->matchCompiled('GET', '*', "/typed/{$constraint}/{$hitValue}"))
+            ->toBe([$route->getIndex(), ['value' => $hitValue]]);
+
+        $miss = $matcher->matchCompiled('GET', '*', "/typed/{$constraint}/{$missValue}");
+        expect($miss)->toBeInstanceOf(MatchOutcome::class)
+            ->and($miss->type)->toBe(MatchOutcomeType::NOT_FOUND);
+    }
+})->with('compiled pcre ir matchers');
+
+it('keeps unrecognized callable segments on the generic callable fallback representation', function (): void {
+    $compiler = new CompiledMatcherIndexCompiler();
+    $reflection = new ReflectionClass($compiler);
+    $method = $reflection->getMethod('compileFallbackSegments');
+    $segments = $method->invoke(null, [
+        ['type' => 'lit', 'val' => 'custom'],
+        ['type' => 'var', 'name' => 'value', 'call' => 'strrev'],
+    ]);
+
+    expect($segments[1]['type'])->toBe('var')
+        ->and($segments[1]['call'])->toBe('strrev')
+        ->and($segments[1])->not->toHaveKey('code');
+});
 
 it('uses method-first dynamic pcre buckets for overlapping route patterns', function (Closure $factory): void {
     $get = matcherRevisionRoute('GET', '/lookup/{value:uuid}');
@@ -198,7 +254,7 @@ it('keeps 405 and automatic options semantics on dynamic misses', function (Clos
         ->and($options->allowed)->toContain('GET', 'HEAD', 'POST');
 })->with('compiled pcre ir matchers');
 
-it('boots fused version 14 cache directly into ordered compiled matcher ir', function (): void {
+it('boots fused version 15 cache directly into ordered compiled matcher ir', function (): void {
     $root = sys_get_temp_dir() . '/webrick-fused-ir-' . bin2hex(random_bytes(6));
     $cache = $root . '/routes.php';
     mkdir($root, 0775, true);
@@ -224,7 +280,7 @@ it('boots fused version 14 cache directly into ordered compiled matcher ir', fun
     }
 });
 
-it('boots sharded version 14 cache directly into ordered compiled matcher shards', function (): void {
+it('boots sharded version 15 cache directly into ordered compiled matcher shards', function (): void {
     $root = sys_get_temp_dir() . '/webrick-sharded-ir-' . bin2hex(random_bytes(6));
     mkdir($root, 0775, true);
 

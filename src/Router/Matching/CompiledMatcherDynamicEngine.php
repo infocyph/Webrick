@@ -15,9 +15,9 @@ use Infocyph\Webrick\Constants\HttpMethodEnum;
  * @phpstan-type PcreEntry array{id:int,params:list<string>}
  * @phpstan-type PcreStep array{type:'pcre',regex:string,routes:array<string,PcreEntry>}
  * @phpstan-type FastDispatchStep array{regex:string,routes:array<string,PcreEntry>}
- * @phpstan-type FastDispatch array{segment:int,groups:array<string,list<FastDispatchStep>>}
+ * @phpstan-type FastDispatch array{segment:int,groups:array<array-key,list<FastDispatchStep>>}
  * @phpstan-type AllowedLiteralEntry array{regex:string,methods:list<string>}
- * @phpstan-type AllowedBucket array{type:'literal',segment:int,groups:array<string,AllowedLiteralEntry>}|array{type:'fallback'}
+ * @phpstan-type AllowedBucket array{type:'literal',segment:int,groups:array<array-key,AllowedLiteralEntry>}|array{type:'fallback'}
  * @phpstan-type FallbackStep array{type:'fallback',segments:list<array<string,mixed>>,id:int}
  * @phpstan-type DynamicBucket array{steps:list<PcreStep|FallbackStep>,fast_dispatch?:FastDispatch}
  * @phpstan-type MatcherGroup array{routes:array<int,mixed>,static:array<string,array<string,int>>,static_allowed:array<string,list<string>>,dynamic:array<string,array<int,array<string,DynamicBucket>>>,dynamic_allowed:array<int,array<string,AllowedBucket>>}
@@ -203,6 +203,28 @@ final class CompiledMatcherDynamicEngine
         return self::captureParams($step['routes'][$mark], $matches);
     }
 
+    /** @param array<string,mixed> $spec */
+    private static function matchesFallbackVariable(array $spec, string $piece): bool
+    {
+        if (($spec['type'] ?? null) === 'op') {
+            $code = $spec['code'] ?? null;
+
+            return is_int($code) && CompiledMatcherConstraintOpcode::matches($code, $piece);
+        }
+        if (($spec['type'] ?? null) !== 'var') {
+            return false;
+        }
+
+        $regex = $spec['regex'] ?? null;
+        if (is_string($regex)) {
+            return preg_match($regex, $piece) === 1;
+        }
+
+        $call = $spec['call'] ?? null;
+
+        return is_callable($call) && $call($piece);
+    }
+
     /**
      * @param list<array<string,mixed>> $specs
      * @param list<string> $segments
@@ -225,16 +247,9 @@ final class CompiledMatcherDynamicEngine
             }
 
             $name = $spec['name'] ?? null;
-            if (($spec['type'] ?? null) !== 'var' || !is_string($name)) {
+            if (!is_string($name) || !self::matchesFallbackVariable($spec, $piece)) {
                 return null;
             }
-            $matches = isset($spec['regex'])
-                ? is_string($spec['regex']) && preg_match($spec['regex'], $piece) === 1
-                : is_callable($spec['call'] ?? null) && ($spec['call'])($piece);
-            if (!$matches) {
-                return null;
-            }
-
             $params[$name] = $piece;
         }
 
@@ -300,7 +315,7 @@ final class CompiledMatcherDynamicEngine
     }
 
     /**
-     * @param array{type:'literal',segment:int,groups:array<string,AllowedLiteralEntry>} $bucket
+     * @param array{type:'literal',segment:int,groups:array<array-key,AllowedLiteralEntry>} $bucket
      * @param array<string,true> $skip
      * @param array<string,bool> $allowed
      * @param list<string> $segments

@@ -92,13 +92,13 @@ final class CompactMatcherDynamicValidator
 
     /**
      * @param array<array-key,mixed> $raw
-     * @return array<string,array{regex:string,methods:list<string>}>
+     * @return array<array-key,array{regex:string,methods:list<string>}>
      */
     private static function validateAllowedGroups(array $raw, bool $validateRegex): array
     {
         $groups = [];
         foreach ($raw as $literal => $entry) {
-            if (!is_string($literal) || !is_array($entry) || !is_string($entry['regex'] ?? null)) {
+            if (!is_array($entry) || !is_string($entry['regex'] ?? null)) {
                 throw new \UnexpectedValueException('Compact matcher allowed-method entry is invalid.');
             }
 
@@ -220,13 +220,13 @@ final class CompactMatcherDynamicValidator
     /**
      * @param array<array-key,mixed> $raw
      * @param array<int,mixed> $routes
-     * @return array<string,list<FastDispatchStep>>
+     * @return array<array-key,list<FastDispatchStep>>
      */
     private static function validateFastGroups(array $raw, array $routes, bool $validateRegex): array
     {
         $groups = [];
         foreach ($raw as $literal => $steps) {
-            if (!is_string($literal) || !is_array($steps) || !array_is_list($steps) || $steps === []) {
+            if (!is_array($steps) || !array_is_list($steps) || $steps === []) {
                 throw new \UnexpectedValueException('Compact matcher adaptive literal group is invalid.');
             }
             $groups[$literal] = self::validateFastSteps($steps, $routes, $validateRegex);
@@ -266,6 +266,20 @@ final class CompactMatcherDynamicValidator
         return $steps;
     }
 
+    /**
+     * @param array<string,mixed> $segment
+     * @return array{type:'lit',val:string}
+     */
+    private static function validateLiteralSegment(array $segment): array
+    {
+        $value = $segment['val'] ?? null;
+        if (!is_string($value)) {
+            throw new \UnexpectedValueException('Compact matcher fallback literal segment is invalid.');
+        }
+
+        return ['type' => 'lit', 'val' => $value];
+    }
+
     /** @return list<string> */
     private static function validateMethodList(mixed $raw): array
     {
@@ -282,6 +296,21 @@ final class CompactMatcherDynamicValidator
         }
 
         return array_keys($seen);
+    }
+
+    /**
+     * @param array<string,mixed> $segment
+     * @return array{type:'op',name:string,code:int}
+     */
+    private static function validateOpcodeSegment(array $segment): array
+    {
+        $name = $segment['name'] ?? null;
+        $code = $segment['code'] ?? null;
+        if (!is_string($name) || $name === '' || !is_int($code) || !CompiledMatcherConstraintOpcode::isValid($code)) {
+            throw new \UnexpectedValueException('Compact matcher fallback opcode segment is invalid.');
+        }
+
+        return ['type' => 'op', 'name' => $name, 'code' => $code];
     }
 
     /** @return list<string> */
@@ -361,6 +390,22 @@ final class CompactMatcherDynamicValidator
         return $map;
     }
 
+    /** @return array<string,mixed> */
+    private static function validateSegment(mixed $segment): array
+    {
+        if (!is_array($segment) || !is_string($segment['type'] ?? null)) {
+            throw new \UnexpectedValueException('Compact matcher fallback segment is invalid.');
+        }
+
+        /** @var array<string,mixed> $segment */
+        return match ($segment['type']) {
+            'lit' => self::validateLiteralSegment($segment),
+            'op' => self::validateOpcodeSegment($segment),
+            'var' => self::validateVariableSegment($segment),
+            default => throw new \UnexpectedValueException('Compact matcher fallback segment type is invalid.'),
+        };
+    }
+
     /** @return list<array<string,mixed>> */
     private static function validateSegments(mixed $raw): array
     {
@@ -370,11 +415,7 @@ final class CompactMatcherDynamicValidator
 
         $segments = [];
         foreach ($raw as $segment) {
-            if (!is_array($segment) || !is_string($segment['type'] ?? null)) {
-                throw new \UnexpectedValueException('Compact matcher fallback segment is invalid.');
-            }
-            /** @var array<string,mixed> $segment */
-            $segments[] = $segment;
+            $segments[] = self::validateSegment($segment);
         }
 
         return $segments;
@@ -395,5 +436,29 @@ final class CompactMatcherDynamicValidator
             'fallback' => self::validateFallbackStep($raw, $routes),
             default => throw new \UnexpectedValueException('Compact matcher dynamic step type is invalid.'),
         };
+    }
+
+    /**
+     * @param array<string,mixed> $segment
+     * @return array<string,mixed>
+     */
+    private static function validateVariableSegment(array $segment): array
+    {
+        $name = $segment['name'] ?? null;
+        if (!is_string($name) || $name === '') {
+            throw new \UnexpectedValueException('Compact matcher fallback variable segment is invalid.');
+        }
+
+        $regex = $segment['regex'] ?? null;
+        if (is_string($regex)) {
+            return ['type' => 'var', 'name' => $name, 'regex' => $regex];
+        }
+
+        $call = $segment['call'] ?? null;
+        if (!is_string($call) || !is_callable($call)) {
+            throw new \UnexpectedValueException('Compact matcher fallback callable segment is invalid.');
+        }
+
+        return ['type' => 'var', 'name' => $name, 'call' => $call];
     }
 }

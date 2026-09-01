@@ -28,7 +28,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
 {
     use MatcherFactoryTrait;
 
-    private const int INDEX_CACHE_VERSION = 14;
+    private const int INDEX_CACHE_VERSION = 15;
 
     private const string SHARD_DYNAMIC = '__dynamic';
 

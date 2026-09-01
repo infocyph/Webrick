@@ -1,6 +1,6 @@
 # Webrick Matcher Optimization Plan
 
-Status: active development plan — Phases 1–2 complete  
+Status: active development plan — Phases 1–3 complete  
 Branch: `webrick-5/batch-1-correctness`
 
 ## Objective
@@ -174,6 +174,18 @@ PHP 8.4.25 experiment results (GitHub runner, opcache disabled):
 Phase 3 therefore starts from the existing lazy path materialization model. Constraint specialization must improve matcher work without depending on a PHP-level request-path scanner.
 
 ## Phase 3 — Built-in constraint opcodes
+
+**Status: complete (2026-09-01).**
+
+Completion record:
+
+- Fixed compact discriminator validation for PHP numeric-string array keys; numeric literal route families now scale through Fused/Sharded validation.
+- Specialized matcher-only opcodes cover the built-in callable constraints `int`/`digit`, `numeric`/`float`, `alpha`, `alnum`, `bool`, `json`, and `ipv6`.
+- Canonical route definitions and public constraint APIs remain unchanged; only compact fallback IR is specialized.
+- Unknown/custom callables retain the generic callable fallback representation.
+- Regex-safe built-ins remain on the combined-PCRE path.
+- Fused and Sharded cache versions were advanced for the changed compact IR.
+- Same-run baseline/candidate typed-constraint measurements, general outcome benchmarks, the complete scale matrix, and the full PHPForge gate passed before landing.
 
 Goal: remove callable dispatch from common route constraints where Webrick fully owns the semantics.
 

@@ -16,9 +16,9 @@ use Infocyph\Webrick\Constants\HttpMethodEnum;
  * @phpstan-type PcreEntry array{id:int,params:list<string>}
  * @phpstan-type PcreStep array{type:'pcre',regex:string,routes:array<string,PcreEntry>}
  * @phpstan-type FastDispatchStep array{regex:string,routes:array<string,PcreEntry>}
- * @phpstan-type FastDispatch array{segment:int,groups:array<string,list<FastDispatchStep>>}
+ * @phpstan-type FastDispatch array{segment:int,groups:array<array-key,list<FastDispatchStep>>}
  * @phpstan-type AllowedLiteralEntry array{regex:string,methods:list<string>}
- * @phpstan-type AllowedBucket array{type:'literal',segment:int,groups:array<string,AllowedLiteralEntry>}|array{type:'fallback'}
+ * @phpstan-type AllowedBucket array{type:'literal',segment:int,groups:array<array-key,AllowedLiteralEntry>}|array{type:'fallback'}
  * @phpstan-type FallbackStep array{type:'fallback',segments:list<array<string,mixed>>,id:int}
  * @phpstan-type DynamicBucket array{steps:list<PcreStep|FallbackStep>,fast_dispatch?:FastDispatch}
  * @phpstan-type MatcherGroup array{routes:array<int,mixed>,static:array<string,array<string,int>>,static_allowed:array<string,list<string>>,dynamic:array<string,array<int,array<string,DynamicBucket>>>,dynamic_allowed:array<int,array<string,AllowedBucket>>}

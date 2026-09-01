@@ -34,9 +34,9 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
  * @phpstan-type PcreStep array{type:'pcre',regex:string,fast_regex:string,routes:array<string,FastRouteEntry>}
  * @phpstan-type FastDispatchEntry array{id:int,params:list<string>}
  * @phpstan-type FastDispatchStep array{regex:string,routes:array<string,FastDispatchEntry>}
- * @phpstan-type FastDispatch array{segment:int,groups:array<string,list<FastDispatchStep>>}
+ * @phpstan-type FastDispatch array{segment:int,groups:array<array-key,list<FastDispatchStep>>}
  * @phpstan-type AllowedLiteralEntry array{regex:string,methods:list<string>}
- * @phpstan-type AllowedBucket array{type:'literal',segment:int,groups:array<string,AllowedLiteralEntry>}|array{type:'fallback'}
+ * @phpstan-type AllowedBucket array{type:'literal',segment:int,groups:array<array-key,AllowedLiteralEntry>}|array{type:'fallback'}
  * @phpstan-type FallbackStep array{type:'fallback',segments:list<SegmentSpec>,route:RouteValue,id:int}
  * @phpstan-type DynamicStep PcreStep|FallbackStep
  * @phpstan-type DynamicBucket array{steps:list<DynamicStep>,fast_dispatch?:FastDispatch}
@@ -130,6 +130,35 @@ final readonly class CompiledMatcherIndexCompiler
         }
 
         return $best;
+    }
+
+    /**
+     * @param list<SegmentSpec> $segments
+     * @return list<SegmentSpec>
+     */
+    private static function compileFallbackSegments(array $segments): array
+    {
+        $compiled = [];
+        foreach ($segments as $segment) {
+            $call = $segment['call'] ?? null;
+            if (($segment['type'] ?? null) !== 'var' || !is_string($call)) {
+                $compiled[] = $segment;
+
+                continue;
+            }
+
+            $name = $segment['name'] ?? null;
+            if (!is_string($name) || $name === '') {
+                throw new \UnexpectedValueException('Compiled matcher callable segment is invalid.');
+            }
+
+            $opcode = CompiledMatcherConstraintOpcode::fromCallable($call);
+            $compiled[] = $opcode === null
+                ? $segment
+                : ['type' => 'op', 'name' => $name, 'code' => $opcode];
+        }
+
+        return $compiled;
     }
 
     /** @param list<SegmentSpec> $segments */
@@ -442,7 +471,7 @@ final readonly class CompiledMatcherIndexCompiler
             }
             $steps[] = [
                 'type' => 'fallback',
-                'segments' => $entry['segments'],
+                'segments' => self::compileFallbackSegments($entry['segments']),
                 'route' => $entry['route'],
                 'id' => $entry['id'],
             ];
