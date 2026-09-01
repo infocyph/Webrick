@@ -41,6 +41,9 @@ $factories = [
 
 foreach ($factories as $name => $factory) {
     $regex = sanityRoute('GET', '/users/{name}', $name . '-regex');
+    $semver = sanityRoute('GET', '/version/{value:semver}', $name . '-semver');
+    $hexcolor = sanityRoute('GET', '/color/{value:hexcolor}', $name . '-hexcolor');
+    $ipv4 = sanityRoute('GET', '/ip/{value:ipv4}', $name . '-ipv4');
     $callable = sanityRoute('GET', '/orders/{id:int}', $name . '-callable');
     $precedence = sanityRoute('GET', '/pick/{value:int}', $name . '-precedence');
     $later = sanityRoute('GET', '/pick/{value}', $name . '-later');
@@ -48,7 +51,7 @@ foreach ($factories as $name => $factory) {
     $get = sanityRoute('GET', '/resource/{id}', $name . '-get');
 
     $matcher = $factory();
-    foreach ([$regex, $callable, $precedence, $later, $post, $get] as $route) {
+    foreach ([$regex, $semver, $hexcolor, $ipv4, $callable, $precedence, $later, $post, $get] as $route) {
         $matcher->add($route);
     }
     $matcher->finalize();
@@ -57,6 +60,21 @@ foreach ($factories as $name => $factory) {
         [$regex->getIndex(), ['name' => 'hasan']],
         $matcher->matchCompiled('GET', '*', '/users/hasan'),
         $name . ': regex fast-lane hit failed.',
+    );
+    assertSameValue(
+        [$semver->getIndex(), ['value' => '1.2.3-beta.1+build.7']],
+        $matcher->matchCompiled('GET', '*', '/version/1.2.3-beta.1+build.7'),
+        $name . ': positional semver capture failed.',
+    );
+    assertSameValue(
+        [$hexcolor->getIndex(), ['value' => '#AABBCC']],
+        $matcher->matchCompiled('GET', '*', '/color/#AABBCC'),
+        $name . ': positional hexcolor capture failed.',
+    );
+    assertSameValue(
+        [$ipv4->getIndex(), ['value' => '127.0.0.1']],
+        $matcher->matchCompiled('GET', '*', '/ip/127.0.0.1'),
+        $name . ': positional ipv4 capture failed.',
     );
     assertSameValue(
         [$callable->getIndex(), ['id' => '42']],
