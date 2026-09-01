@@ -43,19 +43,22 @@ jobs:
         run: php benchmark/matcher_sanity.php
 
       - name: FastRoute reference - 100 routes
-        run: php benchmark/fastroute_reference.php --routes=100 --iters=100000 --rounds=5 --warmup=10000 | tee benchmark-fastroute-100.txt
+        run: php benchmark/fastroute_reference.php --routes=100 --iters=20000 --rounds=3 --warmup=2000 | tee benchmark-fastroute-100.txt
 
       - name: FastRoute reference - 1000 routes
-        run: php benchmark/fastroute_reference.php --routes=1000 --iters=75000 --rounds=5 --warmup=10000 | tee benchmark-fastroute-1000.txt
+        run: php benchmark/fastroute_reference.php --routes=1000 --iters=5000 --rounds=3 --warmup=1000 | tee benchmark-fastroute-1000.txt
 
       - name: FastRoute reference - 5000 routes
-        run: php benchmark/fastroute_reference.php --routes=5000 --iters=40000 --rounds=5 --warmup=5000 | tee benchmark-fastroute-5000.txt
+        run: php benchmark/fastroute_reference.php --routes=5000 --iters=1000 --rounds=3 --warmup=200 | tee benchmark-fastroute-5000.txt
 
       - name: FastRoute reference - 10000 routes
-        run: php benchmark/fastroute_reference.php --routes=10000 --iters=20000 --rounds=5 --warmup=2500 | tee benchmark-fastroute-10000.txt
+        run: php benchmark/fastroute_reference.php --routes=10000 --iters=500 --rounds=3 --warmup=100 | tee benchmark-fastroute-10000.txt
+
+      - name: Webrick capability benchmark
+        run: php benchmark/matcher_capabilities.php --routes=1000 --iters=3000 --rounds=3 --warmup=500 | tee benchmark-webrick-capabilities.txt
 
       - name: Webrick native matcher benchmark
-        run: php benchmark/hello_matchers.php --iters=75000 --rounds=5 --warmup=10000 | tee benchmark-webrick-native.txt
+        run: php benchmark/hello_matchers.php --iters=10000 --rounds=3 --warmup=1000 | tee benchmark-webrick-native.txt
 
       - name: Upload benchmark output
         if: always()
