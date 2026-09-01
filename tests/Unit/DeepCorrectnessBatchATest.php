@@ -78,7 +78,7 @@ describe('Deep correctness batch A', function () {
             'Access-Control-Request-Method' => 'GET',
             'Access-Control-Request-Private-Network' => 'true',
         ]);
-        $response = $middleware($request, static fn(Request $request): Response => Response::create('unused'));
+        $response = $middleware($request, static fn (): Response => Response::create('unused'));
 
         expect($response->getHeaderLine('Access-Control-Allow-Private-Network'))->toBe('true')
             ->and($response->getHeaderLine('Vary'))->toContain('Access-Control-Request-Private-Network');
@@ -105,13 +105,13 @@ describe('Deep correctness batch A', function () {
     });
 
     it('rejects noncanonical signed URL numeric configuration', function () {
-        expect(fn() => SignedUrlConfig::fromArray(['leeway' => '1e3']))
+        expect(fn () => SignedUrlConfig::fromArray(['leeway' => '1e3']))
             ->toThrow(InvalidArgumentException::class);
 
         $middleware = new VerifySignedUrlMiddleware('secret');
         $request = Request::fake(query: ['_sig' => 'x', '_exp' => '1e9'], uri: '/signed');
 
-        expect(fn() => $middleware($request, static fn(Request $request): Response => Response::create('ok')))
+        expect(fn () => $middleware($request, static fn (): Response => Response::create('ok')))
             ->toThrow(HttpException::class);
     });
 
@@ -131,7 +131,7 @@ describe('Deep correctness batch A', function () {
 
         $request = Request::fake(query: $query, uri: '/signed');
         $middleware = new VerifySignedUrlMiddleware($config);
-        $response = $middleware($request, static fn(Request $request): Response => Response::create('ok'));
+        $response = $middleware($request, static fn (): Response => Response::create('ok'));
 
         expect($response->getStatusCode())->toBe(200);
     });
