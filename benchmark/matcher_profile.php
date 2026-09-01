@@ -18,7 +18,7 @@ $warmIterations = max(1000, (int) ($opts['warm-iters'] ?? 25000));
 function profileRemoveTree(string $path): void
 {
     if (is_link($path) || is_file($path)) {
-        @unlink($path);
+        unlink($path);
 
         return;
     }
@@ -31,12 +31,12 @@ function profileRemoveTree(string $path): void
         }
         $target = $entry->getPathname();
         if ($entry->isLink() || $entry->isFile()) {
-            @unlink($target);
+            unlink($target);
         } elseif ($entry->isDir()) {
             profileRemoveTree($target);
         }
     }
-    @rmdir($path);
+    rmdir($path);
 }
 
 function profileDirectorySize(string $path): int
