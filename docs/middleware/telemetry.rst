@@ -1,1082 +1,317 @@
 Telemetry Middleware
 ====================
 
-Comprehensive observability middleware with W3C Trace Context support and optional OpenTelemetry integration for distributed tracing, request correlation and performance monitoring.
+``TelemetryMiddleware`` provides request correlation, W3C Trace Context handling, timing headers, access logging and optional OpenTelemetry server spans. The middleware keeps tracing state on the active Webrick ``Request``; it does not expose process-global current-request state.
 
-Overview
---------
+Runtime modes
+-------------
 
-The Telemetry Middleware provides two modes of operation:
+Minimal mode
+~~~~~~~~~~~~
 
-1. **Minimal Mode (Default)** - Zero dependencies, W3C Trace Context only
-2. **OpenTelemetry Mode** - Full observability with automatic span export (auto-enabled when SDK is installed)
+Minimal mode is the default. It has no OpenTelemetry dependency and:
 
-Both modes provide:
+- accepts a valid incoming W3C ``traceparent`` when ``respectIncomingTraceparent`` is enabled;
+- creates a trace ID/span ID when a usable parent is not available;
+- derives or preserves a request ID according to configuration;
+- attaches an immutable ``RequestContext`` to the request;
+- optionally emits response timing, request-ID, trace-ID and ``traceparent`` headers;
+- optionally emits Network Error Logging headers;
+- writes the access log through the configured PSR-3 logger.
 
-- W3C Trace Context propagation
-- Request ID generation and correlation
-- Response timing headers
-- Access logging with trace correlation
-- Global trace context via ``TraceContext`` helper
+OpenTelemetry mode
+~~~~~~~~~~~~~~~~~~
 
---------------
+OpenTelemetry is **opt-in**. Set ``enableOtelIntegration: true`` and install an OpenTelemetry SDK that provides ``OpenTelemetry\\API\\Globals`` and ``OpenTelemetry\\API\\Trace\\SpanKind``. When both conditions are true, Webrick delegates the request to ``OpenTelemetryHandler`` and creates a server span.
 
-Quick Start
------------
+If OpenTelemetry integration is disabled, or the required API classes are unavailable, Webrick stays on the minimal path.
 
-Basic Usage (Minimal Mode)
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+Basic configuration
+-------------------
 
 .. code:: php
 
    use Infocyph\Webrick\Middleware\TelemetryMiddleware;
 
-   $preGlobal = [
-       new TelemetryMiddleware($logger),
-   ];
+   $telemetry = new TelemetryMiddleware(
+       log: $logger,
+       addXResponseTime: true,
+       addServerTiming: true,
+       emitRequestId: true,
+       emitTraceIdHeader: true,
+       respectIncomingTraceparent: true,
+   );
 
-**Response headers:**
-
-.. code:: text
-
-   X-Response-Time: 45.2ms
-   Server-Timing: app;dur=45.2
-   X-Request-Id: 1a2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p
-   Trace-Id: a4c9e2b8f1d3a7e5c2b1f8e3d4a5c6b7
-
-**Access log:**
-
-::
-
-   127.0.0.1 (direct) "GET /api/users" 200 1234 45.2ms id=abc123 trace=def456 span=789xyz [w3c]
-
---------------
-
-Integration with RouterKernel
------------------------------
-
-Basic Setup
-~~~~~~~~~~~
+Put telemetry early in ``preGlobal`` when you want it to measure the middleware/application work that follows it:
 
 .. code:: php
 
    use Infocyph\Webrick\Router\Kernel\RouterKernel;
-   use Infocyph\Webrick\Router\Matching\ShardedMatcher;
-   use Infocyph\Webrick\Middleware\TelemetryMiddleware;
+   use Infocyph\Webrick\Router\Matching\FusedMatcher;
 
    $kernel = RouterKernel::bootWithRegistrar(
        log: $logger,
-       matcher: ShardedMatcher::make(),
+       matcher: FusedMatcher::make(),
        register: $register,
-       preGlobal: [
-           TelemetryMiddleware::class,  // Add as first middleware
-           // ... other middleware
-       ]
        invoker: $invoker,
+       preGlobal: [
+           $telemetry,
+           // Other pre-global middleware...
+       ],
    );
 
-With Custom Configuration
-~~~~~~~~~~~~~~~~~~~~~~~~~
+The ``Invoker`` belongs to the host application. Webrick does not create or select an InterMix container in ``RouterKernel``.
+
+Constructor options
+-------------------
+
+``TelemetryMiddleware`` currently accepts:
+
++-------------------------------+----------------------+--------------------------------------------------------------+
+| Option                        | Default              | Purpose                                                      |
++===============================+======================+==============================================================+
+| ``log``                       | ``NullLogger``       | PSR-3 access logger.                                         |
++-------------------------------+----------------------+--------------------------------------------------------------+
+| ``addXResponseTime``          | ``true``             | Emit ``X-Response-Time``.                                    |
++-------------------------------+----------------------+--------------------------------------------------------------+
+| ``addServerTiming``           | ``true``             | Emit ``Server-Timing``.                                      |
++-------------------------------+----------------------+--------------------------------------------------------------+
+| ``emitRequestId``             | ``true``             | Emit a request-ID response header.                           |
++-------------------------------+----------------------+--------------------------------------------------------------+
+| ``requestIdHeader``           | ``X-Request-Id``     | Request-ID header name.                                      |
++-------------------------------+----------------------+--------------------------------------------------------------+
+| ``respectExistingRequestId``  | ``true``             | Reuse an accepted incoming request ID when possible.         |
++-------------------------------+----------------------+--------------------------------------------------------------+
+| ``nelGroup``                  | ``null``             | Network Error Logging group; ``null`` disables NEL.          |
++-------------------------------+----------------------+--------------------------------------------------------------+
+| ``nelEndpoint``               | ``null``             | NEL reporting endpoint.                                      |
++-------------------------------+----------------------+--------------------------------------------------------------+
+| ``nelTtlSeconds``             | ``86400``            | NEL policy lifetime.                                         |
++-------------------------------+----------------------+--------------------------------------------------------------+
+| ``nelIncludeSubdomains``      | ``true``             | Include subdomains in the NEL policy.                        |
++-------------------------------+----------------------+--------------------------------------------------------------+
+| ``nelCollectSuccesses``       | ``false``            | Allow successful-response NEL sampling.                      |
++-------------------------------+----------------------+--------------------------------------------------------------+
+| ``emitTraceIdHeader``         | ``true``             | Emit the configured trace-ID header.                         |
++-------------------------------+----------------------+--------------------------------------------------------------+
+| ``traceIdHeader``             | ``Trace-Id``         | Trace-ID response header name.                               |
++-------------------------------+----------------------+--------------------------------------------------------------+
+| ``respectIncomingTraceparent``| ``true``             | Continue a valid incoming W3C trace when possible.           |
++-------------------------------+----------------------+--------------------------------------------------------------+
+| ``emitTraceparentHeader``     | ``false``            | Emit the current W3C ``traceparent`` response header.        |
++-------------------------------+----------------------+--------------------------------------------------------------+
+| ``enableOtelIntegration``     | ``false``            | Opt into OpenTelemetry integration when its API is present.  |
++-------------------------------+----------------------+--------------------------------------------------------------+
+| ``otelServiceName``           | ``webrick-app``      | Service name attached to OpenTelemetry spans.                |
++-------------------------------+----------------------+--------------------------------------------------------------+
+| ``otelServiceVersion``        | ``1.0.0``            | Service version supplied to the OpenTelemetry integration.   |
++-------------------------------+----------------------+--------------------------------------------------------------+
+
+``TelemetryOptions`` can also hold the same configuration and be converted with ``TelemetryMiddleware::fromOptions()``. ``$middleware->options()`` returns the current option set.
+
+Request-local trace context
+---------------------------
+
+Webrick deliberately does **not** provide ``TraceContext::getTraceId()``-style global accessors. Global request state is unsafe for persistent workers, concurrent runtimes and coroutines.
+
+``TelemetryMiddleware`` attaches ``RequestContext`` to the ``Request``. Read it explicitly from the request:
 
 .. code:: php
 
-   use Infocyph\Webrick\Middleware\TelemetryMiddleware;
+   use Infocyph\Webrick\Request\Request;
+   use Infocyph\Webrick\Response\Response;
+   use Infocyph\Webrick\Support\TraceContext;
 
-   $preGlobal = [
-       new TelemetryMiddleware(
-           log: $logger,
-           addXResponseTime: true,
-           addServerTiming: true,
-           emitRequestId: true,
-           emitTraceIdHeader: true,
-           respectIncomingTraceparent: true
-       ),
-       // ... other middleware
-   ];
+   final class UserController
+   {
+       public function show(Request $request, int $id): Response
+       {
+           $context = TraceContext::require($request);
 
-   $kernel = RouterKernel::bootWithRegistrar(
-       log: $logger,
-       matcher: ShardedMatcher::make(),
-       register: $register,
-       preGlobal: $preGlobal
-       invoker: $invoker,
+           $this->logger->info('Fetching user', [
+               'user_id' => $id,
+               ...$context->logArray(),
+           ]);
+
+           return Response::json(['id' => $id]);
+       }
+   }
+
+Use ``TraceContext::fromRequest($request)`` when telemetry context is optional:
+
+.. code:: php
+
+   $context = TraceContext::fromRequest($request);
+
+   if ($context !== null) {
+       $logger->debug('Request context', $context->logArray());
+   }
+
+``TraceContext::require()`` throws ``LogicException`` if the request does not carry a Webrick ``RequestContext``.
+
+RequestContext API
+~~~~~~~~~~~~~~~~~~
+
+The immutable ``RequestContext`` exposes:
+
+- ``request()`` — the request carrying the context;
+- ``traceId()`` / ``spanId()`` / ``parentSpanId()``;
+- ``requestId()``;
+- ``flags()`` / ``traceState()``;
+- ``traceParent()``;
+- ``sampled()``;
+- ``otelAvailable()``;
+- ``all()`` — complete scalar context array;
+- ``logArray()`` — non-null trace/span/request IDs for structured logging;
+- ``logContext()`` — compact text suitable for logs/comments;
+- ``propagationHeaders()`` — trace/request headers for an outgoing request.
+
+For example:
+
+.. code:: php
+
+   $context = TraceContext::require($request);
+
+   $traceId = $context->traceId();
+   $spanId = $context->spanId();
+   $requestId = $context->requestId();
+   $sampled = $context->sampled();
+   $otel = $context->otelAvailable();
+
+   $logger->info('Payment request', $context->logArray());
+
+Propagating context
+-------------------
+
+Use the request-local context for outgoing service calls:
+
+.. code:: php
+
+   $context = TraceContext::require($request);
+
+   $response = $http->post('https://payments.example/charge', [
+       'headers' => $context->propagationHeaders(),
+       'json' => ['amount' => $amount],
+   ]);
+
+``propagationHeaders()`` can include ``traceparent``, ``tracestate``, ``X-Trace-Id`` and ``X-Request-Id`` when those values are available. Pass ``false`` to ``propagationHeaders(false)`` when the outgoing request should omit the request ID.
+
+Structured logging
+------------------
+
+Because context is request-local, logger processors should be given the active request/context explicitly rather than querying a process-global helper. A simple application service can enrich records like this:
+
+.. code:: php
+
+   $context = TraceContext::fromRequest($request);
+
+   $logger->info(
+       'User login successful',
+       $context?->logArray() ?? [],
    );
 
-OpenTelemetry Mode (Full Observability)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+For database diagnostics:
 
-Install OpenTelemetry SDK:
+.. code:: php
+
+   $context = TraceContext::fromRequest($request);
+   $comment = $context?->logContext() ?? '';
+
+   $sql = $comment === ''
+       ? 'SELECT * FROM users WHERE id = ?'
+       : '/* ' . $comment . ' */ SELECT * FROM users WHERE id = ?';
+
+Do not place sensitive user data, credentials or authorization headers into trace/log attributes.
+
+W3C behavior
+------------
+
+On the minimal path, Webrick accepts an incoming ``traceparent`` only when it has the supported four-part version-00 shape and valid non-zero trace/span IDs plus two hexadecimal flag characters. Invalid input is not continued; Webrick creates a new trace instead. ``tracestate`` is retained only when the accompanying ``traceparent`` is accepted.
+
+The middleware creates a new local span ID for the current request and retains the accepted parent span ID in request attributes. ``RequestContext::traceParent()`` rebuilds the current version-00 header from the request-local trace ID, span ID and flags.
+
+OpenTelemetry integration
+-------------------------
+
+Install/configure the OpenTelemetry packages in the host application, then opt in:
 
 .. code:: bash
 
    composer require open-telemetry/sdk open-telemetry/exporter-otlp
 
-Configure OpenTelemetry (in bootstrap):
-
 .. code:: php
 
-   use OpenTelemetry\SDK\Trace\TracerProvider;
-   use OpenTelemetry\SDK\Trace\SpanProcessor\BatchSpanProcessor;
-   use OpenTelemetry\Contrib\Otlp\SpanExporter;
-   use OpenTelemetry\API\Globals;
-
-   $exporter = new SpanExporter('http://localhost:4318/v1/traces');
-   $tracerProvider = new TracerProvider(
-       new BatchSpanProcessor($exporter)
-   );
-   Globals::registerInitializer(fn() => $tracerProvider);
-
-Use middleware (need a simple change):
-
-.. code:: php
-
-   $preGlobal = [
-       new TelemetryMiddleware(
-       $logger,
-       enableOtelIntegration: true
-       ),
-   ];
-
-**Access log (note ``[otel]`` indicator):**
-
-::
-
-   127.0.0.1 (direct) "GET /api/users" 200 1234 45.2ms id=abc123 trace=def456 span=789xyz [otel]
-
-**Plus:** Spans automatically exported to Jaeger/Zipkin/OTLP collectors!
-
---------------
-
-Constructor Reference
----------------------
-
-.. code:: php
-
-   public function __construct(
-       ?LoggerInterface $log = null,              // PSR-3 logger (defaults to NullLogger)
-       bool $addXResponseTime = true,             // Add X-Response-Time header
-       bool $addServerTiming = true,              // Add Server-Timing header
-       bool $emitRequestId = true,                // Generate/emit request IDs
-       string $requestIdHeader = 'X-Request-Id',  // Request ID header name
-       bool $respectExistingRequestId = true,     // Honor incoming request IDs
-       ?string $nelGroup = null,                  // NEL group name (null = disabled)
-       ?string $nelEndpoint = null,               // NEL reporting endpoint
-       int $nelTtlSeconds = 86400,                // NEL policy TTL (seconds)
-       bool $nelIncludeSubdomains = true,         // NEL for subdomains
-       bool $nelCollectSuccesses = false,         // Report successful requests
-       bool $emitTraceIdHeader = true,            // Emit Trace-Id header
-       string $traceIdHeader = 'Trace-Id',        // Trace ID header name
-       bool $respectIncomingTraceparent = true,   // Honor incoming traceparent
-       bool $emitTraceparentHeader = false,       // Emit traceparent header
-       bool $enableOtelIntegration = false,        // Enable OpenTelemetry (auto-detected)
-       ?string $otelServiceName = null,           // Service name in traces
-       ?string $otelServiceVersion = null,        // Service version in traces
-   )
-
---------------
-
-Configuration
--------------
-
-Full Configuration Example
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. code:: php
-
-   use Infocyph\Webrick\Middleware\TelemetryMiddleware;
-
-   $preGlobal[] = new TelemetryMiddleware(
-       log: $logger,                              // PSR-3 logger
-       
-       // Response timing
-       addXResponseTime: true,                    // X-Response-Time header
-       addServerTiming: true,                     // Server-Timing header
-       
-       // Request ID
-       emitRequestId: true,                       // Generate/propagate request IDs
-       requestIdHeader: 'X-Request-Id',           // Header name
-       respectExistingRequestId: true,            // Honor incoming IDs
-       
-       // Network Error Logging (NEL)
-       nelGroup: 'default',                       // NEL group name
-       nelEndpoint: 'https://nel.example.com/report',  // NEL collector
-       nelTtlSeconds: 86400,                      // NEL policy TTL (24 hours)
-       nelIncludeSubdomains: true,                // NEL for subdomains
-       nelCollectSuccesses: false,                // Log successful requests (bandwidth)
-       
-       // W3C Trace Context
-       emitTraceIdHeader: true,                   // Trace-Id header in response
-       traceIdHeader: 'Trace-Id',                 // Header name
-       respectIncomingTraceparent: true,          // Honor incoming traceparent
-       emitTraceparentHeader: false,              // Emit traceparent header (opt-in)
-       
-       // OpenTelemetry (auto-detected)
-       enableOtelIntegration: true,               // Enable OTel mode if SDK available
-       otelServiceName: 'my-awesome-api',         // Service name in traces
-       otelServiceVersion: '2.0.0',               // Service version
-   );
-
-Minimal Configuration (Performance-Focused)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. code:: php
-
-   $preGlobal[] = new TelemetryMiddleware(
+   $telemetry = new TelemetryMiddleware(
        log: $logger,
-       addXResponseTime: false,      // Skip header
-       addServerTiming: false,       // Skip header
-       emitRequestId: true,          // Keep for correlation
-       emitTraceIdHeader: true,      // Keep for correlation
+       enableOtelIntegration: true,
+       otelServiceName: 'checkout-api',
+       otelServiceVersion: '2.4.0',
    );
 
---------------
+Webrick obtains the global tracer provider through the OpenTelemetry API, creates a server span, activates its scope for the request, records request/response attributes, records thrown exceptions, sets span status from the HTTP result and ends/detaches the span in ``finally``.
 
-Features
---------
+Useful span attributes include the HTTP method/target/scheme/host, URL, user agent, request/response content metadata, peer/server network information, route name and selected application request attributes such as ``auth.user_id``, ``auth.role``, ``client.type`` and ``api.version`` when present.
 
-1. W3C Trace Context
-~~~~~~~~~~~~~~~~~~~~
+The host application remains responsible for configuring exporters, processors and sampling in the OpenTelemetry SDK.
 
-**Standard compliance** with W3C Trace Context specification:
+Response headers
+----------------
 
-.. code:: text
-
-   traceparent: 00-a4c9e2b8f1d3a7e5c2b1f8e3d4a5c6b7-1234567890abcdef-01
-   tracestate: congo=ucfJifl5GOE,rojo=00f067aa0ba902b7
-
-**Format:** ``version-traceid-spanid-flags``
-
-**Middleware behavior:**
-
-- Generates new ``trace-id`` (32 hex chars) if missing
-- Creates new ``span-id`` (16 hex chars) per request
-- Respects incoming ``traceparent``/``tracestate`` headers
-- Validates trace IDs (non-zero, correct length)
-- Propagates to downstream services
-
-**Request attributes:**
-
-.. code:: php
-
-   $r->getAttribute('trace.trace_id');       // a4c9e2b8f1d3a7e5c2b1f8e3d4a5c6b7
-   $r->getAttribute('trace.span_id');        // 1234567890abcdef
-   $r->getAttribute('trace.parent_span_id'); // 0000000000000000
-   $r->getAttribute('trace.flags');          // 01
-   $r->getAttribute('trace.tracestate');     // congo=ucfJifl5GOE
-
-2. Request ID Correlation
-~~~~~~~~~~~~~~~~~~~~~~~~~
-
-**Unique identifier per request:**
-
-.. code:: text
-
-   X-Request-Id: 1a2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p
-
-**Generation:**
-
-- If missing: ``bin2hex(random_bytes(16))`` (32 hex chars)
-- If present: Forwards existing ID from load balancers/proxies
-- Stored as: ``$r->getAttribute('request_id')``
-
-**Use cases:**
-
-- Support tickets (users report request ID)
-- Log correlation within single request
-- Request-specific debugging
-
-3. Response Timing Headers
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-X-Response-Time
-^^^^^^^^^^^^^^^
+With the default minimal configuration, responses may include:
 
 .. code:: text
 
    X-Response-Time: 45.2ms
-
-Human-readable response time in milliseconds.
-
-Server-Timing
-^^^^^^^^^^^^^
-
-.. code:: text
-
    Server-Timing: app;dur=45.2
+   X-Request-Id: 1a2b3c...
+   Trace-Id: a4c9e2b8f1d3a7e5c2b1f8e3d4a5c6b7
 
-W3C Server Timing API format. Can be extended by other middleware:
+``emitTraceparentHeader`` is off by default. Enable it only when exposing the W3C response context is useful for your boundary.
 
-.. code:: text
+Network Error Logging
+---------------------
 
-   Server-Timing: cache;dur=2.3, db;dur=12.5, app;dur=45.2
+NEL is disabled when ``nelGroup`` or ``nelEndpoint`` is absent. When both are configured, Webrick can add the appropriate reporting headers using the configured TTL, subdomain and success-collection options.
 
-**Browser DevTools integration:**
+Performance-sensitive configuration
+-----------------------------------
 
-- Visible in Network tab → Timing
-- Programmatically accessible via Performance API
-
-4. Network Error Logging (NEL)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-**Browser error reporting configuration:**
-
-.. code:: text
-
-   NEL: {"group":"default","max_age":86400,"include_subdomains":true,"success_fraction":0.0,"failure_fraction":1.0}
-   Report-To: {"group":"default","max_age":86400,"endpoints":[{"url":"https://nel.example.com/report"}]}
-
-**What it monitors:**
-
-- DNS failures
-- TCP connection errors
-- TLS handshake failures
-- HTTP protocol errors
-- Request timeouts
-
-**Configuration:**
-
-- ``success_fraction: 0.0`` = Only report failures (saves bandwidth)
-- ``failure_fraction: 1.0`` = Report all failures
-
-5. Access Logging
-~~~~~~~~~~~~~~~~~
-
-**Structured log entries with trace correlation:**
-
-**Minimal mode:**
-
-::
-
-   127.0.0.1 (direct) "GET /api/users" 200 1234 45.2ms id=abc123 trace=def456 span=789xyz [w3c]
-
-**OpenTelemetry mode:**
-
-::
-
-   127.0.0.1 (direct) "GET /api/users" 200 1234 45.2ms id=abc123 trace=def456 span=789xyz [otel]
-
-**Log components:**
-
-- Client IP (with proxy detection)
-- Connection type (``direct`` or ``proxy``)
-- HTTP method and path
-- Status code and response size
-- Request duration in milliseconds
-- Request ID
-- Trace ID and Span ID
-- Mode indicator (``[w3c]`` or ``[otel]``)
-
---------------
-
-Global Trace Context Access
----------------------------
-
-The ``TraceContext`` helper provides universal access to trace IDs throughout your application.
-
-Basic Usage
-~~~~~~~~~~~
+For the lowest telemetry surface while retaining request-local trace correlation, disable response-only features you do not need and leave OpenTelemetry integration off:
 
 .. code:: php
 
-   use Infocyph\Webrick\Support\TraceContext;
-
-   // In controllers
-   $traceId = TraceContext::getTraceId();      // 32 hex chars
-   $spanId = TraceContext::getSpanId();        // 16 hex chars
-   $requestId = TraceContext::getRequestId();  // 32 hex chars
-
-   // Get all context
-   $context = TraceContext::getAll();
-   // ['trace_id' => 'abc...', 'span_id' => 'def...', 'request_id' => 'xyz...']
-
-   // Formatted for logging
-   $context = TraceContext::getLogContext();
-   // "trace=abc123 span=def456 request=xyz789"
-
-In Controllers
-~~~~~~~~~~~~~~
-
-.. code:: php
-
-   final class UserController
-   {
-       public function __construct(
-           private LoggerInterface $logger
-       ) {}
-
-       public function show(int $id): Response
-       {
-           $this->logger->info('Fetching user', [
-               'user_id' => $id,
-               'trace_id' => TraceContext::getTraceId(),
-               'request_id' => TraceContext::getRequestId(),
-           ]);
-
-           $user = UserRepository::find($id);
-           return Response::json($user);
-       }
-   }
-
-In Database Queries
-~~~~~~~~~~~~~~~~~~~
-
-Add trace context as SQL comments for query tracking:
-
-.. code:: php
-
-   final class UserRepository
-   {
-       public static function find(int $id): ?array
-       {
-           $context = TraceContext::getLogContext();
-           
-           $sql = "
-               /* {$context} */
-               SELECT * FROM users WHERE id = ?
-           ";
-
-           return DB::queryOne($sql, [$id]);
-       }
-   }
-
-**MySQL slow query log:**
-
-.. code:: sql
-
-   /* trace=a4c9e2b8... span=def456... request=xyz789... */
-   SELECT * FROM users WHERE id = 42;
-
-In Cache Operations
-~~~~~~~~~~~~~~~~~~~
-
-.. code:: php
-
-   final class CacheService
-   {
-       public function get(string $key): mixed
-       {
-           $value = Cache::get($key);
-
-           $this->logger->debug($value ? 'Cache hit' : 'Cache miss', array_merge(
-               ['key' => $key, 'hit' => $value !== null],
-               TraceContext::getLogArray()  // Adds trace_id, span_id, request_id
-           ));
-
-           return $value;
-       }
-   }
-
-In Exception Handlers
-~~~~~~~~~~~~~~~~~~~~~
-
-.. code:: php
-
-   final class ExceptionHandler
-   {
-       public function handle(\Throwable $e): Response
-       {
-           $context = TraceContext::getAll();
-
-           $this->logger->error('Unhandled exception', [
-               'exception' => get_class($e),
-               'message' => $e->getMessage(),
-               'trace_id' => $context['trace_id'],
-               'span_id' => $context['span_id'],
-               'request_id' => $context['request_id'],
-           ]);
-
-           // Return trace ID to client for support
-           return Response::json([
-               'error' => 'Internal server error',
-               'trace_id' => $context['trace_id'],
-               'request_id' => $context['request_id'],
-               'message' => 'Please provide this trace ID to support',
-           ], 500);
-       }
-   }
-
-Propagate to External Services
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. code:: php
-
-   final class PaymentService
-   {
-       public function charge(int $amount): array
-       {
-           $response = $this->http->post('https://api.payment.com/charge', [
-               'headers' => TraceContext::getPropagationHeaders(),
-               'json' => ['amount' => $amount],
-           ]);
-
-           return json_decode($response->getBody(), true);
-       }
-   }
-
-**Headers sent:**
-
-.. code:: text
-
-   traceparent: 00-a4c9e2b8f1d3a7e5c2b1f8e3d4a5c6b7-1234567890abcdef-01
-   X-Trace-Id: a4c9e2b8f1d3a7e5c2b1f8e3d4a5c6b7
-   X-Request-Id: xyz789...
-
-Available Methods
-~~~~~~~~~~~~~~~~~
-
-.. code:: php
-
-   TraceContext::getTraceId();              // Trace ID (32 hex)
-   TraceContext::getSpanId();               // Span ID (16 hex)
-   TraceContext::getRequestId();            // Request ID (32 hex)
-   TraceContext::getParentSpanId();         // Parent span ID
-   TraceContext::getFlags();                // Trace flags (01 = sampled)
-   TraceContext::getTraceState();           // Trace state (vendor data)
-
-   TraceContext::getAll();                  // All context as array
-   TraceContext::getLogContext();           // Formatted string for logs
-   TraceContext::getLogArray();             // Array for structured logging
-   TraceContext::getTraceparent();          // W3C traceparent header value
-   TraceContext::getPropagationHeaders();   // HTTP headers for propagation
-
-   TraceContext::isAvailable();             // Check if context available
-   TraceContext::isOtelMode();              // Check if OTel mode active
-   TraceContext::isSampled();               // Check if trace is sampled
-
---------------
-
-OpenTelemetry Integration
--------------------------
-
-Automatic Detection
-~~~~~~~~~~~~~~~~~~~
-
-The middleware automatically detects OpenTelemetry SDK at runtime:
-
-.. code:: php
-
-   // Checks for these classes:
-   - OpenTelemetry\API\Globals
-   - OpenTelemetry\API\Trace\SpanKind
-   - Infocyph\Webrick\Support\OpenTelemetryHandler
-
-   // If found: Full OTel mode
-   // If not found: Minimal W3C mode
-
-**No configuration needed!** Just install the SDK and it works.
-
-What OpenTelemetry Mode Adds
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-========================== ============ =====================
-Feature                    Minimal Mode OTel Mode
-========================== ============ =====================
-W3C Trace Context          ✅ Yes       ✅ Yes
-Request/Trace IDs          ✅ Yes       ✅ Yes
-Timing Headers             ✅ Yes       ✅ Yes
-Access Logging             ✅ Yes       ✅ Yes
-**Span Creation**          ❌ No        ✅ Yes
-**Span Export**            ❌ No        ✅ Jaeger/Zipkin/OTLP
-**Span Attributes**        ❌ No        ✅ HTTP semantics
-**Exception Recording**    ❌ No        ✅ Full stack traces
-**Distributed Tracing UI** ❌ No        ✅ Yes
-========================== ============ =====================
-
-Span Attributes (OTel Mode)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Automatically added to spans following OpenTelemetry semantic conventions:
-
-**HTTP attributes:**
-
-- ``http.method`` - Request method (GET, POST, etc.)
-- ``http.target`` - Request path (/api/users/42)
-- ``http.scheme`` - Protocol (http, https)
-- ``http.host`` - Hostname (api.example.com)
-- ``http.url`` - Full URL
-- ``http.status_code`` - Response status (200, 404, etc.)
-- ``http.user_agent`` - Client user agent
-- ``http.route`` - Route name (users.show)
-- ``http.request_content_length`` - Request size
-- ``http.response_content_length`` - Response size
-
-**Network attributes:**
-
-- ``net.peer.ip`` - Client IP address
-- ``net.host.port`` - Server port
-- ``http.flavor`` - HTTP version (1.1, 2.0)
-
-**Custom attributes:**
-
-- ``enduser.id`` - Authenticated user ID (if available)
-- ``enduser.role`` - User role (if available)
-- ``client.type`` - Client type (web, mobile, api)
-- ``api.version`` - API version (if versioned)
-
-Observability Backend Examples
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Jaeger UI
-^^^^^^^^^
-
-::
-
-   Service: my-awesome-api
-   Trace: a4c9e2b8f1d3a7e5c2b1f8e3d4a5c6b7
-   ├─ Span: GET users.show (45.2ms)
-      ├─ http.method: GET
-      ├─ http.route: users.show
-      ├─ http.status_code: 200
-      ├─ net.peer.ip: 192.168.1.100
-      └─ enduser.id: 42
-
-Zipkin UI
-^^^^^^^^^
-
-::
-
-   my-awesome-api: GET /api/users/42
-   Duration: 45.2ms
-   Tags:
-     http.method: GET
-     http.target: /api/users/42
-     http.status_code: 200
-     enduser.id: 42
-
-Force Minimal Mode
-~~~~~~~~~~~~~~~~~~
-
-Disable OpenTelemetry even if SDK is present:
-
-.. code:: php
-
-   new TelemetryMiddleware(
-       log: $logger,
-       enableOtelIntegration: false  // Force minimal mode
-   )
-
---------------
-
-Structured Logging Integration
-------------------------------
-
-Monolog Processor
-~~~~~~~~~~~~~~~~~
-
-Automatically add trace context to all log entries:
-
-.. code:: php
-
-   use Infocyph\Webrick\Support\TraceContext;
-   use Monolog\Processor\ProcessorInterface;
-
-   final class TraceContextProcessor implements ProcessorInterface
-   {
-       public function __invoke(array $record): array
-       {
-           if (TraceContext::isAvailable()) {
-               $record['extra'] = array_merge(
-                   $record['extra'],
-                   TraceContext::getLogArray()
-               );
-               $record['extra']['otel_mode'] = TraceContext::isOtelMode();
-           }
-
-           return $record;
-       }
-   }
-
-   // Register with Monolog
-   $logger->pushProcessor(new TraceContextProcessor());
-
-**Every log entry now includes:**
-
-.. code:: json
-
-   {
-     "message": "User login successful",
-     "level": "info",
-     "extra": {
-       "trace_id": "a4c9e2b8f1d3a7e5c2b1f8e3d4a5c6b7",
-       "span_id": "1234567890abcdef",
-       "request_id": "xyz789...",
-       "otel_mode": false
-     }
-   }
-
-ELK Stack (Elasticsearch + Kibana)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-**Search all logs from a single request:**
-
-::
-
-   trace_id:"a4c9e2b8f1d3a7e5c2b1f8e3d4a5c6b7"
-
-**Returns:**
-
-- Controller logs
-- Repository/database logs
-- Cache operation logs
-- External API call logs
-- Error logs
-
-**All correlated by trace ID!**
-
---------------
-
-Use Cases
----------
-
-1. User Support Tickets
-~~~~~~~~~~~~~~~~~~~~~~~
-
-.. code:: php
-
-   // Error response includes trace ID
-   return Response::json([
-       'error' => 'Payment failed',
-       'trace_id' => TraceContext::getTraceId(),
-       'message' => 'Please provide this ID to support'
-   ], 500);
-
-**User reports:** "My payment failed, trace ID: a4c9e2b8..."
-
-**Support searches:**
-
-::
-
-   trace_id:"a4c9e2b8f1d3a7e5c2b1f8e3d4a5c6b7"
-
-**Finds:** Complete request flow with all logs!
-
-2. Performance Debugging
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-**Slow query log:**
-
-.. code:: sql
-
-   /* trace=a4c9e2b8... span=def456... request=xyz789... */
-   SELECT * FROM orders WHERE status = 'pending' AND created_at > '2024-01-01';
-   Duration: 2.5 seconds
-
-**Correlation:**
-
-1. Find slow query in database logs
-2. Extract trace ID from SQL comment
-3. Search application logs for that trace ID
-4. See what triggered the slow query
-
-3. Distributed Tracing
-~~~~~~~~~~~~~~~~~~~~~~
-
-**Service A (API Gateway):**
-
-.. code:: php
-
-   // Middleware generates trace context
-   // trace_id: a4c9e2b8f1d3a7e5c2b1f8e3d4a5c6b7
-   // span_id: 1234567890abcdef
-
-**Service B (User Service):**
-
-.. code:: php
-
-   // Receives traceparent header
-   // Creates child span with same trace_id
-   // New span_id: fedcba0987654321
-
-**Service C (Payment Service):**
-
-.. code:: php
-
-   // Receives traceparent from Service B
-   // Creates child span with same trace_id
-   // New span_id: abcd1234efgh5678
-
-**Result:** Complete trace across all services in Jaeger/Zipkin!
-
-4. Error Rate Monitoring
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-**Prometheus query:**
-
-.. code:: promql
-
-   rate(http_requests_total{status=~"5.."}[5m])
-
-**Spike detected → Trace IDs from logs → Root cause analysis**
-
---------------
-
-Performance
------------
-
-Overhead
-~~~~~~~~
-
-**Minimal mode:**
-
-- ~0.1ms per request
-- ~100 bytes memory
-
-**OpenTelemetry mode:**
-
-- ~1-2ms per request
-- ~100KB memory per span
-- Async export (non-blocking)
-
-Optimization
-~~~~~~~~~~~~
-
-**Use batch span processor in production:**
-
-.. code:: php
-
-   use OpenTelemetry\SDK\Trace\SpanProcessor\BatchSpanProcessor;
-
-   $processor = new BatchSpanProcessor($exporter, [
-       'maxQueueSize' => 2048,
-       'scheduledDelayMillis' => 5000,
-       'exportTimeoutMillis' => 30000,
-       'maxExportBatchSize' => 512,
-   ]);
-
-**Sampling:**
-
-.. code:: php
-
-   use OpenTelemetry\SDK\Trace\Sampler\ParentBased;
-   use OpenTelemetry\SDK\Trace\Sampler\TraceIdRatioBasedSampler;
-
-   // Sample 10% of traces
-   $sampler = new ParentBased(
-       new TraceIdRatioBasedSampler(0.1)
-   );
-
---------------
-
-Disabling Features
-------------------
-
-Minimal Overhead Configuration
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-For maximum performance when you only need basic trace correlation:
-
-.. code:: php
-
-   $preGlobal = [
-       new TelemetryMiddleware(
-           log: $logger,
-           addXResponseTime: false,      // No timing header
-           addServerTiming: false,       // No server-timing
-           emitRequestId: false,         // No request ID header
-           emitTraceIdHeader: false,     // No trace header
-           enableOtelIntegration: false  // No OTel overhead
-       )
-   ];
-
-This configuration:
-
-- ✅ Still generates trace IDs internally
-- ✅ Still makes TraceContext available
-- ✅ Still logs access with trace correlation
-- ❌ Doesn't emit response headers
-- ❌ Doesn't create OpenTelemetry spans
-
-Disable Specific Features
-~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. code:: php
-
-   // Disable only timing headers (keep trace context)
-   new TelemetryMiddleware(
+   $telemetry = new TelemetryMiddleware(
        log: $logger,
        addXResponseTime: false,
-       addServerTiming: false
-   )
+       addServerTiming: false,
+       emitRequestId: false,
+       emitTraceIdHeader: false,
+       emitTraceparentHeader: false,
+       enableOtelIntegration: false,
+   );
 
-   // Disable Network Error Logging
-   new TelemetryMiddleware(
-       log: $logger,
-       nelGroup: null,      // Disables NEL
-       nelEndpoint: null
-   )
+Do not rely on fixed middleware-overhead numbers from documentation. Measure the actual application, logger/exporter, sampling configuration and runtime model that will be deployed.
 
-   // Disable request ID propagation (but keep trace IDs)
-   new TelemetryMiddleware(
-       log: $logger,
-       emitRequestId: false
-   )
+Ordering
+--------
 
---------------
+Telemetry belongs in ``preGlobal`` when it should wrap application processing. Place it before the middleware whose latency and failures you want included. In compiled production, keep that ordering in the compiled middleware graph; do not rebuild middleware stacks per request.
+
+Persistent workers
+------------------
+
+The request-local design is intentional:
+
+- no process-global current request;
+- no static mutable trace context;
+- each request receives its own immutable ``RequestContext``;
+- outgoing propagation is derived from the active request explicitly.
+
+This is the safe model for long-lived workers and concurrent runtimes.
 
 Troubleshooting
 ---------------
 
-Check OpenTelemetry Mode
-~~~~~~~~~~~~~~~~~~~~~~~~
+If context is unexpectedly absent, verify that ``TelemetryMiddleware`` ran before the component reading it and that the component received the **request instance forwarded by the middleware**. ``TraceContext::fromRequest()`` returns ``null`` on an uninstrumented request; ``TraceContext::require()`` makes that failure explicit.
 
-.. code:: php
-
-   use Infocyph\Webrick\Support\TraceContext;
-
-   if (TraceContext::isOtelMode()) {
-       echo "✅ OpenTelemetry mode active\n";
-   } else {
-       echo "ℹ️ Minimal mode (W3C only)\n";
-   }
-
-Verify Trace Context
-~~~~~~~~~~~~~~~~~~~~
-
-.. code:: php
-
-   use Infocyph\Webrick\Support\TraceContext;
-
-   var_dump([
-       'available' => TraceContext::isAvailable(),
-       'trace_id' => TraceContext::getTraceId(),
-       'span_id' => TraceContext::getSpanId(),
-       'request_id' => TraceContext::getRequestId(),
-       'otel_mode' => TraceContext::isOtelMode(),
-   ]);
-
-Debug OpenTelemetry Setup
-~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. code:: bash
-
-   # Check if SDK is installed
-   composer show open-telemetry/sdk
-
-   # Check class availability
-   php -r "var_dump(class_exists('OpenTelemetry\\API\\Globals'));"
-
-   # Check tracer provider
-   php -r "var_dump(\OpenTelemetry\API\Globals::tracerProvider());"
-
---------------
-
-Best Practices
---------------
-
-1. Middleware Order (CRITICAL)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-**⚠️ ALWAYS place TelemetryMiddleware FIRST or VERY EARLY in preGlobal:**
-
-.. code:: php
-
-   // ✅ Correct - Telemetry captures everything
-   $preGlobal = [
-       TelemetryMiddleware::class,           // FIRST - captures all timing
-       GatewayHardeningMiddleware::class,
-       MaintenanceModeMiddleware::class,
-       RequestLimitsMiddleware::class,
-       // ... other middleware
-   ];
-
-   // ❌ Wrong - Misses early middleware timing
-   $preGlobal = [
-       GatewayHardeningMiddleware::class,
-       MaintenanceModeMiddleware::class,
-       TelemetryMiddleware::class,           // TOO LATE
-   ];
-
-**Why first?**
-
-- Starts timing before any other processing
-- Wraps all middleware in try-catch for exception tracking (OTel mode)
-- Initializes TraceContext before other middleware/controllers need it
-- Captures complete request lifecycle in timing headers
-
-1. Always Use in preGlobal
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-1. Always Use in preGlobal
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. code:: php
-
-   // ✅ Correct - Captures full request lifecycle
-   $preGlobal = [
-       TelemetryMiddleware::class,
-       // ... other middleware
-   ];
-
-   // ❌ Wrong - Misses pre-processing time
-   $postGlobal = [
-       TelemetryMiddleware::class,
-   ];
-
-3. Use TraceContext Everywhere
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. code:: php
-
-   // ✅ Good - Consistent correlation
-   $logger->info('Action', [
-       'user_id' => $userId,
-       'trace_id' => TraceContext::getTraceId(),
-   ]);
-
-   // ❌ Bad - No correlation
-   $logger->info('Action', ['user_id' => $userId]);
-
-4. Add Trace Context to SQL Comments
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. code:: php
-
-   // ✅ Good - Queryable in slow query log
-   $sql = "/* " . TraceContext::getLogContext() . " */ SELECT * FROM users";
-
-   // ❌ Bad - Can't correlate slow queries
-   $sql = "SELECT * FROM users";
-
-5. Return Trace IDs in Error Responses
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. code:: php
-
-   // ✅ Good - User can report trace ID for support
-   return Response::json([
-       'error' => 'Something went wrong',
-       'trace_id' => TraceContext::getTraceId(),
-   ], 500);
-
-   // ❌ Bad - No way to find error in logs
-   return Response::json(['error' => 'Something went wrong'], 500);
-
-6. Enable OpenTelemetry in Staging/Production
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. code:: php
-
-   // Development: Minimal mode (faster)
-   if ($_ENV['APP_ENV'] === 'development') {
-       $middleware = new TelemetryMiddleware(
-           log: $logger,
-           enableOtelIntegration: false
-       );
-   } else {
-       // Staging/Production: Full observability
-       $middleware = new TelemetryMiddleware(
-           log: $logger,
-           enableOtelIntegration: true
-       );
-   }
-
---------------
-
-See Also
---------
-
-- `W3C Trace Context Specification <https://www.w3.org/TR/trace-context/>`__
-- `OpenTelemetry PHP Documentation <https://opentelemetry.io/docs/instrumentation/php/>`__
-- `OpenTelemetry Semantic Conventions <https://opentelemetry.io/docs/specs/semconv/http/>`__
-- `Network Error Logging (NEL) <https://www.w3.org/TR/network-error-logging/>`__
-- `Server Timing API <https://www.w3.org/TR/server-timing/>`__
+If OpenTelemetry mode does not activate, verify both ``enableOtelIntegration: true`` and availability/configuration of the OpenTelemetry API/SDK in the host application.
