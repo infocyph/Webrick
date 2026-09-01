@@ -64,6 +64,24 @@ final class CompactMatcherIndexValidator
         return $index;
     }
 
+    /** @return list<string> */
+    private static function validateMethodList(mixed $raw): array
+    {
+        if (!is_array($raw) || !array_is_list($raw) || $raw === []) {
+            throw new \UnexpectedValueException('Compact matcher method list is invalid.');
+        }
+
+        $seen = [];
+        foreach ($raw as $method) {
+            if (!is_string($method) || $method === '' || isset($seen[$method])) {
+                throw new \UnexpectedValueException('Compact matcher method token is invalid or duplicated.');
+            }
+            $seen[$method] = true;
+        }
+
+        return array_keys($seen);
+    }
+
     /** @return array<int,mixed> */
     private static function validateRoutes(mixed $raw): array
     {
@@ -103,24 +121,6 @@ final class CompactMatcherIndexValidator
         return $static;
     }
 
-    /**
-     * @param array<array-key,mixed> $raw
-     * @param array<int,mixed> $routes
-     * @return array<string,int>
-     */
-    private static function validateStaticPaths(array $raw, array $routes): array
-    {
-        $paths = [];
-        foreach ($raw as $path => $id) {
-            if (!is_string($path) || !is_int($id) || !array_key_exists($id, $routes)) {
-                throw new \UnexpectedValueException('Compact matcher static route ID is invalid.');
-            }
-            $paths[$path] = $id;
-        }
-
-        return $paths;
-    }
-
     /** @return array<string,list<string>> */
     private static function validateStaticAllowed(mixed $raw): array
     {
@@ -139,21 +139,21 @@ final class CompactMatcherIndexValidator
         return $allowed;
     }
 
-    /** @return list<string> */
-    private static function validateMethodList(mixed $raw): array
+    /**
+     * @param array<array-key,mixed> $raw
+     * @param array<int,mixed> $routes
+     * @return array<string,int>
+     */
+    private static function validateStaticPaths(array $raw, array $routes): array
     {
-        if (!is_array($raw) || !array_is_list($raw) || $raw === []) {
-            throw new \UnexpectedValueException('Compact matcher method list is invalid.');
-        }
-
-        $seen = [];
-        foreach ($raw as $method) {
-            if (!is_string($method) || $method === '' || isset($seen[$method])) {
-                throw new \UnexpectedValueException('Compact matcher method token is invalid or duplicated.');
+        $paths = [];
+        foreach ($raw as $path => $id) {
+            if (!is_string($path) || !is_int($id) || !array_key_exists($id, $routes)) {
+                throw new \UnexpectedValueException('Compact matcher static route ID is invalid.');
             }
-            $seen[$method] = true;
+            $paths[$path] = $id;
         }
 
-        return array_keys($seen);
+        return $paths;
     }
 }
