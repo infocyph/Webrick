@@ -9,172 +9,176 @@ use Infocyph\Webrick\Router\Build\Artifact\MatcherRouteMetadata;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 use UnexpectedValueException;
 
-/** Verified immutable Webrick runtime artifact loaded at process/worker boot. */
-final readonly class CompiledRouterArtifact
+/** Immutable production payload with request-time hydration limited to the matched route. */
+final class CompiledRouterArtifact
 {
-    public const int FORMAT_VERSION = 2;
+    public const int FORMAT_VERSION = 3;
 
     /** @var array<int,ExecutionPlan> */
-    private array $plansByIndex;
+    private array $decodedPlans = [];
 
-    /** @var array<string,array<string,mixed>> */
-    private array $routeAttributes;
+    /** @var array<int,CompiledRoute> */
+    private array $decodedRoutes = [];
+
+    /** @var list<mixed>|null */
+    private ?array $postGlobal = null;
+
+    /** @var list<mixed>|null */
+    private ?array $preGlobal = null;
+
+    /** @var array<array-key,mixed> */
+    private array $postGlobalPayload;
+
+    /** @var array<array-key,mixed> */
+    private array $preGlobalPayload;
+
+    /** @var array<array-key,mixed> */
+    private array $planPayloadsByIndex;
+
+    /** @var array<array-key,mixed> */
+    private array $routePayloadsByIndex;
 
     /**
-     * @param list<CompiledRoute> $routes
-     * @param array<string,ExecutionPlan> $plans
+     * @param array<array-key,mixed> $routePayloadsByIndex
+     * @param array<array-key,mixed> $planPayloadsByIndex
      * @param array<string,array{0:string,1:string|null}> $aliases
-     * @param list<mixed> $preGlobal
-     * @param list<mixed> $postGlobal
+     * @param array<array-key,mixed> $preGlobalPayload
+     * @param array<array-key,mixed> $postGlobalPayload
      * @param list<string> $preGlobalTags
      * @param list<string> $postGlobalTags
      */
-    public function __construct(
-        public array $routes,
-        public array $plans,
-        public array $aliases,
-        public array $preGlobal,
-        public array $postGlobal,
-        public array $preGlobalTags,
-        public array $postGlobalTags,
-        public bool $hasDomainRoutes,
-        public string $environment,
-        public string $configFingerprint,
-        public string $artifactFingerprint,
+    private function __construct(
+        array $routePayloadsByIndex,
+        array $planPayloadsByIndex,
+        public readonly array $aliases,
+        array $preGlobalPayload,
+        array $postGlobalPayload,
+        public readonly array $preGlobalTags,
+        public readonly array $postGlobalTags,
+        public readonly bool $hasDomainRoutes,
+        public readonly string $environment,
+        public readonly string $configFingerprint,
+        public readonly string $artifactFingerprint,
     ) {
-        $plansByIndex = [];
-        $routeAttributes = [];
-        foreach ($routes as $route) {
-            $index = $route->getIndex();
-            if (isset($plansByIndex[$index])) {
-                throw new UnexpectedValueException('Duplicate compiled route index in router artifact.');
-            }
-
-            $routeId = RouteIdentity::forRoute($route);
-            $plan = $plans[$routeId] ?? null;
-            if (!$plan instanceof ExecutionPlan) {
-                throw new UnexpectedValueException('Missing route execution plan.');
-            }
-            $plansByIndex[$index] = $plan;
-
-            $attributes = [];
-            $cors = $route->getCorsPolicy();
-            if ($cors !== null) {
-                $attributes['cors_policy'] = $cors;
-            }
-            $produces = $route->getProduces();
-            if ($produces !== null) {
-                $attributes['produces'] = $produces;
-            }
-            if ($attributes !== []) {
-                $routeAttributes[$routeId] = $attributes;
-            }
-        }
-        $this->plansByIndex = $plansByIndex;
-        $this->routeAttributes = $routeAttributes;
+        $this->routePayloadsByIndex = $routePayloadsByIndex;
+        $this->planPayloadsByIndex = $planPayloadsByIndex;
+        $this->preGlobalPayload = $preGlobalPayload;
+        $this->postGlobalPayload = $postGlobalPayload;
     }
 
-    /** @param array<string,mixed> $payload */
-    public static function fromPayload(array $payload): self
+    /**
+     * Trusted payloads receive constant-time header/top-level checks only. Full
+     * route/plan validation belongs to compilation or the verified loader path.
+     *
+     * @param array<string,mixed> $payload
+     */
+    public static function fromPayload(array $payload, bool $trusted = false): self
     {
         [$hasDomainRoutes, $environment, $configFingerprint, $artifactFingerprint] = self::header($payload);
 
-        /** @var list<CompiledRoute> $routes */
-        $routes = [];
-        /** @var array<string,true> $routeIds */
-        $routeIds = [];
-        foreach (self::arrayField($payload, 'routes') as $encoded) {
-            $route = MatcherRouteMetadata::decode($encoded);
-            $routeId = RouteIdentity::forRoute($route);
-            if (isset($routeIds[$routeId])) {
-                throw new UnexpectedValueException('Duplicate deterministic route identity in router artifact.');
-            }
-            $routeIds[$routeId] = true;
-            $routes[] = $route;
-        }
+        $routes = self::arrayField($payload, 'routes_by_index');
+        $plans = self::arrayField($payload, 'plans_by_index');
+        $aliases = self::arrayField($payload, 'aliases');
+        $preGlobal = self::arrayField($payload, 'pre_global');
+        $postGlobal = self::arrayField($payload, 'post_global');
+        $preGlobalTags = self::arrayField($payload, 'pre_global_tags');
+        $postGlobalTags = self::arrayField($payload, 'post_global_tags');
 
-        /** @var array<string,ExecutionPlan> $plans */
-        $plans = [];
-        foreach (self::arrayField($payload, 'plans') as $routeId => $planPayload) {
-            if (!is_string($routeId) || $routeId === '' || !isset($routeIds[$routeId])) {
-                throw new UnexpectedValueException('Execution-plan table references an unknown route identity.');
-            }
-            $plan = ExecutionPlan::fromPayload($planPayload);
-            if ($plan->routeId !== $routeId) {
-                throw new UnexpectedValueException('Execution plan identity does not match its table key.');
-            }
-            $plans[$routeId] = $plan;
-        }
-        if (count($plans) !== count($routes)) {
-            throw new UnexpectedValueException('Every compiled route must have exactly one execution plan.');
-        }
-
-        return new self(
-            routes: $routes,
-            plans: $plans,
-            aliases: self::aliases(self::arrayField($payload, 'aliases')),
-            preGlobal: self::decodedList(self::arrayField($payload, 'pre_global')),
-            postGlobal: self::decodedList(self::arrayField($payload, 'post_global')),
-            preGlobalTags: self::stringList(self::arrayField($payload, 'pre_global_tags')),
-            postGlobalTags: self::stringList(self::arrayField($payload, 'post_global_tags')),
+        /** @var array<string,array{0:string,1:string|null}> $aliases */
+        /** @var list<string> $preGlobalTags */
+        /** @var list<string> $postGlobalTags */
+        $artifact = new self(
+            routePayloadsByIndex: $routes,
+            planPayloadsByIndex: $plans,
+            aliases: $aliases,
+            preGlobalPayload: $preGlobal,
+            postGlobalPayload: $postGlobal,
+            preGlobalTags: $preGlobalTags,
+            postGlobalTags: $postGlobalTags,
             hasDomainRoutes: $hasDomainRoutes,
             environment: $environment,
             configFingerprint: $configFingerprint,
             artifactFingerprint: $artifactFingerprint,
         );
+
+        if (!$trusted) {
+            $artifact->validateDeep();
+        }
+
+        return $artifact;
     }
 
-    /** Artifact fingerprint was calculated and verified from the raw encoded payload before this object was constructed. */
+    /** Artifact fingerprint was established before runtime hydration. */
     public function calculatedFingerprint(): string
     {
         return $this->artifactFingerprint;
     }
 
-    public function planFor(CompiledRoute $route): ExecutionPlan
+    public function hasGlobalMiddleware(): bool
     {
-        return $this->planForIndex($route->getIndex());
+        return $this->preGlobalPayload !== []
+            || $this->postGlobalPayload !== []
+            || $this->preGlobalTags !== []
+            || $this->postGlobalTags !== [];
     }
 
     public function planForIndex(int $routeIndex): ExecutionPlan
     {
-        $plan = $this->plansByIndex[$routeIndex] ?? null;
-        if (!$plan instanceof ExecutionPlan) {
+        if (isset($this->decodedPlans[$routeIndex])) {
+            return $this->decodedPlans[$routeIndex];
+        }
+
+        $payload = $this->planPayloadsByIndex[$routeIndex] ?? null;
+        if (!is_array($payload)) {
             throw new UnexpectedValueException('Matched route index has no compiled execution plan.');
         }
 
-        return $plan;
+        return $this->decodedPlans[$routeIndex] = ExecutionPlan::fromPayload($payload);
+    }
+
+    /** @return list<mixed> */
+    public function postGlobal(): array
+    {
+        return $this->postGlobal ??= self::decodedList($this->postGlobalPayload);
+    }
+
+    /** @return list<mixed> */
+    public function preGlobal(): array
+    {
+        return $this->preGlobal ??= self::decodedList($this->preGlobalPayload);
     }
 
     /** @return array<string,mixed> */
-    public function routeAttributes(string $routeId): array
+    public function routeAttributesForIndex(int $routeIndex): array
     {
-        return $this->routeAttributes[$routeId] ?? [];
-    }
-
-    /**
-     * @param array<array-key,mixed> $payload
-     * @return array<string,array{0:string,1:string|null}>
-     */
-    private static function aliases(array $payload): array
-    {
-        $aliases = [];
-        foreach ($payload as $name => $tuple) {
-            if (!is_string($name) || $name === '' || !is_array($tuple)) {
-                throw new UnexpectedValueException('Invalid alias index in Webrick router artifact.');
-            }
-
-            $path = $tuple[0] ?? null;
-            $domain = $tuple[1] ?? null;
-            if (!is_string($path)) {
-                throw new UnexpectedValueException('Invalid alias path in Webrick router artifact.');
-            }
-            if ($domain !== null && !is_string($domain)) {
-                throw new UnexpectedValueException('Invalid alias domain in Webrick router artifact.');
-            }
-            $aliases[$name] = [$path, $domain];
+        $route = $this->routeForIndex($routeIndex);
+        $attributes = [];
+        $cors = $route->getCorsPolicy();
+        if ($cors !== null) {
+            $attributes['cors_policy'] = $cors;
+        }
+        $produces = $route->getProduces();
+        if ($produces !== null) {
+            $attributes['produces'] = $produces;
         }
 
-        return $aliases;
+        return $attributes;
+    }
+
+    /** Decode every matcher route only for cold/non-cached matcher construction. @return list<CompiledRoute> */
+    public function routes(): array
+    {
+        $routes = [];
+        $indexes = array_keys($this->routePayloadsByIndex);
+        sort($indexes, SORT_NUMERIC);
+        foreach ($indexes as $index) {
+            if (!is_int($index)) {
+                throw new UnexpectedValueException('Compiled route index must be an integer.');
+            }
+            $routes[] = $this->routeForIndex($index);
+        }
+
+        return $routes;
     }
 
     /**
@@ -191,10 +195,7 @@ final readonly class CompiledRouterArtifact
         return $value;
     }
 
-    /**
-     * @param array<array-key,mixed> $payload
-     * @return list<mixed>
-     */
+    /** @param array<array-key,mixed> $payload @return list<mixed> */
     private static function decodedList(array $payload): array
     {
         $values = [];
@@ -205,10 +206,7 @@ final readonly class CompiledRouterArtifact
         return $values;
     }
 
-    /**
-     * @param array<string,mixed> $payload
-     * @return array{0:bool,1:string,2:string,3:string}
-     */
+    /** @param array<string,mixed> $payload @return array{0:bool,1:string,2:string,3:string} */
     private static function header(array $payload): array
     {
         if (($payload['format'] ?? null) !== self::FORMAT_VERSION) {
@@ -219,7 +217,6 @@ final readonly class CompiledRouterArtifact
         $configFingerprint = $payload['config_fingerprint'] ?? null;
         $artifactFingerprint = $payload['artifact_fingerprint'] ?? null;
         $hasDomainRoutes = $payload['has_domain_routes'] ?? null;
-
         if (!is_string($environment) || $environment === '') {
             throw new UnexpectedValueException("Malformed Webrick router artifact field 'environment'.");
         }
@@ -236,20 +233,54 @@ final readonly class CompiledRouterArtifact
         return [$hasDomainRoutes, $environment, $configFingerprint, $artifactFingerprint];
     }
 
-    /**
-     * @param array<array-key,mixed> $payload
-     * @return list<string>
-     */
-    private static function stringList(array $payload): array
+    private function routeForIndex(int $routeIndex): CompiledRoute
     {
-        $values = [];
-        foreach ($payload as $value) {
-            if (!is_string($value) || $value === '') {
-                throw new UnexpectedValueException('Invalid string list in Webrick router artifact.');
-            }
-            $values[] = $value;
+        if (isset($this->decodedRoutes[$routeIndex])) {
+            return $this->decodedRoutes[$routeIndex];
         }
 
-        return $values;
+        $payload = $this->routePayloadsByIndex[$routeIndex] ?? null;
+        $route = MatcherRouteMetadata::decode($payload);
+        if ($route->getIndex() !== $routeIndex) {
+            throw new UnexpectedValueException('Compiled route payload index mismatch.');
+        }
+
+        return $this->decodedRoutes[$routeIndex] = $route;
+    }
+
+    private function validateDeep(): void
+    {
+        foreach ($this->aliases as $name => $tuple) {
+            if (!is_string($name) || $name === '' || !is_array($tuple)) {
+                throw new UnexpectedValueException('Invalid alias index in Webrick router artifact.');
+            }
+            $path = $tuple[0] ?? null;
+            $domain = $tuple[1] ?? null;
+            if (!is_string($path) || ($domain !== null && !is_string($domain))) {
+                throw new UnexpectedValueException('Invalid alias entry in Webrick router artifact.');
+            }
+        }
+        foreach ([$this->preGlobalTags, $this->postGlobalTags] as $tags) {
+            foreach ($tags as $tag) {
+                if (!is_string($tag) || $tag === '') {
+                    throw new UnexpectedValueException('Invalid middleware tag in Webrick router artifact.');
+                }
+            }
+        }
+
+        if (count($this->routePayloadsByIndex) !== count($this->planPayloadsByIndex)) {
+            throw new UnexpectedValueException('Every compiled route must have exactly one execution plan.');
+        }
+
+        foreach ($this->routePayloadsByIndex as $index => $_payload) {
+            if (!is_int($index) || !array_key_exists($index, $this->planPayloadsByIndex)) {
+                throw new UnexpectedValueException('Compiled route/plan index mismatch.');
+            }
+            $route = $this->routeForIndex($index);
+            $plan = $this->planForIndex($index);
+            if ($plan->routeId !== RouteIdentity::forRoute($route)) {
+                throw new UnexpectedValueException('Execution plan identity does not match its compiled route.');
+            }
+        }
     }
 }
