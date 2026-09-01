@@ -2,11 +2,6 @@ name: Matcher Reference Benchmark
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - webrick-5/batch-1-correctness
-    paths:
-      - '.github/workflows/matcher-benchmark.yml'
 
 permissions:
   contents: read
