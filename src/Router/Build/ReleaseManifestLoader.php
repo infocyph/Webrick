@@ -45,7 +45,7 @@ final class ReleaseManifestLoader
     private function validate(array $manifest): array
     {
         if (
-            ($manifest['format'] ?? null) !== 1
+            ($manifest['format'] ?? null) !== 2
             || !is_string($manifest['environment'] ?? null)
             || $manifest['environment'] === ''
             || !is_string($manifest['config_fingerprint'] ?? null)
@@ -60,8 +60,8 @@ final class ReleaseManifestLoader
         if (
             !is_string($intermix['path'] ?? null)
             || $intermix['path'] === ''
-            || !is_string($intermix['sha256'] ?? null)
-            || preg_match('/^[a-f0-9]{64}$/D', $intermix['sha256']) !== 1
+            || !is_string($intermix['digest'] ?? null)
+            || preg_match('/^[a-f0-9]{32}$/D', $intermix['digest']) !== 1
         ) {
             throw new UnexpectedValueException('Malformed InterMix release metadata.');
         }
