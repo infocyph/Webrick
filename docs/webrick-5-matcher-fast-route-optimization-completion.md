@@ -32,7 +32,7 @@ Generated remains an independent generated-code strategy.
 | 4. Compiled miss/method metadata | **CONDITIONAL** | Static and provably unique dynamic families use precompiled method knowledge; ambiguous overlapping shapes preserve the accumulative semantic fallback. |
 | 5. Host/topology specialization | **KEEP** | Wildcard-only Fused artifacts use a single-group path and avoid unnecessary host-map/wildcard resolution. |
 | 6. Compact route tables / fallback islands | **KEEP** | Centralized route payloads and removed duplicate rich/fast regex tables while preserving the Stage 1–5 speed gains. |
-| 7. Matcher portfolio | **KEEP Fused; CONDITIONAL Sharded; CONDITIONAL Generated** | Fused is default. Sharded is a startup/working-set specialization. Generated is only for measured sparse/distinct/static-heavy corpora and is unsuitable as a blanket dense-dynamic performance mode. |
+| 7. Matcher portfolio | **KEEP Fused; CONDITIONAL Sharded; CONDITIONAL Generated** | Fused is default. Sharded is a startup/working-set specialization. Generated is only for measured small/sparse/distinct corpora and is unsuitable as a blanket large-route performance mode. |
 
 ## Representative same-run evidence
 
@@ -56,14 +56,33 @@ This corpus demonstrates the general production decision: Fused is near the
 FastRoute static target while substantially outperforming it on the structured
 dynamic/miss cases that Webrick can classify at build time.
 
-### Generated topology evidence — PHP 8.4, 1,000-route capability corpus
+### Final scale certification — PHP 8.4 and 8.5
+
+The final bounded certification completed successfully on both PHP 8.4.25 and
+PHP 8.5.10 at 100 / 1,000 / 5,000 / 10,000 routes. The PHP 8.5 10,000-route
+medians were representative of the final portfolio decision:
+
+| Scenario | FastRoute | Fused | Generated | Sharded |
+| --- | ---: | ---: | ---: | ---: |
+| Static late | 258.3 ns | **278.5 ns** | 62,553.9 ns | 349.9 ns |
+| Dynamic middle | 39,696.8 ns | **1,987.8 ns** | 322,446.4 ns | 2,056.6 ns |
+| Dynamic late | 105,734.9 ns | **1,969.9 ns** | 533,685.6 ns | 2,054.2 ns |
+| 404 | 52,985.1 ns | **2,562.0 ns** | 530,038.1 ns | 2,703.3 ns |
+| 405 | 106,697.5 ns | **2,540.5 ns** | 534,411.0 ns | 2,646.1 ns |
+
+Fused remained broadly flat as the structured corpus grew. Generated did not:
+its dense dynamic path degraded early, and by 5,000–10,000 routes even its
+static generated function had become large enough to cost tens of microseconds.
+Sharded remained close to Fused for warm discrimination while retaining a
+separate startup/working-set purpose.
+
+### Generated topology evidence — PHP 8.4/8.5, 1,000-route capability corpus
 
 Generated is not uniformly slow. It was faster than Fused on isolated or
 sparse/distinct paths such as distinct-prefix matching, multi-parameter isolated
 routes, callable fallback, HEAD, automatic OPTIONS, extension methods and
-host-specific routes. However, the same run measured dense shared-prefix dynamic
-families at approximately 31 microseconds for a middle route and 75 microseconds
-for a late route versus roughly 2.1 microseconds for Fused.
+host-specific routes. However, dense shared-prefix dynamic families measured in
+the tens of microseconds for Generated versus roughly two microseconds for Fused.
 
 That is a real workload advantage and a real workload failure mode. Therefore
 Generated remains **conditional**, never the default or an assumed upgrade over
@@ -106,25 +125,42 @@ The matcher sanity gate covers the behavior most exposed by these changes:
 
 ## Matcher selection
 
+The following route counts are approximate **evaluation bands**, not hard
+thresholds. Topology, host layout, worker lifetime, cache warmth and startup
+constraints can move the crossover substantially.
+
+| Approximate route count | Primary recommendation | Alternative worth evaluating |
+| ---: | --- | --- |
+| **< 100** | Fused | Generated for mostly static/isolated/distinct routes. |
+| **100–1,000** | Fused | Generated only when representative measurements prove its topology is favorable. |
+| **1,000–5,000** | Fused | Usually no matcher change; measure Sharded only if startup/working-set pressure is already material. |
+| **5,000–10,000** | Fused for warm throughput | Sharded when cold boot or loaded working set is a primary constraint. |
+| **10,000+** | Benchmark Fused and Sharded | Choose by warm throughput versus startup/working-set tradeoff; Generated is not a general large-route option. |
+
 ### Fused — default
 
 Use Fused unless a representative deployment benchmark demonstrates a reason not
 to. It is the canonical Webrick 5 matcher and the best general balance of warm
-throughput, semantics, artifact simplicity and maintainability.
+throughput, semantics, artifact simplicity and maintainability. The final
+10,000-route certification confirms that route count alone is not a reason to
+leave Fused.
 
 ### Sharded — large-route/startup specialization
 
-Use Sharded when cold boot or loaded working set dominates and measurements show
-that lazy shard loading outweighs its first-hit and warm-dispatch overhead.
-Persistent workers are the strongest fit because shard loading is amortized.
+Begin considering Sharded around several thousand routes when cold boot or loaded
+working set becomes visible. Around 5,000+ routes it becomes a reasonable
+benchmark candidate; around 10,000+ routes a Fused-vs-Sharded deployment
+comparison is recommended. Persistent workers are the strongest fit because
+shard loading is amortized.
 
-### Generated — measured topology specialization
+### Generated — measured small-topology specialization
 
-Generated remains available because it has repeatable advantages on some
-static/sparse/distinct route shapes. Do not use it as the generic high-performance
-mode. Dense shared-prefix dynamic families are a demonstrated scaling weakness.
-Select it only after benchmarking the application's real route corpus and repeat
-that benchmark after material route-set growth.
+Generated remains available because it has repeatable advantages on some small
+static/sparse/distinct route shapes. As a practical rule it is most interesting
+below roughly 100 routes, can remain useful into the hundreds and occasionally
+around 1,000 routes, and must be re-benchmarked as the route set grows. Dense
+shared-prefix dynamic families are a demonstrated scaling weakness, and large
+generated functions eventually hurt even static dispatch.
 
 ## Rejected / deliberately not generalized
 
@@ -137,10 +173,16 @@ that benchmark after material route-set growth.
 - Generated is not promoted to the default merely because generated PHP can win
   isolated branches.
 
-## Remaining boundary
+## Completion boundary
 
-The matcher implementation/performance stages are complete once the final
-100/1,000/5,000/10,000 PHP 8.4/8.5 comparative certification is recorded and the
-benchmark workflow is restored to manual dispatch. Full project QA, static
-analysis, coding-style, dependency architecture and release certification remain
-a separate subsequent phase.
+The matcher implementation/performance program is **complete**:
+
+- Stages 1–7 are closed and classified;
+- semantic matcher sanity gates pass;
+- the final 100/1,000/5,000/10,000 comparative matrix completed on PHP 8.4 and 8.5;
+- capability-specific matcher benchmarking is included in the benchmark tooling;
+- the heavyweight matcher reference workflow is restored to manual dispatch;
+- public matcher guidance reflects the measured portfolio and approximate route-count evaluation bands.
+
+Full project QA, static analysis, coding style, dependency architecture and
+release certification remain the separate subsequent phase.
