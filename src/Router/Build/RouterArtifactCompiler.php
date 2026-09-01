@@ -37,7 +37,7 @@ final class RouterArtifactCompiler
         ksort($plans, SORT_NUMERIC);
         ksort($aliases, SORT_STRING);
 
-        return hash('sha256', serialize([
+        return hash('xxh128', serialize([
             CompiledRouterArtifact::FORMAT_VERSION,
             $environment,
             $configFingerprint,
