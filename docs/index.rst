@@ -1,19 +1,20 @@
 Webrick Documentation
 =====================
 
-Webrick is a framework-neutral HTTP routing kernel. Use it as a standalone front controller, a routed sub-application inside another framework, or a kernel behind a persistent PHP worker.
+Webrick is a framework-neutral HTTP routing kernel for PHP 8.4+. Use it as a standalone front controller, a routed sub-application inside another framework, or behind a persistent worker/runtime.
 
 What you get
 ------------
 
-- Routing: named routes, groups, domains, resources and attribute discovery
-- Signed URLs: relative or absolute payload signing, TTL or explicit expiry, ignored query params, key rotation
-- Error boundary: framework failures throw typed HTTP exceptions and the kernel renders the final response
-- Middleware pipeline: pre-global and post-global stacks plus string aliases or direct middleware instances
-- Responses: JSON, plaintext, redirects, streaming, ranged file/download helpers and views
-- Route cache: sharded, fused, or generated deploy-time PHP artifacts
-- Runtime boundaries: explicit framework adapters and emitters for synchronous or persistent servers
-- DI lifecycle: InterMix services, tagged middleware and one request scope per ``handle()`` by default
+- Routing: named routes, groups, domains, resources, constraints and attribute discovery.
+- Matchers: Fused as the general production default, Generated for measured small-route wins, and Sharded for large cold-start/working-set tradeoffs.
+- Signed URLs: relative or absolute signing, TTL or explicit expiry, ignored query parameters and key rotation.
+- Error boundary: typed HTTP exceptions, negotiated error rendering and an optional process-level ``PhpErrorBridge``.
+- Middleware: explicit pre-global/post-global stacks, aliases, tagged application middleware and compiled execution plans.
+- Responses: JSON, plaintext, redirects, streaming, ranged files/downloads and views.
+- Runtime boundaries: synchronous emitters, explicit interoperability bridges and compiled production kernels for long-lived workers.
+- DI lifecycle: the application owns InterMix; Webrick receives the host ``Invoker`` in development and the host ``ProductionContainer`` in compiled production.
+- Deployment artifacts: matcher caches are independent from the strict compiled Webrick + InterMix production release artifact.
 
 Install
 -------
@@ -22,32 +23,49 @@ Install
 
    composer require infocyph/webrick
 
-Current boot pattern
---------------------
+Development boot
+----------------
+
+``RouterKernel`` is the registrar/development kernel. The host owns the InterMix graph and gives Webrick an ``Invoker``.
 
 .. code:: php
 
+   use Infocyph\InterMix\DI\Invoker;
    use Infocyph\Webrick\Request\Request;
-   use Infocyph\Webrick\Response\Emitter\AutoEmitter;
+   use Infocyph\Webrick\Response\Emitter\DefaultEmitter;
    use Infocyph\Webrick\Response\Response;
    use Infocyph\Webrick\Router\Definition\Registrar;
    use Infocyph\Webrick\Router\Facade\Router as Route;
    use Infocyph\Webrick\Router\Kernel\RouterKernel;
-   use Infocyph\Webrick\Router\Matching\ShardedMatcher;
+   use Infocyph\Webrick\Router\Matching\FusedMatcher;
+   use Infocyph\Webrick\Webrick;
    use Psr\Log\NullLogger;
+
+   $builder = Webrick::standaloneDevelopment();
+   $container = $builder->development();
+   $invoker = Invoker::with($container);
 
    $kernel = RouterKernel::bootWithRegistrar(
        log: new NullLogger(),
-       matcher: ShardedMatcher::make(),
+       matcher: FusedMatcher::make(),
        register: static function (Registrar $registrar): void {
            unset($registrar);
-
-           Route::get('/', fn() => Response::plaintext('Hello Webrick', 200), 'home');
+           Route::get('/', static fn() => Response::plaintext('Hello Webrick', 200), 'home');
        },
        invoker: $invoker,
    );
 
-   (new AutoEmitter())->emit($kernel->handle(Request::fromGlobals()));
+   $request = Request::fromGlobals();
+   (new DefaultEmitter())->emit($kernel->handle($request), $request);
+
+Framework integrations should contribute Webrick services to their existing application-owned ``ContainerBuilder`` rather than creating a standalone builder.
+
+Production runtime
+------------------
+
+Production does **not** boot the registrar kernel from a matcher cache. Compile the Webrick execution artifact together with the application-owned InterMix runtime using ``RouteCompiler`` / ``ReleaseCompiler`` and boot ``CompiledRouterKernel`` with the host-selected ``ProductionContainer``.
+
+Matcher cache remains useful as a deploy-time matcher optimization, but it is not the complete production application artifact.
 
 Signed URL example
 ------------------
@@ -58,29 +76,27 @@ Signed URL example
 
    $href = Route::temporaryUrlFor('file.download', ['file' => 'report.pdf'], ttl: 900);
 
-Production notes
-----------------
+Operational notes
+-----------------
 
-- Prebuild route cache in CI and ship ``.route-cache`` with your release artifact.
-- Instantiate the kernel once per application or worker lifecycle.
-- Register middleware aliases explicitly before you use string middleware like ``throttle:60,60`` or ``verifySignedUrl``.
-- Register optional middleware families with a lazy resolver so unused subsystems remain unloaded.
-- Set a stable signing key and, when generating absolute URLs, configure ``urlBaseUri``.
-- Preserve query strings at the proxy layer; signed URLs depend on them.
-- When another framework owns emission, adapt and return the response instead of using a Webrick emitter.
+- Compile production artifacts during build/deploy rather than on request paths.
+- Instantiate kernels once per application/worker lifecycle.
+- Register middleware aliases before route compilation when string aliases are used.
+- Configure a stable signing key and ``urlBaseUri`` when absolute signed URLs are required.
+- Preserve query strings at proxy/gateway layers because signed URL verification depends on canonical query data.
+- When another framework owns response emission, adapt/return the Webrick response instead of emitting it directly.
+- Persistent workers should keep all request-local state on the ``Request``/request scope; Webrick intentionally avoids process-global current-request state.
 
-Major release
--------------
+Where to start
+--------------
 
-The next major release does not include a legacy compatibility layer. Matcher factories are zero-argument, route-cache artifacts must be rebuilt, cached class routes use scalar payloads, middleware families can resolve lazily and cached URL services initialize on first use.
-
-New guide
----------
-
-If you want JSON API errors, HTML browser errors, or any other boundary-specific rendering strategy, see:
-
-- `Error Rendering <./guides/error-rendering.rst>`__
+- `Getting Started <./getting-started/index.rst>`__
 - `Framework Integration <./getting-started/framework-integration.rst>`__
+- `Routing <./guides/routing.rst>`__
+- `Middleware <./middleware/index.rst>`__
+- `Error Rendering <./guides/error-rendering.rst>`__
+- `Matcher Reference <./reference/matcher.rst>`__
+- `Route Cache and Production Artifacts <./reference/route-cache.rst>`__
 - `Response Emitters <./reference/emitters.rst>`__
 
 .. toctree::
