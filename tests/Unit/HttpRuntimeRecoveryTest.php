@@ -8,7 +8,11 @@ use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Build\ReleaseCompiler;
 use Infocyph\Webrick\Router\Build\ReleaseManifestLoader;
 use Infocyph\Webrick\Router\Kernel\ErrorHandler;
+use Infocyph\Webrick\Router\Kernel\RoutingControlRenderer;
+use Infocyph\Webrick\Router\Matching\MatchOutcome;
+use Infocyph\Webrick\Router\Runtime\RoutingInput;
 use Infocyph\Webrick\Router\Runtime\RuntimeStageProfiler;
+use Psr\Log\NullLogger;
 
 it('records runtime stages only when explicitly used', function (): void {
     $profiler = new RuntimeStageProfiler();
@@ -37,16 +41,17 @@ it('prefers the php runtime manifest and falls back to json', function (): void 
 
     $jsonPath = $directory . '/release.json';
     $phpPath = $directory . '/release.php';
-    $sha = str_repeat('a', 64);
+    $sha256 = str_repeat('a', 64);
+    $xxh128 = str_repeat('b', 32);
     $base = [
         'format' => 1,
         'environment' => 'json',
         'config_fingerprint' => 'cfg',
-        'intermix' => ['path' => '/tmp/intermix.php', 'sha256' => $sha],
+        'intermix' => ['path' => '/tmp/intermix.php', 'sha256' => $sha256],
         'webrick' => [
             'path' => '/tmp/webrick.php',
-            'sha256' => $sha,
-            'fingerprint' => 'router-fingerprint',
+            'digest' => $xxh128,
+            'fingerprint' => $xxh128,
         ],
     ];
     $runtime = $base;
@@ -72,6 +77,16 @@ it('prefers the php runtime manifest and falls back to json', function (): void 
             rmdir($directory);
         }
     }
+});
+
+it('renders default routing misses without a request or throwable', function (): void {
+    $renderer = new RoutingControlRenderer(new NullLogger());
+    $routing = new RoutingInput('POST', '/known');
+    $response = $renderer->render($routing, MatchOutcome::methodNotAllowed(['GET']));
+
+    expect($response)->toBeInstanceOf(Response::class)
+        ->and($response->getStatusCode())->toBe(405)
+        ->and($response->getHeaderLine('Allow'))->toBe('GET');
 });
 
 it('renders a known routing throwable without requiring a throw catch trampoline', function (): void {
