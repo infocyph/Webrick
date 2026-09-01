@@ -2,7 +2,7 @@
 
 ## Objective
 
-Webrick 5's matcher work is complete unless profiling proves otherwise. The remaining Apache + OPcache gap is in the production request/runtime path, so this pass moves deterministic work out of requests and keeps InterMix 10.0.2 unchanged.
+Webrick 5's matcher work is complete unless profiling proves otherwise. The remaining Apache + OPcache gap is in the production request/runtime path, so this pass moves deterministic work out of requests and consumes the finalized InterMix 10.0.3 runtime contract.
 
 The production request should consume already-finalized Webrick + InterMix artifacts rather than partially reconstructing them.
 
@@ -67,7 +67,7 @@ The unchanged real-HTTP benchmark remains the final gate.
 - Request-independent routes do not eagerly materialize a full Request.
 - Any eager kernel/runtime work retained is shown to be necessary or negligible by measurement.
 - Release-manifest and Response/emitter changes are evidence-driven.
-- InterMix 10.0.2 remains unchanged.
+- Webrick consumes InterMix 10.0.3's generic 32-character `digest` release metadata without a SHA-256 compatibility path.
 - No temporary diagnostic behavior is enabled by default in production.
 
 ## Implementation order
