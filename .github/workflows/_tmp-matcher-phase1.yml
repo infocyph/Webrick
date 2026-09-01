@@ -61,9 +61,10 @@ jobs:
               text = text.replace(phase, completion, 1)
           plan.write_text(text)
           PY
-      - name: Apply repository style to touched files
+      - name: Apply PHPForge repository style to touched files
         run: |
           vendor/bin/pint \
+            --config=vendor/infocyph/phpforge/resources/pint.json \
             src/Router/Matching/CompiledMatcherFastEngine.php \
             src/Router/Matching/CompiledMatcherDynamicEngine.php \
             benchmarks/MatcherOutcomeBench.php \
