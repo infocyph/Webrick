@@ -31,13 +31,13 @@ warm throughput matters more than startup cost.
 
 ### Route-count quick guide
 
-| Approximate route count | Start with | Consider instead when... |
-| ---: | --- | --- |
-| **< 100** | `FusedMatcher` | Try `GeneratedMatcher` when the corpus is mostly static, isolated or strongly distinct and benchmark results show a repeatable win. |
-| **100–1,000** | `FusedMatcher` | Generated can still win static/distinct paths, but dense shared-prefix dynamic families already favor Fused strongly. |
-| **1,000–5,000** | `FusedMatcher` | Generated should be treated as exceptional and benchmark-proven. Sharded usually has little reason unless startup/working-set pressure is already material. |
-| **5,000–10,000** | `FusedMatcher` for warm throughput | Evaluate `ShardedMatcher` when cold boot, per-worker loaded state or deployment startup is the primary constraint. |
-| **10,000+** | Benchmark `FusedMatcher` and `ShardedMatcher` | Prefer Fused for warm request speed; prefer Sharded when lazy loading/startup/working-set savings dominate. Generated is not a general large-route option. |
+| Approximate route count | `FusedMatcher` | `GeneratedMatcher` | `ShardedMatcher` | Practical starting point |
+| ---: | --- | --- | --- | --- |
+| **< 100** | **Excellent/default.** Very small fixed overhead and no topology assumptions. | **Strong candidate** when routes are mostly static, isolated or strongly distinct; benchmark it because it can beat Fused here. | Usually unnecessary. | Start Fused; benchmark Generated if the corpus suits generated branches. |
+| **100–1,000** | **Default/preferred**, especially for mixed or dense dynamic routing. | **Conditional.** Can still win static/distinct layouts, but shared-prefix dynamic families can already become much slower than Fused. | Usually unnecessary unless startup/working-set pressure is unusual. | Use Fused unless Generated proves a repeatable application-specific win. |
+| **1,000–5,000** | **Strong default.** Structured dynamic/miss performance remains stable. | **Exceptional / benchmark-only.** Do not infer a win from small-route results. | Evaluate only when route-cache boot or loaded working set is already material. | Fused for normal deployments. |
+| **5,000–10,000** | **Preferred for warm throughput.** | **Not a general choice.** Large generated functions and dense dynamic families show severe scaling costs. | **Strong candidate** when cold boot, per-worker loaded state or deployment startup matters. | Benchmark Fused vs Sharded according to warm-speed versus startup/memory priorities. |
+| **10,000+** | **Still valid and fast for warm dispatch.** Route count alone is not a reason to leave Fused. | **Avoid as a general large-route mode.** Use only with extraordinary application-specific evidence. | **Strong candidate** for lazy loading and startup/working-set reduction. | Benchmark Fused vs Sharded; choose by deployment/runtime tradeoff. |
 
 The strategies intentionally optimize different deployment/topology problems.
 There is no claim that one strategy wins every corpus.
@@ -166,7 +166,7 @@ cover, among other cases:
 
 - static and dynamic routes;
 - registration precedence;
-- multiple parameters;
+- multiple and named route parameters;
 - callable constraints and safe built-in regex constraints;
 - HEAD-to-GET fallback;
 - explicit and automatic OPTIONS;
@@ -175,6 +175,28 @@ cover, among other cases:
 - extension HTTP methods;
 - not-found behavior;
 - compact and rich result paths.
+
+### Matcher optimization does not change handler binding
+
+The Webrick 5 matcher-performance stages optimize **how a route is found**, not
+how the selected route is executed. A successful matcher still returns the
+named route-variable map used by the existing dispatch/runtime layer.
+
+This means matcher choice does not remove or replace:
+
+- named route parameters and the request `route_params` attribute;
+- compiled direct-handler argument ordering through `ExecutionPlan::routeArguments`;
+- InterMix `resolveNow()` invocation with named route parameters;
+- named `request` injection when a compiled InterMix invocation requires it;
+- middleware execution and middleware access to route parameters;
+- handler/controller/container resolution, route aliases/names or URL-generation
+  metadata;
+- route CORS/Produces metadata and other selected-route execution-plan behavior.
+
+These concerns remain above the matcher boundary. Fused/Sharded compact scalar
+IDs and Generated's generated branches only change route discrimination; after a
+match, Webrick feeds the same route identity and named variables into the normal
+execution plan.
 
 ## Cached route materialization
 
