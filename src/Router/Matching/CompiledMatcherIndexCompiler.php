@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router\Matching;
 
+use Infocyph\Webrick\Router\Build\Artifact\ExecutableRoutePayload;
 use Infocyph\Webrick\Router\Constraint\Registry as ConstraintRegistry;
+use Infocyph\Webrick\Router\Route\CompiledRoute;
 
 /**
  * Converts the canonical route index into the request-time matcher IR.
@@ -14,12 +16,16 @@ use Infocyph\Webrick\Router\Constraint\Registry as ConstraintRegistry;
  * combined into MARK-based PCRE chunks, while callable/arbitrary-regex routes
  * remain individual fallback steps that act as precedence barriers.
  *
+ * The rich route payload remains available for match()/matchOutcome(), while
+ * the compact production lane receives deterministic scalar route IDs directly
+ * and never has to rediscover an ID from a route object/payload after a hit.
+ *
  * @phpstan-type RouteValue mixed
  * @phpstan-type SegmentSpec array<string,mixed>
  * @phpstan-type CanonicalDynamicEntry array{segments:list<SegmentSpec>,verbs:array<string,RouteValue>}
- * @phpstan-type FastRouteEntry array{route:RouteValue,params:array<string,string>}
+ * @phpstan-type FastRouteEntry array{route:RouteValue,id:int,params:array<string,string>}
  * @phpstan-type PcreStep array{type:'pcre',regex:string,routes:array<string,FastRouteEntry>}
- * @phpstan-type FallbackStep array{type:'fallback',segments:list<SegmentSpec>,route:RouteValue}
+ * @phpstan-type FallbackStep array{type:'fallback',segments:list<SegmentSpec>,route:RouteValue,id:int}
  * @phpstan-type DynamicStep PcreStep|FallbackStep
  * @phpstan-type DynamicBucket array{steps:list<DynamicStep>}
  */
@@ -41,14 +47,16 @@ final class CompiledMatcherIndexCompiler
 
     /**
      * @param array<string,array{static:array<string,array<string,mixed>>,dynamic:array<int,array<string,array<string,CanonicalDynamicEntry>>>}> $indexes
-     * @return array<string,array{static:array<string,array<string,RouteValue>>,dynamic:array<string,array<int,array<string,DynamicBucket>>>}>
+     * @return array<string,array{static:array<string,array<string,RouteValue>>,static_ids:array<string,array<string,int>>,dynamic:array<string,array<int,array<string,DynamicBucket>>>}>
      */
     public function compile(array $indexes): array
     {
         $compiled = [];
         foreach ($indexes as $host => $index) {
+            [$static, $staticIds] = $this->compileStatic($index['static']);
             $compiled[$host] = [
-                'static' => $this->compileStatic($index['static']),
+                'static' => $static,
+                'static_ids' => $staticIds,
                 'dynamic' => $this->compileDynamic($index['dynamic']),
             ];
         }
@@ -66,7 +74,7 @@ final class CompiledMatcherIndexCompiler
 
         foreach ($dynamic as $count => $prefixes) {
             foreach ($prefixes as $prefix => $entries) {
-                /** @var array<string,list<array{segments:list<SegmentSpec>,route:RouteValue,pcre:bool}>> $ordered */
+                /** @var array<string,list<array{segments:list<SegmentSpec>,route:RouteValue,id:int,pcre:bool}>> $ordered */
                 $ordered = [];
 
                 foreach ($entries as $entry) {
@@ -76,6 +84,7 @@ final class CompiledMatcherIndexCompiler
                         $ordered[$method][] = [
                             'segments' => $segments,
                             'route' => $route,
+                            'id' => self::routeIndex($route),
                             'pcre' => $canCompile,
                         ];
                     }
@@ -93,7 +102,7 @@ final class CompiledMatcherIndexCompiler
     }
 
     /**
-     * @param list<array{segments:list<SegmentSpec>,route:RouteValue,pcre:bool}> $routes
+     * @param list<array{segments:list<SegmentSpec>,route:RouteValue,id:int,pcre:bool}> $routes
      * @return list<DynamicStep>
      */
     private function compileSteps(array $routes): array
@@ -103,7 +112,11 @@ final class CompiledMatcherIndexCompiler
 
         foreach ($routes as $entry) {
             if ($entry['pcre']) {
-                $pcreBuffer[] = ['segments' => $entry['segments'], 'route' => $entry['route']];
+                $pcreBuffer[] = [
+                    'segments' => $entry['segments'],
+                    'route' => $entry['route'],
+                    'id' => $entry['id'],
+                ];
 
                 continue;
             }
@@ -116,6 +129,7 @@ final class CompiledMatcherIndexCompiler
                 'type' => 'fallback',
                 'segments' => $entry['segments'],
                 'route' => $entry['route'],
+                'id' => $entry['id'],
             ];
         }
 
@@ -131,7 +145,7 @@ final class CompiledMatcherIndexCompiler
      * approximate target, following the same balancing principle used by
      * FastRoute rather than rigidly slicing at the target boundary.
      *
-     * @param non-empty-list<array{segments:list<SegmentSpec>,route:RouteValue}> $routes
+     * @param non-empty-list<array{segments:list<SegmentSpec>,route:RouteValue,id:int}> $routes
      * @return non-empty-list<PcreStep>
      */
     private function compileBalancedPcreSteps(array $routes): array
@@ -149,7 +163,7 @@ final class CompiledMatcherIndexCompiler
     }
 
     /**
-     * @param non-empty-list<array{segments:list<SegmentSpec>,route:RouteValue}> $routes
+     * @param non-empty-list<array{segments:list<SegmentSpec>,route:RouteValue,id:int}> $routes
      * @return PcreStep
      */
     private function compilePcreStep(array $routes): array
@@ -163,6 +177,7 @@ final class CompiledMatcherIndexCompiler
             $alternatives[] = '(?:' . $pattern . ')(*MARK:' . $mark . ')';
             $routeMap[$mark] = [
                 'route' => $entry['route'],
+                'id' => $entry['id'],
                 'params' => $params,
             ];
         }
@@ -250,16 +265,25 @@ final class CompiledMatcherIndexCompiler
                 throw new \LogicException('Non-PCRE matcher segment cannot enter the PCRE fast lane.');
             }
 
-            // Names are deliberately short because PCRE capture names have a
-            // bounded length. They are unique within one combined step.
             $capture = 'w' . $routeOrdinal . 'p' . $parameterOrdinal++;
             $parts[] = '(?<' . $capture . '>' . self::segmentRegexInner($regex) . ')';
             $params[$capture] = $name;
         }
 
-        // CanonicalMatcherEngine historically trims leading/trailing slashes
-        // before segment matching. Preserve that behavior in the PCRE lane.
         return ['/*' . implode('/', $parts) . '/*', $params];
+    }
+
+    private static function routeIndex(mixed $route): int
+    {
+        $index = $route instanceof CompiledRoute
+            ? $route->getIndex()
+            : ExecutableRoutePayload::routeIndex($route);
+
+        if (!is_int($index) || $index < 0) {
+            throw new \UnexpectedValueException('Compiled matcher route is missing a valid deterministic route index.');
+        }
+
+        return $index;
     }
 
     private static function segmentRegexInner(string $regex): string
@@ -278,17 +302,19 @@ final class CompiledMatcherIndexCompiler
 
     /**
      * @param array<string,array<string,RouteValue>> $static
-     * @return array<string,array<string,RouteValue>>
+     * @return array{0:array<string,array<string,RouteValue>>,1:array<string,array<string,int>>}
      */
     private function compileStatic(array $static): array
     {
         $compiled = [];
+        $ids = [];
         foreach ($static as $path => $verbs) {
             foreach ($verbs as $method => $route) {
                 $compiled[$method][$path] = $route;
+                $ids[$method][$path] = self::routeIndex($route);
             }
         }
 
-        return $compiled;
+        return [$compiled, $ids];
     }
 }
