@@ -13,9 +13,12 @@ use Infocyph\Webrick\Router\Route\Route;
 require dirname(__DIR__) . '/vendor/autoload.php';
 
 $opts = getopt('', ['matcher:', 'routes::', 'warm-iters::']);
-$matcherName = strtolower((string) ($opts['matcher'] ?? ''));
-$routeCount = max(100, (int) ($opts['routes'] ?? 5000));
-$warmIterations = max(1000, (int) ($opts['warm-iters'] ?? 25000));
+$matcherValue = $opts['matcher'] ?? null;
+$routeValue = $opts['routes'] ?? null;
+$warmIterationsValue = $opts['warm-iters'] ?? null;
+$matcherName = is_string($matcherValue) ? strtolower($matcherValue) : '';
+$routeCount = max(100, is_string($routeValue) ? (int) $routeValue : 5000);
+$warmIterations = max(1000, is_string($warmIterationsValue) ? (int) $warmIterationsValue : 25000);
 
 if (!in_array($matcherName, ['fused', 'generated', 'sharded'], true)) {
     throw new InvalidArgumentException('--matcher must be fused, generated, or sharded.');
@@ -32,7 +35,10 @@ function envelopeRemoveTree(string $path): void
         return;
     }
 
-    foreach (new FilesystemIterator($path, FilesystemIterator::SKIP_DOTS) as $entry) {
+    foreach (new FilesystemIterator($path, FilesystemIterator::SKIP_DOTS | FilesystemIterator::CURRENT_AS_FILEINFO) as $entry) {
+        if (!$entry instanceof SplFileInfo) {
+            continue;
+        }
         $entryPath = $entry->getPathname();
         if ($entry->isLink() || $entry->isFile()) {
             unlink($entryPath);
@@ -53,7 +59,14 @@ function envelopeDirectorySize(string $path): int
     }
 
     $size = 0;
-    foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($path, FilesystemIterator::SKIP_DOTS)) as $file) {
+    $directory = new RecursiveDirectoryIterator(
+        $path,
+        FilesystemIterator::SKIP_DOTS | FilesystemIterator::CURRENT_AS_FILEINFO,
+    );
+    foreach (new RecursiveIteratorIterator($directory) as $file) {
+        if (!$file instanceof SplFileInfo) {
+            continue;
+        }
         if ($file->isFile()) {
             $size += $file->getSize();
         }
@@ -72,6 +85,7 @@ function envelopeMatcher(string $name): MatcherInterface
     };
 }
 
+/** @return non-empty-string */
 function envelopePopulate(MatcherInterface $matcher, int $routeCount): string
 {
     $staticCount = intdiv($routeCount, 2);
@@ -99,7 +113,10 @@ function envelopePopulate(MatcherInterface $matcher, int $routeCount): string
     return '/area-' . ($lastDynamic % 100) . '/item-' . $lastDynamic . '/42';
 }
 
-/** @return array{ns:float,checksum:int} */
+/**
+ * @param non-empty-string $path
+ * @return array{ns:float,checksum:int}
+ */
 function envelopeWarm(MatcherInterface $matcher, string $path, int $iterations): array
 {
     $checksum = 0;
@@ -155,7 +172,7 @@ try {
     $afterFirst = memory_get_usage(false);
     $warm = envelopeWarm($reader, $targetPath, $warmIterations);
 
-    echo json_encode([
+    fwrite(STDOUT, json_encode([
         'matcher' => $matcherName,
         'routes' => $routeCount,
         'build_ms' => round($buildMs, 3),
@@ -167,7 +184,7 @@ try {
         'first_hit_memory_bytes' => $afterFirst - $afterBoot,
         'build_peak_bytes' => $buildPeakBytes,
         'checksum' => $warm['checksum'],
-    ], JSON_THROW_ON_ERROR) . PHP_EOL;
+    ], JSON_THROW_ON_ERROR) . PHP_EOL);
 } finally {
     envelopeRemoveTree($root);
 }
