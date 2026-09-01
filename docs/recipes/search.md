@@ -1,3 +1,0 @@
-# Search Recipe
-
-Coming soon...

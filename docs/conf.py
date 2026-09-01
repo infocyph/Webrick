@@ -39,7 +39,6 @@ lexers["php-annotations"] = PhpLexer(startinline=True)
 
 # --- Extensions --------------------------------------------------------------
 extensions = [
-    "myst_parser",
     "sphinx.ext.autodoc",
     "sphinx.ext.todo",
     "sphinx.ext.napoleon",
@@ -51,17 +50,8 @@ extensions = [
     "sphinx.ext.extlinks",
 ]
 
-# MyST (Markdown) settings
-myst_enable_extensions = [
-    "colon_fence",
-    "deflist",
-    "attrs_block",
-    "attrs_inline",
-    "tasklist",
-    "fieldlist",
-    "linkify",
-]
-myst_heading_anchors = 3
+# Documentation sources are native reStructuredText.
+source_suffix = {".rst": "restructuredtext"}
 
 # Autodoc/Napoleon
 autodoc_default_options = {
