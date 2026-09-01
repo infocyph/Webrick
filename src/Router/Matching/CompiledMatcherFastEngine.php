@@ -7,23 +7,21 @@ namespace Infocyph\Webrick\Router\Matching;
 use Infocyph\Webrick\Constants\HttpMethodEnum;
 
 /**
- * Production compact executor for the compiled matcher IR.
+ * Production executor for the compact central-route-table matcher IR.
  *
- * This lane deals only in deterministic scalar route IDs plus parameter maps.
- * It never materializes CompiledRoute objects, interprets executable payloads,
- * or branches between rich/compact result representations after a successful
- * match.
+ * The request path touches scalar route IDs, positional parameter-name lists and
+ * compiled method metadata only. Rich route payloads are resolved separately by
+ * CompiledMatcherEngine when callers explicitly request a MatchOutcome.
  *
- * @phpstan-type FastRouteEntry array{route:mixed,id:int,params:array<string,string>,fast_params:list<string>}
- * @phpstan-type PcreStep array{type:'pcre',regex:string,fast_regex:string,routes:array<string,FastRouteEntry>}
- * @phpstan-type FastDispatchEntry array{id:int,params:list<string>}
- * @phpstan-type FastDispatchStep array{regex:string,routes:array<string,FastDispatchEntry>}
+ * @phpstan-type PcreEntry array{id:int,params:list<string>}
+ * @phpstan-type PcreStep array{type:'pcre',regex:string,routes:array<string,PcreEntry>}
+ * @phpstan-type FastDispatchStep array{regex:string,routes:array<string,PcreEntry>}
  * @phpstan-type FastDispatch array{segment:int,groups:array<string,list<FastDispatchStep>>}
  * @phpstan-type AllowedLiteralEntry array{regex:string,methods:list<string>}
  * @phpstan-type AllowedBucket array{type:'literal',segment:int,groups:array<string,AllowedLiteralEntry>}|array{type:'fallback'}
- * @phpstan-type FallbackStep array{type:'fallback',segments:list<array<string,mixed>>,route:mixed,id:int}
+ * @phpstan-type FallbackStep array{type:'fallback',segments:list<array<string,mixed>>,id:int}
  * @phpstan-type DynamicBucket array{steps:list<PcreStep|FallbackStep>,fast_dispatch?:FastDispatch}
- * @phpstan-type MatcherGroup array{static:array<string,array<string,mixed>>,static_ids:array<string,array<string,int>>,static_allowed:array<string,list<string>>,dynamic:array<string,array<int,array<string,DynamicBucket>>>,dynamic_allowed:array<int,array<string,AllowedBucket>>}
+ * @phpstan-type MatcherGroup array{routes:array<int,mixed>,static:array<string,array<string,int>>,static_allowed:array<string,list<string>>,dynamic:array<string,array<int,array<string,DynamicBucket>>>,dynamic_allowed:array<int,array<string,AllowedBucket>>}
  * @phpstan-type CompiledMatch int|array{0:int,1:array<string,string>}|MatchOutcome
  */
 final class CompiledMatcherFastEngine
@@ -202,7 +200,7 @@ final class CompiledMatcherFastEngine
     /** @param MatcherGroup $group */
     private static function matchStaticMethod(array $group, string $method, string $path): ?int
     {
-        return $group['static_ids'][$method][$path] ?? null;
+        return $group['static'][$method][$path] ?? null;
     }
 
     /** @param MatcherGroup $group */
@@ -287,7 +285,7 @@ final class CompiledMatcherFastEngine
         foreach ($bucket['steps'] as $step) {
             if ($step['type'] === 'pcre') {
                 $matches = [];
-                $status = preg_match($step['fast_regex'], $path, $matches);
+                $status = preg_match($step['regex'], $path, $matches);
                 if ($status === false) {
                     throw new \RuntimeException('Compiled matcher PCRE failed during dispatch.');
                 }
@@ -301,7 +299,7 @@ final class CompiledMatcherFastEngine
                 }
                 $entry = $step['routes'][$mark];
                 $params = [];
-                foreach ($entry['fast_params'] as $offset => $name) {
+                foreach ($entry['params'] as $offset => $name) {
                     $piece = $matches[$offset + 1] ?? null;
                     if (!is_string($piece)) {
                         throw new \UnexpectedValueException('Compiled matcher positional parameter capture is unavailable.');
