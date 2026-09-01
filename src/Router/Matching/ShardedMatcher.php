@@ -10,11 +10,11 @@ use Infocyph\Webrick\Exceptions\RouteNotFoundException;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 
 /**
- * Sharded matcher using the same compiled matcher IR/executor as FusedMatcher.
+ * Sharded matcher using the same compact production IR/executor as FusedMatcher.
  *
  * Canonical route groups exist only on the build side. Persisted shards contain
- * method-first static maps, ordered combined-PCRE/fallback steps and route data.
- * Sharding changes the loaded working set, not route-discrimination semantics.
+ * one central route-payload table, scalar static/dynamic references and compiled
+ * miss metadata. Sharding changes only the loaded working set.
  *
  * @phpstan-type RouteValue CompiledRoute|array<array-key,mixed>|string
  * @phpstan-type VerbMap array<string,RouteValue>
@@ -22,13 +22,13 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
  * @phpstan-type DynamicEntry array{segments:list<SegmentSpec>,verbs:VerbMap}
  * @phpstan-type DynamicBuckets array<int,array<string,array<string,DynamicEntry>>>
  * @phpstan-type CanonicalGroup array{static:array<string,VerbMap>,dynamic:DynamicBuckets}
- * @phpstan-type CompiledGroup array{static:array<string,array<string,RouteValue>>,static_ids:array<string,array<string,int>>,static_allowed:array<string,list<string>>,dynamic:array<string,mixed>,dynamic_allowed:array<int,array<string,array<string,mixed>>>}
+ * @phpstan-type CompiledGroup array{routes:array<int,mixed>,static:array<string,array<string,int>>,static_allowed:array<string,list<string>>,dynamic:array<string,mixed>,dynamic_allowed:array<int,array<string,array<string,mixed>>>}
  */
 final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
 {
     use MatcherFactoryTrait;
 
-    private const int INDEX_CACHE_VERSION = 13;
+    private const int INDEX_CACHE_VERSION = 14;
 
     private const string SHARD_DYNAMIC = '__dynamic';
 
@@ -169,7 +169,9 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         } elseif ($this->cacheReadable && !$this->index->isEmpty()) {
             $this->preloadProductionGroups();
         } elseif (!$this->cacheReadable) {
-            $this->compiledHosts = new CompiledMatcherIndexCompiler()->compile($this->index->hosts());
+            $compiled = new CompiledMatcherIndexCompiler()->compile($this->index->hosts());
+            $compact = CompiledMatcherIrCompactor::compactHosts($compiled);
+            $this->compiledHosts = CompactMatcherIndexValidator::validateHosts($compact);
         }
 
         $this->finalized = true;
@@ -292,7 +294,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         if (!is_array($blob) || ($blob['_version'] ?? null) !== self::INDEX_CACHE_VERSION) {
             throw new \RuntimeException("Stale sharded route cache ({$file}). Rebuild the route cache.");
         }
-        $data = CompiledMatcherIndexValidator::validateGroup($blob['_data'] ?? null);
+        $data = CompactMatcherIndexValidator::validateGroup($blob['_data'] ?? null);
         if ($this->verifyCacheOnLoad) {
             $stored = $blob['_hash'] ?? null;
             if (!is_string($stored) || !hash_equals($stored, hash('xxh128', serialize($data)))) {
@@ -436,7 +438,8 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             self::WIN_RESERVED,
         );
         $compiled = new CompiledMatcherIndexCompiler()->compile([$host => $group]);
-        $compiledGroup = $compiled[$host] ?? throw new \LogicException('Compiled shard group is missing its host.');
+        $compact = CompiledMatcherIrCompactor::compactHosts($compiled);
+        $compiledGroup = $compact[$host] ?? throw new \LogicException('Compiled shard group is missing its host.');
         $this->writePayload($file, $compiledGroup, true);
     }
 
@@ -453,7 +456,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             throw new \UnexpectedValueException('Normalized sharded matcher cache must be an array.');
         }
         if ($compiledGroup) {
-            $data = CompiledMatcherIndexValidator::validateGroup($data);
+            $data = CompactMatcherIndexValidator::validateGroup($data);
         }
         $hash = hash('xxh128', serialize($data));
         $php = "<?php\nreturn [\n"
@@ -471,7 +474,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
                     throw new \UnexpectedValueException('Generated sharded matcher payload is invalid.');
                 }
                 if ($compiledGroup) {
-                    $data = CompiledMatcherIndexValidator::validateGroup($data);
+                    $data = CompactMatcherIndexValidator::validateGroup($data);
                 }
                 if (($blob['_hash'] ?? null) !== $hash || hash('xxh128', serialize($data)) !== $hash) {
                     throw new \UnexpectedValueException('Generated sharded matcher payload hash mismatch.');
