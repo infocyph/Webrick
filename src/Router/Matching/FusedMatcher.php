@@ -15,7 +15,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
     use MatcherCacheLifecycleTrait;
     use MatcherFactoryTrait;
 
-    private const int INDEX_CACHE_VERSION = 13;
+    private const int INDEX_CACHE_VERSION = 14;
 
     /** @var array<string,array{0:string,1:?string}> */
     private array $alias = [];
@@ -72,7 +72,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
             $this->loadCacheBlob();
         }
         if ($this->compiledHosts === null) {
-            $this->compiledHosts = new CompiledMatcherIndexCompiler()->compile($this->index->hosts());
+            $this->compiledHosts = $this->compileHosts();
         }
 
         if (count($this->compiledHosts) === 1 && isset($this->compiledHosts['*'])) {
@@ -145,6 +145,15 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         $this->fastEngine ??= new CompiledMatcherFastEngine();
     }
 
+    /** @return array<string,array<string,mixed>> */
+    private function compileHosts(): array
+    {
+        $compiled = new CompiledMatcherIndexCompiler()->compile($this->index->hosts());
+        $compact = CompiledMatcherIrCompactor::compactHosts($compiled);
+
+        return CompactMatcherIndexValidator::validateHosts($compact);
+    }
+
     /**
      * @param array<array-key,mixed> $hosts
      * @param array<array-key,mixed> $alias
@@ -163,8 +172,9 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         }
 
         $compiled = new CompiledMatcherIndexCompiler()->compile($this->index->hosts());
-        $hosts = MatcherCachePayloadNormalizer::normalize($compiled);
-        $hosts = CompiledMatcherIndexValidator::validateHosts($hosts);
+        $compact = CompiledMatcherIrCompactor::compactHosts($compiled);
+        $hosts = MatcherCachePayloadNormalizer::normalize($compact);
+        $hosts = CompactMatcherIndexValidator::validateHosts($hosts);
         $middleware = array_keys($this->middlewareRequirements);
         $hash = $this->cacheHash($hosts, $this->alias, $middleware);
         $php = "<?php\nreturn [\n"
@@ -182,7 +192,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
                 if (($blob['_version'] ?? null) !== self::INDEX_CACHE_VERSION) {
                     throw new \UnexpectedValueException('Generated fused matcher cache has an invalid format version.');
                 }
-                $data = CompiledMatcherIndexValidator::validateHosts($blob['_data'] ?? null);
+                $data = CompactMatcherIndexValidator::validateHosts($blob['_data'] ?? null);
                 $alias = $blob['_alias'] ?? null;
                 $middleware = matcher_normalize_middleware_requirements($blob['_middleware'] ?? []);
                 $stored = $blob['_hash'] ?? null;
@@ -212,7 +222,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
             throw new \RuntimeException('Stale fused route cache. Rebuild the route cache.');
         }
 
-        $data = CompiledMatcherIndexValidator::validateHosts($blob['_data'] ?? null);
+        $data = CompactMatcherIndexValidator::validateHosts($blob['_data'] ?? null);
         $alias = $blob['_alias'] ?? null;
         if (!is_array($alias)) {
             throw new \RuntimeException('Fused route cache has an invalid alias payload.');
