@@ -140,6 +140,20 @@ final class UploadedFile
         }
     }
 
+    /** @param callable():bool $operation */
+    private static function attemptFilesystemOperation(callable $operation): bool
+    {
+        set_error_handler(static function (): bool {
+            return true;
+        });
+
+        try {
+            return $operation();
+        } finally {
+            restore_error_handler();
+        }
+    }
+
     private function copyStreamTo(string $targetPath): void
     {
         $source = $this->src;
@@ -178,7 +192,7 @@ final class UploadedFile
         } finally {
             fclose($out);
             if (!$completed && is_file($targetPath)) {
-                @unlink($targetPath);
+                self::attemptFilesystemOperation(static fn (): bool => unlink($targetPath));
             }
         }
     }
@@ -193,16 +207,16 @@ final class UploadedFile
             return;
         }
 
-        if (@rename($sourcePath, $targetPath)) {
+        if (self::attemptFilesystemOperation(static fn (): bool => rename($sourcePath, $targetPath))) {
             return;
         }
-        if (!@copy($sourcePath, $targetPath)) {
-            @unlink($targetPath);
+        if (!self::attemptFilesystemOperation(static fn (): bool => copy($sourcePath, $targetPath))) {
+            self::attemptFilesystemOperation(static fn (): bool => unlink($targetPath));
 
             throw new RuntimeException("Failed to copy uploaded file to {$targetPath}");
         }
-        if (!@unlink($sourcePath)) {
-            @unlink($targetPath);
+        if (!self::attemptFilesystemOperation(static fn (): bool => unlink($sourcePath))) {
+            self::attemptFilesystemOperation(static fn (): bool => unlink($targetPath));
 
             throw new RuntimeException("Failed to remove uploaded source after copying to {$targetPath}");
         }
