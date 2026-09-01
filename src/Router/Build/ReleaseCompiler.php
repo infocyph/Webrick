@@ -71,7 +71,28 @@ final readonly class ReleaseCompiler
         $json = json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n";
         $this->writeAtomic($releaseManifestPath, $json);
 
-        return $manifest + ['release_manifest' => $releaseManifestPath];
+        $runtimeManifestPath = self::runtimeManifestPath($releaseManifestPath);
+        $runtime = "<?php\n\ndeclare(strict_types=1);\n\nreturn "
+            . var_export($manifest, true)
+            . ";\n";
+        $this->writeAtomic($runtimeManifestPath, $runtime);
+
+        return $manifest + [
+            'release_manifest' => $releaseManifestPath,
+            'release_runtime_manifest' => $runtimeManifestPath,
+        ];
+    }
+
+    public static function runtimeManifestPath(string $releaseManifestPath): string
+    {
+        $path = trim($releaseManifestPath);
+        if ($path === '') {
+            throw new \InvalidArgumentException('Release manifest path must not be empty.');
+        }
+
+        return str_ends_with(strtolower($path), '.json')
+            ? substr($path, 0, -5) . '.php'
+            : $path . '.php';
     }
 
     private function writeAtomic(string $path, string $contents): void
