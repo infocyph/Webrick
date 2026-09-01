@@ -1,0 +1,100 @@
+name: Temporary Matcher Phase 3
+
+on:
+  push:
+    branches:
+      - webrick-5/batch-1-correctness
+
+permissions:
+  contents: read
+
+jobs:
+  phase3-benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: webrick-5/batch-1-correctness
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+          tools: composer:v2
+      - run: composer install --no-interaction --no-progress --prefer-dist
+      - name: Create Phase 3 experiment benchmark
+        shell: bash
+        run: |
+          cat > benchmarks/MatcherConstraintOpcodeExperimentBench.php <<'PHP'
+          <?php
+
+          declare(strict_types=1);
+
+          namespace Infocyph\Webrick\Benchmarks;
+
+          use Infocyph\Webrick\Router\Constraint\Registry;
+          use PhpBench\Attributes as Bench;
+
+          #[Bench\Groups(['matcher', 'matcher-constraint-phase3'])]
+          #[Bench\Iterations(7)]
+          #[Bench\Revs(20000)]
+          #[Bench\Warmup(2)]
+          final class MatcherConstraintOpcodeExperimentBench
+          {
+              #[Bench\ParamProviders('provideCases')]
+              public function benchCallable(array $params): void
+              {
+                  $call = (string) $params['call'];
+                  $result = is_callable($call) && $call((string) $params['value']);
+                  self::guard($result);
+              }
+
+              #[Bench\ParamProviders('provideCases')]
+              public function benchOpcode(array $params): void
+              {
+                  $result = self::opcode((int) $params['op'], (string) $params['value']);
+                  self::guard($result);
+              }
+
+              /** @return iterable<string,array{op:int,call:string,value:string}> */
+              public function provideCases(): iterable
+              {
+                  yield 'int-hit' => ['op' => 1, 'call' => 'ctype_digit', 'value' => '123456'];
+                  yield 'int-miss' => ['op' => 1, 'call' => 'ctype_digit', 'value' => '12x456'];
+                  yield 'numeric-hit' => ['op' => 2, 'call' => 'is_numeric', 'value' => '-123.45e2'];
+                  yield 'numeric-miss' => ['op' => 2, 'call' => 'is_numeric', 'value' => '12x'];
+                  yield 'alpha-hit' => ['op' => 3, 'call' => 'ctype_alpha', 'value' => 'Benchmark'];
+                  yield 'alpha-miss' => ['op' => 3, 'call' => 'ctype_alpha', 'value' => 'Bench42'];
+                  yield 'alnum-hit' => ['op' => 4, 'call' => 'ctype_alnum', 'value' => 'Bench42'];
+                  yield 'alnum-miss' => ['op' => 4, 'call' => 'ctype_alnum', 'value' => 'Bench-42'];
+                  yield 'bool-hit' => ['op' => 5, 'call' => Registry::class . '::isBoolString', 'value' => 'false'];
+                  yield 'bool-miss' => ['op' => 5, 'call' => Registry::class . '::isBoolString', 'value' => 'maybe'];
+                  yield 'json-hit' => ['op' => 6, 'call' => 'json_validate', 'value' => '{"ok":true}'];
+                  yield 'json-miss' => ['op' => 6, 'call' => 'json_validate', 'value' => '{nope}'];
+                  yield 'ipv6-hit' => ['op' => 7, 'call' => Registry::class . '::isIpv6String', 'value' => '2001:db8::1'];
+                  yield 'ipv6-miss' => ['op' => 7, 'call' => Registry::class . '::isIpv6String', 'value' => 'not-ipv6'];
+              }
+
+              private static function guard(bool $result): void
+              {
+                  if ($result && PHP_INT_SIZE === 0) {
+                      throw new \LogicException('Unreachable benchmark guard.');
+                  }
+              }
+
+              private static function opcode(int $op, string $value): bool
+              {
+                  return match ($op) {
+                      1 => ctype_digit($value),
+                      2 => is_numeric($value),
+                      3 => ctype_alpha($value),
+                      4 => ctype_alnum($value),
+                      5 => $value === 'true' || $value === 'false' || $value === '0' || $value === '1',
+                      6 => json_validate($value),
+                      7 => filter_var($value, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) !== false,
+                      default => false,
+                  };
+              }
+          }
+          PHP
+      - name: Run Phase 3 opcode experiment
+        run: vendor/bin/phpbench run benchmarks/MatcherConstraintOpcodeExperimentBench.php --bootstrap=vendor/autoload.php --report=aggregate
