@@ -24,7 +24,7 @@ final class CompiledMatcherIrCompactor
 
     /**
      * @param array<array-key,mixed> $group
-     * @return MatcherGroup
+     * @phpstan-return MatcherGroup
      */
     public static function compactGroup(array $group): array
     {

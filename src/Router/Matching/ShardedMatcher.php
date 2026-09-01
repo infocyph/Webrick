@@ -271,7 +271,9 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         return $groups;
     }
 
-    /** @return CompiledGroup|null */
+    /**
+     * @phpstan-return CompiledGroup|null
+     */
     private function loadGroup(string $host, string $bucket): ?array
     {
         $file = sharded_matcher_shard_file_path(

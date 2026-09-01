@@ -27,7 +27,9 @@ final readonly class ResponseWriterSupport
             && !self::statusHasNoContent($response->getStatusCode());
     }
 
-    /** @return Generator<int,string,void,void> */
+    /**
+     * @phpstan-return Generator<int,string,void,void>
+     */
     public static function chunks(Response $response, int $chunkSize = 65_536): iterable
     {
         if ($chunkSize <= 0) {

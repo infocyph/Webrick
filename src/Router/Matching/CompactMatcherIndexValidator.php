@@ -16,7 +16,9 @@ final class CompactMatcherIndexValidator
 {
     private function __construct() {}
 
-    /** @return MatcherGroup */
+    /**
+     * @phpstan-return MatcherGroup
+     */
     public static function validateGroup(mixed $raw, bool $validateRegex = false): array
     {
         if (!is_array($raw)) {

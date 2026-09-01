@@ -65,7 +65,9 @@ final class CompactMatcherDynamicValidator
         }
     }
 
-    /** @return AllowedBucket */
+    /**
+     * @phpstan-return AllowedBucket
+     */
     private static function validateAllowedBucket(mixed $raw, bool $validateRegex): array
     {
         if (!is_array($raw)) {
@@ -130,7 +132,7 @@ final class CompactMatcherDynamicValidator
 
     /**
      * @param array<int,mixed> $routes
-     * @return DynamicBucket
+     * @phpstan-return DynamicBucket
      */
     private static function validateBucket(mixed $raw, array $routes, bool $validateRegex): array
     {
@@ -177,7 +179,7 @@ final class CompactMatcherDynamicValidator
     /**
      * @param array<array-key,mixed> $raw
      * @param array<int,mixed> $routes
-     * @return FallbackStep
+     * @phpstan-return FallbackStep
      */
     private static function validateFallbackStep(array $raw, array $routes): array
     {
@@ -195,7 +197,7 @@ final class CompactMatcherDynamicValidator
 
     /**
      * @param array<int,mixed> $routes
-     * @return FastDispatch
+     * @phpstan-return FastDispatch
      */
     private static function validateFastDispatch(mixed $raw, array $routes, bool $validateRegex): array
     {
@@ -235,7 +237,7 @@ final class CompactMatcherDynamicValidator
 
     /**
      * @param array<int,mixed> $routes
-     * @return FastDispatchStep
+     * @phpstan-return FastDispatchStep
      */
     private static function validateFastStep(mixed $raw, array $routes, bool $validateRegex): array
     {
@@ -303,7 +305,7 @@ final class CompactMatcherDynamicValidator
     /**
      * @param array<array-key,mixed> $raw
      * @param array<int,mixed> $routes
-     * @return PcreStep
+     * @phpstan-return PcreStep
      */
     private static function validatePcreStep(array $raw, array $routes, bool $validateRegex): array
     {
@@ -380,7 +382,7 @@ final class CompactMatcherDynamicValidator
 
     /**
      * @param array<int,mixed> $routes
-     * @return PcreStep|FallbackStep
+     * @phpstan-return PcreStep|FallbackStep
      */
     private static function validateStep(mixed $raw, array $routes, bool $validateRegex): array
     {

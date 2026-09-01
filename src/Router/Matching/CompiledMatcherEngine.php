@@ -52,8 +52,8 @@ final class CompiledMatcherEngine
     }
 
     /**
-     * @param MatcherGroup|null $hostGroup
-     * @param MatcherGroup|null $wildcardGroup
+     * @phpstan-param MatcherGroup|null $hostGroup
+     * @phpstan-param MatcherGroup|null $wildcardGroup
      */
     public function matchSingle(
         ?array $hostGroup,
@@ -74,8 +74,8 @@ final class CompiledMatcherEngine
     }
 
     /**
-     * @param MatcherGroup|null $hostGroup
-     * @param MatcherGroup|null $wildcardGroup
+     * @phpstan-param MatcherGroup|null $hostGroup
+     * @phpstan-param MatcherGroup|null $wildcardGroup
      * @return CompiledMatch
      */
     public function matchSingleCompiled(
