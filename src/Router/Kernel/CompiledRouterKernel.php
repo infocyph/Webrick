@@ -22,6 +22,7 @@ use Infocyph\Webrick\Router\Matching\MatcherInterface;
 use Infocyph\Webrick\Router\Matching\MatchOutcome;
 use Infocyph\Webrick\Router\Matching\MatchOutcomeType;
 use Infocyph\Webrick\Router\Runtime\RoutingInput;
+use Infocyph\Webrick\Router\Runtime\RuntimeStageProfiler;
 use Infocyph\Webrick\Router\Url\SignedUrlConfig;
 use Infocyph\Webrick\Router\Url\UrlGenerator;
 use Infocyph\Webrick\Router\Url\UrlGeneratorRegistry;
@@ -53,17 +54,22 @@ final readonly class CompiledRouterKernel
         ?string $signKey,
         ?int $signedDefaultTtl,
         ?SignedUrlConfig $signedUrlConfig,
+        private ?RuntimeStageProfiler $profiler,
     ) {
-        foreach ($artifact->routes as $route) {
-            $matcher->add($route);
+        if (!$matcher->canBootFromCache()) {
+            foreach ($artifact->routes as $route) {
+                $matcher->add($route);
+            }
         }
         $matcher->finalize();
+        $this->profiler?->mark('matcher_boot');
 
         $this->matcher = $matcher;
         $this->runtime = new InterMixRuntime($container);
         $this->dispatcher = new RuntimeDispatcher($this->runtime, $artifact);
         $this->hasGlobalMiddleware = $this->dispatcher->hasGlobalMiddleware();
         $this->errorHandler = $errorHandler ?? new ErrorHandler(logger: $log, debug: false);
+        $this->profiler?->mark('dispatcher_boot');
 
         UrlGeneratorRegistry::bind(new UrlGenerator($urlBaseUri, $artifact->aliases, $signKey, $signedDefaultTtl, $signedUrlConfig));
         UrlGeneratorRegistry::freeze();
@@ -72,6 +78,7 @@ final readonly class CompiledRouterKernel
         HeaderPolicy::freeze();
         Request::freezeTrustedProxyConfiguration();
         Request::freezeMethodOverrideConfiguration();
+        $this->profiler?->mark('kernel_boot');
     }
 
     public static function fromCompiledArtifact(
@@ -86,10 +93,23 @@ final readonly class CompiledRouterKernel
         ?string $signKey = null,
         ?int $signedDefaultTtl = null,
         ?SignedUrlConfig $signedUrlConfig = null,
+        ?RuntimeStageProfiler $profiler = null,
     ): self {
         $artifact = new RouterArtifactLoader()->load($artifactPath, $environment, $configFingerprint);
+        $profiler?->mark('router_artifact_load');
 
-        return new self($log, $artifact, $matcher, $container, $errorHandler, $urlBaseUri, $signKey, $signedDefaultTtl, $signedUrlConfig);
+        return new self(
+            $log,
+            $artifact,
+            $matcher,
+            $container,
+            $errorHandler,
+            $urlBaseUri,
+            $signKey,
+            $signedDefaultTtl,
+            $signedUrlConfig,
+            $profiler,
+        );
     }
 
     public static function fromPrevalidatedArtifact(
@@ -105,23 +125,54 @@ final readonly class CompiledRouterKernel
         ?string $signKey = null,
         ?int $signedDefaultTtl = null,
         ?SignedUrlConfig $signedUrlConfig = null,
+        ?RuntimeStageProfiler $profiler = null,
     ): self {
-        $artifact = new RouterArtifactLoader()->loadPrevalidated($artifactPath, $trustedSha256, $environment, $configFingerprint);
+        $artifact = new RouterArtifactLoader()->loadPrevalidated(
+            $artifactPath,
+            $trustedSha256,
+            $environment,
+            $configFingerprint,
+        );
+        $profiler?->mark('router_artifact_load');
 
-        return new self($log, $artifact, $matcher, $container, $errorHandler, $urlBaseUri, $signKey, $signedDefaultTtl, $signedUrlConfig);
+        return new self(
+            $log,
+            $artifact,
+            $matcher,
+            $container,
+            $errorHandler,
+            $urlBaseUri,
+            $signKey,
+            $signedDefaultTtl,
+            $signedUrlConfig,
+            $profiler,
+        );
     }
 
     public function handle(?Request $request = null): Response
     {
         try {
-            $routing = $request instanceof Request ? RoutingInput::fromRequest($request, $this->artifact->hasDomainRoutes) : RoutingInput::fromGlobals($this->artifact->hasDomainRoutes);
+            $routing = $request instanceof Request
+                ? RoutingInput::fromRequest($request, $this->artifact->hasDomainRoutes)
+                : RoutingInput::fromGlobals($this->artifact->hasDomainRoutes);
+            $this->profiler?->mark('routing_input');
             $response = $this->dispatchRoutingInput($routing, $request);
 
-            return $routing->method === HttpMethodEnum::HEAD->value ? self::headResponse($response) : $response;
+            if ($routing->method === HttpMethodEnum::HEAD->value) {
+                $response = self::headResponse($response);
+            }
+            $this->profiler?->mark('response_ready');
+
+            return $response;
         } catch (Throwable $exception) {
             $response = $this->renderException($exception, $request);
+            $this->profiler?->mark('error_render');
 
-            return isset($routing) && $routing->method === HttpMethodEnum::HEAD->value ? self::headResponse($response) : $response;
+            if (isset($routing) && $routing->method === HttpMethodEnum::HEAD->value) {
+                $response = self::headResponse($response);
+            }
+
+            return $response;
         }
     }
 
@@ -130,9 +181,15 @@ final readonly class CompiledRouterKernel
         $request = null;
 
         try {
-            return $this->dispatchRoutingInput($context->routing, $request, $context);
+            $response = $this->dispatchRoutingInput($context->routing, $request, $context);
+            $this->profiler?->mark('response_ready');
+
+            return $response;
         } catch (Throwable $exception) {
-            return $this->renderException($exception, $request, $context);
+            $response = $this->renderException($exception, $request, $context);
+            $this->profiler?->mark('error_render');
+
+            return $response;
         }
     }
 
@@ -176,9 +233,14 @@ final readonly class CompiledRouterKernel
         return $runtimeContext?->scopeId() ?? 'webrick.request.' . spl_object_id($routing);
     }
 
-    private function dispatchRoutingInput(RoutingInput $routing, ?Request &$request, ?RuntimeRequestContext $runtimeContext = null): Response
-    {
+    private function dispatchRoutingInput(
+        RoutingInput $routing,
+        ?Request &$request,
+        ?RuntimeRequestContext $runtimeContext = null,
+    ): Response {
         $match = $this->matchRoutingInput($routing);
+        $this->profiler?->mark('match');
+
         if (is_int($match)) {
             $routeIndex = $match;
             $vars = [];
@@ -187,23 +249,34 @@ final readonly class CompiledRouterKernel
             $vars = $match[1];
         } else {
             $this->throwOrReturnControlOutcome($match, $routing);
+            $response = self::automaticOptionsResponse($match->allowed);
+            $this->profiler?->mark('dispatch');
 
-            return self::automaticOptionsResponse($match->allowed);
+            return $response;
         }
 
         $plan = $this->artifact->planForIndex($routeIndex);
         $pipeline = $plan->kind === ExecutionKind::MIDDLEWARE_PIPELINE || $this->hasGlobalMiddleware;
         if (!$pipeline && !$plan->requiresRequest()) {
-            return $this->dispatchWithoutRequest($routing, $plan, $vars, $runtimeContext);
+            $response = $this->dispatchWithoutRequest($routing, $plan, $vars, $runtimeContext);
+            $this->profiler?->mark('dispatch');
+
+            return $response;
         }
         $request ??= $runtimeContext?->request() ?? Request::fromGlobals();
+        $response = $this->dispatchWithRequest($routing, $plan, $request, $vars, $runtimeContext);
+        $this->profiler?->mark('dispatch');
 
-        return $this->dispatchWithRequest($routing, $plan, $request, $vars, $runtimeContext);
+        return $response;
     }
 
     /** @param array<string,string> $vars */
-    private function dispatchWithoutRequest(RoutingInput $routing, ExecutionPlan $plan, array $vars, ?RuntimeRequestContext $runtimeContext): Response
-    {
+    private function dispatchWithoutRequest(
+        RoutingInput $routing,
+        ExecutionPlan $plan,
+        array $vars,
+        ?RuntimeRequestContext $runtimeContext,
+    ): Response {
         if (!$plan->requiresScope()) {
             return match ($plan->terminalKind) {
                 ExecutionKind::DIRECT_ZERO_ARG => $this->dispatcher->dispatchDirectZeroArg($plan),
@@ -211,7 +284,10 @@ final readonly class CompiledRouterKernel
                 default => $this->dispatcher->dispatchWithoutRequest($plan, $vars),
             };
         }
-        $response = $this->runtime->withinScope(self::scopeId($routing, $runtimeContext), fn() => $this->dispatcher->dispatchWithoutRequest($plan, $vars));
+        $response = $this->runtime->withinScope(
+            self::scopeId($routing, $runtimeContext),
+            fn() => $this->dispatcher->dispatchWithoutRequest($plan, $vars),
+        );
         if (!$response instanceof Response) {
             throw new \RuntimeException('Compiled request scope must return Response.');
         }
@@ -220,13 +296,22 @@ final readonly class CompiledRouterKernel
     }
 
     /** @param array<string,string> $vars */
-    private function dispatchWithRequest(RoutingInput $routing, ExecutionPlan $plan, Request $request, array $vars, ?RuntimeRequestContext $runtimeContext): Response
-    {
-        $requiresScope = $plan->requiresScope() || $this->dispatcher->pipelineRequiresScope($plan->routeId);
+    private function dispatchWithRequest(
+        RoutingInput $routing,
+        ExecutionPlan $plan,
+        Request $request,
+        array $vars,
+        ?RuntimeRequestContext $runtimeContext,
+    ): Response {
+        $requiresScope = $plan->requiresScope() || $this->dispatcher->pipelineRequiresScope($plan);
         if (!$requiresScope) {
             return $this->dispatcher->dispatch($plan, $request, $vars);
         }
-        $response = $this->runtime->withinScope(self::scopeId($routing, $runtimeContext), fn() => $this->dispatcher->dispatch($plan, $request, $vars), [Request::class => $request]);
+        $response = $this->runtime->withinScope(
+            self::scopeId($routing, $runtimeContext),
+            fn() => $this->dispatcher->dispatch($plan, $request, $vars),
+            [Request::class => $request],
+        );
         if (!$response instanceof Response) {
             throw new \RuntimeException('Compiled request scope must return Response.');
         }
@@ -244,8 +329,11 @@ final readonly class CompiledRouterKernel
         return $this->matcher->matchCompiled($routing->method, $routing->host, $routing->path);
     }
 
-    private function renderException(Throwable $exception, ?Request $request, ?RuntimeRequestContext $runtimeContext = null): Response
-    {
+    private function renderException(
+        Throwable $exception,
+        ?Request $request,
+        ?RuntimeRequestContext $runtimeContext = null,
+    ): Response {
         if (!$request instanceof Request) {
             try {
                 $request = $runtimeContext?->request() ?? Request::fromGlobals();
@@ -254,11 +342,14 @@ final readonly class CompiledRouterKernel
             }
         }
 
-        return $this->errorHandler->handle($request, static function (Request $activeRequest) use ($exception): Response {
-            unset($activeRequest);
+        return $this->errorHandler->handle(
+            $request,
+            static function (Request $activeRequest) use ($exception): Response {
+                unset($activeRequest);
 
-            throw $exception;
-        });
+                throw $exception;
+            },
+        );
     }
 
     private function throwOrReturnControlOutcome(MatchOutcome $outcome, RoutingInput $routing): void
