@@ -11,6 +11,7 @@ on:
       - 'benchmark/matcher_sanity.php'
       - 'benchmark/matcher_tuning.php'
       - 'benchmark/matcher_profile.php'
+      - 'benchmark/matcher_capabilities.php'
       - '.github/workflows/matcher-benchmark-smoke.yml'
   workflow_dispatch:
 
@@ -32,6 +33,8 @@ jobs:
         run: php benchmark/matcher_sanity.php
       - name: Reference smoke
         run: php benchmark/fastroute_reference.php --routes=1000 --iters=5000 --rounds=3 --warmup=1000 | tee matcher-smoke.txt
+      - name: Capability smoke
+        run: php benchmark/matcher_capabilities.php --routes=1000 --iters=3000 --rounds=3 --warmup=500 | tee matcher-capabilities.txt
       - name: Chunk/static tuning
         run: php benchmark/matcher_tuning.php --routes=1000 --iters=3000 --rounds=5 | tee matcher-tuning.txt
       - name: Cache/working-set profile
