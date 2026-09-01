@@ -57,7 +57,7 @@ final readonly class CompiledRouterKernel
         private ?RuntimeStageProfiler $profiler,
     ) {
         if (!$matcher->canBootFromCache()) {
-            foreach ($artifact->routes as $route) {
+            foreach ($artifact->routes() as $route) {
                 $matcher->add($route);
             }
         }
@@ -281,7 +281,7 @@ final readonly class CompiledRouterKernel
             return $response;
         }
         $request ??= $runtimeContext?->request() ?? Request::fromGlobals();
-        $response = $this->dispatchWithRequest($routing, $plan, $request, $vars, $runtimeContext);
+        $response = $this->dispatchWithRequest($routeIndex, $routing, $plan, $request, $vars, $runtimeContext);
         $this->profiler?->mark('dispatch');
 
         return $response;
@@ -314,19 +314,20 @@ final readonly class CompiledRouterKernel
 
     /** @param array<string,string> $vars */
     private function dispatchWithRequest(
+        int $routeIndex,
         RoutingInput $routing,
         ExecutionPlan $plan,
         Request $request,
         array $vars,
         ?RuntimeRequestContext $runtimeContext,
     ): Response {
-        $requiresScope = $plan->requiresScope() || $this->dispatcher->pipelineRequiresScope($plan->routeId);
+        $requiresScope = $plan->requiresScope() || $this->dispatcher->pipelineRequiresScope($plan);
         if (!$requiresScope) {
-            return $this->dispatcher->dispatch($plan, $request, $vars);
+            return $this->dispatcher->dispatch($routeIndex, $plan, $request, $vars);
         }
         $response = $this->runtime->withinScope(
             self::scopeId($routing, $runtimeContext),
-            fn() => $this->dispatcher->dispatch($plan, $request, $vars),
+            fn() => $this->dispatcher->dispatch($routeIndex, $plan, $request, $vars),
             [Request::class => $request],
         );
         if (!$response instanceof Response) {
