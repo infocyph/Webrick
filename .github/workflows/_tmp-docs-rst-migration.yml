@@ -1,0 +1,188 @@
+name: Temporary RST docs migration
+
+on:
+  push:
+    branches:
+      - webrick-5/batch-1-correctness
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install conversion tools
+        run: python -m pip install --disable-pip-version-check pypandoc_binary
+
+      - name: Convert Markdown documentation to reStructuredText
+        shell: bash
+        run: |
+          python <<'PY'
+          from __future__ import annotations
+
+          import re
+          from pathlib import Path
+          import pypandoc
+
+          docs = Path('docs')
+
+          fence = re.compile(
+              r"```\{(?P<kind>toctree|note|warning|tip|important|caution|seealso)\}\s*\n(?P<body>.*?)\n```",
+              re.DOTALL,
+          )
+
+          def directive(kind: str, body: str) -> str:
+              lines = body.rstrip().splitlines()
+              if kind == 'toctree':
+                  options: list[str] = []
+                  entries: list[str] = []
+                  in_entries = False
+                  for line in lines:
+                      stripped = line.strip()
+                      if not in_entries and stripped.startswith(':'):
+                          options.append(stripped)
+                          continue
+                      if not stripped and not in_entries:
+                          in_entries = True
+                          continue
+                      if stripped:
+                          in_entries = True
+                          entries.append(stripped.removesuffix('.md').removesuffix('.rst'))
+
+                  out = ['.. toctree::']
+                  out.extend(f'   {option}' for option in options)
+                  if entries:
+                      out.append('')
+                      out.extend(f'   {entry}' for entry in entries)
+                  return '\n'.join(out)
+
+              body_rst = pypandoc.convert_text(body, 'rst', format='gfm', extra_args=['--wrap=none']).strip()
+              out = [f'.. {kind}::', '']
+              out.extend(f'   {line}' if line else '' for line in body_rst.splitlines())
+              return '\n'.join(out)
+
+          for source in sorted(docs.rglob('*.md')):
+              text = source.read_text(encoding='utf-8')
+              directives: dict[str, str] = {}
+
+              def stash(match: re.Match[str]) -> str:
+                  marker = f'WEBRICKRSTDIRECTIVE{len(directives):04d}'
+                  directives[marker] = directive(match.group('kind'), match.group('body'))
+                  return f'\n\n{marker}\n\n'
+
+              prepared = fence.sub(stash, text)
+              rst = pypandoc.convert_text(
+                  prepared,
+                  'rst',
+                  format='gfm',
+                  extra_args=['--wrap=none'],
+              )
+
+              for marker, replacement in directives.items():
+                  rst = rst.replace(marker, replacement)
+
+              # Keep repository/document links valid after the extension migration.
+              rst = re.sub(r'(?P<target>(?:\.?\.?/|[A-Za-z0-9_.-]+/)[^\s<>`]*?)\.md(?P<tail>(?:#[^\s<>`]*)?)', r'\g<target>.rst\g<tail>', rst)
+              rst = re.sub(r'(?P<target>\./[^\s<>`]*?)\.md(?P<tail>(?:#[^\s<>`]*)?)', r'\g<target>.rst\g<tail>', rst)
+
+              target = source.with_suffix('.rst')
+              target.write_text(rst.rstrip() + '\n', encoding='utf-8')
+              source.unlink()
+          PY
+
+      - name: Switch Sphinx to native RST
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+          import re
+
+          conf = Path('docs/conf.py')
+          text = conf.read_text(encoding='utf-8')
+          text = text.replace('    "myst_parser",\n', '')
+          text = re.sub(
+              r'\n# MyST \(Markdown\) settings\nmyst_enable_extensions = \[.*?\]\nmyst_heading_anchors = 3\n',
+              '\n# Documentation sources are native reStructuredText.\nsource_suffix = {".rst": "restructuredtext"}\n',
+              text,
+              flags=re.DOTALL,
+          )
+          conf.write_text(text, encoding='utf-8')
+
+          req = Path('docs/requirements.txt')
+          lines = [
+              line for line in req.read_text(encoding='utf-8').splitlines()
+              if not line.startswith('myst-parser') and not line.startswith('linkify-it-py')
+          ]
+          req.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+          PY
+
+      - name: Generate temporary API surface inventory
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+          import re
+
+          out: list[str] = []
+          for path in sorted(Path('src').rglob('*.php')):
+              text = path.read_text(encoding='utf-8', errors='replace')
+              namespace = re.search(r'^namespace\s+([^;]+);', text, re.MULTILINE)
+              symbol = re.search(r'^\s*(?:(?:final|abstract|readonly)\s+)*(class|interface|trait|enum)\s+([A-Za-z_][A-Za-z0-9_]*)', text, re.MULTILINE)
+              out.append(f'FILE src/{path.relative_to("src")}')
+              if namespace:
+                  out.append(f'  namespace {namespace.group(1)}')
+              if symbol:
+                  out.append(f'  {symbol.group(1)} {symbol.group(2)}')
+
+              for m in re.finditer(
+                  r'^\s*(public|protected)\s+(?:(?:static|final|abstract|readonly)\s+)*(?:function\s+&?\s*|function\s+)([A-Za-z_][A-Za-z0-9_]*)\s*\((.*?)\)\s*(?::\s*([^\{;\n]+))?',
+                  text,
+                  re.MULTILINE | re.DOTALL,
+              ):
+                  params = re.sub(r'\s+', ' ', m.group(3)).strip()
+                  ret = re.sub(r'\s+', ' ', (m.group(4) or '')).strip()
+                  out.append(f'  {m.group(1)} {m.group(2)}({params})' + (f': {ret}' if ret else ''))
+
+              for m in re.finditer(r'^\s*public\s+const\s+([^;]+);', text, re.MULTILINE):
+                  out.append('  const ' + re.sub(r'\s+', ' ', m.group(1)).strip())
+              out.append('')
+
+          Path('docs/_api-surface.tmp.txt').write_text('\n'.join(out), encoding='utf-8')
+          PY
+
+      - name: Verify native RST tree
+        shell: bash
+        run: |
+          if find docs -type f -name '*.md' -print -quit | grep -q .; then
+            echo 'Markdown files remain under docs/' >&2
+            find docs -type f -name '*.md' -print >&2
+            exit 1
+          fi
+          if grep -RIn --include='*.rst' -E '\.md([)#]|$)' docs; then
+            echo 'Markdown links remain in RST docs' >&2
+            exit 1
+          fi
+          python -m pip install --disable-pip-version-check -r docs/requirements.txt
+          python -m sphinx -W --keep-going -b html docs /tmp/webrick-docs-html
+
+      - name: Commit migrated documentation
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m 'docs: migrate documentation to reStructuredText'
+          git push origin HEAD:webrick-5/batch-1-correctness
