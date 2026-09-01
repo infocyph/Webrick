@@ -4,16 +4,13 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Benchmarks;
 
-use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Router\Definition\Registrar;
-use Infocyph\Webrick\Router\Kernel\RouterKernel;
 use Infocyph\Webrick\Router\Matching\FusedMatcher;
 use Infocyph\Webrick\Router\Matching\GeneratedMatcher;
 use Infocyph\Webrick\Router\Matching\MatcherInterface;
 use Infocyph\Webrick\Router\Matching\ShardedMatcher;
 use Infocyph\Webrick\Support\RouteCache;
 use PhpBench\Attributes as Bench;
-use Psr\Log\NullLogger;
 
 #[Bench\Groups(['cache', 'boot'])]
 #[Bench\Iterations(5)]
@@ -109,14 +106,13 @@ final class CacheLifecycleBench
 
     private function boot(MatcherInterface $matcher, string $cache): void
     {
-        RouterKernel::bootWithRegistrar(
-            log: new NullLogger(),
-            matcher: $matcher,
-            register: static function (): void {},
-            routeCache: $cache,
-            fallbackAliasesFromRegistrar: false,
-            requestScopeEnabled: false,
-        );
+        $matcher->enableCache($cache);
+
+        if (!$matcher->canBootFromCache()) {
+            throw new \RuntimeException('Cached matcher fixture is unavailable.');
+        }
+
+        $matcher->finalize();
     }
 
     private function build(string $mode): void
@@ -133,16 +129,9 @@ final class CacheLifecycleBench
 
     private function firstRequest(MatcherInterface $matcher, string $cache): void
     {
-        $kernel = RouterKernel::bootWithRegistrar(
-            log: new NullLogger(),
-            matcher: $matcher,
-            register: static function (): void {},
-            routeCache: $cache,
-            fallbackAliasesFromRegistrar: false,
-            requestScopeEnabled: false,
-        );
-        $response = $kernel->handle(Request::fake(uri: 'http://localhost/bench'));
-        if ($response->getStatusCode() !== 200) {
+        $this->boot($matcher, $cache);
+
+        if ($matcher->matchCompiled('GET', '*', '/bench') !== 0) {
             throw new \RuntimeException('Cached first-request benchmark did not match its route.');
         }
     }
