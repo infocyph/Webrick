@@ -36,7 +36,7 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
  * @phpstan-type FastDispatchStep array{regex:string,routes:array<string,FastDispatchEntry>}
  * @phpstan-type FastDispatch array{segment:int,groups:array<array-key,list<FastDispatchStep>>}
  * @phpstan-type AllowedLiteralEntry array{regex:string,methods:list<string>}
- * @phpstan-type AllowedBucket array{type:'literal',segment:int,groups:array<array-key,AllowedLiteralEntry>}|array{type:'fallback'}
+ * @phpstan-type AllowedBucket array{type:'single',regex:string,methods:list<string>}|array{type:'literal',segment:int,groups:array<array-key,AllowedLiteralEntry>}|array{type:'fallback'}
  * @phpstan-type FallbackStep array{type:'fallback',segments:list<SegmentSpec>,route:RouteValue,id:int}
  * @phpstan-type DynamicStep PcreStep|FallbackStep
  * @phpstan-type DynamicBucket array{steps:list<DynamicStep>,fast_dispatch?:FastDispatch}
@@ -197,11 +197,23 @@ final readonly class CompiledMatcherIndexCompiler
     private function compileAllowedBucket(array $entries): array
     {
         $routeCount = count($entries);
+        $routes = array_values($entries);
+        if ($routeCount === 1) {
+            $entry = $routes[0];
+            if (!CompiledMatcherPatternCompiler::isCompilable($entry['segments'])) {
+                return ['type' => 'fallback'];
+            }
+
+            return [
+                'type' => 'single',
+                'regex' => CompiledMatcherPatternCompiler::predicate($entry['segments']),
+                'methods' => self::allowedMethods($entry['verbs']),
+            ];
+        }
         if ($routeCount < 4) {
             return ['type' => 'fallback'];
         }
 
-        $routes = array_values($entries);
         foreach ($routes as $entry) {
             if (!CompiledMatcherPatternCompiler::isCompilable($entry['segments'])) {
                 return ['type' => 'fallback'];

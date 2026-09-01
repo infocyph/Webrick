@@ -304,3 +304,16 @@ it('boots sharded version 15 cache directly into ordered compiled matcher shards
         matcherRevisionRemoveTree($root);
     }
 });
+
+it('compiles one canonical dynamic shape into method-independent terminal metadata', function (): void {
+    $index = new CanonicalMatcherIndex();
+    foreach (['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] as $method) {
+        $index->add('*', matcherRevisionRoute($method, '/terminal/users/{id:hex}'));
+    }
+
+    $compiled = new CompiledMatcherIndexCompiler()->compile($index->hosts());
+    $terminal = $compiled['*']['dynamic_allowed'][3]['terminal'];
+
+    expect($terminal['type'])->toBe('single')
+        ->and($terminal['methods'])->toContain('GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE');
+});

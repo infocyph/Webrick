@@ -1,6 +1,6 @@
 # Webrick Matcher Optimization Plan
 
-Status: active development plan — Phases 1–4 complete  
+Status: active development plan — Phases 1–5 complete  
 Branch: `webrick-5/batch-1-correctness`
 
 ## Objective
@@ -246,6 +246,10 @@ Use compact decision nodes to narrow a bucket before invoking:
 The runtime representation should be flat/compact where possible. Avoid object-per-node designs.
 
 ## Phase 5 — Method-independent path terminals
+
+**Status: complete — retained single-shape method terminal (2026-09-01).**
+
+When a dynamic count/prefix bucket contains one canonical PCRE-safe route shape, its complete method set is now compiled beside one path predicate. 405 and automatic OPTIONS therefore evaluate that path once instead of re-running the dynamic matcher once per registered method. Requested-method hits remain on the existing method-first path. Same-run A/B metrics: fused-hit: 1.749 -> 1.769 us (1.011x); fused-options: 7.583 -> 2.328 us (0.307x); fused-405: 7.364 -> 2.336 us (0.317x); fused-404: 4.196 -> 1.820 us (0.434x); sharded-hit: 1.816 -> 1.845 us (1.016x); sharded-options: 7.432 -> 2.356 us (0.317x); sharded-405: 7.502 -> 2.355 us (0.314x); sharded-404: 4.218 -> 1.904 us (0.451x); miss/options average ratio: 0.357x.
 
 Goal: match the route path shape once and make method handling terminal metadata rather than a second matching concern when safe.
 

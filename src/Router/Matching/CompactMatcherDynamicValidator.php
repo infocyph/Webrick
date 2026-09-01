@@ -76,6 +76,19 @@ final class CompactMatcherDynamicValidator
         if (($raw['type'] ?? null) === 'fallback') {
             return ['type' => 'fallback'];
         }
+        if (($raw['type'] ?? null) === 'single') {
+            $regex = $raw['regex'] ?? null;
+            if (!is_string($regex)) {
+                throw new \UnexpectedValueException('Compact matcher single allowed-method terminal is invalid.');
+            }
+            self::assertRegex($regex, $validateRegex, 'Compact matcher single allowed-method PCRE cannot be compiled.');
+
+            return [
+                'type' => 'single',
+                'regex' => $regex,
+                'methods' => self::validateMethodList($raw['methods'] ?? null),
+            ];
+        }
 
         $segment = $raw['segment'] ?? null;
         $groups = $raw['groups'] ?? null;
