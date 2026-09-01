@@ -3,8 +3,8 @@
 Webrick provides three selectable matching strategies. Fused and Sharded share
 the same compact production matcher IR and request-time executor. Sharded changes
 the physical storage and loaded working-set boundary. Generated remains a
-separate generated-code strategy for route topologies that specifically benefit
-from it.
+separate generated-code strategy for small route topologies that specifically
+benefit from it.
 
 Matcher factories take no arguments:
 
@@ -20,7 +20,7 @@ an already-built route artifact and never generates matcher state on demand.
 | Matcher | Artifact | Request-time shape | Webrick 5 role |
 | --- | --- | --- | --- |
 | `FusedMatcher` | One PHP file | Scalar static IDs + adaptive positional-PCRE IR + central route table | **Default/general production matcher** |
-| `GeneratedMatcher` | One PHP file with generated matcher code | Specialized generated PHP branches | **Conditional sparse/distinct/static-heavy mode** |
+| `GeneratedMatcher` | One PHP file with generated matcher code | Specialized generated PHP branches | **Conditional small/sparse/distinct mode** |
 | `ShardedMatcher` | Directory of PHP files | Relevant shards using the same compact IR as Fused | **Very-large-route / cold-boot / working-set specialization** |
 
 The strategies intentionally optimize different deployment/topology problems.
@@ -77,19 +77,30 @@ use Infocyph\Webrick\Router\Matching\GeneratedMatcher;
 $matcher = GeneratedMatcher::make();
 ```
 
-Generated emits specialized PHP matching code. It has a real measured niche:
-static routes, isolated/distinct-prefix dynamic routes, and several small
-feature-specific paths can execute faster than the generic compiled executor.
+Generated emits specialized PHP matching code. It has a real measured niche on
+**small** applications: static routes, isolated/distinct-prefix dynamic routes,
+and several feature-specific paths can execute materially faster than the
+compact executor.
 
-It is **not** the general throughput recommendation. Dense shared-prefix dynamic
-families scale poorly because generated conditions are evaluated as a growing
-branch sequence. Webrick 5 measurements showed this topology becoming many
-multiples slower than Fused while Generated remained competitive or faster on
-sparse/distinct/static-heavy shapes.
+It is **not** the general throughput recommendation and it is not a large-route
+strategy. Two separate scaling effects were observed during Webrick 5
+certification:
+
+- dense shared-prefix dynamic families degrade rapidly because generated
+  conditions become a growing branch sequence;
+- once the generated function itself becomes very large, even exact static
+  dispatch can degrade sharply. In the 5,000- and 10,000-route certification
+  corpora Generated static dispatch was tens of microseconds while Fused stayed
+  around a few hundred nanoseconds.
+
+The same certification still showed Generated winning the small 49-route native
+Webrick corpus and 100/1,000-route static cases, plus isolated/distinct feature
+paths in the 1,000-route capability corpus. That is why it remains selectable,
+but only as a measured small-route specialization.
 
 Use Generated only when the application's representative route corpus proves a
-repeatable advantage. Do not select it merely because generated code sounds
-faster, and re-run the benchmark after material route-set growth.
+repeatable advantage. Re-run that benchmark after material route-set growth; a
+Generated result from a small application should not be assumed to scale.
 
 ## Sharded matcher
 
@@ -188,9 +199,9 @@ trusted executable deployment artifacts regardless of this option.
 - Use **`ShardedMatcher`** when a representative large-route deployment proves
   that its very cheap cold boot and smaller/lazy working set are worth slower
   first-use/warm behavior.
-- Use **`GeneratedMatcher`** only for a measured sparse/distinct/static-heavy
-  corpus. Avoid treating it as a blanket performance mode for dense shared-prefix
-  dynamic routing.
+- Use **`GeneratedMatcher`** only for a measured **small** sparse/distinct route
+  corpus. Do not extrapolate a small-route win to thousands of routes, and avoid
+  treating it as a blanket performance mode for dense shared-prefix routing.
 - Benchmark cold and warm behavior separately, especially when comparing FPM and
   persistent workers.
 - Rebuild route-cache artifacts after Webrick upgrades or route-definition
