@@ -2,6 +2,11 @@ name: Matcher Reference Benchmark
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - webrick-5/batch-1-correctness
+    paths:
+      - '.github/workflows/matcher-benchmark.yml'
 
 permissions:
   contents: read
@@ -33,6 +38,9 @@ jobs:
         run: |
           php -v
           php -i | grep -E '^(opcache.enable|opcache.jit|pcre.jit)' || true
+
+      - name: Matcher semantic sanity
+        run: php benchmark/matcher_sanity.php
 
       - name: FastRoute reference - 100 routes
         run: php benchmark/fastroute_reference.php --routes=100 --iters=100000 --rounds=5 --warmup=10000 | tee benchmark-fastroute-100.txt
