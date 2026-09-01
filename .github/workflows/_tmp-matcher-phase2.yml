@@ -6,10 +6,10 @@ on:
       - webrick-5/batch-1-correctness
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  phase2-benchmark:
+  phase2-finalize:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -21,246 +21,48 @@ jobs:
           coverage: none
           tools: composer:v2
       - run: composer install --no-interaction --no-progress --prefer-dist
-      - name: Create Phase 2 experiment benchmark
+      - name: Record Phase 2 decision
         shell: bash
         run: |
-          cat > benchmarks/MatcherPathPhase2ExperimentBench.php <<'PHP'
-          <?php
+          python3 <<'PY'
+          from pathlib import Path
 
-          declare(strict_types=1);
-
-          namespace Infocyph\Webrick\Benchmarks;
-
-          use PhpBench\Attributes as Bench;
-
-          #[Bench\Groups(['matcher', 'matcher-path-phase2'])]
-          #[Bench\Iterations(7)]
-          #[Bench\Revs(10000)]
-          #[Bench\Warmup(2)]
-          final class MatcherPathPhase2ExperimentBench
-          {
-              #[Bench\ParamProviders('providePaths')]
-              public function benchCurrentShape(array $params): void
-              {
-                  [$count, $prefix] = self::currentShape((string) $params['path']);
-                  self::guardShape($count, $prefix);
-              }
-
-              #[Bench\ParamProviders('providePaths')]
-              public function benchOffsetShape(array $params): void
-              {
-                  [$count, $prefix] = self::offsetShape((string) $params['path']);
-                  self::guardShape($count, $prefix);
-              }
-
-              #[Bench\ParamProviders('providePaths')]
-              public function benchOnePassShape(array $params): void
-              {
-                  [$count, $prefix] = self::onePassShape((string) $params['path']);
-                  self::guardShape($count, $prefix);
-              }
-
-              #[Bench\ParamProviders('provideSelectedSegments')]
-              public function benchCurrentSelectedSegment(array $params): void
-              {
-                  $value = self::currentSelectedSegment((string) $params['path'], (int) $params['segment']);
-                  self::guardSegment($value);
-              }
-
-              #[Bench\ParamProviders('provideSelectedSegments')]
-              public function benchOffsetSelectedSegment(array $params): void
-              {
-                  $value = self::offsetSelectedSegment((string) $params['path'], (int) $params['segment']);
-                  self::guardSegment($value);
-              }
-
-              #[Bench\ParamProviders('providePaths')]
-              public function benchCurrentShapeAndSegments(array $params): void
-              {
-                  $path = (string) $params['path'];
-                  [$count, $prefix] = self::currentShape($path);
-                  $segments = self::currentSegments($path);
-                  self::guardCombined($count, $prefix, $segments);
-              }
-
-              #[Bench\ParamProviders('providePaths')]
-              public function benchOnePassViewAndMaterialize(array $params): void
-              {
-                  [$count, $prefix, $segments] = self::onePassView((string) $params['path']);
-                  self::guardCombined($count, $prefix, $segments);
-              }
-
-              /** @return iterable<string, array{path:string}> */
-              public function providePaths(): iterable
-              {
-                  yield 'root' => ['path' => '/'];
-                  yield 'single' => ['path' => '/users'];
-                  yield 'shallow' => ['path' => '/users/42'];
-                  yield 'medium' => ['path' => '/api/v1/users/42'];
-                  yield 'deep' => ['path' => '/api/v1/accounts/42/orders/900/items/benchmark'];
-                  yield 'extra-slashes' => ['path' => '//api/v1/users/42//'];
-              }
-
-              /** @return iterable<string, array{path:string,segment:int}> */
-              public function provideSelectedSegments(): iterable
-              {
-                  yield 'shallow-last' => ['path' => '/users/42', 'segment' => 1];
-                  yield 'medium-middle' => ['path' => '/api/v1/users/42', 'segment' => 2];
-                  yield 'deep-middle' => ['path' => '/api/v1/accounts/42/orders/900/items/benchmark', 'segment' => 5];
-                  yield 'deep-first' => ['path' => '/api/v1/accounts/42/orders/900/items/benchmark', 'segment' => 0];
-                  yield 'extra-slashes' => ['path' => '//api/v1/users/42//', 'segment' => 2];
-              }
-
-              /** @return array{0:int,1:string} */
-              private static function currentShape(string $path): array
-              {
-                  $trimmed = trim($path, '/');
-                  if ($trimmed === '') {
-                      return [0, ''];
-                  }
-
-                  $slash = strpos($trimmed, '/');
-                  $prefix = $slash === false ? $trimmed : substr($trimmed, 0, $slash);
-
-                  return [substr_count($trimmed, '/') + 1, $prefix];
-              }
-
-              /** @return list<string> */
-              private static function currentSegments(string $path): array
-              {
-                  if ($path === '/' || $path === '') {
-                      return [];
-                  }
-
-                  $trimmed = trim($path, '/');
-
-                  return $trimmed === '' ? [] : explode('/', $trimmed);
-              }
-
-              private static function currentSelectedSegment(string $path, int $segment): ?string
-              {
-                  return self::currentSegments($path)[$segment] ?? null;
-              }
-
-              /** @return array{0:int,1:string} */
-              private static function offsetShape(string $path): array
-              {
-                  [$start, $end] = self::trimBounds($path);
-                  if ($start === $end) {
-                      return [0, ''];
-                  }
-
-                  $slash = strpos($path, '/', $start);
-                  $prefixEnd = $slash === false || $slash >= $end ? $end : $slash;
-                  $prefix = substr($path, $start, $prefixEnd - $start);
-                  $count = substr_count($path, '/', $start, $end - $start) + 1;
-
-                  return [$count, $prefix];
-              }
-
-              private static function offsetSelectedSegment(string $path, int $segment): ?string
-              {
-                  [$start, $end] = self::trimBounds($path);
-                  if ($start === $end) {
-                      return null;
-                  }
-
-                  $cursor = $start;
-                  for ($index = 0; $index < $segment; ++$index) {
-                      $slash = strpos($path, '/', $cursor);
-                      if ($slash === false || $slash >= $end) {
-                          return null;
-                      }
-                      $cursor = $slash + 1;
-                  }
-
-                  $slash = strpos($path, '/', $cursor);
-                  $stop = $slash === false || $slash >= $end ? $end : $slash;
-
-                  return substr($path, $cursor, $stop - $cursor);
-              }
-
-              /** @return array{0:int,1:string} */
-              private static function onePassShape(string $path): array
-              {
-                  [$start, $end] = self::trimBounds($path);
-                  if ($start === $end) {
-                      return [0, ''];
-                  }
-
-                  $count = 1;
-                  $prefixEnd = $end;
-                  for ($index = $start; $index < $end; ++$index) {
-                      if ($path[$index] !== '/') {
-                          continue;
-                      }
-                      if ($prefixEnd === $end) {
-                          $prefixEnd = $index;
-                      }
-                      ++$count;
-                  }
-
-                  return [$count, substr($path, $start, $prefixEnd - $start)];
-              }
-
-              /** @return array{0:int,1:string,2:list<string>} */
-              private static function onePassView(string $path): array
-              {
-                  [$start, $end] = self::trimBounds($path);
-                  if ($start === $end) {
-                      return [0, '', []];
-                  }
-
-                  $segments = [];
-                  $segmentStart = $start;
-                  for ($index = $start; $index < $end; ++$index) {
-                      if ($path[$index] !== '/') {
-                          continue;
-                      }
-                      $segments[] = substr($path, $segmentStart, $index - $segmentStart);
-                      $segmentStart = $index + 1;
-                  }
-                  $segments[] = substr($path, $segmentStart, $end - $segmentStart);
-
-                  return [count($segments), $segments[0], $segments];
-              }
-
-              /** @return array{0:int,1:int} */
-              private static function trimBounds(string $path): array
-              {
-                  $start = 0;
-                  $end = strlen($path);
-                  while ($start < $end && $path[$start] === '/') {
-                      ++$start;
-                  }
-                  while ($end > $start && $path[$end - 1] === '/') {
-                      --$end;
-                  }
-
-                  return [$start, $end];
-              }
-
-              private static function guardCombined(int $count, string $prefix, array $segments): void
-              {
-                  if ($count < 0 || $prefix === "\0" || count($segments) < 0) {
-                      throw new \LogicException('Unreachable benchmark guard.');
-                  }
-              }
-
-              private static function guardSegment(?string $value): void
-              {
-                  if ($value === "\0") {
-                      throw new \LogicException('Unreachable benchmark guard.');
-                  }
-              }
-
-              private static function guardShape(int $count, string $prefix): void
-              {
-                  if ($count < 0 || $prefix === "\0") {
-                      throw new \LogicException('Unreachable benchmark guard.');
-                  }
-              }
-          }
-          PHP
-      - name: Run Phase 2 experiment
-        run: vendor/bin/phpbench run benchmarks/MatcherPathPhase2ExperimentBench.php --bootstrap=vendor/autoload.php --report=aggregate
+          plan = Path('MATCHER_OPTIMIZATION_PLAN.md')
+          text = plan.read_text()
+          text = text.replace(
+              'Status: active development plan — Phase 1 complete  ',
+              'Status: active development plan — Phases 1–2 complete  ',
+              1,
+          )
+          phase = """## Phase 2 — Path scanner / request path view\n\nGoal: inspect a dynamic request path once and reuse the result.\n\nPrototype a compact scanner representation that can provide:\n\n- segment count;\n- first segment;\n- selected segment values;\n- segment start/end offsets;\n- lazy parameter materialization.\n\nBenchmark at least two implementations:\n\n1. current string helpers (`trim`, `strpos`, `substr_count`, optional `explode`);\n2. one-pass offset scanner.\n\nReject the scanner if PHP-level scanning is slower than the current C-backed string primitives on representative route sets.\n"""
+          completion = phase + """\n**Status: complete (2026-09-01) — scanner rejected by benchmark.**\n\nDecision record:\n\n- The current C-backed string strategy remains the production design: `trim()`, `strpos()`, `substr_count()`, and lazy `explode()` only when segment materialization is actually required.\n- A PHP one-pass scanner was benchmarked for segment count + first-prefix extraction and for a materialized request-path view. It was slower for every representative path shape.\n- A second candidate that avoided `explode()` by walking to one selected segment with repeated `strpos()` calls was also slower for every tested segment position, including the first segment.\n- No `PathView` object/array is introduced. Allocating a per-request path representation would add cost to PCRE-only dynamic hits that currently never need segment materialization.\n- `MatcherPathInspectionBench` now permanently retains the current-vs-one-pass comparison so this rejected direction remains reproducible.\n- This phase intentionally makes no production matcher change: the acceptance rule required a measured win, and none was present.\n\nPHP 8.4.25 experiment results (GitHub runner, opcache disabled):\n\n| Inspection case | Current | Candidate | Result |\n| --- | ---: | ---: | --- |\n| shape, shallow path | 0.285 µs | 0.529 µs one-pass | current ~46% lower latency |\n| shape, medium path | 0.288 µs | 0.672 µs one-pass | current ~57% lower latency |\n| shape, deep path | 0.296 µs | 1.264 µs one-pass | current ~77% lower latency |\n| shape + segments, shallow | 0.491 µs | 0.659 µs one-pass view | current ~25% lower latency |\n| shape + segments, medium | 0.518 µs | 0.855 µs one-pass view | current ~39% lower latency |\n| shape + segments, deep | 0.591 µs | 1.533 µs one-pass view | current ~61% lower latency |\n| selected segment, shallow | 0.250 µs explode/index | 0.416 µs offset walk | current ~40% lower latency |\n| selected segment, deep middle | 0.352 µs explode/index | 0.577 µs offset walk | current ~39% lower latency |\n\nPhase 3 therefore starts from the existing lazy path materialization model. Constraint specialization must improve matcher work without depending on a PHP-level request-path scanner.\n"""
+          if '**Status: complete (2026-09-01) — scanner rejected by benchmark.**' not in text:
+              if phase not in text:
+                  raise SystemExit('Phase 2 plan marker not found')
+              text = text.replace(phase, completion, 1)
+          plan.write_text(text)
+          PY
+      - name: Apply PHPForge style
+        run: |
+          vendor/bin/pint \
+            --config=vendor/infocyph/phpforge/resources/pint.json \
+            benchmarks/MatcherPathInspectionBench.php
+      - name: Syntax check retained benchmark
+        run: php -l benchmarks/MatcherPathInspectionBench.php
+      - name: Run complete PHPForge CI gate
+        run: composer ic:ci
+      - name: Run retained Phase 2 benchmark
+        run: vendor/bin/phpbench run benchmarks/MatcherPathInspectionBench.php --bootstrap=vendor/autoload.php --report=aggregate
+      - name: Commit completed Phase 2 and remove helper workflow
+        shell: bash
+        run: |
+          rm .github/workflows/_tmp-matcher-phase2.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            MATCHER_OPTIMIZATION_PLAN.md \
+            benchmarks/MatcherPathInspectionBench.php \
+            .github/workflows/_tmp-matcher-phase2.yml
+          git diff --cached --quiet && exit 0
+          git commit --no-verify -m "perf: complete matcher phase 2 path decision"
+          git push origin HEAD:webrick-5/batch-1-correctness
