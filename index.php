@@ -160,11 +160,18 @@ $errorHandler = new ErrorHandler(
 
         $message = $error instanceof HttpExceptionInterface ? $error->getPublicMessage() : 'HTTP Error';
 
-        return Response::json([
+        $response = Response::json([
             'error' => $message,
             'status' => $status,
             'path' => $request->getUri()->getPath(),
-        ], $status, $headers);
+        ], $status);
+        foreach ($headers as $name => $value) {
+            if (is_string($name) && is_string($value)) {
+                $response = $response->withHeader($name, $value);
+            }
+        }
+
+        return $response;
     },
 );
 

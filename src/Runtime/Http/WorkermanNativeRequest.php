@@ -96,7 +96,10 @@ final readonly class WorkermanNativeRequest
         return $target->{$method}();
     }
 
-    /** @param array<string,mixed> $server @param array<string,mixed> $headers */
+    /**
+     * @param array<string,mixed> $server
+     * @param array<string,mixed> $headers
+     */
     private static function copyHeader(array &$server, array $headers, string $source, string $target): void
     {
         $value = $headers[$source] ?? null;

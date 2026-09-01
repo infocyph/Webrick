@@ -81,7 +81,10 @@ class UrlGenerator
         return \hash_hmac($algorithm, $payload, $key);
     }
 
-    /** @param array<string,RouteParam> $params @param array<string,QueryValue> $query */
+    /**
+     * @param array<string,RouteParam> $params
+     * @param array<string,QueryValue> $query
+     */
     public function action(
         callable|string $handler,
         array $params = [],
@@ -108,7 +111,10 @@ class UrlGenerator
         return $this->signedConfig;
     }
 
-    /** @param array<string,RouteParam> $params @param array<string,QueryValue> $query */
+    /**
+     * @param array<string,RouteParam> $params
+     * @param array<string,QueryValue> $query
+     */
     public function signed(
         string $name,
         array $params = [],
@@ -130,7 +136,10 @@ class UrlGenerator
         );
     }
 
-    /** @param array<string,RouteParam> $params @param array<string,QueryValue> $query */
+    /**
+     * @param array<string,RouteParam> $params
+     * @param array<string,QueryValue> $query
+     */
     public function temporary(
         string $name,
         array $params = [],
@@ -149,7 +158,10 @@ class UrlGenerator
         );
     }
 
-    /** @param array<string,RouteParam> $params @param array<string,QueryValue> $query */
+    /**
+     * @param array<string,RouteParam> $params
+     * @param array<string,QueryValue> $query
+     */
     public function temporaryUntil(
         string $name,
         DateTimeInterface|int $expiresAt,
@@ -176,7 +188,10 @@ class UrlGenerator
         return $this->buildResolvedPath($path, $query, $absolute);
     }
 
-    /** @param array<string,RouteParam> $params @param array<string,QueryValue> $query */
+    /**
+     * @param array<string,RouteParam> $params
+     * @param array<string,QueryValue> $query
+     */
     public function urlFor(
         string $name,
         array $params = [],
@@ -294,7 +309,10 @@ class UrlGenerator
         return $this->appendQueryString($target, $query);
     }
 
-    /** @param array<string,QueryValue> $query @return array<string,QueryValue> */
+    /**
+     * @param array<string,QueryValue> $query
+     * @return array<string,QueryValue>
+     */
     private function canonicalizeQuery(array $query): array
     {
         \ksort($query);
@@ -353,7 +371,10 @@ class UrlGenerator
             && $parts['host'] !== '';
     }
 
-    /** @param array<mixed,mixed> $aliases @return array<string, array{0:string,1:?string}> */
+    /**
+     * @param array<array-key,mixed> $aliases
+     * @return array<string,array{0:string,1:?string}>
+     */
     private function normalizeAliasIndex(array $aliases): array
     {
         $normalized = [];

@@ -18,11 +18,11 @@ final class UploadedFile
     public function __construct(
         private string|BodyStream $src,
         private readonly ?int $size = null,
-        int $err = UPLOAD_ERR_OK,
+        int $error = UPLOAD_ERR_OK,
         private readonly ?string $clientName = null,
         private readonly ?string $clientType = null,
     ) {
-        if (!in_array($err, [
+        if (!in_array($error, [
             UPLOAD_ERR_OK,
             UPLOAD_ERR_INI_SIZE,
             UPLOAD_ERR_FORM_SIZE,
@@ -37,7 +37,7 @@ final class UploadedFile
         if ($this->size !== null && $this->size < 0) {
             throw new InvalidArgumentException('Upload size must be zero or greater');
         }
-        $this->err = $err;
+        $this->err = $error;
     }
 
     /**

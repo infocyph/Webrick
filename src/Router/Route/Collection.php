@@ -57,7 +57,7 @@ final class Collection implements IteratorAggregate
         $this->aliasIndex = null;
     }
 
-    /** @param string[] $aliases */
+    /** @param list<string> $aliases */
     public function addAliases(RouteInterface $route, array $aliases): void
     {
         $this->assertMutable();
@@ -270,13 +270,18 @@ final class Collection implements IteratorAggregate
             $this->byPath[$route->getPath()] = $route;
         }
 
+        $this->removeInvalidAliases();
+        $this->aliasIndex = null;
+    }
+
+    private function removeInvalidAliases(): void
+    {
         foreach (array_keys($this->aliases) as $alias) {
             $route = $this->aliases[$alias];
             if (!in_array($route, $this->routes, true) || isset($this->byName[$alias])) {
                 unset($this->aliases[$alias]);
             }
         }
-        $this->aliasIndex = null;
     }
 
     private function resetIndexes(): void
@@ -292,7 +297,10 @@ final class Collection implements IteratorAggregate
         return RouteIdentity::canonicalKey($route->getMethod(), $route->getDomain(), $route->getPath());
     }
 
-    /** @param list<string> $aliases @return list<string> */
+    /**
+     * @param list<string> $aliases
+     * @return list<string>
+     */
     private function validateAliasBatch(RouteInterface $route, array $aliases): array
     {
         $normalized = [];

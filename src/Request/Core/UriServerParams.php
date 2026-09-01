@@ -8,7 +8,10 @@ use Infocyph\Webrick\Request\Request;
 
 final class UriServerParams
 {
-    /** @param array<string,mixed> $server @return array{0:string,1:int|null} */
+    /**
+     * @param array<string,mixed> $server
+     * @return array{0:string,1:int|null}
+     */
     public static function detectHostPort(array $server, ?int $trustedProxyFlags = null): array
     {
         $forwardedHost = self::detectForwardedHost($server, $trustedProxyFlags);
@@ -48,21 +51,24 @@ final class UriServerParams
         return $fromXForwarded ?? self::protoFromServer($server);
     }
 
-    /** @param array<string,mixed> $server @return array{0:string,1:int|null}|null */
+    /**
+     * @param array<string,mixed> $server
+     * @return array{0:string,1:int|null}|null
+     */
     private static function detectForwardedHost(array $server, ?int $trustedProxyFlags): ?array
     {
-        $forwarded = self::lastServerCsvToken($server, 'HTTP_FORWARDED');
+        $forwarded = self::firstServerCsvToken($server, 'HTTP_FORWARDED');
         if (
             self::proxyFlagEnabled(Request::HEADER_FORWARDED, $server, $trustedProxyFlags)
             && $forwarded !== null
             && preg_match('/(?:^|;)\s*host=(?:"([^"]+)"|([^;,\s]+))/i', $forwarded, $matches) === 1
         ) {
-            $raw = $matches[1] !== '' ? $matches[1] : ($matches[2] ?? '');
+            $raw = $matches[1] !== '' ? $matches[1] : $matches[2];
 
             return self::splitHostPort(trim($raw));
         }
 
-        $forwardedHost = self::lastServerCsvToken($server, 'HTTP_X_FORWARDED_HOST');
+        $forwardedHost = self::firstServerCsvToken($server, 'HTTP_X_FORWARDED_HOST');
         if (self::proxyFlagEnabled(Request::HEADER_X_FORWARDED_HOST, $server, $trustedProxyFlags) && $forwardedHost !== null) {
             return self::splitHostPort($forwardedHost);
         }
@@ -71,19 +77,7 @@ final class UriServerParams
     }
 
     /** @param array<string,mixed> $server */
-    private static function forwardedPort(array $server, ?int $trustedProxyFlags): ?int
-    {
-        if (!self::proxyFlagEnabled(Request::HEADER_X_FORWARDED_PORT, $server, $trustedProxyFlags)) {
-            return null;
-        }
-
-        $forwardedPort = self::lastServerCsvToken($server, 'HTTP_X_FORWARDED_PORT');
-
-        return $forwardedPort === null ? null : self::normPort($forwardedPort);
-    }
-
-    /** @param array<string,mixed> $server */
-    private static function lastServerCsvToken(array $server, string $key): ?string
+    private static function firstServerCsvToken(array $server, string $key): ?string
     {
         $value = self::serverString($server, $key);
         if ($value === null || $value === '') {
@@ -94,9 +88,21 @@ final class UriServerParams
         if ($tokens === []) {
             return null;
         }
-        $last = trim($tokens[array_key_last($tokens)]);
+        $first = trim($tokens[0]);
 
-        return $last === '' ? null : $last;
+        return $first === '' ? null : $first;
+    }
+
+    /** @param array<string,mixed> $server */
+    private static function forwardedPort(array $server, ?int $trustedProxyFlags): ?int
+    {
+        if (!self::proxyFlagEnabled(Request::HEADER_X_FORWARDED_PORT, $server, $trustedProxyFlags)) {
+            return null;
+        }
+
+        $forwardedPort = self::firstServerCsvToken($server, 'HTTP_X_FORWARDED_PORT');
+
+        return $forwardedPort === null ? null : self::normPort($forwardedPort);
     }
 
     private static function normPort(string $port): ?int
@@ -116,7 +122,7 @@ final class UriServerParams
             return null;
         }
 
-        $last = self::lastServerCsvToken($server, 'HTTP_FORWARDED');
+        $last = self::firstServerCsvToken($server, 'HTTP_FORWARDED');
         if ($last === null) {
             return null;
         }
@@ -152,7 +158,7 @@ final class UriServerParams
             return null;
         }
 
-        $last = self::lastServerCsvToken($server, 'HTTP_X_FORWARDED_PROTO');
+        $last = self::firstServerCsvToken($server, 'HTTP_X_FORWARDED_PROTO');
         if ($last === null) {
             return null;
         }

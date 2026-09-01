@@ -25,7 +25,10 @@ final class RequestHeaders
 
     public function __construct(private readonly Request|ServerRequest $req) {}
 
-    /** @param array<string,mixed> $srv @return array<string,list<string>> */
+    /**
+     * @param array<string,mixed> $srv
+     * @return array<string,list<string>>
+     */
     public static function extractFromServer(array $srv): array
     {
         $out = self::viaServerFallback($srv);
@@ -118,7 +121,11 @@ final class RequestHeaders
         return $this->req->getHeaderLine($name);
     }
 
-    /** @param array<string,mixed> $srv @param array<string,list<string>> $out @param-out array<string,list<string>> $out */
+    /**
+     * @param array<string,mixed> $srv
+     * @param array<string,list<string>> $out
+     * @param-out array<string,list<string>> $out
+     */
     private static function backfillAuthorization(array $srv, array &$out): void
     {
         if (isset($out['Authorization'])) {
@@ -143,7 +150,11 @@ final class RequestHeaders
         }
     }
 
-    /** @param array<string,mixed> $srv @param array<string,list<string>> $out @param-out array<string,list<string>> $out */
+    /**
+     * @param array<string,mixed> $srv
+     * @param array<string,list<string>> $out
+     * @param-out array<string,list<string>> $out
+     */
     private static function backfillContentHeaders(array $srv, array &$out): void
     {
         foreach (['CONTENT_TYPE' => 'Content-Type', 'CONTENT_LENGTH' => 'Content-Length', 'CONTENT_MD5' => 'Content-Md5'] as $serverKey => $header) {
@@ -153,7 +164,10 @@ final class RequestHeaders
         }
     }
 
-    /** @param array<string,mixed> $srv @return array<string,list<string>> */
+    /**
+     * @param array<string,mixed> $srv
+     * @return array<string,list<string>>
+     */
     private static function viaServerFallback(array $srv): array
     {
         $out = [];
@@ -195,7 +209,10 @@ final class RequestHeaders
         return HttpUtils::parseHttpDate($value);
     }
 
-    /** @param array<string,list<string>> $headers @param-out array<string,list<string>> $headers */
+    /**
+     * @param array<string,list<string>> $headers
+     * @param-out array<string,list<string>> $headers
+     */
     private function injectAuthorisation(array &$headers): void
     {
         if (!isset($headers['Authorization'])) {

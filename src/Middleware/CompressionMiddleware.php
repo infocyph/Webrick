@@ -43,18 +43,31 @@ final readonly class CompressionMiddleware
         'video/',
     ];
 
-    /** @param list<string> $prefOrder @param list<string> $excludeTypes @param list<string> $onlyTypes */
+    /** @var list<string> */
+    private array $excludeTypes;
+
+    /** @var list<string> */
+    private array $onlyTypes;
+
+    /** @var list<string> */
+    private array $prefOrder;
+
+    /**
+     * @param array<array-key,mixed> $prefOrder
+     * @param array<array-key,mixed> $excludeTypes
+     * @param array<array-key,mixed> $onlyTypes
+     */
     public function __construct(
         private int $minBytes = 1400,
-        private array $prefOrder = ['zstd', 'br', 'gzip'],
+        array $prefOrder = ['zstd', 'br', 'gzip'],
         private string $etagMode = self::ETAG_WEAK_ON_ENCODE,
         private int $gzipLevel = 6,
         private int $brotliQuality = 4,
         private int $zstdLevel = 3,
         private string $etagDeriveSalt = 'enc-v1',
         private int $maxBufferBytes = 8_388_608,
-        private array $excludeTypes = [],
-        private array $onlyTypes = [],
+        array $excludeTypes = [],
+        array $onlyTypes = [],
         private bool $forceAddVary = true,
     ) {
         if ($this->minBytes < 0 || $this->maxBufferBytes < 0 || $this->maxBufferBytes < $this->minBytes) {
@@ -67,13 +80,9 @@ final readonly class CompressionMiddleware
         ], true)) {
             throw new \InvalidArgumentException('Unknown compression ETag mode.');
         }
-        foreach ($this->prefOrder as $algorithm) {
-            if (!is_string($algorithm) || !array_key_exists($algorithm, self::ALGO)) {
-                throw new \InvalidArgumentException('Compression preference order contains an unsupported content coding.');
-            }
-        }
-        self::assertStringList($this->excludeTypes, 'excludeTypes');
-        self::assertStringList($this->onlyTypes, 'onlyTypes');
+        $this->prefOrder = self::normalizePreferenceOrder($prefOrder);
+        $this->excludeTypes = self::normalizeStringList($excludeTypes, 'excludeTypes');
+        $this->onlyTypes = self::normalizeStringList($onlyTypes, 'onlyTypes');
     }
 
     /** @param Closure(Request):Response $next */
@@ -117,16 +126,6 @@ final readonly class CompressionMiddleware
         return $this->adjustValidators($req, $encodedResponse, $encoded, $algorithm);
     }
 
-    /** @param array<array-key,mixed> $values */
-    private static function assertStringList(array $values, string $name): void
-    {
-        foreach ($values as $value) {
-            if (!is_string($value)) {
-                throw new \InvalidArgumentException("Compression {$name} must contain only strings.");
-            }
-        }
-    }
-
     /** @return array<string,bool> */
     private static function availableAlgorithms(): array
     {
@@ -142,6 +141,49 @@ final readonly class CompressionMiddleware
         }
 
         return $available;
+    }
+
+    /** @param array<string,float> $quality */
+    private static function identityQuality(array $quality, ?float $wildcard): float
+    {
+        if (array_key_exists('identity', $quality)) {
+            return $quality['identity'];
+        }
+
+        return $wildcard === 0.0 ? 0.0 : 1.0;
+    }
+
+    /**
+     * @param array<array-key,mixed> $algorithms
+     * @return list<string>
+     */
+    private static function normalizePreferenceOrder(array $algorithms): array
+    {
+        $normalized = self::normalizeStringList($algorithms, 'prefOrder');
+        foreach ($normalized as $algorithm) {
+            if (!array_key_exists($algorithm, self::ALGO)) {
+                throw new \InvalidArgumentException('Compression preference order contains an unsupported content coding.');
+            }
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * @param array<array-key,mixed> $values
+     * @return list<string>
+     */
+    private static function normalizeStringList(array $values, string $name): array
+    {
+        $normalized = [];
+        foreach ($values as $value) {
+            if (!is_string($value)) {
+                throw new \InvalidArgumentException("Compression {$name} must contain only strings.");
+            }
+            $normalized[] = $value;
+        }
+
+        return $normalized;
     }
 
     private function adjustValidators(Request $req, Response $resp, string $encodedBytes, string $algorithm): Response
@@ -276,9 +318,7 @@ final readonly class CompressionMiddleware
 
         $quality = $this->parseAcceptEncoding($header);
         $wildcard = $quality['*'] ?? null;
-        $identityQ = array_key_exists('identity', $quality)
-            ? $quality['identity']
-            : ($wildcard === 0.0 ? 0.0 : 1.0);
+        $identityQ = self::identityQuality($quality, $wildcard);
         $best = null;
         $bestQ = 0.0;
         $available = self::availableAlgorithms();

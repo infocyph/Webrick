@@ -22,7 +22,7 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
  * @phpstan-type DynamicEntry array{segments:list<SegmentSpec>,verbs:VerbMap}
  * @phpstan-type DynamicBuckets array<int,array<string,array<string,DynamicEntry>>>
  * @phpstan-type CanonicalGroup array{static:array<string,VerbMap>,dynamic:DynamicBuckets}
- * @phpstan-type CompiledGroup array{routes:array<int,mixed>,static:array<string,array<string,int>>,static_allowed:array<string,list<string>>,dynamic:array<string,mixed>,dynamic_allowed:array<int,array<string,array<string,mixed>>>}
+ * @phpstan-import-type MatcherGroup from CompiledMatcherFastEngine as CompiledGroup
  */
 final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
 {

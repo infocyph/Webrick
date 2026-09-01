@@ -36,7 +36,7 @@ final readonly class ResponseWriterSupport
 
         $producer = $response->getProducer();
         if ($producer !== null) {
-            yield from self::nonEmptyChunks($producer());
+            yield from self::producerChunks($producer);
 
             return;
         }
@@ -50,21 +50,7 @@ final readonly class ResponseWriterSupport
             return;
         }
 
-        $body = $response->getBody();
-        if ($body->isSeekable()) {
-            $body->rewind();
-        }
-        while (!$body->eof()) {
-            $chunk = $body->read($chunkSize);
-            if ($chunk === '') {
-                if ($body->eof()) {
-                    break;
-                }
-
-                throw new RuntimeException('Response body stream made no read progress before EOF.');
-            }
-            yield $chunk;
-        }
+        yield from self::bodyChunks($response->getBody(), $chunkSize);
     }
 
     public static function headerAllowed(string $name, string $value, bool $http2): bool
@@ -117,22 +103,51 @@ final readonly class ResponseWriterSupport
         return $response->getBodySize();
     }
 
+    /** @phpstan-impure */
+    private static function atEnd(\Infocyph\Webrick\Interfaces\BodyStream $body): bool
+    {
+        return $body->eof();
+    }
+
+    /** @return Generator<int,string,void,void> */
+    private static function bodyChunks(\Infocyph\Webrick\Interfaces\BodyStream $body, int $chunkSize): Generator
+    {
+        if ($body->isSeekable()) {
+            $body->rewind();
+        }
+        while (!self::atEnd($body)) {
+            $chunk = $body->read($chunkSize);
+            if ($chunk !== '') {
+                yield $chunk;
+
+                continue;
+            }
+            if (self::atEnd($body)) {
+                return;
+            }
+
+            throw new RuntimeException('Response body stream made no read progress before EOF.');
+        }
+    }
+
     private static function forbidsContentLength(int $status): bool
     {
         return ($status >= 100 && $status < 200)
             || $status === StatusEnum::NO_CONTENT->value;
     }
 
-    /** @param iterable<mixed> $chunks @return Generator<int,string,void,void> */
-    private static function nonEmptyChunks(iterable $chunks): iterable
+    /** @return Generator<int,string,void,void> */
+    private static function producerChunks(\Closure $producer): Generator
     {
+        $chunks = $producer();
+        if (!is_iterable($chunks)) {
+            throw new UnexpectedValueException('Streaming response producer must return an iterable.');
+        }
         foreach ($chunks as $chunk) {
             if (!is_string($chunk)) {
                 throw new UnexpectedValueException('Streaming response producers must yield strings.');
             }
-            if ($chunk !== '') {
-                yield $chunk;
-            }
+            yield $chunk;
         }
     }
 

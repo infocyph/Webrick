@@ -54,7 +54,7 @@ class NativeServerRequest extends ServerRequest
             $httpVersion,
             self::stringMap($_POST),
             self::stringMap($_FILES),
-            query: self::stringMap($_GET),
+            query: $_GET === [] ? null : self::stringMap($_GET),
             cookies: self::stringMap($_COOKIE),
         );
 

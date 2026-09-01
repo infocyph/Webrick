@@ -267,7 +267,7 @@ class Response
     }
 
     /**
-     * @param callable(): (iterable<string>|string)|iterable<string> $producer
+     * @param callable(): (iterable<mixed>|string)|iterable<mixed> $producer
      * @param array<string,string|list<string>> $headers
      */
     public static function stream(
@@ -520,7 +520,7 @@ class Response
     }
 
     /**
-     * @param callable(): (iterable<string>|string)|iterable<string> $producer
+     * @param callable(): (iterable<mixed>|string)|iterable<mixed> $producer
      * @return \Closure():iterable<string>
      */
     private static function normalizeProducer(callable|iterable $producer): \Closure

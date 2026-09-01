@@ -27,7 +27,7 @@ final readonly class ResponseCacheMiddleware
 
     private CacheItemPoolInterface $store;
 
-    /** @param list<string> $defaultVary */
+    /** @param list<mixed> $defaultVary */
     public function __construct(
         ?CacheItemPoolInterface $store = null,
         private int $ttlSeconds = 10,

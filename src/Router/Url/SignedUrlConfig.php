@@ -38,7 +38,10 @@ final readonly class SignedUrlConfig
     /** @var list<string> */
     public array $verificationKeys;
 
-    /** @param list<string> $ignoredQueryParams @param list<string> $verificationKeys */
+    /**
+     * @param array<array-key,mixed> $ignoredQueryParams
+     * @param array<array-key,mixed> $verificationKeys
+     */
     public function __construct(
         ?string $generationKey = null,
         array $verificationKeys = [],
@@ -124,7 +127,10 @@ final readonly class SignedUrlConfig
         );
     }
 
-    /** @param array<int|string,mixed> $values @return list<string> */
+    /**
+     * @param array<array-key,mixed> $values
+     * @return list<string>
+     */
     private static function filterStringList(array $values): array
     {
         $filtered = [];
@@ -150,7 +156,10 @@ final readonly class SignedUrlConfig
         return $algorithm;
     }
 
-    /** @param list<string> $ignoredQueryParams @return list<string> */
+    /**
+     * @param array<array-key,mixed> $ignoredQueryParams
+     * @return list<string>
+     */
     private static function normalizeIgnoredQueryParams(
         array $ignoredQueryParams,
         string $signatureParam,
@@ -158,6 +167,9 @@ final readonly class SignedUrlConfig
     ): array {
         $normalized = [];
         foreach ($ignoredQueryParams as $param) {
+            if (!\is_string($param)) {
+                continue;
+            }
             $param = \trim($param);
             if ($param === '' || $param === $signatureParam || $param === $expiryParam) {
                 continue;
@@ -245,11 +257,17 @@ final readonly class SignedUrlConfig
         );
     }
 
-    /** @param list<string> $verificationKeys @return list<string> */
+    /**
+     * @param array<array-key,mixed> $verificationKeys
+     * @return list<string>
+     */
     private static function normalizeVerificationKeys(array $verificationKeys, ?string $generationKey): array
     {
         $normalized = [];
         foreach ($verificationKeys as $key) {
+            if (!\is_string($key)) {
+                continue;
+            }
             $key = \trim($key);
             if ($key === '') {
                 continue;

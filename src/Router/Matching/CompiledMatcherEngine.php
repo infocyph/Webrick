@@ -15,12 +15,12 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
  * This class only resolves the winning scalar route ID into its central payload
  * and materializes a CompiledRoute when callers explicitly request MatchOutcome.
  *
- * @phpstan-type MatcherGroup array{routes:array<int,mixed>,static:array<string,array<string,int>>,static_allowed:array<string,list<string>>,dynamic:array<string,mixed>,dynamic_allowed:array<int,array<string,array<string,mixed>>>}
+ * @phpstan-import-type MatcherGroup from CompiledMatcherFastEngine
  * @phpstan-type CompiledMatch int|array{0:int,1:array<string,string>}|MatchOutcome
  */
 final class CompiledMatcherEngine
 {
-    private CompiledMatcherFastEngine $fastEngine;
+    private readonly CompiledMatcherFastEngine $fastEngine;
 
     /** @var array<int,CompiledRoute> */
     private array $materialized = [];
@@ -88,25 +88,6 @@ final class CompiledMatcherEngine
     }
 
     /**
-     * @param CompiledMatch $result
-     * @param list<MatcherGroup> $groups
-     */
-    private function richOutcome(int|array|MatchOutcome $result, array $groups, string $method): MatchOutcome
-    {
-        if ($result instanceof MatchOutcome) {
-            return $result;
-        }
-
-        $id = is_int($result) ? $result : $result[0];
-        $params = is_int($result) ? [] : $result[1];
-        $route = $this->materialize($this->routePayload($groups, $id), $id);
-        $headFallback = $method === HttpMethodEnum::HEAD->value
-            && HttpMethodEnum::normalize($route->getMethod()) === HttpMethodEnum::GET->value;
-
-        return MatchOutcome::found($route, $params, $headFallback);
-    }
-
-    /**
      * @param list<MatcherGroup> $groups
      */
     private static function routePayload(array $groups, int $id): mixed
@@ -130,5 +111,24 @@ final class CompiledMatcherEngine
         }
 
         return $this->materialized[$id] ??= matcher_materialize_cached_route($value);
+    }
+
+    /**
+     * @param CompiledMatch $result
+     * @param list<MatcherGroup> $groups
+     */
+    private function richOutcome(int|array|MatchOutcome $result, array $groups, string $method): MatchOutcome
+    {
+        if ($result instanceof MatchOutcome) {
+            return $result;
+        }
+
+        $id = is_int($result) ? $result : $result[0];
+        $params = is_int($result) ? [] : $result[1];
+        $route = $this->materialize(self::routePayload($groups, $id), $id);
+        $headFallback = $method === HttpMethodEnum::HEAD->value
+            && HttpMethodEnum::normalize($route->getMethod()) === HttpMethodEnum::GET->value;
+
+        return MatchOutcome::found($route, $params, $headFallback);
     }
 }

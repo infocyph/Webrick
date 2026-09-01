@@ -9,7 +9,11 @@ use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
 use Infocyph\Webrick\Exceptions\RouteNotFoundException;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 
-/** Compact matcher backed by the compiled matcher IR. */
+/**
+ * Compact matcher backed by the compiled matcher IR.
+ *
+ * @phpstan-import-type MatcherGroup from CompiledMatcherFastEngine
+ */
 final class FusedMatcher extends AbstractMatcher implements MatcherInterface
 {
     use MatcherCacheLifecycleTrait;
@@ -28,12 +32,12 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
 
     private bool $cacheWriteEnabled = false;
 
-    /** @var array<string,array<string,mixed>>|null */
+    /** @var array<string,MatcherGroup>|null */
     private ?array $compiledHosts = null;
 
     private CompiledMatcherEngine $engine;
 
-    /** @var array<string,mixed>|null */
+    /** @var MatcherGroup|null */
     private ?array $fastDefaultGroup = null;
 
     private CompiledMatcherFastEngine $fastEngine;
@@ -71,9 +75,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         if ($this->cacheEnabled && is_file($this->cacheFile)) {
             $this->loadCacheBlob();
         }
-        if ($this->compiledHosts === null) {
-            $this->compiledHosts = $this->compileHosts();
-        }
+        $this->compiledHosts ??= $this->compileHosts();
 
         if (count($this->compiledHosts) === 1 && isset($this->compiledHosts['*'])) {
             $this->fastDefaultGroup = $this->compiledHosts['*'];
@@ -145,15 +147,6 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         $this->fastEngine ??= new CompiledMatcherFastEngine();
     }
 
-    /** @return array<string,array<string,mixed>> */
-    private function compileHosts(): array
-    {
-        $compiled = new CompiledMatcherIndexCompiler()->compile($this->index->hosts());
-        $compact = CompiledMatcherIrCompactor::compactHosts($compiled);
-
-        return CompactMatcherIndexValidator::validateHosts($compact);
-    }
-
     /**
      * @param array<array-key,mixed> $hosts
      * @param array<array-key,mixed> $alias
@@ -162,6 +155,15 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
     private function cacheHash(array $hosts, array $alias, array $middleware): string
     {
         return hash('xxh128', serialize([$hosts, $alias, $middleware]));
+    }
+
+    /** @return array<string,MatcherGroup> */
+    private function compileHosts(): array
+    {
+        $compiled = new CompiledMatcherIndexCompiler()->compile($this->index->hosts());
+        $compact = CompiledMatcherIrCompactor::compactHosts($compiled);
+
+        return CompactMatcherIndexValidator::validateHosts($compact);
     }
 
     private function dumpCache(): void

@@ -53,7 +53,10 @@ final readonly class InputSanitizerMiddleware
             || (HttpUtils::isJsonContentType($contentType) && $this->touchJsonBodies);
     }
 
-    /** @param array<mixed> $input @return array<string,mixed> */
+    /**
+     * @param array<mixed> $input
+     * @return array<string,mixed>
+     */
     private function stringKeyMap(array $input): array
     {
         $result = [];

@@ -53,24 +53,7 @@ final class SecurityHeaders
         string $permissions = 'camera=(), geolocation=(), microphone=()',
         bool $secureRequest = false,
     ): Response {
-        $referrer = strtolower(trim($referrer));
-        if (!isset(self::REFERRER_VALUES[$referrer])) {
-            throw new \InvalidArgumentException('Unsupported Referrer-Policy value.');
-        }
-
-        $xfo = strtoupper(trim($xfo));
-        if (!isset(self::XFO_VALUES[$xfo])) {
-            throw new \InvalidArgumentException('X-Frame-Options must be DENY or SAMEORIGIN.');
-        }
-
-        if ($corp !== null && $corp !== '') {
-            $corp = strtolower(trim($corp));
-            if (!isset(self::CORP_VALUES[$corp])) {
-                throw new \InvalidArgumentException(
-                    'Cross-Origin-Resource-Policy must be same-origin, same-site, or cross-origin.',
-                );
-            }
-        }
+        [$referrer, $xfo, $corp] = self::validatedPolicy($referrer, $xfo, $corp);
 
         $r = self::setIfAbsent($r, 'X-Content-Type-Options', 'nosniff');
         $r = self::setIfAbsent($r, 'X-Frame-Options', $xfo);
@@ -96,5 +79,32 @@ final class SecurityHeaders
     private static function setIfAbsent(Response $r, string $name, string $value): Response
     {
         return $r->hasHeader($name) ? $r : $r->withHeader($name, $value);
+    }
+
+    /** @return array{string,string,?string} */
+    private static function validatedPolicy(string $referrer, string $xfo, ?string $corp): array
+    {
+        $referrer = strtolower(trim($referrer));
+        if (!isset(self::REFERRER_VALUES[$referrer])) {
+            throw new \InvalidArgumentException('Unsupported Referrer-Policy value.');
+        }
+
+        $xfo = strtoupper(trim($xfo));
+        if (!isset(self::XFO_VALUES[$xfo])) {
+            throw new \InvalidArgumentException('X-Frame-Options must be DENY or SAMEORIGIN.');
+        }
+
+        if ($corp === null || $corp === '') {
+            return [$referrer, $xfo, null];
+        }
+
+        $corp = strtolower(trim($corp));
+        if (!isset(self::CORP_VALUES[$corp])) {
+            throw new \InvalidArgumentException(
+                'Cross-Origin-Resource-Policy must be same-origin, same-site, or cross-origin.',
+            );
+        }
+
+        return [$referrer, $xfo, $corp];
     }
 }

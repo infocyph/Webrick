@@ -68,12 +68,12 @@ class ServerRequest extends Message
     private ?array $variableMap = null;
 
     /**
-     * @param array<string,mixed> $server
-     * @param array<string,string|list<string>> $headers
-     * @param array<string,mixed>|object|null $parsed
-     * @param array<string,mixed> $files
-     * @param array<string,mixed>|null $query
-     * @param array<string,mixed> $cookies
+     * @param array<array-key,mixed> $server
+     * @param array<array-key,mixed> $headers
+     * @param array<array-key,mixed>|object|null $parsed
+     * @param array<array-key,mixed> $files
+     * @param array<array-key,mixed>|null $query
+     * @param array<array-key,mixed> $cookies
      */
     public function __construct(
         string $method,
@@ -154,7 +154,7 @@ class ServerRequest extends Message
             $httpVersion,
             self::stringMap($_POST),
             self::stringMap($_FILES),
-            query: self::stringMap($_GET),
+            query: $_GET === [] ? null : self::stringMap($_GET),
             cookies: self::stringMap($_COOKIE),
         );
 
@@ -262,7 +262,7 @@ class ServerRequest extends Message
         return $this->method;
     }
 
-    /** @return array<string,mixed>|object|null */
+    /** @return array<array-key,mixed>|object|null */
     public function getParsedBody(): array|object|null
     {
         return $this->parsed;
@@ -350,7 +350,7 @@ class ServerRequest extends Message
         return $clone;
     }
 
-    /** @param array<string,mixed> $cookies */
+    /** @param array<array-key,mixed> $cookies */
     public function withCookieParams(array $cookies): static
     {
         $clone = clone $this;
@@ -380,7 +380,7 @@ class ServerRequest extends Message
         return $clone;
     }
 
-    /** @param array<string,mixed>|object|null $data */
+    /** @param array<array-key,mixed>|object|null $data */
     public function withParsedBody(object|array|null $data): static
     {
         $clone = clone $this;
@@ -390,7 +390,7 @@ class ServerRequest extends Message
         return $clone;
     }
 
-    /** @param array<string,mixed> $query */
+    /** @param array<array-key,mixed> $query */
     public function withQueryParams(array $query): static
     {
         $clone = clone $this;
@@ -411,7 +411,7 @@ class ServerRequest extends Message
         return $clone;
     }
 
-    /** @param array<string,mixed> $uploadedFiles */
+    /** @param array<array-key,mixed> $uploadedFiles */
     public function withUploadedFiles(array $uploadedFiles): static
     {
         $clone = clone $this;
@@ -447,7 +447,10 @@ class ServerRequest extends Message
         return is_string($value) ? $value : $default;
     }
 
-    /** @param array<array-key,mixed> $value @return array<string,mixed> */
+    /**
+     * @param array<array-key,mixed> $value
+     * @return array<string,mixed>
+     */
     private static function stringMap(array $value): array
     {
         $map = [];
@@ -487,14 +490,12 @@ class ServerRequest extends Message
             return;
         }
 
-        /** @var array<string,array<string,mixed>> $sources */
         $sources = [
             'G' => $this->query,
             'P' => is_array($this->parsed) ? self::stringMap($this->parsed) : [],
             'C' => $this->cookie,
             'S' => $this->server,
         ];
-        /** @var array<string,mixed> $map */
         $map = [];
 
         foreach (self::VARIABLE_ORDER as $source) {
@@ -503,7 +504,7 @@ class ServerRequest extends Message
 
                 continue;
             }
-            $map += $sources[$source] ?? [];
+            $map += $sources[$source];
         }
 
         $this->variableMap = $map;
@@ -545,7 +546,10 @@ class ServerRequest extends Message
     }
 }
 
-/** @param array<string,mixed>|null $query @return array<string,mixed> */
+/**
+ * @param array<array-key,mixed>|null $query
+ * @return array<string,mixed>
+ */
 function server_request_query_parameters(?array $query, Uri $uri): array
 {
     if ($query !== null) {
@@ -560,7 +564,10 @@ function server_request_query_parameters(?array $query, Uri $uri): array
     return server_request_string_map($uriQuery);
 }
 
-/** @param array<array-key,mixed> $value @return array<string,mixed> */
+/**
+ * @param array<array-key,mixed> $value
+ * @return array<string,mixed>
+ */
 function server_request_string_map(array $value): array
 {
     $map = [];

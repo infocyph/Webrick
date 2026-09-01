@@ -23,25 +23,6 @@ final class Registry
         'ipv6' => 'Infocyph\\Webrick\\Router\\Constraint\\Registry::isIpv6String',
     ];
 
-    /** @var array<string,string> */
-    private const array BUILTIN_REGEX = [
-        'uuid' => '/^[0-9a-f]{8}-[0-9a-f]{4}-[1-9][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i',
-        'ulid' => '/^[0-7][0-9A-HJKMNP-TV-Z]{25}$/',
-        'cuid' => '/^c[0-9a-z]{8,}$/i',
-        'slug' => '/^[A-Za-z0-9_-]+$/',
-        'email' => '/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$/',
-        'hex' => '/^[A-Fa-f0-9]+$/',
-        'hexcolor' => '/^#?([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/',
-        'base64' => '/^(?:[A-Za-z0-9+\\/]{4})*(?:[A-Za-z0-9+\\/]{2}==|[A-Za-z0-9+\\/]{3}=)?$/',
-        'semver' => '/^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[\\w\\.-]+)?(?:\\+[\\w\\.-]+)?$/',
-        'date' => '/^\\d{4}-\\d{2}-\\d{2}$/',
-        'time' => '/^([01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d)?$/',
-        'datetime' => '/^\\d{4}-\\d{2}-\\d{2}[ T](?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d)?(?:\\.\\d+)?(?:Z|[+\\-][01]\\d:[0-5]\\d)?$/i',
-        'ipv4' => '/^(25[0-5]|2[0-4]\\d|[01]?\\d?\\d)(?:\\.(?:25[0-5]|2[0-4]\\d|[01]?\\d?\\d)){3}$/',
-        'ipv4_cidr' => '/^(?:25[0-5]|2[0-4]\\d|[01]?\\d?\\d)(?:\\.(?:25[0-5]|2[0-4]\\d|[01]?\\d?\\d)){3}\\/(?:[0-9]|[12]\\d|3[0-2])$/',
-        'mac' => '/^(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$/',
-    ];
-
     /**
      * Built-in regex constraints whose normalized inner patterns cannot consume
      * a path separator and are therefore safe to embed in a whole-path matcher.
@@ -66,6 +47,25 @@ final class Registry
         'datetime' => true,
         'ipv4' => true,
         'mac' => true,
+    ];
+
+    /** @var array<string,string> */
+    private const array BUILTIN_REGEX = [
+        'uuid' => '/^[0-9a-f]{8}-[0-9a-f]{4}-[1-9][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i',
+        'ulid' => '/^[0-7][0-9A-HJKMNP-TV-Z]{25}$/',
+        'cuid' => '/^c[0-9a-z]{8,}$/i',
+        'slug' => '/^[A-Za-z0-9_-]+$/',
+        'email' => '/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$/',
+        'hex' => '/^[A-Fa-f0-9]+$/',
+        'hexcolor' => '/^#?([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/',
+        'base64' => '/^(?:[A-Za-z0-9+\\/]{4})*(?:[A-Za-z0-9+\\/]{2}==|[A-Za-z0-9+\\/]{3}=)?$/',
+        'semver' => '/^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[\\w\\.-]+)?(?:\\+[\\w\\.-]+)?$/',
+        'date' => '/^\\d{4}-\\d{2}-\\d{2}$/',
+        'time' => '/^([01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d)?$/',
+        'datetime' => '/^\\d{4}-\\d{2}-\\d{2}[ T](?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d)?(?:\\.\\d+)?(?:Z|[+\\-][01]\\d:[0-5]\\d)?$/i',
+        'ipv4' => '/^(25[0-5]|2[0-4]\\d|[01]?\\d?\\d)(?:\\.(?:25[0-5]|2[0-4]\\d|[01]?\\d?\\d)){3}$/',
+        'ipv4_cidr' => '/^(?:25[0-5]|2[0-4]\\d|[01]?\\d?\\d)(?:\\.(?:25[0-5]|2[0-4]\\d|[01]?\\d?\\d)){3}\\/(?:[0-9]|[12]\\d|3[0-2])$/',
+        'mac' => '/^(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$/',
     ];
 
     /** @var array<string,callable-string> */
@@ -112,6 +112,13 @@ final class Registry
         throw new InvalidArgumentException("No constraint named '$name'.");
     }
 
+    public static function isBoolString(string $value): bool
+    {
+        $value = strtolower($value);
+
+        return $value === 'true' || $value === 'false' || $value === '0' || $value === '1';
+    }
+
     /**
      * Whether a segment-level regex is known to preserve its semantics when it
      * is embedded into a whole-path combined matcher PCRE.
@@ -134,13 +141,6 @@ final class Registry
         }
 
         return false;
-    }
-
-    public static function isBoolString(string $value): bool
-    {
-        $value = strtolower($value);
-
-        return $value === 'true' || $value === 'false' || $value === '0' || $value === '1';
     }
 
     public static function isIpv6String(string $value): bool
@@ -173,6 +173,40 @@ final class Registry
         }
 
         throw new InvalidArgumentException("Rule for '$name' must be a PCRE-delimited regex or an existing callable.");
+    }
+
+    private static function findRegexEnd(string $rule, string $delimiter, string $closing, bool $paired): ?int
+    {
+        $depth = 0;
+        $escaped = false;
+        $length = strlen($rule);
+        for ($i = 1; $i < $length; $i++) {
+            $char = $rule[$i];
+            if ($escaped) {
+                $escaped = false;
+
+                continue;
+            }
+            if ($char === '\\') {
+                $escaped = true;
+
+                continue;
+            }
+            if ($paired && $char === $delimiter) {
+                $depth++;
+
+                continue;
+            }
+            if ($char !== $closing) {
+                continue;
+            }
+            if (!$paired || $depth === 0) {
+                return $i;
+            }
+            $depth--;
+        }
+
+        return null;
     }
 
     private static function isRegex(string $rule): bool
@@ -220,39 +254,7 @@ final class Registry
             default => $delimiter,
         };
         $paired = $closing !== $delimiter;
-        $depth = 0;
-        $end = null;
-        $escaped = false;
-
-        for ($i = 1; $i < $length; $i++) {
-            $char = $rule[$i];
-            if ($escaped) {
-                $escaped = false;
-
-                continue;
-            }
-            if ($char === '\\') {
-                $escaped = true;
-
-                continue;
-            }
-            if ($paired && $char === $delimiter) {
-                $depth++;
-
-                continue;
-            }
-            if ($char !== $closing) {
-                continue;
-            }
-            if ($paired && $depth > 0) {
-                $depth--;
-
-                continue;
-            }
-            $end = $i;
-
-            break;
-        }
+        $end = self::findRegexEnd($rule, $delimiter, $closing, $paired);
         if ($end === null || $end === 1) {
             return null;
         }

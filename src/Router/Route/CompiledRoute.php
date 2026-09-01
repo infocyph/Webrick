@@ -192,7 +192,10 @@ final class CompiledRoute implements RouteInterface
         return $this->toCachePayloadWithHandler([$handler[0], $handler[1]]);
     }
 
-    /** @param array{0:string,1:string}|string $handler @return array<mixed> */
+    /**
+     * @param array{0:string,1:string}|string $handler
+     * @return array<mixed>
+     */
     public function toCachePayloadWithHandler(array|string $handler): array
     {
         $middleware = [];
@@ -257,7 +260,11 @@ final class CompiledRoute implements RouteInterface
         return '#\A/' . implode('/', $patternBuf) . '\z#D';
     }
 
-    /** @param non-empty-string $name @param ?non-empty-string $constraint @return array{0:SegmentSpec,1:string} */
+    /**
+     * @param non-empty-string $name
+     * @param ?non-empty-string $constraint
+     * @return array{0:SegmentSpec,1:string}
+     */
     private static function buildVarSegment(string $name, ?string $constraint): array
     {
         if ($constraint !== null) {

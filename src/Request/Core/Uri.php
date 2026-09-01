@@ -128,19 +128,7 @@ final class Uri implements \Stringable
         $trailingSlash = str_ends_with($path, '/') || str_ends_with($path, '/.') || str_ends_with($path, '/..');
         $stack = [];
         foreach (explode('/', $path) as $segment) {
-            if ($segment === '' || $segment === '.') {
-                continue;
-            }
-            if ($segment === '..') {
-                if ($stack !== [] && end($stack) !== '..') {
-                    array_pop($stack);
-                } elseif (!$absolute) {
-                    $stack[] = '..';
-                }
-
-                continue;
-            }
-            $stack[] = $segment;
+            self::appendNormalizedSegment($stack, $segment, $absolute);
         }
 
         $normalized = ($absolute ? '/' : '') . implode('/', $stack);
@@ -298,6 +286,27 @@ final class Uri implements \Stringable
         $clone->pass = $password ?? '';
 
         return $clone;
+    }
+
+    /** @param list<string> $stack */
+    private static function appendNormalizedSegment(array &$stack, string $segment, bool $absolute): void
+    {
+        if ($segment === '' || $segment === '.') {
+            return;
+        }
+        if ($segment !== '..') {
+            $stack[] = $segment;
+
+            return;
+        }
+        if ($stack !== [] && end($stack) !== '..') {
+            array_pop($stack);
+
+            return;
+        }
+        if (!$absolute) {
+            $stack[] = '..';
+        }
     }
 
     /** @return array{string,string,string} */

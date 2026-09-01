@@ -21,7 +21,7 @@ abstract class Message
     protected array $headers;
 
     /**
-     * @param array<string,string|list<string>> $headers
+     * @param array<array-key,mixed> $headers
      */
     protected function __construct(
         array $headers = [],
@@ -137,13 +137,16 @@ abstract class Message
     }
 
     /**
-     * @param array<string,string|list<string>> $headers
+     * @param array<array-key,mixed> $headers
      * @return array<string,list<string>>
      */
     private function normalise(array $headers): array
     {
         $normalized = [];
         foreach ($headers as $name => $value) {
+            if (!is_string($name)) {
+                throw new \InvalidArgumentException('HTTP headers must use string names.');
+            }
             $normalized[$this->norm($name)] = $this->normalizeHeaderValues($value);
         }
 
@@ -151,12 +154,17 @@ abstract class Message
     }
 
     /**
-     * @param string|list<string> $value
      * @return list<string>
      */
-    private function normalizeHeaderValues(string|array $value): array
+    private function normalizeHeaderValues(mixed $value): array
     {
-        $values = is_string($value) ? [$value] : $value;
+        if (is_string($value)) {
+            $values = [$value];
+        } elseif (is_array($value)) {
+            $values = $value;
+        } else {
+            throw new \InvalidArgumentException('HTTP header values must be strings or lists of strings.');
+        }
         $normalized = [];
         foreach ($values as $item) {
             if (!is_string($item)) {

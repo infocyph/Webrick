@@ -19,12 +19,16 @@ function profileRemoveTree(string $path): void
 {
     if (is_link($path) || is_file($path)) {
         @unlink($path);
+
         return;
     }
     if (!is_dir($path)) {
         return;
     }
-    foreach (new FilesystemIterator($path, FilesystemIterator::SKIP_DOTS) as $entry) {
+    foreach (new FilesystemIterator($path, FilesystemIterator::SKIP_DOTS | FilesystemIterator::CURRENT_AS_FILEINFO) as $entry) {
+        if (!$entry instanceof SplFileInfo) {
+            continue;
+        }
         $target = $entry->getPathname();
         if ($entry->isLink() || $entry->isFile()) {
             @unlink($target);
@@ -44,11 +48,15 @@ function profileDirectorySize(string $path): int
         return 0;
     }
     $size = 0;
-    foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($path, FilesystemIterator::SKIP_DOTS)) as $file) {
+    foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($path, FilesystemIterator::SKIP_DOTS | FilesystemIterator::CURRENT_AS_FILEINFO)) as $file) {
+        if (!$file instanceof SplFileInfo) {
+            continue;
+        }
         if ($file->isFile()) {
             $size += $file->getSize();
         }
     }
+
     return $size;
 }
 
@@ -76,7 +84,10 @@ function profileRoutes(int $routeCount): array
     return $routes;
 }
 
-/** @return array{ns:float,result:int} */
+/**
+ * @param non-empty-string $path
+ * @return array{ns:float,result:int}
+ */
 function profileWarm(MatcherInterface $matcher, string $path, int $iterations): array
 {
     $checksum = 0;
@@ -112,7 +123,6 @@ try {
         'Fused' => ['builder' => FusedMatcher::make(), 'cache' => $fusedFile],
         'Sharded' => ['builder' => ShardedMatcher::make(), 'cache' => $shardedDir],
     ] as $name => $spec) {
-        /** @var MatcherInterface&object $builder */
         $builder = $spec['builder'];
         $cache = $spec['cache'];
         $builder->enableCache($cache)->enableCacheWrite();
@@ -128,7 +138,6 @@ try {
 
         $artifactBytes = profileDirectorySize($cache);
         $beforeBoot = memory_get_usage(true);
-        /** @var MatcherInterface&object $reader */
         $reader = $name === 'Fused' ? FusedMatcher::make() : ShardedMatcher::make();
         $reader->enableCache($cache);
         $bootStart = hrtime(true);

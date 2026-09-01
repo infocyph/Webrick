@@ -15,26 +15,17 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
  * reference only scalar IDs. Dynamic PCRE steps retain the positional regex and
  * ordered parameter names, so rich matching no longer needs a second named-
  * capture regex representation.
+ *
+ * @phpstan-import-type MatcherGroup from CompiledMatcherFastEngine
  */
 final class CompiledMatcherIrCompactor
 {
     private function __construct() {}
 
-    /** @return array<string,array<string,mixed>> */
-    public static function compactHosts(array $hosts): array
-    {
-        $compact = [];
-        foreach ($hosts as $host => $group) {
-            if (!is_string($host) || !is_array($group)) {
-                throw new \UnexpectedValueException('Compiled matcher host group is invalid.');
-            }
-            $compact[$host] = self::compactGroup($group);
-        }
-
-        return $compact;
-    }
-
-    /** @return array<string,mixed> */
+    /**
+     * @param array<array-key,mixed> $group
+     * @return MatcherGroup
+     */
     public static function compactGroup(array $group): array
     {
         $routes = [];
@@ -52,7 +43,11 @@ final class CompiledMatcherIrCompactor
                 if (!is_string($path)) {
                     throw new \UnexpectedValueException('Compiled matcher static path IR is invalid.');
                 }
-                $id = $staticIds[$method][$path] ?? null;
+                $idsByPath = $staticIds[$method] ?? null;
+                if (!is_array($idsByPath)) {
+                    throw new \UnexpectedValueException('Compiled matcher static ID map is invalid.');
+                }
+                $id = $idsByPath[$path] ?? null;
                 if (!is_int($id) || $id < 0) {
                     throw new \UnexpectedValueException('Compiled matcher static route ID is invalid.');
                 }
@@ -63,47 +58,47 @@ final class CompiledMatcherIrCompactor
         $dynamic = self::compactDynamic($group['dynamic'] ?? null, $routes);
         ksort($routes, SORT_NUMERIC);
 
-        return [
+        return CompactMatcherIndexValidator::validateGroup([
             'routes' => $routes,
             'static' => $staticIds,
             'static_allowed' => $group['static_allowed'] ?? [],
             'dynamic' => $dynamic,
             'dynamic_allowed' => $group['dynamic_allowed'] ?? [],
-        ];
+        ]);
     }
 
     /**
-     * @param array<int,mixed> $routes
-     * @return array<string,array<int,array<string,array<string,mixed>>>>
+     * @param array<array-key,mixed> $hosts
+     * @return array<string,MatcherGroup>
      */
-    private static function compactDynamic(mixed $raw, array &$routes): array
+    public static function compactHosts(array $hosts): array
     {
-        if (!is_array($raw)) {
-            throw new \UnexpectedValueException('Compiled matcher dynamic IR is invalid.');
+        $compact = [];
+        foreach ($hosts as $host => $group) {
+            if (!is_string($host) || !is_array($group)) {
+                throw new \UnexpectedValueException('Compiled matcher host group is invalid.');
+            }
+            $compact[$host] = self::compactGroup($group);
         }
 
-        $dynamic = [];
-        foreach ($raw as $method => $counts) {
-            if (!is_string($method) || !is_array($counts)) {
-                throw new \UnexpectedValueException('Compiled matcher dynamic method IR is invalid.');
-            }
-            foreach ($counts as $count => $prefixes) {
-                if (!is_int($count) || !is_array($prefixes)) {
-                    throw new \UnexpectedValueException('Compiled matcher dynamic count IR is invalid.');
-                }
-                foreach ($prefixes as $prefix => $bucket) {
-                    if (!is_string($prefix) || !is_array($bucket)) {
-                        throw new \UnexpectedValueException('Compiled matcher dynamic bucket IR is invalid.');
-                    }
-                    $dynamic[$method][$count][$prefix] = self::compactBucket($bucket, $routes);
-                }
-            }
+        return $compact;
+    }
+
+    /** @param array<int,mixed> $routes */
+    private static function captureRoute(array &$routes, int $id, mixed $route): void
+    {
+        $actual = self::routeIndex($route);
+        if ($actual !== $id) {
+            throw new \UnexpectedValueException('Compiled matcher route payload does not match its deterministic ID.');
         }
 
-        return $dynamic;
+        if (!array_key_exists($id, $routes)) {
+            $routes[$id] = $route;
+        }
     }
 
     /**
+     * @param array<array-key,mixed> $bucket
      * @param array<int,mixed> $routes
      * @return array<string,mixed>
      */
@@ -121,6 +116,7 @@ final class CompiledMatcherIrCompactor
             }
             if (($step['type'] ?? null) === 'pcre') {
                 $steps[] = self::compactPcreStep($step, $routes);
+
                 continue;
             }
             if (($step['type'] ?? null) !== 'fallback') {
@@ -149,6 +145,51 @@ final class CompiledMatcherIrCompactor
 
     /**
      * @param array<int,mixed> $routes
+     * @return array<string,array<int,array<string,array<string,mixed>>>>
+     */
+    private static function compactDynamic(mixed $raw, array &$routes): array
+    {
+        if (!is_array($raw)) {
+            throw new \UnexpectedValueException('Compiled matcher dynamic IR is invalid.');
+        }
+
+        $dynamic = [];
+        foreach ($raw as $method => $counts) {
+            if (!is_string($method) || !is_array($counts)) {
+                throw new \UnexpectedValueException('Compiled matcher dynamic method IR is invalid.');
+            }
+            $dynamic[$method] = self::compactMethod($counts, $routes);
+        }
+
+        return $dynamic;
+    }
+
+    /**
+     * @param array<array-key,mixed> $counts
+     * @param array<int,mixed> $routes
+     * @return array<int,array<string,array<string,mixed>>>
+     */
+    private static function compactMethod(array $counts, array &$routes): array
+    {
+        $method = [];
+        foreach ($counts as $count => $prefixes) {
+            if (!is_int($count) || !is_array($prefixes)) {
+                throw new \UnexpectedValueException('Compiled matcher dynamic count IR is invalid.');
+            }
+            foreach ($prefixes as $prefix => $bucket) {
+                if (!is_string($prefix) || !is_array($bucket)) {
+                    throw new \UnexpectedValueException('Compiled matcher dynamic bucket IR is invalid.');
+                }
+                $method[$count][$prefix] = self::compactBucket($bucket, $routes);
+            }
+        }
+
+        return $method;
+    }
+
+    /**
+     * @param array<array-key,mixed> $step
+     * @param array<int,mixed> $routes
      * @return array{type:'pcre',regex:string,routes:array<string,array{id:int,params:list<string>}>}
      */
     private static function compactPcreStep(array $step, array &$routes): array
@@ -170,23 +211,10 @@ final class CompiledMatcherIrCompactor
                 throw new \UnexpectedValueException('Compiled matcher compact PCRE entry is invalid.');
             }
             self::captureRoute($routes, $id, $entry['route'] ?? null);
-            $map[$mark] = ['id' => $id, 'params' => $params];
+            $map[$mark] = ['id' => $id, 'params' => self::stringList($params)];
         }
 
         return ['type' => 'pcre', 'regex' => $regex, 'routes' => $map];
-    }
-
-    /** @param array<int,mixed> $routes */
-    private static function captureRoute(array &$routes, int $id, mixed $route): void
-    {
-        $actual = self::routeIndex($route);
-        if ($actual !== $id) {
-            throw new \UnexpectedValueException('Compiled matcher route payload does not match its deterministic ID.');
-        }
-
-        if (!array_key_exists($id, $routes)) {
-            $routes[$id] = $route;
-        }
     }
 
     private static function routeIndex(mixed $route): int
@@ -200,5 +228,22 @@ final class CompiledMatcherIrCompactor
         }
 
         return $index;
+    }
+
+    /**
+     * @param array<array-key,mixed> $values
+     * @return list<string>
+     */
+    private static function stringList(array $values): array
+    {
+        $strings = [];
+        foreach ($values as $value) {
+            if (!is_string($value)) {
+                throw new \UnexpectedValueException('Compiled matcher parameter list is invalid.');
+            }
+            $strings[] = $value;
+        }
+
+        return $strings;
     }
 }

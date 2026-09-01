@@ -28,6 +28,31 @@ final class Language
             return $supported[0];
         }
 
+        foreach (self::preferences($accept) as $preference) {
+            $pref = $preference['tag'];
+            foreach ($supported as $lang) {
+                if (self::matches($pref, $lang)) {
+                    return $lang;
+                }
+            }
+        }
+
+        return $supported[0];
+    }
+
+    private static function matches(string $preference, string $language): bool
+    {
+        $language = strtolower($language);
+
+        return $preference === '*'
+            || $preference === $language
+            || str_starts_with($preference, $language . '-')
+            || str_starts_with($language, $preference . '-');
+    }
+
+    /** @return list<array{tag:string,q:float,order:int}> */
+    private static function preferences(string $accept): array
+    {
         $parts = [];
         foreach (explode(',', $accept) as $order => $segment) {
             $tokens = array_map(trim(...), explode(';', $segment));
@@ -56,21 +81,6 @@ final class Language
             static fn(array $a, array $b): int => $b['q'] <=> $a['q'] ?: $a['order'] <=> $b['order'],
         );
 
-        foreach ($parts as $preference) {
-            $pref = $preference['tag'];
-            foreach ($supported as $lang) {
-                $low = strtolower($lang);
-                if (
-                    $pref === '*'
-                    || $pref === $low
-                    || str_starts_with($pref, $low . '-')
-                    || str_starts_with($low, $pref . '-')
-                ) {
-                    return $lang;
-                }
-            }
-        }
-
-        return $supported[0];
+        return $parts;
     }
 }

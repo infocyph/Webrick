@@ -84,6 +84,12 @@ final readonly class RequestLimitsMiddleware
         };
     }
 
+    /** @phpstan-impure */
+    private function atEnd(BodyStream $body): bool
+    {
+        return $body->eof();
+    }
+
     /** @return array<string,string> */
     private function connectionCloseHeaders(Request $req): array
     {
@@ -152,10 +158,10 @@ final readonly class RequestLimitsMiddleware
         $buffer = '';
 
         try {
-            while (!$body->eof()) {
+            while (!$this->atEnd($body)) {
                 $chunk = $body->read(8192);
                 if ($chunk === '') {
-                    if ($body->eof()) {
+                    if ($this->atEnd($body)) {
                         break;
                     }
 
@@ -170,7 +176,7 @@ final readonly class RequestLimitsMiddleware
                 }
             }
         } finally {
-            if ($seekable && $position !== null) {
+            if ($seekable) {
                 $body->seek($position);
             }
         }

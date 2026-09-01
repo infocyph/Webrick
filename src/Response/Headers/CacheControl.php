@@ -82,7 +82,7 @@ final class CacheControl implements \Stringable
             && ($base['privacy']['public'] || $incoming['privacy']['public']);
 
         foreach (self::NUM_TOKENS as $name => $_) {
-            $base['nums'][$name] = self::minInt($base['nums'][$name], $incoming['nums'][$name]);
+            $base['nums'][$name] = CacheControlNumber::min($base['nums'][$name], $incoming['nums'][$name]);
         }
 
         foreach (['no-cache', 'private'] as $name) {
@@ -106,7 +106,7 @@ final class CacheControl implements \Stringable
     public static function directives(string $line): array
     {
         $directives = [];
-        foreach (self::splitCsvRespectingQuotes($line) as $raw) {
+        foreach (CacheControlCsv::split($line) as $raw) {
             $token = trim($raw);
             if ($token === '') {
                 continue;
@@ -206,6 +206,22 @@ final class CacheControl implements \Stringable
         return $this->with('stale-while-revalidate', $seconds);
     }
 
+    /** @param list<string> $parts */
+    private static function appendIfTrue(array &$parts, bool $condition, string $part): void
+    {
+        if ($condition) {
+            $parts[] = $part;
+        }
+    }
+
+    /** @param list<string> $parts */
+    private static function appendNumericPart(array &$parts, string $name, ?int $value): void
+    {
+        if ($value !== null) {
+            $parts[] = $name . '=' . $value;
+        }
+    }
+
     /** @return array{bools:array<string,bool>,privacy:array{public:bool,private:bool},nums:array<string,?int>,fields:array<string,array<string,true>>,ext:array<string,string|null>} */
     private static function emptyModel(): array
     {
@@ -230,64 +246,40 @@ final class CacheControl implements \Stringable
         ];
     }
 
-    /** @param array<string,true> $target */
-    private static function ingestFields(array &$target, string $csv): void
+    /** @return list<string> */
+    private static function emptyParts(): array
     {
-        foreach (explode(',', $csv) as $field) {
-            $field = trim($field);
-            if ($field !== '') {
-                $target[$field] = true;
-            }
-        }
+        return [];
     }
 
     /** @param array{bools:array<string,bool>,privacy:array{public:bool,private:bool},nums:array<string,?int>,fields:array<string,array<string,true>>,ext:array<string,string|null>} $model */
-    private static function ingestToken(array &$model, string $raw): void
+    private static function ingestAssignedToken(array &$model, string $name, string $value): void
     {
-        $token = trim($raw);
-        if ($token === '') {
-            return;
-        }
-
-        $position = strpos($token, '=');
-        if ($position === false) {
-            $name = strtolower($token);
-            if (isset(self::PRIVACY_TOKENS[$name])) {
-                $model['privacy'][$name] = true;
-            } elseif (isset(self::BOOL_TOKENS[$name])) {
-                $model['bools'][$name] = true;
-            } elseif (!array_key_exists($name, $model['ext'])) {
-                $model['ext'][$name] = null;
-            }
-
-            return;
-        }
-
-        $name = strtolower(trim(substr($token, 0, $position)));
-        $value = trim(trim(substr($token, $position + 1)), "\"'");
-
         if (isset(self::NUM_TOKENS[$name])) {
             $delta = self::toDeltaSeconds($value);
             if ($delta !== null) {
-                $model['nums'][$name] = self::minInt($model['nums'][$name], $delta);
+                $model['nums'][$name] = CacheControlNumber::min($model['nums'][$name], $delta);
             }
 
             return;
         }
-
         if (isset(self::FIELD_TOKENS[$name])) {
-            if ($name === 'private') {
-                $model['privacy']['private'] = true;
-            } else {
-                $model['bools']['no-cache'] = true;
-            }
-            if ($value !== '') {
-                self::ingestFields($model['fields'][$name], $value);
-            }
+            self::ingestFieldToken($model, $name, $value);
 
             return;
         }
+        self::ingestExtensionOrBoolean($model, $name, $value);
+    }
 
+    /** @param array{bools:array<string,bool>,privacy:array{public:bool,private:bool},nums:array<string,?int>,fields:array<string,array<string,true>>,ext:array<string,string|null>} $model */
+    private static function ingestBareToken(array &$model, string $name): void
+    {
+        self::ingestExtensionOrBoolean($model, $name, null);
+    }
+
+    /** @param array{bools:array<string,bool>,privacy:array{public:bool,private:bool},nums:array<string,?int>,fields:array<string,array<string,true>>,ext:array<string,string|null>} $model */
+    private static function ingestExtensionOrBoolean(array &$model, string $name, ?string $value): void
+    {
         if (isset(self::PRIVACY_TOKENS[$name])) {
             $model['privacy'][$name] = true;
 
@@ -303,42 +295,61 @@ final class CacheControl implements \Stringable
         }
     }
 
-    private static function minInt(?int $a, ?int $b): ?int
+    /** @param array<string,true> $target */
+    private static function ingestFields(array &$target, string $csv): void
     {
-        if ($a === null) {
-            return $b;
+        foreach (explode(',', $csv) as $field) {
+            $field = trim($field);
+            if ($field !== '') {
+                $target[$field] = true;
+            }
         }
-        if ($b === null) {
-            return $a;
+    }
+
+    /** @param array{bools:array<string,bool>,privacy:array{public:bool,private:bool},nums:array<string,?int>,fields:array<string,array<string,true>>,ext:array<string,string|null>} $model */
+    private static function ingestFieldToken(array &$model, string $name, string $value): void
+    {
+        if ($name === 'private') {
+            $model['privacy']['private'] = true;
+        } else {
+            $model['bools']['no-cache'] = true;
+        }
+        if ($value !== '') {
+            self::ingestFields($model['fields'][$name], $value);
+        }
+    }
+
+    /** @param array{bools:array<string,bool>,privacy:array{public:bool,private:bool},nums:array<string,?int>,fields:array<string,array<string,true>>,ext:array<string,string|null>} $model */
+    private static function ingestToken(array &$model, string $raw): void
+    {
+        $token = trim($raw);
+        if ($token === '') {
+            return;
         }
 
-        return min($a, $b);
+        $position = strpos($token, '=');
+        if ($position === false) {
+            self::ingestBareToken($model, strtolower($token));
+
+            return;
+        }
+
+        self::ingestAssignedToken(
+            $model,
+            strtolower(trim(substr($token, 0, $position))),
+            trim(trim(substr($token, $position + 1)), "\"'"),
+        );
     }
 
     /** @param array{bools:array<string,bool>,privacy:array{public:bool,private:bool},nums:array<string,?int>,fields:array<string,array<string,true>>,ext:array<string,string|null>} $model */
     private static function modelToLine(array $model): string
     {
-        $parts = [];
-        if ($model['bools']['no-store']) {
-            $parts[] = 'no-store';
-        }
-        if ($model['bools']['no-cache']) {
-            $parts[] = self::renderFieldToken('no-cache', $model['fields']['no-cache']);
-        }
-        if ($model['privacy']['private']) {
-            $parts[] = self::renderFieldToken('private', $model['fields']['private']);
-        } elseif ($model['privacy']['public']) {
-            $parts[] = 'public';
-        }
+        $parts = self::standardParts($model);
         foreach (['no-transform', 'must-revalidate', 'proxy-revalidate', 'immutable'] as $name) {
-            if ($model['bools'][$name]) {
-                $parts[] = $name;
-            }
+            self::appendIfTrue($parts, $model['bools'][$name], $name);
         }
         foreach (self::NUM_TOKENS as $name => $_) {
-            if ($model['nums'][$name] !== null) {
-                $parts[] = $name . '=' . $model['nums'][$name];
-            }
+            self::appendNumericPart($parts, $name, $model['nums'][$name]);
         }
         if ($model['ext'] !== []) {
             ksort($model['ext']);
@@ -374,14 +385,17 @@ final class CacheControl implements \Stringable
     private static function parseModel(string $line): array
     {
         $model = self::emptyModel();
-        foreach (self::splitCsvRespectingQuotes($line) as $token) {
+        foreach (CacheControlCsv::split($line) as $token) {
             self::ingestToken($model, $token);
         }
 
         return $model;
     }
 
-    /** @param array<string,string|null> $parts @return array{0:array<string,string|null>,1:array<string,string|null>} */
+    /**
+     * @param array<string,string|null> $parts
+     * @return array{0:array<string,string|null>,1:array<string,string|null>}
+     */
     private static function partitionParts(array $parts): array
     {
         $standard = [];
@@ -401,7 +415,7 @@ final class CacheControl implements \Stringable
     private static function partsFromLine(string $line): array
     {
         $parts = [];
-        foreach (self::splitCsvRespectingQuotes($line) as $raw) {
+        foreach (CacheControlCsv::split($line) as $raw) {
             $token = trim($raw);
             if ($token === '') {
                 continue;
@@ -433,55 +447,23 @@ final class CacheControl implements \Stringable
         return $name . '="' . implode(', ', $names) . '"';
     }
 
-    /** @return list<string> */
-    private static function splitCsvRespectingQuotes(string $line): array
+    /**
+     * @param array{bools:array<string,bool>,privacy:array{public:bool,private:bool},nums:array<string,?int>,fields:array<string,array<string,true>>,ext:array<string,string|null>} $model
+     * @return list<string>
+     */
+    private static function standardParts(array $model): array
     {
-        if ($line === '') {
-            return [];
+        $parts = self::emptyParts();
+        self::appendIfTrue($parts, $model['bools']['no-store'], 'no-store');
+        self::appendIfTrue($parts, $model['bools']['no-cache'], self::renderFieldToken('no-cache', $model['fields']['no-cache']));
+        $privacy = $model['privacy']['private']
+            ? self::renderFieldToken('private', $model['fields']['private'])
+            : ($model['privacy']['public'] ? 'public' : null);
+        if ($privacy !== null) {
+            $parts[] = $privacy;
         }
 
-        $out = [];
-        $buffer = '';
-        $quoted = false;
-        $escaped = false;
-        $length = strlen($line);
-        for ($i = 0; $i < $length; $i++) {
-            $char = $line[$i];
-            if ($escaped) {
-                $buffer .= $char;
-                $escaped = false;
-
-                continue;
-            }
-            if ($quoted && $char === '\\') {
-                $buffer .= $char;
-                $escaped = true;
-
-                continue;
-            }
-            if ($char === '"') {
-                $quoted = !$quoted;
-                $buffer .= $char;
-
-                continue;
-            }
-            if ($char === ',' && !$quoted) {
-                $token = trim($buffer);
-                if ($token !== '') {
-                    $out[] = $token;
-                }
-                $buffer = '';
-
-                continue;
-            }
-            $buffer .= $char;
-        }
-        $token = trim($buffer);
-        if ($token !== '') {
-            $out[] = $token;
-        }
-
-        return $out;
+        return $parts;
     }
 
     private static function toDeltaSeconds(string $value): ?int

@@ -19,8 +19,7 @@ use Throwable;
 final readonly class ErrorHandler
 {
     /**
-     * @param array<class-string,int> $exceptionMap
-     * @param null|callable(Request,Throwable,int,array<string,string>):mixed $responseRenderer
+     * @param array<string,int> $exceptionMap
      */
     public function __construct(
         private LoggerInterface|\Closure|null $logger = null,
@@ -31,7 +30,7 @@ final readonly class ErrorHandler
     ) {
         new HeaderBag([$this->requestIdHeader => 'probe']);
         foreach ($this->exceptionMap as $class => $code) {
-            if (!is_string($class) || !is_int($code) || !is_a($class, Throwable::class, true)) {
+            if (!is_a($class, Throwable::class, true)) {
                 throw new \InvalidArgumentException('Error handler exception map must use throwable class names and integer statuses.');
             }
             if (!StatusEnum::isErrorCode($code)) {

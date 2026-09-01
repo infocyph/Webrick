@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Middleware;
 
-use DateTimeImmutable;
 use Infocyph\Webrick\Response\Cookies\Cookie;
 
 final readonly class CookieAttributeApplier
@@ -27,6 +26,26 @@ final readonly class CookieAttributeApplier
     }
 
     /** @param array<string,bool|string> $attrs */
+    private function applyExpiryAttr(Cookie $cookie, array $attrs): Cookie
+    {
+        $expires = $attrs['expires'] ?? null;
+        if (!is_string($expires)) {
+            return $cookie;
+        }
+
+        $timestamp = strtotime($expires);
+        if ($timestamp === false) {
+            return $cookie;
+        }
+
+        $now = time();
+
+        return $timestamp <= $now
+            ? $cookie->expire()
+            : $cookie->maxAge($timestamp - $now);
+    }
+
+    /** @param array<string,bool|string> $attrs */
     private function applyHttpOnlyAttr(Cookie $cookie, array $attrs): Cookie
     {
         $hasHttpOnly = $this->hasFlag($attrs, 'httponly');
@@ -46,14 +65,8 @@ final readonly class CookieAttributeApplier
         if (isset($attrs['max-age']) && \is_string($attrs['max-age']) && ctype_digit($attrs['max-age'])) {
             $cookie = $cookie->maxAge((int) $attrs['max-age']);
         }
-        if (isset($attrs['expires']) && \is_string($attrs['expires'])) {
-            $ts = strtotime($attrs['expires']);
-            if ($ts !== false) {
-                $cookie = $cookie->expires(new DateTimeImmutable("@{$ts}"));
-            }
-        }
 
-        return $cookie;
+        return $this->applyExpiryAttr($cookie, $attrs);
     }
 
     /** @param array<string,bool|string> $attrs */

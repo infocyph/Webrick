@@ -146,7 +146,10 @@ final readonly class Registrar
         }
     }
 
-    /** @param RouteHandler $handler @param string|RouteOptions|null $nameOrOpts */
+    /**
+     * @param RouteHandler $handler
+     * @param string|RouteOptions|null $nameOrOpts
+     */
     private function add(
         string $verb,
         string $path,
@@ -206,7 +209,10 @@ final readonly class Registrar
         return '/' . ltrim($fullPrefix . '/' . ltrim($path, '/'), '/');
     }
 
-    /** @param RawMiddlewareList $extraMw @param list<string> $aliases */
+    /**
+     * @param RawMiddlewareList $extraMw
+     * @param list<string> $aliases
+     */
     private function decorateWithScope(Route $route, array $extraMw, array &$aliases): Route
     {
         $domain = $this->scope->getDomain();
@@ -233,7 +239,10 @@ final readonly class Registrar
         return $route;
     }
 
-    /** @param list<string>|null $only @param list<string>|null $except */
+    /**
+     * @param list<string>|null $only
+     * @param list<string>|null $except
+     */
     private function includeResourceKey(string $key, ?array $only, ?array $except): bool
     {
         if ($only !== null && !in_array($key, $only, true)) {
@@ -268,7 +277,11 @@ final readonly class Registrar
         );
     }
 
-    /** @param RawMiddlewareList $group @param RawMiddlewareList $route @return list<RawMiddlewareEntry|AliasSpec> */
+    /**
+     * @param RawMiddlewareList $group
+     * @param RawMiddlewareList $route
+     * @return list<RawMiddlewareEntry|AliasSpec>
+     */
     private function mergeMiddlewareWithAliasOverrides(array $group, array $route): array
     {
         return registrar_merge_middleware_with_alias_overrides($group, $route);
@@ -290,13 +303,19 @@ final readonly class Registrar
         return registrar_normalize_group_inputs($prefix, $domain, $middleware, $namePrefix, $callback);
     }
 
-    /** @param string|RouteOptions|null $nameOrOpts @return array{0:?string,1:RawMiddlewareList,2:list<string>,3:RouteAttributes} */
+    /**
+     * @param string|RouteOptions|null $nameOrOpts
+     * @return array{0:?string,1:RawMiddlewareList,2:list<string>,3:RouteAttributes}
+     */
     private function normalizeOptions(string|array|null $nameOrOpts): array
     {
         return registrar_normalize_options($nameOrOpts);
     }
 
-    /** @param array{0:mixed,1:mixed,2?:mixed} $args @return array{0:string,1:RouteHandler,2:string|RouteOptions|null} */
+    /**
+     * @param array{0:mixed,1:mixed,2?:mixed} $args
+     * @return array{0:string,1:RouteHandler,2:string|RouteOptions|null}
+     */
     private function normalizeVerbCallArgs(string $method, array $args): array
     {
         $path = $args[0] ?? null;
@@ -324,7 +343,10 @@ final readonly class Registrar
         throw new \InvalidArgumentException("Invalid arguments for {$method} route registration.");
     }
 
-    /** @param array<string,mixed> $opts @return array{0:string,1:list<string>|null,2:list<string>|null,3:array<string,string>,4:RawMiddlewareList,5:string} */
+    /**
+     * @param array<string,mixed> $opts
+     * @return array{0:string,1:list<string>|null,2:list<string>|null,3:array<string,string>,4:RawMiddlewareList,5:string}
+     */
     private function parseResourceOptions(array $opts): array
     {
         return registrar_parse_resource_options($opts);
@@ -336,13 +358,19 @@ final readonly class Registrar
         $this->routes->addWithAliases($route, $aliases);
     }
 
-    /** @phpstan-param list<RawMiddlewareEntry|AliasSpec> $list @phpstan-return MiddlewareList */
+    /**
+     * @param list<RawMiddlewareEntry|AliasSpec> $list
+     * @return MiddlewareList
+     */
     private function resolveAliasMiddleware(array $list): array
     {
         return registrar_resolve_alias_middleware($list);
     }
 
-    /** @param RouteHandler $handler @param string|RouteOptions|null $nameOrOpts */
+    /**
+     * @param RouteHandler $handler
+     * @param string|RouteOptions|null $nameOrOpts
+     */
     private function verb(
         HttpMethodEnum $method,
         string $path,

@@ -15,7 +15,10 @@ final class EndUser
 
     private ?string $cachedViaProxy = null;
 
-    /** @param list<CidrNetwork> $trustedProxyCidrs @param list<string> $trustedClientIpHeaders */
+    /**
+     * @param list<CidrNetwork> $trustedProxyCidrs
+     * @param list<string> $trustedClientIpHeaders
+     */
     public function __construct(
         private readonly Request $req,
         private readonly array $trustedProxyCidrs = [],
@@ -23,7 +26,10 @@ final class EndUser
         private readonly array $trustedClientIpHeaders = [],
     ) {}
 
-    /** @param list<string|CidrNetwork> $cidrs @param list<string> $trustedClientIpHeaders */
+    /**
+     * @param list<string|CidrNetwork> $cidrs
+     * @param list<string> $trustedClientIpHeaders
+     */
     public static function from(
         Request $request,
         array $cidrs = [],
@@ -243,7 +249,7 @@ final class EndUser
 
         $values = [];
         foreach ($elements as $element) {
-            if (preg_match('/(?:^|;)\s*for\s*=\s*("(?:[^"\\]|\\.)*"|[^;,\s]+)/i', $element, $matches) !== 1) {
+            if (preg_match('/(?:^|;)\s*for\s*=\s*("(?:[^"\\\\]|\\\\.)*"|[^;,\s]+)/i', $element, $matches) !== 1) {
                 return [];
             }
             $node = $this->normalizeForwardedNode($matches[1]);
@@ -307,7 +313,10 @@ final class EndUser
         return $out;
     }
 
-    /** @param list<string> $values @return list<string> */
+    /**
+     * @param list<string> $values
+     * @return list<string>
+     */
     private function validIpList(array $values): array
     {
         $out = [];

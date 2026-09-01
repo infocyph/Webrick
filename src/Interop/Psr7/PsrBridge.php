@@ -93,9 +93,6 @@ final readonly class PsrBridge
 
         $body = '';
         foreach ($producer() as $chunk) {
-            if (!is_string($chunk)) {
-                throw new RuntimeException('Streaming response producers must yield strings.');
-            }
             $body .= $chunk;
         }
 
@@ -122,8 +119,8 @@ final readonly class PsrBridge
     }
 
     /**
-     * @param array<array-key,UploadedFile|array<array-key,mixed>> $files
-     * @return array<array-key,UploadedFileInterface|array<array-key,mixed>>
+     * @param array<array-key,mixed> $files
+     * @return array<array-key,mixed>
      */
     private function convertUploadedFiles(array $files): array
     {

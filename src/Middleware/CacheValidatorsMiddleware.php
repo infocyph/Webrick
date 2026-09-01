@@ -102,7 +102,12 @@ final readonly class CacheValidatorsMiddleware
     /** @return array{0:ConditionalValidator,1:Outcome} */
     private function evaluatePreconditions(Request $req): array
     {
-        $meta = ($this->metaProvider)($req);
+        $provider = $this->metaProvider;
+        if ($provider === null) {
+            throw new \LogicException('Conditional metadata provider is not configured.');
+        }
+
+        $meta = $provider($req);
         $etag = $meta[0] ?? null;
         $lastModified = $meta[1] ?? null;
         $exists = $meta[2] ?? null;

@@ -100,7 +100,10 @@ final readonly class GatewayHardeningMiddleware
         return $this->guardRedirects($req, $response);
     }
 
-    /** @param list<string> $trustedHosts @return list<string> */
+    /**
+     * @param list<string> $trustedHosts
+     * @return list<string>
+     */
     private static function compileHostRegex(array $trustedHosts): array
     {
         if ($trustedHosts === [] || $trustedHosts === ['*']) {
@@ -119,7 +122,10 @@ final readonly class GatewayHardeningMiddleware
         return $compiled;
     }
 
-    /** @param list<string> $cidrs @return list<CidrNetwork> */
+    /**
+     * @param list<string> $cidrs
+     * @return list<CidrNetwork>
+     */
     private static function compileNetworks(array $cidrs): array
     {
         $networks = [];

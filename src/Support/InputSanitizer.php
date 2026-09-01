@@ -31,8 +31,8 @@ final readonly class InputSanitizer
      * @param bool $collapseWs When true, collapse runs of spaces/tabs to a single space.
      * @param bool $normalizeUnicode When true and ext/intl is available, normalize to NFKC.
      * @param int|null $maxBytes Maximum allowed byte length (truncate if exceeded); null disables.
-     * @param array<int,string> $skipKeys Exact keys to skip during array sanitization.
-     * @param array<int,string> $skipKeyPatterns PCRE patterns; matching keys are skipped during array sanitization.
+     * @param array<int,mixed> $skipKeys Exact keys to skip during array sanitization.
+     * @param array<int,mixed> $skipKeyPatterns PCRE patterns; matching keys are skipped during array sanitization.
      */
     public function __construct(
         private bool $emptyToNull = true,
@@ -51,7 +51,7 @@ final readonly class InputSanitizer
             }
         }
         foreach ($this->skipKeyPatterns as $pattern) {
-            if (!is_string($pattern) || $pattern === '' || @preg_match($pattern, '') === false) {
+            if (!is_string($pattern) || $pattern === '' || !self::isValidPattern($pattern)) {
                 throw new \InvalidArgumentException('Input sanitizer skip-key patterns must be valid non-empty PCRE expressions.');
             }
         }
@@ -125,6 +125,17 @@ final readonly class InputSanitizer
         }
 
         return $s;
+    }
+
+    private static function isValidPattern(string $pattern): bool
+    {
+        set_error_handler(static fn(): bool => true);
+
+        try {
+            return preg_match($pattern, '') !== false;
+        } finally {
+            restore_error_handler();
+        }
     }
 
     /**

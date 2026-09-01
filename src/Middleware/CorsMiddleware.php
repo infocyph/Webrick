@@ -14,7 +14,11 @@ use Infocyph\Webrick\Router\Definition\Attribute\Cors;
 /** CORS-only middleware with deny/disabled defaults. */
 final readonly class CorsMiddleware
 {
-    /** @param list<string> $origins @param string|list<string> $allowHeaders @param string|list<string> $exposeHeaders */
+    /**
+     * @param list<string> $origins
+     * @param string|list<string> $allowHeaders
+     * @param string|list<string> $exposeHeaders
+     */
     public function __construct(
         private array $origins = [],
         private string $methods = 'GET, POST, PUT, PATCH, DELETE, OPTIONS',

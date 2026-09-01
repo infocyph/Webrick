@@ -19,7 +19,7 @@ use Infocyph\Webrick\Support\HttpUtils;
 /** Build 200/206/416 responses for seekable resources. */
 final readonly class RangeResponder
 {
-    /** @param array<string,string> $headers */
+    /** @param array<array-key,mixed> $headers */
     public static function forFile(
         Request $req,
         string $absolutePath,
@@ -38,7 +38,7 @@ final readonly class RangeResponder
         return self::buildFileResponse($absolutePath, $mediaType, $headers, $length, $result);
     }
 
-    /** @param array<string,string> $headers */
+    /** @param array<array-key,mixed> $headers */
     public static function fromSeekable(
         mixed $source,
         int $totalLength,
@@ -129,7 +129,10 @@ final readonly class RangeResponder
         );
     }
 
-    /** @param array<string,string> $headers @return array{0:int,1:array<string,string>}|null */
+    /**
+     * @param array<string,string> $headers
+     * @return array{0:int,1:array<string,string>}|null
+     */
     private static function fileMetadata(string $absolutePath, array $headers): ?array
     {
         if (!is_file($absolutePath) || !is_readable($absolutePath)) {
@@ -192,7 +195,10 @@ final readonly class RangeResponder
         return (bool) $metadata['seekable'];
     }
 
-    /** @param array<string,string> $headers @return array<string,string> */
+    /**
+     * @param array<array-key,mixed> $headers
+     * @return array<string,string>
+     */
     private static function normalizeHeaders(array $headers): array
     {
         $normalized = [];

@@ -59,7 +59,10 @@ final readonly class RoutingInput
         return new self($method, Uri::normalizePath($path), $host);
     }
 
-    /** @param array<string,mixed> $server @param array<string,mixed> $form */
+    /**
+     * @param array<string,mixed> $server
+     * @param array<array-key,mixed> $form
+     */
     public static function fromServer(array $server, bool $withHost, array $form = []): self
     {
         $host = '*';
@@ -134,7 +137,10 @@ final readonly class RoutingInput
         return Uri::normalizePath($path === '' ? '/' : $path);
     }
 
-    /** @param array<string,mixed> $server @param array<string,mixed> $form */
+    /**
+     * @param array<string,mixed> $server
+     * @param array<array-key,mixed> $form
+     */
     private static function routingMethodFromServer(array $server, array $form): string
     {
         $value = $server['REQUEST_METHOD'] ?? HttpMethodEnum::GET->value;

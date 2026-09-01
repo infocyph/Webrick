@@ -97,7 +97,12 @@ final readonly class CookieEncryptionMiddleware
     public function __invoke(Request $req, Closure $next): Response
     {
         $incoming = $req->getCookieParams();
-        $req = $req->withCookieParams($this->decryptAll($incoming));
+        $req = $req->withCookieParams(CookieDecryption::all(
+            $incoming,
+            $this->cookiePrefix,
+            $this->dropOnDecryptFailure,
+            fn(string $name, string $cipher): mixed => $this->decrypt($name, $cipher),
+        ));
 
         return $this->encryptAll($next($req), $incoming);
     }
@@ -191,44 +196,6 @@ final readonly class CookieEncryptionMiddleware
         $frame = $this->parseCipherFrame($resolved['cipher']);
 
         return $frame === null ? null : $this->decryptFrame($baseName, $frame);
-    }
-
-    /** @param array<string,mixed> $cookies @return array<string,mixed> */
-    private function decryptAll(array $cookies): array
-    {
-        $pattern = '/^(' . preg_quote($this->cookiePrefix, '/') . '[^.]+)(?:\.p(\d+))?$/';
-        $out = [];
-        /** @var array<string,array<int,string>> $assemblies */
-        $assemblies = [];
-        foreach ($cookies as $name => $value) {
-            if (!is_string($value)) {
-                continue;
-            }
-            if (!preg_match($pattern, $name, $matches)) {
-                $out[$name] = $value;
-
-                continue;
-            }
-            $assemblies[$matches[1]][(int) ($matches[2] ?? 1)] = $value;
-        }
-
-        foreach ($assemblies as $base => $parts) {
-            ksort($parts);
-            if (array_keys($parts) !== range(1, count($parts))) {
-                if (!$this->dropOnDecryptFailure) {
-                    $out[$base] = null;
-                }
-
-                continue;
-            }
-            $plain = $this->decrypt($base, implode('', $parts));
-            if (($plain === null || $plain === false) && $this->dropOnDecryptFailure) {
-                continue;
-            }
-            $out[$base] = $plain === false ? null : $plain;
-        }
-
-        return $out;
     }
 
     private function decryptAndDecompress(
@@ -338,7 +305,10 @@ final readonly class CookieEncryptionMiddleware
         return base64_encode(self::V1_BYTE . $mode . chr($this->kidByte()) . $iv . $tag . $ciphertext);
     }
 
-    /** @return array<int,string> @throws RandomException|LengthException|RuntimeException */
+    /**
+     * @return non-empty-array<int,string>
+     * @throws RandomException|LengthException|RuntimeException
+     */
     private function encryptSegments(string $baseName, string $plaintext): array
     {
         $cipher = $this->encryptBlob($baseName, $plaintext);
@@ -348,10 +318,7 @@ final readonly class CookieEncryptionMiddleware
 
         $parts = str_split($cipher, $this->maxBytes);
         if (count($parts) <= 10) {
-            /** @var array<int,string> $combined */
-            $combined = array_combine(range(1, count($parts)), $parts);
-
-            return $combined;
+            return array_combine(range(1, count($parts)), $parts);
         }
         if ($this->store !== null) {
             $id = bin2hex(random_bytes(16));
@@ -367,7 +334,10 @@ final readonly class CookieEncryptionMiddleware
         throw new LengthException('Encrypted cookie exceeds safe size even after chunking; enable server-side storage or reduce payload.');
     }
 
-    /** @param array<string,bool|string> $attrs @param array<string,mixed> $incoming */
+    /**
+     * @param array<string,bool|string> $attrs
+     * @param array<string,mixed> $incoming
+     */
     private function expireStaleSegments(
         CookieJar $jar,
         string $baseName,
@@ -377,7 +347,7 @@ final readonly class CookieEncryptionMiddleware
     ): CookieJar {
         $pattern = '/^' . preg_quote($baseName, '/') . '\.p(\d+)$/D';
         foreach ($incoming as $name => $_value) {
-            if (!is_string($name) || preg_match($pattern, $name, $matches) !== 1) {
+            if (preg_match($pattern, $name, $matches) !== 1) {
                 continue;
             }
             $index = (int) $matches[1];

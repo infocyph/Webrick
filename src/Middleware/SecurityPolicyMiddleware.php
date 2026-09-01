@@ -16,7 +16,10 @@ final readonly class SecurityPolicyMiddleware
 
     private ?string $timingAllowOriginHeader;
 
-    /** @param list<string> $acceptCh @param list<string> $timingAllowOrigins */
+    /**
+     * @param list<string> $acceptCh
+     * @param list<string> $timingAllowOrigins
+     */
     public function __construct(
         private bool $hsts = true,
         private bool $hstsIncludeSubdomains = true,

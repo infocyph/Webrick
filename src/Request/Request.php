@@ -193,7 +193,7 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         $segments = explode('.', $dot);
         $key = array_shift($segments);
         $input = $this->all();
-        if ($key === null || !array_key_exists($key, $input)) {
+        if (!array_key_exists($key, $input)) {
             return $default;
         }
 
@@ -239,7 +239,10 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return [$fallback, 'default'];
     }
 
-    /** @param string|list<string> $keys @return array<string,mixed> */
+    /**
+     * @param string|list<string> $keys
+     * @return array<string,mixed>
+     */
     public function except(string|array $keys): array
     {
         return self::stringMap(array_diff_key($this->all(), array_flip(self::stringList($keys))));
@@ -419,7 +422,10 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         throw new InvalidArgumentException('Request is immutable');
     }
 
-    /** @param string|list<string> $keys @return array<string,mixed> */
+    /**
+     * @param string|list<string> $keys
+     * @return array<string,mixed>
+     */
     public function only(string|array $keys): array
     {
         return array_intersect_key($this->all(), array_flip(self::stringList($keys)));
@@ -472,7 +478,10 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return EndUser::from($this, self::$trustedProxyNetworks)->parseUserAgent();
     }
 
-    /** @param array<string,string> $rules @return array<string,mixed> */
+    /**
+     * @param array<string,string> $rules
+     * @return array<string,mixed>
+     */
     public function validate(array $rules): array
     {
         foreach ($rules as $field => $rule) {
@@ -494,7 +503,7 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return $this->expectsXml();
     }
 
-    /** @param array<string,mixed> $cookies */
+    /** @param array<array-key,mixed> $cookies */
     #[\Override]
     public function withCookieParams(array $cookies): static
     {
@@ -526,7 +535,10 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return strtolower(str_replace('_', '-', trim($locale)));
     }
 
-    /** @param list<string> $locales @return list<string> */
+    /**
+     * @param list<string> $locales
+     * @return list<string>
+     */
     private static function normalizeLocaleList(array $locales): array
     {
         $normalized = [];
@@ -544,13 +556,19 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return $separator === false ? $locale : substr($locale, 0, $separator);
     }
 
-    /** @param string|list<string> $value @return list<string> */
+    /**
+     * @param string|list<string> $value
+     * @return list<string>
+     */
     private static function stringList(string|array $value): array
     {
         return is_string($value) ? [$value] : $value;
     }
 
-    /** @param array<array-key,mixed> $value @return array<string,mixed> */
+    /**
+     * @param array<array-key,mixed> $value
+     * @return array<string,mixed>
+     */
     private static function stringMap(array $value): array
     {
         $map = [];

@@ -14,7 +14,7 @@ use Traversable;
 /**
  * Immutable, case-insensitive header store shared by Request and Response.
  *
- * @implements ArrayAccess<string,list<string>>
+ * @implements ArrayAccess<array-key,list<string>>
  * @implements IteratorAggregate<string,list<string>>
  */
 final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
@@ -112,7 +112,7 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
         return count($all) === 1 ? $all[0] : $all;
     }
 
-    /** @param string|list<string> $value */
+    /** @param string|array<array-key,mixed> $value */
     public function with(string $name, string|array $value): self
     {
         $copy = clone $this;
@@ -121,7 +121,7 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
         return $copy;
     }
 
-    /** @param string|list<string> $value */
+    /** @param string|array<array-key,mixed> $value */
     public function withAdded(string $name, string|array $value): self
     {
         $values = $this->normalizeValues($value);
@@ -189,12 +189,13 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
     }
 
     /**
-     * @param string|list<string> $value
+     * @param string|array<array-key,mixed> $value
      * @return list<string>
      */
     private function normalizeValues(string|array $value): array
     {
         $values = is_array($value) ? $value : [$value];
+        $normalized = [];
         foreach ($values as $item) {
             if (!is_string($item)) {
                 throw new \InvalidArgumentException('HTTP header values must be strings or lists of strings.');
@@ -202,12 +203,13 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
             if (preg_match(self::INVALID_HEADER_VALUE, $item) === 1) {
                 throw new \InvalidArgumentException('HTTP header values must be valid strings without control characters.');
             }
+            $normalized[] = $item;
         }
 
-        return $values;
+        return $normalized;
     }
 
-    /** @param string|list<string> $value */
+    /** @param string|array<array-key,mixed> $value */
     private function set(string $name, string|array $value): void
     {
         $this->map[$this->norm($name)] = $this->normalizeValues($value);

@@ -103,7 +103,10 @@ final class RouteCache
         return self::clearSharded($safeDirectory, (bool) ($options['aggressive'] ?? false));
     }
 
-    /** @param array<string,mixed> $options @return array<string,mixed> */
+    /**
+     * @param array<string,mixed> $options
+     * @return array<string,mixed>
+     */
     private static function assocArrayOption(array $options, string $key): array
     {
         $value = $options[$key] ?? [];
@@ -121,7 +124,10 @@ final class RouteCache
         return $out;
     }
 
-    /** @param array<string,mixed> $options @return list<class-string> */
+    /**
+     * @param array<string,mixed> $options
+     * @return list<class-string>
+     */
     private static function classListOption(array $options, string $key): array
     {
         $value = $options[$key] ?? [];
@@ -185,7 +191,10 @@ final class RouteCache
         return HttpUtils::parseUnsignedDecimal($value) ?? $default;
     }
 
-    /** @param array<string,string> $attributeDirs @param list<class-string> $attributeClasses */
+    /**
+     * @param array<string,string> $attributeDirs
+     * @param list<class-string> $attributeClasses
+     */
     private static function makeBuildRegisterClosure(
         mixed $userRegister,
         string $routesFile,
@@ -206,7 +215,10 @@ final class RouteCache
         ));
     }
 
-    /** @param array<string,string> $dirs @return array<string,string> */
+    /**
+     * @param array<string,string> $dirs
+     * @return array<string,string>
+     */
     private static function normalizeAttributeDirs(array $dirs, string $cwd, LoggerInterface $logger): array
     {
         $out = [];
@@ -273,7 +285,10 @@ final class RouteCache
         return $cachePath;
     }
 
-    /** @param array<string,mixed> $options @return array{register:\Closure(Registrar):void,registrarOptions:array<string,mixed>,signKey:?string,signedDefaultTtl:int,signedUrlConfig:?SignedUrlConfig,urlBaseUri:string} */
+    /**
+     * @param array<string,mixed> $options
+     * @return array{register:\Closure(Registrar):void,registrarOptions:array<string,mixed>,signKey:?string,signedDefaultTtl:int,signedUrlConfig:?SignedUrlConfig,urlBaseUri:string}
+     */
     private static function resolveBuildInputs(array $options, LoggerInterface $logger): array
     {
         $userRegister = $options['register'] ?? null;
@@ -312,7 +327,10 @@ final class RouteCache
             : new NullLogger();
     }
 
-    /** @param array<string,mixed> $options @return array{0:MatcherModeEnum,1:MatcherInterface,2:string} */
+    /**
+     * @param array<string,mixed> $options
+     * @return array{0:MatcherModeEnum,1:MatcherInterface,2:string}
+     */
     private static function resolveBuildMatcher(array $options, string $cachePath): array
     {
         $mode = MatcherModeEnum::fromInput(self::nullableStringOption($options, 'matcher'), $cachePath);
@@ -340,7 +358,10 @@ final class RouteCache
         return is_array($value) && $value !== [] ? SignedUrlConfig::fromArray($value) : null;
     }
 
-    /** @param array<string,mixed> $options @return array<string,string> */
+    /**
+     * @param array<string,mixed> $options
+     * @return array<string,string>
+     */
     private static function stringMapOption(array $options, string $key): array
     {
         $value = $options[$key] ?? [];

@@ -16,7 +16,10 @@ final readonly class VerifySignedUrlMiddleware
 {
     private SignedUrlConfig $config;
 
-    /** @param array<string,mixed>|list<string>|SignedUrlConfig|string $config @param list<string> $ignoredQueryParams */
+    /**
+     * @param array<string,mixed>|list<string>|SignedUrlConfig|string $config
+     * @param list<string> $ignoredQueryParams
+     */
     public function __construct(
         array|SignedUrlConfig|string $config,
         int|string|null $leeway = null,
@@ -79,7 +82,10 @@ final readonly class VerifySignedUrlMiddleware
         return $target . '?' . \http_build_query($query, '', '&', \PHP_QUERY_RFC3986);
     }
 
-    /** @param array<int|string,mixed> $values @return list<string> */
+    /**
+     * @param array<int|string,mixed> $values
+     * @return list<string>
+     */
     private function filterStringList(array $values): array
     {
         $filtered = [];
@@ -92,7 +98,10 @@ final readonly class VerifySignedUrlMiddleware
         return $filtered;
     }
 
-    /** @param array<string,mixed>|list<string>|SignedUrlConfig|string $config @param list<string> $ignoredQueryParams */
+    /**
+     * @param array<string,mixed>|list<string>|SignedUrlConfig|string $config
+     * @param list<string> $ignoredQueryParams
+     */
     private function normalizeConfig(
         array|SignedUrlConfig|string $config,
         int|string|null $leeway,

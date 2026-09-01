@@ -33,6 +33,7 @@ function assertOutcome(mixed $actual, MatchOutcomeType $type, string $message): 
     return $actual;
 }
 
+/** @param list<string> $expected */
 function assertAllowed(MatchOutcome $outcome, array $expected, string $message): void
 {
     foreach ($expected as $allowed) {
@@ -44,8 +45,8 @@ function assertAllowed(MatchOutcome $outcome, array $expected, string $message):
 
 /** @var array<string,Closure():MatcherInterface> $factories */
 $factories = [
-    'Fused' => static fn(): MatcherInterface => FusedMatcher::make(),
-    'Sharded' => static fn(): MatcherInterface => ShardedMatcher::make(),
+    'Fused' => FusedMatcher::make(...),
+    'Sharded' => ShardedMatcher::make(...),
 ];
 
 foreach ($factories as $name => $factory) {

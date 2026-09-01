@@ -70,6 +70,11 @@ final readonly class ResponseLinterMiddleware
         return $resp;
     }
 
+    private static function forbidsContentLength(int $status): bool
+    {
+        return ($status >= 100 && $status < 200) || $status === StatusEnum::NO_CONTENT->value;
+    }
+
     private function assertContentLengthMatches(Request $req, Response $resp, int $len): void
     {
         if ($resp->hasHeader('Transfer-Encoding')) {
@@ -79,7 +84,7 @@ final readonly class ResponseLinterMiddleware
         $code = $resp->getStatusCode();
         $line = trim($resp->getHeaderLine('Content-Length'));
 
-        if (($code >= 100 && $code < 200) || $code === StatusEnum::NO_CONTENT->value) {
+        if (self::forbidsContentLength($code)) {
             if ($line !== '') {
                 throw new RuntimeException("Linter: Content-Length is forbidden on {$code}");
             }

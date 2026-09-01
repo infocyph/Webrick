@@ -5,7 +5,6 @@ declare(strict_types=1);
 use Infocyph\Webrick\Router\Matching\FusedMatcher;
 use Infocyph\Webrick\Router\Matching\GeneratedMatcher;
 use Infocyph\Webrick\Router\Matching\MatcherInterface;
-use Infocyph\Webrick\Router\Matching\MatchOutcome;
 use Infocyph\Webrick\Router\Matching\ShardedMatcher;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 use Infocyph\Webrick\Router\Route\Route;
@@ -46,7 +45,11 @@ function capabilityRoute(string $method, string $path, string $handler, ?string 
     return CompiledRoute::fromRoute(new Route($method, $path, $handler, $domain));
 }
 
-/** @return int */
+/**
+ * @param non-empty-string $method
+ * @param non-empty-string $host
+ * @param non-empty-string $path
+ */
 function capabilityChecksum(MatcherInterface $matcher, string $method, string $host, string $path): int
 {
     $hit = $matcher->matchCompiled($method, $host, $path);
@@ -56,11 +59,8 @@ function capabilityChecksum(MatcherInterface $matcher, string $method, string $h
     if (is_array($hit)) {
         return $hit[0] ^ count($hit[1]);
     }
-    if ($hit instanceof MatchOutcome) {
-        return $hit->type->value === 'not_found' ? 0 : count($hit->allowed);
-    }
 
-    throw new LogicException('Unexpected matcher result.');
+    return $hit->type->value === 'not_found' ? 0 : count($hit->allowed);
 }
 
 $routes = [];
@@ -88,9 +88,9 @@ $distinctLast = max(0, $distinctCount - 1);
 
 /** @var array<string,Closure():MatcherInterface> $factories */
 $factories = [
-    'Fused' => static fn(): MatcherInterface => FusedMatcher::make(),
-    'Generated' => static fn(): MatcherInterface => GeneratedMatcher::make(),
-    'Sharded' => static fn(): MatcherInterface => ShardedMatcher::make(),
+    'Fused' => FusedMatcher::make(...),
+    'Generated' => GeneratedMatcher::make(...),
+    'Sharded' => ShardedMatcher::make(...),
 ];
 
 fwrite(STDOUT, "Matcher capability benchmark\n");
@@ -123,7 +123,7 @@ foreach ($factories as $matcherName => $factory) {
 
     foreach ($scenarios as $scenario => $operation) {
         $result = capabilityBench($operation, $iterations, $rounds, $warmup);
-        $checksum ^= (int) $operation();
+        $checksum ^= $operation();
         fwrite(STDOUT, sprintf(
             "%-22s %-12s %14.1f %14.1f\n",
             $scenario,

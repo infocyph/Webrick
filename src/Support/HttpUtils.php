@@ -135,22 +135,7 @@ final class HttpUtils
         $escaped = false;
         for ($i = 0, $length = strlen($raw); $i < $length; $i++) {
             $char = $raw[$i];
-            if ($escaped) {
-                $buffer .= $char;
-                $escaped = false;
-
-                continue;
-            }
-            if ($quoted && $char === '\\') {
-                $buffer .= $char;
-                $escaped = true;
-
-                continue;
-            }
-            if ($char === '"') {
-                $quoted = !$quoted;
-                $buffer .= $char;
-
+            if (self::appendQuotedCharacter($buffer, $quoted, $escaped, $char)) {
                 continue;
             }
             if ($char === $delimiter && !$quoted) {
@@ -174,5 +159,29 @@ final class HttpUtils
         }
 
         return $parts;
+    }
+
+    private static function appendQuotedCharacter(string &$buffer, bool &$quoted, bool &$escaped, string $char): bool
+    {
+        if ($escaped) {
+            $buffer .= $char;
+            $escaped = false;
+
+            return true;
+        }
+        if ($quoted && $char === '\\') {
+            $buffer .= $char;
+            $escaped = true;
+
+            return true;
+        }
+        if ($char !== '"') {
+            return false;
+        }
+
+        $quoted = !$quoted;
+        $buffer .= $char;
+
+        return true;
     }
 }

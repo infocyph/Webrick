@@ -181,12 +181,14 @@ final class RouterArtifactLoader
             throw new UnexpectedValueException('Compiled Webrick router artifact must return an array.');
         }
 
-        /** @var array<string,mixed> $payload */
-        foreach ($payload as $key => $_value) {
+        $normalizedPayload = [];
+        foreach ($payload as $key => $value) {
             if (!is_string($key)) {
                 throw new UnexpectedValueException('Compiled Webrick router artifact must use string keys.');
             }
+            $normalizedPayload[$key] = $value;
         }
+        $payload = $normalizedPayload;
 
         $calculated = $this->calculatePayloadFingerprint($payload);
         $payloadFingerprint = $payload['artifact_fingerprint'] ?? null;
