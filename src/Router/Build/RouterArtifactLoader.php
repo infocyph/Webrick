@@ -17,9 +17,9 @@ final class RouterArtifactLoader
     ): CompiledRouterArtifact {
         self::assertExpectedIdentity($expectedEnvironment, $expectedConfigFingerprint);
         $meta = $this->readMeta($path);
-        $sha256 = hash_file('sha256', $path);
-        if (!is_string($sha256) || !hash_equals($meta['sha256'], $sha256)) {
-            throw new RuntimeException('Webrick router artifact SHA-256 mismatch.');
+        $digest = hash_file('xxh128', $path);
+        if (!is_string($digest) || !hash_equals($meta['digest'], $digest)) {
+            throw new RuntimeException('Webrick router artifact digest mismatch.');
         }
 
         return $this->loadVerifiedPayload($path, $meta, $expectedEnvironment, $expectedConfigFingerprint);
@@ -27,21 +27,31 @@ final class RouterArtifactLoader
 
     public function loadPrevalidated(
         string $path,
-        string $trustedSha256,
+        string $trustedArtifactFingerprint,
         string $expectedEnvironment,
         string $expectedConfigFingerprint,
     ): CompiledRouterArtifact {
         self::assertExpectedIdentity($expectedEnvironment, $expectedConfigFingerprint);
-        if (!preg_match('/^[a-f0-9]{64}$/D', $trustedSha256)) {
-            throw new UnexpectedValueException('Trusted Webrick SHA-256 must be a lowercase hexadecimal digest.');
+        if (preg_match('/^[a-f0-9]{32}$/D', $trustedArtifactFingerprint) !== 1) {
+            throw new UnexpectedValueException('Trusted Webrick artifact fingerprint must be a lowercase xxh128 digest.');
         }
 
-        $meta = $this->readMeta($path);
-        if (!hash_equals($trustedSha256, $meta['sha256'])) {
-            throw new RuntimeException('Trusted Webrick digest does not match the release manifest.');
+        $payload = $this->requirePayload($path);
+        $payloadFingerprint = $payload['artifact_fingerprint'] ?? null;
+        if (!is_string($payloadFingerprint) || !hash_equals($trustedArtifactFingerprint, $payloadFingerprint)) {
+            throw new RuntimeException('Trusted Webrick artifact fingerprint does not match the release manifest.');
         }
 
-        return $this->loadTrustedPayload($path, $meta, $expectedEnvironment, $expectedConfigFingerprint);
+        $artifact = CompiledRouterArtifact::fromPayload($payload, trusted: true);
+        if (
+            $artifact->environment !== $expectedEnvironment
+            || !hash_equals($artifact->configFingerprint, $expectedConfigFingerprint)
+            || !hash_equals($artifact->artifactFingerprint, $trustedArtifactFingerprint)
+        ) {
+            throw new RuntimeException('Webrick router artifact identity mismatch.');
+        }
+
+        return $artifact;
     }
 
     /**
@@ -77,7 +87,7 @@ final class RouterArtifactLoader
         return $value;
     }
 
-    /** @param array{format:int,environment:string,config_fingerprint:string,artifact_fingerprint:string,sha256:string} $meta */
+    /** @param array{format:int,environment:string,config_fingerprint:string,artifact_fingerprint:string,digest:string} $meta */
     private static function assertArtifactIdentity(CompiledRouterArtifact $artifact, array $meta): void
     {
         if (
@@ -96,7 +106,7 @@ final class RouterArtifactLoader
         }
     }
 
-    /** @param array{format:int,environment:string,config_fingerprint:string,artifact_fingerprint:string,sha256:string} $meta */
+    /** @param array{format:int,environment:string,config_fingerprint:string,artifact_fingerprint:string,digest:string} $meta */
     private static function assertMetaIdentity(
         array $meta,
         string $expectedEnvironment,
@@ -185,27 +195,7 @@ final class RouterArtifactLoader
         );
     }
 
-    /** @param array{format:int,environment:string,config_fingerprint:string,artifact_fingerprint:string,sha256:string} $meta */
-    private function loadTrustedPayload(
-        string $path,
-        array $meta,
-        string $expectedEnvironment,
-        string $expectedConfigFingerprint,
-    ): CompiledRouterArtifact {
-        self::assertMetaIdentity($meta, $expectedEnvironment, $expectedConfigFingerprint);
-        $payload = $this->requirePayload($path);
-        $payloadFingerprint = $payload['artifact_fingerprint'] ?? null;
-        if (!is_string($payloadFingerprint) || !hash_equals($meta['artifact_fingerprint'], $payloadFingerprint)) {
-            throw new RuntimeException('Webrick router artifact fingerprint metadata mismatch.');
-        }
-
-        $artifact = CompiledRouterArtifact::fromPayload($payload, trusted: true);
-        self::assertArtifactIdentity($artifact, $meta);
-
-        return $artifact;
-    }
-
-    /** @param array{format:int,environment:string,config_fingerprint:string,artifact_fingerprint:string,sha256:string} $meta */
+    /** @param array{format:int,environment:string,config_fingerprint:string,artifact_fingerprint:string,digest:string} $meta */
     private function loadVerifiedPayload(
         string $path,
         array $meta,
@@ -230,7 +220,7 @@ final class RouterArtifactLoader
         return $artifact;
     }
 
-    /** @return array{format:int,environment:string,config_fingerprint:string,artifact_fingerprint:string,sha256:string} */
+    /** @return array{format:int,environment:string,config_fingerprint:string,artifact_fingerprint:string,digest:string} */
     private function readMeta(string $path): array
     {
         $metaPath = $path . '.meta.json';
@@ -249,7 +239,9 @@ final class RouterArtifactLoader
             || !is_string($meta['environment'] ?? null)
             || !is_string($meta['config_fingerprint'] ?? null)
             || !is_string($meta['artifact_fingerprint'] ?? null)
-            || !is_string($meta['sha256'] ?? null)
+            || preg_match('/^[a-f0-9]{32}$/D', $meta['artifact_fingerprint']) !== 1
+            || !is_string($meta['digest'] ?? null)
+            || preg_match('/^[a-f0-9]{32}$/D', $meta['digest']) !== 1
         ) {
             throw new UnexpectedValueException('Malformed Webrick router artifact metadata.');
         }
@@ -259,13 +251,17 @@ final class RouterArtifactLoader
             'environment' => $meta['environment'],
             'config_fingerprint' => $meta['config_fingerprint'],
             'artifact_fingerprint' => $meta['artifact_fingerprint'],
-            'sha256' => $meta['sha256'],
+            'digest' => $meta['digest'],
         ];
     }
 
     /** @return array<string,mixed> */
     private function requirePayload(string $path): array
     {
+        if (!is_file($path)) {
+            throw new RuntimeException('Compiled Webrick router artifact is missing.');
+        }
+
         $payload = require $path;
         if (!is_array($payload)) {
             throw new UnexpectedValueException('Compiled Webrick router artifact must return an array.');
