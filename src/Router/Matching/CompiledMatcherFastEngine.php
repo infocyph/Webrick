@@ -19,9 +19,11 @@ use Infocyph\Webrick\Constants\HttpMethodEnum;
  * @phpstan-type FastDispatchEntry array{id:int,params:list<string>}
  * @phpstan-type FastDispatchStep array{regex:string,routes:array<string,FastDispatchEntry>}
  * @phpstan-type FastDispatch array{segment:int,groups:array<string,list<FastDispatchStep>>}
+ * @phpstan-type AllowedLiteralEntry array{regex:string,methods:list<string>}
+ * @phpstan-type AllowedBucket array{type:'literal',segment:int,groups:array<string,AllowedLiteralEntry>}|array{type:'fallback'}
  * @phpstan-type FallbackStep array{type:'fallback',segments:list<array<string,mixed>>,route:mixed,id:int}
  * @phpstan-type DynamicBucket array{steps:list<PcreStep|FallbackStep>,fast_dispatch?:FastDispatch}
- * @phpstan-type MatcherGroup array{static:array<string,array<string,mixed>>,static_ids:array<string,array<string,int>>,dynamic:array<string,array<int,array<string,DynamicBucket>>>}
+ * @phpstan-type MatcherGroup array{static:array<string,array<string,mixed>>,static_ids:array<string,array<string,int>>,static_allowed:array<string,list<string>>,dynamic:array<string,array<int,array<string,DynamicBucket>>>,dynamic_allowed:array<int,array<string,AllowedBucket>>}
  * @phpstan-type CompiledMatch int|array{0:int,1:array<string,string>}|MatchOutcome
  */
 final class CompiledMatcherFastEngine
@@ -54,11 +56,11 @@ final class CompiledMatcherFastEngine
 
         $allowed = [];
         $skip = self::alreadyTestedMethods($method);
-        self::collectStaticAllowed($hostGroups, $path, $skip, $allowed);
-        self::collectStaticAllowed($wildcardGroups, $path, $skip, $allowed);
+        self::collectCompiledStaticAllowed($hostGroups, $path, $skip, $allowed);
+        self::collectCompiledStaticAllowed($wildcardGroups, $path, $skip, $allowed);
         $segments = null;
-        $this->collectDynamicAllowed($hostGroups, $path, $count, $prefix, $skip, $allowed, $segments);
-        $this->collectDynamicAllowed($wildcardGroups, $path, $count, $prefix, $skip, $allowed, $segments);
+        $this->collectCompiledDynamicAllowed($hostGroups, $path, $count, $prefix, $skip, $allowed, $segments);
+        $this->collectCompiledDynamicAllowed($wildcardGroups, $path, $count, $prefix, $skip, $allowed, $segments);
 
         return self::missOutcome($method, $allowed);
     }
@@ -104,17 +106,17 @@ final class CompiledMatcherFastEngine
         $allowed = [];
         $skip = self::alreadyTestedMethods($method);
         if ($hostGroup !== null) {
-            self::collectStaticAllowedGroup($hostGroup, $path, $skip, $allowed);
+            self::collectCompiledStaticAllowedGroup($hostGroup, $path, $skip, $allowed);
         }
         if ($wildcardGroup !== null) {
-            self::collectStaticAllowedGroup($wildcardGroup, $path, $skip, $allowed);
+            self::collectCompiledStaticAllowedGroup($wildcardGroup, $path, $skip, $allowed);
         }
         $segments = null;
         if ($hostGroup !== null) {
-            $this->collectDynamicAllowedGroup($hostGroup, $path, $count, $prefix, $skip, $allowed, $segments);
+            $this->collectCompiledDynamicAllowedGroup($hostGroup, $path, $count, $prefix, $skip, $allowed, $segments);
         }
         if ($wildcardGroup !== null) {
-            $this->collectDynamicAllowedGroup($wildcardGroup, $path, $count, $prefix, $skip, $allowed, $segments);
+            $this->collectCompiledDynamicAllowedGroup($wildcardGroup, $path, $count, $prefix, $skip, $allowed, $segments);
         }
 
         return self::missOutcome($method, $allowed);
@@ -129,6 +131,20 @@ final class CompiledMatcherFastEngine
         $allowed[$method] = true;
         if ($method === HttpMethodEnum::GET->value) {
             $allowed[HttpMethodEnum::HEAD->value] = true;
+        }
+    }
+
+    /**
+     * @param array<string,bool> $allowed
+     * @param list<string> $methods
+     * @param array<string,true> $skip
+     */
+    private static function addCompiledAllowedMethods(array &$allowed, array $methods, array $skip): void
+    {
+        foreach ($methods as $method) {
+            if (!isset($skip[$method])) {
+                $allowed[$method] = true;
+            }
         }
     }
 
@@ -394,12 +410,11 @@ final class CompiledMatcherFastEngine
      * @param array<string,true> $skip
      * @param array<string,bool> $allowed
      */
-    private static function collectStaticAllowedGroup(array $group, string $path, array $skip, array &$allowed): void
+    private static function collectCompiledStaticAllowedGroup(array $group, string $path, array $skip, array &$allowed): void
     {
-        foreach ($group['static_ids'] as $method => $routes) {
-            if (!isset($skip[$method]) && isset($routes[$path])) {
-                self::addAllowedMethod($allowed, $method);
-            }
+        $methods = $group['static_allowed'][$path] ?? null;
+        if (is_array($methods)) {
+            self::addCompiledAllowedMethods($allowed, $methods, $skip);
         }
     }
 
@@ -408,14 +423,101 @@ final class CompiledMatcherFastEngine
      * @param array<string,true> $skip
      * @param array<string,bool> $allowed
      */
-    private static function collectStaticAllowed(array $groups, string $path, array $skip, array &$allowed): void
+    private static function collectCompiledStaticAllowed(array $groups, string $path, array $skip, array &$allowed): void
     {
         foreach ($groups as $group) {
-            self::collectStaticAllowedGroup($group, $path, $skip, $allowed);
+            self::collectCompiledStaticAllowedGroup($group, $path, $skip, $allowed);
         }
     }
 
     /**
+     * @param MatcherGroup $group
+     * @param array<string,true> $skip
+     * @param array<string,bool> $allowed
+     * @param list<string>|null $segments
+     */
+    private function collectCompiledDynamicAllowedGroup(
+        array $group,
+        string $path,
+        int $count,
+        string $prefix,
+        array $skip,
+        array &$allowed,
+        ?array &$segments,
+    ): void {
+        $byCount = $group['dynamic_allowed'][$count] ?? null;
+        if (!is_array($byCount)) {
+            return;
+        }
+
+        $needsFallback = false;
+        $buckets = [];
+        if (isset($byCount[$prefix]) && is_array($byCount[$prefix])) {
+            $buckets[] = $byCount[$prefix];
+        }
+        if ($prefix !== '*' && isset($byCount['*']) && is_array($byCount['*'])) {
+            $buckets[] = $byCount['*'];
+        }
+
+        foreach ($buckets as $bucket) {
+            if (($bucket['type'] ?? null) === 'fallback') {
+                $needsFallback = true;
+                continue;
+            }
+            if (($bucket['type'] ?? null) !== 'literal') {
+                throw new \UnexpectedValueException('Compiled matcher allowed-method bucket type is invalid.');
+            }
+
+            $segments ??= self::pathSegments($path);
+            $segment = $bucket['segment'] ?? null;
+            $value = is_int($segment) ? ($segments[$segment] ?? null) : null;
+            if (!is_string($value)) {
+                continue;
+            }
+            $entry = $bucket['groups'][$value] ?? null;
+            if (!is_array($entry)) {
+                continue;
+            }
+
+            $status = preg_match($entry['regex'], $path);
+            if ($status === false) {
+                throw new \RuntimeException('Compiled matcher allowed-method PCRE failed during dispatch.');
+            }
+            if ($status === 1) {
+                self::addCompiledAllowedMethods($allowed, $entry['methods'], $skip);
+            }
+        }
+
+        if ($needsFallback) {
+            $this->collectDynamicAllowedGroup($group, $path, $count, $prefix, $skip, $allowed, $segments);
+        }
+    }
+
+    /**
+     * @param list<MatcherGroup> $groups
+     * @param array<string,true> $skip
+     * @param array<string,bool> $allowed
+     * @param list<string>|null $segments
+     */
+    private function collectCompiledDynamicAllowed(
+        array $groups,
+        string $path,
+        int $count,
+        string $prefix,
+        array $skip,
+        array &$allowed,
+        ?array &$segments,
+    ): void {
+        foreach ($groups as $group) {
+            $this->collectCompiledDynamicAllowedGroup($group, $path, $count, $prefix, $skip, $allowed, $segments);
+        }
+    }
+
+    /**
+     * General semantic fallback for dynamic allowed-method discovery. It is used
+     * only for route families whose build-time topology cannot prove a unique
+     * method-independent shape discriminator.
+     *
      * @param MatcherGroup $group
      * @param array<string,true> $skip
      * @param array<string,bool> $allowed
@@ -437,26 +539,6 @@ final class CompiledMatcherFastEngine
             if ($this->findDynamicMethod($group, $method, $path, $count, $prefix, $segments) !== null) {
                 self::addAllowedMethod($allowed, $method);
             }
-        }
-    }
-
-    /**
-     * @param list<MatcherGroup> $groups
-     * @param array<string,true> $skip
-     * @param array<string,bool> $allowed
-     * @param list<string>|null $segments
-     */
-    private function collectDynamicAllowed(
-        array $groups,
-        string $path,
-        int $count,
-        string $prefix,
-        array $skip,
-        array &$allowed,
-        ?array &$segments,
-    ): void {
-        foreach ($groups as $group) {
-            $this->collectDynamicAllowedGroup($group, $path, $count, $prefix, $skip, $allowed, $segments);
         }
     }
 
