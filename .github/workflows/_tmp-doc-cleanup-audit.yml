@@ -1,0 +1,71 @@
+name: Temporary Docs Cleanup Audit
+
+on:
+  push:
+    branches:
+      - webrick-5/batch-1-correctness
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: webrick-5/batch-1-correctness
+          fetch-depth: 1
+
+      - name: Matcher documentation references
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '=== MATCHER DOC REFERENCES ==='
+          grep -RniE 'GeneratedMatcher|FusedMatcher|ShardedMatcher|Generated|Fused|Sharded|route[- ]count|matcher' docs README.md || true
+
+      - name: Repository cleanup candidates
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '=== TINY TRACKED FILES <= 100 BYTES ==='
+          while IFS= read -r file; do
+            size=$(wc -c < "$file")
+            if [ "$size" -le 100 ]; then
+              printf '%8s  %s\n' "$size" "$file"
+            fi
+          done < <(git ls-files)
+
+          echo '=== SUSPICIOUS NAMES ==='
+          git ls-files | grep -Ei '(^|/)(_tmp|tmp|temp|backup|bak|old|copy|draft|plan|phase|batch|sanity|capabilit)' || true
+
+          echo '=== EXACT DUPLICATE CONTENT GROUPS ==='
+          python3 - <<'PY'
+          from collections import defaultdict
+          from pathlib import Path
+          import hashlib, subprocess
+
+          groups = defaultdict(list)
+          for file in subprocess.check_output(['git', 'ls-files'], text=True).splitlines():
+              path = Path(file)
+              if not path.is_file() or path.stat().st_size == 0:
+                  continue
+              groups[hashlib.sha256(path.read_bytes()).hexdigest()].append(file)
+          for files in groups.values():
+              if len(files) > 1:
+                  print(' | '.join(files))
+          PY
+
+          echo '=== FIXTURE REFERENCES ==='
+          grep -RniE 'Fixture/|Fixtures/' src tests docs README.md composer.json || true
+
+      - name: Remove temporary audit runner
+        shell: bash
+        run: |
+          rm -f .github/workflows/_tmp-doc-cleanup-audit.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit --no-verify -m "chore: remove temporary docs cleanup audit"
+          git push origin HEAD:webrick-5/batch-1-correctness
