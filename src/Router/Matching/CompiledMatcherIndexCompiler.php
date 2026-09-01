@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Router\Matching;
 
 use Infocyph\Webrick\Router\Build\Artifact\ExecutableRoutePayload;
-use Infocyph\Webrick\Router\Constraint\Registry as ConstraintRegistry;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 
 /**
@@ -91,6 +90,7 @@ final readonly class CompiledMatcherIndexCompiler
             if ($method === '') {
                 continue;
             }
+
             $allowed[$method] = true;
             if ($method === 'GET') {
                 $allowed['HEAD'] = true;
@@ -122,6 +122,7 @@ final readonly class CompiledMatcherIndexCompiler
                 }
                 $values[$literal] = true;
             }
+
             $distinct = count($values);
             if ($best === null || $distinct > $best['distinct']) {
                 $best = ['segment' => $segment, 'distinct' => $distinct];
@@ -129,28 +130,6 @@ final readonly class CompiledMatcherIndexCompiler
         }
 
         return $best;
-    }
-
-    private static function escapeDelimiter(string $pattern, string $delimiter): string
-    {
-        $out = '';
-        $length = strlen($pattern);
-
-        for ($i = 0; $i < $length; $i++) {
-            $char = $pattern[$i];
-            if ($char === $delimiter) {
-                $slashes = 0;
-                for ($j = $i - 1; $j >= 0 && $pattern[$j] === '\\'; $j--) {
-                    $slashes++;
-                }
-                if (($slashes % 2) === 0) {
-                    $out .= '\\';
-                }
-            }
-            $out .= $char;
-        }
-
-        return $out;
     }
 
     /** @param list<SegmentSpec> $segments */
@@ -161,56 +140,6 @@ final readonly class CompiledMatcherIndexCompiler
         return is_array($spec) && ($spec['type'] ?? null) === 'lit' && is_string($spec['val'] ?? null)
             ? $spec['val']
             : null;
-    }
-
-    /**
-     * Converts ordinary capture groups inside Webrick's allowlisted combined-
-     * PCRE-safe segment patterns into non-capturing groups so each outer route
-     * parameter owns exactly one predictable positional capture. Arbitrary user
-     * regexes never reach this function.
-     */
-    private static function nonCapturingInner(string $inner): string
-    {
-        $out = '';
-        $length = strlen($inner);
-        $escaped = false;
-        $class = false;
-
-        for ($i = 0; $i < $length; $i++) {
-            $char = $inner[$i];
-            if ($escaped) {
-                $out .= $char;
-                $escaped = false;
-
-                continue;
-            }
-            if ($char === '\\') {
-                $out .= $char;
-                $escaped = true;
-
-                continue;
-            }
-            if ($char === '[') {
-                $class = true;
-                $out .= $char;
-
-                continue;
-            }
-            if ($char === ']' && $class) {
-                $class = false;
-                $out .= $char;
-
-                continue;
-            }
-            if (!$class && $char === '(' && ($inner[$i + 1] ?? '') !== '?') {
-                $out .= '(?:';
-
-                continue;
-            }
-            $out .= $char;
-        }
-
-        return $out;
     }
 
     private static function routeIndex(mixed $route): int
@@ -224,20 +153,6 @@ final readonly class CompiledMatcherIndexCompiler
         }
 
         return $index;
-    }
-
-    private static function segmentRegexInner(string $regex): string
-    {
-        if (!str_starts_with($regex, '#\\A') || !str_ends_with($regex, '\\z#D')) {
-            throw new \UnexpectedValueException('Compiled matcher segment regex has an unsupported form.');
-        }
-
-        $inner = substr($regex, 3, -4);
-        if ($inner === '') {
-            throw new \UnexpectedValueException('Compiled matcher segment regex cannot be empty.');
-        }
-
-        return self::escapeDelimiter($inner, '~');
     }
 
     /**
@@ -259,7 +174,7 @@ final readonly class CompiledMatcherIndexCompiler
 
         $routes = array_values($entries);
         foreach ($routes as $entry) {
-            if (!$this->isPcreCompilable($entry['segments'])) {
+            if (!CompiledMatcherPatternCompiler::isCompilable($entry['segments'])) {
                 return ['type' => 'fallback'];
             }
         }
@@ -274,7 +189,7 @@ final readonly class CompiledMatcherIndexCompiler
             $literal = self::literalSegment($entry['segments'], $selection['segment'])
                 ?? throw new \UnexpectedValueException('Compiled matcher literal segment is invalid.');
             $groups[$literal] = [
-                'regex' => $this->routePredicateRegex($entry['segments']),
+                'regex' => CompiledMatcherPatternCompiler::predicate($entry['segments']),
                 'methods' => self::allowedMethods($entry['verbs']),
             ];
         }
@@ -348,10 +263,9 @@ final readonly class CompiledMatcherIndexCompiler
 
                 /** @var array<string,list<array{segments:list<SegmentSpec>,route:RouteValue,id:int,pcre:bool}>> $ordered */
                 $ordered = [];
-
                 foreach ($entries as $entry) {
                     $segments = $entry['segments'];
-                    $canCompile = $this->isPcreCompilable($segments);
+                    $canCompile = CompiledMatcherPatternCompiler::isCompilable($segments);
                     foreach ($entry['verbs'] as $method => $route) {
                         $ordered[$method][] = [
                             'segments' => $segments,
@@ -381,13 +295,13 @@ final readonly class CompiledMatcherIndexCompiler
         $routeMap = [];
         foreach ($routes as $index => $entry) {
             $mark = 'r' . $index;
-            [$pattern, $params] = $this->routePatternPositional($entry['segments']);
+            [$pattern, $params] = CompiledMatcherPatternCompiler::positionalPattern($entry['segments']);
             $alternatives[] = '(?:' . $pattern . ')(*MARK:' . $mark . ')';
             $routeMap[$mark] = ['id' => $entry['id'], 'params' => $params];
         }
 
         $regex = '~\\A(?|' . implode('|', $alternatives) . ')\\z~D';
-        if (@preg_match($regex, '') === false) {
+        if (preg_match($regex, '') === false) {
             throw new \UnexpectedValueException('Failed to compile adaptive matcher PCRE chunk.');
         }
 
@@ -420,7 +334,6 @@ final readonly class CompiledMatcherIndexCompiler
         if ($selection === null || $selection['distinct'] < 4) {
             return null;
         }
-
         if ((int) ceil($routeCount / $selection['distinct']) > max(1, intdiv($this->chunkSize, 2))) {
             return null;
         }
@@ -457,8 +370,8 @@ final readonly class CompiledMatcherIndexCompiler
 
         foreach ($routes as $index => $entry) {
             $mark = 'r' . $index;
-            [$pattern, $params] = $this->routePattern($entry['segments'], $index);
-            [$fastPattern, $fastParams] = $this->routePatternPositional($entry['segments']);
+            [$pattern, $params] = CompiledMatcherPatternCompiler::namedPattern($entry['segments'], $index);
+            [$fastPattern, $fastParams] = CompiledMatcherPatternCompiler::positionalPattern($entry['segments']);
             $alternatives[] = '(?:' . $pattern . ')(*MARK:' . $mark . ')';
             $fastAlternatives[] = '(?:' . $fastPattern . ')(*MARK:' . $mark . ')';
             $routeMap[$mark] = [
@@ -471,7 +384,7 @@ final readonly class CompiledMatcherIndexCompiler
 
         $regex = '~(?J)\\A(?:' . implode('|', $alternatives) . ')\\z~D';
         $fastRegex = '~\\A(?|' . implode('|', $fastAlternatives) . ')\\z~D';
-        if (@preg_match($regex, '') === false || @preg_match($fastRegex, '') === false) {
+        if (preg_match($regex, '') === false || preg_match($fastRegex, '') === false) {
             throw new \UnexpectedValueException('Failed to compile combined matcher PCRE chunk.');
         }
 
@@ -540,143 +453,5 @@ final readonly class CompiledMatcherIndexCompiler
         }
 
         return $steps;
-    }
-
-    /** @param list<SegmentSpec> $segments */
-    private function isPcreCompilable(array $segments): bool
-    {
-        foreach ($segments as $segment) {
-            if (($segment['type'] ?? null) !== 'var') {
-                continue;
-            }
-            $regex = $segment['regex'] ?? null;
-            if (!is_string($regex) || !ConstraintRegistry::isCombinedPcreSafeSegmentRegex($regex)) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    /**
-     * @param list<SegmentSpec> $segments
-     * @return array{0:string,1:array<string,string>}
-     */
-    private function routePattern(array $segments, int $routeOrdinal): array
-    {
-        if ($segments === []) {
-            return ['/*', []];
-        }
-
-        $parts = [];
-        $params = [];
-        $parameterOrdinal = 0;
-
-        foreach ($segments as $segment) {
-            $type = $segment['type'] ?? null;
-            if ($type === 'lit') {
-                $literal = $segment['val'] ?? null;
-                if (!is_string($literal)) {
-                    throw new \UnexpectedValueException('Compiled matcher literal is invalid.');
-                }
-                $parts[] = preg_quote($literal, '~');
-
-                continue;
-            }
-            if ($type !== 'var') {
-                throw new \UnexpectedValueException('Compiled matcher segment type is invalid.');
-            }
-
-            $regex = $segment['regex'] ?? null;
-            $name = $segment['name'] ?? null;
-            if (!is_string($regex) || !is_string($name) || $name === '') {
-                throw new \LogicException('Non-PCRE matcher segment cannot enter the PCRE fast lane.');
-            }
-
-            $capture = 'w' . $routeOrdinal . 'p' . $parameterOrdinal++;
-            $parts[] = '(?<' . $capture . '>' . self::segmentRegexInner($regex) . ')';
-            $params[$capture] = $name;
-        }
-
-        return ['/*' . implode('/', $parts) . '/*', $params];
-    }
-
-    /**
-     * @param list<SegmentSpec> $segments
-     * @return array{0:string,1:list<string>}
-     */
-    private function routePatternPositional(array $segments): array
-    {
-        if ($segments === []) {
-            return ['/*', []];
-        }
-
-        $parts = [];
-        $params = [];
-        foreach ($segments as $segment) {
-            $type = $segment['type'] ?? null;
-            if ($type === 'lit') {
-                $literal = $segment['val'] ?? null;
-                if (!is_string($literal)) {
-                    throw new \UnexpectedValueException('Compiled matcher literal is invalid.');
-                }
-                $parts[] = preg_quote($literal, '~');
-
-                continue;
-            }
-            if ($type !== 'var') {
-                throw new \UnexpectedValueException('Compiled matcher segment type is invalid.');
-            }
-
-            $regex = $segment['regex'] ?? null;
-            $name = $segment['name'] ?? null;
-            if (!is_string($regex) || !is_string($name) || $name === '') {
-                throw new \LogicException('Non-PCRE matcher segment cannot enter the positional fast lane.');
-            }
-
-            $inner = self::nonCapturingInner(self::segmentRegexInner($regex));
-            $parts[] = '(' . $inner . ')';
-            $params[] = $name;
-        }
-
-        return ['/*' . implode('/', $parts) . '/*', $params];
-    }
-
-    /** @param list<SegmentSpec> $segments */
-    private function routePredicateRegex(array $segments): string
-    {
-        if ($segments === []) {
-            return '~\\A/*\\z~D';
-        }
-
-        $parts = [];
-        foreach ($segments as $segment) {
-            $type = $segment['type'] ?? null;
-            if ($type === 'lit') {
-                $literal = $segment['val'] ?? null;
-                if (!is_string($literal)) {
-                    throw new \UnexpectedValueException('Compiled matcher literal is invalid.');
-                }
-                $parts[] = preg_quote($literal, '~');
-
-                continue;
-            }
-            if ($type !== 'var') {
-                throw new \UnexpectedValueException('Compiled matcher segment type is invalid.');
-            }
-
-            $regex = $segment['regex'] ?? null;
-            if (!is_string($regex)) {
-                throw new \LogicException('Non-PCRE matcher segment cannot enter allowed-method fast dispatch.');
-            }
-            $parts[] = '(?:' . self::nonCapturingInner(self::segmentRegexInner($regex)) . ')';
-        }
-
-        $regex = '~\\A/*' . implode('/', $parts) . '/*\\z~D';
-        if (@preg_match($regex, '') === false) {
-            throw new \UnexpectedValueException('Failed to compile allowed-method route predicate.');
-        }
-
-        return $regex;
     }
 }
