@@ -14,78 +14,41 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.13'
-
-      - name: Cross-check documented Webrick API references
+      - name: Audit development boot examples
         shell: bash
         run: |
           python <<'PY'
           from pathlib import Path
-          import re
 
-          classes = {}
-          for path in Path('src').rglob('*.php'):
-              text = path.read_text(encoding='utf-8', errors='replace')
-              m = re.search(r'^\s*(?:(?:final|abstract|readonly)\s+)*(?:class|interface|trait|enum)\s+([A-Za-z_][A-Za-z0-9_]*)', text, re.MULTILINE)
-              if not m:
-                  continue
-              name = m.group(1)
-              methods = set(re.findall(r'\bfunction\s+&?\s*([A-Za-z_][A-Za-z0-9_]*)\s*\(', text))
-              classes.setdefault(name, []).append((path, methods))
-
-          print('=== DOCUMENTED Class::method REFERENCES MISSING FROM SOURCE ===')
-          missing = []
-          ref_re = re.compile(r'\b([A-Z][A-Za-z0-9_]*)::([A-Za-z_][A-Za-z0-9_]*)\b')
           for doc in sorted(Path('docs').rglob('*.rst')):
-              text = doc.read_text(encoding='utf-8', errors='replace')
-              for match in ref_re.finditer(text):
-                  cls, method = match.groups()
-                  candidates = classes.get(cls)
-                  if not candidates:
+              lines = doc.read_text(encoding='utf-8').splitlines()
+              for i, line in enumerate(lines):
+                  if 'RouterKernel::bootWithRegistrar(' not in line:
                       continue
-                  if not any(method in methods for _, methods in candidates):
-                      line = text.count('\n', 0, match.start()) + 1
-                      missing.append((str(doc), line, cls, method, [str(p) for p, _ in candidates]))
-          if missing:
-              for item in missing:
-                  print(*item, sep=' | ')
-          else:
-              print('none')
+                  depth = line.count('(') - line.count(')')
+                  block = [line]
+                  j = i + 1
+                  while j < len(lines) and depth > 0:
+                      block.append(lines[j])
+                      depth += lines[j].count('(') - lines[j].count(')')
+                      j += 1
+                  text = '\n'.join(block)
+                  flags = []
+                  if 'invoker:' not in text:
+                      flags.append('MISSING invoker')
+                  if 'routeCache:' in text:
+                      flags.append('INVALID routeCache')
+                  if 'capturePhpErrors:' in text:
+                      flags.append('INVALID capturePhpErrors')
+                  if flags:
+                      print(f'{doc}:{i+1}: {", ".join(flags)}')
+                      print(text)
+                      print('---')
 
-          print('\n=== WEBRICK FQCN REFERENCES WITH NO SOURCE CLASS ===')
-          fqcn_re = re.compile(r'Infocyph\\\\Webrick\\\\([A-Za-z0-9_\\\\]+)')
-          missing_classes = set()
+          print('=== REMOVED TRACE CONTEXT STATIC API ===')
+          old = ('TraceContext::get', 'TraceContext::isAvailable', 'TraceContext::isOtelMode', 'TraceContext::isSampled')
           for doc in sorted(Path('docs').rglob('*.rst')):
-              text = doc.read_text(encoding='utf-8', errors='replace')
-              for match in fqcn_re.finditer(text):
-                  rel = match.group(1).replace('\\\\', '/') + '.php'
-                  if not (Path('src') / rel).exists():
-                      # Namespace imports can be followed by punctuation; report exact token for review.
-                      line = text.count('\n', 0, match.start()) + 1
-                      missing_classes.add((str(doc), line, match.group(0), rel))
-          if missing_classes:
-              for item in sorted(missing_classes):
-                  print(*item, sep=' | ')
-          else:
-              print('none')
-
-          print('\n=== LEGACY / HIGH-RISK BOOT-CONTRACT TOKENS ===')
-          patterns = [
-              r'routeCache\s*:', r'providers\s*:', r'environment\s*:', r'requestScope\s*:',
-              r'RouterKernel::fromCompiledArtifact', r'RouterKernel::production', r'RouterKernel::development',
-              r'bootWithRegistrar', r'CompiledRouterKernel', r'ReleaseCompiler', r'RouteCompiler',
-          ]
-          combined = re.compile('|'.join(patterns))
-          for doc in sorted(Path('docs').rglob('*.rst')):
-              for no, line in enumerate(doc.read_text(encoding='utf-8', errors='replace').splitlines(), 1):
-                  if combined.search(line):
+              for no, line in enumerate(doc.read_text(encoding='utf-8').splitlines(), 1):
+                  if any(token in line for token in old):
                       print(f'{doc}:{no}: {line.strip()}')
           PY
-
-      - name: Build native RST documentation
-        shell: bash
-        run: |
-          python -m pip install --disable-pip-version-check -r docs/requirements.txt
-          WEBRICK_DOCS_OFFLINE=1 python -m sphinx -W --keep-going -b html docs /tmp/webrick-docs-html
