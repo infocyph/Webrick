@@ -65,12 +65,12 @@ jobs:
           php -l src/Router/Matching/ShardedMatcher.php
           php -l benchmarks/MatcherOutcomeBench.php
           php -l benchmarks/MatcherPathInspectionBench.php
-      - name: Run matcher correctness regression tests
-        run: vendor/bin/pest tests/Unit/MatcherPerformanceRevisionTest.php
+      - name: Run project code tests through PHPForge
+        run: composer ic:test:code
       - name: Run matcher outcome baseline
-        run: vendor/bin/phpbench run benchmarks/MatcherOutcomeBench.php --report=aggregate
+        run: vendor/bin/phpbench run benchmarks/MatcherOutcomeBench.php --bootstrap=vendor/autoload.php --report=aggregate
       - name: Run path inspection baseline
-        run: vendor/bin/phpbench run benchmarks/MatcherPathInspectionBench.php --report=aggregate
+        run: vendor/bin/phpbench run benchmarks/MatcherPathInspectionBench.php --bootstrap=vendor/autoload.php --report=aggregate
       - name: Commit completed phase 1 implementation
         run: |
           git config user.name "github-actions[bot]"
