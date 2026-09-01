@@ -320,7 +320,7 @@ final readonly class CompiledRouterKernel
         array $vars,
         ?RuntimeRequestContext $runtimeContext,
     ): Response {
-        $requiresScope = $plan->requiresScope() || $this->dispatcher->pipelineRequiresScope($plan);
+        $requiresScope = $plan->requiresScope() || $this->dispatcher->pipelineRequiresScope($plan->routeId);
         if (!$requiresScope) {
             return $this->dispatcher->dispatch($plan, $request, $vars);
         }
