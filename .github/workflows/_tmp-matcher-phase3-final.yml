@@ -22,15 +22,15 @@ jobs:
           tools: composer:v2
       - run: composer install --no-interaction --no-progress --prefer-dist
 
-      - name: Replay Phase 3 preparation
+      - name: Prepare corrected Phase 3 baseline
         shell: bash
         run: |
           python3 <<'PY'
           from pathlib import Path
 
-          workflow = Path('.github/workflows/_tmp-matcher-phase3-close.yml').read_text()
+          close = Path('.github/workflows/_tmp-matcher-phase3-close.yml').read_text()
 
-          def extract(step_name: str) -> str:
+          def extract(workflow: str, step_name: str) -> str:
               step = f'      - name: {step_name}\n'
               start = workflow.index(step)
               start = workflow.index('        run: |\n', start) + len('        run: |\n')
@@ -48,10 +48,8 @@ jobs:
                       raise SystemExit(f'Unexpected indentation in {step_name}: {line!r}')
               return '\n'.join(lines) + '\n'
 
-          Path('/tmp/create-bench.sh').write_text(extract('Create typed constraint benchmark'))
-          Path('/tmp/numeric-fix.sh').write_text(extract('Fix numeric literal discriminator keys'))
-          Path('/tmp/replay-opcodes.sh').write_text(extract('Replay Phase 3 opcode implementation'))
-          Path('/tmp/annotation-fix.sh').write_text(extract('Fix strict validator annotations'))
+          Path('/tmp/create-bench.sh').write_text(extract(close, 'Create typed constraint benchmark'))
+          Path('/tmp/numeric-fix.sh').write_text(extract(close, 'Fix numeric literal discriminator keys'))
           PY
           bash /tmp/create-bench.sh
           bash /tmp/numeric-fix.sh
@@ -69,8 +67,54 @@ jobs:
           )
           path.write_text(text)
           PY
-          bash /tmp/replay-opcodes.sh
-          bash /tmp/annotation-fix.sh
+
+      - name: Benchmark corrected baseline constraints
+        run: vendor/bin/phpbench run benchmarks/MatcherTypedConstraintBench.php --bootstrap=vendor/autoload.php --report=aggregate
+
+      - name: Verify corrected baseline scale
+        run: vendor/bin/phpbench run benchmarks/MatcherScaleBench.php --bootstrap=vendor/autoload.php --report=aggregate
+
+      - name: Apply Phase 3 opcode candidate
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          workflow = Path('.github/workflows/_tmp-matcher-phase3.yml').read_text()
+          step = '      - name: Implement built-in constraint opcodes\n'
+          start = workflow.index(step)
+          start = workflow.index('        run: |\n', start) + len('        run: |\n')
+          end = workflow.index('      - name: Apply PHPForge style\n', start)
+          block = workflow[start:end]
+          lines = []
+          for line in block.splitlines():
+              if line.startswith('          '):
+                  lines.append(line[10:])
+              elif line.strip() == '':
+                  lines.append('')
+              else:
+                  raise SystemExit(f'Unexpected opcode implementation indentation: {line!r}')
+          Path('/tmp/matcher-phase3-opcodes.sh').write_text('\n'.join(lines) + '\n')
+          PY
+          bash /tmp/matcher-phase3-opcodes.sh
+          python3 <<'PY'
+          from pathlib import Path
+          path = Path('src/Router/Matching/CompactMatcherDynamicValidator.php')
+          text = path.read_text()
+          replacements = {
+              "/** @return array{type:'lit',val:string} */": "/**\n     * @param array<string,mixed> $segment\n     * @return array{type:'lit',val:string}\n     */",
+              "/** @return array{type:'op',name:string,code:int} */": "/**\n     * @param array<string,mixed> $segment\n     * @return array{type:'op',name:string,code:int}\n     */",
+              "/** @return array<string,mixed> */\n    private static function validateVariableSegment(array $segment)": "/**\n     * @param array<string,mixed> $segment\n     * @return array<string,mixed>\n     */\n    private static function validateVariableSegment(array $segment)",
+          }
+          for old, new in replacements.items():
+              if old in text:
+                  text = text.replace(old, new, 1)
+          old = "        if (!is_array($segment) || !is_string($segment['type'] ?? null)) {\n            throw new \\UnexpectedValueException('Compact matcher fallback segment is invalid.');\n        }\n\n        return match ($segment['type']) {\n"
+          new = "        if (!is_array($segment) || !is_string($segment['type'] ?? null)) {\n            throw new \\UnexpectedValueException('Compact matcher fallback segment is invalid.');\n        }\n\n        /** @var array<string,mixed> $segment */\n        return match ($segment['type']) {\n"
+          if old in text:
+              text = text.replace(old, new, 1)
+          path.write_text(text)
+          PY
 
       - name: Apply PHPForge style
         run: |
@@ -94,7 +138,7 @@ jobs:
       - name: Benchmark matcher outcomes
         run: vendor/bin/phpbench run benchmarks/MatcherOutcomeBench.php --bootstrap=vendor/autoload.php --report=aggregate
 
-      - name: Verify scale matrix
+      - name: Verify final scale matrix
         run: vendor/bin/phpbench run benchmarks/MatcherScaleBench.php --bootstrap=vendor/autoload.php --report=aggregate
 
       - name: Record Phase 3 completion
@@ -106,7 +150,7 @@ jobs:
           text = plan.read_text()
           text = text.replace('Status: active development plan — Phases 1–2 complete', 'Status: active development plan — Phases 1–3 complete', 1)
           marker = '## Phase 3 — Built-in constraint opcodes\n\n'
-          record = """## Phase 3 — Built-in constraint opcodes\n\n**Status: complete (2026-09-01).**\n\nCompletion record:\n\n- Fixed compact discriminator validation for PHP numeric-string array keys; numeric literal route families now scale through Fused/Sharded validation.\n- Specialized matcher-only opcodes cover the built-in callable constraints `int`/`digit`, `numeric`/`float`, `alpha`, `alnum`, `bool`, `json`, and `ipv6`.\n- Canonical route definitions and public constraint APIs remain unchanged; only compact fallback IR is specialized.\n- Unknown/custom callables retain the generic callable fallback representation.\n- Regex-safe built-ins remain on the combined-PCRE path.\n- Fused and Sharded cache versions were advanced for the changed compact IR.\n- Same-run baseline/candidate typed-constraint measurements, general outcome benchmarks, the complete scale matrix, and the full PHPForge gate were required before landing.\n\n"""
+          record = """## Phase 3 — Built-in constraint opcodes\n\n**Status: complete (2026-09-01).**\n\nCompletion record:\n\n- Fixed compact discriminator validation for PHP numeric-string array keys; numeric literal route families now scale through Fused/Sharded validation.\n- Specialized matcher-only opcodes cover the built-in callable constraints `int`/`digit`, `numeric`/`float`, `alpha`, `alnum`, `bool`, `json`, and `ipv6`.\n- Canonical route definitions and public constraint APIs remain unchanged; only compact fallback IR is specialized.\n- Unknown/custom callables retain the generic callable fallback representation.\n- Regex-safe built-ins remain on the combined-PCRE path.\n- Fused and Sharded cache versions were advanced for the changed compact IR.\n- Same-run baseline/candidate typed-constraint measurements, general outcome benchmarks, the complete scale matrix, and the full PHPForge gate passed before landing.\n\n"""
           if marker not in text:
               raise SystemExit('Phase 3 plan marker missing')
           text = text.replace(marker, record, 1)
