@@ -66,10 +66,7 @@ final class RouterArtifactLoader
         return $aliases;
     }
 
-    /**
-     * @param array<string,mixed> $payload
-     * @return array<array-key,mixed>
-     */
+    /** @param array<string,mixed> $payload @return array<array-key,mixed> */
     private static function arrayField(array $payload, string $field): array
     {
         $value = $payload[$field] ?? null;
@@ -113,44 +110,44 @@ final class RouterArtifactLoader
         }
     }
 
-    /**
-     * @param array<string,mixed> $payload
-     * @return list<mixed>
-     */
-    private static function listField(array $payload, string $field): array
+    /** @param array<string,mixed> $payload @return array<int,mixed> */
+    private static function indexedRoutes(array $payload): array
     {
-        return array_values(self::arrayField($payload, $field));
+        $routes = [];
+        foreach (self::arrayField($payload, 'routes_by_index') as $index => $route) {
+            if (!is_int($index) || !is_array($route)) {
+                throw new UnexpectedValueException('Malformed indexed route payload.');
+            }
+            $routes[$index] = $route;
+        }
+        ksort($routes, SORT_NUMERIC);
+
+        return $routes;
     }
 
-    /**
-     * @param array<string,mixed> $payload
-     * @return array<string,array<string,mixed>>
-     */
-    private static function planPayloads(array $payload, string $field): array
+    /** @param array<string,mixed> $payload @return array<int,array<string,mixed>> */
+    private static function indexedPlans(array $payload): array
     {
         $plans = [];
-        foreach (self::arrayField($payload, $field) as $routeId => $plan) {
-            if (!is_string($routeId) || !is_array($plan)) {
-                throw new UnexpectedValueException("Malformed Webrick router artifact field '{$field}'.");
+        foreach (self::arrayField($payload, 'plans_by_index') as $index => $plan) {
+            if (!is_int($index) || !is_array($plan)) {
+                throw new UnexpectedValueException('Malformed indexed execution-plan payload.');
             }
-
             $normalized = [];
             foreach ($plan as $key => $value) {
                 if (!is_string($key)) {
-                    throw new UnexpectedValueException("Malformed Webrick router artifact field '{$field}'.");
+                    throw new UnexpectedValueException('Malformed indexed execution-plan payload.');
                 }
                 $normalized[$key] = $value;
             }
-            $plans[$routeId] = $normalized;
+            $plans[$index] = $normalized;
         }
+        ksort($plans, SORT_NUMERIC);
 
         return $plans;
     }
 
-    /**
-     * @param array<string,mixed> $payload
-     * @return list<string>
-     */
+    /** @param array<string,mixed> $payload @return list<string> */
     private static function stringListField(array $payload, string $field): array
     {
         $values = [];
@@ -178,19 +175,17 @@ final class RouterArtifactLoader
             $environment,
             $configFingerprint,
             $hasDomainRoutes,
-            self::listField($payload, 'routes'),
-            self::planPayloads($payload, 'plans'),
+            self::indexedRoutes($payload),
+            self::indexedPlans($payload),
             self::aliasPayloads($payload, 'aliases'),
-            self::listField($payload, 'pre_global'),
-            self::listField($payload, 'post_global'),
+            array_values(self::arrayField($payload, 'pre_global')),
+            array_values(self::arrayField($payload, 'post_global')),
             self::stringListField($payload, 'pre_global_tags'),
             self::stringListField($payload, 'post_global_tags'),
         );
     }
 
-    /**
-     * @param array{format:int,environment:string,config_fingerprint:string,artifact_fingerprint:string,sha256:string} $meta
-     */
+    /** @param array{format:int,environment:string,config_fingerprint:string,artifact_fingerprint:string,sha256:string} $meta */
     private function loadTrustedPayload(
         string $path,
         array $meta,
@@ -199,24 +194,18 @@ final class RouterArtifactLoader
     ): CompiledRouterArtifact {
         self::assertMetaIdentity($meta, $expectedEnvironment, $expectedConfigFingerprint);
         $payload = $this->requirePayload($path);
-
-        // The caller supplied the artifact SHA-256 from trusted deployment metadata,
-        // and it already matched the immutable sidecar. Do not traverse the complete
-        // route/plan graph and recalculate its build-time fingerprint on every request.
         $payloadFingerprint = $payload['artifact_fingerprint'] ?? null;
         if (!is_string($payloadFingerprint) || !hash_equals($meta['artifact_fingerprint'], $payloadFingerprint)) {
             throw new RuntimeException('Webrick router artifact fingerprint metadata mismatch.');
         }
 
-        $artifact = CompiledRouterArtifact::fromPayload($payload);
+        $artifact = CompiledRouterArtifact::fromPayload($payload, trusted: true);
         self::assertArtifactIdentity($artifact, $meta);
 
         return $artifact;
     }
 
-    /**
-     * @param array{format:int,environment:string,config_fingerprint:string,artifact_fingerprint:string,sha256:string} $meta
-     */
+    /** @param array{format:int,environment:string,config_fingerprint:string,artifact_fingerprint:string,sha256:string} $meta */
     private function loadVerifiedPayload(
         string $path,
         array $meta,
@@ -281,7 +270,6 @@ final class RouterArtifactLoader
         if (!is_array($payload)) {
             throw new UnexpectedValueException('Compiled Webrick router artifact must return an array.');
         }
-
         foreach ($payload as $key => $_value) {
             if (!is_string($key)) {
                 throw new UnexpectedValueException('Compiled Webrick router artifact must use string keys.');
