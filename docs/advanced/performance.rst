@@ -50,34 +50,45 @@ Measure cold and warm behavior separately; OPcache gains depend on the complete 
 
 --------------
 
-✅ **2. Prebuild Route Cache** (High Impact)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+✅ **2. Prebuild Route Cache and Production Artifacts** (High Impact)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code:: bash
 
    # In CI/build step
    php ./webrick route:cache --matcher=fused --cache=.route-cache/fused.php --routes=routes.php
 
-Ship the generated route-cache artifact with your release.
-
-.. code:: php
-
-   $kernel = RouterKernel::bootWithRegistrar(
-       log: $logger,
-       matcher: FusedMatcher::make(),
-       register: $register,
-       invoker: $invoker,
-   );
+Ship the generated matcher cache with the coordinated ``ReleaseCompiler`` output. Matcher cache and the compiled production release are separate build-plane artifacts; neither should be rebuilt during an ordinary request.
 
 Measure cache generation, cached kernel boot and matched-route dispatch as three separate costs. Cache generation may become slower when that removes validation, reflection and serialization from normal requests.
 
 Fused and Generated modes publish a single PHP matcher artifact. Sharded mode publishes an immutable generation through one atomic manifest switch, so a partial shard generation is never selected by a new kernel.
 
-Upload specifications remain raw until uploaded files are requested. Webrick still opens the PSR-compatible request body stream for every method, including GET and HEAD, because those methods may legally carry a body. URL-encoded body parsing remains gated to applicable non-POST methods and content types.
+For production release metadata, use ``ReleaseManifestLoader`` rather than manually reading and decoding ``release.json``. It prefers the OPcache-friendly PHP runtime manifest emitted beside the JSON manifest. The Webrick 5.1 trusted contract uses ``intermix.digest`` and ``webrick.fingerprint``; do not reintroduce request-time SHA-256/file hashing or JSON decoding into the prevalidated path.
 
 --------------
 
-✅ **3. Select a Matcher from Representative Measurements**
+✅ **3. Preserve Lazy Request Promotion** (High Impact)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For standalone compiled synchronous SAPIs, prefer the requestless entry point:
+
+.. code:: php
+
+   use Infocyph\Webrick\Response\Emitter\DefaultEmitter;
+
+   $response = $kernel->handle();
+   (new DefaultEmitter())->emit($response);
+
+``CompiledRouterKernel`` derives lightweight routing input directly from SAPI globals and promotes it to a full ``Request`` only when the matched execution plan requires request-dependent behavior. Calling ``Request::fromGlobals()`` before ``handle()`` is valid when application code actually needs a request object, but it intentionally disables this optimization.
+
+Do not create a Webrick ``Request`` solely because the emitter appears to need one. ``DefaultEmitter`` accepts a nullable request and falls back to SAPI globals for request-method-sensitive behavior such as HEAD.
+
+When benchmarking compiled production, measure the same path an optimized deployment is expected to use. A benchmark harness that eagerly constructs ``Request::fromGlobals()`` measures extra harness/application work rather than Webrick's requestless fast path.
+
+--------------
+
+✅ **4. Select a Matcher from Representative Measurements**
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code:: php
@@ -126,7 +137,7 @@ Route count alone never determines the winner: benchmark with the application's 
 
 --------------
 
-✅ **4. Minimize Pre-Global Middleware**
+✅ **5. Minimize Pre-Global Middleware**
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Remove unused middleware in production:
@@ -149,7 +160,7 @@ Measure every global layer as part of end-to-end RPM. Webrick retains its standa
 
 --------------
 
-✅ **5. Compression Settings**
+✅ **6. Compression Settings**
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code:: php
@@ -165,7 +176,7 @@ Codec throughput and compression ratio depend on payload, level, extension, CPU 
 
 --------------
 
-✅ **6. Response Cache (Micro-Cache)**
+✅ **7. Response Cache (Micro-Cache)**
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code:: php
@@ -186,7 +197,7 @@ Measure hit, miss and fill paths separately. A hit bypasses the handler, but the
 
 --------------
 
-✅ **7. PHP-FPM Tuning**
+✅ **8. PHP-FPM Tuning**
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code:: ini
@@ -214,7 +225,7 @@ Measure hit, miss and fill paths separately. A hit bypasses the handler, but the
 
 --------------
 
-✅ **8. Nginx Tuning**
+✅ **9. Nginx Tuning**
 ~~~~~~~~~~~~~~~~~~~~~~
 
 .. code:: nginx
@@ -236,14 +247,14 @@ Measure hit, miss and fill paths separately. A hit bypasses the handler, but the
 
 --------------
 
-✅ **9. Choose Database Connections for the Runtime**
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+✅ **10. Choose Database Connections for the Runtime**
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Database connection lifetime is owned by the embedding application. Persistent PDO connections can help or hurt depending on the SAPI, transaction hygiene, server limits and workload. Benchmark the selected strategy and bound total connections; Webrick does not require persistent PDO.
 
 --------------
 
-✅ **10. Avoid Attribute Scanning in Runtime**
+✅ **11. Avoid Attribute Scanning in Runtime**
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Prebuild attribute routes into route cache:
@@ -315,29 +326,33 @@ Simple Timing
 Common Bottlenecks
 ------------------
 
-+-----------------------+--------------------+------------------------------------------+
-| Issue                 | Symptom            | Fix                                      |
-+=======================+====================+==========================================+
-| Cold OPcache          | First hit slow     | Warm cache post-deploy                   |
-+-----------------------+--------------------+------------------------------------------+
-| Attribute scanning    | Cold-boot overhead | Measure it; prebuild route cache         |
-+-----------------------+--------------------+------------------------------------------+
-| Large JSON responses  | High memory        | Use pagination; enable compression       |
-+-----------------------+--------------------+------------------------------------------+
-| N+1 queries           | DB load spikes     | Eager load; use query logging            |
-+-----------------------+--------------------+------------------------------------------+
-| No response cache     | Redundant work     | Add ResponseCacheMiddleware for hot GETs |
-+-----------------------+--------------------+------------------------------------------+
-| Double compression    | CPU waste          | Pick edge OR app, not both               |
-+-----------------------+--------------------+------------------------------------------+
-| Unindexed DB columns  | Slow queries       | Add indexes; analyze EXPLAIN             |
-+-----------------------+--------------------+------------------------------------------+
-| Too many pre-globals  | High latency       | Remove unused middleware                 |
-+-----------------------+--------------------+------------------------------------------+
-| Small FPM pool        | 502 errors         | Size ``pm.max_children`` by memory       |
-+-----------------------+--------------------+------------------------------------------+
-| Connection saturation | Timeouts/queueing  | Bound and measure application DB usage   |
-+-----------------------+--------------------+------------------------------------------+
++------------------------+--------------------+------------------------------------------+
+| Issue                  | Symptom            | Fix                                      |
++========================+====================+==========================================+
+| Cold OPcache           | First hit slow     | Warm cache post-deploy                   |
++------------------------+--------------------+------------------------------------------+
+| JSON manifest parsing  | Request boot cost  | Use ``ReleaseManifestLoader`` / PHP      |
++------------------------+--------------------+------------------------------------------+
+| Eager Request creation | Higher hot latency | Preserve compiled requestless dispatch   |
++------------------------+--------------------+------------------------------------------+
+| Attribute scanning     | Cold-boot overhead | Measure it; prebuild route cache         |
++------------------------+--------------------+------------------------------------------+
+| Large JSON responses   | High memory        | Use pagination; enable compression       |
++------------------------+--------------------+------------------------------------------+
+| N+1 queries            | DB load spikes     | Eager load; use query logging            |
++------------------------+--------------------+------------------------------------------+
+| No response cache      | Redundant work     | Add ResponseCacheMiddleware for hot GETs |
++------------------------+--------------------+------------------------------------------+
+| Double compression     | CPU waste          | Pick edge OR app, not both               |
++------------------------+--------------------+------------------------------------------+
+| Unindexed DB columns   | Slow queries       | Add indexes; analyze EXPLAIN             |
++------------------------+--------------------+------------------------------------------+
+| Too many pre-globals   | High latency       | Remove unused middleware                 |
++------------------------+--------------------+------------------------------------------+
+| Small FPM pool         | 502 errors         | Size ``pm.max_children`` by memory       |
++------------------------+--------------------+------------------------------------------+
+| Connection saturation  | Timeouts/queueing  | Bound and measure application DB usage   |
++------------------------+--------------------+------------------------------------------+
 
 --------------
 
@@ -345,7 +360,9 @@ Production Checklist
 --------------------
 
 - ☐ OPcache enabled (``validate_timestamps=0``)
-- ☐ Route cache prebuilt in CI
+- ☐ Matcher cache and production release artifacts prebuilt in CI
+- ☐ ``ReleaseManifestLoader`` used instead of manual request-time JSON parsing
+- ☐ Standalone compiled SAPI preserves requestless ``CompiledRouterKernel::handle()`` where possible
 - ☐ Fused used as the general default; Generated benchmarked seriously for simple route sets into the low thousands; Sharded evaluated when startup/working-set needs become material
 - ☐ Compression enabled (app OR edge, not both)
 - ☐ Response cache for hot GETs
