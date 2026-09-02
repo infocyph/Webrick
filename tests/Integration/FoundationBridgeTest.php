@@ -128,7 +128,7 @@ describe('Foundation Webrick bridge', function () {
             $runtime = new InterMixRuntime($production);
             $pipeline = new CompiledMiddlewarePipeline(
                 [new RuntimeMiddlewareDescriptor(FoundationBridgeParameterizedMiddleware::class, ['30', '60'])],
-                static fn(Request $request): Response => Response::plaintext('ok'),
+                static fn(Request $request): Response => Response::plaintext($request->getMethod()),
                 $runtime,
             );
             $request = mockRequest('GET', '/bridge-runtime');
