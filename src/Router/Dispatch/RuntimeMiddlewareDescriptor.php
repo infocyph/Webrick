@@ -16,24 +16,44 @@ use InvalidArgumentException;
  */
 final readonly class RuntimeMiddlewareDescriptor
 {
+    /** @var list<string> */
+    public array $parameters;
+
     /**
-     * @param list<string> $parameters
+     * @param array<array-key,mixed> $parameters
      */
     public function __construct(
         public mixed $resolver,
-        public array $parameters = [],
+        array $parameters = [],
     ) {
-        if (!is_string($resolver) && !is_array($resolver) && !$resolver instanceof Closure && !is_callable($resolver)) {
-            throw new InvalidArgumentException('Runtime middleware resolver must be a resolver-compatible callable descriptor.');
-        }
-        if (!array_is_list($parameters) || !array_all($parameters, is_string(...))) {
-            throw new InvalidArgumentException('Runtime middleware parameters must be a list of strings.');
-        }
+        self::assertResolver($resolver);
+        self::assertParameters($parameters);
+
+        /** @var list<string> $parameters */
+        $this->parameters = $parameters;
     }
 
-    /** @return string|array<array-key,mixed>|callable */
     public function resolverSpec(): mixed
     {
         return $this->resolver;
+    }
+
+    private static function assertParameters(array $parameters): void
+    {
+        if (!array_is_list($parameters)) {
+            throw new InvalidArgumentException('Runtime middleware parameters must be a list of strings.');
+        }
+        foreach ($parameters as $parameter) {
+            if (!is_string($parameter)) {
+                throw new InvalidArgumentException('Runtime middleware parameters must be a list of strings.');
+            }
+        }
+    }
+
+    private static function assertResolver(mixed $resolver): void
+    {
+        if (!is_string($resolver) && !is_array($resolver) && !$resolver instanceof Closure && !is_callable($resolver)) {
+            throw new InvalidArgumentException('Runtime middleware resolver must be a resolver-compatible callable descriptor.');
+        }
     }
 }
