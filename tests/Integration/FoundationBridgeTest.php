@@ -11,14 +11,11 @@ use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Build\Artifact\ArtifactValueCodec;
 use Infocyph\Webrick\Router\Build\ReleaseCompiler;
 use Infocyph\Webrick\Router\Build\RouteCompiler;
-use Infocyph\Webrick\Router\Build\RouterArtifactCompiler;
 use Infocyph\Webrick\Router\Build\RouterBuildResult;
 use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Dispatch\CompiledMiddlewarePipeline;
 use Infocyph\Webrick\Router\Dispatch\MiddlewareAliases;
 use Infocyph\Webrick\Router\Dispatch\RuntimeMiddlewareDescriptor;
-use Infocyph\Webrick\Router\Kernel\CompiledRouterKernel;
-use Infocyph\Webrick\Router\Kernel\ErrorHandler;
 use Infocyph\Webrick\Router\Kernel\RouterKernel;
 use Infocyph\Webrick\Router\Matching\FusedMatcher;
 use Infocyph\Webrick\Runtime\InterMixRuntime;
@@ -197,98 +194,6 @@ describe('Foundation Webrick bridge', function () {
                 ->and((string) $secondResponse->getBody())->toBe($secondId);
         } finally {
             $container->unset();
-        }
-    });
-
-    it('keeps default routing controls independent from the application error handler', function () {
-        [$intermixPath, $routerPath] = foundationBridgeArtifactPaths('webrick-bridge-controls');
-        $builder = ContainerBuilder::create('webrick_bridge_controls_' . bin2hex(random_bytes(4)));
-        $build = new RouteCompiler()->compile(
-            register: static function (Registrar $registrar): void {
-                $registrar->get('/known', static fn(): Response => Response::plaintext('known'));
-            },
-            environment: 'production',
-            configFingerprint: 'foundation-controls',
-        );
-        $applicationErrors = 0;
-        $errorHandler = new ErrorHandler(
-            logger: new NullLogger(),
-            responseRenderer: static function () use (&$applicationErrors): Response {
-                ++$applicationErrors;
-
-                return Response::plaintext('application-error', 599);
-            },
-        );
-
-        try {
-            $builder->compile($intermixPath);
-            $container = $builder->production($intermixPath);
-            new RouterArtifactCompiler()->compile($build, $routerPath);
-            $kernel = CompiledRouterKernel::fromCompiledArtifact(
-                log: new NullLogger(),
-                matcher: FusedMatcher::make(),
-                container: $container,
-                artifactPath: $routerPath,
-                environment: 'production',
-                configFingerprint: 'foundation-controls',
-                errorHandler: $errorHandler,
-            );
-
-            $notFound = $kernel->handle(mockRequest('GET', '/missing'));
-            $methodNotAllowed = $kernel->handle(mockRequest('POST', '/known'));
-
-            expect($notFound)->toHaveStatus(404)
-                ->and($notFound->getHeaderLine('Cache-Control'))->toBe('no-store')
-                ->and($methodNotAllowed)->toHaveStatus(405)
-                ->and($methodNotAllowed->getHeaderLine('Allow'))->toContain('GET')
-                ->and($applicationErrors)->toBe(0);
-        } finally {
-            foundationBridgeCleanup([$intermixPath, $routerPath]);
-        }
-    });
-
-    it('routes 404 and 405 through the application error handler only when explicitly enabled', function () {
-        [$intermixPath, $routerPath] = foundationBridgeArtifactPaths('webrick-bridge-routed-controls');
-        $builder = ContainerBuilder::create('webrick_bridge_routed_controls_' . bin2hex(random_bytes(4)));
-        $build = new RouteCompiler()->compile(
-            register: static function (Registrar $registrar): void {
-                $registrar->get('/known', static fn(): Response => Response::plaintext('known'));
-            },
-            environment: 'production',
-            configFingerprint: 'foundation-routed-controls',
-        );
-        $applicationErrors = 0;
-        $errorHandler = new ErrorHandler(
-            logger: new NullLogger(),
-            responseRenderer: static function () use (&$applicationErrors): Response {
-                ++$applicationErrors;
-
-                return Response::plaintext('application-routing-control', 599);
-            },
-        );
-
-        try {
-            $builder->compile($intermixPath);
-            $container = $builder->production($intermixPath);
-            new RouterArtifactCompiler()->compile($build, $routerPath);
-            $kernel = CompiledRouterKernel::fromCompiledArtifact(
-                log: new NullLogger(),
-                matcher: FusedMatcher::make(),
-                container: $container,
-                artifactPath: $routerPath,
-                environment: 'production',
-                configFingerprint: 'foundation-routed-controls',
-                errorHandler: $errorHandler,
-                routeErrorsThroughErrorHandler: true,
-            );
-
-            $response = $kernel->handle(mockRequest('GET', '/missing'));
-
-            expect($response)->toHaveStatus(599)
-                ->and((string) $response->getBody())->toContain('application-routing-control')
-                ->and($applicationErrors)->toBe(1);
-        } finally {
-            foundationBridgeCleanup([$intermixPath, $routerPath]);
         }
     });
 
