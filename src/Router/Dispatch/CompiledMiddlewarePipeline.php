@@ -106,15 +106,11 @@ final readonly class CompiledMiddlewarePipeline
         Request $request,
         Closure $next,
     ): mixed {
-        if (is_callable($resolved) && !is_string($resolved) && !is_array($resolved)) {
-            return $resolved($request, $next);
-        }
-
         if (is_string($resolved) && class_exists($resolved) && method_exists($resolved, '__invoke')) {
             $resolved = [$resolved, '__invoke'];
         }
 
-        if (is_string($resolved) || is_array($resolved)) {
+        if (is_callable($resolved) || is_string($resolved) || is_array($resolved)) {
             return $runtime->resolveNow(
                 $resolved,
                 ['request' => $request, 'next' => $next],
