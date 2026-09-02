@@ -9,7 +9,7 @@ Middleware aliases keep route definitions declarative while deferring middleware
        'middleware' => ['auth:admin', 'throttle:30,60'],
    ]);
 
-An alias descriptor is split at the first ``:``. Comma-separated values after it are trimmed and passed to the alias factory as strings.
+An alias descriptor is split at the first ``:``. Comma-separated values after it are trimmed and passed to the alias resolver as strings.
 
 Register a known alias
 ----------------------
@@ -44,9 +44,9 @@ Register a class-string
 
    MiddlewareAliases::register('signed', VerifySignedUrlMiddleware::class);
 
-With no alias parameters, Webrick keeps the class-string so InterMix can construct it and honor DI lifetimes. If parameters are present, the alias wrapper constructs the class with those string parameters.
+With no alias parameters, Webrick keeps the class-string so InterMix can construct it and honor DI lifetimes. Parameterized class aliases are preserved as runtime middleware descriptors instead of being instantiated while routes are compiled.
 
-For middleware with typed or service dependencies, prefer a factory or an InterMix registration rather than passing serialized route parameters directly to a constructor.
+For middleware with typed or service dependencies, prefer a factory or an InterMix registration rather than putting service state into serialized route parameters.
 
 Register a lazy alias family
 ----------------------------
@@ -68,6 +68,15 @@ The resolver is consulted only when Webrick encounters a potential alias. A non-
 
 Use direct aliases for a small known set. Use a resolver for optional modules, host-framework middleware registries, or another package's namespace of aliases.
 
+Build and runtime boundary
+--------------------------
+
+Route compilation never executes runtime-backed alias factories. Webrick preserves the resolver specification and parsed positional parameters in an artifact-safe ``RuntimeMiddlewareDescriptor``. The router artifact transports that descriptor unchanged to the compiled runtime.
+
+During request dispatch, Webrick resolves the descriptor through the active InterMix runtime while ``webrick.request`` is active, then invokes the resolved middleware with ``request`` and ``next``. This keeps request-scoped dependencies and concurrent execution contexts isolated correctly and prevents route discovery from constructing middleware.
+
+The same deferred rule is used by the development dispatcher: a pipeline may be memoized for the route, but a runtime-backed alias is resolved inside each active request scope rather than memoizing the resolved middleware object process-wide.
+
 Resolution lifecycle
 --------------------
 
@@ -76,8 +85,8 @@ Alias registration does not construct middleware. During dispatch:
 1. Webrick matches the request to a route.
 2. The dispatcher compiles that route's middleware pipeline on first use.
 3. Direct aliases are checked before family resolvers.
-4. A class-string is resolved through InterMix; a callable or object is wrapped directly.
-5. The compiled pipeline is memoized for that route.
+4. Runtime-backed aliases are resolved through InterMix inside the active request scope.
+5. The route pipeline structure is memoized, while request-scoped middleware resolution remains request-local.
 
 This keeps authentication, database, cache, telemetry, or other optional middleware off routes that do not use them.
 
