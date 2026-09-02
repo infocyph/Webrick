@@ -201,13 +201,8 @@ final class ArtifactValueCodec
         if (!is_array($value) || !array_is_list($value)) {
             return false;
         }
-        foreach ($value as $entry) {
-            if (!is_string($entry)) {
-                return false;
-            }
-        }
 
-        return true;
+        return array_all($value, fn($entry) => is_string($entry));
     }
 
     /**

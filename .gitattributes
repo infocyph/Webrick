@@ -16,5 +16,7 @@ route_cache_examples.php export-ignore
 psalm.xml export-ignore
 pest.xml export-ignore
 AGENTS.md export-ignore
+benchmark export-ignore
+benchmarks export-ignore
 
 *  text eol=lf

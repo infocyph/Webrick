@@ -17,10 +17,10 @@ use JsonSerializable;
  */
 final class Dispatcher
 {
+    private readonly RuntimeAliasInvoker $runtimeAliases;
+
     /** @var array<int, MiddlewarePipeline> */
     private array $pipelines = [];
-
-    private readonly RuntimeAliasInvoker $runtimeAliases;
 
     /**
      * @param array<class-string|object|callable|string> $preGlobalRaw

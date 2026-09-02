@@ -23,6 +23,27 @@ final class MiddlewareAliases
 
     private function __construct() {}
 
+    /**
+     * Build-plane alias parsing. Runtime-backed aliases are represented without
+     * executing their resolver so construction stays inside the request scope.
+     */
+    public static function compileString(string $maybeAlias): RuntimeMiddlewareDescriptor|string
+    {
+        [$key, $params] = self::parse($maybeAlias);
+
+        if (isset(self::$map[$key])) {
+            return self::compileRegistered(self::$map[$key], $params);
+        }
+
+        foreach (self::$resolvers as $resolver) {
+            if (($resolver['supports'])($key)) {
+                return new RuntimeMiddlewareDescriptor($resolver['resolve'], [$key, ...$params]);
+            }
+        }
+
+        return $maybeAlias;
+    }
+
     public static function freeze(): void
     {
         self::$frozen = true;
@@ -78,27 +99,6 @@ final class MiddlewareAliases
         self::$resolvers = [];
     }
 
-    /**
-     * Build-plane alias parsing. Runtime-backed aliases are represented without
-     * executing their resolver so construction stays inside the request scope.
-     */
-    public static function compileString(string $maybeAlias): RuntimeMiddlewareDescriptor|string
-    {
-        [$key, $params] = self::parse($maybeAlias);
-
-        if (isset(self::$map[$key])) {
-            return self::compileRegistered(self::$map[$key], $params);
-        }
-
-        foreach (self::$resolvers as $resolver) {
-            if (($resolver['supports'])($key)) {
-                return new RuntimeMiddlewareDescriptor($resolver['resolve'], [$key, ...$params]);
-            }
-        }
-
-        return $maybeAlias;
-    }
-
     public static function resolveString(string $maybeAlias): callable|object|string
     {
         [$key, $params] = self::parse($maybeAlias);
@@ -114,6 +114,26 @@ final class MiddlewareAliases
         }
 
         return $maybeAlias;
+    }
+
+    private static function assertMutable(): void
+    {
+        if (self::$frozen) {
+            throw new LogicException('Middleware alias registry is frozen for production runtime.');
+        }
+    }
+
+    private static function assertResolved(mixed $resolved, string $alias): callable|object|string
+    {
+        if (is_string($resolved) || is_object($resolved) || is_callable($resolved)) {
+            return $resolved;
+        }
+
+        throw new UnexpectedValueException(sprintf(
+            'Middleware alias "%s" resolved to unsupported type %s',
+            $alias,
+            get_debug_type($resolved),
+        ));
     }
 
     /**
@@ -154,25 +174,5 @@ final class MiddlewareAliases
         }
 
         return self::assertResolved($registered(...$params), 'registered');
-    }
-
-    private static function assertResolved(mixed $resolved, string $alias): callable|object|string
-    {
-        if (is_string($resolved) || is_object($resolved) || is_callable($resolved)) {
-            return $resolved;
-        }
-
-        throw new UnexpectedValueException(sprintf(
-            'Middleware alias "%s" resolved to unsupported type %s',
-            $alias,
-            get_debug_type($resolved),
-        ));
-    }
-
-    private static function assertMutable(): void
-    {
-        if (self::$frozen) {
-            throw new LogicException('Middleware alias registry is frozen for production runtime.');
-        }
     }
 }
