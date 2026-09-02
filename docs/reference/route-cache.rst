@@ -146,9 +146,51 @@ Do not confuse matcher cache with the strict Webrick production artifact. ``Rele
 - route aliases;
 - global middleware descriptors/tags;
 - environment and configuration fingerprints;
-- a release manifest containing trusted artifact digests.
+- a release manifest containing trusted deployment identities.
 
-``CompiledRouterKernel`` consumes that release artifact with the host-selected ``ProductionContainer``.
+Webrick 5.1 release manifest format 2 has the relevant shape:
+
+.. code:: php
+
+   [
+       'format' => 2,
+       'environment' => 'production',
+       'config_fingerprint' => '...',
+       'intermix' => [
+           'path' => '/release/intermix.php',
+           'digest' => '...', // xxh128: 32 lowercase hex characters
+       ],
+       'webrick' => [
+           'path' => '/release/webrick.php',
+           'digest' => '...',      // xxh128: deployment/file identity
+           'fingerprint' => '...', // xxh128: trusted artifact identity
+       ],
+   ]
+
+The algorithm-specific ``sha256`` field names from earlier releases are not accepted by the Webrick 5.1 manifest contract.
+
+Runtime manifest loading
+------------------------
+
+``ReleaseCompiler`` writes the requested JSON manifest and an OPcache-friendly PHP runtime manifest beside it. Runtime code should use ``ReleaseManifestLoader``:
+
+.. code:: php
+
+   use Infocyph\Webrick\Router\Build\ReleaseManifestLoader;
+
+   $release = (new ReleaseManifestLoader())->load(
+       __DIR__ . '/release.json',
+   );
+
+The loader prefers the PHP runtime manifest when present and uses JSON as a fallback. Do not add request-time ``file_get_contents()`` / ``json_decode()`` work merely to consume release metadata.
+
+For the trusted production path:
+
+- pass ``intermix.digest`` to ``ContainerBuilder::productionPrevalidated()``;
+- pass ``webrick.fingerprint`` to ``CompiledRouterKernel::fromPrevalidatedArtifact()``;
+- ``webrick.digest`` remains deployment consistency metadata and is not re-hashed on every prevalidated request.
+
+``CompiledRouterKernel`` consumes the release artifact with the host-selected ``ProductionContainer``.
 
 Deployment rules
 ----------------
@@ -157,5 +199,6 @@ Deployment rules
 - Treat generated PHP cache/artifact files as trusted executable deployment data.
 - Publish complete release sets atomically from the deployment layer.
 - Keep runtime artifacts read-only to serving workers where possible.
+- Load release metadata through ``ReleaseManifestLoader`` so the PHP runtime manifest is used when available.
 - Rebuild matcher caches and production release artifacts after a Webrick major upgrade or route-schema change.
 - Use Fused as the general default; benchmark Generated seriously for simple route sets into the low thousands, and evaluate Sharded around several thousand routes when startup/working-set cost becomes material.
