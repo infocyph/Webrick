@@ -13,11 +13,15 @@ use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Kernel\CompiledRouterKernel;
 use Infocyph\Webrick\Router\Kernel\ErrorHandler;
 use Infocyph\Webrick\Router\Matching\FusedMatcher;
+use Opis\Closure\CodeStream;
 use PHPUnit\Framework\Attributes\BackupStaticProperties;
+use PHPUnit\Framework\Attributes\ExcludeStaticPropertyFromBackup;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
 
 #[BackupStaticProperties(true)]
+#[ExcludeStaticPropertyFromBackup(CodeStream::class, 'isRegistered')]
+#[ExcludeStaticPropertyFromBackup(CodeStream::class, 'handlers')]
 final class CompiledRoutingControlBridgeTest extends TestCase
 {
     public function testDefaultRoutingControlsStayIndependentFromApplicationErrors(): void
