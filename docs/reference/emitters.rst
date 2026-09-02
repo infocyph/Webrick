@@ -14,13 +14,36 @@ Classic emitters
 | ``CliEmitter``     | CLI/phpdbg                                                                       |
 +--------------------+----------------------------------------------------------------------------------+
 
+``DefaultEmitter`` accepts an optional ``Request``:
+
 .. code:: php
 
    use Infocyph\Webrick\Response\Emitter\DefaultEmitter;
 
    (new DefaultEmitter())->emit($response, $request);
 
+When the application already has a Webrick request, pass it explicitly. When a standalone compiled SAPI uses ``CompiledRouterKernel::handle()`` without creating a full request, the emitter can remain requestless too:
+
+.. code:: php
+
+   $response = $kernel->handle();
+   (new DefaultEmitter())->emit($response);
+
+With no explicit request, ``DefaultEmitter`` consults SAPI globals for method-sensitive behavior such as HEAD and still suppresses bodies for no-content response statuses. Do not construct ``Request::fromGlobals()`` solely to satisfy the emitter.
+
 ``DefaultEmitter`` can be configured with an explicit finish mode for FastCGI, FrankenPHP or LiteSpeed. The application chooses that mode at bootstrap; Webrick does not infer it for every request.
+
+Compiled SAPI fast path
+-----------------------
+
+A standalone compiled synchronous application should preserve lazy request promotion end to end:
+
+.. code:: php
+
+   $response = $compiledKernel->handle();
+   (new DefaultEmitter())->emit($response);
+
+``CompiledRouterKernel`` first derives lightweight routing input from globals. A full Webrick ``Request`` is promoted only when the matched execution plan requires request-dependent behavior. Eagerly calling ``Request::fromGlobals()`` before ``handle()`` is valid when the application requires that object, but it intentionally bypasses this optimization.
 
 Persistent runtimes
 -------------------
@@ -84,4 +107,5 @@ Operational rules
 - Keep transport state out of reusable middleware and static registries.
 - Let the transport own framing when it provides a native response API.
 - Use ``DefaultEmitter`` only for synchronous SAPI boundaries.
+- Do not create a full Webrick request solely for compiled-kernel routing or emission when the execution plan does not require one.
 - Use persistent-runtime adapters with ``CompiledRouterKernel`` for long-lived workers.

@@ -10,7 +10,7 @@ An embedding integration has four responsibilities:
 
 1. Own and configure the application's InterMix ``ContainerBuilder``.
 2. Compile/boot the appropriate Webrick kernel once for the process or worker.
-3. Convert the host request to a Webrick ``Request`` when the native Webrick runtime adapter is not used.
+3. Convert the host request to a Webrick ``Request`` when the host already owns the request boundary and needs to adapt it.
 4. Convert/return the Webrick ``Response`` when the host owns emission.
 
 .. code:: php
@@ -31,7 +31,7 @@ An embedding integration has four responsibilities:
        }
    }
 
-The example adapters are host classes, not Webrick classes.
+The example adapters are host classes, not Webrick classes. A standalone synchronous SAPI does not need a host-request adapter and can use the compiled kernel's requestless entry point.
 
 One application graph
 ---------------------
@@ -75,13 +75,19 @@ Development/registrar mode receives an explicit application ``Invoker``:
 Production boot
 ---------------
 
-Build Webrick and InterMix as one release set with ``ReleaseCompiler``. At worker/process startup the host selects its InterMix ``ProductionContainer`` and supplies it to ``CompiledRouterKernel``:
+Build Webrick and InterMix as one release set with ``ReleaseCompiler``. At worker/process startup load the coordinated release metadata, select the InterMix ``ProductionContainer`` and supply it to ``CompiledRouterKernel``:
 
 .. code:: php
 
+   use Infocyph\Webrick\Router\Build\ReleaseManifestLoader;
+
+   $release = (new ReleaseManifestLoader())->load(
+       __DIR__ . '/var/release.json',
+   );
+
    $container = $builder->productionPrevalidated(
        $release['intermix']['path'],
-       $release['intermix']['sha256'],
+       $release['intermix']['digest'],
    );
 
    $kernel = CompiledRouterKernel::fromPrevalidatedArtifact(
@@ -89,12 +95,32 @@ Build Webrick and InterMix as one release set with ``ReleaseCompiler``. At worke
        matcher: GeneratedMatcher::make(),
        container: $container,
        artifactPath: $release['webrick']['path'],
-       trustedSha256: $release['webrick']['sha256'],
+       trustedArtifactFingerprint: $release['webrick']['fingerprint'],
        environment: $release['environment'],
        configFingerprint: $release['config_fingerprint'],
    );
 
+``ReleaseManifestLoader`` prefers the OPcache-friendly PHP runtime manifest emitted beside the JSON manifest and falls back to JSON when necessary. Webrick 5.1 uses ``intermix.digest`` and ``webrick.fingerprint`` as the trusted prevalidated runtime inputs; the old SHA-256 field names are not supported.
+
 The environment/fingerprint values validate the artifact. They do not make Webrick choose a runtime.
+
+Standalone synchronous SAPI
+---------------------------
+
+For a standalone Apache/FPM/FrankenPHP/LiteSpeed-style entry point, do not eagerly construct a full Webrick ``Request`` unless application behavior requires one:
+
+.. code:: php
+
+   use Infocyph\Webrick\Response\Emitter\DefaultEmitter;
+
+   $response = $kernel->handle();
+   (new DefaultEmitter())->emit($response);
+
+``CompiledRouterKernel::handle()`` first derives lightweight routing input from SAPI globals. It promotes that input to a full ``Request`` only when the matched compiled execution plan requires request services, request middleware, request binding or another request-dependent capability.
+
+``DefaultEmitter`` accepts a nullable request. When none is supplied it uses SAPI globals for request-method-sensitive behavior such as HEAD, so a standalone compiled application does not need to create a request solely for emission.
+
+If the host already owns a request object, adapt it and pass it explicitly as shown in the bridge example. That is an integration boundary, not a reason for standalone compiled applications to eagerly create ``Request::fromGlobals()``.
 
 Middleware ownership
 --------------------

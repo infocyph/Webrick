@@ -114,6 +114,38 @@ This is not the compiled production application artifact. It only prepares match
 6. Production
 -------------
 
-Use ``RouteCompiler`` / ``ReleaseCompiler`` to compile the Webrick artifact together with the application-owned InterMix runtime, then boot ``CompiledRouterKernel`` with that ``ProductionContainer``.
+Compile the Webrick artifact together with the application-owned InterMix runtime through ``ReleaseCompiler``. At runtime load the coordinated release metadata through ``ReleaseManifestLoader``:
+
+.. code:: php
+
+   use Infocyph\Webrick\Response\Emitter\DefaultEmitter;
+   use Infocyph\Webrick\Router\Build\ReleaseManifestLoader;
+   use Infocyph\Webrick\Router\Kernel\CompiledRouterKernel;
+   use Infocyph\Webrick\Router\Matching\GeneratedMatcher;
+   use Psr\Log\NullLogger;
+
+   $release = (new ReleaseManifestLoader())->load(
+       __DIR__ . '/var/release.json',
+   );
+
+   $container = $builder->productionPrevalidated(
+       $release['intermix']['path'],
+       $release['intermix']['digest'],
+   );
+
+   $kernel = CompiledRouterKernel::fromPrevalidatedArtifact(
+       log: new NullLogger(),
+       matcher: GeneratedMatcher::make(),
+       container: $container,
+       artifactPath: $release['webrick']['path'],
+       trustedArtifactFingerprint: $release['webrick']['fingerprint'],
+       environment: $release['environment'],
+       configFingerprint: $release['config_fingerprint'],
+   );
+
+   $response = $kernel->handle();
+   (new DefaultEmitter())->emit($response);
+
+The loader prefers the generated PHP runtime manifest and falls back to JSON. In a standalone compiled SAPI, calling ``handle()`` without an explicit request preserves lazy request promotion: Webrick constructs a full ``Request`` only when the matched execution plan requires one. Pass an explicit adapted request when a host framework owns the request boundary.
 
 See `Framework Integration <framework-integration.rst>`__, `Route Cache <../reference/route-cache.rst>`__, and `Response Emitters and Runtime Adapters <../reference/emitters.rst>`__.
