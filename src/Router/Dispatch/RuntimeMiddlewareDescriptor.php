@@ -33,11 +33,13 @@ final readonly class RuntimeMiddlewareDescriptor
         $this->parameters = $parameters;
     }
 
+    /** @return array<mixed>|callable():mixed|string|null */
     public function resolverSpec(): mixed
     {
         return $this->resolver;
     }
 
+    /** @param array<array-key,mixed> $parameters */
     private static function assertParameters(array $parameters): void
     {
         if (!array_is_list($parameters)) {
