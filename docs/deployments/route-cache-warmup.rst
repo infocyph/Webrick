@@ -75,6 +75,33 @@ The builder accepts either a ``register`` callable or a ``routes`` file, plus op
 
 The builder stages and validates the selected matcher output before activating it. Named fused and generated files can coexist with sharded artifacts in one parent directory.
 
+Route-first production graph enrichment
+---------------------------------------
+
+Hosts that need route-referenced controllers or middleware in the InterMix graph should use ``ReleaseCompiler::compile(..., enrichGraph: ...)``. Webrick discovers and compiles the route table first, passes that exact ``RouterBuildResult`` to the host, then validates and compiles InterMix and emits the router artifact from the same result.
+
+.. code:: php
+
+   use Infocyph\InterMix\DI\ContainerBuilder;
+   use Infocyph\Webrick\Router\Build\ReleaseCompiler;
+   use Infocyph\Webrick\Router\Build\RouterBuildResult;
+
+   $manifest = (new ReleaseCompiler())->compile(
+       builder: $builder,
+       register: $registerRoutes,
+       environment: 'production',
+       configFingerprint: $configFingerprint,
+       intermixPath: $containerArtifact,
+       routerPath: $routerArtifact,
+       releaseManifestPath: $releaseManifest,
+       enrichGraph: static function (ContainerBuilder $builder, RouterBuildResult $routes): void {
+           // Inspect $routes->plans / $routes->routes and add host-owned
+           // controller or middleware definitions before strict validation.
+       },
+   );
+
+The registration callback runs once. Do not invoke route discovery again from ``enrichGraph``; the supplied build result is the source of truth for graph enrichment and router artifact generation.
+
 Build and runtime parity
 ------------------------
 
