@@ -34,13 +34,7 @@ final class ArtifactValueCodec
             return self::decodeValue($payload['value'] ?? null);
         }
         if ($payload['kind'] === self::RUNTIME_MIDDLEWARE) {
-            $resolver = $payload['resolver'] ?? null;
-            $parameters = $payload['parameters'] ?? null;
-            if (!is_array($resolver) || !is_array($parameters) || !array_is_list($parameters) || !array_all($parameters, is_string(...))) {
-                throw new UnexpectedValueException('Invalid runtime middleware artifact descriptor.');
-            }
-
-            return new RuntimeMiddlewareDescriptor(self::decode($resolver), $parameters);
+            return self::decodeRuntimeMiddleware($payload);
         }
         if (!is_string($payload['value'] ?? null)) {
             throw new UnexpectedValueException('Invalid Webrick artifact value payload.');
@@ -62,7 +56,12 @@ final class ArtifactValueCodec
     }
 
     /**
-     * @return array<string,mixed>
+     * @return array{
+     *     kind:string,
+     *     value?:mixed,
+     *     resolver?:array<string,mixed>,
+     *     parameters?:list<string>
+     * }
      */
     public static function encode(mixed $value): array
     {
@@ -136,6 +135,17 @@ final class ArtifactValueCodec
         }
     }
 
+    private static function decodeRuntimeMiddleware(array $payload): RuntimeMiddlewareDescriptor
+    {
+        $resolver = $payload['resolver'] ?? null;
+        $parameters = $payload['parameters'] ?? null;
+        if (!is_array($resolver) || !self::isStringList($parameters)) {
+            throw new UnexpectedValueException('Invalid runtime middleware artifact descriptor.');
+        }
+
+        return new RuntimeMiddlewareDescriptor(self::decode($resolver), $parameters);
+    }
+
     /**
      * @return array{0:string,1:string}|string
      */
@@ -182,6 +192,21 @@ final class ArtifactValueCodec
         }
 
         return ['kind' => self::CLOSURE, 'value' => ClosureSerializer::serialize($closure)];
+    }
+
+    /** @phpstan-assert-if-true list<string> $value */
+    private static function isStringList(mixed $value): bool
+    {
+        if (!is_array($value) || !array_is_list($value)) {
+            return false;
+        }
+        foreach ($value as $entry) {
+            if (!is_string($entry)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
