@@ -140,30 +140,14 @@ final class HandlerCompiler
 
     private function normalizeMiddlewareDescriptor(mixed $entry): mixed
     {
-        if ($entry instanceof RuntimeMiddlewareDescriptor) {
+        if ($entry instanceof RuntimeMiddlewareDescriptor || is_callable($entry)) {
             return $entry;
         }
         if (!is_string($entry)) {
-            if (is_callable($entry)) {
-                return $entry;
-            }
-
             throw new InvalidArgumentException('Unsupported middleware descriptor at build time.');
         }
-        if (class_exists($entry) && method_exists($entry, '__invoke')) {
-            return [$entry, '__invoke'];
-        }
-        if (str_contains($entry, '::')) {
-            [$class, $method] = explode('::', $entry, 2);
-            if ($class !== '' && $method !== '' && class_exists($class) && method_exists($class, $method)) {
-                return [$class, $method];
-            }
-        }
-        if (function_exists($entry)) {
-            return $entry;
-        }
 
-        throw new InvalidArgumentException("Unknown middleware descriptor '{$entry}' during route compilation.");
+        return $this->normalizeStringMiddlewareDescriptor($entry);
     }
 
     /** @return array{0:string,1:string}|string */
@@ -191,6 +175,24 @@ final class HandlerCompiler
         }
 
         throw new InvalidArgumentException("Route handler '{$handler}' is not resolvable at build time.");
+    }
+
+    private function normalizeStringMiddlewareDescriptor(string $entry): array|string
+    {
+        if (class_exists($entry) && method_exists($entry, '__invoke')) {
+            return [$entry, '__invoke'];
+        }
+        if (str_contains($entry, '::')) {
+            [$class, $method] = explode('::', $entry, 2);
+            if ($class !== '' && $method !== '' && class_exists($class) && method_exists($class, $method)) {
+                return [$class, $method];
+            }
+        }
+        if (function_exists($entry)) {
+            return $entry;
+        }
+
+        throw new InvalidArgumentException("Unknown middleware descriptor '{$entry}' during route compilation.");
     }
 
     private function parameterIsRequest(ReflectionParameter $parameter): bool
