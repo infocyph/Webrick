@@ -6,6 +6,8 @@ namespace Infocyph\Webrick\Router\Kernel;
 
 use Infocyph\InterMix\DI\ProductionContainer;
 use Infocyph\Webrick\Constants\HttpMethodEnum;
+use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
+use Infocyph\Webrick\Exceptions\RouteNotFoundException;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Headers\HeaderPolicy;
 use Infocyph\Webrick\Response\Response;
@@ -32,9 +34,7 @@ use Throwable;
 /** Strict production kernel backed only by verified compiled artifacts. */
 final readonly class CompiledRouterKernel
 {
-    private const string REQUEST_SCOPE = 'webrick.request';
-
-    private RoutingControlRendererInterface $controlRenderer;
+    private RoutingControlRenderer $controlRenderer;
 
     private RuntimeDispatcher $dispatcher;
 
@@ -57,7 +57,7 @@ final readonly class CompiledRouterKernel
         ?int $signedDefaultTtl,
         ?SignedUrlConfig $signedUrlConfig,
         private ?RuntimeStageProfiler $profiler,
-        ?RoutingControlRendererInterface $routingControlRenderer,
+        private bool $routeErrorsThroughErrorHandler,
     ) {
         if (!$matcher->canBootFromCache()) {
             foreach ($artifact->routes() as $route) {
@@ -72,7 +72,7 @@ final readonly class CompiledRouterKernel
         $this->dispatcher = new RuntimeDispatcher($this->runtime, $artifact);
         $this->hasGlobalMiddleware = $this->dispatcher->hasGlobalMiddleware();
         $this->errorHandler = $errorHandler ?? new ErrorHandler(logger: $log, debug: false);
-        $this->controlRenderer = $routingControlRenderer ?? new RoutingControlRenderer($log);
+        $this->controlRenderer = new RoutingControlRenderer($log);
         $this->profiler?->mark('dispatcher_boot');
 
         UrlGeneratorRegistry::bind(new UrlGenerator($urlBaseUri, $artifact->aliases, $signKey, $signedDefaultTtl, $signedUrlConfig));
@@ -98,7 +98,7 @@ final readonly class CompiledRouterKernel
         ?int $signedDefaultTtl = null,
         ?SignedUrlConfig $signedUrlConfig = null,
         ?RuntimeStageProfiler $profiler = null,
-        ?RoutingControlRendererInterface $routingControlRenderer = null,
+        bool $routeErrorsThroughErrorHandler = false,
     ): self {
         $artifact = new RouterArtifactLoader()->load($artifactPath, $environment, $configFingerprint);
         $profiler?->mark('router_artifact_load');
@@ -114,7 +114,7 @@ final readonly class CompiledRouterKernel
             $signedDefaultTtl,
             $signedUrlConfig,
             $profiler,
-            $routingControlRenderer,
+            $routeErrorsThroughErrorHandler,
         );
     }
 
@@ -132,7 +132,7 @@ final readonly class CompiledRouterKernel
         ?int $signedDefaultTtl = null,
         ?SignedUrlConfig $signedUrlConfig = null,
         ?RuntimeStageProfiler $profiler = null,
-        ?RoutingControlRendererInterface $routingControlRenderer = null,
+        bool $routeErrorsThroughErrorHandler = false,
     ): self {
         $artifact = new RouterArtifactLoader()->loadPrevalidated(
             $artifactPath,
@@ -153,7 +153,7 @@ final readonly class CompiledRouterKernel
             $signedDefaultTtl,
             $signedUrlConfig,
             $profiler,
-            $routingControlRenderer,
+            $routeErrorsThroughErrorHandler,
         );
     }
 
@@ -236,13 +236,25 @@ final readonly class CompiledRouterKernel
         return $response->withBody('');
     }
 
-    private function controlOutcomeResponse(MatchOutcome $outcome, RoutingInput $routing): Response
-    {
+    private function controlOutcomeResponse(
+        MatchOutcome $outcome,
+        RoutingInput $routing,
+        ?Request &$request,
+        ?RuntimeRequestContext $runtimeContext,
+    ): Response {
         if ($outcome->type === MatchOutcomeType::AUTO_OPTIONS) {
             return self::automaticOptionsResponse($outcome->allowed);
         }
+        if (!$this->routeErrorsThroughErrorHandler) {
+            return $this->controlRenderer->render($routing, $outcome);
+        }
 
-        return $this->controlRenderer->render($routing, $outcome);
+        $request ??= $runtimeContext?->request() ?? Request::fromGlobals();
+        $error = $outcome->type === MatchOutcomeType::METHOD_NOT_ALLOWED
+            ? new MethodNotAllowedException($routing->method, $routing->path, $outcome->allowed)
+            : new RouteNotFoundException($routing->method, $routing->path);
+
+        return $this->errorHandler->renderThrowable($request, $error);
     }
 
     private function dispatchRoutingInput(
@@ -260,7 +272,7 @@ final readonly class CompiledRouterKernel
             $routeIndex = $match[0];
             $vars = $match[1];
         } else {
-            $response = $this->controlOutcomeResponse($match, $routing);
+            $response = $this->controlOutcomeResponse($match, $routing, $request, $runtimeContext);
             $this->profiler?->mark('dispatch');
 
             return $response;
@@ -292,7 +304,7 @@ final readonly class CompiledRouterKernel
             };
         }
         $response = $this->runtime->withinScope(
-            self::REQUEST_SCOPE,
+            RuntimeRequestContext::REQUEST_SCOPE,
             fn() => $this->dispatcher->dispatchWithoutRequest($plan, $vars),
         );
         if (!$response instanceof Response) {
@@ -314,7 +326,7 @@ final readonly class CompiledRouterKernel
             return $this->dispatcher->dispatch($routeIndex, $plan, $request, $vars);
         }
         $response = $this->runtime->withinScope(
-            self::REQUEST_SCOPE,
+            RuntimeRequestContext::REQUEST_SCOPE,
             fn() => $this->dispatcher->dispatch($routeIndex, $plan, $request, $vars),
             [Request::class => $request],
         );
