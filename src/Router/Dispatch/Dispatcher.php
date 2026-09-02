@@ -8,6 +8,7 @@ use Closure;
 use Infocyph\InterMix\DI\Invoker;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Router\Build\RuntimeMiddlewareDescriptor;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 use InvalidArgumentException;
 use JsonSerializable;
@@ -19,9 +20,6 @@ final class Dispatcher
 {
     /** @var array<int, MiddlewarePipeline> */
     private array $pipelines = [];
-
-    /** @var array<string, callable|object|string> */
-    private array $resolvedAliases = [];
 
     /**
      * @param array<class-string|object|callable|string> $preGlobalRaw
@@ -56,12 +54,16 @@ final class Dispatcher
 
     private function aliasStringClass(string $alias): ?string
     {
-        $resolved = $this->resolveAlias($alias);
+        $resolved = MiddlewareAliases::compileString($alias);
         if (is_string($resolved)) {
             return class_exists($resolved) ? $resolved : null;
         }
-        if (is_object($resolved)) {
-            return $resolved::class;
+        if (
+            $resolved->resolver !== ''
+            && is_string($resolved->resolver)
+            && class_exists($resolved->resolver)
+        ) {
+            return $resolved->resolver;
         }
 
         return null;
@@ -383,11 +385,6 @@ final class Dispatcher
         return [$class, $method];
     }
 
-    private function resolveAlias(string $alias): callable|object|string
-    {
-        return $this->resolvedAliases[$alias] ??= MiddlewareAliases::resolveString($alias);
-    }
-
     /**
      * @return array<string,true>
      */
@@ -437,21 +434,51 @@ final class Dispatcher
 
     private function wrapAliasStringAsMiddleware(string $alias): callable
     {
-        return function (Request $request, Closure $next) use ($alias): Response {
-            $resolved = $this->resolveAlias($alias);
-            if (is_string($resolved)) {
-                return $this->invokeClassMiddleware($resolved, $request, $next);
-            }
-            if (is_object($resolved)) {
-                if (!is_callable($resolved)) {
-                    throw new InvalidArgumentException('Resolved middleware object (' . $resolved::class . ') is not invokable.');
-                }
+        $descriptor = MiddlewareAliases::compileString($alias);
 
-                return $this->assertMiddlewareResponse($resolved($request, $next), $resolved::class);
-            }
+        if (is_string($descriptor)) {
+            return fn(Request $request, Closure $next): Response => $this->invokeClassMiddleware(
+                $descriptor,
+                $request,
+                $next,
+            );
+        }
 
-            return $this->assertMiddlewareResponse($resolved($request, $next), $alias);
+        return function (Request $request, Closure $next) use ($descriptor, $alias): Response {
+            $resolved = $this->invoker->getContainer()->resolveNow(
+                $descriptor->resolver,
+                $descriptor->parameters,
+            );
+
+            return $this->invokeResolvedAliasMiddleware($resolved, $request, $next, $alias);
         };
+    }
+
+    private function invokeResolvedAliasMiddleware(
+        mixed $resolved,
+        Request $request,
+        Closure $next,
+        string $alias,
+    ): Response {
+        if (is_string($resolved)) {
+            return $this->invokeClassMiddleware($resolved, $request, $next);
+        }
+        if (is_object($resolved)) {
+            if (!is_callable($resolved)) {
+                throw new InvalidArgumentException('Resolved middleware object (' . $resolved::class . ') is not invokable.');
+            }
+
+            return $this->assertMiddlewareResponse($resolved($request, $next), $resolved::class);
+        }
+        if (is_callable($resolved)) {
+            return $this->assertMiddlewareResponse($resolved($request, $next), $alias);
+        }
+
+        throw new InvalidArgumentException(sprintf(
+            'Middleware alias "%s" resolved to unsupported type %s.',
+            $alias,
+            get_debug_type($resolved),
+        ));
     }
 
     private function wrapClassStringAsMiddleware(string $mw): callable
