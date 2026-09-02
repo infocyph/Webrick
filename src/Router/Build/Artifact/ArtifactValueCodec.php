@@ -135,6 +135,7 @@ final class ArtifactValueCodec
         }
     }
 
+    /** @param array<array-key,mixed> $payload */
     private static function decodeRuntimeMiddleware(array $payload): RuntimeMiddlewareDescriptor
     {
         $resolver = $payload['resolver'] ?? null;
