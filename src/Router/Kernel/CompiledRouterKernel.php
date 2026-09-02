@@ -36,8 +36,6 @@ final readonly class CompiledRouterKernel
 {
     private RoutingControlRenderer $controlRenderer;
 
-    private bool $directRoutingErrors;
-
     private RuntimeDispatcher $dispatcher;
 
     private ErrorHandler $errorHandler;
@@ -59,6 +57,7 @@ final readonly class CompiledRouterKernel
         ?int $signedDefaultTtl,
         ?SignedUrlConfig $signedUrlConfig,
         private ?RuntimeStageProfiler $profiler,
+        private bool $routeErrorsThroughErrorHandler,
     ) {
         if (!$matcher->canBootFromCache()) {
             foreach ($artifact->routes() as $route) {
@@ -72,7 +71,6 @@ final readonly class CompiledRouterKernel
         $this->runtime = new InterMixRuntime($container);
         $this->dispatcher = new RuntimeDispatcher($this->runtime, $artifact);
         $this->hasGlobalMiddleware = $this->dispatcher->hasGlobalMiddleware();
-        $this->directRoutingErrors = $errorHandler === null;
         $this->errorHandler = $errorHandler ?? new ErrorHandler(logger: $log, debug: false);
         $this->controlRenderer = new RoutingControlRenderer($log);
         $this->profiler?->mark('dispatcher_boot');
@@ -100,6 +98,7 @@ final readonly class CompiledRouterKernel
         ?int $signedDefaultTtl = null,
         ?SignedUrlConfig $signedUrlConfig = null,
         ?RuntimeStageProfiler $profiler = null,
+        bool $routeErrorsThroughErrorHandler = false,
     ): self {
         $artifact = new RouterArtifactLoader()->load($artifactPath, $environment, $configFingerprint);
         $profiler?->mark('router_artifact_load');
@@ -115,6 +114,7 @@ final readonly class CompiledRouterKernel
             $signedDefaultTtl,
             $signedUrlConfig,
             $profiler,
+            $routeErrorsThroughErrorHandler,
         );
     }
 
@@ -132,6 +132,7 @@ final readonly class CompiledRouterKernel
         ?int $signedDefaultTtl = null,
         ?SignedUrlConfig $signedUrlConfig = null,
         ?RuntimeStageProfiler $profiler = null,
+        bool $routeErrorsThroughErrorHandler = false,
     ): self {
         $artifact = new RouterArtifactLoader()->loadPrevalidated(
             $artifactPath,
@@ -152,6 +153,7 @@ final readonly class CompiledRouterKernel
             $signedDefaultTtl,
             $signedUrlConfig,
             $profiler,
+            $routeErrorsThroughErrorHandler,
         );
     }
 
@@ -234,11 +236,6 @@ final readonly class CompiledRouterKernel
         return $response->withBody('');
     }
 
-    private static function scopeId(RoutingInput $routing, ?RuntimeRequestContext $runtimeContext): string
-    {
-        return $runtimeContext?->scopeId() ?? 'webrick.request.' . spl_object_id($routing);
-    }
-
     private function controlOutcomeResponse(
         MatchOutcome $outcome,
         RoutingInput $routing,
@@ -248,7 +245,7 @@ final readonly class CompiledRouterKernel
         if ($outcome->type === MatchOutcomeType::AUTO_OPTIONS) {
             return self::automaticOptionsResponse($outcome->allowed);
         }
-        if ($this->directRoutingErrors) {
+        if (!$this->routeErrorsThroughErrorHandler) {
             return $this->controlRenderer->render($routing, $outcome);
         }
 
@@ -284,25 +281,21 @@ final readonly class CompiledRouterKernel
         $plan = $this->artifact->planForIndex($routeIndex);
         $pipeline = $plan->kind === ExecutionKind::MIDDLEWARE_PIPELINE || $this->hasGlobalMiddleware;
         if (!$pipeline && !$plan->requiresRequest()) {
-            $response = $this->dispatchWithoutRequest($routing, $plan, $vars, $runtimeContext);
+            $response = $this->dispatchWithoutRequest($plan, $vars);
             $this->profiler?->mark('dispatch');
 
             return $response;
         }
         $request ??= $runtimeContext?->request() ?? Request::fromGlobals();
-        $response = $this->dispatchWithRequest($routeIndex, $routing, $plan, $request, $vars, $runtimeContext);
+        $response = $this->dispatchWithRequest($routeIndex, $plan, $request, $vars);
         $this->profiler?->mark('dispatch');
 
         return $response;
     }
 
     /** @param array<string,string> $vars */
-    private function dispatchWithoutRequest(
-        RoutingInput $routing,
-        ExecutionPlan $plan,
-        array $vars,
-        ?RuntimeRequestContext $runtimeContext,
-    ): Response {
+    private function dispatchWithoutRequest(ExecutionPlan $plan, array $vars): Response
+    {
         if (!$plan->requiresScope()) {
             return match ($plan->terminalKind) {
                 ExecutionKind::DIRECT_ZERO_ARG => $this->dispatcher->dispatchDirectZeroArg($plan),
@@ -311,7 +304,7 @@ final readonly class CompiledRouterKernel
             };
         }
         $response = $this->runtime->withinScope(
-            self::scopeId($routing, $runtimeContext),
+            RuntimeRequestContext::REQUEST_SCOPE,
             fn() => $this->dispatcher->dispatchWithoutRequest($plan, $vars),
         );
         if (!$response instanceof Response) {
@@ -324,18 +317,16 @@ final readonly class CompiledRouterKernel
     /** @param array<string,string> $vars */
     private function dispatchWithRequest(
         int $routeIndex,
-        RoutingInput $routing,
         ExecutionPlan $plan,
         Request $request,
         array $vars,
-        ?RuntimeRequestContext $runtimeContext,
     ): Response {
         $requiresScope = $plan->requiresScope() || $this->dispatcher->pipelineRequiresScope($plan);
         if (!$requiresScope) {
             return $this->dispatcher->dispatch($routeIndex, $plan, $request, $vars);
         }
         $response = $this->runtime->withinScope(
-            self::scopeId($routing, $runtimeContext),
+            RuntimeRequestContext::REQUEST_SCOPE,
             fn() => $this->dispatcher->dispatch($routeIndex, $plan, $request, $vars),
             [Request::class => $request],
         );

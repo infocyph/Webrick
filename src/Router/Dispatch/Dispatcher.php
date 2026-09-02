@@ -17,11 +17,10 @@ use JsonSerializable;
  */
 final class Dispatcher
 {
+    private readonly RuntimeAliasInvoker $runtimeAliases;
+
     /** @var array<int, MiddlewarePipeline> */
     private array $pipelines = [];
-
-    /** @var array<string, callable|object|string> */
-    private array $resolvedAliases = [];
 
     /**
      * @param array<class-string|object|callable|string> $preGlobalRaw
@@ -32,7 +31,9 @@ final class Dispatcher
         private readonly bool $useInvoker = true,
         private readonly array $preGlobalRaw = [],
         private readonly array $postGlobalRaw = [],
-    ) {}
+    ) {
+        $this->runtimeAliases = new RuntimeAliasInvoker($invoker);
+    }
 
     /**
      * @param array<string,mixed> $vars
@@ -56,15 +57,14 @@ final class Dispatcher
 
     private function aliasStringClass(string $alias): ?string
     {
-        $resolved = $this->resolveAlias($alias);
-        if (is_string($resolved)) {
-            return class_exists($resolved) ? $resolved : null;
-        }
-        if (is_object($resolved)) {
-            return $resolved::class;
+        $descriptor = MiddlewareAliases::compileString($alias);
+        if (is_string($descriptor)) {
+            return class_exists($descriptor) ? $descriptor : null;
         }
 
-        return null;
+        return is_string($descriptor->resolver) && class_exists($descriptor->resolver)
+            ? $descriptor->resolver
+            : null;
     }
 
     private function assertMiddlewareResponse(mixed $result, string $source): Response
@@ -383,11 +383,6 @@ final class Dispatcher
         return [$class, $method];
     }
 
-    private function resolveAlias(string $alias): callable|object|string
-    {
-        return $this->resolvedAliases[$alias] ??= MiddlewareAliases::resolveString($alias);
-    }
-
     /**
      * @return array<string,true>
      */
@@ -437,21 +432,21 @@ final class Dispatcher
 
     private function wrapAliasStringAsMiddleware(string $alias): callable
     {
-        return function (Request $request, Closure $next) use ($alias): Response {
-            $resolved = $this->resolveAlias($alias);
-            if (is_string($resolved)) {
-                return $this->invokeClassMiddleware($resolved, $request, $next);
-            }
-            if (is_object($resolved)) {
-                if (!is_callable($resolved)) {
-                    throw new InvalidArgumentException('Resolved middleware object (' . $resolved::class . ') is not invokable.');
-                }
+        $descriptor = MiddlewareAliases::compileString($alias);
+        if (is_string($descriptor)) {
+            return fn(Request $request, Closure $next): Response => $this->invokeClassMiddleware(
+                $descriptor,
+                $request,
+                $next,
+            );
+        }
 
-                return $this->assertMiddlewareResponse($resolved($request, $next), $resolved::class);
-            }
-
-            return $this->assertMiddlewareResponse($resolved($request, $next), $alias);
-        };
+        return fn(Request $request, Closure $next): Response => $this->runtimeAliases->invoke(
+            $descriptor,
+            $request,
+            $next,
+            $alias,
+        );
     }
 
     private function wrapClassStringAsMiddleware(string $mw): callable

@@ -6,6 +6,7 @@ namespace Infocyph\Webrick\Router\Build\Artifact;
 
 use Closure;
 use Infocyph\InterMix\Serializer\ClosureSerializer;
+use Infocyph\Webrick\Router\Dispatch\RuntimeMiddlewareDescriptor;
 use ReflectionFunction;
 use ReflectionMethod;
 use UnexpectedValueException;
@@ -16,6 +17,8 @@ final class ArtifactValueCodec
     private const string CALLABLE = 'callable';
 
     private const string CLOSURE = 'closure';
+
+    private const string RUNTIME_MIDDLEWARE = 'runtime_middleware';
 
     private const string VALUE = 'value';
 
@@ -29,6 +32,9 @@ final class ArtifactValueCodec
 
         if ($payload['kind'] === self::VALUE) {
             return self::decodeValue($payload['value'] ?? null);
+        }
+        if ($payload['kind'] === self::RUNTIME_MIDDLEWARE) {
+            return self::decodeRuntimeMiddleware($payload);
         }
         if (!is_string($payload['value'] ?? null)) {
             throw new UnexpectedValueException('Invalid Webrick artifact value payload.');
@@ -50,10 +56,23 @@ final class ArtifactValueCodec
     }
 
     /**
-     * @return array{kind:string,value:mixed}
+     * @return array{
+     *     kind:string,
+     *     value?:mixed,
+     *     resolver?:array<string,mixed>,
+     *     parameters?:list<string>
+     * }
      */
     public static function encode(mixed $value): array
     {
+        if ($value instanceof RuntimeMiddlewareDescriptor) {
+            return [
+                'kind' => self::RUNTIME_MIDDLEWARE,
+                'resolver' => self::encode($value->resolverSpec()),
+                'parameters' => $value->parameters,
+            ];
+        }
+
         if (is_string($value)) {
             return ['kind' => self::VALUE, 'value' => $value];
         }
@@ -78,7 +97,7 @@ final class ArtifactValueCodec
         }
 
         throw new UnexpectedValueException(
-            'Compiled artifact values must be scalar callable descriptors or Closures.',
+            'Compiled artifact values must be scalar callable descriptors, runtime middleware descriptors or Closures.',
         );
     }
 
@@ -114,6 +133,18 @@ final class ArtifactValueCodec
         } catch (\Throwable $exception) {
             throw new UnexpectedValueException('Unable to restore Webrick Closure artifact.', 0, $exception);
         }
+    }
+
+    /** @param array<array-key,mixed> $payload */
+    private static function decodeRuntimeMiddleware(array $payload): RuntimeMiddlewareDescriptor
+    {
+        $resolver = $payload['resolver'] ?? null;
+        $parameters = $payload['parameters'] ?? null;
+        if (!is_array($resolver) || !self::isStringList($parameters)) {
+            throw new UnexpectedValueException('Invalid runtime middleware artifact descriptor.');
+        }
+
+        return new RuntimeMiddlewareDescriptor(self::decode($resolver), $parameters);
     }
 
     /**
@@ -162,6 +193,16 @@ final class ArtifactValueCodec
         }
 
         return ['kind' => self::CLOSURE, 'value' => ClosureSerializer::serialize($closure)];
+    }
+
+    /** @phpstan-assert-if-true list<string> $value */
+    private static function isStringList(mixed $value): bool
+    {
+        if (!is_array($value) || !array_is_list($value)) {
+            return false;
+        }
+
+        return array_all($value, fn($entry) => is_string($entry));
     }
 
     /**

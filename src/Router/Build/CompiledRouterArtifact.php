@@ -12,7 +12,7 @@ use UnexpectedValueException;
 /** Immutable production payload with request-time hydration limited to the matched route. */
 final class CompiledRouterArtifact
 {
-    public const int FORMAT_VERSION = 3;
+    public const int FORMAT_VERSION = 4;
 
     /** @var array<int,ExecutionPlan> */
     private array $decodedPlans = [];

@@ -15,13 +15,34 @@ final class MiddlewareAliases
 {
     private static bool $frozen = false;
 
-    /** @var array<string,callable> */
+    /** @var array<string,callable|string> */
     private static array $map = [];
 
     /** @var array<int|string,array{supports:callable(string):bool,resolve:callable(string,string...):(callable|object|string)}> */
     private static array $resolvers = [];
 
     private function __construct() {}
+
+    /**
+     * Build-plane alias parsing. Runtime-backed aliases are represented without
+     * executing their resolver so construction stays inside the request scope.
+     */
+    public static function compileString(string $maybeAlias): RuntimeMiddlewareDescriptor|string
+    {
+        [$key, $params] = self::parse($maybeAlias);
+
+        if (isset(self::$map[$key])) {
+            return self::compileRegistered(self::$map[$key], $params);
+        }
+
+        foreach (self::$resolvers as $resolver) {
+            if (($resolver['supports'])($key)) {
+                return new RuntimeMiddlewareDescriptor($resolver['resolve'], [$key, ...$params]);
+            }
+        }
+
+        return $maybeAlias;
+    }
 
     public static function freeze(): void
     {
@@ -49,13 +70,6 @@ final class MiddlewareAliases
         $alias = strtolower(trim($alias));
         if ($alias === '') {
             throw new \InvalidArgumentException('Middleware alias must not be empty.');
-        }
-
-        if (is_string($factoryOrClass)) {
-            $class = $factoryOrClass;
-            $factoryOrClass = static fn(string ...$params): object|string => $params !== []
-                ? new $class(...$params)
-                : $class;
         }
 
         self::$map[$alias] = $factoryOrClass;
@@ -87,37 +101,19 @@ final class MiddlewareAliases
 
     public static function resolveString(string $maybeAlias): callable|object|string
     {
-        [$name, $paramStr] = explode(':', $maybeAlias, 2) + [1 => null];
-        $key = strtolower((string) $name);
-        $params = $paramStr !== null && $paramStr !== ''
-            ? array_map(trim(...), explode(',', $paramStr))
-            : [];
+        [$key, $params] = self::parse($maybeAlias);
 
         if (isset(self::$map[$key])) {
-            $resolved = (self::$map[$key])(...$params);
-        } else {
-            $resolved = null;
-            foreach (self::$resolvers as $resolver) {
-                if (($resolver['supports'])($key)) {
-                    $resolved = ($resolver['resolve'])($key, ...$params);
+            return self::resolveRegistered(self::$map[$key], $params);
+        }
 
-                    break;
-                }
-            }
-            if ($resolved === null) {
-                return $maybeAlias;
+        foreach (self::$resolvers as $resolver) {
+            if (($resolver['supports'])($key)) {
+                return self::assertResolved(($resolver['resolve'])($key, ...$params), $key);
             }
         }
 
-        if (is_string($resolved) || is_object($resolved) || is_callable($resolved)) {
-            return $resolved;
-        }
-
-        throw new UnexpectedValueException(sprintf(
-            'Middleware alias "%s" resolved to unsupported type %s',
-            $key,
-            get_debug_type($resolved),
-        ));
+        return $maybeAlias;
     }
 
     private static function assertMutable(): void
@@ -125,5 +121,58 @@ final class MiddlewareAliases
         if (self::$frozen) {
             throw new LogicException('Middleware alias registry is frozen for production runtime.');
         }
+    }
+
+    private static function assertResolved(mixed $resolved, string $alias): callable|object|string
+    {
+        if (is_string($resolved) || is_object($resolved) || is_callable($resolved)) {
+            return $resolved;
+        }
+
+        throw new UnexpectedValueException(sprintf(
+            'Middleware alias "%s" resolved to unsupported type %s',
+            $alias,
+            get_debug_type($resolved),
+        ));
+    }
+
+    /**
+     * @param list<string> $params
+     */
+    private static function compileRegistered(callable|string $registered, array $params): RuntimeMiddlewareDescriptor|string
+    {
+        if (is_string($registered) && $params === []) {
+            return $registered;
+        }
+
+        return new RuntimeMiddlewareDescriptor($registered, $params);
+    }
+
+    /**
+     * @return array{0:string,1:list<string>}
+     */
+    private static function parse(string $maybeAlias): array
+    {
+        [$name, $paramStr] = explode(':', $maybeAlias, 2) + [1 => null];
+        $key = strtolower(trim((string) $name));
+        $params = $paramStr !== null && $paramStr !== ''
+            ? array_map(trim(...), explode(',', $paramStr))
+            : [];
+
+        return [$key, $params];
+    }
+
+    /**
+     * @param list<string> $params
+     */
+    private static function resolveRegistered(callable|string $registered, array $params): callable|object|string
+    {
+        if (is_string($registered)) {
+            $resolved = $params !== [] ? new $registered(...$params) : $registered;
+
+            return self::assertResolved($resolved, $registered);
+        }
+
+        return self::assertResolved($registered(...$params), 'registered');
     }
 }

@@ -18,6 +18,28 @@ Default boundary
 
 Set ``debug: false`` for public production traffic. ``debug`` may be passed to ``RouterKernel::bootWithRegistrar()`` or directly to a custom ``ErrorHandler``. Process-level PHP warning/error conversion is deliberately separate from the per-request HTTP renderer: install ``PhpErrorBridge`` once at host/process bootstrap when that behavior is desired, and leave an existing host error handler in control otherwise.
 
+Compiled routing controls
+-------------------------
+
+``CompiledRouterKernel`` treats ordinary router control outcomes separately from application exceptions. By default, route-not-found and method-not-allowed outcomes are rendered directly by Webrick even when the host supplies a custom application ``ErrorHandler``. The direct renderer preserves the router's logging and security headers, including ``Cache-Control: no-store``, ``X-Content-Type-Options: nosniff``, ``Vary: Accept`` and ``Allow`` for 405 responses.
+
+A host that deliberately wants application exception mapping for 404/405 can opt in explicitly:
+
+.. code:: php
+
+   $kernel = CompiledRouterKernel::fromCompiledArtifact(
+       log: $logger,
+       matcher: $matcher,
+       container: $productionContainer,
+       artifactPath: $routerArtifact,
+       environment: 'production',
+       configFingerprint: $configFingerprint,
+       errorHandler: $applicationErrorHandler,
+       routeErrorsThroughErrorHandler: true,
+   );
+
+Passing ``errorHandler`` alone does not enable that behavior. This keeps the allocation-light default 404/405 path stable when a framework such as Foundation supplies application-level exception mapping.
+
 Custom boundary renderer
 ------------------------
 
