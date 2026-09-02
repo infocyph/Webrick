@@ -15,7 +15,7 @@ final class MiddlewareAliases
 {
     private static bool $frozen = false;
 
-    /** @var array<string,callable> */
+    /** @var array<string,callable|string> */
     private static array $map = [];
 
     /** @var array<int|string,array{supports:callable(string):bool,resolve:callable(string,string...):(callable|object|string)}> */
@@ -51,13 +51,6 @@ final class MiddlewareAliases
             throw new \InvalidArgumentException('Middleware alias must not be empty.');
         }
 
-        if (is_string($factoryOrClass)) {
-            $class = $factoryOrClass;
-            $factoryOrClass = static fn(string ...$params): object|string => $params !== []
-                ? new $class(...$params)
-                : $class;
-        }
-
         self::$map[$alias] = $factoryOrClass;
     }
 
@@ -85,37 +78,88 @@ final class MiddlewareAliases
         self::$resolvers = [];
     }
 
+    /**
+     * Build-plane alias parsing. Parameterized aliases are represented without
+     * executing their resolver so construction stays inside the request scope.
+     */
+    public static function compileString(string $maybeAlias): callable|object|string|RuntimeMiddlewareDescriptor
+    {
+        [$key, $params] = self::parse($maybeAlias);
+
+        if (isset(self::$map[$key])) {
+            $registered = self::$map[$key];
+            if ($params !== []) {
+                return new RuntimeMiddlewareDescriptor($registered, $params);
+            }
+
+            return self::resolveRegistered($registered, []);
+        }
+
+        foreach (self::$resolvers as $resolver) {
+            if (!($resolver['supports'])($key)) {
+                continue;
+            }
+            if ($params !== []) {
+                return new RuntimeMiddlewareDescriptor($resolver['resolve'], [$key, ...$params]);
+            }
+
+            return self::assertResolved(($resolver['resolve'])($key), $key);
+        }
+
+        return $maybeAlias;
+    }
+
     public static function resolveString(string $maybeAlias): callable|object|string
     {
+        [$key, $params] = self::parse($maybeAlias);
+
+        if (isset(self::$map[$key])) {
+            return self::resolveRegistered(self::$map[$key], $params);
+        }
+
+        foreach (self::$resolvers as $resolver) {
+            if (($resolver['supports'])($key)) {
+                return self::assertResolved(($resolver['resolve'])($key, ...$params), $key);
+            }
+        }
+
+        return $maybeAlias;
+    }
+
+    /**
+     * @return array{0:string,1:list<string>}
+     */
+    private static function parse(string $maybeAlias): array
+    {
         [$name, $paramStr] = explode(':', $maybeAlias, 2) + [1 => null];
-        $key = strtolower((string) $name);
+        $key = strtolower(trim((string) $name));
         $params = $paramStr !== null && $paramStr !== ''
             ? array_map(trim(...), explode(',', $paramStr))
             : [];
 
-        if (isset(self::$map[$key])) {
-            $resolved = (self::$map[$key])(...$params);
-        } else {
-            $resolved = null;
-            foreach (self::$resolvers as $resolver) {
-                if (($resolver['supports'])($key)) {
-                    $resolved = ($resolver['resolve'])($key, ...$params);
+        return [$key, $params];
+    }
 
-                    break;
-                }
-            }
-            if ($resolved === null) {
-                return $maybeAlias;
-            }
+    private static function resolveRegistered(callable|string $registered, array $params): callable|object|string
+    {
+        if (is_string($registered)) {
+            $resolved = $params !== [] ? new $registered(...$params) : $registered;
+
+            return self::assertResolved($resolved, $registered);
         }
 
+        return self::assertResolved($registered(...$params), 'registered');
+    }
+
+    private static function assertResolved(mixed $resolved, string $alias): callable|object|string
+    {
         if (is_string($resolved) || is_object($resolved) || is_callable($resolved)) {
             return $resolved;
         }
 
         throw new UnexpectedValueException(sprintf(
             'Middleware alias "%s" resolved to unsupported type %s',
-            $key,
+            $alias,
             get_debug_type($resolved),
         ));
     }
