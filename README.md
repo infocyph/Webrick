@@ -40,7 +40,7 @@ runtime from an environment string.
 
 - PHP 8.4+
 - Composer 2.x
-- InterMix `^10.0.2`
+- InterMix `^10.0.3`
 
 Install:
 
@@ -131,25 +131,29 @@ $manifest = (new ReleaseCompiler())->compile(
 );
 ```
 
-Artifact publication is atomic at each file boundary. Deploy the InterMix
-artifact, Webrick artifact and release manifest as one immutable release set,
-then replace workers only after the full set is available.
+`ReleaseCompiler` publishes both the JSON tooling manifest and an OPcache-friendly
+PHP runtime manifest next to it. Deploy the InterMix artifact, Webrick artifact
+and both manifests as one immutable release set, then replace workers only after
+the full set is available.
 
 ## Compiled production boot
 
-The host recreates the same builder configuration, chooses the InterMix
-production runtime, and gives it to Webrick explicitly:
+The host recreates the same builder configuration, loads the coordinated release
+metadata, chooses the InterMix production runtime, and gives it to Webrick
+explicitly:
 
 ```php
+use Infocyph\Webrick\Response\Emitter\DefaultEmitter;
+use Infocyph\Webrick\Router\Build\ReleaseManifestLoader;
 use Infocyph\Webrick\Router\Kernel\CompiledRouterKernel;
 use Infocyph\Webrick\Router\Matching\GeneratedMatcher;
 use Psr\Log\NullLogger;
 
-$release = json_decode(file_get_contents(__DIR__ . '/var/release.json'), true, flags: JSON_THROW_ON_ERROR);
+$release = (new ReleaseManifestLoader())->load(__DIR__ . '/var/release.json');
 
 $container = $builder->productionPrevalidated(
     $release['intermix']['path'],
-    $release['intermix']['sha256'],
+    $release['intermix']['digest'],
 );
 
 $kernel = CompiledRouterKernel::fromPrevalidatedArtifact(
@@ -157,15 +161,31 @@ $kernel = CompiledRouterKernel::fromPrevalidatedArtifact(
     matcher: GeneratedMatcher::make(),
     container: $container,
     artifactPath: $release['webrick']['path'],
-    trustedSha256: $release['webrick']['sha256'],
+    trustedArtifactFingerprint: $release['webrick']['fingerprint'],
     environment: $release['environment'],
     configFingerprint: $release['config_fingerprint'],
 );
+
+$response = $kernel->handle();
+(new DefaultEmitter())->emit($response);
 ```
 
-Use `fromCompiledArtifact()` instead when a trusted external digest is not
-available. Prevalidated mode is only appropriate when the digest comes from
-immutable deployment metadata outside the runtime-writable artifact boundary.
+`ReleaseManifestLoader` prefers the generated PHP runtime manifest and falls back
+to JSON when the PHP manifest is not present. The InterMix `digest`, Webrick
+`digest`, and Webrick artifact `fingerprint` are xxh128 deployment identities;
+there is no SHA-256 release-metadata compatibility path in Webrick 5.1.
+
+For standalone compiled SAPI applications, prefer `handle()` without eagerly
+constructing `Request::fromGlobals()`. `CompiledRouterKernel` promotes globals to
+a full `Request` only when the matched execution plan actually needs one. The
+synchronous emitter also accepts a nullable request and falls back to SAPI globals
+for request-method-sensitive emission such as HEAD.
+
+Pass an explicit Webrick `Request` when the host already owns/adapts the request
+or when application code requires it. Use `fromCompiledArtifact()` instead when
+a trusted external artifact fingerprint is not available. Prevalidated mode is
+only appropriate when release metadata comes from an immutable deployment
+boundary outside runtime-writable artifact paths.
 
 ## Persistent runtimes
 
