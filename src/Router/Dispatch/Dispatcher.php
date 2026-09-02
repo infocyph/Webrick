@@ -20,9 +20,6 @@ final class Dispatcher
     /** @var array<int, MiddlewarePipeline> */
     private array $pipelines = [];
 
-    /** @var array<string, callable|object|string> */
-    private array $resolvedAliases = [];
-
     /**
      * @param array<class-string|object|callable|string> $preGlobalRaw
      * @param array<class-string|object|callable|string> $postGlobalRaw
@@ -56,12 +53,16 @@ final class Dispatcher
 
     private function aliasStringClass(string $alias): ?string
     {
-        $resolved = $this->resolveAlias($alias);
-        if (is_string($resolved)) {
-            return class_exists($resolved) ? $resolved : null;
+        $descriptor = MiddlewareAliases::compileString($alias);
+        if (is_string($descriptor)) {
+            return class_exists($descriptor) ? $descriptor : null;
         }
-        if (is_object($resolved)) {
-            return $resolved::class;
+        if (
+            $descriptor instanceof RuntimeMiddlewareDescriptor
+            && is_string($descriptor->resolver)
+            && class_exists($descriptor->resolver)
+        ) {
+            return $descriptor->resolver;
         }
 
         return null;
@@ -285,6 +286,45 @@ final class Dispatcher
         return $this->assertMiddlewareResponse($callable($req, $next), $class);
     }
 
+    private function invokeResolvedAliasMiddleware(
+        mixed $resolved,
+        Request $request,
+        Closure $next,
+        string $alias,
+    ): Response {
+        $parameters = ['request' => $request, 'next' => $next];
+
+        if (is_string($resolved)) {
+            $spec = class_exists($resolved) && method_exists($resolved, '__invoke')
+                ? [$resolved, '__invoke']
+                : $resolved;
+
+            return $this->assertMiddlewareResponse(
+                $this->invoker->getContainer()->resolveNow($spec, $parameters),
+                $alias,
+            );
+        }
+        if (is_object($resolved)) {
+            if (!is_callable($resolved)) {
+                throw new InvalidArgumentException('Resolved middleware object (' . $resolved::class . ') is not invokable.');
+            }
+
+            return $this->assertMiddlewareResponse($resolved($request, $next), $resolved::class);
+        }
+        if (is_callable($resolved)) {
+            return $this->assertMiddlewareResponse(
+                $this->invoker->getContainer()->resolveNow($resolved, $parameters),
+                $alias,
+            );
+        }
+
+        throw new InvalidArgumentException(sprintf(
+            'Middleware alias "%s" resolved to unsupported type %s.',
+            $alias,
+            get_debug_type($resolved),
+        ));
+    }
+
     /**
      * @param array<string,mixed> $callArgs
      */
@@ -383,11 +423,6 @@ final class Dispatcher
         return [$class, $method];
     }
 
-    private function resolveAlias(string $alias): callable|object|string
-    {
-        return $this->resolvedAliases[$alias] ??= MiddlewareAliases::resolveString($alias);
-    }
-
     /**
      * @return array<string,true>
      */
@@ -437,20 +472,25 @@ final class Dispatcher
 
     private function wrapAliasStringAsMiddleware(string $alias): callable
     {
-        return function (Request $request, Closure $next) use ($alias): Response {
-            $resolved = $this->resolveAlias($alias);
-            if (is_string($resolved)) {
-                return $this->invokeClassMiddleware($resolved, $request, $next);
-            }
-            if (is_object($resolved)) {
-                if (!is_callable($resolved)) {
-                    throw new InvalidArgumentException('Resolved middleware object (' . $resolved::class . ') is not invokable.');
-                }
+        $descriptor = MiddlewareAliases::compileString($alias);
+        if (is_string($descriptor)) {
+            return fn(Request $request, Closure $next): Response => $this->invokeClassMiddleware(
+                $descriptor,
+                $request,
+                $next,
+            );
+        }
+        if (!$descriptor instanceof RuntimeMiddlewareDescriptor) {
+            throw new InvalidArgumentException("Middleware alias '{$alias}' did not compile to a runtime descriptor.");
+        }
 
-                return $this->assertMiddlewareResponse($resolved($request, $next), $resolved::class);
-            }
+        return function (Request $request, Closure $next) use ($descriptor, $alias): Response {
+            $resolved = $this->invoker->getContainer()->resolveNow(
+                $descriptor->resolverSpec(),
+                $descriptor->parameters,
+            );
 
-            return $this->assertMiddlewareResponse($resolved($request, $next), $alias);
+            return $this->invokeResolvedAliasMiddleware($resolved, $request, $next, $alias);
         };
     }
 
