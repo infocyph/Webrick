@@ -14,9 +14,15 @@ use Infocyph\Webrick\Router\Runtime\RoutingInput;
  * Native request/response handles stay here and are never copied into process
  * globals or hidden inside Request attributes. Full Request materialization is
  * cached and occurs only when the selected execution plan requires it.
+ *
+ * Scope identity is semantic, not request-unique. InterMix isolates identical
+ * scope labels by the active execution context (Fiber/coroutine/thread-like
+ * host context), while request identity remains ordinary request/context data.
  */
 final class RuntimeRequestContext
 {
+    public const string REQUEST_SCOPE = 'webrick.request';
+
     private ?Request $request = null;
 
     /**
@@ -43,6 +49,6 @@ final class RuntimeRequestContext
 
     public function scopeId(): string
     {
-        return 'webrick.request.' . spl_object_id($this);
+        return self::REQUEST_SCOPE;
     }
 }
