@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router\Dispatch;
 
+use Infocyph\Webrick\Router\Build\RuntimeMiddlewareDescriptor;
 use LogicException;
 use UnexpectedValueException;
 
@@ -15,13 +16,38 @@ final class MiddlewareAliases
 {
     private static bool $frozen = false;
 
-    /** @var array<string,callable> */
+    /** @var array<string,callable|string> */
     private static array $map = [];
 
     /** @var array<int|string,array{supports:callable(string):bool,resolve:callable(string,string...):(callable|object|string)}> */
     private static array $resolvers = [];
 
     private function __construct() {}
+
+    public static function compileString(string $maybeAlias): RuntimeMiddlewareDescriptor|string
+    {
+        [$key, $params] = self::parse($maybeAlias);
+
+        if (isset(self::$map[$key])) {
+            $resolver = self::$map[$key];
+            if (is_string($resolver) && $params === []) {
+                return $resolver;
+            }
+
+            return new RuntimeMiddlewareDescriptor($resolver, $params);
+        }
+
+        foreach (self::$resolvers as $resolver) {
+            if (($resolver['supports'])($key)) {
+                return new RuntimeMiddlewareDescriptor(
+                    $resolver['resolve'],
+                    [$key, ...$params],
+                );
+            }
+        }
+
+        return $maybeAlias;
+    }
 
     public static function freeze(): void
     {
@@ -35,7 +61,7 @@ final class MiddlewareAliases
 
     public static function has(string $alias): bool
     {
-        $alias = strtolower($alias);
+        $alias = strtolower(trim($alias));
         if (isset(self::$map[$alias])) {
             return true;
         }
@@ -49,13 +75,6 @@ final class MiddlewareAliases
         $alias = strtolower(trim($alias));
         if ($alias === '') {
             throw new \InvalidArgumentException('Middleware alias must not be empty.');
-        }
-
-        if (is_string($factoryOrClass)) {
-            $class = $factoryOrClass;
-            $factoryOrClass = static fn(string ...$params): object|string => $params !== []
-                ? new $class(...$params)
-                : $class;
         }
 
         self::$map[$alias] = $factoryOrClass;
@@ -87,14 +106,15 @@ final class MiddlewareAliases
 
     public static function resolveString(string $maybeAlias): callable|object|string
     {
-        [$name, $paramStr] = explode(':', $maybeAlias, 2) + [1 => null];
-        $key = strtolower((string) $name);
-        $params = $paramStr !== null && $paramStr !== ''
-            ? array_map(trim(...), explode(',', $paramStr))
-            : [];
+        [$key, $params] = self::parse($maybeAlias);
 
         if (isset(self::$map[$key])) {
-            $resolved = (self::$map[$key])(...$params);
+            $registered = self::$map[$key];
+            if (is_string($registered)) {
+                $resolved = $params === [] ? $registered : new $registered(...$params);
+            } else {
+                $resolved = $registered(...$params);
+            }
         } else {
             $resolved = null;
             foreach (self::$resolvers as $resolver) {
@@ -125,5 +145,17 @@ final class MiddlewareAliases
         if (self::$frozen) {
             throw new LogicException('Middleware alias registry is frozen for production runtime.');
         }
+    }
+
+    /** @return array{0:string,1:list<string>} */
+    private static function parse(string $maybeAlias): array
+    {
+        [$name, $paramStr] = explode(':', $maybeAlias, 2) + [1 => null];
+        $key = strtolower(trim((string) $name));
+        $params = $paramStr !== null && $paramStr !== ''
+            ? array_map(trim(...), explode(',', $paramStr))
+            : [];
+
+        return [$key, $params];
     }
 }
