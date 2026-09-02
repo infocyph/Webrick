@@ -7,6 +7,7 @@ namespace Infocyph\Webrick\Router\Build;
 use Closure;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Router\Dispatch\MiddlewareAliases;
+use Infocyph\Webrick\Router\Dispatch\RuntimeMiddlewareDescriptor;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 use InvalidArgumentException;
 use ReflectionFunction;
@@ -56,7 +57,7 @@ final class HandlerCompiler
             if (is_string($entry)) {
                 $alias = strtolower(trim(explode(':', $entry, 2)[0]));
                 if ($alias !== '' && MiddlewareAliases::has($alias)) {
-                    $entry = MiddlewareAliases::resolveString($entry);
+                    $entry = MiddlewareAliases::compileString($entry);
                 }
             }
             $compiled[] = $this->normalizeMiddlewareDescriptor($entry);
@@ -139,6 +140,9 @@ final class HandlerCompiler
 
     private function normalizeMiddlewareDescriptor(mixed $entry): mixed
     {
+        if ($entry instanceof RuntimeMiddlewareDescriptor) {
+            return $entry;
+        }
         if (!is_string($entry)) {
             if (is_callable($entry)) {
                 return $entry;
