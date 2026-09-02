@@ -21,6 +21,9 @@ use Infocyph\Webrick\Router\Kernel\CompiledRouterKernel;
 use Infocyph\Webrick\Router\Kernel\ErrorHandler;
 use Infocyph\Webrick\Router\Kernel\RouterKernel;
 use Infocyph\Webrick\Router\Matching\FusedMatcher;
+use Infocyph\Webrick\Router\Runtime\RoutingInput;
+use Infocyph\Webrick\Runtime\Http\RuntimeCapabilities;
+use Infocyph\Webrick\Runtime\Http\RuntimeRequestContext;
 use Infocyph\Webrick\Runtime\InterMixRuntime;
 use Psr\Log\NullLogger;
 use Throwable;
@@ -37,6 +40,32 @@ if (!class_exists('FoundationRuntimeParameterizedMiddlewareFactory', false)) {
             return static function (Request $request, Closure $next) use ($limit, $bucket): Response {
                 return $next($request)->withHeader('X-Parameterized-Middleware', "{$limit}:{$bucket}");
             };
+        }
+    }
+}
+
+if (!class_exists('FoundationRuntimeMiddlewareDependency', false)) {
+    final readonly class FoundationRuntimeMiddlewareDependency
+    {
+        public function __construct(public string $marker) {}
+    }
+}
+
+if (!class_exists('FoundationRuntimeParameterizedClassMiddleware', false)) {
+    final readonly class FoundationRuntimeParameterizedClassMiddleware
+    {
+        public function __construct(
+            private string $limit,
+            private string $bucket,
+            private FoundationRuntimeMiddlewareDependency $dependency,
+        ) {}
+
+        public function __invoke(Request $request, Closure $next): Response
+        {
+            return $next($request)->withHeader(
+                'X-Parameterized-Class-Middleware',
+                "{$this->limit}:{$this->bucket}:{$this->dependency->marker}",
+            );
         }
     }
 }
@@ -157,7 +186,7 @@ it('defers parameterized middleware alias factories through artifact hydration u
             new InterMixRuntime($container),
         );
         $response = $container->withinScope(
-            'webrick.request',
+            RuntimeRequestContext::REQUEST_SCOPE,
             static fn(): Response => $pipeline->handle(Request::fake(uri: '/runtime-middleware')),
         );
 
@@ -169,6 +198,60 @@ it('defers parameterized middleware alias factories through artifact hydration u
     }
 });
 
+it('resolves parameterized class middleware with scoped DI in development request scope', function (): void {
+    MiddlewareAliases::reset();
+    MiddlewareAliases::register('runtime_class', FoundationRuntimeParameterizedClassMiddleware::class);
+
+    $container = new Container('webrick.foundation.parameterized-class');
+    $container->scoped(
+        FoundationRuntimeMiddlewareDependency::class,
+        static fn(): FoundationRuntimeMiddlewareDependency => new FoundationRuntimeMiddlewareDependency(
+            bin2hex(random_bytes(6)),
+        ),
+    );
+
+    try {
+        $kernel = RouterKernel::bootWithRegistrar(
+            log: new NullLogger(),
+            matcher: FusedMatcher::make(),
+            register: static function (Registrar $registrar): void {
+                $registrar->get(
+                    '/parameterized-class',
+                    static fn(): Response => Response::plaintext('ok'),
+                    ['middleware' => ['runtime_class:25,api']],
+                );
+            },
+            invoker: Invoker::with($container),
+            preGlobalTags: [],
+            postGlobalTags: [],
+        );
+
+        $first = $kernel->handle(Request::fake(uri: '/parameterized-class'));
+        $second = $kernel->handle(Request::fake(uri: '/parameterized-class'));
+        $firstParts = explode(':', $first->getHeaderLine('X-Parameterized-Class-Middleware'));
+        $secondParts = explode(':', $second->getHeaderLine('X-Parameterized-Class-Middleware'));
+
+        expect(array_slice($firstParts, 0, 2))->toBe(['25', 'api'])
+            ->and(array_slice($secondParts, 0, 2))->toBe(['25', 'api'])
+            ->and($firstParts[2] ?? null)->toBeString()
+            ->and($secondParts[2] ?? null)->toBeString()
+            ->and($firstParts[2])->not->toBe($secondParts[2]);
+    } finally {
+        MiddlewareAliases::reset();
+    }
+});
+
+it('exposes the semantic request scope label from runtime request contexts', function (): void {
+    $context = new RuntimeRequestContext(
+        routing: new RoutingInput('GET', '/scope'),
+        requestFactory: static fn(): Request => Request::fake(uri: '/scope'),
+        capabilities: new RuntimeCapabilities('test', persistent: true, concurrent: true),
+    );
+
+    expect($context->scopeId())->toBe(RuntimeRequestContext::REQUEST_SCOPE)
+        ->and($context->scopeId())->toBe('webrick.request');
+});
+
 it('uses the stable development request scope while retaining fresh scoped state', function (): void {
     $container = new Container('webrick.foundation.scope');
     $scopeLeaves = 0;
@@ -176,7 +259,7 @@ it('uses the stable development request scope while retaining fresh scoped state
         FoundationRuntimeScopedMarker::class,
         static fn(): FoundationRuntimeScopedMarker => new FoundationRuntimeScopedMarker(bin2hex(random_bytes(6))),
     );
-    $container->onScopeLeave('webrick.request', static function () use (&$scopeLeaves): void {
+    $container->onScopeLeave(RuntimeRequestContext::REQUEST_SCOPE, static function () use (&$scopeLeaves): void {
         ++$scopeLeaves;
     });
 
