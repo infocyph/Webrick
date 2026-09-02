@@ -20,10 +20,7 @@ use Infocyph\Webrick\Router\Dispatch\RuntimeMiddlewareDescriptor;
 use Infocyph\Webrick\Router\Kernel\CompiledRouterKernel;
 use Infocyph\Webrick\Router\Kernel\ErrorHandler;
 use Infocyph\Webrick\Router\Kernel\RouterKernel;
-use Infocyph\Webrick\Router\Kernel\RoutingControlRendererInterface;
 use Infocyph\Webrick\Router\Matching\FusedMatcher;
-use Infocyph\Webrick\Router\Matching\MatchOutcome;
-use Infocyph\Webrick\Router\Runtime\RoutingInput;
 use Infocyph\Webrick\Runtime\InterMixRuntime;
 use Psr\Log\NullLogger;
 
@@ -250,23 +247,25 @@ describe('Foundation Webrick bridge', function () {
         }
     });
 
-    it('allows explicit routing-control rendering without changing application exception handling', function () {
-        [$intermixPath, $routerPath] = foundationBridgeArtifactPaths('webrick-bridge-custom-controls');
-        $builder = ContainerBuilder::create('webrick_bridge_custom_controls_' . bin2hex(random_bytes(4)));
+    it('routes 404 and 405 through the application error handler only when explicitly enabled', function () {
+        [$intermixPath, $routerPath] = foundationBridgeArtifactPaths('webrick-bridge-routed-controls');
+        $builder = ContainerBuilder::create('webrick_bridge_routed_controls_' . bin2hex(random_bytes(4)));
         $build = new RouteCompiler()->compile(
             register: static function (Registrar $registrar): void {
                 $registrar->get('/known', static fn(): Response => Response::plaintext('known'));
             },
             environment: 'production',
-            configFingerprint: 'foundation-custom-controls',
+            configFingerprint: 'foundation-routed-controls',
         );
-        $renderer = new class implements RoutingControlRendererInterface
-        {
-            public function render(RoutingInput $routing, MatchOutcome $outcome): Response
-            {
-                return Response::plaintext('custom-routing-control', 418, ['X-Routing-Control' => 'custom']);
-            }
-        };
+        $applicationErrors = 0;
+        $errorHandler = new ErrorHandler(
+            logger: new NullLogger(),
+            responseRenderer: static function () use (&$applicationErrors): Response {
+                ++$applicationErrors;
+
+                return Response::plaintext('application-routing-control', 599);
+            },
+        );
 
         try {
             $builder->compile($intermixPath);
@@ -278,15 +277,16 @@ describe('Foundation Webrick bridge', function () {
                 container: $container,
                 artifactPath: $routerPath,
                 environment: 'production',
-                configFingerprint: 'foundation-custom-controls',
-                routingControlRenderer: $renderer,
+                configFingerprint: 'foundation-routed-controls',
+                errorHandler: $errorHandler,
+                routeErrorsThroughErrorHandler: true,
             );
 
             $response = $kernel->handle(mockRequest('GET', '/missing'));
 
-            expect($response)->toHaveStatus(418)
-                ->and((string) $response->getBody())->toContain('custom-routing-control')
-                ->and($response->getHeaderLine('X-Routing-Control'))->toBe('custom');
+            expect($response)->toHaveStatus(599)
+                ->and((string) $response->getBody())->toContain('application-routing-control')
+                ->and($applicationErrors)->toBe(1);
         } finally {
             foundationBridgeCleanup([$intermixPath, $routerPath]);
         }
