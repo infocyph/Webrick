@@ -100,4 +100,35 @@ Production release
 
 After matcher tooling, compile the full production graph with ``ReleaseCompiler``. That coordinated release artifact binds the Webrick execution plan to the application-owned compiled InterMix runtime and release manifest. Production traffic should boot ``CompiledRouterKernel`` from that verified artifact rather than rebuilding route definitions or DI state.
 
+Route-first graph enrichment
+----------------------------
+
+Hosts that need route-referenced controller or middleware definitions can enrich the InterMix graph without discovering routes twice. ``ReleaseCompiler`` finalizes the ``RouterBuildResult`` first, exposes it to ``enrichGraph``, then performs strict InterMix validation and compilation.
+
+.. code:: php
+
+   use Infocyph\InterMix\DI\ContainerBuilder;
+   use Infocyph\Webrick\Router\Build\ReleaseCompiler;
+   use Infocyph\Webrick\Router\Build\RouterBuildResult;
+
+   $manifest = (new ReleaseCompiler())->compile(
+       builder: $builder,
+       register: $registerRoutes,
+       environment: 'production',
+       configFingerprint: $configFingerprint,
+       intermixPath: $releaseDir . '/container.php',
+       routerPath: $releaseDir . '/router.php',
+       releaseManifestPath: $releaseDir . '/release.json',
+       enrichGraph: static function (
+           ContainerBuilder $builder,
+           RouterBuildResult $routes,
+       ): void {
+           AppRouteGraph::contribute($builder, $routes);
+       },
+   );
+
+The callback runs exactly once after route compilation and before ``ContainerBuilder::validate(strict: true)`` / ``compile()``. It receives finalized route and execution-plan descriptors, so host code can contribute deterministic DI definitions based on what the release actually references.
+
+Keep the callback build-only and deterministic. It should mutate the host ``ContainerBuilder`` only; do not rediscover route files, mutate the compiled route result, resolve runtime services, or perform request-time work there.
+
 See :doc:`../reference/route-cache` for the cache and compiled-artifact reference.
