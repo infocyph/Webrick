@@ -82,25 +82,18 @@ final class MiddlewareAliases
      * Build-plane alias parsing. Runtime-backed aliases are represented without
      * executing their resolver so construction stays inside the request scope.
      */
-    public static function compileString(string $maybeAlias): callable|object|string
+    public static function compileString(string $maybeAlias): RuntimeMiddlewareDescriptor|string
     {
         [$key, $params] = self::parse($maybeAlias);
 
         if (isset(self::$map[$key])) {
-            $registered = self::$map[$key];
-            if (is_string($registered) && $params === []) {
-                return $registered;
-            }
-
-            return new RuntimeMiddlewareDescriptor($registered, $params);
+            return self::compileRegistered(self::$map[$key], $params);
         }
 
         foreach (self::$resolvers as $resolver) {
-            if (!($resolver['supports'])($key)) {
-                continue;
+            if (($resolver['supports'])($key)) {
+                return new RuntimeMiddlewareDescriptor($resolver['resolve'], [$key, ...$params]);
             }
-
-            return new RuntimeMiddlewareDescriptor($resolver['resolve'], [$key, ...$params]);
         }
 
         return $maybeAlias;
@@ -124,6 +117,18 @@ final class MiddlewareAliases
     }
 
     /**
+     * @param list<string> $params
+     */
+    private static function compileRegistered(callable|string $registered, array $params): RuntimeMiddlewareDescriptor|string
+    {
+        if (is_string($registered) && $params === []) {
+            return $registered;
+        }
+
+        return new RuntimeMiddlewareDescriptor($registered, $params);
+    }
+
+    /**
      * @return array{0:string,1:list<string>}
      */
     private static function parse(string $maybeAlias): array
@@ -137,6 +142,9 @@ final class MiddlewareAliases
         return [$key, $params];
     }
 
+    /**
+     * @param list<string> $params
+     */
     private static function resolveRegistered(callable|string $registered, array $params): callable|object|string
     {
         if (is_string($registered)) {
