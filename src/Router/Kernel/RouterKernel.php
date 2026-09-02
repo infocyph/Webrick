@@ -30,13 +30,13 @@ use Psr\Log\LoggerInterface;
  * boots from production route-cache artifacts. Compiled production traffic is
  * handled by CompiledRouterKernel.
  */
-final class RouterKernel
+final readonly class RouterKernel
 {
     private const string REQUEST_SCOPE = 'webrick.request';
 
-    private readonly Dispatcher $dispatcher;
+    private Dispatcher $dispatcher;
 
-    private readonly ErrorHandler $errorHandler;
+    private ErrorHandler $errorHandler;
 
     /**
      * @param array<string,mixed> $registrarOptions
@@ -46,19 +46,19 @@ final class RouterKernel
      * @param array<int,string> $postGlobalTags
      */
     public function __construct(
-        private readonly LoggerInterface $log,
-        private readonly MatcherInterface $matcher,
-        private readonly Closure $register,
-        private readonly Invoker $invoker,
-        private readonly array $registrarOptions = [],
+        private LoggerInterface $log,
+        private MatcherInterface $matcher,
+        private Closure $register,
+        private Invoker $invoker,
+        private array $registrarOptions = [],
         array $preGlobal = [],
         array $postGlobal = [],
         bool $invokerOnMiddleware = false,
         ?ErrorHandler $errorHandler = null,
-        private readonly ?Closure $bindUrlServices = null,
-        private readonly array $preGlobalTags = ['webrick.middleware.pre'],
-        private readonly array $postGlobalTags = ['webrick.middleware.post'],
-        private readonly bool $debug = false,
+        private ?Closure $bindUrlServices = null,
+        private array $preGlobalTags = ['webrick.middleware.pre'],
+        private array $postGlobalTags = ['webrick.middleware.post'],
+        private bool $debug = false,
     ) {
         $this->warm();
         [$preGlobal, $postGlobal] = $this->prepareGlobalMiddleware($preGlobal, $postGlobal);
