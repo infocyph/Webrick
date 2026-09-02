@@ -12,7 +12,7 @@ use Infocyph\Webrick\Router\Runtime\RoutingInput;
 use Psr\Log\LoggerInterface;
 
 /** Allocation-light renderer for ordinary compiled-router misses. */
-final readonly class RoutingControlRenderer
+final readonly class RoutingControlRenderer implements RoutingControlRendererInterface
 {
     public function __construct(private LoggerInterface $logger) {}
 
