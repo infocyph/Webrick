@@ -6,6 +6,7 @@ namespace Infocyph\Webrick\Router\Build\Artifact;
 
 use Closure;
 use Infocyph\InterMix\Serializer\ClosureSerializer;
+use Infocyph\Webrick\Router\Dispatch\RuntimeMiddlewareDescriptor;
 use ReflectionFunction;
 use ReflectionMethod;
 use UnexpectedValueException;
@@ -16,6 +17,8 @@ final class ArtifactValueCodec
     private const string CALLABLE = 'callable';
 
     private const string CLOSURE = 'closure';
+
+    private const string RUNTIME_MIDDLEWARE = 'runtime_middleware';
 
     private const string VALUE = 'value';
 
@@ -29,6 +32,15 @@ final class ArtifactValueCodec
 
         if ($payload['kind'] === self::VALUE) {
             return self::decodeValue($payload['value'] ?? null);
+        }
+        if ($payload['kind'] === self::RUNTIME_MIDDLEWARE) {
+            $resolver = $payload['resolver'] ?? null;
+            $parameters = $payload['parameters'] ?? null;
+            if (!is_array($resolver) || !is_array($parameters) || !array_is_list($parameters) || !array_all($parameters, is_string(...))) {
+                throw new UnexpectedValueException('Invalid runtime middleware artifact descriptor.');
+            }
+
+            return new RuntimeMiddlewareDescriptor(self::decode($resolver), $parameters);
         }
         if (!is_string($payload['value'] ?? null)) {
             throw new UnexpectedValueException('Invalid Webrick artifact value payload.');
@@ -50,10 +62,18 @@ final class ArtifactValueCodec
     }
 
     /**
-     * @return array{kind:string,value:mixed}
+     * @return array<string,mixed>
      */
     public static function encode(mixed $value): array
     {
+        if ($value instanceof RuntimeMiddlewareDescriptor) {
+            return [
+                'kind' => self::RUNTIME_MIDDLEWARE,
+                'resolver' => self::encode($value->resolverSpec()),
+                'parameters' => $value->parameters,
+            ];
+        }
+
         if (is_string($value)) {
             return ['kind' => self::VALUE, 'value' => $value];
         }
@@ -78,7 +98,7 @@ final class ArtifactValueCodec
         }
 
         throw new UnexpectedValueException(
-            'Compiled artifact values must be scalar callable descriptors or Closures.',
+            'Compiled artifact values must be scalar callable descriptors, runtime middleware descriptors or Closures.',
         );
     }
 
