@@ -32,11 +32,11 @@ use Psr\Log\LoggerInterface;
  */
 final class RouterKernel
 {
+    private const string REQUEST_SCOPE = 'webrick.request';
+
     private readonly Dispatcher $dispatcher;
 
     private readonly ErrorHandler $errorHandler;
-
-    private int $requestScopeSeq = 0;
 
     /**
      * @param array<string,mixed> $registrarOptions
@@ -132,9 +132,8 @@ final class RouterKernel
             return $this->dispatcher->dispatch($route, $req, $vars);
         };
 
-        $scope = 'webrick.request.' . (++$this->requestScopeSeq);
         $result = $this->invoker->getContainer()->withinScope(
-            $scope,
+            self::REQUEST_SCOPE,
             fn(): Response => $this->errorHandler->handle($request, $runner),
             [Request::class => $request],
         );
