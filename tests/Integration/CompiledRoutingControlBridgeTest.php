@@ -13,15 +13,13 @@ use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Kernel\CompiledRouterKernel;
 use Infocyph\Webrick\Router\Kernel\ErrorHandler;
 use Infocyph\Webrick\Router\Matching\FusedMatcher;
-use PHPUnit\Framework\Attributes\PreserveGlobalState;
-use PHPUnit\Framework\Attributes\RunInSeparateProcess;
+use PHPUnit\Framework\Attributes\BackupStaticProperties;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
 
+#[BackupStaticProperties(true)]
 final class CompiledRoutingControlBridgeTest extends TestCase
 {
-    #[RunInSeparateProcess]
-    #[PreserveGlobalState(false)]
     public function testDefaultRoutingControlsStayIndependentFromApplicationErrors(): void
     {
         [$intermixPath, $routerPath] = self::artifactPaths('default');
@@ -70,8 +68,6 @@ final class CompiledRoutingControlBridgeTest extends TestCase
         }
     }
 
-    #[RunInSeparateProcess]
-    #[PreserveGlobalState(false)]
     public function testRoutingControlsUseApplicationErrorHandlerOnlyWhenEnabled(): void
     {
         [$intermixPath, $routerPath] = self::artifactPaths('opt-in');
@@ -131,8 +127,8 @@ final class CompiledRoutingControlBridgeTest extends TestCase
     {
         foreach ($paths as $path) {
             foreach ([$path, $path . '.meta.json'] as $candidate) {
-                if (is_file($candidate)) {
-                    @unlink($candidate);
+                if (is_file($candidate) && !unlink($candidate)) {
+                    throw new \RuntimeException("Unable to remove compiled routing-control fixture: {$candidate}");
                 }
             }
         }
