@@ -13,7 +13,7 @@ Install
 Core runtime dependencies are intentionally small:
 
 - PHP 8.4+
-- InterMix ``^10.0.2``
+- InterMix ``^10.0.3``
 - PSR cache/log contracts used by portable integrations
 
 ArrayKit is not a mandatory Webrick dependency. CacheLayer, PSR-7 interfaces/factories, OpenTelemetry SDK/exporters and persistent-server packages remain optional.
@@ -98,11 +98,24 @@ Do not make the runtime web user broadly writable merely to support cache genera
 Production release
 ------------------
 
-Use ``Router\Build\ReleaseCompiler`` to create the coordinated InterMix + Webrick release artifacts and manifest, then boot ``CompiledRouterKernel`` with the host-selected ``ProductionContainer``.
+Use ``Router\Build\ReleaseCompiler`` to create the coordinated InterMix + Webrick release artifacts and manifests. A release build publishes the JSON manifest requested by the application and an OPcache-friendly PHP runtime manifest beside it.
+
+At runtime, use ``ReleaseManifestLoader`` rather than decoding the JSON manifest manually. The loader prefers the PHP runtime manifest and falls back to JSON when necessary.
+
+Webrick 5.1 release metadata uses xxh128 deployment identities:
+
+- ``intermix.digest`` for the InterMix prevalidated runtime;
+- ``webrick.digest`` for Webrick artifact deployment identity;
+- ``webrick.fingerprint`` for ``CompiledRouterKernel::fromPrevalidatedArtifact()``.
+
+There is no legacy ``sha256`` release-metadata compatibility path in Webrick 5.1.
+
+For a standalone compiled synchronous SAPI, prefer ``$kernel->handle()`` without eagerly creating ``Request::fromGlobals()``. The compiled kernel creates a full request only when the matched execution plan requires one, and ``DefaultEmitter`` can emit without a request object by consulting SAPI globals for method-sensitive behavior.
 
 See:
 
 - `Quick Start <quickstart.rst>`__
 - `Framework Integration <framework-integration.rst>`__
 - `Matcher Cache Reference <../reference/route-cache.rst>`__
+- `Response Emitters and Runtime Adapters <../reference/emitters.rst>`__
 - `Deployments <../deployments/index.rst>`__
