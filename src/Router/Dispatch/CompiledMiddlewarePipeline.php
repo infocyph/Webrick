@@ -67,6 +67,17 @@ final readonly class CompiledMiddlewarePipeline
      */
     private static function compileInvoker(InterMixRuntime $runtime, mixed $descriptor): array
     {
+        if ($descriptor instanceof RuntimeMiddlewareDescriptor) {
+            return [
+                static function (Request $request, Closure $next) use ($runtime, $descriptor): mixed {
+                    $resolved = $runtime->resolveNow($descriptor->resolverSpec(), $descriptor->parameters);
+
+                    return self::invokeResolvedMiddleware($runtime, $resolved, $request, $next);
+                },
+                true,
+            ];
+        }
+
         if (is_callable($descriptor) && (!is_string($descriptor) || function_exists($descriptor))) {
             $callable = $descriptor;
 
@@ -87,5 +98,27 @@ final readonly class CompiledMiddlewarePipeline
             ),
             true,
         ];
+    }
+
+    private static function invokeResolvedMiddleware(
+        InterMixRuntime $runtime,
+        mixed $resolved,
+        Request $request,
+        Closure $next,
+    ): mixed {
+        if (is_callable($resolved) && (!is_string($resolved) || function_exists($resolved))) {
+            return $resolved($request, $next);
+        }
+        if (is_string($resolved) || is_array($resolved)) {
+            return $runtime->resolveNow(
+                $resolved,
+                ['request' => $request, 'next' => $next],
+            );
+        }
+
+        throw new UnexpectedValueException(sprintf(
+            'Runtime middleware resolver returned non-invokable type %s.',
+            get_debug_type($resolved),
+        ));
     }
 }
