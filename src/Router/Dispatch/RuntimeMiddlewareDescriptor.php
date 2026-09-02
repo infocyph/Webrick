@@ -33,10 +33,15 @@ final readonly class RuntimeMiddlewareDescriptor
         $this->parameters = $parameters;
     }
 
-    /** @return array<mixed>|callable():mixed|string|null */
-    public function resolverSpec(): mixed
+    /** @return string|array<array-key,mixed>|Closure|callable */
+    public function resolverSpec(): string|array|Closure|callable
     {
-        return $this->resolver;
+        $resolver = $this->resolver;
+        if (is_string($resolver) || is_array($resolver) || $resolver instanceof Closure || is_callable($resolver)) {
+            return $resolver;
+        }
+
+        throw new InvalidArgumentException('Runtime middleware resolver must be a resolver-compatible callable descriptor.');
     }
 
     /** @param array<array-key,mixed> $parameters */
