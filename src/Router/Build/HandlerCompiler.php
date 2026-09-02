@@ -177,6 +177,7 @@ final class HandlerCompiler
         throw new InvalidArgumentException("Route handler '{$handler}' is not resolvable at build time.");
     }
 
+    /** @return array{0:class-string,1:string}|string */
     private function normalizeStringMiddlewareDescriptor(string $entry): array|string
     {
         if (class_exists($entry) && method_exists($entry, '__invoke')) {
@@ -185,6 +186,7 @@ final class HandlerCompiler
         if (str_contains($entry, '::')) {
             [$class, $method] = explode('::', $entry, 2);
             if ($class !== '' && $method !== '' && class_exists($class) && method_exists($class, $method)) {
+                /** @var class-string $class */
                 return [$class, $method];
             }
         }
