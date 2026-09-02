@@ -33,11 +33,17 @@ final readonly class ReleaseCompiler
     }
 
     /**
+     * Route registration intentionally runs before InterMix validation/compile.
+     * Hosts may use $enrichGraph to contribute route-referenced controllers or
+     * middleware to the same builder, then both artifacts are emitted from the
+     * already-discovered RouterBuildResult.
+     *
      * @param array<string,mixed> $registrarOptions
      * @param list<mixed> $preGlobal
      * @param list<mixed> $postGlobal
      * @param list<string> $preGlobalTags
      * @param list<string> $postGlobalTags
+     * @param null|Closure(ContainerBuilder,RouterBuildResult):void $enrichGraph
      * @return array<string,mixed>
      */
     public function compile(
@@ -53,10 +59,8 @@ final readonly class ReleaseCompiler
         array $postGlobal = [],
         array $preGlobalTags = ['webrick.middleware.pre'],
         array $postGlobalTags = ['webrick.middleware.post'],
+        ?Closure $enrichGraph = null,
     ): array {
-        $builder->validate(strict: true);
-        $intermix = $builder->compile($intermixPath);
-
         $routerBuild = $this->routes->compile(
             register: $register,
             environment: $environment,
@@ -67,6 +71,13 @@ final readonly class ReleaseCompiler
             preGlobalTags: $preGlobalTags,
             postGlobalTags: $postGlobalTags,
         );
+
+        if ($enrichGraph !== null) {
+            $enrichGraph($builder, $routerBuild);
+        }
+
+        $builder->validate(strict: true);
+        $intermix = $builder->compile($intermixPath);
         $webrick = $this->routerArtifacts->compile($routerBuild, $routerPath);
 
         $manifest = [
