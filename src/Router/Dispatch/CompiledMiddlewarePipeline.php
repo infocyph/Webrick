@@ -106,6 +106,12 @@ final readonly class CompiledMiddlewarePipeline
         Request $request,
         Closure $next,
     ): mixed {
+        if (is_string($resolved) && class_exists($resolved) && method_exists($resolved, '__invoke')) {
+            return $runtime->resolveNow(
+                [$resolved, '__invoke'],
+                ['request' => $request, 'next' => $next],
+            );
+        }
         if (is_callable($resolved) && (!is_string($resolved) || function_exists($resolved))) {
             return $resolved($request, $next);
         }
