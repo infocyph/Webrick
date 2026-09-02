@@ -31,14 +31,9 @@ final readonly class RuntimeMiddlewareDescriptor
         }
     }
 
-    /**
-     * @return string|array<array-key,mixed>|Closure|callable
-     */
-    public function resolverSpec(): string|array|Closure|callable
+    /** @return string|array<array-key,mixed>|callable */
+    public function resolverSpec(): mixed
     {
-        /** @var string|array<array-key,mixed>|Closure|callable $resolver */
-        $resolver = $this->resolver;
-
-        return $resolver;
+        return $this->resolver;
     }
 }
