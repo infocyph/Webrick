@@ -79,31 +79,28 @@ final class MiddlewareAliases
     }
 
     /**
-     * Build-plane alias parsing. Parameterized aliases are represented without
+     * Build-plane alias parsing. Runtime-backed aliases are represented without
      * executing their resolver so construction stays inside the request scope.
      */
-    public static function compileString(string $maybeAlias): callable|object|string|RuntimeMiddlewareDescriptor
+    public static function compileString(string $maybeAlias): callable|object|string
     {
         [$key, $params] = self::parse($maybeAlias);
 
         if (isset(self::$map[$key])) {
             $registered = self::$map[$key];
-            if ($params !== []) {
-                return new RuntimeMiddlewareDescriptor($registered, $params);
+            if (is_string($registered) && $params === []) {
+                return $registered;
             }
 
-            return self::resolveRegistered($registered, []);
+            return new RuntimeMiddlewareDescriptor($registered, $params);
         }
 
         foreach (self::$resolvers as $resolver) {
             if (!($resolver['supports'])($key)) {
                 continue;
             }
-            if ($params !== []) {
-                return new RuntimeMiddlewareDescriptor($resolver['resolve'], [$key, ...$params]);
-            }
 
-            return self::assertResolved(($resolver['resolve'])($key), $key);
+            return new RuntimeMiddlewareDescriptor($resolver['resolve'], [$key, ...$params]);
         }
 
         return $maybeAlias;
