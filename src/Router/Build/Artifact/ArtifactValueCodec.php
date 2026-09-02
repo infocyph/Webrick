@@ -6,6 +6,8 @@ namespace Infocyph\Webrick\Router\Build\Artifact;
 
 use Closure;
 use Infocyph\InterMix\Serializer\ClosureSerializer;
+use Infocyph\Webrick\Router\Build\RuntimeMiddlewareDescriptor;
+use InvalidArgumentException;
 use ReflectionFunction;
 use ReflectionMethod;
 use UnexpectedValueException;
@@ -16,6 +18,8 @@ final class ArtifactValueCodec
     private const string CALLABLE = 'callable';
 
     private const string CLOSURE = 'closure';
+
+    private const string RUNTIME_MIDDLEWARE = 'runtime_middleware';
 
     private const string VALUE = 'value';
 
@@ -29,6 +33,9 @@ final class ArtifactValueCodec
 
         if ($payload['kind'] === self::VALUE) {
             return self::decodeValue($payload['value'] ?? null);
+        }
+        if ($payload['kind'] === self::RUNTIME_MIDDLEWARE) {
+            return self::decodeRuntimeMiddleware($payload['value'] ?? null);
         }
         if (!is_string($payload['value'] ?? null)) {
             throw new UnexpectedValueException('Invalid Webrick artifact value payload.');
@@ -69,6 +76,16 @@ final class ArtifactValueCodec
             return ['kind' => self::VALUE, 'value' => [$value[0], $value[1]]];
         }
 
+        if ($value instanceof RuntimeMiddlewareDescriptor) {
+            return [
+                'kind' => self::RUNTIME_MIDDLEWARE,
+                'value' => [
+                    'resolver' => self::encode($value->resolver),
+                    'parameters' => $value->parameters,
+                ],
+            ];
+        }
+
         if ($value instanceof Closure) {
             return self::encodeClosure($value);
         }
@@ -78,7 +95,7 @@ final class ArtifactValueCodec
         }
 
         throw new UnexpectedValueException(
-            'Compiled artifact values must be scalar callable descriptors or Closures.',
+            'Compiled artifact values must be callable descriptors, runtime middleware descriptors, or Closures.',
         );
     }
 
@@ -113,6 +130,26 @@ final class ArtifactValueCodec
             return ClosureSerializer::unserialize($payload);
         } catch (\Throwable $exception) {
             throw new UnexpectedValueException('Unable to restore Webrick Closure artifact.', 0, $exception);
+        }
+    }
+
+    private static function decodeRuntimeMiddleware(mixed $value): RuntimeMiddlewareDescriptor
+    {
+        if (
+            !is_array($value)
+            || !array_key_exists('resolver', $value)
+            || !is_array($value['parameters'] ?? null)
+        ) {
+            throw new UnexpectedValueException('Invalid runtime middleware artifact payload.');
+        }
+
+        try {
+            return new RuntimeMiddlewareDescriptor(
+                self::decode($value['resolver']),
+                $value['parameters'],
+            );
+        } catch (InvalidArgumentException $exception) {
+            throw new UnexpectedValueException('Invalid runtime middleware artifact descriptor.', 0, $exception);
         }
     }
 
