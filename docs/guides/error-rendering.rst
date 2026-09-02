@@ -1,7 +1,7 @@
 Error Rendering
 ===============
 
-Webrick keeps HTTP error semantics separate from presentation. Routing and middleware failures become typed HTTP exceptions, while ``ErrorHandler`` owns the final response rendering policy.
+Webrick keeps HTTP error semantics separate from presentation. Routing and middleware failures become typed HTTP exceptions where appropriate, while ``ErrorHandler`` owns application-exception rendering policy. The compiled production kernel keeps ordinary routing-control outcomes (404/405/automatic OPTIONS) on a direct path unless the host explicitly opts into custom routing-error rendering.
 
 Default boundary
 ----------------
@@ -21,7 +21,7 @@ Set ``debug: false`` for public production traffic. ``debug`` may be passed to `
 Custom boundary renderer
 ------------------------
 
-Pass your own ``ErrorHandler`` into ``RouterKernel::bootWithRegistrar(...)`` when you want custom output.
+Pass your own ``ErrorHandler`` into ``RouterKernel::bootWithRegistrar(...)`` when you want custom application-exception output.
 
 .. code:: php
 
@@ -63,6 +63,37 @@ Pass your own ``ErrorHandler`` into ``RouterKernel::bootWithRegistrar(...)`` whe
    );
 
 Returning ``null`` from ``responseRenderer`` delegates back to Webrick's default renderer. Return a ``Response`` to take ownership of that error response.
+
+Compiled routing-control policy
+-------------------------------
+
+``CompiledRouterKernel`` treats route misses and method misses as routing-control outcomes rather than application exceptions. Supplying a custom ``ErrorHandler`` does **not** automatically move normal 404/405 traffic onto the application exception path.
+
+By default:
+
+- 404 and 405 responses use ``RoutingControlRenderer`` directly;
+- automatic ``OPTIONS`` remains a direct routing response;
+- no full ``Request`` is materialized solely to render a default routing miss when the runtime input is otherwise sufficient;
+- application exceptions still use the configured ``ErrorHandler``.
+
+If the application deliberately wants its custom ``ErrorHandler`` to render 404/405 responses, opt in explicitly when constructing the compiled kernel:
+
+.. code:: php
+
+   use Infocyph\Webrick\Router\Kernel\CompiledRouterKernel;
+
+   $kernel = CompiledRouterKernel::fromCompiledArtifact(
+       log: $logger,
+       matcher: $matcher,
+       container: $productionContainer,
+       artifactPath: $routerArtifact,
+       environment: 'production',
+       configFingerprint: $configFingerprint,
+       errorHandler: $errorHandler,
+       routeErrorsThroughErrorHandler: true,
+   );
+
+The same option is available on ``fromPrevalidatedArtifact()``. Keep it ``false`` unless custom routing-error presentation is required; the direct path is the production default because routing misses are expected control flow, not exceptional application failures.
 
 Process-level PHP error conversion
 ----------------------------------
