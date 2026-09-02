@@ -36,7 +36,7 @@ test('runtime context materializes its request exactly once', function (): void 
         ->and($calls)->toBe(1);
 });
 
-test('runtime contexts keep native handles and scope ids request local', function (): void {
+test('runtime contexts keep native handles request local while sharing the semantic scope label', function (): void {
     $nativeA = (object) ['id' => 'a'];
     $nativeB = (object) ['id' => 'b'];
     $a = runtime_test_context('a', $nativeA);
@@ -45,7 +45,9 @@ test('runtime contexts keep native handles and scope ids request local', functio
     expect($a->nativeRequest)->toBe($nativeA)
         ->and($b->nativeRequest)->toBe($nativeB)
         ->and($a->nativeRequest)->not->toBe($b->nativeRequest)
-        ->and($a->scopeId())->not->toBe($b->scopeId())
+        ->and($a->scopeId())->toBe(RuntimeRequestContext::REQUEST_SCOPE)
+        ->and($b->scopeId())->toBe(RuntimeRequestContext::REQUEST_SCOPE)
+        ->and($a->scopeId())->toBe($b->scopeId())
         ->and($a->request()->query('id'))->toBe('a')
         ->and($b->request()->query('id'))->toBe('b');
 });
