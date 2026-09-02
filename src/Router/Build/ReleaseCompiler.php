@@ -38,6 +38,7 @@ final readonly class ReleaseCompiler
      * @param list<mixed> $postGlobal
      * @param list<string> $preGlobalTags
      * @param list<string> $postGlobalTags
+     * @param null|Closure(ContainerBuilder,RouterBuildResult):void $enrichGraph
      * @return array<string,mixed>
      */
     public function compile(
@@ -53,10 +54,8 @@ final readonly class ReleaseCompiler
         array $postGlobal = [],
         array $preGlobalTags = ['webrick.middleware.pre'],
         array $postGlobalTags = ['webrick.middleware.post'],
+        ?Closure $enrichGraph = null,
     ): array {
-        $builder->validate(strict: true);
-        $intermix = $builder->compile($intermixPath);
-
         $routerBuild = $this->routes->compile(
             register: $register,
             environment: $environment,
@@ -67,6 +66,11 @@ final readonly class ReleaseCompiler
             preGlobalTags: $preGlobalTags,
             postGlobalTags: $postGlobalTags,
         );
+
+        $enrichGraph?->__invoke($builder, $routerBuild);
+
+        $builder->validate(strict: true);
+        $intermix = $builder->compile($intermixPath);
         $webrick = $this->routerArtifacts->compile($routerBuild, $routerPath);
 
         $manifest = [
