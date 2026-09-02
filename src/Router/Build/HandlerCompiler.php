@@ -56,7 +56,7 @@ final class HandlerCompiler
             if (is_string($entry)) {
                 $alias = strtolower(trim(explode(':', $entry, 2)[0]));
                 if ($alias !== '' && MiddlewareAliases::has($alias)) {
-                    $entry = MiddlewareAliases::resolveString($entry);
+                    $entry = MiddlewareAliases::compileString($entry);
                 }
             }
             $compiled[] = $this->normalizeMiddlewareDescriptor($entry);
@@ -115,7 +115,12 @@ final class HandlerCompiler
     /** @param list<mixed> $middleware */
     private function middlewareRequiresScope(array $middleware): bool
     {
-        return array_any($middleware, fn($descriptor) => !is_callable($descriptor) || (is_string($descriptor) && !function_exists($descriptor)));
+        return array_any(
+            $middleware,
+            fn($descriptor): bool => $descriptor instanceof RuntimeMiddlewareDescriptor
+                || !is_callable($descriptor)
+                || (is_string($descriptor) && !function_exists($descriptor)),
+        );
     }
 
     /**
@@ -139,6 +144,9 @@ final class HandlerCompiler
 
     private function normalizeMiddlewareDescriptor(mixed $entry): mixed
     {
+        if ($entry instanceof RuntimeMiddlewareDescriptor) {
+            return $entry;
+        }
         if (!is_string($entry)) {
             if (is_callable($entry)) {
                 return $entry;
