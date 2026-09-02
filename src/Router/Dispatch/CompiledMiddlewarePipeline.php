@@ -7,6 +7,7 @@ namespace Infocyph\Webrick\Router\Dispatch;
 use Closure;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Router\Build\RuntimeMiddlewareDescriptor;
 use Infocyph\Webrick\Runtime\InterMixRuntime;
 use UnexpectedValueException;
 
@@ -67,6 +68,17 @@ final readonly class CompiledMiddlewarePipeline
      */
     private static function compileInvoker(InterMixRuntime $runtime, mixed $descriptor): array
     {
+        if ($descriptor instanceof RuntimeMiddlewareDescriptor) {
+            return [
+                static function (Request $request, Closure $next) use ($descriptor, $runtime): mixed {
+                    $middleware = $runtime->resolveNow($descriptor->resolver, $descriptor->parameters);
+
+                    return self::invokeResolvedMiddleware($runtime, $middleware, $request, $next);
+                },
+                true,
+            ];
+        }
+
         if (is_callable($descriptor) && (!is_string($descriptor) || function_exists($descriptor))) {
             $callable = $descriptor;
 
@@ -87,5 +99,24 @@ final readonly class CompiledMiddlewarePipeline
             ),
             true,
         ];
+    }
+
+    private static function invokeResolvedMiddleware(
+        InterMixRuntime $runtime,
+        mixed $middleware,
+        Request $request,
+        Closure $next,
+    ): mixed {
+        $parameters = ['request' => $request, 'next' => $next];
+        if (is_string($middleware) && class_exists($middleware) && method_exists($middleware, '__invoke')) {
+            return $runtime->resolveNow([$middleware, '__invoke'], $parameters);
+        }
+        if (is_callable($middleware)) {
+            return $runtime->resolveNow($middleware, $parameters);
+        }
+
+        throw new UnexpectedValueException(
+            'Runtime middleware resolver returned unsupported type ' . get_debug_type($middleware) . '.',
+        );
     }
 }
