@@ -113,6 +113,8 @@ final class PreRoutingGateIntegrationTest extends TestCase
             },
             environment: 'production',
             configFingerprint: 'wb5-pre-routing-gate',
+            preGlobalTags: [],
+            postGlobalTags: [],
         );
 
         $builder->compile($intermixPath);
