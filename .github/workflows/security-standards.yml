@@ -4,7 +4,7 @@ on:
   schedule:
     - cron: "0 0 * * 0"
   push:
-    branches: [ "main", "master", "wb5/performance-hot" ]
+    branches: [ "main", "master" ]
   pull_request:
     branches: [ "main", "master", "develop", "development" ]
 
@@ -30,7 +30,5 @@ jobs:
           coverage: none
           tools: composer:v2
       - run: composer install --no-interaction --no-progress --prefer-dist
-      - name: Run quick PHPBench smoke
-        run: composer ic:bench:quick
       - name: Run exact PHPForge detail suite
         run: composer ic:test:details
