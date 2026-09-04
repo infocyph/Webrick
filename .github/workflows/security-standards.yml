@@ -30,7 +30,7 @@ jobs:
           coverage: none
           tools: composer:v2
       - run: composer install --no-interaction --no-progress --prefer-dist
-      - name: Run exact PHPForge detail suite
-        run: composer ic:test:details
       - name: Run quick PHPBench smoke
         run: composer ic:bench:quick
+      - name: Run exact PHPForge detail suite
+        run: composer ic:test:details
