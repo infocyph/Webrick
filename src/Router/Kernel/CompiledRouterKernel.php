@@ -21,6 +21,7 @@ use Infocyph\Webrick\Router\Dispatch\RuntimeDispatcher;
 use Infocyph\Webrick\Router\Matching\MatcherInterface;
 use Infocyph\Webrick\Router\Matching\MatchOutcome;
 use Infocyph\Webrick\Router\Matching\MatchOutcomeType;
+use Infocyph\Webrick\Router\Runtime\PreRoutingGateInterface;
 use Infocyph\Webrick\Router\Runtime\RoutingInput;
 use Infocyph\Webrick\Router\Runtime\RuntimeStageProfiler;
 use Infocyph\Webrick\Router\Url\SignedUrlConfig;
@@ -58,6 +59,7 @@ final readonly class CompiledRouterKernel
         ?SignedUrlConfig $signedUrlConfig,
         private ?RuntimeStageProfiler $profiler,
         private bool $routeErrorsThroughErrorHandler,
+        private ?PreRoutingGateInterface $preRoutingGate,
     ) {
         if (!$matcher->canBootFromCache()) {
             foreach ($artifact->routes() as $route) {
@@ -99,6 +101,7 @@ final readonly class CompiledRouterKernel
         ?SignedUrlConfig $signedUrlConfig = null,
         ?RuntimeStageProfiler $profiler = null,
         bool $routeErrorsThroughErrorHandler = false,
+        ?PreRoutingGateInterface $preRoutingGate = null,
     ): self {
         $artifact = new RouterArtifactLoader()->load($artifactPath, $environment, $configFingerprint);
         $profiler?->mark('router_artifact_load');
@@ -115,6 +118,7 @@ final readonly class CompiledRouterKernel
             $signedUrlConfig,
             $profiler,
             $routeErrorsThroughErrorHandler,
+            $preRoutingGate,
         );
     }
 
@@ -133,6 +137,7 @@ final readonly class CompiledRouterKernel
         ?SignedUrlConfig $signedUrlConfig = null,
         ?RuntimeStageProfiler $profiler = null,
         bool $routeErrorsThroughErrorHandler = false,
+        ?PreRoutingGateInterface $preRoutingGate = null,
     ): self {
         $artifact = new RouterArtifactLoader()->loadPrevalidated(
             $artifactPath,
@@ -154,6 +159,7 @@ final readonly class CompiledRouterKernel
             $signedUrlConfig,
             $profiler,
             $routeErrorsThroughErrorHandler,
+            $preRoutingGate,
         );
     }
 
@@ -164,6 +170,19 @@ final readonly class CompiledRouterKernel
                 ? RoutingInput::fromRequest($request, $this->artifact->hasDomainRoutes)
                 : RoutingInput::fromGlobals($this->artifact->hasDomainRoutes);
             $this->profiler?->mark('routing_input');
+
+            if ($this->preRoutingGate !== null) {
+                $response = $this->evaluatePreRoutingGate($routing, $this->preRoutingGate);
+                if ($response !== null) {
+                    if ($routing->method === HttpMethodEnum::HEAD->value) {
+                        $response = self::headResponse($response);
+                    }
+                    $this->profiler?->mark('response_ready');
+
+                    return $response;
+                }
+            }
+
             $response = $this->dispatchRoutingInput($routing, $request);
 
             if ($routing->method === HttpMethodEnum::HEAD->value) {
@@ -189,6 +208,18 @@ final readonly class CompiledRouterKernel
         $request = null;
 
         try {
+            if ($this->preRoutingGate !== null) {
+                $response = $this->evaluatePreRoutingGate($context->routing, $this->preRoutingGate);
+                if ($response !== null) {
+                    if ($context->routing->method === HttpMethodEnum::HEAD->value) {
+                        $response = self::headResponse($response);
+                    }
+                    $this->profiler?->mark('response_ready');
+
+                    return $response;
+                }
+            }
+
             $response = $this->dispatchRoutingInput($context->routing, $request, $context);
             $this->profiler?->mark('response_ready');
 
@@ -289,6 +320,16 @@ final readonly class CompiledRouterKernel
         $request ??= $runtimeContext?->request() ?? Request::fromGlobals();
         $response = $this->dispatchWithRequest($routeIndex, $plan, $request, $vars);
         $this->profiler?->mark('dispatch');
+
+        return $response;
+    }
+
+    private function evaluatePreRoutingGate(
+        RoutingInput $routing,
+        PreRoutingGateInterface $gate,
+    ): ?Response {
+        $response = $gate->evaluate($routing);
+        $this->profiler?->mark('pre_routing_gate');
 
         return $response;
     }
