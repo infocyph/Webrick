@@ -47,19 +47,19 @@ final class PreRoutingGateBench
     }
 
     #[Bench\BeforeMethods('setUp')]
-    public function benchInactiveGate(): void
-    {
-        if ($this->inactiveGate->evaluate($this->routing) !== null) {
-            throw new RuntimeException('Inactive pre-routing gate must pass.');
-        }
-    }
-
-    #[Bench\BeforeMethods('setUp')]
     public function benchActiveGate(): void
     {
         $response = $this->activeGate->evaluate($this->routing);
         if (!$response instanceof Response || $response->getStatusCode() !== 503) {
             throw new RuntimeException('Active pre-routing gate must return 503.');
+        }
+    }
+
+    #[Bench\BeforeMethods('setUp')]
+    public function benchInactiveGate(): void
+    {
+        if ($this->inactiveGate->evaluate($this->routing) !== null) {
+            throw new RuntimeException('Inactive pre-routing gate must pass.');
         }
     }
 

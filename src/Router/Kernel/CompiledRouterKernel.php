@@ -324,16 +324,6 @@ final readonly class CompiledRouterKernel
         return $response;
     }
 
-    private function evaluatePreRoutingGate(
-        RoutingInput $routing,
-        PreRoutingGateInterface $gate,
-    ): ?Response {
-        $response = $gate->evaluate($routing);
-        $this->profiler?->mark('pre_routing_gate');
-
-        return $response;
-    }
-
     /** @param array<string,string> $vars */
     private function dispatchWithoutRequest(ExecutionPlan $plan, array $vars): Response
     {
@@ -374,6 +364,16 @@ final readonly class CompiledRouterKernel
         if (!$response instanceof Response) {
             throw new \RuntimeException('Compiled request scope must return Response.');
         }
+
+        return $response;
+    }
+
+    private function evaluatePreRoutingGate(
+        RoutingInput $routing,
+        PreRoutingGateInterface $gate,
+    ): ?Response {
+        $response = $gate->evaluate($routing);
+        $this->profiler?->mark('pre_routing_gate');
 
         return $response;
     }

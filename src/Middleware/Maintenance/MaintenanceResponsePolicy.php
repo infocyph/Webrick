@@ -45,6 +45,11 @@ final readonly class MaintenanceResponsePolicy
         );
     }
 
+    private static function normalizeMessage(string $message): string
+    {
+        return trim($message) === '' ? self::DEFAULT_MESSAGE : $message;
+    }
+
     /** @return array<string,string> */
     private function exceptionHeaders(): array
     {
@@ -52,11 +57,6 @@ final readonly class MaintenanceResponsePolicy
             'Retry-After' => (string) $this->retryAfter,
             'Content-Type' => $this->contentType,
         ];
-    }
-
-    private static function normalizeMessage(string $message): string
-    {
-        return trim($message) === '' ? self::DEFAULT_MESSAGE : $message;
     }
 
     /** @return array<string,string> */
