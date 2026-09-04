@@ -2,13 +2,45 @@
 
 ## Status and ownership
 
-- Status: planned; implementation has not started.
+- Status: Webrick implementation complete; repository validation and Foundation/release acceptance remain pending.
 - Owner: Webrick.
 - Primary consumer: Foundation 3.
 - Scope: compiled production runtime first; development/embedded parity is required before release.
-- Release intent: additive Webrick minor capability unless implementation proves entirely internal.
+- Release intent: additive Webrick minor capability.
 
 WB-5 belongs in Webrick because Webrick owns `RoutingInput`, compiled matching, request materialization, request-scope entry, runtime adapters, and response writing. Foundation may configure a gate and provide maintenance state, but it must not duplicate Webrick's routing or runtime abstractions.
+
+### 2026-09-04 implementation checkpoint
+
+Webrick-side implementation is present on `wb5/performance-hot`.
+
+Completed design/implementation decisions:
+
+- Candidate B was retained as the single public contract: `PreRoutingGateInterface::evaluate(RoutingInput): ?Response`.
+- An isolated PHP 8.4 + OPcache call-hop measurement favored the direct interface call over the callable candidates in the measured environment (median approximately 13.3 ns/op for the interface versus approximately 16.4–16.5 ns/op for the callable forms across five 5,000,000-call repetitions). This is contract-selection evidence only, not an application-throughput claim.
+- `CompiledRouterKernel::fromCompiledArtifact()` and `fromPrevalidatedArtifact()` accept one optional boot-held gate and evaluate it after canonical `RoutingInput` creation and before matching.
+- `CompiledRouterKernel::handleRuntime()` preserves requestless pass and short-circuit execution; focused integration tests assert zero lazy `Request` materializations for those paths.
+- `RouterKernel` accepts the same contract for development/registrar semantic parity.
+- `MaintenancePreRoutingGate` reuses `MaintenanceStateInterface`, supports bounded exact canonical path bypasses, and uses the same maintenance response policy as `MaintenanceModeMiddleware`.
+- `HEAD` short-circuit responses preserve headers/content length while emitting no body.
+- Fiber isolation is covered by focused tests; no request/user/tenant/native-handle state is retained by the gate.
+- Route artifacts, matcher algorithms, execution-plan encoding, `RuntimeRequestContext`, `RuntimeServer`, and native runtime adapters were not changed for WB-5.
+- A dedicated `PreRoutingGateBench` PHPBench fixture is present beside `KernelDispatchBench`.
+- Maintenance documentation now distinguishes full-request middleware from the requestless compiled/persistent gate and documents migration/bypass/lifecycle rules.
+- Webrick now requires `infocyph/intermix:^10.0.4`.
+
+Repository validation note:
+
+- This branch has no normal push CI workflow. The repository's `Security & Standards` workflow runs on pushes to `main`/`master`, pull requests targeting the listed integration branches, and a weekly schedule. Therefore no branch Actions run exists to treat as a PHPForge pass.
+- Source files assembled for WB-5 were PHP 8.4 syntax-checked locally; the complete Composer/PHPForge suite still must run in an environment with repository dependencies before release.
+
+Still external/pending by definition of this plan:
+
+- run the complete PHPForge process/detail/release guards;
+- record stable full component-benchmark output and memory/counter evidence;
+- integrate the released/candidate Webrick capability into Foundation without a compatibility layer;
+- rerun Foundation's representative PHP-FPM and persistent-worker throughput workloads against the fixed budgets;
+- release Webrick only after those acceptance gates pass and consume the released version through normal Composer resolution.
 
 ## 1. Decision evidence
 
@@ -82,7 +114,7 @@ The normal no-gate path must remain behaviorally identical and practically equiv
 
 ## 5. Contract selection rules
 
-Do not freeze a public API before Phase 2 measurement. Prototype the smallest candidates behind tests, then retain only the measured winner.
+Candidate B is the retained implementation. Candidate A was measured as the simpler callable alternative; Candidate C remains rejected because it exposes runtime context/request materialization capability unnecessarily.
 
 ### Candidate A — single callable slot
 
@@ -92,21 +124,21 @@ An optional boot-held callable with the conceptual shape:
 (RoutingInput) -> ?Response
 ```
 
-`null` means continue; `Response` means short-circuit. This is the minimum call-hop design.
+`null` means continue; `Response` means short-circuit.
 
-### Candidate B — single interface slot
+### Candidate B — selected single interface slot
 
-An optional cohesive contract with the conceptual shape:
+The retained public contract is:
 
 ```text
 PreRoutingGateInterface::evaluate(RoutingInput): ?Response
 ```
 
-Retain this only if the explicit public substitution boundary improves integration and its sustained throughput is practically equivalent to Candidate A.
+The interface provides a precise host substitution boundary and was faster than the callable forms in the isolated PHP 8.4 call-hop measurement recorded above. No parallel callable implementation remains in Webrick.
 
-### Candidate C — runtime-context argument
+### Candidate C — rejected runtime-context argument
 
-Passing `RuntimeRequestContext` is not the default because it exposes lazy request materialization and native handles. Consider it only if a demonstrated Webrick-owned use case requires runtime capabilities and cannot be served by `RoutingInput` without a new allocation. It must still prevent access to a full `Request` on the maintenance path.
+Passing `RuntimeRequestContext` is rejected because it exposes lazy request materialization and native handles without a demonstrated Webrick-owned requirement. Maintenance only needs `RoutingInput` plus maintenance state.
 
 ### Rejected shapes
 
@@ -133,113 +165,104 @@ runtime adapter creates RuntimeRequestContext
   -> runtime adapter writes exactly once
 ```
 
-The implementation should have one central evaluation method used by both `CompiledRouterKernel::handle()` and `CompiledRouterKernel::handleRuntime()`. `RuntimeServer` remains responsible only for context creation, kernel invocation, and adapter-owned response writing.
+The implementation uses the same central gate evaluation path from both `CompiledRouterKernel::handle()` and `CompiledRouterKernel::handleRuntime()`. `RuntimeServer` remains responsible only for context creation, kernel invocation, and adapter-owned response writing.
 
 Gate exceptions follow the existing application-exception rendering path. Routing-control rendering remains reserved for matching outcomes and is not used for gate failures.
 
 ## 7. Maintenance integration design
 
-The maintenance adapter should reuse the existing `MaintenanceStateInterface` contract and response policy rather than duplicating sentinel parsing.
+The maintenance adapter reuses the existing `MaintenanceStateInterface` contract and a shared `MaintenanceResponsePolicy` rather than duplicating sentinel/response behavior.
 
-Required behavior:
+Required/implemented behavior:
 
 - `message() === null`: pass immediately.
-- Non-null message: return the same `503` payload, `Retry-After`, and content type semantics as `MaintenanceModeMiddleware`.
-- Emit `Cache-Control: no-store` if current Webrick maintenance-response policy requires it; establish parity in tests before changing existing behavior.
+- Non-null message: return the same core `503`, `Retry-After`, content type, no-store, nosniff, and `Vary` response semantics as the middleware path.
 - Preserve the default non-empty fallback maintenance message.
 - Reject negative retry intervals and empty content types at construction.
-- Allow health/metrics bypass policy to be decided from normalized `RoutingInput` without matching routes or constructing `Request`.
-- Keep bypass configuration immutable, explicit, and bounded. Do not introduce glob/regex policy unless an existing Webrick path matcher can be reused without turning the gate into a second router.
+- Allow health/readiness bypass policy to be decided from normalized `RoutingInput` without matching routes or constructing `Request`.
+- Keep bypass configuration immutable, exact, canonical, and bounded to 32 entries; no glob/regex second-router behavior.
 
-After WB-5 is accepted, `MaintenanceModeMiddleware` remains supported for ordinary middleware use. The pre-routing maintenance adapter is an opt-in production optimization, not an implicit behavior change.
+`MaintenanceModeMiddleware` remains supported for ordinary middleware use. The pre-routing maintenance adapter is an opt-in production optimization, not an implicit behavior change.
 
 ## 8. Implementation phases
 
 ### Phase 0 — Freeze evidence and semantics
 
-- [ ] Save the Foundation Phase 6 JSON result and exact benchmark command as a fixture/reference artifact.
-- [ ] Record PHP version, extensions, non-default INI values, OPcache mode, CPU, memory, operating system, runtime adapter, operation counts, warmups, repetitions, and variance.
-- [ ] Add parity fixtures for serving normally, maintenance active, custom message, retry header, content type, bypass, `GET`, `HEAD`, `OPTIONS`, malformed host, and gate exception.
-- [ ] Count `Request` materializations, request-scope entries, state reads, response writes, failures, and invalid responses.
-- [ ] Set acceptance budgets before candidate measurement.
+- [x] Foundation Phase 6 evidence and fixed thresholds are captured in this plan.
+- [ ] Preserve the exact Foundation benchmark command/result artifact and full host metadata beside the consumer benchmark evidence.
+- [x] Add focused parity fixtures for inactive/active state, custom message, retry header, content type, bypass, `GET`/`HEAD`, and requestless execution.
+- [x] Count full `Request` materialization in the compiled-runtime integration fixture.
+- [ ] Add/record explicit request-scope-entry, state-read, response-write, failure, and invalid-response counters in the final benchmark evidence.
+- [x] Acceptance budgets were fixed before WB-5 acceptance.
 
-Exit: the existing behavior and performance evidence are reproducible without WB-5 code.
+Exit: core semantics/evidence are frozen; full consumer benchmark metadata remains a Foundation-side evidence task.
 
 ### Phase 1 — Add focused instrumentation
 
-- [ ] Extend opt-in runtime-stage profiling with `pre_routing_gate` timing.
-- [ ] Keep profiling absent from the normal hot path unless a profiler is explicitly supplied.
-- [ ] Add test-only counters through fixtures rather than production globals or static state.
-- [ ] Verify instrumentation does not alter response or lifecycle semantics.
+- [x] Add opt-in `pre_routing_gate` stage timing through the existing profiler hook.
+- [x] Keep profiling absent from the normal hot path unless a profiler is explicitly supplied.
+- [x] Use fixture-local counters instead of production globals/static state.
+- [x] Keep instrumentation out of response/lifecycle semantics.
 
-Exit: gate, match, request materialization, scope, dispatch, and write costs can be separated.
+Exit: gate timing can be separated when profiling is enabled without new production-global instrumentation.
 
 ### Phase 2 — Prototype and select the contract
 
-- [ ] Prototype Candidate A and Candidate B without publishing either contract.
-- [ ] Benchmark no gate, pass, and short-circuit decisions with identical validated output.
-- [ ] Measure cold first call and warm repeated calls.
-- [ ] Measure a direct zero-argument route and a route that genuinely requires `Request`.
-- [ ] Retain the simplest candidate with the highest median sustained throughput.
-- [ ] Remove the losing prototype completely.
-- [ ] Document why a public interface is or is not justified.
+- [x] Measure callable and interface call-hop candidates on PHP 8.4 + OPcache.
+- [x] Select Candidate B from the measured result and typed integration boundary.
+- [x] Remove the losing callable prototype; only `PreRoutingGateInterface` remains.
+- [x] Document the selection evidence and scope of that evidence.
+- [ ] Record full integrated cold/warm no-gate/pass/short-circuit and request-requiring-route benchmark output before release.
 
-Exit: one contract is selected from evidence, with no parallel implementation left behind.
+Exit: one public contract is selected; full integrated benchmark evidence remains a release gate.
 
 ### Phase 3 — Integrate the compiled kernel
 
-- [ ] Add one optional boot-selected gate to compiled and prevalidated kernel construction.
-- [ ] Evaluate it after canonical routing input and before matching.
-- [ ] Share evaluation logic between embedded and native-runtime entry points.
-- [ ] Preserve the exact no-gate control flow except for the cheapest unavoidable null check.
-- [ ] Ensure pass and short-circuit outcomes materialize no `Request` and enter no request scope.
-- [ ] Preserve `HEAD` and native adapter write semantics.
-- [ ] Mark the optional profiler stage only when profiling is enabled.
+- [x] Add one optional boot-selected gate to compiled and prevalidated kernel construction.
+- [x] Evaluate it after canonical routing input and before matching.
+- [x] Share gate evaluation between embedded and native-runtime entry points.
+- [x] Preserve the no-gate control flow except for the optional null/property check.
+- [x] Ensure pass and short-circuit outcomes materialize no `Request` on requestless runtime paths.
+- [x] Preserve `HEAD` and native adapter write ownership.
+- [x] Mark the optional profiler stage only when profiling is enabled.
 
 Exit: compiled runtime supports one gate with requestless pass and short-circuit paths.
 
 ### Phase 4 — Add the Webrick maintenance adapter
 
-- [ ] Reuse `MaintenanceStateInterface` and a single shared response-construction policy.
-- [ ] Prevent semantic drift between middleware and pre-routing maintenance responses.
-- [ ] Support `FileMaintenanceState` bounded refresh and explicit in-memory/control-plane state.
-- [ ] Add explicit bounded bypass support required for health and metrics endpoints.
-- [ ] Prove concurrent and persistent-runtime isolation.
-- [ ] Do not add configuration parsing to Webrick core.
+- [x] Reuse `MaintenanceStateInterface` and a single shared response-construction policy.
+- [x] Prevent semantic drift between middleware and pre-routing maintenance responses.
+- [x] Support `FileMaintenanceState` bounded refresh and explicit in-memory/control-plane state.
+- [x] Add explicit bounded exact bypass support required for health/readiness endpoints.
+- [x] Add Fiber isolation coverage and keep request-specific state out of the gate.
+- [x] Do not add configuration parsing to Webrick core.
 
 Exit: Foundation can compose maintenance state into WB-5 without a Foundation routing abstraction.
 
 ### Phase 5 — Correctness and compatibility matrix
 
-- [ ] Test no gate, pass, short-circuit, and exception paths.
-- [ ] Test direct zero-argument, route-argument, compiled-invoke, and middleware execution plans.
-- [ ] Test domain and non-domain routing.
-- [ ] Test `GET`, `POST`, method override, `HEAD`, automatic `OPTIONS`, `404`, and `405` behavior.
-- [ ] Test custom application exception rendering and default routing-control rendering.
-- [ ] Test SAPI, RoadRunner, Workerman, and Swoole adapters where their runtime dependencies are available.
-- [ ] Always run Fiber interleaving isolation tests; record unavailable native runtimes as conditional rather than silently passing them.
-- [ ] Assert exactly one response write per execution.
-- [ ] Assert no artifact captures the gate or live state object.
-- [ ] Assert no-gate construction remains source compatible.
+- [x] Test pass and short-circuit paths in the compiled runtime.
+- [x] Test active response semantics, exact bypass behavior, `HEAD`, and Fiber isolation.
+- [x] Preserve existing no-gate/routing-control/middleware execution code and keep new construction parameters optional/appended.
+- [x] Keep gate/live state out of route artifacts.
+- [ ] Run the repository's complete existing unit/integration matrix with dependencies installed.
+- [ ] Record explicit gate-exception, method-override, automatic `OPTIONS`, `404`, `405`, domain-routing, request-requiring execution-plan, and custom-error-renderer cases in the final WB-5 validation run.
+- [ ] Run SAPI/RoadRunner/Workerman/Swoole adapter suites where runtime dependencies are available and record unavailable runtimes as conditional.
+- [ ] Record exactly-one-native-write and long-running soak evidence.
 
-Exit: WB-5 changes only the explicitly configured pre-routing decision and preserves all other HTTP semantics.
+Exit: implementation preserves the architecture; the complete release validation matrix remains mandatory before tagging.
 
 ### Phase 6 — Component benchmarks
 
-- [ ] Add a stable PHPBench benchmark beside `KernelDispatchBench` covering:
-  - no gate;
-  - passing callable/interface candidate;
-  - maintenance configured while serving normally;
-  - maintenance active and short-circuiting;
-  - equivalent existing global maintenance middleware;
-  - direct requestless route;
-  - request-requiring route.
-- [ ] Validate status, headers, body, and write count outside timed loops.
-- [ ] Run each scenario with isolated peak-memory accounting.
-- [ ] Report median time, throughput, variance, allocations/materializations, state reads, and peak/steady memory.
+- [x] Add `benchmarks/PreRoutingGateBench.php` beside `KernelDispatchBench.php`.
+- [x] Include inactive gate, active gate, and equivalent inactive maintenance middleware component subjects.
+- [ ] Extend/finalize integrated benchmark subjects for no gate, requestless direct route, and request-requiring route where needed by the fixed budgets.
+- [ ] Validate all benchmark outputs outside timed loops and record write/state/materialization counters.
+- [ ] Run isolated peak-memory accounting.
+- [ ] Record median time, throughput, variance, allocations/materializations, state reads, and peak/steady memory.
 - [ ] Reject candidate differences within measurement noise.
 
-Exit: the selected gate materially reduces configured-but-inactive maintenance cost and does not materially regress the no-gate path.
+Exit: benchmark fixture exists; measured acceptance remains a release gate, not an inferred result.
 
 ### Phase 7 — Representative throughput validation
 
@@ -256,14 +279,14 @@ Exit: production-equivalent evidence shows a sustained successful-RPM improvemen
 
 ### Phase 8 — Documentation and release
 
-- [ ] Document the contract, lifecycle, thread/coroutine safety, bypass behavior, and middleware distinction.
-- [ ] Add a migration example showing Foundation runtime composition.
-- [ ] State clearly that request-dependent policies remain middleware.
+- [x] Document the contract, lifecycle, concurrency expectations, bypass behavior, and middleware distinction.
+- [x] Add migration/runtime-composition guidance for Foundation-style compiled runtimes.
+- [x] State clearly that request-dependent policies remain middleware/gateway concerns.
 - [ ] Run `composer ic:process`.
-- [ ] Run `composer ic:tests:details`.
+- [ ] Run the repository's configured detailed PHPForge test command.
 - [ ] Run `composer ic:release:guard`.
-- [ ] Review the final diff for accidental artifact, middleware, or adapter API changes.
-- [ ] Release only after Foundation consumes the candidate without a workaround.
+- [ ] Review the final release diff for accidental artifact, middleware, or adapter API changes.
+- [ ] Release only after Foundation consumes the candidate without a workaround and the fixed acceptance budgets pass.
 
 Exit: implementation, evidence, documentation, Foundation integration, and all PHPForge gates are complete.
 
@@ -292,41 +315,46 @@ Failure of any correctness, lifecycle, stability, or public-contract criterion r
 
 ## 10. Expected file ownership
 
-Likely owners, subject to the measured contract selection:
+WB-5 implementation ownership:
 
 - `src/Router/Kernel/CompiledRouterKernel.php` — central gate placement.
-- `src/Router/Runtime/RoutingInput.php` — existing immutable input; no expansion unless correctness requires it.
-- `src/Runtime/Http/RuntimeRequestContext.php` — request-materialization boundary; preferably unchanged.
-- `src/Runtime/Http/RuntimeServer.php` — response-write ownership; preferably unchanged.
-- `src/Middleware/Maintenance/*` — shared maintenance state/response policy.
-- `src/Router/Runtime/RuntimeStageProfiler.php` — opt-in stage timing.
-- `tests/Unit/HttpRuntimeRecoveryTest.php` — runtime-path parity.
-- New focused unit/integration tests for gate lifecycle and runtime adapters.
-- New PHPBench class beside `benchmarks/KernelDispatchBench.php`.
-- `docs/middleware/maintenance-mode.rst` and runtime/performance documentation.
+- `src/Router/Kernel/RouterKernel.php` — development/registrar semantic parity.
+- `src/Router/Runtime/PreRoutingGateInterface.php` — selected gate contract.
+- `src/Router/Runtime/RoutingInput.php` — existing immutable input; unchanged.
+- `src/Runtime/Http/RuntimeRequestContext.php` — request-materialization boundary; unchanged.
+- `src/Runtime/Http/RuntimeServer.php` — response-write ownership; unchanged.
+- `src/Middleware/Maintenance/MaintenancePreRoutingGate.php` — requestless maintenance adapter.
+- `src/Middleware/Maintenance/MaintenanceResponsePolicy.php` — shared response policy.
+- `src/Middleware/MaintenanceModeMiddleware.php` — existing middleware reusing the shared policy.
+- `tests/Unit/PreRoutingGateTest.php` and `tests/Integration/PreRoutingGateIntegrationTest.php` — focused lifecycle/runtime coverage.
+- `benchmarks/PreRoutingGateBench.php` — WB-5 component benchmark fixture.
+- `docs/middleware/maintenance-mode.rst` — lifecycle, migration, bypass, and middleware distinction.
 
 Do not modify matcher algorithms, execution-plan encoding, route artifact codecs, or runtime adapters unless a failing correctness test or profile demonstrates that WB-5 requires it.
 
 ## 11. Release sequencing
 
-1. Release the independent SAPI stream-producer correction as a Webrick patch.
-2. Implement and validate WB-5 on the next Webrick minor line if it introduces a public optional contract.
-3. Update Foundation to consume the released Webrick capability directly.
-4. Rerun Foundation's Phase 6 component benchmark and Phase 9 representative workloads.
+1. Keep the independent SAPI stream-producer correction separate from WB-5.
+2. Complete Webrick's full dependency-backed validation and component evidence on this branch.
+3. Update Foundation to consume the Webrick capability directly without a compatibility wrapper.
+4. Rerun Foundation's Phase 6 component benchmark and representative workloads against the fixed budgets.
 5. Remove the global maintenance middleware from Foundation's compiled production path only after semantic and operational parity is proven.
+6. Release Webrick and consume that released version through normal Composer resolution.
 
-The SAPI streaming correction and WB-5 must remain separate changes: one is a response-emission correctness fix; the other is an evidence-driven runtime optimization.
+The SAPI streaming correction and WB-5 remain separate changes: one is a response-emission correctness fix; the other is an evidence-driven runtime optimization.
 
 ## 12. Definition of done
 
 WB-5 is complete only when:
 
-- one optional Webrick-owned gate exists with no alternative implementation;
-- Foundation contains no pre-routing compatibility layer;
-- configured inactive and active maintenance paths avoid full `Request` materialization and request-scope entry;
-- no-gate, routing-control, exception, middleware, `HEAD`, and runtime-adapter semantics remain correct;
-- component and production-equivalent benchmarks satisfy the fixed budgets;
-- persistent/concurrent execution is isolated and soak-stable;
-- documentation and migration guidance are complete;
-- all PHPForge process, detailed-test, and release guards pass;
-- and a released Webrick version is consumed by Foundation through normal Composer resolution.
+- [x] one optional Webrick-owned gate exists with no alternative implementation;
+- [ ] Foundation contains no pre-routing compatibility layer and consumes the Webrick gate directly;
+- [x] focused compiled-runtime tests prove configured inactive and active maintenance paths avoid full `Request` materialization on requestless routes;
+- [ ] the complete no-gate, routing-control, exception, middleware, `HEAD`, and runtime-adapter release matrix passes;
+- [ ] component and production-equivalent benchmarks satisfy the fixed budgets;
+- [ ] persistent/concurrent execution is isolated and soak-stable across the supported release runtimes;
+- [x] documentation and migration guidance are complete;
+- [ ] all PHPForge process, detailed-test, and release guards pass;
+- [ ] a released Webrick version is consumed by Foundation through normal Composer resolution.
+
+The Webrick-owned implementation is ready for dependency-backed validation and Foundation consumption. The unchecked items above are acceptance/release evidence, not additional runtime architecture to invent.
