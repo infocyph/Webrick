@@ -149,13 +149,6 @@ final readonly class SapiRuntimeAdapter implements RuntimeAdapterInterface
         }
 
         try {
-            $string = $response->getStringBody();
-            if ($string !== null) {
-                self::writeChunk($output, $string);
-
-                return;
-            }
-
             foreach (ResponseWriterSupport::chunks($response) as $chunk) {
                 self::writeChunk($output, $chunk);
                 if ($response->isStreaming()) {

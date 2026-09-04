@@ -19,8 +19,11 @@ use Infocyph\Webrick\Router\Facade\Router;
 use Infocyph\Webrick\Router\Matching\MatcherInterface;
 use Infocyph\Webrick\Router\Route\Collection;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
+use Infocyph\Webrick\Router\Runtime\PreRoutingGateInterface;
+use Infocyph\Webrick\Router\Runtime\RoutingInput;
 use Infocyph\Webrick\Router\Url\SignedUrlConfig;
 use Psr\Log\LoggerInterface;
+use Throwable;
 
 /**
  * Development/registrar kernel.
@@ -59,6 +62,7 @@ final readonly class RouterKernel
         private array $preGlobalTags = ['webrick.middleware.pre'],
         private array $postGlobalTags = ['webrick.middleware.post'],
         private bool $debug = false,
+        private ?PreRoutingGateInterface $preRoutingGate = null,
     ) {
         $this->warm();
         [$preGlobal, $postGlobal] = $this->prepareGlobalMiddleware($preGlobal, $postGlobal);
@@ -97,6 +101,7 @@ final readonly class RouterKernel
         array $preGlobalTags = ['webrick.middleware.pre'],
         array $postGlobalTags = ['webrick.middleware.post'],
         bool $debug = false,
+        ?PreRoutingGateInterface $preRoutingGate = null,
     ): self {
         return new self(
             log: $log,
@@ -112,12 +117,28 @@ final readonly class RouterKernel
             preGlobalTags: $preGlobalTags,
             postGlobalTags: $postGlobalTags,
             debug: $debug,
+            preRoutingGate: $preRoutingGate,
         );
     }
 
     public function handle(?Request $request = null): Response
     {
         $request ??= Request::fromGlobals();
+
+        if ($this->preRoutingGate !== null) {
+            try {
+                $routing = RoutingInput::fromRequest($request, true);
+                $response = $this->preRoutingGate->evaluate($routing);
+                if ($response !== null) {
+                    return $routing->method === HttpMethodEnum::HEAD->value
+                        ? self::headResponse($response)
+                        : $response;
+                }
+            } catch (Throwable $exception) {
+                return $this->errorHandler->renderThrowable($request, $exception);
+            }
+        }
+
         $runner = function (Request $req): Response {
             try {
                 [$route, $vars] = $this->matchRoute($req);
@@ -143,6 +164,18 @@ final readonly class RouterKernel
         }
 
         return $result;
+    }
+
+    private static function headResponse(Response $response): Response
+    {
+        if (!$response->hasHeader('Content-Length')) {
+            $size = $response->getBodySize();
+            if ($size !== null) {
+                $response = $response->withHeader('Content-Length', (string) $size);
+            }
+        }
+
+        return $response->withBody('');
     }
 
     private static function normaliseHost(string $raw): string

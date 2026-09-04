@@ -5,6 +5,9 @@ declare(strict_types=1);
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Emitter\BaseEmitter;
 use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Router\Runtime\RoutingInput;
+use Infocyph\Webrick\Runtime\Http\RuntimeRequestContext;
+use Infocyph\Webrick\Runtime\Http\SapiRuntimeAdapter;
 
 test('base emitter sends a known content length and writes the body once', function (): void {
     $emitter = new class extends BaseEmitter {
@@ -98,4 +101,25 @@ test('base emitter preserves streaming chunk order', function (): void {
     $emitter->emit($response, Request::fake());
 
     expect($emitter->output)->toBe('first-second');
+});
+
+test('SAPI runtime consumes a streaming producer even when its placeholder body is empty', function (): void {
+    $adapter = SapiRuntimeAdapter::current();
+    $context = new RuntimeRequestContext(
+        new RoutingInput('GET', '/stream'),
+        static fn(): Request => Request::fake(),
+        $adapter->capabilities(),
+    );
+    $response = Response::stream(static function (): iterable {
+        yield 'first';
+        yield '-second';
+    });
+
+    ob_start();
+    ob_start();
+    $adapter->write($response, $context);
+    $inner = ob_get_clean();
+    $outer = ob_get_clean();
+
+    expect($outer . $inner)->toBe('first-second');
 });

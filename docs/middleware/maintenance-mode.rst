@@ -1,183 +1,199 @@
 Maintenance Mode
 ================
 
-Gracefully take the app offline for deployments, migrations, or incident response. This middleware short-circuits requests with a **503 Service Unavailable** (and optional ``Retry-After``) while allowing safe-lists and health checks.
+Webrick provides two maintenance-mode integration points:
+
+- ``MaintenanceModeMiddleware`` for applications that already need the full request/middleware pipeline.
+- ``MaintenancePreRoutingGate`` for compiled or persistent runtimes that only need lightweight routing data and maintenance state.
+
+For performance-sensitive compiled runtimes, prefer the pre-routing gate. It evaluates after Webrick has normalized method, host, and path, but before route matching, full ``Request`` materialization, middleware resolution, handler resolution, or request-scope entry.
 
 --------------
 
-What it does
+Maintenance state
+-----------------
+
+Both integration points use ``MaintenanceStateInterface`` and therefore share the same control-plane state.
+
+In-memory state
+~~~~~~~~~~~~~~~
+
+.. code:: php
+
+   use Infocyph\Webrick\Middleware\Maintenance\MemoryMaintenanceState;
+
+   $state = new MemoryMaintenanceState();
+
+   $state->enable('Deploying database changes.');
+   $state->disable();
+
+File-backed state
+~~~~~~~~~~~~~~~~~
+
+.. code:: php
+
+   use Infocyph\Webrick\Middleware\Maintenance\FileMaintenanceState;
+
+   $state = new FileMaintenanceState(
+       file: __DIR__ . '/storage/framework/down',
+       refreshMilliseconds: 1000,
+   );
+
+``FileMaintenanceState`` keeps worker-local state and only refreshes the filesystem after the configured interval. It does not perform filesystem I/O on every request while the refresh interval is still valid.
+
+--------------
+
+Compiled/persistent runtime
+---------------------------
+
+Use ``MaintenancePreRoutingGate`` when maintenance decisions require only the canonical routing path and maintenance state.
+
+.. code:: php
+
+   use Infocyph\Webrick\Middleware\Maintenance\MaintenancePreRoutingGate;
+   use Infocyph\Webrick\Router\Kernel\CompiledRouterKernel;
+
+   $gate = new MaintenancePreRoutingGate(
+       file: __DIR__ . '/storage/framework/down',
+       retryAfter: 300,
+       refreshMilliseconds: 1000,
+       bypassPaths: ['/health', '/ready'],
+   );
+
+   $kernel = CompiledRouterKernel::fromCompiledArtifact(
+       log: $logger,
+       matcher: $matcher,
+       container: $container,
+       artifactPath: $artifactPath,
+       environment: 'production',
+       configFingerprint: $configFingerprint,
+       preRoutingGate: $gate,
+   );
+
+``fromPrevalidatedArtifact()`` accepts the same optional ``preRoutingGate`` argument.
+
+The gate is runtime composition only. It is not encoded into route artifacts and does not change matcher or execution-plan formats.
+
+When maintenance is inactive, ``evaluate()`` returns ``null`` and normal routing continues. When maintenance is active, the gate returns a complete Webrick ``Response`` immediately.
+
+On a requestless compiled route, both the inactive and active gate paths remain requestless: the gate does not call ``RuntimeRequestContext::request()`` and does not enter ``webrick.request`` scope.
+
+--------------
+
+Development/registrar runtime
+-----------------------------
+
+``RouterKernel::bootWithRegistrar()`` accepts the same optional gate contract for semantic parity:
+
+.. code:: php
+
+   $kernel = RouterKernel::bootWithRegistrar(
+       log: $logger,
+       matcher: $matcher,
+       register: $routes,
+       invoker: $invoker,
+       preRoutingGate: $gate,
+   );
+
+The development kernel already receives/materializes a ``Request`` before its routing pipeline, so this mode provides behavior parity rather than the compiled runtime's request-materialization saving.
+
+--------------
+
+Middleware integration
+----------------------
+
+Use ``MaintenanceModeMiddleware`` when the maintenance decision must remain inside the normal middleware pipeline.
+
+.. code:: php
+
+   use Infocyph\Webrick\Middleware\Maintenance\MaintenanceModeMiddleware;
+
+   $middleware = new MaintenanceModeMiddleware(
+       file: __DIR__ . '/storage/framework/down',
+       retryAfter: 300,
+       refreshMilliseconds: 1000,
+   );
+
+The middleware and the pre-routing gate share the same maintenance response policy. Do not configure both for the same compiled production path after migrating to the pre-routing gate; doing so only adds redundant work.
+
+--------------
+
+Response semantics
+------------------
+
+The default active response is ``503 Service Unavailable`` with the maintenance message and the same core response metadata used by the middleware path:
+
+- ``Retry-After``
+- ``Content-Type``
+- ``Cache-Control: no-store``
+- ``X-Content-Type-Options: nosniff``
+- ``Vary: Accept``
+
+The default body is plain text:
+
+.. code:: text
+
+   503 Service Unavailable
+   Deploying database changes.
+
+If the state returns an empty message, Webrick falls back to ``Service is down for maintenance.``
+
+``HEAD`` preserves the status and headers, including the body-derived ``Content-Length`` when available, but returns an empty response body.
+
+--------------
+
+Bypass paths
 ------------
 
-- Returns **503 Service Unavailable** for all requests when enabled
-- Optionally sends ``Retry-After: <seconds|HTTP-date>``
-- Allows **bypasses** (IPs, CIDRs, header tokens, or cookies) for admins/health checks
-- Can render a friendly HTML/JSON body based on ``Accept`` (or a custom template)
-- Runs **early** so expensive work is avoided
-
---------------
-
-Wiring
-------
-
-Place it near the top of **pre-global** so it triggers before other heavy middleware:
+The pre-routing gate intentionally supports only exact path bypasses because it operates before full request construction.
 
 .. code:: php
 
-   $preGlobal = [
-     \Infocyph\Webrick\Middleware\GatewayHardeningMiddleware::class,
-     \Infocyph\Webrick\Middleware\TelemetryMiddleware::class,
-     new \Infocyph\Webrick\Middleware\MaintenanceModeMiddleware(
-       enabled: (bool)($_ENV['WEBRICK_MAINTENANCE'] ?? false),
-       retryAfter: (int)($_ENV['WEBRICK_MAINTENANCE_RETRY'] ?? 0),
-       allow: [
-         'ips'    => ['127.0.0.1', '::1'],                 // or CIDRs: '10.0.0.0/8'
-         'header' => 'X-Maint-Bypass: your-secret-token',  // header:value exact match
-         'cookie' => 'bypass=1',                           // simple sentinel cookie
-         'paths'  => ['/health', '/metrics'],              // always allowed
-       ],
-       renderer: null // or callable(Request $r): Response
-     ),
-     // ...other pre-globals...
-   ];
+   $gate = new MaintenancePreRoutingGate(
+       state: $state,
+       bypassPaths: ['/health', '/ready'],
+   );
 
-*(Adapt option names to your implementation.)*
+Bypass paths are:
+
+- normalized once at boot with Webrick's canonical path normalization;
+- exact matches, not prefixes or patterns;
+- limited to 32 configured entries;
+- not allowed to contain query strings or fragments.
+
+IP/CIDR rules, cookies, arbitrary headers, authentication, authorization, sessions, route parameters, or user/tenant information do not belong in the pre-routing gate. Keep those decisions at the gateway or in the normal request/middleware pipeline.
 
 --------------
 
-Enable/disable
---------------
+Migration guidance
+------------------
 
-Common toggles:
+For a compiled production runtime currently using maintenance as global middleware:
 
-- **Environment variable**: set ``WEBRICK_MAINTENANCE=true`` during deploy window.
-- **Flag file**: if the middleware supports it, enable when a file exists, e.g., ``storage/maintenance.flag``.
-- **Runtime hook**: expose an admin-only endpoint to toggle (protect this heavily).
+1. Reuse the same maintenance state source.
+2. Configure one ``MaintenancePreRoutingGate`` at kernel/process boot.
+3. Preserve required exact health/readiness bypass paths.
+4. Verify active ``503`` and ``HEAD`` behavior.
+5. Verify inactive and active compiled paths do not materialize a full request when the selected route is otherwise requestless.
+6. Remove the global maintenance middleware from that compiled path.
+7. Re-run representative throughput tests before claiming an application-level performance improvement.
 
-**Retry-After**:
-
-.. code:: bash
-
-   # e.g., expect to be back in 5 minutes
-   export WEBRICK_MAINTENANCE_RETRY=300
-
---------------
-
-Bypasses (safe-lists)
----------------------
-
-Choose one or more strategies:
-
-- **IP/CIDR allowlist** – simplest for internal VPNs/jump hosts.
-- **Header token** – ``X-Maint-Bypass: <secret>`` sent by trusted reverse proxies or test clients.
-- **Cookie** – set once via a protected endpoint for admin browsers.
-- **Path allowlist** – keep ``/health`` and ``/metrics`` green for load balancers and monitors.
-
-..
-
-   Always validate the source of bypass headers—only trust those set by your own proxy layer.
+Existing applications that do not configure ``preRoutingGate`` keep their current routing behavior.
 
 --------------
 
-Response shape
---------------
+Operational notes
+-----------------
 
-Default body for 503:
-
-.. code:: json
-
-   {
-     "error": {
-       "code": "E_MAINTENANCE",
-       "message": "Service temporarily unavailable. Please try again later."
-     }
-   }
-
-For browsers, you may prefer a branded HTML page. Provide a **renderer** callable:
-
-.. code:: php
-
-   $renderer = function (\Infocyph\Webrick\Request\Request $r): \Infocyph\Webrick\Response\Response {
-     $html = '<!doctype html><title>We’ll be back</title><h1>Maintenance</h1><p>Please try again soon.</p>';
-     return \Infocyph\Webrick\Response\Response::create($html, 503, [
-       'Content-Type' => 'text/html; charset=UTF-8'
-     ]);
-   };
-
-Pass ``$renderer`` into the middleware constructor.
-
---------------
-
-Ordering with other middleware
-------------------------------
-
-Recommended order near the top:
-
-1. **Gateway Hardening** (basic sanity)
-2. **Telemetry** (so 503s still get request IDs/trace)
-3. **Maintenance Mode** ← here
-4. **Request Limits / Throttle / …** (don’t matter when maintenance is on)
-
---------------
-
-Health checks & monitoring
---------------------------
-
-- Keep ``/health`` and ``/metrics`` **outside** maintenance to prevent false alarms.
-- Alternatively, let health checks pass based on internal source IP and still return **200**.
-
---------------
-
-Deploy pattern
---------------
-
-1. Enable maintenance.
-2. Drain traffic at the load balancer (optional).
-3. Run migrations/builds.
-4. Warm route caches & opcache.
-5. Disable maintenance.
-6. Smoke test via bypass, then open the gates.
-
-Automate this in your CI/CD scripts with the env var or flag file.
+- Select the gate once during boot; do not discover or resolve it per request.
+- Keep attached state immutable or concurrency-safe for persistent workers.
+- ``MemoryMaintenanceState`` instances should be owned deliberately by the host/control plane; do not use request-specific state in the gate.
+- Use a non-zero file refresh interval in persistent workers unless immediate per-request filesystem observation is explicitly required.
+- The gate does not replace gateway hardening, authentication, authorization, throttling, CORS, telemetry, or route middleware.
 
 --------------
 
 Testing
 -------
 
-.. code:: bash
-
-   # with maintenance on
-   curl -i http://127.0.0.1:8000/
-   # expect: 503 + Retry-After (if set)
-
-   # bypass via header
-   curl -i -H "X-Maint-Bypass: your-secret-token" http://127.0.0.1:8000/
-   # expect: normal 200
-
---------------
-
-Troubleshooting
----------------
-
-+----------------------------+-------------------------+--------------------------------------------------------------+
-| Symptom                    | Cause                   | Fix                                                          |
-+============================+=========================+==============================================================+
-| Admins can’t bypass        | Wrong header/cookie/key | Confirm proxy sets header; check case-sensitivity and spaces |
-+----------------------------+-------------------------+--------------------------------------------------------------+
-| Health checks fail         | Path not allowlisted    | Add ``/health`` (and ``/metrics``) to allowed paths          |
-+----------------------------+-------------------------+--------------------------------------------------------------+
-| Users see cached pages     | CDN/browser caching 503 | Add ``Cache-Control: no-store`` on maintenance responses     |
-+----------------------------+-------------------------+--------------------------------------------------------------+
-| 503 persists after disable | Stale env/config        | Reload PHP-FPM or clear opcache/config cache                 |
-+----------------------------+-------------------------+--------------------------------------------------------------+
-
---------------
-
-Checklist
----------
-
-- ☐ Toggle via env var or flag file
-- ☐ Add **Retry-After** to guide clients/browsers
-- ☐ Safe-list IPs/paths for health checks & admins
-- ☐ Render a branded HTML page for UX
-- ☐ Place early in **pre-global** and keep responses non-cacheable
+Webrick's WB-5 tests cover inactive and active requestless execution, exact bypasses, ``HEAD`` semantics, response parity, and Fiber isolation. ``benchmarks/PreRoutingGateBench.php`` provides the component benchmark fixture; application-level throughput must still be measured by the consuming runtime.
