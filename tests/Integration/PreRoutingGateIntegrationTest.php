@@ -108,8 +108,8 @@ final class PreRoutingGateIntegrationTest extends TestCase
         $builder = ContainerBuilder::create('webrick_pre_gate_' . bin2hex(random_bytes(4)));
         $build = new RouteCompiler()->compile(
             register: static function (Registrar $registrar): void {
-                $registrar->get('/known', static fn(): Response => Response::plaintext('known'));
-                $registrar->get('/ready', static fn(): Response => Response::plaintext('ready'));
+                $registrar->get('/known', static fn(): Response => Response::plaintext('known', 200));
+                $registrar->get('/ready', static fn(): Response => Response::plaintext('ready', 200));
             },
             environment: 'production',
             configFingerprint: 'wb5-pre-routing-gate',

@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Infocyph\Webrick\Constants\MediaTypeEnum;
 use Infocyph\Webrick\Middleware\Maintenance\MaintenancePreRoutingGate;
 use Infocyph\Webrick\Middleware\Maintenance\MemoryMaintenanceState;
 use Infocyph\Webrick\Router\Runtime\RoutingInput;
@@ -23,7 +24,7 @@ test('active maintenance gate returns requestless parity response', function ():
         ->and($response?->getStatusCode())->toBe(503)
         ->and((string) $response?->getBody())->toBe("503 Service Unavailable\nDeploying")
         ->and($response?->getHeaderLine('Retry-After'))->toBe('120')
-        ->and($response?->getHeaderLine('Content-Type'))->toBe('text/plain')
+        ->and($response?->getHeaderLine('Content-Type'))->toBe(MediaTypeEnum::PLAIN->value)
         ->and($response?->getHeaderLine('Cache-Control'))->toBe('no-store')
         ->and($response?->getHeaderLine('X-Content-Type-Options'))->toBe('nosniff')
         ->and($response?->getHeaderLine('Vary'))->toBe('Accept');

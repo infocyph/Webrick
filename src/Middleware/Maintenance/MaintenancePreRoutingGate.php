@@ -64,7 +64,7 @@ final readonly class MaintenancePreRoutingGate implements PreRoutingGateInterfac
 
         $normalized = [];
         foreach ($paths as $path) {
-            if (!is_string($path) || $path === '' || $path[0] !== '/') {
+            if ($path === '' || $path[0] !== '/') {
                 throw new \InvalidArgumentException('Maintenance bypass paths must be non-empty absolute paths.');
             }
             if (str_contains($path, '?') || str_contains($path, '#')) {

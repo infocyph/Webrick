@@ -40,7 +40,7 @@ final class PreRoutingGateBench
 
         $this->routing = new RoutingInput('GET', '/bench');
         $this->request = Request::fake(uri: 'http://localhost/bench');
-        $this->next = static fn(Request $request): Response => Response::plaintext('ok');
+        $this->next = static fn(Request $request): Response => Response::plaintext($request->getUri()->getPath(), 200);
         $this->inactiveGate = new MaintenancePreRoutingGate(state: $inactive);
         $this->activeGate = new MaintenancePreRoutingGate(state: $active);
         $this->inactiveMiddleware = new MaintenanceModeMiddleware(state: $inactive);
