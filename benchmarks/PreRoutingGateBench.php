@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Benchmarks;
 
 use Closure;
-use Infocyph\Webrick\Middleware\Maintenance\MaintenanceModeMiddleware;
 use Infocyph\Webrick\Middleware\Maintenance\MaintenancePreRoutingGate;
 use Infocyph\Webrick\Middleware\Maintenance\MemoryMaintenanceState;
+use Infocyph\Webrick\Middleware\MaintenanceModeMiddleware;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Runtime\RoutingInput;
