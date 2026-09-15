@@ -213,6 +213,9 @@ final readonly class CompiledRouterKernel
                 if ($this->preRoutingGate !== null) {
                     $response = $this->evaluatePreRoutingGate($context->routing, $this->preRoutingGate);
                     if ($response !== null) {
+                        if ($context->routing->method === HttpMethodEnum::HEAD->value) {
+                            $response = self::headResponse($response);
+                        }
                         $response = $this->consumeRuntimeResponse($response, $responseConsumer);
                         $this->profiler?->mark('response_ready');
 
@@ -221,6 +224,9 @@ final readonly class CompiledRouterKernel
                 }
 
                 $response = $this->dispatchRoutingInput($context->routing, $request, $context, $responseConsumer);
+                if ($context->routing->method === HttpMethodEnum::HEAD->value) {
+                    $response = self::headResponse($response);
+                }
                 $this->profiler?->mark('response_ready');
 
                 return $response;
@@ -229,6 +235,9 @@ final readonly class CompiledRouterKernel
             } catch (Throwable $exception) {
                 $response = $this->renderException($exception, $request, $context);
                 $this->profiler?->mark('error_render');
+                if ($context->routing->method === HttpMethodEnum::HEAD->value) {
+                    $response = self::headResponse($response);
+                }
 
                 return $this->consumeRuntimeResponse($response, $responseConsumer);
             }
