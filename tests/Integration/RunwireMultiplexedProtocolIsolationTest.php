@@ -283,7 +283,7 @@ final class RunwireMultiplexedProtocolIsolationTest extends TestCase
         $build = new RouteCompiler()->compile(
             register: static function (Registrar $registrar): void {
                 $registrar->post('/mux/{label}', static function (Request $request, string $label): Response {
-                    $payload = self::payload($request, $label);
+                    $payload = json_encode(self::payload($request, $label), JSON_THROW_ON_ERROR);
 
                     return Response::stream(
                         static function () use ($label, $payload): iterable {
