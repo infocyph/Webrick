@@ -359,12 +359,17 @@ final class RunwireStreamingLifecycleTest extends TestCase
             register: static function (Registrar $registrar): void {
                 $registrar->get(
                     '/runtime/scoped-stream',
-                    static function (RunwireStreamingScopedMarker $marker): Response {
+                    static function (Request $request, RunwireStreamingScopedMarker $marker): Response {
                         $identity = spl_object_id($marker);
+                        $expectedPath = $request->getUri()->getPath();
 
-                        return Response::stream(static function () use ($identity, $marker): iterable {
+                        return Response::stream(static function () use ($expectedPath, $identity, $marker): iterable {
                             ++RunwireStreamingScopeProbe::$producerAdvances;
-                            yield 'first:' . $identity . ':' . RunwireStreamingScopeProbe::requestPath();
+                            $scopePath = RunwireStreamingScopeProbe::requestPath();
+                            if ($scopePath !== $expectedPath) {
+                                throw new RuntimeException('Streaming request seed changed during response production.');
+                            }
+                            yield 'first:' . $identity . ':' . $scopePath;
 
                             ++RunwireStreamingScopeProbe::$producerAdvances;
                             yield 'second:' . (RunwireStreamingScopeProbe::marker() === $marker ? 'same' : 'different');
