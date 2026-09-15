@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use Generator;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Runtime\RoutingInput;
@@ -12,24 +11,22 @@ use Infocyph\Webrick\Runtime\Http\RuntimeRequestContext;
 use Infocyph\Webrick\Runtime\Http\SapiRuntimeAdapter;
 use Infocyph\Webrick\Runtime\Http\SwooleRuntimeAdapter;
 use Infocyph\Webrick\Runtime\Http\WorkermanRuntimeAdapter;
-use ReflectionClass;
-use RuntimeException;
 
 /**
  * @param class-string $responseClass
  * @param class-string $chunkClass
  */
 function runtime_adapter_workerman(
-    string $responseClass = stdClass::class,
-    string $chunkClass = stdClass::class,
+    string $responseClass = \stdClass::class,
+    string $chunkClass = \stdClass::class,
     bool $transportCompression = false,
     bool $transportRequestLimits = false,
 ): WorkermanRuntimeAdapter {
-    $reflection = new ReflectionClass(WorkermanRuntimeAdapter::class);
+    $reflection = new \ReflectionClass(WorkermanRuntimeAdapter::class);
     $adapter = $reflection->newInstanceWithoutConstructor();
     $constructor = $reflection->getConstructor();
     if ($constructor === null) {
-        throw new RuntimeException('Workerman runtime constructor is unavailable.');
+        throw new \RuntimeException('Workerman runtime constructor is unavailable.');
     }
     $constructor->invoke(
         $adapter,
@@ -59,15 +56,15 @@ test('existing runtime adapters retain their capability contracts', function ():
         transportCompression: true,
         transportRequestLimits: true,
     )->capabilities();
-    $roadRunner = new RoadRunnerRuntimeAdapter(
-        static function (int $status, string|Generator $body, array $headers, bool $final): void {
+    $roadRunnerAdapter = new RoadRunnerRuntimeAdapter(
+        static function (int $status, string|\Generator $body, array $headers, bool $final): void {
             unset($status, $body, $headers, $final);
         },
         sendfileMiddleware: true,
         transportCompression: true,
         transportRequestLimits: true,
     );
-    $roadRunner = $roadRunner->capabilities();
+    $roadRunner = $roadRunnerAdapter->capabilities();
 
     expect($sapi->concurrent)->toBeFalse()
         ->and($sapi->nativeStreaming)->toBeTrue()
@@ -134,7 +131,7 @@ test('swoole normalization stays request local and materializes the request lazi
             return '{"order":1}';
         }
     };
-    $nativeResponse = new stdClass();
+    $nativeResponse = new \stdClass();
     $context = SwooleRuntimeAdapter::swoole()->context($nativeRequest, $nativeResponse, withHost: true);
 
     expect($context->routing->method)->toBe('POST')
@@ -244,11 +241,16 @@ test('workerman normalization stays request local and materializes the request l
 });
 
 test('roadrunner keeps fixed responses and head suppression on the same writer contract', function (): void {
-    /** @var list<array{status:int,body:string|Generator,headers:array<string,list<string>>,final:bool}> $writes */
+    /** @var list<array{status:int,body:string|\Generator,headers:array<string,list<string>>,final:bool}> $writes */
     $writes = [];
     $adapter = new RoadRunnerRuntimeAdapter(
-        static function (int $status, string|Generator $body, array $headers, bool $final) use (&$writes): void {
-            $writes[] = compact('status', 'body', 'headers', 'final');
+        static function (int $status, string|\Generator $body, array $headers, bool $final) use (&$writes): void {
+            $writes[] = [
+                'status' => $status,
+                'body' => $body,
+                'headers' => $headers,
+                'final' => $final,
+            ];
         },
     );
 
@@ -298,6 +300,7 @@ test('swoole streaming writes chunks in order and ends exactly once', function (
             return true;
         }
 
+        /** @param string|list<string> $value */
         public function header(string $name, string|array $value): bool
         {
             $this->headers[$name] = $value;
@@ -338,13 +341,16 @@ test('swoole streaming writes chunks in order and ends exactly once', function (
 
 test('runtime adapters reject missing native transport handles', function (): void {
     expect(fn(): RuntimeRequestContext => SwooleRuntimeAdapter::swoole()->context())
-        ->toThrow(RuntimeException::class, 'Swoole runtime requires native request and response objects.')
-        ->and(fn(): RuntimeRequestContext => runtime_adapter_workerman()->context())
-        ->toThrow(RuntimeException::class, 'Workerman runtime requires Request and Connection objects.')
-        ->and(fn(): RuntimeRequestContext => new RoadRunnerRuntimeAdapter(
-            static function (int $status, string|Generator $body, array $headers, bool $final): void {
-                unset($status, $body, $headers, $final);
-            },
-        )->context(new stdClass()))
-        ->toThrow(RuntimeException::class, 'RoadRunner runtime requires a PSR-style server request object.');
+        ->toThrow(\RuntimeException::class, 'Swoole runtime requires native request and response objects.');
+
+    expect(fn(): RuntimeRequestContext => runtime_adapter_workerman()->context())
+        ->toThrow(\RuntimeException::class, 'Workerman runtime requires Request and Connection objects.');
+
+    $roadRunner = new RoadRunnerRuntimeAdapter(
+        static function (int $status, string|\Generator $body, array $headers, bool $final): void {
+            unset($status, $body, $headers, $final);
+        },
+    );
+    expect(fn(): RuntimeRequestContext => $roadRunner->context(new \stdClass()))
+        ->toThrow(\RuntimeException::class, 'RoadRunner runtime requires a PSR-style server request object.');
 });
