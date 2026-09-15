@@ -6,10 +6,11 @@ Recipes for running Webrick in production across popular stacks. Everything here
 What’s covered
 --------------
 
-- **Nginx / Apache** — Front‑controller rules, proxy headers, buffering, compression.
+- **Nginx / Apache** — Front-controller rules, proxy headers, buffering, compression.
+- **Runwire** — Optional native/prefork and supported host-driver integration for persistent runtimes.
 - **Containers / K8s** — Minimal images, health checks, OPcache/FPM tips.
-- **Serverless / Edge** — Cache warm‑up, streaming caveats, signed URL pass‑through.
-- **Troubleshooting** — Real‑world issues and quick fixes.
+- **Serverless / Edge** — Cache warm-up, streaming caveats, signed URL pass-through.
+- **Troubleshooting** — Real-world issues and quick fixes.
 
 Golden rules
 ------------
@@ -17,12 +18,13 @@ Golden rules
 - Choose **one source of compression** (proxy *or* app).
 - Preserve **query strings** for signed/temporary URLs.
 - Disable proxy buffering for streaming endpoints.
-- Pre‑warm **route caches** in CI before shipping.
+- Pre-warm **route caches** in CI before shipping.
+- Choose exactly one request/response runtime path at worker bootstrap.
 
 Quick links
 -----------
 
-- 👉 `Nginx <./nginx.rst>`__ · 👉 `Apache <./apache.rst>`__ · 👉 `Containers <./containers.rst>`__ · 👉 `Kubernetes <./kubernetes.rst>`__ · 👉 `Serverless <./serverless.rst>`__ · 👉 `Troubleshooting <./troubleshooting.rst>`__
+- 👉 `Nginx <./nginx.rst>`__ · 👉 `Apache <./apache.rst>`__ · 👉 `Runwire <./runwire.rst>`__ · 👉 `Containers <./containers.rst>`__ · 👉 `Kubernetes <./kubernetes.rst>`__ · 👉 `Serverless <./serverless.rst>`__ · 👉 `Troubleshooting <./troubleshooting.rst>`__
 
 Example: Nginx front controller
 -------------------------------
@@ -42,6 +44,7 @@ Example: Nginx front controller
    nginx
    apache
    nginx-apache-fpm
+   runwire
    containers
    containers-and-ci
    php-fpm-tuning
