@@ -87,7 +87,7 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
         }
 
         $headers = self::responseHeaders($response, $request->version !== ProtocolVersion::HTTP_1_1);
-        self::assertWritable($writer->start($response->getStatusCode(), $headers), 'start');
+        self::writeAndAwaitDrain($writer->start($response->getStatusCode(), $headers), $writer, 'start');
 
         if (!ResponseWriterSupport::allowsBody($response, $context)) {
             self::finish($writer);
@@ -106,7 +106,7 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
             if ($request->context->cancelled()) {
                 throw new RuntimeException('Runwire request was cancelled during Webrick response production.');
             }
-            self::assertWritable($writer->write($chunk), 'write');
+            self::writeAndAwaitDrain($writer->write($chunk), $writer, 'write');
         }
         self::finish($writer);
     }
@@ -131,16 +131,6 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
         }
 
         return $server;
-    }
-
-    private static function assertWritable(WriteResult $result, string $operation): void
-    {
-        if (!$result->accepted()) {
-            throw new RuntimeException("Runwire response {$operation} was rejected: {$result->state->value}.");
-        }
-        if ($result->pressured()) {
-            throw new RuntimeException("Runwire response {$operation} requires drain continuation before more output.");
-        }
     }
 
     /** @return array<string,mixed> */
@@ -241,9 +231,7 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
     private static function finish(ResponseWriterInterface $writer, string $finalChunk = ''): void
     {
         $result = $writer->end($finalChunk);
-        if (!$result->accepted()) {
-            throw new RuntimeException("Runwire response end was rejected: {$result->state->value}.");
-        }
+        self::assertAccepted($result, 'end');
         if (!$writer->isEnded()) {
             throw new RuntimeException('Runwire response writer did not enter the ended state.');
         }
@@ -313,5 +301,23 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
         }
 
         return isset($parts['port']) ? $host . ':' . $parts['port'] : $host;
+    }
+
+    private static function assertAccepted(WriteResult $result, string $operation): void
+    {
+        if (!$result->accepted()) {
+            throw new RuntimeException("Runwire response {$operation} was rejected: {$result->state->value}.");
+        }
+    }
+
+    private static function writeAndAwaitDrain(
+        WriteResult $result,
+        ResponseWriterInterface $writer,
+        string $operation,
+    ): void {
+        self::assertAccepted($result, $operation);
+        if ($result->pressured()) {
+            RunwireResponseContinuation::awaitDrain($writer);
+        }
     }
 }
