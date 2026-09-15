@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Runtime\Http;
 
+use Infocyph\Runwire\CancellationToken;
 use Infocyph\Runwire\Http\RequestBodyInterface;
 use Infocyph\Webrick\Interfaces\BodyStream;
 use RuntimeException;
@@ -15,7 +16,10 @@ final class RunwireRequestBodyStream implements BodyStream
 
     private int $position = 0;
 
-    public function __construct(private readonly RequestBodyInterface $body) {}
+    public function __construct(
+        private readonly RequestBodyInterface $body,
+        private readonly CancellationToken $cancellation,
+    ) {}
 
     public function __toString(): string
     {
@@ -44,12 +48,10 @@ final class RunwireRequestBodyStream implements BodyStream
         $this->assertOpen();
         $contents = '';
         while (!$this->body->eof()) {
-            $chunk = $this->body->read(PHP_INT_MAX);
-            if ($chunk === '') {
-                throw new RuntimeException('Runwire request body has not completed; incremental reads are required.');
+            $chunk = $this->read(65_536);
+            if ($chunk !== '') {
+                $contents .= $chunk;
             }
-            $this->position += strlen($chunk);
-            $contents .= $chunk;
         }
 
         return $contents;
@@ -102,10 +104,20 @@ final class RunwireRequestBodyStream implements BodyStream
             return '';
         }
 
-        $chunk = $this->body->read($length);
-        $this->position += strlen($chunk);
+        while (true) {
+            $this->cancellation->throwIfCancelled();
+            $chunk = $this->body->read($length);
+            if ($chunk !== '') {
+                $this->position += strlen($chunk);
 
-        return $chunk;
+                return $chunk;
+            }
+            if ($this->body->eof()) {
+                return '';
+            }
+
+            RunwireResponseContinuation::awaitBodyReadable($this->body, $this->cancellation);
+        }
     }
 
     public function rewind(): void
