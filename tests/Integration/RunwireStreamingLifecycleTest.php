@@ -263,13 +263,14 @@ final class RunwireStreamingLifecycleTest extends TestCase
         RunwireStreamingScopeProbe::reset();
     }
 
-    public function testPressureStopsProducerUntilDrainWhileRequestScopeRemainsAttached(): void
+    public function testPressureStopsProducerUntilDrainWhileRequestScopeAndLifecycleRemainActive(): void
     {
         [$application, $paths] = self::applicationFixture();
         $writer = new RunwirePressureWriterFixture(pressureOnWriteCall: 1);
+        $request = self::request('/runtime/scoped-stream');
 
         try {
-            $application->handle(self::request('/runtime/scoped-stream'), $writer, completeResponse: true);
+            $application->handle($request, $writer, completeResponse: true);
 
             self::assertSame(1, $writer->writeCalls);
             self::assertCount(1, $writer->chunks);
@@ -277,6 +278,8 @@ final class RunwireStreamingLifecycleTest extends TestCase
             self::assertSame(0, RunwireStreamingScopeProbe::$scopeLeaves);
             self::assertSame(0, $writer->endCalls);
             self::assertTrue($writer->hasPendingDrain());
+            self::assertSame(1, $application->snapshot()->requestsActive);
+            self::assertFalse($request->context->completed());
 
             $writer->drain();
 
@@ -289,6 +292,8 @@ final class RunwireStreamingLifecycleTest extends TestCase
             self::assertSame(1, $writer->endCalls);
             self::assertTrue($writer->isEnded());
             self::assertFalse($writer->hasPendingDrain());
+            self::assertSame(0, $application->snapshot()->requestsActive);
+            self::assertTrue($request->context->completed());
         } finally {
             $application->shutdown();
             self::cleanup($paths);
