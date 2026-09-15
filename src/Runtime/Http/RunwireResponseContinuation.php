@@ -13,7 +13,7 @@ use WeakMap;
 /** @internal Runwire-only response-production suspension; not a general scheduler. */
 final class RunwireResponseContinuation
 {
-    /** @var WeakMap<Fiber, true>|null */
+    /** @var WeakMap<Fiber<mixed, mixed, mixed, mixed>, true>|null */
     private static ?WeakMap $managedFibers = null;
 
     public static function awaitDrain(ResponseWriterInterface $writer): void
@@ -85,12 +85,13 @@ final class RunwireResponseContinuation
         self::releaseIfTerminated($fiber);
     }
 
-    /** @return WeakMap<Fiber, true> */
+    /** @return WeakMap<Fiber<mixed, mixed, mixed, mixed>, true> */
     private static function managedFibers(): WeakMap
     {
         return self::$managedFibers ??= new WeakMap();
     }
 
+    /** @param Fiber<mixed, mixed, mixed, mixed> $fiber */
     private static function releaseIfTerminated(Fiber $fiber): void
     {
         if ($fiber->isTerminated() && self::$managedFibers instanceof WeakMap) {
