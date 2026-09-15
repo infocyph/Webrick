@@ -6,6 +6,9 @@ use Infocyph\InterMix\DI\Container;
 use Infocyph\InterMix\DI\ScopeContext;
 use Infocyph\InterMix\DI\Support\LifetimeEnum;
 use Infocyph\InterMix\Exceptions\ContainerException;
+use Infocyph\Runwire\Coroutine\CoroutineRuntime;
+use Infocyph\Runwire\Coroutine\CoroutineScope;
+use Infocyph\Runwire\Coroutine\TaskLocal;
 use Infocyph\Webrick\Runtime\InterMixRuntime;
 
 final readonly class WebrickRuntimeScopedMarker
@@ -52,6 +55,60 @@ test('InterMix runtime propagates one logical request scope into structured chil
 
         expect($parent)->toBeInstanceOf(WebrickRuntimeScopedMarker::class)
             ->and($child)->toBe($parent);
+    } finally {
+        $runtime->resetCurrentExecutionScope();
+        $container->unset();
+    }
+});
+
+test('InterMix runtime propagates explicit scope context through Runwire task locals only when attached', function (): void {
+    [$container, $runtime] = webrick_runtime_scope_fixture();
+
+    try {
+        $runtime->withinScope('request', static function (Container $active) use ($runtime): void {
+            $parent = $active->get(WebrickRuntimeScopedMarker::class);
+            $scopeContext = $runtime->captureScopeContext();
+            $scopeLocal = new TaskLocal();
+
+            $resolved = new CoroutineRuntime()->run(
+                static function (CoroutineScope $scope) use ($runtime, $scopeContext, $scopeLocal): array {
+                    $scope->setLocal($scopeLocal, $scopeContext);
+                    $spawnAttached = static function () use ($runtime, $scope, $scopeLocal) {
+                        return $scope->spawn(static function () use ($runtime, $scope, $scopeLocal): WebrickRuntimeScopedMarker {
+                            $captured = $scope->local($scopeLocal);
+                            if (!$captured instanceof ScopeContext) {
+                                throw new RuntimeException('Runwire task-local scope context was not inherited.');
+                            }
+
+                            return $runtime->withinScopeContext(
+                                $captured,
+                                static fn(Container $childContainer): WebrickRuntimeScopedMarker => $childContainer->get(
+                                    WebrickRuntimeScopedMarker::class,
+                                ),
+                            );
+                        });
+                    };
+
+                    $first = $spawnAttached();
+                    $second = $spawnAttached();
+                    $isolated = $scope->spawn(static function () use ($runtime): bool {
+                        try {
+                            $runtime->captureScopeContext();
+
+                            return false;
+                        } catch (ContainerException) {
+                            return true;
+                        }
+                    });
+
+                    return [$first->await(), $second->await(), $isolated->await()];
+                },
+            );
+
+            expect($resolved[0])->toBe($parent)
+                ->and($resolved[1])->toBe($parent)
+                ->and($resolved[2])->toBeTrue();
+        });
     } finally {
         $runtime->resetCurrentExecutionScope();
         $container->unset();
