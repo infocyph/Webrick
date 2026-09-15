@@ -71,12 +71,25 @@ Response completion
 
 This prevents duplicate ``end()`` calls and keeps lazy/streamed Webrick response production inside the owning request scope until body production finishes.
 
-Streaming and backpressure
---------------------------
+Request bodies and forms
+------------------------
 
-Request bodies remain incrementally readable through the Runwire body bridge. Response streaming uses Runwire's ``WriteResult`` and ``onDrain()`` contract; when transport pressure is reported, Webrick suspends only its response-production continuation until Runwire signals drain. Webrick does not create a second output queue.
+Runwire may dispatch an application after the HTTP request head is normalized while body bytes are still arriving. ``RunwireRequestBodyStream`` therefore keeps the body incremental and, only inside the managed Runwire application continuation, suspends the owning request Fiber until body data, body completion or request cancellation becomes visible. It does not spin, block the process or introduce a second input queue.
 
-Cancellation and deadlines remain authoritative in Runwire's request context. Webrick observes them while producing a response and stops output when cancellation becomes visible.
+Ordinary routing and request creation still do not consume the body. APIs that explicitly require the complete payload, such as Webrick raw/JSON/XML parsing, may consume the remaining bounded Runwire stream and wait for later chunks as needed. A caller that reads only a prefix leaves the remainder unread.
+
+``application/x-www-form-urlencoded`` payloads are parsed lazily by Webrick's request layer when the selected runtime did not already provide parsed form data. If form ``_method`` routing is explicitly enabled, the Runwire adapter consumes that URL-encoded form only because routing itself requires it, then replays the same bytes/parsed values into the eventual Webrick ``Request`` so the body is not lost.
+
+Native Runwire ``multipart/form-data`` has a narrower Webrick 5 boundary. Runwire 1.x exposes the multipart payload as a bounded request stream; Webrick does **not** add a second multipart decoder, temporary-file manager or upload-storage policy in this runtime adapter. The raw multipart body remains available to the consuming framework/application decoder. Direct adapters such as SAPI, Swoole/OpenSwoole, Workerman or RoadRunner may continue to pass host-parsed uploaded-file structures when their native request API already provides them. A future Webrick-native multipart subsystem, if desired, should be designed and security-reviewed independently rather than hidden inside the Runwire transport adapter.
+
+Streaming, backpressure and cancellation
+----------------------------------------
+
+Response streaming uses Runwire's ``WriteResult`` and ``onDrain()`` contract. When a non-terminal ``start()`` or ``write()`` is accepted but pressured, Webrick suspends only its response-production continuation until Runwire signals drain or the authoritative Runwire request context is cancelled. Webrick does not create a second output queue.
+
+Cancellation or deadline expiry wakes an input/body wait or response-pressure wait so the request lifecycle can unwind immediately. Webrick stops further response production, does not call ``end()`` after cancellation, and Runwire's lifecycle performs normal request completion/cleanup.
+
+A pressured terminal ``end()`` is already an accepted terminal response from Webrick's application-lifetime perspective. Webrick therefore does not retain request-scoped application state merely to wait for the lower transport buffer to flush after the writer has ended.
 
 Deployment modes covered
 ------------------------
@@ -129,5 +142,7 @@ Release checklist
 - Let Runwire own cancellation, deadlines, admission, drain and shutdown.
 - Let Webrick own HTTP response semantics and writer completion exactly once.
 - Use Runwire's request-cleanup lifecycle slot for the defensive InterMix carrier reset.
+- Keep native Runwire request bodies streaming; only explicit full-payload consumers should materialize them.
+- Treat native Runwire multipart decoding/upload storage as an application/framework concern in Webrick 5 rather than assuming host-populated upload arrays.
 - Do not retain native request/response handles, Webrick ``Request`` objects or scoped services in process-global/static state.
 - Benchmark the selected runtime with representative traffic; microbenchmarks describe bridge overhead, not sustainable end-to-end throughput.
