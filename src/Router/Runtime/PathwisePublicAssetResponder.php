@@ -21,14 +21,14 @@ use Infocyph\Webrick\Response\Response;
  * explicit public asset route. Pathwise authorizes the filesystem path;
  * Webrick remains authoritative for HTTP file/range/HEAD semantics.
  */
-final class PathwisePublicAssetResponder
+final readonly class PathwisePublicAssetResponder
 {
-    private readonly DownloadProcessor $downloads;
+    private DownloadProcessor $downloads;
 
     /** @var array<string,string> */
-    private readonly array $responseHeaders;
+    private array $responseHeaders;
 
-    private readonly string $root;
+    private string $root;
 
     /** @param array<string,string> $responseHeaders */
     public function __construct(
