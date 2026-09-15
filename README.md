@@ -30,6 +30,7 @@ runtime from an environment string.
 - Lazy request promotion and capability-driven compiled dispatch.
 - Native string and file response bodies; stream objects only at interop boundaries.
 - SAPI/CLI emitters plus dedicated Swoole/OpenSwoole, RoadRunner and Workerman runtime adapters.
+- Optional Runwire 1.x application/runtime bridge for native portable/prefork and supported host-driver deployments without making Runwire a Webrick production requirement.
 - Request-local state and explicit InterMix scopes for persistent workers.
 - Signed/temporary URLs, range requests, conditional responses and cache policy handling.
 - Negotiation, compression, response cache, throttling, telemetry, request limits,
@@ -40,7 +41,7 @@ runtime from an environment string.
 
 - PHP 8.4+
 - Composer 2.x
-- InterMix `^10.0.3`
+- InterMix `^10.1.1`
 
 Install:
 
@@ -56,6 +57,10 @@ composer require infocyph/cachelayer
 
 Use it only when an application chooses the CacheLayer-backed response-cache or
 atomic-counter integration. Webrick core does not initialize CacheLayer.
+
+Runwire also remains optional. A host that selects the Runwire runtime bridge
+provides a compatible Runwire 1.x installation; ordinary Webrick/SAPI use and
+Webrick's direct runtime adapters do not require it.
 
 ## Development boot
 
@@ -189,9 +194,18 @@ boundary outside runtime-writable artifact paths.
 
 ## Persistent runtimes
 
-Swoole/OpenSwoole, RoadRunner and Workerman use `RuntimeAdapterInterface` and
-`RuntimeServer`. Runtime choice is explicit at worker bootstrap; Webrick does
-not perform per-request environment or extension discovery.
+Webrick's direct Swoole/OpenSwoole, RoadRunner and Workerman integrations use
+`RuntimeAdapterInterface` and `RuntimeServer`. Runtime choice is explicit at
+worker bootstrap; Webrick does not perform per-request environment or extension
+discovery.
+
+Runwire 1.x is an optional alternative host runtime. A Runwire-hosted Webrick
+application composes `RunwireRuntimeApplicationFactory` /
+`RunwireRuntimeApplication` with `RuntimeServer` and `RunwireRuntimeAdapter`
+around the same compiled kernel. Runwire remains authoritative for runtime
+selection, lifecycle, cancellation/deadlines, admission, drain/shutdown and
+metrics; Webrick owns HTTP response semantics and Runwire writer completion
+exactly once. Direct Webrick adapters are not proxied through Runwire.
 
 Runtime adapters own native request/response handles, transport compression,
 request-size capabilities, streaming and sendfile behavior. Request state is
@@ -200,6 +214,9 @@ never stored in static current-request/current-response fields.
 Classic synchronous SAPIs use `DefaultEmitter`; CLI uses `CliEmitter`. If a host
 framework owns response emission, return/adapt the Webrick response instead of
 emitting it twice.
+
+See [`docs/deployments/runwire.rst`](docs/deployments/runwire.rst) for the Runwire
+and Foundation/application handoff contract.
 
 ## Matcher cache tooling
 
@@ -276,16 +293,19 @@ return $responseAdapter->fromWebrick($webrickResponse);
 ```
 
 The host remains responsible for its application lifecycle, container,
-configuration, logging and final response emission.
+configuration, logging and final response emission. Foundation/Infbyte consumer
+acceptance is tested without making either project a Webrick dependency.
 
 ## Benchmarks
 
 - `benchmark/` contains the standalone matcher/control runner.
 - `benchmarks/` contains structured PhpBench benchmarks for matcher, dispatch,
-  cache, ETag and signed-URL behavior.
+  cache, ETag, signed-URL behavior, and Runwire adapter/scope/streaming overhead.
 
 Use same-run ratios against controls and judge sustainable successful full HTTP
-throughput, not isolated microbenchmark wins.
+throughput, not isolated microbenchmark wins. Runtime bridge microbenchmarks are
+release diagnostics; tune production code only when representative measurements
+show a regression.
 
 ## Security
 
