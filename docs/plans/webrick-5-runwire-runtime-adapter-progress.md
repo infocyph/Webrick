@@ -18,6 +18,8 @@ Released integration baselines:
 
 > **Version correction:** design-time references to InterMix `10.1` / `^10.1` in the canonical plan are implemented and released here as InterMix **10.1.1 / `^10.1.1`**.
 
+> **Runwire multipart boundary:** released Runwire 1.x exposes native multipart payloads as a bounded request stream, not host-parsed Webrick upload structures. Webrick 5 keeps that stream available but does not introduce a transport-specific multipart decoder, temporary-file manager or storage policy. Consuming framework/application code owns native Runwire multipart decoding; direct adapters may continue to use host-parsed uploads when their native request APIs provide them.
+
 ## Implementation tracker
 
 - [x] **1. InterMix baseline** — raised the production dependency to `^10.1.1`.
@@ -43,8 +45,8 @@ Released integration baselines:
 
 ## Points 11–12 acceptance
 
-- `RunwireResponseContinuation` is deliberately narrow and Runwire-specific: it only manages response-production Fibers used by the optional Runwire bridge and is not a general Webrick scheduler.
-- `RunwireRuntimeAdapter` treats accepted-but-pressured `start()` / `write()` results as a suspension point and resumes only from Runwire's released `onDrain()` callback.
+- `RunwireResponseContinuation` is deliberately narrow and Runwire-specific: it only manages I/O continuation Fibers used by the optional Runwire bridge and is not a general Webrick scheduler.
+- `RunwireRuntimeAdapter` treats accepted-but-pressured `start()` / `write()` results as a suspension point and resumes only from Runwire's released `onDrain()` callback or authoritative request cancellation.
 - No second Webrick buffering/output queue is introduced; Runwire remains authoritative for transport pressure and drain signaling.
 - Request-body adaptation remains incremental. Focused coverage reads only the requested body prefix and proves the remaining body stays unread/buffered in the Runwire body implementation.
 - Runtime response consumption moved inside the compiled kernel's request-scope lifetime. This is required because a lazy/streamed response may resolve scoped services after the route handler itself has returned.
@@ -126,12 +128,27 @@ Detailed methodology and interpretation: `docs/advanced/runwire-runtime-performa
 Release-facing documentation now records the actual Webrick 5 contract:
 
 - `README.md` names InterMix `^10.1.1`, keeps Runwire optional, preserves direct Webrick adapters and explains response/runtime ownership;
-- `docs/deployments/runwire.rst` documents the Runwire application-factory/bootstrap handoff, lifecycle ownership, cleanup slot, streaming/backpressure behavior, supported deployment modes and release checklist;
+- `docs/deployments/runwire.rst` documents the Runwire application-factory/bootstrap handoff, lifecycle ownership, cleanup slot, request-body readiness, URL-encoded form behavior, multipart ownership, streaming/backpressure behavior, supported deployment modes and release checklist;
 - `docs/getting-started/framework-integration.rst` documents Foundation/Infbyte as external consumers rather than dependencies and defines the one-container/one-kernel/one-emitter ownership boundary;
 - `docs/index.rst` surfaces both the Runwire deployment guide and Runwire performance validation;
 - `docs/advanced/runwire-runtime-performance.rst` records the release measurements and the decision not to add unproven production complexity.
 
 The large canonical design plan is retained as the original planning record. This tracker is the authoritative implementation/release record where released-version facts or corrected architecture differ from that historical wording.
+
+## Final release-hardening audit
+
+The end-to-end release pass revalidated the canonical plan against the released Runwire 1.0 implementation and the composed Webrick/InterMix code path rather than relying only on pre-buffered adapter fixtures.
+
+- Runwire native HTTP may dispatch the application after request headers while body bytes are still arriving. `RunwireRequestBodyStream` now waits through the narrow managed Runwire continuation when a synchronous Webrick body read needs bytes that have not arrived yet; it remains incremental and does not add a second input queue.
+- Request-body waits are woken by data, end-of-body or Runwire cancellation/deadline state, so a cancelled request cannot strand a suspended Webrick request Fiber.
+- URL-encoded form payloads are lazily parsed by Webrick when a runtime supplies only raw bytes. Normal requests remain lazy; full-body materialization happens only when an API actually asks for the full payload.
+- Optional form `_method` routing consumes a URL-encoded Runwire body only when that routing feature is enabled, then replays the same raw/parsed form into the eventual `Request` so routing does not steal the request body.
+- Response-pressure waits are also cancellation-aware. Cancelling a request suspended on a pressured non-terminal write terminates further body production, leaves `end()` uncalled and allows Runwire lifecycle accounting/cleanup to complete.
+- A pressured terminal `end()` remains terminal from Webrick's application-lifetime perspective; Webrick does not retain request-scoped state merely for lower transport flush.
+- Native Runwire multipart remains a bounded raw body stream in Webrick 5. Webrick does not hide a new multipart decoder, temp-file manager or upload-storage policy inside the runtime adapter.
+- Existing SAPI/Workerman/Swoole/OpenSwoole/RoadRunner adapters, zero-scope compiled routes, InterMix scope ownership and Runwire lifecycle ownership remain unchanged.
+
+Focused release-hardening coverage includes `RunwireRequestBodyReadinessTest` and `RunwireResponsePressureCancellationTest` in addition to the existing H1/H2/H3, cleanup, streaming-lifetime, Foundation and Infbyte acceptance suites.
 
 ## Earlier acceptance summary
 
@@ -175,6 +192,12 @@ The Points 16–20 completion pass likewise fixed only test/benchmark determinis
 - kept Foundation/Infbyte acceptance self-contained and corrected its scoped fixture to work with the application `ProductionContainer` contract;
 - made the Runwire benchmark PHPProbe/Pint compliant without changing the measured production implementation.
 
+The final release-hardening pass also used CI findings as fixes rather than suppressions:
+
+- removed a redundant body-EOF condition reported by PHPStan after validating Runwire's immediate `onEnd()` callback semantics;
+- preserved the existing Webrick-facing response-cancellation error boundary while continuing to use Runwire's cancellation token as the authoritative state;
+- added deferred native-body and response-pressure cancellation acceptance rather than weakening existing H2 cancellation assertions.
+
 ## Preserved invariants
 
 - Runwire remains optional for ordinary Webrick consumers.
@@ -186,8 +209,8 @@ The Points 16–20 completion pass likewise fixed only test/benchmark determinis
 - InterMix remains authoritative for logical DI scope identity and cleanup.
 - Webrick has no Pathwise coupling.
 - Foundation and Infbyte remain consumers, not Webrick dependencies.
-- Webrick does not introduce a scheduler, socket server, process supervisor, protocol stack, duplicate output queue, duplicate lifecycle engine, filesystem trust subsystem, or benchmark-only production abstraction.
+- Webrick does not introduce a scheduler, socket server, process supervisor, protocol stack, duplicate input/output queue, duplicate lifecycle engine, filesystem trust subsystem, multipart storage subsystem or benchmark-only production abstraction.
 
 ## Current status
 
-**Points 1–20 are implementation-complete.** The remaining release gate is a final exact-head Security & Standards run covering clean production install/autoload, PHP 8.4/8.5 analysis, stable/lowest QA, exact PHPForge diagnostics and both benchmark jobs. Once that exact head is green, PR #52 is ready for merge.
+**Points 1–20 and the final release-hardening audit are implementation-complete.** Release readiness is gated only by the repository's exact-head Security & Standards checks: clean production install/autoload, PHP 8.4/8.5 analysis, stable/lowest QA, exact PHPForge diagnostics and both benchmark jobs. The PR check suite is the authoritative volatile record of that final validation, so this tracker does not require another documentation-only commit after a green run.
