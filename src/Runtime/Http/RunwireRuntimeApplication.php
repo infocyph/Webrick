@@ -61,6 +61,7 @@ final readonly class RunwireRuntimeApplication implements RuntimeApplicationInte
         ResponseWriterInterface $writer,
         bool $completeResponse = false,
     ): void {
+        unset($completeResponse);
         $this->application->handle($request, $writer, false);
     }
 
