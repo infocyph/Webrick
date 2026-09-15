@@ -30,7 +30,7 @@ it('distinguishes removed and missing route cache files', function (): void {
     }
 });
 
-it('fails closed when a route cache directory is not writable', function (): void {
+it('handles route cache cleanup according to effective directory permissions', function (): void {
     $directory = sys_get_temp_dir() . '/webrick-route-cache-' . bin2hex(random_bytes(6));
     $cache = $directory . '/fused.php';
     mkdir($directory, 0775, true);
@@ -39,7 +39,13 @@ it('fails closed when a route cache directory is not writable', function (): voi
 
     try {
         if (is_writable($directory)) {
-            test()->markTestSkipped('The current user can write read-only directories.');
+            expect(RouteCache::clear([
+                'matcher' => 'fused',
+                'cache' => $cache,
+            ]))->toBeTrue()
+                ->and(is_file($cache))->toBeFalse();
+
+            return;
         }
 
         expect(fn() => RouteCache::clear([
