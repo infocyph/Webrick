@@ -164,9 +164,28 @@ Compiled production validates the supported descriptors before traffic. Dynamic 
 Persistent runtimes
 -------------------
 
-Swoole/OpenSwoole, RoadRunner and Workerman use the classes under ``Runtime\Http``. The runtime adapter is chosen once at worker bootstrap and owns native request/response handles and transport capabilities.
+Swoole/OpenSwoole, RoadRunner and Workerman can continue to use Webrick's direct classes under ``Runtime\Http``. The direct runtime adapter is chosen once at worker bootstrap and owns native request/response handles and transport capabilities.
+
+Runwire 1.x is an optional alternative host runtime. When the host selects Runwire, compose ``RunwireRuntimeApplicationFactory`` -> ``RunwireRuntimeApplication`` -> ``RuntimeServer`` -> ``RunwireRuntimeAdapter`` around the same compiled Webrick kernel. Runwire owns runtime selection/lifecycle/cancellation/deadlines/drain/metrics; Webrick owns routing, response semantics and exactly-once writer completion. See `Runwire Runtime <../deployments/runwire.rst>`__.
 
 Webrick opens an InterMix request scope only when the compiled execution plan needs one. Native request/response state remains request-local and must never be kept in singleton middleware or static current-request/current-response fields.
+
+Foundation / Infbyte Runwire handoff
+------------------------------------
+
+Foundation or Infbyte should consume the Runwire bridge as an external host integration. Webrick does not depend on Foundation, Infbyte or an application package to support this path.
+
+A Foundation integration should preserve these boundaries:
+
+1. Foundation owns the single application ``ContainerBuilder`` and contributes all application/Webrick definitions to that graph.
+2. Foundation deploys one coordinated InterMix + Webrick compiled release set.
+3. Foundation boots one ``CompiledRouterKernel`` per worker/process lifecycle.
+4. The host chooses either the direct SAPI/direct Webrick runtime path or the Runwire application factory at bootstrap; it does not switch per request.
+5. For the Runwire path, wire the application ``InterMixRuntime::resetCurrentExecutionScope()`` into Runwire's existing request-cleanup callback as a defensive carrier reset.
+6. Do not duplicate Runwire lifecycle state, cancellation/deadline tracking, response completion or stream scheduling in Foundation.
+7. Keep the zero-scope compiled route fast path intact: routes that need neither a full ``Request`` nor scoped DI should not acquire either merely because Runwire is present.
+
+Consumer-shaped Foundation and Infbyte acceptance fixtures in Webrick validate these boundaries without adding either project as a dependency.
 
 Response ownership
 ------------------
@@ -175,14 +194,15 @@ Choose exactly one owner:
 
 - synchronous standalone SAPI: Webrick ``DefaultEmitter``;
 - CLI: ``CliEmitter``;
-- persistent server: Webrick runtime adapter;
-- embedded framework: host response adapter/emitter.
+- direct persistent server: Webrick runtime adapter;
+- Runwire-hosted Webrick: ``RunwireRuntimeAdapter`` owns the Runwire writer completion;
+- embedded framework that owns emission: host response adapter/emitter.
 
-Never emit a response in Webrick and then hand the same response to a host for a second emission.
+Never emit a response in Webrick and then hand the same response to a host for a second emission. ``RunwireRuntimeApplication`` also disables Runwire lifecycle-level response completion so the Webrick adapter remains the single completion owner.
 
 Matcher cache vs production artifact
 ------------------------------------
 
 ``RouteCache::build()`` / ``webrick route:cache`` builds matcher cache only. It does not boot a kernel or DI runtime. The complete production application artifact is created by ``ReleaseCompiler`` and includes the compiled route execution plans/global middleware metadata coordinated with InterMix.
 
-See `Matcher <../reference/matcher.rst>`__, `Route Cache <../reference/route-cache.rst>`__, and `Response Emitters and Runtime Adapters <../reference/emitters.rst>`__.
+See `Matcher <../reference/matcher.rst>`__, `Route Cache <../reference/route-cache.rst>`__, `Response Emitters and Runtime Adapters <../reference/emitters.rst>`__, and `Runwire Runtime <../deployments/runwire.rst>`__.

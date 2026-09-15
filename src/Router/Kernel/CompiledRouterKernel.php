@@ -203,32 +203,46 @@ final readonly class CompiledRouterKernel
         }
     }
 
-    public function handleRuntime(RuntimeRequestContext $context): Response
+    /** @param callable(Response): void|null $responseConsumer */
+    public function handleRuntime(RuntimeRequestContext $context, ?callable $responseConsumer = null): Response
     {
         $request = null;
 
         try {
-            if ($this->preRoutingGate !== null) {
-                $response = $this->evaluatePreRoutingGate($context->routing, $this->preRoutingGate);
-                if ($response !== null) {
-                    if ($context->routing->method === HttpMethodEnum::HEAD->value) {
-                        $response = self::headResponse($response);
+            try {
+                if ($this->preRoutingGate !== null) {
+                    $response = $this->evaluatePreRoutingGate($context->routing, $this->preRoutingGate);
+                    if ($response !== null) {
+                        if ($context->routing->method === HttpMethodEnum::HEAD->value) {
+                            $response = self::headResponse($response);
+                        }
+                        $response = $this->consumeRuntimeResponse($response, $responseConsumer);
+                        $this->profiler?->mark('response_ready');
+
+                        return $response;
                     }
-                    $this->profiler?->mark('response_ready');
-
-                    return $response;
                 }
+
+                $response = $this->dispatchRoutingInput($context->routing, $request, $context, $responseConsumer);
+                if ($context->routing->method === HttpMethodEnum::HEAD->value) {
+                    $response = self::headResponse($response);
+                }
+                $this->profiler?->mark('response_ready');
+
+                return $response;
+            } catch (RuntimeResponseWriteException $failure) {
+                throw $failure;
+            } catch (Throwable $exception) {
+                $response = $this->renderException($exception, $request, $context);
+                $this->profiler?->mark('error_render');
+                if ($context->routing->method === HttpMethodEnum::HEAD->value) {
+                    $response = self::headResponse($response);
+                }
+
+                return $this->consumeRuntimeResponse($response, $responseConsumer);
             }
-
-            $response = $this->dispatchRoutingInput($context->routing, $request, $context);
-            $this->profiler?->mark('response_ready');
-
-            return $response;
-        } catch (Throwable $exception) {
-            $response = $this->renderException($exception, $request, $context);
-            $this->profiler?->mark('error_render');
-
-            return $response;
+        } catch (RuntimeResponseWriteException $failure) {
+            throw $failure->failure;
         }
     }
 
@@ -267,6 +281,21 @@ final readonly class CompiledRouterKernel
         return $response->withBody('');
     }
 
+    private function consumeRuntimeResponse(Response $response, ?callable $responseConsumer): Response
+    {
+        if ($responseConsumer === null) {
+            return $response;
+        }
+
+        try {
+            $responseConsumer($response);
+        } catch (Throwable $failure) {
+            throw new RuntimeResponseWriteException($failure);
+        }
+
+        return $response;
+    }
+
     private function controlOutcomeResponse(
         MatchOutcome $outcome,
         RoutingInput $routing,
@@ -292,6 +321,7 @@ final readonly class CompiledRouterKernel
         RoutingInput $routing,
         ?Request &$request,
         ?RuntimeRequestContext $runtimeContext = null,
+        ?callable $responseConsumer = null,
     ): Response {
         $match = $this->matchRoutingInput($routing);
         $this->profiler?->mark('match');
@@ -306,37 +336,45 @@ final readonly class CompiledRouterKernel
             $response = $this->controlOutcomeResponse($match, $routing, $request, $runtimeContext);
             $this->profiler?->mark('dispatch');
 
-            return $response;
+            return $this->consumeRuntimeResponse($response, $responseConsumer);
         }
 
         $plan = $this->artifact->planForIndex($routeIndex);
         $pipeline = $plan->kind === ExecutionKind::MIDDLEWARE_PIPELINE || $this->hasGlobalMiddleware;
         if (!$pipeline && !$plan->requiresRequest()) {
-            $response = $this->dispatchWithoutRequest($plan, $vars);
+            $response = $this->dispatchWithoutRequest($plan, $vars, $responseConsumer);
             $this->profiler?->mark('dispatch');
 
             return $response;
         }
         $request ??= $runtimeContext?->request() ?? Request::fromGlobals();
-        $response = $this->dispatchWithRequest($routeIndex, $plan, $request, $vars);
+        $response = $this->dispatchWithRequest($routeIndex, $plan, $request, $vars, $responseConsumer);
         $this->profiler?->mark('dispatch');
 
         return $response;
     }
 
     /** @param array<string,string> $vars */
-    private function dispatchWithoutRequest(ExecutionPlan $plan, array $vars): Response
-    {
+    private function dispatchWithoutRequest(
+        ExecutionPlan $plan,
+        array $vars,
+        ?callable $responseConsumer = null,
+    ): Response {
         if (!$plan->requiresScope()) {
-            return match ($plan->terminalKind) {
+            $response = match ($plan->terminalKind) {
                 ExecutionKind::DIRECT_ZERO_ARG => $this->dispatcher->dispatchDirectZeroArg($plan),
                 ExecutionKind::DIRECT_ROUTE_ARGS => $this->dispatcher->dispatchDirectRouteArgs($plan, $vars),
                 default => $this->dispatcher->dispatchWithoutRequest($plan, $vars),
             };
+
+            return $this->consumeRuntimeResponse($response, $responseConsumer);
         }
         $response = $this->runtime->withinScope(
             RuntimeRequestContext::REQUEST_SCOPE,
-            fn() => $this->dispatcher->dispatchWithoutRequest($plan, $vars),
+            fn() => $this->consumeRuntimeResponse(
+                $this->dispatcher->dispatchWithoutRequest($plan, $vars),
+                $responseConsumer,
+            ),
         );
         if (!$response instanceof Response) {
             throw new \RuntimeException('Compiled request scope must return Response.');
@@ -351,14 +389,21 @@ final readonly class CompiledRouterKernel
         ExecutionPlan $plan,
         Request $request,
         array $vars,
+        ?callable $responseConsumer = null,
     ): Response {
         $requiresScope = $plan->requiresScope() || $this->dispatcher->pipelineRequiresScope($plan);
         if (!$requiresScope) {
-            return $this->dispatcher->dispatch($routeIndex, $plan, $request, $vars);
+            return $this->consumeRuntimeResponse(
+                $this->dispatcher->dispatch($routeIndex, $plan, $request, $vars),
+                $responseConsumer,
+            );
         }
         $response = $this->runtime->withinScope(
             RuntimeRequestContext::REQUEST_SCOPE,
-            fn() => $this->dispatcher->dispatch($routeIndex, $plan, $request, $vars),
+            fn() => $this->consumeRuntimeResponse(
+                $this->dispatcher->dispatch($routeIndex, $plan, $request, $vars),
+                $responseConsumer,
+            ),
             [Request::class => $request],
         );
         if (!$response instanceof Response) {

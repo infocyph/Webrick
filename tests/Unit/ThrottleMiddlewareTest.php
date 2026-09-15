@@ -294,7 +294,52 @@ describe('ThrottleMiddleware', function () {
 
     it('reserves atomic capacity correctly across concurrent workers', function () {
         if (!function_exists('pcntl_fork') || !function_exists('pcntl_waitpid')) {
-            $this->markTestSkipped('pcntl is required for the multi-process throttle test.');
+            $counterPath = tempnam(sys_get_temp_dir(), 'webrick-throttle-counter-');
+            if (!is_string($counterPath)) {
+                throw new RuntimeException('Unable to create sequential throttle fixture.');
+            }
+
+            $limit = 10;
+            $attempts = 20;
+            $allowed = 0;
+            $rejected = 0;
+            $middleware = new ThrottleMiddleware(
+                max: $limit,
+                window: 60,
+                counterStore: new AtomicCounterAdapter(new PcntlFileAtomicCounterStore($counterPath)),
+                scope: 'concurrency-fallback',
+            );
+            $request = (new Request('GET', 'http://localhost/concurrency-fallback', ['REQUEST_TIME' => 1]))
+                ->withAttribute('client_ip', '198.51.100.10');
+            $next = static fn() => Response::json(['ok' => true]);
+
+            try {
+                for ($attempt = 0; $attempt < $attempts; $attempt++) {
+                    try {
+                        $middleware($request, $next);
+                        ++$allowed;
+                    } catch (HttpException $exception) {
+                        if ($exception->getStatusCode() !== 429) {
+                            throw $exception;
+                        }
+                        ++$rejected;
+                    }
+                }
+
+                $counterMap = json_decode((string) file_get_contents($counterPath), true, flags: JSON_THROW_ON_ERROR);
+                $counterEntry = array_values($counterMap)[0] ?? null;
+
+                expect($allowed)->toBe($limit)
+                    ->and($rejected)->toBe($attempts - $limit)
+                    ->and($counterMap)->toHaveCount(1)
+                    ->and($counterEntry['value'] ?? null)->toBe($attempts);
+            } finally {
+                if (is_file($counterPath) && !unlink($counterPath)) {
+                    throw new RuntimeException("Unable to remove sequential throttle fixture: {$counterPath}");
+                }
+            }
+
+            return;
         }
 
         $directory = sys_get_temp_dir() . '/webrick-throttle-' . bin2hex(random_bytes(6));
@@ -325,7 +370,8 @@ describe('ThrottleMiddleware', function () {
                     counterStore: new AtomicCounterAdapter(new PcntlFileAtomicCounterStore($counterPath)),
                     scope: 'concurrency',
                 );
-                $request = mockRequest('GET', '/concurrency')->withAttribute('client_ip', '198.51.100.10');
+                $request = (new Request('GET', 'http://localhost/concurrency', ['REQUEST_TIME' => 1]))
+                    ->withAttribute('client_ip', '198.51.100.10');
                 $next = static fn() => Response::json(['ok' => true]);
 
                 for ($attempt = 0; $attempt < $attemptsPerWorker; $attempt++) {

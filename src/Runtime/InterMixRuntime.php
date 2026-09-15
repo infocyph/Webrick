@@ -7,6 +7,7 @@ namespace Infocyph\Webrick\Runtime;
 use Closure;
 use Infocyph\InterMix\DI\Container;
 use Infocyph\InterMix\DI\ProductionContainer;
+use Infocyph\InterMix\DI\ScopeContext;
 
 /**
  * Boot-selected InterMix runtime. Webrick never infers or switches runtime mode
@@ -15,6 +16,11 @@ use Infocyph\InterMix\DI\ProductionContainer;
 final readonly class InterMixRuntime
 {
     public function __construct(private Container|ProductionContainer $container) {}
+
+    public function captureScopeContext(): ScopeContext
+    {
+        return $this->container->captureScopeContext();
+    }
 
     public function container(): Container|ProductionContainer
     {
@@ -44,6 +50,11 @@ final readonly class InterMixRuntime
         return $this->container instanceof ProductionContainer;
     }
 
+    public function resetCurrentExecutionScope(): void
+    {
+        $this->container->resetCurrentExecutionScope();
+    }
+
     /**
      * Resolve/invoke a compiled handler or a narrow InterMix dynamic island.
      *
@@ -61,5 +72,10 @@ final readonly class InterMixRuntime
     public function withinScope(string $scope, callable $callback, array $instances = []): mixed
     {
         return $this->container->withinScope($scope, $callback, $instances);
+    }
+
+    public function withinScopeContext(ScopeContext $scopeContext, callable $callback): mixed
+    {
+        return $this->container->withinScopeContext($scopeContext, $callback);
     }
 }

@@ -265,6 +265,16 @@ class ServerRequest extends Message
     /** @return array<array-key,mixed>|object|null */
     public function getParsedBody(): array|object|null
     {
+        if (
+            $this->parsed === null
+            && HttpUtils::baseMediaType($this->getHeaderLine('Content-Type'))
+                === MediaTypeEnum::FORM_URLENCODED->base()
+        ) {
+            parse_str($this->raw(), $form);
+            $this->parsed = self::stringMap($form);
+            $this->refreshVariableMap();
+        }
+
         return $this->parsed;
     }
 
@@ -490,9 +500,10 @@ class ServerRequest extends Message
             return;
         }
 
+        $parsed = $this->getParsedBody();
         $sources = [
             'G' => $this->query,
-            'P' => is_array($this->parsed) ? self::stringMap($this->parsed) : [],
+            'P' => is_array($parsed) ? self::stringMap($parsed) : [],
             'C' => $this->cookie,
             'S' => $this->server,
         ];
@@ -527,7 +538,7 @@ class ServerRequest extends Message
         }
 
         if (self::$methodParamOverride && $this->isFormPost()) {
-            $parsed = $this->parsed;
+            $parsed = $this->getParsedBody();
             $override = is_array($parsed) ? ($parsed['_method'] ?? null) : null;
             if (is_string($override)) {
                 $candidate = HttpMethodEnum::normalize($override);

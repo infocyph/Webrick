@@ -34,6 +34,7 @@ final class RuntimeRequestContext
         public readonly RuntimeCapabilities $capabilities,
         public readonly mixed $nativeRequest = null,
         public readonly mixed $nativeResponse = null,
+        public readonly ?RuntimeRequestExecution $execution = null,
     ) {}
 
     public function request(): Request
@@ -42,9 +43,13 @@ final class RuntimeRequestContext
             return $this->request;
         }
 
-        $request = ($this->requestFactory)();
+        $request = ($this->requestFactory)()
+            ->withAttribute(RuntimeCapabilities::ATTRIBUTE, $this->capabilities);
+        if ($this->execution !== null) {
+            $request = $request->withAttribute(RuntimeRequestExecution::ATTRIBUTE, $this->execution);
+        }
 
-        return $this->request = $request->withAttribute(RuntimeCapabilities::ATTRIBUTE, $this->capabilities);
+        return $this->request = $request;
     }
 
     public function scopeId(): string

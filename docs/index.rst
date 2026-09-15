@@ -12,7 +12,7 @@ What you get
 - Error boundary: typed HTTP exceptions, negotiated error rendering and an optional process-level ``PhpErrorBridge``.
 - Middleware: explicit pre-global/post-global stacks, aliases, tagged application middleware and compiled execution plans.
 - Responses: JSON, plaintext, redirects, streaming, ranged files/downloads and views.
-- Runtime boundaries: synchronous emitters, explicit interoperability bridges and compiled production kernels for long-lived workers.
+- Runtime boundaries: synchronous emitters, direct persistent-runtime adapters, and an optional Runwire 1.x application/runtime bridge for native/prefork or supported host drivers.
 - DI lifecycle: the application owns InterMix; Webrick receives the host ``Invoker`` in development and the host ``ProductionContainer`` in compiled production.
 - Deployment artifacts: matcher caches are independent from the strict compiled Webrick + InterMix production release artifact.
 
@@ -67,6 +67,8 @@ Production does **not** boot the registrar kernel from a matcher cache. Compile 
 
 Matcher cache remains useful as a deploy-time matcher optimization, but it is not the complete production application artifact.
 
+Runwire is optional. A host that chooses it composes the same compiled kernel through ``RunwireRuntimeApplicationFactory`` / ``RuntimeServer`` / ``RunwireRuntimeAdapter``; ordinary SAPI/shared-hosting and Webrick's direct persistent-runtime adapters remain independent. See `Runwire Runtime <./deployments/runwire.rst>`__.
+
 Signed URL example
 ------------------
 
@@ -86,12 +88,15 @@ Operational notes
 - Preserve query strings at proxy/gateway layers because signed URL verification depends on canonical query data.
 - When another framework owns response emission, adapt/return the Webrick response instead of emitting it directly.
 - Persistent workers should keep all request-local state on the ``Request``/request scope; Webrick intentionally avoids process-global current-request state.
+- When using Runwire, let Runwire own lifecycle/cancellation/deadlines and let Webrick own response semantics/writer completion exactly once.
 
 Where to start
 --------------
 
 - `Getting Started <./getting-started/index.rst>`__
 - `Framework Integration <./getting-started/framework-integration.rst>`__
+- `Runwire Runtime <./deployments/runwire.rst>`__
+- `Runwire Runtime Performance <./advanced/runwire-runtime-performance.rst>`__
 - `Routing <./guides/routing.rst>`__
 - `Middleware <./middleware/index.rst>`__
 - `Error Rendering <./guides/error-rendering.rst>`__
@@ -111,5 +116,6 @@ Where to start
    reference/index
    recipes/index
    advanced/performance
+   advanced/runwire-runtime-performance
    advanced/security
    advanced/testing
