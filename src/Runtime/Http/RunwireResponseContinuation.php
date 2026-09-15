@@ -60,12 +60,7 @@ final class RunwireResponseContinuation
                 $resume();
             });
 
-            if (
-                !$ready
-                && !$cancellation->isCancelled()
-                && $body->bufferedBytes() === 0
-                && !$body->eof()
-            ) {
+            if (!$ready && !$cancellation->isCancelled() && $body->bufferedBytes() === 0) {
                 Fiber::suspend();
             }
         } finally {
