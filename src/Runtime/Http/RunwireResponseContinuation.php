@@ -16,29 +16,12 @@ final class RunwireResponseContinuation
     /** @var WeakMap<Fiber, true>|null */
     private static ?WeakMap $managedFibers = null;
 
-    /** @param callable(): void $handler */
-    public static function run(callable $handler): void
-    {
-        $fiber = new Fiber($handler);
-        self::managedFibers()[$fiber] = true;
-
-        try {
-            $fiber->start();
-        } catch (Throwable $error) {
-            unset(self::managedFibers()[$fiber]);
-
-            throw $error;
-        }
-
-        self::releaseIfTerminated($fiber);
-    }
-
     public static function awaitDrain(ResponseWriterInterface $writer): void
     {
         $fiber = Fiber::getCurrent();
         if (!$fiber instanceof Fiber || !isset(self::managedFibers()[$fiber])) {
             throw new RuntimeException(
-                'Runwire response backpressure requires the Webrick Runwire application continuation boundary.',
+                'Runwire response requires drain continuation through the Webrick Runwire application boundary.',
             );
         }
 
@@ -64,6 +47,42 @@ final class RunwireResponseContinuation
         if (!$drained) {
             Fiber::suspend();
         }
+    }
+
+    /** @param callable(): void $handler */
+    public static function run(callable $handler): void
+    {
+        $current = Fiber::getCurrent();
+        if ($current instanceof Fiber) {
+            $managedFibers = self::managedFibers();
+            $ownsRegistration = !isset($managedFibers[$current]);
+            if ($ownsRegistration) {
+                $managedFibers[$current] = true;
+            }
+
+            try {
+                $handler();
+            } finally {
+                if ($ownsRegistration) {
+                    unset($managedFibers[$current]);
+                }
+            }
+
+            return;
+        }
+
+        $fiber = new Fiber($handler);
+        self::managedFibers()[$fiber] = true;
+
+        try {
+            $fiber->start();
+        } catch (Throwable $error) {
+            unset(self::managedFibers()[$fiber]);
+
+            throw $error;
+        }
+
+        self::releaseIfTerminated($fiber);
     }
 
     /** @return WeakMap<Fiber, true> */
