@@ -6,7 +6,6 @@ namespace Tests\Integration;
 
 use Closure;
 use Fiber;
-use Infocyph\InterMix\DI\Container;
 use Infocyph\InterMix\DI\ContainerBuilder;
 use Infocyph\InterMix\DI\ProductionContainer;
 use Infocyph\InterMix\DI\ScopeContext;
@@ -97,7 +96,7 @@ final class FoundationRunwireProbe
 
                         return $runtime->withinScopeContext(
                             $captured,
-                            static fn(Container $container): FoundationRunwireScopedMarker => $container->get(
+                            static fn(ProductionContainer $container): FoundationRunwireScopedMarker => $container->get(
                                 FoundationRunwireScopedMarker::class,
                             ),
                         );
