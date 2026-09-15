@@ -409,7 +409,7 @@ final class RunwireMultiplexedProtocolIsolationTest extends TestCase
             'protocol' => $protocol,
             'scheme' => 'https',
             'host' => $label . '.example.test',
-            'remote' => '127.0.0.' . ($label.endsWith ?? ''),
+            'remote' => self::remoteAddress($label),
             'local' => '10.0.0.1',
         ];
     }
@@ -432,11 +432,15 @@ final class RunwireMultiplexedProtocolIsolationTest extends TestCase
         ];
     }
 
+    private static function remoteAddress(string $label): string
+    {
+        return '127.0.0.' . (str_ends_with($label, '-a') ? '11' : '12');
+    }
+
     /** @return array{HttpRequest,RunwireMultiplexedBodyFixture} */
     private static function request(ProtocolVersion $version, string $label): array
     {
         $body = new RunwireMultiplexedBodyFixture('body-' . $label);
-        $octet = str_ends_with($label, '-a') ? '11' : '12';
         $request = new HttpRequest(
             method: 'POST',
             target: '/mux/' . $label . '?q=value-' . $label,
@@ -448,7 +452,7 @@ final class RunwireMultiplexedProtocolIsolationTest extends TestCase
                 'X-Repeat' => [$label . '-a', $label . '-b'],
             ]),
             body: $body,
-            peerAddress: '127.0.0.' . $octet . ':51000',
+            peerAddress: self::remoteAddress($label) . ':51000',
             localAddress: '10.0.0.1:8443',
             encrypted: true,
         );
