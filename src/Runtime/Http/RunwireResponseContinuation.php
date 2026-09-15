@@ -78,7 +78,6 @@ final class RunwireResponseContinuation
 
     public static function awaitDrain(ResponseWriterInterface $writer, CancellationToken $cancellation): void
     {
-        $cancellation->throwIfCancelled();
         $fiber = self::managedFiber(
             'Runwire response requires drain continuation through the Webrick Runwire application boundary.',
         );
@@ -115,8 +114,6 @@ final class RunwireResponseContinuation
         } finally {
             $subscription->unsubscribe();
         }
-
-        $cancellation->throwIfCancelled();
     }
 
     /** @param callable(): void $handler */
