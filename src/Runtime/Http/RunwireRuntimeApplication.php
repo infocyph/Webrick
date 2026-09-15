@@ -36,13 +36,7 @@ final readonly class RunwireRuntimeApplication implements RuntimeApplicationInte
         ?AdmissionPolicy $admission = null,
     ) {
         $this->application = new RuntimeApplication(
-            static function (HttpRequest $request, ResponseWriterInterface $writer) use ($handler): void {
-                RunwireResponseContinuation::run(
-                    static function () use ($handler, $request, $writer): void {
-                        $handler($request, $writer);
-                    },
-                );
-            },
+            $handler,
             $requestCleanup,
             $shutdown,
             $runtimeContext,
@@ -68,7 +62,11 @@ final readonly class RunwireRuntimeApplication implements RuntimeApplicationInte
         bool $completeResponse = false,
     ): void {
         unset($completeResponse);
-        $this->application->handle($request, $writer, false);
+        RunwireResponseContinuation::run(
+            function () use ($request, $writer): void {
+                $this->application->handle($request, $writer, false);
+            },
+        );
     }
 
     public function shutdown(?ShutdownReason $reason = null): void
