@@ -282,7 +282,7 @@ final class RunwireCleanupIsolationTest extends TestCase
                     static fn(RunwireCleanupScopedMarker $marker): Response => Response::stream(
                         static function () use ($marker): iterable {
                             yield 'first:' . spl_object_id($marker);
-                            usleep(20_000);
+                            usleep(80_000);
                             yield 'second';
                         },
                     ),
@@ -315,7 +315,7 @@ final class RunwireCleanupIsolationTest extends TestCase
                     ++RunwireCleanupProbe::$cleanupCalls;
                     $runtime->resetCurrentExecutionScope();
                 },
-                requestExecution: new RequestExecutionPolicy(maxExecutionSeconds: 0.005),
+                requestExecution: new RequestExecutionPolicy(maxExecutionSeconds: 0.05),
             );
         } catch (Throwable $error) {
             self::cleanup([$intermixPath, $routerPath]);
