@@ -1,6 +1,8 @@
 # Webrick 5 — Runwire Runtime Adapter Progress Tracker
 
-Canonical plan: `docs/plans/webrick-5-runwire-native-runtime-adapter-plan.md`
+Canonical design plan: `docs/plans/webrick-5-runwire-native-runtime-adapter-plan.md`
+
+Implementation/release authority for this branch: **this tracker**. It records corrections made after validating the released Runwire 1.0 / InterMix 10.1.1 contracts and supersedes stale design-time wording in the large canonical plan where explicitly noted below.
 
 Branch: `webrick-5/runwire-runtime-adapter`
 
@@ -14,6 +16,8 @@ Released integration baselines:
 
 > **Point 15 correction:** the canonical plan's Pathwise-composition wording is invalid for Webrick. Webrick has no Pathwise integration contract or dependency. Point 15 is closed by removing that erroneous coupling; Webrick retains only its own HTTP file/range response semantics.
 
+> **Version correction:** design-time references to InterMix `10.1` / `^10.1` in the canonical plan are implemented and released here as InterMix **10.1.1 / `^10.1.1`**.
+
 ## Implementation tracker
 
 - [x] **1. InterMix baseline** — raised the production dependency to `^10.1.1`.
@@ -26,16 +30,16 @@ Released integration baselines:
 - [x] **8. HTTP/1.1 parity** — full compiled-kernel acceptance proves request/response normalization, routing controls, application errors, streaming and exactly-once completion through the Runwire application bridge.
 - [x] **9. HTTP/2 isolation** — full application acceptance proves normalization, concurrent/interleaved request isolation and per-request cancellation without Webrick-owned stream state.
 - [x] **10. HTTP/3 isolation** — full application acceptance proves HTTP/3 request/stream isolation at the Runwire application boundary and treats native QUIC availability as an optional runtime capability rather than a skipped test.
-- [x] **11. Bounded streaming/backpressure** — request bodies remain incrementally readable and `RunwireResponseContinuation` now suspends Webrick response production on writer pressure until Runwire's `onDrain()` resumes it; no duplicate output queue is introduced.
-- [x] **12. Application body-production lifetime** — runtime response writing now occurs through the compiled-kernel response consumer while the owning request scope is still active, so lazy/streamed bodies retain request-scoped services only until production finishes.
+- [x] **11. Bounded streaming/backpressure** — request bodies remain incrementally readable and `RunwireResponseContinuation` suspends Webrick response production on writer pressure until Runwire's `onDrain()` resumes it; no duplicate output queue is introduced.
+- [x] **12. Application body-production lifetime** — runtime response writing occurs through the compiled-kernel response consumer while the owning request scope is still active, so lazy/streamed bodies retain request-scoped services only until production finishes.
 - [x] **13. Structured child propagation** — explicit InterMix `ScopeContext` propagation is proven through Runwire structured task locals while unpropagated child work remains isolated and zero-scope routes retain their no-scope path.
 - [x] **14. Exactly-once cleanup** — success, application error, transport cancellation and deadline expiry all prove one request-scope leave, one Runwire cleanup/reset callback, completed Runwire request context, zero active-request residue and a clean subsequent request.
 - [x] **15. Invalid Pathwise coupling removed** — no Pathwise dependency, responder, test or runtime contract remains in Webrick. Filesystem trust is outside this integration; Webrick continues to own only its existing HTTP file/range response semantics.
-- [ ] **16. Deployment acceptance** — cover Runwire portable/prefork and host drivers while preserving generic SAPI/shared-hosting behavior.
-- [ ] **17. Foundation bridge fixture** — validate the Framework integration contract.
-- [ ] **18. Infbyte end-to-end acceptance** — validate request-scoped and persistent-runtime behavior in the application.
-- [ ] **19. Performance validation** — measure adapter/scope/streaming overhead and tune only demonstrated regressions.
-- [ ] **20. Release documentation and handoff** — finalize Webrick 5 documentation and Foundation integration guidance.
+- [x] **16. Deployment acceptance** — Runwire native portable/prefork plus FPM, FrankenPHP, RoadRunner and Swoole host-driver contracts are covered while generic SAPI/shared-hosting and direct Webrick adapters remain independent.
+- [x] **17. Foundation bridge fixture** — a Foundation-shaped consumer fixture validates the compiled-kernel/Runwire application-factory handoff without adding Foundation as a Webrick dependency.
+- [x] **18. Infbyte end-to-end acceptance** — an Infbyte-shaped persistent application fixture validates repeated request-scoped behavior and no cross-request scope leakage without adding Infbyte as a Webrick dependency.
+- [x] **19. Performance validation** — `RunwireRuntimeBench` measures adapter normalization, lazy Request promotion, request-scope round trip and fixed/streamed response writing on PHP 8.4/8.5; no production tuning was added because the measurements exposed no regression that justified additional complexity.
+- [x] **20. Release documentation and handoff** — README, framework-integration, deployment and dedicated Runwire performance guidance document ownership boundaries, optional runtime selection, Foundation/application handoff and the Webrick 5 release contract.
 
 ## Points 11–12 acceptance
 
@@ -80,7 +84,54 @@ Correction applied:
 - Webrick's existing `Response::rangedFile()` / `Response::rangedDownload()` and runtime writer behavior remain the Webrick-owned HTTP file semantics;
 - filesystem/public-root trust policy belongs to the consuming application/framework/host layer that selects an already-authorized file path, not to a new Webrick↔Pathwise integration contract.
 
-This tracker correction supersedes the stale Pathwise-specific wording in Point 15 of the large canonical plan for this branch. The canonical plan can be mechanically cleaned during the final documentation pass without reintroducing any code/dependency coupling.
+This tracker correction is authoritative for this release branch and supersedes the stale Pathwise-specific wording in Point 15 of the large canonical design plan.
+
+## Points 16–18 acceptance
+
+- `RunwireDeploymentAcceptanceTest` validates Runwire native portable and native prefork application creation as well as FPM, FrankenPHP, RoadRunner and Swoole host-driver application factories against the same Webrick runtime bridge.
+- Direct `SapiRuntimeAdapter` behavior remains independently covered; existing Workerman/Swoole/OpenSwoole/RoadRunner adapters are not proxied through Runwire.
+- `FoundationRunwireBridgeTest` validates a consumer-shaped Foundation bridge around the application-owned InterMix production container, compiled Webrick kernel and Runwire application factory without importing Foundation into Webrick.
+- `InfbyteEndToEndAcceptanceTest` validates Infbyte-shaped `/api/health` and `/json` application traffic over one persistent Runwire application and proves request-scoped state is fresh across successive requests.
+- No Foundation, Infbyte, Pathwise or other package was added to `composer.json` for these acceptance points.
+- Exact head `d8e99c636f3125097ee5ea9b88fd78a9dabf2def` passed **Security & Standards #906** completely, including clean production `--no-dev` install/autoload, PHP 8.4/8.5 analysis, stable/lowest QA, detail diagnostics and both benchmark jobs.
+
+## Point 19 performance validation
+
+A dedicated `benchmarks/RunwireRuntimeBench.php` fixture now runs through the repository's existing PHPBench/PHPForge benchmark path. No benchmark library or other dependency was added.
+
+PHPForge invoked PHPBench with `--revs=10 --iterations=3 --warmup=1`. The measured `mode` values were:
+
+| Operation | PHP 8.4.25 | PHP 8.5.10 |
+| --- | ---: | ---: |
+| Runwire context normalization | 9.18 µs | 14.38 µs |
+| Fixed response write | 10.76 µs | 17.06 µs |
+| Full Webrick `Request` promotion | 26.30 µs | 44.25 µs |
+| InterMix request-scope round trip | 0.80 µs | 1.00 µs |
+| Three-chunk streaming response write | 12.52 µs | 19.48 µs |
+
+Interpretation:
+
+- full `Request` promotion remains intentionally more expensive than lightweight runtime normalization and therefore must remain lazy;
+- request-scope enter/leave did not expose a meaningful cost requiring a second scope mechanism;
+- fixed/streamed adapter writes remained bounded and did not justify a second output queue or special response pipeline;
+- the wider benchmark suite also runs slower on PHP 8.5 than PHP 8.4 in several existing subjects, so cross-version differences are not evidence of a Runwire-specific regression;
+- no production runtime code was changed solely to chase these microbenchmark results.
+
+The current workflow uploads raw PHP 8.4/8.5 benchmark artifacts. Webrick does not currently configure a checked-in PHPForge benchmark result/baseline pair, so automatic regression comparison is not claimed. Representative end-to-end runtime throughput/latency remains the deployment authority.
+
+Detailed methodology and interpretation: `docs/advanced/runwire-runtime-performance.rst`.
+
+## Point 20 release handoff
+
+Release-facing documentation now records the actual Webrick 5 contract:
+
+- `README.md` names InterMix `^10.1.1`, keeps Runwire optional, preserves direct Webrick adapters and explains response/runtime ownership;
+- `docs/deployments/runwire.rst` documents the Runwire application-factory/bootstrap handoff, lifecycle ownership, cleanup slot, streaming/backpressure behavior, supported deployment modes and release checklist;
+- `docs/getting-started/framework-integration.rst` documents Foundation/Infbyte as external consumers rather than dependencies and defines the one-container/one-kernel/one-emitter ownership boundary;
+- `docs/index.rst` surfaces both the Runwire deployment guide and Runwire performance validation;
+- `docs/advanced/runwire-runtime-performance.rst` records the release measurements and the decision not to add unproven production complexity.
+
+The large canonical design plan is retained as the original planning record. This tracker is the authoritative implementation/release record where released-version facts or corrected architecture differ from that historical wording.
 
 ## Earlier acceptance summary
 
@@ -112,24 +163,17 @@ This tracker correction supersedes the stale Pathwise-specific wording in Point 
 
 ## QA resolution
 
-The Points 11–15 completion pass also resolved all defects exposed by the current PR quality matrix rather than suppressing checks:
+The Points 11–15 completion pass resolved defects exposed by the PR quality matrix rather than suppressing checks:
 
 - corrected `RunwireResponseContinuation` WeakMap static-analysis typing while retaining runtime Fiber-only registration;
 - corrected the scoped streaming fixture so its `Request`-seed assertion is backed by explicit `Request` injection rather than assuming a requestless route creates one;
 - removed the unintended Pathwise code/dependency/test after re-validating the actual Webrick architecture.
 
-Corrected implementation head `b5dbc6a862fece9219e57069b0c0a7fe50c343d3` passed **Security & Standards #898** completely:
+The Points 16–20 completion pass likewise fixed only test/benchmark determinism and fixture-quality defects exposed by CI:
 
-- clean production `--no-dev` install/autoload: passed;
-- PHP 8.4 analysis: passed;
-- PHP 8.5 analysis: passed;
-- PHP 8.4 prefer-lowest QA: passed;
-- PHP 8.4 prefer-stable QA: passed;
-- PHP 8.5 prefer-lowest QA: passed;
-- PHP 8.5 prefer-stable QA: passed;
-- exact PHPForge detail diagnostics: passed;
-- PHP 8.4 benchmark job: passed;
-- PHP 8.5 benchmark job: passed.
+- pinned the concurrent throttle fixture to one deliberate request-time window instead of allowing a wall-clock boundary to change the valid rate-limit key mid-test;
+- kept Foundation/Infbyte acceptance self-contained and corrected its scoped fixture to work with the application `ProductionContainer` contract;
+- made the Runwire benchmark PHPProbe/Pint compliant without changing the measured production implementation.
 
 ## Preserved invariants
 
@@ -141,8 +185,9 @@ Corrected implementation head `b5dbc6a862fece9219e57069b0c0a7fe50c343d3` passed 
 - Runwire remains authoritative for HTTP/2/HTTP/3 stream scheduling and QUIC transport capability; Webrick carries no duplicate protocol stream registry.
 - InterMix remains authoritative for logical DI scope identity and cleanup.
 - Webrick has no Pathwise coupling.
-- Webrick does not introduce a scheduler, socket server, process supervisor, protocol stack, duplicate output queue, duplicate lifecycle engine, or filesystem trust subsystem.
+- Foundation and Infbyte remain consumers, not Webrick dependencies.
+- Webrick does not introduce a scheduler, socket server, process supervisor, protocol stack, duplicate output queue, duplicate lifecycle engine, filesystem trust subsystem, or benchmark-only production abstraction.
 
-## Current next item
+## Current status
 
-**Point 16 — Runwire native portable/prefork and host-driver deployment acceptance while preserving generic SAPI/shared-hosting behavior.**
+**Points 1–20 are implementation-complete.** The remaining release gate is a final exact-head Security & Standards run covering clean production install/autoload, PHP 8.4/8.5 analysis, stable/lowest QA, exact PHPForge diagnostics and both benchmark jobs. Once that exact head is green, PR #52 is ready for merge.
