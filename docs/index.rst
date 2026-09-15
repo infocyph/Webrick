@@ -96,6 +96,7 @@ Where to start
 - `Getting Started <./getting-started/index.rst>`__
 - `Framework Integration <./getting-started/framework-integration.rst>`__
 - `Runwire Runtime <./deployments/runwire.rst>`__
+- `Runwire Runtime Performance <./advanced/runwire-runtime-performance.rst>`__
 - `Routing <./guides/routing.rst>`__
 - `Middleware <./middleware/index.rst>`__
 - `Error Rendering <./guides/error-rendering.rst>`__
@@ -115,5 +116,6 @@ Where to start
    reference/index
    recipes/index
    advanced/performance
+   advanced/runwire-runtime-performance
    advanced/security
    advanced/testing
