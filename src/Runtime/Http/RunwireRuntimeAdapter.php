@@ -66,7 +66,6 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
                 self::serverParams($nativeRequest, true),
                 self::headerArray($nativeRequest->headers),
                 new RunwireRequestBodyStream($nativeRequest->body),
-                query: null,
                 cookies: self::cookies($nativeRequest->headers),
             ),
             $this->runtimeCapabilities,
@@ -112,7 +111,10 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
         self::finish($writer);
     }
 
-    /** @return array<string,mixed> */
+    /**
+     * @param array<string,mixed> $server
+     * @return array<string,mixed>
+     */
     private static function appendHeaderServerParams(array $server, Headers $headers): array
     {
         $values = [];
@@ -220,7 +222,7 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
         if ($endpoint[0] === '[' && preg_match('/^\[(?<host>[^\]]+)\](?::(?<port>\d{1,5}))?$/D', $endpoint, $matches) === 1) {
             return [
                 $matches['host'],
-                isset($matches['port']) && $matches['port'] !== '' ? (int) $matches['port'] : null,
+                isset($matches['port'][0]) ? (int) $matches['port'] : null,
             ];
         }
         if (filter_var($endpoint, FILTER_VALIDATE_IP) !== false) {
