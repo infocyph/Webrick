@@ -7,11 +7,8 @@ use Infocyph\Webrick\Middleware\VaryAccumulatorMiddleware;
 use Infocyph\Webrick\Response\Response;
 
 describe('CompressionMiddleware', function () {
-    it('compresses response when accepted', function () {
-        if (! function_exists('gzencode')) {
-            $this->markTestSkipped('gzip extension not available');
-        }
-
+    it('compresses response when accepted or falls back cleanly when gzip is unavailable', function () {
+        $gzipAvailable = function_exists('gzencode');
         $middleware = new CompressionMiddleware(
             minBytes: 100,
             prefOrder: ['gzip']
@@ -29,9 +26,16 @@ describe('CompressionMiddleware', function () {
         $varyMw = new VaryAccumulatorMiddleware;
         $response = $varyMw($request, fn ($r) => $middleware($r, $next));
 
-        expect($response)
-            ->toHaveHeader('Content-Encoding', 'gzip')
-            ->toHaveHeader('Vary', 'Accept-Encoding');
+        expect($response)->toHaveHeader('Vary', 'Accept-Encoding');
+
+        if (!$gzipAvailable) {
+            expect($response->hasHeader('Content-Encoding'))->toBeFalse()
+                ->and((string) $response->getBody())->toBe($body);
+
+            return;
+        }
+
+        expect($response)->toHaveHeader('Content-Encoding', 'gzip');
 
         $compressed = (string) $response->getBody();
         expect(strlen($compressed))->toBeLessThan(strlen($body));
@@ -91,10 +95,7 @@ describe('CompressionMiddleware', function () {
     });
 
     it('handles ETag with weak-on-encode strategy', function () {
-        if (! function_exists('gzencode')) {
-            $this->markTestSkipped('gzip extension not available');
-        }
-
+        $gzipAvailable = function_exists('gzencode');
         $middleware = new CompressionMiddleware(
             etagMode: CompressionMiddleware::ETAG_WEAK_ON_ENCODE
         );
@@ -112,8 +113,13 @@ describe('CompressionMiddleware', function () {
         $varyMw = new VaryAccumulatorMiddleware;
         $response = $varyMw($request, fn ($r) => $middleware($r, $next));
 
-        $etag = $response->getHeaderLine('ETag');
-        // ETag behavior depends on mode
-        expect($etag)->toBeString();
+        if (!$gzipAvailable) {
+            expect($response->hasHeader('Content-Encoding'))->toBeFalse()
+                ->and($response->getHeaderLine('ETag'))->toBe('"abc123"');
+
+            return;
+        }
+
+        expect($response->getHeaderLine('ETag'))->toBeString();
     });
 });
