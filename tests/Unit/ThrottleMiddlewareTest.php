@@ -309,7 +309,8 @@ describe('ThrottleMiddleware', function () {
                 counterStore: new AtomicCounterAdapter(new PcntlFileAtomicCounterStore($counterPath)),
                 scope: 'concurrency-fallback',
             );
-            $request = mockRequest('GET', '/concurrency-fallback')->withAttribute('client_ip', '198.51.100.10');
+            $request = (new Request('GET', 'http://localhost/concurrency-fallback', ['REQUEST_TIME' => 1]))
+                ->withAttribute('client_ip', '198.51.100.10');
             $next = static fn() => Response::json(['ok' => true]);
 
             try {
@@ -369,7 +370,8 @@ describe('ThrottleMiddleware', function () {
                     counterStore: new AtomicCounterAdapter(new PcntlFileAtomicCounterStore($counterPath)),
                     scope: 'concurrency',
                 );
-                $request = mockRequest('GET', '/concurrency')->withAttribute('client_ip', '198.51.100.10');
+                $request = (new Request('GET', 'http://localhost/concurrency', ['REQUEST_TIME' => 1]))
+                    ->withAttribute('client_ip', '198.51.100.10');
                 $next = static fn() => Response::json(['ok' => true]);
 
                 for ($attempt = 0; $attempt < $attemptsPerWorker; $attempt++) {
