@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Benchmarks;
 
-use Closure;
 use Infocyph\InterMix\DI\Container;
 use Infocyph\Runwire\Http\Enum\ProtocolVersion;
 use Infocyph\Runwire\Http\Headers;
@@ -19,94 +18,6 @@ use Infocyph\Webrick\Runtime\Http\RuntimeRequestContext;
 use Infocyph\Webrick\Runtime\InterMixRuntime;
 use PhpBench\Attributes as Bench;
 use RuntimeException;
-
-final class RunwireBenchmarkBody implements RequestBodyInterface
-{
-    public function bufferedBytes(): int
-    {
-        return 0;
-    }
-
-    public function eof(): bool
-    {
-        return true;
-    }
-
-    public function onData(callable $callback): RequestBodyInterface
-    {
-        unset($callback);
-
-        return $this;
-    }
-
-    public function onEnd(callable $callback): RequestBodyInterface
-    {
-        Closure::fromCallable($callback)($this);
-
-        return $this;
-    }
-
-    public function read(int $maxBytes = PHP_INT_MAX): string
-    {
-        unset($maxBytes);
-
-        return '';
-    }
-
-    public function receivedBytes(): int
-    {
-        return 0;
-    }
-
-    public function trailers(): ?Headers
-    {
-        return new Headers();
-    }
-}
-
-final class RunwireBenchmarkWriter implements ResponseWriterInterface
-{
-    private bool $ended = false;
-
-    private bool $started = false;
-
-    public function end(string $finalChunk = ''): WriteResult
-    {
-        $this->ended = true;
-
-        return new WriteResult(WriteState::ACCEPTED, strlen($finalChunk));
-    }
-
-    public function isEnded(): bool
-    {
-        return $this->ended;
-    }
-
-    public function isStarted(): bool
-    {
-        return $this->started;
-    }
-
-    public function onDrain(callable $callback): ResponseWriterInterface
-    {
-        unset($callback);
-
-        return $this;
-    }
-
-    public function start(int $status = 200, ?Headers $headers = null): WriteResult
-    {
-        unset($status, $headers);
-        $this->started = true;
-
-        return new WriteResult(WriteState::ACCEPTED, 0);
-    }
-
-    public function write(string $chunk): WriteResult
-    {
-        return new WriteResult(WriteState::ACCEPTED, strlen($chunk));
-    }
-}
 
 #[Bench\Groups(['runtime', 'runwire', 'intermix'])]
 #[Bench\Iterations(5)]
@@ -137,7 +48,7 @@ final class RunwireRuntimeBench
                 'Cookie' => 'sid=abc; theme=dark',
                 'X-Repeat' => ['a', 'b'],
             ]),
-            body: new RunwireBenchmarkBody(),
+            body: self::body(),
             peerAddress: '127.0.0.1:51000',
             localAddress: '10.0.0.1:8080',
             encrypted: true,
@@ -146,8 +57,7 @@ final class RunwireRuntimeBench
         $this->streamingResponse = Response::stream(static fn(): iterable => ['a', 'b', 'c']);
         $this->interMixRuntime = new InterMixRuntime(new Container('webrick.benchmark.runwire'));
 
-        $writer = new RunwireBenchmarkWriter();
-        $context = $this->adapter->context($this->request, $writer, true);
+        $context = $this->adapter->context($this->request, self::writer(), true);
         if ($context->routing->method !== 'POST' || $context->request()->getUri()->getHost() !== 'example.test') {
             throw new RuntimeException('Runwire runtime benchmark fixture failed request normalization.');
         }
@@ -156,13 +66,21 @@ final class RunwireRuntimeBench
     #[Bench\BeforeMethods('setUp')]
     public function benchContextNormalization(): void
     {
-        $this->adapter->context($this->request, new RunwireBenchmarkWriter(), true);
+        $this->adapter->context($this->request, self::writer(), true);
+    }
+
+    #[Bench\BeforeMethods('setUp')]
+    public function benchFixedResponseWrite(): void
+    {
+        $writer = self::writer();
+        $context = $this->adapter->context($this->request, $writer);
+        $this->adapter->write($this->fixedResponse, $context);
     }
 
     #[Bench\BeforeMethods('setUp')]
     public function benchRequestPromotion(): void
     {
-        $this->adapter->context($this->request, new RunwireBenchmarkWriter(), true)->request();
+        $this->adapter->context($this->request, self::writer(), true)->request();
     }
 
     #[Bench\BeforeMethods('setUp')]
@@ -175,18 +93,102 @@ final class RunwireRuntimeBench
     }
 
     #[Bench\BeforeMethods('setUp')]
-    public function benchFixedResponseWrite(): void
-    {
-        $writer = new RunwireBenchmarkWriter();
-        $context = $this->adapter->context($this->request, $writer);
-        $this->adapter->write($this->fixedResponse, $context);
-    }
-
-    #[Bench\BeforeMethods('setUp')]
     public function benchStreamingResponseWrite(): void
     {
-        $writer = new RunwireBenchmarkWriter();
+        $writer = self::writer();
         $context = $this->adapter->context($this->request, $writer);
         $this->adapter->write($this->streamingResponse, $context);
+    }
+
+    private static function body(): RequestBodyInterface
+    {
+        return new class implements RequestBodyInterface {
+            public function bufferedBytes(): int
+            {
+                return 0;
+            }
+
+            public function eof(): bool
+            {
+                return true;
+            }
+
+            public function onData(callable $callback): RequestBodyInterface
+            {
+                unset($callback);
+
+                return $this;
+            }
+
+            public function onEnd(callable $callback): RequestBodyInterface
+            {
+                $callback($this);
+
+                return $this;
+            }
+
+            public function read(int $maxBytes = PHP_INT_MAX): string
+            {
+                unset($maxBytes);
+
+                return '';
+            }
+
+            public function receivedBytes(): int
+            {
+                return 0;
+            }
+
+            public function trailers(): ?Headers
+            {
+                return new Headers();
+            }
+        };
+    }
+
+    private static function writer(): ResponseWriterInterface
+    {
+        return new class implements ResponseWriterInterface {
+            private bool $ended = false;
+
+            private bool $started = false;
+
+            public function end(string $finalChunk = ''): WriteResult
+            {
+                $this->ended = true;
+
+                return new WriteResult(WriteState::ACCEPTED, strlen($finalChunk));
+            }
+
+            public function isEnded(): bool
+            {
+                return $this->ended;
+            }
+
+            public function isStarted(): bool
+            {
+                return $this->started;
+            }
+
+            public function onDrain(callable $callback): ResponseWriterInterface
+            {
+                unset($callback);
+
+                return $this;
+            }
+
+            public function start(int $status = 200, ?Headers $headers = null): WriteResult
+            {
+                unset($status, $headers);
+                $this->started = true;
+
+                return new WriteResult(WriteState::ACCEPTED, 0);
+            }
+
+            public function write(string $chunk): WriteResult
+            {
+                return new WriteResult(WriteState::ACCEPTED, strlen($chunk));
+            }
+        };
     }
 }
