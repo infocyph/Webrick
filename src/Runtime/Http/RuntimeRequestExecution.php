@@ -19,9 +19,9 @@ final readonly class RuntimeRequestExecution
 {
     public const string ATTRIBUTE = 'webrick.runtime_execution';
 
-    private ?Closure $cancelled;
-
     private ?Closure $cancellationReason;
+
+    private ?Closure $cancelled;
 
     /**
      * @param null|callable():bool $cancelled
