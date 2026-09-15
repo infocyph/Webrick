@@ -62,7 +62,16 @@ final class RunwireApplicationWriterFixture implements ResponseWriterInterface
 
     public bool $ended = false;
 
+    public Headers $headers;
+
     public bool $started = false;
+
+    public int $status = 0;
+
+    public function __construct()
+    {
+        $this->headers = new Headers();
+    }
 
     public function end(string $finalChunk = ''): WriteResult
     {
@@ -89,7 +98,9 @@ final class RunwireApplicationWriterFixture implements ResponseWriterInterface
 
     public function start(int $status = 200, ?Headers $headers = null): WriteResult
     {
+        $this->headers = $headers ?? new Headers();
         $this->started = true;
+        $this->status = $status;
 
         return new WriteResult(WriteState::ACCEPTED, 0);
     }
@@ -114,6 +125,7 @@ function runwire_application_request(): HttpRequest
 test('runwire application bridge suppresses lifecycle response completion', function (): void {
     $application = new RunwireRuntimeApplication(
         function (HttpRequest $request, ResponseWriterInterface $writer): void {
+            expect($request->method)->toBe('GET');
             $writer->start();
         },
         RuntimeContext::standalone(),
@@ -132,6 +144,7 @@ test('runwire application bridge suppresses lifecycle response completion', func
 test('runwire application bridge leaves exactly once completion with the Webrick handler', function (): void {
     $application = new RunwireRuntimeApplication(
         function (HttpRequest $request, ResponseWriterInterface $writer): void {
+            expect($request->method)->toBe('GET');
             $writer->start();
             $writer->end('ok');
         },
@@ -171,6 +184,7 @@ test('runwire application factory delegates lifecycle hooks cleanup and shutdown
     );
     $factory = new RunwireRuntimeApplicationFactory(
         handler: function (HttpRequest $request, ResponseWriterInterface $writer) use (&$events): void {
+            expect($request->method)->toBe('GET');
             $events[] = 'handler';
             $writer->start();
             $writer->end();
