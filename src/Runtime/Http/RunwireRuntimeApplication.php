@@ -16,7 +16,7 @@ use Infocyph\Runwire\Runtime\RuntimeApplicationInterface;
 use Infocyph\Runwire\RuntimeContext;
 use Infocyph\Runwire\Supervisor\Enum\ShutdownReason;
 
-/** Delegates Webrick request handling to Runwire's released application lifecycle. */
+/** Delegates lifecycle ownership to Runwire while Webrick owns response body production. */
 final readonly class RunwireRuntimeApplication implements RuntimeApplicationInterface
 {
     private RuntimeApplication $application;
@@ -36,7 +36,13 @@ final readonly class RunwireRuntimeApplication implements RuntimeApplicationInte
         ?AdmissionPolicy $admission = null,
     ) {
         $this->application = new RuntimeApplication(
-            $handler,
+            static function (HttpRequest $request, ResponseWriterInterface $writer) use ($handler): void {
+                RunwireResponseContinuation::run(
+                    static function () use ($handler, $request, $writer): void {
+                        $handler($request, $writer);
+                    },
+                );
+            },
             $requestCleanup,
             $shutdown,
             $runtimeContext,
