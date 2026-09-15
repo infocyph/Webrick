@@ -133,6 +133,13 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
         return $server;
     }
 
+    private static function assertAccepted(WriteResult $result, string $operation): void
+    {
+        if (!$result->accepted()) {
+            throw new RuntimeException("Runwire response {$operation} was rejected: {$result->state->value}.");
+        }
+    }
+
     /** @return array<string,mixed> */
     private static function baseServerParams(HttpRequest $request): array
     {
@@ -301,13 +308,6 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
         }
 
         return isset($parts['port']) ? $host . ':' . $parts['port'] : $host;
-    }
-
-    private static function assertAccepted(WriteResult $result, string $operation): void
-    {
-        if (!$result->accepted()) {
-            throw new RuntimeException("Runwire response {$operation} was rejected: {$result->state->value}.");
-        }
     }
 
     private static function writeAndAwaitDrain(
