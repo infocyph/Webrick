@@ -22,8 +22,8 @@ Released integration baselines:
 - [x] **6. Runwire runtime adapter** — `RunwireRuntimeAdapter` now maps released Runwire `HttpRequest` / `ResponseWriterInterface` contracts onto Webrick's existing runtime seam, keeps full request/body materialization lazy, preserves header multiplicity and request metadata, observes native cancellation live, owns response completion exactly once, and detects writer pressure without introducing a second output queue.
 - [x] **7. Runwire application bridge** — `RunwireRuntimeApplication` and `RunwireRuntimeApplicationFactory` compose Webrick request handling with Runwire's released `RuntimeApplicationInterface` / `RuntimeApplicationFactoryInterface` contracts while delegating lifecycle state, admission, cancellation, metrics, resetters and shutdown ordering to Runwire.
 - [x] **8. HTTP/1.1 parity** — full compiled-kernel acceptance proves request/response normalization, routing controls, application errors, streaming and exactly-once completion through the Runwire application bridge.
-- [ ] **9. HTTP/2 isolation** — prove normalization, interleaved request isolation and cancellation.
-- [ ] **10. HTTP/3 isolation** — prove normalization/stream isolation where QUIC is available and keep QUIC absence non-fatal.
+- [x] **9. HTTP/2 isolation** — full application acceptance proves normalization, concurrent/interleaved request isolation and per-request cancellation without Webrick-owned stream state.
+- [x] **10. HTTP/3 isolation** — full application acceptance proves HTTP/3 request/stream isolation at the Runwire application boundary and treats native QUIC availability as an optional runtime capability rather than a skipped test.
 - [ ] **11. Bounded streaming/backpressure** — preserve incremental request bodies and replace Point 6's explicit pressure stop with proper writer-drain continuation without unbounded buffering.
 - [ ] **12. Application body-production lifetime** — keep request scope alive only while lazy/streaming application production still needs it.
 - [ ] **13. Structured child propagation** — integrate explicit InterMix `ScopeContext` propagation with Runwire structured work while retaining zero-scope routes.
@@ -71,6 +71,20 @@ Released integration baselines:
 - The first Point 8 CI pass already executed the full Pest acceptance successfully; it exposed only unused-parameter PHPCS warnings in the deterministic error fixture. The fixture was strengthened to assert the request path and throwable message rather than suppressing the warnings.
 - Point 8 implementation code passed Security & Standards workflow **#866** across clean production install, PHP 8.4/8.5 analysis, all stable/lowest QA matrices, exact PHPForge diagnostics and both benchmark jobs before this tracker update.
 
+## Points 9–10 acceptance
+
+- `RunwireMultiplexedProtocolIsolationTest` exercises the same composed application path for both `ProtocolVersion::HTTP_2` and `ProtocolVersion::HTTP_3`; Webrick does not duplicate Runwire's wire-protocol parser, scheduler or stream registry.
+- Each protocol test holds two real application requests active at the same time in independent PHP Fibers. Distinct path parameters, query values, request bodies, cookies, duplicate headers, hosts and peer addresses remain bound to the originating request before and after interleaved suspension/resumption.
+- The HTTP/2 acceptance cancels only one request's released Runwire `RequestContext` with `TRANSPORT_CANCELLED`. The adjacent request remains uncancelled and completes normally; the cancelled response stops after its already-written first chunk, does not call `end()`, and Runwire lifecycle cleanup still returns the active-request count to zero.
+- Runwire lifecycle metrics prove actual overlap: two requests are active concurrently, then one, then zero. No Webrick-global request/stream state is introduced to obtain that isolation.
+- HTTP/2 and HTTP/3 responses both remove the HTTP/1.1-only `Connection` field while preserving duplicate `Set-Cookie` fields and request-local response metadata.
+- HTTP/3 interleaving completes the two streams in reverse order and still preserves each stream's normalized request snapshot and response sequence.
+- Native QUIC is treated as a portable optional capability. When `PhpQuicApi::available()` is true, its released availability assertion must succeed; when it is false, the test explicitly verifies the released `RuntimeUnavailableException` contract containing `HTTP/3 requires ext-quic`. No test is skipped merely because ext-quic is absent.
+- The HTTP/3 application-boundary acceptance remains meaningful without ext-quic because Runwire owns QUIC transport/protocol implementation while Webrick consumes the normalized released `HttpRequest` / `ResponseWriterInterface` contract.
+- No production Webrick runtime change was required for Points 9–10. The existing adapter/application bridge already preserves concurrent request isolation, live cancellation visibility and protocol-neutral response semantics.
+- The first combined Points 9–10 CI pass exposed only a fixture serialization mistake (`array` concatenated into a stream chunk). The fixture was corrected by JSON-encoding the request-local snapshot before suspension; no runtime behavior was changed or suppressed.
+- Combined Points 9–10 implementation code passed Security & Standards workflow **#870** across clean production install, PHP 8.4/8.5 analysis, all stable/lowest QA matrices, exact PHPForge diagnostics and both benchmark jobs before this tracker update.
+
 ## Preserved invariants
 
 - Runwire remains optional for ordinary Webrick consumers.
@@ -78,9 +92,10 @@ Released integration baselines:
 - The compiled zero-scope route path does not materialize `Request`, create an InterMix scope, or allocate runtime execution metadata unless required.
 - Runwire remains authoritative for lower-runtime cancellation/deadlines; Webrick only exposes a read-only observation view.
 - Runwire remains authoritative for host/application lifecycle state; Webrick only composes its request handler into that lifecycle.
+- Runwire remains authoritative for HTTP/2/HTTP/3 stream scheduling and QUIC transport capability; Webrick carries no duplicate protocol stream registry.
 - InterMix remains authoritative for logical DI scope identity and cleanup.
 - Webrick does not introduce a scheduler, socket server, process supervisor, protocol stack, duplicate output queue, or duplicate lifecycle engine.
 
 ## Current next item
 
-**Point 9 — prove HTTP/2 normalization, interleaved request isolation and cancellation through the released Runwire application bridge and Webrick runtime adapter.**
+**Point 11 — preserve bounded request-body streaming and implement proper Runwire writer-drain continuation without unbounded buffering.**
