@@ -20,8 +20,8 @@ Released integration baselines:
 - [x] **4. InterMix scope bridge** — `InterMixRuntime` exposes `captureScopeContext()`, `withinScopeContext()` and `resetCurrentExecutionScope()` directly from InterMix 10.1.1.
 - [x] **5. Runtime-neutral request bridge** — `RuntimeRequestContext` can carry a Webrick `RuntimeRequestExecution` view for request identity, monotonic timing and live cancellation observation; `RuntimeCapabilities` exposes only the request-streaming/cancellation/drain facts required by upcoming adapters.
 - [x] **6. Runwire runtime adapter** — `RunwireRuntimeAdapter` now maps released Runwire `HttpRequest` / `ResponseWriterInterface` contracts onto Webrick's existing runtime seam, keeps full request/body materialization lazy, preserves header multiplicity and request metadata, observes native cancellation live, owns response completion exactly once, and detects writer pressure without introducing a second output queue.
-- [ ] **7. Runwire application bridge** — compose `RuntimeApplicationInterface` with Runwire `ApplicationLifecycle` without duplicating lifecycle logic.
-- [ ] **8. HTTP/1.1 parity** — prove request/response parity and exactly-once response completion.
+- [x] **7. Runwire application bridge** — `RunwireRuntimeApplication` and `RunwireRuntimeApplicationFactory` compose Webrick request handling with Runwire's released `RuntimeApplicationInterface` / `RuntimeApplicationFactoryInterface` contracts while delegating lifecycle state, admission, cancellation, metrics, resetters and shutdown ordering to Runwire.
+- [ ] **8. HTTP/1.1 parity** — prove request/response parity and exactly-once response completion through the application bridge.
 - [ ] **9. HTTP/2 isolation** — prove normalization, interleaved request isolation and cancellation.
 - [ ] **10. HTTP/3 isolation** — prove normalization/stream isolation where QUIC is available and keep QUIC absence non-fatal.
 - [ ] **11. Bounded streaming/backpressure** — preserve incremental request bodies and replace Point 6's explicit pressure stop with proper writer-drain continuation without unbounded buffering.
@@ -45,15 +45,28 @@ Released integration baselines:
 - `PRESSURED` writes are detected and stop application output rather than overrunning the writer. Asynchronous drain continuation remains intentionally assigned to Point 11.
 - Point 6 implementation code passed Security & Standards workflow **#853** across clean production install, PHP 8.4/8.5 analysis, all stable/lowest QA matrices, exact PHPForge diagnostics and both benchmark jobs before this tracker update.
 
+## Point 7 acceptance
+
+- `RunwireRuntimeApplication` implements the released Runwire `RuntimeApplicationInterface` by delegating to Runwire's own `Runtime\Host\RuntimeApplication`, which in turn owns the released `ApplicationLifecycle`; Webrick does not add another lifecycle state machine.
+- `RunwireRuntimeApplicationFactory` implements `RuntimeApplicationFactoryInterface`, so Webrick can be supplied directly to Runwire `Runtime::serveApplication()` with the runtime-selected `RuntimeContext`.
+- Runwire remains authoritative for start, admission, active-request tracking, cancellation, metrics, lifecycle resetters, drain and shutdown sequencing. The bridge only supplies Webrick request handling plus optional released Runwire policies/hooks.
+- Host drivers may request `completeResponse: true`, but the Webrick bridge explicitly neutralizes that flag and delegates internally with automatic completion disabled. `RunwireRuntimeAdapter` / the Webrick request handler therefore remains the one and only response-completion owner.
+- Focused tests prove that a host completion request does not produce a second `end()`, while a Webrick-style handler that completes the writer still completes it exactly once.
+- Focused factory/lifecycle coverage proves boot, warmup, request cleanup, drain, shutdown hooks, legacy shutdown and runtime metrics flow through Runwire's lifecycle rather than through Webrick-owned state.
+- The clean `--no-dev` production install remains green, so these optional Runwire bridge classes do not make Runwire a production requirement for ordinary SAPI/shared-hosting consumers.
+- Point 14 still owns exhaustive success/error/cancellation/deadline cleanup and carrier-reset acceptance; Point 7 establishes composition and ownership only.
+- Point 7 implementation code passed Security & Standards workflow **#859** across clean production install, PHP 8.4/8.5 analysis, all stable/lowest QA matrices, exact PHPForge diagnostics and both benchmark jobs before this tracker update.
+
 ## Preserved invariants
 
 - Runwire remains optional for ordinary Webrick consumers.
 - Existing direct runtime adapters remain first-class and are not proxied through Runwire.
 - The compiled zero-scope route path does not materialize `Request`, create an InterMix scope, or allocate runtime execution metadata unless required.
 - Runwire remains authoritative for lower-runtime cancellation/deadlines; Webrick only exposes a read-only observation view.
+- Runwire remains authoritative for host/application lifecycle state; Webrick only composes its request handler into that lifecycle.
 - InterMix remains authoritative for logical DI scope identity and cleanup.
 - Webrick does not introduce a scheduler, socket server, process supervisor, protocol stack, duplicate output queue, or duplicate lifecycle engine.
 
 ## Current next item
 
-**Point 7 — compose Webrick with Runwire `RuntimeApplicationInterface` / `ApplicationLifecycle` while preserving Runwire lifecycle ownership and the adapter's exactly-once response-completion rule.**
+**Point 8 — prove HTTP/1.1 request/response parity and exactly-once response completion through the released Runwire application bridge and Webrick runtime adapter.**
