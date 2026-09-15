@@ -13,6 +13,7 @@ final readonly class WebrickRuntimeScopedMarker
     public function __construct(public string $id) {}
 }
 
+/** @return array{Container,InterMixRuntime} */
 function webrick_runtime_scope_fixture(): array
 {
     $container = new Container('webrick.runtime.scope.' . bin2hex(random_bytes(6)));
