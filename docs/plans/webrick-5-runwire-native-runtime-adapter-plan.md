@@ -171,13 +171,9 @@ Foundation owns application/runtime policy above Webrick:
 - mapping Runwire task-local propagation to InterMix 10.1 `ScopeContext` where required;
 - release-generation/deployment policy.
 
-## 3.5 Pathwise boundary
-
-Pathwise remains filesystem/upload trust owner. Webrick owns HTTP file semantics, but trusted path containment/resolution stays outside Runwire.
-
 Hard invariant:
 
-> Runwire owns generic runtime/transport mechanics; Webrick owns HTTP application semantics; InterMix owns DI scope identity; Foundation owns application execution policy; Pathwise owns filesystem trust.
+> Runwire owns generic runtime/transport mechanics; Webrick owns HTTP application semantics; InterMix owns DI scope identity; Foundation owns application execution policy. Filesystem authorization/trust policy remains outside Webrick's runtime adapter contract.
 
 ---
 
@@ -641,9 +637,9 @@ Requirements:
 - no forced complete-body buffering for large uploads;
 - temporary upload objects are request-owned;
 - abort/rejection/cancellation cleans temporary state deterministically;
-- Pathwise remains trusted filesystem/upload processing owner after application acceptance;
+- post-acceptance filesystem storage, scanning, containment and trust policy remain application/framework concerns outside Webrick's Runwire adapter;
 - Runwire supplies bytes/streaming/cancellation only;
-- no Pathwise malware scanning/storage policy moves into the Runwire adapter.
+- no application-specific storage/scanning policy moves into the Runwire adapter.
 
 ---
 
@@ -902,14 +898,14 @@ Do not introduce a Webrick-wide coroutine scheduler merely to support cancellati
 
 # 26. Trusted static/public asset fast path
 
-Keep the optional fast path, but preserve ownership:
+Keep the optional fast path, but keep filesystem authorization generic and outside Webrick's runtime adapter contract:
 
 ```text
 request
   ↓
-Webrick/Foundation public asset policy
+Webrick/application public asset policy
   ↓
-Pathwise trusted public-root resolution/containment
+application-authorized public asset resolution/containment
   ↓
 Webrick file/range/cache/HEAD semantics
   ↓
@@ -921,14 +917,15 @@ client
 Hard rules:
 
 - Runwire never converts an untrusted request path directly into filesystem authority;
-- Webrick does not replace Pathwise containment/trust when Foundation uses Pathwise;
+- Webrick's runtime adapter does not define application filesystem trust policy;
 - static eligibility/precedence is explicit application policy;
-- dotfile/traversal/symlink/private-storage escapes remain rejected;
+- only an already-authorized asset target may reach the transfer primitive;
+- dotfile/traversal/symlink/private-storage escapes remain rejected by the application/framework trust boundary;
 - dynamic route/middleware semantics are not bypassed accidentally;
-- zero-copy/sendfile-style acceleration is allowed only after trusted resolution;
+- zero-copy/sendfile-style acceleration is allowed only after authorization/resolution;
 - host runtimes may delegate static file service when configured outside the application.
 
-This is an optimization, not a new filesystem security model.
+This is an HTTP/transport optimization after authorization, not a new filesystem security model.
 
 ---
 
@@ -938,7 +935,7 @@ Webrick's existing `FileBody`/range semantics should remain authoritative.
 
 Where Runwire can accelerate transfer, prefer already-authorized information such as:
 
-- trusted/resolved file handle/path from the upper trust boundary;
+- trusted/resolved file handle/path from the upper application trust boundary;
 - immutable metadata;
 - selected byte range;
 - known content length;
@@ -1145,7 +1142,7 @@ Release-blocking focused tests should include:
 - HEAD/range/conditional behavior;
 - traversal rejection;
 - private/dotfile rejection;
-- symlink/root escape rejection according to Pathwise policy;
+- symlink/root escape rejection according to application/framework trust policy;
 - ordinary streamed fallback when native transfer acceleration is absent.
 
 ---
@@ -1234,9 +1231,8 @@ Release-blocking security properties:
 - request-scoped objects do not leak across persistent requests;
 - dynamic/compiled InterMix mutation guards are not bypassed during concurrent work;
 - Webrick correlation/request IDs are not treated as authorization identities;
-- static fast path cannot escape trusted public roots;
-- Pathwise remains filesystem/upload trust owner;
-- ReqShield remains input/intent validation owner;
+- static fast path cannot bypass the application's trusted public-root/filesystem authorization boundary;
+- input/intent validation remains an application/framework concern rather than a Runwire adapter concern;
 - Webrick gains no raw process/shell API;
 - compatibility adapters continue to work when Runwire is absent.
 
@@ -1258,7 +1254,7 @@ Document the finished behavior, including:
 - streaming application-lifetime boundary;
 - transport backpressure;
 - application vs transport limit ownership;
-- static/public-asset Pathwise boundary;
+- static/public-asset trust and authorization boundary;
 - worker drain/recycle relationship;
 - direct Workerman/Swoole/RoadRunner/SAPI adapter coexistence;
 - reverse-proxy/TLS/H2/H3 termination expectations.
@@ -1284,7 +1280,7 @@ Do not document unavailable acceleration as guaranteed. Capability-based feature
 12. Harden application body-production lifetime for lazy/streaming responses.
 13. Integrate/test InterMix 10.1 explicit ScopeContext propagation for structured child work without penalizing zero-scope routes.
 14. Add exactly-once request cleanup/reset acceptance across success/error/cancellation/deadline paths.
-15. Add trusted static/public asset integration boundary with Pathwise composition.
+15. Add trusted static/public asset integration boundary using application-owned filesystem authorization/trust policy.
 16. Add Runwire native portable/prefork and host-driver integration acceptance while preserving generic SAPI/shared-hosting behavior.
 17. Add Foundation bridge fixture.
 18. Add Infbyte end-to-end acceptance.
@@ -1318,7 +1314,7 @@ This Webrick plan closes only when:
 - [ ] zero-scope compiled routes retain their optimized no-scope path;
 - [ ] `resetCurrentExecutionScope()` is integrated where appropriate as defense-in-depth cleanup;
 - [ ] malformed lower protocol state never becomes a normal routed Webrick request;
-- [ ] trusted static-file behavior preserves Pathwise/public-root and Webrick HTTP semantics;
+- [ ] trusted static-file behavior preserves application-authorized public-root/filesystem trust and Webrick HTTP semantics;
 - [ ] worker drain/recycling is not used as a substitute for request cleanup;
 - [ ] Foundation bridge passes request/Fiber/structured-task/isolation tests;
 - [ ] Infbyte passes request-scoped and persistent-runtime acceptance;
@@ -1343,7 +1339,7 @@ Do not add to Webrick as part of this pass:
 - queue worker semantics;
 - a duplicate InterMix scope/context implementation;
 - request-ID-based DI scope storage;
-- Pathwise filesystem/storage implementation;
+- application filesystem/storage trust implementation;
 - Foundation application reset registry;
 - Laravel-style cloned application/container sandboxes;
 - Laravel-specific warm/flush/reset listeners;
