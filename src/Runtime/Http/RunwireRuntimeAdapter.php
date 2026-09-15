@@ -116,7 +116,7 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
         }
 
         $cancellation = $request->context->cancellation;
-        $cancellation->throwIfCancelled();
+        self::assertNotCancelled($cancellation);
         $headers = self::responseHeaders($response, $request->version !== ProtocolVersion::HTTP_1_1);
         self::writeAndAwaitDrain(
             $writer->start($response->getStatusCode(), $headers),
@@ -139,7 +139,7 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
         }
 
         foreach (ResponseWriterSupport::chunks($response) as $chunk) {
-            $cancellation->throwIfCancelled();
+            self::assertNotCancelled($cancellation);
             self::writeAndAwaitDrain($writer->write($chunk), $writer, $cancellation, 'write');
         }
         self::finish($writer, $cancellation);
@@ -171,6 +171,13 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
     {
         if (!$result->accepted()) {
             throw new RuntimeException("Runwire response {$operation} was rejected: {$result->state->value}.");
+        }
+    }
+
+    private static function assertNotCancelled(CancellationToken $cancellation): void
+    {
+        if ($cancellation->isCancelled()) {
+            throw new RuntimeException('Runwire request was cancelled during Webrick response production.');
         }
     }
 
@@ -274,7 +281,7 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
         CancellationToken $cancellation,
         string $finalChunk = '',
     ): void {
-        $cancellation->throwIfCancelled();
+        self::assertNotCancelled($cancellation);
         $result = $writer->end($finalChunk);
         self::assertAccepted($result, 'end');
         if (!$writer->isEnded()) {
@@ -373,6 +380,7 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
         self::assertAccepted($result, $operation);
         if ($result->pressured()) {
             RunwireResponseContinuation::awaitDrain($writer, $cancellation);
+            self::assertNotCancelled($cancellation);
         }
     }
 }
