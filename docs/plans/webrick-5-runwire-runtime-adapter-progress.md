@@ -21,7 +21,7 @@ Released integration baselines:
 - [x] **5. Runtime-neutral request bridge** — `RuntimeRequestContext` can carry a Webrick `RuntimeRequestExecution` view for request identity, monotonic timing and live cancellation observation; `RuntimeCapabilities` exposes only the request-streaming/cancellation/drain facts required by upcoming adapters.
 - [x] **6. Runwire runtime adapter** — `RunwireRuntimeAdapter` now maps released Runwire `HttpRequest` / `ResponseWriterInterface` contracts onto Webrick's existing runtime seam, keeps full request/body materialization lazy, preserves header multiplicity and request metadata, observes native cancellation live, owns response completion exactly once, and detects writer pressure without introducing a second output queue.
 - [x] **7. Runwire application bridge** — `RunwireRuntimeApplication` and `RunwireRuntimeApplicationFactory` compose Webrick request handling with Runwire's released `RuntimeApplicationInterface` / `RuntimeApplicationFactoryInterface` contracts while delegating lifecycle state, admission, cancellation, metrics, resetters and shutdown ordering to Runwire.
-- [ ] **8. HTTP/1.1 parity** — prove request/response parity and exactly-once response completion through the application bridge.
+- [x] **8. HTTP/1.1 parity** — full compiled-kernel acceptance proves request/response normalization, routing controls, application errors, streaming and exactly-once completion through the Runwire application bridge.
 - [ ] **9. HTTP/2 isolation** — prove normalization, interleaved request isolation and cancellation.
 - [ ] **10. HTTP/3 isolation** — prove normalization/stream isolation where QUIC is available and keep QUIC absence non-fatal.
 - [ ] **11. Bounded streaming/backpressure** — preserve incremental request bodies and replace Point 6's explicit pressure stop with proper writer-drain continuation without unbounded buffering.
@@ -57,6 +57,20 @@ Released integration baselines:
 - Point 14 still owns exhaustive success/error/cancellation/deadline cleanup and carrier-reset acceptance; Point 7 establishes composition and ownership only.
 - Point 7 implementation code passed Security & Standards workflow **#859** across clean production install, PHP 8.4/8.5 analysis, all stable/lowest QA matrices, exact PHPForge diagnostics and both benchmark jobs before this tracker update.
 
+## Point 8 acceptance
+
+- `RunwireHttp1ParityTest` exercises the actual composed path: `RunwireRuntimeApplication` → `RuntimeServer` → `RunwireRuntimeAdapter` → `CompiledRouterKernel` → Runwire `ResponseWriterInterface`.
+- One started Runwire application serves seven sequential HTTP/1.1 requests, proving the persistent application bridge does not leak response state between requests.
+- Request parity covers method, path/route arguments, query values, host, protocol version, peer/local endpoint metadata, duplicate request headers, cookies and lazy request-body consumption.
+- Response parity covers status, content type/length, duplicate `Set-Cookie` fields and preservation of the HTTP/1.1 `Connection` header; the HTTP/2+ connection-field filtering rule therefore does not bleed into H1.
+- Routing/application controls are verified end to end for `HEAD`, redirect, 404, 405 and application exceptions. The deterministic error renderer receives the routed request path and the original throwable message through the full bridge.
+- Streaming response chunks preserve application order through the runtime adapter.
+- Every accepted response starts exactly once and ends exactly once even when the Runwire host-facing call requests `completeResponse: true`, proving Point 7's completion-ownership rule under real Webrick dispatch rather than an isolated handler fixture.
+- Runwire lifecycle metrics report seven total requests and zero active requests after the sequence.
+- No production Webrick runtime change was required for Point 8; the Point 6 transport adapter and Point 7 application bridge compose correctly as designed.
+- The first Point 8 CI pass already executed the full Pest acceptance successfully; it exposed only unused-parameter PHPCS warnings in the deterministic error fixture. The fixture was strengthened to assert the request path and throwable message rather than suppressing the warnings.
+- Point 8 implementation code passed Security & Standards workflow **#866** across clean production install, PHP 8.4/8.5 analysis, all stable/lowest QA matrices, exact PHPForge diagnostics and both benchmark jobs before this tracker update.
+
 ## Preserved invariants
 
 - Runwire remains optional for ordinary Webrick consumers.
@@ -69,4 +83,4 @@ Released integration baselines:
 
 ## Current next item
 
-**Point 8 — prove HTTP/1.1 request/response parity and exactly-once response completion through the released Runwire application bridge and Webrick runtime adapter.**
+**Point 9 — prove HTTP/2 normalization, interleaved request isolation and cancellation through the released Runwire application bridge and Webrick runtime adapter.**
