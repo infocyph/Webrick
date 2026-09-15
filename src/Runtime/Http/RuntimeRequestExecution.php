@@ -62,7 +62,7 @@ final readonly class RuntimeRequestExecution
         }
 
         $reason = ($this->cancellationReason)();
-        if ($reason !== null && (!is_string($reason) || $reason === '')) {
+        if ($reason === '') {
             throw new UnexpectedValueException('Runtime cancellation reason callback must return null or a non-empty string.');
         }
 
@@ -80,11 +80,6 @@ final readonly class RuntimeRequestExecution
             return false;
         }
 
-        $cancelled = ($this->cancelled)();
-        if (!is_bool($cancelled)) {
-            throw new UnexpectedValueException('Runtime cancellation callback must return bool.');
-        }
-
-        return $cancelled;
+        return ($this->cancelled)();
     }
 }
