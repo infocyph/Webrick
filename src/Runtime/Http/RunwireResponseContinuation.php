@@ -71,6 +71,7 @@ final class RunwireResponseContinuation
             return;
         }
 
+        /** @var Fiber<mixed, mixed, mixed, mixed> $fiber */
         $fiber = new Fiber($handler);
         self::managedFibers()[$fiber] = true;
 
