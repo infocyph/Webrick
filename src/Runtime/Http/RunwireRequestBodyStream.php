@@ -7,7 +7,6 @@ namespace Infocyph\Webrick\Runtime\Http;
 use Infocyph\Runwire\Http\RequestBodyInterface;
 use Infocyph\Webrick\Interfaces\BodyStream;
 use RuntimeException;
-use Throwable;
 
 /** Non-seekable, low-copy view over a Runwire request body. */
 final class RunwireRequestBodyStream implements BodyStream
@@ -20,15 +19,7 @@ final class RunwireRequestBodyStream implements BodyStream
 
     public function __toString(): string
     {
-        if ($this->closed) {
-            return '';
-        }
-
-        try {
-            return $this->getContents();
-        } catch (Throwable) {
-            return '';
-        }
+        return $this->closed ? '' : $this->getContents();
     }
 
     public function close(): void
