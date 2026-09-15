@@ -5,29 +5,90 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Runtime\Http;
 
 use Fiber;
+use Infocyph\Runwire\CancellationToken;
+use Infocyph\Runwire\Http\RequestBodyInterface;
 use Infocyph\Runwire\Http\ResponseWriterInterface;
 use RuntimeException;
 use Throwable;
 use WeakMap;
 
-/** @internal Runwire-only response-production suspension; not a general scheduler. */
+/** @internal Runwire-only I/O suspension; not a general scheduler. */
 final class RunwireResponseContinuation
 {
     /** @var WeakMap<object, true>|null */
     private static ?WeakMap $managedFibers = null;
 
-    public static function awaitDrain(ResponseWriterInterface $writer): void
+    public static function awaitBodyReadable(RequestBodyInterface $body, CancellationToken $cancellation): void
     {
-        $fiber = Fiber::getCurrent();
-        if (!$fiber instanceof Fiber || !isset(self::managedFibers()[$fiber])) {
-            throw new RuntimeException(
-                'Runwire response requires drain continuation through the Webrick Runwire application boundary.',
-            );
+        $cancellation->throwIfCancelled();
+        if ($body->bufferedBytes() > 0 || $body->eof()) {
+            return;
         }
 
+        $fiber = self::managedFiber(
+            'Runwire request body requires continuation through the Webrick Runwire application boundary.',
+        );
+        $ready = false;
+        $resume = static function () use (&$ready, $fiber): void {
+            if ($ready) {
+                return;
+            }
+
+            $ready = true;
+            if (!$fiber->isSuspended()) {
+                return;
+            }
+
+            try {
+                $fiber->resume();
+            } finally {
+                self::releaseIfTerminated($fiber);
+            }
+        };
+        $subscription = $cancellation->onCancel(static function () use ($resume): void {
+            $resume();
+        });
+
+        try {
+            $body->onData(static function (RequestBodyInterface $readyBody) use ($resume): void {
+                if ($readyBody->bufferedBytes() > 0 || $readyBody->eof()) {
+                    $resume();
+                }
+            });
+            $body->onEnd(static function (RequestBodyInterface $endedBody) use ($resume): void {
+                unset($endedBody);
+                $resume();
+            });
+
+            if (
+                !$ready
+                && !$cancellation->isCancelled()
+                && $body->bufferedBytes() === 0
+                && !$body->eof()
+            ) {
+                Fiber::suspend();
+            }
+        } finally {
+            $subscription->unsubscribe();
+            $body->onData(static function (RequestBodyInterface $readyBody): void {
+                unset($readyBody);
+            });
+            $body->onEnd(static function (RequestBodyInterface $endedBody): void {
+                unset($endedBody);
+            });
+        }
+
+        $cancellation->throwIfCancelled();
+    }
+
+    public static function awaitDrain(ResponseWriterInterface $writer, CancellationToken $cancellation): void
+    {
+        $cancellation->throwIfCancelled();
+        $fiber = self::managedFiber(
+            'Runwire response requires drain continuation through the Webrick Runwire application boundary.',
+        );
         $drained = false;
-        $writer->onDrain(static function (ResponseWriterInterface $drainedWriter) use (&$drained, $fiber): void {
-            unset($drainedWriter);
+        $resume = static function () use (&$drained, $fiber): void {
             if ($drained) {
                 return;
             }
@@ -42,11 +103,25 @@ final class RunwireResponseContinuation
             } finally {
                 self::releaseIfTerminated($fiber);
             }
+        };
+        $subscription = $cancellation->onCancel(static function () use ($resume): void {
+            $resume();
         });
 
-        if (!$drained) {
-            Fiber::suspend();
+        try {
+            $writer->onDrain(static function (ResponseWriterInterface $drainedWriter) use ($resume): void {
+                unset($drainedWriter);
+                $resume();
+            });
+
+            if (!$drained && !$cancellation->isCancelled()) {
+                Fiber::suspend();
+            }
+        } finally {
+            $subscription->unsubscribe();
         }
+
+        $cancellation->throwIfCancelled();
     }
 
     /** @param callable(): void $handler */
@@ -84,6 +159,17 @@ final class RunwireResponseContinuation
         }
 
         self::releaseIfTerminated($fiber);
+    }
+
+    /** @return Fiber<mixed, mixed, mixed, mixed> */
+    private static function managedFiber(string $message): Fiber
+    {
+        $fiber = Fiber::getCurrent();
+        if (!$fiber instanceof Fiber || !isset(self::managedFibers()[$fiber])) {
+            throw new RuntimeException($message);
+        }
+
+        return $fiber;
     }
 
     /** @return WeakMap<object, true> */
