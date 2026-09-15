@@ -31,14 +31,12 @@ final readonly class RuntimeServer
         );
         $this->profiler?->mark('runtime_context');
 
-        $response = $this->kernel->handleRuntime(
+        return $this->kernel->handleRuntime(
             $context,
             function (Response $runtimeResponse) use ($context): void {
                 $this->adapter->write($runtimeResponse, $context);
                 $this->profiler?->mark('response_write');
             },
         );
-
-        return $response;
     }
 }
