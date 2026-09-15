@@ -88,9 +88,22 @@ final class PathwisePublicAssetResponderTest extends TestCase
         self::assertSame(405, $responder->respond(Request::fake(method: 'POST'), 'app.js')->getStatusCode());
 
         $link = $this->root . DIRECTORY_SEPARATOR . 'outside-link.txt';
-        if (@symlink($this->outsideFile, $link)) {
+        $warning = null;
+        set_error_handler(static function (int $severity, string $message) use (&$warning): bool {
+            $warning = [$severity, $message];
+
+            return true;
+        });
+        try {
+            $linked = symlink($this->outsideFile, $link);
+        } finally {
+            restore_error_handler();
+        }
+
+        if ($linked) {
             self::assertSame(404, $responder->respond(Request::fake(), 'outside-link.txt')->getStatusCode());
         } else {
+            self::assertNotNull($warning);
             self::assertFalse(is_link($link));
         }
     }
