@@ -10,9 +10,11 @@ use Infocyph\Runwire\Http\Headers;
 use Infocyph\Runwire\Http\HttpRequest;
 use Infocyph\Runwire\Http\ResponseWriterInterface;
 use Infocyph\Runwire\Network\WriteResult;
+use Infocyph\Webrick\Constants\MediaTypeEnum;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Runtime\RoutingInput;
+use Infocyph\Webrick\Support\HttpUtils;
 use RuntimeException;
 
 /** Adapts released Runwire HTTP request/writer contracts to Webrick. */
@@ -53,6 +55,31 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
 
         $routingServer = self::serverParams($nativeRequest, false);
         $runwireContext = $nativeRequest->context;
+        $bodyStream = new RunwireRequestBodyStream($nativeRequest->body, $runwireContext->cancellation);
+        $formResolved = false;
+        $form = [];
+        $rawForm = null;
+        $resolveRoutingForm = static function () use (
+            $nativeRequest,
+            $bodyStream,
+            &$formResolved,
+            &$form,
+            &$rawForm,
+        ): array {
+            $contentType = $nativeRequest->headers->first('content-type') ?? '';
+            if (HttpUtils::baseMediaType($contentType) !== MediaTypeEnum::FORM_URLENCODED->base()) {
+                return [];
+            }
+            if (!$formResolved) {
+                $rawForm = $bodyStream->getContents();
+                parse_str($rawForm, $parsed);
+                $form = self::stringMap($parsed);
+                $formResolved = true;
+            }
+
+            return $form;
+        };
+        $routingForm = RoutingFormInput::resolve($routingServer, $resolveRoutingForm);
         $execution = new RuntimeRequestExecution(
             requestId: $runwireContext->requestId,
             startMonotonicNanoseconds: $runwireContext->startMonotonicNanoseconds,
@@ -62,11 +89,12 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
         );
 
         return new RuntimeRequestContext(
-            RoutingInput::fromServer($routingServer, $withHost),
+            RoutingInput::fromServer($routingServer, $withHost, $routingForm),
             static fn(): Request => TransportRequestFactory::fromParts(
                 self::serverParams($nativeRequest, true),
                 self::headerArray($nativeRequest->headers),
-                new RunwireRequestBodyStream($nativeRequest->body, $runwireContext->cancellation),
+                $rawForm ?? $bodyStream,
+                $formResolved ? $form : null,
                 cookies: self::cookies($nativeRequest->headers),
             ),
             $this->runtimeCapabilities,
@@ -304,6 +332,22 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
         $server = self::baseServerParams($request);
 
         return $withHeaders ? self::appendHeaderServerParams($server, $request->headers) : $server;
+    }
+
+    /**
+     * @param array<array-key,mixed> $value
+     * @return array<string,mixed>
+     */
+    private static function stringMap(array $value): array
+    {
+        $map = [];
+        foreach ($value as $key => $entry) {
+            if (is_string($key)) {
+                $map[$key] = $entry;
+            }
+        }
+
+        return $map;
     }
 
     private static function targetAuthority(string $target): ?string
