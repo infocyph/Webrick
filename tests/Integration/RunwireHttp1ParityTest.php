@@ -248,7 +248,7 @@ final class RunwireHttp1ParityTest extends TestCase
 
             $errorWriter = self::dispatch($application, self::request(target: '/h1/error'));
             self::assertCompleted($errorWriter, 500);
-            self::assertSame(['error:500'], $errorWriter->chunks);
+            self::assertSame(['error:500:/h1/error:h1 parity failure fixture'], $errorWriter->chunks);
 
             $streamWriter = self::dispatch($application, self::request(target: '/h1/stream'));
             self::assertCompleted($streamWriter, 202);
@@ -311,11 +311,15 @@ final class RunwireHttp1ParityTest extends TestCase
         $errorHandler = new ErrorHandler(
             logger: new NullLogger(),
             responseRenderer: static fn(
-                Request $_request,
-                Throwable $_error,
+                Request $request,
+                Throwable $error,
                 int $status,
                 array $headers,
-            ): Response => Response::create('error:' . $status, $status, $headers),
+            ): Response => Response::create(
+                'error:' . $status . ':' . $request->getUri()->getPath() . ':' . $error->getMessage(),
+                $status,
+                $headers,
+            ),
         );
 
         try {
