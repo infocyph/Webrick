@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Runtime\Http;
 
+use Infocyph\Runwire\CancellationToken;
 use Infocyph\Runwire\Http\Enum\ProtocolVersion;
 use Infocyph\Runwire\Http\Headers;
 use Infocyph\Runwire\Http\HttpRequest;
@@ -65,7 +66,7 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
             static fn(): Request => TransportRequestFactory::fromParts(
                 self::serverParams($nativeRequest, true),
                 self::headerArray($nativeRequest->headers),
-                new RunwireRequestBodyStream($nativeRequest->body),
+                new RunwireRequestBodyStream($nativeRequest->body, $runwireContext->cancellation),
                 cookies: self::cookies($nativeRequest->headers),
             ),
             $this->runtimeCapabilities,
@@ -86,29 +87,34 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
             throw new RuntimeException('Runwire response writer must be unused when Webrick begins response output.');
         }
 
+        $cancellation = $request->context->cancellation;
+        $cancellation->throwIfCancelled();
         $headers = self::responseHeaders($response, $request->version !== ProtocolVersion::HTTP_1_1);
-        self::writeAndAwaitDrain($writer->start($response->getStatusCode(), $headers), $writer, 'start');
+        self::writeAndAwaitDrain(
+            $writer->start($response->getStatusCode(), $headers),
+            $writer,
+            $cancellation,
+            'start',
+        );
 
         if (!ResponseWriterSupport::allowsBody($response, $context)) {
-            self::finish($writer);
+            self::finish($writer, $cancellation);
 
             return;
         }
 
         $string = $response->getStringBody();
         if ($string !== null && !$response->isStreaming()) {
-            self::finish($writer, $string);
+            self::finish($writer, $cancellation, $string);
 
             return;
         }
 
         foreach (ResponseWriterSupport::chunks($response) as $chunk) {
-            if ($request->context->cancelled()) {
-                throw new RuntimeException('Runwire request was cancelled during Webrick response production.');
-            }
-            self::writeAndAwaitDrain($writer->write($chunk), $writer, 'write');
+            $cancellation->throwIfCancelled();
+            self::writeAndAwaitDrain($writer->write($chunk), $writer, $cancellation, 'write');
         }
-        self::finish($writer);
+        self::finish($writer, $cancellation);
     }
 
     /**
@@ -235,8 +241,12 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
         return [$endpoint, null];
     }
 
-    private static function finish(ResponseWriterInterface $writer, string $finalChunk = ''): void
-    {
+    private static function finish(
+        ResponseWriterInterface $writer,
+        CancellationToken $cancellation,
+        string $finalChunk = '',
+    ): void {
+        $cancellation->throwIfCancelled();
         $result = $writer->end($finalChunk);
         self::assertAccepted($result, 'end');
         if (!$writer->isEnded()) {
@@ -313,11 +323,12 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
     private static function writeAndAwaitDrain(
         WriteResult $result,
         ResponseWriterInterface $writer,
+        CancellationToken $cancellation,
         string $operation,
     ): void {
         self::assertAccepted($result, $operation);
         if ($result->pressured()) {
-            RunwireResponseContinuation::awaitDrain($writer);
+            RunwireResponseContinuation::awaitDrain($writer, $cancellation);
         }
     }
 }
