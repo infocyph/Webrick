@@ -2,9 +2,8 @@
 
 declare(strict_types=1);
 
-use Infocyph\InterMix\DI\Container;
-use Infocyph\InterMix\DI\Invoker;
-use Infocyph\InterMix\DI\Invoker\CompiledCall;
+use Infocyph\InterMix\DI\ContainerBuilder;
+use Infocyph\InterMix\DI\RuntimeContainerInterface;
 use Infocyph\InterMix\DI\Support\LifetimeEnum;
 use Infocyph\InterMix\DI\Support\ServiceProviderInterface;
 use Infocyph\Webrick\Request\Request;
@@ -96,40 +95,45 @@ if (! class_exists('InterMixDirectFactoryTaggedMiddleware', false)) {
 if (! class_exists('InterMixTestProvider', false)) {
     final readonly class InterMixTestProvider implements ServiceProviderInterface
     {
-        public function register(Container $container): void
+        public function register(ContainerBuilder $builder): void
         {
-            $container->definitions()->bind(
+            $builder->value(
                 InterMixProvidedService::class,
                 new InterMixProvidedService('from-provider'),
-                LifetimeEnum::Singleton,
             );
-
-            $container->definitions()->bind(
+            $builder->factory(
                 InterMixScopedMarker::class,
-                static fn () => new InterMixScopedMarker(\bin2hex(\random_bytes(6))),
+                static fn(RuntimeContainerInterface $container): InterMixScopedMarker => new InterMixScopedMarker(
+                    \bin2hex(\random_bytes(6)),
+                ),
                 LifetimeEnum::Scoped,
             );
-
-            $container->definitions()->bind(
+            $builder->autowire(
                 'webrick.mw.pre',
                 InterMixTaggedPreMiddleware::class,
-                LifetimeEnum::Transient,
-                ['webrick.middleware.pre'],
+                lifetime: LifetimeEnum::Transient,
+                tags: ['webrick.middleware.pre'],
             );
-
-            $container->definitions()->bind(
+            $builder->autowire(
                 'webrick.mw.post',
                 InterMixTaggedPostMiddleware::class,
-                LifetimeEnum::Transient,
-                ['webrick.middleware.post'],
+                lifetime: LifetimeEnum::Transient,
+                tags: ['webrick.middleware.post'],
             );
         }
     }
 }
 
 /**
- * Test host bootstrap for the v5 development kernel.
- *
+ * Test host bootstrap for the Webrick 6 development kernel.
+ */
+function intermixBuilderForTest(): ContainerBuilder
+{
+    return ContainerBuilder::create('webrick.test.' . bin2hex(random_bytes(6)))
+        ->input(Request::class);
+}
+
+/**
  * @param array<string,mixed> $options
  */
 function intermixKernelForTest(Closure $register, array $preGlobal = [], array $options = []): RouterKernel
@@ -138,32 +142,36 @@ function intermixKernelForTest(Closure $register, array $preGlobal = [], array $
         'serviceProviders' => [],
         'preGlobalTags' => ['webrick.middleware.pre'],
         'postGlobalTags' => ['webrick.middleware.post'],
-        'container' => null,
-        'invoker' => null,
+        'builder' => null,
+        'runtime' => null,
     ];
     $opts = $options + $defaults;
-    $container = $opts['container'] instanceof Container
-        ? $opts['container']
-        : Container::instance('intermix');
 
-    foreach ($opts['serviceProviders'] as $providerClass) {
-        if (!is_string($providerClass) || !is_a($providerClass, ServiceProviderInterface::class, true)) {
-            throw new InvalidArgumentException('Test service providers must implement ServiceProviderInterface.');
+    $runtime = $opts['runtime'] instanceof RuntimeContainerInterface
+        ? $opts['runtime']
+        : null;
+
+    if (!$runtime instanceof RuntimeContainerInterface) {
+        $builder = $opts['builder'] instanceof ContainerBuilder
+            ? $opts['builder']
+            : intermixBuilderForTest();
+
+        foreach ($opts['serviceProviders'] as $providerClass) {
+            if (!is_string($providerClass) || !is_a($providerClass, ServiceProviderInterface::class, true)) {
+                throw new InvalidArgumentException('Test service providers must implement ServiceProviderInterface.');
+            }
+
+            $builder->import(new $providerClass());
         }
 
-        $provider = new $providerClass();
-        $provider->register($container);
+        $runtime = $builder->build();
     }
-
-    $invoker = $opts['invoker'] instanceof Invoker
-        ? $opts['invoker']
-        : Invoker::with($container);
 
     return RouterKernel::bootWithRegistrar(
         log: new NullLogger,
         matcher: FusedMatcher::make(),
         register: $register,
-        invoker: $invoker,
+        invoker: $runtime,
         registrarOptions: [
             'autoSlashRedirect' => false,
             'exposeUrlServices' => false,
@@ -178,7 +186,6 @@ function intermixKernelForTest(Closure $register, array $preGlobal = [], array $
 describe('InterMix integration', function () {
     beforeEach(function () {
         MiddlewareAliases::reset();
-        Container::instance('intermix')->unset();
     });
 
     afterEach(function () {
@@ -202,19 +209,15 @@ describe('InterMix integration', function () {
     });
 
     it('resolves middleware class-strings through InterMix DI', function () {
-        Container::instance('intermix')
-            ->definitions()
-            ->bind(
-                InterMixMiddlewareDependency::class,
-                new InterMixMiddlewareDependency('wired-class'),
-                LifetimeEnum::Singleton,
-            );
+        $builder = intermixBuilderForTest()
+            ->value(InterMixMiddlewareDependency::class, new InterMixMiddlewareDependency('wired-class'));
 
         $kernel = intermixKernelForTest(
             static function (Registrar $r): void {
                 $r->get('/di/class', static fn () => Response::json(['ok' => true]));
             },
             preGlobal: [InterMixNeedsDiMiddleware::class],
+            options: ['builder' => $builder],
         );
 
         $response = $kernel->handle(mockRequest('GET', '/di/class'));
@@ -225,13 +228,8 @@ describe('InterMix integration', function () {
     });
 
     it('resolves alias class-strings through InterMix DI', function () {
-        Container::instance('intermix')
-            ->definitions()
-            ->bind(
-                InterMixMiddlewareDependency::class,
-                new InterMixMiddlewareDependency('wired-alias'),
-                LifetimeEnum::Singleton,
-            );
+        $builder = intermixBuilderForTest()
+            ->value(InterMixMiddlewareDependency::class, new InterMixMiddlewareDependency('wired-alias'));
 
         MiddlewareAliases::register('di_alias', InterMixNeedsDiMiddleware::class);
 
@@ -239,7 +237,7 @@ describe('InterMix integration', function () {
             $r->get('/di/alias', static fn () => Response::json(['ok' => true]), [
                 'middleware' => ['di_alias'],
             ]);
-        });
+        }, options: ['builder' => $builder]);
 
         $response = $kernel->handle(mockRequest('GET', '/di/alias'));
 
@@ -248,25 +246,24 @@ describe('InterMix integration', function () {
             ->and($response->getHeaderLine('X-DI-Marker'))->toBe('wired-alias');
     });
 
-    it('constructs class middleware through the InterMix compiled resolver', function () {
-        $container = Container::instance('intermix');
-        $container->definitions()->bind(
-            InterMixMiddlewareDependency::class,
-            new InterMixMiddlewareDependency('wired-compiled'),
-            LifetimeEnum::Singleton,
-        );
+    it('constructs class middleware through the InterMix 11 production runtime', function () {
+        $builder = intermixBuilderForTest()
+            ->value(
+                InterMixMiddlewareDependency::class,
+                new InterMixMiddlewareDependency('wired-compiled'),
+            );
         $compiled = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'webrick-intermix-' . uniqid('', true) . '.php';
 
         try {
-            $container->compileTo($compiled, load: true);
-            expect($container->getCurrentResolver())->toBeInstanceOf(CompiledCall::class);
+            $builder->compile($compiled);
+            $runtime = $builder->production($compiled);
 
             $kernel = intermixKernelForTest(
                 static function (Registrar $registrar): void {
                     $registrar->get('/di/compiled', static fn() => Response::json(['ok' => true]));
                 },
                 preGlobal: [InterMixNeedsDiMiddleware::class],
-                options: ['container' => $container],
+                options: ['runtime' => $runtime],
             );
 
             $response = $kernel->handle(mockRequest('GET', '/di/compiled'));
@@ -281,19 +278,19 @@ describe('InterMix integration', function () {
     });
 
     it('keeps direct pipeline terminal DI while dispatcher avoids duplicate invocation', function () {
-        $container = Container::instance('intermix');
-        $container->definitions()->bind(
-            InterMixMiddlewareDependency::class,
-            new InterMixMiddlewareDependency('direct-terminal'),
-            LifetimeEnum::Singleton,
-        );
+        $container = intermixBuilderForTest()
+            ->value(
+                InterMixMiddlewareDependency::class,
+                new InterMixMiddlewareDependency('direct-terminal'),
+            )
+            ->build();
         $pipeline = new MiddlewarePipeline(
             [],
             static fn(Request $request, InterMixMiddlewareDependency $dependency): Response => Response::json([
                 'request' => $request instanceof Request,
                 'marker' => $dependency->marker,
             ]),
-            Invoker::with($container),
+            $container,
         );
 
         expect((string) $pipeline->handle(mockRequest('GET', '/pipeline'))->getBody())
@@ -301,7 +298,7 @@ describe('InterMix integration', function () {
     });
 
     it('uses the same host container for route DI and view rendering', function () {
-        $container = Container::instance('intermix');
+        $builder = intermixBuilderForTest();
         $factory = new class implements ViewFactoryInterface
         {
             public function render(string $view, array $data = []): string
@@ -309,8 +306,8 @@ describe('InterMix integration', function () {
                 return "<h1>{$view}: ".($data['name'] ?? 'n/a').'</h1>';
             }
         };
-        $container->definitions()->bind(ViewFactoryInterface::class, $factory, LifetimeEnum::Singleton);
-        $container->definitions()->bind(ViewResponder::class, new ViewResponder($factory), LifetimeEnum::Singleton);
+        $builder->value(ViewFactoryInterface::class, $factory);
+        $builder->value(ViewResponder::class, new ViewResponder($factory));
 
         $kernel = intermixKernelForTest(
             static function (Registrar $r): void {
@@ -322,7 +319,7 @@ describe('InterMix integration', function () {
                     return $views->render('hello', ['name' => 'Ada']);
                 });
             },
-            options: ['container' => $container],
+            options: ['builder' => $builder],
         );
 
         $response = $kernel->handle(mockRequest('GET', '/view'));
@@ -376,10 +373,10 @@ describe('InterMix integration', function () {
         int $expectedFactoryCalls,
     ) {
         $factoryCalls = 0;
-        $container = Container::instance('intermix');
-        $container->bindFactory(
+        $builder = intermixBuilderForTest();
+        $builder->factory(
             InterMixDirectFactoryTaggedMiddleware::class,
-            static function (Container $container) use (&$factoryCalls): InterMixDirectFactoryTaggedMiddleware {
+            static function (RuntimeContainerInterface $container) use (&$factoryCalls): InterMixDirectFactoryTaggedMiddleware {
                 if (!$container->get(Request::class) instanceof Request) {
                     throw new RuntimeException('Tagged middleware resolved outside the request scope.');
                 }
@@ -399,7 +396,7 @@ describe('InterMix integration', function () {
                     static fn(): Response => Response::json(['ok' => true]),
                 );
             },
-            options: ['container' => $container],
+            options: ['builder' => $builder],
         );
 
         expect($factoryCalls)->toBe(0);
@@ -445,8 +442,7 @@ describe('InterMix integration', function () {
             ->and($b1['scope_id'] ?? null)->not->toBe($b2['scope_id'] ?? null);
     });
 
-    it('injects the active request without registering a global definition', function () {
-        $container = Container::instance('intermix');
+    it('injects the active request through the declared scoped input', function () {
         $kernel = intermixKernelForTest(
             static function (Registrar $r): void {
                 $r->get('/request-seed', static function (Request $request): Response {
@@ -454,7 +450,6 @@ describe('InterMix integration', function () {
                 });
             },
             options: [
-                'container' => $container,
                 'preGlobalTags' => [],
                 'postGlobalTags' => [],
             ],
@@ -464,7 +459,6 @@ describe('InterMix integration', function () {
         $body = json_decode((string) $response->getBody(), true);
 
         expect($response)->toHaveStatus(200)
-            ->and($body['path'] ?? null)->toBe('/request-seed')
-            ->and($container->getRepository()->hasFunctionReference(Request::class))->toBeFalse();
+            ->and($body['path'] ?? null)->toBe('/request-seed');
     });
 });
