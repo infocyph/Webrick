@@ -219,5 +219,4 @@ final class RunwireResponseContinuation
             unset($ioSuspensions[$fiber]);
         }
     }
-
 }
