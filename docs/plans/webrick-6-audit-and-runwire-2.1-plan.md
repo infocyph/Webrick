@@ -61,8 +61,8 @@ and the mapped phase checkboxes after every implementation and QA stage.
 | B3 | InterMix 11 core runtime migration | B: runtime API | **Complete** |
 | B4 | InterMix kernels, dispatcher and artifacts | B: dispatch/build | **Complete** |
 | B5 | Runwire 2.1 contracts and lifecycle | C: lifecycle | **Complete** |
-| B6 | Borrowed runtime/request/scope integration | C: ownership/context | **In progress** |
-| B7 | CacheLayer 4 compatibility and deployment | D | **Not started** |
+| B6 | Borrowed runtime/request/scope integration | C: ownership/context | **Complete** |
+| B7 | CacheLayer 4 compatibility and deployment | D | **In progress** |
 | B8 | Static quality, duplication and migration docs | E | **Not started** |
 | B9 | Production request-path performance | F | **Not started** |
 | B10 | Final release evidence and acceptance | G | **Not started** |
@@ -164,13 +164,30 @@ Batch 5 evidence:
 
 ### Batch 6 — borrowed Runwire / InterMix scope integration
 
-- [ ] Register Runwire runtime/request/coroutine inputs through InterMix 11 before graph finalization when this optional integration is enabled.
-- [ ] Derive stable Webrick runtime capabilities from the supplied/bound Runwire `RuntimeContext`; keep unbound fallback conservative.
-- [ ] Reuse the host-supplied InterMix `RunwireIntegration` for one request scope or an exact borrowed `ScopeContext`, without adding a second DI scope.
-- [ ] Preserve exact Runwire `RuntimeContext`, `RequestContext` and optional `CoroutineScope` identities for injected consumers; reject conflicting/completed contexts.
-- [ ] Preserve zero-scope compiled routes and ordinary SAPI/FPM behavior when the optional bridge is absent.
-- [ ] Cover direct host, intermediary/borrowed scope, interleaved requests, nested restoration and runtime/generation conflicts.
-- [ ] Run focused B6 tests and full PHPForge gates before B7.
+- [x] Register Runwire runtime/request/coroutine inputs through InterMix 11 before graph finalization when this optional integration is enabled.
+- [x] Derive stable Webrick runtime capabilities from the supplied/bound Runwire `RuntimeContext`; keep unbound fallback conservative.
+- [x] Reuse the host-supplied InterMix `RunwireIntegration` for one request scope or an exact borrowed `ScopeContext`, without adding a second DI scope.
+- [x] Preserve exact Runwire `RuntimeContext`, `RequestContext` and optional `CoroutineScope` identities for injected consumers; reject conflicting/completed contexts.
+- [x] Preserve zero-scope compiled routes and ordinary SAPI/FPM behavior when the optional bridge is absent.
+- [x] Cover direct host, intermediary/borrowed scope, interleaved requests, nested restoration and runtime/generation conflicts.
+- [x] Run focused B6 tests and full PHPForge gates before B7.
+
+Batch 6 evidence:
+
+- Final B6 head: `dff28a5651c51727666f69839a5751aae465b31c`.
+- Exact-head Security & Standards run `37131976307` passed PHPForge detail diagnostics, PHP 8.4/8.5 stable and lowest QA, PHP 8.4/8.5 analysis, clean install and both benchmark jobs.
+- `RuntimeRequestContext` carries an optional runtime-scope bridge while the compiled kernel invokes it only for scope-required dispatch; direct zero-scope routes retain the existing fast path.
+- `RunwireRuntimeBinding` derives stable capabilities from the concrete runtime, validates request/runtime identity and creates the optional InterMix scope bridge only when the host supplies a bound integration.
+- `RunwireInterMixScopeBridge` delegates fresh and borrowed-scope ownership to InterMix 11's native `RunwireIntegration`; tests cover exact runtime/request/coroutine identity, borrowed-scope reuse, interleaved isolation, completed-request rejection and conflicting container/runtime rejection.
+
+### Batch 7 — CacheLayer 4 compatibility and deployment
+
+- [ ] Update the optional CacheLayer development range to released `^4.0`.
+- [ ] Preserve PSR-6 as the response-cache/cookie-store consuming contract and Webrick's own atomic-counter contract.
+- [ ] Verify the CacheLayer 4 atomic counter adapter, response cache, encrypted-cookie backing store and fail-open cache behavior.
+- [ ] Preserve optional-loading behavior: core routing must not autoload CacheLayer unless the relevant feature is selected.
+- [ ] Re-run persistent-worker/cache-boundary and concurrent throttle regressions under CacheLayer 4.
+- [ ] Run full PHPForge stable/lowest PHP 8.4/8.5 gates before B8.
 
 ## Engineering constraints
 
