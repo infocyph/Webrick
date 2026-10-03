@@ -16,6 +16,9 @@ use WeakMap;
 final class RunwireResponseContinuation
 {
     /** @var WeakMap<object, true>|null */
+    private static ?WeakMap $ioSuspensions = null;
+
+    /** @var WeakMap<object, true>|null */
     private static ?WeakMap $managedFibers = null;
 
     public static function awaitBodyReadable(RequestBodyInterface $body, CancellationToken $cancellation): void
@@ -61,7 +64,7 @@ final class RunwireResponseContinuation
             });
 
             if (!$ready && !$cancellation->isCancelled() && $body->bufferedBytes() === 0) {
-                Fiber::suspend();
+                self::suspendForIo($fiber);
             }
         } finally {
             $subscription->unsubscribe();
@@ -109,7 +112,7 @@ final class RunwireResponseContinuation
             });
 
             if (!$drained && !$cancellation->isCancelled()) {
-                Fiber::suspend();
+                self::suspendForIo($fiber);
             }
         } finally {
             $subscription->unsubscribe();
@@ -126,7 +129,13 @@ final class RunwireResponseContinuation
             return;
         }
 
-        self::runOwnedFiber($handler);
+        self::runOwnedFiber($handler, $current);
+    }
+
+    /** @return WeakMap<object, true> */
+    private static function ioSuspensions(): WeakMap
+    {
+        return self::$ioSuspensions ??= new WeakMap();
     }
 
     /** @return Fiber<mixed, mixed, mixed, mixed> */
@@ -149,19 +158,47 @@ final class RunwireResponseContinuation
     /** @param Fiber<mixed, mixed, mixed, mixed> $fiber */
     private static function releaseIfTerminated(Fiber $fiber): void
     {
-        if ($fiber->isTerminated() && self::$managedFibers instanceof WeakMap) {
+        if (!$fiber->isTerminated()) {
+            return;
+        }
+        if (self::$ioSuspensions instanceof WeakMap) {
+            unset(self::$ioSuspensions[$fiber]);
+        }
+        if (self::$managedFibers instanceof WeakMap) {
             unset(self::$managedFibers[$fiber]);
         }
-    }    /** @param callable(): void $handler */
-    private static function runOwnedFiber(callable $handler): void
+    }
+
+    /**
+     * Webrick owns only the inner continuation Fiber. I/O suspension remains
+     * callback-driven; ordinary handler suspension is handed back to the
+     * caller-owned Fiber and resumed only when that caller explicitly resumes.
+     *
+     * @param callable(): void $handler
+     * @param Fiber<mixed, mixed, mixed, mixed>|null $owner
+     */
+    private static function runOwnedFiber(callable $handler, ?Fiber $owner): void
     {
         /** @var Fiber<mixed, mixed, mixed, mixed> $fiber */
         $fiber = new Fiber($handler);
         self::managedFibers()[$fiber] = true;
 
         try {
-            $fiber->start();
+            $suspension = $fiber->start();
+            while ($fiber->isSuspended() && !isset(self::ioSuspensions()[$fiber])) {
+                if (!$owner instanceof Fiber) {
+                    throw new RuntimeException(
+                        'Runwire handler suspended without a caller-owned Fiber to resume it.',
+                    );
+                }
+
+                $resumeValue = Fiber::suspend($suspension);
+                $suspension = $fiber->resume($resumeValue);
+            }
         } catch (Throwable $error) {
+            if (self::$ioSuspensions instanceof WeakMap) {
+                unset(self::$ioSuspensions[$fiber]);
+            }
             unset(self::managedFibers()[$fiber]);
 
             throw $error;
@@ -170,5 +207,17 @@ final class RunwireResponseContinuation
         self::releaseIfTerminated($fiber);
     }
 
+    /** @param Fiber<mixed, mixed, mixed, mixed> $fiber */
+    private static function suspendForIo(Fiber $fiber): void
+    {
+        $ioSuspensions = self::ioSuspensions();
+        $ioSuspensions[$fiber] = true;
+
+        try {
+            Fiber::suspend();
+        } finally {
+            unset($ioSuspensions[$fiber]);
+        }
+    }
 
 }
