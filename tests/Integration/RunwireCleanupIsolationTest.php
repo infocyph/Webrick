@@ -6,6 +6,7 @@ namespace Tests\Integration;
 
 use Closure;
 use Infocyph\InterMix\DI\ContainerBuilder;
+use Infocyph\InterMix\DI\Support\LifetimeEnum;
 use Infocyph\InterMix\Exceptions\ContainerException;
 use Infocyph\Runwire\Http\Enum\ProtocolVersion;
 use Infocyph\Runwire\Http\Headers;
@@ -248,8 +249,13 @@ final class RunwireCleanupIsolationTest extends TestCase
     {
         [$intermixPath, $routerPath] = self::artifactPaths();
         $fingerprint = 'runwire-cleanup-isolation';
-        $builder = ContainerBuilder::create('webrick_runwire_cleanup_' . bin2hex(random_bytes(4)));
-        $builder->scoped(RunwireCleanupScopedMarker::class);
+        $builder = ContainerBuilder::create('webrick_runwire_cleanup_' . bin2hex(random_bytes(4)))
+            ->input(\Infocyph\Webrick\Request\Request::class)
+            ->autowire(
+                RunwireCleanupScopedMarker::class,
+                RunwireCleanupScopedMarker::class,
+                lifetime: LifetimeEnum::Scoped,
+            );
         $builder->onScopeLeave(
             RuntimeRequestContext::REQUEST_SCOPE,
             static function (string $scope): void {
