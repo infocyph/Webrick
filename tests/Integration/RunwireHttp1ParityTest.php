@@ -96,6 +96,8 @@ final class RunwireHttp1BodyFixture implements RequestBodyInterface
 
 final class RunwireHttp1WriterFixture implements ResponseWriterInterface
 {
+    use \Infocyph\Webrick\Tests\Fixture\RunwireTerminalWriterTrait;
+
     /** @var list<string> */
     public array $chunks = [];
 
@@ -127,6 +129,7 @@ final class RunwireHttp1WriterFixture implements ResponseWriterInterface
 
         ++$this->endCalls;
         $this->ended = true;
+        $this->notifyTerminal();
 
         return new WriteResult(WriteState::ACCEPTED, strlen($finalChunk));
     }
