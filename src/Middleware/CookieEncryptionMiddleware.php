@@ -18,7 +18,7 @@ use RuntimeException;
 /** Authenticated cookie encryption with immutable key selection. */
 final readonly class CookieEncryptionMiddleware
 {
-    private const string CACHE_PREFIX = 'enc_cookie.';
+    private const string CACHE_PREFIX = 'enc_cookie.v2.';
 
     private const string MODE_BROTLI = 'b';
 
