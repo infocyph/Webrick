@@ -21,6 +21,18 @@ final readonly class ReleaseCompiler
         private RouterArtifactCompiler $routerArtifacts = new RouterArtifactCompiler(),
     ) {}
 
+    /** @param array<string,mixed> $manifest */
+    public static function fingerprintManifest(array $manifest): string
+    {
+        unset($manifest['release_fingerprint']);
+        $encoded = json_encode(
+            self::canonicalize($manifest),
+            JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
+
+        return hash('xxh128', $encoded);
+    }
+
     public static function runtimeManifestPath(string $releaseManifestPath): string
     {
         $path = trim($releaseManifestPath);
@@ -98,6 +110,7 @@ final readonly class ReleaseCompiler
             ],
             'webrick' => $webrick,
         ];
+        $manifest['release_fingerprint'] = self::fingerprintManifest($manifest);
 
         $json = json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n";
         $this->writeAtomic($releaseManifestPath, $json);
@@ -112,6 +125,23 @@ final readonly class ReleaseCompiler
             'release_manifest' => $releaseManifestPath,
             'release_runtime_manifest' => $runtimeManifestPath,
         ];
+    }
+
+    private static function canonicalize(mixed $value): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+        if (array_is_list($value)) {
+            return array_map(self::canonicalize(...), $value);
+        }
+
+        ksort($value, SORT_STRING);
+        foreach ($value as $key => $entry) {
+            $value[$key] = self::canonicalize($entry);
+        }
+
+        return $value;
     }
 
     private function writeAtomic(string $path, string $contents): void
