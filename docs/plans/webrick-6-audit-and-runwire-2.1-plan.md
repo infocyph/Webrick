@@ -1,6 +1,6 @@
 # Webrick 6.0 — Consolidated improvement and release plan
 
-Status: **next major release selected; implementation and release gates remain open**.
+Status: **plan synchronized; Batch 0 complete; Batch 1 in progress; implementation and release gates remain open**.
 
 Audit date: 2026-10-03 (Asia/Dhaka). Baseline: Webrick **5.4**, commit
 `0f01cb4c303f94e683de8a3567682b70908122af`.
@@ -46,6 +46,44 @@ Proposed 6.0 dependency policy:
 Runwire's 64-bit/platform requirements must not become requirements of ordinary
 Webrick installations. Do not raise the PHP floor solely for a convenient URL
 parser; the redirect fix must also work on PHP 8.4.
+
+## Batch implementation tracker
+
+Execute Webrick 6.0 sequentially by batch. Do not advance until the current batch's
+implementation, focused regressions and QA exit gate are complete. Update this table
+and the mapped phase checkboxes after every implementation and QA stage.
+
+| Batch | Scope | Phase mapping | Status |
+| --- | --- | --- | --- |
+| B0 | Baseline review and plan synchronization | Audit + planning | **Complete** |
+| B1 | Response cache, redirects and encrypted cookies | A: W01–W04 | **In progress** |
+| B2 | Request limits, HTTP deflate and upload integrity | A: W05–W07 | **Not started** |
+| B3 | InterMix 11 core runtime migration | B: runtime API | **Not started** |
+| B4 | InterMix kernels, dispatcher and artifacts | B: dispatch/build | **Not started** |
+| B5 | Runwire 2.1 contracts and lifecycle | C: lifecycle | **Not started** |
+| B6 | Borrowed runtime/request/scope integration | C: ownership/context | **Not started** |
+| B7 | CacheLayer 4 compatibility and deployment | D | **Not started** |
+| B8 | Static quality, duplication and migration docs | E | **Not started** |
+| B9 | Production request-path performance | F | **Not started** |
+| B10 | Final release evidence and acceptance | G | **Not started** |
+
+### Batch 0 — synchronized baseline
+
+- [x] Confirm `feature/runwire` is based on Webrick 5.4 (`0f01cb4c303f94e683de8a3567682b70908122af`).
+- [x] Reconfirm W01–W07 against their current source owners.
+- [x] Validate target releases InterMix 11.0, Runwire 2.1 and CacheLayer 4.0.
+- [x] Confirm InterMix 11 provides `RuntimeContainerInterface` and its Runwire integration.
+- [x] Confirm Runwire 2.1 terminal and application-health contract changes.
+- [x] Establish B1–B10 sequencing and per-batch QA/tracker rules.
+
+### Batch 1 — W01–W04
+
+- [ ] Add failing adversarial regressions for W01–W04 before production fixes.
+- [ ] W01: preserve exact raw query semantics in response-cache keys and bump the namespace.
+- [ ] W02: reject ambiguous redirect backslashes, malformed authorities, userinfo and invalid ports.
+- [ ] W03: explicitly reject unsupported dotted protected-cookie names on write and never pass them through plaintext on read.
+- [ ] W04: accept only shaped store references containing current authenticated `C1:` ciphertext; remove legacy plaintext acceptance.
+- [ ] Run focused B1 tests, affected PHPForge checks and the full suite; record evidence before B2.
 
 ## Engineering constraints
 
@@ -221,6 +259,9 @@ atomic capability must never silently select a process-local approximate pool.
 
 ### Runwire 2.1 lifecycle acceptance
 
+- [ ] Migrate `RunwireRuntimeApplication` to the complete Runwire 2.1
+  `RuntimeApplicationInterface`, including `healthy()` and `healthFailure()`,
+  forwarding those semantics to the owned Runwire application.
 - [ ] Update test/custom writers for exactly-once `onTerminal()` notification,
   including late registration, rejection and cancellation.
 - [ ] Audit `RunwireResponseContinuation` with Runwire 2.1 structured scheduling.
