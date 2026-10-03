@@ -32,13 +32,3 @@ jobs:
       - run: composer install --no-interaction --no-progress --prefer-dist
       - name: Run exact PHPForge detail suite
         run: composer ic:test:details
-      - name: Run benchmark diagnostics
-        run: >-
-          vendor/bin/phpbench run
-          --report=aggregate
-          --bootstrap=vendor/autoload.php
-          --config=vendor/infocyph/phpforge/resources/phpbench.json
-          --revs=10
-          --iterations=3
-          --warmup=1
-          benchmarks
