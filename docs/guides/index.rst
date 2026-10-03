@@ -63,4 +63,5 @@ Common pitfalls
    cookies
    throttling
    error-rendering
+   upgrading-5.4-to-6.0
    urls
