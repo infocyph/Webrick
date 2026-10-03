@@ -477,7 +477,21 @@ final readonly class CompiledRouterKernel
         return $this->matcher->matchCompiled($routing->method, $routing->host, $routing->path);
     }
 
-    private function withinRequestScope(
+    private function renderException(
+        Throwable $exception,
+        ?Request $request,
+        ?RuntimeRequestContext $runtimeContext = null,
+    ): Response {
+        if (!$request instanceof Request) {
+            try {
+                $request = $runtimeContext?->request() ?? Request::fromGlobals();
+            } catch (Throwable) {
+                $request = Request::fake();
+            }
+        }
+
+        return $this->errorHandler->renderThrowable($request, $exception);
+    }    private function withinRequestScope(
         ?RuntimeRequestContext $runtimeContext,
         ?Request $request,
         callable $callback,
@@ -493,19 +507,5 @@ final readonly class CompiledRouterKernel
         );
     }
 
-    private function renderException(
-        Throwable $exception,
-        ?Request $request,
-        ?RuntimeRequestContext $runtimeContext = null,
-    ): Response {
-        if (!$request instanceof Request) {
-            try {
-                $request = $runtimeContext?->request() ?? Request::fromGlobals();
-            } catch (Throwable) {
-                $request = Request::fake();
-            }
-        }
 
-        return $this->errorHandler->renderThrowable($request, $exception);
-    }
 }
