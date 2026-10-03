@@ -323,6 +323,36 @@ final class RunwireStreamingLifecycleTest extends TestCase
         }
     }
 
+    public function testPressureContinuationDoesNotAdoptAmbientFiberOwnership(): void
+    {
+        [$application, $paths] = self::applicationFixture();
+        $writer = new RunwirePressureWriterFixture(pressureOnWriteCall: 1);
+        $request = self::request('/runtime/scoped-stream');
+        $ambient = new \Fiber(
+            static function () use ($application, $request, $writer): void {
+                $application->handle($request, $writer, completeResponse: true);
+            },
+        );
+
+        try {
+            $ambient->start();
+
+            self::assertTrue($ambient->isTerminated());
+            self::assertTrue($writer->hasPendingDrain());
+            self::assertSame(1, $application->snapshot()->requestsActive);
+            self::assertFalse($request->context->completed());
+
+            $writer->drain();
+
+            self::assertSame(0, $application->snapshot()->requestsActive);
+            self::assertTrue($request->context->completed());
+            self::assertSame(1, $writer->endCalls);
+        } finally {
+            $application->shutdown();
+            self::cleanup($paths);
+        }
+    }
+
     public function testRequestBodyRemainsIncrementalThroughTheRunwireRuntimeBridge(): void
     {
         [$application, $paths] = self::applicationFixture();
