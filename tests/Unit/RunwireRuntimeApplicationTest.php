@@ -77,6 +77,10 @@ final class RunwireApplicationWriterFixture implements ResponseWriterInterface
 
     public function end(string $finalChunk = ''): WriteResult
     {
+        if ($this->ended) {
+            return new WriteResult(WriteState::CLOSED, 0);
+        }
+
         ++$this->endCalls;
         $this->ended = true;
         $this->notifyTerminal();
@@ -125,7 +129,7 @@ function runwire_application_request(): HttpRequest
     );
 }
 
-test('runwire application bridge suppresses lifecycle response completion', function (): void {
+test('runwire application bridge delegates requested lifecycle completion exactly once', function (): void {
     $application = new RunwireRuntimeApplication(
         function (HttpRequest $request, ResponseWriterInterface $writer): void {
             expect($request->method)->toBe('GET');
@@ -138,8 +142,8 @@ test('runwire application bridge suppresses lifecycle response completion', func
     $application->handle(runwire_application_request(), $writer, completeResponse: true);
 
     expect($writer->started)->toBeTrue()
-        ->and($writer->ended)->toBeFalse()
-        ->and($writer->endCalls)->toBe(0)
+        ->and($writer->ended)->toBeTrue()
+        ->and($writer->endCalls)->toBe(1)
         ->and($application->snapshot()->requestsTotal)->toBe(1)
         ->and($application->snapshot()->requestsActive)->toBe(0);
 });
@@ -160,6 +164,51 @@ test('runwire application bridge leaves exactly once completion with the Webrick
     expect($writer->ended)->toBeTrue()
         ->and($writer->endCalls)->toBe(1)
         ->and($application->snapshot()->requestsTotal)->toBe(1);
+});
+
+test('runwire terminal observers fire exactly once and late observers fire immediately', function (): void {
+    $writer = new RunwireApplicationWriterFixture();
+    $early = 0;
+    $late = 0;
+
+    $writer->onTerminal(function (ResponseWriterInterface $terminal) use (&$early, $writer): void {
+        expect($terminal)->toBe($writer);
+        ++$early;
+    });
+    $writer->end();
+    $writer->onTerminal(function (ResponseWriterInterface $terminal) use (&$late, $writer): void {
+        expect($terminal)->toBe($writer);
+        ++$late;
+    });
+    $writer->end();
+
+    expect($early)->toBe(1)
+        ->and($late)->toBe(1)
+        ->and($writer->endCalls)->toBe(1);
+});
+
+test('runwire application bridge forwards lifecycle health failure', function (): void {
+    $failure = new RuntimeException('runwire cleanup isolation failed');
+    $application = new RunwireRuntimeApplication(
+        static function (HttpRequest $request, ResponseWriterInterface $writer): void {
+            expect($request->method)->toBe('GET');
+            $writer->end();
+        },
+        RuntimeContext::standalone(),
+        requestCleanup: static function () use ($failure): void {
+            throw $failure;
+        },
+    );
+
+    expect($application->healthy())->toBeTrue()
+        ->and($application->healthFailure())->toBeNull()
+        ->and(fn() => $application->handle(
+            runwire_application_request(),
+            new RunwireApplicationWriterFixture(),
+            completeResponse: true,
+        ))->toThrow(\Infocyph\Runwire\Exception\RequestLifecycleException::class)
+        ->and($application->healthy())->toBeFalse()
+        ->and($application->healthFailure())->toBe($failure);
 });
 
 test('runwire application factory delegates lifecycle hooks cleanup and shutdown', function (): void {
