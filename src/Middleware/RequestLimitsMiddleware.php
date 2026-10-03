@@ -11,7 +11,6 @@ use Infocyph\Webrick\Interfaces\BodyStream;
 use Infocyph\Webrick\Request\Core\StringBody;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
-use Infocyph\Webrick\Runtime\Http\RuntimeCapabilities;
 use InvalidArgumentException;
 
 /** Portable request-limit fallback when the transport has not already enforced limits. */
@@ -55,11 +54,6 @@ final readonly class RequestLimitsMiddleware
     /** @param Closure(Request):Response $next */
     public function __invoke(Request $req, Closure $next): Response
     {
-        $capabilities = $req->getAttribute(RuntimeCapabilities::ATTRIBUTE);
-        if ($capabilities instanceof RuntimeCapabilities && $capabilities->transportRequestLimits) {
-            return $next($req);
-        }
-
         $this->rejectForHeaderLimits($req);
         $req = $this->enforceBodyLimit($req);
 

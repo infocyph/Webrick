@@ -162,35 +162,54 @@ final class UploadedFile
             $source->rewind();
         }
 
-        $out = fopen($targetPath, 'wb');
-        if (!is_resource($out)) {
-            throw new RuntimeException("Cannot write to {$targetPath}");
+        $temporaryPath = tempnam(dirname($targetPath), '.webrick-upload-');
+        if (!is_string($temporaryPath)) {
+            throw new RuntimeException("Cannot create temporary upload target for {$targetPath}");
         }
 
-        $completed = false;
+        $published = false;
 
         try {
-            while (!$source->eof()) {
-                $chunk = $source->read(65_536);
-                if ($chunk === '') {
-                    break;
-                }
-
-                $offset = 0;
-                $length = strlen($chunk);
-                while ($offset < $length) {
-                    $written = fwrite($out, substr($chunk, $offset));
-                    if ($written === false || $written === 0) {
-                        throw new RuntimeException("Failed to write uploaded file to {$targetPath}");
-                    }
-                    $offset += $written;
-                }
+            $out = fopen($temporaryPath, 'wb');
+            if (!is_resource($out)) {
+                throw new RuntimeException("Cannot write to temporary upload target for {$targetPath}");
             }
-            $completed = true;
+
+            try {
+                while (!$source->eof()) {
+                    $chunk = $source->read(65_536);
+                    if ($chunk === '') {
+                        if ($source->eof()) {
+                            break;
+                        }
+
+                        throw new RuntimeException('Uploaded stream made no progress before EOF.');
+                    }
+
+                    $offset = 0;
+                    $length = strlen($chunk);
+                    while ($offset < $length) {
+                        $written = fwrite($out, substr($chunk, $offset));
+                        if ($written === false || $written === 0) {
+                            throw new RuntimeException("Failed to write uploaded file to {$targetPath}");
+                        }
+                        $offset += $written;
+                    }
+                }
+            } finally {
+                fclose($out);
+            }
+
+            if (!self::attemptFilesystemOperation(
+                static fn(): bool => rename($temporaryPath, $targetPath),
+            )) {
+                throw new RuntimeException("Failed to publish uploaded file to {$targetPath}");
+            }
+
+            $published = true;
         } finally {
-            fclose($out);
-            if (!$completed && is_file($targetPath)) {
-                self::attemptFilesystemOperation(static fn(): bool => unlink($targetPath));
+            if (!$published && is_file($temporaryPath)) {
+                self::attemptFilesystemOperation(static fn(): bool => unlink($temporaryPath));
             }
         }
     }
