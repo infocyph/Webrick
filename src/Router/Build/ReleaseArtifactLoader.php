@@ -53,7 +53,8 @@ final readonly class ReleaseArtifactLoader
     /**
      * @param array{path:string,digest:string,graph:string,build:string,artifact:string,compiled:list<string>,skipped:array<string,string>} $expected
      */
-    private function assertInterMixArtifact(array $expected): void {
+    private function assertInterMixArtifact(array $expected): void
+    {
         if (!is_link($expected['path'])) {
             throw new RuntimeException('InterMix 11 release artifact must be an active runtime symlink.');
         }
@@ -104,7 +105,8 @@ final readonly class ReleaseArtifactLoader
     /**
      * @param array{path:string,meta:string,digest:string,fingerprint:string,routes:int} $expected
      */
-    private function assertWebrickArtifact(CompiledRouterArtifact $artifact, array $expected): void {
+    private function assertWebrickArtifact(CompiledRouterArtifact $artifact, array $expected): void
+    {
         $digest = hash_file('xxh128', $expected['path']);
         if (!is_string($digest) || !hash_equals($expected['digest'], $digest)) {
             throw new RuntimeException('Webrick router artifact digest does not match the coordinated release.');
@@ -121,7 +123,8 @@ final readonly class ReleaseArtifactLoader
     }
 
     /** @return array<string,mixed> */
-    private function decodeJsonFile(string $path, string $label): array {
+    private function decodeJsonFile(string $path, string $label): array
+    {
         if (!is_file($path) || !is_readable($path)) {
             throw new RuntimeException("{$label} is missing or unreadable.");
         }
@@ -154,7 +157,8 @@ final readonly class ReleaseArtifactLoader
      * @param array<string,mixed> $manifest
      * @return array{path:string,digest:string,graph:string,build:string,artifact:string,compiled:list<string>,skipped:array<string,string>}
      */
-    private function intermixMetadata(array $manifest): array {
+    private function intermixMetadata(array $manifest): array
+    {
         $metadata = $manifest['intermix'] ?? null;
         if (!is_array($metadata)) {
             throw new UnexpectedValueException('Coordinated release has invalid InterMix metadata.');
@@ -187,12 +191,14 @@ final readonly class ReleaseArtifactLoader
     }
 
     /** @return array<string,mixed> */
-    private function readManifest(string $path): array {
+    private function readManifest(string $path): array
+    {
         return $this->decodeJsonFile($path, 'Webrick coordinated release manifest');
     }
 
     /** @return list<string> */
-    private function stringList(mixed $value, string $label): array {
+    private function stringList(mixed $value, string $label): array
+    {
         if (!is_array($value) || !array_is_list($value)) {
             throw new UnexpectedValueException("{$label} must be a list.");
         }
@@ -206,7 +212,8 @@ final readonly class ReleaseArtifactLoader
     }
 
     /** @return array<string,string> */
-    private function stringMap(mixed $value, string $label): array {
+    private function stringMap(mixed $value, string $label): array
+    {
         if (!is_array($value)) {
             throw new UnexpectedValueException("{$label} must be an object.");
         }
@@ -225,7 +232,8 @@ final readonly class ReleaseArtifactLoader
      * @param array<string,mixed> $manifest
      * @return array{path:string,meta:string,digest:string,fingerprint:string,routes:int}
      */
-    private function webrickMetadata(array $manifest): array {
+    private function webrickMetadata(array $manifest): array
+    {
         $metadata = $manifest['webrick'] ?? null;
         if (!is_array($metadata)) {
             throw new UnexpectedValueException('Coordinated release has invalid Webrick metadata.');
