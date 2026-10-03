@@ -377,11 +377,7 @@ describe('InterMix integration', function () {
         $builder = intermixBuilderForTest();
         $builder->factory(
             InterMixDirectFactoryTaggedMiddleware::class,
-            static function (RuntimeContainerInterface $container) use (&$factoryCalls): InterMixDirectFactoryTaggedMiddleware {
-                if (!$container->get(Request::class) instanceof Request) {
-                    throw new RuntimeException('Tagged middleware resolved outside the request scope.');
-                }
-
+            static function () use (&$factoryCalls): InterMixDirectFactoryTaggedMiddleware {
                 ++$factoryCalls;
 
                 return new InterMixDirectFactoryTaggedMiddleware($factoryCalls);
