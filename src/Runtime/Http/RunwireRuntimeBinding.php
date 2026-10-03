@@ -21,6 +21,10 @@ final readonly class RunwireRuntimeBinding
     /** @var Closure(HttpRequest): mixed|null */
     private ?Closure $coroutineScopeResolver;
 
+    private ?RunwireIntegration $interMix;
+
+    private ?RuntimeContext $runtimeContext;
+
     /** @var Closure(HttpRequest): mixed|null */
     private ?Closure $scopeContextResolver;
 
@@ -29,20 +33,21 @@ final readonly class RunwireRuntimeBinding
      * @param callable(HttpRequest): mixed|null $scopeContext
      */
     public function __construct(
-        private ?RuntimeContext $runtimeContext = null,
-        private ?RunwireIntegration $interMix = null,
+        ?RuntimeContext $runtimeContext = null,
+        ?RunwireIntegration $interMix = null,
         ?callable $coroutineScope = null,
         ?callable $scopeContext = null,
     ) {
-        $boundRuntime = $this->interMix?->runtime();
-        if ($this->runtimeContext !== null && $boundRuntime !== null && $boundRuntime !== $this->runtimeContext) {
+        $boundRuntime = $interMix?->runtime();
+        if ($runtimeContext !== null && $boundRuntime !== null && $boundRuntime !== $runtimeContext) {
             throw new LogicException('Runwire adapter and InterMix integration are bound to different runtimes.');
         }
-        if ($this->interMix !== null && !$boundRuntime instanceof RuntimeContext) {
+        if ($interMix !== null && !$boundRuntime instanceof RuntimeContext) {
             throw new LogicException('InterMix Runwire integration must be bound before adapter construction.');
         }
 
-        $this->runtimeContext ??= $boundRuntime;
+        $this->interMix = $interMix;
+        $this->runtimeContext = $runtimeContext ?? $boundRuntime;
         $this->coroutineScopeResolver = $coroutineScope === null ? null : Closure::fromCallable($coroutineScope);
         $this->scopeContextResolver = $scopeContext === null ? null : Closure::fromCallable($scopeContext);
     }
