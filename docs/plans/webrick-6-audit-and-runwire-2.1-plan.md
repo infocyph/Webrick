@@ -1,6 +1,6 @@
 # Webrick 6.0 — Consolidated improvement and release plan
 
-Status: **plan synchronized; Batches 0–1 complete; Batch 2 in progress; implementation and release gates remain open**.
+Status: **plan synchronized; Batches 0–2 complete; Batch 3 in progress; implementation and release gates remain open**.
 
 Audit date: 2026-10-03 (Asia/Dhaka). Baseline: Webrick **5.4**, commit
 `0f01cb4c303f94e683de8a3567682b70908122af`.
@@ -57,8 +57,8 @@ and the mapped phase checkboxes after every implementation and QA stage.
 | --- | --- | --- | --- |
 | B0 | Baseline review and plan synchronization | Audit + planning | **Complete** |
 | B1 | Response cache, redirects and encrypted cookies | A: W01–W04 | **Complete** |
-| B2 | Request limits, HTTP deflate and upload integrity | A: W05–W07 | **In progress** |
-| B3 | InterMix 11 core runtime migration | B: runtime API | **Not started** |
+| B2 | Request limits, HTTP deflate and upload integrity | A: W05–W07 | **Complete** |
+| B3 | InterMix 11 core runtime migration | B: runtime API | **In progress** |
 | B4 | InterMix kernels, dispatcher and artifacts | B: dispatch/build | **Not started** |
 | B5 | Runwire 2.1 contracts and lifecycle | C: lifecycle | **Not started** |
 | B6 | Borrowed runtime/request/scope integration | C: ownership/context | **Not started** |
@@ -96,11 +96,30 @@ Batch 1 evidence:
 
 ### Batch 2 — W05–W07
 
-- [ ] Add failing regressions for stricter Webrick request limits under Runwire capabilities, zlib-wrapped HTTP deflate and no-progress upload reads.
-- [ ] W05: keep configured application body/header limits enforceable on every adapter unless the transport proves equivalent or stricter bounds.
-- [ ] W06: emit zlib-wrapped bytes for HTTP `Content-Encoding: deflate` without changing internal cookie compression.
-- [ ] W07: never treat a temporary empty read as successful EOF, never mark a partial upload moved, and never delete unrelated pre-existing destination data on failed copy.
-- [ ] Run focused B2 tests, affected PHPForge checks and the full suite; record evidence before B3.
+- [x] Add failing regressions for stricter Webrick request limits under Runwire capabilities, zlib-wrapped HTTP deflate and no-progress upload reads.
+- [x] W05: keep configured application body/header limits enforceable on every adapter unless the transport proves equivalent or stricter bounds.
+- [x] W06: emit zlib-wrapped bytes for HTTP `Content-Encoding: deflate` without changing internal cookie compression.
+- [x] W07: never treat a temporary empty read as successful EOF, never mark a partial upload moved, and never delete unrelated pre-existing destination data on failed copy.
+- [x] Run focused B2 tests, affected PHPForge checks and the full suite; record evidence before B3.
+
+Batch 2 evidence:
+
+- Final implementation/quality head: `dd017e248151358fb1248a83fc42b2a2ed4b430c`.
+- The full PHPForge/Pest suite passes with **520 tests / 1,790 assertions**.
+- PHPStan, Psalm, PHPCS, duplicate-code, comment-policy, clean-install and benchmark gates pass.
+- Exact-head Security & Standards run `37124045404` passed on PHP 8.4/8.5 stable/lowest combinations.
+- W05 regressions prove Webrick application limits remain active despite transport capability metadata.
+- W06 is independently decoded with `gzuncompress()`, proving HTTP deflate uses the zlib wrapper.
+- W07 uses target-directory temporary publication, rejects non-EOF zero progress, preserves retry state and leaves pre-existing destination data untouched on failed copy.
+
+### Batch 3 — InterMix 11 core runtime migration
+
+- [ ] Update Composer to InterMix `^11.0` without changing the optional Runwire/CacheLayer ranges yet.
+- [ ] Replace the Webrick runtime wrapper's legacy `Container|ProductionContainer` API with `RuntimeContainerInterface`.
+- [ ] Replace `resolveNow()` / `findByTag()` consumption with explicit `make()`, `invoke()` and `tagged()` runtime contracts.
+- [ ] Add/adjust focused runtime tests and keep the requestless/scopeless compiled fast path unchanged.
+- [ ] Run focused B3 tests and PHPForge gates before B4.
+
 ## Engineering constraints
 
 Follow `vendor/infocyph/phpforge/resources/engineering-principles.md` and its
