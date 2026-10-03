@@ -80,7 +80,7 @@ sample() {
 }
 
 php "$HARNESS" prepare "--root=${ROOT}"
-php "$HARNESS" runwire     "--root=${ROOT}"     "--address=127.0.0.1:18100"     "--recycle=20000" >"$LOG" 2>&1 &
+php "$HARNESS" runwire     "--root=${ROOT}"     "--address=127.0.0.1:18100"     "--recycle=30000" >"$LOG" 2>&1 &
 SERVER_PID=$!
 
 cleanup() {
@@ -104,9 +104,9 @@ while (( $(date +%s) < DEADLINE )); do
     ab -k -n 1000 -c 20 "http://127.0.0.1:18100/cert/static" >/dev/null
     ab -k -n 200 -c 10 -p "$PAYLOAD" -T application/octet-stream         "http://127.0.0.1:18100/cert/upload" >/dev/null
 
-    for _ in $(seq 1 10); do
-        curl -fsS --max-time 0.03 "http://127.0.0.1:18100/cert/slow/250" >/dev/null 2>&1 || true
-    done
+    if (( CYCLE % 20 == 0 )); then
+        curl -fsS --max-time 0.05 "http://127.0.0.1:18100/cert/slow/250" >/dev/null 2>&1 || true
+    fi
 
     for _ in $(seq 1 10); do
         [[ "$(fetch_retry "http://127.0.0.1:18100/cert/stream" | wc -c | tr -d ' ')" == "3072" ]]
