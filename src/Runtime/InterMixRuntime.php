@@ -42,6 +42,11 @@ final readonly class InterMixRuntime
         return $this->container->invoke($callable, $arguments);
     }
 
+    public function isProduction(): bool
+    {
+        return $this->container instanceof ProductionContainer;
+    }
+
     /**
      * @param class-string $class
      * @param array<int|string,mixed> $arguments
@@ -49,11 +54,6 @@ final readonly class InterMixRuntime
     public function make(string $class, array $arguments = []): object
     {
         return $this->container->make($class, $arguments);
-    }
-
-    public function isProduction(): bool
-    {
-        return $this->container instanceof ProductionContainer;
     }
 
     public function resetCurrentExecutionScope(): void
