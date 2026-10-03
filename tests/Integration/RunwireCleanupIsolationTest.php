@@ -250,6 +250,7 @@ final class RunwireCleanupIsolationTest extends TestCase
         [$intermixPath, $routerPath] = self::artifactPaths();
         $fingerprint = 'runwire-cleanup-isolation';
         $builder = ContainerBuilder::create('webrick_runwire_cleanup_' . bin2hex(random_bytes(4)))
+            ->releaseIdentity($fingerprint)
             ->input(\Infocyph\Webrick\Request\Request::class)
             ->autowire(
                 RunwireCleanupScopedMarker::class,
