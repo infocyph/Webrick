@@ -113,10 +113,8 @@ final readonly class InputSanitizer
             && defined('Normalizer::FORM_KC')
         ) {
             $form = constant('Normalizer::FORM_KC');
-            if (is_int($form)) {
-                $normalized = normalizer_normalize($s, $form);
-                $s = is_string($normalized) ? $normalized : $s;
-            }
+            $normalized = normalizer_normalize($s, $form);
+            $s = is_string($normalized) ? $normalized : $s;
         }
 
         $s = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', '', $s) ?? $s; // strip controls
