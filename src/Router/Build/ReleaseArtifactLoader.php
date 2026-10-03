@@ -66,6 +66,14 @@ final readonly class ReleaseArtifactLoader
         if (!is_string($fingerprint) || !hash_equals($expectedConfigFingerprint, $fingerprint)) {
             throw new RuntimeException('Coordinated release configuration fingerprint mismatch.');
         }
+
+        $releaseFingerprint = $manifest['release_fingerprint'] ?? null;
+        if (!is_string($releaseFingerprint)
+            || preg_match('/^[a-f0-9]{32}$/D', $releaseFingerprint) !== 1
+            || !hash_equals($releaseFingerprint, ReleaseCompiler::fingerprintManifest($manifest))
+        ) {
+            throw new RuntimeException('Coordinated release fingerprint mismatch.');
+        }
     }
 
     /**
@@ -76,8 +84,9 @@ final readonly class ReleaseArtifactLoader
         if (!is_link($expected['path'])) {
             throw new RuntimeException('InterMix 11 release artifact must be an active runtime symlink.');
         }
+
         $artifactPath = realpath($expected['path']);
-        if ($artifactPath === false || !is_file($artifactPath)) {
+        if ($artifactPath === false || !is_file($artifactPath) || !is_readable($artifactPath)) {
             throw new RuntimeException('InterMix release artifact is missing or unreadable.');
         }
 
@@ -85,20 +94,11 @@ final readonly class ReleaseArtifactLoader
         if (!is_string($digest) || !hash_equals($expected['digest'], $digest)) {
             throw new RuntimeException('InterMix release artifact digest mismatch.');
         }
-
-        $manifestPath = dirname($artifactPath) . DIRECTORY_SEPARATOR . 'manifest.json';
-        $actual = $this->decodeJsonFile($manifestPath, 'InterMix release manifest');
-        foreach (['digest', 'graph', 'build', 'artifact'] as $field) {
-            $value = $actual[$field] ?? null;
-            if (!is_string($value) || !hash_equals($expected[$field], $value)) {
-                throw new RuntimeException("InterMix release {$field} identity mismatch.");
-            }
+        if (basename($artifactPath) !== $expected['artifact']) {
+            throw new RuntimeException('InterMix release artifact name mismatch.');
         }
-        if (($actual['abi'] ?? null) !== 2 || ($actual['intermix_major'] ?? null) !== 11) {
-            throw new RuntimeException('InterMix release artifact ABI is incompatible with Webrick 6.');
-        }
-        if (($actual['php'] ?? null) !== PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION) {
-            throw new RuntimeException('InterMix release artifact targets a different PHP runtime.');
+        if (basename(dirname($artifactPath)) !== $expected['build']) {
+            throw new RuntimeException('InterMix release build identity mismatch.');
         }
     }
 
