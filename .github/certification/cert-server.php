@@ -24,7 +24,6 @@ use Infocyph\Webrick\Runtime\Http\RunwireRuntimeAdapter;
 use Infocyph\Webrick\Runtime\Http\RunwireRuntimeApplicationFactory;
 use Infocyph\Webrick\Runtime\Http\RuntimeServer;
 use Infocyph\Webrick\Runtime\Http\SapiRuntimeAdapter;
-use Infocyph\Webrick\Runtime\InterMixRuntime;
 use Psr\Log\NullLogger;
 use RuntimeException;
 
@@ -87,6 +86,9 @@ function certification_prepare(string $root): void
     certification_cleanup_artifact($paths['intermix']);
     certification_cleanup_artifact($paths['router']);
 
+    $filePath = dirname($paths['router']) . DIRECTORY_SEPARATOR . 'range-fixture.txt';
+    file_put_contents($filePath, str_repeat('0123456789abcdef', 256));
+
     $builder = certification_builder();
     $build = new RouteCompiler()->compile(
         register: static function (Registrar $registrar): void {
@@ -113,6 +115,14 @@ function certification_prepare(string $root): void
                     },
                 ),
             );
+            $registrar->get('/cert/file', static function (Request $request) use ($filePath): Response {
+                return Response::rangedDownload(
+                    $request,
+                    $filePath,
+                    name: 'range-fixture.txt',
+                    mime: 'text/plain',
+                );
+            });
             $registrar->get('/cert/slow/{ms}', static function (string $ms): Response {
                 $milliseconds = max(0, min(2_000, (int) $ms));
                 usleep($milliseconds * 1_000);
@@ -190,9 +200,6 @@ function certification_runwire(
     int $recycleRequests,
 ): void {
     $kernel = certification_kernel($root);
-    $interMixRuntime = new InterMixRuntime(
-        certification_builder()->production(certification_artifacts($root)['intermix']),
-    );
     $server = new RuntimeServer($kernel, new RunwireRuntimeAdapter());
     $factory = new RunwireRuntimeApplicationFactory(
         handler: static function (
@@ -207,9 +214,6 @@ function certification_runwire(
             }
 
             $server->handle($request, $writer);
-        },
-        requestCleanup: static function () use ($interMixRuntime): void {
-            $interMixRuntime->resetCurrentExecutionScope();
         },
     );
 
