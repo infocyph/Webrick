@@ -120,24 +120,18 @@ final class RunwireResponseContinuation
     public static function run(callable $handler): void
     {
         $current = Fiber::getCurrent();
-        if ($current instanceof Fiber) {
-            $managedFibers = self::managedFibers();
-            $ownsRegistration = !isset($managedFibers[$current]);
-            if ($ownsRegistration) {
-                $managedFibers[$current] = true;
-            }
-
-            try {
-                $handler();
-            } finally {
-                if ($ownsRegistration) {
-                    unset($managedFibers[$current]);
-                }
-            }
+        if ($current instanceof Fiber && isset(self::managedFibers()[$current])) {
+            $handler();
 
             return;
         }
 
+        self::runOwnedFiber($handler);
+    }
+
+    /** @param callable(): void $handler */
+    private static function runOwnedFiber(callable $handler): void
+    {
         /** @var Fiber<mixed, mixed, mixed, mixed> $fiber */
         $fiber = new Fiber($handler);
         self::managedFibers()[$fiber] = true;
