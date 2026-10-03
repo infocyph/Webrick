@@ -346,6 +346,7 @@ final class RunwireStreamingLifecycleTest extends TestCase
         [$intermixPath, $routerPath] = self::artifactPaths();
         $fingerprint = 'runwire-streaming-lifecycle';
         $builder = ContainerBuilder::create('webrick_runwire_stream_' . bin2hex(random_bytes(4)))
+            ->releaseIdentity($fingerprint)
             ->input(Request::class)
             ->autowire(
                 RunwireStreamingScopedMarker::class,
