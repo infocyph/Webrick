@@ -42,16 +42,13 @@ final readonly class InterMixRuntime
         return $this->container->invoke($callable, $arguments);
     }
 
-    /** @param array<int|string,mixed> $arguments */
+    /**
+     * @param class-string $class
+     * @param array<int|string,mixed> $arguments
+     */
     public function make(string $class, array $arguments = []): object
     {
         return $this->container->make($class, $arguments);
-    }
-
-    /** @return iterable<string,mixed> */
-    public function tagged(string $tag): iterable
-    {
-        return $this->container->tagged($tag);
     }
 
     public function isProduction(): bool
@@ -62,6 +59,12 @@ final readonly class InterMixRuntime
     public function resetCurrentExecutionScope(): void
     {
         $this->container->resetCurrentExecutionScope();
+    }
+
+    /** @return iterable<string,mixed> */
+    public function tagged(string $tag): iterable
+    {
+        return $this->container->tagged($tag);
     }
 
     /**
