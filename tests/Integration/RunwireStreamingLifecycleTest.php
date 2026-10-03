@@ -158,6 +158,8 @@ final class RunwireStreamingBodyFixture implements RequestBodyInterface
 
 final class RunwirePressureWriterFixture implements ResponseWriterInterface
 {
+    use \Infocyph\Webrick\Tests\Fixture\RunwireTerminalWriterTrait;
+
     /** @var list<string> */
     public array $chunks = [];
 
@@ -196,6 +198,7 @@ final class RunwirePressureWriterFixture implements ResponseWriterInterface
 
         ++$this->endCalls;
         $this->ended = true;
+        $this->notifyTerminal();
 
         return new WriteResult(
             $this->pressureOnEnd ? WriteState::PRESSURED : WriteState::ACCEPTED,
