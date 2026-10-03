@@ -25,7 +25,6 @@ use Infocyph\Webrick\Runtime\Http\RunwireRuntimeApplicationFactory;
 use Infocyph\Webrick\Runtime\Http\RuntimeServer;
 use Infocyph\Webrick\Runtime\Http\SapiRuntimeAdapter;
 use Psr\Log\NullLogger;
-use RuntimeException;
 
 const CERT_ENVIRONMENT = 'certification';
 const CERT_FINGERPRINT = 'webrick-runtime-release-certification-v1';
