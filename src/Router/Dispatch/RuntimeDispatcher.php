@@ -25,10 +25,14 @@ final class RuntimeDispatcher
     /** @var list<mixed>|null */
     private ?array $preGlobal = null;
 
+    private readonly RuntimeDescriptorInvoker $resolver;
+
     public function __construct(
         private readonly InterMixRuntime $runtime,
         private readonly CompiledRouterArtifact $artifact,
-    ) {}
+    ) {
+        $this->resolver = new RuntimeDescriptorInvoker($runtime->container());
+    }
 
     /** @param array<string,string> $vars */
     public function dispatch(int $routeIndex, ExecutionPlan $plan, Request $request, array $vars): Response
@@ -75,7 +79,7 @@ final class RuntimeDispatcher
         return match ($plan->terminalKind) {
             ExecutionKind::DIRECT_ZERO_ARG => $this->dispatchDirectZeroArg($plan),
             ExecutionKind::DIRECT_ROUTE_ARGS => $this->dispatchDirectRouteArgs($plan, $vars),
-            ExecutionKind::COMPILED_INVOKE => $this->response($this->invokeDescriptor($plan->resolverSpec(), $vars)),
+            ExecutionKind::COMPILED_INVOKE => $this->response($this->resolveDescriptor($plan->resolverSpec(), $vars)),
             ExecutionKind::DIRECT_REQUEST, ExecutionKind::MIDDLEWARE_PIPELINE => throw new UnexpectedValueException(
                 'Execution plan cannot run without Request.',
             ),
@@ -103,7 +107,7 @@ final class RuntimeDispatcher
         $direct = $plan->handler;
         $result = match ($plan->terminalKind) {
             ExecutionKind::DIRECT_REQUEST => $direct($request),
-            ExecutionKind::COMPILED_INVOKE => $this->runtime->resolveNow(
+            ExecutionKind::COMPILED_INVOKE => $this->resolveDescriptor(
                 $plan->resolverSpec(),
                 $vars + ['request' => $request],
             ),
@@ -121,60 +125,13 @@ final class RuntimeDispatcher
      * @param array<array-key,mixed>|callable|string|null $descriptor
      * @param array<int|string,mixed> $arguments
      */
-    private function invokeDescriptor(array|callable|string|null $descriptor, array $arguments = []): mixed
+    private function resolveDescriptor(array|callable|string|null $descriptor, array $arguments = []): mixed
     {
         if ($descriptor === null) {
             throw new UnexpectedValueException('Compiled resolver descriptor must not be null.');
         }
 
-        if (is_array($descriptor)) {
-            if (
-                count($descriptor) !== 2
-                || !is_string($descriptor[0])
-                || !is_string($descriptor[1])
-                || !class_exists($descriptor[0])
-            ) {
-                throw new UnexpectedValueException('Compiled resolver array must contain a class and method.');
-            }
-
-            if (is_callable($descriptor)) {
-                return $this->runtime->invoke($descriptor, $arguments);
-            }
-
-            $instance = $this->runtime->make($descriptor[0]);
-            $callable = [$instance, $descriptor[1]];
-            if (!is_callable($callable)) {
-                throw new UnexpectedValueException('Compiled resolver method is not callable.');
-            }
-
-            return $this->runtime->invoke($callable, $arguments);
-        }
-
-        if (is_string($descriptor)) {
-            if (function_exists($descriptor)) {
-                return $this->runtime->invoke($descriptor, $arguments);
-            }
-            if ($this->runtime->has($descriptor)) {
-                $resolved = $this->runtime->get($descriptor);
-                if ($arguments === [] || !is_callable($resolved)) {
-                    return $resolved;
-                }
-
-                return $this->runtime->invoke($resolved, $arguments);
-            }
-            if (class_exists($descriptor)) {
-                $resolved = $this->runtime->make($descriptor);
-                if ($arguments === [] || !is_callable($resolved)) {
-                    return $resolved;
-                }
-
-                return $this->runtime->invoke($resolved, $arguments);
-            }
-
-            throw new UnexpectedValueException("Compiled resolver '{$descriptor}' is not resolvable.");
-        }
-
-        return $this->runtime->invoke($descriptor, $arguments);
+        return $this->resolver->resolve($descriptor, $arguments);
     }
 
     /** @return array<array-key,mixed>|bool|float|int|JsonSerializable|string|null */
