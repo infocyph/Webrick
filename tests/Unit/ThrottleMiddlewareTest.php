@@ -282,7 +282,7 @@ describe('ThrottleMiddleware', function () {
             $global($nextWindowClient, $next);
             $nextWindowKey = $store->lastKey;
 
-            expect($globalKey)->toStartWith('webrick.th.v2.')
+            expect($globalKey)->toStartWith('webrick.th.v3.')
                 ->and(strlen($globalKey))->toBeLessThanOrEqual(64)
                 ->and(array_unique([$globalKey, $loginKey, $otherClientKey, $nextWindowKey]))->toHaveCount(4);
         } finally {
