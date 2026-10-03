@@ -86,10 +86,11 @@ final class CompiledRoutingControlBridgeTest extends TestCase
                 releaseManifestPath: $releasePath,
                 environment: 'production',
                 configFingerprint: 'coordinated-release',
+                errorHandler: new ErrorHandler(logger: new NullLogger(), debug: true),
             );
 
             $response = $kernel->handle(Request::fake(uri: 'http://localhost/release'));
-            self::assertSame(200, $response->getStatusCode());
+            self::assertSame(200, $response->getStatusCode(), (string) $response->getBody());
             self::assertSame('release-ok', (string) $response->getBody());
 
             $stale = $manifest;
