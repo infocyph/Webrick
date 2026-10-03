@@ -247,6 +247,71 @@ describe('InterMix integration', function () {
             ->and($response->getHeaderLine('X-DI-Marker'))->toBe('wired-alias');
     });
 
+    it('keeps dynamic and production runtime dispatch behavior in parity', function () {
+        $register = static function (Registrar $registrar): void {
+            $registrar->get(
+                '/parity/{name}',
+                static function (
+                    string $name,
+                    InterMixMiddlewareDependency $dependency,
+                ): Response {
+                    return Response::json([
+                        'name' => $name,
+                        'marker' => $dependency->marker,
+                    ]);
+                },
+            );
+        };
+        $dynamicBuilder = intermixBuilderForTest()
+            ->value(
+                InterMixMiddlewareDependency::class,
+                new InterMixMiddlewareDependency('parity'),
+            );
+        $productionBuilder = intermixBuilderForTest()
+            ->value(
+                InterMixMiddlewareDependency::class,
+                new InterMixMiddlewareDependency('parity'),
+            );
+        $compiled = sys_get_temp_dir() . DIRECTORY_SEPARATOR
+            . 'webrick-intermix-parity-' . uniqid('', true) . '.php';
+
+        try {
+            $dynamic = intermixKernelForTest(
+                $register,
+                options: [
+                    'runtime' => $dynamicBuilder->build(),
+                    'preGlobalTags' => [],
+                    'postGlobalTags' => [],
+                ],
+            );
+
+            $productionBuilder->compile($compiled);
+            $production = intermixKernelForTest(
+                $register,
+                options: [
+                    'runtime' => $productionBuilder->production($compiled),
+                    'preGlobalTags' => [],
+                    'postGlobalTags' => [],
+                ],
+            );
+
+            $request = mockRequest('GET', '/parity/Ada');
+            $dynamicResponse = $dynamic->handle($request);
+            $productionResponse = $production->handle(mockRequest('GET', '/parity/Ada'));
+
+            expect($dynamicResponse)->toHaveStatus(200)
+                ->and($productionResponse)->toHaveStatus(200)
+                ->and((string) $productionResponse->getBody())
+                ->toBe((string) $dynamicResponse->getBody())
+                ->and((string) $productionResponse->getBody())
+                ->toBe('{"name":"Ada","marker":"parity"}');
+        } finally {
+            if (is_link($compiled) || is_file($compiled)) {
+                unlink($compiled);
+            }
+        }
+    });
+
     it('constructs class middleware through the InterMix 11 production runtime', function () {
         $builder = intermixBuilderForTest()
             ->value(
