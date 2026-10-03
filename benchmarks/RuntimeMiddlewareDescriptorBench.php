@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Benchmarks;
 
 use Closure;
-use Infocyph\InterMix\DI\Container;
+use Infocyph\InterMix\DI\ContainerBuilder;
 use Infocyph\Webrick\Benchmarks\Fixture\ParameterizedRuntimeMiddleware;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
@@ -33,7 +33,11 @@ final class RuntimeMiddlewareDescriptorBench
     public function setUp(): void
     {
         $this->request = Request::fake(uri: 'http://localhost/bench');
-        $this->runtime = new InterMixRuntime(new Container('webrick.benchmark.runtime-middleware'));
+        $this->runtime = new InterMixRuntime(
+            ContainerBuilder::create('webrick.benchmark.runtime-middleware')
+                ->input(Request::class)
+                ->build(),
+        );
         $terminal = static fn(Request $request): Response => Response::plaintext($request->getMethod(), 200);
 
         $this->directPipeline = new CompiledMiddlewarePipeline(
