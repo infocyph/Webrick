@@ -230,7 +230,7 @@ describe('CookieEncryptionMiddleware', function () {
     it('rejects legacy plaintext and unframed encrypted store values', function (): void {
         $store = Cache::memory('webrick-cookie-legacy-' . bin2hex(random_bytes(4)));
         $id = str_repeat('a', 32);
-        $item = $store->getItem('enc_cookie.' . $id);
+        $item = $store->getItem('enc_cookie.v2.' . $id);
         $item->set('{"role":"admin"}');
         $store->save($item);
 
@@ -239,7 +239,7 @@ describe('CookieEncryptionMiddleware', function () {
         expect(decryptedCookieForTest($middleware, 'S:' . $id))->toBeNull();
 
         $rawCipher = encryptedCookieForTest($this->middleware, 'legacy-encrypted');
-        $item = $store->getItem('enc_cookie.' . $id);
+        $item = $store->getItem('enc_cookie.v2.' . $id);
         $item->set($rawCipher);
         $store->save($item);
 
