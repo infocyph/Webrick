@@ -279,7 +279,8 @@ final class RunwireMultiplexedProtocolIsolationTest extends TestCase
     {
         [$intermixPath, $routerPath] = self::artifactPaths();
         $fingerprint = 'runwire-multiplexed-isolation';
-        $builder = ContainerBuilder::create('webrick_runwire_mux_' . bin2hex(random_bytes(4)));
+        $builder = ContainerBuilder::create('webrick_runwire_mux_' . bin2hex(random_bytes(4)))
+            ->input(Request::class);
         $build = new RouteCompiler()->compile(
             register: static function (Registrar $registrar): void {
                 $registrar->post('/mux/{label}', static function (Request $request, string $label): Response {
