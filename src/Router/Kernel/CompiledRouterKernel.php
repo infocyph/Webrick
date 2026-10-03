@@ -186,8 +186,8 @@ final readonly class CompiledRouterKernel
             $releaseManifestPath,
             $environment,
             $configFingerprint,
+            $profiler,
         );
-        $profiler?->mark('release_artifact_load');
 
         return new self(
             $log,
