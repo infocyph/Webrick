@@ -250,10 +250,7 @@ final class Dispatcher
     private function instantiateClassViaInterMix(string $class): object
     {
         try {
-            $instance = $this->invoker->make($class);
-            if (is_object($instance)) {
-                return $instance;
-            }
+            return $this->invoker->make($class);
         } catch (\Throwable $e) {
             if ($this->canInstantiateWithoutArguments($class)) {
                 return new $class();
@@ -261,12 +258,6 @@ final class Dispatcher
 
             throw new InvalidArgumentException("Failed to instantiate middleware class '{$class}'.", 0, $e);
         }
-
-        if ($this->canInstantiateWithoutArguments($class)) {
-            return new $class();
-        }
-
-        throw new InvalidArgumentException("Failed to instantiate middleware class '{$class}'.");
     }
 
     private function invokeClassMiddleware(string $class, Request $req, callable $next): Response
@@ -288,25 +279,35 @@ final class Dispatcher
     /**
      * @param array<string,mixed> $callArgs
      */
+    /**
+     * @param class-string $class
+     * @param array<string,mixed> $callArgs
+     */
+    private function invokeInstanceMethod(string $class, string $method, array $callArgs): mixed
+    {
+        $callable = [$this->invoker->make($class), $method];
+        if (!is_callable($callable)) {
+            throw new InvalidArgumentException("Route handler {$class}::{$method} is not callable.");
+        }
+
+        return $this->invoker->invoke(Closure::fromCallable($callable), $callArgs);
+    }
+
     private function invokeRouteHandler(mixed $handler, array $callArgs): mixed
     {
         $classMethod = $this->classMethodArrayHandler($handler);
         if ($classMethod !== null) {
             if (is_callable($classMethod)) {
-                return $this->invoker->invoke($classMethod, $callArgs);
+                return $this->invoker->invoke(Closure::fromCallable($classMethod), $callArgs);
             }
 
-            $instance = $this->invoker->make($classMethod[0]);
-
-            return $this->invoker->invoke([$instance, $classMethod[1]], $callArgs);
+            return $this->invokeInstanceMethod($classMethod[0], $classMethod[1], $callArgs);
         }
 
         if (is_string($handler)) {
             $resolved = $this->parseClassMethodStringHandler($handler);
             if ($resolved !== null) {
-                $instance = $this->invoker->make($resolved[0]);
-
-                return $this->invoker->invoke([$instance, $resolved[1]], $callArgs);
+                return $this->invokeInstanceMethod($resolved[0], $resolved[1], $callArgs);
             }
         }
 
