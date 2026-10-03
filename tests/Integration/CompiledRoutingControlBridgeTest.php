@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Tests\Integration;
 
 use Infocyph\InterMix\DI\ContainerBuilder;
+use Infocyph\InterMix\DI\RuntimeContainerInterface;
+use Infocyph\InterMix\DI\Support\LifetimeEnum;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Build\ReleaseCompiler;
@@ -19,6 +21,31 @@ use PHPUnit\Framework\Attributes\BackupStaticProperties;
 use PHPUnit\Framework\Attributes\ExcludeStaticPropertyFromBackup;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
+
+final readonly class CompiledFastPathScopedMarker {}
+
+final readonly class CompiledFastPathScopedHandler
+{
+    public function __construct(private CompiledFastPathScopedMarker $marker) {}
+
+    public function __invoke(): Response
+    {
+        return Response::plaintext($this->marker::class);
+    }
+}
+
+final class CompiledFastPathScopeProbe
+{
+    public static int $leaves = 0;
+
+    public static function scopeLeft(string $scope, RuntimeContainerInterface $container): void
+    {
+        unset($container);
+        if ($scope === 'webrick.request') {
+            ++self::$leaves;
+        }
+    }
+}
 
 #[BackupStaticProperties(true)]
 #[ExcludeStaticPropertyFromBackup(CodeStream::class, 'isRegistered')]
@@ -131,6 +158,76 @@ final class CompiledRoutingControlBridgeTest extends TestCase
                 configFingerprint: 'obsolete-release',
             );
         } finally {
+            self::cleanup([$intermixPath, $routerPath]);
+            foreach ([$releasePath, ReleaseCompiler::runtimeManifestPath($releasePath)] as $candidate) {
+                if (is_file($candidate)) {
+                    unlink($candidate);
+                }
+            }
+        }
+    }
+
+    public function testDirectCompiledFastPathsRemainScopeless(): void
+    {
+        [$intermixPath, $routerPath] = self::artifactPaths('fast-path');
+        $releasePath = sys_get_temp_dir() . DIRECTORY_SEPARATOR
+            . 'webrick-fast-path-release-' . bin2hex(random_bytes(8)) . '.json';
+        $builder = ContainerBuilder::create('webrick_fast_path_' . bin2hex(random_bytes(4)))
+            ->releaseIdentity('webrick-fast-path')
+            ->onScopeLeave('webrick.request', [CompiledFastPathScopeProbe::class, 'scopeLeft']);
+
+        CompiledFastPathScopeProbe::$leaves = 0;
+
+        try {
+            new ReleaseCompiler()->compile(
+                builder: $builder,
+                register: static function (Registrar $registrar): void {
+                    $registrar->get('/zero', static fn(): Response => Response::plaintext('zero'));
+                    $registrar->get('/arg/{id}', static fn(string $id): Response => Response::plaintext($id));
+                    $registrar->get('/scoped', CompiledFastPathScopedHandler::class);
+                },
+                environment: 'production',
+                configFingerprint: 'compiled-fast-path',
+                intermixPath: $intermixPath,
+                routerPath: $routerPath,
+                releaseManifestPath: $releasePath,
+                preGlobalTags: [],
+                postGlobalTags: [],
+                enrichGraph: static function (ContainerBuilder $activeBuilder): void {
+                    $activeBuilder
+                        ->autowire(
+                            CompiledFastPathScopedMarker::class,
+                            CompiledFastPathScopedMarker::class,
+                            lifetime: LifetimeEnum::Scoped,
+                        )
+                        ->autowire(
+                            CompiledFastPathScopedHandler::class,
+                            CompiledFastPathScopedHandler::class,
+                            lifetime: LifetimeEnum::Transient,
+                        );
+                },
+            );
+
+            $kernel = CompiledRouterKernel::fromReleaseManifest(
+                log: new NullLogger(),
+                matcher: FusedMatcher::make(),
+                builder: $builder,
+                releaseManifestPath: $releasePath,
+                environment: 'production',
+                configFingerprint: 'compiled-fast-path',
+            );
+
+            self::assertSame('zero', (string) $kernel->handle(Request::fake(uri: 'http://localhost/zero'))->getBody());
+            self::assertSame(0, CompiledFastPathScopeProbe::$leaves);
+
+            self::assertSame('42', (string) $kernel->handle(Request::fake(uri: 'http://localhost/arg/42'))->getBody());
+            self::assertSame(0, CompiledFastPathScopeProbe::$leaves);
+
+            $scoped = $kernel->handle(Request::fake(uri: 'http://localhost/scoped'));
+            self::assertSame(CompiledFastPathScopedMarker::class, (string) $scoped->getBody());
+            self::assertSame(1, CompiledFastPathScopeProbe::$leaves);
+        } finally {
+            CompiledFastPathScopeProbe::$leaves = 0;
             self::cleanup([$intermixPath, $routerPath]);
             foreach ([$releasePath, ReleaseCompiler::runtimeManifestPath($releasePath)] as $candidate) {
                 if (is_file($candidate)) {
