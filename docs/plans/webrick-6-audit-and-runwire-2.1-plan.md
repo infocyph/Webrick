@@ -62,8 +62,8 @@ and the mapped phase checkboxes after every implementation and QA stage.
 | B4 | InterMix kernels, dispatcher and artifacts | B: dispatch/build | **Complete** |
 | B5 | Runwire 2.1 contracts and lifecycle | C: lifecycle | **Complete** |
 | B6 | Borrowed runtime/request/scope integration | C: ownership/context | **Complete** |
-| B7 | CacheLayer 4 compatibility and deployment | D | **In progress** |
-| B8 | Static quality, duplication and migration docs | E | **Not started** |
+| B7 | CacheLayer 4 compatibility and deployment | D | **Complete** |
+| B8 | Static quality, duplication and migration docs | E | **In progress** |
 | B9 | Production request-path performance | F | **Not started** |
 | B10 | Final release evidence and acceptance | G | **Not started** |
 
@@ -182,12 +182,29 @@ Batch 6 evidence:
 
 ### Batch 7 — CacheLayer 4 compatibility and deployment
 
-- [ ] Update the optional CacheLayer development range to released `^4.0`.
-- [ ] Preserve PSR-6 as the response-cache/cookie-store consuming contract and Webrick's own atomic-counter contract.
-- [ ] Verify the CacheLayer 4 atomic counter adapter, response cache, encrypted-cookie backing store and fail-open cache behavior.
-- [ ] Preserve optional-loading behavior: core routing must not autoload CacheLayer unless the relevant feature is selected.
-- [ ] Re-run persistent-worker/cache-boundary and concurrent throttle regressions under CacheLayer 4.
-- [ ] Run full PHPForge stable/lowest PHP 8.4/8.5 gates before B8.
+- [x] Update the optional CacheLayer development range to released `^4.0`.
+- [x] Preserve PSR-6 as the response-cache/cookie-store consuming contract and Webrick's own atomic-counter contract.
+- [x] Verify the CacheLayer 4 atomic counter adapter, response cache, encrypted-cookie backing store and fail-open cache behavior.
+- [x] Preserve optional-loading behavior: core routing must not autoload CacheLayer unless the relevant feature is selected.
+- [x] Re-run persistent-worker/cache-boundary and concurrent throttle regressions under CacheLayer 4.
+- [x] Run full PHPForge stable/lowest PHP 8.4/8.5 gates before B8.
+
+Batch 7 evidence:
+
+- Final B7 head: `afb2ee09526956ed317f485700b91d245dfc5822`.
+- Exact-head Security & Standards run `37132796469` passed PHPForge detail diagnostics, clean install, PHP 8.4/8.5 stable and lowest QA, both analyzers and both benchmark jobs with `infocyph/cachelayer 4.0` resolved.
+- Full PHPForge detail suite passes with **534 tests / 1,850 assertions**; duplicate detector remains passing at **43 clone groups / 1,892 duplicated lines / 4.95%**.
+- Response-cache entries remain on `webrick.hr.v4.`; throttle counters rotate to `webrick.th.v3.` and encrypted-cookie backing entries rotate to `enc_cookie.v2.` so security-relevant state is not shared across CacheLayer major-version writers.
+- Core routing keeps CacheLayer optional; the consuming contracts remain PSR-6 for cache stores and Webrick's atomic-counter interface for throttling.
+
+### Batch 8 — static quality, duplication and migration docs
+
+- [ ] Resolve W08 without making `ext-intl` a runtime requirement or suppressing analysis.
+- [ ] Re-run Unicode-normalization behavior with and without the optional intl surface.
+- [ ] Triage the current PHPForge duplicate report by semantic ownership and only extract genuinely shared behavior.
+- [ ] Update README and deployment/middleware docs for Webrick 6, InterMix 11, Runwire 2.1, CacheLayer 4 and PSR-6 cache contracts.
+- [ ] Record the shared-tooling `doctrine/annotations` warning accurately without treating it as a Webrick production advisory.
+- [ ] Run full PHPForge gates before B9.
 
 ## Engineering constraints
 
@@ -384,15 +401,15 @@ atomic capability must never silently select a process-local approximate pool.
 
 ## Phase D — CacheLayer 4 compatibility and deployment
 
-- [ ] Keep PSR-6 pools and Webrick's atomic-counter interface as the consuming
+- [x] Keep PSR-6 pools and Webrick's atomic-counter interface as the consuming
   contracts. Do not require CacheLayer for core HTTP/routing.
-- [ ] Retest response cache, encrypted-cookie store, default-store construction,
+- [x] Retest response cache, encrypted-cookie store, default-store construction,
   failure paths and `AtomicCounterAdapter` on CacheLayer 4. The current 23-test
   cache/throttle subset is encouraging, not full certification.
-- [ ] Use a new namespace for disposable HTTP cache entries. Stop mixed 3.x/4.x
+- [x] Use a new namespace for disposable HTTP cache entries. Stop mixed 3.x/4.x
   writers; explicitly migrate or expire security-relevant counters and cookie
   state. Do not enable object/Closure deserialization to preserve old values.
-- [ ] Document worker-local resource construction after fork, ownership of
+- [x] Document worker-local resource construction after fork, ownership of
   optional forwarding, and storage-compatible rollback. Never silently turn a
   required shared resource into a local-memory fallback.
 
