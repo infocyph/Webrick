@@ -245,6 +245,39 @@ Batch 9 evidence:
 - [ ] Record persistent-worker soak evidence for cleanup, cancellation, drain and replacement.
 - [ ] Require all applicable CI checks on the exact final candidate SHA before tagging; do not merge/tag as part of this plan.
 
+#### Runtime release certification workflow
+
+`.github/workflows/runtime-release-certification.yml` owns the external runtime
+evidence that ordinary PHPForge fixture CI cannot certify. It deliberately excludes
+Foundation and Infbyte consumer migration/results.
+
+Manual release certification uses `workflow_dispatch` with:
+
+- baseline ref `5.4` and the selected candidate ref/SHA;
+- 10-second steady-state trials, 3 trials per workload/concurrency by default;
+- concurrency 1/5/20/50 for static, dynamic, JSON, streaming and upload workloads;
+- SAPI/unbound and native Runwire/bound execution on the same runner;
+- an initial 2% median-RPM regression budget, 15% p99 regression budget and
+  32 MiB RSS regression ceiling;
+- a 30-minute persistent-worker soak covering request-count recycling, paced
+  client cancellation, streaming/upload traffic, queue/rejection state, memory/RSS
+  growth, worker replacement and graceful drain;
+- real TLS HTTP/1.1 plus multiplexed HTTP/2 certification on GitHub-hosted Linux;
+- optional HTTP/3 only on a prepared self-hosted runner labelled
+  `runwire-quic`, with ext-quic and an HTTP/3-capable curl.
+
+Pushes that change only the certification workflow/harness on `feature/runwire`
+run a short smoke variant (2-second/1-trial load runs, 2-minute soak and relaxed
+performance budgets). Smoke validates the harness itself; it does **not** replace
+the full-duration manual release evidence.
+
+Certification support lives under `.github/certification/`:
+
+- `cert-server.php` — shared 5.4/6.0 SAPI and native-Runwire HTTP fixture;
+- `load-benchmark.sh` — correctness-first same-run HTTP load matrix;
+- `analyze-load.php` — throughput/p99/RSS/queue acceptance budgets;
+- `run-soak.sh` — persistent-worker cleanup/cancellation/replacement/drain soak.
+
 ## Engineering constraints
 
 Follow `vendor/infocyph/phpforge/resources/engineering-principles.md` and its
