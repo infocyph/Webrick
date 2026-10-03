@@ -173,7 +173,7 @@ function runwire_bridge_request(RunwireRequestContext $context): HttpRequest
     );
 }
 
-beforeEach(static function (): void {
+beforeEach(function (): void {
     RunwireBridgeScopeProbe::reset();
 });
 
@@ -248,7 +248,11 @@ test('runwire bridge attaches an exact borrowed InterMix scope without opening a
                     $adapter = new RunwireRuntimeAdapter(
                         runtimeContext: $runtime,
                         interMix: $integration,
-                        scopeContext: static fn(HttpRequest $native): \Infocyph\InterMix\DI\ScopeContext => $scopeContext,
+                        scopeContext: static function (HttpRequest $native) use ($scopeContext): \Infocyph\InterMix\DI\ScopeContext {
+                            unset($native);
+
+                            return $scopeContext;
+                        },
                     );
                     $context = $adapter->context(
                         runwire_bridge_request($requestContext),
@@ -393,7 +397,11 @@ test('runwire bridge exposes the exact host coroutine scope when capability is a
             $adapter = new RunwireRuntimeAdapter(
                 runtimeContext: $runtime,
                 interMix: $integration,
-                coroutineScope: static fn(HttpRequest $native): CoroutineScope => $scope,
+                coroutineScope: static function (HttpRequest $native) use ($scope): CoroutineScope {
+                    unset($native);
+
+                    return $scope;
+                },
             );
             $context = $adapter->context(
                 runwire_bridge_request($requestContext),
