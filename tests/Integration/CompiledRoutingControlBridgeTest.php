@@ -11,6 +11,7 @@ use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Build\ReleaseCompiler;
 use Infocyph\Webrick\Router\Build\RouteCompiler;
+use Infocyph\Webrick\Router\Build\RouterBuildResult;
 use Infocyph\Webrick\Router\Build\RouterArtifactCompiler;
 use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Kernel\CompiledRouterKernel;
@@ -193,7 +194,8 @@ final class CompiledRoutingControlBridgeTest extends TestCase
                 releaseManifestPath: $releasePath,
                 preGlobalTags: [],
                 postGlobalTags: [],
-                enrichGraph: static function (ContainerBuilder $activeBuilder): void {
+                enrichGraph: static function (ContainerBuilder $activeBuilder, RouterBuildResult $routes): void {
+                    unset($routes);
                     $activeBuilder
                         ->autowire(
                             CompiledFastPathScopedMarker::class,
