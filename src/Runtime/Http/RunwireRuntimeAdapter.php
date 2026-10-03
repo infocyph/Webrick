@@ -32,10 +32,6 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
      * @param (callable(HttpRequest): (?CoroutineScope))|null $coroutineScope
      * @param (callable(HttpRequest): (?ScopeContext))|null $scopeContext
      */
-    /**
-     * @param (callable(HttpRequest): (?CoroutineScope))|null $coroutineScope
-     * @param (callable(HttpRequest): (?ScopeContext))|null $scopeContext
-     */
     public function __construct(
         ?RunwireContext $runtimeContext = null,
         ?RunwireIntegration $interMix = null,
