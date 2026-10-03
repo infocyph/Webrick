@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router\Kernel;
 
+use Infocyph\InterMix\DI\ContainerBuilder;
 use Infocyph\InterMix\DI\ProductionContainer;
 use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
@@ -14,6 +15,7 @@ use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Build\CompiledRouterArtifact;
 use Infocyph\Webrick\Router\Build\ExecutionKind;
 use Infocyph\Webrick\Router\Build\ExecutionPlan;
+use Infocyph\Webrick\Router\Build\ReleaseArtifactLoader;
 use Infocyph\Webrick\Router\Build\RouterArtifactLoader;
 use Infocyph\Webrick\Router\Constraint\Registry as ConstraintRegistry;
 use Infocyph\Webrick\Router\Dispatch\MiddlewareAliases;
@@ -111,6 +113,46 @@ final readonly class CompiledRouterKernel
             $artifact,
             $matcher,
             $container,
+            $errorHandler,
+            $urlBaseUri,
+            $signKey,
+            $signedDefaultTtl,
+            $signedUrlConfig,
+            $profiler,
+            $routeErrorsThroughErrorHandler,
+            $preRoutingGate,
+        );
+    }
+
+    public static function fromReleaseManifest(
+        LoggerInterface $log,
+        MatcherInterface $matcher,
+        ContainerBuilder $builder,
+        string $releaseManifestPath,
+        string $environment,
+        string $configFingerprint,
+        ?ErrorHandler $errorHandler = null,
+        string $urlBaseUri = '',
+        ?string $signKey = null,
+        ?int $signedDefaultTtl = null,
+        ?SignedUrlConfig $signedUrlConfig = null,
+        ?RuntimeStageProfiler $profiler = null,
+        bool $routeErrorsThroughErrorHandler = false,
+        ?PreRoutingGateInterface $preRoutingGate = null,
+    ): self {
+        $release = new ReleaseArtifactLoader()->load(
+            $builder,
+            $releaseManifestPath,
+            $environment,
+            $configFingerprint,
+        );
+        $profiler?->mark('release_artifact_load');
+
+        return new self(
+            $log,
+            $release['artifact'],
+            $matcher,
+            $release['container'],
             $errorHandler,
             $urlBaseUri,
             $signKey,
