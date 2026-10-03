@@ -60,8 +60,8 @@ and the mapped phase checkboxes after every implementation and QA stage.
 | B2 | Request limits, HTTP deflate and upload integrity | A: W05–W07 | **Complete** |
 | B3 | InterMix 11 core runtime migration | B: runtime API | **Complete** |
 | B4 | InterMix kernels, dispatcher and artifacts | B: dispatch/build | **Complete** |
-| B5 | Runwire 2.1 contracts and lifecycle | C: lifecycle | **In progress** |
-| B6 | Borrowed runtime/request/scope integration | C: ownership/context | **Not started** |
+| B5 | Runwire 2.1 contracts and lifecycle | C: lifecycle | **Complete** |
+| B6 | Borrowed runtime/request/scope integration | C: ownership/context | **In progress** |
 | B7 | CacheLayer 4 compatibility and deployment | D | **Not started** |
 | B8 | Static quality, duplication and migration docs | E | **Not started** |
 | B9 | Production request-path performance | F | **Not started** |
@@ -146,12 +146,31 @@ Batch 4 evidence:
 
 ### Batch 5 — Runwire 2.1 contracts and lifecycle
 
-- [ ] Update the optional development Runwire range and suggestion to released Runwire `^2.1`.
-- [ ] Implement the full Runwire 2.1 application contract, including `healthy()` and `healthFailure()`, and preserve exactly-once response completion.
-- [ ] Migrate all Webrick test/custom writers to `onTerminal()` with exactly-once and late-registration semantics.
-- [ ] Audit the Webrick continuation bridge so it never resumes a scheduler-owned Fiber behind its owner.
-- [ ] Prove terminal state, handler completion, owned work, cleanup/reset, admission release, drain and health transitions in focused lifecycle tests.
-- [ ] Run focused B5 tests and full PHPForge gates before B6.
+- [x] Update the optional development Runwire range and suggestion to released Runwire `^2.1`.
+- [x] Implement the full Runwire 2.1 application contract, including `healthy()` and `healthFailure()`, and preserve exactly-once response completion.
+- [x] Migrate all Webrick test/custom writers to `onTerminal()` with exactly-once and late-registration semantics.
+- [x] Audit the Webrick continuation bridge so it never resumes a scheduler-owned Fiber behind its owner.
+- [x] Prove terminal state, handler completion, owned work, cleanup/reset, admission release, drain and health transitions in focused lifecycle tests.
+- [x] Run focused B5 tests and full PHPForge gates before B6.
+
+Batch 5 evidence:
+
+- Final B5 head: `1dcfe03bf191795d1704b417df21bcfacc5f105d`.
+- Exact-head Security & Standards run `37131083421` passed PHPForge detail diagnostics, PHP 8.4/8.5 stable and lowest QA, PHP 8.4/8.5 analysis, clean install and both benchmark jobs.
+- The full suite passes with **527 tests / 1,824 assertions** after the Runwire 2.1 migration.
+- `RunwireRuntimeApplication` forwards health state and requested response completion to Runwire 2.1; terminal observers support exactly-once and late registration semantics.
+- The continuation bridge owns only its inner continuation Fiber: I/O readiness resumes that inner Fiber, while ordinary handler suspension is returned to the caller-owned Fiber and is never resumed behind its owner.
+- Runwire 2.1 writer compatibility is covered in unit/integration fixtures and the Runwire runtime benchmark.
+
+### Batch 6 — borrowed Runwire / InterMix scope integration
+
+- [ ] Register Runwire runtime/request/coroutine inputs through InterMix 11 before graph finalization when this optional integration is enabled.
+- [ ] Derive stable Webrick runtime capabilities from the supplied/bound Runwire `RuntimeContext`; keep unbound fallback conservative.
+- [ ] Reuse the host-supplied InterMix `RunwireIntegration` for one request scope or an exact borrowed `ScopeContext`, without adding a second DI scope.
+- [ ] Preserve exact Runwire `RuntimeContext`, `RequestContext` and optional `CoroutineScope` identities for injected consumers; reject conflicting/completed contexts.
+- [ ] Preserve zero-scope compiled routes and ordinary SAPI/FPM behavior when the optional bridge is absent.
+- [ ] Cover direct host, intermediary/borrowed scope, interleaved requests, nested restoration and runtime/generation conflicts.
+- [ ] Run focused B6 tests and full PHPForge gates before B7.
 
 ## Engineering constraints
 
