@@ -30,5 +30,13 @@ jobs:
           coverage: none
           tools: composer:v2
       - run: composer install --no-interaction --no-progress --prefer-dist
+      - name: Verify InputSanitizer without ext-intl
+        run: >-
+          php -n -r 'require "src/Support/InputSanitizer.php";
+          $sanitizer = new Infocyph\Webrick\Support\InputSanitizer(normalizeUnicode: true);
+          if ($sanitizer->sanitizeString("Ｆｏｏ") !== "Ｆｏｏ") {
+              fwrite(STDERR, "Unicode normalization must remain optional without ext-intl.\n");
+              exit(1);
+          }'
       - name: Run exact PHPForge detail suite
         run: composer ic:test:details
