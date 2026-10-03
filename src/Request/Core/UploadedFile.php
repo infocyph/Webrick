@@ -241,7 +241,6 @@ final class UploadedFile
         }
     }
 
-
     /** @param resource $out */
     private function writeStreamChunk($out, string $chunk, string $targetPath): void
     {
