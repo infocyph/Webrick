@@ -6,6 +6,7 @@ namespace Tests\Integration;
 
 use Closure;
 use Infocyph\InterMix\DI\ContainerBuilder;
+use Infocyph\InterMix\DI\Support\LifetimeEnum;
 use Infocyph\Runwire\Http\Enum\ProtocolVersion;
 use Infocyph\Runwire\Http\Headers;
 use Infocyph\Runwire\Http\HttpRequest;
@@ -207,8 +208,13 @@ final class InfbyteEndToEndAcceptanceTest extends TestCase
     {
         [$intermixPath, $routerPath] = self::artifactPaths();
         $fingerprint = 'infbyte-end-to-end';
-        $builder = ContainerBuilder::create('infbyte_e2e_' . bin2hex(random_bytes(4)));
-        $builder->scoped(InfbyteEndToEndScopedMarker::class);
+        $builder = ContainerBuilder::create('infbyte_e2e_' . bin2hex(random_bytes(4)))
+            ->input(\Infocyph\Webrick\Request\Request::class)
+            ->autowire(
+                InfbyteEndToEndScopedMarker::class,
+                InfbyteEndToEndScopedMarker::class,
+                lifetime: LifetimeEnum::Scoped,
+            );
         $build = new RouteCompiler()->compile(
             register: static function (Registrar $registrar): void {
                 $registrar->get('/api/health', static fn(): array => ['status' => 'ok']);
