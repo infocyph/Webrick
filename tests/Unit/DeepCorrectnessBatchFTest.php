@@ -21,6 +21,7 @@ use Infocyph\Webrick\Response\Conditional\Outcome;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Kernel\ErrorHandler;
 use Infocyph\Webrick\Runtime\Http\ResponseWriterSupport;
+use Infocyph\Webrick\Runtime\Http\RuntimeCapabilities;
 use Infocyph\Webrick\Support\HttpUtils;
 
 it('validates response protocol versions and custom reason phrases', function () {
@@ -142,6 +143,38 @@ it('rejects any transfer-encoding combined with content-length', function () {
 
     expect(fn () => $middleware($request, static fn (): Response => Response::create('ok')))
         ->toThrow(HttpException::class);
+});
+
+it('keeps stricter application body limits active when the transport advertises request limits', function () {
+    $middleware = new RequestLimitsMiddleware(maxBodyBytes: 4);
+    $request = Request::fake(method: 'POST')
+        ->withBody(new StringBody('12345'))
+        ->withHeader('Content-Length', '5')
+        ->withAttribute(
+            RuntimeCapabilities::ATTRIBUTE,
+            new RuntimeCapabilities('runwire', transportRequestLimits: true),
+        );
+
+    expect(fn () => $middleware($request, static fn (): Response => Response::create('ok')))
+        ->toThrow(HttpException::class, 'Payload exceeds maximum allowed size.');
+});
+
+it('keeps stricter application header limits active when the transport advertises request limits', function () {
+    $middleware = new RequestLimitsMiddleware(
+        maxHeaderBytes: 8192,
+        maxHeaderCount: 1,
+        maxBodyBytes: 1024,
+    );
+    $request = Request::fake(
+        method: 'POST',
+        headers: ['X-One' => '1', 'X-Two' => '2'],
+    )->withAttribute(
+        RuntimeCapabilities::ATTRIBUTE,
+        new RuntimeCapabilities('runwire', transportRequestLimits: true),
+    );
+
+    expect(fn () => $middleware($request, static fn (): Response => Response::create('ok')))
+        ->toThrow(HttpException::class, 'Too many header fields');
 });
 
 it('rejects malformed wildcard cors origins', function () {

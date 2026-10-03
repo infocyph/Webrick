@@ -122,4 +122,24 @@ describe('CompressionMiddleware', function () {
 
         expect($response->getHeaderLine('ETag'))->toBeString();
     });
+
+    it('emits zlib-wrapped bytes for HTTP deflate', function () {
+        if (!function_exists('gzdeflate') || !function_exists('gzuncompress')) {
+            return;
+        }
+
+        $body = str_repeat('deflate payload ', 128);
+        $middleware = new CompressionMiddleware(
+            minBytes: 0,
+            prefOrder: ['deflate'],
+        );
+        $request = mockRequest('GET', '/', ['Accept-Encoding' => 'deflate']);
+        $response = $middleware(
+            $request,
+            static fn () => Response::create($body, 200, ['Content-Type' => 'text/plain']),
+        );
+
+        expect($response->getHeaderLine('Content-Encoding'))->toBe('deflate')
+            ->and(gzuncompress((string) $response->getBody()))->toBe($body);
+    });
 });
