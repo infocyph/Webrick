@@ -279,6 +279,59 @@ test('runwire bridge attaches an exact borrowed InterMix scope without opening a
     $integration->release($runtime);
 });
 
+test('runwire bridge keeps interleaved request scopes isolated', function (): void {
+    $builder = runwire_bridge_builder();
+    $container = $builder->build();
+    $runtime = RunwireContext::standalone();
+    $integration = new RunwireIntegration($container);
+    $integration->bind($runtime);
+    $interMix = new InterMixRuntime($container);
+    $adapter = new RunwireRuntimeAdapter(runtimeContext: $runtime, interMix: $integration);
+    $requestA = RunwireRequestContext::create($runtime);
+    $requestB = RunwireRequestContext::create($runtime);
+    $contextA = $adapter->context(runwire_bridge_request($requestA), new RunwireBridgeWriterFixture());
+    $contextB = $adapter->context(runwire_bridge_request($requestB), new RunwireBridgeWriterFixture());
+
+    $makeFiber = static function (
+        \Infocyph\Webrick\Runtime\Http\RuntimeRequestContext $context,
+        RunwireRequestContext $expected,
+        string $path,
+    ) use ($interMix): Fiber {
+        return new Fiber(static function () use ($context, $expected, $path, $interMix): bool {
+            return $context->scopeBridge->withinScope(
+                $interMix,
+                Request::fake(uri: $path),
+                static function () use ($interMix, $expected): bool {
+                    $marker = $interMix->get(RunwireBridgeScopedMarker::class);
+                    $requestContext = $interMix->get(RunwireRequestContext::class);
+                    Fiber::suspend($marker);
+
+                    return $requestContext === $expected
+                        && $interMix->get(RunwireBridgeScopedMarker::class) === $marker;
+                },
+            );
+        });
+    };
+
+    $fiberA = $makeFiber($contextA, $requestA, '/a');
+    $fiberB = $makeFiber($contextB, $requestB, '/b');
+    $markerA = $fiberA->start();
+    $markerB = $fiberB->start();
+
+    expect($markerA)->toBeInstanceOf(RunwireBridgeScopedMarker::class)
+        ->and($markerB)->toBeInstanceOf(RunwireBridgeScopedMarker::class)
+        ->and($markerA)->not->toBe($markerB);
+
+    $fiberB->resume();
+    $fiberA->resume();
+
+    expect($fiberA->getReturn())->toBeTrue()
+        ->and($fiberB->getReturn())->toBeTrue()
+        ->and(RunwireBridgeScopeProbe::$runwireLeaves)->toBe(2);
+
+    $integration->release($runtime);
+});
+
 test('runwire bridge rejects completed requests and conflicting runtime bindings', function (): void {
     $builder = runwire_bridge_builder();
     $container = $builder->build();
@@ -296,6 +349,13 @@ test('runwire bridge rejects completed requests and conflicting runtime bindings
         runwire_bridge_request($requestContext),
         new RunwireBridgeWriterFixture(),
     );
+    $otherContainer = runwire_bridge_builder()->build();
+    expect(fn() => $context->scopeBridge->withinScope(
+        new InterMixRuntime($otherContainer),
+        Request::fake(uri: '/wrong-container'),
+        static fn(): null => null,
+    ))->toThrow(LogicException::class, 'different container');
+
     $requestContext->complete();
 
     expect(fn() => $context->scopeBridge->withinScope(
