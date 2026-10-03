@@ -14,7 +14,7 @@ use RuntimeException;
  */
 final readonly class ReleaseCompiler
 {
-    private const int RELEASE_FORMAT = 2;
+    public const int RELEASE_FORMAT = 3;
 
     public function __construct(
         private RouteCompiler $routes = new RouteCompiler(),
@@ -90,6 +90,9 @@ final readonly class ReleaseCompiler
             'intermix' => [
                 'path' => $intermixPath,
                 'digest' => $intermix['digest'],
+                'graph' => $intermix['graph'],
+                'build' => $intermix['build'],
+                'artifact' => basename($intermix['artifact']),
                 'compiled' => $intermix['compiled'],
                 'skipped' => $intermix['skipped'],
             ],
