@@ -53,6 +53,20 @@ describe('InputSanitizer', function () {
         expect($clean)->toContain('&amp;');
     });
 
+    it('keeps Unicode normalization optional across intl availability', function () {
+        $sanitizer = new InputSanitizer(normalizeUnicode: true);
+        $input = 'Ｆｏｏ';
+        $normalized = $sanitizer->sanitizeString($input);
+
+        if (function_exists('normalizer_normalize') && defined('Normalizer::FORM_KC')) {
+            expect($normalized)->toBe('Foo');
+
+            return;
+        }
+
+        expect($normalized)->toBe($input);
+    });
+
     it('trims whitespace', function () {
         $dirty = '  Hello World  ';
         $clean = $this->sanitizer->sanitizeString($dirty);
