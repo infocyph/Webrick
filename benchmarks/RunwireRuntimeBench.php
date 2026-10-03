@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Benchmarks;
 
+use Closure;
 use Infocyph\InterMix\DI\Container;
 use Infocyph\Runwire\Http\Enum\ProtocolVersion;
 use Infocyph\Runwire\Http\Headers;
@@ -153,9 +154,21 @@ final class RunwireRuntimeBench
 
             private bool $started = false;
 
+            /** @var list<Closure(ResponseWriterInterface): void> */
+            private array $terminalObservers = [];
+
             public function end(string $finalChunk = ''): WriteResult
             {
+                if ($this->ended) {
+                    return new WriteResult(WriteState::CLOSED, 0);
+                }
+
                 $this->ended = true;
+                $observers = $this->terminalObservers;
+                $this->terminalObservers = [];
+                foreach ($observers as $observer) {
+                    $observer($this);
+                }
 
                 return new WriteResult(WriteState::ACCEPTED, strlen($finalChunk));
             }
@@ -173,6 +186,20 @@ final class RunwireRuntimeBench
             public function onDrain(callable $callback): ResponseWriterInterface
             {
                 unset($callback);
+
+                return $this;
+            }
+
+            public function onTerminal(callable $callback): ResponseWriterInterface
+            {
+                $observer = Closure::fromCallable($callback);
+                if ($this->ended) {
+                    $observer($this);
+
+                    return $this;
+                }
+
+                $this->terminalObservers[] = $observer;
 
                 return $this;
             }
