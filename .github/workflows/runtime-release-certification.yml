@@ -60,7 +60,7 @@ permissions:
 
 concurrency:
   group: runtime-release-certification-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 defaults:
   run:
@@ -113,15 +113,31 @@ jobs:
 
       - name: Certify HTTP/1.1 semantics
         run: |
-          body="$(curl -kfsS --http1.1 https://127.0.0.1:18443/cert/json)"
+          request_ok() {
+            local name="$1"
+            local url="$2"
+            shift 2
+            local body=".runtime-certification/${name}.body"
+            local status
+            status="$(curl -k -sS --http1.1 -o "$body" -w '%{http_code}' "$@" "$url")"
+            if [[ "$status" != "200" && "$status" != "206" ]]; then
+              echo "${name} returned HTTP ${status}" >&2
+              cat "$body" >&2 || true
+              exit 1
+            fi
+            cat "$body"
+          }
+
+          body="$(request_ok json https://127.0.0.1:18443/cert/json)"
           [[ "$(jq -r '.ok' <<<"$body")" == "true" ]]
           [[ "$(jq -r '.protocol' <<<"$body")" == "1.1" ]]
-          [[ "$(curl -kfsS --http1.1 https://127.0.0.1:18443/cert/stream | wc -c | tr -d ' ')" == "3072" ]]
+          [[ "$(request_ok stream https://127.0.0.1:18443/cert/stream | wc -c | tr -d ' ')" == "3072" ]]
           [[ "$(curl -ksS -o /dev/null -w '%{http_code}' https://127.0.0.1:18443/cert/missing)" == "404" ]]
           [[ "$(curl -ksS -o /dev/null -w '%{http_code}' -X POST https://127.0.0.1:18443/cert/static)" == "405" ]]
           head -c 16384 /dev/zero > .runtime-certification/upload.bin
-          [[ "$(curl -kfsS --data-binary @.runtime-certification/upload.bin https://127.0.0.1:18443/cert/upload | jq -r '.bytes')" == "16384" ]]
-          [[ "$(curl -kfsS -H 'Range: bytes=0-15' https://127.0.0.1:18443/cert/file | wc -c | tr -d ' ')" == "16" ]]
+          upload="$(request_ok upload https://127.0.0.1:18443/cert/upload --data-binary @.runtime-certification/upload.bin)"
+          [[ "$(jq -r '.bytes' <<<"$upload")" == "16384" ]]
+          [[ "$(request_ok range https://127.0.0.1:18443/cert/file -H 'Range: bytes=0-15' | wc -c | tr -d ' ')" == "16" ]]
 
       - name: Certify multiplexed HTTP/2
         run: |
@@ -160,6 +176,8 @@ jobs:
           name: live-runwire-h1-h2
           path: .runtime-certification/
           if-no-files-found: error
+          include-hidden-files: true
+          include-hidden-files: true
 
   same-run-performance:
     name: Webrick 5.4 vs 6.0 HTTP performance
