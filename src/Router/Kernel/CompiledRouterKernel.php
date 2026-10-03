@@ -384,7 +384,7 @@ final readonly class CompiledRouterKernel
         $plan = $this->artifact->planForIndex($routeIndex);
         $pipeline = $plan->kind === ExecutionKind::MIDDLEWARE_PIPELINE || $this->hasGlobalMiddleware;
         if (!$pipeline && !$plan->requiresRequest()) {
-            $response = $this->dispatchWithoutRequest($plan, $vars, $responseConsumer);
+            $response = $this->dispatchWithoutRequest($plan, $vars, $responseConsumer, $runtimeContext);
             $this->profiler?->mark('dispatch');
 
             return $response;
@@ -401,6 +401,7 @@ final readonly class CompiledRouterKernel
         ExecutionPlan $plan,
         array $vars,
         ?callable $responseConsumer = null,
+        ?RuntimeRequestContext $runtimeContext = null,
     ): Response {
         if (!$plan->requiresScope()) {
             $response = match ($plan->terminalKind) {
@@ -411,8 +412,9 @@ final readonly class CompiledRouterKernel
 
             return $this->consumeRuntimeResponse($response, $responseConsumer);
         }
-        $response = $this->runtime->withinScope(
-            RuntimeRequestContext::REQUEST_SCOPE,
+        $response = $this->withinRequestScope(
+            $runtimeContext,
+            null,
             fn() => $this->consumeRuntimeResponse(
                 $this->dispatcher->dispatchWithoutRequest($plan, $vars),
                 $responseConsumer,
@@ -440,13 +442,13 @@ final readonly class CompiledRouterKernel
                 $responseConsumer,
             );
         }
-        $response = $this->runtime->withinScope(
-            RuntimeRequestContext::REQUEST_SCOPE,
+        $response = $this->withinRequestScope(
+            $runtimeContext,
+            $request,
             fn() => $this->consumeRuntimeResponse(
                 $this->dispatcher->dispatch($routeIndex, $plan, $request, $vars),
                 $responseConsumer,
             ),
-            [Request::class => $request],
         );
         if (!$response instanceof Response) {
             throw new \RuntimeException('Compiled request scope must return Response.');
@@ -473,6 +475,22 @@ final readonly class CompiledRouterKernel
         }
 
         return $this->matcher->matchCompiled($routing->method, $routing->host, $routing->path);
+    }
+
+    private function withinRequestScope(
+        ?RuntimeRequestContext $runtimeContext,
+        ?Request $request,
+        callable $callback,
+    ): mixed {
+        if ($runtimeContext?->scopeBridge !== null) {
+            return $runtimeContext->scopeBridge->withinScope($this->runtime, $request, $callback);
+        }
+
+        return $this->runtime->withinScope(
+            RuntimeRequestContext::REQUEST_SCOPE,
+            $callback,
+            $request instanceof Request ? [Request::class => $request] : [],
+        );
     }
 
     private function renderException(
