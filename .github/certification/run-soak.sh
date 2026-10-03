@@ -80,7 +80,7 @@ sample() {
 }
 
 php "$HARNESS" prepare "--root=${ROOT}"
-php "$HARNESS" runwire     "--root=${ROOT}"     "--address=127.0.0.1:18100"     "--recycle=1000" >"$LOG" 2>&1 &
+php "$HARNESS" runwire     "--root=${ROOT}"     "--address=127.0.0.1:18100"     "--recycle=20000" >"$LOG" 2>&1 &
 SERVER_PID=$!
 
 cleanup() {
