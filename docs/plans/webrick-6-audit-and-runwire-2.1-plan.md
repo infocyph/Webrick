@@ -58,8 +58,8 @@ and the mapped phase checkboxes after every implementation and QA stage.
 | B0 | Baseline review and plan synchronization | Audit + planning | **Complete** |
 | B1 | Response cache, redirects and encrypted cookies | A: W01–W04 | **Complete** |
 | B2 | Request limits, HTTP deflate and upload integrity | A: W05–W07 | **Complete** |
-| B3 | InterMix 11 core runtime migration | B: runtime API | **In progress** |
-| B4 | InterMix kernels, dispatcher and artifacts | B: dispatch/build | **Not started** |
+| B3 | InterMix 11 core runtime migration | B: runtime API | **Complete** |
+| B4 | InterMix kernels, dispatcher and artifacts | B: dispatch/build | **In progress** |
 | B5 | Runwire 2.1 contracts and lifecycle | C: lifecycle | **Not started** |
 | B6 | Borrowed runtime/request/scope integration | C: ownership/context | **Not started** |
 | B7 | CacheLayer 4 compatibility and deployment | D | **Not started** |
@@ -114,11 +114,27 @@ Batch 2 evidence:
 
 ### Batch 3 — InterMix 11 core runtime migration
 
-- [ ] Update Composer to InterMix `^11.0` without changing the optional Runwire/CacheLayer ranges yet.
-- [ ] Replace the Webrick runtime wrapper's legacy `Container|ProductionContainer` API with `RuntimeContainerInterface`.
-- [ ] Replace `resolveNow()` / `findByTag()` consumption with explicit `make()`, `invoke()` and `tagged()` runtime contracts.
-- [ ] Add/adjust focused runtime tests and keep the requestless/scopeless compiled fast path unchanged.
-- [ ] Run focused B3 tests and PHPForge gates before B4.
+- [x] Update Composer to InterMix `^11.0` without changing the optional Runwire/CacheLayer ranges yet.
+- [x] Replace the Webrick runtime wrapper's legacy `Container|ProductionContainer` API with `RuntimeContainerInterface`.
+- [x] Replace `resolveNow()` / `findByTag()` consumption with explicit `make()`, `invoke()` and `tagged()` runtime contracts.
+- [x] Add/adjust focused runtime tests and keep the requestless/scopeless compiled fast path unchanged.
+- [x] Run focused B3 tests and PHPForge gates before B4.
+
+Batch 3 evidence:
+
+- Final B3 head: `223c05175e50beb5de4987f1d77c4b1e9a353d4d`.
+- Exact-head Security & Standards run `37126967811` passed PHPForge detail diagnostics, PHP 8.4/8.5 stable and lowest QA, PHP 8.4/8.5 analysis, clean install and both benchmark jobs.
+- The InterMix 11 migration uses `RuntimeContainerInterface`, `make()`, `invoke()` and `tagged()`; no legacy `resolveNow()`, `findByTag()`, `Invoker` or mutable repository access remains in Webrick runtime owners.
+- Parameterized runtime descriptors preserve constructor arguments under InterMix 11, singleton tagged factories avoid captive request scope, and benchmark fixtures declare the request input before scope seeding.
+
+### Batch 4 — InterMix kernels, dispatcher and artifacts
+
+- [ ] Cross-check both kernels, dispatcher/pipelines, alias invocation, handler compiler, CLI/examples and release compiler for finalized InterMix 11 contracts.
+- [ ] Declare every Webrick-owned scope input before graph finalization and reject undeclared/conflicting seeds through InterMix rather than bypassing validation.
+- [ ] Revalidate coordinated release metadata against InterMix 11 ABI/build/graph identity and reject stale or mixed release artifacts.
+- [ ] Preserve direct zero-argument/route-argument compiled routes on the requestless/scopeless fast path.
+- [ ] Cover dynamic/production parity, captured-scope attachment, independent Fiber isolation and failed cleanup at Webrick integration boundaries.
+- [ ] Run focused B4 tests and full PHPForge gates before B5.
 
 ## Engineering constraints
 
