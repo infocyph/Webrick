@@ -216,20 +216,6 @@ final class UploadedFile
         }
     }
 
-    /** @param resource $out */
-    private function writeStreamChunk($out, string $chunk, string $targetPath): void
-    {
-        $offset = 0;
-        $length = strlen($chunk);
-        while ($offset < $length) {
-            $written = fwrite($out, substr($chunk, $offset));
-            if ($written === false || $written === 0) {
-                throw new RuntimeException("Failed to write uploaded file to {$targetPath}");
-            }
-            $offset += $written;
-        }
-    }
-
     private function movePathTo(string $sourcePath, string $targetPath): void
     {
         if (is_uploaded_file($sourcePath)) {
@@ -252,6 +238,21 @@ final class UploadedFile
             self::attemptFilesystemOperation(static fn(): bool => unlink($targetPath));
 
             throw new RuntimeException("Failed to remove uploaded source after copying to {$targetPath}");
+        }
+    }
+
+
+    /** @param resource $out */
+    private function writeStreamChunk($out, string $chunk, string $targetPath): void
+    {
+        $offset = 0;
+        $length = strlen($chunk);
+        while ($offset < $length) {
+            $written = fwrite($out, substr($chunk, $offset));
+            if ($written === false || $written === 0) {
+                throw new RuntimeException("Failed to write uploaded file to {$targetPath}");
+            }
+            $offset += $written;
         }
     }
 }
