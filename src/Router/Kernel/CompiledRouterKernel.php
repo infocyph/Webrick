@@ -124,46 +124,6 @@ final readonly class CompiledRouterKernel
         );
     }
 
-    public static function fromReleaseManifest(
-        LoggerInterface $log,
-        MatcherInterface $matcher,
-        ContainerBuilder $builder,
-        string $releaseManifestPath,
-        string $environment,
-        string $configFingerprint,
-        ?ErrorHandler $errorHandler = null,
-        string $urlBaseUri = '',
-        ?string $signKey = null,
-        ?int $signedDefaultTtl = null,
-        ?SignedUrlConfig $signedUrlConfig = null,
-        ?RuntimeStageProfiler $profiler = null,
-        bool $routeErrorsThroughErrorHandler = false,
-        ?PreRoutingGateInterface $preRoutingGate = null,
-    ): self {
-        $release = new ReleaseArtifactLoader()->load(
-            $builder,
-            $releaseManifestPath,
-            $environment,
-            $configFingerprint,
-        );
-        $profiler?->mark('release_artifact_load');
-
-        return new self(
-            $log,
-            $release['artifact'],
-            $matcher,
-            $release['container'],
-            $errorHandler,
-            $urlBaseUri,
-            $signKey,
-            $signedDefaultTtl,
-            $signedUrlConfig,
-            $profiler,
-            $routeErrorsThroughErrorHandler,
-            $preRoutingGate,
-        );
-    }
-
     public static function fromPrevalidatedArtifact(
         LoggerInterface $log,
         MatcherInterface $matcher,
@@ -194,6 +154,46 @@ final readonly class CompiledRouterKernel
             $artifact,
             $matcher,
             $container,
+            $errorHandler,
+            $urlBaseUri,
+            $signKey,
+            $signedDefaultTtl,
+            $signedUrlConfig,
+            $profiler,
+            $routeErrorsThroughErrorHandler,
+            $preRoutingGate,
+        );
+    }
+
+    public static function fromReleaseManifest(
+        LoggerInterface $log,
+        MatcherInterface $matcher,
+        ContainerBuilder $builder,
+        string $releaseManifestPath,
+        string $environment,
+        string $configFingerprint,
+        ?ErrorHandler $errorHandler = null,
+        string $urlBaseUri = '',
+        ?string $signKey = null,
+        ?int $signedDefaultTtl = null,
+        ?SignedUrlConfig $signedUrlConfig = null,
+        ?RuntimeStageProfiler $profiler = null,
+        bool $routeErrorsThroughErrorHandler = false,
+        ?PreRoutingGateInterface $preRoutingGate = null,
+    ): self {
+        $release = new ReleaseArtifactLoader()->load(
+            $builder,
+            $releaseManifestPath,
+            $environment,
+            $configFingerprint,
+        );
+        $profiler?->mark('release_artifact_load');
+
+        return new self(
+            $log,
+            $release['artifact'],
+            $matcher,
+            $release['container'],
             $errorHandler,
             $urlBaseUri,
             $signKey,
