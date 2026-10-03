@@ -1,6 +1,6 @@
 # Webrick 6.0 — Consolidated improvement and release plan
 
-Status: **plan synchronized; Batch 0 complete; Batch 1 in progress; implementation and release gates remain open**.
+Status: **plan synchronized; Batches 0–1 complete; Batch 2 in progress; implementation and release gates remain open**.
 
 Audit date: 2026-10-03 (Asia/Dhaka). Baseline: Webrick **5.4**, commit
 `0f01cb4c303f94e683de8a3567682b70908122af`.
@@ -56,8 +56,8 @@ and the mapped phase checkboxes after every implementation and QA stage.
 | Batch | Scope | Phase mapping | Status |
 | --- | --- | --- | --- |
 | B0 | Baseline review and plan synchronization | Audit + planning | **Complete** |
-| B1 | Response cache, redirects and encrypted cookies | A: W01–W04 | **In progress** |
-| B2 | Request limits, HTTP deflate and upload integrity | A: W05–W07 | **Not started** |
+| B1 | Response cache, redirects and encrypted cookies | A: W01–W04 | **Complete** |
+| B2 | Request limits, HTTP deflate and upload integrity | A: W05–W07 | **In progress** |
 | B3 | InterMix 11 core runtime migration | B: runtime API | **Not started** |
 | B4 | InterMix kernels, dispatcher and artifacts | B: dispatch/build | **Not started** |
 | B5 | Runwire 2.1 contracts and lifecycle | C: lifecycle | **Not started** |
@@ -78,13 +78,29 @@ and the mapped phase checkboxes after every implementation and QA stage.
 
 ### Batch 1 — W01–W04
 
-- [ ] Add failing adversarial regressions for W01–W04 before production fixes.
-- [ ] W01: preserve exact raw query semantics in response-cache keys and bump the namespace.
-- [ ] W02: reject ambiguous redirect backslashes, malformed authorities, userinfo and invalid ports.
-- [ ] W03: explicitly reject unsupported dotted protected-cookie names on write and never pass them through plaintext on read.
-- [ ] W04: accept only shaped store references containing current authenticated `C1:` ciphertext; remove legacy plaintext acceptance.
-- [ ] Run focused B1 tests, affected PHPForge checks and the full suite; record evidence before B2.
+- [x] Add failing adversarial regressions for W01–W04 before production fixes.
+- [x] W01: preserve exact raw query semantics in response-cache keys and bump the namespace.
+- [x] W02: reject ambiguous redirect backslashes, malformed authorities, userinfo and invalid ports.
+- [x] W03: explicitly reject unsupported dotted protected-cookie names on write and never pass them through plaintext on read.
+- [x] W04: accept only shaped store references containing current authenticated `C1:` ciphertext; remove legacy plaintext acceptance.
+- [x] Run focused B1 tests, affected PHPForge checks and the full suite; record evidence before B2.
 
+Batch 1 evidence:
+
+- Regression checkpoint: `1a33f9387fcef0bad60e92546264732d8b6ee60e`; PHPForge/Pest reproduced W01–W04 with **16 failed / 499 passed** before fixes.
+- Production fixes: `196b84908ff4614608977bcf66ce6754c4428775`.
+- Upgrade notes: `ccbbbd21454021bb528379fa81bc1b538841c41f`.
+- Static-analysis cleanup: `dbd535265ded88d4746eafbef50253a3159019b3`.
+- Exact-head Security & Standards run `37120816851`: PHPForge detail diagnostics, PHP 8.4/8.5 stable and lowest QA, PHP 8.4/8.5 analysis, clean install and both benchmark jobs all passed.
+
+
+### Batch 2 — W05–W07
+
+- [ ] Add failing regressions for stricter Webrick request limits under Runwire capabilities, zlib-wrapped HTTP deflate and no-progress upload reads.
+- [ ] W05: keep configured application body/header limits enforceable on every adapter unless the transport proves equivalent or stricter bounds.
+- [ ] W06: emit zlib-wrapped bytes for HTTP `Content-Encoding: deflate` without changing internal cookie compression.
+- [ ] W07: never treat a temporary empty read as successful EOF, never mark a partial upload moved, and never delete unrelated pre-existing destination data on failed copy.
+- [ ] Run focused B2 tests, affected PHPForge checks and the full suite; record evidence before B3.
 ## Engineering constraints
 
 Follow `vendor/infocyph/phpforge/resources/engineering-principles.md` and its
