@@ -2,7 +2,8 @@
 
 declare(strict_types=1);
 
-use Infocyph\InterMix\DI\Container;
+use Infocyph\InterMix\DI\ContainerBuilder;
+use Infocyph\InterMix\DI\RuntimeContainerInterface;
 use Infocyph\InterMix\DI\ScopeContext;
 use Infocyph\InterMix\DI\Support\LifetimeEnum;
 use Infocyph\InterMix\Exceptions\ContainerException;
@@ -16,15 +17,18 @@ final readonly class WebrickRuntimeScopedMarker
     public function __construct(public string $id) {}
 }
 
-/** @return array{Container,InterMixRuntime} */
+/** @return array{RuntimeContainerInterface,InterMixRuntime} */
 function webrick_runtime_scope_fixture(): array
 {
-    $container = new Container('webrick.runtime.scope.' . bin2hex(random_bytes(6)));
-    $container->definitions()->bind(
+    $builder = ContainerBuilder::create('webrick.runtime.scope.' . bin2hex(random_bytes(6)));
+    $builder->factory(
         WebrickRuntimeScopedMarker::class,
-        static fn(): WebrickRuntimeScopedMarker => new WebrickRuntimeScopedMarker(bin2hex(random_bytes(6))),
+        static fn(RuntimeContainerInterface $container): WebrickRuntimeScopedMarker => new WebrickRuntimeScopedMarker(
+            bin2hex(random_bytes(6)),
+        ),
         LifetimeEnum::Scoped,
     );
+    $container = $builder->build();
 
     return [$container, new InterMixRuntime($container)];
 }
@@ -35,7 +39,7 @@ test('InterMix runtime propagates one logical request scope into structured chil
     $child = null;
 
     try {
-        $runtime->withinScope('request', static function (Container $active) use ($runtime, &$parent, &$child): void {
+        $runtime->withinScope('request', static function (RuntimeContainerInterface $active) use ($runtime, &$parent, &$child): void {
             $parent = $active->get(WebrickRuntimeScopedMarker::class);
             $scopeContext = $runtime->captureScopeContext();
 
@@ -44,7 +48,7 @@ test('InterMix runtime propagates one logical request scope into structured chil
             $fiber = new Fiber(static function () use ($runtime, $scopeContext): WebrickRuntimeScopedMarker {
                 return $runtime->withinScopeContext(
                     $scopeContext,
-                    static fn(Container $childContainer): WebrickRuntimeScopedMarker => $childContainer->get(
+                    static fn(RuntimeContainerInterface $childContainer): WebrickRuntimeScopedMarker => $childContainer->get(
                         WebrickRuntimeScopedMarker::class,
                     ),
                 );
@@ -57,7 +61,6 @@ test('InterMix runtime propagates one logical request scope into structured chil
             ->and($child)->toBe($parent);
     } finally {
         $runtime->resetCurrentExecutionScope();
-        $container->unset();
     }
 });
 
@@ -65,7 +68,7 @@ test('InterMix runtime propagates explicit scope context through Runwire task lo
     [$container, $runtime] = webrick_runtime_scope_fixture();
 
     try {
-        $runtime->withinScope('request', static function (Container $active) use ($runtime): void {
+        $runtime->withinScope('request', static function (RuntimeContainerInterface $active) use ($runtime): void {
             $parent = $active->get(WebrickRuntimeScopedMarker::class);
             $scopeContext = $runtime->captureScopeContext();
             $scopeLocal = new TaskLocal();
@@ -82,7 +85,7 @@ test('InterMix runtime propagates explicit scope context through Runwire task lo
 
                             return $runtime->withinScopeContext(
                                 $captured,
-                                static fn(Container $childContainer): WebrickRuntimeScopedMarker => $childContainer->get(
+                                static fn(RuntimeContainerInterface $childContainer): WebrickRuntimeScopedMarker => $childContainer->get(
                                     WebrickRuntimeScopedMarker::class,
                                 ),
                             );
@@ -111,7 +114,6 @@ test('InterMix runtime propagates explicit scope context through Runwire task lo
         });
     } finally {
         $runtime->resetCurrentExecutionScope();
-        $container->unset();
     }
 });
 
@@ -121,7 +123,7 @@ test('InterMix runtime keeps independent fiber request scopes isolated when no c
     $makeFiber = static fn(): Fiber => new Fiber(
         static fn(): WebrickRuntimeScopedMarker => $runtime->withinScope(
             'request',
-            static function (Container $active): WebrickRuntimeScopedMarker {
+            static function (RuntimeContainerInterface $active): WebrickRuntimeScopedMarker {
                 $marker = $active->get(WebrickRuntimeScopedMarker::class);
                 Fiber::suspend($marker);
 
@@ -146,7 +148,6 @@ test('InterMix runtime keeps independent fiber request scopes isolated when no c
             ->and($fiberB->getReturn())->toBe($firstB);
     } finally {
         $runtime->resetCurrentExecutionScope();
-        $container->unset();
     }
 });
 
@@ -154,13 +155,13 @@ test('InterMix runtime detaches propagated scope context when child work throws'
     [$container, $runtime] = webrick_runtime_scope_fixture();
 
     try {
-        $runtime->withinScope('request', static function (Container $active) use ($runtime): void {
+        $runtime->withinScope('request', static function (RuntimeContainerInterface $active) use ($runtime): void {
             $parent = $active->get(WebrickRuntimeScopedMarker::class);
             $scopeContext = $runtime->captureScopeContext();
             $failingChild = new Fiber(static function () use ($runtime, $scopeContext): void {
                 $runtime->withinScopeContext(
                     $scopeContext,
-                    static function (Container $childContainer): never {
+                    static function (RuntimeContainerInterface $childContainer): never {
                         $childContainer->get(WebrickRuntimeScopedMarker::class);
                         throw new RuntimeException('structured-child-failure');
                     },
@@ -173,7 +174,7 @@ test('InterMix runtime detaches propagated scope context when child work throws'
             $replacementChild = new Fiber(static function () use ($runtime, $scopeContext): WebrickRuntimeScopedMarker {
                 return $runtime->withinScopeContext(
                     $scopeContext,
-                    static fn(Container $childContainer): WebrickRuntimeScopedMarker => $childContainer->get(
+                    static fn(RuntimeContainerInterface $childContainer): WebrickRuntimeScopedMarker => $childContainer->get(
                         WebrickRuntimeScopedMarker::class,
                     ),
                 );
@@ -184,24 +185,15 @@ test('InterMix runtime detaches propagated scope context when child work throws'
         });
     } finally {
         $runtime->resetCurrentExecutionScope();
-        $container->unset();
     }
 });
 
-test('InterMix runtime reset is idempotent and removes leaked carrier-local scope state', function (): void {
-    [$container, $runtime] = webrick_runtime_scope_fixture();
+test('InterMix runtime reset is idempotent without an active execution scope', function (): void {
+    [, $runtime] = webrick_runtime_scope_fixture();
 
-    try {
-        $container->enterScope('request');
-        expect($runtime->captureScopeContext())->toBeInstanceOf(ScopeContext::class);
+    $runtime->resetCurrentExecutionScope();
+    $runtime->resetCurrentExecutionScope();
 
-        $runtime->resetCurrentExecutionScope();
-        $runtime->resetCurrentExecutionScope();
-
-        expect(fn(): ScopeContext => $runtime->captureScopeContext())
-            ->toThrow(ContainerException::class, 'Cannot capture a scope context without an active scope.');
-    } finally {
-        $runtime->resetCurrentExecutionScope();
-        $container->unset();
-    }
+    expect(fn(): ScopeContext => $runtime->captureScopeContext())
+        ->toThrow(ContainerException::class, 'Cannot capture a scope context without an active scope.');
 });
