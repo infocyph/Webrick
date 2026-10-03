@@ -10,7 +10,7 @@ and production-grade middleware.
 ![Packagist Version](https://img.shields.io/packagist/v/infocyph/webrick)
 ![Packagist PHP Version](https://img.shields.io/packagist/dependency-v/infocyph/webrick/php)
 
-## Webrick 5 architecture
+## Webrick 6 architecture
 
 Webrick has two explicit planes:
 
@@ -30,7 +30,7 @@ runtime from an environment string.
 - Lazy request promotion and capability-driven compiled dispatch.
 - Native string and file response bodies; stream objects only at interop boundaries.
 - SAPI/CLI emitters plus dedicated Swoole/OpenSwoole, RoadRunner and Workerman runtime adapters.
-- Optional Runwire 1.x application/runtime bridge for native portable/prefork and supported host-driver deployments without making Runwire a Webrick production requirement.
+- Optional Runwire 2.1 application/runtime bridge for native portable/prefork and supported host-driver deployments without making Runwire a Webrick production requirement.
 - Request-local state and explicit InterMix scopes for persistent workers.
 - Signed/temporary URLs, range requests, conditional responses and cache policy handling.
 - Negotiation, compression, response cache, throttling, telemetry, request limits,
@@ -41,7 +41,7 @@ runtime from an environment string.
 
 - PHP 8.4+
 - Composer 2.x
-- InterMix `^10.1.1`
+- InterMix `^11.0`
 
 Install:
 
@@ -52,19 +52,23 @@ composer require infocyph/webrick
 CacheLayer remains optional:
 
 ```bash
-composer require infocyph/cachelayer
+composer require infocyph/cachelayer:^4.0
 ```
 
-Use it only when an application chooses the CacheLayer-backed response-cache or
-atomic-counter integration. Webrick core does not initialize CacheLayer.
+Use it only when an application chooses a CacheLayer-backed PSR-6 store or
+atomic-counter adapter. Webrick core does not initialize CacheLayer. Webrick 6
+tests the optional integration against CacheLayer 4.x; response-cache, throttle,
+and encrypted-cookie backing namespaces were versioned for the major upgrade.
 
 Runwire also remains optional. A host that selects the Runwire runtime bridge
-provides a compatible Runwire 1.x installation; ordinary Webrick/SAPI use and
-Webrick's direct runtime adapters do not require it.
+provides a compatible Runwire 2.1 installation; ordinary Webrick/SAPI use and
+Webrick's direct runtime adapters do not require it. When the host also uses
+InterMix's Runwire integration, Webrick borrows that exact request/scope context
+instead of opening a parallel DI scope.
 
 ## Development boot
 
-The host creates the InterMix graph and passes an `Invoker` to the registrar
+The host creates the InterMix graph and passes its InterMix 11 runtime container to the registrar
 kernel:
 
 ```php
@@ -72,7 +76,6 @@ kernel:
 
 declare(strict_types=1);
 
-use Infocyph\InterMix\DI\Invoker;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Emitter\DefaultEmitter;
 use Infocyph\Webrick\Response\Response;
@@ -87,8 +90,7 @@ require __DIR__ . '/vendor/autoload.php';
 
 $builder = Webrick::standaloneDevelopment();
 // Register the application's services/providers on $builder here.
-$container = $builder->development();
-$invoker = Invoker::with($container);
+$runtime = $builder->development();
 
 $kernel = RouterKernel::bootWithRegistrar(
     log: new NullLogger(),
@@ -99,7 +101,7 @@ $kernel = RouterKernel::bootWithRegistrar(
             'id' => (int) $id,
         ]), 'users.show');
     },
-    invoker: $invoker,
+    invoker: $runtime,
 );
 
 $request = Request::fromGlobals();
@@ -178,7 +180,7 @@ $response = $kernel->handle();
 `ReleaseManifestLoader` prefers the generated PHP runtime manifest and falls back
 to JSON when the PHP manifest is not present. The InterMix `digest`, Webrick
 `digest`, and Webrick artifact `fingerprint` are xxh128 deployment identities;
-there is no SHA-256 release-metadata compatibility path in Webrick 5.1.
+there is no SHA-256 release-metadata compatibility path in Webrick 6.0.
 
 For standalone compiled SAPI applications, prefer `handle()` without eagerly
 constructing `Request::fromGlobals()`. `CompiledRouterKernel` promotes globals to
@@ -199,7 +201,7 @@ Webrick's direct Swoole/OpenSwoole, RoadRunner and Workerman integrations use
 worker bootstrap; Webrick does not perform per-request environment or extension
 discovery.
 
-Runwire 1.x is an optional alternative host runtime. A Runwire-hosted Webrick
+Runwire 2.1 is an optional alternative host runtime. A Runwire-hosted Webrick
 application composes `RunwireRuntimeApplicationFactory` /
 `RunwireRuntimeApplication` with `RuntimeServer` and `RunwireRuntimeAdapter`
 around the same compiled kernel. Runwire remains authoritative for runtime
