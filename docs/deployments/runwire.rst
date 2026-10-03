@@ -1,7 +1,7 @@
 Runwire Runtime
 ===============
 
-Webrick 5 can run behind Runwire 1.x through its optional native runtime bridge. Runwire is **not** a production dependency of Webrick: ordinary SAPI/shared-hosting installs and Webrick's direct Swoole/OpenSwoole, RoadRunner and Workerman adapters remain first-class paths.
+Webrick 6 can run behind Runwire 2.1 through its optional native runtime bridge. Runwire is **not** a production dependency of Webrick: ordinary SAPI/shared-hosting installs and Webrick's direct Swoole/OpenSwoole, RoadRunner and Workerman adapters remain first-class paths.
 
 Choose the Runwire bridge when the application wants Runwire to own runtime selection, worker/process lifecycle, request cancellation/deadlines, drain/shutdown behavior and runtime metrics while Webrick remains the HTTP routing/application kernel.
 
@@ -28,6 +28,45 @@ Responsibilities stay with one owner:
 - **The host application/framework** owns the application ``ContainerBuilder``, compiled release artifacts, configuration and the final runtime choice.
 
 Do not add a second lifecycle engine, a second request-scope store or a second response completion path around this bridge.
+
+InterMix 11 borrowed request scope
+----------------------------------
+
+When the host also uses InterMix's Runwire integration, register its runtime
+inputs on the application ``ContainerBuilder`` before the graph is finalized:
+
+.. code:: php
+
+   use Infocyph\InterMix\Integration\Runwire\RunwireIntegration;
+   use Infocyph\Webrick\Runtime\Http\RunwireInterMixScopeBridge;
+
+   RunwireInterMixScopeBridge::registerInputs($builder);
+
+After Runwire selects a concrete ``RuntimeContext``, bind the host-owned
+``RunwireIntegration`` to that exact runtime and supply it to
+``RunwireRuntimeAdapter``:
+
+.. code:: php
+
+   $interMixRunwire = new RunwireIntegration($container);
+   $interMixRunwire->bind($runtimeContext);
+
+   $adapter = new RunwireRuntimeAdapter(
+       runtimeContext: $runtimeContext,
+       interMix: $interMixRunwire,
+   );
+   $server = new RuntimeServer($kernel, $adapter);
+
+For a host that already owns a live InterMix ``ScopeContext``, supply a
+``scopeContext`` resolver to the adapter. Webrick then attaches that exact
+scope through InterMix 11 instead of opening a second request scope. An optional
+``coroutineScope`` resolver can expose the exact Runwire ``CoroutineScope`` to
+injected consumers when the selected runtime supports Runwire coroutines.
+
+The bridge rejects completed request contexts, mismatched runtime identities and
+an InterMix integration belonging to a different container. Without this
+optional bridge, compiled routes keep the ordinary Webrick scope behavior and
+zero-scope routes stay on the direct fast path.
 
 Application factory handoff
 ---------------------------
@@ -62,7 +101,7 @@ A compiled host can reuse the same application-owned InterMix production contain
 
 Pass ``$applicationFactory`` to the Runwire-selected host/driver bootstrap. The Runwire runtime context is supplied to the factory by Runwire; Webrick does not infer it from SAPI names, extensions or environment variables on each request.
 
-The cleanup callback is a defensive carrier-local reset after normal Webrick scope unwinding. It does not replace InterMix's own ``withinScope()`` / ``withinScopeContext()`` cleanup and must not become a request-ID keyed scope registry.
+The cleanup callback is a defensive carrier-local reset after normal scope unwinding. It does not replace InterMix 11's own ``withinScope()`` / ``withinScopeContext()`` cleanup and must not become a request-ID keyed scope registry.
 
 Response completion
 -------------------
@@ -70,6 +109,17 @@ Response completion
 ``RunwireRuntimeAdapter`` is the single owner of Runwire response-writer completion for a Webrick request. ``RunwireRuntimeApplication`` deliberately forwards requests to Runwire's lifecycle with lifecycle-level response completion disabled, even when a host calls ``handle(..., completeResponse: true)``.
 
 This prevents duplicate ``end()`` calls and keeps lazy/streamed Webrick response production inside the owning request scope until body production finishes.
+
+Runwire 2.1 terminal observers remain authoritative for lifecycle completion:
+writer ``onTerminal()`` observers fire exactly once, including late
+registration after the response has already ended. ``RunwireRuntimeApplication``
+also forwards Runwire's ``healthy()`` and ``healthFailure()`` state so host
+health transitions are not reimplemented in Webrick.
+
+Webrick owns only its inner I/O continuation Fiber. Body-readiness and
+backpressure callbacks may resume that inner Fiber; ordinary handler suspension
+is returned to the caller-owned Fiber and Webrick never resumes a
+scheduler-owned Fiber behind its owner.
 
 Request bodies and forms
 ------------------------
@@ -80,7 +130,7 @@ Ordinary routing and request creation still do not consume the body. APIs that e
 
 ``application/x-www-form-urlencoded`` payloads are parsed lazily by Webrick's request layer when the selected runtime did not already provide parsed form data. If form ``_method`` routing is explicitly enabled, the Runwire adapter consumes that URL-encoded form only because routing itself requires it, then replays the same bytes/parsed values into the eventual Webrick ``Request`` so the body is not lost.
 
-Native Runwire ``multipart/form-data`` has a narrower Webrick 5 boundary. Runwire 1.x exposes the multipart payload as a bounded request stream; Webrick does **not** add a second multipart decoder, temporary-file manager or upload-storage policy in this runtime adapter. The raw multipart body remains available to the consuming framework/application decoder. Direct adapters such as SAPI, Swoole/OpenSwoole, Workerman or RoadRunner may continue to pass host-parsed uploaded-file structures when their native request API already provides them. A future Webrick-native multipart subsystem, if desired, should be designed and security-reviewed independently rather than hidden inside the Runwire transport adapter.
+Native Runwire ``multipart/form-data`` has a narrower Webrick 6 boundary. Runwire 2.1 exposes the multipart payload as a bounded request stream; Webrick does **not** add a second multipart decoder, temporary-file manager or upload-storage policy in this runtime adapter. The raw multipart body remains available to the consuming framework/application decoder. Direct adapters such as SAPI, Swoole/OpenSwoole, Workerman or RoadRunner may continue to pass host-parsed uploaded-file structures when their native request API already provides them. A future Webrick-native multipart subsystem, if desired, should be designed and security-reviewed independently rather than hidden inside the Runwire transport adapter.
 
 Streaming, backpressure and cancellation
 ----------------------------------------
@@ -94,7 +144,7 @@ A pressured terminal ``end()`` is already an accepted terminal response from Web
 Deployment modes covered
 ------------------------
 
-The Webrick 5 acceptance suite verifies the Runwire application factory against:
+The Webrick 6 acceptance suite verifies the Runwire application factory against:
 
 - native portable mode;
 - native prefork mode;
@@ -127,7 +177,7 @@ The host integration should:
 2. compile InterMix and Webrick artifacts as one immutable release set;
 3. boot one ``CompiledRouterKernel`` per worker/process lifecycle;
 4. choose direct SAPI/direct Webrick runtime adapters or the Runwire factory at host bootstrap;
-5. wire the existing InterMix runtime reset into Runwire's request-cleanup slot for persistent execution;
+5. when using the InterMix 11 Runwire integration, bind it to the exact Runwire runtime and borrow the host request/scope context rather than creating a parallel scope;
 6. avoid a second response emitter/completion path;
 7. preserve Webrick's zero-scope compiled route path when a route needs neither a ``Request`` nor scoped DI.
 
@@ -141,8 +191,8 @@ Release checklist
 - Instantiate ``RuntimeServer`` / ``RunwireRuntimeApplicationFactory`` once per application lifecycle, not per request.
 - Let Runwire own cancellation, deadlines, admission, drain and shutdown.
 - Let Webrick own HTTP response semantics and writer completion exactly once.
-- Use Runwire's request-cleanup lifecycle slot for the defensive InterMix carrier reset.
+- Use Runwire's request-cleanup lifecycle slot only for defensive carrier reset; request/scope ownership stays with Runwire + InterMix 11.
 - Keep native Runwire request bodies streaming; only explicit full-payload consumers should materialize them.
-- Treat native Runwire multipart decoding/upload storage as an application/framework concern in Webrick 5 rather than assuming host-populated upload arrays.
+- Treat native Runwire multipart decoding/upload storage as an application/framework concern in Webrick 6 rather than assuming host-populated upload arrays.
 - Do not retain native request/response handles, Webrick ``Request`` objects or scoped services in process-global/static state.
 - Benchmark the selected runtime with representative traffic; microbenchmarks describe bridge overhead, not sustainable end-to-end throughput.
