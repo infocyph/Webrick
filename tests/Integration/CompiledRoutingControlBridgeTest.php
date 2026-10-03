@@ -93,14 +93,15 @@ final class CompiledRoutingControlBridgeTest extends TestCase
             self::assertSame('release-ok', (string) $response->getBody());
 
             $stale = $manifest;
-            $stale['intermix']['graph'] = str_repeat('0', 32);
+            $stale['intermix']['build'] = str_repeat('0', 32);
+            $stale['release_fingerprint'] = ReleaseCompiler::fingerprintManifest($stale);
             file_put_contents(
                 $releasePath,
                 json_encode($stale, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n",
             );
 
             $this->expectException(\RuntimeException::class);
-            $this->expectExceptionMessage('InterMix release graph identity mismatch');
+            $this->expectExceptionMessage('InterMix release build identity mismatch');
 
             CompiledRouterKernel::fromReleaseManifest(
                 log: new NullLogger(),
