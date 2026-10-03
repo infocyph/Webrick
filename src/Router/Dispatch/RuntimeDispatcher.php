@@ -16,6 +16,8 @@ use UnexpectedValueException;
 /** Runtime-plane dispatcher for already-compiled route execution plans. */
 final class RuntimeDispatcher
 {
+    private readonly RuntimeDescriptorInvoker $resolver;
+
     /** @var array<string,CompiledMiddlewarePipeline> */
     private array $pipelines = [];
 
@@ -24,8 +26,6 @@ final class RuntimeDispatcher
 
     /** @var list<mixed>|null */
     private ?array $preGlobal = null;
-
-    private readonly RuntimeDescriptorInvoker $resolver;
 
     public function __construct(
         private readonly InterMixRuntime $runtime,
@@ -121,19 +121,6 @@ final class RuntimeDispatcher
         return $this->response($result);
     }
 
-    /**
-     * @param array<array-key,mixed>|callable|string|null $descriptor
-     * @param array<int|string,mixed> $arguments
-     */
-    private function resolveDescriptor(array|callable|string|null $descriptor, array $arguments = []): mixed
-    {
-        if ($descriptor === null) {
-            throw new UnexpectedValueException('Compiled resolver descriptor must not be null.');
-        }
-
-        return $this->resolver->resolve($descriptor, $arguments);
-    }
-
     /** @return array<array-key,mixed>|bool|float|int|JsonSerializable|string|null */
     private function normalizeResponsePayload(mixed $value): array|bool|float|int|JsonSerializable|string|null
     {
@@ -222,6 +209,19 @@ final class RuntimeDispatcher
         );
 
         return $this->preGlobal;
+    }
+
+    /**
+     * @param array<array-key,mixed>|callable|string|null $descriptor
+     * @param array<int|string,mixed> $arguments
+     */
+    private function resolveDescriptor(array|callable|string|null $descriptor, array $arguments = []): mixed
+    {
+        if ($descriptor === null) {
+            throw new UnexpectedValueException('Compiled resolver descriptor must not be null.');
+        }
+
+        return $this->resolver->resolve($descriptor, $arguments);
     }
 
     private function response(mixed $result): Response
