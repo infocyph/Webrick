@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Runtime\Http;
 
-use Closure;
 use Infocyph\InterMix\DI\ScopeContext;
 use Infocyph\InterMix\Integration\Runwire\RunwireIntegration;
 use Infocyph\Runwire\CancellationToken;
@@ -20,25 +19,19 @@ use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Runtime\RoutingInput;
 use Infocyph\Webrick\Support\HttpUtils;
-use LogicException;
 use RuntimeException;
-use UnexpectedValueException;
 
 /** Adapts released Runwire HTTP request/writer contracts to Webrick. */
 final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
 {
-    /** @var Closure(HttpRequest): (?CoroutineScope)|null */
-    private ?Closure $coroutineScopeResolver;
-
-    private ?RunwireIntegration $interMix;
-
-    private ?RunwireContext $runwireContext;
+    private RunwireRuntimeBinding $binding;
 
     private RuntimeCapabilities $runtimeCapabilities;
 
-    /** @var Closure(HttpRequest): (?ScopeContext)|null */
-    private ?Closure $scopeContextResolver;
-
+    /**
+     * @param (callable(HttpRequest): (?CoroutineScope))|null $coroutineScope
+     * @param (callable(HttpRequest): (?ScopeContext))|null $scopeContext
+     */
     /**
      * @param (callable(HttpRequest): (?CoroutineScope))|null $coroutineScope
      * @param (callable(HttpRequest): (?ScopeContext))|null $scopeContext
@@ -51,22 +44,17 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
         bool $transportCompression = false,
         bool $transportRequestLimits = true,
     ) {
-        $boundRuntime = $interMix?->runtime();
-        if ($runtimeContext !== null && $boundRuntime !== null && $boundRuntime !== $runtimeContext) {
-            throw new LogicException('Runwire adapter and InterMix integration are bound to different runtimes.');
-        }
-        if ($interMix !== null && !$boundRuntime instanceof RunwireContext) {
-            throw new LogicException('InterMix Runwire integration must be bound before adapter construction.');
-        }
-
-        $this->runwireContext = $runtimeContext ?? $boundRuntime;
-        $this->interMix = $interMix;
-        $this->coroutineScopeResolver = $coroutineScope === null ? null : Closure::fromCallable($coroutineScope);
-        $this->scopeContextResolver = $scopeContext === null ? null : Closure::fromCallable($scopeContext);
+        $this->binding = new RunwireRuntimeBinding(
+            $runtimeContext,
+            $interMix,
+            $coroutineScope,
+            $scopeContext,
+        );
+        $runtime = $this->binding->runtime();
         $this->runtimeCapabilities = new RuntimeCapabilities(
             name: 'runwire',
-            persistent: $this->runwireContext?->persistent ?? false,
-            concurrent: $this->runwireContext?->concurrent ?? false,
+            persistent: $runtime instanceof RunwireContext && $runtime->persistent,
+            concurrent: $runtime instanceof RunwireContext && $runtime->concurrent,
             nativeStreaming: true,
             nativeFile: false,
             transportCompression: $transportCompression,
@@ -90,20 +78,8 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
 
         $routingServer = self::serverParams($nativeRequest, false);
         $runwireContext = $nativeRequest->context;
-        if ($this->runwireContext !== null && $runwireContext->runtime() !== $this->runwireContext) {
-            throw new RuntimeException('Runwire request context is bound to a different runtime.');
-        }
-
-        $coroutineScope = $this->resolveCoroutineScope($nativeRequest);
-        $scopeContext = $this->resolveScopeContext($nativeRequest);
-        $scopeBridge = $this->interMix === null
-            ? null
-            : new RunwireInterMixScopeBridge(
-                $this->interMix,
-                $runwireContext,
-                $coroutineScope,
-                $scopeContext,
-            );
+        $this->binding->assertRequest($runwireContext);
+        $scopeBridge = $this->binding->scopeBridge($nativeRequest);
         $bodyStream = new RunwireRequestBodyStream($nativeRequest->body, $runwireContext->cancellation);
         $formResolved = false;
         $form = [];
@@ -432,33 +408,5 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
             RunwireResponseContinuation::awaitDrain($writer, $cancellation);
             self::assertNotCancelled($cancellation);
         }
-    }    private function resolveCoroutineScope(HttpRequest $request): ?CoroutineScope
-    {
-        if ($this->coroutineScopeResolver === null) {
-            return null;
-        }
-
-        $scope = ($this->coroutineScopeResolver)($request);
-        if ($scope !== null && !$scope instanceof CoroutineScope) {
-            throw new UnexpectedValueException('Runwire coroutine-scope resolver must return CoroutineScope or null.');
-        }
-
-        return $scope;
     }
-
-    private function resolveScopeContext(HttpRequest $request): ?ScopeContext
-    {
-        if ($this->scopeContextResolver === null) {
-            return null;
-        }
-
-        $context = ($this->scopeContextResolver)($request);
-        if ($context !== null && !$context instanceof ScopeContext) {
-            throw new UnexpectedValueException('Runwire scope-context resolver must return ScopeContext or null.');
-        }
-
-        return $context;
-    }
-
-
 }
