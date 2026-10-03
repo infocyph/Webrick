@@ -185,6 +185,33 @@ describe('Request', function () {
 
             expect(file_get_contents($target))->toBe('existing')
                 ->and($upload->getStream())->toBe($body);
+
+            $missingTarget = dirname($target) . '/webrick-upload-missing-' . bin2hex(random_bytes(6));
+            expect(fn() => $upload->moveTo($missingTarget))
+                ->toThrow(RuntimeException::class)
+                ->and(is_file($missingTarget))->toBeFalse();
+        } finally {
+            if (is_string($target) && is_file($target) && !unlink($target)) {
+                throw new RuntimeException("Unable to remove upload target fixture: {$target}");
+            }
+            if (isset($missingTarget) && is_file($missingTarget) && !unlink($missingTarget)) {
+                throw new RuntimeException("Unable to remove failed upload fixture: {$missingTarget}");
+            }
+        }
+    });
+
+    it('publishes a complete upload stream over an existing target at genuine eof', function () {
+        $target = tempnam(sys_get_temp_dir(), 'webrick-upload-target-');
+        expect($target)->toBeString();
+        file_put_contents($target, 'existing');
+        $upload = new UploadedFile(new Stream('replacement'));
+
+        try {
+            $upload->moveTo($target);
+
+            expect(file_get_contents($target))->toBe('replacement')
+                ->and(fn() => $upload->getStream())
+                ->toThrow(RuntimeException::class, 'Uploaded file has been moved');
         } finally {
             if (is_string($target) && is_file($target) && !unlink($target)) {
                 throw new RuntimeException("Unable to remove upload target fixture: {$target}");

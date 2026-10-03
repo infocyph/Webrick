@@ -147,34 +147,46 @@ it('rejects any transfer-encoding combined with content-length', function () {
 
 it('keeps stricter application body limits active when the transport advertises request limits', function () {
     $middleware = new RequestLimitsMiddleware(maxBodyBytes: 4);
+    $capabilities = new RuntimeCapabilities('runwire', transportRequestLimits: true);
     $request = Request::fake(method: 'POST')
         ->withBody(new StringBody('12345'))
         ->withHeader('Content-Length', '5')
-        ->withAttribute(
-            RuntimeCapabilities::ATTRIBUTE,
-            new RuntimeCapabilities('runwire', transportRequestLimits: true),
-        );
+        ->withAttribute(RuntimeCapabilities::ATTRIBUTE, $capabilities);
+    $withoutLength = Request::fake(method: 'POST')
+        ->withBody(new StringBody('12345'))
+        ->withAttribute(RuntimeCapabilities::ATTRIBUTE, $capabilities);
 
     expect(fn () => $middleware($request, static fn (): Response => Response::create('ok')))
+        ->toThrow(HttpException::class, 'Payload exceeds maximum allowed size.')
+        ->and(fn () => $middleware($withoutLength, static fn (): Response => Response::create('ok')))
         ->toThrow(HttpException::class, 'Payload exceeds maximum allowed size.');
 });
 
 it('keeps stricter application header limits active when the transport advertises request limits', function () {
-    $middleware = new RequestLimitsMiddleware(
+    $capabilities = new RuntimeCapabilities('runwire', transportRequestLimits: true);
+    $countLimited = new RequestLimitsMiddleware(
         maxHeaderBytes: 8192,
         maxHeaderCount: 1,
         maxBodyBytes: 1024,
     );
-    $request = Request::fake(
+    $byteLimited = new RequestLimitsMiddleware(
+        maxHeaderBytes: 8,
+        maxHeaderCount: 100,
+        maxBodyBytes: 1024,
+    );
+    $countRequest = Request::fake(
         method: 'POST',
         headers: ['X-One' => '1', 'X-Two' => '2'],
-    )->withAttribute(
-        RuntimeCapabilities::ATTRIBUTE,
-        new RuntimeCapabilities('runwire', transportRequestLimits: true),
-    );
+    )->withAttribute(RuntimeCapabilities::ATTRIBUTE, $capabilities);
+    $byteRequest = Request::fake(
+        method: 'POST',
+        headers: ['X-Test' => 'value'],
+    )->withAttribute(RuntimeCapabilities::ATTRIBUTE, $capabilities);
 
-    expect(fn () => $middleware($request, static fn (): Response => Response::create('ok')))
-        ->toThrow(HttpException::class, 'Too many header fields');
+    expect(fn () => $countLimited($countRequest, static fn (): Response => Response::create('ok')))
+        ->toThrow(HttpException::class, 'Too many header fields')
+        ->and(fn () => $byteLimited($byteRequest, static fn (): Response => Response::create('ok')))
+        ->toThrow(HttpException::class, 'Request headers too large');
 });
 
 it('rejects malformed wildcard cors origins', function () {
