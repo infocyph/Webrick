@@ -11,6 +11,14 @@ HARNESS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cert-server.php"
 mkdir -p "$RESULT_DIR"
 RESULTS="$RESULT_DIR/load-results.jsonl"
 : > "$RESULTS"
+CURRENT_PID=""
+
+cleanup_current() {
+    if [[ -n "$CURRENT_PID" ]] && kill -0 "$CURRENT_PID" 2>/dev/null; then
+        stop_server "$CURRENT_PID" || true
+    fi
+}
+trap cleanup_current EXIT
 
 PAYLOAD="$RESULT_DIR/upload.bin"
 head -c 16384 /dev/zero > "$PAYLOAD"
@@ -183,7 +191,7 @@ run_target() {
     for trial in $(seq 1 "$TRIALS"); do
         local pid
         pid="$(start_server "$root" "$mode" "$port" "${version}-t${trial}")"
-        trap 'stop_server "'"$pid"'" || true' RETURN
+        CURRENT_PID="$pid"
 
         assert_correctness "$port"
         ab -k -t 2 -c 5 "http://127.0.0.1:${port}/cert/static" >/dev/null 2>&1
@@ -197,7 +205,7 @@ run_target() {
         done
 
         stop_server "$pid"
-        trap - RETURN
+        CURRENT_PID=""
     done
 }
 
