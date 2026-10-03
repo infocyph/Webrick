@@ -11,6 +11,25 @@ Serve cached responses for safe requests (typically **GET/HEAD**) without runnin
 
 Core routing does not load, initialize, or require CacheLayer. Applications may pass any compatible ``Psr\Cache\CacheItemPoolInterface`` explicitly.
 
+Persistent and prefork deployments
+----------------------------------
+
+Construct worker-local cache resources and client connections after a process
+fork. The host owns connection lifecycle for Redis/Memcached/database-backed
+pools and should inject the resulting PSR-6 pool into Webrick.
+
+Do not silently replace an application-required shared cache/counter with
+process-local memory when the shared backend is unavailable. Response caching
+itself is an optimization and Webrick treats operational cache failures as
+misses, but security/reliability policy for a required shared backend belongs to
+the host application.
+
+Webrick 6 rotates disposable/security-related namespaces for the CacheLayer 4
+upgrade: response entries use ``webrick.hr.v4.``, throttle counters use
+``webrick.th.v3.``, and encrypted-cookie backing entries use
+``enc_cookie.v2.``. Mixed CacheLayer 3.x/4.x writers should not share those
+entries; expire or migrate old backing state explicitly during rollout.
+
 --------------
 
 Configuration
