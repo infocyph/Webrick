@@ -177,7 +177,6 @@ jobs:
           path: .runtime-certification/
           if-no-files-found: error
           include-hidden-files: true
-          include-hidden-files: true
 
   same-run-performance:
     name: Webrick 5.4 vs 6.0 HTTP performance
@@ -341,3 +340,4 @@ jobs:
           name: live-runwire-h3
           path: .runtime-certification/
           if-no-files-found: error
+          include-hidden-files: true
