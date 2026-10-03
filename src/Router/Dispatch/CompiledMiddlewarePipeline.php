@@ -25,8 +25,9 @@ final readonly class CompiledMiddlewarePipeline
     {
         $invokers = [];
         $requiresScope = false;
+        $resolver = new RuntimeDescriptorInvoker($runtime->container());
         foreach ($middleware as $descriptor) {
-            [$invoke, $runtimeBacked] = self::compileInvoker($runtime, $descriptor);
+            [$invoke, $runtimeBacked] = self::compileInvoker($resolver, $descriptor);
             $invokers[] = $invoke;
             $requiresScope = $requiresScope || $runtimeBacked;
         }
@@ -65,14 +66,14 @@ final readonly class CompiledMiddlewarePipeline
     /**
      * @return array{0:Closure(Request,Closure):mixed,1:bool}
      */
-    private static function compileInvoker(InterMixRuntime $runtime, mixed $descriptor): array
+    private static function compileInvoker(RuntimeDescriptorInvoker $resolver, mixed $descriptor): array
     {
         if ($descriptor instanceof RuntimeMiddlewareDescriptor) {
             return [
-                static function (Request $request, Closure $next) use ($runtime, $descriptor): mixed {
-                    $resolved = self::resolveDescriptor($runtime, $descriptor->resolverSpec(), $descriptor->parameters);
+                static function (Request $request, Closure $next) use ($resolver, $descriptor): mixed {
+                    $resolved = $resolver->resolve($descriptor->resolverSpec(), $descriptor->parameters);
 
-                    return self::invokeResolvedMiddleware($runtime, $resolved, $request, $next);
+                    return self::invokeResolvedMiddleware($resolver, $resolved, $request, $next);
                 },
                 true,
             ];
@@ -92,8 +93,7 @@ final readonly class CompiledMiddlewarePipeline
         }
 
         return [
-            static fn(Request $request, Closure $next): mixed => self::resolveDescriptor(
-                $runtime,
+            static fn(Request $request, Closure $next): mixed => $resolver->resolve(
                 $descriptor,
                 ['request' => $request, 'next' => $next],
             ),
@@ -101,67 +101,8 @@ final readonly class CompiledMiddlewarePipeline
         ];
     }
 
-    /**
-     * @param array<array-key,mixed>|callable|string $descriptor
-     * @param array<int|string,mixed> $arguments
-     */
-    private static function resolveDescriptor(
-        InterMixRuntime $runtime,
-        array|callable|string $descriptor,
-        array $arguments = [],
-    ): mixed {
-        if (is_array($descriptor)) {
-            if (
-                count($descriptor) !== 2
-                || !is_string($descriptor[0])
-                || !is_string($descriptor[1])
-                || !class_exists($descriptor[0])
-            ) {
-                throw new UnexpectedValueException('Compiled middleware resolver array must contain a class and method.');
-            }
-
-            if (is_callable($descriptor)) {
-                return $runtime->invoke($descriptor, $arguments);
-            }
-
-            $instance = $runtime->make($descriptor[0]);
-            $callable = [$instance, $descriptor[1]];
-            if (!is_callable($callable)) {
-                throw new UnexpectedValueException('Compiled middleware resolver method is not callable.');
-            }
-
-            return $runtime->invoke($callable, $arguments);
-        }
-
-        if (is_string($descriptor)) {
-            if (function_exists($descriptor)) {
-                return $runtime->invoke($descriptor, $arguments);
-            }
-            if ($runtime->has($descriptor)) {
-                $resolved = $runtime->get($descriptor);
-                if ($arguments === [] || !is_callable($resolved)) {
-                    return $resolved;
-                }
-
-                return $runtime->invoke($resolved, $arguments);
-            }
-            if (class_exists($descriptor)) {
-                $resolved = $runtime->make($descriptor);
-                if ($arguments === [] || !is_callable($resolved)) {
-                    return $resolved;
-                }
-
-                return $runtime->invoke($resolved, $arguments);
-            }
-
-            throw new UnexpectedValueException("Compiled middleware resolver '{$descriptor}' is not resolvable.");
-        }
-
-        return $runtime->invoke($descriptor, $arguments);
-    }
-
     private static function invokeResolvedMiddleware(
-        InterMixRuntime $runtime,
+        RuntimeDescriptorInvoker $resolver,
         mixed $resolved,
         Request $request,
         Closure $next,
@@ -171,8 +112,7 @@ final readonly class CompiledMiddlewarePipeline
         }
 
         if (is_callable($resolved) || is_string($resolved) || is_array($resolved)) {
-            return self::resolveDescriptor(
-                $runtime,
+            return $resolver->resolve(
                 $resolved,
                 ['request' => $request, 'next' => $next],
             );
