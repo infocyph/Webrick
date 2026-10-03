@@ -1,7 +1,7 @@
 Runwire Runtime Performance
 ===========================
 
-Webrick 5 includes a focused PHPBench fixture for the optional Runwire 1.x runtime bridge in ``benchmarks/RunwireRuntimeBench.php``. The purpose is to keep the adapter, request-promotion, scope and response-writing costs visible without adding a second benchmark harness or a production dependency.
+Webrick 6 carries forward a focused PHPBench fixture for the optional Runwire 2.1 runtime bridge in ``benchmarks/RunwireRuntimeBench.php``. The purpose is to keep the adapter, request-promotion, scope and response-writing costs visible without adding a second benchmark harness or a production dependency.
 
 Measurement setup
 -----------------
@@ -71,7 +71,7 @@ Do not turn the numbers above into universal latency budgets. For production dec
 Release decision
 ----------------
 
-For Webrick 5's Runwire adapter release:
+For Webrick 6's Runwire adapter release:
 
 - no new runtime dependency was introduced for performance work;
 - no production runtime code was changed solely to chase microbenchmark numbers;
