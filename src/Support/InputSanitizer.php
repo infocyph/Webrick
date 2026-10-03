@@ -107,8 +107,13 @@ final readonly class InputSanitizer
         $s = str_replace("\u{00A0}", ' ', $s);                         // NBSP → space
         $s = preg_replace('/[\x{200B}-\x{200D}\x{FEFF}]/u', '', $s) ?? $s; // ZW chars
 
-        if ($this->normalizeUnicode && function_exists('normalizer_normalize')) {
-            $s = normalizer_normalize($s, \Normalizer::FORM_KC) ?: $s;
+        if (
+            $this->normalizeUnicode
+            && function_exists('normalizer_normalize')
+            && defined('Normalizer::FORM_KC')
+        ) {
+            $normalized = normalizer_normalize($s, (int) constant('Normalizer::FORM_KC'));
+            $s = is_string($normalized) ? $normalized : $s;
         }
 
         $s = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', '', $s) ?? $s; // strip controls
