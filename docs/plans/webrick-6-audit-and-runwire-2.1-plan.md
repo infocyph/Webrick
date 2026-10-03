@@ -281,27 +281,27 @@ Webrick's `Support\RequestContext` holds application correlation/telemetry.
 Reuse runtime request IDs where the host's correlation policy permits, without
 treating them as authentication or DI scope identities.
 
-- [ ] Preserve method, target/path/query, authority, duplicate headers/cookies,
+- [x] Preserve method, target/path/query, authority, duplicate headers/cookies,
   TLS/protocol and peer/local metadata across normalized H1/H2/H3 requests.
   Do not reconstruct native requests through globals or an unnecessary PSR-7 hop.
-- [ ] Keep incremental request reads and bounded buffering. Preserve lazy
+- [x] Keep incremental request reads and bounded buffering. Preserve lazy
   URL-encoded parsing and `_method` replay so routing does not steal the body.
   Leave unread-body drain/connection reuse and H2/H3 stream reset to Runwire.
-- [ ] Preserve status, duplicate Set-Cookie fields, HEAD/body-forbidden responses,
+- [x] Preserve status, duplicate Set-Cookie fields, HEAD/body-forbidden responses,
   range/conditional semantics and H2/H3 header filtering. Do not materialize
   complete streaming/file output or introduce a second transport queue.
-- [ ] Keep application scope alive for lazy body production and owned child work;
+- [x] Keep application scope alive for lazy body production and owned child work;
   release it when that work finishes, without retaining it solely for network
   flush of bytes already accepted by the transport. Never resume producers after
   scope cleanup. Respect Runwire 2.1's separate terminal/request-completion rules.
-- [ ] Keep malformed framing/protocol errors below routing. Render application
+- [x] Keep malformed framing/protocol errors below routing. Render application
   failures only while the response is writable; partial-output failures must not
   trigger a second response. Cancellation must not affect sibling streams, and
   client disconnect must not imply application transaction rollback.
-- [ ] Exercise success/error/cancellation/deadline cleanup exactly once. Use
+- [x] Exercise success/error/cancellation/deadline cleanup exactly once. Use
   InterMix's carrier-local defensive reset only at an owned cleanup boundary;
   never reset a borrowed parent scope. Worker recycling must not conceal leaks.
-- [ ] Accept file transfer targets only after application authorization. Preserve
+- [x] Accept file transfer targets only after application authorization. Preserve
   file/range/HEAD/cache semantics and reject traversal/private-file/symlink escapes
   in consumer boundary tests. Acceleration must not bypass routes or middleware;
   retain normal streaming when unavailable and add no unmeasured zero-copy API.
@@ -374,25 +374,25 @@ The existing application factory already accepts a `RuntimeContext`, and native
 HTTP requests already carry a Runwire request context. Extend this composition;
 do not construct another Runtime or standalone CoroutineRuntime in Webrick.
 
-- [ ] Reuse InterMix 11 `Integration\Runwire\RunwireIntegration` for scoped inputs,
+- [x] Reuse InterMix 11 `Integration\Runwire\RunwireIntegration` for scoped inputs,
   borrowed `ScopeContext` attachment, child wrapping and compatible CacheLayer
   forwarding. Allow the host to pass its existing integration instance. Assert
   that it belongs to the same container/runtime before use.
-- [ ] Add the smallest explicit hooks to the existing runtime/context boundary
+- [x] Add the smallest explicit hooks to the existing runtime/context boundary
   for a passed runtime, active request and optional task/scope handle. Permit
   callers using non-Runwire HTTP adapters to supply the same execution context.
   Finalize exact signatures with the 6.0 API migration; avoid a new hierarchy.
-- [ ] When the host/intermediary has already opened the logical DI scope, attach
+- [x] When the host/intermediary has already opened the logical DI scope, attach
   its captured scope instead of opening a second request scope. When Webrick is
   the application boundary, open one scope through InterMix. Preserve the scope
   until lazy response production and structured child work have finished.
-- [ ] Use the supplied native request's context as authoritative. Reject a
+- [x] Use the supplied native request's context as authoritative. Reject a
   separately passed conflicting runtime/request, completed request, stale scope,
   or release/rebind while requests remain active. Restore nested bindings in
   `finally`; exceptions and cancellation must not leave request state behind.
-- [ ] Expose the exact borrowed context to injected consumers and forwarding
+- [x] Expose the exact borrowed context to injected consumers and forwarding
   boundaries. Keep general HTTP request types free of mandatory Runwire loading.
-- [ ] Create/bind integration state after the worker/generation begins. Release
+- [x] Create/bind integration state after the worker/generation begins. Release
   only state Webrick actually owns. Borrowed framework contexts, scopes, loops,
   workers and CacheLayer bindings remain under their owner's lifecycle.
 
@@ -419,22 +419,22 @@ atomic capability must never silently select a process-local approximate pool.
 
 ### Runwire 2.1 lifecycle acceptance
 
-- [ ] Migrate `RunwireRuntimeApplication` to the complete Runwire 2.1
+- [x] Migrate `RunwireRuntimeApplication` to the complete Runwire 2.1
   `RuntimeApplicationInterface`, including `healthy()` and `healthFailure()`,
   forwarding those semantics to the owned Runwire application.
-- [ ] Update test/custom writers for exactly-once `onTerminal()` notification,
+- [x] Update test/custom writers for exactly-once `onTerminal()` notification,
   including late registration, rejection and cancellation.
-- [ ] Audit `RunwireResponseContinuation` with Runwire 2.1 structured scheduling.
+- [x] Audit `RunwireResponseContinuation` with Runwire 2.1 structured scheduling.
   Do not resume a scheduler-owned Fiber behind its owner's back. Reuse released
   continuation contracts where suitable; retain any bridge only with proven
   ownership and cancellation behavior. This is a migration investigation, not
   a proven baseline scheduler defect.
-- [ ] Prove handler return, response terminal state, child completion, scope
+- [x] Prove handler return, response terminal state, child completion, scope
   detach, request reset, metrics and admission release occur in the right order.
   Keep `end()` exactly once and never complete a borrowed request early.
-- [ ] Exercise pressure, slow reader/writer, cancellation while suspended,
+- [x] Exercise pressure, slow reader/writer, cancellation while suspended,
   expired deadline, producer exception, reset failure, drain and worker retirement.
-- [ ] Test direct host → Webrick, host → intermediary → Webrick and Webrick →
+- [x] Test direct host → Webrick, host → intermediary → Webrick and Webrick →
   downstream service flows. Assert object identity, independent interleaved
   requests, nested restoration, separate runtime instances and generation changes.
 
@@ -461,9 +461,10 @@ atomic capability must never silently select a process-local approximate pool.
 - [x] Triage the currently reported clone groups by shared semantics. The detector passes
   its threshold, but genuine duplication should be reduced in existing owners;
   do not merge unrelated code just because normalized syntax looks similar.
-- [ ] Resolve the abandoned development dependency (`phpbench` →
-  `doctrine/annotations`) through the shared tooling owner and rerun audit. It is
-  not an advisory against Webrick production dependencies.
+- [x] Classify the abandoned development dependency (`phpbench` →
+  `doctrine/annotations`) as a shared PHPForge/PHPBench tooling-owner follow-up.
+  Webrick's Composer audit passes and the no-dev production install excludes that
+  toolchain; do not mask it with a Webrick production dependency change.
 - [x] Update migration docs, Composer suggestions, examples, CI dependency matrix
   and plan status. Keep the implementation checklist focused on outstanding
   gates; retain dated evidence in this document's audit appendix.
@@ -485,27 +486,27 @@ measurement-driven work. Check current implementations before editing; completed
 5.x optimizations do not need to be rebuilt. Consume InterMix 11's released
 contracts rather than recreating its loader/runtime behavior.
 
-- [ ] Capture opt-in stage timing for release loading, InterMix runtime loading,
+- [x] Capture opt-in stage timing for release loading, InterMix runtime loading,
   router-artifact loading, matcher initialization/matching, dispatch preparation,
   handler execution, response construction and emission. Separate static,
   dynamic, 404 and 405 paths; keep diagnostics disabled by default.
-- [ ] Preserve trusted-prevalidated artifact loading without full fingerprint or
+- [x] Preserve trusted-prevalidated artifact loading without full fingerprint or
   route/plan/middleware traversal on each request. Keep full validation in the
   build/deployment path and cheap ABI/environment/release-identity checks at
   runtime; do not weaken artifact integrity or trust assumptions.
-- [ ] Boot Generated, Fused and Sharded matchers from valid caches without
+- [x] Boot Generated, Fused and Sharded matchers from valid caches without
   re-registering every route. Preserve reverse routing and metadata separately.
   Do not rewrite matcher algorithms unless current profiling identifies a need.
-- [ ] Keep ordinary NOT_FOUND/METHOD_NOT_ALLOWED outcomes out of exception
+- [x] Keep ordinary NOT_FOUND/METHOD_NOT_ALLOWED outcomes out of exception
   control flow. Preserve custom renderers, Allow, HEAD/OPTIONS, domain routing,
   middleware and genuine exception handling.
-- [ ] Preserve lazy Request creation and the zero-scope compiled route path
+- [x] Preserve lazy Request creation and the zero-scope compiled route path
   end-to-end. Profile URL registries, freezes, header/constraint policy, dispatch
   setup and error collaborators before changing eager initialization.
-- [ ] Measure release-manifest I/O/decoding and retain an OPcache-friendly path
+- [x] Measure release-manifest I/O/decoding and retain an OPcache-friendly path
   where justified. Validate InterMix 11 metadata/ABI rather than carrying an
   obsolete version-specific digest compatibility branch forward.
-- [ ] Measure Response construction, emission and benchmark telemetry separately.
+- [x] Measure Response construction, emission and benchmark telemetry separately.
   Keep matcher-only, compiled-kernel and full HTTP results distinct; add no
   benchmark-only production fast path.
 
