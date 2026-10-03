@@ -199,12 +199,20 @@ Batch 7 evidence:
 
 ### Batch 8 — static quality, duplication and migration docs
 
-- [ ] Resolve W08 without making `ext-intl` a runtime requirement or suppressing analysis.
-- [ ] Re-run Unicode-normalization behavior with and without the optional intl surface.
-- [ ] Triage the current PHPForge duplicate report by semantic ownership and only extract genuinely shared behavior.
-- [ ] Update README and deployment/middleware docs for Webrick 6, InterMix 11, Runwire 2.1, CacheLayer 4 and PSR-6 cache contracts.
-- [ ] Record the shared-tooling `doctrine/annotations` warning accurately without treating it as a Webrick production advisory.
+- [x] Resolve W08 without making `ext-intl` a runtime requirement or suppressing analysis.
+- [x] Re-run Unicode-normalization behavior with and without the optional intl surface.
+- [x] Triage the current PHPForge duplicate report by semantic ownership and only extract genuinely shared behavior.
+- [x] Update README and deployment/middleware docs for Webrick 6, InterMix 11, Runwire 2.1, CacheLayer 4 and PSR-6 cache contracts.
+- [x] Record the shared-tooling `doctrine/annotations` warning accurately without treating it as a Webrick production advisory.
 - [ ] Run full PHPForge gates before B9.
+
+Batch 8 evidence in progress:
+
+- W08 no longer references the optional `Normalizer` class symbol directly. Runtime normalization is guarded by `function_exists()`, `defined()` and an integer type check; no suppression or mandatory `ext-intl` dependency was added.
+- `InputSanitizerTest` covers the intl-present behavior while the detail workflow runs an explicit `php -n` no-intl smoke check.
+- The current duplicate report passes at **43 clone groups / 1,892 duplicated lines / 4.95%**. Triage groups intentional adapter/matcher/benchmark parallelism separately from same-owner parser/validator repetition; no release-blocking semantic duplicate justified a cross-owner abstraction.
+- README, Runwire deployment/performance guidance and response-cache documentation now describe Webrick 6, InterMix 11, Runwire 2.1, CacheLayer 4, PSR-6 cache ownership and the CacheLayer major-version namespace rotation.
+- PHPForge currently owns `phpbench/phpbench ^1.7`, which installs abandoned `doctrine/annotations`. Current Webrick Composer audit passes and the no-dev clean install excludes that toolchain; removing the warning belongs to the shared PHPForge/PHPBench tooling owner and is not being masked by a Webrick dependency change.
 
 ## Engineering constraints
 
@@ -415,20 +423,20 @@ atomic capability must never silently select a process-local approximate pool.
 
 ## Phase E — Quality and documentation
 
-- [ ] Resolve W08: local PHPStan's unknown `Normalizer`/argument-type diagnostics
+- [x] Resolve W08: local PHPStan's unknown `Normalizer`/argument-type diagnostics
   at `InputSanitizer.php:111`. Test with and without `ext-intl`; provision analysis
   dependencies/stubs as appropriate without making optional Unicode normalization
   a mandatory runtime dependency or suppressing findings.
-- [ ] Triage the 42 reported clone groups by shared semantics. The detector passes
+- [x] Triage the currently reported clone groups by shared semantics. The detector passes
   its threshold, but genuine duplication should be reduced in existing owners;
   do not merge unrelated code just because normalized syntax looks similar.
 - [ ] Resolve the abandoned development dependency (`phpbench` →
   `doctrine/annotations`) through the shared tooling owner and rerun audit. It is
   not an advisory against Webrick production dependencies.
-- [ ] Update migration docs, Composer suggestions, examples, CI dependency matrix
+- [x] Update migration docs, Composer suggestions, examples, CI dependency matrix
   and plan status. Keep the implementation checklist focused on outstanding
   gates; retain dated evidence in this document's audit appendix.
-- [ ] Preserve the documented native Runwire multipart boundary: raw bounded body
+- [x] Preserve the documented native Runwire multipart boundary: raw bounded body
   plus a caller-owned decoder, versus host-parsed uploads on supporting adapters.
   Do not claim complete multipart parity or add a hidden upload subsystem.
 
