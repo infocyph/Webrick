@@ -142,7 +142,15 @@ final readonly class ReleaseArtifactLoader
             throw new UnexpectedValueException("{$label} must contain an object.");
         }
 
-        return $decoded;
+        $result = [];
+        foreach ($decoded as $key => $value) {
+            if (!is_string($key)) {
+                throw new UnexpectedValueException("{$label} must use string keys.");
+            }
+            $result[$key] = $value;
+        }
+
+        return $result;
     }
 
     /**
@@ -162,7 +170,8 @@ final readonly class ReleaseArtifactLoader
             }
         }
         foreach (['digest', 'graph', 'build'] as $field) {
-            if (preg_match('/^[a-f0-9]{32}$/D', $metadata[$field]) !== 1) {
+            $value = $metadata[$field] ?? null;
+            if (!is_string($value) || preg_match('/^[a-f0-9]{32}$/D', $value) !== 1) {
                 throw new UnexpectedValueException("Coordinated release InterMix {$field} must be xxh128.");
             }
         }
