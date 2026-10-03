@@ -129,24 +129,6 @@ final class RunwireResponseContinuation
         self::runOwnedFiber($handler);
     }
 
-    /** @param callable(): void $handler */
-    private static function runOwnedFiber(callable $handler): void
-    {
-        /** @var Fiber<mixed, mixed, mixed, mixed> $fiber */
-        $fiber = new Fiber($handler);
-        self::managedFibers()[$fiber] = true;
-
-        try {
-            $fiber->start();
-        } catch (Throwable $error) {
-            unset(self::managedFibers()[$fiber]);
-
-            throw $error;
-        }
-
-        self::releaseIfTerminated($fiber);
-    }
-
     /** @return Fiber<mixed, mixed, mixed, mixed> */
     private static function managedFiber(string $message): Fiber
     {
@@ -170,5 +152,23 @@ final class RunwireResponseContinuation
         if ($fiber->isTerminated() && self::$managedFibers instanceof WeakMap) {
             unset(self::$managedFibers[$fiber]);
         }
+    }    /** @param callable(): void $handler */
+    private static function runOwnedFiber(callable $handler): void
+    {
+        /** @var Fiber<mixed, mixed, mixed, mixed> $fiber */
+        $fiber = new Fiber($handler);
+        self::managedFibers()[$fiber] = true;
+
+        try {
+            $fiber->start();
+        } catch (Throwable $error) {
+            unset(self::managedFibers()[$fiber]);
+
+            throw $error;
+        }
+
+        self::releaseIfTerminated($fiber);
     }
+
+
 }
