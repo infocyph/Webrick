@@ -492,7 +492,9 @@ final readonly class CompiledRouterKernel
         }
 
         return $this->errorHandler->renderThrowable($request, $exception);
-    }    private function withinRequestScope(
+    }
+
+    private function withinRequestScope(
         ?RuntimeRequestContext $runtimeContext,
         ?Request $request,
         callable $callback,
@@ -507,6 +509,4 @@ final readonly class CompiledRouterKernel
             $request instanceof Request ? [Request::class => $request] : [],
         );
     }
-
-
 }
