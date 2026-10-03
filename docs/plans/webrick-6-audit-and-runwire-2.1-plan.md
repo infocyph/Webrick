@@ -64,8 +64,8 @@ and the mapped phase checkboxes after every implementation and QA stage.
 | B6 | Borrowed runtime/request/scope integration | C: ownership/context | **Complete** |
 | B7 | CacheLayer 4 compatibility and deployment | D | **Complete** |
 | B8 | Static quality, duplication and migration docs | E | **Complete** |
-| B9 | Production request-path performance | F | **In progress** |
-| B10 | Final release evidence and acceptance | G | **Not started** |
+| B9 | Production request-path performance | F | **Complete** |
+| B10 | Final release evidence and acceptance | G | **In progress** |
 
 ### Batch 0 — synchronized baseline
 
@@ -219,11 +219,31 @@ Batch 8 evidence:
 
 ### Batch 9 — production request-path performance
 
-- [ ] Split coordinated release profiling into manifest, InterMix runtime and router-artifact stages while keeping profiling opt-in.
-- [ ] Reconfirm trusted-prevalidated artifact loading, cache-boot matchers, explicit 404/405 outcomes, lazy Request promotion and zero-scope dispatch without rebuilding completed 5.x work.
-- [ ] Keep runtime response-write measurement separate from kernel dispatch and response-ready stages; add no benchmark-only production path.
-- [ ] Run semantic/parity tests plus PHPBench after any instrumentation change and compare against the preceding B8 head.
-- [ ] Run full PHPForge gates before B10.
+- [x] Split coordinated release profiling into manifest, InterMix runtime and router-artifact stages while keeping profiling opt-in.
+- [x] Reconfirm trusted-prevalidated artifact loading, cache-boot matchers, explicit 404/405 outcomes, lazy Request promotion and zero-scope dispatch without rebuilding completed 5.x work.
+- [x] Keep runtime response-write measurement separate from kernel dispatch and response-ready stages; add no benchmark-only production path.
+- [x] Run semantic/parity tests plus PHPBench after any instrumentation change and compare against the preceding B8 head.
+- [x] Run full PHPForge gates before B10.
+
+Batch 9 evidence:
+
+- Final B9 head: `2d7798c66b9d3367ae9fc02634c76784169e0b07`.
+- Exact-head Security & Standards run `37134396611` passed detail diagnostics, clean install, PHP 8.4/8.5 stable and lowest QA, both analyzers and both benchmark jobs.
+- Coordinated release profiling now separates `release_manifest_load`, `intermix_runtime_load` and `router_artifact_load`; the profiler remains host-supplied/opt-in.
+- Existing request-path stages remain separate: routing input, matcher result, dispatch, response-ready and runtime response-write. No benchmark-only production branch was introduced.
+- The B8→B9 PhpBench artifact comparison matched 177 PHP 8.4 and 180 PHP 8.5 subjects. Median B9/B8 mode ratio was **1.00** on PHP 8.4 and **1.01** on PHP 8.5; geometric-mean ratios were **1.007** and **1.023** respectively. Median, minimum and maximum memory deltas were **0 bytes** across matched subjects. Individual single-run outliers were treated as noise rather than production-tuning evidence.
+- Full parity/quality coverage remained green, including cache-boot matcher behavior, explicit 404/405 outcomes, lazy request promotion and zero-scope compiled dispatch.
+
+### Batch 10 — final release evidence and acceptance
+
+- [ ] Re-run PHPForge release/quality gates on the final candidate SHA and record exact run/versions.
+- [ ] Reconfirm stable and lowest dependency matrices on PHP 8.4/8.5 plus clean no-dev production install.
+- [ ] Reconfirm W01–W07 adversarial regressions and supported routing/middleware/URL/cache/HEAD/range/conditional/upload/error parity.
+- [ ] Record live Runwire H1/H2 and prepared-host H3 evidence separately from fixture/composition tests.
+- [ ] Record actual Foundation and Infbyte consumer results at exact SHAs.
+- [ ] Record controlled 5.4 vs 6.0 unbound/bound end-to-end throughput, latency, memory, queue/utilization and concurrency evidence.
+- [ ] Record persistent-worker soak evidence for cleanup, cancellation, drain and replacement.
+- [ ] Require all applicable CI checks on the exact final candidate SHA before tagging; do not merge/tag as part of this plan.
 
 ## Engineering constraints
 
