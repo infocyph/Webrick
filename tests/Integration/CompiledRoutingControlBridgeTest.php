@@ -31,7 +31,7 @@ final readonly class CompiledFastPathScopedHandler
 
     public function __invoke(): Response
     {
-        return Response::plaintext($this->marker::class);
+        return Response::plaintext($this->marker::class, 200);
     }
 }
 
@@ -64,7 +64,7 @@ final class CompiledRoutingControlBridgeTest extends TestCase
             $manifest = new ReleaseCompiler()->compile(
                 builder: $builder,
                 register: static function (Registrar $registrar): void {
-                    $registrar->get('/release', static fn(): Response => Response::plaintext('release-ok'));
+                    $registrar->get('/release', static fn(): Response => Response::plaintext('release-ok', 200));
                 },
                 environment: 'production',
                 configFingerprint: 'coordinated-release',
@@ -133,7 +133,7 @@ final class CompiledRoutingControlBridgeTest extends TestCase
             $manifest = new ReleaseCompiler()->compile(
                 builder: $builder,
                 register: static function (Registrar $registrar): void {
-                    $registrar->get('/release', static fn(): Response => Response::plaintext('release-ok'));
+                    $registrar->get('/release', static fn(): Response => Response::plaintext('release-ok', 200));
                 },
                 environment: 'production',
                 configFingerprint: 'obsolete-release',
@@ -185,8 +185,8 @@ final class CompiledRoutingControlBridgeTest extends TestCase
             new ReleaseCompiler()->compile(
                 builder: $builder,
                 register: static function (Registrar $registrar): void {
-                    $registrar->get('/zero', static fn(): Response => Response::plaintext('zero'));
-                    $registrar->get('/arg/{id}', static fn(string $id): Response => Response::plaintext($id));
+                    $registrar->get('/zero', static fn(): Response => Response::plaintext('zero', 200));
+                    $registrar->get('/arg/{id}', static fn(string $id): Response => Response::plaintext($id, 200));
                     $registrar->get('/scoped', CompiledFastPathScopedHandler::class);
                 },
                 environment: 'production',
