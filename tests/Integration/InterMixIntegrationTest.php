@@ -103,7 +103,7 @@ if (! class_exists('InterMixTestProvider', false)) {
             );
             $builder->factory(
                 InterMixScopedMarker::class,
-                static fn(RuntimeContainerInterface $container): InterMixScopedMarker => new InterMixScopedMarker(
+                static fn(): InterMixScopedMarker => new InterMixScopedMarker(
                     \bin2hex(\random_bytes(6)),
                 ),
                 LifetimeEnum::Scoped,
