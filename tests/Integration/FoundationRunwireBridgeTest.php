@@ -9,6 +9,7 @@ use Fiber;
 use Infocyph\InterMix\DI\ContainerBuilder;
 use Infocyph\InterMix\DI\ProductionContainer;
 use Infocyph\InterMix\DI\ScopeContext;
+use Infocyph\InterMix\DI\Support\LifetimeEnum;
 use Infocyph\Runwire\Coroutine\CoroutineRuntime;
 use Infocyph\Runwire\Coroutine\CoroutineScope;
 use Infocyph\Runwire\Coroutine\TaskLocal;
@@ -277,10 +278,12 @@ final class FoundationRunwireBridgeTest extends TestCase
     {
         [$intermixPath, $routerPath] = self::artifactPaths();
         $fingerprint = 'foundation-runwire-bridge';
-        $builder = ContainerBuilder::create('foundation_runwire_' . bin2hex(random_bytes(4)));
-        $builder->scoped(
+        $builder = ContainerBuilder::create('foundation_runwire_' . bin2hex(random_bytes(4)))
+            ->input(Request::class);
+        $builder->factory(
             FoundationRunwireScopedMarker::class,
             static fn(): FoundationRunwireScopedMarker => new FoundationRunwireScopedMarker(bin2hex(random_bytes(6))),
+            LifetimeEnum::Scoped,
         );
         $builder->onScopeLeave(
             RuntimeRequestContext::REQUEST_SCOPE,
