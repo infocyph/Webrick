@@ -2,8 +2,7 @@
 
 declare(strict_types=1);
 
-use Infocyph\InterMix\DI\Container;
-use Infocyph\InterMix\DI\Invoker;
+use Infocyph\InterMix\DI\ContainerBuilder;
 use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
 use Infocyph\Webrick\Exceptions\RouteNotFoundException;
 use Infocyph\Webrick\Request\Request;
@@ -62,7 +61,9 @@ final class CachedInstanceMethodHandlerFixture
 function cachedMatcherDispatcher(string $scope): Dispatcher
 {
     return new Dispatcher(
-        Invoker::with(new Container('webrick.tests.matcher.' . $scope . '.' . bin2hex(random_bytes(4)))),
+        ContainerBuilder::create('webrick.tests.matcher.' . $scope . '.' . bin2hex(random_bytes(4)))
+            ->input(Request::class)
+            ->build(),
     );
 }
 
