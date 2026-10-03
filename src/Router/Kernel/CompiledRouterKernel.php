@@ -390,7 +390,7 @@ final readonly class CompiledRouterKernel
             return $response;
         }
         $request ??= $runtimeContext?->request() ?? Request::fromGlobals();
-        $response = $this->dispatchWithRequest($routeIndex, $plan, $request, $vars, $responseConsumer);
+        $response = $this->dispatchWithRequest($routeIndex, $plan, $request, $vars, $responseConsumer, $runtimeContext);
         $this->profiler?->mark('dispatch');
 
         return $response;
@@ -434,6 +434,7 @@ final readonly class CompiledRouterKernel
         Request $request,
         array $vars,
         ?callable $responseConsumer = null,
+        ?RuntimeRequestContext $runtimeContext = null,
     ): Response {
         $requiresScope = $plan->requiresScope() || $this->dispatcher->pipelineRequiresScope($plan);
         if (!$requiresScope) {
