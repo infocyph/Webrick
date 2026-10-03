@@ -181,15 +181,38 @@ final readonly class GatewayHardeningMiddleware
         }
 
         $location = trim($response->getHeaderLine('Location'));
-        $scheme = parse_url($location, PHP_URL_SCHEME);
-        if ($scheme !== null && $scheme !== '') {
-            if (!is_string($scheme) || !in_array(strtolower($scheme), ['http', 'https'], true)) {
-                throw HttpException::badRequest('Invalid redirect scheme');
-            }
+        if ($location === ''
+            || str_contains($location, '\\')
+            || preg_match('/[\x00-\x1F\x7F]/', $location) === 1
+        ) {
+            throw HttpException::badRequest('Invalid redirect target');
         }
 
-        $host = parse_url($location, PHP_URL_HOST);
-        if (!is_string($host) || $host === '') {
+        try {
+            $parts = parse_url($location);
+        } catch (\ValueError) {
+            throw HttpException::badRequest('Invalid redirect target');
+        }
+        if ($parts === false) {
+            throw HttpException::badRequest('Invalid redirect target');
+        }
+
+        if (isset($parts['user']) || isset($parts['pass'])) {
+            throw HttpException::badRequest('Invalid redirect authority');
+        }
+
+        $scheme = $parts['scheme'] ?? null;
+        if ($scheme !== null && !in_array(strtolower($scheme), ['http', 'https'], true)) {
+            throw HttpException::badRequest('Invalid redirect scheme');
+        }
+
+        $host = $parts['host'] ?? null;
+        $hasHost = is_string($host) && $host !== '';
+        if (($scheme !== null || str_starts_with($location, '//')) && !$hasHost) {
+            throw HttpException::badRequest('Invalid redirect authority');
+        }
+
+        if (!$hasHost) {
             return $response;
         }
 

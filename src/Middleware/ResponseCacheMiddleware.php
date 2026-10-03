@@ -8,7 +8,6 @@ use Closure;
 use Infocyph\CacheLayer\Cache\Cache;
 use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Constants\StatusEnum;
-use Infocyph\Webrick\Request\Core\Uri;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Cache\CachePolicy;
 use Infocyph\Webrick\Response\Internal\Utils;
@@ -21,7 +20,7 @@ use RuntimeException;
 /** Small shared response micro-cache using native string response bodies. */
 final readonly class ResponseCacheMiddleware
 {
-    private const string CACHE_KEY_PREFIX = 'webrick.hr.v3.';
+    private const string CACHE_KEY_PREFIX = 'webrick.hr.v4.';
 
     private CachePolicy $policy;
 
@@ -187,10 +186,7 @@ final readonly class ResponseCacheMiddleware
             $host .= ':' . $uri->getPort();
         }
 
-        $query = '';
-        if ($this->includeQuery && $uri->getQuery() !== '') {
-            $query = Uri::normalizeQueryString($uri->getQuery());
-        }
+        $query = $this->includeQuery ? $uri->getQuery() : '';
 
         $pairs = $this->resolveVaryPairs($req);
         ksort($pairs, SORT_STRING);
