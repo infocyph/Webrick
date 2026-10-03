@@ -92,6 +92,54 @@ final class CompiledRoutingControlBridgeTest extends TestCase
         }
     }
 
+    public function testCoordinatedReleaseRejectsObsoleteManifestFormat(): void
+    {
+        [$intermixPath, $routerPath] = self::artifactPaths('obsolete-release');
+        $releasePath = sys_get_temp_dir() . DIRECTORY_SEPARATOR
+            . 'webrick-obsolete-release-' . bin2hex(random_bytes(8)) . '.json';
+        $builder = ContainerBuilder::create('webrick_obsolete_release_' . bin2hex(random_bytes(4)));
+
+        try {
+            $manifest = new ReleaseCompiler()->compile(
+                builder: $builder,
+                register: static function (Registrar $registrar): void {
+                    $registrar->get('/release', static fn(): Response => Response::plaintext('release-ok'));
+                },
+                environment: 'production',
+                configFingerprint: 'obsolete-release',
+                intermixPath: $intermixPath,
+                routerPath: $routerPath,
+                releaseManifestPath: $releasePath,
+                preGlobalTags: [],
+                postGlobalTags: [],
+            );
+            $manifest['format'] = 2;
+            file_put_contents(
+                $releasePath,
+                json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n",
+            );
+
+            $this->expectException(\RuntimeException::class);
+            $this->expectExceptionMessage('Unsupported Webrick coordinated release manifest format');
+
+            CompiledRouterKernel::fromReleaseManifest(
+                log: new NullLogger(),
+                matcher: FusedMatcher::make(),
+                builder: $builder,
+                releaseManifestPath: $releasePath,
+                environment: 'production',
+                configFingerprint: 'obsolete-release',
+            );
+        } finally {
+            self::cleanup([$intermixPath, $routerPath]);
+            foreach ([$releasePath, ReleaseCompiler::runtimeManifestPath($releasePath)] as $candidate) {
+                if (is_file($candidate)) {
+                    unlink($candidate);
+                }
+            }
+        }
+    }
+
     public function testDefaultRoutingControlsStayIndependentFromApplicationErrors(): void
     {
         [$intermixPath, $routerPath] = self::artifactPaths('default');
