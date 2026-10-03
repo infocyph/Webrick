@@ -6,6 +6,7 @@ namespace Infocyph\Webrick\Router\Build;
 
 use Closure;
 use Infocyph\InterMix\DI\ContainerBuilder;
+use Infocyph\Webrick\Request\Request;
 use RuntimeException;
 
 /**
@@ -61,6 +62,8 @@ final readonly class ReleaseCompiler
         array $postGlobalTags = ['webrick.middleware.post'],
         ?Closure $enrichGraph = null,
     ): array {
+        $builder->input(Request::class);
+
         $routerBuild = $this->routes->compile(
             register: $register,
             environment: $environment,
