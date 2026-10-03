@@ -70,7 +70,7 @@ final readonly class CompiledMiddlewarePipeline
         if ($descriptor instanceof RuntimeMiddlewareDescriptor) {
             return [
                 static function (Request $request, Closure $next) use ($runtime, $descriptor): mixed {
-                    $resolved = $runtime->resolveNow($descriptor->resolverSpec(), $descriptor->parameters);
+                    $resolved = self::resolveDescriptor($runtime, $descriptor->resolverSpec(), $descriptor->parameters);
 
                     return self::invokeResolvedMiddleware($runtime, $resolved, $request, $next);
                 },
@@ -92,12 +92,72 @@ final readonly class CompiledMiddlewarePipeline
         }
 
         return [
-            static fn(Request $request, Closure $next): mixed => $runtime->resolveNow(
+            static fn(Request $request, Closure $next): mixed => self::resolveDescriptor(
+                $runtime,
                 $descriptor,
                 ['request' => $request, 'next' => $next],
             ),
             true,
         ];
+    }
+
+    /**
+     * @param array<array-key,mixed>|callable|string $descriptor
+     * @param array<int|string,mixed> $arguments
+     */
+    private static function resolveDescriptor(
+        InterMixRuntime $runtime,
+        array|callable|string $descriptor,
+        array $arguments = [],
+    ): mixed {
+        if (is_array($descriptor)) {
+            if (
+                count($descriptor) !== 2
+                || !is_string($descriptor[0])
+                || !is_string($descriptor[1])
+                || !class_exists($descriptor[0])
+            ) {
+                throw new UnexpectedValueException('Compiled middleware resolver array must contain a class and method.');
+            }
+
+            if (is_callable($descriptor)) {
+                return $runtime->invoke($descriptor, $arguments);
+            }
+
+            $instance = $runtime->make($descriptor[0]);
+            $callable = [$instance, $descriptor[1]];
+            if (!is_callable($callable)) {
+                throw new UnexpectedValueException('Compiled middleware resolver method is not callable.');
+            }
+
+            return $runtime->invoke($callable, $arguments);
+        }
+
+        if (is_string($descriptor)) {
+            if (function_exists($descriptor)) {
+                return $runtime->invoke($descriptor, $arguments);
+            }
+            if ($runtime->has($descriptor)) {
+                $resolved = $runtime->get($descriptor);
+                if ($arguments === [] || !is_callable($resolved)) {
+                    return $resolved;
+                }
+
+                return $runtime->invoke($resolved, $arguments);
+            }
+            if (class_exists($descriptor)) {
+                $resolved = $runtime->make($descriptor);
+                if ($arguments === [] || !is_callable($resolved)) {
+                    return $resolved;
+                }
+
+                return $runtime->invoke($resolved, $arguments);
+            }
+
+            throw new UnexpectedValueException("Compiled middleware resolver '{$descriptor}' is not resolvable.");
+        }
+
+        return $runtime->invoke($descriptor, $arguments);
     }
 
     private static function invokeResolvedMiddleware(
@@ -111,7 +171,8 @@ final readonly class CompiledMiddlewarePipeline
         }
 
         if (is_callable($resolved) || is_string($resolved) || is_array($resolved)) {
-            return $runtime->resolveNow(
+            return self::resolveDescriptor(
+                $runtime,
                 $resolved,
                 ['request' => $request, 'next' => $next],
             );
