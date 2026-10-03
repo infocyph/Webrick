@@ -23,7 +23,7 @@ function webrick_runtime_scope_fixture(): array
     $builder = ContainerBuilder::create('webrick.runtime.scope.' . bin2hex(random_bytes(6)));
     $builder->factory(
         WebrickRuntimeScopedMarker::class,
-        static fn(RuntimeContainerInterface $container): WebrickRuntimeScopedMarker => new WebrickRuntimeScopedMarker(
+        static fn(): WebrickRuntimeScopedMarker => new WebrickRuntimeScopedMarker(
             bin2hex(random_bytes(6)),
         ),
         LifetimeEnum::Scoped,
