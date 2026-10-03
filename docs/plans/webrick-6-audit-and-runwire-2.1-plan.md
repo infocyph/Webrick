@@ -63,8 +63,8 @@ and the mapped phase checkboxes after every implementation and QA stage.
 | B5 | Runwire 2.1 contracts and lifecycle | C: lifecycle | **Complete** |
 | B6 | Borrowed runtime/request/scope integration | C: ownership/context | **Complete** |
 | B7 | CacheLayer 4 compatibility and deployment | D | **Complete** |
-| B8 | Static quality, duplication and migration docs | E | **In progress** |
-| B9 | Production request-path performance | F | **Not started** |
+| B8 | Static quality, duplication and migration docs | E | **Complete** |
+| B9 | Production request-path performance | F | **In progress** |
 | B10 | Final release evidence and acceptance | G | **Not started** |
 
 ### Batch 0 — synchronized baseline
@@ -204,15 +204,26 @@ Batch 7 evidence:
 - [x] Triage the current PHPForge duplicate report by semantic ownership and only extract genuinely shared behavior.
 - [x] Update README and deployment/middleware docs for Webrick 6, InterMix 11, Runwire 2.1, CacheLayer 4 and PSR-6 cache contracts.
 - [x] Record the shared-tooling `doctrine/annotations` warning accurately without treating it as a Webrick production advisory.
-- [ ] Run full PHPForge gates before B9.
+- [x] Run full PHPForge gates before B9.
 
-Batch 8 evidence in progress:
+Batch 8 evidence:
 
 - W08 no longer references the optional `Normalizer` class symbol directly. Runtime normalization is guarded by `function_exists()`, `defined()` and an integer type check; no suppression or mandatory `ext-intl` dependency was added.
 - `InputSanitizerTest` covers the intl-present behavior while the detail workflow runs an explicit `php -n` no-intl smoke check.
 - The current duplicate report passes at **43 clone groups / 1,892 duplicated lines / 4.95%**. Triage groups intentional adapter/matcher/benchmark parallelism separately from same-owner parser/validator repetition; no release-blocking semantic duplicate justified a cross-owner abstraction.
 - README, Runwire deployment/performance guidance and response-cache documentation now describe Webrick 6, InterMix 11, Runwire 2.1, CacheLayer 4, PSR-6 cache ownership and the CacheLayer major-version namespace rotation.
 - PHPForge currently owns `phpbench/phpbench ^1.7`, which installs abandoned `doctrine/annotations`. Current Webrick Composer audit passes and the no-dev clean install excludes that toolchain; removing the warning belongs to the shared PHPForge/PHPBench tooling owner and is not being masked by a Webrick dependency change.
+
+- Final B8 head: `181aa0c5a7880d2dd01d4fd5da403ab833deb882`; exact-head Security & Standards run `37134054350` passed detail diagnostics, clean install, PHP 8.4/8.5 stable and lowest QA, both analyzers and both benchmark jobs.
+- Final detail suite: **535 tests / 1,851 assertions**. The explicit `php -n` no-intl smoke passed; PHPStan, Psalm and Rector are green.
+
+### Batch 9 — production request-path performance
+
+- [ ] Split coordinated release profiling into manifest, InterMix runtime and router-artifact stages while keeping profiling opt-in.
+- [ ] Reconfirm trusted-prevalidated artifact loading, cache-boot matchers, explicit 404/405 outcomes, lazy Request promotion and zero-scope dispatch without rebuilding completed 5.x work.
+- [ ] Keep runtime response-write measurement separate from kernel dispatch and response-ready stages; add no benchmark-only production path.
+- [ ] Run semantic/parity tests plus PHPBench after any instrumentation change and compare against the preceding B8 head.
+- [ ] Run full PHPForge gates before B10.
 
 ## Engineering constraints
 
