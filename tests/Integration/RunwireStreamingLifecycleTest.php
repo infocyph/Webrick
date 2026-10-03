@@ -7,6 +7,7 @@ namespace Tests\Integration;
 use Closure;
 use Infocyph\InterMix\DI\ContainerBuilder;
 use Infocyph\InterMix\DI\ProductionContainer;
+use Infocyph\InterMix\DI\Support\LifetimeEnum;
 use Infocyph\InterMix\Exceptions\ContainerException;
 use Infocyph\Runwire\Http\Enum\ProtocolVersion;
 use Infocyph\Runwire\Http\Headers;
@@ -344,8 +345,13 @@ final class RunwireStreamingLifecycleTest extends TestCase
     {
         [$intermixPath, $routerPath] = self::artifactPaths();
         $fingerprint = 'runwire-streaming-lifecycle';
-        $builder = ContainerBuilder::create('webrick_runwire_stream_' . bin2hex(random_bytes(4)));
-        $builder->scoped(RunwireStreamingScopedMarker::class);
+        $builder = ContainerBuilder::create('webrick_runwire_stream_' . bin2hex(random_bytes(4)))
+            ->input(Request::class)
+            ->autowire(
+                RunwireStreamingScopedMarker::class,
+                RunwireStreamingScopedMarker::class,
+                lifetime: LifetimeEnum::Scoped,
+            );
         $builder->onScopeLeave(
             RuntimeRequestContext::REQUEST_SCOPE,
             static function (string $scope): void {
