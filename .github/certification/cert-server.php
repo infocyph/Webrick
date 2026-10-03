@@ -92,7 +92,7 @@ function certification_prepare(string $root): void
 
     $builder = certification_builder();
     $build = new RouteCompiler()->compile(
-        register: static function (Registrar $registrar): void {
+        register: static function (Registrar $registrar) use ($filePath): void {
             $registrar->get('/cert/static', static fn(): Response => Response::plaintext('webrick-cert-ok', 200));
             $registrar->get(
                 '/cert/dynamic/{id}',
