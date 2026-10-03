@@ -13,7 +13,12 @@ use InvalidArgumentException;
 /** Executes deferred alias descriptors inside the active InterMix request scope. */
 final readonly class RuntimeAliasInvoker
 {
-    public function __construct(private RuntimeContainerInterface $invoker) {}
+    private RuntimeDescriptorInvoker $resolver;
+
+    public function __construct(RuntimeContainerInterface $runtime)
+    {
+        $this->resolver = new RuntimeDescriptorInvoker($runtime);
+    }
 
     public function invoke(
         RuntimeMiddlewareDescriptor $descriptor,
@@ -21,7 +26,7 @@ final readonly class RuntimeAliasInvoker
         Closure $next,
         string $alias,
     ): Response {
-        $resolved = $this->resolveDescriptor(
+        $resolved = $this->resolver->resolve(
             $descriptor->resolverSpec(),
             $descriptor->parameters,
         );
@@ -33,62 +38,6 @@ final readonly class RuntimeAliasInvoker
         return $result;
     }
 
-    /**
-     * @param array<array-key,mixed>|callable|string $descriptor
-     * @param array<int|string,mixed> $arguments
-     */
-    private function resolveDescriptor(array|callable|string $descriptor, array $arguments = []): mixed
-    {
-        if (is_array($descriptor)) {
-            if (
-                count($descriptor) !== 2
-                || !is_string($descriptor[0])
-                || !is_string($descriptor[1])
-                || !class_exists($descriptor[0])
-            ) {
-                throw new InvalidArgumentException('Runtime middleware resolver array must contain a class and method.');
-            }
-
-            if (is_callable($descriptor)) {
-                return $this->invoker->invoke($descriptor, $arguments);
-            }
-
-            $instance = $this->invoker->make($descriptor[0]);
-            $callable = [$instance, $descriptor[1]];
-            if (!is_callable($callable)) {
-                throw new InvalidArgumentException('Runtime middleware resolver method is not callable.');
-            }
-
-            return $this->invoker->invoke($callable, $arguments);
-        }
-
-        if (is_string($descriptor)) {
-            if (function_exists($descriptor)) {
-                return $this->invoker->invoke($descriptor, $arguments);
-            }
-            if ($this->invoker->has($descriptor)) {
-                $resolved = $this->invoker->get($descriptor);
-                if ($arguments === [] || !is_callable($resolved)) {
-                    return $resolved;
-                }
-
-                return $this->invoker->invoke($resolved, $arguments);
-            }
-            if (class_exists($descriptor)) {
-                $resolved = $this->invoker->make($descriptor);
-                if ($arguments === [] || !is_callable($resolved)) {
-                    return $resolved;
-                }
-
-                return $this->invoker->invoke($resolved, $arguments);
-            }
-
-            throw new InvalidArgumentException("Runtime middleware resolver '{$descriptor}' is not resolvable.");
-        }
-
-        return $this->invoker->invoke($descriptor, $arguments);
-    }
-
     private function invokeResolved(mixed $resolved, Request $request, Closure $next): mixed
     {
         $parameters = ['request' => $request, 'next' => $next];
@@ -97,10 +46,10 @@ final readonly class RuntimeAliasInvoker
                 ? [$resolved, '__invoke']
                 : $resolved;
 
-            return $this->resolveDescriptor($spec, $parameters);
+            return $this->resolver->resolve($spec, $parameters);
         }
         if (is_callable($resolved)) {
-            return $this->invoker->invoke($resolved, $parameters);
+            return $this->resolver->resolve($resolved, $parameters);
         }
 
         throw new InvalidArgumentException(sprintf(
