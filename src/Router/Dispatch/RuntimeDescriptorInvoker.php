@@ -69,7 +69,7 @@ final readonly class RuntimeDescriptorInvoker
             return $this->resolveValue($this->runtime->get($descriptor), $arguments);
         }
         if (class_exists($descriptor)) {
-            return $this->resolveValue($this->runtime->make($descriptor), $arguments);
+            return $this->runtime->make($descriptor, $arguments);
         }
 
         throw new UnexpectedValueException("Runtime resolver '{$descriptor}' is not resolvable.");
