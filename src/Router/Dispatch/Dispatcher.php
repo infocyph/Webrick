@@ -277,9 +277,6 @@ final class Dispatcher
     }
 
     /**
-     * @param array<string,mixed> $callArgs
-     */
-    /**
      * @param class-string $class
      * @param array<string,mixed> $callArgs
      */
@@ -293,6 +290,7 @@ final class Dispatcher
         return $this->invoker->invoke(Closure::fromCallable($callable), $callArgs);
     }
 
+    /** @param array<string,mixed> $callArgs */
     private function invokeRouteHandler(mixed $handler, array $callArgs): mixed
     {
         $classMethod = $this->classMethodArrayHandler($handler);
