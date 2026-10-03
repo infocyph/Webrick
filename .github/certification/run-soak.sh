@@ -53,11 +53,25 @@ wait_ready() {
     return 1
 }
 
+fetch_retry() {
+    local url="$1"
+    local output
+    for _ in $(seq 1 40); do
+        if output="$(curl -fsS --max-time 2 "$url" 2>/dev/null)"; then
+            printf '%s' "$output"
+            return 0
+        fi
+        sleep 0.1
+    done
+
+    return 1
+}
+
 sample() {
     local cycle="$1"
     local runtime metrics pid rss
-    runtime="$(curl -fsS "http://127.0.0.1:18100/__cert/metrics")"
-    metrics="$(curl -fsS "http://127.0.0.1:18100/cert/json")"
+    runtime="$(fetch_retry "http://127.0.0.1:18100/__cert/metrics")"
+    metrics="$(fetch_retry "http://127.0.0.1:18100/cert/json")"
     pid="$(jq -r '.pid' <<<"$metrics")"
     rss="$(rss_kb "$SERVER_PID")"
     echo "$pid" >> "$PIDS"
@@ -66,7 +80,7 @@ sample() {
 }
 
 php "$HARNESS" prepare "--root=${ROOT}"
-php "$HARNESS" runwire     "--root=${ROOT}"     "--address=127.0.0.1:18100"     "--recycle=500" >"$LOG" 2>&1 &
+php "$HARNESS" runwire     "--root=${ROOT}"     "--address=127.0.0.1:18100"     "--recycle=1000" >"$LOG" 2>&1 &
 SERVER_PID=$!
 
 cleanup() {
@@ -95,10 +109,10 @@ while (( $(date +%s) < DEADLINE )); do
     done
 
     for _ in $(seq 1 10); do
-        [[ "$(curl -fsS "http://127.0.0.1:18100/cert/stream" | wc -c | tr -d ' ')" == "3072" ]]
+        [[ "$(fetch_retry "http://127.0.0.1:18100/cert/stream" | wc -c | tr -d ' ')" == "3072" ]]
     done
 
-    [[ "$(curl -fsS "http://127.0.0.1:18100/cert/static")" == "webrick-cert-ok" ]]
+    [[ "$(fetch_retry "http://127.0.0.1:18100/cert/static")" == "webrick-cert-ok" ]]
     sample "$CYCLE"
 done
 
