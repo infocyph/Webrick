@@ -152,6 +152,37 @@ final class UploadedFile
         }
     }
 
+    /** @phpstan-impure */
+    private function atEnd(BodyStream $stream): bool
+    {
+        return $stream->eof();
+    }
+
+    private function copyStreamContents(BodyStream $source, string $temporaryPath, string $targetPath): void
+    {
+        $out = fopen($temporaryPath, 'wb');
+        if (!is_resource($out)) {
+            throw new RuntimeException("Cannot write to temporary upload target for {$targetPath}");
+        }
+
+        try {
+            while (!$this->atEnd($source)) {
+                $chunk = $source->read(65_536);
+                if ($chunk === '') {
+                    if ($this->atEnd($source)) {
+                        break;
+                    }
+
+                    throw new RuntimeException('Uploaded stream made no progress before EOF.');
+                }
+
+                $this->writeStreamChunk($out, $chunk, $targetPath);
+            }
+        } finally {
+            fclose($out);
+        }
+    }
+
     private function copyStreamTo(string $targetPath): void
     {
         $source = $this->src;
@@ -170,36 +201,7 @@ final class UploadedFile
         $published = false;
 
         try {
-            $out = fopen($temporaryPath, 'wb');
-            if (!is_resource($out)) {
-                throw new RuntimeException("Cannot write to temporary upload target for {$targetPath}");
-            }
-
-            try {
-                while (!$source->eof()) {
-                    $chunk = $source->read(65_536);
-                    if ($chunk === '') {
-                        if ($source->eof()) {
-                            break;
-                        }
-
-                        throw new RuntimeException('Uploaded stream made no progress before EOF.');
-                    }
-
-                    $offset = 0;
-                    $length = strlen($chunk);
-                    while ($offset < $length) {
-                        $written = fwrite($out, substr($chunk, $offset));
-                        if ($written === false || $written === 0) {
-                            throw new RuntimeException("Failed to write uploaded file to {$targetPath}");
-                        }
-                        $offset += $written;
-                    }
-                }
-            } finally {
-                fclose($out);
-            }
-
+            $this->copyStreamContents($source, $temporaryPath, $targetPath);
             if (!self::attemptFilesystemOperation(
                 static fn(): bool => rename($temporaryPath, $targetPath),
             )) {
@@ -211,6 +213,20 @@ final class UploadedFile
             if (!$published && is_file($temporaryPath)) {
                 self::attemptFilesystemOperation(static fn(): bool => unlink($temporaryPath));
             }
+        }
+    }
+
+    /** @param resource $out */
+    private function writeStreamChunk($out, string $chunk, string $targetPath): void
+    {
+        $offset = 0;
+        $length = strlen($chunk);
+        while ($offset < $length) {
+            $written = fwrite($out, substr($chunk, $offset));
+            if ($written === false || $written === 0) {
+                throw new RuntimeException("Failed to write uploaded file to {$targetPath}");
+            }
+            $offset += $written;
         }
     }
 
