@@ -59,8 +59,8 @@ and the mapped phase checkboxes after every implementation and QA stage.
 | B1 | Response cache, redirects and encrypted cookies | A: W01–W04 | **Complete** |
 | B2 | Request limits, HTTP deflate and upload integrity | A: W05–W07 | **Complete** |
 | B3 | InterMix 11 core runtime migration | B: runtime API | **Complete** |
-| B4 | InterMix kernels, dispatcher and artifacts | B: dispatch/build | **In progress** |
-| B5 | Runwire 2.1 contracts and lifecycle | C: lifecycle | **Not started** |
+| B4 | InterMix kernels, dispatcher and artifacts | B: dispatch/build | **Complete** |
+| B5 | Runwire 2.1 contracts and lifecycle | C: lifecycle | **In progress** |
 | B6 | Borrowed runtime/request/scope integration | C: ownership/context | **Not started** |
 | B7 | CacheLayer 4 compatibility and deployment | D | **Not started** |
 | B8 | Static quality, duplication and migration docs | E | **Not started** |
@@ -129,12 +129,29 @@ Batch 3 evidence:
 
 ### Batch 4 — InterMix kernels, dispatcher and artifacts
 
-- [ ] Cross-check both kernels, dispatcher/pipelines, alias invocation, handler compiler, CLI/examples and release compiler for finalized InterMix 11 contracts.
-- [ ] Declare every Webrick-owned scope input before graph finalization and reject undeclared/conflicting seeds through InterMix rather than bypassing validation.
-- [ ] Revalidate coordinated release metadata against InterMix 11 ABI/build/graph identity and reject stale or mixed release artifacts.
-- [ ] Preserve direct zero-argument/route-argument compiled routes on the requestless/scopeless fast path.
-- [ ] Cover dynamic/production parity, captured-scope attachment, independent Fiber isolation and failed cleanup at Webrick integration boundaries.
-- [ ] Run focused B4 tests and full PHPForge gates before B5.
+- [x] Cross-check both kernels, dispatcher/pipelines, alias invocation, handler compiler, CLI/examples and release compiler for finalized InterMix 11 contracts.
+- [x] Declare every Webrick-owned scope input before graph finalization and reject undeclared/conflicting seeds through InterMix rather than bypassing validation.
+- [x] Revalidate coordinated release metadata against InterMix 11 ABI/build/graph identity and reject stale or mixed release artifacts.
+- [x] Preserve direct zero-argument/route-argument compiled routes on the requestless/scopeless fast path.
+- [x] Cover dynamic/production parity, captured-scope attachment, independent Fiber isolation and failed cleanup at Webrick integration boundaries.
+- [x] Run focused B4 tests and full PHPForge gates before B5.
+
+Batch 4 evidence:
+
+- Final B4 head: `7d87b02f5a7ffd45096aaa889980dcd916f6b752`.
+- Exact-head Security & Standards run `37128872244` passed PHPForge detail diagnostics, PHP 8.4/8.5 stable and lowest QA, PHP 8.4/8.5 analysis, clean install and both benchmark jobs.
+- Coordinated release manifests now bind Webrick router metadata to InterMix 11 digest/graph/build/artifact identity through a canonical release fingerprint; mixed, stale and obsolete release metadata is rejected before kernel boot.
+- `CompiledRouterKernel::fromReleaseManifest()` consumes the coordinated release while InterMix remains the owner of its ABI/graph/fallback validation.
+- Dynamic and production InterMix dispatch parity is covered, and direct zero-argument/route-argument compiled handlers remain requestless/scopeless while DI-backed handlers enter the request scope.
+
+### Batch 5 — Runwire 2.1 contracts and lifecycle
+
+- [ ] Update the optional development Runwire range and suggestion to released Runwire `^2.1`.
+- [ ] Implement the full Runwire 2.1 application contract, including `healthy()` and `healthFailure()`, and preserve exactly-once response completion.
+- [ ] Migrate all Webrick test/custom writers to `onTerminal()` with exactly-once and late-registration semantics.
+- [ ] Audit the Webrick continuation bridge so it never resumes a scheduler-owned Fiber behind its owner.
+- [ ] Prove terminal state, handler completion, owned work, cleanup/reset, admission release, drain and health transitions in focused lifecycle tests.
+- [ ] Run focused B5 tests and full PHPForge gates before B6.
 
 ## Engineering constraints
 
@@ -221,24 +238,24 @@ cache namespace and legacy-cookie cutover effects in the 5.4 → 6.0 upgrade gui
 The isolated new-dependency test run already demonstrates that a Composer-only
 version bump is insufficient.
 
-- [ ] Replace public/internal `Container|ProductionContainer` and `Invoker`
+- [x] Replace public/internal `Container|ProductionContainer` and `Invoker`
   dependencies where appropriate with InterMix's `RuntimeContainerInterface`.
   Configure graphs with `ContainerBuilder`; consume the finalized runtime.
-- [ ] Migrate `resolveNow()` to explicit `make()` / `invoke()` and `findByTag()`
+- [x] Migrate `resolveNow()` to explicit `make()` / `invoke()` and `findByTag()`
   to `tagged()`. Resolve Webrick route/middleware descriptors in their existing
   compiler/dispatcher owners, preserving scoped resolution at invocation time.
-- [ ] Cover `InterMixRuntime`, both kernels, dispatcher and middleware pipelines,
+- [x] Cover `InterMixRuntime`, both kernels, dispatcher and middleware pipelines,
   alias invocation, `HandlerCompiler`, `ReleaseCompiler`, CLI, examples and tests.
   Do not assume updating the thin runtime wrapper completes this migration.
-- [ ] Declare scope inputs before finalization, including `Request::class` and
+- [x] Declare scope inputs before finalization, including `Request::class` and
   optional Runwire inputs. Reject undeclared or conflicting seeds clearly.
-- [ ] Revalidate artifact metadata, callable/Closure encoding, ABI identity and
+- [x] Revalidate artifact metadata, callable/Closure encoding, ABI identity and
   build/load behavior against released InterMix 11. Rebuild artifacts during
   deployment; reject obsolete artifacts rather than reinterpret them.
-- [ ] Keep direct zero-argument/route-argument compiled routes requestless and
+- [x] Keep direct zero-argument/route-argument compiled routes requestless and
   scopeless when they need no injected context. Do not resolve a container or
   create a scope simply because Runwire is installed.
-- [ ] Test dynamic/production parity, lazy aliases, scoped handlers, explicit
+- [x] Test dynamic/production parity, lazy aliases, scoped handlers, explicit
   captured-scope attachment, independent Fibers and failed cleanup.
 
 ## Phase C — Borrowed Runwire instance and active scope
