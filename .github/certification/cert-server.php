@@ -60,9 +60,10 @@ function certification_artifacts(string $root): array
 
 function certification_builder(): ContainerBuilder
 {
-    $builder = ContainerBuilder::create('webrick.runtime.certification')
-        ->input(Request::class);
-
+    $builder = ContainerBuilder::create('webrick.runtime.certification');
+    if (method_exists($builder, 'input')) {
+        $builder->input(Request::class);
+    }
     if (method_exists($builder, 'releaseIdentity')) {
         $builder->releaseIdentity(CERT_FINGERPRINT);
     }
