@@ -263,7 +263,14 @@ final readonly class RouterKernel
                 };
             }
 
-            return $pipeline($request);
+            $response = $pipeline($request);
+            if (!$response instanceof Response) {
+                throw new \InvalidArgumentException(
+                    sprintf('Tagged middleware [%s] pipeline must return Response.', $tag),
+                );
+            }
+
+            return $response;
         };
     }
 
