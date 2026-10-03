@@ -1,6 +1,12 @@
 name: Runtime Release Certification
 
 on:
+  push:
+    branches:
+      - feature/runwire
+    paths:
+      - .github/workflows/runtime-release-certification.yml
+      - .github/certification/**
   workflow_dispatch:
     inputs:
       baseline_ref:
@@ -170,7 +176,7 @@ jobs:
       - name: Check out baseline
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.baseline_ref }}
+          ref: ${{ inputs.baseline_ref || '5.4' }}
           path: baseline
           fetch-depth: 0
 
@@ -190,11 +196,11 @@ jobs:
       - name: Run controlled same-run load matrix
         run: |
           mkdir -p cert-results
-          bash candidate/.github/certification/load-benchmark.sh             "$PWD/baseline"             "$PWD/candidate"             "$PWD/cert-results"             "${{ inputs.duration_seconds }}"             "${{ inputs.trials }}"
+          bash candidate/.github/certification/load-benchmark.sh             "$PWD/baseline"             "$PWD/candidate"             "$PWD/cert-results"             "${{ github.event_name == 'workflow_dispatch' && inputs.duration_seconds || '2' }}"             "${{ github.event_name == 'workflow_dispatch' && inputs.trials || '1' }}"
 
       - name: Enforce performance budgets
         run: |
-          php candidate/.github/certification/analyze-load.php             --input="$PWD/cert-results/load-results.jsonl"             --summary="$PWD/cert-results/summary.md"             --json="$PWD/cert-results/comparison.json"             --throughput-regression-percent="${{ inputs.throughput_regression_percent }}"             --p99-regression-percent="${{ inputs.p99_regression_percent }}"             --memory-regression-mb="${{ inputs.memory_regression_mb }}"
+          php candidate/.github/certification/analyze-load.php             --input="$PWD/cert-results/load-results.jsonl"             --summary="$PWD/cert-results/summary.md"             --json="$PWD/cert-results/comparison.json"             --throughput-regression-percent="${{ github.event_name == 'workflow_dispatch' && inputs.throughput_regression_percent || '100' }}"             --p99-regression-percent="${{ github.event_name == 'workflow_dispatch' && inputs.p99_regression_percent || '1000' }}"             --memory-regression-mb="${{ github.event_name == 'workflow_dispatch' && inputs.memory_regression_mb || '128' }}"
           cat cert-results/summary.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload performance evidence
@@ -231,7 +237,7 @@ jobs:
       - name: Run persistent-worker soak
         run: |
           mkdir -p soak-results
-          bash .github/certification/run-soak.sh             "$PWD"             "$PWD/soak-results"             "${{ inputs.soak_minutes }}"             "${{ inputs.memory_regression_mb }}"
+          bash .github/certification/run-soak.sh             "$PWD"             "$PWD/soak-results"             "${{ github.event_name == 'workflow_dispatch' && inputs.soak_minutes || '2' }}"             "${{ github.event_name == 'workflow_dispatch' && inputs.memory_regression_mb || '128' }}"
           cat soak-results/soak-summary.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload soak evidence
