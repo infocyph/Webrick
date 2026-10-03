@@ -7,6 +7,7 @@ namespace Tests\Integration;
 use Infocyph\InterMix\DI\ContainerBuilder;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Router\Build\ReleaseCompiler;
 use Infocyph\Webrick\Router\Build\RouteCompiler;
 use Infocyph\Webrick\Router\Build\RouterArtifactCompiler;
 use Infocyph\Webrick\Router\Definition\Registrar;
@@ -24,6 +25,73 @@ use Psr\Log\NullLogger;
 #[ExcludeStaticPropertyFromBackup(CodeStream::class, 'handlers')]
 final class CompiledRoutingControlBridgeTest extends TestCase
 {
+    public function testCoordinatedReleaseBootRejectsStaleAndObsoleteMetadata(): void
+    {
+        [$intermixPath, $routerPath] = self::artifactPaths('release');
+        $releasePath = sys_get_temp_dir() . DIRECTORY_SEPARATOR
+            . 'webrick-coordinated-release-' . bin2hex(random_bytes(8)) . '.json';
+        $builder = ContainerBuilder::create('webrick_coordinated_release_' . bin2hex(random_bytes(4)));
+
+        try {
+            $manifest = new ReleaseCompiler()->compile(
+                builder: $builder,
+                register: static function (Registrar $registrar): void {
+                    $registrar->get('/release', static fn(): Response => Response::plaintext('release-ok'));
+                },
+                environment: 'production',
+                configFingerprint: 'coordinated-release',
+                intermixPath: $intermixPath,
+                routerPath: $routerPath,
+                releaseManifestPath: $releasePath,
+                preGlobalTags: [],
+                postGlobalTags: [],
+            );
+
+            self::assertSame(ReleaseCompiler::RELEASE_FORMAT, $manifest['format']);
+            self::assertMatchesRegularExpression('/^[a-f0-9]{32}$/D', $manifest['intermix']['graph']);
+            self::assertMatchesRegularExpression('/^[a-f0-9]{32}$/D', $manifest['intermix']['build']);
+
+            $kernel = CompiledRouterKernel::fromReleaseManifest(
+                log: new NullLogger(),
+                matcher: FusedMatcher::make(),
+                builder: $builder,
+                releaseManifestPath: $releasePath,
+                environment: 'production',
+                configFingerprint: 'coordinated-release',
+            );
+
+            $response = $kernel->handle(Request::fake(uri: 'http://localhost/release'));
+            self::assertSame(200, $response->getStatusCode());
+            self::assertSame('release-ok', (string) $response->getBody());
+
+            $stale = $manifest;
+            $stale['intermix']['graph'] = str_repeat('0', 32);
+            file_put_contents(
+                $releasePath,
+                json_encode($stale, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n",
+            );
+
+            $this->expectException(\RuntimeException::class);
+            $this->expectExceptionMessage('InterMix release graph identity mismatch');
+
+            CompiledRouterKernel::fromReleaseManifest(
+                log: new NullLogger(),
+                matcher: FusedMatcher::make(),
+                builder: $builder,
+                releaseManifestPath: $releasePath,
+                environment: 'production',
+                configFingerprint: 'coordinated-release',
+            );
+        } finally {
+            self::cleanup([$intermixPath, $routerPath]);
+            foreach ([$releasePath, ReleaseCompiler::runtimeManifestPath($releasePath)] as $candidate) {
+                if (is_file($candidate)) {
+                    unlink($candidate);
+                }
+            }
+        }
+    }
+
     public function testDefaultRoutingControlsStayIndependentFromApplicationErrors(): void
     {
         [$intermixPath, $routerPath] = self::artifactPaths('default');
