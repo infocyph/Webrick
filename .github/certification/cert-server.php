@@ -19,6 +19,7 @@ use Infocyph\Webrick\Router\Build\RouteCompiler;
 use Infocyph\Webrick\Router\Build\RouterArtifactCompiler;
 use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Kernel\CompiledRouterKernel;
+use Infocyph\Webrick\Router\Kernel\ErrorHandler;
 use Infocyph\Webrick\Router\Matching\FusedMatcher;
 use Infocyph\Webrick\Runtime\Http\RunwireRuntimeAdapter;
 use Infocyph\Webrick\Runtime\Http\RunwireRuntimeApplicationFactory;
@@ -166,6 +167,7 @@ function certification_kernel(string $root): CompiledRouterKernel
         artifactPath: $paths['router'],
         environment: CERT_ENVIRONMENT,
         configFingerprint: CERT_FINGERPRINT,
+        errorHandler: new ErrorHandler(debug: true),
     );
 }
 
