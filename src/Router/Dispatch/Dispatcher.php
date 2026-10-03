@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Router\Dispatch;
 
 use Closure;
-use Infocyph\InterMix\DI\Invoker;
+use Infocyph\InterMix\DI\RuntimeContainerInterface;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
@@ -27,7 +27,7 @@ final class Dispatcher
      * @param array<class-string|object|callable|string> $postGlobalRaw
      */
     public function __construct(
-        private readonly Invoker $invoker,
+        private readonly RuntimeContainerInterface $invoker,
         private readonly bool $useInvoker = true,
         private readonly array $preGlobalRaw = [],
         private readonly array $postGlobalRaw = [],
@@ -296,13 +296,17 @@ final class Dispatcher
                 return $this->invoker->invoke($classMethod, $callArgs);
             }
 
-            return $this->invoker->make($classMethod[0], method: $classMethod[1], methodArgs: $callArgs);
+            $instance = $this->invoker->make($classMethod[0]);
+
+            return $this->invoker->invoke([$instance, $classMethod[1]], $callArgs);
         }
 
         if (is_string($handler)) {
             $resolved = $this->parseClassMethodStringHandler($handler);
             if ($resolved !== null) {
-                return $this->invoker->make($resolved[0], method: $resolved[1], methodArgs: $callArgs);
+                $instance = $this->invoker->make($resolved[0]);
+
+                return $this->invoker->invoke([$instance, $resolved[1]], $callArgs);
             }
         }
 
