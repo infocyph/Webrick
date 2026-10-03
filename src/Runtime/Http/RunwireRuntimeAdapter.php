@@ -7,8 +7,8 @@ namespace Infocyph\Webrick\Runtime\Http;
 use Closure;
 use Infocyph\InterMix\DI\ScopeContext;
 use Infocyph\InterMix\Integration\Runwire\RunwireIntegration;
-use Infocyph\Runwire\Coroutine\CoroutineScope;
 use Infocyph\Runwire\CancellationToken;
+use Infocyph\Runwire\Coroutine\CoroutineScope;
 use Infocyph\Runwire\Http\Enum\ProtocolVersion;
 use Infocyph\Runwire\Http\Headers;
 use Infocyph\Runwire\Http\HttpRequest;
@@ -27,7 +27,7 @@ use UnexpectedValueException;
 /** Adapts released Runwire HTTP request/writer contracts to Webrick. */
 final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
 {
-    /** @var Closure(HttpRequest): ?CoroutineScope|null */
+    /** @var Closure(HttpRequest): (?CoroutineScope)|null */
     private ?Closure $coroutineScopeResolver;
 
     private ?RunwireIntegration $interMix;
@@ -36,12 +36,12 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
 
     private RuntimeCapabilities $runtimeCapabilities;
 
-    /** @var Closure(HttpRequest): ?ScopeContext|null */
+    /** @var Closure(HttpRequest): (?ScopeContext)|null */
     private ?Closure $scopeContextResolver;
 
     /**
-     * @param callable(HttpRequest): ?CoroutineScope|null $coroutineScope
-     * @param callable(HttpRequest): ?ScopeContext|null $scopeContext
+     * @param (callable(HttpRequest): (?CoroutineScope))|null $coroutineScope
+     * @param (callable(HttpRequest): (?ScopeContext))|null $scopeContext
      */
     public function __construct(
         ?RunwireContext $runtimeContext = null,
@@ -370,34 +370,6 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
         return $path . $query;
     }
 
-    private function resolveCoroutineScope(HttpRequest $request): ?CoroutineScope
-    {
-        if ($this->coroutineScopeResolver === null) {
-            return null;
-        }
-
-        $scope = ($this->coroutineScopeResolver)($request);
-        if ($scope !== null && !$scope instanceof CoroutineScope) {
-            throw new UnexpectedValueException('Runwire coroutine-scope resolver must return CoroutineScope or null.');
-        }
-
-        return $scope;
-    }
-
-    private function resolveScopeContext(HttpRequest $request): ?ScopeContext
-    {
-        if ($this->scopeContextResolver === null) {
-            return null;
-        }
-
-        $context = ($this->scopeContextResolver)($request);
-        if ($context !== null && !$context instanceof ScopeContext) {
-            throw new UnexpectedValueException('Runwire scope-context resolver must return ScopeContext or null.');
-        }
-
-        return $context;
-    }
-
     private static function responseHeaders(Response $response, bool $http2Or3): Headers
     {
         $headers = ResponseWriterSupport::headerMap($response, $http2Or3);
@@ -460,5 +432,33 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
             RunwireResponseContinuation::awaitDrain($writer, $cancellation);
             self::assertNotCancelled($cancellation);
         }
+    }    private function resolveCoroutineScope(HttpRequest $request): ?CoroutineScope
+    {
+        if ($this->coroutineScopeResolver === null) {
+            return null;
+        }
+
+        $scope = ($this->coroutineScopeResolver)($request);
+        if ($scope !== null && !$scope instanceof CoroutineScope) {
+            throw new UnexpectedValueException('Runwire coroutine-scope resolver must return CoroutineScope or null.');
+        }
+
+        return $scope;
     }
+
+    private function resolveScopeContext(HttpRequest $request): ?ScopeContext
+    {
+        if ($this->scopeContextResolver === null) {
+            return null;
+        }
+
+        $context = ($this->scopeContextResolver)($request);
+        if ($context !== null && !$context instanceof ScopeContext) {
+            throw new UnexpectedValueException('Runwire scope-context resolver must return ScopeContext or null.');
+        }
+
+        return $context;
+    }
+
+
 }
