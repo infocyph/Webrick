@@ -6,6 +6,7 @@ namespace Infocyph\Webrick\Router\Build;
 
 use Infocyph\InterMix\DI\ContainerBuilder;
 use Infocyph\InterMix\DI\ProductionContainer;
+use Infocyph\Webrick\Router\Runtime\RuntimeStageProfiler;
 use JsonException;
 use RuntimeException;
 use UnexpectedValueException;
@@ -26,8 +27,10 @@ final readonly class ReleaseArtifactLoader
         string $releaseManifestPath,
         string $expectedEnvironment,
         string $expectedConfigFingerprint,
+        ?RuntimeStageProfiler $profiler = null,
     ): array {
         $manifest = $this->readManifest($releaseManifestPath);
+        $profiler?->mark('release_manifest_load');
         $this->assertReleaseIdentity($manifest, $expectedEnvironment, $expectedConfigFingerprint);
 
         $intermix = $this->intermixMetadata($manifest);
@@ -35,12 +38,14 @@ final readonly class ReleaseArtifactLoader
 
         $this->assertInterMixArtifact($intermix);
         $container = $builder->production($intermix['path']);
+        $profiler?->mark('intermix_runtime_load');
 
         $artifact = $this->routerArtifacts->load(
             $webrick['path'],
             $expectedEnvironment,
             $expectedConfigFingerprint,
         );
+        $profiler?->mark('router_artifact_load');
         $this->assertWebrickArtifact($artifact, $webrick);
 
         return [
