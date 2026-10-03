@@ -130,6 +130,7 @@ if (! class_exists('InterMixTestProvider', false)) {
 function intermixBuilderForTest(): ContainerBuilder
 {
     return ContainerBuilder::create('webrick.test.' . bin2hex(random_bytes(6)))
+        ->releaseIdentity('webrick-tests')
         ->input(Request::class);
 }
 
