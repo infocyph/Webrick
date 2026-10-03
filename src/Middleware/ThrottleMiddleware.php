@@ -18,7 +18,7 @@ use Psr\Cache\InvalidArgumentException;
 /** Fixed-window throttling with atomic production counters. */
 final readonly class ThrottleMiddleware
 {
-    private const string CACHE_KEY_PREFIX = 'webrick.th.v2.';
+    private const string CACHE_KEY_PREFIX = 'webrick.th.v3.';
 
     private ?CacheItemPoolInterface $pool;
 
