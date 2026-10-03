@@ -73,6 +73,8 @@ final class DeploymentAcceptanceBody implements RequestBodyInterface
 
 final class DeploymentAcceptanceWriter implements ResponseWriterInterface
 {
+    use \Infocyph\Webrick\Tests\Fixture\RunwireTerminalWriterTrait;
+
     public int $endCalls = 0;
 
     public bool $ended = false;
@@ -83,6 +85,7 @@ final class DeploymentAcceptanceWriter implements ResponseWriterInterface
     {
         ++$this->endCalls;
         $this->ended = true;
+        $this->notifyTerminal();
 
         return new WriteResult(WriteState::ACCEPTED, strlen($finalChunk));
     }
