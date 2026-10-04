@@ -380,46 +380,59 @@ record_wrk() {
         }' >> "$RESULTS"
 }
 
-run_target() {
+run_trial() {
     local version="$1"
     local root="$2"
     local mode="$3"
     local port="$4"
+    local trial="$5"
+
+    local pid
+    pid="$(start_server "$root" "$mode" "$port" "${version}-t${trial}")"
+    CURRENT_PID="$pid"
+
+    assert_correctness "$port"
+    assert_rejection_probes "$mode" "$port"
+    wrk -t2 -c5 -d2s "http://127.0.0.1:${port}/cert/static" >/dev/null 2>&1
+
+    for concurrency in 1 5 20 50; do
+        record_wrk "$version" "$mode" static "$concurrency" "$trial" "$port" "$pid" "/cert/static"
+        record_wrk "$version" "$mode" dynamic "$concurrency" "$trial" "$port" "$pid" "/cert/dynamic/42"
+        record_wrk "$version" "$mode" json "$concurrency" "$trial" "$port" "$pid" "/cert/json"
+        record_wrk "$version" "$mode" stream "$concurrency" "$trial" "$port" "$pid" "/cert/stream"
+        record_wrk "$version" "$mode" upload "$concurrency" "$trial" "$port" "$pid" "/cert/upload"
+
+        record_wrk "$version" "$mode" not_found "$concurrency" "$trial" "$port" "$pid" "/cert/missing" "$PARITY_DURATION_SECONDS"
+        record_wrk "$version" "$mode" method_not_allowed "$concurrency" "$trial" "$port" "$pid" "/cert/static" "$PARITY_DURATION_SECONDS"
+        record_wrk "$version" "$mode" file "$concurrency" "$trial" "$port" "$pid" "/cert/file" "$PARITY_DURATION_SECONDS"
+        record_wrk "$version" "$mode" range "$concurrency" "$trial" "$port" "$pid" "/cert/file" "$PARITY_DURATION_SECONDS"
+        record_wrk "$version" "$mode" slow "$concurrency" "$trial" "$port" "$pid" "/cert/slow/5" "$PARITY_DURATION_SECONDS"
+    done
+
+    stop_server "$pid"
+    CURRENT_PID=""
+}
+
+run_mode_pair() {
+    local mode="$1"
+    local baseline_port="$2"
+    local candidate_port="$3"
 
     for trial in $(seq 1 "$TRIALS"); do
-        local pid
-        pid="$(start_server "$root" "$mode" "$port" "${version}-t${trial}")"
-        CURRENT_PID="$pid"
-
-        assert_correctness "$port"
-        assert_rejection_probes "$mode" "$port"
-        wrk -t2 -c5 -d2s "http://127.0.0.1:${port}/cert/static" >/dev/null 2>&1
-
-        for concurrency in 1 5 20 50; do
-            record_wrk "$version" "$mode" static "$concurrency" "$trial" "$port" "$pid" "/cert/static"
-            record_wrk "$version" "$mode" dynamic "$concurrency" "$trial" "$port" "$pid" "/cert/dynamic/42"
-            record_wrk "$version" "$mode" json "$concurrency" "$trial" "$port" "$pid" "/cert/json"
-            record_wrk "$version" "$mode" stream "$concurrency" "$trial" "$port" "$pid" "/cert/stream"
-            record_wrk "$version" "$mode" upload "$concurrency" "$trial" "$port" "$pid" "/cert/upload"
-
-            record_wrk "$version" "$mode" not_found "$concurrency" "$trial" "$port" "$pid" "/cert/missing" "$PARITY_DURATION_SECONDS"
-            record_wrk "$version" "$mode" method_not_allowed "$concurrency" "$trial" "$port" "$pid" "/cert/static" "$PARITY_DURATION_SECONDS"
-            record_wrk "$version" "$mode" file "$concurrency" "$trial" "$port" "$pid" "/cert/file" "$PARITY_DURATION_SECONDS"
-            record_wrk "$version" "$mode" range "$concurrency" "$trial" "$port" "$pid" "/cert/file" "$PARITY_DURATION_SECONDS"
-            record_wrk "$version" "$mode" slow "$concurrency" "$trial" "$port" "$pid" "/cert/slow/5" "$PARITY_DURATION_SECONDS"
-        done
-
-        stop_server "$pid"
-        CURRENT_PID=""
+        if (( trial % 2 == 1 )); then
+            run_trial baseline "$BASELINE_ROOT" "$mode" "$baseline_port" "$trial"
+            run_trial candidate "$CANDIDATE_ROOT" "$mode" "$candidate_port" "$trial"
+        else
+            run_trial candidate "$CANDIDATE_ROOT" "$mode" "$candidate_port" "$trial"
+            run_trial baseline "$BASELINE_ROOT" "$mode" "$baseline_port" "$trial"
+        fi
     done
 }
 
 php "$HARNESS" prepare "--root=${BASELINE_ROOT}"
 php "$HARNESS" prepare "--root=${CANDIDATE_ROOT}"
 
-run_target baseline "$BASELINE_ROOT" sapi 18080
-run_target candidate "$CANDIDATE_ROOT" sapi 18081
-run_target baseline "$BASELINE_ROOT" runwire 18082
-run_target candidate "$CANDIDATE_ROOT" runwire 18083
+run_mode_pair sapi 18080 18081
+run_mode_pair runwire 18082 18083
 
 echo "$RESULTS"
