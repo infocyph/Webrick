@@ -22,6 +22,12 @@ trap cleanup_current EXIT
 
 PAYLOAD="$RESULT_DIR/upload.bin"
 head -c 16384 /dev/zero > "$PAYLOAD"
+POST_SCRIPT="$RESULT_DIR/post.lua"
+cat > "$POST_SCRIPT" <<'LUA'
+wrk.method = "POST"
+wrk.body = string.rep("x", 16384)
+wrk.headers["Content-Type"] = "application/octet-stream"
+LUA
 
 descendants() {
     local parent="$1"
@@ -112,9 +118,44 @@ field() {
     ' "$file"
 }
 
-percentile_99() {
+latency_ms() {
+    local raw="$1"
+    if [[ "$raw" =~ ^([0-9.]+)(us|ms|s)$ ]]; then
+        local value="${BASH_REMATCH[1]}"
+        local unit="${BASH_REMATCH[2]}"
+        awk -v value="$value" -v unit="$unit" 'BEGIN {
+            if (unit == "us") printf "%.6f", value / 1000;
+            else if (unit == "s") printf "%.6f", value * 1000;
+            else printf "%.6f", value;
+        }'
+        return 0
+    fi
+
+    echo "0"
+}
+
+wrk_socket_errors() {
     local file="$1"
-    awk '$1 == "99%" { print $2; exit }' "$file"
+    local line
+    line="$(grep -m1 'Socket errors:' "$file" || true)"
+    if [[ -z "$line" ]]; then
+        echo "0"
+        return 0
+    fi
+
+    grep -oE '[0-9]+' <<<"$line" | awk '{sum += $1} END {print sum + 0}'
+}
+
+wrk_requests() {
+    local file="$1"
+    awk '$2 == "requests" && $3 == "in" { print $1; exit }' "$file"
+}
+
+wrk_p99_ms() {
+    local file="$1"
+    local raw
+    raw="$(awk '$1 == "99%" { print $2; exit }' "$file")"
+    latency_ms "${raw:-0ms}"
 }
 
 assert_correctness() {
@@ -137,7 +178,7 @@ assert_correctness() {
     [[ "$(wc -c < "$RESULT_DIR/range.body" | tr -d ' ')" == "16" ]]
 }
 
-record_ab() {
+record_wrk() {
     local version="$1"
     local mode="$2"
     local workload="$3"
@@ -149,24 +190,28 @@ record_ab() {
     local method="$9"
 
     local out="$RESULT_DIR/${version}-${mode}-${workload}-c${concurrency}-t${trial}.txt"
-    local args=(-k -t "$DURATION_SECONDS" -c "$concurrency")
-
-    if [[ "$method" == "POST" ]]; then
-        args+=(-p "$PAYLOAD" -T application/octet-stream)
+    local threads="$concurrency"
+    if (( threads > 4 )); then
+        threads=4
     fi
 
-    ab "${args[@]}" "http://127.0.0.1:${port}${path}" >"$out" 2>&1
+    local args=(-t"$threads" -c"$concurrency" -d"${DURATION_SECONDS}s" --latency)
+    if [[ "$method" == "POST" ]]; then
+        args+=(-s "$POST_SCRIPT")
+    fi
+
+    wrk "${args[@]}" "http://127.0.0.1:${port}${path}" >"$out" 2>&1
 
     local rps complete failed non2xx p99 rss metrics
-    rps="$(field "Requests per second" "$out")"
-    complete="$(field "Complete requests" "$out")"
-    failed="$(field "Failed requests" "$out")"
-    non2xx="$(field "Non-2xx responses" "$out")"
-    p99="$(percentile_99 "$out")"
+    rps="$(field "Requests/sec" "$out")"
+    complete="$(wrk_requests "$out")"
+    failed="$(wrk_socket_errors "$out")"
+    non2xx="$(field "Non-2xx or 3xx responses" "$out")"
+    p99="$(wrk_p99_ms "$out")"
     rss="$(rss_kb "$pid")"
     metrics="$(curl -fsS "http://127.0.0.1:${port}/__cert/metrics" 2>/dev/null || echo '{}')"
 
-    jq -cn         --arg version "$version"         --arg mode "$mode"         --arg workload "$workload"         --argjson concurrency "$concurrency"         --argjson trial "$trial"         --argjson rps "${rps:-0}"         --argjson complete "${complete:-0}"         --argjson failed "${failed:-0}"         --argjson non2xx "${non2xx:-0}"         --arg p99 "${p99:-0ms}"         --argjson rss_kb "$rss"         --argjson metrics "$metrics"         '{
+    jq -cn         --arg version "$version"         --arg mode "$mode"         --arg workload "$workload"         --argjson concurrency "$concurrency"         --argjson trial "$trial"         --argjson rps "${rps:-0}"         --argjson complete "${complete:-0}"         --argjson failed "${failed:-0}"         --argjson non2xx "${non2xx:-0}"         --argjson p99 "${p99:-0}"         --argjson rss_kb "$rss"         --argjson metrics "$metrics"         '{
             version:$version,
             mode:$mode,
             workload:$workload,
@@ -194,14 +239,14 @@ run_target() {
         CURRENT_PID="$pid"
 
         assert_correctness "$port"
-        ab -k -t 2 -c 5 "http://127.0.0.1:${port}/cert/static" >/dev/null 2>&1
+        wrk -t2 -c5 -d2s "http://127.0.0.1:${port}/cert/static" >/dev/null 2>&1
 
         for concurrency in 1 5 20 50; do
-            record_ab "$version" "$mode" static "$concurrency" "$trial" "$port" "$pid" "/cert/static" GET
-            record_ab "$version" "$mode" dynamic "$concurrency" "$trial" "$port" "$pid" "/cert/dynamic/42" GET
-            record_ab "$version" "$mode" json "$concurrency" "$trial" "$port" "$pid" "/cert/json" GET
-            record_ab "$version" "$mode" stream "$concurrency" "$trial" "$port" "$pid" "/cert/stream" GET
-            record_ab "$version" "$mode" upload "$concurrency" "$trial" "$port" "$pid" "/cert/upload" POST
+            record_wrk "$version" "$mode" static "$concurrency" "$trial" "$port" "$pid" "/cert/static" GET
+            record_wrk "$version" "$mode" dynamic "$concurrency" "$trial" "$port" "$pid" "/cert/dynamic/42" GET
+            record_wrk "$version" "$mode" json "$concurrency" "$trial" "$port" "$pid" "/cert/json" GET
+            record_wrk "$version" "$mode" stream "$concurrency" "$trial" "$port" "$pid" "/cert/stream" GET
+            record_wrk "$version" "$mode" upload "$concurrency" "$trial" "$port" "$pid" "/cert/upload" POST
         done
 
         stop_server "$pid"
