@@ -10,8 +10,7 @@ RECYCLE_SECONDS=$((SOAK_SECONDS * 2 / 3))
 if (( RECYCLE_SECONDS < 30 )); then
     RECYCLE_SECONDS=30
 fi
-HANDOFF_SOCKET_ERRORS=0
-LAST_WORKER_PID=""
+CANCELLATION_PROBES=0
 
 HARNESS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cert-server.php"
 mkdir -p "$RESULT_DIR"
@@ -23,12 +22,8 @@ LOG="$RESULT_DIR/soak-server.log"
 
 PAYLOAD="$RESULT_DIR/upload.bin"
 head -c 32768 /dev/zero > "$PAYLOAD"
-POST_SCRIPT="$RESULT_DIR/post.lua"
-cat > "$POST_SCRIPT" <<'LUA'
-wrk.method = "POST"
-wrk.body = string.rep("x", 32768)
-wrk.headers["Content-Type"] = "application/octet-stream"
-LUA
+SUPERVISOR_EVENTS_SOURCE="$ROOT/.runtime-certification/router.php.supervisor-events.jsonl"
+SUPERVISOR_EVENTS="$RESULT_DIR/supervisor-events.jsonl"
 
 descendants() {
     local parent="$1"
@@ -66,47 +61,47 @@ wait_ready() {
     return 1
 }
 
-run_wrk_clean() {
-    local output
-    output="$(mktemp)"
-    if ! wrk "$@" >"$output" 2>&1; then
-        cat "$output" >&2
-        rm -f "$output"
+run_http_batch() {
+    local count="$1"
+    local concurrency="$2"
+    local method="$3"
+    local url="$4"
+    local running=0
+    local failures=0
+
+    for _ in $(seq 1 "$count"); do
+        if [[ "$method" == "POST" ]]; then
+            curl --http1.1 --fail --silent --show-error --max-time 5 \
+                --output /dev/null \
+                --header 'Content-Type: application/octet-stream' \
+                --data-binary "@$PAYLOAD" \
+                "$url" &
+        else
+            curl --http1.1 --fail --silent --show-error --max-time 5 \
+                --output /dev/null \
+                "$url" &
+        fi
+        running=$((running + 1))
+
+        if (( running >= concurrency )); then
+            if ! wait -n; then
+                failures=$((failures + 1))
+            fi
+            running=$((running - 1))
+        fi
+    done
+
+    while (( running > 0 )); do
+        if ! wait -n; then
+            failures=$((failures + 1))
+        fi
+        running=$((running - 1))
+    done
+
+    if (( failures != 0 )); then
+        echo "Bounded HTTP batch recorded ${failures} failed request(s)." >&2
         return 1
     fi
-    if grep -q 'Non-2xx or 3xx responses:' "$output"; then
-        cat "$output" >&2
-        rm -f "$output"
-        return 1
-    fi
-
-    local socket_errors socket_line
-    socket_line="$(grep -m1 'Socket errors:' "$output" || true)"
-    socket_errors=0
-    if [[ -n "$socket_line" ]]; then
-        socket_errors="$(grep -oE '[0-9]+' <<<"$socket_line" | awk '{sum += $1} END {print sum + 0}')"
-    fi
-    rm -f "$output"
-
-    if (( socket_errors == 0 )); then
-        return 0
-    fi
-
-    if ! wait_ready; then
-        echo "Socket errors were followed by an unhealthy replacement." >&2
-        return 1
-    fi
-
-    local replacement_pid
-    replacement_pid="$(fetch_retry "http://127.0.0.1:18100/cert/json" | jq -r '.pid')"
-    if [[ -z "$LAST_WORKER_PID" || "$replacement_pid" == "$LAST_WORKER_PID" ]]; then
-        echo "Unexplained socket errors without a worker handoff: $socket_errors" >&2
-        return 1
-    fi
-
-    HANDOFF_SOCKET_ERRORS=$((HANDOFF_SOCKET_ERRORS + socket_errors))
-    LAST_WORKER_PID="$replacement_pid"
-    echo "Accepted $socket_errors socket resets during worker handoff to PID $replacement_pid." >&2
 }
 
 fetch_retry() {
@@ -130,7 +125,6 @@ sample() {
     metrics="$(fetch_retry "http://127.0.0.1:18100/cert/json")"
     pid="$(jq -r '.pid' <<<"$metrics")"
     rss="$(rss_kb "$SERVER_PID")"
-    LAST_WORKER_PID="$pid"
     echo "$pid" >> "$PIDS"
 
     jq -cn         --argjson cycle "$cycle"         --argjson rss_kb "$rss"         --argjson runtime "$runtime"         --argjson worker "$metrics"         '{cycle:$cycle,rss_kb:$rss_kb,runtime:$runtime,worker:$worker}' >> "$METRICS"
@@ -158,11 +152,14 @@ CYCLE=0
 while (( $(date +%s) < DEADLINE )); do
     CYCLE=$((CYCLE + 1))
 
-    run_wrk_clean -t4 -c20 -d1s "http://127.0.0.1:18100/cert/static"
-    run_wrk_clean -t4 -c10 -d1s -s "$POST_SCRIPT" "http://127.0.0.1:18100/cert/upload"
+    run_http_batch 200 20 GET "http://127.0.0.1:18100/cert/static"
+    run_http_batch 50 10 POST "http://127.0.0.1:18100/cert/upload"
 
-    if (( CYCLE % 20 == 0 )); then
-        curl -fsS --max-time 0.05 "http://127.0.0.1:18100/cert/slow/250" >/dev/null 2>&1 || true
+    if (( CYCLE % 10 == 0 )); then
+        CANCELLATION_PROBES=$((CANCELLATION_PROBES + 1))
+        curl --http1.1 --fail --silent --show-error --max-time 0.05 \
+            "http://127.0.0.1:18100/cert/slow/250" >/dev/null 2>&1 || true
+        wait_ready
     fi
 
     for _ in $(seq 1 10); do
@@ -184,6 +181,21 @@ FINAL_ACTIVE="$(jq -s '.[-1].runtime.requests_active // 0' "$METRICS")"
 FINAL_QUEUE="$(jq -s '.[-1].runtime.queued_bytes_current // 0' "$METRICS")"
 REJECTED="$(jq -s '[.[].runtime.rejected_requests_total // 0] | max // 0' "$METRICS")"
 DISTINCT_PIDS="$(sort -u "$PIDS" | sed '/^$/d' | wc -l | tr -d ' ')"
+
+if [[ ! -s "$SUPERVISOR_EVENTS_SOURCE" ]]; then
+    echo "Supervisor lifecycle evidence is missing." >&2
+    exit 1
+fi
+
+PLANNED_RECYCLES="$(jq -s '[.[] | select(.type == "worker_exited" and .exit_reason == "planned_recycle")] | length' "$SUPERVISOR_EVENTS_SOURCE")"
+UNHEALTHY_EVENTS="$(jq -s '[.[] | select(.type == "worker_unhealthy")] | length' "$SUPERVISOR_EVENTS_SOURCE")"
+RESTART_EVENTS="$(jq -s '[.[] | select(.type == "worker_restart_scheduled")] | length' "$SUPERVISOR_EVENTS_SOURCE")"
+UNEXPECTED_EXITS="$(jq -s '[
+    .[]
+    | select(.type == "worker_exited")
+    | select((.exit_reason // "") != "planned_recycle")
+    | select((.exit_reason // "") != "normal_shutdown")
+] | length' "$SUPERVISOR_EVENTS_SOURCE")"
 
 MAX_GROWTH_BYTES=$((MEMORY_GROWTH_MB * 1024 * 1024))
 if (( LAST_MEMORY > FIRST_MEMORY + MAX_GROWTH_BYTES )); then
@@ -210,6 +222,14 @@ if (( DISTINCT_PIDS < 2 )); then
     echo "Worker replacement was not observed; distinct worker PIDs: $DISTINCT_PIDS" >&2
     exit 1
 fi
+if (( PLANNED_RECYCLES < 1 )); then
+    echo "No planned worker recycle was recorded by the supervisor." >&2
+    exit 1
+fi
+if (( UNHEALTHY_EVENTS != 0 || RESTART_EVENTS != 0 || UNEXPECTED_EXITS != 0 )); then
+    echo "Unexpected worker lifecycle event detected: unhealthy=${UNHEALTHY_EVENTS} restarts=${RESTART_EVENTS} exits=${UNEXPECTED_EXITS}." >&2
+    exit 1
+fi
 
 START_STOP="$(date +%s)"
 kill -TERM "$SERVER_PID"
@@ -227,6 +247,8 @@ fi
 STOP_SECONDS=$(( $(date +%s) - START_STOP ))
 trap - EXIT
 
+cp "$SUPERVISOR_EVENTS_SOURCE" "$SUPERVISOR_EVENTS"
+
 cat > "$RESULT_DIR/soak-summary.md" <<EOF
 # Persistent worker soak
 
@@ -234,7 +256,9 @@ cat > "$RESULT_DIR/soak-summary.md" <<EOF
 - Cycles: ${CYCLE}
 - Distinct worker PIDs: ${DISTINCT_PIDS}
 - Worker recycle interval: ${RECYCLE_SECONDS} seconds
-- Socket resets correlated with worker handoff: ${HANDOFF_SOCKET_ERRORS}
+- Deliberate slow-client cancellation probes: ${CANCELLATION_PROBES}
+- Planned worker recycle exits: ${PLANNED_RECYCLES}
+- Unexpected unhealthy/restart/exit events: ${UNHEALTHY_EVENTS}/${RESTART_EVENTS}/${UNEXPECTED_EXITS}
 - Runtime memory: ${FIRST_MEMORY} → ${LAST_MEMORY} bytes
 - Process-tree RSS: ${FIRST_RSS} → ${LAST_RSS} KiB
 - Final active requests: ${FINAL_ACTIVE}
