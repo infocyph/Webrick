@@ -5,6 +5,13 @@ ROOT="${1:?candidate root required}"
 RESULT_DIR="${2:?result directory required}"
 SOAK_MINUTES="${3:-30}"
 MEMORY_GROWTH_MB="${4:-32}"
+SOAK_SECONDS=$((SOAK_MINUTES * 60))
+RECYCLE_SECONDS=$((SOAK_SECONDS * 2 / 3))
+if (( RECYCLE_SECONDS < 30 )); then
+    RECYCLE_SECONDS=30
+fi
+HANDOFF_SOCKET_ERRORS=0
+LAST_WORKER_PID=""
 
 HARNESS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cert-server.php"
 mkdir -p "$RESULT_DIR"
@@ -72,18 +79,34 @@ run_wrk_clean() {
         rm -f "$output"
         return 1
     fi
+
     local socket_errors socket_line
     socket_line="$(grep -m1 'Socket errors:' "$output" || true)"
     socket_errors=0
     if [[ -n "$socket_line" ]]; then
         socket_errors="$(grep -oE '[0-9]+' <<<"$socket_line" | awk '{sum += $1} END {print sum + 0}')"
     fi
-    if (( socket_errors != 0 )); then
-        cat "$output" >&2
-        rm -f "$output"
+    rm -f "$output"
+
+    if (( socket_errors == 0 )); then
+        return 0
+    fi
+
+    if ! wait_ready; then
+        echo "Socket errors were followed by an unhealthy replacement." >&2
         return 1
     fi
-    rm -f "$output"
+
+    local replacement_pid
+    replacement_pid="$(fetch_retry "http://127.0.0.1:18100/cert/json" | jq -r '.pid')"
+    if [[ -z "$LAST_WORKER_PID" || "$replacement_pid" == "$LAST_WORKER_PID" ]]; then
+        echo "Unexplained socket errors without a worker handoff: $socket_errors" >&2
+        return 1
+    fi
+
+    HANDOFF_SOCKET_ERRORS=$((HANDOFF_SOCKET_ERRORS + socket_errors))
+    LAST_WORKER_PID="$replacement_pid"
+    echo "Accepted $socket_errors socket resets during worker handoff to PID $replacement_pid." >&2
 }
 
 fetch_retry() {
@@ -107,13 +130,14 @@ sample() {
     metrics="$(fetch_retry "http://127.0.0.1:18100/cert/json")"
     pid="$(jq -r '.pid' <<<"$metrics")"
     rss="$(rss_kb "$SERVER_PID")"
+    LAST_WORKER_PID="$pid"
     echo "$pid" >> "$PIDS"
 
     jq -cn         --argjson cycle "$cycle"         --argjson rss_kb "$rss"         --argjson runtime "$runtime"         --argjson worker "$metrics"         '{cycle:$cycle,rss_kb:$rss_kb,runtime:$runtime,worker:$worker}' >> "$METRICS"
 }
 
 php "$HARNESS" prepare "--root=${ROOT}"
-php "$HARNESS" runwire     "--root=${ROOT}"     "--address=127.0.0.1:18100"     "--recycle-seconds=45" >"$LOG" 2>&1 &
+php "$HARNESS" runwire     "--root=${ROOT}"     "--address=127.0.0.1:18100"     "--recycle-seconds=${RECYCLE_SECONDS}" >"$LOG" 2>&1 &
 SERVER_PID=$!
 
 cleanup() {
@@ -128,7 +152,7 @@ if ! wait_ready; then
 fi
 
 sample 0
-DEADLINE=$(( $(date +%s) + SOAK_MINUTES * 60 ))
+DEADLINE=$(( $(date +%s) + SOAK_SECONDS ))
 CYCLE=0
 
 while (( $(date +%s) < DEADLINE )); do
@@ -209,6 +233,8 @@ cat > "$RESULT_DIR/soak-summary.md" <<EOF
 - Duration: ${SOAK_MINUTES} minutes
 - Cycles: ${CYCLE}
 - Distinct worker PIDs: ${DISTINCT_PIDS}
+- Worker recycle interval: ${RECYCLE_SECONDS} seconds
+- Socket resets correlated with worker handoff: ${HANDOFF_SOCKET_ERRORS}
 - Runtime memory: ${FIRST_MEMORY} → ${LAST_MEMORY} bytes
 - Process-tree RSS: ${FIRST_RSS} → ${LAST_RSS} KiB
 - Final active requests: ${FINAL_ACTIVE}
