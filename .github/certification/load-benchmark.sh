@@ -192,16 +192,17 @@ latency_ms() {
     echo "0"
 }
 
-wrk_socket_errors() {
+wrk_socket_error() {
     local file="$1"
-    local line
-    line="$(grep -m1 'Socket errors:' "$file" || true)"
-    if [[ -z "$line" ]]; then
+    local category="$2"
+    local match
+    match="$(grep -m1 'Socket errors:' "$file" | grep -oE "${category} [0-9]+" || true)"
+    if [[ -z "$match" ]]; then
         echo "0"
         return 0
     fi
 
-    grep -oE '[0-9]+' <<<"$line" | awk '{sum += $1} END {print sum + 0}'
+    awk '{print $2}' <<<"$match"
 }
 
 wrk_requests() {
@@ -214,6 +215,34 @@ wrk_p99_ms() {
     local raw
     raw="$(awk '$1 == "99%" { print $2; exit }' "$file")"
     latency_ms "${raw:-0ms}"
+}
+
+validate_metrics_json() {
+    jq -e '
+        type == "object"
+        and (.pid | type == "number")
+        and (.memory_current_bytes | type == "number")
+        and (.memory_peak_bytes | type == "number")
+        and (.requests_active | type == "number")
+        and (.queued_bytes_current | type == "number")
+        and (.rejected_requests_total | type == "number")
+    ' >/dev/null
+}
+
+fetch_metrics() {
+    local port="$1"
+    local metrics
+    if ! metrics="$(curl -fsS --max-time 2 "http://127.0.0.1:${port}/__cert/metrics")"; then
+        echo "Unable to fetch required certification telemetry from port ${port}." >&2
+        return 1
+    fi
+    if ! validate_metrics_json <<<"$metrics"; then
+        echo "Certification telemetry from port ${port} is missing required fields." >&2
+        echo "$metrics" >&2
+        return 1
+    fi
+
+    printf '%s' "$metrics"
 }
 
 assert_correctness() {
@@ -234,6 +263,35 @@ assert_correctness() {
     status="$(curl -sS -o "$RESULT_DIR/range.body" -w '%{http_code}' -H 'Range: bytes=0-15' "$base/cert/file")"
     [[ "$status" == "206" ]]
     [[ "$(wc -c < "$RESULT_DIR/range.body" | tr -d ' ')" == "16" ]]
+    fetch_metrics "$port" >/dev/null
+}
+
+assert_rejection_probes() {
+    local mode="$1"
+    local port="$2"
+    local close_delimited=0
+    local corrupt="$RESULT_DIR/reject-corrupt-${mode}.txt"
+    local truncated="$RESULT_DIR/reject-truncated-${mode}.txt"
+
+    if validate_metrics_json <<<'{}'; then
+        echo "Telemetry validator accepted an empty metrics object." >&2
+        return 1
+    fi
+
+    CERT_WORKLOAD=static CERT_CLOSE_DELIMITED=0         wrk -t1 -c1 -d1s --latency -s "$VALIDATION_SCRIPT"         "http://127.0.0.1:${port}/cert/corrupt" >"$corrupt" 2>&1
+    if (( $(field "CERT Invalid responses" "$corrupt") == 0 )); then
+        echo "Response validator accepted the corrupt-body fixture." >&2
+        return 1
+    fi
+
+    if [[ "$mode" == "sapi" ]]; then
+        close_delimited=1
+    fi
+    CERT_WORKLOAD=stream CERT_CLOSE_DELIMITED="$close_delimited"         wrk -t1 -c1 -d1s --latency -s "$VALIDATION_SCRIPT"         "http://127.0.0.1:${port}/cert/truncated" >"$truncated" 2>&1
+    if (( $(field "CERT Invalid responses" "$truncated") == 0 )); then
+        echo "Response validator accepted the truncated-stream fixture." >&2
+        return 1
+    fi
 }
 
 record_wrk() {
@@ -245,33 +303,36 @@ record_wrk() {
     local port="$6"
     local pid="$7"
     local path="$8"
-    local method="$9"
 
     local out="$RESULT_DIR/${version}-${mode}-${workload}-c${concurrency}-t${trial}.txt"
     local threads="$concurrency"
+    local close_delimited=0
     if (( threads > 4 )); then
         threads=4
     fi
-
-    local args=(-t"$threads" -c"$concurrency" -d"${DURATION_SECONDS}s" --latency)
-    if [[ "$method" == "POST" ]]; then
-        args+=(-s "$POST_SCRIPT")
-    elif [[ "$mode" == "sapi" && "$workload" == "stream" ]]; then
-        args+=(-s "$STREAM_SCRIPT")
+    if [[ "$mode" == "sapi" && "$workload" == "stream" ]]; then
+        close_delimited=1
     fi
 
-    wrk "${args[@]}" "http://127.0.0.1:${port}${path}" >"$out" 2>&1
+    CERT_WORKLOAD="$workload" CERT_CLOSE_DELIMITED="$close_delimited"         wrk -t"$threads" -c"$concurrency" -d"${DURATION_SECONDS}s" --latency         -s "$VALIDATION_SCRIPT" "http://127.0.0.1:${port}${path}" >"$out" 2>&1
 
-    local rps complete failed non2xx p99 rss metrics
+    local rps complete non2xx p99 rss metrics validated invalid
+    local connect_errors read_errors write_errors timeout_errors failed
     rps="$(field "Requests/sec" "$out")"
     complete="$(wrk_requests "$out")"
-    failed="$(wrk_socket_errors "$out")"
     non2xx="$(field "Non-2xx or 3xx responses" "$out")"
     p99="$(wrk_p99_ms "$out")"
+    validated="$(field "CERT Validated responses" "$out")"
+    invalid="$(field "CERT Invalid responses" "$out")"
+    connect_errors="$(wrk_socket_error "$out" connect)"
+    read_errors="$(wrk_socket_error "$out" read)"
+    write_errors="$(wrk_socket_error "$out" write)"
+    timeout_errors="$(wrk_socket_error "$out" timeout)"
+    failed=$((connect_errors + read_errors + write_errors + timeout_errors))
     rss="$(rss_kb "$pid")"
-    metrics="$(curl -fsS "http://127.0.0.1:${port}/__cert/metrics" 2>/dev/null || echo '{}')"
+    metrics="$(fetch_metrics "$port")"
 
-    jq -cn         --arg version "$version"         --arg mode "$mode"         --arg workload "$workload"         --argjson concurrency "$concurrency"         --argjson trial "$trial"         --argjson rps "${rps:-0}"         --argjson complete "${complete:-0}"         --argjson failed "${failed:-0}"         --argjson non2xx "${non2xx:-0}"         --argjson p99 "${p99:-0}"         --argjson rss_kb "$rss"         --argjson metrics "$metrics"         '{
+    jq -cn         --arg version "$version"         --arg mode "$mode"         --arg workload "$workload"         --argjson concurrency "$concurrency"         --argjson trial "$trial"         --argjson rps "${rps:-0}"         --argjson complete "${complete:-0}"         --argjson validated "${validated:-0}"         --argjson invalid "${invalid:-0}"         --argjson failed "$failed"         --argjson non2xx "${non2xx:-0}"         --argjson connect_errors "$connect_errors"         --argjson read_errors "$read_errors"         --argjson write_errors "$write_errors"         --argjson timeout_errors "$timeout_errors"         --argjson p99 "${p99:-0}"         --argjson rss_kb "$rss"         --argjson metrics "$metrics"         '{
             version:$version,
             mode:$mode,
             workload:$workload,
@@ -279,8 +340,16 @@ record_wrk() {
             trial:$trial,
             rps:$rps,
             complete:$complete,
+            validated:$validated,
+            invalid:$invalid,
             failed:$failed,
             non2xx:$non2xx,
+            socket_errors:{
+                connect:$connect_errors,
+                read:$read_errors,
+                write:$write_errors,
+                timeout:$timeout_errors
+            },
             p99:$p99,
             rss_kb:$rss_kb,
             metrics:$metrics
@@ -299,14 +368,15 @@ run_target() {
         CURRENT_PID="$pid"
 
         assert_correctness "$port"
+        assert_rejection_probes "$mode" "$port"
         wrk -t2 -c5 -d2s "http://127.0.0.1:${port}/cert/static" >/dev/null 2>&1
 
         for concurrency in 1 5 20 50; do
-            record_wrk "$version" "$mode" static "$concurrency" "$trial" "$port" "$pid" "/cert/static" GET
-            record_wrk "$version" "$mode" dynamic "$concurrency" "$trial" "$port" "$pid" "/cert/dynamic/42" GET
-            record_wrk "$version" "$mode" json "$concurrency" "$trial" "$port" "$pid" "/cert/json" GET
-            record_wrk "$version" "$mode" stream "$concurrency" "$trial" "$port" "$pid" "/cert/stream" GET
-            record_wrk "$version" "$mode" upload "$concurrency" "$trial" "$port" "$pid" "/cert/upload" POST
+            record_wrk "$version" "$mode" static "$concurrency" "$trial" "$port" "$pid" "/cert/static"
+            record_wrk "$version" "$mode" dynamic "$concurrency" "$trial" "$port" "$pid" "/cert/dynamic/42"
+            record_wrk "$version" "$mode" json "$concurrency" "$trial" "$port" "$pid" "/cert/json"
+            record_wrk "$version" "$mode" stream "$concurrency" "$trial" "$port" "$pid" "/cert/stream"
+            record_wrk "$version" "$mode" upload "$concurrency" "$trial" "$port" "$pid" "/cert/upload"
         done
 
         stop_server "$pid"
