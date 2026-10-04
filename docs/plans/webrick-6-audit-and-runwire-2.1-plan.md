@@ -1,6 +1,6 @@
 # Webrick 6.0 — Consolidated improvement and release plan
 
-Status: **2026-10-04 published InterMix 11.1 / Runwire 2.1.1 are installed; Webrick QA, live H1/H2/H3 and the local strict 30-minute recycling soak pass; performance/final-commit certification remain open**.
+Status: **2026-10-04 exact-commit QA, live H1/H2/H3 and the full hosted worker soak pass at `9946621`; two performance jobs fail. Working-tree peak-RSS sampling and longer parity windows pass focused checks and PHPForge QA; final performance certification remains open**.
 
 Audit date: 2026-10-03 (Asia/Dhaka). Baseline: Webrick **5.4**, commit
 `0f01cb4c303f94e683de8a3567682b70908122af`.
@@ -27,9 +27,10 @@ including unsafe-input rejection, legacy-cookie retirement, cache namespace
 changes and artifact rebuilding. Preserve established HTTP semantics and avoid
 unrelated API changes; a major version is not a reason for a broad rewrite.
 
-W10/W11 remediation and exact-SHA quality CI pass at `44dc419`, but that SHA's
-certification failed: both strict performance jobs exceeded budgets, and the
-worker soak exceeded its job timeout. W13/W14 corrective changes are uncommitted.
+W10–W14 remediation and exact-SHA quality CI pass at `9946621`. Its live H1/H2/H3
+checks and full hosted worker soak pass. Both performance jobs still fail; the
+working-tree correction measures peak RSS during load and lengthens parity
+trials without changing the workload or budgets.
 Do not tag until the final committed implementation passes B10's full-duration
 certification and applicable quality CI.
 
@@ -70,8 +71,9 @@ and the mapped phase checkboxes after every implementation and QA stage.
 
 ## Current code revalidation — 2026-10-04
 
-Committed candidate: `44dc419a05c0e72c741ef072f6b8ebac2cf55f89`.
-The current W13/W14 changes are in the working tree and have no hosted CI yet.
+Committed candidate: `9946621abd1669ce15053d267d08d708074d1d07`.
+W13/W14 and the published dependencies are committed and have hosted CI.
+The new performance-measurement corrections remain in the working tree.
 Keep implementation tests, diagnostic measurements and full release acceptance
 separate; the following results apply only to the source/profile recorded here.
 
@@ -81,12 +83,12 @@ separate; the following results apply only to the source/profile recorded here.
 | --- | --- | --- | --- |
 | W10 | Complete at `44dc419` | Keep the same managed inner Fiber registered through cancellation/exception cleanup suspended on I/O. Preserve the host's authoritative cancellation and worker/loop ownership. | Real Runwire task cancellation drains two cleanup chunks, finalizes once and preserves the original cancellation. Ordinary exception cleanup retains exception identity across repeated body readiness. |
 | W11 | Complete at `44dc419` | Validate the entire expected JSON/upload/slow response and canonical positive PID digits. | Leading-zero, garbage-prefix and wrong-value fixtures are rejected by the actual Lua callback; ordinary controls pass over SAPI and native HTTP. |
-| W13 | Fixed in working tree | A connection-owned writer can retain the drain callback after completion. Its captured Fiber was retained too. Keep the continuation alive while awaiting readiness, then clear that captured reference before resumption and on exit, without replacing the writer's callback. | A WeakReference regression fails before the fix and passes afterward, including repeated drain notifications. Existing streaming tests still require no pending drain, one scope leave and one lifecycle finalization. |
-| W14 | Fixed in working tree | The soak's unqualified `wait -n` can wait for the long-lived server after curl jobs have already finished/reaped under Ubuntu 24.04's Bash 5.2. Track request PIDs and wait for each bounded batch's own children, including the partial final batch. | The original helper times out in the completed-child regression under Bash 5.2. The fix passes on Bash 5.2 and 5.3, leaves the server alive and accounts for all 25 deliberate curl failures. CI runs this regression before the soak. The strict local 30-minute Bash 5.2 soak passes with published Runwire 2.1.1; exact-final-commit CI remains required. |
-| W15 | Open | SAPI cold bootstrap exceeds the median RPM budget. Stage profiling identifies approximately 40 microseconds of additional InterMix 11 production startup versus InterMix 10. | The public InterMix 11.1 loader reduces same-artifact startup cost by 54.33% while retaining expected identity, integrity, compatibility and fallback checks. The earlier focused host comparison still exceeds RPM/p99 budgets for dynamic c1. The published release is installed; repeat measurements and certify the remaining Webrick path using complete matrices. |
-| W17 | Published fix consumed; local 30-minute soak passes | Two-worker recycling resets reproduce in a direct Runwire 2.1 server without Webrick handling. The authorized sibling fix preserves accepted request admission across HTTP/1, HTTP/2 and HTTP/3 draining. | Runwire 2.1.1's exact-revision QA/QUIC CI passes. Webrick consumes its published archive and passes live H1/H2/H3 plus a strict 30-minute soak: 3,344 cycles, two planned replacements, zero failed batches and clean drain. This is working-tree prepared-host evidence; exact-final-Webrick-commit certification remains required. Strict failure accounting and Runwire ownership remain unchanged. |
+| W13 | Complete at `9946621` | A connection-owned writer can retain the drain callback after completion. Its captured Fiber was retained too. Keep the continuation alive while awaiting readiness, then clear that captured reference before resumption and on exit, without replacing the writer's callback. | A WeakReference regression fails before the fix and passes afterward, including repeated drain notifications. Existing streaming tests still require no pending drain, one scope leave and one lifecycle finalization. Hosted QA and full soak pass. |
+| W14 | Complete at `9946621` | The soak's unqualified `wait -n` can wait for the long-lived server after curl jobs have already finished/reaped under Ubuntu 24.04's Bash 5.2. Track request PIDs and wait for each bounded batch's own children, including the partial final batch. | The fix passes on Bash 5.2 and 5.3, leaves the server alive and accounts for all 25 deliberate curl failures. Hosted CI passes the regression and full 30-minute soak with published Runwire 2.1.1. |
+| W15 | Throughput resolved; tail-latency acceptance open | Published InterMix 11.1 and its public production loader resolve the SAPI RPM regression. The remaining hosted SAPI failure is 404 c20 p99 (+29.13%) in two-second parity trials. | All 40 hosted SAPI RPM comparisons pass at `9946621`. Repeat tail-latency acceptance using ten-second parity windows, preserving the fixture, response validation and 15% p99 budget. |
+| W17 | Complete at `9946621` | Two-worker recycling resets reproduce in a direct Runwire 2.1 server without Webrick handling. The authorized sibling fix preserves accepted request admission across HTTP/1, HTTP/2 and HTTP/3 draining. | Published Runwire 2.1.1's QA/QUIC CI and Webrick's exact-revision H1/H2/H3 and full hosted soak pass: 2,403 cycles, two planned replacements and clean drain. Strict failure accounting and Runwire ownership remain unchanged. |
 | W18 | Complete in published Runwire 2.1.1 | Runwire's PHP 8.5 prefer-lowest job read the control client's result immediately after the supervisor returned, before the separate client had necessarily published it. | A delayed-publication regression reproduces the exact missing-result error. The existing bounded child-reaping helper joins the client before reading results and kills/reaps unfinished clients during failure cleanup. All original assertions remain. The published revision's PHP 8.4/8.5 stable/lowest QA and QUIC CI pass. |
-| W16 | Open | Native Runwire slow-request c20 latency and c20/c50 RSS exceed the hosted budgets; c50 also exceeds the RPM budget. W13 is a proven retention defect but is not, by itself, proof that all these regressions are resolved. | Repeat the complete unchanged load matrix on the final committed source. Preserve the blocking slow workload, all validation, and 2% RPM / 15% p99 / 32 MiB budgets. |
+| W16 | Measurement correction in working tree; acceptance open | Native slow c20/c50 RPM and p99 fail. Post-load RSS also fails, but the baseline worker restarts on client close and its replacement appears in the sample. Capture peak RSS during load for both roles and preserve supervisor lifecycle evidence. | Peak-sampling and nonzero-load-status regressions pass on Bash 5.2/5.3. Use ten-second slow trials and repeat full matrices at the final commit. Preserve the blocking workload, all validation, and 2% RPM / 15% p99 / 32 MiB budgets. |
 
 ### InterMix release handoff
 
@@ -106,8 +108,9 @@ configuration. Existing builder-based production behavior remains unchanged.
   audit pass. The existing development-only abandoned package warning remains.
 - README and production-mode documentation explain the expected-identity trust
   boundary and the absence of dynamic fallback on this path.
-- The user completed InterMix's publication. Webrick's dependency integration and
-  certification fixes remain uncommitted and require their own exact-commit CI.
+- The user completed InterMix's publication. Webrick's dependency integration
+  and initial certification fixes are committed and pass quality CI at `9946621`;
+  the remaining measurement corrections need their own exact-commit CI.
 - Webrick's direct-handler certification fixture checks that no route requires a
   DI scope, removes its unused Request input, records the compiled graph at
   preparation and uses the public loader when available. Older InterMix versions
@@ -276,7 +279,76 @@ unprepared normal host or an exact committed Webrick revision. Both complete
 performance matrices and exact-final-commit Webrick CI remain required; Runwire's
 release does not certify Webrick automatically.
 
-### Exact committed CI
+### Exact committed CI — `9946621`
+
+- [Security & Standards 37205156310](https://github.com/infocyph/Webrick/actions/runs/37205156310)
+  passes on `9946621abd1669ce15053d267d08d708074d1d07`.
+- [Runtime Release Certification 37205153261](https://github.com/infocyph/Webrick/actions/runs/37205153261)
+  passes live H1/H2, hosted H3 and the full **30-minute** worker soak. The soak
+  completes **2,403 cycles**, **240 cancellation probes**, **four worker PIDs**
+  and **two planned recycle exits**. Unexpected unhealthy/restart/exit counts
+  are **0/0/0**; final queued bytes/rejections are zero. Runtime memory grows
+  12 → 16 MiB, RSS 127,724 → 140,560 KiB, and measured drain is zero seconds.
+- Both performance matrices complete **240 rows / 3 trials / 40 comparisons**.
+  All SAPI throughput and RSS comparisons pass. The sole SAPI failure is
+  `not_found/c20`: p99 **31.00 → 40.03 ms (+29.13%)**.
+- Native slow c5 reports **+32.38 MiB** RSS. At c20, RPM regresses **2.07%**, p99
+  **33.28%** and RSS **34.45 MiB**. At c50, RPM regresses **3.00%**, p99
+  **30.42%** and RSS **34.52 MiB**. The unchanged limits are 2%, 15% and 32 MiB.
+- The hosted baseline's slow c5/c20/c50 telemetry changes worker PID and resets
+  `requests_total` to one after each load. The local original-harness probe
+  reproduces `application_fatal` replacement on client close and samples RSS
+  between workers. Post-load RSS therefore does not represent memory during
+  the workload. Preserve lifecycle logs and measure in-load peak RSS for both
+  roles; do not hide the old baseline's restarts or relax any budget.
+- The five parity workloads previously used two-second windows. Working-tree
+  CI now uses the same ten-second windows and three trials as the primary
+  workloads. Local diagnostics are supporting evidence; require complete
+  matrices and applicable CI on the final committed correction before tagging.
+
+Artifacts: `/tmp/webrick-9946621-artifacts/`. Local reproduction:
+`/tmp/webrick-9946621-focused.sh` and `/tmp/webrick-9946621-focused/`.
+
+### Performance measurement correction — working tree
+
+The load harness now samples process-tree RSS every **250 ms** while `wrk` is
+running and reports the maximum sampled value, including before/after samples.
+It waits for the load command's own PID and preserves its nonzero exit status.
+Per-trial supervisor event logs are retained in the uploaded native performance
+artifacts. Response validators, socket-error handling, completeness checks and
+all three acceptance budgets remain unchanged. Every parity workload now uses
+the primary workload duration: **10 seconds × 3 trials** on candidate pushes.
+
+The sampler regression models a worker's RSS dropping after client close and
+requires the in-load peak to survive; it also rejects a failed load command.
+It passes on Bash 5.2 and 5.3. The corrected local probe completes **42 rows**
+across **seven comparisons**, with three ten-second trials per role. Every
+complete response is validated, with zero invalid responses, socket failures
+or rejected requests. All seven focused comparisons pass the unchanged budgets:
+
+| Workload | Concurrency | RPM regression | p99 regression | Sampled peak RSS delta |
+| --- | ---: | ---: | ---: | ---: |
+| Native slow | 5 | -112.01% | -52.14% | +0.87 MiB |
+| Native slow | 20 | +0.74% | -15.63% | +1.02 MiB |
+| Native slow | 50 | +0.96% | -38.17% | +0.77 MiB |
+| SAPI 404 | 20 | +0.14% | -33.12% | -0.29 MiB |
+
+Native upload controls at c5/c20/c50 pass too. These are local diagnostics,
+not a production throughput improvement claim or full-matrix certification.
+Require both complete matrices on the final committed correction. Evidence:
+`/tmp/webrick-9946621-corrected-focused/{load-results.jsonl,focused-comparison.json}`;
+command: `bash /tmp/webrick-9946621-corrected-focused.sh /tmp/webrick-9946621-corrected-focused`.
+
+Doctor/config inspection, `ic:process`, `ic:tests:details` and the final
+`ic:release:guard` pass after the correction: **542 tests / 1,926 assertions**.
+Shell syntax checks, workflow YAML parsing, Bash 5.2/5.3 sampler regressions and
+`git diff --check` pass. Logs:
+`/tmp/webrick-9946621-{doctor,config,active-config,process,details,release-guard}.log`.
+Rector's local listener required loopback permission outside the execution
+sandbox; the final successful flow ran with that access. No product-code,
+dependency, response-validation or acceptance-budget change was needed here.
+
+### Historical committed CI — `44dc419`
 
 - [Security & Standards 37187486239](https://github.com/infocyph/Webrick/actions/runs/37187486239)
   passed on `44dc419`: PHP 8.4/8.5 stable/lowest QA, dedicated no-intl PHPStan,
@@ -522,7 +594,7 @@ Batch 9 evidence:
 - [x] Record live Runwire H1/H2 and real hosted H3 evidence separately from fixture/composition tests.
 - [ ] Record actual Foundation and Infbyte consumer results at exact SHAs. **Deferred by scope for this Webrick workstream.**
 - [ ] Record the full-duration controlled 5.4 vs 6.0 unbound/bound throughput, latency, memory, queue/utilization and concurrency evidence.
-- [x] Record the local full-duration persistent-worker soak evidence for cleanup, cancellation, drain and replacement. Prepared Event-loop host, 30 minutes, 3,344 cycles and two planned replacements pass; exact-final-commit CI remains required below.
+- [x] Record full-duration persistent-worker soak evidence for cleanup, cancellation, drain and replacement. Local prepared-host evidence and exact-commit hosted CI at `9946621` both pass 30 minutes with two planned replacements; require revalidation on any later release revision.
 - [x] W11: preserve corrected SAPI telemetry and whole-response checks; reject leading-zero PID JSON in JSON/upload/slow, with rejection fixtures and valid-response controls.
 - [x] W12: reject empty/incomplete/duplicate/invalid evidence against the declared profile/trials; run strict certification on every candidate push.
 - [x] W13: release the drain callback's captured continuation without replacing callbacks or changing lifecycle/worker ownership; regressions and local QA pass.
@@ -531,7 +603,7 @@ Batch 9 evidence:
 - [x] Consume the user-published Runwire 2.1.1 after its exact-revision QA/QUIC CI; require `^2.1.1`, replace the diagnostic path installation, and repeat Webrick QA and live H1/H2/H3 verification.
 - [ ] Complete exact-final-commit Webrick certification with published InterMix 11.1 and Runwire 2.1.1 dependencies.
 - [ ] W15/W16: close remaining SAPI/native performance comparisons with the unchanged budgets and complete declared matrices.
-- [x] W17: consume the released recycling repair and complete the local strict 30-minute soak without failed request batches; retain exact-final-commit Webrick certification as an open gate.
+- [x] W17: consume the released recycling repair and complete the strict 30-minute soak without failed request batches, locally and in hosted CI at `9946621`.
 - [x] W18: join the control-test client before reading its result and clean up unfinished clients; regressions, repeated runs, local QA and published-revision Runwire CI pass.
 - [ ] Require all applicable CI checks plus the full-duration certification profile on the exact final release SHA before tagging; do not merge/tag as part of this plan.
 
@@ -550,7 +622,7 @@ Foundation and Infbyte consumer migration/results.
 Manual release certification uses `workflow_dispatch` with:
 
 - baseline ref `5.4` and the selected candidate ref/SHA;
-- 10-second steady-state trials, 3 trials per workload/concurrency by default;
+- 10-second steady-state trials for every workload, 3 trials per concurrency by default;
 - concurrency 1/5/20/50 for static, dynamic, JSON, streaming, upload, 404, 405, file, range and slow workloads;
 - separate SAPI and native-Runwire jobs, each interleaving baseline/candidate on
   the same runner; this does not certify explicit runtime/InterMix binding or
@@ -574,7 +646,8 @@ CI also exercises negative evidence fixtures before accepting load results.
 Certification support lives under `.github/certification/`:
 
 - `cert-server.php` — shared 5.4/6.0 SAPI and native-Runwire HTTP fixture;
-- `load-benchmark.sh` — correctness-first same-run HTTP load matrix;
+- `load-benchmark.sh` — correctness-first same-run HTTP load matrix and lifecycle evidence;
+- `load-rss-sampler.sh` / `test-load-rss-sampler.sh` — in-load process-tree RSS peaks and command-failure regression;
 - `analyze-load.php` — throughput/p99/RSS/queue acceptance budgets;
 - `run-soak.sh` — persistent-worker cleanup/cancellation/replacement/drain soak.
 

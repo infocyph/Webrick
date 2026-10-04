@@ -211,6 +211,9 @@ jobs:
           composer install --working-dir=candidate --no-interaction --no-progress --prefer-dist
           composer install --working-dir=baseline --no-interaction --no-progress --prefer-dist
 
+      - name: Verify in-load RSS sampling and failure propagation
+        run: bash candidate/.github/certification/test-load-rss-sampler.sh
+
       - name: Prove analyzer rejects incomplete evidence
         run: |
           mkdir -p analyzer-negative
@@ -244,7 +247,7 @@ jobs:
       - name: Run controlled same-run load matrix
         run: |
           mkdir -p cert-results
-          bash candidate/.github/certification/load-benchmark.sh             "$PWD/baseline"             "$PWD/candidate"             "$PWD/cert-results"             "${{ github.event_name == 'workflow_dispatch' && inputs.duration_seconds || '10' }}"             "${{ github.event_name == 'workflow_dispatch' && inputs.trials || '3' }}"             "2"             "${{ matrix.mode }}"
+          bash candidate/.github/certification/load-benchmark.sh             "$PWD/baseline"             "$PWD/candidate"             "$PWD/cert-results"             "${{ github.event_name == 'workflow_dispatch' && inputs.duration_seconds || '10' }}"             "${{ github.event_name == 'workflow_dispatch' && inputs.trials || '3' }}"             "${{ github.event_name == 'workflow_dispatch' && inputs.duration_seconds || '10' }}"             "${{ matrix.mode }}"
 
       - name: Enforce performance budgets
         run: |

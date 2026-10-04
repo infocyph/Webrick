@@ -6,7 +6,7 @@ CANDIDATE_ROOT="${2:?candidate root required}"
 RESULT_DIR="${3:?result directory required}"
 DURATION_SECONDS="${4:-5}"
 TRIALS="${5:-3}"
-PARITY_DURATION_SECONDS="${6:-2}"
+PARITY_DURATION_SECONDS="${6:-$DURATION_SECONDS}"
 MODE="${7:-all}"
 
 if [[ "$MODE" != "all" && "$MODE" != "sapi" && "$MODE" != "runwire" ]]; then
@@ -138,6 +138,8 @@ rss_kb() {
     done < <(descendants "$pid" | sort -u)
     echo "$total"
 }
+
+source "$(dirname "${BASH_SOURCE[0]}")/load-rss-sampler.sh"
 
 wait_ready() {
     local url="$1"
@@ -360,7 +362,11 @@ record_wrk() {
         close_delimited=1
     fi
 
-    CERT_WORKLOAD="$workload" CERT_CLOSE_DELIMITED="$close_delimited"         wrk -t"$threads" -c"$concurrency" -d"${duration}s" --latency         -s "$VALIDATION_SCRIPT" "http://127.0.0.1:${port}${path}" >"$out" 2>&1
+    local rss_samples="$RESULT_DIR/${version}-${mode}-${workload}-c${concurrency}-t${trial}-rss.txt"
+    CERT_WORKLOAD="$workload" CERT_CLOSE_DELIMITED="$close_delimited" \
+        run_load_with_rss "$pid" "$rss_samples" "$out" \
+        wrk -t"$threads" -c"$concurrency" -d"${duration}s" --latency \
+        -s "$VALIDATION_SCRIPT" "http://127.0.0.1:${port}${path}"
 
     local rps complete non2xx p99 rss metrics validated invalid
     local connect_errors read_errors write_errors timeout_errors failed
@@ -375,7 +381,7 @@ record_wrk() {
     write_errors="$(wrk_socket_error "$out" write)"
     timeout_errors="$(wrk_socket_error "$out" timeout)"
     failed=$((connect_errors + read_errors + write_errors + timeout_errors))
-    rss="$(rss_kb "$pid")"
+    rss="$(awk 'max < $1 { max = $1 } END { print max + 0 }' "$rss_samples")"
     metrics="$(fetch_metrics "$port")"
 
     jq -cn         --arg version "$version"         --arg mode "$mode"         --arg workload "$workload"         --argjson concurrency "$concurrency"         --argjson trial "$trial"         --argjson rps "${rps:-0}"         --argjson complete "${complete:-0}"         --argjson validated "${validated:-0}"         --argjson invalid "${invalid:-0}"         --argjson failed "$failed"         --argjson non2xx "${non2xx:-0}"         --argjson connect_errors "$connect_errors"         --argjson read_errors "$read_errors"         --argjson write_errors "$write_errors"         --argjson timeout_errors "$timeout_errors"         --argjson p99 "${p99:-0}"         --argjson rss_kb "$rss"         --argjson metrics "$metrics"         '{
@@ -432,6 +438,10 @@ run_trial() {
     done
 
     stop_server "$pid"
+    if [[ "$mode" == runwire ]]; then
+        cp "$root/.runtime-certification/router.php.supervisor-events.jsonl" \
+            "$RESULT_DIR/${version}-t${trial}-supervisor-events.jsonl"
+    fi
     CURRENT_PID=""
 }
 
