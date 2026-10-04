@@ -214,14 +214,32 @@ jobs:
       - name: Prove analyzer rejects incomplete evidence
         run: |
           mkdir -p analyzer-negative
-          cat > analyzer-negative/bad.jsonl <<'JSONL'
-          {"version":"baseline","mode":"sapi","workload":"static","concurrency":1,"trial":1,"rps":100,"complete":10,"validated":9,"invalid":1,"failed":0,"non2xx":0,"socket_errors":{"connect":0,"read":0,"write":0,"timeout":0},"p99":1,"rss_kb":1024,"metrics":{}}
-          {"version":"candidate","mode":"sapi","workload":"static","concurrency":1,"trial":1,"rps":100,"complete":10,"validated":9,"invalid":1,"failed":0,"non2xx":0,"socket_errors":{"connect":0,"read":0,"write":0,"timeout":0},"p99":1,"rss_kb":1024,"metrics":{}}
+          mode="${{ matrix.mode }}"
+          trials="${{ github.event_name == 'workflow_dispatch' && inputs.trials || '3' }}"
+
+          expect_reject() {
+            local input="$1"
+            local label="$2"
+            if php candidate/.github/certification/analyze-load.php               --input="$input"               --summary="$PWD/analyzer-negative/${label}.md"               --json="$PWD/analyzer-negative/${label}.json"               --profile="$mode"               --trials="$trials"               --throughput-regression-percent=100               --p99-regression-percent=100               --memory-regression-mb=128; then
+              echo "Analyzer accepted deliberately invalid evidence: ${label}" >&2
+              exit 1
+            fi
+          }
+
+          : > analyzer-negative/empty.jsonl
+
+          cat > analyzer-negative/partial.jsonl <<JSONL
+          {"version":"baseline","mode":"${mode}","workload":"static","concurrency":1,"trial":1,"rps":100,"complete":10,"validated":10,"invalid":0,"failed":0,"non2xx":0,"socket_errors":{"connect":0,"read":0,"write":0,"timeout":0},"p99":1,"rss_kb":1024,"metrics":{"pid":1,"memory_current_bytes":1024,"memory_peak_bytes":1024,"requests_active":0,"queued_bytes_current":0,"rejected_requests_total":0}}
+          {"version":"candidate","mode":"${mode}","workload":"static","concurrency":1,"trial":1,"rps":100,"complete":10,"validated":10,"invalid":0,"failed":0,"non2xx":0,"socket_errors":{"connect":0,"read":0,"write":0,"timeout":0},"p99":1,"rss_kb":1024,"metrics":{"pid":1,"memory_current_bytes":1024,"memory_peak_bytes":1024,"requests_active":0,"queued_bytes_current":0,"rejected_requests_total":0}}
           JSONL
-          if php candidate/.github/certification/analyze-load.php             --input="$PWD/analyzer-negative/bad.jsonl"             --summary="$PWD/analyzer-negative/summary.md"             --json="$PWD/analyzer-negative/report.json"             --throughput-regression-percent=100             --p99-regression-percent=100             --memory-regression-mb=128; then
-            echo "Analyzer accepted deliberately incomplete certification evidence." >&2
-            exit 1
-          fi
+          cp analyzer-negative/partial.jsonl analyzer-negative/duplicate.jsonl
+          head -n 1 analyzer-negative/partial.jsonl >> analyzer-negative/duplicate.jsonl
+          sed 's/"workload":"static"/"workload":"unknown"/' analyzer-negative/partial.jsonl > analyzer-negative/unknown.jsonl
+
+          expect_reject analyzer-negative/empty.jsonl empty
+          expect_reject analyzer-negative/partial.jsonl partial
+          expect_reject analyzer-negative/duplicate.jsonl duplicate
+          expect_reject analyzer-negative/unknown.jsonl unknown
 
       - name: Run controlled same-run load matrix
         run: |
@@ -230,7 +248,7 @@ jobs:
 
       - name: Enforce performance budgets
         run: |
-          php candidate/.github/certification/analyze-load.php             --input="$PWD/cert-results/load-results.jsonl"             --summary="$PWD/cert-results/summary.md"             --json="$PWD/cert-results/comparison.json"             --throughput-regression-percent="${{ github.event_name == 'workflow_dispatch' && inputs.throughput_regression_percent || '2' }}"             --p99-regression-percent="${{ github.event_name == 'workflow_dispatch' && inputs.p99_regression_percent || '15' }}"             --memory-regression-mb="${{ github.event_name == 'workflow_dispatch' && inputs.memory_regression_mb || '32' }}"
+          php candidate/.github/certification/analyze-load.php             --input="$PWD/cert-results/load-results.jsonl"             --summary="$PWD/cert-results/summary.md"             --json="$PWD/cert-results/comparison.json"             --profile="${{ matrix.mode }}"             --trials="${{ github.event_name == 'workflow_dispatch' && inputs.trials || '3' }}"             --throughput-regression-percent="${{ github.event_name == 'workflow_dispatch' && inputs.throughput_regression_percent || '2' }}"             --p99-regression-percent="${{ github.event_name == 'workflow_dispatch' && inputs.p99_regression_percent || '15' }}"             --memory-regression-mb="${{ github.event_name == 'workflow_dispatch' && inputs.memory_regression_mb || '32' }}"
           cat cert-results/summary.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload performance evidence
