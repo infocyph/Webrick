@@ -322,7 +322,7 @@ test('runwire bridge rejects a borrowed scope captured for another live request'
                     $adapter = new RunwireRuntimeAdapter(
                         runtimeContext: $runtime,
                         interMix: $integration,
-                        scopeContext: static function (HttpRequest $native) use ($scopeContext): InfocyphInterMixDIScopeContext {
+                        scopeContext: static function (HttpRequest $native) use ($scopeContext): \Infocyph\InterMix\DI\ScopeContext {
                             unset($native);
 
                             return $scopeContext;
