@@ -7,6 +7,12 @@ RESULT_DIR="${3:?result directory required}"
 DURATION_SECONDS="${4:-5}"
 TRIALS="${5:-3}"
 PARITY_DURATION_SECONDS="${6:-2}"
+MODE="${7:-all}"
+
+if [[ "$MODE" != "all" && "$MODE" != "sapi" && "$MODE" != "runwire" ]]; then
+    echo "Certification mode must be all, sapi or runwire." >&2
+    exit 1
+fi
 
 HARNESS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cert-server.php"
 mkdir -p "$RESULT_DIR"
@@ -432,7 +438,11 @@ run_mode_pair() {
 php "$HARNESS" prepare "--root=${BASELINE_ROOT}"
 php "$HARNESS" prepare "--root=${CANDIDATE_ROOT}"
 
-run_mode_pair sapi 18080 18081
-run_mode_pair runwire 18082 18083
+if [[ "$MODE" == "all" || "$MODE" == "sapi" ]]; then
+    run_mode_pair sapi 18080 18081
+fi
+if [[ "$MODE" == "all" || "$MODE" == "runwire" ]]; then
+    run_mode_pair runwire 18082 18083
+fi
 
 echo "$RESULTS"
