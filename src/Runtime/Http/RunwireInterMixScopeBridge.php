@@ -36,41 +36,6 @@ final readonly class RunwireInterMixScopeBridge implements RuntimeScopeBridgeInt
         return RunwireIntegration::registerInputs($builder);
     }
 
-    private function assertBorrowedScopeIdentity(RuntimeContainerInterface $container): void
-    {
-        try {
-            $borrowedRuntime = $container->get(RuntimeContext::class);
-            $borrowedRequest = $container->get(RequestContext::class);
-        } catch (Throwable $error) {
-            throw new LogicException(
-                'Borrowed InterMix scope is missing authoritative Runwire request inputs.',
-                previous: $error,
-            );
-        }
-
-        if ($borrowedRuntime !== $this->requestContext->runtime()) {
-            throw new LogicException('Borrowed InterMix scope belongs to a different Runwire runtime.');
-        }
-        if ($borrowedRequest !== $this->requestContext) {
-            throw new LogicException('Borrowed InterMix scope belongs to a different Runwire request.');
-        }
-        if ($this->coroutineScope === null) {
-            return;
-        }
-
-        try {
-            $borrowedScope = $container->get(CoroutineScope::class);
-        } catch (Throwable $error) {
-            throw new LogicException(
-                'Borrowed InterMix scope is missing the authoritative Runwire coroutine scope.',
-                previous: $error,
-            );
-        }
-        if ($borrowedScope !== $this->coroutineScope) {
-            throw new LogicException('Borrowed InterMix scope belongs to a different Runwire coroutine scope.');
-        }
-    }
-
     public function withinScope(
         InterMixRuntime $runtime,
         ?Request $request,
@@ -112,5 +77,40 @@ final readonly class RunwireInterMixScopeBridge implements RuntimeScopeBridgeInt
             $invoke,
             $request instanceof Request ? [Request::class => $request] : [],
         );
+    }    private function assertBorrowedScopeIdentity(RuntimeContainerInterface $container): void
+    {
+        try {
+            $borrowedRuntime = $container->get(RuntimeContext::class);
+            $borrowedRequest = $container->get(RequestContext::class);
+        } catch (Throwable $error) {
+            throw new LogicException(
+                'Borrowed InterMix scope is missing authoritative Runwire request inputs.',
+                previous: $error,
+            );
+        }
+
+        if ($borrowedRuntime !== $this->requestContext->runtime()) {
+            throw new LogicException('Borrowed InterMix scope belongs to a different Runwire runtime.');
+        }
+        if ($borrowedRequest !== $this->requestContext) {
+            throw new LogicException('Borrowed InterMix scope belongs to a different Runwire request.');
+        }
+        if ($this->coroutineScope === null) {
+            return;
+        }
+
+        try {
+            $borrowedScope = $container->get(CoroutineScope::class);
+        } catch (Throwable $error) {
+            throw new LogicException(
+                'Borrowed InterMix scope is missing the authoritative Runwire coroutine scope.',
+                previous: $error,
+            );
+        }
+        if ($borrowedScope !== $this->coroutineScope) {
+            throw new LogicException('Borrowed InterMix scope belongs to a different Runwire coroutine scope.');
+        }
     }
+
+
 }
