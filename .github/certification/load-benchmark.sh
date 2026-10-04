@@ -22,16 +22,69 @@ trap cleanup_current EXIT
 
 PAYLOAD="$RESULT_DIR/upload.bin"
 head -c 16384 /dev/zero > "$PAYLOAD"
-POST_SCRIPT="$RESULT_DIR/post.lua"
-cat > "$POST_SCRIPT" <<'LUA'
-wrk.method = "POST"
-wrk.body = string.rep("x", 16384)
-wrk.headers["Content-Type"] = "application/octet-stream"
-LUA
+VALIDATION_SCRIPT="$RESULT_DIR/validate.lua"
+cat > "$VALIDATION_SCRIPT" <<'LUA'
+local workload = os.getenv("CERT_WORKLOAD") or ""
+local close_delimited = os.getenv("CERT_CLOSE_DELIMITED") == "1"
+local validated = 0
+local invalid = 0
 
-STREAM_SCRIPT="$RESULT_DIR/stream.lua"
-cat > "$STREAM_SCRIPT" <<'LUA'
-wrk.headers["Connection"] = "close"
+if workload == "upload" then
+    wrk.method = "POST"
+    wrk.body = string.rep("x", 16384)
+    wrk.headers["Content-Type"] = "application/octet-stream"
+elseif workload == "method_not_allowed" then
+    wrk.method = "POST"
+elseif workload == "range" then
+    wrk.headers["Range"] = "bytes=0-15"
+end
+
+if close_delimited then
+    wrk.headers["Connection"] = "close"
+end
+
+local function contains(body, needle)
+    return string.find(body, needle, 1, true) ~= nil
+end
+
+response = function(status, headers, body)
+    local ok = false
+
+    if workload == "static" then
+        ok = status == 200 and body == "webrick-cert-ok"
+    elseif workload == "dynamic" then
+        ok = status == 200 and contains(body, '"id":"42"')
+    elseif workload == "json" then
+        ok = status == 200 and contains(body, '"ok":true') and contains(body, '"path":"/cert/json"')
+    elseif workload == "stream" then
+        ok = status == 200
+            and #body == 3072
+            and body == string.rep("a", 1024) .. string.rep("b", 1024) .. string.rep("c", 1024)
+    elseif workload == "upload" then
+        ok = status == 200 and contains(body, '"bytes":16384')
+    elseif workload == "not_found" then
+        ok = status == 404
+    elseif workload == "method_not_allowed" then
+        ok = status == 405
+    elseif workload == "file" then
+        ok = status == 200 and #body == 4096 and string.sub(body, 1, 16) == "0123456789abcdef"
+    elseif workload == "range" then
+        ok = status == 206 and body == "0123456789abcdef"
+    elseif workload == "slow" then
+        ok = status == 200 and contains(body, '"slept_ms":5')
+    end
+
+    if ok then
+        validated = validated + 1
+    else
+        invalid = invalid + 1
+    end
+end
+
+done = function(summary, latency, requests)
+    io.write(string.format("CERT Validated responses: %d\n", validated))
+    io.write(string.format("CERT Invalid responses: %d\n", invalid))
+end
 LUA
 
 descendants() {
