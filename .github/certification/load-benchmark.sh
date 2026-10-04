@@ -394,8 +394,13 @@ run_target() {
             record_wrk "$version" "$mode" static "$concurrency" "$trial" "$port" "$pid" "/cert/static"
             record_wrk "$version" "$mode" dynamic "$concurrency" "$trial" "$port" "$pid" "/cert/dynamic/42"
             record_wrk "$version" "$mode" json "$concurrency" "$trial" "$port" "$pid" "/cert/json"
+            record_wrk "$version" "$mode" not_found "$concurrency" "$trial" "$port" "$pid" "/cert/missing"
+            record_wrk "$version" "$mode" method_not_allowed "$concurrency" "$trial" "$port" "$pid" "/cert/static"
             record_wrk "$version" "$mode" stream "$concurrency" "$trial" "$port" "$pid" "/cert/stream"
+            record_wrk "$version" "$mode" file "$concurrency" "$trial" "$port" "$pid" "/cert/file"
+            record_wrk "$version" "$mode" range "$concurrency" "$trial" "$port" "$pid" "/cert/file"
             record_wrk "$version" "$mode" upload "$concurrency" "$trial" "$port" "$pid" "/cert/upload"
+            record_wrk "$version" "$mode" slow "$concurrency" "$trial" "$port" "$pid" "/cert/slow/5"
         done
 
         stop_server "$pid"
