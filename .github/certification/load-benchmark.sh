@@ -6,6 +6,7 @@ CANDIDATE_ROOT="${2:?candidate root required}"
 RESULT_DIR="${3:?result directory required}"
 DURATION_SECONDS="${4:-5}"
 TRIALS="${5:-3}"
+PARITY_DURATION_SECONDS="${6:-2}"
 
 HARNESS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cert-server.php"
 mkdir -p "$RESULT_DIR"
@@ -322,6 +323,7 @@ record_wrk() {
     local port="$6"
     local pid="$7"
     local path="$8"
+    local duration="${9:-$DURATION_SECONDS}"
 
     local out="$RESULT_DIR/${version}-${mode}-${workload}-c${concurrency}-t${trial}.txt"
     local threads="$concurrency"
@@ -333,7 +335,7 @@ record_wrk() {
         close_delimited=1
     fi
 
-    CERT_WORKLOAD="$workload" CERT_CLOSE_DELIMITED="$close_delimited"         wrk -t"$threads" -c"$concurrency" -d"${DURATION_SECONDS}s" --latency         -s "$VALIDATION_SCRIPT" "http://127.0.0.1:${port}${path}" >"$out" 2>&1
+    CERT_WORKLOAD="$workload" CERT_CLOSE_DELIMITED="$close_delimited"         wrk -t"$threads" -c"$concurrency" -d"${duration}s" --latency         -s "$VALIDATION_SCRIPT" "http://127.0.0.1:${port}${path}" >"$out" 2>&1
 
     local rps complete non2xx p99 rss metrics validated invalid
     local connect_errors read_errors write_errors timeout_errors failed
@@ -394,13 +396,14 @@ run_target() {
             record_wrk "$version" "$mode" static "$concurrency" "$trial" "$port" "$pid" "/cert/static"
             record_wrk "$version" "$mode" dynamic "$concurrency" "$trial" "$port" "$pid" "/cert/dynamic/42"
             record_wrk "$version" "$mode" json "$concurrency" "$trial" "$port" "$pid" "/cert/json"
-            record_wrk "$version" "$mode" not_found "$concurrency" "$trial" "$port" "$pid" "/cert/missing"
-            record_wrk "$version" "$mode" method_not_allowed "$concurrency" "$trial" "$port" "$pid" "/cert/static"
             record_wrk "$version" "$mode" stream "$concurrency" "$trial" "$port" "$pid" "/cert/stream"
-            record_wrk "$version" "$mode" file "$concurrency" "$trial" "$port" "$pid" "/cert/file"
-            record_wrk "$version" "$mode" range "$concurrency" "$trial" "$port" "$pid" "/cert/file"
             record_wrk "$version" "$mode" upload "$concurrency" "$trial" "$port" "$pid" "/cert/upload"
-            record_wrk "$version" "$mode" slow "$concurrency" "$trial" "$port" "$pid" "/cert/slow/5"
+
+            record_wrk "$version" "$mode" not_found "$concurrency" "$trial" "$port" "$pid" "/cert/missing" "$PARITY_DURATION_SECONDS"
+            record_wrk "$version" "$mode" method_not_allowed "$concurrency" "$trial" "$port" "$pid" "/cert/static" "$PARITY_DURATION_SECONDS"
+            record_wrk "$version" "$mode" file "$concurrency" "$trial" "$port" "$pid" "/cert/file" "$PARITY_DURATION_SECONDS"
+            record_wrk "$version" "$mode" range "$concurrency" "$trial" "$port" "$pid" "/cert/file" "$PARITY_DURATION_SECONDS"
+            record_wrk "$version" "$mode" slow "$concurrency" "$trial" "$port" "$pid" "/cert/slow/5" "$PARITY_DURATION_SECONDS"
         done
 
         stop_server "$pid"
