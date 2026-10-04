@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Runtime\Http;
 
-use Infocyph\Runwire\Http\HttpRequest;
 use Infocyph\Runwire\Exception\CancelledException;
+use Infocyph\Runwire\Http\HttpRequest;
 use Infocyph\Runwire\Http\ResponseWriterInterface;
 use Infocyph\Runwire\Metrics\RuntimeMetricsSnapshot;
 use Infocyph\Runwire\Runtime\AdmissionPolicy;
@@ -69,10 +69,14 @@ final readonly class RunwireRuntimeApplication implements RuntimeApplicationInte
                     $this->application->handle($request, $writer, $completeResponse);
                 },
             );
-        } catch (RunwireTransportCancellation|CancelledException) {
+        } catch (RunwireTransportCancellation) {
             // Native transports own client cancellation. Runwire has already
             // finalized request accounting; do not convert a disconnected
             // client into a persistent-worker application failure.
+        } catch (CancelledException $error) {
+            if ($error->reason !== CancellationReason::TRANSPORT_CANCELLED) {
+                throw $error;
+            }
         }
     }
 
