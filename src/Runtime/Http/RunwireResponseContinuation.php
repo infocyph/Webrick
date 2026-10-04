@@ -138,6 +138,11 @@ final class RunwireResponseContinuation
         return self::$ioSuspensions ??= new WeakMap();
     }
 
+    private static function isFiberSuspended(Fiber $fiber): bool
+    {
+        return $fiber->isSuspended();
+    }
+
     /** @return Fiber<mixed, mixed, mixed, mixed> */
     private static function managedFiber(string $message): Fiber
     {
@@ -240,7 +245,7 @@ final class RunwireResponseContinuation
         try {
             $suspension = $fiber->throw($error);
             while (!isset(self::ioSuspensions()[$fiber])) {
-                if (!$fiber->isSuspended()) {
+                if (!self::isFiberSuspended($fiber)) {
                     break;
                 }
                 if (!$owner instanceof Fiber) {
