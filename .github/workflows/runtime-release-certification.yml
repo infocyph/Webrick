@@ -50,7 +50,7 @@ on:
         default: "32"
         type: string
       run_http3:
-        description: Run H3 certification on a prepared self-hosted QUIC runner
+        description: Also run deployment-specific H3 certification on a prepared self-hosted Linux QUIC runner
         required: true
         default: false
         type: boolean
@@ -267,9 +267,8 @@ jobs:
 
   live-runwire-h3:
     name: Live Runwire H3
-    if: ${{ inputs.run_http3 }}
-    runs-on: [self-hosted, linux, x64, runwire-quic]
-    timeout-minutes: 30
+    runs-on: macos-15
+    timeout-minutes: 40
     steps:
       - name: Check out candidate
         uses: actions/checkout@v4
@@ -277,12 +276,31 @@ jobs:
           ref: ${{ inputs.candidate_ref || github.sha }}
           fetch-depth: 0
 
-      - name: Assert prepared QUIC host
+      - name: Install PHP 8.5, OpenSSL 3.5+, HTTP/3 curl and build tools
         run: |
-          php -r 'exit(extension_loaded("quic") ? 0 : 1);'
-          curl --version | grep -qi HTTP3
-          command -v composer
-          command -v openssl
+          brew update
+          brew install php@8.5 composer curl autoconf automake libtool pkgconf openssl@3
+          echo "$(brew --prefix php@8.5)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix curl)/bin" >> "$GITHUB_PATH"
+
+      - name: Install ext-quic with PIE
+        run: |
+          export PATH="$(brew --prefix php@8.5)/bin:$(brew --prefix curl)/bin:$PATH"
+          curl -fL --output /tmp/pie https://github.com/php/pie/releases/latest/download/pie-macOS-ARM64
+          gh attestation verify --owner php /tmp/pie
+          chmod +x /tmp/pie
+          sudo mv /tmp/pie /usr/local/bin/pie
+          pie install mikepultz/php-quic
+          php -r '
+          if (!extension_loaded("quic")) {
+              throw new RuntimeException("ext-quic did not load.");
+          }
+          if (version_compare(OPENSSL_VERSION_TEXT, "OpenSSL 3.5.0", "<")) {
+              throw new RuntimeException("OpenSSL 3.5+ is required for QUIC server support.");
+          }
+          fwrite(STDOUT, PHP_VERSION . " " . OPENSSL_VERSION_TEXT . PHP_EOL);
+          '
+          curl --version | grep -q HTTP3
 
       - name: Install candidate dependencies
         run: composer install --no-interaction --no-progress --prefer-dist
@@ -297,7 +315,7 @@ jobs:
         run: |
           php .github/certification/cert-server.php runwire             --root="$PWD"             --address=127.0.0.1:18444             --tls-cert="$PWD/.runtime-certification/tls/cert.pem"             --tls-key="$PWD/.runtime-certification/tls/key.pem"             --http3=1             > .runtime-certification/live-h3.log 2>&1 &
           echo "RUNWIRE_H3_PID=$!" >> "$GITHUB_ENV"
-          for attempt in {1..120}; do
+          for attempt in {1..160}; do
             if curl -kfsS --http3-only https://127.0.0.1:18444/cert/static >/dev/null 2>&1; then
               exit 0
             fi
@@ -311,11 +329,13 @@ jobs:
           response="$(curl -kfsS --http3-only https://127.0.0.1:18444/cert/json)"
           jq -e '.ok == true' <<<"$response"
           jq -e '.protocol | tostring | startswith("3")' <<<"$response"
+          [[ "$(curl -kfsS --http3-only https://127.0.0.1:18444/cert/stream | wc -c | tr -d ' ')" == "3072" ]]
           for _ in {1..100}; do
             curl -kfsS --http3-only https://127.0.0.1:18444/cert/static >/dev/null
           done
           curl -kfsS --http1.1 https://127.0.0.1:18444/__cert/metrics             | tee .runtime-certification/h3-metrics.json
           jq -e '(.queued_bytes_current // 0) == 0' .runtime-certification/h3-metrics.json
+          jq -e '(.rejected_requests_total // 0) == 0' .runtime-certification/h3-metrics.json
 
       - name: Stop H3 Runwire server
         if: always()
@@ -338,6 +358,79 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: live-runwire-h3
+          path: .runtime-certification/
+          if-no-files-found: error
+          include-hidden-files: true
+
+  live-runwire-h3-linux:
+    name: Live Runwire H3 (Linux deployment)
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_http3 }}
+    runs-on: [self-hosted, linux, x64, runwire-quic]
+    timeout-minutes: 30
+    steps:
+      - name: Check out candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.candidate_ref || github.sha }}
+          fetch-depth: 0
+
+      - name: Assert prepared QUIC host
+        run: |
+          php -r 'if (!extension_loaded("quic")) { throw new RuntimeException("ext-quic is unavailable."); }'
+          curl --version | grep -qi HTTP3
+          command -v composer
+          command -v openssl
+
+      - name: Install candidate dependencies
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Build certification artifacts and TLS identity
+        run: |
+          php .github/certification/cert-server.php prepare --root="$PWD"
+          mkdir -p .runtime-certification/tls
+          openssl req -x509 -newkey rsa:2048 -sha256 -nodes             -keyout .runtime-certification/tls/key.pem             -out .runtime-certification/tls/cert.pem             -days 1 -subj "/CN=localhost"
+
+      - name: Start H3-capable Runwire server
+        run: |
+          php .github/certification/cert-server.php runwire             --root="$PWD"             --address=127.0.0.1:18444             --tls-cert="$PWD/.runtime-certification/tls/cert.pem"             --tls-key="$PWD/.runtime-certification/tls/key.pem"             --http3=1             > .runtime-certification/live-h3-linux.log 2>&1 &
+          echo "RUNWIRE_H3_LINUX_PID=$!" >> "$GITHUB_ENV"
+          for attempt in {1..120}; do
+            if curl -kfsS --http3-only https://127.0.0.1:18444/cert/static >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 0.25
+          done
+          cat .runtime-certification/live-h3-linux.log
+          exit 1
+
+      - name: Certify Linux HTTP/3 deployment
+        run: |
+          response="$(curl -kfsS --http3-only https://127.0.0.1:18444/cert/json)"
+          jq -e '.ok == true' <<<"$response"
+          jq -e '.protocol | tostring | startswith("3")' <<<"$response"
+          curl -kfsS --http3-only https://127.0.0.1:18444/cert/stream             | wc -c | grep -q 3072
+
+      - name: Stop Linux H3 server
+        if: always()
+        run: |
+          if [[ -n "${RUNWIRE_H3_LINUX_PID:-}" ]] && kill -0 "$RUNWIRE_H3_LINUX_PID" 2>/dev/null; then
+            kill -TERM "$RUNWIRE_H3_LINUX_PID"
+            for attempt in {1..120}; do
+              if ! kill -0 "$RUNWIRE_H3_LINUX_PID" 2>/dev/null; then
+                wait "$RUNWIRE_H3_LINUX_PID" 2>/dev/null || true
+                exit 0
+              fi
+              sleep 0.25
+            done
+            kill -KILL "$RUNWIRE_H3_LINUX_PID" 2>/dev/null || true
+            exit 1
+          fi
+
+      - name: Upload Linux H3 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-runwire-h3-linux
           path: .runtime-certification/
           if-no-files-found: error
           include-hidden-files: true
