@@ -180,9 +180,13 @@ jobs:
           include-hidden-files: true
 
   same-run-performance:
-    name: Webrick 5.4 vs 6.0 HTTP performance
+    name: Webrick 5.4 vs 6.0 HTTP performance (${{ matrix.mode }})
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [sapi, runwire]
     steps:
       - name: Check out candidate
         uses: actions/checkout@v4
@@ -226,7 +230,7 @@ jobs:
       - name: Run controlled same-run load matrix
         run: |
           mkdir -p cert-results
-          bash candidate/.github/certification/load-benchmark.sh             "$PWD/baseline"             "$PWD/candidate"             "$PWD/cert-results"             "${{ github.event_name == 'workflow_dispatch' && inputs.duration_seconds || '10' }}"             "${{ github.event_name == 'workflow_dispatch' && inputs.trials || '3' }}"
+          bash candidate/.github/certification/load-benchmark.sh             "$PWD/baseline"             "$PWD/candidate"             "$PWD/cert-results"             "${{ github.event_name == 'workflow_dispatch' && inputs.duration_seconds || '10' }}"             "${{ github.event_name == 'workflow_dispatch' && inputs.trials || '3' }}"             "2"             "${{ matrix.mode }}"
 
       - name: Enforce performance budgets
         run: |
@@ -237,7 +241,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: webrick-5.4-vs-6.0-http
+          name: webrick-5.4-vs-6.0-http-${{ matrix.mode }}
           path: cert-results/
           if-no-files-found: error
 
