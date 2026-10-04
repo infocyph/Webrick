@@ -138,6 +138,7 @@ final class RunwireResponseContinuation
         return self::$ioSuspensions ??= new WeakMap();
     }
 
+    /** @param Fiber<mixed, mixed, mixed, mixed> $fiber */
     private static function isFiberSuspended(Fiber $fiber): bool
     {
         return $fiber->isSuspended();
