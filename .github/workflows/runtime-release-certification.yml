@@ -277,7 +277,10 @@ jobs:
           fetch-depth: 0
 
       - name: Install QUIC and HTTP/3 certification tools
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          mkdir -p .runtime-certification
           sudo apt-get update
           sudo apt-get install -y python3-aioquic jq openssl
           curl -fL --output /tmp/pie https://github.com/php/pie/releases/latest/download/pie-Linux-X64
