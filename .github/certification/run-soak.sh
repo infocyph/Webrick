@@ -16,6 +16,12 @@ LOG="$RESULT_DIR/soak-server.log"
 
 PAYLOAD="$RESULT_DIR/upload.bin"
 head -c 32768 /dev/zero > "$PAYLOAD"
+POST_SCRIPT="$RESULT_DIR/post.lua"
+cat > "$POST_SCRIPT" <<'LUA'
+wrk.method = "POST"
+wrk.body = string.rep("x", 32768)
+wrk.headers["Content-Type"] = "application/octet-stream"
+LUA
 
 descendants() {
     local parent="$1"
@@ -51,6 +57,29 @@ wait_ready() {
     done
 
     return 1
+}
+
+run_wrk_clean() {
+    local output
+    output="$(mktemp)"
+    if ! wrk "$@" >"$output" 2>&1; then
+        cat "$output" >&2
+        rm -f "$output"
+        return 1
+    fi
+    if grep -q 'Non-2xx or 3xx responses:' "$output"; then
+        cat "$output" >&2
+        rm -f "$output"
+        return 1
+    fi
+    local socket_errors
+    socket_errors="$(grep -m1 'Socket errors:' "$output" | grep -oE '[0-9]+' | awk '{sum += $1} END {print sum + 0}')"
+    if (( socket_errors != 0 )); then
+        cat "$output" >&2
+        rm -f "$output"
+        return 1
+    fi
+    rm -f "$output"
 }
 
 fetch_retry() {
@@ -101,8 +130,8 @@ CYCLE=0
 while (( $(date +%s) < DEADLINE )); do
     CYCLE=$((CYCLE + 1))
 
-    ab -k -n 1000 -c 20 "http://127.0.0.1:18100/cert/static" >/dev/null
-    ab -k -n 200 -c 10 -p "$PAYLOAD" -T application/octet-stream         "http://127.0.0.1:18100/cert/upload" >/dev/null
+    run_wrk_clean -t4 -c20 -d1s "http://127.0.0.1:18100/cert/static"
+    run_wrk_clean -t4 -c10 -d1s -s "$POST_SCRIPT" "http://127.0.0.1:18100/cert/upload"
 
     if (( CYCLE % 20 == 0 )); then
         curl -fsS --max-time 0.05 "http://127.0.0.1:18100/cert/slow/250" >/dev/null 2>&1 || true
