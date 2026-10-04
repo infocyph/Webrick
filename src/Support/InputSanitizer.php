@@ -107,13 +107,9 @@ final readonly class InputSanitizer
         $s = str_replace("\u{00A0}", ' ', $s);                         // NBSP → space
         $s = preg_replace('/[\x{200B}-\x{200D}\x{FEFF}]/u', '', $s) ?? $s; // ZW chars
 
-        if (
-            $this->normalizeUnicode
-            && function_exists('normalizer_normalize')
-            && defined('Normalizer::FORM_KC')
-        ) {
-            $form = constant('Normalizer::FORM_KC');
-            if (is_int($form)) {
+        if ($this->normalizeUnicode && function_exists('normalizer_normalize')) {
+            $form = self::intConstant('Normalizer::FORM_KC');
+            if ($form !== null) {
                 $normalized = normalizer_normalize($s, $form);
                 $s = is_string($normalized) ? $normalized : $s;
             }
@@ -133,6 +129,17 @@ final readonly class InputSanitizer
         }
 
         return $s;
+    }
+
+    private static function intConstant(string $name): ?int
+    {
+        if (!defined($name)) {
+            return null;
+        }
+
+        $value = constant($name);
+
+        return is_int($value) ? $value : null;
     }
 
     private static function isValidPattern(string $pattern): bool
