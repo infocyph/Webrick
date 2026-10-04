@@ -193,17 +193,20 @@ test('runwire terminal observers fire exactly once and late observers fire immed
         ->and($writer->endCalls)->toBe(1);
 });
 
-test('runwire continuation propagates caller Fiber exceptions through handler cleanup', function (): void {
+test('runwire continuation preserves caller ownership through yielding exception cleanup', function (): void {
     $caught = null;
     $finalized = 0;
+    $cleanupResumed = false;
     $failure = new RuntimeException('caller Fiber cancelled');
 
-    $owner = new Fiber(static function () use (&$caught, &$finalized): void {
-        RunwireResponseContinuation::run(static function () use (&$caught, &$finalized): void {
+    $owner = new Fiber(static function () use (&$caught, &$finalized, &$cleanupResumed): void {
+        RunwireResponseContinuation::run(static function () use (&$caught, &$finalized, &$cleanupResumed): void {
             try {
                 Fiber::suspend('handler-suspended');
             } catch (RuntimeException $error) {
                 $caught = $error;
+                Fiber::suspend('cleanup-suspended');
+                $cleanupResumed = true;
 
                 throw $error;
             } finally {
@@ -214,9 +217,13 @@ test('runwire continuation propagates caller Fiber exceptions through handler cl
 
     expect($owner->start())->toBe('handler-suspended')
         ->and($owner->isSuspended())->toBeTrue()
-        ->and(fn() => $owner->throw($failure))
-        ->toThrow(RuntimeException::class, 'caller Fiber cancelled')
+        ->and($owner->throw($failure))->toBe('cleanup-suspended')
+        ->and($owner->isSuspended())->toBeTrue()
         ->and($caught)->toBe($failure)
+        ->and($finalized)->toBe(0)
+        ->and(fn() => $owner->resume())
+        ->toThrow(RuntimeException::class, 'caller Fiber cancelled')
+        ->and($cleanupResumed)->toBeTrue()
         ->and($finalized)->toBe(1)
         ->and($owner->isTerminated())->toBeTrue();
 });
@@ -264,6 +271,7 @@ test('runwire host task cancellation reaches handler and finalizes request exact
 
                         throw $error;
                     } finally {
+                        $scope->yieldNow();
                         ++$handlerFinally;
                     }
                 },
