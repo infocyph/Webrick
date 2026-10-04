@@ -191,15 +191,22 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
 
     private static function assertAccepted(WriteResult $result, string $operation): void
     {
-        if (!$result->accepted()) {
-            throw new RuntimeException("Runwire response {$operation} was rejected: {$result->state->value}.");
+        if ($result->accepted()) {
+            return;
         }
+        if ($result->state === WriteState::CLOSED) {
+            throw new RunwireTransportCancellation("Runwire response {$operation} was closed by the transport.");
+        }
+
+        throw new RuntimeException("Runwire response {$operation} was rejected: {$result->state->value}.");
     }
 
     private static function assertNotCancelled(CancellationToken $cancellation): void
     {
         if ($cancellation->isCancelled()) {
-            throw new RuntimeException('Runwire request was cancelled during Webrick response production.');
+            throw new RunwireTransportCancellation(
+                'Runwire request was cancelled during Webrick response production.',
+            );
         }
     }
 
