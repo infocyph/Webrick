@@ -242,6 +242,8 @@ if ($errors !== []) {
 file_put_contents($summaryPath, implode("\n", $markdown) . "\n");
 
 if ($errors !== []) {
-    fwrite(STDERR, implode("\n", array_values(array_unique($errors))) . "\n");
-    exit(1);
+    $message = implode("\n", array_values(array_unique($errors)));
+    fwrite(STDERR, $message . "\n");
+
+    throw new RuntimeException('HTTP performance acceptance failed.');
 }
