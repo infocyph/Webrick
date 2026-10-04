@@ -276,7 +276,9 @@ function certification_runwire(
     $eventPath = certification_artifacts($root)['router'] . '.supervisor-events.jsonl';
     file_put_contents($eventPath, '');
     $runtime->onEvent(
-        static fn(SupervisorEvent $event): mixed => certification_record_event($eventPath, $event),
+        static function (SupervisorEvent $event) use ($eventPath): void {
+            certification_record_event($eventPath, $event);
+        },
     );
     $runtime->listen($definition)->run();
 }
