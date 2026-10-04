@@ -14,6 +14,7 @@ use Infocyph\Runwire\RuntimeContext;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Runtime\InterMixRuntime;
 use LogicException;
+use Throwable;
 
 /**
  * Adapts an already-bound InterMix Runwire integration to Webrick dispatch.
@@ -33,6 +34,41 @@ final readonly class RunwireInterMixScopeBridge implements RuntimeScopeBridgeInt
     public static function registerInputs(ContainerBuilder $builder): ContainerBuilder
     {
         return RunwireIntegration::registerInputs($builder);
+    }
+
+    private function assertBorrowedScopeIdentity(RuntimeContainerInterface $container): void
+    {
+        try {
+            $borrowedRuntime = $container->get(RuntimeContext::class);
+            $borrowedRequest = $container->get(RequestContext::class);
+        } catch (Throwable $error) {
+            throw new LogicException(
+                'Borrowed InterMix scope is missing authoritative Runwire request inputs.',
+                previous: $error,
+            );
+        }
+
+        if ($borrowedRuntime !== $this->requestContext->runtime()) {
+            throw new LogicException('Borrowed InterMix scope belongs to a different Runwire runtime.');
+        }
+        if ($borrowedRequest !== $this->requestContext) {
+            throw new LogicException('Borrowed InterMix scope belongs to a different Runwire request.');
+        }
+        if ($this->coroutineScope === null) {
+            return;
+        }
+
+        try {
+            $borrowedScope = $container->get(CoroutineScope::class);
+        } catch (Throwable $error) {
+            throw new LogicException(
+                'Borrowed InterMix scope is missing the authoritative Runwire coroutine scope.',
+                previous: $error,
+            );
+        }
+        if ($borrowedScope !== $this->coroutineScope) {
+            throw new LogicException('Borrowed InterMix scope belongs to a different Runwire coroutine scope.');
+        }
     }
 
     public function withinScope(
@@ -62,7 +98,11 @@ final readonly class RunwireInterMixScopeBridge implements RuntimeScopeBridgeInt
                 $this->scopeContext,
                 $this->requestContext,
                 $this->coroutineScope,
-                $invoke,
+                function (RuntimeContainerInterface $container) use ($invoke): mixed {
+                    $this->assertBorrowedScopeIdentity($container);
+
+                    return $invoke($container);
+                },
             );
         }
 
