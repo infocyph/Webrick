@@ -381,7 +381,7 @@ jobs:
           include-hidden-files: true
 
   live-runwire-h3-linux:
-    name: Live Runwire H3 (Linux deployment)
+    name: Optional Linux H3 deployment (manual/self-hosted)
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_http3 }}
     runs-on: [self-hosted, linux, x64, runwire-quic]
     timeout-minutes: 30
