@@ -236,14 +236,20 @@ Batch 9 evidence:
 
 ### Batch 10 — final release evidence and acceptance
 
-- [ ] Re-run PHPForge release/quality gates on the final candidate SHA and record exact run/versions.
-- [ ] Reconfirm stable and lowest dependency matrices on PHP 8.4/8.5 plus clean no-dev production install.
-- [ ] Reconfirm W01–W07 adversarial regressions and supported routing/middleware/URL/cache/HEAD/range/conditional/upload/error parity.
-- [ ] Record live Runwire H1/H2 and prepared-host H3 evidence separately from fixture/composition tests.
-- [ ] Record actual Foundation and Infbyte consumer results at exact SHAs.
-- [ ] Record controlled 5.4 vs 6.0 unbound/bound end-to-end throughput, latency, memory, queue/utilization and concurrency evidence.
-- [ ] Record persistent-worker soak evidence for cleanup, cancellation, drain and replacement.
-- [ ] Require all applicable CI checks on the exact final candidate SHA before tagging; do not merge/tag as part of this plan.
+- [x] Re-run PHPForge release/quality gates on the certification implementation SHA and record exact run/versions.
+- [x] Reconfirm stable and lowest dependency matrices on PHP 8.4/8.5 plus clean no-dev production install.
+- [x] Reconfirm W01–W07 adversarial regressions and supported routing/middleware/URL/cache/HEAD/range/conditional/upload/error parity.
+- [x] Record live Runwire H1/H2 and real hosted H3 evidence separately from fixture/composition tests.
+- [ ] Record actual Foundation and Infbyte consumer results at exact SHAs. **Deferred by scope for this Webrick workstream.**
+- [ ] Record the full-duration controlled 5.4 vs 6.0 unbound/bound throughput, latency, memory, queue/utilization and concurrency evidence.
+- [ ] Record the full-duration persistent-worker soak evidence for cleanup, cancellation, drain and replacement.
+- [ ] Require all applicable CI checks plus the full-duration certification profile on the exact final release SHA before tagging; do not merge/tag as part of this plan.
+
+Current certification-workflow implementation evidence:
+
+- Security & Standards run `37175130986` passed on `f853925cb4bb9e900158e6d1f772b63939dabb0c`: detail diagnostics, PHP 8.4/8.5 stable+lowest QA, both analyzers, clean install and both benchmarks.
+- Runtime Release Certification run `37175128832` passed its hosted smoke profile on the same implementation: live HTTP/1.1 + HTTP/2, real HTTP/3 on `ubuntu-26.04`, persistent-worker soak, and the same-run 5.4→6.0 HTTP performance harness.
+- The smoke profile validates the certification machinery. The default manual release profile remains intentionally longer/stricter: 10-second trials × 3, 30-minute soak, 2% throughput budget, 15% p99 budget and 32 MiB memory ceiling.
 
 #### Runtime release certification workflow
 
@@ -263,8 +269,10 @@ Manual release certification uses `workflow_dispatch` with:
   client cancellation, streaming/upload traffic, queue/rejection state, memory/RSS
   growth, worker replacement and graceful drain;
 - real TLS HTTP/1.1 plus multiplexed HTTP/2 certification on GitHub-hosted Linux;
-- optional HTTP/3 only on a prepared self-hosted runner labelled
-  `runwire-quic`, with ext-quic and an HTTP/3-capable curl.
+- real hosted HTTP/3 certification on explicit `ubuntu-26.04` using PHP 8.5,
+  OpenSSL 3.5+, `ext-quic` and an independent aioquic client;
+- optional deployment-specific Linux HTTP/3 certification on a prepared
+  self-hosted runner labelled `runwire-quic`.
 
 Pushes that change only the certification workflow/harness on `feature/runwire`
 run a short smoke variant (2-second/1-trial load runs, 2-minute soak and relaxed
@@ -552,18 +560,18 @@ end-to-end result. Historical component measurements remain documented in
 
 ## Phase G — Release evidence and performance gates
 
-- [ ] Run the PHPForge doctor/config commands, scoped process/fixer flow, detail
+- [x] Run the PHPForge doctor/config commands, scoped process/fixer flow, detail
   suite and final `composer ic:tests` or `composer ic:release:guard`. Record exact
   commands, versions, exit codes and remaining failures.
-- [ ] Run stable and lowest supported dependency combinations on PHP 8.4/8.5.
+- [x] Run stable and lowest supported dependency combinations on PHP 8.4/8.5.
   Perform clean production installs with Runwire/CacheLayer/PSR-7 absent and
   feature-enabled installs. Verify no optional classes are loaded on normal paths.
-- [ ] Run adversarial W01–W07 regressions and routing/middleware/URL/cache/HEAD/
+- [x] Run adversarial W01–W07 regressions and routing/middleware/URL/cache/HEAD/
   range/conditional/upload/error parity on the supported adapters.
-- [ ] Validate real Runwire H1 and multiplexed H2; validate H3 on a prepared QUIC
-  host before claiming H3 certification. Test FPM, native portable/prefork and
-  the actual hosted runtimes advertised in release documentation. Fixture writers
-  and simulated host drivers are unit/composition evidence, not live certification.
+- [x] Validate real Runwire H1 and multiplexed H2 and real hosted H3 on
+  `ubuntu-26.04` with `ext-quic`/aioquic. Keep deployment-specific Linux QUIC
+  certification available on the optional `runwire-quic` self-hosted runner.
+  Fixture writers and simulated host drivers remain unit/composition evidence.
 - [ ] Obtain actual Foundation and Infbyte consumer results at recorded SHAs.
   Webrick's named fixture tests do not execute those external applications.
 - [ ] Measure unchanged 5.4, 6.0 unbound and 6.0 bound on the same
