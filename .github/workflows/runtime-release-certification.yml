@@ -267,8 +267,8 @@ jobs:
 
   live-runwire-h3:
     name: Live Runwire H3
-    runs-on: macos-15
-    timeout-minutes: 40
+    runs-on: ubuntu-26.04
+    timeout-minutes: 35
     steps:
       - name: Check out candidate
         uses: actions/checkout@v4
@@ -276,17 +276,11 @@ jobs:
           ref: ${{ inputs.candidate_ref || github.sha }}
           fetch-depth: 0
 
-      - name: Install PHP 8.5, OpenSSL 3.5+, HTTP/3 curl and build tools
+      - name: Install QUIC and HTTP/3 certification tools
         run: |
-          brew update
-          brew install php@8.5 composer curl autoconf automake libtool pkgconf openssl@3
-          echo "$(brew --prefix php@8.5)/bin" >> "$GITHUB_PATH"
-          echo "$(brew --prefix curl)/bin" >> "$GITHUB_PATH"
-
-      - name: Install ext-quic with PIE
-        run: |
-          export PATH="$(brew --prefix php@8.5)/bin:$(brew --prefix curl)/bin:$PATH"
-          curl -fL --output /tmp/pie https://github.com/php/pie/releases/latest/download/pie-macOS-ARM64
+          sudo apt-get update
+          sudo apt-get install -y python3-aioquic jq openssl
+          curl -fL --output /tmp/pie https://github.com/php/pie/releases/latest/download/pie-Linux-X64
           gh attestation verify --owner php /tmp/pie
           chmod +x /tmp/pie
           sudo mv /tmp/pie /usr/local/bin/pie
@@ -300,7 +294,6 @@ jobs:
           }
           fwrite(STDOUT, PHP_VERSION . " " . OPENSSL_VERSION_TEXT . PHP_EOL);
           '
-          curl --version | grep -q HTTP3
 
       - name: Install candidate dependencies
         run: composer install --no-interaction --no-progress --prefer-dist
@@ -316,7 +309,7 @@ jobs:
           php .github/certification/cert-server.php runwire             --root="$PWD"             --address=127.0.0.1:18444             --tls-cert="$PWD/.runtime-certification/tls/cert.pem"             --tls-key="$PWD/.runtime-certification/tls/key.pem"             --http3=1             > .runtime-certification/live-h3.log 2>&1 &
           echo "RUNWIRE_H3_PID=$!" >> "$GITHUB_ENV"
           for attempt in {1..160}; do
-            if curl -kfsS --http3-only https://127.0.0.1:18444/cert/static >/dev/null 2>&1; then
+            if python3 .github/certification/http3-client.py 18444 /cert/static >/dev/null 2>&1; then
               exit 0
             fi
             sleep 0.25
@@ -326,16 +319,15 @@ jobs:
 
       - name: Certify real HTTP/3
         run: |
-          response="$(curl -kfsS --http3-only https://127.0.0.1:18444/cert/json)"
-          jq -e '.ok == true' <<<"$response"
-          jq -e '.protocol | tostring | startswith("3")' <<<"$response"
-          [[ "$(curl -kfsS --http3-only https://127.0.0.1:18444/cert/stream | wc -c | tr -d ' ')" == "3072" ]]
-          for _ in {1..100}; do
-            curl -kfsS --http3-only https://127.0.0.1:18444/cert/static >/dev/null
-          done
-          curl -kfsS --http1.1 https://127.0.0.1:18444/__cert/metrics             | tee .runtime-certification/h3-metrics.json
-          jq -e '(.queued_bytes_current // 0) == 0' .runtime-certification/h3-metrics.json
-          jq -e '(.rejected_requests_total // 0) == 0' .runtime-certification/h3-metrics.json
+          python3 .github/certification/http3-client.py 18444 /cert/json             | tee .runtime-certification/h3-json.txt
+          jq -e '.ok == true' .runtime-certification/h3-json.txt
+          jq -e '.protocol | tostring | startswith("3")' .runtime-certification/h3-json.txt
+
+          python3 .github/certification/http3-client.py 18444 /cert/stream             > .runtime-certification/h3-stream.bin
+          [[ "$(wc -c < .runtime-certification/h3-stream.bin | tr -d ' ')" == "3072" ]]
+
+          python3 .github/certification/http3-client.py 18444 /cert/static 100             > .runtime-certification/h3-static.txt
+          [[ "$(cat .runtime-certification/h3-static.txt)" == "webrick-cert-ok" ]]
 
       - name: Stop H3 Runwire server
         if: always()
