@@ -211,10 +211,7 @@ final class RunwireResponseContinuation
             }
         } catch (Throwable $error) {
             self::unwindSuspendedHandler($fiber, $owner, $error);
-            if (self::$ioSuspensions instanceof WeakMap) {
-                unset(self::$ioSuspensions[$fiber]);
-            }
-            unset(self::managedFibers()[$fiber]);
+            self::releaseIfTerminated($fiber);
 
             throw $error;
         }

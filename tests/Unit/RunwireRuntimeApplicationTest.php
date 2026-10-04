@@ -8,6 +8,7 @@ use Infocyph\Runwire\Exception\CancelledException;
 use Infocyph\Runwire\Http\Enum\ProtocolVersion;
 use Infocyph\Runwire\Http\Headers;
 use Infocyph\Runwire\Http\HttpRequest;
+use Infocyph\Runwire\Http\Internal\StreamingRequestBody;
 use Infocyph\Runwire\Http\RequestBodyInterface;
 use Infocyph\Runwire\Http\ResponseWriterInterface;
 use Infocyph\Runwire\Network\Enum\WriteState;
@@ -18,7 +19,10 @@ use Infocyph\Runwire\Runtime\Enum\CancellationReason;
 use Infocyph\Runwire\Runtime\RuntimeApplicationInterface;
 use Infocyph\Runwire\RuntimeContext;
 use Infocyph\Runwire\Supervisor\Enum\ShutdownReason;
+use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Runtime\Http\RunwireRequestBodyStream;
 use Infocyph\Webrick\Runtime\Http\RunwireResponseContinuation;
+use Infocyph\Webrick\Runtime\Http\RunwireRuntimeAdapter;
 use Infocyph\Webrick\Runtime\Http\RunwireRuntimeApplication;
 use Infocyph\Webrick\Runtime\Http\RunwireRuntimeApplicationFactory;
 
@@ -76,6 +80,12 @@ final class RunwireApplicationWriterFixture implements ResponseWriterInterface
 
     public int $status = 0;
 
+    public bool $pressureWrites = false;
+
+    public string $body = '';
+
+    private ?Closure $drainCallback = null;
+
     public function __construct()
     {
         $this->headers = new Headers();
@@ -106,7 +116,16 @@ final class RunwireApplicationWriterFixture implements ResponseWriterInterface
 
     public function onDrain(callable $callback): ResponseWriterInterface
     {
+        $this->drainCallback = Closure::fromCallable($callback);
+
         return $this;
+    }
+
+    public function drain(): void
+    {
+        $callback = $this->drainCallback ?? throw new RuntimeException('No drain callback is pending.');
+        $this->drainCallback = null;
+        $callback($this);
     }
 
     public function start(int $status = 200, ?Headers $headers = null): WriteResult
@@ -120,7 +139,9 @@ final class RunwireApplicationWriterFixture implements ResponseWriterInterface
 
     public function write(string $chunk): WriteResult
     {
-        return new WriteResult(WriteState::ACCEPTED, strlen($chunk));
+        $this->body .= $chunk;
+
+        return new WriteResult($this->pressureWrites ? WriteState::PRESSURED : WriteState::ACCEPTED, strlen($chunk));
     }
 }
 
@@ -303,6 +324,115 @@ test('runwire host task cancellation reaches handler and finalizes request exact
         ->and($application)->toBeInstanceOf(RunwireRuntimeApplication::class)
         ->and($application->snapshot()->requestsActive)->toBe(0);
 });
+
+test('runwire continuation preserves exception cleanup across repeated body readiness', function (): void {
+    $body = new StreamingRequestBody(0, 4, 8, static function (): void {});
+    $stream = new RunwireRequestBodyStream($body, runwire_application_request()->context->cancellation);
+    $failure = new RuntimeException('caller failure');
+    $received = '';
+    $finalized = 0;
+    $owner = new Fiber(static function () use ($stream, &$received, &$finalized): void {
+        RunwireResponseContinuation::run(static function () use ($stream, &$received, &$finalized): void {
+            try {
+                Fiber::suspend('handler-suspended');
+            } finally {
+                $received .= $stream->read(1);
+                $received .= $stream->read(1);
+                ++$finalized;
+            }
+        });
+    });
+
+    expect($owner->start())->toBe('handler-suspended');
+    expect(fn() => $owner->throw($failure))
+        ->toThrow(fn(RuntimeException $error) => expect($error)->toBe($failure));
+    expect($owner->isTerminated())->toBeTrue()
+        ->and($finalized)->toBe(0);
+
+    $body->push('a');
+    expect($received)->toBe('a')->and($finalized)->toBe(0);
+    expect(fn() => $body->push('b'))
+        ->toThrow(fn(RuntimeException $error) => expect($error)->toBe($failure));
+    expect($received)->toBe('ab')->and($finalized)->toBe(1);
+    $body->finish();
+    expect($finalized)->toBe(1);
+});
+
+test('runwire application retains streamed cleanup through repeated pressure', function (bool $cancel): void {
+    (new CoroutineRuntime())->run(static function (CoroutineScope $scope) use ($cancel): void {
+        $runtime = RuntimeContext::standalone();
+        $adapter = new RunwireRuntimeAdapter(runtimeContext: $runtime);
+        $request = runwire_application_request();
+        $writer = new RunwireApplicationWriterFixture();
+        $writer->pressureWrites = true;
+        $cleanupFinished = false;
+        $cleanupCalls = 0;
+        $application = new RunwireRuntimeApplication(
+            static function (HttpRequest $native, ResponseWriterInterface $response) use (
+                $scope,
+                $adapter,
+                $cancel,
+                &$cleanupFinished,
+            ): void {
+                $context = $adapter->context($native, $response);
+                try {
+                    if ($cancel) {
+                        $scope->sleep(60.0);
+                    } else {
+                        $scope->yieldNow();
+                    }
+                } finally {
+                    $adapter->write(Response::stream(static function (): iterable {
+                        yield 'first';
+                        yield 'second';
+                    }), $context);
+                    $cleanupFinished = true;
+                }
+            },
+            $runtime,
+            requestCleanup: static function () use (&$cleanupCalls): void {
+                ++$cleanupCalls;
+            },
+        );
+        $task = $scope->spawn(static function () use ($application, $request, $writer): void {
+            $application->handle($request, $writer, completeResponse: true);
+        });
+        if ($cancel) {
+            $scope->yieldNow();
+            expect($task->cancel(CancellationReason::HOST_CANCELLED))->toBeTrue()
+                ->and(fn() => $task->await())->toThrow(CancelledException::class);
+        } else {
+            $task->await();
+        }
+
+        expect($task->isComplete())->toBeTrue()
+            ->and($writer->body)->toBe('first')
+            ->and($request->context->completed())->toBeFalse()
+            ->and($application->snapshot()->requestsActive)->toBe(1);
+
+        $writer->drain();
+        expect($writer->body)->toBe('firstsecond')
+            ->and($writer->ended)->toBeFalse()
+            ->and($cleanupFinished)->toBeFalse()
+            ->and($cleanupCalls)->toBe(0)
+            ->and($request->context->completed())->toBeFalse()
+            ->and($application->snapshot()->requestsActive)->toBe(1);
+
+        if ($cancel) {
+            expect(fn() => $writer->drain())
+                ->toThrow(CancelledException::class, 'Operation cancelled: host_cancelled.');
+        } else {
+            $writer->drain();
+        }
+        expect($writer->endCalls)->toBe(1)
+            ->and($cleanupFinished)->toBeTrue()
+            ->and($cleanupCalls)->toBe(1)
+            ->and($request->context->completed())->toBeTrue()
+            ->and($application->snapshot()->requestsActive)->toBe(0);
+        $application->shutdown();
+        expect($cleanupCalls)->toBe(1);
+    });
+})->with(['normal' => false, 'cancelled' => true]);
 
 test('runwire application bridge forwards lifecycle health failure', function (): void {
     $failure = new RuntimeException('runwire cleanup isolation failed');

@@ -146,6 +146,13 @@ function certification_prepare(string $root): void
                     'path' => '/wrong',
                 ]);
             });
+            $registrar->get(
+                '/cert/leading-zero-json',
+                static fn(): Response => Response::plaintext(
+                    '{"ok":true,"pid":0123,"protocol":"1.1","path":"\\/cert\\/json"}',
+                    200,
+                ),
+            );
             $registrar->post(
                 '/cert/malformed-upload',
                 static fn(): Response => Response::plaintext('garbage {"bytes":16384} trailing', 200),
@@ -153,6 +160,14 @@ function certification_prepare(string $root): void
             $registrar->post(
                 '/cert/wrong-upload',
                 static fn(): Response => Response::json(['bytes' => 1, 'pid' => getmypid()]),
+            );
+            $registrar->post(
+                '/cert/leading-zero-upload',
+                static fn(): Response => Response::plaintext('{"bytes":16384,"pid":0123}', 200),
+            );
+            $registrar->get(
+                '/cert/leading-zero-slow',
+                static fn(): Response => Response::plaintext('{"slept_ms":5,"pid":0123}', 200),
             );
             $registrar->get('/cert/file', static function (Request $request) use ($filePath): Response {
                 return Response::rangedDownload(

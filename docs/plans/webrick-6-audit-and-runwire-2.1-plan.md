@@ -1,6 +1,6 @@
 # Webrick 6.0 — Consolidated improvement and release plan
 
-Status: **2026-10-04 code revalidation complete; B5, B6 and B8 reopened; B10 release gates remain open**.
+Status: **2026-10-04 W10/W11 remediation verified locally; B0–B9 complete; B10 release evidence remains open**.
 
 Audit date: 2026-10-03 (Asia/Dhaka). Baseline: Webrick **5.4**, commit
 `0f01cb4c303f94e683de8a3567682b70908122af`.
@@ -27,10 +27,10 @@ including unsafe-input rejection, legacy-cookie retirement, cache namespace
 changes and artifact rebuilding. Preserve established HTTP semantics and avoid
 unrelated API changes; a major version is not a reason for a broad rewrite.
 
-The release is not ready to tag. The updated dependency combination and exact-head
-CI pass, but the current revalidation below reproduces additional integration and
-certification defects. Resolve that required work and the remaining B10 acceptance
-gates before considering optional improvements.
+W10/W11 remediation and the full local quality suite pass. The release is not
+ready to tag: the prior committed revision failed both performance acceptance
+jobs, and these local fixes still require final committed-SHA hosted evidence
+and the remaining B10 gates before optional improvements.
 
 Proposed 6.0 dependency policy:
 
@@ -60,86 +60,81 @@ and the mapped phase checkboxes after every implementation and QA stage.
 | B2 | Request limits, HTTP deflate and upload integrity | A: W05–W07 | **Complete** |
 | B3 | InterMix 11 core runtime migration | B: runtime API | **Complete** |
 | B4 | InterMix kernels, dispatcher and artifacts | B: dispatch/build | **Complete** |
-| B5 | Runwire 2.1 contracts and lifecycle | C: lifecycle | **Reopened: W10** |
-| B6 | Borrowed runtime/request/scope integration | C: ownership/context | **Reopened: W09** |
+| B5 | Runwire 2.1 contracts and lifecycle | C: lifecycle | **Complete** |
+| B6 | Borrowed runtime/request/scope integration | C: ownership/context | **Complete** |
 | B7 | CacheLayer 4 compatibility and deployment | D | **Complete** |
-| B8 | Static quality, duplication and migration docs | E | **Reopened: W08** |
+| B8 | Static quality, duplication and migration docs | E | **Complete** |
 | B9 | Production request-path performance | F | **Complete** |
 | B10 | Final release evidence and acceptance | G | **In progress** |
 
 ## Current code revalidation — 2026-10-04
 
-Reviewed clean implementation commit
-`7a0edc8d33f0cd8add3bd590d53dbced344abbac`. Historical batch evidence below
-remains evidence for those revisions; it does not close the findings here.
-No production code was changed during this review.
+W10 and W11 are fixed in the working tree based on
+`fa98a3f60773f3202ea6d37b7e0e7c676596cb3c`. Changes are not committed or tagged.
+The checks below apply to the current local source; historical hosted checks
+apply only to their recorded SHAs.
 
-### Required findings
+### Completed remediation
 
-| ID | Priority / owner | Reproduced behavior | Required acceptance |
-| --- | --- | --- | --- |
-| W09 | High: borrowed request isolation; B6 | `RunwireInterMixScopeBridge::withinScope()` checks the bound runtime and container, but accepts a live borrowed scope seeded for another native request on the same runtime. In a separate Fiber, supplying request B with request A's captured scope resolves A's Runwire `RequestContext` and A's Webrick `Request`. | Reject a scope/request identity conflict before dispatch or response production. Validate the authoritative native request against the attached scope's inputs without replacing host-owned seeds. Preserve legitimate same-request borrowing, concurrent request isolation and the zero-scope path. Coordinate any generic InterMix scope validation with its existing owner. |
-| W10 | High: host task cancellation/lifecycle; B5 | `RunwireResponseContinuation::runOwnedFiber()` forwards resume values but does not forward an exception thrown into the caller Fiber at `Fiber::suspend()`. Runwire's scheduler cancels tasks using `Fiber::throw()`, so the inner handler never receives cancellation. An actual `CoroutineRuntime` task cancelled while the application handler slept completed while the request remained active and uncleaned. | Forward host exceptions/cancellation to the suspended handler, preserve its catch/finally semantics, and complete request cleanup/accounting exactly once. Cover cancellation and ordinary thrown exceptions across caller suspension, with and without transport pressure. Retain host ownership of the scheduler and loop. |
-| W08 | Medium: optional-intl static quality; B8 | `InputSanitizer.php:115–116` obtains a `mixed` value from `constant('Normalizer::FORM_KC')` and passes it directly to `normalizer_normalize()`. PHPStan fails on the PHP 8.5 host without intl: `argument.type`, expected `int`, received `mixed`. The B8 evidence's claimed integer type check is absent from the current source. | Validate the constant's integer type before calling normalization; keep intl optional and add no casts, suppressions or baseline entries. Run static analysis both with and without intl, in addition to the existing no-intl runtime smoke. |
-| W11 | High: release evidence validity; B10 | The SAPI metrics endpoint writes to undefined `STDOUT` under `cli-server`. The exact-head CI artifact contains that fatal error and all 40 SAPI load rows have empty metrics because `load-benchmark.sh` replaces failed telemetry with `{}`. The analyzer interprets missing fields as zero. Load runs also lack per-response body validation and the SAPI stream exception accepts aggregated `failed == complete` without proving which failures were valid EOF. | Emit SAPI telemetry through the HTTP output surface and fail on missing/invalid required measurements. Count only validated complete responses during load. Preserve socket error categories; exempt close-delimited EOF only with evidence of the complete expected response, never from aggregate count equality. Exercise corrupted/truncated responses and telemetry failures against the acceptance harness. |
+| ID | Change | Regression evidence |
+| --- | --- | --- |
+| W10 | `RunwireResponseContinuation::runOwnedFiber()` releases registration only after the inner Fiber terminates. Exception cleanup suspended on I/O keeps the same managed continuation and uses existing readiness callbacks; no scheduler, loop or worker ownership changes. | A real Runwire task cancelled during sleep streams two pressured chunks inside `finally`. Both drains finish, the writer ends once, handler cleanup completes, and request cleanup/accounting run once. The normal-path control also passes. An ordinary host exception followed by two incremental body-readiness callbacks preserves the exact exception object and completes cleanup once. |
+| W11 | JSON/upload/slow validation requires canonical positive PID digits (`[1-9]%d*`) in the complete expected body. New leading-zero routes are exercised by the existing load-harness rejection probes in both modes. | The actual embedded Lua callback rejects `"pid":0123` for all three workloads. Real local SAPI and native Runwire HTTP responses validate all three valid controls and reject all three new malformed fixtures. Existing garbage-prefix rejection and all ten workload controls still pass. |
 
-Borrowed-scope probe result, while both native contexts were live and bound to
-the same runtime:
-
-```json
-{"conflict_rejected":false,"native_context_is_a":true,"native_context_is_b":false,"web_request_path":"/tenant-a","expected_path":"/tenant-b"}
-```
-
-The W10 probe used released Runwire 2.1 `CoroutineRuntime`, `CoroutineScope::sleep()`,
-`Task::cancel()` and `Task::await()` around `RunwireRuntimeApplication::handle()`;
-it used Runwire's buffered body and callback writer rather than transport mocks.
-After the task settled and garbage collection ran:
-
-```json
-{"task_complete":true,"caught_in_handler":false,"request_completed":false,"active_requests":1,"cleanup_calls":0,"writer_ended":false}
-```
-
-A separate direct Fiber probe retained the inner Fiber and confirmed that it
-remained suspended with neither its cancellation catch nor finally executed.
-For W11, a synthetic pair of SAPI stream rows with 100 completed and 100 failed
-requests, empty metrics and no response-validation evidence was accepted by
-`analyze-load.php` at the strict default budgets. This demonstrates that the
-aggregate EOF exemption and missing telemetry are not independently validated.
+The W10 cancellation regression failed before the production change while its
+normal control passed. After the fix, request state remains active through both
+pressured writes, then finalizes exactly once. The authoritative host cancellation
+still propagates; the drain callback that finishes cancelled cleanup observes the
+original cancellation rather than a missing-continuation error. Ordinary
+exception/read-readiness coverage also asserts original exception identity.
 
 ### Current verification and boundaries
 
-- The workspace's installed/locked dependencies are still InterMix 10.1.1,
-  CacheLayer 3.4 and Runwire 1.0. Tests therefore used an isolated copy of every
-  tracked file with freshly resolved InterMix 11.0, CacheLayer 4.0, Runwire 2.1
-  and PHPForge `18917f3` on PHP 8.5.4 without intl.
-- The full existing Pest suite passed: **535 tests / 1,848 assertions**. Its
-  W01–W07 regressions passed; W09/W10 were independently reproduced outside that
-  suite. The no-intl runtime smoke also passed; W08 is a static-quality failure.
-- PHPProbe syntax passed for 309 files. After initializing Git metadata in the
-  isolated copy, reference integrity passed for 309 files / 8,656 references.
-  Duplication passed: 43 groups / 1,892 lines / 4.87%. Psalm, Pint and Rector
-  passed. PHPStan failed with the W08 diagnostic.
-- Do not report the isolated aggregate PHPForge suite as green: its initial
-  reference scan ran before Git metadata existed and included vendor files;
-  PHPCS excluded the `/tmp` checkout and checked no files. These setup limits
-  are distinct from the independently repeated W08 product diagnostic.
-- Live Composer audit returned **zero security advisories** and the existing
-  abandoned `doctrine/annotations` toolchain warning. Composer returned exit 1
-  for that abandonment warning; it was not a clean aggregate audit exit.
-- Exact-head [Security & Standards run 37175612675](https://github.com/infocyph/Webrick/actions/runs/37175612675)
-  passed its detail suite, PHP 8.4/8.5 stable/lowest matrices, clean install,
-  both analysis jobs and both benchmark jobs. Its intl-enabled static analysis
-  and separate `php -n` runtime probe do not cover the W08 analyzer configuration.
-- Exact-head [Runtime Release Certification run 37175609863](https://github.com/infocyph/Webrick/actions/runs/37175609863)
-  passed live H1/H2/H3 and the **push smoke** profile: 2-second load trials,
-  one trial, relaxed 100% throughput / 1000% p99 budgets and a 2-minute soak.
-  The soak observed 51 cycles, three worker PIDs, zero handoff socket errors,
-  zero queued bytes/rejections and no runtime-memory growth. The metrics request
-  itself accounts for the reported final active request of one.
-- Full-duration strict throughput/latency/resource certification, 30-minute
-  soak and exact-final-SHA gates remain open. Actual Foundation/Infbyte consumer
-  runs remain deferred by the recorded scope decision. Fix W11 before treating
-  a longer run as acceptable performance evidence.
+- Local dependencies now match the declared target versions: InterMix 11.0,
+  CacheLayer 4.0 and Runwire 2.1, with PHPForge `18917f3`. Dependency installation
+  updated the ignored local lock/vendor state; no Composer constraints changed.
+- On the normal PHP 8.5.4 host without intl, `composer ic:doctor`,
+  `ic:list-config` and `ic:active-config` completed. `composer ic:process`,
+  `ic:tests:details` and final `ic:tests` all pass. The full suite reports
+  **541 tests / 1,922 assertions**. PHPStan, Psalm, syntax/reference/duplicate/comment
+  checks, suppression scanner, normalization, Pint, PHPCS, Deptrac and Rector
+  pass in the workspace. PHPCS checked 293 files; this is not the prior empty
+  `/tmp` scan. Deptrac reports 237 uncovered items and no violations/errors.
+- The initial sandboxed processor attempt could not create Rector's local worker
+  socket. Re-running with local socket access completed successfully; no detector
+  scope or threshold was weakened.
+- Certification PHP syntax and shell syntax pass. The embedded callback was
+  independently executed under Lua 5.4. The host has no `wrk` executable, so the
+  complete load-harness rejection loop was not run locally; its exact Lua callback
+  and new HTTP fixtures were exercised together over both local transports.
+- W08's no-intl static check, W09's borrowed-request identity rejection and W12's
+  declared evidence matrix remain resolved. The full suite retains their coverage;
+  their independent review evidence applies to the base SHA recorded above.
+- Composer's dependency update reports **no security vulnerability advisories**
+  and the existing abandoned development-only `doctrine/annotations` warning.
+  Removing that warning remains with the shared PHPForge/PHPBench tooling owner.
+- [Security & Standards run 37184645930](https://github.com/infocyph/Webrick/actions/runs/37184645930)
+  passed on base SHA `fa98a3f`, including PHP 8.4/8.5 stable/lowest checks and
+  dedicated no-intl PHPStan. It does not certify this uncommitted diff.
+- Base-SHA [Runtime Release Certification run 37184643229](https://github.com/infocyph/Webrick/actions/runs/37184643229)
+  passed live H1/H2 and hosted H3. Both SAPI and native-Runwire performance jobs
+  failed at **Enforce performance budgets**. Both uploaded reports contain the
+  complete declared 240-row matrices. SAPI exceeds the 2% RPM budget in all 40
+  comparisons (2.28%–11.18% regression versus 5.4). Native Runwire has four
+  failures in the slow workload: RSS increases of 34.68/34.63/36.76 MiB at
+  concurrency 5/20/50 exceed 32 MiB, and c50 p99 increases 22.09%, exceeding 15%.
+  The overall run/30-minute soak is still in progress at this update. These are
+  base-SHA artifact results, not measurements of the current working-tree fixes;
+  controlled diagnosis/reproduction and final-SHA acceptance remain required.
+- Native transport load uses an adapter without an explicit runtime/InterMix
+  binding. Supplied-context performance, representative middleware/cache and
+  actual Foundation/Infbyte consumers remain distinct acceptance boundaries;
+  consumer runs are deferred by the recorded scope decision. Each mode compares
+  baseline/candidate on its own runner and does not prove a same-hardware
+  comparison between SAPI and Runwire.
+- **B10 remains open:** diagnose the failed base-SHA performance gates,
+  complete the required full-duration performance/soak evidence, and require the
+  applicable hosted checks on the final committed implementation SHA before tag.
 
 ### Batch 0 — synchronized baseline
 
@@ -226,7 +221,7 @@ Batch 4 evidence:
 - [x] Audit the Webrick continuation bridge so it never resumes a scheduler-owned Fiber behind its owner.
 - [x] Prove terminal state, handler completion, owned work, cleanup/reset, admission release, drain and health transitions in focused lifecycle tests.
 - [x] Run focused B5 tests and full PHPForge gates before B6.
-- [ ] W10: propagate caller-Fiber exceptions into the inner handler and verify real host-task cancellation cleanup.
+- [x] W10: retain inner-continuation ownership through exception cleanup that enters I/O; regressions cover repeated pressure, real host-task cancellation, ordinary exceptions/read readiness and normal controls.
 
 Batch 5 evidence:
 
@@ -242,7 +237,7 @@ Batch 5 evidence:
 - [x] Register Runwire runtime/request/coroutine inputs through InterMix 11 before graph finalization when this optional integration is enabled.
 - [x] Derive stable Webrick runtime capabilities from the supplied/bound Runwire `RuntimeContext`; keep unbound fallback conservative.
 - [x] Reuse the host-supplied InterMix `RunwireIntegration` for one request scope or an exact borrowed `ScopeContext`, without adding a second DI scope.
-- [ ] Preserve exact Runwire `RuntimeContext`, `RequestContext` and optional `CoroutineScope` identities for injected consumers; reject conflicting/completed contexts, including W09's borrowed scope from another request.
+- [x] Preserve exact Runwire `RuntimeContext`, `RequestContext` and optional `CoroutineScope` identities for injected consumers; reject conflicting/completed contexts, including W09's borrowed scope from another request.
 - [x] Preserve zero-scope compiled routes and ordinary SAPI/FPM behavior when the optional bridge is absent.
 - [x] Cover direct host, intermediary/borrowed scope, interleaved requests, nested restoration and runtime/generation conflicts.
 - [x] Run focused B6 tests and full PHPForge gates before B7.
@@ -274,7 +269,7 @@ Batch 7 evidence:
 
 ### Batch 8 — static quality, duplication and migration docs
 
-- [ ] Resolve W08 without making `ext-intl` a runtime requirement or suppressing analysis; revalidation still fails on the no-intl analyzer host.
+- [x] Resolve W08 with an integer guard, without making `ext-intl` a runtime requirement or suppressing analysis; current no-intl PHPStan passes.
 - [x] Re-run Unicode-normalization behavior with and without the optional intl surface.
 - [x] Triage the current PHPForge duplicate report by semantic ownership and only extract genuinely shared behavior.
 - [x] Update README and deployment/middleware docs for Webrick 6, InterMix 11, Runwire 2.1, CacheLayer 4 and PSR-6 cache contracts.
@@ -283,11 +278,11 @@ Batch 7 evidence:
 
 Batch 8 evidence:
 
-- W08 no longer references the optional `Normalizer` class symbol directly. Runtime normalization is guarded by `function_exists()` and `defined()`; no suppression or mandatory `ext-intl` dependency was added. The original evidence incorrectly claimed an integer type check: it is absent, and the 2026-10-04 no-intl static analysis reopens this finding.
+- W08 now guards normalization with `function_exists()`, `defined()` and an integer type check for the normalization form. No suppression or mandatory `ext-intl` dependency was added; current no-intl PHPStan passes.
 - `InputSanitizerTest` covers the intl-present behavior while the detail workflow runs an explicit `php -n` no-intl smoke check.
 - The current duplicate report passes at **43 clone groups / 1,892 duplicated lines / 4.95%**. Triage groups intentional adapter/matcher/benchmark parallelism separately from same-owner parser/validator repetition; no release-blocking semantic duplicate justified a cross-owner abstraction.
 - README, Runwire deployment/performance guidance and response-cache documentation now describe Webrick 6, InterMix 11, Runwire 2.1, CacheLayer 4, PSR-6 cache ownership and the CacheLayer major-version namespace rotation.
-- PHPForge currently owns `phpbench/phpbench ^1.7`, which installs abandoned `doctrine/annotations`. Current Webrick Composer audit passes and the no-dev clean install excludes that toolchain; removing the warning belongs to the shared PHPForge/PHPBench tooling owner and is not being masked by a Webrick dependency change.
+- PHPForge currently owns `phpbench/phpbench ^1.7`, which installs abandoned `doctrine/annotations`. Current Webrick Composer audit reports no advisories but exits 1 for this abandonment warning; the no-dev clean install excludes that toolchain; removing the warning belongs to the shared PHPForge/PHPBench tooling owner and is not being masked by a Webrick dependency change.
 
 - Final B8 head: `181aa0c5a7880d2dd01d4fd5da403ab833deb882`; exact-head Security & Standards run `37134054350` passed detail diagnostics, clean install, PHP 8.4/8.5 stable and lowest QA, both analyzers and both benchmark jobs.
 - Final detail suite: **535 tests / 1,851 assertions**. The explicit `php -n` no-intl smoke passed; PHPStan, Psalm and Rector are green.
@@ -318,14 +313,15 @@ Batch 9 evidence:
 - [ ] Record actual Foundation and Infbyte consumer results at exact SHAs. **Deferred by scope for this Webrick workstream.**
 - [ ] Record the full-duration controlled 5.4 vs 6.0 unbound/bound throughput, latency, memory, queue/utilization and concurrency evidence.
 - [ ] Record the full-duration persistent-worker soak evidence for cleanup, cancellation, drain and replacement.
-- [ ] W11: fix missing SAPI telemetry and require validated complete responses before accepting load evidence.
+- [x] W11: preserve corrected SAPI telemetry and whole-response checks; reject leading-zero PID JSON in JSON/upload/slow, with rejection fixtures and valid-response controls.
+- [x] W12: reject empty/incomplete/duplicate/invalid evidence against the declared profile/trials; run strict certification on every candidate push.
 - [ ] Require all applicable CI checks plus the full-duration certification profile on the exact final release SHA before tagging; do not merge/tag as part of this plan.
 
-Current certification-workflow implementation evidence:
+Historical certification-workflow implementation evidence (superseded by the current revalidation above):
 
 - Security & Standards run `37175130986` passed on `f853925cb4bb9e900158e6d1f772b63939dabb0c`: detail diagnostics, PHP 8.4/8.5 stable+lowest QA, both analyzers, clean install and both benchmarks.
 - Runtime Release Certification run `37175128832` passed its hosted smoke profile on the same implementation: live HTTP/1.1 + HTTP/2, real HTTP/3 on `ubuntu-26.04`, persistent-worker soak, and the same-run 5.4→6.0 HTTP performance harness.
-- The smoke profile validates the certification machinery. The default manual release profile remains intentionally longer/stricter: 10-second trials × 3, 30-minute soak, 2% throughput budget, 15% p99 budget and 32 MiB memory ceiling.
+- Those historical runs used smoke settings and do not close full-duration gates. The current workflow uses 10-second trials × 3, a 30-minute soak, a 2% throughput budget, a 15% p99 budget and a 32 MiB memory ceiling on every candidate push as well as by default on manual dispatch.
 
 #### Runtime release certification workflow
 
@@ -337,11 +333,13 @@ Manual release certification uses `workflow_dispatch` with:
 
 - baseline ref `5.4` and the selected candidate ref/SHA;
 - 10-second steady-state trials, 3 trials per workload/concurrency by default;
-- concurrency 1/5/20/50 for static, dynamic, JSON, streaming and upload workloads;
-- SAPI/unbound and native Runwire/bound execution on the same runner;
+- concurrency 1/5/20/50 for static, dynamic, JSON, streaming, upload, 404, 405, file, range and slow workloads;
+- separate SAPI and native-Runwire jobs, each interleaving baseline/candidate on
+  the same runner; this does not certify explicit runtime/InterMix binding or
+  a same-hardware comparison between the two modes;
 - an initial 2% median-RPM regression budget, 15% p99 regression budget and
   32 MiB RSS regression ceiling;
-- a 30-minute persistent-worker soak covering request-count recycling, paced
+- a 30-minute two-worker soak covering jittered lifetime recycling, paced
   client cancellation, streaming/upload traffic, queue/rejection state, memory/RSS
   growth, worker replacement and graceful drain;
 - real TLS HTTP/1.1 plus multiplexed HTTP/2 certification on GitHub-hosted Linux;
@@ -350,10 +348,10 @@ Manual release certification uses `workflow_dispatch` with:
 - optional deployment-specific Linux HTTP/3 certification on a prepared
   self-hosted runner labelled `runwire-quic`.
 
-Pushes that change only the certification workflow/harness on `feature/runwire`
-run a short smoke variant (2-second/1-trial load runs, 2-minute soak and relaxed
-performance budgets). Smoke validates the harness itself; it does **not** replace
-the full-duration manual release evidence.
+Every push to `feature/runwire` runs the full-duration profile with strict default
+budgets. No paths filter or relaxed push-smoke profile remains. The analyzer
+requires the declared mode and trial count and rejects missing/duplicate rows;
+CI also exercises negative evidence fixtures before accepting load results.
 
 Certification support lives under `.github/certification/`:
 
@@ -503,7 +501,7 @@ do not construct another Runtime or standalone CoroutineRuntime in Webrick.
   its captured scope instead of opening a second request scope. When Webrick is
   the application boundary, open one scope through InterMix. Preserve the scope
   until lazy response production and structured child work have finished.
-- [ ] Use the supplied native request's context as authoritative. Reject a
+- [x] Use the supplied native request's context as authoritative. Reject a
   separately passed conflicting runtime/request, completed request, stale scope,
   or release/rebind while requests remain active. Restore nested bindings in
   `finally`; exceptions and cancellation must not leave request state behind.
@@ -571,10 +569,9 @@ atomic capability must never silently select a process-local approximate pool.
 
 ## Phase E — Quality and documentation
 
-- [ ] Resolve W08: the remaining no-intl PHPStan argument-type diagnostic
-  at `InputSanitizer.php:116`. Test with and without `ext-intl`; provision analysis
-  dependencies/stubs as appropriate without making optional Unicode normalization
-  a mandatory runtime dependency or suppressing findings.
+- [x] Resolve W08 with an integer normalization-form guard. Current local no-intl
+  PHPStan and hosted intl-enabled analysis pass; keep Unicode normalization
+  optional without suppressing findings.
 - [x] Triage the currently reported clone groups by shared semantics. The detector passes
   its threshold, but genuine duplication should be reduced in existing owners;
   do not merge unrelated code just because normalized syntax looks similar.

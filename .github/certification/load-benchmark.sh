@@ -75,14 +75,14 @@ response = function(status, headers, body)
         ok = status == 200
             and full_match(
                 body,
-                '^{"ok":true,"pid":%d+,"protocol":"1%.1","path":"\\/cert\\/json"}$'
+                '^{"ok":true,"pid":[1-9]%d*,"protocol":"1%.1","path":"\\/cert\\/json"}$'
             )
     elseif workload == "stream" then
         ok = status == 200
             and #body == 3072
             and body == string.rep("a", 1024) .. string.rep("b", 1024) .. string.rep("c", 1024)
     elseif workload == "upload" then
-        ok = status == 200 and full_match(body, '^{"bytes":16384,"pid":%d+}$')
+        ok = status == 200 and full_match(body, '^{"bytes":16384,"pid":[1-9]%d*}$')
     elseif workload == "not_found" then
         ok = status == 404
     elseif workload == "method_not_allowed" then
@@ -92,7 +92,7 @@ response = function(status, headers, body)
     elseif workload == "range" then
         ok = status == 206 and body == "0123456789abcdef"
     elseif workload == "slow" then
-        ok = status == 200 and full_match(body, '^{"slept_ms":5,"pid":%d+}$')
+        ok = status == 200 and full_match(body, '^{"slept_ms":5,"pid":[1-9]%d*}$')
     end
 
     if ok then
@@ -328,8 +328,11 @@ assert_rejection_probes() {
     assert_invalid_fixture dynamic "$port" /cert/wrong-dynamic "${mode}-wrong-dynamic"
     assert_invalid_fixture json "$port" /cert/malformed-json "${mode}-malformed-json"
     assert_invalid_fixture json "$port" /cert/wrong-json "${mode}-wrong-json"
+    assert_invalid_fixture json "$port" /cert/leading-zero-json "${mode}-leading-zero-json"
     assert_invalid_fixture upload "$port" /cert/malformed-upload "${mode}-malformed-upload"
     assert_invalid_fixture upload "$port" /cert/wrong-upload "${mode}-wrong-upload"
+    assert_invalid_fixture upload "$port" /cert/leading-zero-upload "${mode}-leading-zero-upload"
+    assert_invalid_fixture slow "$port" /cert/leading-zero-slow "${mode}-leading-zero-slow"
 
     if [[ "$mode" == "sapi" ]]; then
         close_delimited=1
