@@ -117,6 +117,15 @@ function certification_prepare(string $root): void
                     },
                 ),
             );
+            $registrar->get(
+                '/cert/truncated',
+                static fn(): Response => Response::stream(
+                    static function (): iterable {
+                        yield str_repeat('a', 1024);
+                    },
+                ),
+            );
+            $registrar->get('/cert/corrupt', static fn(): Response => Response::plaintext('corrupt', 200));
             $registrar->get('/cert/file', static function (Request $request) use ($filePath): Response {
                 return Response::rangedDownload(
                     $request,
@@ -288,13 +297,17 @@ function certification_sapi(string $root): void
     $path = parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH);
     if ($path === '/__cert/metrics') {
         header('Content-Type: application/json');
-        fwrite(STDOUT, json_encode([
+        $payload = json_encode([
             'pid' => getmypid(),
             'memory_current_bytes' => memory_get_usage(true),
             'memory_peak_bytes' => memory_get_peak_usage(true),
             'requests_active' => 0,
             'queued_bytes_current' => 0,
-        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES));
+            'rejected_requests_total' => 0,
+        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+        if (file_put_contents('php://output', $payload) === false) {
+            throw new RuntimeException('Unable to emit SAPI certification telemetry.');
+        }
 
         return;
     }
