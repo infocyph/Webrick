@@ -4,10 +4,6 @@ on:
   push:
     branches:
       - feature/runwire
-    paths:
-      - .github/workflows/runtime-release-certification.yml
-      - .github/certification/**
-      - docs/plans/webrick-6-audit-and-runwire-2.1-plan.md
   workflow_dispatch:
     inputs:
       baseline_ref:
