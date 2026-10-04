@@ -283,6 +283,83 @@ test('runwire bridge attaches an exact borrowed InterMix scope without opening a
     $integration->release($runtime);
 });
 
+test('runwire bridge rejects a borrowed scope captured for another live request', function (): void {
+    $builder = runwire_bridge_builder();
+    $container = $builder->build();
+    $runtime = RunwireContext::standalone();
+    $requestAContext = RunwireRequestContext::create($runtime);
+    $requestBContext = RunwireRequestContext::create($runtime);
+    $requestA = Request::fake(uri: '/tenant-a');
+    $requestB = Request::fake(uri: '/tenant-b');
+    $integration = new RunwireIntegration($container);
+    $integration->bind($runtime);
+    $interMix = new InterMixRuntime($container);
+    $callbackRan = false;
+
+    $container->withinScope(
+        'host.request',
+        static function (RuntimeContainerInterface $active) use (
+            $runtime,
+            $requestAContext,
+            $requestBContext,
+            $requestA,
+            $requestB,
+            $integration,
+            $interMix,
+            &$callbackRan,
+        ): void {
+            $scopeContext = $active->captureScopeContext();
+            $fiber = new Fiber(
+                static function () use (
+                    $runtime,
+                    $requestBContext,
+                    $requestB,
+                    $integration,
+                    $interMix,
+                    $scopeContext,
+                    &$callbackRan,
+                ): void {
+                    $adapter = new RunwireRuntimeAdapter(
+                        runtimeContext: $runtime,
+                        interMix: $integration,
+                        scopeContext: static function (HttpRequest $native) use ($scopeContext): InfocyphInterMixDIScopeContext {
+                            unset($native);
+
+                            return $scopeContext;
+                        },
+                    );
+                    $context = $adapter->context(
+                        runwire_bridge_request($requestBContext),
+                        new RunwireBridgeWriterFixture(),
+                    );
+
+                    expect(fn() => $context->scopeBridge->withinScope(
+                        $interMix,
+                        $requestB,
+                        static function () use (&$callbackRan): void {
+                            $callbackRan = true;
+                        },
+                    ))->toThrow(LogicException::class, 'different Runwire request');
+                },
+            );
+            $fiber->start();
+
+            expect($fiber->isTerminated())->toBeTrue()
+                ->and($active->get(RunwireRequestContext::class))->toBe($requestAContext)
+                ->and($active->get(Request::class))->toBe($requestA);
+        },
+        [
+            RunwireContext::class => $runtime,
+            RunwireRequestContext::class => $requestAContext,
+            Request::class => $requestA,
+        ],
+    );
+
+    expect($callbackRan)->toBeFalse();
+
+    $integration->release($runtime);
+});
+
 test('runwire bridge keeps interleaved request scopes isolated', function (): void {
     $builder = runwire_bridge_builder();
     $container = $builder->build();
