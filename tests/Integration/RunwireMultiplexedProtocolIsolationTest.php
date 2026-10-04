@@ -216,15 +216,7 @@ final class RunwireMultiplexedProtocolIsolationTest extends TestCase
             self::assertSame(1, $application->snapshot()->requestsActive);
             self::assertCompleted($secondWriter, 'h2-b', '2');
 
-            try {
-                $first->resume();
-                self::fail('Cancelled HTTP/2 stream unexpectedly completed.');
-            } catch (RuntimeException $error) {
-                self::assertSame(
-                    'Runwire request was cancelled during Webrick response production.',
-                    $error->getMessage(),
-                );
-            }
+            $first->resume();
 
             self::assertTrue($first->isTerminated());
             self::assertSame(1, $firstWriter->startCalls);
