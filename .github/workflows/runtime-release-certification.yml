@@ -211,6 +211,18 @@ jobs:
           composer install --working-dir=candidate --no-interaction --no-progress --prefer-dist
           composer install --working-dir=baseline --no-interaction --no-progress --prefer-dist
 
+      - name: Prove analyzer rejects incomplete evidence
+        run: |
+          mkdir -p analyzer-negative
+          cat > analyzer-negative/bad.jsonl <<'JSONL'
+          {"version":"baseline","mode":"sapi","workload":"static","concurrency":1,"trial":1,"rps":100,"complete":10,"validated":9,"invalid":1,"failed":0,"non2xx":0,"socket_errors":{"connect":0,"read":0,"write":0,"timeout":0},"p99":1,"rss_kb":1024,"metrics":{}}
+          {"version":"candidate","mode":"sapi","workload":"static","concurrency":1,"trial":1,"rps":100,"complete":10,"validated":9,"invalid":1,"failed":0,"non2xx":0,"socket_errors":{"connect":0,"read":0,"write":0,"timeout":0},"p99":1,"rss_kb":1024,"metrics":{}}
+          JSONL
+          if php candidate/.github/certification/analyze-load.php             --input="$PWD/analyzer-negative/bad.jsonl"             --summary="$PWD/analyzer-negative/summary.md"             --json="$PWD/analyzer-negative/report.json"             --throughput-regression-percent=100             --p99-regression-percent=100             --memory-regression-mb=128; then
+            echo "Analyzer accepted deliberately incomplete certification evidence." >&2
+            exit 1
+          fi
+
       - name: Run controlled same-run load matrix
         run: |
           mkdir -p cert-results
