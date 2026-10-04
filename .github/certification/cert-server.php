@@ -236,8 +236,10 @@ function certification_runwire(
     ?string $tlsCertificate,
     ?string $tlsKey,
     bool $http3,
+    int $workers,
     int $recycleRequests,
     int $recycleSeconds,
+    int $recycleJitterSeconds,
 ): void {
     $kernel = certification_kernel($root);
     $server = new RuntimeServer($kernel, new RunwireRuntimeAdapter());
@@ -258,7 +260,7 @@ function certification_runwire(
     );
 
     $definition = Server::httpApplicationFactory($address, $factory, 'webrick-cert')
-        ->withWorkers(1);
+        ->withWorkers($workers);
 
     if ($tlsCertificate !== null) {
         $definition = $definition->withTls(new TlsOptions(
@@ -279,6 +281,7 @@ function certification_runwire(
         workerRecycle: new WorkerRecyclePolicy(
             maxRequests: $recycleRequests,
             maxLifetimeSeconds: $recycleSeconds,
+            jitterSeconds: $recycleJitterSeconds,
             gracefulTimeoutSeconds: 15.0,
         ),
     ));
@@ -354,8 +357,10 @@ $address = (string) ($arguments['address'] ?? '127.0.0.1:18081');
 $tlsCertificate = isset($arguments['tls-cert']) ? realpath((string) $arguments['tls-cert']) : null;
 $tlsKey = isset($arguments['tls-key']) ? realpath((string) $arguments['tls-key']) : null;
 $http3 = filter_var($arguments['http3'] ?? false, FILTER_VALIDATE_BOOL);
+$workers = max(1, min(32, (int) ($arguments['workers'] ?? 1)));
 $recycleRequests = max(0, (int) ($arguments['recycle'] ?? 0));
 $recycleSeconds = max(0, (int) ($arguments['recycle-seconds'] ?? 0));
+$recycleJitterSeconds = max(0, (int) ($arguments['recycle-jitter-seconds'] ?? 0));
 
 certification_runwire(
     $root,
@@ -363,6 +368,8 @@ certification_runwire(
     $tlsCertificate === false ? null : $tlsCertificate,
     $tlsKey === false ? null : $tlsKey,
     $http3,
+    $workers,
     $recycleRequests,
     $recycleSeconds,
+    $recycleJitterSeconds,
 );
