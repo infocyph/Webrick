@@ -200,6 +200,7 @@ function certification_runwire(
     ?string $tlsKey,
     bool $http3,
     int $recycleRequests,
+    int $recycleSeconds,
 ): void {
     $kernel = certification_kernel($root);
     $server = new RuntimeServer($kernel, new RunwireRuntimeAdapter());
@@ -240,6 +241,7 @@ function certification_runwire(
         driver: RuntimeDriver::NATIVE,
         workerRecycle: new WorkerRecyclePolicy(
             maxRequests: $recycleRequests,
+            maxLifetimeSeconds: $recycleSeconds,
             gracefulTimeoutSeconds: 15.0,
         ),
     ));
@@ -305,6 +307,7 @@ $tlsCertificate = isset($arguments['tls-cert']) ? realpath((string) $arguments['
 $tlsKey = isset($arguments['tls-key']) ? realpath((string) $arguments['tls-key']) : null;
 $http3 = filter_var($arguments['http3'] ?? false, FILTER_VALIDATE_BOOL);
 $recycleRequests = max(0, (int) ($arguments['recycle'] ?? 0));
+$recycleSeconds = max(0, (int) ($arguments['recycle-seconds'] ?? 0));
 
 certification_runwire(
     $root,
@@ -313,4 +316,5 @@ certification_runwire(
     $tlsKey === false ? null : $tlsKey,
     $http3,
     $recycleRequests,
+    $recycleSeconds,
 );
