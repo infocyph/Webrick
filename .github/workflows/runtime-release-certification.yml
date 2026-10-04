@@ -226,11 +226,11 @@ jobs:
       - name: Run controlled same-run load matrix
         run: |
           mkdir -p cert-results
-          bash candidate/.github/certification/load-benchmark.sh             "$PWD/baseline"             "$PWD/candidate"             "$PWD/cert-results"             "${{ github.event_name == 'workflow_dispatch' && inputs.duration_seconds || '2' }}"             "${{ github.event_name == 'workflow_dispatch' && inputs.trials || '1' }}"
+          bash candidate/.github/certification/load-benchmark.sh             "$PWD/baseline"             "$PWD/candidate"             "$PWD/cert-results"             "${{ github.event_name == 'workflow_dispatch' && inputs.duration_seconds || '10' }}"             "${{ github.event_name == 'workflow_dispatch' && inputs.trials || '3' }}"
 
       - name: Enforce performance budgets
         run: |
-          php candidate/.github/certification/analyze-load.php             --input="$PWD/cert-results/load-results.jsonl"             --summary="$PWD/cert-results/summary.md"             --json="$PWD/cert-results/comparison.json"             --throughput-regression-percent="${{ github.event_name == 'workflow_dispatch' && inputs.throughput_regression_percent || '100' }}"             --p99-regression-percent="${{ github.event_name == 'workflow_dispatch' && inputs.p99_regression_percent || '1000' }}"             --memory-regression-mb="${{ github.event_name == 'workflow_dispatch' && inputs.memory_regression_mb || '128' }}"
+          php candidate/.github/certification/analyze-load.php             --input="$PWD/cert-results/load-results.jsonl"             --summary="$PWD/cert-results/summary.md"             --json="$PWD/cert-results/comparison.json"             --throughput-regression-percent="${{ github.event_name == 'workflow_dispatch' && inputs.throughput_regression_percent || '2' }}"             --p99-regression-percent="${{ github.event_name == 'workflow_dispatch' && inputs.p99_regression_percent || '15' }}"             --memory-regression-mb="${{ github.event_name == 'workflow_dispatch' && inputs.memory_regression_mb || '32' }}"
           cat cert-results/summary.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload performance evidence
@@ -267,7 +267,7 @@ jobs:
       - name: Run persistent-worker soak
         run: |
           mkdir -p soak-results
-          bash .github/certification/run-soak.sh             "$PWD"             "$PWD/soak-results"             "${{ github.event_name == 'workflow_dispatch' && inputs.soak_minutes || '2' }}"             "${{ github.event_name == 'workflow_dispatch' && inputs.memory_regression_mb || '128' }}"
+          bash .github/certification/run-soak.sh             "$PWD"             "$PWD/soak-results"             "${{ github.event_name == 'workflow_dispatch' && inputs.soak_minutes || '30' }}"             "${{ github.event_name == 'workflow_dispatch' && inputs.memory_regression_mb || '32' }}"
           cat soak-results/soak-summary.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload soak evidence
