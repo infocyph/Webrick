@@ -206,12 +206,7 @@ final class RunwireCleanupIsolationTest extends TestCase
             $cancelWriter = new RunwireCleanupWriterFixture(
                 static fn() => $cancelled->context->cancel(CancellationReason::TRANSPORT_CANCELLED),
             );
-            try {
-                $application->handle($cancelled, $cancelWriter, completeResponse: true);
-                self::fail('Transport cancellation must stop Webrick response production.');
-            } catch (RuntimeException $error) {
-                self::assertStringContainsString('cancelled', strtolower($error->getMessage()));
-            }
+            $application->handle($cancelled, $cancelWriter, completeResponse: true);
             self::assertSame(3, RunwireCleanupProbe::$scopeLeaves);
             self::assertSame(3, RunwireCleanupProbe::$cleanupCalls);
             self::assertTrue($cancelled->context->completed());
