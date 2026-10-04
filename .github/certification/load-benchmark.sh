@@ -203,7 +203,7 @@ record_wrk() {
     local args=(-t"$threads" -c"$concurrency" -d"${DURATION_SECONDS}s" --latency)
     if [[ "$method" == "POST" ]]; then
         args+=(-s "$POST_SCRIPT")
-    elif [[ "$workload" == "stream" ]]; then
+    elif [[ "$mode" == "sapi" && "$workload" == "stream" ]]; then
         args+=(-s "$STREAM_SCRIPT")
     fi
 
