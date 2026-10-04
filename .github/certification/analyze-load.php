@@ -2,8 +2,6 @@
 
 declare(strict_types=1);
 
-use RuntimeException;
-
 /** @return list<array<string,mixed>> */
 function load_rows(string $path): array
 {
