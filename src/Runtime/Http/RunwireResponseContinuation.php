@@ -208,6 +208,19 @@ final class RunwireResponseContinuation
         self::releaseIfTerminated($fiber);
     }
 
+    /** @param Fiber<mixed, mixed, mixed, mixed> $fiber */
+    private static function suspendForIo(Fiber $fiber): void
+    {
+        $ioSuspensions = self::ioSuspensions();
+        $ioSuspensions[$fiber] = true;
+
+        try {
+            Fiber::suspend();
+        } finally {
+            unset($ioSuspensions[$fiber]);
+        }
+    }
+
     /**
      * Propagate caller-owned task failure into Webrick's suspended handler so
      * handler catch/finally cleanup runs before the host exception continues.
@@ -226,19 +239,6 @@ final class RunwireResponseContinuation
             // The caller-owned failure remains authoritative after handler cleanup.
         } finally {
             self::releaseIfTerminated($fiber);
-        }
-    }
-
-    /** @param Fiber<mixed, mixed, mixed, mixed> $fiber */
-    private static function suspendForIo(Fiber $fiber): void
-    {
-        $ioSuspensions = self::ioSuspensions();
-        $ioSuspensions[$fiber] = true;
-
-        try {
-            Fiber::suspend();
-        } finally {
-            unset($ioSuspensions[$fiber]);
         }
     }
 }
