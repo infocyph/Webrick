@@ -240,7 +240,10 @@ validate_metrics_json() {
         and (.memory_current_bytes | type == "number")
         and (.memory_peak_bytes | type == "number")
         and (.requests_active | type == "number")
-        and (.queued_bytes_current | type == "number")
+        and (
+            ((.queued_bytes_current? // null) | type == "number")
+            or ((.deferred_backlog? // null) | type == "number")
+        )
         and (.rejected_requests_total | type == "number")
     ' >/dev/null
 }
