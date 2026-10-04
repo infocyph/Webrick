@@ -10,6 +10,10 @@ RECYCLE_SECONDS=$((SOAK_SECONDS * 2 / 3))
 if (( RECYCLE_SECONDS < 30 )); then
     RECYCLE_SECONDS=30
 fi
+RECYCLE_JITTER_SECONDS=$((SOAK_SECONDS / 10))
+if (( RECYCLE_JITTER_SECONDS < 5 )); then
+    RECYCLE_JITTER_SECONDS=5
+fi
 CANCELLATION_PROBES=0
 
 HARNESS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cert-server.php"
@@ -131,7 +135,7 @@ sample() {
 }
 
 php "$HARNESS" prepare "--root=${ROOT}"
-php "$HARNESS" runwire     "--root=${ROOT}"     "--address=127.0.0.1:18100"     "--recycle-seconds=${RECYCLE_SECONDS}" >"$LOG" 2>&1 &
+php "$HARNESS" runwire     "--root=${ROOT}"     "--address=127.0.0.1:18100"     "--workers=2"     "--recycle-seconds=${RECYCLE_SECONDS}"     "--recycle-jitter-seconds=${RECYCLE_JITTER_SECONDS}" >"$LOG" 2>&1 &
 SERVER_PID=$!
 
 cleanup() {
@@ -219,7 +223,7 @@ if (( REJECTED != 0 )); then
     exit 1
 fi
 if (( DISTINCT_PIDS < 2 )); then
-    echo "Worker replacement was not observed; distinct worker PIDs: $DISTINCT_PIDS" >&2
+    echo "Representative two-worker topology was not observed; distinct worker PIDs: $DISTINCT_PIDS" >&2
     exit 1
 fi
 if (( PLANNED_RECYCLES < 1 )); then
@@ -255,7 +259,9 @@ cat > "$RESULT_DIR/soak-summary.md" <<EOF
 - Duration: ${SOAK_MINUTES} minutes
 - Cycles: ${CYCLE}
 - Distinct worker PIDs: ${DISTINCT_PIDS}
+- Worker topology: 2
 - Worker recycle interval: ${RECYCLE_SECONDS} seconds
+- Worker recycle jitter: ${RECYCLE_JITTER_SECONDS} seconds
 - Deliberate slow-client cancellation probes: ${CANCELLATION_PROBES}
 - Planned worker recycle exits: ${PLANNED_RECYCLES}
 - Unexpected unhealthy/restart/exit events: ${UNHEALTHY_EVENTS}/${RESTART_EVENTS}/${UNEXPECTED_EXITS}
