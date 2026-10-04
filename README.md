@@ -30,7 +30,7 @@ runtime from an environment string.
 - Lazy request promotion and capability-driven compiled dispatch.
 - Native string and file response bodies; stream objects only at interop boundaries.
 - SAPI/CLI emitters plus dedicated Swoole/OpenSwoole, RoadRunner and Workerman runtime adapters.
-- Optional Runwire 2.1 application/runtime bridge for native portable/prefork and supported host-driver deployments without making Runwire a Webrick production requirement.
+- Optional Runwire 2.1.1+ application/runtime bridge for native portable/prefork and supported host-driver deployments without making Runwire a Webrick production requirement.
 - Request-local state and explicit InterMix scopes for persistent workers.
 - Signed/temporary URLs, range requests, conditional responses and cache policy handling.
 - Negotiation, compression, response cache, throttling, telemetry, request limits,
@@ -61,7 +61,7 @@ tests the optional integration against CacheLayer 4.x; response-cache, throttle,
 and encrypted-cookie backing namespaces were versioned for the major upgrade.
 
 Runwire also remains optional. A host that selects the Runwire runtime bridge
-provides a compatible Runwire 2.1 installation; ordinary Webrick/SAPI use and
+provides a compatible Runwire 2.1.1+ installation; ordinary Webrick/SAPI use and
 Webrick's direct runtime adapters do not require it. When the host also uses
 InterMix's Runwire integration, Webrick borrows that exact request/scope context
 instead of opening a parallel DI scope.
@@ -201,7 +201,7 @@ Webrick's direct Swoole/OpenSwoole, RoadRunner and Workerman integrations use
 worker bootstrap; Webrick does not perform per-request environment or extension
 discovery.
 
-Runwire 2.1 is an optional alternative host runtime. A Runwire-hosted Webrick
+Runwire 2.1.1+ is an optional alternative host runtime. A Runwire-hosted Webrick
 application composes `RunwireRuntimeApplicationFactory` /
 `RunwireRuntimeApplication` with `RuntimeServer` and `RunwireRuntimeAdapter`
 around the same compiled kernel. Runwire remains authoritative for runtime

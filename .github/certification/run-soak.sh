@@ -65,48 +65,7 @@ wait_ready() {
     return 1
 }
 
-run_http_batch() {
-    local count="$1"
-    local concurrency="$2"
-    local method="$3"
-    local url="$4"
-    local running=0
-    local failures=0
-
-    for _ in $(seq 1 "$count"); do
-        if [[ "$method" == "POST" ]]; then
-            curl --http1.1 --fail --silent --show-error --max-time 5 \
-                --output /dev/null \
-                --header 'Content-Type: application/octet-stream' \
-                --data-binary "@$PAYLOAD" \
-                "$url" &
-        else
-            curl --http1.1 --fail --silent --show-error --max-time 5 \
-                --output /dev/null \
-                "$url" &
-        fi
-        running=$((running + 1))
-
-        if (( running >= concurrency )); then
-            if ! wait -n; then
-                failures=$((failures + 1))
-            fi
-            running=$((running - 1))
-        fi
-    done
-
-    while (( running > 0 )); do
-        if ! wait -n; then
-            failures=$((failures + 1))
-        fi
-        running=$((running - 1))
-    done
-
-    if (( failures != 0 )); then
-        echo "Bounded HTTP batch recorded ${failures} failed request(s)." >&2
-        return 1
-    fi
-}
+source "$(dirname "${BASH_SOURCE[0]}")/soak-http-batch.sh"
 
 fetch_retry() {
     local url="$1"

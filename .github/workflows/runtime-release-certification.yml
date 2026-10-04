@@ -282,6 +282,9 @@ jobs:
           sudo apt-get install -y curl jq wrk
           composer install --no-interaction --no-progress --prefer-dist
 
+      - name: Verify bounded HTTP batch ownership
+        run: bash .github/certification/test-soak-http-batch.sh
+
       - name: Run persistent-worker soak
         run: |
           mkdir -p soak-results

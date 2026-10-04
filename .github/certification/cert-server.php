@@ -63,9 +63,8 @@ function certification_artifacts(string $root): array
 function certification_builder(): ContainerBuilder
 {
     $builder = ContainerBuilder::create('webrick.runtime.certification');
-    if (method_exists($builder, 'input')) {
-        $builder->input(Request::class);
-    }
+    // These handlers receive Request directly from Webrick and do not use DI inputs.
+    $builder->setEnvironment(CERT_ENVIRONMENT);
     if (method_exists($builder, 'releaseIdentity')) {
         $builder->releaseIdentity(CERT_FINGERPRINT);
     }
@@ -199,7 +198,20 @@ function certification_prepare(string $root): void
         postGlobalTags: [],
     );
 
-    $builder->compile($paths['intermix']);
+    foreach ($build->plans as $plan) {
+        if ($plan->requiresScope()) {
+            throw new RuntimeException('The direct-handler certification fixture must not require a DI scope.');
+        }
+    }
+    $report = $builder->compile($paths['intermix']);
+    if (isset($report['graph'])) {
+        if (file_put_contents(
+            $paths['intermix'] . '.release.php',
+            "<?php\n\nreturn " . var_export($report['graph'], true) . ";\n",
+        ) === false) {
+            throw new RuntimeException('Unable to write certification deployment graph identity.');
+        }
+    }
     new RouterArtifactCompiler()->compile($build, $paths['router']);
 }
 
@@ -210,8 +222,15 @@ function certification_kernel(string $root): CompiledRouterKernel
         throw new RuntimeException('Certification artifacts are missing. Run the prepare command first.');
     }
 
-    $builder = certification_builder();
-    $container = $builder->production($paths['intermix']);
+    if (method_exists(ContainerBuilder::class, 'loadProductionArtifact')) {
+        $graph = require $paths['intermix'] . '.release.php';
+        if (!is_string($graph)) {
+            throw new RuntimeException('Certification deployment graph identity is missing.');
+        }
+        $container = ContainerBuilder::loadProductionArtifact($paths['intermix'], $graph, CERT_ENVIRONMENT);
+    } else {
+        $container = certification_builder()->production($paths['intermix']);
+    }
 
     return CompiledRouterKernel::fromCompiledArtifact(
         log: new NullLogger(),

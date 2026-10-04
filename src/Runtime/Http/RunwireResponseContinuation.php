@@ -86,13 +86,16 @@ final class RunwireResponseContinuation
             'Runwire response requires drain continuation through the Webrick Runwire application boundary.',
         );
         $drained = false;
-        $resume = static function () use (&$drained, $fiber): void {
+        $continuation = $fiber;
+        $resume = static function () use (&$drained, &$continuation): void {
             if ($drained) {
                 return;
             }
 
             $drained = true;
-            if (!$fiber->isSuspended()) {
+            $fiber = $continuation;
+            $continuation = null;
+            if (!$fiber instanceof Fiber || !$fiber->isSuspended()) {
                 return;
             }
 
@@ -117,6 +120,7 @@ final class RunwireResponseContinuation
             }
         } finally {
             $subscription->unsubscribe();
+            $continuation = null;
         }
     }
 

@@ -124,7 +124,6 @@ final class RunwireApplicationWriterFixture implements ResponseWriterInterface
     public function drain(): void
     {
         $callback = $this->drainCallback ?? throw new RuntimeException('No drain callback is pending.');
-        $this->drainCallback = null;
         $callback($this);
     }
 
@@ -323,6 +322,24 @@ test('runwire host task cancellation reaches handler and finalizes request exact
         ->and($requestContext->completed())->toBeTrue()
         ->and($application)->toBeInstanceOf(RunwireRuntimeApplication::class)
         ->and($application->snapshot()->requestsActive)->toBe(0);
+});
+
+test('runwire drain callback releases the completed continuation while writer remains alive', function (): void {
+    $writer = new RunwireApplicationWriterFixture();
+    $request = runwire_application_request();
+    $continuation = null;
+    RunwireResponseContinuation::run(static function () use ($writer, $request, &$continuation): void {
+        $fiber = Fiber::getCurrent();
+        expect($fiber)->toBeInstanceOf(Fiber::class);
+        $continuation = WeakReference::create($fiber);
+        RunwireResponseContinuation::awaitDrain($writer, $request->context->cancellation);
+    });
+
+    expect($continuation->get())->toBeInstanceOf(Fiber::class);
+    $writer->drain();
+    expect($continuation->get())->toBeNull();
+    $writer->drain();
+    expect($continuation->get())->toBeNull();
 });
 
 test('runwire continuation preserves exception cleanup across repeated body readiness', function (): void {

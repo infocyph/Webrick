@@ -1,7 +1,9 @@
 Runwire Runtime
 ===============
 
-Webrick 6 can run behind Runwire 2.1 through its optional native runtime bridge. Runwire is **not** a production dependency of Webrick: ordinary SAPI/shared-hosting installs and Webrick's direct Swoole/OpenSwoole, RoadRunner and Workerman adapters remain first-class paths.
+Webrick 6 can run behind Runwire 2.1.1 or later through its optional native runtime bridge. Runwire is **not** a production dependency of Webrick: ordinary SAPI/shared-hosting installs and Webrick's direct Swoole/OpenSwoole, RoadRunner and Workerman adapters remain first-class paths.
+
+Use at least Runwire 2.1.1 for the corrected HTTP/1, HTTP/2 and HTTP/3 graceful-drain admission boundaries. Runwire owns worker replacement and drain deadlines; Webrick uses the host's normal application lifecycle.
 
 Choose the Runwire bridge when the application wants Runwire to own runtime selection, worker/process lifecycle, request cancellation/deadlines, drain/shutdown behavior and runtime metrics while Webrick remains the HTTP routing/application kernel.
 
