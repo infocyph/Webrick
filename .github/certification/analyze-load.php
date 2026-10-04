@@ -132,15 +132,32 @@ foreach (load_rows($input) as $row) {
         'memory_current_bytes',
         'memory_peak_bytes',
         'requests_active',
-        'queued_bytes_current',
         'rejected_requests_total',
     ] as $metric) {
         if (!isset($metrics[$metric]) || !is_int($metrics[$metric])) {
             $errors[] = "{$key}: required telemetry '{$metric}' is missing or invalid.";
         }
     }
-    if (($metrics['queued_bytes_current'] ?? null) !== 0) {
-        $errors[] = "{$key}: queued bytes did not drain to zero.";
+
+    $queueMetrics = [];
+    foreach (['queued_bytes_current', 'deferred_backlog'] as $metric) {
+        if (array_key_exists($metric, $metrics)) {
+            if (!is_int($metrics[$metric])) {
+                $errors[] = "{$key}: queue telemetry '{$metric}' is invalid.";
+
+                continue;
+            }
+
+            $queueMetrics[$metric] = $metrics[$metric];
+        }
+    }
+    if ($queueMetrics === []) {
+        $errors[] = "{$key}: required queue telemetry is missing.";
+    }
+    foreach ($queueMetrics as $metric => $value) {
+        if ($value !== 0) {
+            $errors[] = "{$key}: queue telemetry '{$metric}' did not drain to zero.";
+        }
     }
     if (($metrics['rejected_requests_total'] ?? null) !== 0) {
         $errors[] = "{$key}: rejected requests were observed.";
