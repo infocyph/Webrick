@@ -26,8 +26,18 @@ VALIDATION_SCRIPT="$RESULT_DIR/validate.lua"
 cat > "$VALIDATION_SCRIPT" <<'LUA'
 local workload = os.getenv("CERT_WORKLOAD") or ""
 local close_delimited = os.getenv("CERT_CLOSE_DELIMITED") == "1"
+local threads = {}
 local validated = 0
 local invalid = 0
+
+setup = function(thread)
+    table.insert(threads, thread)
+end
+
+init = function(args)
+    validated = 0
+    invalid = 0
+end
 
 if workload == "upload" then
     wrk.method = "POST"
@@ -82,8 +92,14 @@ response = function(status, headers, body)
 end
 
 done = function(summary, latency, requests)
-    io.write(string.format("CERT Validated responses: %d\n", validated))
-    io.write(string.format("CERT Invalid responses: %d\n", invalid))
+    local total_validated = 0
+    local total_invalid = 0
+    for _, thread in ipairs(threads) do
+        total_validated = total_validated + (thread:get("validated") or 0)
+        total_invalid = total_invalid + (thread:get("invalid") or 0)
+    end
+    io.write(string.format("CERT Validated responses: %d\n", total_validated))
+    io.write(string.format("CERT Invalid responses: %d\n", total_invalid))
 end
 LUA
 
