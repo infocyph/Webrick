@@ -6,6 +6,7 @@ namespace Infocyph\Webrick\Runtime\Http;
 
 use Fiber;
 use Infocyph\Runwire\CancellationToken;
+use Infocyph\Runwire\Exception\CancelledException;
 use Infocyph\Runwire\Http\RequestBodyInterface;
 use Infocyph\Runwire\Http\ResponseWriterInterface;
 use RuntimeException;
@@ -144,6 +145,13 @@ final class RunwireResponseContinuation
         return $fiber->isSuspended();
     }
 
+    private static function isRepeatedCancellation(Throwable $original, Throwable $next): bool
+    {
+        return $original instanceof CancelledException
+            && $next instanceof CancelledException
+            && $original->reason === $next->reason;
+    }
+
     /** @return Fiber<mixed, mixed, mixed, mixed> */
     private static function managedFiber(string $message): Fiber
     {
@@ -259,7 +267,9 @@ final class RunwireResponseContinuation
                     $resumeValue = Fiber::suspend($suspension);
                     $suspension = $fiber->resume($resumeValue);
                 } catch (Throwable $continuationError) {
-                    $suspension = $fiber->throw($continuationError);
+                    $suspension = self::isRepeatedCancellation($error, $continuationError)
+                        ? $fiber->resume()
+                        : $fiber->throw($continuationError);
                 }
             }
         } catch (Throwable) {
