@@ -126,6 +126,34 @@ function certification_prepare(string $root): void
                 ),
             );
             $registrar->get('/cert/corrupt', static fn(): Response => Response::plaintext('corrupt', 200));
+            $registrar->get(
+                '/cert/malformed-dynamic',
+                static fn(): Response => Response::plaintext('garbage {"id":"42"} trailing', 200),
+            );
+            $registrar->get(
+                '/cert/wrong-dynamic',
+                static fn(): Response => Response::json(['id' => '41']),
+            );
+            $registrar->get(
+                '/cert/malformed-json',
+                static fn(): Response => Response::plaintext('garbage {"ok":true} trailing', 200),
+            );
+            $registrar->get('/cert/wrong-json', static function (): Response {
+                return Response::json([
+                    'ok' => false,
+                    'pid' => getmypid(),
+                    'protocol' => '9',
+                    'path' => '/wrong',
+                ]);
+            });
+            $registrar->post(
+                '/cert/malformed-upload',
+                static fn(): Response => Response::plaintext('garbage {"bytes":16384} trailing', 200),
+            );
+            $registrar->post(
+                '/cert/wrong-upload',
+                static fn(): Response => Response::json(['bytes' => 1, 'pid' => getmypid()]),
+            );
             $registrar->get('/cert/file', static function (Request $request) use ($filePath): Response {
                 return Response::rangedDownload(
                     $request,
