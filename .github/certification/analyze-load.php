@@ -88,23 +88,62 @@ foreach (load_rows($input) as $row) {
     $key = implode('|', [$mode, $workload, (string) $concurrency, $version]);
     $groups[$key][] = $row;
 
-    $failed = (int) ($row['failed'] ?? 0);
     $complete = (int) ($row['complete'] ?? 0);
+    $validated = (int) ($row['validated'] ?? -1);
+    $invalid = (int) ($row['invalid'] ?? -1);
     $non2xx = (int) ($row['non2xx'] ?? 0);
-    $expectedSapiStreamEof = $mode === 'sapi'
+    $socketErrors = is_array($row['socket_errors'] ?? null) ? $row['socket_errors'] : [];
+    $connectErrors = (int) ($socketErrors['connect'] ?? -1);
+    $readErrors = (int) ($socketErrors['read'] ?? -1);
+    $writeErrors = (int) ($socketErrors['write'] ?? -1);
+    $timeoutErrors = (int) ($socketErrors['timeout'] ?? -1);
+    $failed = (int) ($row['failed'] ?? -1);
+    $socketErrorTotal = $connectErrors + $readErrors + $writeErrors + $timeoutErrors;
+    $validatedCloseDelimitedStream = $mode === 'sapi'
         && $workload === 'stream'
-        && $non2xx === 0
         && $complete > 0
-        && $failed === $complete;
-    if ((!$expectedSapiStreamEof && $failed !== 0) || $non2xx !== 0) {
-        $errors[] = "{$key}: invalid/failed HTTP requests were observed.";
+        && $validated === $complete
+        && $invalid === 0
+        && $readErrors === $complete
+        && $connectErrors === 0
+        && $writeErrors === 0
+        && $timeoutErrors === 0
+        && $non2xx === 0;
+
+    if ($complete <= 0) {
+        $errors[] = "{$key}: no complete HTTP responses were measured.";
     }
+    if ($validated !== $complete || $invalid !== 0) {
+        $errors[] = "{$key}: response validation did not prove every complete response.";
+    }
+    if ($non2xx !== 0) {
+        $errors[] = "{$key}: unexpected non-2xx/3xx responses were observed.";
+    }
+    if ($failed !== $socketErrorTotal) {
+        $errors[] = "{$key}: socket-error totals are incomplete or inconsistent.";
+    }
+    if (!$validatedCloseDelimitedStream && $socketErrorTotal !== 0) {
+        $errors[] = "{$key}: transport socket errors were observed.";
+    }
+
     $metrics = is_array($row['metrics'] ?? null) ? $row['metrics'] : [];
-    if ((int) ($metrics['queued_bytes_current'] ?? 0) !== 0) {
-        $errors[] = "{$key}: Runwire queued bytes did not drain to zero.";
+    foreach ([
+        'pid',
+        'memory_current_bytes',
+        'memory_peak_bytes',
+        'requests_active',
+        'queued_bytes_current',
+        'rejected_requests_total',
+    ] as $metric) {
+        if (!isset($metrics[$metric]) || !is_int($metrics[$metric])) {
+            $errors[] = "{$key}: required telemetry '{$metric}' is missing or invalid.";
+        }
     }
-    if ((int) ($metrics['rejected_requests_total'] ?? 0) !== 0) {
-        $errors[] = "{$key}: Runwire rejected requests were observed.";
+    if (($metrics['queued_bytes_current'] ?? null) !== 0) {
+        $errors[] = "{$key}: queued bytes did not drain to zero.";
+    }
+    if (($metrics['rejected_requests_total'] ?? null) !== 0) {
+        $errors[] = "{$key}: rejected requests were observed.";
     }
 }
 
