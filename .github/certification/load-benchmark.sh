@@ -76,6 +76,7 @@ response = function(status, headers, body)
             and full_match(
                 body,
                 '^{"ok":true,"pid":%d+,"protocol":"1%.1","path":"\\/cert\\/json"}
+
     if ok then
         validated = validated + 1
     else
@@ -448,6 +449,7 @@ echo "$RESULTS"
             and body == string.rep("a", 1024) .. string.rep("b", 1024) .. string.rep("c", 1024)
     elseif workload == "upload" then
         ok = status == 200 and full_match(body, '^{"bytes":16384,"pid":%d+}
+
     if ok then
         validated = validated + 1
     else
@@ -811,6 +813,7 @@ echo "$RESULTS"
         ok = status == 206 and body == "0123456789abcdef"
     elseif workload == "slow" then
         ok = status == 200 and full_match(body, '^{"slept_ms":5,"pid":%d+}
+
     if ok then
         validated = validated + 1
     else
