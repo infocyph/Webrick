@@ -239,7 +239,10 @@ final class RunwireResponseContinuation
 
         try {
             $suspension = $fiber->throw($error);
-            while ($fiber->isSuspended() && !isset(self::ioSuspensions()[$fiber])) {
+            while (!isset(self::ioSuspensions()[$fiber])) {
+                if (!$fiber->isSuspended()) {
+                    break;
+                }
                 if (!$owner instanceof Fiber) {
                     throw new RuntimeException(
                         'Runwire handler cleanup suspended without a caller-owned Fiber.',
