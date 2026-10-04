@@ -248,7 +248,7 @@ jobs:
       - name: Install soak dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y apache2-utils curl jq
+          sudo apt-get install -y curl jq wrk
           composer install --no-interaction --no-progress --prefer-dist
 
       - name: Run persistent-worker soak
@@ -289,7 +289,11 @@ jobs:
           gh attestation verify --owner php /tmp/pie
           chmod +x /tmp/pie
           sudo mv /tmp/pie /usr/local/bin/pie
-          sudo -E /usr/local/bin/pie install mikepultz/php-quic             --with-php-path="$(command -v php)"             --with-php-config="$(command -v php-config)"             --with-phpize-path="$(command -v phpize)"
+          sudo -E /usr/local/bin/pie install \
+            --with-php-path="$(command -v php)" \
+            --with-php-config="$(command -v php-config)" \
+            --with-phpize-path="$(command -v phpize)" \
+            mikepultz/php-quic
           php -r '
           if (!extension_loaded("quic")) {
               throw new RuntimeException("ext-quic did not load.");
