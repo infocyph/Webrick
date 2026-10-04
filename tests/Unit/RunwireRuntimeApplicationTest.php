@@ -249,7 +249,7 @@ test('runwire host task cancellation reaches handler and finalizes request exact
             $request,
             $writer,
         ): void {
-            $application = new RunwireRuntimeApplication(
+            $activeApplication = new RunwireRuntimeApplication(
                 static function (HttpRequest $native, ResponseWriterInterface $response) use (
                     $scope,
                     &$caught,
@@ -272,9 +272,12 @@ test('runwire host task cancellation reaches handler and finalizes request exact
                     ++$cleanupCalls;
                 },
             );
+            $application = $activeApplication;
 
             $task = $scope->spawn(
-                static fn(): null => $application->handle($request, $writer, completeResponse: true),
+                static function () use ($activeApplication, $request, $writer): void {
+                    $activeApplication->handle($request, $writer, completeResponse: true);
+                },
             );
             $scope->yieldNow();
 
