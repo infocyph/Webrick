@@ -66,7 +66,10 @@ response = function(status, headers, body)
     elseif workload == "dynamic" then
         ok = status == 200 and contains(body, '"id":"42"')
     elseif workload == "json" then
-        ok = status == 200 and contains(body, '"ok":true') and contains(body, '"path":"/cert/json"')
+        ok = status == 200
+            and contains(body, '"ok":true')
+            and contains(body, '"protocol":"')
+            and contains(body, '"path":"\\/cert\\/json"')
     elseif workload == "stream" then
         ok = status == 200
             and #body == 3072
