@@ -66,6 +66,61 @@ function cli_options(array $argv): array
     return $options;
 }
 
+/** @return array<string,true> */
+function expected_rows(string $profile, int $trials): array
+{
+    $modes = $profile === 'all' ? ['sapi', 'runwire'] : [$profile];
+    $versions = ['baseline', 'candidate'];
+    $workloads = [
+        'static',
+        'dynamic',
+        'json',
+        'stream',
+        'upload',
+        'not_found',
+        'method_not_allowed',
+        'file',
+        'range',
+        'slow',
+    ];
+    $concurrencies = [1, 5, 20, 50];
+    $expected = [];
+
+    foreach ($modes as $mode) {
+        foreach ($workloads as $workload) {
+            foreach ($concurrencies as $concurrency) {
+                foreach ($versions as $version) {
+                    for ($trial = 1; $trial <= $trials; ++$trial) {
+                        $expected[implode('|', [
+                            $mode,
+                            $workload,
+                            (string) $concurrency,
+                            $version,
+                            (string) $trial,
+                        ])] = true;
+                    }
+                }
+            }
+        }
+    }
+
+    return $expected;
+}
+
+function valid_measurement(mixed $value, bool $allowZero = true): bool
+{
+    if (!is_int($value) && !is_float($value)) {
+        return false;
+    }
+
+    $number = (float) $value;
+    if (!is_finite($number)) {
+        return false;
+    }
+
+    return $allowZero ? $number >= 0.0 : $number > 0.0;
+}
+
 $options = cli_options($argv);
 $input = $options['input'] ?? '';
 $summaryPath = $options['summary'] ?? '';
@@ -73,20 +128,58 @@ $jsonPath = $options['json'] ?? '';
 $throughputBudget = (float) ($options['throughput-regression-percent'] ?? 2);
 $p99Budget = (float) ($options['p99-regression-percent'] ?? 15);
 $memoryBudgetMb = (float) ($options['memory-regression-mb'] ?? 32);
+$profile = $options['profile'] ?? 'all';
+$trials = (int) ($options['trials'] ?? 3);
 
 if ($input === '' || $summaryPath === '' || $jsonPath === '') {
     throw new RuntimeException('Expected --input, --summary and --json paths.');
 }
+if (!in_array($profile, ['all', 'sapi', 'runwire'], true)) {
+    throw new RuntimeException('Certification profile must be all, sapi or runwire.');
+}
+if ($trials < 1) {
+    throw new RuntimeException('Certification trial count must be at least one.');
+}
 
+$expected = expected_rows($profile, $trials);
+$seen = [];
 $groups = [];
 $errors = [];
-foreach (load_rows($input) as $row) {
-    $version = (string) ($row['version'] ?? '');
-    $mode = (string) ($row['mode'] ?? '');
-    $workload = (string) ($row['workload'] ?? '');
-    $concurrency = (int) ($row['concurrency'] ?? 0);
+$rows = load_rows($input);
+if ($rows === []) {
+    $errors[] = 'Certification evidence is empty.';
+}
+
+foreach ($rows as $row) {
+    $version = is_string($row['version'] ?? null) ? $row['version'] : '';
+    $mode = is_string($row['mode'] ?? null) ? $row['mode'] : '';
+    $workload = is_string($row['workload'] ?? null) ? $row['workload'] : '';
+    $concurrency = is_int($row['concurrency'] ?? null) ? $row['concurrency'] : 0;
+    $trial = is_int($row['trial'] ?? null) ? $row['trial'] : 0;
+    $rowKey = implode('|', [$mode, $workload, (string) $concurrency, $version, (string) $trial]);
+
+    if (!isset($expected[$rowKey])) {
+        $errors[] = "{$rowKey}: unexpected certification row.";
+        continue;
+    }
+    if (isset($seen[$rowKey])) {
+        $errors[] = "{$rowKey}: duplicate certification row.";
+        continue;
+    }
+    $seen[$rowKey] = true;
+
     $key = implode('|', [$mode, $workload, (string) $concurrency, $version]);
     $groups[$key][] = $row;
+
+    foreach ([
+        'rps' => false,
+        'p99' => true,
+        'rss_kb' => false,
+    ] as $measurement => $allowZero) {
+        if (!valid_measurement($row[$measurement] ?? null, $allowZero)) {
+            $errors[] = "{$rowKey}: measurement '{$measurement}' is missing or invalid.";
+        }
+    }
 
     $complete = (int) ($row['complete'] ?? 0);
     $validated = (int) ($row['validated'] ?? -1);
@@ -166,6 +259,12 @@ foreach (load_rows($input) as $row) {
     }
     if (($metrics['rejected_requests_total'] ?? null) !== 0) {
         $errors[] = "{$key}: rejected requests were observed.";
+    }
+}
+
+foreach (array_keys($expected) as $rowKey) {
+    if (!isset($seen[$rowKey])) {
+        $errors[] = "{$rowKey}: missing certification row.";
     }
 }
 
@@ -257,6 +356,10 @@ foreach ($aggregates as $mode => $workloads) {
 }
 
 $report = [
+    'profile' => $profile,
+    'trials' => $trials,
+    'expected_rows' => count($expected),
+    'observed_rows' => count($seen),
     'budgets' => [
         'throughput_regression_percent' => $throughputBudget,
         'p99_regression_percent' => $p99Budget,
