@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Infocyph\CacheLayer\Cache\Cache;
 use Infocyph\Webrick\Middleware\ResponseCacheMiddleware;
+use Infocyph\Webrick\Request\Core\Uri;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Psr\Cache\CacheItemInterface;
@@ -108,7 +109,7 @@ test('response cache rejects unsafe response privacy signals', function (Respons
     'vary wildcard' => Response::json(['ok' => true])->withHeader('Vary', '*'),
 ]);
 
-test('response cache canonicalizes query order and isolates host port and negotiated variants', function (): void {
+test('response cache isolates exact query host port and negotiated variants', function (): void {
     $middleware = new ResponseCacheMiddleware(Cache::memory('webrick-response-variants'));
     $calls = 0;
     $next = static function () use (&$calls): Response {
@@ -116,7 +117,7 @@ test('response cache canonicalizes query order and isolates host port and negoti
     };
 
     $first = $middleware(Request::fake(uri: 'https://example.test/items?b=2&a=1'), $next);
-    $sameQuery = $middleware(Request::fake(uri: 'https://example.test/items?a=1&b=2'), $next);
+    $sameValuesDifferentOrder = $middleware(Request::fake(uri: 'https://example.test/items?a=1&b=2'), $next);
     $otherPort = $middleware(Request::fake(uri: 'https://example.test:8443/items?a=1&b=2'), $next);
     $otherQuery = $middleware(Request::fake(uri: 'https://example.test/items?a=2&b=2'), $next);
     $otherAccept = $middleware(
@@ -125,12 +126,40 @@ test('response cache canonicalizes query order and isolates host port and negoti
     );
 
     expect((string) $first->getBody())->toBe('{"call":1}')
-        ->and((string) $sameQuery->getBody())->toBe('{"call":1}')
-        ->and((string) $otherPort->getBody())->toBe('{"call":2}')
-        ->and((string) $otherQuery->getBody())->toBe('{"call":3}')
-        ->and((string) $otherAccept->getBody())->toBe('{"call":4}')
-        ->and($calls)->toBe(4);
+        ->and((string) $sameValuesDifferentOrder->getBody())->toBe('{"call":2}')
+        ->and((string) $otherPort->getBody())->toBe('{"call":3}')
+        ->and((string) $otherQuery->getBody())->toBe('{"call":4}')
+        ->and((string) $otherAccept->getBody())->toBe('{"call":5}')
+        ->and($calls)->toBe(5);
 });
+
+test('response cache never aliases distinct raw query strings', function (string $firstQuery, string $secondQuery): void {
+    $middleware = new ResponseCacheMiddleware(Cache::memory('webrick-query-' . bin2hex(random_bytes(4))));
+    $calls = 0;
+    $next = static function (Request $request) use (&$calls): Response {
+        ++$calls;
+
+        return Response::json([
+            'call' => $calls,
+            'query' => $request->getQueryParams(),
+        ]);
+    };
+
+    $first = new Request('GET', new Uri('https://example.test/items?' . $firstQuery));
+    $second = new Request('GET', new Uri('https://example.test/items?' . $secondQuery));
+
+    $middleware($first, $next);
+    $middleware($second, $next);
+
+    expect($calls)->toBe(2);
+})->with([
+    'plus versus encoded plus' => ['q=a+b', 'q=a%2Bb'],
+    'semicolon versus ampersand' => ['a=1;b=2', 'a=1&b=2'],
+    'scalar and array overwrite order' => ['a=1&a[]=2', 'a[]=2&a=1'],
+    'duplicate versus final scalar' => ['a=1&a=2', 'a=2'],
+    'encoded delimiter versus delimiter' => ['a=%26b', 'a=&b'],
+    'same pairs in different order' => ['a=1&b=2', 'b=2&a=1'],
+]);
 
 test('response cache keys are versioned bounded PSR-6 keys', function (): void {
     $item = $this->createMock(CacheItemInterface::class);
@@ -141,7 +170,7 @@ test('response cache keys are versioned bounded PSR-6 keys', function (): void {
     $store = $this->createMock(CacheItemPoolInterface::class);
     $store->expects($this->exactly(2))
         ->method('getItem')
-        ->with($this->callback(static fn(string $key): bool => str_starts_with($key, 'webrick.hr.v3.')
+        ->with($this->callback(static fn(string $key): bool => str_starts_with($key, 'webrick.hr.v4.')
             && strlen($key) <= 64))
         ->willReturn($item);
     $store->expects($this->once())->method('save')->willReturn(true);

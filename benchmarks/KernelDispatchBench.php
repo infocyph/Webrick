@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Benchmarks;
 
 use Closure;
-use Infocyph\InterMix\DI\Container;
-use Infocyph\InterMix\DI\Invoker;
+use Infocyph\InterMix\DI\ContainerBuilder;
+use Infocyph\InterMix\DI\RuntimeContainerInterface;
 use Infocyph\InterMix\DI\Support\LifetimeEnum;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
@@ -36,17 +36,18 @@ final class KernelDispatchBench
         $this->request = Request::fake(uri: 'http://localhost/bench');
 
         $this->closureKernel = $this->kernel(
-            new Container('webrick.benchmark.closure'),
+            ContainerBuilder::create('webrick.benchmark.closure')->input(Request::class)->build(),
             static fn(): Response => Response::json(['ok' => true]),
         );
 
         $this->staticControllerKernel = $this->kernel(
-            new Container('webrick.benchmark.static'),
+            ContainerBuilder::create('webrick.benchmark.static')->input(Request::class)->build(),
             [self::class, 'staticResponse'],
         );
 
-        $factoryContainer = new Container('webrick.benchmark.factory');
-        $factoryContainer->bindFactory(
+        $factoryBuilder = ContainerBuilder::create('webrick.benchmark.factory')
+            ->input(Request::class);
+        $factoryBuilder->factory(
             'benchmark.middleware',
             static fn(): Closure => static fn(
                 Request $request,
@@ -55,6 +56,7 @@ final class KernelDispatchBench
             LifetimeEnum::Singleton,
             ['webrick.middleware.pre'],
         );
+        $factoryContainer = $factoryBuilder->build();
         $this->factoryMiddlewareKernel = $this->kernel(
             $factoryContainer,
             static fn(): Response => Response::json(['ok' => true]),
@@ -95,7 +97,7 @@ final class KernelDispatchBench
         }
     }
 
-    private function kernel(Container $container, callable|array $handler): RouterKernel
+    private function kernel(RuntimeContainerInterface $container, callable|array $handler): RouterKernel
     {
         return RouterKernel::bootWithRegistrar(
             log: new NullLogger(),
@@ -103,7 +105,7 @@ final class KernelDispatchBench
             register: static function (Registrar $registrar) use ($handler): void {
                 $registrar->get('/bench', $handler);
             },
-            invoker: Invoker::with($container),
+            invoker: $container,
             registrarOptions: [
                 'autoSlashRedirect' => false,
                 'exposeUrlServices' => false,

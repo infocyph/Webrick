@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Router\Dispatch;
 
 use Closure;
-use Infocyph\InterMix\DI\Invoker;
+use Infocyph\InterMix\DI\RuntimeContainerInterface;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
@@ -27,7 +27,7 @@ final class Dispatcher
      * @param array<class-string|object|callable|string> $postGlobalRaw
      */
     public function __construct(
-        private readonly Invoker $invoker,
+        private readonly RuntimeContainerInterface $invoker,
         private readonly bool $useInvoker = true,
         private readonly array $preGlobalRaw = [],
         private readonly array $postGlobalRaw = [],
@@ -250,10 +250,7 @@ final class Dispatcher
     private function instantiateClassViaInterMix(string $class): object
     {
         try {
-            $instance = $this->invoker->make($class);
-            if (is_object($instance)) {
-                return $instance;
-            }
+            return $this->invoker->make($class);
         } catch (\Throwable $e) {
             if ($this->canInstantiateWithoutArguments($class)) {
                 return new $class();
@@ -261,12 +258,6 @@ final class Dispatcher
 
             throw new InvalidArgumentException("Failed to instantiate middleware class '{$class}'.", 0, $e);
         }
-
-        if ($this->canInstantiateWithoutArguments($class)) {
-            return new $class();
-        }
-
-        throw new InvalidArgumentException("Failed to instantiate middleware class '{$class}'.");
     }
 
     private function invokeClassMiddleware(string $class, Request $req, callable $next): Response
@@ -286,23 +277,35 @@ final class Dispatcher
     }
 
     /**
+     * @param class-string $class
      * @param array<string,mixed> $callArgs
      */
+    private function invokeInstanceMethod(string $class, string $method, array $callArgs): mixed
+    {
+        $callable = [$this->invoker->make($class), $method];
+        if (!is_callable($callable)) {
+            throw new InvalidArgumentException("Route handler {$class}::{$method} is not callable.");
+        }
+
+        return $this->invoker->invoke(Closure::fromCallable($callable), $callArgs);
+    }
+
+    /** @param array<string,mixed> $callArgs */
     private function invokeRouteHandler(mixed $handler, array $callArgs): mixed
     {
         $classMethod = $this->classMethodArrayHandler($handler);
         if ($classMethod !== null) {
             if (is_callable($classMethod)) {
-                return $this->invoker->invoke($classMethod, $callArgs);
+                return $this->invoker->invoke(Closure::fromCallable($classMethod), $callArgs);
             }
 
-            return $this->invoker->make($classMethod[0], method: $classMethod[1], methodArgs: $callArgs);
+            return $this->invokeInstanceMethod($classMethod[0], $classMethod[1], $callArgs);
         }
 
         if (is_string($handler)) {
             $resolved = $this->parseClassMethodStringHandler($handler);
             if ($resolved !== null) {
-                return $this->invoker->make($resolved[0], method: $resolved[1], methodArgs: $callArgs);
+                return $this->invokeInstanceMethod($resolved[0], $resolved[1], $callArgs);
             }
         }
 

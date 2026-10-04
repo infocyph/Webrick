@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Router\Dispatch;
 
 use Closure;
-use Infocyph\InterMix\DI\Invoker;
+use Infocyph\InterMix\DI\RuntimeContainerInterface;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use InvalidArgumentException;
@@ -22,7 +22,7 @@ use UnexpectedValueException;
  *    and returns a Response, invoking middleware in the configured order.
  *  - Support two invocation modes:
  *      • direct call: call middleware/handler as callables with ($req, $next) / ($req)
- *      • DI invoker: let an Invoker perform parameter resolution/autowiring
+ *      • DI runtime container: let an Invoker perform parameter resolution/autowiring
  *        for middleware and the final handler (useInvoker=true).
  *  - Provide stable per-process memoization for certain resolved callables
  *    to avoid repeated binding/lookup overhead.
@@ -79,19 +79,19 @@ final class MiddlewarePipeline
      *
      * @param list<mixed> $stack Ordered list of middleware callables.
      * @param FinalHandler $last Terminal handler callable executed after middleware.
-     * @param Invoker $invoker DI invoker used when $useInvoker is enabled.
-     * @param bool $useInvoker Whether middleware calls use the DI invoker.
-     * @param bool $invokeFinalWithInvoker Whether the terminal handler uses the DI invoker.
+     * @param RuntimeContainerInterface $invoker DI runtime container used when $useInvoker is enabled.
+     * @param bool $useInvoker Whether middleware calls use the DI runtime container.
+     * @param bool $invokeFinalWithInvoker Whether the terminal handler uses the DI runtime container.
      *
      * @throws InvalidArgumentException If any entry in $stack is not callable.
      */
     public function __construct(
         array $stack,
         callable $last, /**
-     * DI invoker used to call middleware and handlers when $useInvoker is true.
+     * DI runtime container used to call middleware and handlers when $useInvoker is true.
      */
-        private readonly Invoker $invoker, /**
-     * Whether to dispatch middleware/handler via the Invoker (DI/autowiring).
+        private readonly RuntimeContainerInterface $invoker, /**
+     * Whether to dispatch middleware/handler via the runtime container (DI/autowiring).
      */
         private readonly bool $useInvoker = true,
         private readonly bool $invokeFinalWithInvoker = true,
@@ -155,7 +155,7 @@ final class MiddlewarePipeline
     }
 
     private static function callMiddleware(
-        Invoker $invoker,
+        RuntimeContainerInterface $invoker,
         bool $useInvoker,
         callable $mw,
         Request $req,
@@ -278,7 +278,7 @@ final class MiddlewarePipeline
         /**
          * Final trampoline for this middleware.
          *
-         * If $useInvoker is true the Invoker is used to call $mw with positional
+         * If $useInvoker is true the runtime container is used to call $mw with positional
          * and named parameters (named 'request' and 'next') to support DI/autowiring.
          * Otherwise the middleware is called directly with ($req, $next).
          */
@@ -292,7 +292,7 @@ final class MiddlewarePipeline
     /**
      * Wrap the final handler into a Closure(Request):Response.
      *
-     * When terminal invocation is enabled the Invoker invokes the handler so
+     * When terminal invocation is enabled the runtime container invokes the handler so
      * parameter autowiring is available. The handler result is normalized to
      * a Response instance via assertResponse().
      *

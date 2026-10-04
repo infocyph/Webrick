@@ -26,9 +26,12 @@ final class Webrick
             return $builder;
         }
 
-        $registration = $builder->registration();
         foreach ($providers as $provider) {
-            $registration->import($provider);
+            if (is_string($provider)) {
+                $provider = new $provider();
+            }
+
+            $builder->import($provider);
         }
 
         return $builder;
@@ -42,7 +45,9 @@ final class Webrick
      */
     public static function standaloneDevelopment(string $environment = 'dev', array $providers = []): ContainerBuilder
     {
-        $builder = ContainerBuilder::create('webrick.standalone')->setEnvironment($environment);
+        $builder = ContainerBuilder::create('webrick.standalone')
+            ->setEnvironment($environment)
+            ->input(\Infocyph\Webrick\Request\Request::class);
 
         return self::contributeTo($builder, $providers);
     }

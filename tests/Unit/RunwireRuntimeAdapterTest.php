@@ -10,6 +10,9 @@ use Infocyph\Runwire\Http\ResponseWriterInterface;
 use Infocyph\Runwire\Network\Enum\WriteState;
 use Infocyph\Runwire\Network\WriteResult;
 use Infocyph\Runwire\RequestContext as RunwireRequestContext;
+use Infocyph\Runwire\Runtime\Enum\RuntimeDriver;
+use Infocyph\Runwire\RuntimeCapabilities as RunwireCapabilities;
+use Infocyph\Runwire\RuntimeContext as RunwireContext;
 use Infocyph\Runwire\Runtime\Enum\CancellationReason;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Runtime\Http\RunwireRuntimeAdapter;
@@ -78,6 +81,8 @@ final class RunwireAdapterBodyFixture implements RequestBodyInterface
 
 final class RunwireAdapterWriterFixture implements ResponseWriterInterface
 {
+    use \Infocyph\Webrick\Tests\Fixture\RunwireTerminalWriterTrait;
+
     /** @var list<string> */
     public array $chunks = [];
 
@@ -110,6 +115,7 @@ final class RunwireAdapterWriterFixture implements ResponseWriterInterface
         }
         ++$this->endCalls;
         $this->ended = true;
+        $this->notifyTerminal();
 
         return new WriteResult(WriteState::ACCEPTED, 0);
     }
@@ -176,18 +182,47 @@ function runwire_adapter_request(
     );
 }
 
-test('runwire capabilities advertise only the normalized runtime surface', function (): void {
+test('runwire capabilities stay conservative until a concrete runtime is supplied', function (): void {
     $capabilities = new RunwireRuntimeAdapter()->capabilities();
 
     expect($capabilities->name)->toBe('runwire')
-        ->and($capabilities->persistent)->toBeTrue()
-        ->and($capabilities->concurrent)->toBeTrue()
+        ->and($capabilities->persistent)->toBeFalse()
+        ->and($capabilities->concurrent)->toBeFalse()
         ->and($capabilities->nativeStreaming)->toBeTrue()
         ->and($capabilities->nativeFile)->toBeFalse()
         ->and($capabilities->transportRequestLimits)->toBeTrue()
         ->and($capabilities->nativeRequestStreaming)->toBeTrue()
         ->and($capabilities->cancellationVisibility)->toBeTrue()
         ->and($capabilities->transportDrainVisibility)->toBeTrue();
+});
+
+test('runwire capabilities derive persistence and concurrency from the supplied runtime', function (): void {
+    $runtime = RunwireContext::fromCapabilities(
+        new RunwireCapabilities(
+            RuntimeDriver::NATIVE,
+            persistentProcess: true,
+            persistentApplication: true,
+            supportsRunwireCoroutines: true,
+        ),
+        'webrick-test',
+        concurrent: true,
+    );
+    $capabilities = new RunwireRuntimeAdapter(runtimeContext: $runtime)->capabilities();
+
+    expect($capabilities->persistent)->toBeTrue()
+        ->and($capabilities->concurrent)->toBeTrue();
+});
+
+test('runwire adapter rejects a request from a different configured runtime', function (): void {
+    $expected = RunwireContext::standalone();
+    $other = RunwireContext::standalone();
+    $adapter = new RunwireRuntimeAdapter(runtimeContext: $expected);
+    $request = runwire_adapter_request(
+        context: RunwireRequestContext::create($other),
+    );
+
+    expect(fn() => $adapter->context($request, new RunwireAdapterWriterFixture()))
+        ->toThrow(RuntimeException::class, 'bound to a different runtime');
 });
 
 test('runwire request normalization remains lazy and exposes live execution state', function (): void {

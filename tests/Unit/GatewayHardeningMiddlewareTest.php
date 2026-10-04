@@ -223,3 +223,46 @@ test('gateway rejects malformed forwarded hosts', function (): void {
     expect(fn() => $gateway($request, static fn(): Response => Response::json([])))
         ->toThrow(InvalidArgumentException::class);
 });
+
+test('gateway rejects ambiguous or malformed redirect targets', function (string $location): void {
+    $gateway = new GatewayHardeningMiddleware(
+        trustedHosts: ['origin.example'],
+        enforceHttps: false,
+    );
+
+    expect(fn() => $gateway(
+        Request::fake(uri: 'https://origin.example/'),
+        static fn(): Response => new Response(302, '', ['Location' => $location]),
+    ))->toThrow(HttpException::class);
+})->with([
+    'backslash-relative authority' => ['/\\evil.example/path'],
+    'backslash authority' => ['\\\\evil.example/path'],
+    'backslash absolute' => ['https:\\evil.example/path'],
+    'mixed slash authority' => ['//\\evil.example/path'],
+    'absolute target without host' => ['https:evil.example/path'],
+    'network target without host' => ['///evil.example/path'],
+    'userinfo' => ['https://user:pass@origin.example/path'],
+    'invalid port' => ['https://origin.example:70000/path'],
+    'broken IPv6 authority' => ['https://[2001:db8::1/path'],
+]);
+
+test('gateway preserves safe relative same-host and allowed redirect targets', function (string $location): void {
+    $gateway = new GatewayHardeningMiddleware(
+        trustedHosts: ['origin.example'],
+        enforceHttps: false,
+    );
+
+    $response = $gateway(
+        Request::fake(uri: 'https://origin.example/'),
+        static fn(): Response => new Response(302, '', ['Location' => $location]),
+    );
+
+    expect($response->getHeaderLine('Location'))->toBe($location);
+})->with([
+    'absolute path' => ['/local/path'],
+    'relative path' => ['local/path'],
+    'query reference' => ['?page=2'],
+    'fragment reference' => ['#section'],
+    'same host absolute' => ['https://origin.example/path'],
+    'same host network path' => ['//origin.example/path'],
+]);

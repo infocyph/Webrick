@@ -7,6 +7,7 @@ namespace Tests\Integration;
 use Closure;
 use Infocyph\InterMix\DI\ContainerBuilder;
 use Infocyph\InterMix\DI\ProductionContainer;
+use Infocyph\InterMix\DI\Support\LifetimeEnum;
 use Infocyph\InterMix\Exceptions\ContainerException;
 use Infocyph\Runwire\Http\Enum\ProtocolVersion;
 use Infocyph\Runwire\Http\Headers;
@@ -157,6 +158,8 @@ final class RunwireStreamingBodyFixture implements RequestBodyInterface
 
 final class RunwirePressureWriterFixture implements ResponseWriterInterface
 {
+    use \Infocyph\Webrick\Tests\Fixture\RunwireTerminalWriterTrait;
+
     /** @var list<string> */
     public array $chunks = [];
 
@@ -195,6 +198,7 @@ final class RunwirePressureWriterFixture implements ResponseWriterInterface
 
         ++$this->endCalls;
         $this->ended = true;
+        $this->notifyTerminal();
 
         return new WriteResult(
             $this->pressureOnEnd ? WriteState::PRESSURED : WriteState::ACCEPTED,
@@ -319,6 +323,36 @@ final class RunwireStreamingLifecycleTest extends TestCase
         }
     }
 
+    public function testPressureContinuationDoesNotAdoptAmbientFiberOwnership(): void
+    {
+        [$application, $paths] = self::applicationFixture();
+        $writer = new RunwirePressureWriterFixture(pressureOnWriteCall: 1);
+        $request = self::request('/runtime/scoped-stream');
+        $ambient = new \Fiber(
+            static function () use ($application, $request, $writer): void {
+                $application->handle($request, $writer, completeResponse: true);
+            },
+        );
+
+        try {
+            $ambient->start();
+
+            self::assertTrue($ambient->isTerminated());
+            self::assertTrue($writer->hasPendingDrain());
+            self::assertSame(1, $application->snapshot()->requestsActive);
+            self::assertFalse($request->context->completed());
+
+            $writer->drain();
+
+            self::assertSame(0, $application->snapshot()->requestsActive);
+            self::assertTrue($request->context->completed());
+            self::assertSame(1, $writer->endCalls);
+        } finally {
+            $application->shutdown();
+            self::cleanup($paths);
+        }
+    }
+
     public function testRequestBodyRemainsIncrementalThroughTheRunwireRuntimeBridge(): void
     {
         [$application, $paths] = self::applicationFixture();
@@ -344,8 +378,14 @@ final class RunwireStreamingLifecycleTest extends TestCase
     {
         [$intermixPath, $routerPath] = self::artifactPaths();
         $fingerprint = 'runwire-streaming-lifecycle';
-        $builder = ContainerBuilder::create('webrick_runwire_stream_' . bin2hex(random_bytes(4)));
-        $builder->scoped(RunwireStreamingScopedMarker::class);
+        $builder = ContainerBuilder::create('webrick_runwire_stream_' . bin2hex(random_bytes(4)))
+            ->releaseIdentity($fingerprint)
+            ->input(Request::class)
+            ->autowire(
+                RunwireStreamingScopedMarker::class,
+                RunwireStreamingScopedMarker::class,
+                lifetime: LifetimeEnum::Scoped,
+            );
         $builder->onScopeLeave(
             RuntimeRequestContext::REQUEST_SCOPE,
             static function (string $scope): void {

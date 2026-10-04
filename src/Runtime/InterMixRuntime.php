@@ -4,9 +4,8 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Runtime;
 
-use Closure;
-use Infocyph\InterMix\DI\Container;
 use Infocyph\InterMix\DI\ProductionContainer;
+use Infocyph\InterMix\DI\RuntimeContainerInterface;
 use Infocyph\InterMix\DI\ScopeContext;
 
 /**
@@ -15,24 +14,16 @@ use Infocyph\InterMix\DI\ScopeContext;
  */
 final readonly class InterMixRuntime
 {
-    public function __construct(private Container|ProductionContainer $container) {}
+    public function __construct(private RuntimeContainerInterface $container) {}
 
     public function captureScopeContext(): ScopeContext
     {
         return $this->container->captureScopeContext();
     }
 
-    public function container(): Container|ProductionContainer
+    public function container(): RuntimeContainerInterface
     {
         return $this->container;
-    }
-
-    /**
-     * @return array<string,mixed>
-     */
-    public function findByTag(string $tag): array
-    {
-        return $this->container->findByTag($tag);
     }
 
     public function get(string $id): mixed
@@ -45,9 +36,24 @@ final readonly class InterMixRuntime
         return $this->container->has($id);
     }
 
+    /** @param array<int|string,mixed> $arguments */
+    public function invoke(callable $callable, array $arguments = []): mixed
+    {
+        return $this->container->invoke($callable, $arguments);
+    }
+
     public function isProduction(): bool
     {
         return $this->container instanceof ProductionContainer;
+    }
+
+    /**
+     * @param class-string $class
+     * @param array<int|string,mixed> $arguments
+     */
+    public function make(string $class, array $arguments = []): object
+    {
+        return $this->container->make($class, $arguments);
     }
 
     public function resetCurrentExecutionScope(): void
@@ -55,15 +61,10 @@ final readonly class InterMixRuntime
         $this->container->resetCurrentExecutionScope();
     }
 
-    /**
-     * Resolve/invoke a compiled handler or a narrow InterMix dynamic island.
-     *
-     * @param string|array<array-key,mixed>|Closure|callable|null $spec
-     * @param array<int|string,mixed> $parameters
-     */
-    public function resolveNow(string|array|Closure|callable|null $spec, array $parameters = []): mixed
+    /** @return iterable<string,mixed> */
+    public function tagged(string $tag): iterable
     {
-        return $this->container->resolveNow($spec, $parameters);
+        return $this->container->tagged($tag);
     }
 
     /**

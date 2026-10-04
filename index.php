@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use Infocyph\InterMix\DI\Invoker;
 use Infocyph\Webrick\Constants\MediaTypeEnum;
 use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Exceptions\HttpExceptionInterface;
@@ -146,8 +145,7 @@ $register = static function (Registrar $registrar): void {
     }
 };
 
-$container = Webrick::standaloneDevelopment()->development();
-$invoker = Invoker::with($container);
+$runtime = Webrick::standaloneDevelopment()->build();
 
 $errorHandler = new ErrorHandler(
     logger: $logger,
@@ -179,7 +177,7 @@ $kernel = RouterKernel::bootWithRegistrar(
     log: $logger,
     matcher: GeneratedMatcher::make(),
     register: $register,
-    invoker: $invoker,
+    invoker: $runtime,
     registrarOptions: [
         'autoSlashRedirect' => false,
         'exposeUrlServices' => true,

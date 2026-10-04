@@ -25,7 +25,7 @@ final readonly class CompressionMiddleware
 
     private const array ALGO = [
         'br' => 'brotli_compress',
-        'deflate' => 'gzdeflate',
+        'deflate' => 'gzcompress',
         'gzip' => 'gzencode',
         'zstd' => 'zstd_compress',
     ];
@@ -239,7 +239,7 @@ final readonly class CompressionMiddleware
 
         return match ($algorithm) {
             'gzip' => gzencode($raw, $this->gzipLevel, ZLIB_ENCODING_GZIP),
-            'deflate' => gzdeflate($raw, $this->gzipLevel),
+            'deflate' => gzcompress($raw, $this->gzipLevel),
             'br' => brotli_compress($raw, $this->brotliQuality),
             'zstd' => zstd_compress($raw, $this->zstdLevel),
             default => false,

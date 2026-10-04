@@ -4,12 +4,17 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Runtime\Http;
 
+use Infocyph\InterMix\DI\ScopeContext;
+use Infocyph\InterMix\Integration\Runwire\RunwireIntegration;
 use Infocyph\Runwire\CancellationToken;
+use Infocyph\Runwire\Coroutine\CoroutineScope;
 use Infocyph\Runwire\Http\Enum\ProtocolVersion;
 use Infocyph\Runwire\Http\Headers;
 use Infocyph\Runwire\Http\HttpRequest;
 use Infocyph\Runwire\Http\ResponseWriterInterface;
+use Infocyph\Runwire\Network\Enum\WriteState;
 use Infocyph\Runwire\Network\WriteResult;
+use Infocyph\Runwire\RuntimeContext as RunwireContext;
 use Infocyph\Webrick\Constants\MediaTypeEnum;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
@@ -20,18 +25,33 @@ use RuntimeException;
 /** Adapts released Runwire HTTP request/writer contracts to Webrick. */
 final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
 {
+    private RunwireRuntimeBinding $binding;
+
     private RuntimeCapabilities $runtimeCapabilities;
 
+    /**
+     * @param (callable(HttpRequest): (?CoroutineScope))|null $coroutineScope
+     * @param (callable(HttpRequest): (?ScopeContext))|null $scopeContext
+     */
     public function __construct(
-        bool $persistent = true,
-        bool $concurrent = true,
+        ?RunwireContext $runtimeContext = null,
+        ?RunwireIntegration $interMix = null,
+        ?callable $coroutineScope = null,
+        ?callable $scopeContext = null,
         bool $transportCompression = false,
         bool $transportRequestLimits = true,
     ) {
+        $this->binding = new RunwireRuntimeBinding(
+            $runtimeContext,
+            $interMix,
+            $coroutineScope,
+            $scopeContext,
+        );
+        $runtime = $this->binding->runtime();
         $this->runtimeCapabilities = new RuntimeCapabilities(
             name: 'runwire',
-            persistent: $persistent,
-            concurrent: $concurrent,
+            persistent: $runtime instanceof RunwireContext && $runtime->persistent,
+            concurrent: $runtime instanceof RunwireContext && $runtime->concurrent,
             nativeStreaming: true,
             nativeFile: false,
             transportCompression: $transportCompression,
@@ -55,6 +75,8 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
 
         $routingServer = self::serverParams($nativeRequest, false);
         $runwireContext = $nativeRequest->context;
+        $this->binding->assertRequest($runwireContext);
+        $scopeBridge = $this->binding->scopeBridge($nativeRequest);
         $bodyStream = new RunwireRequestBodyStream($nativeRequest->body, $runwireContext->cancellation);
         $formResolved = false;
         $form = [];
@@ -101,6 +123,7 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
             $nativeRequest,
             $nativeResponse,
             $execution,
+            $scopeBridge,
         );
     }
 
@@ -169,15 +192,22 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
 
     private static function assertAccepted(WriteResult $result, string $operation): void
     {
-        if (!$result->accepted()) {
-            throw new RuntimeException("Runwire response {$operation} was rejected: {$result->state->value}.");
+        if ($result->accepted()) {
+            return;
         }
+        if ($result->state === WriteState::CLOSED) {
+            throw new RunwireTransportCancellation("Runwire response {$operation} was closed by the transport.");
+        }
+
+        throw new RuntimeException("Runwire response {$operation} was rejected: {$result->state->value}.");
     }
 
     private static function assertNotCancelled(CancellationToken $cancellation): void
     {
         if ($cancellation->isCancelled()) {
-            throw new RuntimeException('Runwire request was cancelled during Webrick response production.');
+            throw new RunwireTransportCancellation(
+                'Runwire request was cancelled during Webrick response production.',
+            );
         }
     }
 

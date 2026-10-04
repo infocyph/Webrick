@@ -3,13 +3,32 @@ Response Cache
 
 Serve cached responses for safe requests (typically **GET/HEAD**) without running handlers. This middleware provides a fast-path lookup and a coherent invalidation story that plays well with **ETag/Last-Modified** and **Compression**.
 
-``ResponseCacheMiddleware`` is an optional module boundary. Install a supported CacheLayer release before using this class:
+``ResponseCacheMiddleware`` consumes a PSR-6 pool. CacheLayer 4 is the optional Webrick-tested provider used when no explicit pool is supplied:
 
 .. code:: bash
 
-   composer require infocyph/cachelayer
+   composer require infocyph/cachelayer:^4.0
 
-Core routing does not load, initialize, or require CacheLayer.
+Core routing does not load, initialize, or require CacheLayer. Applications may pass any compatible ``Psr\Cache\CacheItemPoolInterface`` explicitly.
+
+Persistent and prefork deployments
+----------------------------------
+
+Construct worker-local cache resources and client connections after a process
+fork. The host owns connection lifecycle for Redis/Memcached/database-backed
+pools and should inject the resulting PSR-6 pool into Webrick.
+
+Do not silently replace an application-required shared cache/counter with
+process-local memory when the shared backend is unavailable. Response caching
+itself is an optimization and Webrick treats operational cache failures as
+misses, but security/reliability policy for a required shared backend belongs to
+the host application.
+
+Webrick 6 rotates disposable/security-related namespaces for the CacheLayer 4
+upgrade: response entries use ``webrick.hr.v4.``, throttle counters use
+``webrick.th.v3.``, and encrypted-cookie backing entries use
+``enc_cookie.v2.``. Mixed CacheLayer 3.x/4.x writers should not share those
+entries; expire or migrate old backing state explicitly during rollout.
 
 --------------
 
@@ -22,7 +41,7 @@ Configuration
    use Infocyph\CacheLayer\Cache\Cache;
 
    $preGlobal[] = new ResponseCacheMiddleware(
-       store: Cache::file('webrick.http'),        // Local PSR-6/PSR-16 cache
+       store: Cache::file('webrick.http'),        // PSR-6 cache pool
        ttlSeconds: 10,                            // Base TTL (micro-cache strategy)
        includeQuery: true,                        // Include query params in cache key
        maxBodyBytes: 1_048_576,                   // Max body size to cache (1MB)
@@ -38,7 +57,7 @@ Constructor Parameters
 +---------------------------------+-----------------------------------------------+---------------------+--------------------------------------------------+
 | Parameter                       | Type                                          | Default             | Description                                      |
 +=================================+===============================================+=====================+==================================================+
-| ``store``                       | ``?Infocyph\CacheLayer\Cache\CacheInterface`` | ``null``            | CacheLayer store; defaults to a local file cache |
+| ``store``                       | ``?Psr\Cache\CacheItemPoolInterface``          | ``null``            | PSR-6 pool; CacheLayer 4 provides the default store |
 +---------------------------------+-----------------------------------------------+---------------------+--------------------------------------------------+
 | ``ttlSeconds``                  | ``int``                                       | ``10``              | Default TTL for cached responses                 |
 +---------------------------------+-----------------------------------------------+---------------------+--------------------------------------------------+
@@ -60,11 +79,11 @@ Constructor Parameters
 How It Keys
 -----------
 
-Webrick uses the versioned ``webrick.hr.v1.`` namespace followed by a compact base64url SHA-256 digest of this logical identity:
+Webrick uses the versioned ``webrick.hr.v4.`` namespace followed by a compact base64url SHA-256 digest of this logical identity:
 
 ::
 
-   {method}|{host}|{path}|{query}|{media}|{charset}|{locale}|{encoding}|{vary_surface}
+   {method}\0{scheme}\0{host[:port]}\0{path}\0{exact_raw_query}\0{media}\0{charset}\0{locale}\0{vary_surface}
 
 **Example**:
 
@@ -83,7 +102,7 @@ What Affects the Key
 
 1. **HTTP Method**: GET, HEAD (others not cached)
 2. **Host + Path**: ``/users/42`` on ``api.example.com``
-3. **Query String** (if ``includeQuery: true``): ``?page=2&sort=name``
+3. **Exact raw query string** (if ``includeQuery: true``): byte-distinct query spellings and pair order remain distinct; Webrick does not parse/re-serialize the query before hashing.
 4. **Negotiated Content**:
 
    - Media type: ``application/json``

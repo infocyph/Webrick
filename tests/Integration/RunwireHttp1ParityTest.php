@@ -96,6 +96,8 @@ final class RunwireHttp1BodyFixture implements RequestBodyInterface
 
 final class RunwireHttp1WriterFixture implements ResponseWriterInterface
 {
+    use \Infocyph\Webrick\Tests\Fixture\RunwireTerminalWriterTrait;
+
     /** @var list<string> */
     public array $chunks = [];
 
@@ -127,6 +129,7 @@ final class RunwireHttp1WriterFixture implements ResponseWriterInterface
 
         ++$this->endCalls;
         $this->ended = true;
+        $this->notifyTerminal();
 
         return new WriteResult(WriteState::ACCEPTED, strlen($finalChunk));
     }
@@ -268,7 +271,8 @@ final class RunwireHttp1ParityTest extends TestCase
     {
         [$intermixPath, $routerPath] = self::artifactPaths();
         $fingerprint = 'runwire-http1-parity';
-        $builder = ContainerBuilder::create('webrick_runwire_h1_' . bin2hex(random_bytes(4)));
+        $builder = ContainerBuilder::create('webrick_runwire_h1_' . bin2hex(random_bytes(4)))
+            ->input(Request::class);
         $build = new RouteCompiler()->compile(
             register: static function (Registrar $registrar): void {
                 $registrar->post('/h1/echo/{id}', static function (Request $request, string $id): Response {

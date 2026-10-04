@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Infocyph\CacheLayer\Cache\Cache;
 use Infocyph\Webrick\Middleware\CookieEncryptionMiddleware;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Cookies\Cookie;
@@ -197,6 +198,68 @@ describe('CookieEncryptionMiddleware', function () {
             ->and(fn() => new CookieEncryptionMiddleware('short'))->toThrow(InvalidArgumentException::class)
             ->and(fn() => new CookieEncryptionMiddleware([]))->toThrow(InvalidArgumentException::class)
             ->and(fn() => $this->middleware->rotateToKid(99))->toThrow(InvalidArgumentException::class);
+    });
+
+    it('never exposes malformed protected cookie names as plaintext', function (string $name): void {
+        $seen = 'not-called';
+        ($this->middleware)(
+            Request::fake()->withCookieParams([$name => 'plaintext']),
+            static function (Request $request) use (&$seen, $name): Response {
+                $seen = $request->getCookieParams()[$name] ?? null;
+
+                return Response::create('ok');
+            },
+        );
+
+        expect($seen)->toBeNull();
+    })->with([
+        'dotted protected name' => ['enc_session.extra'],
+        'malformed segment suffix' => ['enc_session.px'],
+        'empty protected base' => ['enc_'],
+    ]);
+
+    it('rejects ambiguous dotted protected cookie names on write', function (): void {
+        expect(fn() => ($this->middleware)(
+            Request::fake(),
+            static fn(): Response => (new CookieJar())
+                ->add(Cookie::make('enc_session.extra', 'secret'))
+                ->apply(Response::create('ok')),
+        ))->toThrow(InvalidArgumentException::class);
+    });
+
+    it('rejects legacy plaintext and unframed encrypted store values', function (): void {
+        $store = Cache::memory('webrick-cookie-legacy-' . bin2hex(random_bytes(4)));
+        $id = str_repeat('a', 32);
+        $item = $store->getItem('enc_cookie.v2.' . $id);
+        $item->set('{"role":"admin"}');
+        $store->save($item);
+
+        $middleware = new CookieEncryptionMiddleware($this->key, store: $store);
+
+        expect(decryptedCookieForTest($middleware, 'S:' . $id))->toBeNull();
+
+        $rawCipher = encryptedCookieForTest($this->middleware, 'legacy-encrypted');
+        $item = $store->getItem('enc_cookie.v2.' . $id);
+        $item->set($rawCipher);
+        $store->save($item);
+
+        expect(decryptedCookieForTest($middleware, 'S:' . $id))->toBeNull();
+    });
+
+    it('accepts only shaped current store references and keeps name binding', function (): void {
+        $store = Cache::memory('webrick-cookie-current-' . bin2hex(random_bytes(4)));
+        $middleware = new CookieEncryptionMiddleware(
+            $this->key,
+            maxBytes: 256,
+            store: $store,
+        );
+        $value = base64_encode(random_bytes(4_096));
+        $reference = encryptedCookieForTest($middleware, $value);
+
+        expect($reference)->toMatch('/^S:[0-9a-f]{32}$/D')
+            ->and(decryptedCookieForTest($middleware, $reference))->toBe($value)
+            ->and(decryptedCookieForTest($middleware, $reference, 'enc_other'))->toBeNull()
+            ->and(decryptedCookieForTest($middleware, 'S:not-a-valid-reference'))->toBeNull();
     });
 
     it('rejects oversized incompressible payloads without a backing store', function (): void {

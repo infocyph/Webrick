@@ -2,8 +2,7 @@
 
 declare(strict_types=1);
 
-use Infocyph\InterMix\DI\Container;
-use Infocyph\InterMix\DI\Invoker;
+use Infocyph\InterMix\DI\ContainerBuilder;
 use Infocyph\Webrick\Middleware\VerifySignedUrlMiddleware;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
@@ -317,7 +316,7 @@ describe('Signed URLs', function () {
                 log: new NullLogger(),
                 matcher: ShardedMatcher::make(),
                 register: $register,
-                invoker: Invoker::with(new Container('webrick.tests.signed-urls.first')),
+                invoker: ContainerBuilder::create('webrick.tests.signed-urls.first')->input(Request::class)->build(),
                 registrarOptions: [
                     'autoSlashRedirect' => false,
                     'exposeUrlServices' => false,
@@ -341,7 +340,7 @@ describe('Signed URLs', function () {
                 log: new NullLogger(),
                 matcher: ShardedMatcher::make(),
                 register: $register,
-                invoker: Invoker::with(new Container('webrick.tests.signed-urls.second')),
+                invoker: ContainerBuilder::create('webrick.tests.signed-urls.second')->input(Request::class)->build(),
                 registrarOptions: [
                     'autoSlashRedirect' => false,
                     'exposeUrlServices' => false,

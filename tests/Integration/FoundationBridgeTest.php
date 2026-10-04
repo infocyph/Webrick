@@ -2,9 +2,7 @@
 
 declare(strict_types=1);
 
-use Infocyph\InterMix\DI\Container;
 use Infocyph\InterMix\DI\ContainerBuilder;
-use Infocyph\InterMix\DI\Invoker;
 use Infocyph\InterMix\DI\Support\LifetimeEnum;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
@@ -120,7 +118,8 @@ describe('Foundation Webrick bridge', function () {
 
     it('constructs parameterized middleware only inside the active runtime scope', function () {
         [$intermixPath] = foundationBridgeArtifactPaths('webrick-bridge-middleware');
-        $builder = ContainerBuilder::create('webrick_bridge_middleware_' . bin2hex(random_bytes(4)));
+        $builder = ContainerBuilder::create('webrick_bridge_middleware_' . bin2hex(random_bytes(4)))
+            ->input(Request::class);
 
         try {
             $builder->compile($intermixPath);
@@ -151,12 +150,14 @@ describe('Foundation Webrick bridge', function () {
 
     it('keeps the stable request scope isolated across concurrent Fibers', function () {
         $alias = 'webrick_bridge_fiber_' . bin2hex(random_bytes(4));
-        $container = Container::instance($alias);
-        $container->definitions()->bind(
-            FoundationBridgeScopedMarker::class,
-            static fn(): FoundationBridgeScopedMarker => new FoundationBridgeScopedMarker(bin2hex(random_bytes(6))),
-            LifetimeEnum::Scoped,
-        );
+        $container = ContainerBuilder::create($alias)
+            ->input(Request::class)
+            ->factory(
+                FoundationBridgeScopedMarker::class,
+                static fn(): FoundationBridgeScopedMarker => new FoundationBridgeScopedMarker(bin2hex(random_bytes(6))),
+                LifetimeEnum::Scoped,
+            )
+            ->build();
         $kernel = RouterKernel::bootWithRegistrar(
             log: new NullLogger(),
             matcher: FusedMatcher::make(),
@@ -168,7 +169,7 @@ describe('Foundation Webrick bridge', function () {
                     return Response::plaintext($container->get(FoundationBridgeScopedMarker::class)->id);
                 });
             },
-            invoker: Invoker::with($container),
+            invoker: $container,
             preGlobalTags: [],
             postGlobalTags: [],
         );
@@ -193,7 +194,7 @@ describe('Foundation Webrick bridge', function () {
             expect((string) $firstResponse->getBody())->toBe($firstId)
                 ->and((string) $secondResponse->getBody())->toBe($secondId);
         } finally {
-            $container->unset();
+            unset($container);
         }
     });
 
@@ -222,8 +223,16 @@ describe('Foundation Webrick bridge', function () {
                     expect($plan?->handler)->toBe([FoundationBridgeGraphController::class, '__invoke']);
 
                     $activeBuilder
-                        ->singleton(FoundationBridgeGraphDependency::class)
-                        ->transient(FoundationBridgeGraphController::class);
+                        ->autowire(
+                            FoundationBridgeGraphDependency::class,
+                            FoundationBridgeGraphDependency::class,
+                            lifetime: LifetimeEnum::Singleton,
+                        )
+                        ->autowire(
+                            FoundationBridgeGraphController::class,
+                            FoundationBridgeGraphController::class,
+                            lifetime: LifetimeEnum::Transient,
+                        );
                 },
             );
 

@@ -5,9 +5,7 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Router\Kernel;
 
 use Closure;
-use Infocyph\InterMix\DI\Container;
-use Infocyph\InterMix\DI\Invoker;
-use Infocyph\InterMix\DI\Support\DirectFactory;
+use Infocyph\InterMix\DI\RuntimeContainerInterface;
 use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Exceptions\HttpException;
 use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
@@ -52,7 +50,7 @@ final readonly class RouterKernel
         private LoggerInterface $log,
         private MatcherInterface $matcher,
         private Closure $register,
-        private Invoker $invoker,
+        private RuntimeContainerInterface $invoker,
         private array $registrarOptions = [],
         array $preGlobal = [],
         array $postGlobal = [],
@@ -91,7 +89,7 @@ final readonly class RouterKernel
         LoggerInterface $log,
         MatcherInterface $matcher,
         Closure $register,
-        Invoker $invoker,
+        RuntimeContainerInterface $invoker,
         array $registrarOptions = [],
         array $preGlobal = [],
         array $postGlobal = [],
@@ -153,7 +151,7 @@ final readonly class RouterKernel
             return $this->dispatcher->dispatch($route, $req, $vars);
         };
 
-        $result = $this->invoker->getContainer()->withinScope(
+        $result = $this->invoker->withinScope(
             self::REQUEST_SCOPE,
             fn(): Response => $this->errorHandler->handle($request, $runner),
             [Request::class => $request],
@@ -239,20 +237,36 @@ final readonly class RouterKernel
     /**
      * @return Closure(Request, Closure(Request):Response):Response
      */
-    private function lazyTaggedFactoryMiddleware(Container $container, string $id): Closure
+    private function lazyTaggedMiddleware(string $tag): Closure
     {
-        return static function (Request $request, Closure $next) use ($container, $id): Response {
-            $middleware = $container->get($id);
-            if (!is_callable($middleware)) {
-                throw new \InvalidArgumentException(
-                    sprintf('Tagged middleware [%s] must resolve to a callable.', $id),
-                );
+        return function (Request $request, Closure $next) use ($tag): Response {
+            $pipeline = $next;
+            $middleware = array_values(iterator_to_array($this->invoker->tagged($tag)));
+
+            foreach (array_reverse($middleware) as $candidate) {
+                if (!is_callable($candidate)) {
+                    throw new \InvalidArgumentException(
+                        sprintf('Tagged middleware [%s] must resolve to callables.', $tag),
+                    );
+                }
+
+                $following = $pipeline;
+                $pipeline = static function (Request $current) use ($candidate, $following, $tag): Response {
+                    $response = $candidate($current, $following);
+                    if (!$response instanceof Response) {
+                        throw new \InvalidArgumentException(
+                            sprintf('Tagged middleware [%s] must return Response.', $tag),
+                        );
+                    }
+
+                    return $response;
+                };
             }
 
-            $response = $middleware($request, $next);
+            $response = $pipeline($request);
             if (!$response instanceof Response) {
                 throw new \InvalidArgumentException(
-                    sprintf('Tagged middleware [%s] must return Response.', $id),
+                    sprintf('Tagged middleware [%s] pipeline must return Response.', $tag),
                 );
             }
 
@@ -284,33 +298,13 @@ final readonly class RouterKernel
      */
     private function mergeTaggedGlobals(array $explicit, array $tags): array
     {
-        if ($tags === []) {
-            return $explicit;
-        }
-
-        $tagged = [];
-        $container = $this->invoker->getContainer();
-        $repository = $container->getRepository();
-        $definitions = $repository->getFunctionReference();
-
         foreach ($tags as $tag) {
-            if ($tag === '') {
-                continue;
-            }
-
-            foreach ($repository->getIdsByTag($tag) as $id) {
-                if (!array_key_exists($id, $definitions)) {
-                    continue;
-                }
-
-                $definition = $definitions[$id];
-                $tagged[] = $definition instanceof DirectFactory
-                    ? $this->lazyTaggedFactoryMiddleware($container, $id)
-                    : $definition;
+            if ($tag !== '') {
+                $explicit[] = $this->lazyTaggedMiddleware($tag);
             }
         }
 
-        return [...$explicit, ...$tagged];
+        return $explicit;
     }
 
     /**

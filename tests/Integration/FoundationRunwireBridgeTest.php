@@ -9,6 +9,7 @@ use Fiber;
 use Infocyph\InterMix\DI\ContainerBuilder;
 use Infocyph\InterMix\DI\ProductionContainer;
 use Infocyph\InterMix\DI\ScopeContext;
+use Infocyph\InterMix\DI\Support\LifetimeEnum;
 use Infocyph\Runwire\Coroutine\CoroutineRuntime;
 use Infocyph\Runwire\Coroutine\CoroutineScope;
 use Infocyph\Runwire\Coroutine\TaskLocal;
@@ -157,6 +158,8 @@ final class FoundationRunwireBody implements RequestBodyInterface
 
 final class FoundationRunwireWriter implements ResponseWriterInterface
 {
+    use \Infocyph\Webrick\Tests\Fixture\RunwireTerminalWriterTrait;
+
     /** @var list<string> */
     public array $chunks = [];
 
@@ -173,6 +176,7 @@ final class FoundationRunwireWriter implements ResponseWriterInterface
         }
         ++$this->endCalls;
         $this->ended = true;
+        $this->notifyTerminal();
 
         return new WriteResult(WriteState::ACCEPTED, strlen($finalChunk));
     }
@@ -277,10 +281,13 @@ final class FoundationRunwireBridgeTest extends TestCase
     {
         [$intermixPath, $routerPath] = self::artifactPaths();
         $fingerprint = 'foundation-runwire-bridge';
-        $builder = ContainerBuilder::create('foundation_runwire_' . bin2hex(random_bytes(4)));
-        $builder->scoped(
+        $builder = ContainerBuilder::create('foundation_runwire_' . bin2hex(random_bytes(4)))
+            ->releaseIdentity($fingerprint)
+            ->input(Request::class);
+        $builder->factory(
             FoundationRunwireScopedMarker::class,
             static fn(): FoundationRunwireScopedMarker => new FoundationRunwireScopedMarker(bin2hex(random_bytes(6))),
+            LifetimeEnum::Scoped,
         );
         $builder->onScopeLeave(
             RuntimeRequestContext::REQUEST_SCOPE,

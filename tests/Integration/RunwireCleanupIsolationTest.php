@@ -6,6 +6,7 @@ namespace Tests\Integration;
 
 use Closure;
 use Infocyph\InterMix\DI\ContainerBuilder;
+use Infocyph\InterMix\DI\Support\LifetimeEnum;
 use Infocyph\InterMix\Exceptions\ContainerException;
 use Infocyph\Runwire\Http\Enum\ProtocolVersion;
 use Infocyph\Runwire\Http\Headers;
@@ -97,6 +98,8 @@ final class RunwireCleanupBodyFixture implements RequestBodyInterface
 
 final class RunwireCleanupWriterFixture implements ResponseWriterInterface
 {
+    use \Infocyph\Webrick\Tests\Fixture\RunwireTerminalWriterTrait;
+
     /** @var list<string> */
     public array $chunks = [];
 
@@ -124,6 +127,7 @@ final class RunwireCleanupWriterFixture implements ResponseWriterInterface
         }
         ++$this->endCalls;
         $this->ended = true;
+        $this->notifyTerminal();
 
         return new WriteResult(WriteState::ACCEPTED, strlen($finalChunk));
     }
@@ -202,12 +206,7 @@ final class RunwireCleanupIsolationTest extends TestCase
             $cancelWriter = new RunwireCleanupWriterFixture(
                 static fn() => $cancelled->context->cancel(CancellationReason::TRANSPORT_CANCELLED),
             );
-            try {
-                $application->handle($cancelled, $cancelWriter, completeResponse: true);
-                self::fail('Transport cancellation must stop Webrick response production.');
-            } catch (RuntimeException $error) {
-                self::assertStringContainsString('cancelled', strtolower($error->getMessage()));
-            }
+            $application->handle($cancelled, $cancelWriter, completeResponse: true);
             self::assertSame(3, RunwireCleanupProbe::$scopeLeaves);
             self::assertSame(3, RunwireCleanupProbe::$cleanupCalls);
             self::assertTrue($cancelled->context->completed());
@@ -217,12 +216,7 @@ final class RunwireCleanupIsolationTest extends TestCase
 
             $deadline = self::request('/cleanup/deadline');
             $deadlineWriter = new RunwireCleanupWriterFixture();
-            try {
-                $application->handle($deadline, $deadlineWriter, completeResponse: true);
-                self::fail('Expired request deadline must stop Webrick response production.');
-            } catch (RuntimeException $error) {
-                self::assertStringContainsString('cancelled', strtolower($error->getMessage()));
-            }
+            $application->handle($deadline, $deadlineWriter, completeResponse: true);
             self::assertSame(4, RunwireCleanupProbe::$scopeLeaves);
             self::assertSame(4, RunwireCleanupProbe::$cleanupCalls);
             self::assertTrue($deadline->context->completed());
@@ -248,8 +242,14 @@ final class RunwireCleanupIsolationTest extends TestCase
     {
         [$intermixPath, $routerPath] = self::artifactPaths();
         $fingerprint = 'runwire-cleanup-isolation';
-        $builder = ContainerBuilder::create('webrick_runwire_cleanup_' . bin2hex(random_bytes(4)));
-        $builder->scoped(RunwireCleanupScopedMarker::class);
+        $builder = ContainerBuilder::create('webrick_runwire_cleanup_' . bin2hex(random_bytes(4)))
+            ->releaseIdentity($fingerprint)
+            ->input(\Infocyph\Webrick\Request\Request::class)
+            ->autowire(
+                RunwireCleanupScopedMarker::class,
+                RunwireCleanupScopedMarker::class,
+                lifetime: LifetimeEnum::Scoped,
+            );
         $builder->onScopeLeave(
             RuntimeRequestContext::REQUEST_SCOPE,
             static function (string $scope): void {

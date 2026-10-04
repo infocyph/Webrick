@@ -35,6 +35,7 @@ final class RuntimeRequestContext
         public readonly mixed $nativeRequest = null,
         public readonly mixed $nativeResponse = null,
         public readonly ?RuntimeRequestExecution $execution = null,
+        public readonly ?RuntimeScopeBridgeInterface $scopeBridge = null,
     ) {}
 
     public function request(): Request

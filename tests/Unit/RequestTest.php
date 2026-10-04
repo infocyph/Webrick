@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Infocyph\Webrick\Interfaces\BodyStream;
 use Infocyph\Webrick\Request\Core\ServerRequest;
 use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Request\Core\UploadedFile;
@@ -96,6 +97,126 @@ describe('Request', function () {
             ->toBe(0)
             ->and(fn() => new UploadedFile(new Stream(''), -1))
             ->toThrow(InvalidArgumentException::class);
+    });
+
+    it('rejects no-progress upload reads without destroying an existing target', function () {
+        $body = new class implements BodyStream {
+            public function __toString(): string
+            {
+                return '';
+            }
+
+            public function close(): void {}
+
+            public function detach(): mixed
+            {
+                return null;
+            }
+
+            public function eof(): bool
+            {
+                return false;
+            }
+
+            public function getContents(): string
+            {
+                return '';
+            }
+
+            public function getMetadata(?string $key = null): mixed
+            {
+                return $key === null ? [] : null;
+            }
+
+            public function getSize(): ?int
+            {
+                return null;
+            }
+
+            public function isReadable(): bool
+            {
+                return true;
+            }
+
+            public function isSeekable(): bool
+            {
+                return false;
+            }
+
+            public function isWritable(): bool
+            {
+                return false;
+            }
+
+            public function read(int $length): string
+            {
+                unset($length);
+
+                return '';
+            }
+
+            public function rewind(): void {}
+
+            public function seek(int $offset, int $whence = SEEK_SET): void
+            {
+                unset($offset, $whence);
+            }
+
+            public function tell(): int
+            {
+                return 0;
+            }
+
+            public function write(string $string): int
+            {
+                unset($string);
+
+                return 0;
+            }
+        };
+        $target = tempnam(sys_get_temp_dir(), 'webrick-upload-target-');
+        expect($target)->toBeString();
+        file_put_contents($target, 'existing');
+        $upload = new UploadedFile($body);
+
+        try {
+            expect(fn() => $upload->moveTo($target))
+                ->toThrow(RuntimeException::class);
+
+            expect(file_get_contents($target))->toBe('existing')
+                ->and($upload->getStream())->toBe($body);
+
+            $missingTarget = dirname($target) . '/webrick-upload-missing-' . bin2hex(random_bytes(6));
+            expect(fn() => $upload->moveTo($missingTarget))
+                ->toThrow(RuntimeException::class)
+                ->and(is_file($missingTarget))->toBeFalse();
+        } finally {
+            if (is_string($target) && is_file($target) && !unlink($target)) {
+                throw new RuntimeException("Unable to remove upload target fixture: {$target}");
+            }
+            if (isset($missingTarget) && is_file($missingTarget) && !unlink($missingTarget)) {
+                throw new RuntimeException("Unable to remove failed upload fixture: {$missingTarget}");
+            }
+        }
+    });
+
+    it('publishes a complete upload stream over an existing target at genuine eof', function () {
+        $target = tempnam(sys_get_temp_dir(), 'webrick-upload-target-');
+        expect($target)->toBeString();
+        file_put_contents($target, 'existing');
+        $upload = new UploadedFile(new Stream('replacement'));
+
+        try {
+            $upload->moveTo($target);
+
+            expect(file_get_contents($target))->toBe('replacement')
+                ->and(fn() => $upload->getStream())
+                ->toThrow(RuntimeException::class, 'Uploaded file has been moved');
+        } finally {
+            if (is_string($target) && is_file($target) && !unlink($target)) {
+                throw new RuntimeException("Unable to remove upload target fixture: {$target}");
+            }
+        }
     });
 
     it('hydrates raw upload specifications only when uploads are requested', function () {

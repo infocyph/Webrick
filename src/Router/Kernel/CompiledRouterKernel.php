@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Infocyph\Webrick\Router\Kernel;
 
+use Infocyph\InterMix\DI\ContainerBuilder;
 use Infocyph\InterMix\DI\ProductionContainer;
 use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
@@ -14,6 +15,7 @@ use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Build\CompiledRouterArtifact;
 use Infocyph\Webrick\Router\Build\ExecutionKind;
 use Infocyph\Webrick\Router\Build\ExecutionPlan;
+use Infocyph\Webrick\Router\Build\ReleaseArtifactLoader;
 use Infocyph\Webrick\Router\Build\RouterArtifactLoader;
 use Infocyph\Webrick\Router\Constraint\Registry as ConstraintRegistry;
 use Infocyph\Webrick\Router\Dispatch\MiddlewareAliases;
@@ -152,6 +154,46 @@ final readonly class CompiledRouterKernel
             $artifact,
             $matcher,
             $container,
+            $errorHandler,
+            $urlBaseUri,
+            $signKey,
+            $signedDefaultTtl,
+            $signedUrlConfig,
+            $profiler,
+            $routeErrorsThroughErrorHandler,
+            $preRoutingGate,
+        );
+    }
+
+    public static function fromReleaseManifest(
+        LoggerInterface $log,
+        MatcherInterface $matcher,
+        ContainerBuilder $builder,
+        string $releaseManifestPath,
+        string $environment,
+        string $configFingerprint,
+        ?ErrorHandler $errorHandler = null,
+        string $urlBaseUri = '',
+        ?string $signKey = null,
+        ?int $signedDefaultTtl = null,
+        ?SignedUrlConfig $signedUrlConfig = null,
+        ?RuntimeStageProfiler $profiler = null,
+        bool $routeErrorsThroughErrorHandler = false,
+        ?PreRoutingGateInterface $preRoutingGate = null,
+    ): self {
+        $release = new ReleaseArtifactLoader()->load(
+            $builder,
+            $releaseManifestPath,
+            $environment,
+            $configFingerprint,
+            $profiler,
+        );
+
+        return new self(
+            $log,
+            $release['artifact'],
+            $matcher,
+            $release['container'],
             $errorHandler,
             $urlBaseUri,
             $signKey,
@@ -342,13 +384,13 @@ final readonly class CompiledRouterKernel
         $plan = $this->artifact->planForIndex($routeIndex);
         $pipeline = $plan->kind === ExecutionKind::MIDDLEWARE_PIPELINE || $this->hasGlobalMiddleware;
         if (!$pipeline && !$plan->requiresRequest()) {
-            $response = $this->dispatchWithoutRequest($plan, $vars, $responseConsumer);
+            $response = $this->dispatchWithoutRequest($plan, $vars, $responseConsumer, $runtimeContext);
             $this->profiler?->mark('dispatch');
 
             return $response;
         }
         $request ??= $runtimeContext?->request() ?? Request::fromGlobals();
-        $response = $this->dispatchWithRequest($routeIndex, $plan, $request, $vars, $responseConsumer);
+        $response = $this->dispatchWithRequest($routeIndex, $plan, $request, $vars, $responseConsumer, $runtimeContext);
         $this->profiler?->mark('dispatch');
 
         return $response;
@@ -359,6 +401,7 @@ final readonly class CompiledRouterKernel
         ExecutionPlan $plan,
         array $vars,
         ?callable $responseConsumer = null,
+        ?RuntimeRequestContext $runtimeContext = null,
     ): Response {
         if (!$plan->requiresScope()) {
             $response = match ($plan->terminalKind) {
@@ -369,8 +412,9 @@ final readonly class CompiledRouterKernel
 
             return $this->consumeRuntimeResponse($response, $responseConsumer);
         }
-        $response = $this->runtime->withinScope(
-            RuntimeRequestContext::REQUEST_SCOPE,
+        $response = $this->withinRequestScope(
+            $runtimeContext,
+            null,
             fn() => $this->consumeRuntimeResponse(
                 $this->dispatcher->dispatchWithoutRequest($plan, $vars),
                 $responseConsumer,
@@ -390,6 +434,7 @@ final readonly class CompiledRouterKernel
         Request $request,
         array $vars,
         ?callable $responseConsumer = null,
+        ?RuntimeRequestContext $runtimeContext = null,
     ): Response {
         $requiresScope = $plan->requiresScope() || $this->dispatcher->pipelineRequiresScope($plan);
         if (!$requiresScope) {
@@ -398,13 +443,13 @@ final readonly class CompiledRouterKernel
                 $responseConsumer,
             );
         }
-        $response = $this->runtime->withinScope(
-            RuntimeRequestContext::REQUEST_SCOPE,
+        $response = $this->withinRequestScope(
+            $runtimeContext,
+            $request,
             fn() => $this->consumeRuntimeResponse(
                 $this->dispatcher->dispatch($routeIndex, $plan, $request, $vars),
                 $responseConsumer,
             ),
-            [Request::class => $request],
         );
         if (!$response instanceof Response) {
             throw new \RuntimeException('Compiled request scope must return Response.');
@@ -447,5 +492,21 @@ final readonly class CompiledRouterKernel
         }
 
         return $this->errorHandler->renderThrowable($request, $exception);
+    }
+
+    private function withinRequestScope(
+        ?RuntimeRequestContext $runtimeContext,
+        ?Request $request,
+        callable $callback,
+    ): mixed {
+        if ($runtimeContext?->scopeBridge !== null) {
+            return $runtimeContext->scopeBridge->withinScope($this->runtime, $request, $callback);
+        }
+
+        return $this->runtime->withinScope(
+            RuntimeRequestContext::REQUEST_SCOPE,
+            $callback,
+            $request instanceof Request ? [Request::class => $request] : [],
+        );
     }
 }

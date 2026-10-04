@@ -64,7 +64,7 @@ Measure cache generation, cached kernel boot and matched-route dispatch as three
 
 Fused and Generated modes publish a single PHP matcher artifact. Sharded mode publishes an immutable generation through one atomic manifest switch, so a partial shard generation is never selected by a new kernel.
 
-For production release metadata, use ``ReleaseManifestLoader`` rather than manually reading and decoding ``release.json``. It prefers the OPcache-friendly PHP runtime manifest emitted beside the JSON manifest. The Webrick 5.1 trusted contract uses ``intermix.digest`` and ``webrick.fingerprint``; do not reintroduce request-time SHA-256/file hashing or JSON decoding into the prevalidated path.
+For production release metadata, use ``ReleaseManifestLoader`` rather than manually reading and decoding ``release.json``. It prefers the OPcache-friendly PHP runtime manifest emitted beside the JSON manifest. The Webrick 6 trusted contract uses ``intermix.digest`` and ``webrick.fingerprint``; do not reintroduce request-time SHA-256/file hashing or JSON decoding into the prevalidated path.
 
 --------------
 
@@ -95,9 +95,9 @@ When benchmarking compiled production, measure the same path an optimized deploy
 
    $matcher = FusedMatcher::make();
 
-Use Fused as the default/general production matcher and canonical comparison baseline. The Webrick 5 matcher revision moved Fused and Sharded onto the same compact compiled route-discrimination engine. Fused keeps that compiled IR in one artifact and provides the strongest general warm-dispatch behavior.
+Use Fused as the default/general production matcher and canonical comparison baseline. Current Fused and Sharded modes use the same compact compiled route-discrimination engine. Fused keeps that compiled IR in one artifact and provides the strongest general warm-dispatch behavior.
 
-Use these route-count bands only as **benchmarking heuristics**, not hard switches. The current Webrick 5 cache-envelope measurements deliberately keep matcher selection explicit because route topology can move the crossover materially.
+Use these route-count bands only as **benchmarking heuristics**, not hard switches. The retained cache-envelope measurements deliberately keep matcher selection explicit because route topology can move the crossover materially.
 
 .. list-table:: Matcher selection starting points
    :header-rows: 1

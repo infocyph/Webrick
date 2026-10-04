@@ -18,7 +18,7 @@ use RuntimeException;
 /** Authenticated cookie encryption with immutable key selection. */
 final readonly class CookieEncryptionMiddleware
 {
-    private const string CACHE_PREFIX = 'enc_cookie.';
+    private const string CACHE_PREFIX = 'enc_cookie.v2.';
 
     private const string MODE_BROTLI = 'b';
 
@@ -136,6 +136,16 @@ final readonly class CookieEncryptionMiddleware
         return $baseName . '|' . $kid . '|' . $mode;
     }
 
+    private function assertSupportedProtectedName(string $name): void
+    {
+        $baseName = substr($name, strlen($this->cookiePrefix));
+        if ($baseName === '' || str_contains($baseName, '.')) {
+            throw new InvalidArgumentException(
+                'Protected cookie names must contain a non-empty dot-free base after the configured prefix.',
+            );
+        }
+    }
+
     /** @return array{0:string,1:string} */
     private function bestCompress(string $plaintext): array
     {
@@ -187,13 +197,10 @@ final readonly class CookieEncryptionMiddleware
     private function decrypt(string $baseName, string $cipher): mixed
     {
         $resolved = $this->resolveCipherInput($cipher);
-        if ($resolved['hasPlain']) {
-            return $resolved['plain'];
-        }
-        if (!is_string($resolved['cipher'])) {
+        if ($resolved === null) {
             return null;
         }
-        $frame = $this->parseCipherFrame($resolved['cipher']);
+        $frame = $this->parseCipherFrame($resolved);
 
         return $frame === null ? null : $this->decryptFrame($baseName, $frame);
     }
@@ -267,6 +274,7 @@ final readonly class CookieEncryptionMiddleware
                 continue;
             }
 
+            $this->assertSupportedProtectedName($parts['name']);
             $segments = $this->encryptSegments($parts['name'], rawurldecode($parts['value']));
             $lastIndex = max(array_keys($segments));
             foreach ($segments as $index => $segment) {
@@ -454,23 +462,22 @@ final readonly class CookieEncryptionMiddleware
         return ['name' => trim($name), 'value' => $value, 'attrs' => $attrs];
     }
 
-    /** @return array{cipher:?string,plain:mixed,hasPlain:bool} */
-    private function resolveCipherInput(string $cipher): array
+    private function resolveCipherInput(string $cipher): ?string
     {
         if (!str_starts_with($cipher, self::MODE_STORE)) {
-            return ['cipher' => $cipher, 'plain' => null, 'hasPlain' => false];
-        }
-        $stored = $this->fromStore(substr($cipher, 2));
-        if (!is_string($stored)) {
-            return ['cipher' => null, 'plain' => null, 'hasPlain' => false];
-        }
-        if (str_starts_with($stored, self::STORE_BLOB_V1)) {
-            return ['cipher' => $this->decodeCacheBlobV1($stored), 'plain' => null, 'hasPlain' => false];
-        }
-        if (base64_decode($stored, true) === false) {
-            return ['cipher' => null, 'plain' => $stored, 'hasPlain' => true];
+            return $cipher;
         }
 
-        return ['cipher' => $stored, 'plain' => null, 'hasPlain' => false];
+        $id = substr($cipher, strlen(self::MODE_STORE));
+        if (preg_match('/^[0-9a-f]{32}$/D', $id) !== 1) {
+            return null;
+        }
+
+        $stored = $this->fromStore($id);
+        if (!is_string($stored) || !str_starts_with($stored, self::STORE_BLOB_V1)) {
+            return null;
+        }
+
+        return $this->decodeCacheBlobV1($stored);
     }
 }

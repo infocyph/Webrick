@@ -16,6 +16,8 @@ use UnexpectedValueException;
 /** Runtime-plane dispatcher for already-compiled route execution plans. */
 final class RuntimeDispatcher
 {
+    private readonly RuntimeDescriptorInvoker $resolver;
+
     /** @var array<string,CompiledMiddlewarePipeline> */
     private array $pipelines = [];
 
@@ -28,7 +30,9 @@ final class RuntimeDispatcher
     public function __construct(
         private readonly InterMixRuntime $runtime,
         private readonly CompiledRouterArtifact $artifact,
-    ) {}
+    ) {
+        $this->resolver = new RuntimeDescriptorInvoker($runtime->container());
+    }
 
     /** @param array<string,string> $vars */
     public function dispatch(int $routeIndex, ExecutionPlan $plan, Request $request, array $vars): Response
@@ -75,7 +79,7 @@ final class RuntimeDispatcher
         return match ($plan->terminalKind) {
             ExecutionKind::DIRECT_ZERO_ARG => $this->dispatchDirectZeroArg($plan),
             ExecutionKind::DIRECT_ROUTE_ARGS => $this->dispatchDirectRouteArgs($plan, $vars),
-            ExecutionKind::COMPILED_INVOKE => $this->response($this->runtime->resolveNow($plan->resolverSpec(), $vars)),
+            ExecutionKind::COMPILED_INVOKE => $this->response($this->resolveDescriptor($plan->resolverSpec(), $vars)),
             ExecutionKind::DIRECT_REQUEST, ExecutionKind::MIDDLEWARE_PIPELINE => throw new UnexpectedValueException(
                 'Execution plan cannot run without Request.',
             ),
@@ -103,7 +107,7 @@ final class RuntimeDispatcher
         $direct = $plan->handler;
         $result = match ($plan->terminalKind) {
             ExecutionKind::DIRECT_REQUEST => $direct($request),
-            ExecutionKind::COMPILED_INVOKE => $this->runtime->resolveNow(
+            ExecutionKind::COMPILED_INVOKE => $this->resolveDescriptor(
                 $plan->resolverSpec(),
                 $vars + ['request' => $request],
             ),
@@ -207,6 +211,19 @@ final class RuntimeDispatcher
         return $this->preGlobal;
     }
 
+    /**
+     * @param array<array-key,mixed>|callable|string|null $descriptor
+     * @param array<int|string,mixed> $arguments
+     */
+    private function resolveDescriptor(array|callable|string|null $descriptor, array $arguments = []): mixed
+    {
+        if ($descriptor === null) {
+            throw new UnexpectedValueException('Compiled resolver descriptor must not be null.');
+        }
+
+        return $this->resolver->resolve($descriptor, $arguments);
+    }
+
     private function response(mixed $result): Response
     {
         return $result instanceof Response
@@ -240,7 +257,7 @@ final class RuntimeDispatcher
     private function withTagged(array $explicit, array $tags): array
     {
         foreach ($tags as $tag) {
-            foreach ($this->runtime->findByTag($tag) as $middleware) {
+            foreach ($this->runtime->tagged($tag) as $middleware) {
                 $explicit[] = $middleware;
             }
         }

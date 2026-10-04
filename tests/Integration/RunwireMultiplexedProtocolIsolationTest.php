@@ -99,6 +99,8 @@ final class RunwireMultiplexedBodyFixture implements RequestBodyInterface
 
 final class RunwireMultiplexedWriterFixture implements ResponseWriterInterface
 {
+    use \Infocyph\Webrick\Tests\Fixture\RunwireTerminalWriterTrait;
+
     /** @var list<string> */
     public array $chunks = [];
 
@@ -130,6 +132,7 @@ final class RunwireMultiplexedWriterFixture implements ResponseWriterInterface
 
         ++$this->endCalls;
         $this->ended = true;
+        $this->notifyTerminal();
 
         return new WriteResult(WriteState::ACCEPTED, strlen($finalChunk));
     }
@@ -213,15 +216,7 @@ final class RunwireMultiplexedProtocolIsolationTest extends TestCase
             self::assertSame(1, $application->snapshot()->requestsActive);
             self::assertCompleted($secondWriter, 'h2-b', '2');
 
-            try {
-                $first->resume();
-                self::fail('Cancelled HTTP/2 stream unexpectedly completed.');
-            } catch (RuntimeException $error) {
-                self::assertSame(
-                    'Runwire request was cancelled during Webrick response production.',
-                    $error->getMessage(),
-                );
-            }
+            $first->resume();
 
             self::assertTrue($first->isTerminated());
             self::assertSame(1, $firstWriter->startCalls);
@@ -279,7 +274,8 @@ final class RunwireMultiplexedProtocolIsolationTest extends TestCase
     {
         [$intermixPath, $routerPath] = self::artifactPaths();
         $fingerprint = 'runwire-multiplexed-isolation';
-        $builder = ContainerBuilder::create('webrick_runwire_mux_' . bin2hex(random_bytes(4)));
+        $builder = ContainerBuilder::create('webrick_runwire_mux_' . bin2hex(random_bytes(4)))
+            ->input(Request::class);
         $build = new RouteCompiler()->compile(
             register: static function (Registrar $registrar): void {
                 $registrar->post('/mux/{label}', static function (Request $request, string $label): Response {

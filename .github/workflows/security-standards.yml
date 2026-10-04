@@ -5,11 +5,17 @@ on:
     - cron: "0 0 * * 0"
   push:
     branches: [ "main", "master" ]
+    tags: [ "v*", "[0-9]*" ]
   pull_request:
     branches: [ "main", "master", "develop", "development" ]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   phpforge:
+    if: github.event_name != 'push' || !startsWith(github.ref, 'refs/tags/')
     uses: infocyph/phpforge/.github/workflows/security-standards.yml@main
     with:
       integration_services: '[]'
@@ -19,7 +25,34 @@ jobs:
       actions: read
       contents: read
 
+  release:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    uses: infocyph/phpforge/.github/workflows/release.yml@main
+    permissions:
+      contents: write
+    secrets:
+      COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+
+  no-intl-static-analysis:
+    if: github.event_name != 'push' || !startsWith(github.ref, 'refs/tags/')
+    name: PHPStan without ext-intl
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          coverage: none
+          tools: composer:v2
+          extensions: :intl
+      - name: Verify ext-intl is absent
+        run: php -r 'if (extension_loaded("intl")) { throw new RuntimeException("ext-intl must be disabled for this analysis job."); }'
+      - run: composer install --no-interaction --no-progress --prefer-dist
+      - name: Run PHPStan without ext-intl
+        run: composer ic:test:static
+
   detail-diagnostics:
+    if: github.event_name != 'push' || !startsWith(github.ref, 'refs/tags/')
     name: PHPForge detail diagnostics
     runs-on: ubuntu-latest
     steps:
@@ -30,5 +63,13 @@ jobs:
           coverage: none
           tools: composer:v2
       - run: composer install --no-interaction --no-progress --prefer-dist
+      - name: Verify InputSanitizer without ext-intl
+        run: >-
+          php -n -r 'require "src/Support/InputSanitizer.php";
+          $sanitizer = new Infocyph\Webrick\Support\InputSanitizer(normalizeUnicode: true);
+          if ($sanitizer->sanitizeString("Ｆｏｏ") !== "Ｆｏｏ") {
+              fwrite(STDERR, "Unicode normalization must remain optional without ext-intl.\n");
+              exit(1);
+          }'
       - name: Run exact PHPForge detail suite
         run: composer ic:test:details

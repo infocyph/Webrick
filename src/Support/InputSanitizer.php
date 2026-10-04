@@ -108,7 +108,11 @@ final readonly class InputSanitizer
         $s = preg_replace('/[\x{200B}-\x{200D}\x{FEFF}]/u', '', $s) ?? $s; // ZW chars
 
         if ($this->normalizeUnicode && function_exists('normalizer_normalize')) {
-            $s = normalizer_normalize($s, \Normalizer::FORM_KC) ?: $s;
+            $form = self::intConstant('Normalizer::FORM_KC');
+            if ($form !== null) {
+                $normalized = normalizer_normalize($s, $form);
+                $s = is_string($normalized) ? $normalized : $s;
+            }
         }
 
         $s = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', '', $s) ?? $s; // strip controls
@@ -125,6 +129,17 @@ final readonly class InputSanitizer
         }
 
         return $s;
+    }
+
+    private static function intConstant(string $name): ?int
+    {
+        if (!defined($name)) {
+            return null;
+        }
+
+        $value = constant($name);
+
+        return is_int($value) ? $value : null;
     }
 
     private static function isValidPattern(string $pattern): bool

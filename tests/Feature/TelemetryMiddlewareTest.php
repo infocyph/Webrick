@@ -2,8 +2,8 @@
 
 declare(strict_types=1);
 
-use Infocyph\InterMix\DI\Container;
-use Infocyph\InterMix\DI\Invoker;
+use Infocyph\InterMix\DI\ContainerBuilder;
+use Infocyph\InterMix\DI\RuntimeContainerInterface;
 use Infocyph\Webrick\Middleware\TelemetryMiddleware;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
@@ -13,9 +13,11 @@ use Infocyph\Webrick\Router\Matching\ShardedMatcher;
 use Infocyph\Webrick\Support\TraceContext;
 use Psr\Log\NullLogger;
 
-function telemetryTestInvoker(): Invoker
+function telemetryTestInvoker(): RuntimeContainerInterface
 {
-    return Invoker::with(new Container('webrick.tests.telemetry'));
+    return ContainerBuilder::create('webrick.tests.telemetry')
+        ->input(Request::class)
+        ->build();
 }
 
 beforeEach(function () {

@@ -60,7 +60,9 @@ final class CookieDecryption
                 continue;
             }
             if (preg_match($pattern, $name, $matches) !== 1) {
-                $result[$name] = $value;
+                if (!str_starts_with($name, $prefix)) {
+                    $result[$name] = $value;
+                }
 
                 continue;
             }

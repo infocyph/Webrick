@@ -6,6 +6,7 @@ namespace Infocyph\Webrick\Router\Build;
 
 use Closure;
 use Infocyph\InterMix\DI\ContainerBuilder;
+use Infocyph\Webrick\Request\Request;
 use RuntimeException;
 
 /**
@@ -13,12 +14,24 @@ use RuntimeException;
  */
 final readonly class ReleaseCompiler
 {
-    private const int RELEASE_FORMAT = 2;
+    public const int RELEASE_FORMAT = 3;
 
     public function __construct(
         private RouteCompiler $routes = new RouteCompiler(),
         private RouterArtifactCompiler $routerArtifacts = new RouterArtifactCompiler(),
     ) {}
+
+    /** @param array<string,mixed> $manifest */
+    public static function fingerprintManifest(array $manifest): string
+    {
+        unset($manifest['release_fingerprint']);
+        $encoded = json_encode(
+            self::canonicalize($manifest),
+            JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
+
+        return hash('xxh128', $encoded);
+    }
 
     public static function runtimeManifestPath(string $releaseManifestPath): string
     {
@@ -61,6 +74,8 @@ final readonly class ReleaseCompiler
         array $postGlobalTags = ['webrick.middleware.post'],
         ?Closure $enrichGraph = null,
     ): array {
+        $builder->input(Request::class);
+
         $routerBuild = $this->routes->compile(
             register: $register,
             environment: $environment,
@@ -87,11 +102,15 @@ final readonly class ReleaseCompiler
             'intermix' => [
                 'path' => $intermixPath,
                 'digest' => $intermix['digest'],
+                'graph' => $intermix['graph'],
+                'build' => $intermix['build'],
+                'artifact' => basename($intermix['artifact']),
                 'compiled' => $intermix['compiled'],
                 'skipped' => $intermix['skipped'],
             ],
             'webrick' => $webrick,
         ];
+        $manifest['release_fingerprint'] = self::fingerprintManifest($manifest);
 
         $json = json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n";
         $this->writeAtomic($releaseManifestPath, $json);
@@ -106,6 +125,23 @@ final readonly class ReleaseCompiler
             'release_manifest' => $releaseManifestPath,
             'release_runtime_manifest' => $runtimeManifestPath,
         ];
+    }
+
+    private static function canonicalize(mixed $value): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+        if (array_is_list($value)) {
+            return array_map(self::canonicalize(...), $value);
+        }
+
+        ksort($value, SORT_STRING);
+        foreach ($value as $key => $entry) {
+            $value[$key] = self::canonicalize($entry);
+        }
+
+        return $value;
     }
 
     private function writeAtomic(string $path, string $contents): void

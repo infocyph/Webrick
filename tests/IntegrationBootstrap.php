@@ -10,8 +10,7 @@ declare(strict_types=1);
  */
 
 use Infocyph\CacheLayer\Cache\Cache;
-use Infocyph\InterMix\DI\Container;
-use Infocyph\InterMix\DI\Invoker;
+use Infocyph\InterMix\DI\ContainerBuilder;
 use Infocyph\Webrick\Middleware\ThrottleMiddleware;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
@@ -149,7 +148,7 @@ function createTestKernel(array $extraMiddleware = []): RouterKernel
         log: $logger,
         matcher: FusedMatcher::make(),
         register: $register,
-        invoker: Invoker::with(new Container('webrick.tests.integration')),
+        invoker: ContainerBuilder::create('webrick.tests.integration')->input(Request::class)->build(),
         registrarOptions: [
             'autoSlashRedirect' => false,
             'exposeUrlServices' => false,

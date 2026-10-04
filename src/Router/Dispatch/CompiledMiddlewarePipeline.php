@@ -25,8 +25,9 @@ final readonly class CompiledMiddlewarePipeline
     {
         $invokers = [];
         $requiresScope = false;
+        $resolver = new RuntimeDescriptorInvoker($runtime->container());
         foreach ($middleware as $descriptor) {
-            [$invoke, $runtimeBacked] = self::compileInvoker($runtime, $descriptor);
+            [$invoke, $runtimeBacked] = self::compileInvoker($resolver, $descriptor);
             $invokers[] = $invoke;
             $requiresScope = $requiresScope || $runtimeBacked;
         }
@@ -65,14 +66,14 @@ final readonly class CompiledMiddlewarePipeline
     /**
      * @return array{0:Closure(Request,Closure):mixed,1:bool}
      */
-    private static function compileInvoker(InterMixRuntime $runtime, mixed $descriptor): array
+    private static function compileInvoker(RuntimeDescriptorInvoker $resolver, mixed $descriptor): array
     {
         if ($descriptor instanceof RuntimeMiddlewareDescriptor) {
             return [
-                static function (Request $request, Closure $next) use ($runtime, $descriptor): mixed {
-                    $resolved = $runtime->resolveNow($descriptor->resolverSpec(), $descriptor->parameters);
+                static function (Request $request, Closure $next) use ($resolver, $descriptor): mixed {
+                    $resolved = $resolver->resolve($descriptor->resolverSpec(), $descriptor->parameters);
 
-                    return self::invokeResolvedMiddleware($runtime, $resolved, $request, $next);
+                    return self::invokeResolvedMiddleware($resolver, $resolved, $request, $next);
                 },
                 true,
             ];
@@ -92,7 +93,7 @@ final readonly class CompiledMiddlewarePipeline
         }
 
         return [
-            static fn(Request $request, Closure $next): mixed => $runtime->resolveNow(
+            static fn(Request $request, Closure $next): mixed => $resolver->resolve(
                 $descriptor,
                 ['request' => $request, 'next' => $next],
             ),
@@ -101,7 +102,7 @@ final readonly class CompiledMiddlewarePipeline
     }
 
     private static function invokeResolvedMiddleware(
-        InterMixRuntime $runtime,
+        RuntimeDescriptorInvoker $resolver,
         mixed $resolved,
         Request $request,
         Closure $next,
@@ -111,7 +112,7 @@ final readonly class CompiledMiddlewarePipeline
         }
 
         if (is_callable($resolved) || is_string($resolved) || is_array($resolved)) {
-            return $runtime->resolveNow(
+            return $resolver->resolve(
                 $resolved,
                 ['request' => $request, 'next' => $next],
             );

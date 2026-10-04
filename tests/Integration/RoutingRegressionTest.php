@@ -2,8 +2,8 @@
 
 declare(strict_types=1);
 
-use Infocyph\InterMix\DI\Container;
-use Infocyph\InterMix\DI\Invoker;
+use Infocyph\InterMix\DI\ContainerBuilder;
+use Infocyph\InterMix\DI\RuntimeContainerInterface;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Definition\Registrar;
@@ -14,9 +14,11 @@ use Infocyph\Webrick\Router\Matching\MatcherInterface;
 use Infocyph\Webrick\Router\Matching\ShardedMatcher;
 use Psr\Log\NullLogger;
 
-function routingRegressionInvoker(): Invoker
+function routingRegressionInvoker(): RuntimeContainerInterface
 {
-    return Invoker::with(new Container('webrick.tests.routing-regression'));
+    return ContainerBuilder::create('webrick.tests.routing-regression')
+        ->input(Request::class)
+        ->build();
 }
 
 dataset('routing regression matchers', [
