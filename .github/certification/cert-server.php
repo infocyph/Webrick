@@ -251,13 +251,13 @@ function certification_sapi(string $root): void
     $path = parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH);
     if ($path === '/__cert/metrics') {
         header('Content-Type: application/json');
-        echo json_encode([
+        fwrite(STDOUT, json_encode([
             'pid' => getmypid(),
             'memory_current_bytes' => memory_get_usage(true),
             'memory_peak_bytes' => memory_get_peak_usage(true),
             'requests_active' => 0,
             'queued_bytes_current' => 0,
-        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES));
 
         return;
     }
