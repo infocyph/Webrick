@@ -72,8 +72,12 @@ run_wrk_clean() {
         rm -f "$output"
         return 1
     fi
-    local socket_errors
-    socket_errors="$(grep -m1 'Socket errors:' "$output" | grep -oE '[0-9]+' | awk '{sum += $1} END {print sum + 0}')"
+    local socket_errors socket_line
+    socket_line="$(grep -m1 'Socket errors:' "$output" || true)"
+    socket_errors=0
+    if [[ -n "$socket_line" ]]; then
+        socket_errors="$(grep -oE '[0-9]+' <<<"$socket_line" | awk '{sum += $1} END {print sum + 0}')"
+    fi
     if (( socket_errors != 0 )); then
         cat "$output" >&2
         rm -f "$output"
