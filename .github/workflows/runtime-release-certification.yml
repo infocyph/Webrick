@@ -281,13 +281,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p .runtime-certification
+          php -v > .runtime-certification/php-environment.txt
+          openssl version >> .runtime-certification/php-environment.txt
           sudo apt-get update
           sudo apt-get install -y python3-aioquic jq openssl
           curl -fL --output /tmp/pie https://github.com/php/pie/releases/latest/download/pie-Linux-X64
           gh attestation verify --owner php /tmp/pie
           chmod +x /tmp/pie
           sudo mv /tmp/pie /usr/local/bin/pie
-          pie install mikepultz/php-quic
+          sudo -E /usr/local/bin/pie install mikepultz/php-quic             --with-php-path="$(command -v php)"             --with-php-config="$(command -v php-config)"             --with-phpize-path="$(command -v phpize)"
           php -r '
           if (!extension_loaded("quic")) {
               throw new RuntimeException("ext-quic did not load.");
