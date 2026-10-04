@@ -77,7 +77,9 @@ final readonly class RunwireInterMixScopeBridge implements RuntimeScopeBridgeInt
             $invoke,
             $request instanceof Request ? [Request::class => $request] : [],
         );
-    }    private function assertBorrowedScopeIdentity(RuntimeContainerInterface $container): void
+    }
+
+    private function assertBorrowedScopeIdentity(RuntimeContainerInterface $container): void
     {
         try {
             $borrowedRuntime = $container->get(RuntimeContext::class);
@@ -111,6 +113,4 @@ final readonly class RunwireInterMixScopeBridge implements RuntimeScopeBridgeInt
             throw new LogicException('Borrowed InterMix scope belongs to a different Runwire coroutine scope.');
         }
     }
-
-
 }
