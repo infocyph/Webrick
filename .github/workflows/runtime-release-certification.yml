@@ -59,7 +59,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: runtime-release-certification-${{ github.ref }}
+  group: runtime-release-certification-${{ github.event_name == 'workflow_dispatch' && github.ref || github.sha }}
   cancel-in-progress: true
 
 defaults:
@@ -295,7 +295,7 @@ jobs:
           if (!extension_loaded("quic")) {
               throw new RuntimeException("ext-quic did not load.");
           }
-          if (version_compare(OPENSSL_VERSION_TEXT, "OpenSSL 3.5.0", "<")) {
+          if (OPENSSL_VERSION_NUMBER < 0x30500000) {
               throw new RuntimeException("OpenSSL 3.5+ is required for QUIC server support.");
           }
           fwrite(STDOUT, PHP_VERSION . " " . OPENSSL_VERSION_TEXT . PHP_EOL);
