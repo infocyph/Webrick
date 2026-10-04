@@ -29,6 +29,11 @@ wrk.body = string.rep("x", 16384)
 wrk.headers["Content-Type"] = "application/octet-stream"
 LUA
 
+STREAM_SCRIPT="$RESULT_DIR/stream.lua"
+cat > "$STREAM_SCRIPT" <<'LUA'
+wrk.headers["Connection"] = "close"
+LUA
+
 descendants() {
     local parent="$1"
     local child
@@ -198,6 +203,8 @@ record_wrk() {
     local args=(-t"$threads" -c"$concurrency" -d"${DURATION_SECONDS}s" --latency)
     if [[ "$method" == "POST" ]]; then
         args+=(-s "$POST_SCRIPT")
+    elif [[ "$workload" == "stream" ]]; then
+        args+=(-s "$STREAM_SCRIPT")
     fi
 
     wrk "${args[@]}" "http://127.0.0.1:${port}${path}" >"$out" 2>&1
