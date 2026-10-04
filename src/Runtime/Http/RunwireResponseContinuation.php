@@ -196,6 +196,7 @@ final class RunwireResponseContinuation
                 $suspension = $fiber->resume($resumeValue);
             }
         } catch (Throwable $error) {
+            self::throwIntoSuspendedHandler($fiber, $error);
             if (self::$ioSuspensions instanceof WeakMap) {
                 unset(self::$ioSuspensions[$fiber]);
             }
@@ -205,6 +206,27 @@ final class RunwireResponseContinuation
         }
 
         self::releaseIfTerminated($fiber);
+    }
+
+    /**
+     * Propagate caller-owned task failure into Webrick's suspended handler so
+     * handler catch/finally cleanup runs before the host exception continues.
+     *
+     * @param Fiber<mixed, mixed, mixed, mixed> $fiber
+     */
+    private static function throwIntoSuspendedHandler(Fiber $fiber, Throwable $error): void
+    {
+        if (!$fiber->isSuspended() || isset(self::ioSuspensions()[$fiber])) {
+            return;
+        }
+
+        try {
+            $fiber->throw($error);
+        } catch (Throwable) {
+            // The caller-owned failure remains authoritative after handler cleanup.
+        } finally {
+            self::releaseIfTerminated($fiber);
+        }
     }
 
     /** @param Fiber<mixed, mixed, mixed, mixed> $fiber */
