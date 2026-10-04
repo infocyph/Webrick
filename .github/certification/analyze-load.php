@@ -116,7 +116,12 @@ foreach (load_rows($input) as $row) {
     if ($validated !== $complete || $invalid !== 0) {
         $errors[] = "{$key}: response validation did not prove every complete response.";
     }
-    if ($non2xx !== 0) {
+    $expectsNon2xx = in_array($workload, ['not_found', 'method_not_allowed'], true);
+    if ($expectsNon2xx) {
+        if ($complete <= 0 || $non2xx !== $complete) {
+            $errors[] = "{$key}: expected every validated response to be non-2xx/3xx.";
+        }
+    } elseif ($non2xx !== 0) {
         $errors[] = "{$key}: unexpected non-2xx/3xx responses were observed.";
     }
     if ($failed !== $socketErrorTotal) {
