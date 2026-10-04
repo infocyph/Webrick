@@ -12,6 +12,7 @@ use Infocyph\Runwire\Http\Enum\ProtocolVersion;
 use Infocyph\Runwire\Http\Headers;
 use Infocyph\Runwire\Http\HttpRequest;
 use Infocyph\Runwire\Http\ResponseWriterInterface;
+use Infocyph\Runwire\Network\Enum\WriteState;
 use Infocyph\Runwire\Network\WriteResult;
 use Infocyph\Runwire\RuntimeContext as RunwireContext;
 use Infocyph\Webrick\Constants\MediaTypeEnum;
