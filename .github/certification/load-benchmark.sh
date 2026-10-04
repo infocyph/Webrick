@@ -27,8 +27,8 @@ cat > "$VALIDATION_SCRIPT" <<'LUA'
 local workload = os.getenv("CERT_WORKLOAD") or ""
 local close_delimited = os.getenv("CERT_CLOSE_DELIMITED") == "1"
 local threads = {}
-local validated = 0
-local invalid = 0
+validated = 0
+invalid = 0
 
 setup = function(thread)
     table.insert(threads, thread)
