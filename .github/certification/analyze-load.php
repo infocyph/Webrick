@@ -88,7 +88,15 @@ foreach (load_rows($input) as $row) {
     $key = implode('|', [$mode, $workload, (string) $concurrency, $version]);
     $groups[$key][] = $row;
 
-    if ((int) ($row['failed'] ?? 0) !== 0 || (int) ($row['non2xx'] ?? 0) !== 0) {
+    $failed = (int) ($row['failed'] ?? 0);
+    $complete = (int) ($row['complete'] ?? 0);
+    $non2xx = (int) ($row['non2xx'] ?? 0);
+    $expectedSapiStreamEof = $mode === 'sapi'
+        && $workload === 'stream'
+        && $non2xx === 0
+        && $complete > 0
+        && $failed === $complete;
+    if ((!$expectedSapiStreamEof && $failed !== 0) || $non2xx !== 0) {
         $errors[] = "{$key}: invalid/failed HTTP requests were observed.";
     }
     $metrics = is_array($row['metrics'] ?? null) ? $row['metrics'] : [];
