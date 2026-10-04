@@ -13,6 +13,7 @@ use Infocyph\Runwire\Runtime\Enum\RuntimeDriver;
 use Infocyph\Runwire\RuntimeOptions;
 use Infocyph\Runwire\Server;
 use Infocyph\Runwire\Supervisor\WorkerRecyclePolicy;
+use Infocyph\Runwire\Supervisor\SupervisorEvent;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Build\RouteCompiler;
@@ -183,6 +184,33 @@ function certification_runtime_metrics(HttpRequest $request): array
     ];
 }
 
+function certification_record_event(string $path, SupervisorEvent $event): void
+{
+    $payload = [
+        'type' => $event->type->value,
+        'at' => $event->atMonotonic,
+        'group' => $event->group,
+        'slot' => $event->slot,
+        'pid' => $event->pid,
+        'generation' => $event->generation,
+        'state' => $event->state?->value,
+        'restart_count' => $event->restartCount,
+        'exit_code' => $event->exitCode,
+        'term_signal' => $event->termSignal,
+        'expected' => $event->expected,
+        'restart_delay_seconds' => $event->restartDelaySeconds,
+        'replaces_pid' => $event->replacesPid,
+        'shutdown_reason' => $event->shutdownReason?->value,
+        'exit_reason' => $event->exitReason?->value,
+        'request_id' => $event->requestId,
+    ];
+    file_put_contents(
+        $path,
+        json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n",
+        FILE_APPEND | LOCK_EX,
+    );
+}
+
 function certification_write_json(ResponseWriterInterface $writer, array $payload): void
 {
     $json = json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
@@ -245,6 +273,11 @@ function certification_runwire(
             gracefulTimeoutSeconds: 15.0,
         ),
     ));
+    $eventPath = certification_artifacts($root)['router'] . '.supervisor-events.jsonl';
+    file_put_contents($eventPath, '');
+    $runtime->onEvent(
+        static fn(SupervisorEvent $event): mixed => certification_record_event($eventPath, $event),
+    );
     $runtime->listen($definition)->run();
 }
 
