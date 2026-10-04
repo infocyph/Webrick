@@ -2,6 +2,9 @@
 
 declare(strict_types=1);
 
+use Infocyph\Runwire\Coroutine\CoroutineRuntime;
+use Infocyph\Runwire\Coroutine\CoroutineScope;
+use Infocyph\Runwire\Exception\CancelledException;
 use Infocyph\Runwire\Http\Enum\ProtocolVersion;
 use Infocyph\Runwire\Http\Headers;
 use Infocyph\Runwire\Http\HttpRequest;
@@ -9,10 +12,13 @@ use Infocyph\Runwire\Http\RequestBodyInterface;
 use Infocyph\Runwire\Http\ResponseWriterInterface;
 use Infocyph\Runwire\Network\Enum\WriteState;
 use Infocyph\Runwire\Network\WriteResult;
+use Infocyph\Runwire\RequestContext as RunwireRequestContext;
 use Infocyph\Runwire\Runtime\ApplicationLifecycleHooks;
+use Infocyph\Runwire\Runtime\Enum\CancellationReason;
 use Infocyph\Runwire\Runtime\RuntimeApplicationInterface;
 use Infocyph\Runwire\RuntimeContext;
 use Infocyph\Runwire\Supervisor\Enum\ShutdownReason;
+use Infocyph\Webrick\Runtime\Http\RunwireResponseContinuation;
 use Infocyph\Webrick\Runtime\Http\RunwireRuntimeApplication;
 use Infocyph\Webrick\Runtime\Http\RunwireRuntimeApplicationFactory;
 
@@ -185,6 +191,106 @@ test('runwire terminal observers fire exactly once and late observers fire immed
     expect($early)->toBe(1)
         ->and($late)->toBe(1)
         ->and($writer->endCalls)->toBe(1);
+});
+
+test('runwire continuation propagates caller Fiber exceptions through handler cleanup', function (): void {
+    $caught = null;
+    $finalized = 0;
+    $failure = new RuntimeException('caller Fiber cancelled');
+
+    $owner = new Fiber(static function () use (&$caught, &$finalized): void {
+        RunwireResponseContinuation::run(static function () use (&$caught, &$finalized): void {
+            try {
+                Fiber::suspend('handler-suspended');
+            } catch (RuntimeException $error) {
+                $caught = $error;
+
+                throw $error;
+            } finally {
+                ++$finalized;
+            }
+        });
+    });
+
+    expect($owner->start())->toBe('handler-suspended')
+        ->and($owner->isSuspended())->toBeTrue()
+        ->and(fn() => $owner->throw($failure))
+        ->toThrow(RuntimeException::class, 'caller Fiber cancelled')
+        ->and($caught)->toBe($failure)
+        ->and($finalized)->toBe(1)
+        ->and($owner->isTerminated())->toBeTrue();
+});
+
+test('runwire host task cancellation reaches handler and finalizes request exactly once', function (): void {
+    $coroutines = new CoroutineRuntime();
+    $runtime = RuntimeContext::standalone();
+    $requestContext = RunwireRequestContext::create($runtime);
+    $request = new HttpRequest(
+        method: 'GET',
+        target: '/cancel',
+        version: ProtocolVersion::HTTP_1_1,
+        headers: Headers::fromArray(['Host' => 'example.test']),
+        body: new RunwireApplicationBodyFixture(),
+        context: $requestContext,
+    );
+    $writer = new RunwireApplicationWriterFixture();
+    $caught = false;
+    $handlerFinally = 0;
+    $cleanupCalls = 0;
+    $application = null;
+
+    $coroutines->run(
+        static function (CoroutineScope $scope) use (
+            &$application,
+            &$caught,
+            &$handlerFinally,
+            &$cleanupCalls,
+            $runtime,
+            $request,
+            $writer,
+        ): void {
+            $application = new RunwireRuntimeApplication(
+                static function (HttpRequest $native, ResponseWriterInterface $response) use (
+                    $scope,
+                    &$caught,
+                    &$handlerFinally,
+                ): void {
+                    unset($native, $response);
+
+                    try {
+                        $scope->sleep(60.0);
+                    } catch (CancelledException $error) {
+                        $caught = true;
+
+                        throw $error;
+                    } finally {
+                        ++$handlerFinally;
+                    }
+                },
+                $runtime,
+                requestCleanup: static function () use (&$cleanupCalls): void {
+                    ++$cleanupCalls;
+                },
+            );
+
+            $task = $scope->spawn(
+                static fn(): null => $application->handle($request, $writer, completeResponse: true),
+            );
+            $scope->yieldNow();
+
+            expect($task->isComplete())->toBeFalse()
+                ->and($task->cancel(CancellationReason::HOST_CANCELLED))->toBeTrue()
+                ->and(fn() => $task->await())
+                ->toThrow(CancelledException::class);
+        },
+    );
+
+    expect($caught)->toBeTrue()
+        ->and($handlerFinally)->toBe(1)
+        ->and($cleanupCalls)->toBe(1)
+        ->and($requestContext->completed())->toBeTrue()
+        ->and($application)->toBeInstanceOf(RunwireRuntimeApplication::class)
+        ->and($application->snapshot()->requestsActive)->toBe(0);
 });
 
 test('runwire application bridge forwards lifecycle health failure', function (): void {
