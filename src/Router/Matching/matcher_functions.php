@@ -109,16 +109,16 @@ function matcher_normalize_middleware_requirements(mixed $raw): array
 
     $requirements = [];
     foreach ($raw as $name) {
-        if (!is_string($name)) {
+        if (!is_string($name) && !is_int($name)) {
             continue;
         }
-        $name = strtolower(trim($name));
+        $name = strtolower(trim((string) $name));
         if ($name !== '') {
             $requirements[$name] = true;
         }
     }
 
-    return array_keys($requirements);
+    return array_map(strval(...), array_keys($requirements));
 }
 
 /**
@@ -132,7 +132,8 @@ function matcher_normalize_alias_pairs(mixed $raw): array
 
     $aliases = [];
     foreach ($raw as $name => $tuple) {
-        if (!is_string($name) || !is_array($tuple)) {
+        $name = (string) $name;
+        if (!is_array($tuple)) {
             continue;
         }
 

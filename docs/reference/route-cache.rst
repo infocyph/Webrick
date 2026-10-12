@@ -148,26 +148,40 @@ Do not confuse matcher cache with the strict Webrick production artifact. ``Rele
 - environment and configuration fingerprints;
 - a release manifest containing trusted deployment identities.
 
-Webrick 5.1 release manifest format 2 has the relevant shape:
+Webrick 6 uses coordinated release manifest format 3. The compiler and loaders
+share ``ReleaseCompiler::RELEASE_FORMAT``. The generated manifest has this shape:
 
 .. code:: php
 
    [
-       'format' => 2,
+       'format' => ReleaseCompiler::RELEASE_FORMAT,
        'environment' => 'production',
        'config_fingerprint' => '...',
+       'release_fingerprint' => '...', // xxh128: coordinated manifest identity
        'intermix' => [
            'path' => '/release/intermix.php',
            'digest' => '...', // xxh128: 32 lowercase hex characters
+           'graph' => '...',  // xxh128: InterMix definition graph identity
+           'build' => '...',  // xxh128: InterMix compiled build identity
+           'artifact' => '...',        // generated artifact basename
+           'compiled' => [...],        // compiled service IDs
+           'skipped' => [...],         // service ID => fallback reason
        ],
        'webrick' => [
            'path' => '/release/webrick.php',
+           'meta' => '/release/webrick.php.meta.json',
            'digest' => '...',      // xxh128: deployment/file identity
            'fingerprint' => '...', // xxh128: trusted artifact identity
+           'routes' => 42,
        ],
    ]
 
-The algorithm-specific ``sha256`` field names from earlier releases are not accepted by the Webrick 5.1 manifest contract.
+This is an illustrative schema. Deploy the files emitted by ``ReleaseCompiler``
+instead of constructing manifests by hand. The release manifest format is
+separate from the router artifact and matcher-cache formats; do not substitute
+one format version for another.
+
+The algorithm-specific ``sha256`` field names from earlier releases are not accepted by the Webrick 6 manifest contract.
 
 Runtime manifest loading
 ------------------------

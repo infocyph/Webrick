@@ -229,7 +229,7 @@ final class CompiledRouterArtifact
     private static function validateAliases(array $aliases): void
     {
         foreach ($aliases as $name => $tuple) {
-            if (!is_string($name) || $name === '' || !is_array($tuple)) {
+            if ((string) $name === '' || !is_array($tuple)) {
                 throw new UnexpectedValueException('Invalid alias index in Webrick router artifact.');
             }
             $path = $tuple[0] ?? null;

@@ -44,7 +44,7 @@ it('prefers the php runtime manifest and falls back to json', function (): void 
     $intermixDigest = str_repeat('a', 32);
     $webrickDigest = str_repeat('b', 32);
     $base = [
-        'format' => 2,
+        'format' => ReleaseCompiler::RELEASE_FORMAT,
         'environment' => 'json',
         'config_fingerprint' => 'cfg',
         'intermix' => ['path' => '/tmp/intermix.php', 'digest' => $intermixDigest],
@@ -86,7 +86,7 @@ it('rejects the legacy InterMix sha256 release contract', function (): void {
     $jsonPath = $directory . '/release.json';
     $digest = str_repeat('b', 32);
     file_put_contents($jsonPath, json_encode([
-        'format' => 2,
+        'format' => ReleaseCompiler::RELEASE_FORMAT,
         'environment' => 'production',
         'config_fingerprint' => 'cfg',
         'intermix' => ['path' => '/tmp/intermix.php', 'sha256' => str_repeat('a', 64)],
@@ -109,6 +109,49 @@ it('rejects the legacy InterMix sha256 release contract', function (): void {
         }
     }
 });
+
+it('rejects invalid release metadata in both manifest representations', function (string $representation, array $override, string $message): void {
+    $directory = sys_get_temp_dir() . '/webrick-invalid-manifest-' . bin2hex(random_bytes(6));
+    expect(mkdir($directory, 0775, true))->toBeTrue();
+    $jsonPath = $directory . '/release.json';
+    $path = $representation === 'php' ? ReleaseCompiler::runtimeManifestPath($jsonPath) : $jsonPath;
+    $digest = str_repeat('a', 32);
+    $manifest = array_replace_recursive([
+        'format' => ReleaseCompiler::RELEASE_FORMAT,
+        'environment' => 'production',
+        'config_fingerprint' => 'cfg',
+        'intermix' => ['path' => '/tmp/intermix.php', 'digest' => $digest],
+        'webrick' => ['path' => '/tmp/router.php', 'digest' => $digest, 'fingerprint' => $digest],
+    ], $override);
+
+    try {
+        file_put_contents($path, $representation === 'php'
+            ? "<?php\nreturn " . var_export($manifest, true) . ";\n"
+            : json_encode($manifest, JSON_THROW_ON_ERROR));
+        expect(fn() => new ReleaseManifestLoader()->load($jsonPath))
+            ->toThrow(UnexpectedValueException::class, $message);
+    } finally {
+        if (is_file($path)) {
+            unlink($path);
+        }
+        rmdir($directory);
+    }
+})->with(['php', 'json'])->with([
+    'obsolete format' => [['format' => 2], 'Malformed Webrick release manifest'],
+    'future format' => [['format' => ReleaseCompiler::RELEASE_FORMAT + 1], 'Malformed Webrick release manifest'],
+    'string format' => [['format' => (string) ReleaseCompiler::RELEASE_FORMAT], 'Malformed Webrick release manifest'],
+    'missing format' => [['format' => null], 'Malformed Webrick release manifest'],
+    'empty environment' => [['environment' => ''], 'Malformed Webrick release manifest'],
+    'invalid config fingerprint' => [['config_fingerprint' => 123], 'Malformed Webrick release manifest'],
+    'missing InterMix metadata' => [['intermix' => null], 'Malformed Webrick release manifest'],
+    'empty InterMix path' => [['intermix' => ['path' => '']], 'Malformed InterMix release metadata'],
+    'invalid InterMix digest' => [['intermix' => ['digest' => str_repeat('g', 32)]], 'Malformed InterMix release metadata'],
+    'missing router metadata' => [['webrick' => null], 'Malformed Webrick release manifest'],
+    'empty router path' => [['webrick' => ['path' => '']], 'Malformed Webrick router release metadata'],
+    'invalid router digest' => [['webrick' => ['digest' => str_repeat('a', 64)]], 'Malformed Webrick router release metadata'],
+    'invalid router fingerprint' => [['webrick' => ['fingerprint' => null]], 'Malformed Webrick router release metadata'],
+    'numeric manifest key' => [[0 => 'invalid'], 'Webrick release manifest must use string keys'],
+]);
 
 it('renders default routing misses without a request or throwable', function (): void {
     $renderer = new RoutingControlRenderer(new NullLogger());

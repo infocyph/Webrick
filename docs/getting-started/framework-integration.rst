@@ -100,7 +100,12 @@ Build Webrick and InterMix as one release set with ``ReleaseCompiler``. At worke
        configFingerprint: $release['config_fingerprint'],
    );
 
-``ReleaseManifestLoader`` prefers the OPcache-friendly PHP runtime manifest emitted beside the JSON manifest and falls back to JSON when necessary. Webrick 5.1 uses ``intermix.digest`` and ``webrick.fingerprint`` as the trusted prevalidated runtime inputs; the old SHA-256 field names are not supported.
+``ReleaseManifestLoader`` prefers the OPcache-friendly PHP runtime manifest emitted beside the JSON manifest and falls back to JSON when necessary. Webrick 6 uses ``intermix.digest`` and ``webrick.fingerprint`` as the trusted prevalidated runtime inputs; the old SHA-256 field names are not supported.
+
+Use fully qualified class names or descriptive nonnumeric service IDs such as
+``service.789`` in the compiled InterMix graph. Numeric-only IDs can become
+integer keys in manifest maps and are rejected by InterMix 11.1's compiled
+metadata loader. Webrick preserves the service IDs supplied by the host.
 
 The environment/fingerprint values validate the artifact. They do not make Webrick choose a runtime.
 
@@ -166,7 +171,7 @@ Persistent runtimes
 
 Swoole/OpenSwoole, RoadRunner and Workerman can continue to use Webrick's direct classes under ``Runtime\Http``. The direct runtime adapter is chosen once at worker bootstrap and owns native request/response handles and transport capabilities.
 
-Runwire 1.x is an optional alternative host runtime. When the host selects Runwire, compose ``RunwireRuntimeApplicationFactory`` -> ``RunwireRuntimeApplication`` -> ``RuntimeServer`` -> ``RunwireRuntimeAdapter`` around the same compiled Webrick kernel. Runwire owns runtime selection/lifecycle/cancellation/deadlines/drain/metrics; Webrick owns routing, response semantics and exactly-once writer completion. See `Runwire Runtime <../deployments/runwire.rst>`__.
+Runwire 2.1.1 or later is an optional alternative host runtime. When the host selects Runwire, compose ``RunwireRuntimeApplicationFactory`` -> ``RunwireRuntimeApplication`` -> ``RuntimeServer`` -> ``RunwireRuntimeAdapter`` around the same compiled Webrick kernel. Runwire owns runtime selection/lifecycle/cancellation/deadlines/drain/metrics; Webrick owns routing, response semantics and exactly-once writer completion. See `Runwire Runtime <../deployments/runwire.rst>`__.
 
 Webrick opens an InterMix request scope only when the compiled execution plan needs one. Native request/response state remains request-local and must never be kept in singleton middleware or static current-request/current-response fields.
 

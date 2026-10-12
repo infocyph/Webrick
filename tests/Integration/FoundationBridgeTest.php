@@ -8,8 +8,10 @@ use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Build\Artifact\ArtifactValueCodec;
 use Infocyph\Webrick\Router\Build\ReleaseCompiler;
+use Infocyph\Webrick\Router\Build\ReleaseManifestLoader;
 use Infocyph\Webrick\Router\Build\RouteCompiler;
 use Infocyph\Webrick\Router\Build\RouterBuildResult;
+use Infocyph\Webrick\Router\Build\RouterArtifactLoader;
 use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Dispatch\CompiledMiddlewarePipeline;
 use Infocyph\Webrick\Router\Dispatch\MiddlewareAliases;
@@ -242,6 +244,34 @@ describe('Foundation Webrick bridge', function () {
                 ->and(is_file($intermixPath))->toBeTrue()
                 ->and(is_file($routerPath))->toBeTrue()
                 ->and(is_file($releasePath))->toBeTrue();
+
+            $expected = $manifest;
+            unset($expected['release_manifest'], $expected['release_runtime_manifest']);
+            $loader = new ReleaseManifestLoader();
+            $artifacts = new RouterArtifactLoader();
+            foreach (['php', 'json'] as $representation) {
+                if ($representation === 'json') {
+                    unlink(ReleaseCompiler::runtimeManifestPath($releasePath));
+                }
+                $loaded = $loader->load($releasePath);
+                expect($loaded)->toBe($expected);
+                $identity = $loaded['webrick']['fingerprint'];
+                expect($artifacts->load($routerPath, 'production', 'foundation-release')->artifactFingerprint)
+                    ->toBe($identity)
+                    ->and($artifacts->loadPrevalidated($routerPath, $identity, 'production', 'foundation-release')->artifactFingerprint)
+                    ->toBe($identity);
+
+                expect(fn() => $artifacts->loadPrevalidated($routerPath, str_repeat('0', 32), 'production', 'foundation-release'))
+                    ->toThrow(RuntimeException::class, 'Trusted Webrick artifact fingerprint does not match the release manifest');
+                expect(fn() => $artifacts->loadPrevalidated($routerPath, $identity, 'development', 'foundation-release'))
+                    ->toThrow(RuntimeException::class, 'Webrick router artifact identity mismatch');
+                expect(fn() => $artifacts->loadPrevalidated($routerPath, $identity, 'production', 'other-config'))
+                    ->toThrow(RuntimeException::class, 'Webrick router artifact identity mismatch');
+            }
+
+            file_put_contents($routerPath, "\n// altered artifact\n", FILE_APPEND);
+            expect(fn() => $artifacts->load($routerPath, 'production', 'foundation-release'))
+                ->toThrow(RuntimeException::class, 'Webrick router artifact digest mismatch');
         } finally {
             foundationBridgeCleanup([$intermixPath, $routerPath]);
             foreach ([$releasePath, ReleaseCompiler::runtimeManifestPath($releasePath)] as $path) {
