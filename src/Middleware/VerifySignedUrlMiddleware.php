@@ -21,6 +21,7 @@ final readonly class VerifySignedUrlMiddleware
      * @param list<string> $ignoredQueryParams
      */
     public function __construct(
+        #[\SensitiveParameter]
         array|SignedUrlConfig|string $config,
         int|string|null $leeway = null,
         array $ignoredQueryParams = [],
@@ -103,6 +104,7 @@ final readonly class VerifySignedUrlMiddleware
      * @param list<string> $ignoredQueryParams
      */
     private function normalizeConfig(
+        #[\SensitiveParameter]
         array|SignedUrlConfig|string $config,
         int|string|null $leeway,
         array $ignoredQueryParams,
@@ -169,7 +171,7 @@ final readonly class VerifySignedUrlMiddleware
         $host = $uri->getHost();
 
         if ($scheme === '' || $host === '') {
-            return $this->requestRelativeTarget($request);
+            throw HttpException::badRequest('Absolute signed URLs require a request scheme and host.');
         }
 
         return $scheme . '://' . $uri->getAuthority() . $this->requestRelativeTarget($request);

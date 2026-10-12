@@ -7,7 +7,6 @@ namespace Infocyph\Webrick\Middleware;
 use Closure;
 use Infocyph\CacheLayer\Cache\Cache;
 use Infocyph\Webrick\Constants\HttpMethodEnum;
-use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Cache\CachePolicy;
 use Infocyph\Webrick\Response\Internal\Utils;
@@ -20,7 +19,7 @@ use RuntimeException;
 /** Small shared response micro-cache using native string response bodies. */
 final readonly class ResponseCacheMiddleware
 {
-    private const string CACHE_KEY_PREFIX = 'webrick.hr.v4.';
+    private const string CACHE_KEY_PREFIX = 'webrick.hr.v5.';
 
     private CachePolicy $policy;
 
@@ -60,7 +59,8 @@ final readonly class ResponseCacheMiddleware
         }
 
         $head = $method === HttpMethodEnum::HEAD->value;
-        $key = $this->makeKey($req, $head ? HttpMethodEnum::GET->value : $method);
+        $varyPairs = $this->resolveVaryPairs($req);
+        $key = $this->makeKey($req, $head ? HttpMethodEnum::GET->value : $method, $varyPairs);
         $cached = $this->readCache($key);
         if (is_array($cached)) {
             $response = $this->unpack($cached);
@@ -71,7 +71,7 @@ final readonly class ResponseCacheMiddleware
 
         $response = $this->invokeNext($next, $req);
         if (!$head) {
-            $ttl = $this->storeTtl($req, $response);
+            $ttl = $this->storeTtl($req, $response, $varyPairs);
             if ($ttl > 0) {
                 $this->writeCache($key, $this->pack($response), $ttl);
             }
@@ -109,11 +109,6 @@ final readonly class ResponseCacheMiddleware
         return $response->withBody('');
     }
 
-    private function base64UrlHash(string $value): string
-    {
-        return rtrim(strtr(base64_encode(hash('sha256', $value, true)), '+/', '-_'), '=');
-    }
-
     private function buildDefaultStore(): CacheItemPoolInterface
     {
         if (!class_exists(Cache::class)) {
@@ -140,14 +135,15 @@ final readonly class ResponseCacheMiddleware
         ));
     }
 
-    private function hasSafeVary(Response $response, Request $request): bool
+    /** @param array<string,string> $varyPairs */
+    private function hasSafeVary(Response $response, array $varyPairs): bool
     {
         $vary = $response->getHeaderLine('Vary');
         if ($vary === '') {
             return true;
         }
 
-        $keyed = array_fill_keys(array_keys($this->resolveVaryPairs($request)), true);
+        $keyed = $varyPairs;
         foreach (explode(',', $vary) as $token) {
             $name = $this->canonicalHeaderToken($token);
             if ($name === '' || $name === '*' || $name === 'Authorization' || $name === 'Cookie' || !isset($keyed[$name])) {
@@ -156,15 +152,6 @@ final readonly class ResponseCacheMiddleware
         }
 
         return true;
-    }
-
-    private function intFromMixed(mixed $value, int $default): int
-    {
-        if (is_int($value)) {
-            return $value;
-        }
-
-        return is_string($value) ? (HttpUtils::parseUnsignedDecimal($value) ?? $default) : $default;
     }
 
     private function invokeNext(Closure $next, Request $req): Response
@@ -177,7 +164,8 @@ final readonly class ResponseCacheMiddleware
         return $response;
     }
 
-    private function makeKey(Request $req, string $method): string
+    /** @param array<string,string> $pairs */
+    private function makeKey(Request $req, string $method, array $pairs): string
     {
         $uri = $req->getUri();
         $scheme = strtolower($uri->getScheme() ?: 'http');
@@ -188,7 +176,6 @@ final readonly class ResponseCacheMiddleware
 
         $query = $this->includeQuery ? $uri->getQuery() : '';
 
-        $pairs = $this->resolveVaryPairs($req);
         ksort($pairs, SORT_STRING);
         $nul = "\0";
         $buffer = $method . $nul
@@ -204,24 +191,19 @@ final readonly class ResponseCacheMiddleware
             $buffer .= $nul . $name . $nul . $value;
         }
 
-        return self::CACHE_KEY_PREFIX . $this->base64UrlHash($buffer);
+        return self::CACHE_KEY_PREFIX . rtrim(strtr(base64_encode(hash('sha256', $buffer, true)), '+/', '-_'), '=');
     }
 
-    /** @return array<string,list<string>> */
-    private function normalizeHeaders(mixed $value): array
-    {
-        return is_array($value) ? Utils::normalizeHeaderValueLists($value) : [];
-    }
-
-    /** @return array{s:int,h:array<string,list<string>>,b:string,pv:string,rp:string} */
+    /** @return array{s:int,h:array<string,list<string>>,b:string,pv:string,rp:string,t:int} */
     private function pack(Response $response): array
     {
         return [
             's' => $response->getStatusCode(),
-            'h' => $this->normalizeHeaders($response->getHeaders()),
+            'h' => Utils::normalizeHeaderValueLists($response->getHeaders()),
             'b' => $response->getStringBody() ?? '',
             'pv' => $response->getProtocolVersion(),
             'rp' => $response->getReasonPhrase(),
+            't' => time(),
         ];
     }
 
@@ -261,7 +243,8 @@ final readonly class ResponseCacheMiddleware
         return $pairs;
     }
 
-    private function storeTtl(Request $request, Response $response): int
+    /** @param array<string,string> $varyPairs */
+    private function storeTtl(Request $request, Response $response, array $varyPairs): int
     {
         if ($response->isStreaming() || $response->getStringBody() === null) {
             return 0;
@@ -270,7 +253,7 @@ final readonly class ResponseCacheMiddleware
         if ($size !== null && $size > $this->maxBodyBytes) {
             return 0;
         }
-        if (!$this->hasSafeVary($response, $request)) {
+        if ($this->resolveVaryPairs($request) !== $varyPairs || !$this->hasSafeVary($response, $varyPairs)) {
             return 0;
         }
 
@@ -295,14 +278,37 @@ final readonly class ResponseCacheMiddleware
     /** @param array<mixed,mixed> $data */
     private function unpack(array $data): ?Response
     {
+        $now = time();
+        if (!is_int($data['s'] ?? null)
+            || !is_array($data['h'] ?? null)
+            || !is_string($data['b'] ?? null)
+            || !is_string($data['pv'] ?? null)
+            || !is_string($data['rp'] ?? null)
+            || !is_int($data['t'] ?? null)
+            || $data['t'] < 0 || $data['t'] > $now
+            || strlen($data['b']) > $this->maxBodyBytes
+        ) {
+            return null;
+        }
+
         try {
-            return new Response(
-                $this->intFromMixed($data['s'] ?? null, StatusEnum::OK->value),
-                $this->stringFromMixed($data['b'] ?? '', ''),
-                $this->normalizeHeaders($data['h'] ?? []),
-                $this->stringFromMixed($data['pv'] ?? '1.1', '1.1'),
-                $this->stringFromMixed($data['rp'] ?? '', ''),
+            $headers = Utils::normalizeHeaderValueLists($data['h']);
+            if ($headers !== $data['h']) {
+                return null;
+            }
+            $response = new Response(
+                $data['s'],
+                $data['b'],
+                $headers,
+                $data['pv'],
+                $data['rp'],
             );
+            $age = HttpUtils::parseUnsignedDecimal($response->getHeaderLine('Age')) ?? 0;
+            $date = HttpUtils::parseHttpDate($response->getHeaderLine('Date')) ?? $now;
+            $resident = max(0, $now - $data['t']);
+            $age = min(PHP_INT_MAX - $resident, $age) + $resident;
+
+            return $response->withHeader('Age', (string) max($age, $now - $date));
         } catch (\Throwable) {
             return null;
         }

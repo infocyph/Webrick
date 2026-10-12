@@ -59,14 +59,7 @@ final class Utils
                 continue;
             }
 
-            $vals = [];
-            foreach ($value as $item) {
-                if (\is_string($item)) {
-                    $vals[] = $item;
-                }
-            }
-
-            $out[$name] = $vals;
+            $out[$name] = array_values(array_filter($value, is_string(...)));
         }
 
         return $out;

@@ -99,13 +99,12 @@ final class UploadedFilesNormalizer
                 continue;
             }
 
-            $out[$idx] = UploadedFile::fromSpec([
-                'tmp_name' => is_string($tmpName) ? $tmpName : '',
-                'size' => is_int($size) ? $size : null,
-                'error' => is_int($error) ? $error : UPLOAD_ERR_NO_FILE,
-                'name' => is_string($name) ? $name : null,
-                'type' => is_string($type) ? $type : null,
-            ]);
+            $out[$idx] = self::leafFile([
+                'size' => $size,
+                'error' => $error,
+                'name' => $name,
+                'type' => $type,
+            ], $tmpName);
         }
 
         return $out;

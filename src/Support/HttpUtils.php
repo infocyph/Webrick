@@ -61,6 +61,18 @@ final class HttpUtils
             || str_ends_with($mime, '+xml');
     }
 
+    /** @param list<string> $parameters */
+    public static function parameterQuality(array $parameters): float
+    {
+        foreach ($parameters as $parameter) {
+            if (preg_match('/^q\s*=\s*(.*)$/i', $parameter, $matches) === 1) {
+                return self::parseQValue($matches[1]) ?? 0.0;
+            }
+        }
+
+        return 1.0;
+    }
+
     public static function parseHttpDate(string $value): ?int
     {
         $value = trim($value);
@@ -117,48 +129,34 @@ final class HttpUtils
             return null;
         }
 
-        $parsed = filter_var($value, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
+        $digits = ltrim($value, '0');
+        $parsed = filter_var($digits === '' ? '0' : $digits, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
 
         return $parsed === false ? null : (int) $parsed;
     }
 
-    /** @return list<string>|null Null means malformed quoted-string syntax. */
-    public static function splitQuoted(string $raw, string $delimiter): ?array
+    /** @return list<string>|null Null means malformed quoted-string syntax or a rejected empty element. */
+    public static function splitQuoted(string $raw, string $delimiter, bool $rejectEmpty = false): ?array
     {
         if (strlen($delimiter) !== 1) {
             throw new \InvalidArgumentException('HTTP list delimiter must be exactly one character.');
         }
 
-        $parts = [];
-        $buffer = '';
-        $quoted = false;
-        $escaped = false;
-        for ($i = 0, $length = strlen($raw); $i < $length; $i++) {
-            $char = $raw[$i];
-            if (self::appendQuotedCharacter($buffer, $quoted, $escaped, $char)) {
-                continue;
-            }
-            if ($char === $delimiter && !$quoted) {
-                $token = trim($buffer);
-                if ($token !== '') {
-                    $parts[] = $token;
-                }
-                $buffer = '';
+        return str_contains($raw, '"')
+            ? self::splitQuotedTokens($raw, $delimiter, $rejectEmpty)
+            : self::splitUnquoted($raw, $delimiter, $rejectEmpty);
+    }
 
-                continue;
-            }
-            $buffer .= $char;
-        }
-
-        if ($quoted || $escaped) {
-            return null;
-        }
+    /** @param list<string> $parts */
+    private static function appendListToken(array &$parts, string $buffer, bool $rejectEmpty): bool
+    {
         $token = trim($buffer);
-        if ($token !== '') {
-            $parts[] = $token;
+        if ($token === '') {
+            return !$rejectEmpty;
         }
+        $parts[] = $token;
 
-        return $parts;
+        return true;
     }
 
     private static function appendQuotedCharacter(string &$buffer, bool &$quoted, bool &$escaped, string $char): bool
@@ -183,5 +181,54 @@ final class HttpUtils
         $buffer .= $char;
 
         return true;
+    }
+
+    /**
+     * @param non-empty-string $delimiter
+     * @return list<string>|null
+     */
+    private static function splitQuotedTokens(string $raw, string $delimiter, bool $rejectEmpty): ?array
+    {
+        $parts = [];
+        $buffer = '';
+        $quoted = false;
+        $escaped = false;
+        for ($i = 0, $length = strlen($raw); $i < $length; $i++) {
+            $char = $raw[$i];
+            if (self::appendQuotedCharacter($buffer, $quoted, $escaped, $char)) {
+                continue;
+            }
+            if ($char === $delimiter && !$quoted) {
+                if (!self::appendListToken($parts, $buffer, $rejectEmpty)) {
+                    return null;
+                }
+                $buffer = '';
+
+                continue;
+            }
+            $buffer .= $char;
+        }
+
+        if ($quoted || $escaped || !self::appendListToken($parts, $buffer, $rejectEmpty)) {
+            return null;
+        }
+
+        return $parts;
+    }
+
+    /**
+     * @param non-empty-string $delimiter
+     * @return list<string>|null
+     */
+    private static function splitUnquoted(string $raw, string $delimiter, bool $rejectEmpty): ?array
+    {
+        $parts = [];
+        foreach (explode($delimiter, $raw) as $token) {
+            if (!self::appendListToken($parts, $token, $rejectEmpty)) {
+                return null;
+            }
+        }
+
+        return $parts;
     }
 }

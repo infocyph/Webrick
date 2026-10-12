@@ -200,7 +200,7 @@ final class Registry
             if ($char !== $closing) {
                 continue;
             }
-            if (!$paired || $depth === 0) {
+            if ($depth === 0) {
                 return $i;
             }
             $depth--;

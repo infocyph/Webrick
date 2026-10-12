@@ -170,7 +170,7 @@ test('response cache keys are versioned bounded PSR-6 keys', function (): void {
     $store = $this->createMock(CacheItemPoolInterface::class);
     $store->expects($this->exactly(2))
         ->method('getItem')
-        ->with($this->callback(static fn(string $key): bool => str_starts_with($key, 'webrick.hr.v4.')
+        ->with($this->callback(static fn(string $key): bool => str_starts_with($key, 'webrick.hr.v5.')
             && strlen($key) <= 64))
         ->willReturn($item);
     $store->expects($this->once())->method('save')->willReturn(true);

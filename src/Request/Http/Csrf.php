@@ -40,7 +40,7 @@ final readonly class Csrf
         return $this->matchesValue($this->extractFromRequest($req));
     }
 
-    public function matchesValue(?string $sent): bool
+    public function matchesValue(#[\SensitiveParameter] ?string $sent): bool
     {
         $stored = $this->store->get();
         if ($sent === null || $sent === '' || $stored === null || $stored === '') {
@@ -73,7 +73,7 @@ final readonly class Csrf
         return $token;
     }
 
-    private static function isHex(string $value): bool
+    private static function isHex(#[\SensitiveParameter] string $value): bool
     {
         return $value !== '' && preg_match('/\A[0-9a-f]+\z/iD', $value) === 1;
     }

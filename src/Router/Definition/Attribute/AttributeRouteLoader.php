@@ -112,39 +112,51 @@ final class AttributeRouteLoader
         $out = [];
 
         foreach ($roots as $nsPrefix => $dir) {
-            $dir = rtrim($dir, DIRECTORY_SEPARATOR);
-            if (!is_dir($dir)) {
-                throw new RuntimeException("Directory not found: {$dir}");
-            }
-
-            $it = new RecursiveIteratorIterator(
-                new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS),
-            );
-
-            /** @var SplFileInfo $f */
-            foreach ($it as $f) {
-                if (self::shouldSkipFile($f, $filter)) {
-                    continue;
-                }
-
-                $fqcn = self::fqcnFromFile($nsPrefix, $dir, $f);
-                self::loadClassIfNeeded($f, $fqcn);
-                $resolvedClass = self::resolveConcreteClass($fqcn);
-                if ($resolvedClass === null) {
-                    continue;
-                }
-
-                $rc = new ReflectionClass($resolvedClass);
-
-                // include classes with class-level OR method-level #[Route] attributes
-                if (self::hasRouteRelevantAttributes($rc) || self::hasMethodLevelRoutes($rc)) {
-                    $out[] = $resolvedClass;
-                }
-            }
+            array_push($out, ...self::collectRootClasses($nsPrefix, $dir, $filter));
         }
 
         // de-dup while preserving discovery order
         $out = array_values(array_unique($out));
+
+        return $out;
+    }
+
+    /**
+     * @param null|callable(SplFileInfo):bool $filter
+     * @return list<class-string>
+     */
+    private static function collectRootClasses(string $nsPrefix, string $dir, ?callable $filter): array
+    {
+        $out = [];
+        $dir = rtrim($dir, DIRECTORY_SEPARATOR);
+        if (!is_dir($dir)) {
+            throw new RuntimeException("Directory not found: {$dir}");
+        }
+
+        $it = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS),
+        );
+
+        /** @var SplFileInfo $f */
+        foreach ($it as $f) {
+            if (self::shouldSkipFile($f, $filter)) {
+                continue;
+            }
+
+            $fqcn = self::fqcnFromFile($nsPrefix, $dir, $f);
+            self::loadClassIfNeeded($f, $fqcn);
+            $resolvedClass = self::resolveConcreteClass($fqcn);
+            if ($resolvedClass === null) {
+                continue;
+            }
+
+            $rc = new ReflectionClass($resolvedClass);
+
+            // include classes with class-level OR method-level #[Route] attributes
+            if (self::hasRouteRelevantAttributes($rc) || self::hasMethodLevelRoutes($rc)) {
+                $out[] = $resolvedClass;
+            }
+        }
 
         return $out;
     }

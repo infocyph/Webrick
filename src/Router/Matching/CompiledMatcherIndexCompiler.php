@@ -302,20 +302,7 @@ final readonly class CompiledMatcherIndexCompiler
             foreach ($prefixes as $prefix => $entries) {
                 $allowed[$count][$prefix] = $this->compileAllowedBucket($entries);
 
-                /** @var array<string,list<array{segments:list<SegmentSpec>,route:RouteValue,id:int,pcre:bool}>> $ordered */
-                $ordered = [];
-                foreach ($entries as $entry) {
-                    $segments = $entry['segments'];
-                    $canCompile = CompiledMatcherPatternCompiler::isCompilable($segments);
-                    foreach ($entry['verbs'] as $method => $route) {
-                        $ordered[$method][] = [
-                            'segments' => $segments,
-                            'route' => $route,
-                            'id' => self::routeIndex($route),
-                            'pcre' => $canCompile,
-                        ];
-                    }
-                }
+                $ordered = $this->orderDynamicRoutes($entries);
 
                 foreach ($ordered as $method => $routes) {
                     $methods[$method][$count][$prefix] = $this->compileBucket($routes);
@@ -494,5 +481,29 @@ final readonly class CompiledMatcherIndexCompiler
         }
 
         return $steps;
+    }
+
+    /**
+     * @param array<string,CanonicalDynamicEntry> $entries
+     * @return array<string,list<array{segments:list<SegmentSpec>,route:RouteValue,id:int,pcre:bool}>>
+     */
+    private function orderDynamicRoutes(array $entries): array
+    {
+        /** @var array<string,list<array{segments:list<SegmentSpec>,route:RouteValue,id:int,pcre:bool}>> $ordered */
+        $ordered = [];
+        foreach ($entries as $entry) {
+            $segments = $entry['segments'];
+            $canCompile = CompiledMatcherPatternCompiler::isCompilable($segments);
+            foreach ($entry['verbs'] as $method => $route) {
+                $ordered[$method][] = [
+                    'segments' => $segments,
+                    'route' => $route,
+                    'id' => self::routeIndex($route),
+                    'pcre' => $canCompile,
+                ];
+            }
+        }
+
+        return $ordered;
     }
 }

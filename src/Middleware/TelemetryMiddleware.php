@@ -57,7 +57,7 @@ final readonly class TelemetryMiddleware
     public function __invoke(Request $req, Closure $next): Response
     {
         if ($this->otelAvailable) {
-            return $this->delegateToOtel($req, $next);
+            return new OpenTelemetryHandler($this->options())->handle($req, $next);
         }
 
         return $this->handleMinimal($req, $next);
@@ -171,12 +171,6 @@ final readonly class TelemetryMiddleware
             $this->nelIncludeSubdomains,
             $this->nelCollectSuccesses,
         );
-    }
-
-    /** @param Closure(Request):Response $next */
-    private function delegateToOtel(Request $req, Closure $next): Response
-    {
-        return new OpenTelemetryHandler($this->options())->handle($req, $next);
     }
 
     private function deriveRequestId(Request $req): ?string

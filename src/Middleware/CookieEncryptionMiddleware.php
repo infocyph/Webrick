@@ -51,6 +51,7 @@ final readonly class CookieEncryptionMiddleware
 
     /** @param string|array<int,string> $keyOrKeys */
     public function __construct(
+        #[\SensitiveParameter]
         string|array $keyOrKeys,
         private string $cookiePrefix = 'enc_',
         private int $maxBytes = 3_800,
@@ -136,6 +137,24 @@ final readonly class CookieEncryptionMiddleware
         return $baseName . '|' . $kid . '|' . $mode;
     }
 
+    /**
+     * @param non-empty-array<int,string> $segments
+     * @param array<string,bool|string> $attrs
+     */
+    private function appendEncryptedSegments(CookieJar $jar, string $baseName, array $segments, array $attrs): CookieJar
+    {
+        foreach ($segments as $index => $segment) {
+            $name = $index === 1 ? $baseName : $baseName . '.p' . $index;
+            $cookie = $this->cookieAttributeApplier->apply(
+                Cookie::make($name, $segment, secure: false, httpOnly: false),
+                $attrs,
+            );
+            $jar = $jar->add($cookie);
+        }
+
+        return $jar;
+    }
+
     private function assertSupportedProtectedName(string $name): void
     {
         $baseName = substr($name, strlen($this->cookiePrefix));
@@ -147,7 +166,7 @@ final readonly class CookieEncryptionMiddleware
     }
 
     /** @return array{0:string,1:string} */
-    private function bestCompress(string $plaintext): array
+    private function bestCompress(#[\SensitiveParameter] string $plaintext): array
     {
         $best = $plaintext;
         $mode = self::MODE_NONE;
@@ -183,7 +202,7 @@ final readonly class CookieEncryptionMiddleware
         return base64_decode($cipher, true) === false ? null : $cipher;
     }
 
-    private function decompress(string $mode, string $payload): mixed
+    private function decompress(string $mode, #[\SensitiveParameter] string $payload): mixed
     {
         return match ($mode) {
             self::MODE_ZSTD => $this->hasZstd ? zstd_uncompress($payload) : null,
@@ -209,6 +228,7 @@ final readonly class CookieEncryptionMiddleware
         string $baseName,
         string $mode,
         int $kid,
+        #[\SensitiveParameter]
         string $key,
         string $iv,
         string $tag,
@@ -228,7 +248,7 @@ final readonly class CookieEncryptionMiddleware
         }
         $decoded = $this->decompress($mode, $plain);
 
-        return $decoded === false || $decoded === null ? null : $decoded;
+        return $decoded === false ? null : $decoded;
     }
 
     /** @param array{mode:string,kid:?int,iv:string,tag:string,ct:string} $frame */
@@ -277,14 +297,7 @@ final readonly class CookieEncryptionMiddleware
             $this->assertSupportedProtectedName($parts['name']);
             $segments = $this->encryptSegments($parts['name'], rawurldecode($parts['value']));
             $lastIndex = max(array_keys($segments));
-            foreach ($segments as $index => $segment) {
-                $name = $index === 1 ? $parts['name'] : $parts['name'] . '.p' . $index;
-                $cookie = $this->cookieAttributeApplier->apply(
-                    Cookie::make($name, $segment, secure: false, httpOnly: false),
-                    $parts['attrs'],
-                );
-                $jar = $jar->add($cookie);
-            }
+            $jar = $this->appendEncryptedSegments($jar, $parts['name'], $segments, $parts['attrs']);
             $jar = $this->expireStaleSegments($jar, $parts['name'], $lastIndex, $parts['attrs'], $incoming);
         }
 
@@ -292,7 +305,7 @@ final readonly class CookieEncryptionMiddleware
     }
 
     /** @throws RandomException|RuntimeException */
-    private function encryptBlob(string $baseName, string $plaintext): string
+    private function encryptBlob(string $baseName, #[\SensitiveParameter] string $plaintext): string
     {
         [$payload, $mode] = $this->bestCompress($plaintext);
         $iv = random_bytes(12);
@@ -317,7 +330,7 @@ final readonly class CookieEncryptionMiddleware
      * @return non-empty-array<int,string>
      * @throws RandomException|LengthException|RuntimeException
      */
-    private function encryptSegments(string $baseName, string $plaintext): array
+    private function encryptSegments(string $baseName, #[\SensitiveParameter] string $plaintext): array
     {
         $cipher = $this->encryptBlob($baseName, $plaintext);
         if (strlen($cipher) <= $this->maxBytes) {
@@ -328,18 +341,17 @@ final readonly class CookieEncryptionMiddleware
         if (count($parts) <= 10) {
             return array_combine(range(1, count($parts)), $parts);
         }
-        if ($this->store !== null) {
-            $id = bin2hex(random_bytes(16));
-            $item = $this->store->getItem(self::CACHE_PREFIX . $id);
-            $item->set($this->encodeCacheBlobV1($cipher))->expiresAfter($this->storeTtl);
-            if (!$this->store->save($item)) {
-                throw new RuntimeException('Unable to persist oversized encrypted cookie payload.');
-            }
-
-            return [1 => self::MODE_STORE . $id];
+        if ($this->store === null) {
+            throw new LengthException('Encrypted cookie exceeds safe size even after chunking; enable server-side storage or reduce payload.');
+        }
+        $id = bin2hex(random_bytes(16));
+        $item = $this->store->getItem(self::CACHE_PREFIX . $id);
+        $item->set($this->encodeCacheBlobV1($cipher))->expiresAfter($this->storeTtl);
+        if (!$this->store->save($item)) {
+            throw new RuntimeException('Unable to persist oversized encrypted cookie payload.');
         }
 
-        throw new LengthException('Encrypted cookie exceeds safe size even after chunking; enable server-side storage or reduce payload.');
+        return [1 => self::MODE_STORE . $id];
     }
 
     /**
@@ -389,12 +401,11 @@ final readonly class CookieEncryptionMiddleware
             return isset($this->keys[$kid]) ? [[$kid, $this->keys[$kid]]] : [];
         }
 
-        $keys = [];
-        foreach ($this->keys as $index => $key) {
-            $keys[] = [$index, $key];
-        }
-
-        return $keys;
+        return array_map(
+            static fn(int $index, string $key): array => [$index, $key],
+            array_keys($this->keys),
+            $this->keys,
+        );
     }
 
     /** @return int<0,255> */
@@ -416,7 +427,7 @@ final readonly class CookieEncryptionMiddleware
         }
 
         $offset = 0;
-        $v1 = isset($raw[0]) && $raw[0] === self::V1_BYTE;
+        $v1 = ($raw[0] ?? null) === self::V1_BYTE;
         if ($v1) {
             $offset = 1;
         }

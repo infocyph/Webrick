@@ -35,25 +35,7 @@ final class CompiledMatcherIrCompactor
         if (!is_array($static) || !is_array($staticIds)) {
             throw new \UnexpectedValueException('Compiled matcher static IR is invalid.');
         }
-        foreach ($static as $method => $paths) {
-            if (!is_string($method) || !is_array($paths)) {
-                throw new \UnexpectedValueException('Compiled matcher static method IR is invalid.');
-            }
-            foreach ($paths as $path => $route) {
-                if (!is_string($path)) {
-                    throw new \UnexpectedValueException('Compiled matcher static path IR is invalid.');
-                }
-                $idsByPath = $staticIds[$method] ?? null;
-                if (!is_array($idsByPath)) {
-                    throw new \UnexpectedValueException('Compiled matcher static ID map is invalid.');
-                }
-                $id = $idsByPath[$path] ?? null;
-                if (!is_int($id) || $id < 0) {
-                    throw new \UnexpectedValueException('Compiled matcher static route ID is invalid.');
-                }
-                self::captureRoute($routes, $id, $route);
-            }
-        }
+        self::captureStaticRoutes($static, $staticIds, $routes);
 
         $dynamic = self::compactDynamic($group['dynamic'] ?? null, $routes);
         ksort($routes, SORT_NUMERIC);
@@ -98,6 +80,43 @@ final class CompiledMatcherIrCompactor
     }
 
     /**
+     * @param array<array-key,mixed> $paths
+     * @param array<int,mixed> $routes
+     */
+    private static function captureStaticMethod(array $paths, mixed $idsByPath, array &$routes): void
+    {
+        foreach ($paths as $path => $route) {
+            if (!is_string($path)) {
+                throw new \UnexpectedValueException('Compiled matcher static path IR is invalid.');
+            }
+            if (!is_array($idsByPath)) {
+                throw new \UnexpectedValueException('Compiled matcher static ID map is invalid.');
+            }
+            $id = $idsByPath[$path] ?? null;
+            if (!is_int($id) || $id < 0) {
+                throw new \UnexpectedValueException('Compiled matcher static route ID is invalid.');
+            }
+            self::captureRoute($routes, $id, $route);
+        }
+    }
+
+    /**
+     * @param array<array-key,mixed> $static
+     * @param array<array-key,mixed> $staticIds
+     * @param array<int,mixed> $routes
+     */
+    private static function captureStaticRoutes(array $static, array $staticIds, array &$routes): void
+    {
+        foreach ($static as $method => $paths) {
+            if (!is_string($method) || !is_array($paths)) {
+                throw new \UnexpectedValueException('Compiled matcher static method IR is invalid.');
+            }
+            self::captureStaticMethod($paths, $staticIds[$method] ?? null, $routes);
+        }
+
+    }
+
+    /**
      * @param array<array-key,mixed> $bucket
      * @param array<int,mixed> $routes
      * @return array<string,mixed>
@@ -123,16 +142,7 @@ final class CompiledMatcherIrCompactor
                 throw new \UnexpectedValueException('Compiled matcher dynamic step type is invalid.');
             }
 
-            $id = $step['id'] ?? null;
-            if (!is_int($id) || $id < 0) {
-                throw new \UnexpectedValueException('Compiled matcher fallback route ID is invalid.');
-            }
-            self::captureRoute($routes, $id, $step['route'] ?? null);
-            $steps[] = [
-                'type' => 'fallback',
-                'segments' => $step['segments'] ?? [],
-                'id' => $id,
-            ];
+            $steps[] = self::compactFallbackStep($step, $routes);
         }
 
         $compact = ['steps' => $steps];
@@ -162,6 +172,26 @@ final class CompiledMatcherIrCompactor
         }
 
         return $dynamic;
+    }
+
+    /**
+     * @param array<array-key,mixed> $step
+     * @param array<int,mixed> $routes
+     * @return array{type:'fallback',segments:mixed,id:int}
+     */
+    private static function compactFallbackStep(array $step, array &$routes): array
+    {
+        $id = $step['id'] ?? null;
+        if (!is_int($id) || $id < 0) {
+            throw new \UnexpectedValueException('Compiled matcher fallback route ID is invalid.');
+        }
+        self::captureRoute($routes, $id, $step['route'] ?? null);
+
+        return [
+            'type' => 'fallback',
+            'segments' => $step['segments'] ?? [],
+            'id' => $id,
+        ];
     }
 
     /**

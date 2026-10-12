@@ -537,17 +537,18 @@ class ServerRequest extends Message
             return in_array($candidate, self::VALID, true) ? $candidate : null;
         }
 
-        if (self::$methodParamOverride && $this->isFormPost()) {
-            $parsed = $this->getParsedBody();
-            $override = is_array($parsed) ? ($parsed['_method'] ?? null) : null;
-            if (is_string($override)) {
-                $candidate = HttpMethodEnum::normalize($override);
-
-                return in_array($candidate, self::VALID, true) ? $candidate : null;
-            }
+        if (!self::$methodParamOverride || !$this->isFormPost()) {
+            return null;
         }
 
-        return null;
+        $parsed = $this->getParsedBody();
+        $override = is_array($parsed) ? ($parsed['_method'] ?? null) : null;
+        if (!is_string($override)) {
+            return null;
+        }
+        $candidate = HttpMethodEnum::normalize($override);
+
+        return in_array($candidate, self::VALID, true) ? $candidate : null;
     }
 
     private function refreshVariableMap(): void

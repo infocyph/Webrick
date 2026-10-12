@@ -9,7 +9,7 @@ on:
       baseline_ref:
         description: Webrick baseline ref for same-run comparison
         required: true
-        default: "5.4"
+        default: "6.0"
         type: string
       candidate_ref:
         description: Candidate ref; leave empty to certify the dispatched SHA
@@ -32,12 +32,12 @@ on:
         default: "30"
         type: string
       throughput_regression_percent:
-        description: Maximum median RPM regression versus 5.4
+        description: Maximum median RPM regression versus the baseline
         required: true
         default: "2"
         type: string
       p99_regression_percent:
-        description: Maximum median p99 regression versus 5.4
+        description: Maximum median p99 regression versus the baseline
         required: true
         default: "15"
         type: string
@@ -176,7 +176,7 @@ jobs:
           include-hidden-files: true
 
   same-run-performance:
-    name: Webrick 5.4 vs 6.0 HTTP performance (${{ matrix.mode }})
+    name: Webrick baseline vs candidate HTTP performance (${{ matrix.mode }})
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     strategy:
@@ -194,7 +194,7 @@ jobs:
       - name: Check out baseline
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.baseline_ref || '5.4' }}
+          ref: ${{ inputs.baseline_ref || '6.0' }}
           path: baseline
           fetch-depth: 0
 
@@ -258,7 +258,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: webrick-5.4-vs-6.0-http-${{ matrix.mode }}
+          name: webrick-baseline-vs-candidate-http-${{ matrix.mode }}
           path: cert-results/
           if-no-files-found: error
 

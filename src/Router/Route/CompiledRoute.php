@@ -305,12 +305,6 @@ final class CompiledRoute implements RouteInterface
         return $segments;
     }
 
-    /** @return list<string> */
-    private static function explodeRawSegments(string $path): array
-    {
-        return explode('/', trim($path, '/'));
-    }
-
     /** @return array{0:string,1:list<string>,2:true,3:list<SegmentSpec>} */
     private static function parseDynamicPath(string $path): array
     {
@@ -319,7 +313,7 @@ final class CompiledRoute implements RouteInterface
         $segments = [];
         $patternBuf = [];
 
-        foreach (self::explodeRawSegments($path) as $raw) {
+        foreach (explode('/', trim($path, '/')) as $raw) {
             if ($raw === '') {
                 continue;
             }

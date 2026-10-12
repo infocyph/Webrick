@@ -13,6 +13,7 @@ use Infocyph\Webrick\Middleware\ResponseCacheMiddleware;
 use Infocyph\Webrick\Middleware\ResponseLinterMiddleware;
 use Infocyph\Webrick\Middleware\TelemetryMiddleware;
 use Infocyph\Webrick\Request\Core\StringBody;
+use Infocyph\Webrick\Request\Http\EndUser;
 use Infocyph\Webrick\Request\NativeServerRequest;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Request\Support\PayloadParseState;
@@ -74,6 +75,45 @@ it('uses one quote-aware HTTP list splitter for malformed quoted syntax', functi
     expect(HttpUtils::splitQuoted('a, "unterminated', ','))->toBeNull()
         ->and(HttpUtils::splitQuoted('a, "b,c"', ','))->toBe(['a', '"b,c"']);
 });
+
+it('preserves optional empty HTTP list elements while rejecting empty proxy hops', function (string $line) {
+    expect(HttpUtils::splitQuoted($line, ','))->toBe(['for=8.8.8.8'])
+        ->and(HttpUtils::splitQuoted($line, ',', true))->toBeNull();
+
+    $request = new Request('GET', '/', ['REMOTE_ADDR' => '10.0.0.9'], [
+        'Forwarded' => $line,
+        'X-Forwarded-For' => '1.1.1.1',
+    ]);
+    $endUser = EndUser::from(
+        $request,
+        ['10.0.0.0/8'],
+        Request::HEADER_FORWARDED | Request::HEADER_X_FORWARDED_FOR,
+    );
+
+    expect($endUser->ip())->toBe('10.0.0.9');
+})->with([
+    'leading empty hop' => ',for=8.8.8.8',
+    'trailing empty hop' => 'for=8.8.8.8, ',
+    'consecutive empty hops' => 'for=8.8.8.8,, ',
+]);
+
+it('keeps quoted commas and escaped quotes inside a forwarded element', function () {
+    $line = 'for=8.8.8.8;extension="a,b\\"c", for=10.0.0.8';
+    $request = new Request('GET', '/', ['REMOTE_ADDR' => '10.0.0.9'], ['Forwarded' => $line]);
+
+    expect(EndUser::from($request, ['10.0.0.0/8'], Request::HEADER_FORWARDED)->ip())->toBe('8.8.8.8');
+});
+
+it('uses the first HTTP quality parameter and fails invalid quality closed', function (array $parameters, float $expected) {
+    expect(HttpUtils::parameterQuality($parameters))->toBe($expected);
+})->with([
+    'default quality' => [[], 1.0],
+    'unrelated parameter' => [['level=1'], 1.0],
+    'case and spaces' => [['Q = 0.125'], 0.125],
+    'first quality wins' => [['q=0.2', 'q=1'], 0.2],
+    'invalid first quality wins' => [['q=2', 'q=1'], 0.0],
+    'too many decimal places' => [['q=0.1234'], 0.0],
+]);
 
 it('validates framework http exception headers immediately', function () {
     expect(fn () => new HttpException(400, 'bad', ['Bad Header' => 'value']))

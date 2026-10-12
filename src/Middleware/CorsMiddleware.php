@@ -36,8 +36,11 @@ final readonly class CorsMiddleware
     {
         $policy = $this->routePolicy($req);
         $origin = trim($req->getHeaderLine('Origin'));
-        if ($origin === '' || $policy['origins'] === []) {
+        if ($policy['origins'] === []) {
             return $next($req);
+        }
+        if ($origin === '') {
+            return $next($req)->withSmartHeader('Vary', 'Origin');
         }
 
         $acao = $this->allowedOrigin($origin, $policy['origins'], $policy['allowCredentials']);
@@ -49,7 +52,7 @@ final readonly class CorsMiddleware
                 throw HttpException::forbidden('CORS origin is not allowed.');
             }
 
-            return $next($req);
+            return $next($req)->withSmartHeader('Vary', 'Origin');
         }
 
         if ($preflight) {
@@ -93,11 +96,11 @@ final readonly class CorsMiddleware
             $response = $response->withSmartHeader('Access-Control-Expose-Headers', $expose);
         }
 
-        return $acao === '*' ? $response : $response->withSmartHeader('Vary', 'Origin');
+        return $response->withSmartHeader('Vary', 'Origin');
     }
 
     /** @param array{origins:list<string>,methods:string,allowHeaders:string|list<string>,exposeHeaders:string|list<string>,maxAgeSeconds:int,allowCredentials:bool,allowPrivateNetwork:bool} $policy */
-    private function applyPreflightHeaders(Response $response, Request $req, array $policy, string $requested, string $allowed, string $acao): Response
+    private function applyPreflightHeaders(Response $response, Request $req, array $policy, string $requested, string $allowed): Response
     {
         if ($policy['allowCredentials']) {
             $response = $response->withSmartHeader('Access-Control-Allow-Credentials', 'true');
@@ -122,7 +125,7 @@ final readonly class CorsMiddleware
             $response = $response->withSmartHeader('Vary', 'Access-Control-Request-Private-Network');
         }
 
-        return $acao === '*' ? $response : $response->withSmartHeader('Vary', 'Origin');
+        return $response->withSmartHeader('Vary', 'Origin');
     }
 
     /** @param string|list<string> $value */
@@ -217,7 +220,7 @@ final readonly class CorsMiddleware
             'Access-Control-Allow-Methods' => $requestedMethod,
         ]);
 
-        return $this->applyPreflightHeaders($response, $req, $policy, $requestedHeaders, $allowedHeaders, $acao);
+        return $this->applyPreflightHeaders($response, $req, $policy, $requestedHeaders, $allowedHeaders);
     }
 
     /** @return array{origins:list<string>,methods:string,allowHeaders:string|list<string>,exposeHeaders:string|list<string>,maxAgeSeconds:int,allowCredentials:bool,allowPrivateNetwork:bool} */

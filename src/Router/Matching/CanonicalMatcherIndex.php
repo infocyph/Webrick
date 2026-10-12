@@ -113,15 +113,6 @@ final class CanonicalMatcherIndex
         $this->hosts = $hosts;
     }
 
-    private static function routePath(mixed $path): string
-    {
-        if (!is_string($path)) {
-            throw new UnexpectedValueException('Invalid canonical dynamic route path.');
-        }
-
-        return $path;
-    }
-
     /** @return DynamicBuckets */
     private function normalizeDynamic(mixed $raw): array
     {
@@ -134,13 +125,9 @@ final class CanonicalMatcherIndex
             if (!is_int($count) || !is_array($prefixes)) {
                 throw new UnexpectedValueException('Invalid canonical dynamic segment-count bucket.');
             }
-            foreach ($prefixes as $prefix => $entries) {
-                if (!is_string($prefix) || !is_array($entries)) {
-                    throw new UnexpectedValueException('Invalid canonical dynamic prefix bucket.');
-                }
-                foreach ($entries as $path => $entry) {
-                    $dynamic[$count][$prefix][self::routePath($path)] = $this->normalizeDynamicEntry($entry, $count);
-                }
+            $normalized = $this->normalizePrefixes($prefixes, $count);
+            if ($normalized !== []) {
+                $dynamic[$count] = $normalized;
             }
         }
 
@@ -165,6 +152,56 @@ final class CanonicalMatcherIndex
         ];
     }
 
+    /**
+     * @param array<array-key,mixed> $prefixes
+     * @return array<string,array<string,DynamicEntry>>
+     */
+    private function normalizePrefixes(array $prefixes, int $count): array
+    {
+        $normalized = [];
+        foreach ($prefixes as $prefix => $entries) {
+            if (!is_string($prefix) || !is_array($entries)) {
+                throw new UnexpectedValueException('Invalid canonical dynamic prefix bucket.');
+            }
+            foreach ($entries as $path => $entry) {
+                if (!is_string($path)) {
+                    throw new UnexpectedValueException('Invalid canonical dynamic route path.');
+                }
+                $normalized[$prefix][$path] = $this->normalizeDynamicEntry($entry, $count);
+            }
+        }
+
+        return $normalized;
+    }
+
+    /** @return SegmentSpec */
+    private function normalizeSegment(mixed $segment): array
+    {
+        if (!is_array($segment) || !is_string($segment['type'] ?? null)) {
+            throw new UnexpectedValueException('Invalid canonical matcher segment.');
+        }
+        if ($segment['type'] === 'lit') {
+            if (!is_string($segment['val'] ?? null)) {
+                throw new UnexpectedValueException('Invalid literal matcher segment.');
+            }
+
+            return ['type' => 'lit', 'val' => $segment['val']];
+        }
+        if ($segment['type'] !== 'var' || !is_string($segment['name'] ?? null)) {
+            throw new UnexpectedValueException('Invalid variable matcher segment.');
+        }
+        if (is_string($segment['regex'] ?? null)) {
+            return ['type' => 'var', 'name' => $segment['name'], 'regex' => $segment['regex']];
+        }
+        $call = $segment['call'] ?? null;
+        if (!is_string($call) || !is_callable($call)) {
+            throw new UnexpectedValueException('Callable route constraint is unavailable at matcher build/load.');
+        }
+
+        /** @var callable-string $call */
+        return ['type' => 'var', 'name' => $segment['name'], 'call' => $call];
+    }
+
     /** @return list<SegmentSpec> */
     private function normalizeSegments(mixed $raw, int $expectedCount): array
     {
@@ -174,31 +211,7 @@ final class CanonicalMatcherIndex
 
         $segments = [];
         foreach ($raw as $segment) {
-            if (!is_array($segment) || !is_string($segment['type'] ?? null)) {
-                throw new UnexpectedValueException('Invalid canonical matcher segment.');
-            }
-            if ($segment['type'] === 'lit') {
-                if (!is_string($segment['val'] ?? null)) {
-                    throw new UnexpectedValueException('Invalid literal matcher segment.');
-                }
-                $segments[] = ['type' => 'lit', 'val' => $segment['val']];
-
-                continue;
-            }
-            if ($segment['type'] !== 'var' || !is_string($segment['name'] ?? null)) {
-                throw new UnexpectedValueException('Invalid variable matcher segment.');
-            }
-            if (is_string($segment['regex'] ?? null)) {
-                $segments[] = ['type' => 'var', 'name' => $segment['name'], 'regex' => $segment['regex']];
-
-                continue;
-            }
-            $call = $segment['call'] ?? null;
-            if (!is_string($call) || !is_callable($call)) {
-                throw new UnexpectedValueException('Callable route constraint is unavailable at matcher build/load.');
-            }
-            /** @var callable-string $call */
-            $segments[] = ['type' => 'var', 'name' => $segment['name'], 'call' => $call];
+            $segments[] = $this->normalizeSegment($segment);
         }
 
         return $segments;

@@ -32,6 +32,10 @@ final readonly class CachePolicy
     /** @return array<string,true|string> */
     public static function directives(string $line): array
     {
+        if (HttpUtils::splitQuoted($line, ',') === null) {
+            return ['no-store' => true];
+        }
+
         return CacheControl::directives($line);
     }
 
@@ -41,7 +45,10 @@ final readonly class CachePolicy
         if ($method !== HttpMethodEnum::GET->value && $method !== HttpMethodEnum::HEAD->value) {
             return false;
         }
-        if ($request->hasHeader('Range') || $request->hasHeader('If-Range')) {
+        if (array_any(
+            ['Range', 'If-Range', 'If-Match', 'If-None-Match', 'If-Modified-Since', 'If-Unmodified-Since'],
+            $request->hasHeader(...),
+        )) {
             return false;
         }
         if ($request->hasHeader('Authorization') || $request->hasHeader('Cookie')) {
@@ -56,7 +63,7 @@ final readonly class CachePolicy
         if (isset($directives['no-store']) || isset($directives['no-cache'])) {
             return false;
         }
-        if (self::seconds($directives['max-age'] ?? null) === 0) {
+        if (isset($directives['max-age']) || isset($directives['min-fresh'])) {
             return false;
         }
 
@@ -90,14 +97,44 @@ final readonly class CachePolicy
             return 0;
         }
 
-        $cap = self::seconds($directives['s-maxage'] ?? null)
-            ?? self::seconds($directives['max-age'] ?? null);
+        $now = time();
+        $cap = $this->freshnessLifetime($response, $directives, $now);
+        $age = $this->responseAge($response, $now);
 
-        return $cap === null ? $ttl : min($ttl, $cap);
+        return $age === null ? 0 : min($ttl, max(0, $cap - $age));
     }
 
     private static function seconds(mixed $value): ?int
     {
         return is_string($value) ? HttpUtils::parseUnsignedDecimal($value) : null;
+    }
+
+    /** @param array<string,true|string> $directives */
+    private function freshnessLifetime(Response $response, array $directives, int $now): int
+    {
+        foreach (['s-maxage', 'max-age'] as $name) {
+            if (isset($directives[$name])) {
+                return self::seconds($directives[$name]) ?? 0;
+            }
+        }
+        if ($response->hasHeader('Expires')) {
+            $expires = HttpUtils::parseHttpDate($response->getHeaderLine('Expires'));
+            $date = HttpUtils::parseHttpDate($response->getHeaderLine('Date')) ?? $now;
+
+            return $expires === null ? 0 : max(0, $expires - $date);
+        }
+
+        return PHP_INT_MAX;
+    }
+
+    private function responseAge(Response $response, int $now): ?int
+    {
+        $age = $response->hasHeader('Age') ? self::seconds($response->getHeaderLine('Age')) : 0;
+        if ($age === null) {
+            return null;
+        }
+        $date = HttpUtils::parseHttpDate($response->getHeaderLine('Date'));
+
+        return $date === null ? $age : max($age, $now - $date);
     }
 }

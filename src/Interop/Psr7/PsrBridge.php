@@ -8,6 +8,7 @@ use Infocyph\Webrick\Interfaces\BodyStream;
 use Infocyph\Webrick\Request\Core\UploadedFile;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Runtime\Http\ResponseWriterSupport;
 use Psr\Http\Message\ResponseFactoryInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestFactoryInterface;
@@ -56,6 +57,7 @@ final readonly class PsrBridge
             (string) $source->getUri(),
             $source->getServerParams(),
         )->withProtocolVersion($source->getProtocolVersion())
+            ->withRequestTarget($source->getRequestTarget())
             ->withQueryParams($source->getQueryParams())
             ->withCookieParams($source->getCookieParams())
             ->withParsedBody($source->getParsedBody());
@@ -92,7 +94,7 @@ final readonly class PsrBridge
         }
 
         $body = '';
-        foreach ($producer() as $chunk) {
+        foreach (ResponseWriterSupport::chunks($source) as $chunk) {
             $body .= $chunk;
         }
 

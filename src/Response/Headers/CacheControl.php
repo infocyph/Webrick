@@ -44,6 +44,8 @@ final class CacheControl implements \Stringable
         'stale-if-error',
     ];
 
+    private const array STANDARD_TOKENS = self::BOOL_TOKENS + self::PRIVACY_TOKENS + self::NUM_TOKENS;
+
     /** @param array<string,string|null> $parts */
     private function __construct(private array $parts = []) {}
 
@@ -58,11 +60,9 @@ final class CacheControl implements \Stringable
             $value = $standard[$name];
             $out[] = $value === null ? $name : $name . '=' . $value;
         }
-        if ($extensions !== []) {
-            ksort($extensions);
-            foreach ($extensions as $name => $value) {
-                $out[] = $value === null ? $name : $name . '=' . $value;
-            }
+        ksort($extensions);
+        foreach ($extensions as $name => $value) {
+            $out[] = $value === null ? $name : $name . '=' . $value;
         }
 
         return implode(', ', $out);
@@ -106,24 +106,12 @@ final class CacheControl implements \Stringable
     public static function directives(string $line): array
     {
         $directives = [];
-        foreach (CacheControlCsv::split($line) as $raw) {
-            $token = trim($raw);
-            if ($token === '') {
-                continue;
-            }
-
-            $position = strpos($token, '=');
-            if ($position === false) {
-                $directives[strtolower($token)] = true;
+        foreach (self::partsFromLine($line) as $name => $value) {
+            if ($value === null) {
+                $directives[$name] = true;
 
                 continue;
             }
-
-            $name = strtolower(trim(substr($token, 0, $position)));
-            if ($name === '') {
-                continue;
-            }
-            $value = trim(substr($token, $position + 1));
             if (strlen($value) >= 2 && $value[0] === '"' && $value[strlen($value) - 1] === '"') {
                 $value = substr($value, 1, -1);
             }
@@ -214,14 +202,6 @@ final class CacheControl implements \Stringable
         }
     }
 
-    /** @param list<string> $parts */
-    private static function appendNumericPart(array &$parts, string $name, ?int $value): void
-    {
-        if ($value !== null) {
-            $parts[] = $name . '=' . $value;
-        }
-    }
-
     /** @return array{bools:array<string,bool>,privacy:array{public:bool,private:bool},nums:array<string,?int>,fields:array<string,array<string,true>>,ext:array<string,string|null>} */
     private static function emptyModel(): array
     {
@@ -246,12 +226,6 @@ final class CacheControl implements \Stringable
         ];
     }
 
-    /** @return list<string> */
-    private static function emptyParts(): array
-    {
-        return [];
-    }
-
     /** @param array{bools:array<string,bool>,privacy:array{public:bool,private:bool},nums:array<string,?int>,fields:array<string,array<string,true>>,ext:array<string,string|null>} $model */
     private static function ingestAssignedToken(array &$model, string $name, string $value): void
     {
@@ -269,12 +243,6 @@ final class CacheControl implements \Stringable
             return;
         }
         self::ingestExtensionOrBoolean($model, $name, $value);
-    }
-
-    /** @param array{bools:array<string,bool>,privacy:array{public:bool,private:bool},nums:array<string,?int>,fields:array<string,array<string,true>>,ext:array<string,string|null>} $model */
-    private static function ingestBareToken(array &$model, string $name): void
-    {
-        self::ingestExtensionOrBoolean($model, $name, null);
     }
 
     /** @param array{bools:array<string,bool>,privacy:array{public:bool,private:bool},nums:array<string,?int>,fields:array<string,array<string,true>>,ext:array<string,string|null>} $model */
@@ -314,9 +282,7 @@ final class CacheControl implements \Stringable
         } else {
             $model['bools']['no-cache'] = true;
         }
-        if ($value !== '') {
-            self::ingestFields($model['fields'][$name], $value);
-        }
+        self::ingestFields($model['fields'][$name], $value);
     }
 
     /** @param array{bools:array<string,bool>,privacy:array{public:bool,private:bool},nums:array<string,?int>,fields:array<string,array<string,true>>,ext:array<string,string|null>} $model */
@@ -329,7 +295,7 @@ final class CacheControl implements \Stringable
 
         $position = strpos($token, '=');
         if ($position === false) {
-            self::ingestBareToken($model, strtolower($token));
+            self::ingestExtensionOrBoolean($model, strtolower($token), null);
 
             return;
         }
@@ -349,13 +315,14 @@ final class CacheControl implements \Stringable
             self::appendIfTrue($parts, $model['bools'][$name], $name);
         }
         foreach (self::NUM_TOKENS as $name => $_) {
-            self::appendNumericPart($parts, $name, $model['nums'][$name]);
-        }
-        if ($model['ext'] !== []) {
-            ksort($model['ext']);
-            foreach ($model['ext'] as $name => $value) {
-                $parts[] = $value === null ? $name : $name . '=' . $value;
+            $value = $model['nums'][$name];
+            if ($value !== null) {
+                $parts[] = $name . '=' . $value;
             }
+        }
+        ksort($model['ext']);
+        foreach ($model['ext'] as $name => $value) {
+            $parts[] = $value === null ? $name : $name . '=' . $value;
         }
 
         return implode(', ', $parts);
@@ -401,7 +368,7 @@ final class CacheControl implements \Stringable
         $standard = [];
         $extensions = [];
         foreach ($parts as $name => $value) {
-            if (isset(self::BOOL_TOKENS[$name]) || isset(self::PRIVACY_TOKENS[$name]) || isset(self::NUM_TOKENS[$name])) {
+            if (isset(self::STANDARD_TOKENS[$name])) {
                 $standard[$name] = $value;
             } else {
                 $extensions[$name] = $value;
@@ -417,18 +384,15 @@ final class CacheControl implements \Stringable
         $parts = [];
         foreach (CacheControlCsv::split($line) as $raw) {
             $token = trim($raw);
-            if ($token === '') {
-                continue;
-            }
             $position = strpos($token, '=');
             if ($position === false) {
-                $parts[strtolower($token)] = null;
+                $parts += [strtolower($token) => null];
 
                 continue;
             }
             $name = strtolower(trim(substr($token, 0, $position)));
             if ($name !== '') {
-                $parts[$name] = trim(substr($token, $position + 1));
+                $parts += [$name => trim(substr($token, $position + 1))];
             }
         }
 
@@ -453,7 +417,7 @@ final class CacheControl implements \Stringable
      */
     private static function standardParts(array $model): array
     {
-        $parts = self::emptyParts();
+        $parts = [];
         self::appendIfTrue($parts, $model['bools']['no-store'], 'no-store');
         self::appendIfTrue($parts, $model['bools']['no-cache'], self::renderFieldToken('no-cache', $model['fields']['no-cache']));
         $privacy = $model['privacy']['private']

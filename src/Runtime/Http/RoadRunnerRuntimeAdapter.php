@@ -6,7 +6,6 @@ namespace Infocyph\Webrick\Runtime\Http;
 
 use Closure;
 use Generator;
-use Infocyph\Webrick\Interfaces\BodyStream;
 use Infocyph\Webrick\Interop\Psr7\PsrBodyStreamAdapter;
 use Infocyph\Webrick\Request\Core\UploadedFile;
 use Infocyph\Webrick\Request\Request;
@@ -87,9 +86,9 @@ final readonly class RoadRunnerRuntimeAdapter implements RuntimeAdapterInterface
             static fn(): Request => TransportRequestFactory::fromParts(
                 $server,
                 self::headers($nativeRequest),
-                self::body($nativeRequest),
+                new PsrBodyStreamAdapter($nativeRequest->getBody()),
                 $resolveParsed(),
-                self::normaliseUploadedFiles($nativeRequest->getUploadedFiles()),
+                self::mapUploadedFiles($nativeRequest->getUploadedFiles()),
                 self::stringMapResult($nativeRequest->getQueryParams()),
                 self::stringMapResult($nativeRequest->getCookieParams()),
             ),
@@ -102,7 +101,7 @@ final readonly class RoadRunnerRuntimeAdapter implements RuntimeAdapterInterface
     {
         $nativeRequest = $context->nativeRequest;
         $http2 = $nativeRequest instanceof ServerRequestInterface
-            && str_starts_with($nativeRequest->getProtocolVersion(), '2');
+            && in_array($nativeRequest->getProtocolVersion(), ['2', '2.0', '3', '3.0'], true);
         $headers = ResponseWriterSupport::headerMap($response, $http2);
         $size = ResponseWriterSupport::knownLength($response);
         if (!isset($headers['Content-Length']) && $size !== null) {
@@ -141,11 +140,6 @@ final readonly class RoadRunnerRuntimeAdapter implements RuntimeAdapterInterface
             $headers,
             true,
         );
-    }
-
-    private static function body(ServerRequestInterface $request): BodyStream
-    {
-        return new PsrBodyStreamAdapter($request->getBody());
     }
 
     /**
@@ -225,14 +219,6 @@ final readonly class RoadRunnerRuntimeAdapter implements RuntimeAdapterInterface
             $file->getClientFilename(),
             $file->getClientMediaType(),
         );
-    }
-
-    /**
-     * @return array<string,UploadedFile|array<array-key,mixed>>
-     */
-    private static function normaliseUploadedFiles(mixed $files): array
-    {
-        return is_array($files) ? self::mapUploadedFiles($files) : [];
     }
 
     /** @return array<string,mixed>|object|null */

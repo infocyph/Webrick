@@ -21,6 +21,7 @@ abstract class BaseEmitter implements EmitterInterface
         'proxy-connection' => true,
         'transfer-encoding' => true,
         'upgrade' => true,
+        'te' => true,
     ];
 
     /** @var resource|null */
@@ -98,9 +99,15 @@ abstract class BaseEmitter implements EmitterInterface
     /** @return \Generator<array{0:string,1:string}> */
     protected function filteredHeaderIterator(Response $response, bool $isHttp2): \Generator
     {
+        $connection = $isHttp2 && $response->hasHeader('Connection')
+            ? array_fill_keys(array_map(static fn(string $name): string => strtolower(trim($name)), explode(',', $response->getHeaderLine('Connection'))), true)
+            : [];
+        if (self::forbidsContentLength($response->getStatusCode())) {
+            $connection['content-length'] = true;
+        }
         foreach ($response->getHeaders() as $name => $values) {
             $lower = strtolower($name);
-            if ($lower === 'content-length' && self::forbidsContentLength($response->getStatusCode())) {
+            if (isset($connection[$lower])) {
                 continue;
             }
             foreach ($values as $value) {
@@ -177,7 +184,7 @@ abstract class BaseEmitter implements EmitterInterface
 
         $protocol = $this->serverProtocol();
         $isHttp11 = str_starts_with($protocol, 'HTTP/1.1');
-        $isHttp2 = str_starts_with($protocol, 'HTTP/2');
+        $isHttp2 = str_starts_with($protocol, 'HTTP/2') || str_starts_with($protocol, 'HTTP/3');
 
         $this->setStatusCode($response->getStatusCode());
         $this->removePoweredByHeader();
@@ -236,6 +243,7 @@ abstract class BaseEmitter implements EmitterInterface
 
     protected function shouldSendHeader(string $lowerName, string $value, bool $isHttp2): bool
     {
+        unset($value);
         if (!$isHttp2) {
             return true;
         }
@@ -243,7 +251,7 @@ abstract class BaseEmitter implements EmitterInterface
             return false;
         }
 
-        return $lowerName !== 'te' || strtolower(trim($value)) === 'trailers';
+        return true;
     }
 
     protected function wantsChunked(

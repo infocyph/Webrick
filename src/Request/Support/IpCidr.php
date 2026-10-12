@@ -28,21 +28,25 @@ final readonly class IpCidr
         }
 
         $bytes = strlen($packed);
-        $maxMask = $bytes === 4 ? 32 : ($bytes === 16 ? 128 : 0);
+        $maxMask = match ($bytes) {
+            4 => 32,
+            16 => 128,
+            default => 0,
+        };
         if ($maxMask === 0) {
             throw new \InvalidArgumentException("Unsupported CIDR address family '{$cidr}'.");
         }
 
-        $mask = $maxMask;
-        if ($slash !== false) {
-            $rawMask = substr($cidr, $slash + 1);
-            if ($rawMask === '' || preg_match('/^[0-9]+$/D', $rawMask) !== 1) {
-                throw new \InvalidArgumentException("Invalid CIDR mask '{$cidr}'.");
-            }
-            $mask = (int) $rawMask;
-            if ($mask > $maxMask) {
-                throw new \InvalidArgumentException("CIDR mask exceeds address width '{$cidr}'.");
-            }
+        if ($slash === false) {
+            return new self($packed, $maxMask, $bytes);
+        }
+        $rawMask = substr($cidr, $slash + 1);
+        if ($rawMask === '' || preg_match('/^[0-9]+$/D', $rawMask) !== 1) {
+            throw new \InvalidArgumentException("Invalid CIDR mask '{$cidr}'.");
+        }
+        $mask = (int) $rawMask;
+        if ($mask > $maxMask) {
+            throw new \InvalidArgumentException("CIDR mask exceeds address width '{$cidr}'.");
         }
 
         return new self($packed, $mask, $bytes);

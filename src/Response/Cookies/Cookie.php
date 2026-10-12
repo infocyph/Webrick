@@ -9,7 +9,7 @@ final class Cookie implements \Stringable
 {
     private const string INVALID_PATH = '/[\x00-\x1F\x7F;]/';
 
-    private const string NAME_RX = '/^[A-Za-z0-9!#$%&\'*+.^_`|~-]+$/';
+    private const string NAME_RX = '/^[A-Za-z0-9!#$%&\'*+.^_`|~-]+$/D';
 
     private function __construct(
         public string $name,
@@ -254,6 +254,9 @@ final class Cookie implements \Stringable
 
     private function assertInvariants(): void
     {
+        if (preg_match(self::NAME_RX, $this->name) !== 1) {
+            throw new \InvalidArgumentException('Invalid cookie name.');
+        }
         if (str_starts_with($this->name, '__Secure-') && !$this->secure) {
             throw new \InvalidArgumentException('__Secure- cookies require Secure.');
         }

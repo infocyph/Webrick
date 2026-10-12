@@ -43,7 +43,9 @@ final readonly class SignedUrlConfig
      * @param array<array-key,mixed> $verificationKeys
      */
     public function __construct(
+        #[\SensitiveParameter]
         ?string $generationKey = null,
+        #[\SensitiveParameter]
         array $verificationKeys = [],
         ?int $defaultTtl = null,
         string $signatureParam = self::DEFAULT_SIGNATURE_PARAM,
@@ -73,7 +75,7 @@ final readonly class SignedUrlConfig
     }
 
     /** @param array<int|string,mixed> $config */
-    public static function fromArray(array $config): self
+    public static function fromArray(#[\SensitiveParameter] array $config): self
     {
         $verificationKeys = $config['verificationKeys'] ?? [];
         if (!\is_array($verificationKeys)) {
@@ -106,7 +108,7 @@ final readonly class SignedUrlConfig
         );
     }
 
-    public static function mergeLegacy(?self $config, ?string $generationKey = null, ?int $defaultTtl = null): ?self
+    public static function mergeLegacy(#[\SensitiveParameter] ?self $config, #[\SensitiveParameter] ?string $generationKey = null, ?int $defaultTtl = null): ?self
     {
         if ($config === null && $generationKey === null && $defaultTtl === null) {
             return null;
@@ -201,7 +203,7 @@ final readonly class SignedUrlConfig
         return $value;
     }
 
-    private static function normalizeNullableString(?string $value, string $field): ?string
+    private static function normalizeNullableString(#[\SensitiveParameter] ?string $value, string $field): ?string
     {
         if ($value === null) {
             return null;
@@ -261,7 +263,7 @@ final readonly class SignedUrlConfig
      * @param array<array-key,mixed> $verificationKeys
      * @return list<string>
      */
-    private static function normalizeVerificationKeys(array $verificationKeys, ?string $generationKey): array
+    private static function normalizeVerificationKeys(#[\SensitiveParameter] array $verificationKeys, #[\SensitiveParameter] ?string $generationKey): array
     {
         $normalized = [];
         foreach ($verificationKeys as $key) {

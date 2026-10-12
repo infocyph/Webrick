@@ -65,13 +65,16 @@ class Response
         [$size, $mtime] = self::metaFor($file);
         $size ??= $body->getSize();
         $mtime ??= $body instanceof Stream ? self::mtimeFromStream($body) : null;
-        $mime = self::inferMime($name, $mime);
-        $bag = self::withDefaults(new HeaderBag($headers), self::baseDownloadHeaders($name, $mime));
+        $mime ??= MediaTypeEnum::fromFilename($name)->value;
+        $bag = self::withDefaults(new HeaderBag($headers), [
+            'Content-Type' => $mime,
+            'Content-Disposition' => ContentDisposition::attachment($name),
+        ]);
 
         if ($size !== null && !$bag->has('Content-Length')) {
             $bag = $bag->with('Content-Length', (string) $size);
         }
-        $lastModified = self::formatHttpDate($mtime);
+        $lastModified = $mtime !== null ? Utils::httpDate($mtime) : null;
         if ($lastModified !== null && !$bag->has('Last-Modified')) {
             $bag = $bag->with('Last-Modified', $lastModified);
         }
@@ -474,25 +477,6 @@ class Response
         if ($code < 100 || $code > 599) {
             throw new RuntimeException("Invalid HTTP status: {$code}");
         }
-    }
-
-    /** @return array<string,string> */
-    private static function baseDownloadHeaders(string $name, string $mime): array
-    {
-        return [
-            'Content-Type' => $mime,
-            'Content-Disposition' => ContentDisposition::attachment($name),
-        ];
-    }
-
-    private static function formatHttpDate(?int $mtime): ?string
-    {
-        return $mtime !== null ? gmdate('D, d M Y H:i:s', $mtime) . ' GMT' : null;
-    }
-
-    private static function inferMime(string $name, ?string $explicit): string
-    {
-        return $explicit ?? MediaTypeEnum::fromFilename($name)->value;
     }
 
     /** @return array{0:?int,1:?int} */

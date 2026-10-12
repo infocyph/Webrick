@@ -50,12 +50,10 @@ final class CompiledMatcherDynamicEngine
             $needsFallback = $this->collectAllowedBucket($bucket, $path, $skip, $allowed, $segments);
         }
 
-        if ($prefix !== '*') {
-            $bucket = $byCount['*'] ?? null;
-            if (is_array($bucket)) {
-                $needsFallback = $this->collectAllowedBucket($bucket, $path, $skip, $allowed, $segments)
-                    || $needsFallback;
-            }
+        $bucket = $prefix === '*' ? null : ($byCount['*'] ?? null);
+        if (is_array($bucket)) {
+            $needsFallback = $this->collectAllowedBucket($bucket, $path, $skip, $allowed, $segments)
+                || $needsFallback;
         }
 
         if ($needsFallback) {
@@ -107,16 +105,14 @@ final class CompiledMatcherDynamicEngine
     {
         $segments = null;
         $entry = $this->findMethod($group, $method, $path, $count, $prefix, $segments);
-        if ($entry !== null) {
-            return $entry[1] === [] ? $entry[0] : $entry;
+        if ($entry === null && $method === HttpMethodEnum::HEAD->value) {
+            $entry = $this->findMethod($group, HttpMethodEnum::GET->value, $path, $count, $prefix, $segments);
         }
-        if ($method !== HttpMethodEnum::HEAD->value) {
+        if ($entry === null) {
             return null;
         }
 
-        $entry = $this->findMethod($group, HttpMethodEnum::GET->value, $path, $count, $prefix, $segments);
-
-        return $entry === null ? null : ($entry[1] === [] ? $entry[0] : $entry);
+        return $entry[1] === [] ? $entry[0] : $entry;
     }
 
     /** @param array<string,bool> $allowed */
@@ -434,11 +430,9 @@ final class CompiledMatcherDynamicEngine
             }
         }
 
-        if ($prefix !== '*') {
-            $bucket = $byCount['*'] ?? null;
-            if (is_array($bucket)) {
-                return $this->findBucket($bucket, $path, $segments);
-            }
+        $bucket = $prefix === '*' ? null : ($byCount['*'] ?? null);
+        if (is_array($bucket)) {
+            return $this->findBucket($bucket, $path, $segments);
         }
 
         return null;

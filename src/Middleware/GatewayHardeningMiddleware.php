@@ -181,42 +181,9 @@ final readonly class GatewayHardeningMiddleware
         }
 
         $location = trim($response->getHeaderLine('Location'));
-        if ($location === ''
-            || str_contains($location, '\\')
-            || preg_match('/[\x00-\x1F\x7F]/', $location) === 1
-        ) {
-            throw HttpException::badRequest('Invalid redirect target');
-        }
-
-        try {
-            $parts = parse_url($location);
-        } catch (\ValueError) {
-            throw HttpException::badRequest('Invalid redirect target');
-        }
-        if ($parts === false) {
-            throw HttpException::badRequest('Invalid redirect target');
-        }
-
-        if (isset($parts['user']) || isset($parts['pass'])) {
-            throw HttpException::badRequest('Invalid redirect authority');
-        }
-
-        $scheme = $parts['scheme'] ?? null;
-        if ($scheme !== null && !in_array(strtolower($scheme), ['http', 'https'], true)) {
-            throw HttpException::badRequest('Invalid redirect scheme');
-        }
-
+        $parts = $this->parseRedirectTarget($location);
         $host = $parts['host'] ?? null;
-        $hasHost = is_string($host) && $host !== '';
-        if (($scheme !== null || str_starts_with($location, '//')) && !$hasHost) {
-            throw HttpException::badRequest('Invalid redirect authority');
-        }
-
-        if (!$hasHost) {
-            return $response;
-        }
-
-        if (!$this->redirectHostAllowed($host, $req->getUri()->getHost())) {
+        if ($host !== null && $host !== '' && !$this->redirectHostAllowed($host, $req->getUri()->getHost())) {
             throw HttpException::badRequest('Open redirect blocked');
         }
 
@@ -254,6 +221,43 @@ final readonly class GatewayHardeningMiddleware
         }
 
         return $out;
+    }
+
+    /** @return array{scheme?:string,host?:string,port?:int,user?:string,pass?:string,path?:string,query?:string,fragment?:string} */
+    private function parseRedirectTarget(string $location): array
+    {
+        if ($location === ''
+            || str_contains($location, '\\')
+            || preg_match('/[\x00-\x1F\x7F]/', $location) === 1
+        ) {
+            throw HttpException::badRequest('Invalid redirect target');
+        }
+
+        try {
+            $parts = parse_url($location);
+        } catch (\ValueError) {
+            throw HttpException::badRequest('Invalid redirect target');
+        }
+        if ($parts === false) {
+            throw HttpException::badRequest('Invalid redirect target');
+        }
+
+        if (isset($parts['user']) || isset($parts['pass'])) {
+            throw HttpException::badRequest('Invalid redirect authority');
+        }
+
+        $scheme = $parts['scheme'] ?? null;
+        if ($scheme !== null && !in_array(strtolower($scheme), ['http', 'https'], true)) {
+            throw HttpException::badRequest('Invalid redirect scheme');
+        }
+
+        $host = $parts['host'] ?? null;
+        $hasHost = is_string($host) && $host !== '';
+        if (($scheme !== null || str_starts_with($location, '//')) && !$hasHost) {
+            throw HttpException::badRequest('Invalid redirect authority');
+        }
+
+        return $parts;
     }
 
     private function redirectHostAllowed(string $targetHost, string $requestHost): bool

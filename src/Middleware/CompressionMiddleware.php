@@ -10,6 +10,7 @@ use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Exceptions\HttpException;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Headers\CacheControl;
+use Infocyph\Webrick\Response\Internal\Utils;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Runtime\Http\RuntimeCapabilities;
 use Infocyph\Webrick\Support\HttpUtils;
@@ -198,7 +199,7 @@ final readonly class CompressionMiddleware
         return match ($this->etagMode) {
             self::ETAG_WEAK_ON_ENCODE => $this->weakEncodedEtag($resp, $etag, $encodedBytes),
             self::ETAG_STRONG_DERIVE => $this->derivedEncodedEtag($resp, $etag, $encodedBytes, $algorithm),
-            default => $resp->withSmartHeader('ETag', $this->strongFromBytes($encodedBytes)),
+            default => $resp->withSmartHeader('ETag', Utils::generateEtag($encodedBytes)),
         };
     }
 
@@ -216,7 +217,7 @@ final readonly class CompressionMiddleware
     {
         [$base, $weak] = $this->parseEtag($etag);
         if ($base === '') {
-            return $resp->withSmartHeader('ETag', $this->strongFromBytes($encodedBytes));
+            return $resp->withSmartHeader('ETag', Utils::generateEtag($encodedBytes));
         }
 
         $level = $this->encodedLevelToken($algorithm);
@@ -228,7 +229,7 @@ final readonly class CompressionMiddleware
             return $resp->withSmartHeader('ETag', '"' . $derived . '"');
         }
 
-        return $resp->withSmartHeader('ETag', $this->strongFromBytes($encodedBytes));
+        return $resp->withSmartHeader('ETag', Utils::generateEtag($encodedBytes));
     }
 
     private function encode(string $raw, string $algorithm): string|false
@@ -357,15 +358,7 @@ final readonly class CompressionMiddleware
                 continue;
             }
 
-            $q = 1.0;
-            foreach ($parts as $parameter) {
-                if (preg_match('/^q\s*=\s*(.*)$/i', $parameter, $match) !== 1) {
-                    continue;
-                }
-                $q = HttpUtils::parseQValue($match[1]) ?? 0.0;
-
-                break;
-            }
+            $q = HttpUtils::parameterQuality($parts);
             $quality[$token] = max($quality[$token] ?? 0.0, $q);
         }
 
@@ -417,15 +410,10 @@ final readonly class CompressionMiddleware
             || (!$this->isNonCompressible($contentType) && $this->isAllowedByWhitelist($contentType));
     }
 
-    private function strongFromBytes(string $bytes): string
-    {
-        return '"' . hash('xxh128', $bytes, false) . '"';
-    }
-
     private function weakEncodedEtag(Response $resp, string $etag, string $encodedBytes): Response
     {
         if ($etag === '') {
-            return $resp->withSmartHeader('ETag', 'W/' . $this->strongFromBytes($encodedBytes));
+            return $resp->withSmartHeader('ETag', 'W/' . Utils::generateEtag($encodedBytes));
         }
 
         return str_starts_with($etag, 'W/') ? $resp : $resp->withSmartHeader('ETag', 'W/' . $etag);

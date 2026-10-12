@@ -591,14 +591,13 @@ function benchMatcher(
         throw new RuntimeException('Benchmark matcher inputs must be non-empty.');
     }
 
-    if ($progress !== null) {
-        $progress('building matcher');
-    }
+    $progress ??= static function (string $message): void {};
+    $progress('building matcher');
     /** @var MatcherInterface $matcher */
     $matcher = $factory();
 
     // Warm up internals/JIT/opcache-backed file loads before timed rounds.
-    if ($progress !== null && $warmup > 0) {
+    if ($warmup > 0) {
         $progress("warmup ({$warmup} iterations)");
     }
     for ($i = 0; $i < $warmup; $i++) {
@@ -607,9 +606,7 @@ function benchMatcher(
 
     $roundNs = [];
     for ($r = 0; $r < $rounds; $r++) {
-        if ($progress !== null) {
-            $progress('timed round ' . ($r + 1) . '/' . $rounds);
-        }
+        $progress('timed round ' . ($r + 1) . '/' . $rounds);
 
         $start = hrtime(true);
         $last = null;
@@ -629,9 +626,7 @@ function benchMatcher(
     $bestOpsS = ($iterations * 1_000_000_000.0) / $bestNs;
     $avgOpsS = ($iterations * 1_000_000_000.0) / $avgNs;
 
-    if ($progress !== null) {
-        $progress('finished timing');
-    }
+    $progress('finished timing');
 
     return [
         'name' => $name,
