@@ -11,6 +11,7 @@ use Infocyph\Webrick\Interfaces\BodyStream;
 use Infocyph\Webrick\Request\Core\StringBody;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Support\HttpUtils;
 use InvalidArgumentException;
 
 /** Portable request-limit fallback when the transport has not already enforced limits. */
@@ -99,6 +100,28 @@ final readonly class RequestLimitsMiddleware
             return $req;
         }
 
+        $this->enforceDeclaredBodyLimit($req);
+
+        $body = $req->getBody();
+        $actual = $body->getSize();
+        if ($actual !== null) {
+            if ($actual > $this->resolvedBodyLimit) {
+                throw $this->payloadTooLargeException($req);
+            }
+
+            return $req;
+        }
+
+        [$actual, $buffer] = $this->measureUnknownBody($req, $body);
+        if ($actual > $this->resolvedBodyLimit) {
+            throw $this->payloadTooLargeException($req);
+        }
+
+        return $buffer === null ? $req : $req->withBody(new StringBody($buffer));
+    }
+
+    private function enforceDeclaredBodyLimit(Request $req): void
+    {
         $transferCoded = trim($req->getHeaderLine('Transfer-Encoding')) !== '';
         $contentLength = trim($req->getHeaderLine('Content-Length'));
         if ($transferCoded && $contentLength !== '') {
@@ -121,22 +144,6 @@ final readonly class RequestLimitsMiddleware
             }
         }
 
-        $body = $req->getBody();
-        $actual = $body->getSize();
-        if ($actual !== null) {
-            if ($actual > $this->resolvedBodyLimit) {
-                throw $this->payloadTooLargeException($req);
-            }
-
-            return $req;
-        }
-
-        [$actual, $buffer] = $this->measureUnknownBody($req, $body);
-        if ($actual > $this->resolvedBodyLimit) {
-            throw $this->payloadTooLargeException($req);
-        }
-
-        return $buffer === null ? $req : $req->withBody(new StringBody($buffer));
     }
 
     /** @return array{0:int,1:?string} */
@@ -184,9 +191,7 @@ final readonly class RequestLimitsMiddleware
             return null;
         }
 
-        $value = filter_var($raw, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
-
-        return $value === false ? PHP_INT_MAX : (int) $value;
+        return HttpUtils::parseUnsignedDecimal($raw) ?? PHP_INT_MAX;
     }
 
     private function payloadTooLargeException(Request $req): HttpException

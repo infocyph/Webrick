@@ -65,6 +65,16 @@ final class CompactMatcherDynamicValidator
         }
     }
 
+    /** @return list<mixed> */
+    private static function listValue(mixed $raw, string $message, bool $nonEmpty = false): array
+    {
+        if (!is_array($raw) || !array_is_list($raw) || ($nonEmpty && $raw === [])) {
+            throw new \UnexpectedValueException($message);
+        }
+
+        return $raw;
+    }
+
     /**
      * @phpstan-return AllowedBucket
      */
@@ -154,9 +164,7 @@ final class CompactMatcherDynamicValidator
         }
 
         $stepsRaw = $raw['steps'] ?? null;
-        if (!is_array($stepsRaw) || !array_is_list($stepsRaw) || $stepsRaw === []) {
-            throw new \UnexpectedValueException('Compact matcher dynamic steps are invalid.');
-        }
+        $stepsRaw = self::listValue($stepsRaw, 'Compact matcher dynamic steps are invalid.', true);
 
         $steps = [];
         foreach ($stepsRaw as $step) {
@@ -239,9 +247,7 @@ final class CompactMatcherDynamicValidator
     {
         $groups = [];
         foreach ($raw as $literal => $steps) {
-            if (!is_array($steps) || !array_is_list($steps) || $steps === []) {
-                throw new \UnexpectedValueException('Compact matcher adaptive literal group is invalid.');
-            }
+            $steps = self::listValue($steps, 'Compact matcher adaptive literal group is invalid.', true);
             $groups[$literal] = self::validateFastSteps($steps, $routes, $validateRegex);
         }
 
@@ -296,9 +302,7 @@ final class CompactMatcherDynamicValidator
     /** @return list<string> */
     private static function validateMethodList(mixed $raw): array
     {
-        if (!is_array($raw) || !array_is_list($raw) || $raw === []) {
-            throw new \UnexpectedValueException('Compact matcher method list is invalid.');
-        }
+        $raw = self::listValue($raw, 'Compact matcher method list is invalid.', true);
 
         $seen = [];
         foreach ($raw as $method) {
@@ -329,9 +333,7 @@ final class CompactMatcherDynamicValidator
     /** @return list<string> */
     private static function validateParams(mixed $raw): array
     {
-        if (!is_array($raw) || !array_is_list($raw)) {
-            throw new \UnexpectedValueException('Compact matcher parameter list is invalid.');
-        }
+        $raw = self::listValue($raw, 'Compact matcher parameter list is invalid.');
 
         $params = [];
         foreach ($raw as $name) {
@@ -422,9 +424,7 @@ final class CompactMatcherDynamicValidator
     /** @return list<array<string,mixed>> */
     private static function validateSegments(mixed $raw): array
     {
-        if (!is_array($raw) || !array_is_list($raw)) {
-            throw new \UnexpectedValueException('Compact matcher fallback segments are invalid.');
-        }
+        $raw = self::listValue($raw, 'Compact matcher fallback segments are invalid.');
 
         $segments = [];
         foreach ($raw as $segment) {

@@ -108,6 +108,18 @@ final readonly class ResponseLinterMiddleware
             return;
         }
 
+        $this->assertDeclaredLength($line, $len);
+    }
+
+    private function assertContentTypeIfBody(Response $resp, int $len): void
+    {
+        if ($len > 0 && !StatusEnum::isEmptyCode($resp->getStatusCode()) && $resp->getHeaderLine('Content-Type') === '') {
+            throw new RuntimeException('Linter: non-empty body without Content-Type');
+        }
+    }
+
+    private function assertDeclaredLength(string $line, int $len): void
+    {
         $declared = HttpUtils::parseUnsignedDecimal($line);
         if ($declared === null) {
             throw new RuntimeException('Linter: invalid Content-Length header');
@@ -118,13 +130,6 @@ final readonly class ResponseLinterMiddleware
                 $declared,
                 $len,
             ));
-        }
-    }
-
-    private function assertContentTypeIfBody(Response $resp, int $len): void
-    {
-        if ($len > 0 && !StatusEnum::isEmptyCode($resp->getStatusCode()) && $resp->getHeaderLine('Content-Type') === '') {
-            throw new RuntimeException('Linter: non-empty body without Content-Type');
         }
     }
 

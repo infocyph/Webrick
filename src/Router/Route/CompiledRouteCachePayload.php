@@ -51,15 +51,6 @@ final class CompiledRouteCachePayload
     }
 
     /**
-     * @param callable-string $call
-     * @return array{type:'var',name:string,call:callable-string}
-     */
-    private static function callSegment(string $name, string $call): array
-    {
-        return ['type' => 'var', 'name' => $name, 'call' => $call];
-    }
-
-    /**
      * @return CorsPayload|null
      */
     private static function cors(mixed $value): ?array
@@ -104,14 +95,6 @@ final class CompiledRouteCachePayload
         }
 
         return $value;
-    }
-
-    /**
-     * @return array{type:'lit',val:string}
-     */
-    private static function literalSegment(string $value): array
-    {
-        return ['type' => 'lit', 'val' => $value];
     }
 
     private static function nullableBoolean(mixed $value): ?bool
@@ -166,12 +149,32 @@ final class CompiledRouteCachePayload
         ];
     }
 
-    /**
-     * @return array{type:'var',name:string,regex:string}
-     */
-    private static function regexSegment(string $name, string $regex): array
+    /** @return SegmentSpec */
+    private static function segment(mixed $segment): array
     {
-        return ['type' => 'var', 'name' => $name, 'regex' => $regex];
+        if (!is_array($segment)) {
+            throw new \UnexpectedValueException('Invalid segment in compiled-route cache payload.');
+        }
+
+        $type = self::string($segment['type'] ?? null);
+        if ($type === 'lit') {
+            return ['type' => 'lit', 'val' => self::string($segment['val'] ?? null)];
+        }
+        if ($type !== 'var') {
+            throw new \UnexpectedValueException('Unknown segment type in compiled-route cache payload.');
+        }
+
+        $name = self::string($segment['name'] ?? null);
+        if (is_string($segment['regex'] ?? null)) {
+            return ['type' => 'var', 'name' => $name, 'regex' => $segment['regex']];
+        }
+
+        $call = $segment['call'] ?? null;
+        if (is_string($call) && is_callable($call)) {
+            return ['type' => 'var', 'name' => $name, 'call' => $call];
+        }
+
+        throw new \UnexpectedValueException('Invalid variable segment in compiled-route cache payload.');
     }
 
     /**
@@ -185,35 +188,7 @@ final class CompiledRouteCachePayload
 
         $segments = [];
         foreach ($value as $segment) {
-            if (!is_array($segment)) {
-                throw new \UnexpectedValueException('Invalid segment in compiled-route cache payload.');
-            }
-
-            $type = self::string($segment['type'] ?? null);
-            if ($type === 'lit') {
-                $segments[] = self::literalSegment(self::string($segment['val'] ?? null));
-
-                continue;
-            }
-            if ($type !== 'var') {
-                throw new \UnexpectedValueException('Unknown segment type in compiled-route cache payload.');
-            }
-
-            $name = self::string($segment['name'] ?? null);
-            if (is_string($segment['regex'] ?? null)) {
-                $segments[] = self::regexSegment($name, $segment['regex']);
-
-                continue;
-            }
-
-            $call = $segment['call'] ?? null;
-            if (is_string($call) && is_callable($call)) {
-                $segments[] = self::callSegment($name, $call);
-
-                continue;
-            }
-
-            throw new \UnexpectedValueException('Invalid variable segment in compiled-route cache payload.');
+            $segments[] = self::segment($segment);
         }
 
         return $segments;

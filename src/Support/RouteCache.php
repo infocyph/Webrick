@@ -22,7 +22,8 @@ final class RouteCache
     /** @param array<string,mixed> $options */
     public static function build(array $options): string
     {
-        $logger = self::resolveBuildLogger($options);
+        $logger = ($options['logger'] ?? null) instanceof LoggerInterface
+            ? $options['logger'] : new NullLogger();
         $cachePath = self::resolveBuildCachePath($options);
         [$mode, $matcher, $cacheLocation] = self::resolveBuildMatcher($options, $cachePath);
         $inputs = self::resolveBuildInputs($options, $logger);
@@ -149,6 +150,17 @@ final class RouteCache
         return $classes;
     }
 
+    private static function clearGeneration(string $generation): bool
+    {
+        $removed = RouteCacheCleaner::clearDirectoryPreservingGitignore($generation);
+        if (!is_dir($generation)) {
+            return $removed;
+        }
+        RouteCacheCleaner::removeDirectory($generation);
+
+        return true;
+    }
+
     private static function clearSharded(string $dir, bool $aggressive): bool
     {
         if ($aggressive) {
@@ -159,19 +171,22 @@ final class RouteCache
         foreach (['__root.php', '__aliases.php', '__manifest.php', '__current'] as $known) {
             $removed = RouteCacheCleaner::removeFile($dir . DIRECTORY_SEPARATOR . $known) || $removed;
         }
+        $removed = self::clearShardFiles($dir) || $removed;
+        foreach (glob($dir . DIRECTORY_SEPARATOR . 'generation-*', GLOB_ONLYDIR) ?: [] as $generation) {
+            $removed = self::clearGeneration($generation) || $removed;
+        }
+
+        return $removed;
+    }
+
+    private static function clearShardFiles(string $dir): bool
+    {
+        $removed = false;
         foreach (glob($dir . DIRECTORY_SEPARATOR . '*.php') ?: [] as $php) {
             if (in_array(basename($php), ['__root.php', '__aliases.php', '__routes.php', '__generated.php'], true)) {
                 continue;
             }
             $removed = RouteCacheCleaner::removeFile($php) || $removed;
-        }
-        foreach (glob($dir . DIRECTORY_SEPARATOR . 'generation-*', GLOB_ONLYDIR) ?: [] as $generation) {
-            $generationRemoved = RouteCacheCleaner::clearDirectoryPreservingGitignore($generation);
-            if (is_dir($generation)) {
-                RouteCacheCleaner::removeDirectory($generation);
-                $generationRemoved = true;
-            }
-            $removed = $generationRemoved || $removed;
         }
 
         return $removed;
@@ -317,14 +332,6 @@ final class RouteCache
             'signedUrlConfig' => self::signedUrlConfigOption($options, 'signedUrlConfig'),
             'urlBaseUri' => self::stringOption($options, 'urlBaseUri'),
         ];
-    }
-
-    /** @param array<string,mixed> $options */
-    private static function resolveBuildLogger(array $options): LoggerInterface
-    {
-        return ($options['logger'] ?? null) instanceof LoggerInterface
-            ? $options['logger']
-            : new NullLogger();
     }
 
     /**

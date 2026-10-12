@@ -334,15 +334,7 @@ final class Uri implements \Stringable
             throw new InvalidArgumentException("Invalid host: {$host}");
         }
         if ($host[0] === '[') {
-            if (!str_ends_with($host, ']')) {
-                throw new InvalidArgumentException("Invalid host: {$host}");
-            }
-            $ip = substr($host, 1, -1);
-            if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) === false) {
-                throw new InvalidArgumentException("Invalid host: {$host}");
-            }
-
-            return '[' . strtolower($ip) . ']';
+            return $this->ipv6Host($host);
         }
 
         if (function_exists('idn_to_ascii')) {
@@ -385,6 +377,19 @@ final class Uri implements \Stringable
     private function filterQuery(string $query): string
     {
         return ltrim($query, '?');
+    }
+
+    private function ipv6Host(string $host): string
+    {
+        if (!str_ends_with($host, ']')) {
+            throw new InvalidArgumentException("Invalid host: {$host}");
+        }
+        $ip = substr($host, 1, -1);
+        if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) === false) {
+            throw new InvalidArgumentException("Invalid host: {$host}");
+        }
+
+        return '[' . strtolower($ip) . ']';
     }
 
     private function withComponent(string $property, mixed $value): self

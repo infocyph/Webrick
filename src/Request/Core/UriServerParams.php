@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Infocyph\Webrick\Request\Core;
 
 use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Support\HttpUtils;
 
 final class UriServerParams
 {
@@ -57,19 +58,15 @@ final class UriServerParams
      */
     private static function detectForwardedHost(array $server, ?int $trustedProxyFlags): ?array
     {
-        $forwarded = self::firstServerCsvToken($server, 'HTTP_FORWARDED');
-        if (
-            self::proxyFlagEnabled(Request::HEADER_FORWARDED, $server, $trustedProxyFlags)
-            && $forwarded !== null
-            && preg_match('/(?:^|;)\s*host=(?:"([^"]+)"|([^;,\s]+))/i', $forwarded, $matches) === 1
-        ) {
-            $raw = $matches[1] !== '' ? $matches[1] : $matches[2];
-
-            return self::splitHostPort(trim($raw));
+        $forwarded = self::proxyFlagEnabled(Request::HEADER_FORWARDED, $server, $trustedProxyFlags)
+            ? self::forwardedParameter($server, 'host') : null;
+        if ($forwarded !== null) {
+            return self::splitHostPort($forwarded);
         }
 
-        $forwardedHost = self::firstServerCsvToken($server, 'HTTP_X_FORWARDED_HOST');
-        if (self::proxyFlagEnabled(Request::HEADER_X_FORWARDED_HOST, $server, $trustedProxyFlags) && $forwardedHost !== null) {
+        $forwardedHost = self::proxyFlagEnabled(Request::HEADER_X_FORWARDED_HOST, $server, $trustedProxyFlags)
+            ? self::firstServerCsvToken($server, 'HTTP_X_FORWARDED_HOST') : null;
+        if ($forwardedHost !== null) {
             return self::splitHostPort($forwardedHost);
         }
 
@@ -84,13 +81,39 @@ final class UriServerParams
             return null;
         }
 
-        $tokens = self::splitCsv($value);
+        $tokens = HttpUtils::splitQuoted($value, ',', rejectEmpty: true) ?? [];
         if ($tokens === []) {
             return null;
         }
         $first = trim($tokens[0]);
 
         return $first === '' ? null : $first;
+    }
+
+    /** @param array<string,mixed> $server */
+    private static function forwardedParameter(array $server, string $name): ?string
+    {
+        $first = self::firstServerCsvToken($server, 'HTTP_FORWARDED');
+        $parameters = $first === null ? null : HttpUtils::splitQuoted($first, ';', rejectEmpty: true);
+        if ($parameters === null) {
+            return null;
+        }
+        $values = [];
+        foreach ($parameters as $parameter) {
+            if (preg_match('/^([!#$%&\x27*+.^_`|~0-9A-Za-z-]+)=("(?:[^"\\\\]|\\\\.)*"|[^\x00-\x20\x7F";,=]+)$/D', $parameter, $matches) !== 1) {
+                return null;
+            }
+            $key = strtolower($matches[1]);
+            if (isset($values[$key])) {
+                return null;
+            }
+            $value = $matches[2];
+            $values[$key] = $value[0] === '"'
+                ? preg_replace('/\\\\(.)/s', '$1', substr($value, 1, -1))
+                : $value;
+        }
+
+        return $values[$name] ?? null;
     }
 
     /** @param array<string,mixed> $server */
@@ -122,14 +145,11 @@ final class UriServerParams
             return null;
         }
 
-        $last = self::firstServerCsvToken($server, 'HTTP_FORWARDED');
-        if ($last === null) {
+        $protocol = self::forwardedParameter($server, 'proto');
+        if ($protocol === null) {
             return null;
         }
-        if (preg_match('/(?:^|;)\s*proto="?([a-z]+)"?/i', $last, $matches) !== 1) {
-            return null;
-        }
-        $protocol = strtolower($matches[1]);
+        $protocol = strtolower($protocol);
 
         return ($protocol === 'https' || $protocol === 'http') ? $protocol : null;
     }
@@ -139,13 +159,11 @@ final class UriServerParams
     {
         $httpsValue = self::serverString($server, 'HTTPS');
         $requestScheme = self::serverString($server, 'REQUEST_SCHEME');
-        $frontEndHttps = self::serverString($server, 'HTTP_FRONT_END_HTTPS');
         $serverPort = self::serverString($server, 'SERVER_PORT');
 
         $https
             = ($httpsValue !== null && in_array(strtolower($httpsValue), ['on', '1'], true))
             || ($requestScheme !== null && strtolower($requestScheme) === 'https')
-            || ($frontEndHttps !== null && in_array(strtolower($frontEndHttps), ['on', '1'], true))
             || ($serverPort !== null && self::normPort($serverPort) === 443);
 
         return $https ? 'https' : 'http';
@@ -193,48 +211,6 @@ final class UriServerParams
         }
 
         return null;
-    }
-
-    /** @return list<string> */
-    private static function splitCsv(string $value): array
-    {
-        $tokens = [];
-        $buffer = '';
-        $quoted = false;
-        $escaped = false;
-        for ($i = 0, $length = strlen($value); $i < $length; $i++) {
-            $char = $value[$i];
-            if ($escaped) {
-                $buffer .= $char;
-                $escaped = false;
-
-                continue;
-            }
-            if ($quoted && $char === '\\') {
-                $buffer .= $char;
-                $escaped = true;
-
-                continue;
-            }
-            if ($char === '"') {
-                $quoted = !$quoted;
-                $buffer .= $char;
-
-                continue;
-            }
-            if ($char === ',' && !$quoted) {
-                $tokens[] = trim($buffer);
-                $buffer = '';
-
-                continue;
-            }
-            $buffer .= $char;
-        }
-        if (trim($buffer) !== '') {
-            $tokens[] = trim($buffer);
-        }
-
-        return $tokens;
     }
 
     /** @return array{0:string,1:int|null} */

@@ -177,12 +177,7 @@ final class RequestHeaders
             }
             $name = str_replace(' ', '-', ucwords(strtolower(strtr(substr($key, 5), '_', ' '))));
             if (is_array($value)) {
-                $parts = [];
-                foreach ($value as $item) {
-                    if (is_string($item)) {
-                        $parts[] = $item;
-                    }
-                }
+                $parts = array_filter($value, is_string(...));
                 $out[$name] = [implode(',', $parts)];
             } elseif (is_string($value)) {
                 $out[$name] = [$value];
@@ -234,15 +229,7 @@ final class RequestHeaders
                 continue;
             }
 
-            $q = 1.0;
-            foreach ($parts as $parameter) {
-                if (preg_match('/^q\s*=\s*(.*)$/i', $parameter, $matches) !== 1) {
-                    continue;
-                }
-                $q = HttpUtils::parseQValue($matches[1]) ?? 0.0;
-
-                break;
-            }
+            $q = HttpUtils::parameterQuality($parts);
             if ($q <= 0.0) {
                 continue;
             }

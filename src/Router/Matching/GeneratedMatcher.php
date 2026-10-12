@@ -154,26 +154,7 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
             $staticSwitch .= $this->renderStaticIndex($hosts['*']['static'], '    ');
         }
 
-        $dynamicSwitch = '';
-        if (array_any($hosts, static fn(array $index): bool => $index['dynamic'] !== [])) {
-            $dynamicSwitch .= "    \$trimmed = \\trim(\$path, '/');\n";
-            $dynamicSwitch .= "    \$segments = \$trimmed === '' ? [] : \\explode('/', \$trimmed);\n";
-            $dynamicSwitch .= "    \$segCount = \\count(\$segments);\n";
-            $dynamicSwitch .= "    \$prefix = \$segments[0] ?? '';\n";
-            $dynamicSwitch .= "    switch (\$host) {\n";
-            foreach ($hosts as $host => $index) {
-                if ($host === '*' || $index['dynamic'] === []) {
-                    continue;
-                }
-                $dynamicSwitch .= '        case ' . var_export($host, true) . ":\n";
-                $dynamicSwitch .= $this->renderDynamicIndex($index['dynamic'], '            ');
-                $dynamicSwitch .= "            break;\n";
-            }
-            $dynamicSwitch .= "    }\n";
-            if (isset($hosts['*'])) {
-                $dynamicSwitch .= $this->renderDynamicIndex($hosts['*']['dynamic'], '    ');
-            }
-        }
+        $dynamicSwitch = $this->renderDynamicHosts($hosts);
 
         return "static function (string \$verb, string \$host, string \$path, bool \$compact) {\n"
             . "    static \$routePayloads = {$payloadCode};\n"
@@ -338,6 +319,35 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         }
 
         return $code;
+    }
+
+    /**
+     * @param array<string,array{static:array<string,array<string,int>>,dynamic:array<int,array<string,array<string,array{segments:list<array<string,mixed>>,verbs:array<string,int>}>>>}> $hosts
+     */
+    private function renderDynamicHosts(array $hosts): string
+    {
+        $dynamicSwitch = '';
+        if (array_any($hosts, static fn(array $index): bool => $index['dynamic'] !== [])) {
+            $dynamicSwitch .= "    \$trimmed = \\trim(\$path, '/');\n";
+            $dynamicSwitch .= "    \$segments = \$trimmed === '' ? [] : \\explode('/', \$trimmed);\n";
+            $dynamicSwitch .= "    \$segCount = \\count(\$segments);\n";
+            $dynamicSwitch .= "    \$prefix = \$segments[0] ?? '';\n";
+            $dynamicSwitch .= "    switch (\$host) {\n";
+            foreach ($hosts as $host => $index) {
+                if ($host === '*' || $index['dynamic'] === []) {
+                    continue;
+                }
+                $dynamicSwitch .= '        case ' . var_export($host, true) . ":\n";
+                $dynamicSwitch .= $this->renderDynamicIndex($index['dynamic'], '            ');
+                $dynamicSwitch .= "            break;\n";
+            }
+            $dynamicSwitch .= "    }\n";
+            if (isset($hosts['*'])) {
+                $dynamicSwitch .= $this->renderDynamicIndex($hosts['*']['dynamic'], '    ');
+            }
+        }
+
+        return $dynamicSwitch;
     }
 
     /**

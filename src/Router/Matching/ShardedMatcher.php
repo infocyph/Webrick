@@ -115,10 +115,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             throw new \RuntimeException('Stale sharded route alias cache. Rebuild the route cache.');
         }
         if ($this->verifyCacheOnLoad) {
-            $stored = $blob['_hash'] ?? null;
-            if (!is_string($stored) || !hash_equals($stored, hash('xxh128', serialize($data)))) {
-                throw new \RuntimeException('Sharded route alias cache hash mismatch.');
-            }
+            self::assertPayloadHash($blob['_hash'] ?? null, $data, 'Sharded route alias cache hash mismatch.');
         }
 
         $this->alias = matcher_normalize_alias_pairs($data);
@@ -240,6 +237,29 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         return $index[$name] ?? null;
     }
 
+    /** @param array<array-key,mixed> $data */
+    private static function assertPayloadHash(mixed $stored, array $data, string $message): void
+    {
+        if (!is_string($stored) || !hash_equals($stored, hash('xxh128', serialize($data)))) {
+            throw new \RuntimeException($message);
+        }
+    }
+
+    /** @param array<array-key,mixed> $blob */
+    private static function validateWrittenPayload(array $blob, bool $compiledGroup, string $hash): void
+    {
+        $data = $blob['_data'] ?? null;
+        if (($blob['_version'] ?? null) !== self::INDEX_CACHE_VERSION || !is_array($data)) {
+            throw new \UnexpectedValueException('Generated sharded matcher payload is invalid.');
+        }
+        if ($compiledGroup) {
+            $data = CompactMatcherIndexValidator::validateGroup($data);
+        }
+        if (($blob['_hash'] ?? null) !== $hash || hash('xxh128', serialize($data)) !== $hash) {
+            throw new \UnexpectedValueException('Generated sharded matcher payload hash mismatch.');
+        }
+    }
+
     /**
      * @param array<string,CanonicalGroup> $groups
      * @param array<string,DynamicEntry> $entries
@@ -304,10 +324,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         }
         $data = CompactMatcherIndexValidator::validateGroup($blob['_data'] ?? null);
         if ($this->verifyCacheOnLoad) {
-            $stored = $blob['_hash'] ?? null;
-            if (!is_string($stored) || !hash_equals($stored, hash('xxh128', serialize($data)))) {
-                throw new \RuntimeException("Sharded route cache hash mismatch ({$file}).");
-            }
+            self::assertPayloadHash($blob['_hash'] ?? null, $data, "Sharded route cache hash mismatch ({$file}).");
         }
 
         return $this->loadedGroups[$file] = $data;
@@ -494,18 +511,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         matcher_write_validated_atomic_php_file(
             $file,
             $php,
-            static function (array $blob) use ($compiledGroup, $hash): void {
-                $data = $blob['_data'] ?? null;
-                if (($blob['_version'] ?? null) !== self::INDEX_CACHE_VERSION || !is_array($data)) {
-                    throw new \UnexpectedValueException('Generated sharded matcher payload is invalid.');
-                }
-                if ($compiledGroup) {
-                    $data = CompactMatcherIndexValidator::validateGroup($data);
-                }
-                if (($blob['_hash'] ?? null) !== $hash || hash('xxh128', serialize($data)) !== $hash) {
-                    throw new \UnexpectedValueException('Generated sharded matcher payload hash mismatch.');
-                }
-            },
+            static fn(array $blob) => self::validateWrittenPayload($blob, $compiledGroup, $hash),
         );
 
         if ($this->shouldWarmOpcache()) {

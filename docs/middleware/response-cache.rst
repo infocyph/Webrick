@@ -24,8 +24,8 @@ itself is an optimization and Webrick treats operational cache failures as
 misses, but security/reliability policy for a required shared backend belongs to
 the host application.
 
-Webrick 6 rotates disposable/security-related namespaces for the CacheLayer 4
-upgrade: response entries use ``webrick.hr.v4.``, throttle counters use
+Webrick 6.0.1 rotates the response-cache namespace for timestamped freshness
+metadata. The disposable/security-related namespaces are: response entries use ``webrick.hr.v5.``, throttle counters use
 ``webrick.th.v3.``, and encrypted-cookie backing entries use
 ``enc_cookie.v2.``. Mixed CacheLayer 3.x/4.x writers should not share those
 entries; expire or migrate old backing state explicitly during rollout.
@@ -79,7 +79,7 @@ Constructor Parameters
 How It Keys
 -----------
 
-Webrick uses the versioned ``webrick.hr.v4.`` namespace followed by a compact base64url SHA-256 digest of this logical identity:
+Webrick uses the versioned ``webrick.hr.v5.`` namespace followed by a compact base64url SHA-256 digest of this logical identity:
 
 ::
 
@@ -124,7 +124,10 @@ What Affects the Key
 Method semantics
 ----------------
 
-GET and HEAD deliberately retain separate cache identities. Webrick supports explicit HEAD routes whose metadata may differ from GET, and this middleware cannot safely infer whether a HEAD match was explicit or implicit. Correctness takes precedence over sharing those entries.
+A warm HEAD request reuses the GET representation and suppresses its body,
+preserving its metadata and Content-Length. A HEAD miss executes downstream
+and is never stored as a GET representation. Routes whose explicit HEAD
+metadata differs from GET should bypass shared response caching.
 
 --------------
 
@@ -142,6 +145,17 @@ Place in **pre-global**, after negotiation and before cache validators (or along
      \Infocyph\Webrick\Middleware\CacheValidatorsMiddleware::class,
      // ... router → post-globals (compression, CORS, vary) ...
    ];
+
+Populate tenant-specific Vary requirements before this middleware builds the
+key. Requirements added to the request-local Vary context downstream prevent
+storage under the original key. Every response Vary field must already be
+represented in that key.
+
+Requests containing conditional headers or Cache-Control freshness constraints
+bypass this micro-cache so downstream validators remain authoritative. Response
+freshness accounts for Age, Date, Expires and max-age/s-maxage. Invalid freshness
+values prevent storage, and hits emit Age including residence in this cache.
+Old ``webrick.hr.v4.`` entries expire naturally and are not reused.
 
 On a warm hit the handler is skipped. Keep middleware ordering explicit and test it with the validators and compression policy used by your application.
 

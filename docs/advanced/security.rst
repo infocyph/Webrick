@@ -465,6 +465,24 @@ Webrick owns routing and HTTP-kernel controls such as signed URLs, request limit
 
 The embedding application owns authorization policy, authentication lifecycle, prepared database queries, contextual output encoding and business access control. Deployment infrastructure owns TLS, firewall and operating-system hardening. Installing Webrick does not by itself establish regulatory compliance.
 
+Artifact and proxy trust
+------------------------
+
+Generated matcher files, compiled router/container artifacts and PHP release
+manifests are executable deployment code. Keep their directories writable only
+by trusted deployment tooling. xxh128 fingerprints detect corruption and mixed
+builds; they do not authenticate an attacker-controlled artifact or its metadata.
+Never load artifacts supplied by an HTTP client or an untrusted cache writer.
+
+HTTPS detection uses server transport metadata and explicitly trusted Forwarded
+or X-Forwarded-Proto fields. Client ``Front-End-Https`` headers do not establish
+TLS. Configure the immediate trusted proxy and ensure it replaces or sanitizes
+incoming forwarding headers before passing requests to Webrick.
+
+Absolute signed-URL verification requires a scheme and authority. Select the
+relative payload mode explicitly when signatures should be independent of the
+request authority.
+
 Security Contact
 ----------------
 

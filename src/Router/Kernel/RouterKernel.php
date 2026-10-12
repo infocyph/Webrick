@@ -70,7 +70,11 @@ final readonly class RouterKernel
             preGlobalRaw: $preGlobal,
             postGlobalRaw: $postGlobal,
         );
-        $this->errorHandler = $errorHandler ?? $this->createDefaultErrorHandler();
+        $this->errorHandler = $errorHandler ?? new ErrorHandler(
+            logger: $this->log,
+            debug: $this->debug,
+            requestIdHeader: 'X-Request-Id',
+        );
     }
 
     /**
@@ -124,16 +128,9 @@ final readonly class RouterKernel
         $request ??= Request::fromGlobals();
 
         if ($this->preRoutingGate !== null) {
-            try {
-                $routing = RoutingInput::fromRequest($request, true);
-                $response = $this->preRoutingGate->evaluate($routing);
-                if ($response !== null) {
-                    return $routing->method === HttpMethodEnum::HEAD->value
-                        ? self::headResponse($response)
-                        : $response;
-                }
-            } catch (Throwable $exception) {
-                return $this->errorHandler->renderThrowable($request, $exception);
+            $response = $this->evaluatePreRoutingGate($request, $this->preRoutingGate);
+            if ($response !== null) {
+                return $response;
             }
         }
 
@@ -225,13 +222,21 @@ final readonly class RouterKernel
         return Response::noContent(['Allow' => implode(', ', array_keys($methods))]);
     }
 
-    private function createDefaultErrorHandler(): ErrorHandler
+    private function evaluatePreRoutingGate(Request $request, PreRoutingGateInterface $gate): ?Response
     {
-        return new ErrorHandler(
-            logger: $this->log,
-            debug: $this->debug,
-            requestIdHeader: 'X-Request-Id',
-        );
+        try {
+            $routing = RoutingInput::fromRequest($request, true);
+            $response = $gate->evaluate($routing);
+            if ($response === null) {
+                return null;
+            }
+
+            return $routing->method === HttpMethodEnum::HEAD->value
+                ? self::headResponse($response)
+                : $response;
+        } catch (Throwable $exception) {
+            return $this->errorHandler->renderThrowable($request, $exception);
+        }
     }
 
     /**

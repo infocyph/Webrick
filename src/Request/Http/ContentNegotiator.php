@@ -154,15 +154,7 @@ final readonly class ContentNegotiator
                 continue;
             }
 
-            $q = 1.0;
-            foreach ($parts as $param) {
-                if (preg_match('/^q\s*=\s*(.*)$/i', $param, $matches) !== 1) {
-                    continue;
-                }
-                $q = HttpUtils::parseQValue($matches[1]) ?? 0.0;
-
-                break;
-            }
+            $q = HttpUtils::parameterQuality($parts);
             $entries[] = [
                 'value' => $value,
                 'q' => $q,

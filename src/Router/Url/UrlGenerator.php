@@ -45,8 +45,10 @@ class UrlGenerator
     public function __construct(
         string $baseUri,
         Collection|array $routes,
+        #[\SensitiveParameter]
         ?string $secret = null,
         ?int $defaultTtl = null,
+        #[\SensitiveParameter]
         ?SignedUrlConfig $signedConfig = null,
     ) {
         $parts = \parse_url($baseUri);
@@ -67,6 +69,7 @@ class UrlGenerator
     public static function checkSignature(
         string $payload,
         string $sig,
+        #[\SensitiveParameter]
         string $key,
         string $algorithm = SignedUrlConfig::DEFAULT_ALGORITHM,
     ): bool {
@@ -75,6 +78,7 @@ class UrlGenerator
 
     public static function makeSignature(
         string $payload,
+        #[\SensitiveParameter]
         string $key,
         string $algorithm = SignedUrlConfig::DEFAULT_ALGORITHM,
     ): string {

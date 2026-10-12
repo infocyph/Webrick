@@ -19,6 +19,7 @@ final readonly class ResponseWriterSupport
         'proxy-connection' => true,
         'transfer-encoding' => true,
         'upgrade' => true,
+        'te' => true,
     ];
 
     public static function allowsBody(Response $response, RuntimeRequestContext $context): bool
@@ -57,6 +58,7 @@ final readonly class ResponseWriterSupport
 
     public static function headerAllowed(string $name, string $value, bool $http2): bool
     {
+        unset($value);
         if (!$http2) {
             return true;
         }
@@ -66,7 +68,7 @@ final readonly class ResponseWriterSupport
             return false;
         }
 
-        return $lower !== 'te' || strtolower(trim($value)) === 'trailers';
+        return true;
     }
 
     /** @return array<string,list<string>> */
@@ -84,8 +86,14 @@ final readonly class ResponseWriterSupport
     public static function headers(Response $response, bool $http2 = false): Generator
     {
         $status = $response->getStatusCode();
+        $connection = $http2 && $response->hasHeader('Connection')
+            ? array_fill_keys(array_map(static fn(string $name): string => strtolower(trim($name)), explode(',', $response->getHeaderLine('Connection'))), true)
+            : [];
+        if (self::forbidsContentLength($status)) {
+            $connection['content-length'] = true;
+        }
         foreach ($response->getHeaders() as $name => $values) {
-            if (strtolower($name) === 'content-length' && self::forbidsContentLength($status)) {
+            if (isset($connection[strtolower($name)])) {
                 continue;
             }
             foreach ($values as $value) {

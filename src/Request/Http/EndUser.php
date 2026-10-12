@@ -6,6 +6,7 @@ namespace Infocyph\Webrick\Request\Http;
 
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Request\Support\IpCidr;
+use Infocyph\Webrick\Support\HttpUtils;
 
 /** Resolve the end-user address through an explicitly trusted proxy chain. */
 final class EndUser
@@ -182,11 +183,7 @@ final class EndUser
     private function forwardedChain(): array
     {
         if (($this->proxyHeaderFlags() & Request::HEADER_FORWARDED) !== 0) {
-            $header = $this->req->getHeaderLine('Forwarded');
-            if ($header === '') {
-                $serverHeader = $this->req->getServerParams()['HTTP_FORWARDED'] ?? null;
-                $header = is_string($serverHeader) ? $serverHeader : '';
-            }
+            $header = $this->proxyHeaderLine('Forwarded', 'HTTP_FORWARDED');
             if ($header !== '') {
                 return $this->parseForwardedHeader($header);
             }
@@ -195,11 +192,7 @@ final class EndUser
         if (($this->proxyHeaderFlags() & Request::HEADER_X_FORWARDED_FOR) === 0) {
             return [];
         }
-        $line = $this->req->getHeaderLine('X-Forwarded-For');
-        if ($line === '') {
-            $serverLine = $this->req->getServerParams()['HTTP_X_FORWARDED_FOR'] ?? null;
-            $line = is_string($serverLine) ? $serverLine : '';
-        }
+        $line = $this->proxyHeaderLine('X-Forwarded-For', 'HTTP_X_FORWARDED_FOR');
 
         return $line === '' ? [] : $this->validIpList(explode(',', $line));
     }
@@ -266,50 +259,21 @@ final class EndUser
         return $this->forwardedHeaderMask ?? Request::getProxyHeaderFlags();
     }
 
+    private function proxyHeaderLine(string $name, string $serverKey): string
+    {
+        $line = $this->req->getHeaderLine($name);
+        if ($line !== '') {
+            return $line;
+        }
+        $serverLine = $this->req->getServerParams()[$serverKey] ?? null;
+
+        return is_string($serverLine) ? $serverLine : '';
+    }
+
     /** @return list<string> */
     private function splitForwardedElements(string $header): array
     {
-        $out = [];
-        $buffer = '';
-        $quoted = false;
-        $escaped = false;
-        for ($i = 0, $length = strlen($header); $i < $length; $i++) {
-            $char = $header[$i];
-            if ($escaped) {
-                $buffer .= $char;
-                $escaped = false;
-
-                continue;
-            }
-            if ($quoted && $char === '\\') {
-                $buffer .= $char;
-                $escaped = true;
-
-                continue;
-            }
-            if ($char === '"') {
-                $quoted = !$quoted;
-                $buffer .= $char;
-
-                continue;
-            }
-            if ($char === ',' && !$quoted) {
-                if (trim($buffer) === '') {
-                    return [];
-                }
-                $out[] = trim($buffer);
-                $buffer = '';
-
-                continue;
-            }
-            $buffer .= $char;
-        }
-        if ($quoted || trim($buffer) === '') {
-            return [];
-        }
-        $out[] = trim($buffer);
-
-        return $out;
+        return HttpUtils::splitQuoted($header, ',', true) ?? [];
     }
 
     /**

@@ -91,11 +91,6 @@ final readonly class ThrottleMiddleware
             ->withSmartHeader('RateLimit-Policy', "{$this->max};w={$this->window}");
     }
 
-    private function base64UrlHash(string $value): string
-    {
-        return rtrim(strtr(base64_encode(hash('sha256', $value, true)), '+/', '-_'), '=');
-    }
-
     private function buildDefaultPool(): CacheItemPoolInterface
     {
         if (!class_exists(Cache::class)) {
@@ -124,9 +119,10 @@ final readonly class ThrottleMiddleware
             : ($req->getAttribute('client_ip') ?? $req->getServerParams()['REMOTE_ADDR'] ?? 'unknown');
         $identifier = $this->stringFromMixed($identifier, 'unknown');
         $windowStart = intdiv($now, $this->window) * $this->window;
+        $digest = hash('sha256', $this->scope . '|' . $identifier . '|' . $windowStart, true);
 
         return [
-            self::CACHE_KEY_PREFIX . $this->base64UrlHash($this->scope . '|' . $identifier . '|' . $windowStart),
+            self::CACHE_KEY_PREFIX . rtrim(strtr(base64_encode($digest), '+/', '-_'), '='),
             $windowStart + $this->window,
         ];
     }

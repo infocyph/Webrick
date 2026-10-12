@@ -92,12 +92,13 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
             if (HttpUtils::baseMediaType($contentType) !== MediaTypeEnum::FORM_URLENCODED->base()) {
                 return [];
             }
-            if (!$formResolved) {
-                $rawForm = $bodyStream->getContents();
-                parse_str($rawForm, $parsed);
-                $form = self::stringMap($parsed);
-                $formResolved = true;
+            if ($formResolved) {
+                return $form;
             }
+            $rawForm = $bodyStream->getContents();
+            parse_str($rawForm, $parsed);
+            $form = self::stringMap($parsed);
+            $formResolved = true;
 
             return $form;
         };
@@ -168,6 +169,22 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
         self::finish($writer, $cancellation);
     }
 
+    /** @param array<string,mixed> $cookies */
+    private static function appendCookies(array &$cookies, string $header): void
+    {
+        foreach (explode(';', $header) as $pair) {
+            $pair = trim($pair);
+            if ($pair === '' || !str_contains($pair, '=')) {
+                continue;
+            }
+            [$name, $value] = explode('=', $pair, 2);
+            $name = trim($name);
+            if ($name !== '' && !array_key_exists($name, $cookies)) {
+                $cookies[$name] = urldecode(trim($value));
+            }
+        }
+    }
+
     /**
      * @param array<string,mixed> $server
      * @return array<string,mixed>
@@ -188,6 +205,26 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
         }
 
         return $server;
+    }
+
+    /**
+     * @param array<string,mixed> $server
+     */
+    private static function appendRoutingHeaders(array &$server, Headers $headers): void
+    {
+        foreach (['content-type', 'x-http-method-override', 'http-method-override'] as $name) {
+            $value = $headers->first($name);
+            if ($value === null) {
+                continue;
+            }
+            $key = match ($name) {
+                'content-type' => 'CONTENT_TYPE',
+                'x-http-method-override' => 'HTTP_X_HTTP_METHOD_OVERRIDE',
+                default => 'HTTP_HTTP_METHOD_OVERRIDE',
+            };
+            $server[$key] = $value;
+        }
+
     }
 
     private static function assertAccepted(WriteResult $result, string $operation): void
@@ -244,18 +281,7 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
             $server['SERVER_PORT'] = (string) $localPort;
         }
 
-        foreach (['content-type', 'x-http-method-override', 'http-method-override'] as $name) {
-            $value = $request->headers->first($name);
-            if ($value === null) {
-                continue;
-            }
-            $key = match ($name) {
-                'content-type' => 'CONTENT_TYPE',
-                'x-http-method-override' => 'HTTP_X_HTTP_METHOD_OVERRIDE',
-                default => 'HTTP_HTTP_METHOD_OVERRIDE',
-            };
-            $server[$key] = $value;
-        }
+        self::appendRoutingHeaders($server, $request->headers);
 
         return $server;
     }
@@ -265,17 +291,7 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
     {
         $cookies = [];
         foreach ($headers->all('cookie') as $header) {
-            foreach (explode(';', $header) as $pair) {
-                $pair = trim($pair);
-                if ($pair === '' || !str_contains($pair, '=')) {
-                    continue;
-                }
-                [$name, $value] = explode('=', $pair, 2);
-                $name = trim($name);
-                if ($name !== '' && !array_key_exists($name, $cookies)) {
-                    $cookies[$name] = urldecode(trim($value));
-                }
-            }
+            self::appendCookies($cookies, $header);
         }
 
         return $cookies;
@@ -296,11 +312,12 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
         if (filter_var($endpoint, FILTER_VALIDATE_IP) !== false) {
             return [$endpoint, null];
         }
-        if (substr_count($endpoint, ':') === 1) {
-            [$host, $port] = explode(':', $endpoint, 2);
-            if ($host !== '' && preg_match('/^\d{1,5}$/D', $port) === 1 && (int) $port <= 65_535) {
-                return [$host, (int) $port];
-            }
+        if (substr_count($endpoint, ':') !== 1) {
+            return [$endpoint, null];
+        }
+        [$host, $port] = explode(':', $endpoint, 2);
+        if ($host !== '' && preg_match('/^\d{1,5}$/D', $port) === 1 && (int) $port <= 65_535) {
+            return [$host, (int) $port];
         }
 
         return [$endpoint, null];
@@ -332,10 +349,10 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
 
     private static function requestUri(string $target): string
     {
-        if ($target === '' || $target === '*') {
-            return $target === '' ? '/' : $target;
+        if ($target === '') {
+            return '/';
         }
-        if ($target[0] === '/') {
+        if ($target === '*' || $target[0] === '/') {
             return $target;
         }
 
