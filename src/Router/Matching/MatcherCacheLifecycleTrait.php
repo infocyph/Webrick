@@ -42,7 +42,7 @@ trait MatcherCacheLifecycleTrait
     {
         $this->ensureCacheLoaded();
 
-        return \array_keys($this->middlewareRequirements);
+        return matcher_normalize_middleware_requirements(\array_keys($this->middlewareRequirements));
     }
 
     private function ensureCacheLoaded(): void

@@ -45,7 +45,7 @@ final class ReleaseManifestLoader
     private function validate(array $manifest): array
     {
         if (
-            ($manifest['format'] ?? null) !== 2
+            ($manifest['format'] ?? null) !== ReleaseCompiler::RELEASE_FORMAT
             || !is_string($manifest['environment'] ?? null)
             || $manifest['environment'] === ''
             || !is_string($manifest['config_fingerprint'] ?? null)

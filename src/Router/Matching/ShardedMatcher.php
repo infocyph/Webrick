@@ -225,7 +225,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     public function middlewareRequirements(): array
     {
         return !$this->cacheReadable
-            ? array_keys($this->middlewareRequirements)
+            ? matcher_normalize_middleware_requirements(array_keys($this->middlewareRequirements))
             : ShardedCacheGeneration::middlewareRequirements($this->cacheDir, self::INDEX_CACHE_VERSION);
     }
 
@@ -434,7 +434,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             $this->cacheDir,
             self::INDEX_CACHE_VERSION,
             $generation,
-            array_keys($this->middlewareRequirements),
+            matcher_normalize_middleware_requirements(array_keys($this->middlewareRequirements)),
         );
     }
 

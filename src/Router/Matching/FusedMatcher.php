@@ -187,7 +187,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         $compact = CompiledMatcherIrCompactor::compactHosts($compiled);
         $hosts = MatcherCachePayloadNormalizer::normalize($compact);
         $hosts = CompactMatcherIndexValidator::validateHosts($hosts);
-        $middleware = array_keys($this->middlewareRequirements);
+        $middleware = matcher_normalize_middleware_requirements(array_keys($this->middlewareRequirements));
         $hash = $this->cacheHash($hosts, $this->alias, $middleware);
         $php = "<?php\nreturn [\n"
             . "    '_version' => " . self::INDEX_CACHE_VERSION . ",\n"

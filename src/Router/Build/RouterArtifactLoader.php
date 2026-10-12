@@ -62,7 +62,8 @@ final class RouterArtifactLoader
     {
         $aliases = [];
         foreach (self::arrayField($payload, $field) as $name => $tuple) {
-            if (!is_string($name) || !is_array($tuple)) {
+            $name = (string) $name;
+            if (!is_array($tuple)) {
                 throw new UnexpectedValueException("Malformed Webrick router artifact field '{$field}'.");
             }
             $path = $tuple[0] ?? null;

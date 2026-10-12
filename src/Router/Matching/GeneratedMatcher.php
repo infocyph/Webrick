@@ -210,7 +210,7 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         }
 
         $code = $this->buildMatcherCode();
-        $middleware = array_keys($this->middlewareRequirements);
+        $middleware = matcher_normalize_middleware_requirements(array_keys($this->middlewareRequirements));
         $hash = $this->cacheHash($code, $middleware);
         $php = "<?php\nreturn [\n"
             . "    '_version' => " . self::INDEX_CACHE_VERSION . ",\n"

@@ -259,11 +259,13 @@ test('all matcher cache builds coexist across refreshes', function (): void {
 test('fresh route caches dispatch alias middleware lazily without development kernel boot', function (
     string $mode,
     Closure $makeMatcher,
+    string $routeName,
+    string $middlewareAlias,
 ): void {
     $cache = cachedMatcherPath('webrick-fresh', $mode);
     $resolved = 0;
     MiddlewareAliases::reset();
-    MiddlewareAliases::register('lazy', static function () use (&$resolved): Closure {
+    MiddlewareAliases::register($middlewareAlias, static function () use (&$resolved): Closure {
         $resolved++;
 
         return static fn(Request $request, Closure $next): Response => $next($request);
@@ -273,10 +275,10 @@ test('fresh route caches dispatch alias middleware lazily without development ke
         RouteCache::build([
             'matcher' => $mode,
             'cache' => $cache,
-            'register' => static function (Registrar $registrar): void {
+            'register' => static function (Registrar $registrar) use ($routeName, $middlewareAlias): void {
                 $registrar->get('/cached', static fn(): Response => Response::json(['ok' => true]), [
-                    'name' => 'cached.route',
-                    'middleware' => ['lazy'],
+                    'name' => $routeName,
+                    'middleware' => [$middlewareAlias],
                 ]);
             },
         ]);
@@ -284,7 +286,8 @@ test('fresh route caches dispatch alias middleware lazily without development ke
         $matcher = $makeMatcher()->enableCache($cache);
         expect($matcher->canBootFromCache())->toBeTrue();
         $matcher->finalize();
-        expect($matcher->resolveAlias('cached.route'))->toBe(['/cached', null])
+        expect($matcher->resolveAlias($routeName))->toBe(['/cached', null])
+            ->and($matcher->middlewareRequirements())->toBe([$middlewareAlias])
             ->and($resolved)->toBe(0);
 
         [$route, $vars] = $matcher->match('GET', 'localhost', '/cached');
@@ -304,7 +307,10 @@ test('fresh route caches dispatch alias middleware lazily without development ke
             'aggressive' => true,
         ]);
     }
-})->with('cached matcher modes');
+})->with('cached matcher modes')->with([
+    'ordinary aliases' => ['cached.route', 'lazy'],
+    'numeric aliases' => ['123', '789'],
+]);
 
 test('class-handler caches use scalar route payloads in every matcher mode', function (
     string $mode,

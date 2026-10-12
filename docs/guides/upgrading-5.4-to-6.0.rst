@@ -3,13 +3,16 @@ Upgrading from Webrick 5.4 to 6.0
 
 Webrick 6.0 is a major release. This guide records the deployment-visible
 changes that must be handled when upgrading an application from Webrick 5.4.
-It will be extended as the remaining Webrick 6.0 implementation batches land.
 
 Response-cache namespace
 ------------------------
 
 Webrick 6.0 changes the shared HTTP response-cache namespace from
 ``webrick.hr.v3.`` to ``webrick.hr.v4.``.
+
+Webrick 6.0.1 and later use ``webrick.hr.v5.`` for corrected ``Vary`` and
+freshness handling. Earlier ``v3`` and ``v4`` entries are not reused and may
+expire naturally or be removed during deployment.
 
 The cache key now hashes the exact raw query string instead of a lossy
 normalized form. Query strings that differ in ordering, encoding, delimiters,
@@ -61,8 +64,8 @@ targets without a valid host are rejected before host allow-list evaluation.
 Ordinary relative references, fragments, queries and explicitly allowed
 same-host absolute or network-path redirects remain supported.
 
-Deployment sequence for these Batch 1 changes
----------------------------------------------
+Deployment sequence
+-------------------
 
 1. Deploy application code that no longer depends on dotted protected-cookie
    names or legacy plaintext/unframed cookie-store values.

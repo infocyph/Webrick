@@ -10,6 +10,7 @@ use Infocyph\InterMix\DI\Support\LifetimeEnum;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Build\ReleaseCompiler;
+use Infocyph\Webrick\Router\Build\ReleaseManifestLoader;
 use Infocyph\Webrick\Router\Build\RouteCompiler;
 use Infocyph\Webrick\Router\Build\RouterBuildResult;
 use Infocyph\Webrick\Router\Build\RouterArtifactCompiler;
@@ -17,8 +18,12 @@ use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Kernel\CompiledRouterKernel;
 use Infocyph\Webrick\Router\Kernel\ErrorHandler;
 use Infocyph\Webrick\Router\Matching\FusedMatcher;
+use Infocyph\Webrick\Router\Matching\GeneratedMatcher;
+use Infocyph\Webrick\Router\Matching\ShardedMatcher;
+use Infocyph\Webrick\Router\Url\UrlGeneratorRegistry;
 use Opis\Closure\CodeStream;
 use PHPUnit\Framework\Attributes\BackupStaticProperties;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\ExcludeStaticPropertyFromBackup;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
@@ -170,13 +175,27 @@ final class CompiledRoutingControlBridgeTest extends TestCase
         }
     }
 
-    public function testDirectCompiledFastPathsRemainScopeless(): void
+    /** @return iterable<string,array{string,string,bool}> */
+    public static function compiledReleaseBootModes(): iterable
+    {
+        foreach (['fused', 'generated', 'sharded'] as $matcher) {
+            foreach (['php', 'json'] as $manifest) {
+                foreach ([false, true] as $trusted) {
+                    yield $matcher . '-' . $manifest . ($trusted ? '-trusted' : '-verified') => [$matcher, $manifest, $trusted];
+                }
+            }
+        }
+    }
+
+    #[DataProvider('compiledReleaseBootModes')]
+    public function testDirectCompiledFastPathsRemainScopeless(string $matcherMode, string $manifestRepresentation, bool $trusted): void
     {
         [$intermixPath, $routerPath] = self::artifactPaths('fast-path');
         $releasePath = sys_get_temp_dir() . DIRECTORY_SEPARATOR
             . 'webrick-fast-path-release-' . bin2hex(random_bytes(8)) . '.json';
         $builder = ContainerBuilder::create('webrick_fast_path_' . bin2hex(random_bytes(4)))
             ->releaseIdentity('webrick-fast-path')
+            ->factory('dynamic-service', static fn(): string => 'dynamic-service')
             ->onScopeLeave('webrick.request', [CompiledFastPathScopeProbe::class, 'scopeLeft']);
 
         CompiledFastPathScopeProbe::$leaves = 0;
@@ -186,7 +205,10 @@ final class CompiledRoutingControlBridgeTest extends TestCase
                 builder: $builder,
                 register: static function (Registrar $registrar): void {
                     $registrar->get('/zero', static fn(): Response => Response::plaintext('zero', 200));
-                    $registrar->get('/arg/{id}', static fn(string $id): Response => Response::plaintext($id, 200));
+                    $registrar->get('/arg/{id}', static fn(string $id): Response => Response::plaintext($id, 200), [
+                        'name' => '123',
+                        'aliases' => ['456'],
+                    ]);
                     $registrar->get('/scoped', CompiledFastPathScopedHandler::class);
                 },
                 environment: 'production',
@@ -212,20 +234,41 @@ final class CompiledRoutingControlBridgeTest extends TestCase
                 },
             );
 
-            $kernel = CompiledRouterKernel::fromReleaseManifest(
-                log: new NullLogger(),
-                matcher: FusedMatcher::make(),
-                builder: $builder,
-                releaseManifestPath: $releasePath,
-                environment: 'production',
-                configFingerprint: 'compiled-fast-path',
-            );
+            if ($manifestRepresentation === 'json') {
+                unlink(ReleaseCompiler::runtimeManifestPath($releasePath));
+            }
+            $release = new ReleaseManifestLoader()->load($releasePath);
+            $matcher = match ($matcherMode) {
+                'fused' => FusedMatcher::make(),
+                'generated' => GeneratedMatcher::make(),
+                'sharded' => ShardedMatcher::make(),
+            };
+            $kernel = $trusted
+                ? CompiledRouterKernel::fromPrevalidatedArtifact(
+                    log: new NullLogger(),
+                    matcher: $matcher,
+                    container: $builder->productionPrevalidated($release['intermix']['path'], $release['intermix']['digest']),
+                    artifactPath: $release['webrick']['path'],
+                    trustedArtifactFingerprint: $release['webrick']['fingerprint'],
+                    environment: $release['environment'],
+                    configFingerprint: $release['config_fingerprint'],
+                )
+                : CompiledRouterKernel::fromReleaseManifest(
+                    log: new NullLogger(),
+                    matcher: $matcher,
+                    builder: $builder,
+                    releaseManifestPath: $releasePath,
+                    environment: 'production',
+                    configFingerprint: 'compiled-fast-path',
+                );
 
             self::assertSame('zero', (string) $kernel->handle(Request::fake(uri: 'http://localhost/zero'))->getBody());
             self::assertSame(0, CompiledFastPathScopeProbe::$leaves);
 
             self::assertSame('42', (string) $kernel->handle(Request::fake(uri: 'http://localhost/arg/42'))->getBody());
             self::assertSame(0, CompiledFastPathScopeProbe::$leaves);
+            self::assertSame('/arg/42', UrlGeneratorRegistry::get()->urlFor('123', ['id' => '42']));
+            self::assertSame('/arg/42', UrlGeneratorRegistry::get()->urlFor('456', ['id' => '42']));
 
             $scoped = $kernel->handle(Request::fake(uri: 'http://localhost/scoped'));
             self::assertSame(CompiledFastPathScopedMarker::class, (string) $scoped->getBody());

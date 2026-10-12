@@ -383,7 +383,8 @@ class UrlGenerator
     {
         $normalized = [];
         foreach ($aliases as $name => $tuple) {
-            if (!\is_string($name) || $name === '' || !\is_array($tuple) || !\is_string($tuple[0] ?? null)) {
+            $name = (string) $name;
+            if ($name === '' || !\is_array($tuple) || !\is_string($tuple[0] ?? null)) {
                 continue;
             }
             $domain = $tuple[1] ?? null;
