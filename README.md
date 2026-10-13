@@ -41,7 +41,7 @@ runtime from an environment string.
 
 - PHP 8.4+
 - Composer 2.x
-- InterMix `^11.0`
+- InterMix `^11.2`
 
 Install:
 
@@ -90,7 +90,7 @@ require __DIR__ . '/vendor/autoload.php';
 
 $builder = Webrick::standaloneDevelopment();
 // Register the application's services/providers on $builder here.
-$runtime = $builder->development();
+$runtime = $builder->build();
 
 $kernel = RouterKernel::bootWithRegistrar(
     log: new NullLogger(),

@@ -22,7 +22,7 @@ Supported matcher modes are ``fused``, ``generated`` and ``sharded``. Use the ma
 Development runtime
 -------------------
 
-Do not pass matcher-cache paths into ``RouterKernel``. The registrar kernel receives a matcher instance and a host-owned InterMix ``Invoker``:
+Do not pass matcher-cache paths into ``RouterKernel``. The registrar kernel receives a matcher instance and a host-owned InterMix ``RuntimeContainerInterface``:
 
 .. code:: php
 

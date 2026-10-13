@@ -53,7 +53,7 @@ Development wiring
        ],
    );
 
-The application owns the InterMix builder/container. ``RouterKernel`` receives an ``Invoker``; it does not create a container or import providers.
+The application owns the InterMix builder/container. ``RouterKernel`` receives a ``RuntimeContainerInterface``; it does not create a container or import providers.
 
 Production wiring
 -----------------

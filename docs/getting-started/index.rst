@@ -8,7 +8,7 @@ What you'll set up
 
 1. Install Webrick with Composer.
 2. Build or reuse an application-owned InterMix graph.
-3. Give ``RouterKernel`` the host ``Invoker``.
+3. Give ``RouterKernel`` the host ``RuntimeContainerInterface``.
 4. Register routes through ``Infocyph\Webrick\Router\Facade\Router``.
 5. Configure URL/signing services when needed.
 6. Compile matcher cache and the production application artifact as separate deployment concerns.
@@ -27,7 +27,6 @@ For a standalone development application:
 
 .. code:: php
 
-   use Infocyph\InterMix\DI\Invoker;
    use Infocyph\Webrick\Request\Request;
    use Infocyph\Webrick\Response\Emitter\DefaultEmitter;
    use Infocyph\Webrick\Response\Response;
@@ -39,8 +38,7 @@ For a standalone development application:
    use Psr\Log\NullLogger;
 
    $builder = Webrick::standaloneDevelopment();
-   $container = $builder->development();
-   $invoker = Invoker::with($container);
+   $container = $builder->build();
 
    $kernel = RouterKernel::bootWithRegistrar(
        log: new NullLogger(),
@@ -49,13 +47,13 @@ For a standalone development application:
            unset($registrar);
            Route::get('/', static fn() => Response::plaintext('Hello Webrick', 200), 'home');
        },
-       invoker: $invoker,
+       invoker: $container,
    );
 
    $request = Request::fromGlobals();
    (new DefaultEmitter())->emit($kernel->handle($request), $request);
 
-A framework integration should reuse its existing ``ContainerBuilder`` and create the ``Invoker`` from that application-owned graph instead of calling ``standaloneDevelopment()``.
+A framework integration should reuse its existing ``ContainerBuilder`` and create the ``RuntimeContainerInterface`` from that application-owned graph instead of calling ``standaloneDevelopment()``.
 
 URL services
 ------------

@@ -224,10 +224,10 @@ final readonly class ReleaseArtifactLoader
         }
         $result = [];
         foreach ($value as $key => $entry) {
-            if (!is_string($key) || !is_string($entry)) {
+            if (!is_string($entry)) {
                 throw new UnexpectedValueException("{$label} must contain string entries.");
             }
-            $result[$key] = $entry;
+            $result[(string) $key] = $entry;
         }
 
         return $result;

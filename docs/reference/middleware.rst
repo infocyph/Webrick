@@ -15,7 +15,7 @@ A middleware may return a ``Response`` to short-circuit normal application flow.
 Development registration
 ------------------------
 
-The host owns InterMix and supplies the ``Invoker``:
+The host owns InterMix and supplies the ``RuntimeContainerInterface``:
 
 .. code:: php
 
@@ -36,7 +36,7 @@ The host owns InterMix and supplies the ``Invoker``:
        ],
    );
 
-``RouterKernel`` does not accept a container fallback or service-provider list. Register application services/providers on the application-owned InterMix builder before constructing its development ``Container``/``Invoker``.
+``RouterKernel`` does not accept a container fallback or service-provider list. Register application services/providers on the application-owned InterMix builder before constructing its development ``Container``.
 
 Per-route middleware
 --------------------

@@ -177,6 +177,61 @@ beforeEach(function (): void {
     RunwireBridgeScopeProbe::reset();
 });
 
+test('runwire bridge seeds source-free native compiled inputs without rebuilding a host graph', function (): void {
+    $path = sys_get_temp_dir() . '/webrick-native-runwire-' . bin2hex(random_bytes(8)) . '.php';
+    $builder = ContainerBuilder::create('webrick.native.runwire.' . bin2hex(random_bytes(6)));
+    RunwireInterMixScopeBridge::registerInputs($builder);
+    $builder->input(Request::class);
+    $runtime = RunwireContext::standalone();
+    $integration = null;
+
+    try {
+        $report = $builder->compile($path, strict: true);
+        expect($report['skipped'])->toBe([]);
+        $container = ContainerBuilder::loadProductionArtifact($path, $report['graph']);
+        unset($builder);
+        $integration = new RunwireIntegration($container);
+        $integration->bind($runtime);
+        $adapter = new RunwireRuntimeAdapter(runtimeContext: $runtime, interMix: $integration);
+        $interMix = new InterMixRuntime($container);
+
+        foreach (['/first', '/second'] as $uri) {
+            $requestContext = RunwireRequestContext::create($runtime);
+            $context = $adapter->context(runwire_bridge_request($requestContext), new RunwireBridgeWriterFixture());
+            $request = Request::fake(uri: $uri);
+            $resolved = $context->scopeBridge->withinScope($interMix, $request,
+                static function () use ($container, $interMix): array {
+                    $scope = $interMix->captureScopeContext();
+                    $child = new Fiber(static fn(): array => $interMix->withinScopeContext($scope,
+                        static fn(): array => [$container->get(RunwireContext::class),
+                            $container->get(RunwireRequestContext::class), $container->get(Request::class)]));
+                    $child->start();
+
+                    return $child->getReturn();
+                });
+            expect($resolved)->toBe([$runtime, $requestContext, $request]);
+            expect(fn(): mixed => $container->get(Request::class))
+                ->toThrow(\Infocyph\InterMix\Exceptions\ContainerException::class);
+        }
+    } finally {
+        $integration?->release($runtime);
+        if (is_link($path)) {
+            unlink($path);
+        }
+        $root = $path . '.builds';
+        if (is_dir($root)) {
+            $entries = new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS),
+                RecursiveIteratorIterator::CHILD_FIRST,
+            );
+            foreach ($entries as $entry) {
+                $entry->isDir() ? rmdir($entry->getPathname()) : unlink($entry->getPathname());
+            }
+            rmdir($root);
+        }
+    }
+});
+
 test('runwire bridge opens one InterMix request scope and preserves exact runtime identities', function (): void {
     $builder = runwire_bridge_builder();
     $container = $builder->build();

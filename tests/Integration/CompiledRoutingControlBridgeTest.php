@@ -7,6 +7,7 @@ namespace Tests\Integration;
 use Infocyph\InterMix\DI\ContainerBuilder;
 use Infocyph\InterMix\DI\RuntimeContainerInterface;
 use Infocyph\InterMix\DI\Support\LifetimeEnum;
+use Infocyph\InterMix\Exceptions\ContainerException;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Build\ReleaseCompiler;
@@ -17,6 +18,7 @@ use Infocyph\Webrick\Router\Build\RouterArtifactCompiler;
 use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Kernel\CompiledRouterKernel;
 use Infocyph\Webrick\Router\Kernel\ErrorHandler;
+use Infocyph\Webrick\Router\Kernel\RouterKernel;
 use Infocyph\Webrick\Router\Matching\FusedMatcher;
 use Infocyph\Webrick\Router\Matching\GeneratedMatcher;
 use Infocyph\Webrick\Router\Matching\ShardedMatcher;
@@ -29,6 +31,31 @@ use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
 
 final readonly class CompiledFastPathScopedMarker {}
+
+final readonly class CompiledBoundRouteIdentifier
+{
+    public function __construct(public string $value = 'unbound') {}
+
+    public static function fromBoundValue(mixed $value): self
+    {
+        if ($value === 'missing') {
+            throw new \DomainException('Route identifier was not found.');
+        }
+
+        return new self((string) $value);
+    }
+}
+
+final readonly class CompiledNativeRequestController
+{
+    public function __construct(private Request $request) {}
+
+    public function __invoke(Request $request, CompiledBoundRouteIdentifier $id): Response
+    {
+        return Response::plaintext($id->value . '|' . $this->request->getUri()->getPath()
+            . '|' . $request->getUri()->getPath(), 200);
+    }
+}
 
 final readonly class CompiledFastPathScopedHandler
 {
@@ -195,7 +222,7 @@ final class CompiledRoutingControlBridgeTest extends TestCase
             . 'webrick-fast-path-release-' . bin2hex(random_bytes(8)) . '.json';
         $builder = ContainerBuilder::create('webrick_fast_path_' . bin2hex(random_bytes(4)))
             ->releaseIdentity('webrick-fast-path')
-            ->factory('dynamic-service', static fn(): string => 'dynamic-service')
+            ->factory('789', static fn(): string => 'numeric-service')
             ->onScopeLeave('webrick.request', [CompiledFastPathScopeProbe::class, 'scopeLeft']);
 
         CompiledFastPathScopeProbe::$leaves = 0;
@@ -238,6 +265,8 @@ final class CompiledRoutingControlBridgeTest extends TestCase
                 unlink(ReleaseCompiler::runtimeManifestPath($releasePath));
             }
             $release = new ReleaseManifestLoader()->load($releasePath);
+            self::assertArrayHasKey('789', $release['intermix']['skipped']);
+            self::assertSame('numeric-service', $builder->production($intermixPath)->get('789'));
             $matcher = match ($matcherMode) {
                 'fused' => FusedMatcher::make(),
                 'generated' => GeneratedMatcher::make(),
@@ -281,6 +310,129 @@ final class CompiledRoutingControlBridgeTest extends TestCase
                     unlink($candidate);
                 }
             }
+        }
+    }
+
+    #[DataProvider('compiledReleaseBootModes')]
+    public function testNativeRequestInputsAndHostAutoBindingSurviveCompiledBoot(
+        string $matcherMode,
+        string $manifestRepresentation,
+        bool $trusted,
+    ): void {
+        [$intermixPath, $routerPath] = self::artifactPaths('native-input');
+        $releasePath = $routerPath . '.release.json';
+        $builder = ContainerBuilder::create('webrick_native_input_' . bin2hex(random_bytes(4)))
+            ->enableAutoBind()
+            ->value('count', 0)
+            ->value('enabled', false)
+            ->value('label', null)
+            ->autowire(CompiledNativeRequestController::class, CompiledNativeRequestController::class,
+                lifetime: LifetimeEnum::Transient);
+
+        try {
+            new ReleaseCompiler()->compile(
+                builder: $builder,
+                register: static function (Registrar $registrar): void {
+                    $registrar->get('/bound/{id}', static fn(CompiledBoundRouteIdentifier $id): Response => Response::plaintext($id->value, 200));
+                    $registrar->get('/native/{id}', CompiledNativeRequestController::class);
+                    $registrar->get('/primitives', static fn(int $count = 1, bool $enabled = true, ?string $label = 'default'): Response => Response::json([$count, $enabled, $label]));
+                    $registrar->get('/bound-options/{id}', static fn(string $id, int $count = 1): Response => Response::json([$id, $count]));
+                },
+                environment: 'production',
+                configFingerprint: 'native-input',
+                intermixPath: $intermixPath,
+                routerPath: $routerPath,
+                releaseManifestPath: $releasePath,
+                preGlobalTags: [],
+                postGlobalTags: [],
+            );
+            if ($manifestRepresentation === 'json') {
+                unlink(ReleaseCompiler::runtimeManifestPath($releasePath));
+            }
+            $release = new ReleaseManifestLoader()->load($releasePath);
+            self::assertContains(Request::class, $release['intermix']['compiled']);
+            self::assertSame([], $release['intermix']['skipped']);
+            $container = $trusted
+                ? $builder->productionPrevalidated($intermixPath, $release['intermix']['digest'])
+                : ContainerBuilder::loadProductionArtifact($intermixPath, $release['intermix']['graph']);
+            unset($builder);
+            $matcher = match ($matcherMode) {
+                'fused' => FusedMatcher::make(),
+                'generated' => GeneratedMatcher::make(),
+                'sharded' => ShardedMatcher::make(),
+            };
+            $kernel = CompiledRouterKernel::fromPrevalidatedArtifact(
+                log: new NullLogger(),
+                matcher: $matcher,
+                container: $container,
+                artifactPath: $routerPath,
+                trustedArtifactFingerprint: $release['webrick']['fingerprint'],
+                environment: 'production',
+                configFingerprint: 'native-input',
+                errorHandler: new ErrorHandler(logger: new NullLogger(),
+                    exceptionMap: [\DomainException::class => 422], debug: true),
+            );
+
+            foreach (['0', '42'] as $id) {
+                $bound = $kernel->handle(Request::fake(uri: 'http://localhost/bound/' . $id));
+                self::assertSame(200, $bound->getStatusCode(), (string) $bound->getBody());
+                self::assertSame($id, (string) $bound->getBody());
+                $native = $kernel->handle(Request::fake(uri: 'http://localhost/native/' . $id));
+                self::assertSame(200, $native->getStatusCode(), (string) $native->getBody());
+                self::assertSame($id . '|/native/' . $id . '|/native/' . $id, (string) $native->getBody());
+                try {
+                    $container->get(Request::class);
+                    self::fail('The request input escaped its execution scope.');
+                } catch (ContainerException) {
+                    // The native input must fail closed after each response.
+                }
+            }
+            self::assertSame(422, $kernel->handle(Request::fake(uri: 'http://localhost/bound/missing'))->getStatusCode());
+            self::assertSame('43', (string) $kernel->handle(Request::fake(uri: 'http://localhost/bound/43'))->getBody());
+            self::assertSame('[0,false,null]', (string) $kernel->handle(Request::fake(uri: 'http://localhost/primitives'))->getBody());
+            self::assertSame('["42",0]', (string) $kernel->handle(Request::fake(uri: 'http://localhost/bound-options/42'))->getBody());
+        } finally {
+            self::cleanup([$intermixPath, $routerPath]);
+            foreach ([$releasePath, ReleaseCompiler::runtimeManifestPath($releasePath)] as $candidate) {
+                if (is_file($candidate)) {
+                    unlink($candidate);
+                }
+            }
+        }
+    }
+
+    public function testDevelopmentBindingUsesTheHostsOptInSetting(): void
+    {
+        foreach ([null, false, true] as $enabled) {
+            $builder = ContainerBuilder::create('webrick_binding_' . bin2hex(random_bytes(4)))
+                ->input(Request::class)
+                ->value('count', 0)
+                ->value('enabled', false)
+                ->value('label', null);
+            if ($enabled !== null) {
+                $builder->enableAutoBind($enabled);
+            }
+            $kernel = RouterKernel::bootWithRegistrar(
+                log: new NullLogger(),
+                matcher: FusedMatcher::make(),
+                register: static function (Registrar $registrar): void {
+                    $registrar->get('/bound/{id}', static fn(CompiledBoundRouteIdentifier $id): Response => Response::plaintext($id->value, 200));
+                    $registrar->get('/primitives', static fn(int $count = 1, bool $enabled = true, ?string $label = 'default'): Response => Response::json([$count, $enabled, $label]));
+                },
+                invoker: $builder->build(),
+                preGlobalTags: [],
+                postGlobalTags: [],
+                errorHandler: new ErrorHandler(exceptionMap: [\DomainException::class => 422]),
+            );
+
+            $response = $kernel->handle(Request::fake(uri: 'http://localhost/bound/42'));
+            self::assertSame($enabled === true ? 200 : 500, $response->getStatusCode());
+            if ($enabled === true) {
+                self::assertSame('42', (string) $response->getBody());
+            }
+            self::assertSame($enabled === true ? 422 : 500,
+                $kernel->handle(Request::fake(uri: 'http://localhost/bound/missing'))->getStatusCode());
+            self::assertSame('[0,false,null]', (string) $kernel->handle(Request::fake(uri: 'http://localhost/primitives'))->getBody());
         }
     }
 
