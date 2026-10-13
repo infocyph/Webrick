@@ -60,7 +60,7 @@ Put telemetry early in ``preGlobal`` when you want it to measure the middleware/
        ],
    );
 
-The ``Invoker`` belongs to the host application. Webrick does not create or select an InterMix container in ``RouterKernel``.
+The ``RuntimeContainerInterface`` belongs to the host application. Webrick does not create or select an InterMix container in ``RouterKernel``.
 
 Constructor options
 -------------------

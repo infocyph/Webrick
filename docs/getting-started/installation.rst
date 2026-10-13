@@ -1,7 +1,7 @@
 Installation
 ============
 
-Webrick 5 requires PHP 8.4+ and Composer 2.x.
+Webrick 6 requires PHP 8.4+ and Composer 2.x.
 
 Install
 -------
@@ -13,7 +13,7 @@ Install
 Core runtime dependencies are intentionally small:
 
 - PHP 8.4+
-- InterMix ``^10.0.3``
+- InterMix ``^11.2``
 - PSR cache/log contracts used by portable integrations
 
 ArrayKit is not a mandatory Webrick dependency. CacheLayer, PSR-7 interfaces/factories, OpenTelemetry SDK/exporters and persistent-server packages remain optional.
@@ -41,7 +41,6 @@ Development bootstrap
 
 .. code:: php
 
-   use Infocyph\InterMix\DI\Invoker;
    use Infocyph\Webrick\Response\Response;
    use Infocyph\Webrick\Router\Definition\Registrar;
    use Infocyph\Webrick\Router\Facade\Router as Route;
@@ -51,7 +50,7 @@ Development bootstrap
    use Psr\Log\NullLogger;
 
    $builder = Webrick::standaloneDevelopment();
-   $invoker = Invoker::with($builder->development());
+   $container = $builder->build();
 
    $kernel = RouterKernel::bootWithRegistrar(
        log: new NullLogger(),
@@ -59,7 +58,7 @@ Development bootstrap
        register: static function (Registrar $registrar): void {
            Route::get('/health', static fn() => Response::json(['ok' => true]));
        },
-       invoker: $invoker,
+       invoker: $container,
    );
 
 A framework/real application should normally supply its existing builder rather than use the standalone development convenience.

@@ -69,11 +69,18 @@ final class HandlerCompiler
     /**
      * @param list<string> $routeArguments
      */
-    private function allRequiredParametersAreRouteArguments(ReflectionFunctionAbstract $reflection, array $routeArguments): bool
+    private function allParametersAreDirectRouteArguments(ReflectionFunctionAbstract $reflection, array $routeArguments): bool
     {
         $set = array_fill_keys($routeArguments, true);
 
-        return array_all($reflection->getParameters(), fn($parameter) => !(!$parameter->isOptional() && !isset($set[$parameter->getName()])));
+        return array_all($reflection->getParameters(), static function (ReflectionParameter $parameter) use ($set): bool {
+            if (!isset($set[$parameter->getName()])) {
+                return false;
+            }
+            $type = $parameter->getType();
+
+            return $type === null || ($type instanceof ReflectionNamedType && $type->isBuiltin());
+        });
     }
 
     /**
@@ -278,11 +285,8 @@ final class HandlerCompiler
         if (count($parameters) === 1 && $this->parameterIsRequest($parameters[0])) {
             return ExecutionKind::DIRECT_REQUEST;
         }
-        if ($routeArguments !== [] && $this->allRequiredParametersAreRouteArguments($reflection, $routeArguments)) {
+        if ($routeArguments !== [] && $this->allParametersAreDirectRouteArguments($reflection, $routeArguments)) {
             return ExecutionKind::DIRECT_ROUTE_ARGS;
-        }
-        if (array_all($parameters, static fn(ReflectionParameter $parameter): bool => $parameter->isOptional())) {
-            return ExecutionKind::DIRECT_ZERO_ARG;
         }
 
         return ExecutionKind::COMPILED_INVOKE;

@@ -26,7 +26,7 @@ use Throwable;
 /**
  * Development/registrar kernel.
  *
- * The host owns the InterMix graph and supplies its Invoker. This kernel never
+ * The host owns the InterMix graph and supplies its runtime container. This kernel never
  * creates/selects a container, imports providers, infers an environment, or
  * boots from production route-cache artifacts. Compiled production traffic is
  * handled by CompiledRouterKernel.

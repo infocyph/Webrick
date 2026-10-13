@@ -1,20 +1,18 @@
 Quick Start
 ===========
 
-This quick start uses the Webrick 5 development boundary: the application owns InterMix and gives Webrick an ``Invoker``. Production compilation is a separate step.
+This quick start uses the Webrick 6 development boundary: the application owns InterMix and gives Webrick a ``RuntimeContainerInterface``. Production compilation is a separate step.
 
 1. Build the application graph
 ------------------------------
 
 .. code:: php
 
-   use Infocyph\InterMix\DI\Invoker;
    use Infocyph\Webrick\Webrick;
 
    $builder = Webrick::standaloneDevelopment();
    // Add application providers/definitions to $builder here.
-   $container = $builder->development();
-   $invoker = Invoker::with($container);
+   $container = $builder->build();
 
 A framework integration should use its existing application-owned ``ContainerBuilder`` instead of ``standaloneDevelopment()``.
 
@@ -41,7 +39,7 @@ A framework integration should use its existing application-owned ``ContainerBui
                'hello' => $name,
            ]), 'hello');
        },
-       invoker: $invoker,
+       invoker: $container,
    );
 
    $request = Request::fromGlobals();
@@ -90,7 +88,7 @@ Configure URL services through registrar options:
        log: $logger,
        matcher: GeneratedMatcher::make(),
        register: $register,
-       invoker: $invoker,
+       invoker: $container,
        registrarOptions: [
            'exposeUrlServices' => true,
            'signedUrlConfig' => $signed,

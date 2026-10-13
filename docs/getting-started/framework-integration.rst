@@ -41,9 +41,10 @@ Webrick depends directly on InterMix but does not own a second graph. Contribute
 .. code:: php
 
    use Infocyph\InterMix\DI\ContainerBuilder;
+   use Infocyph\Webrick\Request\Request;
    use Infocyph\Webrick\Webrick;
 
-   $builder = ContainerBuilder::create('application');
+   $builder = ContainerBuilder::create('application')->input(Request::class);
    Webrick::contributeTo($builder, $webrickProviders);
    // Host registrations continue on the same $builder.
 
@@ -52,20 +53,17 @@ Do not make Webrick import providers during kernel construction. Do not use a pr
 Development boot
 ----------------
 
-Development/registrar mode receives an explicit application ``Invoker``:
+Development/registrar mode receives an explicit application ``RuntimeContainerInterface``:
 
 .. code:: php
 
-   use Infocyph\InterMix\DI\Invoker;
-
-   $container = $builder->development();
-   $invoker = Invoker::with($container);
+   $container = $builder->build();
 
    $kernel = RouterKernel::bootWithRegistrar(
        log: $logger,
        matcher: GeneratedMatcher::make(),
        register: $register,
-       invoker: $invoker,
+       invoker: $container,
        preGlobal: $preGlobal,
        postGlobal: $postGlobal,
    );
@@ -102,12 +100,41 @@ Build Webrick and InterMix as one release set with ``ReleaseCompiler``. At worke
 
 ``ReleaseManifestLoader`` prefers the OPcache-friendly PHP runtime manifest emitted beside the JSON manifest and falls back to JSON when necessary. Webrick 6 uses ``intermix.digest`` and ``webrick.fingerprint`` as the trusted prevalidated runtime inputs; the old SHA-256 field names are not supported.
 
-Use fully qualified class names or descriptive nonnumeric service IDs such as
-``service.789`` in the compiled InterMix graph. Numeric-only IDs can become
-integer keys in manifest maps and are rejected by InterMix 11.1's compiled
-metadata loader. Webrick preserves the service IDs supplied by the host.
+InterMix 11.2 compiles the declared ``Request`` input natively. A graph without
+runtime factories or unsupported hooks can load through
+``ContainerBuilder::loadProductionArtifact($path, $expectedGraphIdentity)``
+without reconstructing the builder. Obtain the expected graph identity from
+trusted deployment metadata, and pass the builder's configured environment as
+the third argument when it has one. Graphs requiring dynamic fallback continue to use
+the matching host builder and its release identity. Numeric service IDs are
+supported and remain unchanged across compilation and loading.
+
+Rebuild the coordinated InterMix and Webrick artifacts when upgrading to InterMix
+11.2: its compiler ABI is now 3, so older InterMix artifacts cannot be reused.
+Webrick's coordinated manifest format remains 3; these are separate contracts.
 
 The environment/fingerprint values validate the artifact. They do not make Webrick choose a runtime.
+
+Host-controlled parameter binding
+---------------------------------
+
+Automatic conversion of class-typed route arguments is opt-in on the host builder:
+
+.. code:: php
+
+   $builder->enableAutoBind();
+
+Enable it before calling ``build()`` or compiling the release. A parameter class
+can define ``public static fromBoundValue(mixed $value): self`` to convert its
+route value. Development and compiled dispatch use the host's frozen setting;
+Webrick does not enable conversion itself. Compatible objects pass through, and
+union, intersection and variadic parameters retain InterMix's normal rules.
+Conversion exceptions reach Webrick's existing error boundary; the host controls
+their HTTP mapping with ``ErrorHandler``.
+
+Compatible named primitive bindings resolve even when automatic class conversion
+is disabled. Host values such as ``0``, ``false`` and nullable ``null`` override
+optional handler defaults consistently in development and compiled execution.
 
 Standalone synchronous SAPI
 ---------------------------

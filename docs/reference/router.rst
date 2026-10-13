@@ -1,23 +1,22 @@
 Router API Reference
 ====================
 
-Webrick 5 separates route registration from strict compiled production execution.
+Webrick 6 separates route registration from strict compiled production execution.
 
 Development/registrar kernel
 ----------------------------
 
-``RouterKernel`` is the explicit development path. The host supplies the InterMix ``Invoker``; Webrick does not create or select a container.
+``RouterKernel`` is the explicit development path. The host supplies the InterMix ``RuntimeContainerInterface``; Webrick does not create or select a container.
 
 .. code:: php
 
-   use Infocyph\InterMix\DI\Invoker;
    use Infocyph\Webrick\Response\Response;
    use Infocyph\Webrick\Router\Definition\Registrar;
    use Infocyph\Webrick\Router\Kernel\RouterKernel;
    use Infocyph\Webrick\Router\Matching\GeneratedMatcher;
    use Psr\Log\NullLogger;
 
-   $invoker = Invoker::with($applicationBuilder->development());
+   $container = $applicationBuilder->build();
 
    $kernel = RouterKernel::bootWithRegistrar(
        log: new NullLogger(),
@@ -25,7 +24,7 @@ Development/registrar kernel
        register: static function (Registrar $routes): void {
            $routes->get('/users/{id:int}', [UserController::class, 'show'], 'users.show');
        },
-       invoker: $invoker,
+       invoker: $container,
    );
 
 ``RouterKernel::bootWithRegistrar()``
@@ -57,7 +56,7 @@ Development/registrar kernel
 | ``debug``                              | enable diagnostic error detail for development                           |
 +----------------------------------------+--------------------------------------------------------------------------+
 
-There is no ``routeCache``, provider-import, container-selection, request-scope toggle, alias-fallback, or per-request PHP-error switch on the v5 development kernel. Every ``handle()`` executes inside an InterMix request scope seeded with the active ``Request``.
+There is no ``routeCache``, provider-import, container-selection, request-scope toggle, alias-fallback, or per-request PHP-error switch on the v6 development kernel. Every ``handle()`` executes inside an InterMix request scope seeded with the active ``Request``.
 
 Compiled production kernel
 --------------------------

@@ -184,7 +184,7 @@ This means matcher choice does not remove or replace:
 
 - named route parameters and the request ``route_params`` attribute;
 - compiled direct-handler argument ordering through ``ExecutionPlan::routeArguments``;
-- InterMix ``resolveNow()`` invocation with named route parameters;
+- InterMix ``invoke()`` invocation with named route parameters;
 - named ``request`` injection when a compiled InterMix invocation requires it;
 - middleware execution and middleware access to route parameters;
 - handler/controller/container resolution, route aliases/names or URL-generation metadata;

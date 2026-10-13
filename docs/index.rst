@@ -13,7 +13,7 @@ What you get
 - Middleware: explicit pre-global/post-global stacks, aliases, tagged application middleware and compiled execution plans.
 - Responses: JSON, plaintext, redirects, streaming, ranged files/downloads and views.
 - Runtime boundaries: synchronous emitters, direct persistent-runtime adapters, and an optional Runwire 2.1.1+ application/runtime bridge for native/prefork or supported host drivers.
-- DI lifecycle: the application owns InterMix; Webrick receives the host ``Invoker`` in development and the host ``ProductionContainer`` in compiled production.
+- DI lifecycle: the application owns InterMix; Webrick receives the host ``RuntimeContainerInterface`` in development and the host ``ProductionContainer`` in compiled production.
 - Deployment artifacts: matcher caches are independent from the strict compiled Webrick + InterMix production release artifact.
 
 Install
@@ -26,11 +26,10 @@ Install
 Development boot
 ----------------
 
-``RouterKernel`` is the registrar/development kernel. The host owns the InterMix graph and gives Webrick an ``Invoker``.
+``RouterKernel`` is the registrar/development kernel. The host owns the InterMix graph and gives Webrick a ``RuntimeContainerInterface``.
 
 .. code:: php
 
-   use Infocyph\InterMix\DI\Invoker;
    use Infocyph\Webrick\Request\Request;
    use Infocyph\Webrick\Response\Emitter\DefaultEmitter;
    use Infocyph\Webrick\Response\Response;
@@ -42,8 +41,7 @@ Development boot
    use Psr\Log\NullLogger;
 
    $builder = Webrick::standaloneDevelopment();
-   $container = $builder->development();
-   $invoker = Invoker::with($container);
+   $container = $builder->build();
 
    $kernel = RouterKernel::bootWithRegistrar(
        log: new NullLogger(),
@@ -52,7 +50,7 @@ Development boot
            unset($registrar);
            Route::get('/', static fn() => Response::plaintext('Hello Webrick', 200), 'home');
        },
-       invoker: $invoker,
+       invoker: $container,
    );
 
    $request = Request::fromGlobals();
