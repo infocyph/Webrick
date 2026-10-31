@@ -13,7 +13,7 @@ Install
 Core runtime dependencies are intentionally small:
 
 - PHP 8.4+
-- InterMix ``^11.2``
+- InterMix ``^11.2.1``
 - PSR cache/log contracts used by portable integrations
 
 ArrayKit is not a mandatory Webrick dependency. CacheLayer, PSR-7 interfaces/factories, OpenTelemetry SDK/exporters and persistent-server packages remain optional.

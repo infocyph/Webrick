@@ -1,12 +1,12 @@
 Runwire Runtime Performance
 ===========================
 
-Webrick 6 carries forward a focused PHPBench fixture for the optional Runwire 2.1 runtime bridge in ``benchmarks/RunwireRuntimeBench.php``. The purpose is to keep the adapter, request-promotion, scope and response-writing costs visible without adding a second benchmark harness or a production dependency.
+Webrick 6 carries forward a focused PHPBench fixture for the optional Runwire 3 runtime bridge in ``benchmarks/RunwireRuntimeBench.php``. The purpose is to keep the adapter, request-promotion, scope and response-writing costs visible without adding a second benchmark harness or a production dependency.
 
 Measurement setup
 -----------------
 
-The release-validation measurements below came from the existing PHPForge benchmark job on Ubuntu 24.04 with Xdebug disabled. PHPForge invoked PHPBench with:
+The historical Runwire 2.1 release-validation measurements below came from the existing PHPForge benchmark job on Ubuntu 24.04 with Xdebug disabled. PHPForge invoked PHPBench with:
 
 .. code:: text
 
@@ -59,7 +59,7 @@ The measurements support the current architecture rather than a new optimization
 - fixed and small streamed responses remain bounded adapter operations and do not introduce a second output queue;
 - the benchmark exposed no isolated regression that justified adding a cache, scheduler, alternate scope store or special response pipeline.
 
-Accordingly, Point 19 required **no production-code tuning**. Preserving the existing lazy-request and zero-scope paths is preferable to adding complexity without a measured benefit.
+That earlier release review required **no production-code tuning**. Preserving the existing lazy-request and zero-scope paths is preferable to adding complexity without a measured benefit.
 
 Benchmark limits
 ----------------
