@@ -7,7 +7,7 @@ Serve cached responses for safe requests (typically **GET/HEAD**) without runnin
 
 .. code:: bash
 
-   composer require infocyph/cachelayer:^4.0
+   composer require infocyph/cachelayer:^4.0.2
 
 Core routing does not load, initialize, or require CacheLayer. Applications may pass any compatible ``Psr\Cache\CacheItemPoolInterface`` explicitly.
 

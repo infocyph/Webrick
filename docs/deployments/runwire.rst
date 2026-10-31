@@ -1,9 +1,9 @@
 Runwire Runtime
 ===============
 
-Webrick 6 can run behind Runwire 2.1.1 or later through its optional native runtime bridge. Runwire is **not** a production dependency of Webrick: ordinary SAPI/shared-hosting installs and Webrick's direct Swoole/OpenSwoole, RoadRunner and Workerman adapters remain first-class paths.
+Webrick 6 can run behind Runwire 3.0 or later through its optional native runtime bridge. Runwire is **not** a production dependency of Webrick: ordinary SAPI/shared-hosting installs and Webrick's direct Swoole/OpenSwoole, RoadRunner and Workerman adapters remain first-class paths.
 
-Use at least Runwire 2.1.1 for the corrected HTTP/1, HTTP/2 and HTTP/3 graceful-drain admission boundaries. Runwire owns worker replacement and drain deadlines; Webrick uses the host's normal application lifecycle.
+Use Runwire 3.0 or later for the corrected HTTP/1, HTTP/2 and HTTP/3 graceful-drain admission boundaries. Runwire owns worker replacement and drain deadlines; Webrick uses the host's normal application lifecycle.
 
 Choose the Runwire bridge when the application wants Runwire to own runtime selection, worker/process lifecycle, request cancellation/deadlines, drain/shutdown behavior and runtime metrics while Webrick remains the HTTP routing/application kernel.
 
@@ -112,7 +112,7 @@ Response completion
 
 This prevents duplicate ``end()`` calls and keeps lazy/streamed Webrick response production inside the owning request scope until body production finishes.
 
-Runwire 2.1 terminal observers remain authoritative for lifecycle completion:
+Runwire 3 terminal observers remain authoritative for lifecycle completion:
 writer ``onTerminal()`` observers fire exactly once, including late
 registration after the response has already ended. ``RunwireRuntimeApplication``
 also forwards Runwire's ``healthy()`` and ``healthFailure()`` state so host
@@ -132,7 +132,7 @@ Ordinary routing and request creation still do not consume the body. APIs that e
 
 ``application/x-www-form-urlencoded`` payloads are parsed lazily by Webrick's request layer when the selected runtime did not already provide parsed form data. If form ``_method`` routing is explicitly enabled, the Runwire adapter consumes that URL-encoded form only because routing itself requires it, then replays the same bytes/parsed values into the eventual Webrick ``Request`` so the body is not lost.
 
-Native Runwire ``multipart/form-data`` has a narrower Webrick 6 boundary. Runwire 2.1 exposes the multipart payload as a bounded request stream; Webrick does **not** add a second multipart decoder, temporary-file manager or upload-storage policy in this runtime adapter. The raw multipart body remains available to the consuming framework/application decoder. Direct adapters such as SAPI, Swoole/OpenSwoole, Workerman or RoadRunner may continue to pass host-parsed uploaded-file structures when their native request API already provides them. A future Webrick-native multipart subsystem, if desired, should be designed and security-reviewed independently rather than hidden inside the Runwire transport adapter.
+Native Runwire ``multipart/form-data`` has a narrower Webrick 6 boundary. Runwire 3 exposes the multipart payload as a bounded request stream; Webrick does **not** add a second multipart decoder, temporary-file manager or upload-storage policy in this runtime adapter. The raw multipart body remains available to the consuming framework/application decoder. Direct adapters such as SAPI, Swoole/OpenSwoole, Workerman or RoadRunner may continue to pass host-parsed uploaded-file structures when their native request API already provides them. A future Webrick-native multipart subsystem, if desired, should be designed and security-reviewed independently rather than hidden inside the Runwire transport adapter.
 
 Streaming, backpressure and cancellation
 ----------------------------------------

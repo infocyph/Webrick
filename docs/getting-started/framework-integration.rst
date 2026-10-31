@@ -198,7 +198,7 @@ Persistent runtimes
 
 Swoole/OpenSwoole, RoadRunner and Workerman can continue to use Webrick's direct classes under ``Runtime\Http``. The direct runtime adapter is chosen once at worker bootstrap and owns native request/response handles and transport capabilities.
 
-Runwire 2.1.1 or later is an optional alternative host runtime. When the host selects Runwire, compose ``RunwireRuntimeApplicationFactory`` -> ``RunwireRuntimeApplication`` -> ``RuntimeServer`` -> ``RunwireRuntimeAdapter`` around the same compiled Webrick kernel. Runwire owns runtime selection/lifecycle/cancellation/deadlines/drain/metrics; Webrick owns routing, response semantics and exactly-once writer completion. See `Runwire Runtime <../deployments/runwire.rst>`__.
+Runwire 3.0 or later is an optional alternative host runtime. When the host selects Runwire, compose ``RunwireRuntimeApplicationFactory`` -> ``RunwireRuntimeApplication`` -> ``RuntimeServer`` -> ``RunwireRuntimeAdapter`` around the same compiled Webrick kernel. Runwire owns runtime selection/lifecycle/cancellation/deadlines/drain/metrics; Webrick owns routing, response semantics and exactly-once writer completion. See `Runwire Runtime <../deployments/runwire.rst>`__.
 
 Webrick opens an InterMix request scope only when the compiled execution plan needs one. Native request/response state remains request-local and must never be kept in singleton middleware or static current-request/current-response fields.
 

@@ -12,7 +12,7 @@ What you get
 - Error boundary: typed HTTP exceptions, negotiated error rendering and an optional process-level ``PhpErrorBridge``.
 - Middleware: explicit pre-global/post-global stacks, aliases, tagged application middleware and compiled execution plans.
 - Responses: JSON, plaintext, redirects, streaming, ranged files/downloads and views.
-- Runtime boundaries: synchronous emitters, direct persistent-runtime adapters, and an optional Runwire 2.1.1+ application/runtime bridge for native/prefork or supported host drivers.
+- Runtime boundaries: synchronous emitters, direct persistent-runtime adapters, and an optional Runwire 3.0+ application/runtime bridge for native/prefork or supported host drivers.
 - DI lifecycle: the application owns InterMix; Webrick receives the host ``RuntimeContainerInterface`` in development and the host ``ProductionContainer`` in compiled production.
 - Deployment artifacts: matcher caches are independent from the strict compiled Webrick + InterMix production release artifact.
 
