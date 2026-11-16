@@ -50,6 +50,7 @@ final readonly class RiskAdmissionMiddleware
      * @param callable(Request):Response $next
      * @throws UnexpectedValueException For invalid evaluator or renderer results.
      * @throws \RuntimeException For response serialization failures.
+     * @throws InvalidArgumentException For invalid HTTP response status or headers.
      */
     public function __invoke(Request $request, callable $next): Response
     {

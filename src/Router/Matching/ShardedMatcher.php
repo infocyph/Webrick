@@ -260,7 +260,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     }
 
     /**
-     * @return array{string,string|null}|null
+     * @return array{0:string,1:?string}|null
      * @throws \RuntimeException
      */
     public function resolveAlias(string $name): ?array
