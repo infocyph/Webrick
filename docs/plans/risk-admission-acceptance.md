@@ -26,13 +26,15 @@ Test observable security/HTTP behavior and real provider boundaries. Unit double
 | A15 | New browser, common/shared JA4 and changing IP/JA4 | No automatic denial/trust from fingerprint alone; no cross-account grant; calibrate shared-signal effects in shadow data. |
 | A16 | Payload/schema bounds, account/IP/tenant attempt counters | Oversize/invalid input rejected before expensive verification; key scope, TTLs and cardinality are bounded. Existing request body is not parsed twice. |
 | A17 | Parallel valid clearance use across independent processes | Exactly one successful consumption inside the backend's documented consistency domain. Invalid proofs cannot burn someone else's valid clearance. |
-| A18 | Repeated/concurrent successful validation of one CAPTCHA token | At most one usable clearance is issued by the reference composition; verify provider hostname/action and request binding. Do not rely solely on provider replay propagation. |
+| A18 | Repeated/concurrent successful validation of one CAPTCHA token | At most one proof-based admission in the direct flow, or at most one usable clearance in the optional exchange flow. Deduplicate across accepting routes/accounts/tenants sharing the provider proof domain; verify hostname/action and configured bindings. Do not rely solely on provider replay propagation. |
 | A19 | Expiry boundary, excessive TTL, clock movement, bad encoding and wrong signing purpose/key | Defined deterministic rejection, one captured wall-time reading per verification and explicit key-rotation behavior. |
 | A20 | Attacker-owned trust cookie used against another account/tenant; revoked/stolen/replayed cookie | No cross-account benefit; expiry/revocation and limited replay/possession assumptions are explicit. Browser responses do not expose HttpOnly trust material in JSON. |
 | A21 | Redis outage, timeout, eviction/restart, failover, unsupported atomic capability and script failure | No silent in-memory fallback or security bypass. Reject safely; document durability/eviction requirements and the consistency guarantee actually tested. Cluster topology is tested only if claimed. |
-| A22 | Turnstile latency, oversized/malformed response, 4xx/5xx, timeout or cancellation | Bounded I/O, controlled unavailable/failed challenge result, no blind retry or minting after failure/cancellation. Challenge endpoint itself is admission-limited. |
+| A22 | Turnstile latency, oversized/malformed response, 4xx/5xx, timeout or cancellation | Bounded I/O, controlled unavailable/failed challenge result, no blind retry or admission/minting after failure/cancellation. Verification requests and an optional challenge endpoint are admission-limited. |
 | A23 | Authentication-pool saturation and expired-counter regression | Host capacity remains bounded. Fixtures demonstrate why a shared expiring counter and stale decrement do not provide permit ownership. No global-semaphore claim from local Runwire limits. |
 | A24 | Logs, metrics, public errors, secrets and cache interaction | Bounded reason codes, no raw credentials/tokens/keys, generic default responses, no shared-cache storage of admission rejections/trust responses; authentication routes exclude inappropriate response-cache middleware. |
+| A25 | Stateless REST flow across workers and clients | Initial login returns challenge-required JSON; the frontend retries with a provider token in the login body; verification and atomic replay claim precede the handler. No PHP session/cookie/sticky-worker dependency. Wrong-password/ambiguous-response retries need a fresh proof; proofs cannot bypass hard deny or other admission limits. Shadow does not redeem live tokens. Test body parsing once, host CORS and the optional exchange flow separately. |
+| A26 | Host-configured routes and URLs | Identical behavior on different host-selected protected/exchange paths and configured provider endpoints. No automatic login/challenge route, hardcoded Webrick URL, or path-specific enforcement branch. Host renderer uses configured/router-generated client URLs. Invalid provider configuration fails before serving requests; untrusted request values cannot change verification destination or redirect provider secrets. |
 
 Reference policy tests establish the documented example's behavior, not correctness of arbitrary host callbacks. Multi-host or provider-failover guarantees must name the tested backend/topology and durability prerequisites. Do not label an in-process fake as proof of distributed correctness.
 
@@ -75,7 +77,7 @@ The existing certification's ordinary routes remain required regression coverage
 
 - Local source/API inventory and engineering rulings are in the [implementation plan](risk-admission-plan.md).
 - [Cloudflare JA4 documentation](https://developers.cloudflare.com/bots/additional-configurations/ja3-ja4-fingerprint/): fingerprints group TLS clients and may be absent. Treat as a signal, not account or device identity.
-- [Cloudflare Turnstile validation](https://developers.cloudflare.com/turnstile/get-started/server-side-validation/#token-reuse-and-network-convergence): closely spaced validations can succeed before redemption state converges; local deduplication is necessary for a stronger one-clearance guarantee. Recheck provider behavior before implementing retry/redemption logic.
+- [Cloudflare Turnstile validation](https://developers.cloudflare.com/turnstile/get-started/server-side-validation/#token-reuse-and-network-convergence): closely spaced validations can succeed before redemption state converges; local deduplication is necessary for the stronger one-admission/one-clearance guarantee. Recheck provider lifetime and behavior before implementing retry/redemption logic.
 - [Redis Cluster specification](https://redis.io/docs/latest/operate/oss_and_stack/reference/cluster-spec/): applicable multi-key operations have slot/topology constraints. Backend durability, atomicity and eviction assumptions must be documented rather than generalized to all cache providers.
 
 ## Execution ledger
@@ -84,9 +86,9 @@ Use this table for actual results; replace pending only with commands, covered r
 
 | Gate | Required evidence | Current status |
 | --- | --- | --- |
-| P0 planning and links | Read current owners/APIs; both documents link correctly. | Verified on the planning working tree: 14 local links, A01-A24 coverage and explicit engineering rule references checked; `git diff --check` passed. PHPForge doctor healthy; config resolution inspected; complexity 80/12 confirmed. |
+| P0 planning and links | Read current owners/APIs; both documents link correctly. | Planning links and A01-A26 matrix checked; stateless CAPTCHA flow, configurable URLs and provider semantics reviewed. PHPForge doctor/configuration were inspected during initial planning; implementation gates remain pending. |
 | A01-A13 middleware/runtime contracts | Focused tests plus registrar/compiled/native consumer parity. | Pending implementation. |
-| A14-A24 host security composition | Executable example tests, adversarial cases and real shared-backend concurrency. | Pending implementation. |
+| A14-A26 host security composition | Executable example tests, adversarial cases and real shared-backend concurrency. | Pending implementation. |
 | Full local QA | Process review, detail suite, security/static checks and final guard. | Pending implementation. |
 | Docs/archive/consumers | Strict docs, archive inventory and fresh no-dev consumers. | Pending implementation. |
 | Matched HTTP/worker qualification | Raw same-environment results and required soak. | Pending implementation. |
