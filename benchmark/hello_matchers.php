@@ -22,6 +22,7 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
 use Infocyph\Webrick\Router\Url\SignedUrlConfig;
 use Infocyph\Webrick\Support\RouteCache;
 use Psr\Log\NullLogger;
+use RuntimeException;
 
 require dirname(__DIR__) . '/vendor/autoload.php';
 require_once dirname(__DIR__) . '/benchmarks/Support/BenchmarkSupport.php';
