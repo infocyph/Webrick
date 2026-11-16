@@ -101,7 +101,10 @@ final class PreRoutingGateIntegrationTest extends TestCase
         }
     }
 
-    /** @param list<string> $bypassPaths @return array{0:CompiledRouterKernel,1:list<string>} */
+    /**
+     * @param list<string> $bypassPaths
+     * @return array{0:CompiledRouterKernel,1:list<string>}
+     */
     private static function kernel(MemoryMaintenanceState $state, array $bypassPaths = []): array
     {
         [$intermixPath, $routerPath] = self::artifactPaths();

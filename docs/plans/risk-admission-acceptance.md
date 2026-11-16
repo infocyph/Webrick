@@ -235,3 +235,9 @@ No commit, tag, merge, publication, provider deployment or end-to-end security c
 - [CI 43858150380](https://github.com/infocyph/Webrick/actions/runs/43858150380), `4d9cd21fe16d7a3d11e8e8d4220c33b269d355d8`: 4/4 PHP QA passed; clean install passed; **PHPStan 424 / Psalm 1,302** strict failures. Previous Psalm count was 1,317, an observed 15-issue net improvement, not the full 113 targeted error sites. Benchmarks to be checked at run completion.
 - Batch 18 changes only four existing test files: 23 JSON decoded-response array guards, one strict trace-ID string guard, and nested route-map guards. Guard failures explicitly fail tests, preserving all previous expectations while enabling static analysis to recognize validated array offset access. CI and analyzer deltas **pending on new SHA**.
 - Security/runtime/compiled A01-A26, real shared backend, archive, consumer and soak evidence remain pending. Keep PR #59 draft/unmerged; next batches must append evidence below this record.
+
+### Batch 18 verified / Batch 19 correctly parsed fixture return type (2026-11-16)
+
+- [Run 43858798125](https://github.com/infocyph/Webrick/actions/runs/43858798125) at `48460033f2698f15d9648eae5dc714321452a31b` verified 4/4 QA lanes, clean installation and static-analysis counts of **PHPStan 385 / Psalm 1,302**. Previous PHPStan was 424: 39 fewer findings from 23 explicit decoded JSON shape guards in four test files. Psalm unchanged; both analyzer gates fail. Benchmark conclusions still to verify.
+- Batch 19 corrects one malformed combined PHPDoc on `PreRoutingGateIntegrationTest::kernel()` to restore its actual `array{CompiledRouterKernel,list<string>}` tuple return contract. Existing runtime code and tests unchanged; 23 PHPStan findings associated with this lost type are targeted, not yet verified.
+- Need hosted PHPForge CI, review feedback and benchmark checks on the new revision; A01-A26 and final release gates remain open, draft PR #59 unmerged.
