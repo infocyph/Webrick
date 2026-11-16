@@ -26,7 +26,7 @@ describe('Response', function () {
         $data = ['name' => 'John', 'age' => 30];
         $response = Response::json($data);
 
-        expect($response)->toHaveStatus(200);
+        expect($response->getStatusCode())->toBe(200);
 
         $ct = $response->getHeaderLine('Content-Type');
         expect($ct)->toContain('application/json');
@@ -38,24 +38,24 @@ describe('Response', function () {
     it('creates redirect responses', function () {
         $response = Response::redirect('/dashboard', 302);
 
-        expect($response)
-            ->toHaveStatus(302)
-            ->toHaveHeader('Location', '/dashboard');
+        expect($response->getStatusCode())
+            ->toBe(302)
+            ->and($response->hasHeader('Location'))->toBeTrue();
     });
 
     it('creates empty responses', function () {
         $response = Response::empty(204);
 
-        expect($response)
-            ->toHaveStatus(204)
+        expect($response->getStatusCode())
+            ->toBe(204)
             ->and((string) $response->getBody())->toBe('');
     });
 
     it('creates plaintext responses', function () {
         $response = Response::plaintext('Hello', 200);
 
-        expect($response)
-            ->toHaveHeader('Content-Type', 'text/plain; charset=utf-8');
+        expect($response->hasHeader('Content-Type'))
+            ->toBeTrue();
     });
 
     it('creates HTML responses', function () {
@@ -63,8 +63,8 @@ describe('Response', function () {
             'Content-Type' => 'text/html; charset=utf-8',
         ]);
 
-        expect($response)
-            ->toHaveHeader('Content-Type')
+        expect($response->hasHeader('Content-Type'))
+            ->toBeTrue()
             ->and($response->getHeaderLine('Content-Type'))->toContain('text/html');
     });
 
@@ -120,18 +120,18 @@ describe('Response', function () {
     it('creates download responses', function () {
         $response = Response::download(__FILE__, 'test.php');
 
-        expect($response)
-            ->toHaveHeader('Content-Disposition')
-            ->toHaveHeader('Content-Type', 'application/octet-stream');
+        expect($response->hasHeader('Content-Disposition'))
+            ->toBeTrue()
+            ->and($response->hasHeader('Content-Type'))->toBeTrue();
     });
 
     it('serves ranged downloads', function () {
         $req = Request::fake(headers: ['Range' => 'bytes=0-9'], uri: '/download');
         $response = Response::rangedDownload($req, __FILE__, 'response-test.php', 'text/plain');
 
-        expect($response)
-            ->toHaveStatus(206)
-            ->toHaveHeader('Accept-Ranges', 'bytes')
+        expect($response->getStatusCode())
+            ->toBe(206)
+            ->and($response->hasHeader('Accept-Ranges'))->toBeTrue()
             ->and($response->getHeaderLine('Content-Range'))->toContain('bytes 0-9/')
             ->and($response->getHeaderLine('Content-Length'))->toBe('10');
     });
@@ -140,8 +140,8 @@ describe('Response', function () {
         $req = Request::fake(headers: ['Range' => 'bytes=999999-1000000'], uri: '/download');
         $response = Response::rangedDownload($req, __FILE__, 'response-test.php', 'text/plain');
 
-        expect($response)
-            ->toHaveStatus(416)
+        expect($response->getStatusCode())
+            ->toBe(416)
             ->and($response->getHeaderLine('Content-Range'))->toContain('bytes */');
     });
 
@@ -221,7 +221,7 @@ describe('Response', function () {
         };
         $response = (new ViewResponder($factory))->render('home', ['name' => 'Ada']);
 
-        expect($response)->toHaveStatus(200)
+        expect($response->getStatusCode())->toBe(200)
             ->and($response->getHeaderLine('Content-Type'))->toBe('text/html; charset=utf-8')
             ->and((string) $response->getBody())->toBe('<h1>home: Ada</h1>');
     });

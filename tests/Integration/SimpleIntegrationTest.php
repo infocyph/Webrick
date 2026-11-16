@@ -40,7 +40,7 @@ describe('Simple Integration Tests', function () {
         $request = mockRequest('GET', '/json');
         $response = $this->kernel->handle($request);
 
-        expect($response)->toHaveStatus(200);
+        expect($response->getStatusCode())->toBe(200);
 
         $contentType = $response->getHeaderLine('Content-Type');
         expect($contentType)->toContain('application/json');
@@ -53,7 +53,7 @@ describe('Simple Integration Tests', function () {
         $request = mockRequest('GET', '/hello/Alice');
         $response = $this->kernel->handle($request);
 
-        expect($response)->toHaveStatus(200);
+        expect($response->getStatusCode())->toBe(200);
 
         $body = json_decode((string) $response->getBody(), true);
         expect($body)
@@ -67,6 +67,6 @@ describe('Simple Integration Tests', function () {
 
         expect($response->getStatusCode())
             ->toBeIn([302, 301, 307, 308])
-            ->and($response)->toHaveHeader('Location');
+            ->and($response->hasHeader('Location'))->toBeTrue();
     });
 });

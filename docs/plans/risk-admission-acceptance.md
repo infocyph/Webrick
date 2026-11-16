@@ -168,3 +168,9 @@ No commit, tag, merge, publication, provider deployment or end-to-end security c
 - Previous current-sha evidence: [CI 43837345213](https://github.com/infocyph/Webrick/actions/runs/43837345213), four PHP 8.4/8.5 QA lanes and both benchmarks passed; PHPStan 619, Psalm 1,765 issues. A01/A03/A07 registrar fixture assertions now pass, though full compiled/host acceptance remains pending.
 - New changes: Psalm-specific named alias declarations reflecting existing handler and option semantics in `Registrar` and `Router`; precise PSR cache iterable value PHPDoc on benchmark fixture. Target five outstanding PR feedback threads, **unverified** until a fresh hosted analyzer run.
 - A09-A26, upstream optional-provider security, full non-dev consumer tests, load/soak and final candidate checks remain pending. No full-green or release-ready claim.
+
+### Batch 08 — 106 static-type-visible test assertions (2026-11-16)
+
+- Evidence base: `c1376b46f1b8a8d5a6c7a72d2f1663ba95a3b386`, [run 43837944076](https://github.com/infocyph/Webrick/actions/runs/43837944076): static analysis failed at **618 PHPStan / 1,766 Psalm** while PHP 8.4/8.5 QA and benchmark lanes passed.
+- Updated 14 tests in a single remediation batch: replaced 106 dynamic response status/header macros with equivalent typed status/header-presence assertions; retained execution ordering for middleware attempts, original expected status values, and chained assertions. Source files and detector rules unchanged.
+- Goal: remove related `Pest\\Expectation::toHaveStatus/toHaveHeader` `method.notFound` findings; actual analyzer delta **pending** fresh CI and PR feedback. Existing A01-A26 gates and external shared-backend/soak qualifications unchanged.

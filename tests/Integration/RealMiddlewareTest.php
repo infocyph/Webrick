@@ -20,8 +20,8 @@ describe('Real Middleware Integration', function () {
         $request = mockRequest('GET', '/ping');
         $response = $kernel->handle($request);
 
-        expect($response)
-            ->toHaveStatus(200)
+        expect($response->getStatusCode())
+            ->toBe(200)
             ->and((string) $response->getBody())->toBe('"pong"');
         // JSON-encoded
     });
@@ -40,8 +40,8 @@ describe('Real Middleware Integration', function () {
 
         $response = $kernel->handle($request);
 
-        expect($response)
-            ->toHaveStatus(200)
+        expect($response->getStatusCode())
+            ->toBe(200)
             ->and($response->getHeaderLine('Content-Type'))->toContain('application/json');
     });
 
@@ -68,7 +68,7 @@ describe('Real Middleware Integration', function () {
 
         $response = $kernel->handle($request);
 
-        expect($response)->toHaveStatus(200);
+        expect($response->getStatusCode())->toBe(200);
 
         $body = json_decode((string) $response->getBody(), true);
         expect($body['updated'])

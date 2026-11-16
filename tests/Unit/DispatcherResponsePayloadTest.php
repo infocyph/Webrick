@@ -84,6 +84,6 @@ test('dispatcher preserves existing non-array route result behavior', function (
 
     $response = dispatchResponsePayloadForTest(Response::plaintext('already a response', 202));
 
-    expect($response)->toHaveStatus(202)
+    expect($response->getStatusCode())->toBe(202)
         ->and((string) $response->getBody())->toBe('already a response');
 });

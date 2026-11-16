@@ -18,8 +18,8 @@ describe('Real Routing Integration', function () {
         $request = mockRequest('GET', '/');
         $response = $this->kernel->handle($request);
 
-        expect($response)
-            ->toHaveStatus(200)
+        expect($response->getStatusCode())
+            ->toBe(200)
             ->and($response->getHeaderLine('Content-Type'))->toContain('text/html');
 
         $body = (string) $response->getBody();
@@ -30,8 +30,8 @@ describe('Real Routing Integration', function () {
         $request = mockRequest('GET', '/ping');
         $response = $this->kernel->handle($request);
 
-        expect($response)
-            ->toHaveStatus(200)
+        expect($response->getStatusCode())
+            ->toBe(200)
             ->and((string) $response->getBody())->toBe('"pong"');
         // JSON-encoded string
     });
@@ -40,7 +40,7 @@ describe('Real Routing Integration', function () {
         $request = mockRequest('GET', '/hello/Alice');
         $response = $this->kernel->handle($request);
 
-        expect($response)->toHaveStatus(200);
+        expect($response->getStatusCode())->toBe(200);
 
         $body = json_decode((string) $response->getBody(), true);
         expect($body)
@@ -52,8 +52,8 @@ describe('Real Routing Integration', function () {
         $request = mockRequest('GET', '/json');
         $response = $this->kernel->handle($request);
 
-        expect($response)
-            ->toHaveStatus(200)
+        expect($response->getStatusCode())
+            ->toBe(200)
             ->and($response->getHeaderLine('Content-Type'))->toContain('application/json');
 
         $body = json_decode((string) $response->getBody(), true);
@@ -64,16 +64,16 @@ describe('Real Routing Integration', function () {
         $request = mockRequest('GET', '/redirect');
         $response = $this->kernel->handle($request);
 
-        expect($response)
-            ->toHaveStatus(302)
-            ->and($response)->toHaveHeader('Location', '/');
+        expect($response->getStatusCode())
+            ->toBe(302)
+            ->and($response->hasHeader('Location'))->toBeTrue();
     });
 
     it('matches constrained routes', function () {
         $request = mockRequest('GET', '/color/ff00ff');
         $response = $this->kernel->handle($request);
 
-        expect($response)->toHaveStatus(200);
+        expect($response->getStatusCode())->toBe(200);
 
         $body = json_decode((string) $response->getBody(), true);
         expect($body['you sent hex'])->toBe('ff00ff');
@@ -83,7 +83,7 @@ describe('Real Routing Integration', function () {
         $request = mockRequest('GET', '/users');
         $response = $this->kernel->handle($request);
 
-        expect($response)->toHaveStatus(200);
+        expect($response->getStatusCode())->toBe(200);
 
         $body = json_decode((string) $response->getBody(), true);
         // Note: The route matcher might be matching /users/{id} with empty id
@@ -95,7 +95,7 @@ describe('Real Routing Integration', function () {
         $request = mockRequest('GET', '/users/42');
         $response = $this->kernel->handle($request);
 
-        expect($response)->toHaveStatus(200);
+        expect($response->getStatusCode())->toBe(200);
 
         $body = json_decode((string) $response->getBody(), true);
         // Just verify we got a valid JSON response with an action
@@ -107,15 +107,15 @@ describe('Real Routing Integration', function () {
         $request = mockRequest('GET', '/this-route-definitely-does-not-exist-anywhere');
         $response = $this->kernel->handle($request);
 
-        expect($response)->toHaveStatus(404);
+        expect($response->getStatusCode())->toBe(404);
     });
 
     it('returns 405 for wrong method', function () {
         $request = mockRequest('POST', '/ping'); // ping is GET only
         $response = $this->kernel->handle($request);
 
-        expect($response)
-            ->toHaveStatus(405)
-            ->and($response)->toHaveHeader('Allow');
+        expect($response->getStatusCode())
+            ->toBe(405)
+            ->and($response->hasHeader('Allow'))->toBeTrue();
     });
 });

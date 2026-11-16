@@ -44,7 +44,7 @@ describe('Routing Regressions', function () {
 
         $response = $kernel->handle($request);
 
-        expect($response)->toHaveStatus(200)
+        expect($response->getStatusCode())->toBe(200)
             ->and((string) $response->getBody())->toBe('updated');
     });
 
@@ -66,7 +66,7 @@ describe('Routing Regressions', function () {
         $response = $kernel->handle(mockRequest('OPTIONS', '/resource'));
         $allow = array_map(trim(...), explode(',', $response->getHeaderLine('Allow')));
 
-        expect($response)->toHaveStatus(204)
+        expect($response->getStatusCode())->toBe(204)
             ->and($allow)->toContain('GET', 'HEAD', 'POST', 'OPTIONS');
     })->with('routing regression matchers');
 
@@ -83,7 +83,7 @@ describe('Routing Regressions', function () {
 
         $response = $kernel->handle(mockRequest('OPTIONS', '/resource'));
 
-        expect($response)->toHaveStatus(200)
+        expect($response->getStatusCode())->toBe(200)
             ->and((string) $response->getBody())->toBe('explicit-options');
     })->with('routing regression matchers');
 
@@ -102,7 +102,7 @@ describe('Routing Regressions', function () {
         $response = $kernel->handle(mockRequest('GET', '/explode'));
         $body = (string) $response->getBody();
 
-        expect($response)->toHaveStatus(500)
+        expect($response->getStatusCode())->toBe(500)
             ->and($body)->not->toContain('internal-secret-message')
             ->and($body)->not->toContain(RuntimeException::class);
     });
@@ -132,7 +132,7 @@ describe('Routing Regressions', function () {
 
         $body = json_decode((string) $response->getBody(), true);
 
-        expect($response)->toHaveStatus(200)
+        expect($response->getStatusCode())->toBe(200)
             ->and($body['route_params']['locale'] ?? null)->toBe('en')
             ->and($body['route.params']['locale'] ?? null)->toBe('en')
             ->and($body['params']['locale'] ?? null)->toBe('en');

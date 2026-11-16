@@ -15,7 +15,7 @@ describe('Middleware Features', function () {
     it('handles routes without middleware', function () {
         $kernel = createTestKernel();
         $response = $kernel->handle(mockRequest('GET', '/ping'));
-        expect($response)->toHaveStatus(200);
+        expect($response->getStatusCode())->toBe(200);
     });
 
     it('can use content negotiation middleware', function () {
@@ -27,8 +27,8 @@ describe('Middleware Features', function () {
             'Accept' => 'application/json',
         ]));
 
-        expect($response)
-            ->toHaveStatus(200)
+        expect($response->getStatusCode())
+            ->toBe(200)
             ->and($response->getHeaderLine('Content-Type'))->toContain('application/json');
     });
 
@@ -41,6 +41,6 @@ describe('Middleware Features', function () {
             'Accept-Language' => 'fr',
         ]));
 
-        expect($response)->toHaveStatus(200);
+        expect($response->getStatusCode())->toBe(200);
     });
 });

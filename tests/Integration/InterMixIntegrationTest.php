@@ -224,8 +224,8 @@ describe('InterMix integration', function () {
 
         $response = $kernel->handle(mockRequest('GET', '/di/class'));
 
-        expect($response)
-            ->toHaveStatus(200)
+        expect($response->getStatusCode())
+            ->toBe(200)
             ->and($response->getHeaderLine('X-DI-Marker'))->toBe('wired-class');
     });
 
@@ -243,8 +243,8 @@ describe('InterMix integration', function () {
 
         $response = $kernel->handle(mockRequest('GET', '/di/alias'));
 
-        expect($response)
-            ->toHaveStatus(200)
+        expect($response->getStatusCode())
+            ->toBe(200)
             ->and($response->getHeaderLine('X-DI-Marker'))->toBe('wired-alias');
     });
 
@@ -300,8 +300,8 @@ describe('InterMix integration', function () {
             $dynamicResponse = $dynamic->handle($request);
             $productionResponse = $production->handle(mockRequest('GET', '/parity/Ada'));
 
-            expect($dynamicResponse)->toHaveStatus(200)
-                ->and($productionResponse)->toHaveStatus(200)
+            expect($dynamicResponse->getStatusCode())->toBe(200)
+                ->and($productionResponse->getStatusCode())->toBe(200)
                 ->and((string) $productionResponse->getBody())
                 ->toBe((string) $dynamicResponse->getBody())
                 ->and((string) $productionResponse->getBody())
@@ -334,8 +334,8 @@ describe('InterMix integration', function () {
             );
 
             $response = $kernel->handle(mockRequest('GET', '/di/compiled'));
-            expect($response)
-                ->toHaveStatus(200)
+            expect($response->getStatusCode())
+                ->toBe(200)
                 ->and($response->getHeaderLine('X-DI-Marker'))->toBe('wired-compiled');
         } finally {
             if (is_file($compiled) && !unlink($compiled)) {
@@ -392,8 +392,8 @@ describe('InterMix integration', function () {
 
         $response = $kernel->handle(mockRequest('GET', '/view'));
 
-        expect($response)
-            ->toHaveStatus(200)
+        expect($response->getStatusCode())
+            ->toBe(200)
             ->and((string) $response->getBody())->toContain('hello: Ada');
     });
 
@@ -412,8 +412,8 @@ describe('InterMix integration', function () {
         $response = $kernel->handle(mockRequest('GET', '/provider'));
         $body = json_decode((string) $response->getBody(), true);
 
-        expect($response)
-            ->toHaveStatus(200)
+        expect($response->getStatusCode())
+            ->toBe(200)
             ->and($body['value'] ?? null)->toBe('from-provider');
     });
 
@@ -429,8 +429,8 @@ describe('InterMix integration', function () {
 
         $response = $kernel->handle(mockRequest('GET', '/tagged'));
 
-        expect($response)
-            ->toHaveStatus(200)
+        expect($response->getStatusCode())
+            ->toBe(200)
             ->and($response->getHeaderLine('X-Tagged-Pre'))->toBe('yes')
             ->and($response->getHeaderLine('X-Tagged-Post'))->toBe('yes');
     });
@@ -466,12 +466,12 @@ describe('InterMix integration', function () {
         expect($factoryCalls)->toBe(0);
 
         $first = $kernel->handle(mockRequest('GET', '/tagged-factory'));
-        expect($first)->toHaveStatus(200)
+        expect($first->getStatusCode())->toBe(200)
             ->and($factoryCalls)->toBe($expectedAfterFirst);
 
         $second = $kernel->handle(mockRequest('GET', '/tagged-factory'));
 
-        expect($second)->toHaveStatus(200)
+        expect($second->getStatusCode())->toBe(200)
             ->and($factoryCalls)->toBe($expectedFactoryCalls);
     })->with([
         'singleton' => [LifetimeEnum::Singleton, 1, 1],
@@ -499,8 +499,8 @@ describe('InterMix integration', function () {
         $b1 = json_decode((string) $r1->getBody(), true);
         $b2 = json_decode((string) $r2->getBody(), true);
 
-        expect($r1)->toHaveStatus(200)
-            ->and($r2)->toHaveStatus(200)
+        expect($r1->getStatusCode())->toBe(200)
+            ->and($r2->getStatusCode())->toBe(200)
             ->and($b1['scope_id'] ?? null)->not->toBeNull()
             ->and($b2['scope_id'] ?? null)->not->toBeNull()
             ->and($b1['scope_id'] ?? null)->not->toBe($b2['scope_id'] ?? null);
@@ -522,7 +522,7 @@ describe('InterMix integration', function () {
         $response = $kernel->handle(mockRequest('GET', '/request-seed'));
         $body = json_decode((string) $response->getBody(), true);
 
-        expect($response)->toHaveStatus(200)
+        expect($response->getStatusCode())->toBe(200)
             ->and($body['path'] ?? null)->toBe('/request-seed');
     });
 });
