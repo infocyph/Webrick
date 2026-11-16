@@ -32,7 +32,11 @@ final readonly class CacheValidatorsMiddleware
         private int $autoEtagMinSize = 2048,
     ) {}
 
-    /** @param Closure(Request):Response $next */
+    /**
+     * @param Closure(Request):Response $next
+     * @throws \LogicException
+     * @throws \RuntimeException
+     */
     public function __invoke(Request $req, Closure $next): Response
     {
         $getOrHead = $this->isGetOrHead($req);
@@ -99,7 +103,10 @@ final readonly class CacheValidatorsMiddleware
         return $resp;
     }
 
-    /** @return array{0:ConditionalValidator,1:Outcome} */
+    /**
+     * @return array{0:ConditionalValidator,1:Outcome}
+     * @throws \LogicException
+     */
     private function evaluatePreconditions(Request $req): array
     {
         $provider = $this->metaProvider;
@@ -157,6 +164,9 @@ final readonly class CacheValidatorsMiddleware
         return $etag === null ? $resp : $resp->withHeader('ETag', $etag);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function maybeDropStaleRangeHeader(Request $req, ConditionalValidator $validator, bool $getOrHead): Request
     {
         if (!$getOrHead || !$req->hasHeader('Range') || $validator->isRangeFresh($req)) {
@@ -166,6 +176,9 @@ final readonly class CacheValidatorsMiddleware
         return $req->withoutHeader('Range')->withAttribute('range_dropped', true);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function maybeShortCircuit(Outcome $result, bool $getOrHead): ?Response
     {
         if ($result->state === Outcome::PASS) {

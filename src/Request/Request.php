@@ -141,7 +141,11 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         );
     }
 
-    /** @param list<string> $cidrs */
+    /**
+     * @param list<string> $cidrs
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     */
     public static function setTrustedProxies(array $cidrs, ?int $headerFlags = null): void
     {
         if (self::$trustedProxyConfigurationFrozen) {
@@ -416,12 +420,18 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return $key === null ? null : $this->data($key);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     #[\Override]
     public function offsetSet(mixed $offset, mixed $value): void
     {
         throw new InvalidArgumentException('Request is immutable');
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     #[\Override]
     public function offsetUnset(mixed $offset): void
     {
@@ -487,6 +497,7 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
     /**
      * @param array<string,string> $rules
      * @return array<string,mixed>
+     * @throws \InvalidArgumentException
      */
     public function validate(array $rules): array
     {

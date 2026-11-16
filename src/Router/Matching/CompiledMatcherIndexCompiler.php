@@ -250,6 +250,8 @@ final readonly class CompiledMatcherIndexCompiler
     /**
      * @param non-empty-list<array{segments:list<SegmentSpec>,route:RouteValue,id:int}> $routes
      * @return non-empty-list<FastDispatchStep>
+     * @throws \LogicException
+     * @throws \UnexpectedValueException
      */
     private function compileBalancedFastDispatchSteps(array $routes): array
     {
@@ -268,6 +270,8 @@ final readonly class CompiledMatcherIndexCompiler
     /**
      * @param non-empty-list<array{segments:list<SegmentSpec>,route:RouteValue,id:int}> $routes
      * @return non-empty-list<PcreStep>
+     * @throws \LogicException
+     * @throws \UnexpectedValueException
      */
     private function compileBalancedPcreSteps(array $routes): array
     {
@@ -301,6 +305,8 @@ final readonly class CompiledMatcherIndexCompiler
     /**
      * @param array<int,array<string,array<string,CanonicalDynamicEntry>>> $dynamic
      * @return array{0:array<string,array<int,array<string,DynamicBucket>>>,1:array<int,array<string,AllowedBucket>>}
+     * @throws \LogicException
+     * @throws \UnexpectedValueException
      */
     private function compileDynamic(array $dynamic): array
     {
@@ -440,6 +446,7 @@ final readonly class CompiledMatcherIndexCompiler
     /**
      * @param array<string,array<string,RouteValue>> $static
      * @return array{0:array<string,array<string,RouteValue>>,1:array<string,array<string,int>>,2:array<string,list<string>>}
+     * @throws \UnexpectedValueException
      */
     private function compileStatic(array $static): array
     {
@@ -460,6 +467,7 @@ final readonly class CompiledMatcherIndexCompiler
     /**
      * @param list<array{segments:list<SegmentSpec>,route:RouteValue,id:int,pcre:bool}> $routes
      * @return list<DynamicStep>
+     * @throws \UnexpectedValueException
      */
     private function compileSteps(array $routes): array
     {
@@ -499,6 +507,7 @@ final readonly class CompiledMatcherIndexCompiler
     /**
      * @param array<string,CanonicalDynamicEntry> $entries
      * @return array<string,list<array{segments:list<SegmentSpec>,route:RouteValue,id:int,pcre:bool}>>
+     * @throws \UnexpectedValueException
      */
     private function orderDynamicRoutes(array $entries): array
     {

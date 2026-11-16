@@ -75,7 +75,10 @@ final readonly class Registrar
         }
     }
 
-    /** @param array{0:mixed,1:mixed,2?:mixed} $args */
+    /**
+     * @param array{0:mixed,1:mixed,2?:mixed} $args
+     * @throws \BadMethodCallException
+     */
     public function __call(string $method, array $args): mixed
     {
         $verb = HttpMethodEnum::tryFrom(strtoupper($method));
@@ -272,6 +275,9 @@ final readonly class Registrar
         return new Route($verb, $fullPath, $handler);
     }
 
+    /**
+     * @throws \LogicException
+     */
     private function maybeRegisterSlashVariant(string $verb, string $fullPath): void
     {
         if (!$this->autoSlashRedirect || $verb !== HttpMethodEnum::GET->value || str_contains($fullPath, '{')) {
@@ -326,6 +332,7 @@ final readonly class Registrar
     /**
      * @param array{0:mixed,1:mixed,2?:mixed} $args
      * @return array{0:string,1:RouteHandler,2:string|RouteOptions|null}
+     * @throws \InvalidArgumentException
      */
     private function normalizeVerbCallArgs(string $method, array $args): array
     {
@@ -363,7 +370,10 @@ final readonly class Registrar
         return registrar_parse_resource_options($opts);
     }
 
-    /** @param list<string> $aliases */
+    /**
+     * @param list<string> $aliases
+     * @throws \LogicException
+     */
     private function registerRouteAndAliases(Route $route, array $aliases): void
     {
         $this->routes->addWithAliases($route, $aliases);

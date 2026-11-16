@@ -21,6 +21,8 @@ final readonly class ReleaseArtifactLoader
 
     /**
      * @return array{container:ProductionContainer,artifact:CompiledRouterArtifact,manifest:array<string,mixed>}
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
      */
     public function load(
         ContainerBuilder $builder,
@@ -205,7 +207,11 @@ final readonly class ReleaseArtifactLoader
         ];
     }
 
-    /** @return array<string,mixed> */
+    /**
+     * @return array<string,mixed>
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     */
     private function readManifest(string $path): array
     {
         return $this->decodeJsonFile($path, 'Webrick coordinated release manifest');

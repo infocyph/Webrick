@@ -55,6 +55,9 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         matcher_capture_middleware_requirements($this->middlewareRequirements, $route);
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     #[\Override]
     public function finalize(): void
     {
@@ -84,6 +87,8 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
 
     /**
      * @throws \InvalidArgumentException
+     * @throws \Infocyph\Webrick\Exceptions\MethodNotAllowedException
+     * @throws \Infocyph\Webrick\Exceptions\RouteNotFoundException
      */
     #[\Override]
     public function match(string $method, string $host, string $path): array

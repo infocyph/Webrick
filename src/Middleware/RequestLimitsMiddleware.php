@@ -55,7 +55,10 @@ final readonly class RequestLimitsMiddleware
         $this->resolvedBodyLimit = $maxBodyBytes ?? self::phpIniBytes(ini_get('post_max_size'));
     }
 
-    /** @param Closure(Request):Response $next */
+    /**
+     * @param Closure(Request):Response $next
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     */
     public function __invoke(Request $req, Closure $next): Response
     {
         $this->rejectForHeaderLimits($req);
@@ -96,6 +99,7 @@ final readonly class RequestLimitsMiddleware
 
     /**
      * @throws \Infocyph\Webrick\Exceptions\HttpException
+     * @throws \RuntimeException
      */
     private function enforceBodyLimit(Request $req): Request
     {
@@ -215,6 +219,9 @@ final readonly class RequestLimitsMiddleware
         );
     }
 
+    /**
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     */
     private function rejectForHeaderLimits(Request $req): void
     {
         if ($this->maxHeaderCount <= 0 && $this->maxHeaderBytes <= 0) {

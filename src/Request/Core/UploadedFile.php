@@ -51,6 +51,7 @@ final class UploadedFile
      *   name?: string|null,
      *   type?: string|null
      * } $spec
+     * @throws \InvalidArgumentException
      */
     public static function fromSpec(array $spec): self
     {
@@ -110,6 +111,10 @@ final class UploadedFile
         return $this->src;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     public function moveTo(string $targetPath): void
     {
         $this->assertOkAndNotMoved();

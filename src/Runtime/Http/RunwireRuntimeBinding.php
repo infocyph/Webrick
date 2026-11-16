@@ -31,6 +31,7 @@ final readonly class RunwireRuntimeBinding
     /**
      * @param callable(HttpRequest): mixed|null $coroutineScope
      * @param callable(HttpRequest): mixed|null $scopeContext
+     * @throws \LogicException
      */
     public function __construct(
         ?RuntimeContext $runtimeContext = null,
@@ -52,6 +53,9 @@ final readonly class RunwireRuntimeBinding
         $this->scopeContextResolver = $scopeContext === null ? null : Closure::fromCallable($scopeContext);
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     public function assertRequest(RequestContext $request): void
     {
         if ($this->runtimeContext !== null && $request->runtime() !== $this->runtimeContext) {
@@ -78,6 +82,9 @@ final readonly class RunwireRuntimeBinding
         );
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     private function resolveCoroutineScope(HttpRequest $request): ?CoroutineScope
     {
         if ($this->coroutineScopeResolver === null) {
@@ -92,6 +99,9 @@ final readonly class RunwireRuntimeBinding
         throw new UnexpectedValueException('Runwire coroutine-scope resolver must return CoroutineScope or null.');
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     private function resolveScopeContext(HttpRequest $request): ?ScopeContext
     {
         if ($this->scopeContextResolver === null) {

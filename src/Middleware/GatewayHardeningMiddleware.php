@@ -68,7 +68,10 @@ final readonly class GatewayHardeningMiddleware
         $this->denyIpNetworks = self::compileNetworks($denyIpCidrs);
     }
 
-    /** @param Closure(Request):Response $next */
+    /**
+     * @param Closure(Request):Response $next
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     */
     public function __invoke(Request $req, Closure $next): Response
     {
         $req = $this->normalizeProxyContext($req);
@@ -289,6 +292,7 @@ final readonly class GatewayHardeningMiddleware
 
     /**
      * @throws \Infocyph\Webrick\Exceptions\HttpException
+     * @throws \InvalidArgumentException
      */
     private function redirectIfHttpsEnforced(Request $req): ?Response
     {
@@ -325,6 +329,9 @@ final readonly class GatewayHardeningMiddleware
         }
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function stripHopByHopFromRequest(Request $request): Request
     {
         $tokens = $this->parseConnectionTokens($request->getHeaderLine('Connection'));

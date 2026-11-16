@@ -42,6 +42,7 @@ class HttpException extends \RuntimeException implements HttpExceptionInterface
 
     /**
      * @param array<string,string> $headers
+     * @throws \InvalidArgumentException
      */
     public function __construct(
         private readonly int $statusCode,
@@ -63,6 +64,8 @@ class HttpException extends \RuntimeException implements HttpExceptionInterface
 
     /**
      * @param list<mixed> $args
+     * @throws \BadMethodCallException
+     * @throws \InvalidArgumentException
      */
     public static function __callStatic(string $method, array $args): self
     {

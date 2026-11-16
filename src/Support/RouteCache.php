@@ -19,7 +19,10 @@ use Psr\Log\NullLogger;
 /** Build-time matcher cache utility. No request kernel or DI runtime is booted. */
 final class RouteCache
 {
-    /** @param array<string,mixed> $options */
+    /**
+     * @param array<string,mixed> $options
+     * @throws \RuntimeException
+     */
     public static function build(array $options): string
     {
         $logger = ($options['logger'] ?? null) instanceof LoggerInterface
@@ -83,7 +86,11 @@ final class RouteCache
             : $cacheLocation;
     }
 
-    /** @param array<string,mixed> $options */
+    /**
+     * @param array<string,mixed> $options
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     public static function clear(array $options): bool
     {
         $cachePath = self::stringOption($options, 'cache');
@@ -150,6 +157,9 @@ final class RouteCache
         return $classes;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private static function clearGeneration(string $generation): bool
     {
         $removed = RouteCacheCleaner::clearDirectoryPreservingGitignore($generation);
@@ -161,6 +171,9 @@ final class RouteCache
         return true;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private static function clearSharded(string $dir, bool $aggressive): bool
     {
         if ($aggressive) {
@@ -179,6 +192,9 @@ final class RouteCache
         return $removed;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private static function clearShardFiles(string $dir): bool
     {
         $removed = false;
@@ -289,7 +305,10 @@ final class RouteCache
         return is_file($absolute) ? dirname($absolute) : $baseDir;
     }
 
-    /** @param array<string,mixed> $options */
+    /**
+     * @param array<string,mixed> $options
+     * @throws \InvalidArgumentException
+     */
     private static function resolveBuildCachePath(array $options): string
     {
         $cachePath = self::stringOption($options, 'cache');
@@ -394,6 +413,9 @@ final class RouteCache
         return is_scalar($value) ? (string) $value : '';
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function validateBuildRegisterInputs(mixed $userRegister, string $routesFile): void
     {
         if ($userRegister && !$userRegister instanceof \Closure && !is_callable($userRegister)) {

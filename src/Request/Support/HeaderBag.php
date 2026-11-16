@@ -52,12 +52,18 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
         return count($this->map);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function first(string $name): ?string
     {
         return $this->map[$this->norm($name)][0] ?? null;
     }
 
-    /** @return list<string> */
+    /**
+     * @return list<string>
+     * @throws \InvalidArgumentException
+     */
     public function get(string $name): array
     {
         return $this->map[$this->norm($name)] ?? [];
@@ -75,6 +81,9 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
         return new ArrayIterator($this->map);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function has(string $name): bool
     {
         return isset($this->map[$this->norm($name)]);
@@ -136,7 +145,10 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
         return $copy;
     }
 
-    /** @param string|array<array-key,mixed> $value */
+    /**
+     * @param string|array<array-key,mixed> $value
+     * @throws \InvalidArgumentException
+     */
     public function withAdded(string $name, string|array $value): self
     {
         $values = $this->normalizeValues($value);
@@ -155,6 +167,9 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
         return $copy;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function without(string $name): self
     {
         $copy = clone $this;
@@ -231,7 +246,10 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
         return $normalized;
     }
 
-    /** @param string|array<array-key,mixed> $value */
+    /**
+     * @param string|array<array-key,mixed> $value
+     * @throws \InvalidArgumentException
+     */
     private function set(string $name, string|array $value): void
     {
         $this->map[$this->norm($name)] = $this->normalizeValues($value);

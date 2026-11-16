@@ -51,6 +51,9 @@ final readonly class RoadRunnerRuntimeAdapter implements RuntimeAdapterInterface
         return $this->runtimeCapabilities;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     #[\Override]
     public function context(
         mixed $nativeRequest = null,
@@ -99,6 +102,9 @@ final readonly class RoadRunnerRuntimeAdapter implements RuntimeAdapterInterface
         );
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     #[\Override]
     public function write(Response $response, RuntimeRequestContext $context): void
     {
@@ -197,7 +203,11 @@ final readonly class RoadRunnerRuntimeAdapter implements RuntimeAdapterInterface
         return $out;
     }
 
-    /** @return UploadedFile|array<array-key,mixed>|null */
+    /**
+     * @return UploadedFile|array<array-key,mixed>|null
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     private static function normaliseUploadedFile(mixed $file): UploadedFile|array|null
     {
         if (is_array($file)) {

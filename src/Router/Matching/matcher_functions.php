@@ -30,6 +30,7 @@ function matcher_should_warm_opcache(): bool
  * only then atomically replace the active cache file.
  *
  * @param callable(array<mixed>):void $validate
+ * @throws \RuntimeException
  */
 function matcher_write_validated_atomic_php_file(string $file, string $php, callable $validate): void
 {

@@ -16,6 +16,10 @@ final class ByteRangeStream implements BodyStream
 {
     private int $position = 0;
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     public function __construct(
         private readonly Stream $base,
         private readonly int $start,

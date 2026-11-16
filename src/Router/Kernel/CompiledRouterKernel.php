@@ -49,6 +49,10 @@ final readonly class CompiledRouterKernel
 
     private InterMixRuntime $runtime;
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \UnexpectedValueException
+     */
     private function __construct(
         LoggerInterface $log,
         private CompiledRouterArtifact $artifact,
@@ -89,6 +93,9 @@ final readonly class CompiledRouterKernel
         $this->profiler?->mark('kernel_boot');
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     public static function fromCompiledArtifact(
         LoggerInterface $log,
         MatcherInterface $matcher,
@@ -124,6 +131,10 @@ final readonly class CompiledRouterKernel
         );
     }
 
+    /**
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     */
     public static function fromPrevalidatedArtifact(
         LoggerInterface $log,
         MatcherInterface $matcher,
@@ -245,7 +256,10 @@ final readonly class CompiledRouterKernel
         }
     }
 
-    /** @param callable(Response): void|null $responseConsumer */
+    /**
+     * @param callable(Response): void|null $responseConsumer
+     * @throws \Throwable
+     */
     public function handleRuntime(RuntimeRequestContext $context, ?callable $responseConsumer = null): Response
     {
         $request = null;
@@ -323,6 +337,9 @@ final readonly class CompiledRouterKernel
         return $response->withBody('');
     }
 
+    /**
+     * @throws \Infocyph\Webrick\Router\Kernel\RuntimeResponseWriteException
+     */
     private function consumeRuntimeResponse(Response $response, ?callable $responseConsumer): Response
     {
         if ($responseConsumer === null) {
@@ -359,6 +376,9 @@ final readonly class CompiledRouterKernel
         return $this->errorHandler->renderThrowable($request, $error);
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     private function dispatchRoutingInput(
         RoutingInput $routing,
         ?Request &$request,
@@ -396,7 +416,10 @@ final readonly class CompiledRouterKernel
         return $response;
     }
 
-    /** @param array<string,string> $vars */
+    /**
+     * @param array<string,string> $vars
+     * @throws \RuntimeException
+     */
     private function dispatchWithoutRequest(
         ExecutionPlan $plan,
         array $vars,
@@ -427,7 +450,10 @@ final readonly class CompiledRouterKernel
         return $response;
     }
 
-    /** @param array<string,string> $vars */
+    /**
+     * @param array<string,string> $vars
+     * @throws \RuntimeException
+     */
     private function dispatchWithRequest(
         int $routeIndex,
         ExecutionPlan $plan,
@@ -468,7 +494,10 @@ final readonly class CompiledRouterKernel
         return $response;
     }
 
-    /** @return int|array{0:int,1:array<string,string>}|MatchOutcome */
+    /**
+     * @return int|array{0:int,1:array<string,string>}|MatchOutcome
+     * @throws \LogicException
+     */
     private function matchRoutingInput(RoutingInput $routing): int|array|MatchOutcome
     {
         if ($routing->method === '' || $routing->host === '' || $routing->path === '') {

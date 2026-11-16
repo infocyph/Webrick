@@ -163,6 +163,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     /**
      * @throws \RuntimeException
      * @throws \UnexpectedValueException
+     * @throws \InvalidArgumentException
      */
     #[\Override]
     public function finalize(): void
@@ -234,6 +235,8 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
 
     /**
      * @throws \LogicException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
      */
     #[\Override]
     public function matchOutcome(string $method, string $host, string $path): MatchOutcome
@@ -525,6 +528,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
      * @param CanonicalGroup $group
      * @throws \RuntimeException
      * @throws \UnexpectedValueException
+     * @throws \InvalidArgumentException
      */
     private function writeGroup(string $host, string $bucket, array $group): void
     {

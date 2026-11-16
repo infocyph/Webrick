@@ -34,6 +34,9 @@ class NativeServerRequest extends ServerRequest
         $this->resetPayloadCaches();
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     #[\Override]
     public static function createFromGlobals(): self
     {
@@ -85,6 +88,9 @@ class NativeServerRequest extends ServerRequest
             : PayloadParseState::NOT_APPLICABLE);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function parsedJson(?string $key = null): mixed
     {
         $this->parseJson();
@@ -98,6 +104,9 @@ class NativeServerRequest extends ServerRequest
         return self::valueFromPayload($this->jsonPayload, $key);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function parsedXml(?string $key = null): mixed
     {
         $this->parseXml();
@@ -161,7 +170,10 @@ class NativeServerRequest extends ServerRequest
         return $map;
     }
 
-    /** @param array<string,mixed> $server */
+    /**
+     * @param array<string,mixed> $server
+     * @throws \InvalidArgumentException
+     */
     private static function uriFromServerParams(array $server): Uri
     {
         $scheme = UriServerParams::detectScheme($server);

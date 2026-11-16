@@ -75,7 +75,10 @@ final readonly class SignedUrlConfig
         );
     }
 
-    /** @param array<int|string,mixed> $config */
+    /**
+     * @param array<int|string,mixed> $config
+     * @throws \InvalidArgumentException
+     */
     public static function fromArray(#[\SensitiveParameter] array $config): self
     {
         $verificationKeys = $config['verificationKeys'] ?? [];
@@ -109,6 +112,9 @@ final readonly class SignedUrlConfig
         );
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public static function mergeLegacy(#[\SensitiveParameter] ?self $config, #[\SensitiveParameter] ?string $generationKey = null, ?int $defaultTtl = null): ?self
     {
         if ($config === null && $generationKey === null && $defaultTtl === null) {

@@ -61,6 +61,7 @@ class Response
     /**
      * @param array<string,string|list<string>> $headers
      * @throws \InvalidArgumentException
+     * @throws \RuntimeException
      */
     public static function attachment(
         string|Stream $file,
@@ -140,13 +141,20 @@ class Response
         return new self($status, $json, $bag->all());
     }
 
-    /** @param array<string,string|list<string>> $headers */
+    /**
+     * @param array<string,string|list<string>> $headers
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     public static function create(string $content = '', int $status = StatusEnum::OK->value, array $headers = []): self
     {
         return new self($status, $content, $headers);
     }
 
-    /** @param array<string,string|list<string>> $headers */
+    /**
+     * @param array<string,string|list<string>> $headers
+     * @throws \InvalidArgumentException
+     */
     public static function download(
         string|Stream $file,
         ?string $name = null,
@@ -161,6 +169,7 @@ class Response
     /**
      * @param array<string,string|list<string>> $headers
      * @throws \InvalidArgumentException
+     * @throws \RuntimeException
      */
     public static function empty(int $code, array $headers = []): self
     {
@@ -179,6 +188,7 @@ class Response
     /**
      * @param array<string,string|list<string>> $headers
      * @throws \InvalidArgumentException
+     * @throws \RuntimeException
      */
     public static function inline(
         string|Stream $file,
@@ -228,7 +238,10 @@ class Response
         return new self($status, $json, $bag->all());
     }
 
-    /** @param array<string,string|list<string>> $headers */
+    /**
+     * @param array<string,string|list<string>> $headers
+     * @throws \InvalidArgumentException
+     */
     public static function noContent(array $headers = []): self
     {
         return self::empty(StatusEnum::NO_CONTENT->value, $headers);
@@ -237,6 +250,7 @@ class Response
     /**
      * @param array<string,string|list<string>> $headers
      * @throws \InvalidArgumentException
+     * @throws \RuntimeException
      */
     public static function plaintext(string $msg, int $code = StatusEnum::BAD_REQUEST->value, array $headers = []): self
     {
@@ -280,6 +294,7 @@ class Response
 
     /**
      * @throws \InvalidArgumentException
+     * @throws \RuntimeException
      */
     public static function redirect(string $uri, int $status = StatusEnum::FOUND->value): self
     {
@@ -299,6 +314,7 @@ class Response
      * @param callable(): (iterable<mixed>|string)|iterable<mixed> $producer
      * @param array<string,string|list<string>> $headers
      * @throws \InvalidArgumentException
+     * @throws \RuntimeException
      */
     public static function stream(
         callable|iterable $producer,

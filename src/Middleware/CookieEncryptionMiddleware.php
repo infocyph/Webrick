@@ -97,7 +97,12 @@ final readonly class CookieEncryptionMiddleware
         );
     }
 
-    /** @param Closure(Request):Response $next */
+    /**
+     * @param Closure(Request):Response $next
+     * @throws \LengthException
+     * @throws \Random\RandomException
+     * @throws \RuntimeException
+     */
     public function __invoke(Request $req, Closure $next): Response
     {
         $incoming = $req->getCookieParams();
@@ -146,6 +151,7 @@ final readonly class CookieEncryptionMiddleware
     /**
      * @param non-empty-array<int,string> $segments
      * @param array<string,bool|string> $attrs
+     * @throws \InvalidArgumentException
      */
     private function appendEncryptedSegments(CookieJar $jar, string $baseName, array $segments, array $attrs): CookieJar
     {
@@ -291,6 +297,8 @@ final readonly class CookieEncryptionMiddleware
      * @throws \Random\RandomException
      * @throws \LengthException
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     * @throws \Psr\Cache\InvalidArgumentException
      */
     private function encryptAll(Response $response, array $incoming): Response
     {
@@ -372,6 +380,7 @@ final readonly class CookieEncryptionMiddleware
     /**
      * @param array<string,bool|string> $attrs
      * @param array<string,mixed> $incoming
+     * @throws \InvalidArgumentException
      */
     private function expireStaleSegments(
         CookieJar $jar,
@@ -495,6 +504,9 @@ final readonly class CookieEncryptionMiddleware
         return ['name' => trim($name), 'value' => $value, 'attrs' => $attrs];
     }
 
+    /**
+     * @throws \Psr\Cache\InvalidArgumentException
+     */
     private function resolveCipherInput(string $cipher): ?string
     {
         if (!str_starts_with($cipher, self::MODE_STORE)) {

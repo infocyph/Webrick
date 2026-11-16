@@ -74,6 +74,7 @@ class ServerRequest extends Message
      * @param array<array-key,mixed> $files
      * @param array<array-key,mixed>|null $query
      * @param array<array-key,mixed> $cookies
+     * @throws \InvalidArgumentException
      */
     public function __construct(
         string $method,
@@ -130,11 +131,17 @@ class ServerRequest extends Message
         return $this->__get($key) !== null;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function __set(string $name, mixed $value): void
     {
         throw new InvalidArgumentException('Request is immutable');
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     public static function createFromGlobals(): self
     {
         $server = self::stringMap($_SERVER);
@@ -185,6 +192,9 @@ class ServerRequest extends Message
         return self::$methodParamOverride;
     }
 
+    /**
+     * @throws \LogicException
+     */
     public static function setMethodParamOverride(bool $enabled): void
     {
         if (self::$methodOverrideConfigurationFrozen) {
@@ -479,6 +489,9 @@ class ServerRequest extends Message
         return $uri->getHost() . ($uri->getPort() !== null ? ':' . $uri->getPort() : '');
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function validateRequestTarget(?string $requestTarget): ?string
     {
         if ($requestTarget === null) {

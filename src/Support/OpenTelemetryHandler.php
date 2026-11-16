@@ -264,6 +264,7 @@ final readonly class OpenTelemetryHandler
 
     /**
      * @return array{0:string,1:string}
+     * @throws \RuntimeException
      */
     private function extractTraceContext(object $span): array
     {
@@ -304,16 +305,25 @@ final readonly class OpenTelemetryHandler
         return $value;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function otelSpanKindServer(): int
     {
         return $this->otelIntConstant(self::OTEL_SPAN_KIND_SERVER, 1, 'OpenTelemetry SpanKind::KIND_SERVER');
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function otelStatusError(): int
     {
         return $this->otelIntConstant(self::OTEL_STATUS_ERROR, 2, 'OpenTelemetry StatusCode::STATUS_ERROR');
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function otelStatusOk(): int
     {
         return $this->otelIntConstant(self::OTEL_STATUS_OK, 1, 'OpenTelemetry StatusCode::STATUS_OK');
@@ -321,12 +331,16 @@ final readonly class OpenTelemetryHandler
 
     /**
      * @param bool|int|float|string|array<int|string,mixed>|null $value
+     * @throws \RuntimeException
      */
     private function setSpanAttribute(object $span, string $key, bool|int|float|string|array|null $value): void
     {
         $this->call($span, 'setAttribute', [$key, $value]);
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function setSpanStatus(object $span, int $statusCode): void
     {
         $series = StatusEnum::tryFrom($statusCode)?->series() ?? intdiv($statusCode, 100);

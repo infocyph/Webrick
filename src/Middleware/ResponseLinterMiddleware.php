@@ -44,7 +44,10 @@ final readonly class ResponseLinterMiddleware
             : $checks;
     }
 
-    /** @param Closure(Request):Response $next */
+    /**
+     * @param Closure(Request):Response $next
+     * @throws \RuntimeException
+     */
     public function __invoke(Request $req, Closure $next): Response
     {
         $resp = $next($req);

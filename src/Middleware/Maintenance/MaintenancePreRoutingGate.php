@@ -53,6 +53,7 @@ final readonly class MaintenancePreRoutingGate implements PreRoutingGateInterfac
     /**
      * @param list<string> $paths
      * @return array<non-empty-string,true>
+     * @throws \InvalidArgumentException
      */
     private static function normalizeBypassPaths(array $paths): array
     {

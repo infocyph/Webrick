@@ -259,6 +259,7 @@ final class CompactMatcherDynamicValidator
      * @param array<array-key,mixed> $raw
      * @param array<int,mixed> $routes
      * @return array<array-key,list<FastDispatchStep>>
+     * @throws \UnexpectedValueException
      */
     private static function validateFastGroups(array $raw, array $routes, bool $validateRegex): array
     {
@@ -292,6 +293,7 @@ final class CompactMatcherDynamicValidator
      * @param list<mixed> $raw
      * @param array<int,mixed> $routes
      * @return list<FastDispatchStep>
+     * @throws \UnexpectedValueException
      */
     private static function validateFastSteps(array $raw, array $routes, bool $validateRegex): array
     {
@@ -453,7 +455,10 @@ final class CompactMatcherDynamicValidator
         };
     }
 
-    /** @return list<array<string,mixed>> */
+    /**
+     * @return list<array<string,mixed>>
+     * @throws \UnexpectedValueException
+     */
     private static function validateSegments(mixed $raw): array
     {
         $raw = self::listValue($raw, 'Compact matcher fallback segments are invalid.');

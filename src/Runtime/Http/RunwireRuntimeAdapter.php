@@ -135,6 +135,7 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
 
     /**
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException
      */
     #[\Override]
     public function write(Response $response, RuntimeRequestContext $context): void
@@ -440,6 +441,12 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
         return isset($parts['port']) ? $host . ':' . $parts['port'] : $host;
     }
 
+    /**
+     * @throws \Infocyph\Webrick\Runtime\Http\RunwireTransportCancellation
+     * @throws \LogicException
+     * @throws \OverflowException
+     * @throws \RuntimeException
+     */
     private static function writeAndAwaitDrain(
         WriteResult $result,
         ResponseWriterInterface $writer,

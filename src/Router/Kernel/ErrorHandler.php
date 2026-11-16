@@ -20,6 +20,7 @@ final readonly class ErrorHandler
 {
     /**
      * @param array<string,int> $exceptionMap
+     * @throws \InvalidArgumentException
      */
     public function __construct(
         private LoggerInterface|\Closure|null $logger = null,
@@ -79,6 +80,7 @@ final readonly class ErrorHandler
 
     /**
      * @return array<string,string>
+     * @throws \InvalidArgumentException
      */
     private function buildRenderHeaders(Request $request, Throwable $error): array
     {
@@ -204,6 +206,9 @@ final readonly class ErrorHandler
         return null;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function render(Request $request, Throwable $error, int $status): Response
     {
         $statusEnum = StatusEnum::tryFrom($status) ?? StatusEnum::INTERNAL_SERVER_ERROR;
@@ -283,6 +288,8 @@ final readonly class ErrorHandler
 
     /**
      * @param array<string,string> $headers
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
      */
     private function renderJson(
         Throwable $error,
@@ -305,6 +312,7 @@ final readonly class ErrorHandler
 
     /**
      * @param array<string,string> $headers
+     * @throws \InvalidArgumentException
      */
     private function renderPlain(
         Throwable $error,
@@ -380,6 +388,9 @@ final readonly class ErrorHandler
         return $response instanceof Response ? $response : null;
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     private function resolveLogger(): ?LoggerInterface
     {
         if ($this->logger instanceof LoggerInterface || $this->logger === null) {

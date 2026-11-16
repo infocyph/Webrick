@@ -33,6 +33,9 @@ final readonly class ReleaseCompiler
         return hash('xxh128', $encoded);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public static function runtimeManifestPath(string $releaseManifestPath): string
     {
         $path = trim($releaseManifestPath);
@@ -58,6 +61,7 @@ final readonly class ReleaseCompiler
      * @param list<string> $postGlobalTags
      * @param null|Closure(ContainerBuilder,RouterBuildResult):void $enrichGraph
      * @return array<string,mixed>
+     * @throws \RuntimeException
      */
     public function compile(
         ContainerBuilder $builder,
@@ -144,6 +148,9 @@ final readonly class ReleaseCompiler
         return $value;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function writeAtomic(string $path, string $contents): void
     {
         $directory = dirname($path);

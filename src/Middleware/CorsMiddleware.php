@@ -31,7 +31,10 @@ final readonly class CorsMiddleware
         $this->validatePolicy($this->policy());
     }
 
-    /** @param Closure(Request):Response $next */
+    /**
+     * @param Closure(Request):Response $next
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     */
     public function __invoke(Request $req, Closure $next): Response
     {
         $policy = $this->routePolicy($req);
@@ -198,7 +201,10 @@ final readonly class CorsMiddleware
         ];
     }
 
-    /** @param array{origins:list<string>,methods:string,allowHeaders:string|list<string>,exposeHeaders:string|list<string>,maxAgeSeconds:int,allowCredentials:bool,allowPrivateNetwork:bool} $policy */
+    /**
+     * @param array{origins:list<string>,methods:string,allowHeaders:string|list<string>,exposeHeaders:string|list<string>,maxAgeSeconds:int,allowCredentials:bool,allowPrivateNetwork:bool} $policy
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     */
     private function preflightResponse(Request $req, array $policy, string $acao): Response
     {
         $rawRequestedMethod = trim($req->getHeaderLine('Access-Control-Request-Method'));
@@ -244,7 +250,10 @@ final readonly class CorsMiddleware
         return $policy;
     }
 
-    /** @param array{origins:list<string>,methods:string,allowHeaders:string|list<string>,exposeHeaders:string|list<string>,maxAgeSeconds:int,allowCredentials:bool,allowPrivateNetwork:bool} $policy */
+    /**
+     * @param array{origins:list<string>,methods:string,allowHeaders:string|list<string>,exposeHeaders:string|list<string>,maxAgeSeconds:int,allowCredentials:bool,allowPrivateNetwork:bool} $policy
+     * @throws \InvalidArgumentException
+     */
     private function validatePolicy(array $policy): void
     {
         if ($policy['allowCredentials'] && in_array('*', $policy['origins'], true)) {
@@ -252,7 +261,10 @@ final readonly class CorsMiddleware
         }
     }
 
-    /** @param string|list<string> $configured */
+    /**
+     * @param string|list<string> $configured
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     */
     private function validateRequestedHeaders(string $requested, string|array $configured): string
     {
         $allowed = $this->csv($configured);

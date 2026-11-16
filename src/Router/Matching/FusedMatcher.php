@@ -66,6 +66,9 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         matcher_capture_middleware_requirements($this->middlewareRequirements, $route);
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     #[\Override]
     public function finalize(): void
     {
@@ -96,6 +99,8 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
 
     /**
      * @throws \InvalidArgumentException
+     * @throws \Infocyph\Webrick\Exceptions\MethodNotAllowedException
+     * @throws \Infocyph\Webrick\Exceptions\RouteNotFoundException
      */
     #[\Override]
     public function match(string $method, string $host, string $path): array
@@ -178,7 +183,11 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         return hash('xxh128', serialize([$hosts, $alias, $middleware]));
     }
 
-    /** @return array<string,MatcherGroup> */
+    /**
+     * @return array<string,MatcherGroup>
+     * @throws \InvalidArgumentException
+     * @throws \UnexpectedValueException
+     */
     private function compileHosts(): array
     {
         $compiled = new CompiledMatcherIndexCompiler()->compile($this->index->hosts());
@@ -189,6 +198,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
 
     /**
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException
      */
     private function dumpCache(): void
     {

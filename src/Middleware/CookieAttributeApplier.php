@@ -53,7 +53,10 @@ final readonly class CookieAttributeApplier
         return $this->forceHttpOnly || $hasHttpOnly ? $cookie->httpOnly() : $cookie;
     }
 
-    /** @param array<string,bool|string> $attrs */
+    /**
+     * @param array<string,bool|string> $attrs
+     * @throws \InvalidArgumentException
+     */
     private function applyPathDomainAndExpiryAttrs(Cookie $cookie, array $attrs): Cookie
     {
         if (isset($attrs['path']) && \is_string($attrs['path'])) {
@@ -69,7 +72,10 @@ final readonly class CookieAttributeApplier
         return $this->applyExpiryAttr($cookie, $attrs);
     }
 
-    /** @param array<string,bool|string> $attrs */
+    /**
+     * @param array<string,bool|string> $attrs
+     * @throws \InvalidArgumentException
+     */
     private function applySameSiteAttr(Cookie $cookie, array $attrs): Cookie
     {
         if (isset($attrs['samesite']) && \is_string($attrs['samesite'])) {
@@ -79,7 +85,10 @@ final readonly class CookieAttributeApplier
         return $this->defaultSameSite !== null ? $cookie->sameSite($this->defaultSameSite) : $cookie;
     }
 
-    /** @param array<string,bool|string> $attrs */
+    /**
+     * @param array<string,bool|string> $attrs
+     * @throws \InvalidArgumentException
+     */
     private function applySecureAttr(Cookie $cookie, array $attrs): Cookie
     {
         if ($this->forceSecure || $this->isSameSiteNone($attrs) || $this->hasFlag($attrs, 'secure') || $this->hasFlag($attrs, 'partitioned')) {

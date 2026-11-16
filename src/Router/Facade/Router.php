@@ -112,6 +112,7 @@ final class Router
      * Bind URL generation services to the Route facade.
      *
      * @param Collection|array<string, array{0:string,1:?string}>|(Closure():(Collection|array<string, array{0:string,1:?string}>)) $routes
+     * @throws \InvalidArgumentException
      */
     public static function bindUrlServices(
         Collection|array|Closure $routes,
@@ -224,6 +225,7 @@ final class Router
      *
      * @param array<string,mixed> $params
      * @param array<string,mixed> $query
+     * @throws \InvalidArgumentException
      */
     public static function signedUrlFor(
         string $name,
@@ -248,6 +250,7 @@ final class Router
      *
      * @param array<string,mixed> $params
      * @param array<string,mixed> $query
+     * @throws \InvalidArgumentException
      */
     public static function temporaryUrlFor(
         string $name,
@@ -274,6 +277,7 @@ final class Router
      *
      * @param array<string,mixed> $params
      * @param array<string,mixed> $query
+     * @throws \InvalidArgumentException
      */
     public static function temporaryUrlUntil(
         string $name,
@@ -300,6 +304,7 @@ final class Router
      *
      * @param array<string,mixed> $params
      * @param array<string,mixed> $query
+     * @throws \InvalidArgumentException
      */
     public static function urlFor(
         string $name,
@@ -469,6 +474,9 @@ final class Router
         return $value instanceof \Stringable ? (string) $value : null;
     }
 
+    /**
+     * @throws \LogicException
+     */
     private static function requireRouteGenerator(): UrlGenerator
     {
         self::assertUrlBound();
@@ -480,6 +488,7 @@ final class Router
      * @param RouteHandler $handler
      * @param string|RouteOptions|null $nameOrOpts
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException
      */
     private static function verb(
         string $verb,

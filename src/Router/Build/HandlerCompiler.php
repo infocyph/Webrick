@@ -19,6 +19,9 @@ use ReflectionParameter;
 /** Build-plane handler and middleware inspector. */
 final class HandlerCompiler
 {
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function compile(CompiledRoute $route): ExecutionPlan
     {
         $handler = $this->normalizeHandler($route->getHandler());
@@ -145,6 +148,9 @@ final class HandlerCompiler
         return $this->normalizeStringHandler($handler);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function normalizeMiddlewareDescriptor(mixed $entry): mixed
     {
         if ($entry instanceof RuntimeMiddlewareDescriptor || is_callable($entry)) {
@@ -157,7 +163,10 @@ final class HandlerCompiler
         return $this->normalizeStringMiddlewareDescriptor($entry);
     }
 
-    /** @return array{0:string,1:string}|string */
+    /**
+     * @return array{0:string,1:string}|string
+     * @throws \InvalidArgumentException
+     */
     private function normalizeStringHandler(string $handler): array|string
     {
         foreach (['::', '@'] as $separator) {
@@ -184,7 +193,10 @@ final class HandlerCompiler
         throw new InvalidArgumentException("Route handler '{$handler}' is not resolvable at build time.");
     }
 
-    /** @return array{0:class-string,1:string}|string */
+    /**
+     * @return array{0:class-string,1:string}|string
+     * @throws \InvalidArgumentException
+     */
     private function normalizeStringMiddlewareDescriptor(string $entry): array|string
     {
         if (class_exists($entry) && method_exists($entry, '__invoke')) {
@@ -217,7 +229,10 @@ final class HandlerCompiler
         return is_a(Request::class, $type->getName(), true);
     }
 
-    /** @param array{0:object|string,1:string}|string|callable $handler */
+    /**
+     * @param array{0:object|string,1:string}|string|callable $handler
+     * @throws \InvalidArgumentException
+     */
     private function reflect(array|string|callable $handler): ReflectionFunctionAbstract
     {
         if ($handler instanceof Closure) {

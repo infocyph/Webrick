@@ -145,6 +145,7 @@ final class CompiledMatcherDynamicEngine
      * @param PcreEntry $entry
      * @param array<array-key,mixed> $matches
      * @return array{0:int,1:array<string,string>}
+     * @throws \UnexpectedValueException
      */
     private static function captureParams(array $entry, array $matches): array
     {
@@ -179,6 +180,8 @@ final class CompiledMatcherDynamicEngine
     /**
      * @param PcreStep|FastDispatchStep $step
      * @return array{0:int,1:array<string,string>}|null
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
      */
     private static function findPcreStep(array $step, string $path): ?array
     {
@@ -269,6 +272,7 @@ final class CompiledMatcherDynamicEngine
      * @param array<string,true> $skip
      * @param array<string,bool> $allowed
      * @param list<string> $segments
+     * @throws \RuntimeException
      */
     private function collectAllowedBucket(
         array $bucket,
@@ -326,6 +330,7 @@ final class CompiledMatcherDynamicEngine
      * @param array<string,true> $skip
      * @param array<string,bool> $allowed
      * @param list<string> $segments
+     * @throws \RuntimeException
      */
     private function collectLiteralAllowed(array $bucket, string $path, array $skip, array &$allowed, array &$segments): void
     {

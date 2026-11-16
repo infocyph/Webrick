@@ -34,7 +34,10 @@ final class RuntimeDispatcher
         $this->resolver = new RuntimeDescriptorInvoker($runtime->container());
     }
 
-    /** @param array<string,string> $vars */
+    /**
+     * @param array<string,string> $vars
+     * @throws \UnexpectedValueException
+     */
     public function dispatch(int $routeIndex, ExecutionPlan $plan, Request $request, array $vars): Response
     {
         $attributes = $this->artifact->routeAttributesForIndex($routeIndex);
@@ -69,7 +72,10 @@ final class RuntimeDispatcher
         return $this->response($handler());
     }
 
-    /** @param array<string,string> $vars */
+    /**
+     * @param array<string,string> $vars
+     * @throws \UnexpectedValueException
+     */
     public function dispatchWithoutRequest(ExecutionPlan $plan, array $vars): Response
     {
         if ($plan->requiresRequest() || $plan->kind === ExecutionKind::MIDDLEWARE_PIPELINE) {
@@ -121,7 +127,10 @@ final class RuntimeDispatcher
         return $this->response($result);
     }
 
-    /** @return array<array-key,mixed>|bool|float|int|JsonSerializable|string|null */
+    /**
+     * @return array<array-key,mixed>|bool|float|int|JsonSerializable|string|null
+     * @throws \UnexpectedValueException
+     */
     private function normalizeResponsePayload(mixed $value): array|bool|float|int|JsonSerializable|string|null
     {
         if (is_array($value) || $value instanceof JsonSerializable) {
@@ -139,6 +148,7 @@ final class RuntimeDispatcher
     /**
      * @param array<string,string> $vars
      * @return list<string>
+     * @throws \UnexpectedValueException
      */
     private function orderedRouteArguments(ExecutionPlan $plan, array $vars): array
     {
@@ -214,6 +224,7 @@ final class RuntimeDispatcher
     /**
      * @param array<array-key,mixed>|callable|string|null $descriptor
      * @param array<int|string,mixed> $arguments
+     * @throws \UnexpectedValueException
      */
     private function resolveDescriptor(array|callable|string|null $descriptor, array $arguments = []): mixed
     {

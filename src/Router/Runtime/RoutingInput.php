@@ -27,6 +27,9 @@ final readonly class RoutingInput
         HttpMethodEnum::TRACE->value,
     ];
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function __construct(
         public string $method,
         public string $path,
@@ -94,6 +97,9 @@ final readonly class RoutingInput
         return null;
     }
 
+    /**
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     */
     private static function normalizeHost(string $raw): string
     {
         $raw = trim($raw);
@@ -114,6 +120,9 @@ final readonly class RoutingInput
         return $host;
     }
 
+    /**
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     */
     private static function normalizeRequestPath(string $requestUri): string
     {
         if ($requestUri === '' || $requestUri === '/') {

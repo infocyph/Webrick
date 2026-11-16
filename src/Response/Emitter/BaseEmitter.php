@@ -27,6 +27,9 @@ abstract class BaseEmitter implements EmitterInterface
     /** @var resource|null */
     private mixed $outputStream = null;
 
+    /**
+     * @throws \RuntimeException
+     */
     #[\Override]
     public function emit(Response $response, ?Request $request = null): void
     {
@@ -95,6 +98,9 @@ abstract class BaseEmitter implements EmitterInterface
         $this->write((string) $body);
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     protected function emitStreaming(Response $response): void
     {
         $this->reduceOutputBuffering();
@@ -315,6 +321,7 @@ abstract class BaseEmitter implements EmitterInterface
     /**
      * @param iterable<mixed> $out
      * @throws \UnexpectedValueException
+     * @throws \RuntimeException
      */
     private function emitIterableOutput(iterable $out): void
     {

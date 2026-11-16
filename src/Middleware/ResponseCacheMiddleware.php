@@ -25,7 +25,10 @@ final readonly class ResponseCacheMiddleware
 
     private CacheItemPoolInterface $store;
 
-    /** @param list<mixed> $defaultVary */
+    /**
+     * @param list<mixed> $defaultVary
+     * @throws \InvalidArgumentException
+     */
     public function __construct(
         ?CacheItemPoolInterface $store = null,
         private int $ttlSeconds = 10,
@@ -109,6 +112,9 @@ final readonly class ResponseCacheMiddleware
         return $response->withBody('');
     }
 
+    /**
+     * @throws \LogicException
+     */
     private function buildDefaultStore(): CacheItemPoolInterface
     {
         if (!class_exists(Cache::class)) {
@@ -154,6 +160,9 @@ final readonly class ResponseCacheMiddleware
         return true;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function invokeNext(Closure $next, Request $req): Response
     {
         $response = $next($req);

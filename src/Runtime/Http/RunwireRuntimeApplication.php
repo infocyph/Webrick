@@ -27,6 +27,7 @@ final readonly class RunwireRuntimeApplication implements RuntimeApplicationInte
      * @param callable(HttpRequest, ResponseWriterInterface): void $handler
      * @param callable(): void|null $requestCleanup
      * @param callable(): void|null $shutdown
+     * @throws \InvalidArgumentException
      */
     public function __construct(
         callable $handler,
@@ -60,6 +61,9 @@ final readonly class RunwireRuntimeApplication implements RuntimeApplicationInte
         $this->application->drain($reason);
     }
 
+    /**
+     * @throws \Infocyph\Runwire\Exception\CancelledException
+     */
     #[\Override]
     public function handle(
         HttpRequest $request,
@@ -95,6 +99,9 @@ final readonly class RunwireRuntimeApplication implements RuntimeApplicationInte
         return $this->application->healthy();
     }
 
+    /**
+     * @throws \Infocyph\Runwire\Exception\ApplicationShutdownException
+     */
     #[\Override]
     public function shutdown(?ShutdownReason $reason = null): void
     {
@@ -107,6 +114,10 @@ final readonly class RunwireRuntimeApplication implements RuntimeApplicationInte
         return $this->application->snapshot();
     }
 
+    /**
+     * @throws \Infocyph\Runwire\Exception\ApplicationStartupException
+     * @throws \LogicException
+     */
     #[\Override]
     public function start(): void
     {

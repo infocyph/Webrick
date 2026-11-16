@@ -19,7 +19,11 @@ use Infocyph\Webrick\Support\HttpUtils;
 /** Build 200/206/416 responses for seekable resources. */
 final readonly class RangeResponder
 {
-    /** @param array<array-key,mixed> $headers */
+    /**
+     * @param array<array-key,mixed> $headers
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     public static function forFile(
         Request $req,
         string $absolutePath,
@@ -38,7 +42,11 @@ final readonly class RangeResponder
         return self::buildFileResponse($absolutePath, $mediaType, $headers, $length, $result);
     }
 
-    /** @param array<array-key,mixed> $headers */
+    /**
+     * @param array<array-key,mixed> $headers
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     public static function fromSeekable(
         mixed $source,
         int $totalLength,
@@ -90,7 +98,11 @@ final readonly class RangeResponder
         );
     }
 
-    /** @param array<string,string> $headers */
+    /**
+     * @param array<string,string> $headers
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     private static function buildFileResponse(
         string $absolutePath,
         string $mediaType,
@@ -198,6 +210,7 @@ final readonly class RangeResponder
     /**
      * @param array<array-key,mixed> $headers
      * @return array<string,string>
+     * @throws \InvalidArgumentException
      */
     private static function normalizeHeaders(array $headers): array
     {
@@ -252,6 +265,9 @@ final readonly class RangeResponder
         return RangeParseResult::satisfiable($range);
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private static function wrapSeekable(mixed $source, ?int $start = null, ?int $length = null): ByteRangeStream|Stream
     {
         $base = $source instanceof Stream ? $source : new Stream($source);
