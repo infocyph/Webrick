@@ -19,6 +19,19 @@ function matcherRevisionRoute(string $method, string $path, string $handler = 'm
     return CompiledRoute::fromRoute(new Route($method, $path, $handler));
 }
 
+/**
+ * @param array<string,mixed> $source
+ * @throws UnexpectedValueException
+ */
+function matcherRevisionRequiredMember(array $source, string $key): mixed
+{
+    if (!array_key_exists($key, $source)) {
+        throw new UnexpectedValueException("Matcher IR is missing required {$key} metadata.");
+    }
+
+    return $source[$key];
+}
+
 /** @throws UnexpectedValueException For malformed iterator entries. */
 function matcherRevisionRemoveTree(string $path): void
 {
@@ -61,9 +74,9 @@ it('compiles safe regex routes and specializes built-in callable fallback segmen
     if (($orderSteps[0]['type'] ?? null) !== 'fallback') {
         throw new UnexpectedValueException('Built-in callable constraint must compile to fallback.');
     }
-    $fallbackSegments = $orderSteps[0]['segments'];
-    if (!isset($fallbackSegments[1])) {
-        throw new UnexpectedValueException('Fallback IR must contain a second segment.');
+    $fallbackSegments = matcherRevisionRequiredMember($orderSteps[0], 'segments');
+    if (!is_array($fallbackSegments) || !is_array($fallbackSegments[1] ?? null)) {
+        throw new UnexpectedValueException('Fallback IR must contain a typed second segment.');
     }
 
     expect($userSteps)->toHaveCount(1)
@@ -336,8 +349,8 @@ it('compiles one canonical dynamic shape into method-independent terminal metada
     if ($terminal['type'] !== 'single') {
         throw new UnexpectedValueException('Uniform dynamic terminal must use the single-route shape.');
     }
-    $methods = $terminal['methods'];
-    if ($methods === []) {
+    $methods = matcherRevisionRequiredMember($terminal, 'methods');
+    if (!is_array($methods)) {
         throw new UnexpectedValueException('Single-route terminal must declare allowed methods.');
     }
 

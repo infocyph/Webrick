@@ -433,7 +433,10 @@ final class RunwireMultiplexedProtocolIsolationTest extends TestCase
         return $value;
     }
 
-    /** @return array<string,string|list<string>> */
+    /**
+     * @return array<string,string|list<string>>
+     * @throws \UnexpectedValueException
+     */
     private static function payload(Request $request, string $label): array
     {
         return [
