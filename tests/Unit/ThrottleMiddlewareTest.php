@@ -42,6 +42,10 @@ final class PcntlFileAtomicCounterStore implements AtomicCounterStoreInterface
         return $this->change($key, $by, $ttlSeconds);
     }
 
+    /**
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     */
     private function change(string $key, int $by, ?int $ttlSeconds): AtomicCounterValue
     {
         $first = false;
@@ -65,6 +69,8 @@ final class PcntlFileAtomicCounterStore implements AtomicCounterStoreInterface
     /**
      * @param Closure(?array{value:int,expires:?int}):(?array{value:int,expires:?int}) $callback
      * @return array{value:int,expires:?int}|null
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
      */
     private function mutate(string $key, Closure $callback): ?array
     {
@@ -112,7 +118,10 @@ final class PcntlFileAtomicCounterStore implements AtomicCounterStoreInterface
     }
 }
 
-/** @return array{value:int} */
+/**
+ * @return array{value:int}
+ * @throws \UnexpectedValueException
+ */
 function webrickThrottleCounterEntry(mixed $map): array
 {
     if (!is_array($map)) {
@@ -428,8 +437,9 @@ describe('ThrottleMiddleware', function () {
             }
 
             foreach ($children as $pid) {
+                $status = -1;
                 $waited = pcntl_waitpid($pid, $status);
-                if ($waited < 0 || !is_int($status)) {
+                if ($waited < 0) {
                     throw new RuntimeException('Throttle worker wait did not return an exit status.');
                 }
                 expect(pcntl_wifexited($status) && pcntl_wexitstatus($status) === 0)->toBeTrue();

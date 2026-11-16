@@ -168,8 +168,7 @@ describe('CookieEncryptionMiddleware', function () {
     it('rejects modified authenticated frame fields', function (int $offset): void {
         $cipher = encryptedCookieForTest($this->middleware, 'authenticated-value');
         $raw = base64_decode($cipher, true);
-        expect($raw)->toBeString()->not->toBe('');
-        if (!is_string($raw) || $offset < 0 || $offset >= strlen($raw)) {
+        if (!is_string($raw) || $raw === '' || $offset < 0 || $offset >= strlen($raw)) {
             throw new UnexpectedValueException('Authenticated cookie frame cannot be mutated at this offset.');
         }
         $raw[$offset] = chr(ord($raw[$offset]) ^ 0x01);

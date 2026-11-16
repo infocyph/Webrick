@@ -110,7 +110,11 @@ expect()->extend('toHaveServerTimingHeader', function () {
 |--------------------------------------------------------------------------
 */
 
-/** Validate a value supplied to a response expectation. */
+/**
+ * Validate a value supplied to a response expectation.
+ *
+ * @throws \UnexpectedValueException
+ */
 function webrickPestResponse(mixed $value): Response
 {
     if (!$value instanceof Response) {
@@ -120,7 +124,11 @@ function webrickPestResponse(mixed $value): Response
     return $value;
 }
 
-/** Validate a value supplied to a trace identifier expectation. */
+/**
+ * Validate a value supplied to a trace identifier expectation.
+ *
+ * @throws \UnexpectedValueException
+ */
 function webrickPestString(mixed $value, string $label): string
 {
     if (!is_string($value)) {
