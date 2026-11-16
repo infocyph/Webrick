@@ -283,7 +283,7 @@ test('fresh route caches dispatch alias middleware lazily without development ke
             },
         ]);
 
-        $matcher = $makeMatcher()->enableCache($cache);
+        $matcher = makeTestMatcher($makeMatcher)->enableCache($cache);
         expect($matcher->canBootFromCache())->toBeTrue();
         $matcher->finalize();
         expect($matcher->resolveAlias($routeName))->toBe(['/cached', null])
@@ -327,7 +327,7 @@ test('class-handler caches use scalar route payloads in every matcher mode', fun
             },
         ]);
 
-        $matcher = $makeMatcher()->enableCache($cache);
+        $matcher = makeTestMatcher($makeMatcher)->enableCache($cache);
         $matcher->finalize();
         [$route, $vars] = $matcher->match('GET', 'localhost', '/class-handler');
         $response = cachedMatcherDispatcher($mode)->dispatch(
@@ -364,7 +364,7 @@ test('safe first-class static handlers become native cache descriptors in every 
             },
         ]);
 
-        $matcher = $makeMatcher()->enableCache($cache);
+        $matcher = makeTestMatcher($makeMatcher)->enableCache($cache);
         $matcher->finalize();
         [$staticRoute, $staticVars] = $matcher->match('GET', 'localhost', '/static-callable');
         [$capturedRoute, $capturedVars] = $matcher->match('GET', 'localhost', '/captured-closure');
@@ -414,7 +414,7 @@ test('object-backed handlers retain their binding in every matcher mode', functi
             },
         ]);
 
-        $matcher = $makeMatcher()->enableCache($cache);
+        $matcher = makeTestMatcher($makeMatcher)->enableCache($cache);
         $matcher->finalize();
         [$invokable, $invokableVars] = $matcher->match('GET', 'localhost', '/invokable');
         [$instance, $instanceVars] = $matcher->match('GET', 'localhost', '/instance');
@@ -463,7 +463,7 @@ test('route caches expose only registered middleware alias requirements', functi
             },
         ]);
 
-        $matcher = $makeMatcher()->enableCache($cache);
+        $matcher = makeTestMatcher($makeMatcher)->enableCache($cache);
         $matcher->finalize();
 
         expect($matcher->middlewareRequirements())->toBe(['auth']);
@@ -526,7 +526,7 @@ test('stale cache formats fail clearly in every matcher mode', function (
         expect($staleSource)->toBeString()->not->toBe($source);
         file_put_contents($artifact, $staleSource);
 
-        $reader = $makeMatcher()->enableCache($cache);
+        $reader = makeTestMatcher($makeMatcher)->enableCache($cache);
         expect(static function () use ($reader): void {
             if (!$reader->canBootFromCache()) {
                 throw new RuntimeException('Cache unexpectedly unavailable.');

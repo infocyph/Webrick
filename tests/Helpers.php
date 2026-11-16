@@ -6,6 +6,7 @@ use Infocyph\CacheLayer\Cache\Cache;
 use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Router\Definition\Registrar;
+use Infocyph\Webrick\Router\Matching\MatcherInterface;
 use Infocyph\Webrick\Router\Route\Collection;
 use Infocyph\Webrick\Router\Url\SignedUrlConfig;
 use Psr\Log\LoggerInterface;
@@ -246,4 +247,19 @@ function cleanTestCache(string $path): void
     }
 
     rmdir($path);
+}
+
+/**
+ * Validate the Pest-provided matcher factory at the dataset boundary.
+ *
+ * @throws UnexpectedValueException When the dataset does not return a matcher.
+ */
+function makeTestMatcher(Closure $factory): MatcherInterface
+{
+    $matcher = $factory();
+    if (!$matcher instanceof MatcherInterface) {
+        throw new UnexpectedValueException('Matcher dataset factory must return MatcherInterface.');
+    }
+
+    return $matcher;
 }

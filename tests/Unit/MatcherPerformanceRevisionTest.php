@@ -95,7 +95,7 @@ it('keeps arbitrary registered regexes segment-local', function (): void {
 it('preserves registration precedence across pcre and fallback barriers', function (Closure $factory): void {
     $first = matcherRevisionRoute('GET', '/pick/{value:int}', 'first-handler');
     $second = matcherRevisionRoute('GET', '/pick/{value}', 'second-handler');
-    $matcher = $factory();
+    $matcher = makeTestMatcher($factory);
     $matcher->add($first);
     $matcher->add($second);
     $matcher->finalize();
@@ -106,7 +106,7 @@ it('preserves registration precedence across pcre and fallback barriers', functi
 
 it('dispatches regex dynamic routes through the shared compiled matcher engine', function (Closure $factory): void {
     $route = matcherRevisionRoute('GET', '/users/{name}');
-    $matcher = $factory();
+    $matcher = makeTestMatcher($factory);
     $matcher->add($route);
     $matcher->finalize();
 
@@ -116,7 +116,7 @@ it('dispatches regex dynamic routes through the shared compiled matcher engine',
 
 it('dispatches built-in callable constraints through the specialized fallback lane', function (Closure $factory): void {
     $route = matcherRevisionRoute('GET', '/orders/{id:int}');
-    $matcher = $factory();
+    $matcher = makeTestMatcher($factory);
     $matcher->add($route);
     $matcher->finalize();
 
@@ -129,7 +129,7 @@ it('dispatches built-in callable constraints through the specialized fallback la
 })->with('compiled pcre ir matchers');
 
 it('accepts numeric literal discriminator keys in compact matcher metadata', function (Closure $factory): void {
-    $matcher = $factory();
+    $matcher = makeTestMatcher($factory);
     for ($index = 0; $index < 80; ++$index) {
         $matcher->add(matcherRevisionRoute('GET', "/numeric-key/{$index}/{id:hex}"));
     }
@@ -154,7 +154,7 @@ it('preserves every built-in callable constraint semantic through matcher opcode
 
     foreach ($cases as [$constraint, $hitValue, $missValue]) {
         $route = matcherRevisionRoute('GET', "/typed/{$constraint}/{value:{$constraint}}");
-        $matcher = $factory();
+        $matcher = makeTestMatcher($factory);
         $matcher->add($route);
         $matcher->finalize();
 
@@ -184,7 +184,7 @@ it('keeps unrecognized callable segments on the generic callable fallback repres
 it('uses method-first dynamic pcre buckets for overlapping route patterns', function (Closure $factory): void {
     $get = matcherRevisionRoute('GET', '/lookup/{value:uuid}');
     $post = matcherRevisionRoute('POST', '/lookup/{value:slug}');
-    $matcher = $factory();
+    $matcher = makeTestMatcher($factory);
     $matcher->add($get);
     $matcher->add($post);
     $matcher->finalize();
@@ -199,7 +199,7 @@ it('uses method-first dynamic pcre buckets for overlapping route patterns', func
 
 it('maps parameters correctly when a constraint contains nested capture groups', function (Closure $factory): void {
     $route = matcherRevisionRoute('GET', '/packages/{version:semver}');
-    $matcher = $factory();
+    $matcher = makeTestMatcher($factory);
     $matcher->add($route);
     $matcher->finalize();
 
@@ -209,7 +209,7 @@ it('maps parameters correctly when a constraint contains nested capture groups',
 
 it('preserves dynamic leading and trailing slash matching behavior', function (Closure $factory): void {
     $route = matcherRevisionRoute('GET', '/users/{name}');
-    $matcher = $factory();
+    $matcher = makeTestMatcher($factory);
     $matcher->add($route);
     $matcher->finalize();
 
@@ -220,7 +220,7 @@ it('preserves dynamic leading and trailing slash matching behavior', function (C
 })->with('compiled pcre ir matchers');
 
 it('dispatches across multiple combined pcre chunks', function (Closure $factory): void {
-    $matcher = $factory();
+    $matcher = makeTestMatcher($factory);
     $last = null;
 
     for ($i = 0; $i < 40; $i++) {
@@ -238,7 +238,7 @@ it('dispatches across multiple combined pcre chunks', function (Closure $factory
 it('keeps 405 and automatic options semantics on dynamic misses', function (Closure $factory): void {
     $get = matcherRevisionRoute('GET', '/resource/{id}');
     $post = matcherRevisionRoute('POST', '/resource/{id}');
-    $matcher = $factory();
+    $matcher = makeTestMatcher($factory);
     $matcher->add($get);
     $matcher->add($post);
     $matcher->finalize();

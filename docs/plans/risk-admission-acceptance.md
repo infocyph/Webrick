@@ -180,3 +180,9 @@ No commit, tag, merge, publication, provider deployment or end-to-end security c
 - [Run 43840921171](https://github.com/infocyph/Webrick/actions/runs/43840921171), commit `86df760fea9cac455cfd8b5a3d81c6552ec794ab`: 4/4 PHP QA passed, 2/2 benchmarks passed, PHPStan **524** / Psalm **1,750**. These reflect 94 and 16 fewer errors, respectively, than prior candidate `c1376b4`. Full analysis gates still red.
 - Batch 09 changes: resolve potential Psalm interpretation of route magic-method handler/options aliases with inlined, behavior-equivalent union shapes (14 documented verbs across two classes); refine the failure-store benchmark's PSR cache iterable key/item contracts without changing runtime logic.
 - Await fresh analyzer and PR checks on the next revision. Original A01/A03/A07 registrar tests passed in the earlier CI matrix; compiled, provider, host/CAPTCHA, concurrency and final source-SHA qualification gates remain open.
+
+### Batch 09 verification / Batch 10 matcher test fixture (2026-11-16)
+
+- [Run 43841734657](https://github.com/infocyph/Webrick/actions/runs/43841734657) on `8ded2c1cac4675cb702bcb66b88746f0530aa1a3`: Pest/QA PHP 8.4/8.5 four lanes passed; both benchmarks passed; PHPStan **523**, Psalm **1,567**; static gates fail overall. Full PR review thread inventory currently contains no unresolved threads. Keep PR in draft and unmerged.
+- Batch 10 updates one shared test helper plus three test files, asserting `MatcherInterface` at the callable/dataset boundary for 22 invocations. Existing matcher dataset factories, route fixtures, expected outcomes, and workload semantics remain unchanged. Required fresh CI evidence pending.
+- A01/A03/A07 previously pass focused registrar tests; compiled kernel/host provider A09-A26, archive and final-SHA checks remain open.
