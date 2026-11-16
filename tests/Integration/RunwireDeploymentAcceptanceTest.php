@@ -136,6 +136,11 @@ final class DeploymentAcceptanceWriter implements ResponseWriterInterface
 
 final class RunwireDeploymentAcceptanceTest extends TestCase
 {
+    /**
+     * @throws \Infocyph\Runwire\Exception\RuntimeUnavailableException
+     * @throws \Infocyph\Runwire\Exception\SupervisorException
+     * @throws \InvalidArgumentException
+     */
     public function testNativePortableAndPreforkSelectionsConsumeTheSameWebrickApplicationFactory(): void
     {
         $selector = new RuntimeSelector();
@@ -170,6 +175,11 @@ final class RunwireDeploymentAcceptanceTest extends TestCase
         self::assertApplicationFactoryAcceptsSelection($prefork, 'native-prefork');
     }
 
+    /**
+     * @throws \Infocyph\Runwire\Exception\RuntimeUnavailableException
+     * @throws \Infocyph\Runwire\Exception\SupervisorException
+     * @throws \InvalidArgumentException
+     */
     public function testHostDriverSelectionsRemainRunwireOwnedAndAcceptTheWebrickFactory(): void
     {
         $selector = new RuntimeSelector();
@@ -208,6 +218,9 @@ final class RunwireDeploymentAcceptanceTest extends TestCase
         self::assertFalse($capabilities->transportDrainVisibility);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function assertApplicationFactoryAcceptsSelection(RuntimeSelection $selection, string $mode): void
     {
         $seenDriver = null;
@@ -239,6 +252,10 @@ final class RunwireDeploymentAcceptanceTest extends TestCase
         self::assertSame(0, $application->snapshot()->requestsActive);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \OverflowException
+     */
     private static function request(): HttpRequest
     {
         return new HttpRequest(

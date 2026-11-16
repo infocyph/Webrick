@@ -91,6 +91,9 @@ final class RunwireDeferredRequestBody implements RequestBodyInterface
         return $this;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     public function push(string $chunk): void
     {
         if ($this->ended) {
@@ -105,6 +108,9 @@ final class RunwireDeferredRequestBody implements RequestBodyInterface
         $this->dataCallback?->__invoke($this);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     #[\Override]
     public function read(int $maxBytes = PHP_INT_MAX): string
     {
@@ -214,6 +220,11 @@ final class RunwireDeferredWriter implements ResponseWriterInterface
 #[ExcludeStaticPropertyFromBackup(CodeStream::class, 'handlers')]
 final class RunwireRequestBodyReadinessTest extends TestCase
 {
+    /**
+     * @throws \Infocyph\Runwire\Exception\ApplicationStartupException
+     * @throws \Infocyph\Runwire\Exception\CancelledException
+     * @throws \LogicException
+     */
     public function testCancellationWakesARequestWaitingForBodyDataWithoutStartingAResponse(): void
     {
         [$application, $paths] = self::applicationFixture();
@@ -241,6 +252,11 @@ final class RunwireRequestBodyReadinessTest extends TestCase
         }
     }
 
+    /**
+     * @throws \Infocyph\Runwire\Exception\ApplicationStartupException
+     * @throws \Infocyph\Runwire\Exception\CancelledException
+     * @throws \LogicException
+     */
     public function testDeferredJsonBodyResumesIncrementallyAndPreservesRawPayload(): void
     {
         [$application, $paths] = self::applicationFixture();
@@ -280,6 +296,11 @@ final class RunwireRequestBodyReadinessTest extends TestCase
         }
     }
 
+    /**
+     * @throws \Infocyph\Runwire\Exception\ApplicationStartupException
+     * @throws \Infocyph\Runwire\Exception\CancelledException
+     * @throws \LogicException
+     */
     public function testDeferredUrlencodedBodyPopulatesParsedFormData(): void
     {
         [$application, $paths] = self::applicationFixture();
@@ -310,6 +331,10 @@ final class RunwireRequestBodyReadinessTest extends TestCase
     }
 
     /** @return array{RunwireRuntimeApplication,list<string>} */
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \Throwable
+     */
     private static function applicationFixture(): array
     {
         [$intermixPath, $routerPath] = self::artifactPaths();
@@ -372,6 +397,9 @@ final class RunwireRequestBodyReadinessTest extends TestCase
     }
 
     /** @param list<string> $paths */
+    /**
+     * @throws \RuntimeException
+     */
     private static function cleanup(array $paths): void
     {
         foreach ($paths as $path) {
@@ -383,6 +411,10 @@ final class RunwireRequestBodyReadinessTest extends TestCase
         }
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \OverflowException
+     */
     private static function request(
         string $target,
         string $contentType,

@@ -23,6 +23,10 @@ final class ResponseCacheBench
 
     private Request $request;
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     public function setUp(): void
     {
         $this->request = Request::fake(uri: 'https://example.test/benchmark');
@@ -31,12 +35,18 @@ final class ResponseCacheBench
         $this->missMiddleware = new ResponseCacheMiddleware(Cache::memory('bench-response-miss'));
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     #[Bench\BeforeMethods('setUp')]
     public function benchHit(): void
     {
         ($this->hitMiddleware)($this->request, self::response(...));
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     #[Bench\BeforeMethods('setUp')]
     public function benchMissAndWrite(): void
     {
@@ -46,6 +56,10 @@ final class ResponseCacheBench
         ($this->missMiddleware)($request, self::response(...));
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     #[Bench\BeforeMethods('setUp')]
     public function benchReadFailure(): void
     {
@@ -53,6 +67,10 @@ final class ResponseCacheBench
         (new ResponseCacheMiddleware($store))($this->request, self::response(...));
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     private static function response(): Response
     {
         return Response::json(['ok' => true]);
@@ -63,6 +81,9 @@ final class ResponseCacheBench
         return new class (Cache::memory('bench-response-failure')) implements CacheInterface {
             public function __construct(private readonly CacheInterface $inner) {}
 
+            /**
+             * @throws \RuntimeException
+             */
             #[\Override]
             public function get(string $key, mixed $default = null): mixed
             {

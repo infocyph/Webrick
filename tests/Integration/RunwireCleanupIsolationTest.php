@@ -193,6 +193,9 @@ final class RunwireCleanupIsolationTest extends TestCase
         RunwireCleanupProbe::reset();
     }
 
+    /**
+     * @throws \Infocyph\Runwire\Exception\CancelledException
+     */
     public function testCleanupAndCarrierResetAreExactlyOnceAcrossRequestOutcomes(): void
     {
         [$application, $container, $paths] = self::applicationFixture();
@@ -254,6 +257,10 @@ final class RunwireCleanupIsolationTest extends TestCase
     }
 
     /** @return array{RunwireRuntimeApplication,\Infocyph\InterMix\DI\ProductionContainer,list<string>} */
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \Throwable
+     */
     private static function applicationFixture(): array
     {
         [$intermixPath, $routerPath] = self::artifactPaths();
@@ -360,6 +367,9 @@ final class RunwireCleanupIsolationTest extends TestCase
     }
 
     /** @param list<string> $paths */
+    /**
+     * @throws \RuntimeException
+     */
     private static function cleanup(array $paths): void
     {
         foreach ($paths as $path) {
@@ -371,6 +381,10 @@ final class RunwireCleanupIsolationTest extends TestCase
         }
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \OverflowException
+     */
     private static function request(string $target): HttpRequest
     {
         return new HttpRequest(

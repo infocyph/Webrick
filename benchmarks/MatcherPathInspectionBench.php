@@ -166,7 +166,7 @@ final class MatcherPathInspectionBench
     /** @param list<string> $segments */
     private static function guardCombined(int $count, string $prefix, array $segments): void
     {
-        if ($count < 0 || $prefix === "\0") {
+        if ($count < 0 || $prefix === "\0" || ($segments !== [] && $segments[0] !== $prefix)) {
             throw new \LogicException('Unreachable benchmark guard.');
         }
     }
