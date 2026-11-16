@@ -29,9 +29,10 @@ final readonly class RiskAdmissionMiddleware
     private ?Closure $renderer;
 
     /**
-     * @param callable(Request):RiskDecision $evaluator
-     * @param null|callable(Request,RiskDecision):Response $renderer
+     * @param callable(Request):mixed $evaluator Must produce a RiskDecision; validated at runtime.
+     * @param null|callable(Request,RiskDecision):mixed $renderer Must produce a Response; validated at runtime.
      */
+    /** @throws InvalidArgumentException For invalid admission modes. */
     public function __construct(
         callable $evaluator,
         public string $mode = self::ENFORCE,
@@ -45,7 +46,10 @@ final readonly class RiskAdmissionMiddleware
         $this->renderer = $renderer === null ? null : Closure::fromCallable($renderer);
     }
 
-    /** @param callable(Request):Response $next */
+    /**
+     * @param callable(Request):Response $next
+     * @throws UnexpectedValueException For invalid evaluator or renderer results.
+     */
     public function __invoke(Request $request, callable $next): Response
     {
         $decision = ($this->evaluator)($request);

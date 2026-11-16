@@ -160,3 +160,8 @@ Keep these two files only while this feature has pending work. Record durable AP
 - First candidate `6d989412d65c6cf50284348039907acdaeb8483e`: hosted PR checks reported 635 PHPStan errors (630 pre-existing on main, 5 new), and the quality lanes failed on Pint class layout and PHPCS unused test parameters. Pest itself passed.
 - Corrective actions: conform to PHPForge PER style for constants, narrow-check runtime callback results at the real untyped host boundary, retain strict validation of dynamically supplied reason codes, and use Reflection-based negative tests rather than inaccurate PHPDoc or ignored invalid callables.
 - No detector config, exclusions, baselines, or test assertions weakened. CI rerun against next committed revision is pending.
+### Batch 01 dynamic-callback typing follow-up (2026-11-16)
+
+- Candidate `2803089f932269f7c7ab56b9100e1dea60620058`: no-intl PHPStan reported 632 errors, compared to the 630-error main baseline. The two new findings were inferred-true type checks for host-supplied callbacks.
+- The executable contract must reject incorrect evaluator/renderer values from dynamically composed providers. Their constructor PHPDoc now reflects the real dynamic trust boundary (`mixed` return), while both results remain checked at runtime and documented to require `RiskDecision`/`Response`. No detector settings or runtime checks were relaxed.
+- Awaiting hosted CI on the subsequent commit; full static-analysis backlog and release acceptance remain open.
