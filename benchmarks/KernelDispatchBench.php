@@ -97,7 +97,8 @@ final class KernelDispatchBench
         }
     }
 
-    private function kernel(RuntimeContainerInterface $container, callable|array $handler): RouterKernel
+    /** @param (Closure():Response)|array{class-string,string} $handler */
+    private function kernel(RuntimeContainerInterface $container, Closure|array $handler): RouterKernel
     {
         return RouterKernel::bootWithRegistrar(
             log: new NullLogger(),

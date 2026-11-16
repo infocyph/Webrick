@@ -77,7 +77,11 @@ if (! class_exists('UsersController', false)) {
     }
 }
 
-/** Create a test RouterKernel with actual routes. */
+/**
+ * Create a test RouterKernel with actual routes.
+ *
+ * @param array<int,mixed> $extraMiddleware
+ */
 function createTestKernel(array $extraMiddleware = []): RouterKernel
 {
     $logger = new NullLogger;
@@ -136,7 +140,7 @@ function createTestKernel(array $extraMiddleware = []): RouterKernel
                 'error' => $message,
                 'status' => $status,
                 'path' => $request->getUri()->getPath(),
-            ], $status, $headers);
+            ], $status, webrickTestHeaders($headers));
         },
     );
 

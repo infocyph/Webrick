@@ -34,7 +34,13 @@ function signedUrlQuery(string $url): array
     $query = [];
     $queryString = \parse_url($url, \PHP_URL_QUERY);
     if (\is_string($queryString)) {
-        \parse_str($queryString, $query);
+        \parse_str($queryString, $parsed);
+        foreach ($parsed as $name => $value) {
+            if (!is_string($name) || !is_string($value)) {
+                throw new UnexpectedValueException('Signed URL fixture expects scalar query parameters.');
+            }
+            $query[$name] = $value;
+        }
     }
 
     return $query;

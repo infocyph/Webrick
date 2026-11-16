@@ -150,7 +150,7 @@ describe('Foundation Webrick bridge', function () {
                 throw new UnexpectedValueException('Scoped middleware fixture must produce a Response.');
             }
 
-            expect($response)->toHaveStatus(200)
+            expect($response->getStatusCode())->toBe(200)
                 ->and($response->getHeaderLine('X-Bridge-Params'))->toBe('30:60')
                 ->and(FoundationBridgeParameterizedMiddleware::$constructed)->toBe(1);
         } finally {

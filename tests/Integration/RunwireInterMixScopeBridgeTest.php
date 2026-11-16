@@ -418,7 +418,9 @@ test('runwire bridge rejects a borrowed scope captured for another live request'
     $integration = new RunwireIntegration($container);
     $integration->bind($runtime);
     $interMix = new InterMixRuntime($container);
-    $callbackRan = false;
+    $callbackState = new class {
+        public bool $ran = false;
+    };
 
     $container->withinScope(
         'host.request',
@@ -430,7 +432,7 @@ test('runwire bridge rejects a borrowed scope captured for another live request'
             $requestB,
             $integration,
             $interMix,
-            &$callbackRan,
+            $callbackState,
         ): void {
             $scopeContext = $active->captureScopeContext();
             $fiber = new Fiber(
@@ -441,7 +443,7 @@ test('runwire bridge rejects a borrowed scope captured for another live request'
                     $integration,
                     $interMix,
                     $scopeContext,
-                    &$callbackRan,
+                    $callbackState,
                 ): void {
                     $adapter = new RunwireRuntimeAdapter(
                         runtimeContext: $runtime,
@@ -460,8 +462,8 @@ test('runwire bridge rejects a borrowed scope captured for another live request'
                     expect(fn(): mixed => runwire_bridge_require_scope($context)->withinScope(
                         $interMix,
                         $requestB,
-                        static function () use (&$callbackRan): void {
-                            $callbackRan = true;
+                        static function () use ($callbackState): void {
+                            $callbackState->ran = true;
                         },
                     ))->toThrow(LogicException::class, 'different Runwire request');
                 },
@@ -479,7 +481,7 @@ test('runwire bridge rejects a borrowed scope captured for another live request'
         ],
     );
 
-    expect($callbackRan)->toBeFalse();
+    expect($callbackState->ran)->toBeFalse();
 
     $integration->release($runtime);
 });

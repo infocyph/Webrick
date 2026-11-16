@@ -265,6 +265,43 @@ function cleanTestCache(string $path): void
 }
 
 /**
+ * Validate headers supplied by untyped test callbacks before constructing a response.
+ *
+ * @param array<array-key,mixed> $headers
+ * @return array<string,string|list<string>>
+ * @throws UnexpectedValueException
+ */
+function webrickTestHeaders(array $headers): array
+{
+    $validated = [];
+    foreach ($headers as $name => $value) {
+        if (!is_string($name)) {
+            throw new UnexpectedValueException('Test header names must be strings.');
+        }
+
+        if (is_string($value)) {
+            $validated[$name] = $value;
+
+            continue;
+        }
+        if (!is_array($value) || !array_is_list($value)) {
+            throw new UnexpectedValueException('Test header values must be strings or string lists.');
+        }
+
+        $members = [];
+        foreach ($value as $member) {
+            if (!is_string($member)) {
+                throw new UnexpectedValueException('Test header list members must be strings.');
+            }
+            $members[] = $member;
+        }
+        $validated[$name] = $members;
+    }
+
+    return $validated;
+}
+
+/**
  * Validate the Pest-provided matcher factory at the dataset boundary.
  *
  * @throws UnexpectedValueException When the dataset does not return a matcher.

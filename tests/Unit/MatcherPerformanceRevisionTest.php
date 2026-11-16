@@ -110,8 +110,6 @@ it('keeps arbitrary registered regexes segment-local', function (): void {
         $compiled = new CompiledMatcherIndexCompiler()->compile($index->hosts());
 
         expect($compiled['*']['dynamic']['GET'][2]['custom']['steps'][0]['type'])->toBe('fallback');
-    } else {
-        expect(true)->toBeTrue();
     }
 });
 

@@ -87,13 +87,7 @@ test('Forwarded host rejects quoted value suffixes and duplicate parameters', fu
 
 test('CORS marks every active origin variant for shared caches', function (array $headers): void {
     $middleware = new CorsMiddleware(origins: ['https://allowed.test']);
-    $validatedHeaders = [];
-    foreach ($headers as $name => $value) {
-        if (!is_string($name)) {
-            throw new UnexpectedValueException('CORS fixture header names must be strings.');
-        }
-        $validatedHeaders[$name] = $value;
-    }
+    $validatedHeaders = webrickTestHeaders($headers);
 
     $response = $middleware(
         Request::fake(headers: $validatedHeaders),

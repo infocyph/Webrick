@@ -61,7 +61,7 @@ describe('ErrorHandler', function () {
                     'custom' => true,
                     'status' => $status,
                     'message' => $e->getMessage(),
-                ], $status, $headers);
+                ], $status, webrickTestHeaders($headers));
             },
         );
 

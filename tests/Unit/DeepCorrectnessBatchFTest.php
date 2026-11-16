@@ -105,7 +105,17 @@ it('keeps quoted commas and escaped quotes inside a forwarded element', function
 });
 
 it('uses the first HTTP quality parameter and fails invalid quality closed', function (array $parameters, float $expected) {
-    expect(HttpUtils::parameterQuality($parameters))->toBe($expected);
+    if (!array_is_list($parameters)) {
+        throw new UnexpectedValueException('HTTP quality fixture must contain an ordered list.');
+    }
+    $values = [];
+    foreach ($parameters as $parameter) {
+        if (!is_string($parameter)) {
+            throw new UnexpectedValueException('HTTP quality fixture must contain strings.');
+        }
+        $values[] = $parameter;
+    }
+    expect(HttpUtils::parameterQuality($values))->toBe($expected);
 })->with([
     'default quality' => [[], 1.0],
     'unrelated parameter' => [['level=1'], 1.0],

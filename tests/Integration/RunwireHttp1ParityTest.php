@@ -335,7 +335,7 @@ final class RunwireHttp1ParityTest extends TestCase
             ): Response => Response::create(
                 'error:' . $status . ':' . $request->getUri()->getPath() . ':' . $error->getMessage(),
                 $status,
-                $headers,
+                \webrickTestHeaders($headers),
             ),
         );
 

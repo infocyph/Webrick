@@ -255,7 +255,9 @@ final class BenchmarkSupport
             }
 
             return self::$compiledRoutes[$routeSet] ??= self::buildCompiledRoutes(
-                static fn(Registrar $registrar): mixed => self::registerSyntheticRoutes($registrar, $routeCount),
+                static function (Registrar $registrar) use ($routeCount): void {
+                    self::registerSyntheticRoutes($registrar, $routeCount);
+                },
             );
         }
 

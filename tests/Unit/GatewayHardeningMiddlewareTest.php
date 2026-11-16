@@ -135,7 +135,14 @@ test('gateway preserves intentional host and port semantics', function (array $s
         enforceHttps: false,
     );
 
-    $gateway(gatewayRequest($server), static function (Request $normalized) use ($expected): Response {
+    $validatedServer = [];
+    foreach ($server as $key => $value) {
+        if (!is_string($key)) {
+            throw new UnexpectedValueException('Gateway fixture server keys must be strings.');
+        }
+        $validatedServer[$key] = $value;
+    }
+    $gateway(gatewayRequest($validatedServer), static function (Request $normalized) use ($expected): Response {
         expect((string) $normalized->getUri())->toBe($expected);
 
         return Response::json(['ok' => true]);

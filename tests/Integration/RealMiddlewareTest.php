@@ -46,17 +46,16 @@ describe('Real Middleware Integration', function () {
     });
 
     it('handles POST requests with data', function () {
-        // POST requests are complex to test in isolation
-        // They work in production (see index.php and routes.php)
-        // This test validates the framework can handle different HTTP methods
-
         $kernel = createTestKernel();
+        $request = mockRequest('POST', '/post/echo', [], ['action' => 'create']);
+        $response = $kernel->handle($request);
 
-        // Just verify the kernel works - actual POST handling is tested in production
-        expect($kernel)->toBeInstanceOf(RouterKernel::class);
-
-        // Note: POST/PUT/PATCH requests require proper request body handling
-        // which is difficult to mock correctly in tests but works in production
+        expect($response->getStatusCode())->toBe(200);
+        $payload = json_decode((string) $response->getBody(), true, flags: JSON_THROW_ON_ERROR);
+        if (!is_array($payload)) {
+            throw new UnexpectedValueException('POST echo fixture must return a JSON object.');
+        }
+        expect($payload['method'] ?? null)->toBe('POST');
     });
 
     it('handles PUT requests', function () {

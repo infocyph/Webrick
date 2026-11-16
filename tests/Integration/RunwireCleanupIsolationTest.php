@@ -218,7 +218,9 @@ final class RunwireCleanupIsolationTest extends TestCase
 
             $cancelled = self::request('/cleanup/stream');
             $cancelWriter = new RunwireCleanupWriterFixture(
-                static fn() => $cancelled->context->cancel(CancellationReason::TRANSPORT_CANCELLED),
+                static function () use ($cancelled): void {
+                    $cancelled->context->cancel(CancellationReason::TRANSPORT_CANCELLED);
+                },
             );
             $application->handle($cancelled, $cancelWriter, completeResponse: true);
             self::assertSame(3, RunwireCleanupProbe::$scopeLeaves);
@@ -345,7 +347,7 @@ final class RunwireCleanupIsolationTest extends TestCase
             $container->captureScopeContext();
             self::fail('No InterMix scope may survive request cleanup on the current execution carrier.');
         } catch (ContainerException) {
-            self::assertTrue(true);
+            // The expected exception verifies that no request scope survives cleanup.
         }
     }
 
