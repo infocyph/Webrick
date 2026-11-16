@@ -44,13 +44,13 @@ require_once __DIR__ . '/registrar_functions.php';
  * @psalm-type AliasSpec = array{__alias:true,key:non-empty-string,params:list<string>}
  * @psalm-type ResourceSpecRow = array{0:string,1:string,2:string,3:string,4:bool}
  * @psalm-type GroupInput = array{prefix?:mixed,domain?:mixed,middleware?:mixed,name?:mixed,as?:mixed}
- * @method RouteInterface delete(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)
- * @method RouteInterface get(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)
- * @method RouteInterface head(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)
- * @method RouteInterface options(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)
- * @method RouteInterface patch(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)
- * @method RouteInterface post(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)
- * @method RouteInterface put(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)
+ * @method RouteInterface delete(string $path, array{0:string|object,1:string}|string|callable $handler, string|array{name?:mixed,as?:mixed,middleware?:mixed,aliases?:mixed,alias?:mixed,attributes?:mixed}|null $nameOrOpts = null)
+ * @method RouteInterface get(string $path, array{0:string|object,1:string}|string|callable $handler, string|array{name?:mixed,as?:mixed,middleware?:mixed,aliases?:mixed,alias?:mixed,attributes?:mixed}|null $nameOrOpts = null)
+ * @method RouteInterface head(string $path, array{0:string|object,1:string}|string|callable $handler, string|array{name?:mixed,as?:mixed,middleware?:mixed,aliases?:mixed,alias?:mixed,attributes?:mixed}|null $nameOrOpts = null)
+ * @method RouteInterface options(string $path, array{0:string|object,1:string}|string|callable $handler, string|array{name?:mixed,as?:mixed,middleware?:mixed,aliases?:mixed,alias?:mixed,attributes?:mixed}|null $nameOrOpts = null)
+ * @method RouteInterface patch(string $path, array{0:string|object,1:string}|string|callable $handler, string|array{name?:mixed,as?:mixed,middleware?:mixed,aliases?:mixed,alias?:mixed,attributes?:mixed}|null $nameOrOpts = null)
+ * @method RouteInterface post(string $path, array{0:string|object,1:string}|string|callable $handler, string|array{name?:mixed,as?:mixed,middleware?:mixed,aliases?:mixed,alias?:mixed,attributes?:mixed}|null $nameOrOpts = null)
+ * @method RouteInterface put(string $path, array{0:string|object,1:string}|string|callable $handler, string|array{name?:mixed,as?:mixed,middleware?:mixed,aliases?:mixed,alias?:mixed,attributes?:mixed}|null $nameOrOpts = null)
  */
 final readonly class Registrar
 {

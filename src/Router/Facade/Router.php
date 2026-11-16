@@ -55,13 +55,13 @@ use RuntimeException;
  * @psalm-type RouteHandler = HandlerArray|string|callable
  * @psalm-type RouteOptions = array{name?:mixed,as?:mixed,middleware?:mixed,aliases?:mixed,alias?:mixed,attributes?:mixed}
  * @psalm-type GroupOptions = array{prefix?:mixed,domain?:mixed,middleware?:mixed,name?:mixed,as?:mixed}
- * @method static RouteInterface delete(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)
- * @method static RouteInterface get(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)
- * @method static RouteInterface head(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)
- * @method static RouteInterface options(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)
- * @method static RouteInterface patch(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)
- * @method static RouteInterface post(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)
- * @method static RouteInterface put(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)
+ * @method static RouteInterface delete(string $path, array{0:string|object,1:string}|string|callable $handler, string|array{name?:mixed,as?:mixed,middleware?:mixed,aliases?:mixed,alias?:mixed,attributes?:mixed}|null $nameOrOpts = null)
+ * @method static RouteInterface get(string $path, array{0:string|object,1:string}|string|callable $handler, string|array{name?:mixed,as?:mixed,middleware?:mixed,aliases?:mixed,alias?:mixed,attributes?:mixed}|null $nameOrOpts = null)
+ * @method static RouteInterface head(string $path, array{0:string|object,1:string}|string|callable $handler, string|array{name?:mixed,as?:mixed,middleware?:mixed,aliases?:mixed,alias?:mixed,attributes?:mixed}|null $nameOrOpts = null)
+ * @method static RouteInterface options(string $path, array{0:string|object,1:string}|string|callable $handler, string|array{name?:mixed,as?:mixed,middleware?:mixed,aliases?:mixed,alias?:mixed,attributes?:mixed}|null $nameOrOpts = null)
+ * @method static RouteInterface patch(string $path, array{0:string|object,1:string}|string|callable $handler, string|array{name?:mixed,as?:mixed,middleware?:mixed,aliases?:mixed,alias?:mixed,attributes?:mixed}|null $nameOrOpts = null)
+ * @method static RouteInterface post(string $path, array{0:string|object,1:string}|string|callable $handler, string|array{name?:mixed,as?:mixed,middleware?:mixed,aliases?:mixed,alias?:mixed,attributes?:mixed}|null $nameOrOpts = null)
+ * @method static RouteInterface put(string $path, array{0:string|object,1:string}|string|callable $handler, string|array{name?:mixed,as?:mixed,middleware?:mixed,aliases?:mixed,alias?:mixed,attributes?:mixed}|null $nameOrOpts = null)
  */
 final class Router
 {

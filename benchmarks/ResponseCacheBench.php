@@ -79,7 +79,10 @@ final class ResponseCacheBench
             #[\Override]
             public function getItems(array $keys = []): iterable
             {
-                return $this->inner->getItems($keys);
+                /** @var iterable<string, \Psr\Cache\CacheItemInterface> $items */
+                $items = $this->inner->getItems($keys);
+
+                return $items;
             }
 
             #[\Override]
@@ -136,7 +139,7 @@ final class ResponseCacheBench
                 return $this->inner->set($key, $value, $ttl);
             }
 
-            /** @param iterable<string,mixed> $values */
+            /** @param iterable<array-key,mixed> $values */
             #[\Override]
             public function setMultiple(iterable $values, mixed $ttl = null): bool
             {

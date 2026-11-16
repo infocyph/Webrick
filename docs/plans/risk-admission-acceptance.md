@@ -174,3 +174,9 @@ No commit, tag, merge, publication, provider deployment or end-to-end security c
 - Evidence base: `c1376b46f1b8a8d5a6c7a72d2f1663ba95a3b386`, [run 43837944076](https://github.com/infocyph/Webrick/actions/runs/43837944076): static analysis failed at **618 PHPStan / 1,766 Psalm** while PHP 8.4/8.5 QA and benchmark lanes passed.
 - Updated 14 tests in a single remediation batch: replaced 106 dynamic response status/header macros with equivalent typed status/header-presence assertions; retained execution ordering for middleware attempts, original expected status values, and chained assertions. Source files and detector rules unchanged.
 - Goal: remove related `Pest\\Expectation::toHaveStatus/toHaveHeader` `method.notFound` findings; actual analyzer delta **pending** fresh CI and PR feedback. Existing A01-A26 gates and external shared-backend/soak qualifications unchanged.
+
+### Batch 08 verified / Batch 09 typed route registration and cache fixture (2026-11-16)
+
+- [Run 43840921171](https://github.com/infocyph/Webrick/actions/runs/43840921171), commit `86df760fea9cac455cfd8b5a3d81c6552ec794ab`: 4/4 PHP QA passed, 2/2 benchmarks passed, PHPStan **524** / Psalm **1,750**. These reflect 94 and 16 fewer errors, respectively, than prior candidate `c1376b4`. Full analysis gates still red.
+- Batch 09 changes: resolve potential Psalm interpretation of route magic-method handler/options aliases with inlined, behavior-equivalent union shapes (14 documented verbs across two classes); refine the failure-store benchmark's PSR cache iterable key/item contracts without changing runtime logic.
+- Await fresh analyzer and PR checks on the next revision. Original A01/A03/A07 registrar tests passed in the earlier CI matrix; compiled, provider, host/CAPTCHA, concurrency and final source-SHA qualification gates remain open.
