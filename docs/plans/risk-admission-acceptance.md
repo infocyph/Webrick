@@ -142,3 +142,9 @@ No commit, tag, merge, publication, provider deployment or end-to-end security c
 
 - PR #59 raised three `MethodSignatureMustOmitReturnType` issues on `__clone` and eleven `return.unusedType` findings for fixture `trailers()`. Changed 14 PHP files in response to actual diagnostics and confirmed source method bodies before adjusting signatures.
 - Expected: preserve existing clone behavior and return non-null Headers as before. Required evidence: next SHA strict Psalm/PHPStan and PHP 8.4/8.5 QA before review threads can be considered verified. No risk-admission acceptance gate advanced solely due to this typing work.
+
+### Batch 06 — route selection and HEAD acceptance (2026-11-16)
+
+- New registrar test exercises A01 route omission, A03 challenge rejection/handler bypass, and A07 HEAD body stripping and Content-Length preservation. Core `RouterKernel` normalizes the final response for HEAD; compiled kernel already had analogous behavior.
+- Supplemental static fix: `Message::__clone()` return-type declaration removed in the base class. Next hosted run must verify no Psalm regressions and preservation of existing request clone tests.
+- **Verification pending** at this candidate SHA: no A01/A03/A07 gate marked complete before its focused test and full QA pass; no P2 artifact/compiled parity claim yet.

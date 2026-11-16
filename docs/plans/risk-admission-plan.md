@@ -197,3 +197,10 @@ Keep these two files only while this feature has pending work. Record durable AP
 - Three native Request hierarchy `__clone` overrides no longer declare an unnecessary `: void` return type (Psalm `MethodSignatureMustOmitReturnType`), preserving clone side effects and callable parameters.
 - Eleven Runwire `RequestBodyInterface` test/benchmark fixture implementations changed `trailers(): ?Headers` to the covariant non-null `trailers(): Headers` because every implementation returns `new Headers()`; aligns with PHPStan `return.unusedType` without changing payloads, I/O or interface requirements.
 - This batch targets **14 files / 14 type-contract findings**. Source/test behavior and quality rules unchanged; compile/runtime, PHPStan, Psalm and PHPForge QA on the next candidate are pending. No revision marked release-ready.
+
+### Batch 06 — registrar opt-in and HEAD response parity (2026-11-16)
+
+- Candidate base: `67d09c54e78a979961ce8cdc1d94d3b3226aec70`. Added focused registrar fixture for an unprotected route and a risk-protected route. Asserts evaluator skipped entirely off-route, protected handler never invoked for a challenge, and HTTP status/no-store remain correct for GET and HEAD.
+- A07: identified existing registrar kernel behavior that normalized HEAD only on pre-routing gate responses, unlike the compiled kernel which suppresses bodies for ordinary matched-route responses. Applied the minimal HEAD-only response normalization in `RouterKernel::handle()`; no change to middleware pipeline invocation or non-HEAD responses. Requires PHPForge performance equivalence/QA verification on the new commit.
+- Fixed a remaining Psalm `MethodSignatureMustOmitReturnType` in base `Message::__clone()` to match the other Request class hierarchy corrections from Batch 05.
+- Tests added are pending execution; P1/P2 A01/A03/A07 partly covered, while compiled artifacts, InterMix-scoped evaluator, A09-A26, full static-analysis cleanup and release gates remain pending. Keep tracked acceptance evidence tied to the actual revision.

@@ -158,7 +158,9 @@ final readonly class RouterKernel
             throw new \RuntimeException('Request scope callback must return Response.');
         }
 
-        return $result;
+        return $request->getMethod() === HttpMethodEnum::HEAD->value
+            ? self::headResponse($result)
+            : $result;
     }
 
     private static function headResponse(Response $response): Response

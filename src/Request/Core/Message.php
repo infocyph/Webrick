@@ -33,7 +33,7 @@ abstract class Message
         $this->body = $body ?? new StringBody('');
     }
 
-    protected function __clone(): void {}
+    protected function __clone() {}
 
     public function getBody(): BodyStream
     {
