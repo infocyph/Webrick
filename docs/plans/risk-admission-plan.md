@@ -143,3 +143,14 @@ TLS fingerprint collection, user-database schema changes and distributed permit-
 ## Plan lifecycle
 
 Keep these two files only while this feature has pending work. Record durable API, deployment and verification guidance in the maintained user documentation during implementation. When the feature is complete, check references and remove the planning files; they are not permanent release reports. The existing `docs export-ignore` rule already excludes them from distributions.
+
+## Execution tracker (append-only)
+
+### Batch 01 — Native risk decision contract (2026-11-16)
+
+- Base branch revision: `70ea3b1d7526eb7bc608bd3e41480917468fbf62`. PR: [#59](https://github.com/infocyph/Webrick/pull/59) (draft; do not merge).
+- Scope: add `RiskDecision`, opt-in `RiskAdmissionMiddleware`, and focused unit contract tests; no vendor integrations, global registration or middleware-pipeline rewrites.
+- Contract decisions: actions `allow/challenge/deny/unavailable`; default `enforce`, explicit `shadow`; decision request attribute `webrick.risk_admission.decision`; rejection JSON status 429/403/503; enforce `Cache-Control: no-store` on default/custom rejects. Evaluator exceptions propagate to the existing kernel error boundary, not fail-open. Host remains responsible for distinguishing known outages and returning `unavailable`.
+- Engineering principles: CORE-01/02 minimal scoped change; FLOW-02 root-cause quality gates unchanged; TYPE-01 strict result validation; COMPAT-02/04 public named arguments and accurate types; SEC trust/replay remain host-owned; PERF-07 unprotected route remains unchanged.
+- Verification: focused unit tests added; repository PHPForge, Psalm, PHPStan, hosted CI and downstream integration acceptance pending. Do not mark P1 complete until the checks pass.
+- Next: verify A01-A08, then P2 registrar/compiled/InterMix and scoped evaluator parity; remediate reported analyzer findings in separate single-commit batches.

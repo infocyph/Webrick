@@ -96,3 +96,13 @@ Use this table for actual results; replace pending only with commands, covered r
 | Release and cleanup | Final minor-version classification, durable docs and reference-checked plan removal. | Pending all applicable gates. |
 
 No commit, tag, merge, publication, provider deployment or end-to-end security certification is implied by these planning documents.
+
+## Execution tracker (append-only)
+
+### Batch 01 — Public contract fixtures (2026-11-16)
+
+- Candidate base SHA: `70ea3b1d7526eb7bc608bd3e41480917468fbf62`; review PR [#59](https://github.com/infocyph/Webrick/pull/59).
+- Added tests for the allow path and immutable decision attribute (A02); rejection/handler bypass (A03-A04); shadow observational forwarding (A06); custom renderer no-store and downstream isolation (A07 partial); invalid configuration and malformed outcomes (A05/A08 partial).
+- Outstanding: A01 omitted-route test, HEAD kernel parity, invalid action constructor accessibility, registrar/compiled/artifact parity A09-A13, host provider security A14-A26. No completion asserted before execution.
+- Historical quality baseline, November 15 `main` run: Psalm 2,231 errors, PHPStan no-intl 630 errors. These are **not** fresh branch counts; both gates must pass on the final SHA with unchanged configuration.
+- Next validation: focused Pest tests and lint on the candidate, then PHPForge static analysis, full test matrix, and PR feedback resolution.
