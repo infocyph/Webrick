@@ -42,6 +42,10 @@ final readonly class CompiledBoundRouteIdentifier
             throw new \DomainException('Route identifier was not found.');
         }
 
+        if (!is_string($value) && !is_int($value)) {
+            throw new \InvalidArgumentException('Compiled route identifier must be a string or integer path value.');
+        }
+
         return new self((string) $value);
     }
 }
@@ -85,6 +89,35 @@ final class CompiledFastPathScopeProbe
 #[ExcludeStaticPropertyFromBackup(CodeStream::class, 'handlers')]
 final class CompiledRoutingControlBridgeTest extends TestCase
 {
+    /**
+     * Validate the exact manifest fixture fields consumed by compiled-boot tests.
+     *
+     * @param array<string,mixed> $manifest
+     * @phpstan-assert array{format:int,environment:string,config_fingerprint:string,intermix:array{path:string,digest:string,graph:string,build:string,compiled:array<array-key,mixed>,skipped:array<array-key,mixed>},webrick:array{path:string,digest:string,fingerprint:string}} $manifest
+     * @psalm-assert array{format:int,environment:string,config_fingerprint:string,intermix:array{path:string,digest:string,graph:string,build:string,compiled:array<array-key,mixed>,skipped:array<array-key,mixed>},webrick:array{path:string,digest:string,fingerprint:string}} $manifest
+     */
+    private static function assertReleaseFixture(array $manifest): void
+    {
+        if (
+            !is_int($manifest['format'] ?? null)
+            || !is_string($manifest['environment'] ?? null)
+            || !is_string($manifest['config_fingerprint'] ?? null)
+            || !is_array($manifest['intermix'] ?? null)
+            || !is_array($manifest['webrick'] ?? null)
+            || !is_string($manifest['intermix']['path'] ?? null)
+            || !is_string($manifest['intermix']['digest'] ?? null)
+            || !is_string($manifest['intermix']['graph'] ?? null)
+            || !is_string($manifest['intermix']['build'] ?? null)
+            || !is_array($manifest['intermix']['compiled'] ?? null)
+            || !is_array($manifest['intermix']['skipped'] ?? null)
+            || !is_string($manifest['webrick']['path'] ?? null)
+            || !is_string($manifest['webrick']['digest'] ?? null)
+            || !is_string($manifest['webrick']['fingerprint'] ?? null)
+        ) {
+            throw new \UnexpectedValueException('Compiled release fixture has an invalid manifest shape.');
+        }
+    }
+
     public function testCoordinatedReleaseBootRejectsStaleAndObsoleteMetadata(): void
     {
         [$intermixPath, $routerPath] = self::artifactPaths('release');
@@ -107,6 +140,7 @@ final class CompiledRoutingControlBridgeTest extends TestCase
                 postGlobalTags: [],
             );
 
+            self::assertReleaseFixture($manifest);
             self::assertSame(ReleaseCompiler::RELEASE_FORMAT, $manifest['format']);
             self::assertMatchesRegularExpression('/^[a-f0-9]{32}$/D', $manifest['intermix']['graph']);
             self::assertMatchesRegularExpression('/^[a-f0-9]{32}$/D', $manifest['intermix']['build']);
@@ -265,12 +299,14 @@ final class CompiledRoutingControlBridgeTest extends TestCase
                 unlink(ReleaseCompiler::runtimeManifestPath($releasePath));
             }
             $release = new ReleaseManifestLoader()->load($releasePath);
+            self::assertReleaseFixture($release);
             self::assertArrayHasKey('789', $release['intermix']['skipped']);
             self::assertSame('numeric-service', $builder->production($intermixPath)->get('789'));
             $matcher = match ($matcherMode) {
                 'fused' => FusedMatcher::make(),
                 'generated' => GeneratedMatcher::make(),
                 'sharded' => ShardedMatcher::make(),
+                default => throw new \UnexpectedValueException('Unsupported matcher fixture mode.'),
             };
             $kernel = $trusted
                 ? CompiledRouterKernel::fromPrevalidatedArtifact(
@@ -350,6 +386,7 @@ final class CompiledRoutingControlBridgeTest extends TestCase
                 unlink(ReleaseCompiler::runtimeManifestPath($releasePath));
             }
             $release = new ReleaseManifestLoader()->load($releasePath);
+            self::assertReleaseFixture($release);
             self::assertContains(Request::class, $release['intermix']['compiled']);
             self::assertSame([], $release['intermix']['skipped']);
             $container = $trusted
@@ -360,6 +397,7 @@ final class CompiledRoutingControlBridgeTest extends TestCase
                 'fused' => FusedMatcher::make(),
                 'generated' => GeneratedMatcher::make(),
                 'sharded' => ShardedMatcher::make(),
+                default => throw new \UnexpectedValueException('Unsupported matcher fixture mode.'),
             };
             $kernel = CompiledRouterKernel::fromPrevalidatedArtifact(
                 log: new NullLogger(),

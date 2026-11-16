@@ -153,7 +153,7 @@ function testRegistrar(array $options = []): Registrar
         signedUrlConfig: $opts['signedUrlConfig'] instanceof SignedUrlConfig
             ? $opts['signedUrlConfig']
             : null,
-        urlBaseUri: is_string($opts['urlBaseUri']) ? $opts['urlBaseUri'] : '',
+        urlBaseUri: $opts['urlBaseUri'],
     );
 }
 /**
@@ -166,7 +166,7 @@ function testRegistrar(array $options = []): Registrar
 function mockRequest(string $method, string $uri, array $headers = [], array $body = []): Request
 {
     foreach (array_keys($_SERVER) as $key) {
-        if (is_string($key) && str_starts_with($key, 'HTTP_')) {
+        if (str_starts_with($key, 'HTTP_')) {
             unset($_SERVER[$key]);
         }
     }
