@@ -432,7 +432,7 @@ final readonly class CookieEncryptionMiddleware
      */
     private function kidByte(): int
     {
-        if ($this->kid > 255) {
+        if ($this->kid < 0 || $this->kid > 255) {
             throw new RuntimeException('Key id must be within byte range.');
         }
 

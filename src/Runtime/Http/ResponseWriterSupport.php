@@ -121,7 +121,8 @@ final readonly class ResponseWriterSupport
     }
 
     /**
-     * @return Generator<int,string,void,void>
+     * @phpstan-return Generator<int,string,void,void>
+     * @psalm-return Generator<int,non-empty-string,mixed,null>
      * @throws \RuntimeException
      */
     private static function bodyChunks(\Infocyph\Webrick\Interfaces\BodyStream $body, int $chunkSize): Generator

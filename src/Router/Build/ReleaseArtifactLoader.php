@@ -226,6 +226,7 @@ final readonly class ReleaseArtifactLoader
             }
         }
 
+        /** @var list<string> $value Validated element-by-element above. */
         return $value;
     }
 

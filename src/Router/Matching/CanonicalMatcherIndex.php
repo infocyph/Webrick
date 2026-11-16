@@ -197,17 +197,20 @@ final class CanonicalMatcherIndex
             throw new UnexpectedValueException('Invalid canonical matcher segment.');
         }
         if ($segment['type'] === 'lit') {
-            if (!is_string($segment['val'] ?? null)) {
+            $value = $segment['val'] ?? null;
+            if (!is_string($value)) {
                 throw new UnexpectedValueException('Invalid literal matcher segment.');
             }
 
-            return ['type' => 'lit', 'val' => $segment['val']];
+            return ['type' => 'lit', 'val' => $value];
         }
-        if ($segment['type'] !== 'var' || !is_string($segment['name'] ?? null)) {
+        $name = $segment['name'] ?? null;
+        if ($segment['type'] !== 'var' || !is_string($name)) {
             throw new UnexpectedValueException('Invalid variable matcher segment.');
         }
-        if (is_string($segment['regex'] ?? null)) {
-            return ['type' => 'var', 'name' => $segment['name'], 'regex' => $segment['regex']];
+        $regex = $segment['regex'] ?? null;
+        if (is_string($regex)) {
+            return ['type' => 'var', 'name' => $name, 'regex' => $regex];
         }
         $call = $segment['call'] ?? null;
         if (!is_string($call) || !is_callable($call)) {
@@ -215,7 +218,7 @@ final class CanonicalMatcherIndex
         }
 
         /** @var callable-string $call */
-        return ['type' => 'var', 'name' => $segment['name'], 'call' => $call];
+        return ['type' => 'var', 'name' => $name, 'call' => $call];
     }
 
     /**

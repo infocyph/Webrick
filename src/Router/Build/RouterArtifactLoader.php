@@ -290,6 +290,7 @@ final class RouterArtifactLoader
             throw new UnexpectedValueException('Malformed Webrick router artifact metadata.');
         }
 
+        /** @var array{format:int,environment:string,config_fingerprint:string,artifact_fingerprint:string,digest:string} $meta */
         return [
             'format' => $meta['format'],
             'environment' => $meta['environment'],
@@ -320,6 +321,7 @@ final class RouterArtifactLoader
             }
         }
 
+        /** @var array<string,mixed> $payload */
         return $payload;
     }
 }

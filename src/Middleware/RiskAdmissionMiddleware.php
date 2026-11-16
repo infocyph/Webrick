@@ -49,6 +49,7 @@ final readonly class RiskAdmissionMiddleware
     /**
      * @param callable(Request):Response $next
      * @throws UnexpectedValueException For invalid evaluator or renderer results.
+     * @throws \RuntimeException For response serialization failures.
      */
     public function __invoke(Request $request, callable $next): Response
     {

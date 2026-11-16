@@ -178,8 +178,9 @@ final class CompiledRouteCachePayload
         }
 
         $name = self::string($segment['name'] ?? null);
-        if (is_string($segment['regex'] ?? null)) {
-            return ['type' => 'var', 'name' => $name, 'regex' => $segment['regex']];
+        $regex = $segment['regex'] ?? null;
+        if (is_string($regex)) {
+            return ['type' => 'var', 'name' => $name, 'regex' => $regex];
         }
 
         $call = $segment['call'] ?? null;

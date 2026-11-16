@@ -152,7 +152,7 @@ final class RunwireResponseContinuation
         return self::$ioSuspensions ??= new WeakMap();
     }
 
-    /** @param Fiber<mixed, mixed, mixed, mixed> $fiber */
+    /** @phpstan-param Fiber<mixed, mixed, mixed, mixed> $fiber */
     private static function isFiberSuspended(Fiber $fiber): bool
     {
         return $fiber->isSuspended();
@@ -166,7 +166,7 @@ final class RunwireResponseContinuation
     }
 
     /**
-     * @return Fiber<mixed, mixed, mixed, mixed>
+     * @phpstan-return Fiber<mixed, mixed, mixed, mixed>
      * @throws \RuntimeException
      */
     private static function managedFiber(string $message): Fiber
@@ -185,7 +185,7 @@ final class RunwireResponseContinuation
         return self::$managedFibers ??= new WeakMap();
     }
 
-    /** @param Fiber<mixed, mixed, mixed, mixed> $fiber */
+    /** @phpstan-param Fiber<mixed, mixed, mixed, mixed> $fiber */
     private static function releaseIfTerminated(Fiber $fiber): void
     {
         if (!$fiber->isTerminated()) {
@@ -205,12 +205,12 @@ final class RunwireResponseContinuation
      * caller-owned Fiber and resumed only when that caller explicitly resumes.
      *
      * @param callable(): void $handler
-     * @param Fiber<mixed, mixed, mixed, mixed>|null $owner
+     * @phpstan-param Fiber<mixed, mixed, mixed, mixed>|null $owner
      * @throws \Throwable
      */
     private static function runOwnedFiber(callable $handler, ?Fiber $owner): void
     {
-        /** @var Fiber<mixed, mixed, mixed, mixed> $fiber */
+        /** @phpstan-var Fiber<mixed, mixed, mixed, mixed> $fiber */
         $fiber = new Fiber($handler);
         self::managedFibers()[$fiber] = true;
 
@@ -236,7 +236,7 @@ final class RunwireResponseContinuation
         self::releaseIfTerminated($fiber);
     }
 
-    /** @param Fiber<mixed, mixed, mixed, mixed> $fiber */
+    /** @phpstan-param Fiber<mixed, mixed, mixed, mixed> $fiber */
     private static function suspendForIo(Fiber $fiber): void
     {
         $ioSuspensions = self::ioSuspensions();
@@ -253,8 +253,8 @@ final class RunwireResponseContinuation
      * Keep Webrick's inner handler attached to the caller-owned task until
      * exception handling and cleanup have completely unwound.
      *
-     * @param Fiber<mixed, mixed, mixed, mixed> $fiber
-     * @param Fiber<mixed, mixed, mixed, mixed>|null $owner
+     * @phpstan-param Fiber<mixed, mixed, mixed, mixed> $fiber
+     * @phpstan-param Fiber<mixed, mixed, mixed, mixed>|null $owner
      */
     private static function unwindSuspendedHandler(
         Fiber $fiber,
