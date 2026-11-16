@@ -214,3 +214,9 @@ Keep these two files only while this feature has pending work. Record durable AP
 
 - [CI 43836037296](https://github.com/infocyph/Webrick/actions/runs/43836037296) still returned HTTP 400 for the unprotected registrar fixture even with `mockRequest`, while the 656 other tests continued passing. Therefore the previous request-context hypothesis was insufficient; no production change should be made on that assumption alone.
 - Added failure-only diagnostics in the feature test (explicit URI/Host and debug-mode error response) to identify the actual root cause on CI. This test is not an application runtime and the debug fixture must not be reused for production requests. Test acceptance remains **blocked** until diagnosed and corrected.
+
+### Batch 06 final root-cause correction — explicit plaintext status (2026-11-16)
+
+- [CI 43836877991](https://github.com/infocyph/Webrick/actions/runs/43836877991) confirmed HTTP 400 **with body `ok`** from unprotected `/health`, not a route-match error. Source inspection: `Response::plaintext(string $msg, int $code = StatusEnum::BAD_REQUEST->value)` defaults to **400**, not 200. The new fixture constructed the wrong expected status.
+- Fixed only the new test: use `Response::plaintext('ok', 200)`, remove the temporary `debug: true` and failure-only diagnostic message; keep full route absence, rejection/HEAD and handler-bypass assertions intact.
+- Prior fixture hypothesis concerning Request::fake/Host was incorrect; superseded by the verified Response factory default. Required evidence: next hosted QA, strict analyzers and benchmarks. No weakening of production validation or interface changes.

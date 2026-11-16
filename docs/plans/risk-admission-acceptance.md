@@ -157,3 +157,8 @@ No commit, tag, merge, publication, provider deployment or end-to-end security c
 ### Batch 06 diagnostic pass — reproducible 400 response (2026-11-16)
 
 - Failure remains at feature-test unprotected `/health` request, HTTP 400 versus expected 200, in hosted [43836037296](https://github.com/infocyph/Webrick/actions/runs/43836037296). Subsequent revision adds targeted debug-mode test diagnostics to determine which validation boundary rejects the request. No false completion of A01/A03/A07.
+
+### Batch 06 root-cause verified — response factory default (2026-11-16)
+
+- The failing unprotected test route returned HTTP 400 and plaintext `ok` on [CI 43836877991](https://github.com/infocyph/Webrick/actions/runs/43836877991). Investigation found the `Response::plaintext()` factory deliberately defaults its `$code` argument to `StatusEnum::BAD_REQUEST` (400); test fixture now explicitly requests 200.
+- Temporary debug diagnostics removed; response semantics, security boundary and negative assertions unchanged. A01/A03/A07 still require a passing hosted run at this correction's commit SHA.

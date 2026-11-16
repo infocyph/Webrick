@@ -25,7 +25,7 @@ test('registrar risk middleware only evaluates selected routes and suppresses HE
         log: new NullLogger(),
         matcher: FusedMatcher::make(),
         register: static function (Registrar $routes) use ($middleware, &$protectedCalls): void {
-            $routes->get('/health', static fn(): Response => Response::plaintext('ok'));
+            $routes->get('/health', static fn(): Response => Response::plaintext('ok', 200));
             $routes->get(
                 '/protected',
                 static function () use (&$protectedCalls): Response {
@@ -39,18 +39,13 @@ test('registrar risk middleware only evaluates selected routes and suppresses HE
         invoker: ContainerBuilder::create('risk-admission-test-' . bin2hex(random_bytes(4)))
             ->input(Request::class)
             ->build(),
-        debug: true,
     );
 
-    $healthRequest = mockRequest('GET', '/health');
-    $health = $kernel->handle($healthRequest);
+    $health = $kernel->handle(mockRequest('GET', '/health'));
     $rejection = $kernel->handle(mockRequest('GET', '/protected'));
     $head = $kernel->handle(mockRequest('HEAD', '/protected'));
 
-    expect($health->getStatusCode())->toBe(
-        200,
-        sprintf('Health request %s host=%s returned: %s', (string) $healthRequest->getUri(), $healthRequest->getUri()->getHost(), (string) $health->getBody()),
-    );
+    expect($health->getStatusCode())->toBe(200);
     expect((string) $health->getBody())->toBe('ok');
     expect($rejection->getStatusCode())->toBe(429);
     expect($rejection->getHeaderLine('Cache-Control'))->toBe('no-store');
