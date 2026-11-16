@@ -100,6 +100,7 @@ final readonly class SapiRuntimeAdapter implements RuntimeAdapterInterface
 
     /**
      * @param resource $output
+     * @throws \RuntimeException
      */
     private static function writeChunk(mixed $output, string $chunk): void
     {
@@ -143,6 +144,10 @@ final readonly class SapiRuntimeAdapter implements RuntimeAdapterInterface
             header('Content-Length: ' . $size, false);
         }
     }
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
 
     private function writeBody(Response $response): void
     {

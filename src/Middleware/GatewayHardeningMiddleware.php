@@ -71,6 +71,7 @@ final readonly class GatewayHardeningMiddleware
     /**
      * @param Closure(Request):Response $next
      * @throws \Infocyph\Webrick\Exceptions\HttpException
+     * @throws \InvalidArgumentException
      */
     public function __invoke(Request $req, Closure $next): Response
     {
@@ -293,6 +294,7 @@ final readonly class GatewayHardeningMiddleware
     /**
      * @throws \Infocyph\Webrick\Exceptions\HttpException
      * @throws \InvalidArgumentException
+     * @throws \RuntimeException
      */
     private function redirectIfHttpsEnforced(Request $req): ?Response
     {

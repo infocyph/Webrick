@@ -19,6 +19,9 @@ use Psr\Log\NullLogger;
 final readonly class TelemetryMiddleware
 {
     private bool $otelAvailable;
+    /**
+     * @throws \InvalidArgumentException
+     */
 
     public function __construct(
         private LoggerInterface $log = new NullLogger(),
@@ -53,7 +56,10 @@ final readonly class TelemetryMiddleware
             && class_exists('OpenTelemetry\\API\\Trace\\SpanKind');
     }
 
-    /** @param Closure(Request):Response $next */
+    /**
+     * @param Closure(Request):Response $next
+     * @throws \Throwable
+     */
     public function __invoke(Request $req, Closure $next): Response
     {
         if ($this->otelAvailable) {

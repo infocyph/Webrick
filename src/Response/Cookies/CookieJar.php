@@ -44,6 +44,9 @@ final class CookieJar
 
         return $jar;
     }
+    /**
+     * @throws \InvalidArgumentException
+     */
 
     public function remove(string $name, string $path = '/', ?string $domain = null): self
     {

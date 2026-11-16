@@ -32,6 +32,9 @@ final readonly class WorkermanRuntimeAdapter implements RuntimeAdapterInterface
             transportRequestLimits: $transportRequestLimits,
         );
     }
+    /**
+     * @throws \RuntimeException
+     */
 
     public static function current(bool $transportCompression = false, bool $transportRequestLimits = false): self
     {
@@ -89,6 +92,7 @@ final readonly class WorkermanRuntimeAdapter implements RuntimeAdapterInterface
 
     /**
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException
      */
     #[\Override]
     public function write(Response $response, RuntimeRequestContext $context): void

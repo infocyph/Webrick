@@ -47,6 +47,9 @@ final readonly class CompiledMiddlewarePipeline
         $this->pipeline = $next;
         $this->requiresScope = $requiresScope;
     }
+    /**
+     * @throws \UnexpectedValueException
+     */
 
     public function handle(Request $request): Response
     {
@@ -65,6 +68,7 @@ final readonly class CompiledMiddlewarePipeline
 
     /**
      * @return array{0:Closure(Request,Closure):mixed,1:bool}
+     * @throws \UnexpectedValueException
      */
     private static function compileInvoker(RuntimeDescriptorInvoker $resolver, mixed $descriptor): array
     {
@@ -100,6 +104,9 @@ final readonly class CompiledMiddlewarePipeline
             true,
         ];
     }
+    /**
+     * @throws \UnexpectedValueException
+     */
 
     private static function invokeResolvedMiddleware(
         RuntimeDescriptorInvoker $resolver,

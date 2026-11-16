@@ -18,6 +18,7 @@ final readonly class CorsMiddleware
      * @param list<string> $origins
      * @param string|list<string> $allowHeaders
      * @param string|list<string> $exposeHeaders
+     * @throws \InvalidArgumentException
      */
     public function __construct(
         private array $origins = [],
@@ -204,6 +205,7 @@ final readonly class CorsMiddleware
     /**
      * @param array{origins:list<string>,methods:string,allowHeaders:string|list<string>,exposeHeaders:string|list<string>,maxAgeSeconds:int,allowCredentials:bool,allowPrivateNetwork:bool} $policy
      * @throws \Infocyph\Webrick\Exceptions\HttpException
+     * @throws \InvalidArgumentException
      */
     private function preflightResponse(Request $req, array $policy, string $acao): Response
     {
@@ -229,7 +231,10 @@ final readonly class CorsMiddleware
         return $this->applyPreflightHeaders($response, $req, $policy, $requestedHeaders, $allowedHeaders);
     }
 
-    /** @return array{origins:list<string>,methods:string,allowHeaders:string|list<string>,exposeHeaders:string|list<string>,maxAgeSeconds:int,allowCredentials:bool,allowPrivateNetwork:bool} */
+    /**
+     * @return array{origins:list<string>,methods:string,allowHeaders:string|list<string>,exposeHeaders:string|list<string>,maxAgeSeconds:int,allowCredentials:bool,allowPrivateNetwork:bool}
+     * @throws \InvalidArgumentException
+     */
     private function routePolicy(Request $req): array
     {
         $policy = $this->policy();

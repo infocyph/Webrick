@@ -226,6 +226,7 @@ final class Router
      * @param array<string,mixed> $params
      * @param array<string,mixed> $query
      * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     public static function signedUrlFor(
         string $name,
@@ -251,6 +252,7 @@ final class Router
      * @param array<string,mixed> $params
      * @param array<string,mixed> $query
      * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     public static function temporaryUrlFor(
         string $name,
@@ -278,6 +280,7 @@ final class Router
      * @param array<string,mixed> $params
      * @param array<string,mixed> $query
      * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     public static function temporaryUrlUntil(
         string $name,
@@ -305,6 +308,7 @@ final class Router
      * @param array<string,mixed> $params
      * @param array<string,mixed> $query
      * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     public static function urlFor(
         string $name,

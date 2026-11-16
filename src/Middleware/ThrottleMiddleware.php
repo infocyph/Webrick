@@ -58,6 +58,7 @@ final readonly class ThrottleMiddleware
     /**
      * @param Closure(Request):Response $next
      * @throws \Psr\Cache\InvalidArgumentException
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
      */
     public function __invoke(Request $req, Closure $next): Response
     {
@@ -191,6 +192,7 @@ final readonly class ThrottleMiddleware
     /**
      * @throws InvalidArgumentException
      * @throws \Infocyph\Webrick\Exceptions\HttpException
+     * @throws \RuntimeException
      */
     private function reserveCapacity(string $key, int $resetAt, int $now, int $cost): int
     {

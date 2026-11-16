@@ -36,6 +36,7 @@ class NativeServerRequest extends ServerRequest
 
     /**
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException
      */
     #[\Override]
     public static function createFromGlobals(): self

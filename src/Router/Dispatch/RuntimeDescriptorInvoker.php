@@ -16,6 +16,9 @@ final readonly class RuntimeDescriptorInvoker
     /**
      * @param array<array-key,mixed>|callable|string $descriptor
      * @param array<int|string,mixed> $arguments
+     * @throws \Psr\Container\ContainerExceptionInterface
+     * @throws \Psr\Container\NotFoundExceptionInterface
+     * @throws \UnexpectedValueException
      */
     public function resolve(array|callable|string $descriptor, array $arguments = []): mixed
     {

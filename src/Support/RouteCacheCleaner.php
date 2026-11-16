@@ -42,6 +42,9 @@ final class RouteCacheCleaner
 
         return $canonical;
     }
+    /**
+     * @throws \RuntimeException
+     */
 
     public static function clearDirectoryPreservingGitignore(string $dir): bool
     {
@@ -105,7 +108,10 @@ final class RouteCacheCleaner
         return true;
     }
 
-    /** @return array{bool,bool} */
+    /**
+     * @return array{bool,bool}
+     * @throws \RuntimeException
+     */
     private static function clearEntry(\SplFileInfo $path, string $root): array
     {
         $pathname = $path->getPathname();

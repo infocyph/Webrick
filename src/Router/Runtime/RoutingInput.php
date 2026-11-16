@@ -49,6 +49,9 @@ final readonly class RoutingInput
 
         return self::fromServer($server, $withHost, $form);
     }
+    /**
+     * @throws \InvalidArgumentException
+     */
 
     public static function fromRequest(Request $request, bool $withHost): self
     {
@@ -65,6 +68,8 @@ final readonly class RoutingInput
     /**
      * @param array<string,mixed> $server
      * @param array<array-key,mixed> $form
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     * @throws \InvalidArgumentException
      */
     public static function fromServer(array $server, bool $withHost, array $form = []): self
     {

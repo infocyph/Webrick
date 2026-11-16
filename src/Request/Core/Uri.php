@@ -79,6 +79,9 @@ final class Uri implements \Stringable
 
         return $uri;
     }
+    /**
+     * @throws \InvalidArgumentException
+     */
 
     public static function from(string $raw): self
     {
@@ -115,7 +118,10 @@ final class Uri implements \Stringable
         return $uri;
     }
 
-    /** @param array<string,mixed> $srv */
+    /**
+     * @param array<string,mixed> $srv
+     * @throws \InvalidArgumentException
+     */
     public static function fromServerParams(array $srv, ?int $trustedProxyFlags = null): self
     {
         $scheme = UriServerParams::detectScheme($srv, $trustedProxyFlags);

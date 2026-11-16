@@ -33,6 +33,7 @@ final readonly class PsrBridge
 
     /**
      * @throws \InvalidArgumentException
+     * @throws \RuntimeException
      */
     public function response(Response $source, ResponseFactoryInterface $factory): ResponseInterface
     {
@@ -92,6 +93,9 @@ final readonly class PsrBridge
 
         return $target;
     }
+    /**
+     * @throws \InvalidArgumentException
+     */
 
     private function bufferProducer(Response $source): string
     {
@@ -133,6 +137,7 @@ final readonly class PsrBridge
     /**
      * @param array<array-key,mixed> $files
      * @return array<array-key,mixed>
+     * @throws \InvalidArgumentException
      */
     private function convertUploadedFiles(array $files): array
     {

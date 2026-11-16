@@ -53,7 +53,10 @@ final readonly class ResponseCacheMiddleware
         $this->policy = $policy ?? new CachePolicy();
     }
 
-    /** @param Closure(Request):Response $next */
+    /**
+     * @param Closure(Request):Response $next
+     * @throws \RuntimeException
+     */
     public function __invoke(Request $req, Closure $next): Response
     {
         $method = HttpMethodEnum::normalize($req->getMethod());

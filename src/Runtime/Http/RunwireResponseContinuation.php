@@ -26,6 +26,7 @@ final class RunwireResponseContinuation
      * @throws \Infocyph\Runwire\Exception\CancelledException
      * @throws \LogicException
      * @throws \OverflowException
+     * @throws \RuntimeException
      */
     public static function awaitBodyReadable(RequestBodyInterface $body, CancellationToken $cancellation): void
     {
@@ -88,6 +89,7 @@ final class RunwireResponseContinuation
     /**
      * @throws \LogicException
      * @throws \OverflowException
+     * @throws \RuntimeException
      */
     public static function awaitDrain(ResponseWriterInterface $writer, CancellationToken $cancellation): void
     {
@@ -133,7 +135,10 @@ final class RunwireResponseContinuation
         }
     }
 
-    /** @param callable(): void $handler */
+    /**
+     * @param callable(): void $handler
+     * @throws \Throwable
+     */
     public static function run(callable $handler): void
     {
         $current = Fiber::getCurrent();

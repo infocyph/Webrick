@@ -33,6 +33,7 @@ final readonly class InputSanitizer
      * @param int|null $maxBytes Maximum allowed byte length (truncate if exceeded); null disables.
      * @param array<int,mixed> $skipKeys Exact keys to skip during array sanitization.
      * @param array<int,mixed> $skipKeyPatterns PCRE patterns; matching keys are skipped during array sanitization.
+     * @throws \InvalidArgumentException
      */
     public function __construct(
         private bool $emptyToNull = true,

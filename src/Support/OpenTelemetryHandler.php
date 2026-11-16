@@ -100,6 +100,9 @@ final readonly class OpenTelemetryHandler
             $traceId,
         );
     }
+    /**
+     * @throws \RuntimeException
+     */
 
     private function addCustomAttributes(object $span, Request $req): void
     {
@@ -129,6 +132,9 @@ final readonly class OpenTelemetryHandler
             $this->setSpanAttribute($span, 'http.client.is_trusted_proxy', $trusted);
         }
     }
+    /**
+     * @throws \RuntimeException
+     */
 
     private function addNetworkAttributes(object $span, Request $req): void
     {
@@ -150,6 +156,9 @@ final readonly class OpenTelemetryHandler
             $this->setSpanAttribute($span, 'http.flavor', $protocolVersion);
         }
     }
+    /**
+     * @throws \RuntimeException
+     */
 
     private function addResponseAttributes(object $span, Response $resp): void
     {
@@ -163,6 +172,9 @@ final readonly class OpenTelemetryHandler
             $this->setSpanAttribute($span, 'http.response_content_type', $contentType);
         }
     }
+    /**
+     * @throws \RuntimeException
+     */
 
     private function addSpanAttributes(object $span, Request $req): void
     {

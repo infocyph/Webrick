@@ -148,6 +148,7 @@ final class Dispatcher
     /**
      * @param array<class-string|object|callable|string|array{0:object|string,1:string}> $list
      * @return list<callable(Request, Closure(Request):Response):Response>
+     * @throws \InvalidArgumentException
      */
     private function buildInvokables(array $list): array
     {
@@ -204,6 +205,9 @@ final class Dispatcher
             invokeFinalWithInvoker: false,
         );
     }
+    /**
+     * @throws \InvalidArgumentException
+     */
 
     private function dispatchFinal(CompiledRoute $route, Request $request): Response
     {
@@ -241,6 +245,7 @@ final class Dispatcher
      * @param array<class-string|object|callable|string> $globals
      * @param array<string,true> $routeClasses
      * @return array<class-string|object|callable|string>
+     * @throws \InvalidArgumentException
      */
     private function filterGlobals(array $globals, array $routeClasses): array
     {

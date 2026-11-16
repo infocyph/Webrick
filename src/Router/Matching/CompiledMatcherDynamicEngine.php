@@ -29,6 +29,7 @@ final class CompiledMatcherDynamicEngine
      * @param array<string,true> $skip
      * @param array<string,bool> $allowed
      * @param list<string> $segments
+     * @throws \RuntimeException
      */
     public function collectAllowedGroup(
         array $group,
@@ -164,6 +165,8 @@ final class CompiledMatcherDynamicEngine
     /**
      * @param list<FastDispatchStep> $steps
      * @return array{0:int,1:array<string,string>}|null
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
      */
     private static function findFastDispatchSteps(array $steps, string $path): ?array
     {
@@ -356,6 +359,8 @@ final class CompiledMatcherDynamicEngine
      * @param DynamicBucket $bucket
      * @param list<string>|null $segments
      * @return array{0:int,1:array<string,string>}|null
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
      */
     private function findBucket(array $bucket, string $path, ?array &$segments): ?array
     {

@@ -54,6 +54,9 @@ require_once __DIR__ . '/registrar_functions.php';
  */
 final readonly class Registrar
 {
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function __construct(
         private Collection $routes,
         private GroupScope $scope = new GroupScope(),
@@ -78,6 +81,7 @@ final readonly class Registrar
     /**
      * @param array{0:mixed,1:mixed,2?:mixed} $args
      * @throws \BadMethodCallException
+     * @throws \InvalidArgumentException
      */
     public function __call(string $method, array $args): mixed
     {
@@ -163,6 +167,7 @@ final readonly class Registrar
     /**
      * @param RouteHandler $handler
      * @param string|RouteOptions|null $nameOrOpts
+     * @throws \LogicException
      */
     private function add(
         string $verb,

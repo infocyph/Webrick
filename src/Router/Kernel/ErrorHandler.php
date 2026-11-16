@@ -55,7 +55,10 @@ final readonly class ErrorHandler
         }
     }
 
-    /** Render an already-known error without an additional throw/catch trampoline. */
+    /**
+     * Render an already-known error without an additional throw/catch trampoline.
+     * @throws \InvalidArgumentException
+     */
     public function renderThrowable(Request $request, Throwable $error): Response
     {
         $status = $this->resolveStatus($error);
@@ -167,6 +170,9 @@ final readonly class ErrorHandler
             || $type === 'text/xml'
             || str_ends_with($type, '+xml');
     }
+    /**
+     * @throws \UnexpectedValueException
+     */
 
     private function log(Throwable $error, Request $request, int $status): void
     {
@@ -208,6 +214,7 @@ final readonly class ErrorHandler
 
     /**
      * @throws \InvalidArgumentException
+     * @throws \RuntimeException
      */
     private function render(Request $request, Throwable $error, int $status): Response
     {
@@ -245,6 +252,8 @@ final readonly class ErrorHandler
 
     /**
      * @param array<string,string> $headers
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
      */
     private function renderByType(
         string $wanted,
@@ -313,6 +322,7 @@ final readonly class ErrorHandler
     /**
      * @param array<string,string> $headers
      * @throws \InvalidArgumentException
+     * @throws \RuntimeException
      */
     private function renderPlain(
         Throwable $error,
@@ -337,6 +347,8 @@ final readonly class ErrorHandler
 
     /**
      * @param array<string,string> $headers
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
      */
     private function renderProblemJson(
         Request $request,

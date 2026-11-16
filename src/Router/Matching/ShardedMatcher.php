@@ -206,6 +206,8 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
      * @throws \Infocyph\Webrick\Exceptions\MethodNotAllowedException
      * @throws \Infocyph\Webrick\Exceptions\RouteNotFoundException
      * @throws \LogicException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
      */
     #[\Override]
     public function match(string $method, string $host, string $path): array
@@ -460,6 +462,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     /**
      * @throws \RuntimeException
      * @throws \UnexpectedValueException
+     * @throws \InvalidArgumentException
      */
     private function publishGeneration(): void
     {

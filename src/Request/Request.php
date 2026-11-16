@@ -67,6 +67,7 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
      * @param array<string,mixed> $query
      * @param array<string,mixed> $post
      * @param array<string,string|list<string>> $headers
+     * @throws \InvalidArgumentException
      */
     public static function fake(
         array $query = [],
@@ -91,6 +92,10 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
     {
         self::$trustedProxyConfigurationFrozen = true;
     }
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
 
     public static function fromGlobals(): self
     {

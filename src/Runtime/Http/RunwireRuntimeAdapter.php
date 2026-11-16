@@ -32,6 +32,7 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
     /**
      * @param (callable(HttpRequest): (?CoroutineScope))|null $coroutineScope
      * @param (callable(HttpRequest): (?ScopeContext))|null $scopeContext
+     * @throws \LogicException
      */
     public function __construct(
         ?RunwireContext $runtimeContext = null,
@@ -70,6 +71,7 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
 
     /**
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException
      */
     #[\Override]
     public function context(mixed $nativeRequest = null, mixed $nativeResponse = null, bool $withHost = false): RuntimeRequestContext
@@ -136,6 +138,7 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
     /**
      * @throws \RuntimeException
      * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     #[\Override]
     public function write(Response $response, RuntimeRequestContext $context): void

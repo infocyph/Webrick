@@ -48,7 +48,11 @@ final class EndUser
         return new self($request, $networks, $forwardedHeaderMask, $trustedClientIpHeaders);
     }
 
-    /** @param list<string> $cidrs */
+    /**
+     * @param list<string> $cidrs
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     */
     public static function setTrustedProxies(array $cidrs): void
     {
         Request::setTrustedProxies($cidrs);

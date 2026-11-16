@@ -105,6 +105,7 @@ final readonly class VerifySignedUrlMiddleware
     /**
      * @param array<string,mixed>|list<string>|SignedUrlConfig|string $config
      * @param list<string> $ignoredQueryParams
+     * @throws \InvalidArgumentException
      */
     private function normalizeConfig(
         #[\SensitiveParameter]

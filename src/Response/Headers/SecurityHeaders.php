@@ -81,7 +81,10 @@ final class SecurityHeaders
         return $r->hasHeader($name) ? $r : $r->withHeader($name, $value);
     }
 
-    /** @return array{string,string,?string} */
+    /**
+     * @return array{string,string,?string}
+     * @throws \InvalidArgumentException
+     */
     private static function validatedPolicy(string $referrer, string $xfo, ?string $corp): array
     {
         $referrer = strtolower(trim($referrer));

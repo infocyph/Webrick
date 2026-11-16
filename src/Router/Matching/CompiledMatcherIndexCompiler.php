@@ -63,6 +63,8 @@ final readonly class CompiledMatcherIndexCompiler
     /**
      * @param array<string,array{static:array<string,array<string,mixed>>,dynamic:array<int,array<string,array<string,CanonicalDynamicEntry>>>}> $indexes
      * @return array<string,array{static:array<string,array<string,RouteValue>>,static_ids:array<string,array<string,int>>,static_allowed:array<string,list<string>>,dynamic:array<string,array<int,array<string,DynamicBucket>>>,dynamic_allowed:array<int,array<string,AllowedBucket>>}>
+     * @throws \LogicException
+     * @throws \UnexpectedValueException
      */
     public function compile(array $indexes): array
     {
@@ -290,6 +292,7 @@ final readonly class CompiledMatcherIndexCompiler
     /**
      * @param list<array{segments:list<SegmentSpec>,route:RouteValue,id:int,pcre:bool}> $routes
      * @return DynamicBucket
+     * @throws \UnexpectedValueException
      */
     private function compileBucket(array $routes): array
     {
@@ -362,6 +365,8 @@ final readonly class CompiledMatcherIndexCompiler
      *
      * @param list<array{segments:list<SegmentSpec>,route:RouteValue,id:int,pcre:bool}> $routes
      * @return FastDispatch|null
+     * @throws \LogicException
+     * @throws \UnexpectedValueException
      */
     private function compileFastLiteralDispatch(array $routes): ?array
     {
@@ -468,6 +473,7 @@ final readonly class CompiledMatcherIndexCompiler
      * @param list<array{segments:list<SegmentSpec>,route:RouteValue,id:int,pcre:bool}> $routes
      * @return list<DynamicStep>
      * @throws \UnexpectedValueException
+     * @throws \LogicException
      */
     private function compileSteps(array $routes): array
     {

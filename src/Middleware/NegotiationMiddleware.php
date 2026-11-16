@@ -127,6 +127,7 @@ final readonly class NegotiationMiddleware
      * @param list<string> $produces
      * @param list<string> $charsets
      * @return array{0:Request,1:string,2:?string}
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
      */
     private function negotiateTypeAndCharset(Request $req, array $produces, array $charsets): array
     {

@@ -68,6 +68,7 @@ enum HttpMethodEnum: string
     /**
      * Known Webrick methods are canonicalized to their registered uppercase form.
      * Unknown extension methods preserve their case because HTTP method tokens are case-sensitive.
+     * @throws \InvalidArgumentException
      */
     public static function normalize(string $verb): string
     {

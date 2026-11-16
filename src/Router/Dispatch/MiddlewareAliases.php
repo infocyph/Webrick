@@ -63,6 +63,9 @@ final class MiddlewareAliases
 
         return array_any(self::$resolvers, static fn(array $resolver): bool => ($resolver['supports'])($alias));
     }
+    /**
+     * @throws \InvalidArgumentException
+     */
 
     public static function register(string $alias, callable|string $factoryOrClass): void
     {
@@ -115,6 +118,9 @@ final class MiddlewareAliases
 
         return $maybeAlias;
     }
+    /**
+     * @throws \LogicException
+     */
 
     private static function assertMutable(): void
     {
@@ -122,6 +128,9 @@ final class MiddlewareAliases
             throw new LogicException('Middleware alias registry is frozen for production runtime.');
         }
     }
+    /**
+     * @throws \UnexpectedValueException
+     */
 
     private static function assertResolved(mixed $resolved, string $alias): callable|object|string
     {

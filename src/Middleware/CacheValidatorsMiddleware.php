@@ -75,6 +75,9 @@ final readonly class CacheValidatorsMiddleware
     {
         return HttpUtils::parseHttpDate($value);
     }
+    /**
+     * @throws \InvalidArgumentException
+     */
 
     private function applyResponsePreconditions(Request $req, Response $resp): Response
     {
@@ -178,6 +181,7 @@ final readonly class CacheValidatorsMiddleware
 
     /**
      * @throws \InvalidArgumentException
+     * @throws \RuntimeException
      */
     private function maybeShortCircuit(Outcome $result, bool $getOrHead): ?Response
     {

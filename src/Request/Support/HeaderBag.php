@@ -68,6 +68,9 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
     {
         return $this->map[$this->norm($name)] ?? [];
     }
+    /**
+     * @throws \InvalidArgumentException
+     */
 
     public function getHeaderLine(string $name): string
     {
@@ -88,6 +91,9 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
     {
         return isset($this->map[$this->norm($name)]);
     }
+    /**
+     * @throws \InvalidArgumentException
+     */
 
     public function line(string $name): ?string
     {
@@ -125,7 +131,10 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
         throw new \LogicException('HeaderBag is immutable');
     }
 
-    /** @return string|list<string>|null */
+    /**
+     * @return string|list<string>|null
+     * @throws \InvalidArgumentException
+     */
     public function value(string $name): string|array|null
     {
         $all = $this->get($name);
@@ -136,7 +145,10 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
         return count($all) === 1 ? $all[0] : $all;
     }
 
-    /** @param string|array<array-key,mixed> $value */
+    /**
+     * @param string|array<array-key,mixed> $value
+     * @throws \InvalidArgumentException
+     */
     public function with(string $name, string|array $value): self
     {
         $copy = clone $this;

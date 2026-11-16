@@ -14,7 +14,10 @@ final readonly class CookieAttributeApplier
         private ?string $defaultSameSite,
     ) {}
 
-    /** @param array<string,bool|string> $attrs */
+    /**
+     * @param array<string,bool|string> $attrs
+     * @throws \InvalidArgumentException
+     */
     public function apply(Cookie $cookie, array $attrs): Cookie
     {
         $cookie = $this->applyPathDomainAndExpiryAttrs($cookie, $attrs);

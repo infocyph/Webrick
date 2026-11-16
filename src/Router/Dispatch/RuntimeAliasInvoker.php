@@ -19,6 +19,9 @@ final readonly class RuntimeAliasInvoker
     {
         $this->resolver = new RuntimeDescriptorInvoker($runtime);
     }
+    /**
+     * @throws \InvalidArgumentException
+     */
 
     public function invoke(
         RuntimeMiddlewareDescriptor $descriptor,
@@ -37,6 +40,9 @@ final readonly class RuntimeAliasInvoker
 
         return $result;
     }
+    /**
+     * @throws \InvalidArgumentException
+     */
 
     private function invokeResolved(mixed $resolved, Request $request, Closure $next): mixed
     {

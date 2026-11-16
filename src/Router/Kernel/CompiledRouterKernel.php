@@ -95,6 +95,7 @@ final readonly class CompiledRouterKernel
 
     /**
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException
      */
     public static function fromCompiledArtifact(
         LoggerInterface $log,
@@ -134,6 +135,7 @@ final readonly class CompiledRouterKernel
     /**
      * @throws \RuntimeException
      * @throws \UnexpectedValueException
+     * @throws \InvalidArgumentException
      */
     public static function fromPrevalidatedArtifact(
         LoggerInterface $log,
@@ -175,6 +177,11 @@ final readonly class CompiledRouterKernel
             $preRoutingGate,
         );
     }
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     */
 
     public static function fromReleaseManifest(
         LoggerInterface $log,
@@ -307,7 +314,10 @@ final readonly class CompiledRouterKernel
         return $this->artifact->hasDomainRoutes;
     }
 
-    /** @param list<string> $allowed */
+    /**
+     * @param list<string> $allowed
+     * @throws \InvalidArgumentException
+     */
     private static function automaticOptionsResponse(array $allowed): Response
     {
         $methods = [];
@@ -378,6 +388,9 @@ final readonly class CompiledRouterKernel
 
     /**
      * @throws \UnexpectedValueException
+     * @throws \Infocyph\Webrick\Router\Kernel\RuntimeResponseWriteException
+     * @throws \LogicException
+     * @throws \RuntimeException
      */
     private function dispatchRoutingInput(
         RoutingInput $routing,

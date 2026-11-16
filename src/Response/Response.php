@@ -154,6 +154,7 @@ class Response
     /**
      * @param array<string,string|list<string>> $headers
      * @throws \InvalidArgumentException
+     * @throws \RuntimeException
      */
     public static function download(
         string|Stream $file,
@@ -241,6 +242,7 @@ class Response
     /**
      * @param array<string,string|list<string>> $headers
      * @throws \InvalidArgumentException
+     * @throws \RuntimeException
      */
     public static function noContent(array $headers = []): self
     {
@@ -279,7 +281,11 @@ class Response
         return self::rangedFile($req, $absolutePath, $mime, self::singleValueHeaders($bag));
     }
 
-    /** @param array<string,string> $headers */
+    /**
+     * @param array<string,string> $headers
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     public static function rangedFile(
         Request $req,
         string $absolutePath,
@@ -389,7 +395,10 @@ class Response
         return $this->body instanceof FileBody ? $this->body : null;
     }
 
-    /** @return list<string> */
+    /**
+     * @return list<string>
+     * @throws \InvalidArgumentException
+     */
     public function getHeader(string $name): array
     {
         return $this->headers->get($name);
@@ -431,6 +440,9 @@ class Response
     {
         return is_string($this->body) ? $this->body : null;
     }
+    /**
+     * @throws \InvalidArgumentException
+     */
 
     public function hasHeader(string $name): bool
     {
@@ -447,7 +459,10 @@ class Response
         return is_string($this->body);
     }
 
-    /** @param string|list<string> $value */
+    /**
+     * @param string|list<string> $value
+     * @throws \InvalidArgumentException
+     */
     public function withAddedHeader(string $name, string|array $value): self
     {
         return $this->copy(headers: $this->headers->withAdded($name, $value));
@@ -479,6 +494,9 @@ class Response
     {
         return $this->copy(headers: $this->headers->with($name, $value));
     }
+    /**
+     * @throws \InvalidArgumentException
+     */
 
     public function withoutHeader(string $name): self
     {
@@ -615,7 +633,10 @@ class Response
         return 'W/' . Utils::generateEtag(($size ?? -1) . '|' . ($mtime ?? -1) . '|' . $name);
     }
 
-    /** @param array<string,string> $defaults */
+    /**
+     * @param array<string,string> $defaults
+     * @throws \InvalidArgumentException
+     */
     private static function withDefaults(HeaderBag $bag, array $defaults): HeaderBag
     {
         foreach ($defaults as $name => $value) {

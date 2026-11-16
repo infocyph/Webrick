@@ -121,6 +121,7 @@ class UrlGenerator
      * @param array<string,RouteParam> $params
      * @param array<string,QueryValue> $query
      * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     public function signed(
         string $name,
@@ -146,6 +147,7 @@ class UrlGenerator
     /**
      * @param array<string,RouteParam> $params
      * @param array<string,QueryValue> $query
+     * @throws \InvalidArgumentException
      */
     public function temporary(
         string $name,
@@ -169,6 +171,7 @@ class UrlGenerator
      * @param array<string,RouteParam> $params
      * @param array<string,QueryValue> $query
      * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     public function temporaryUntil(
         string $name,

@@ -22,6 +22,7 @@ final class RouteCache
     /**
      * @param array<string,mixed> $options
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException
      */
     public static function build(array $options): string
     {
@@ -322,6 +323,7 @@ final class RouteCache
     /**
      * @param array<string,mixed> $options
      * @return array{register:\Closure(Registrar):void,registrarOptions:array<string,mixed>,signKey:?string,signedDefaultTtl:int,signedUrlConfig:?SignedUrlConfig,urlBaseUri:string}
+     * @throws \InvalidArgumentException
      */
     private static function resolveBuildInputs(array $options, LoggerInterface $logger): array
     {

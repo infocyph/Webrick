@@ -102,6 +102,8 @@ final readonly class CookieEncryptionMiddleware
      * @throws \LengthException
      * @throws \Random\RandomException
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     * @throws \Psr\Cache\InvalidArgumentException
      */
     public function __invoke(Request $req, Closure $next): Response
     {
@@ -227,6 +229,9 @@ final readonly class CookieEncryptionMiddleware
             default => null,
         };
     }
+    /**
+     * @throws \Psr\Cache\InvalidArgumentException
+     */
 
     private function decrypt(string $baseName, string $cipher): mixed
     {
