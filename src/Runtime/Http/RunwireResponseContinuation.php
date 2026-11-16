@@ -218,10 +218,6 @@ final class RunwireResponseContinuation
      */
     private static function runOwnedFiber(callable $handler, ?Fiber $owner): void
     {
-        /**
-         * @phpstan-var Fiber<mixed, mixed, mixed, mixed> $fiber
-         * @psalm-var Fiber $fiber
-         */
         $fiber = new Fiber($handler);
         self::managedFibers()[$fiber] = true;
 

@@ -217,3 +217,9 @@ No commit, tag, merge, publication, provider deployment or end-to-end security c
 
 - Hosted [CI 43855967110](https://github.com/infocyph/Webrick/actions/runs/43855967110) at `c43bd4812a485a43c23acadba096421693a698b7` was **QA red** (27 Runwire-related test failures, Pint/PHPCS failure) because Fiber `@psalm-*` annotations were written outside comments. No analyzer-count improvement can be credited to this broken candidate.
 - Batch 15 restores valid PHPDoc syntax exclusively; execution evidence **pending** on its exact commit. Follow with both analyzers and the entire 4/4 QA matrix; don't mark reviewer findings resolved prematurely. Compiled route and host CAPTCHA/replay A01-A26 acceptance remains pending; PR #59 remains draft.
+
+### Batch 15 verified / Batch 16 constructor-root-cause remediation (2026-11-16)
+
+- [Hosted run 43856614003](https://github.com/infocyph/Webrick/actions/runs/43856614003) at `d2177f2456f43bbe84f538fe6fbc483f4ed9f188`: all 4 QA lanes and clean installation green, PHPStan 424 and Psalm 1,358 strict errors remaining; static-analysis gates red. Benchmark outcomes to be checked on completion. Original Batch 14 invalid parse-result counts remain excluded from trends.
+- Batch 16 addresses three constructor-unpack root sites in `CompiledRoute` (39 Psalm argument diagnostics reported at the input SHA), retaining identical immutable route field semantics in one direct named-argument constructor helper and removing one redundant private Fiber annotation. New source SHA CI **pending**, don't mark `TooFewArguments` gone until confirmed by hosted logs.
+- A01-A26 functional/compiled/host policy/cancellation, real shared-backend concurrency, docs, package and soak acceptance remain open. PR #59 draft, no merge/tag/release.

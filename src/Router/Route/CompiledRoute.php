@@ -246,20 +246,20 @@ final class CompiledRoute implements RouteInterface
     #[\Override]
     public function withDomain(?string $domain): self
     {
-        return new self(...$this->copyProps(domain: $domain));
+        return $this->copyWith(domain: $domain);
     }
 
     /** @param MiddlewareList $middleware */
     #[\Override]
     public function withMiddleware(array $middleware): self
     {
-        return new self(...$this->copyProps(middleware: [...$this->middleware, ...$middleware]));
+        return $this->copyWith(middleware: [...$this->middleware, ...$middleware]);
     }
 
     #[\Override]
     public function withName(string $name): self
     {
-        return new self(...$this->copyProps(name: $name));
+        return $this->copyWith(name: $name);
     }
 
     /** @param list<string> $patternBuf */
@@ -528,27 +528,26 @@ final class CompiledRoute implements RouteInterface
     /**
      * @param string|false|null $domain false means keep existing, null means clear
      * @param MiddlewareList|null $middleware
-     * @return array{0:string,1:string,2:array{0:object|string,1:string}|string|callable,3:?string,4:MiddlewareList,5:?string,6:bool,7:string,8:list<string>,9:int,10:?Cors,11:?Produces,12:list<SegmentSpec>}
      */
-    private function copyProps(
+    private function copyWith(
         string|false|null $domain = false,
         ?array $middleware = null,
         ?string $name = null,
-    ): array {
-        return [
-            $this->method,
-            $this->path,
-            $this->handler,
-            $domain === false ? $this->domain : $domain,
-            $middleware ?? $this->middleware,
-            $name ?? $this->name,
-            $this->dynamic,
-            $this->regex,
-            $this->variables,
-            $this->index,
-            $this->corsPolicy,
-            $this->produces,
-            $this->segments,
-        ];
+    ): self {
+        return new self(
+            method: $this->method,
+            path: $this->path,
+            handler: $this->handler,
+            domain: $domain === false ? $this->domain : $domain,
+            middleware: $middleware ?? $this->middleware,
+            name: $name ?? $this->name,
+            dynamic: $this->dynamic,
+            regex: $this->regex,
+            variables: $this->variables,
+            index: $this->index,
+            corsPolicy: $this->corsPolicy,
+            produces: $this->produces,
+            segments: $this->segments,
+        );
     }
 }
