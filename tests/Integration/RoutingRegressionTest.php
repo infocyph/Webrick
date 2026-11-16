@@ -132,6 +132,19 @@ describe('Routing Regressions', function () {
 
         $body = json_decode((string) $response->getBody(), true);
 
+        if (!is_array($body)) {
+
+            throw new \UnexpectedValueException('Expected a JSON response object.');
+
+        }
+
+        if (!is_array($body['route_params'] ?? null)
+            || !is_array($body['route.params'] ?? null)
+            || !is_array($body['params'] ?? null)
+        ) {
+            throw new \UnexpectedValueException('Route parameters must be JSON objects.');
+        }
+
         expect($response->getStatusCode())->toBe(200)
             ->and($body['route_params']['locale'] ?? null)->toBe('en')
             ->and($body['route.params']['locale'] ?? null)->toBe('en')

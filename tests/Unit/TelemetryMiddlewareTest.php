@@ -94,6 +94,9 @@ describe('TelemetryMiddleware - explicit trace context', function () {
             },
         );
         $data = json_decode((string) $response->getBody(), true);
+        if (!is_array($data)) {
+            throw new \UnexpectedValueException('Expected a JSON response object.');
+        }
 
         expect($data['trace_id'])->toHaveLength(32)
             ->and($data['span_id'])->toHaveLength(16)
@@ -120,6 +123,9 @@ describe('TelemetryMiddleware - explicit trace context', function () {
             },
         );
         $data = json_decode((string) $response->getBody(), true);
+        if (!is_array($data)) {
+            throw new \UnexpectedValueException('Expected a JSON response object.');
+        }
 
         expect($data['trace_id'])->toBe($traceId)
             ->and($data['parent_span_id'])->toBe($parentSpanId)
@@ -135,6 +141,9 @@ describe('TelemetryMiddleware - explicit trace context', function () {
             },
         );
         $data = json_decode((string) $response->getBody(), true);
+        if (!is_array($data)) {
+            throw new \UnexpectedValueException('Expected a JSON response object.');
+        }
 
         expect($data['trace_id'])->toHaveLength(32)
             ->and($data['trace_id'])->not->toBe('invalid-format');

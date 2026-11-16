@@ -31,6 +31,12 @@ describe('Comprehensive Routing Tests', function () {
                 ->and($response->getHeaderLine('Content-Type'))->toContain('application/json');
 
             $body = json_decode((string) $response->getBody(), true);
+
+            if (!is_array($body)) {
+
+                throw new \UnexpectedValueException('Expected a JSON response object.');
+
+            }
             expect($body)->toHaveKey('memory');
         });
 
@@ -48,6 +54,12 @@ describe('Comprehensive Routing Tests', function () {
             expect($response->getStatusCode())->toBe(200);
 
             $body = json_decode((string) $response->getBody(), true);
+
+            if (!is_array($body)) {
+
+                throw new \UnexpectedValueException('Expected a JSON response object.');
+
+            }
             expect($body)
                 ->toHaveKey('hello')
                 ->and($body['hello'])->toBe('World');
@@ -63,6 +75,9 @@ describe('Comprehensive Routing Tests', function () {
 
                 $response = $this->kernel->handle(mockRequest('GET', "/hello/{$name}"));
                 $body = json_decode((string) $response->getBody(), true);
+                if (!is_array($body)) {
+                    throw new \UnexpectedValueException('Expected a JSON response object.');
+                }
 
                 // Just verify we got a response with hello key
                 expect($body)
@@ -78,6 +93,12 @@ describe('Comprehensive Routing Tests', function () {
             expect($response->getStatusCode())->toBe(200);
 
             $body = json_decode((string) $response->getBody(), true);
+
+            if (!is_array($body)) {
+
+                throw new \UnexpectedValueException('Expected a JSON response object.');
+
+            }
             expect($body)->toHaveKey('you sent hex');
         });
 
@@ -97,6 +118,12 @@ describe('Comprehensive Routing Tests', function () {
             expect($response->getStatusCode())->toBe(200);
 
             $body = json_decode((string) $response->getBody(), true);
+
+            if (!is_array($body)) {
+
+                throw new \UnexpectedValueException('Expected a JSON response object.');
+
+            }
             expect($body)
                 ->toHaveKey('handler')
                 ->and($body['handler'])->toContain('DemoController');
@@ -109,6 +136,12 @@ describe('Comprehensive Routing Tests', function () {
             expect($response->getStatusCode())->toBe(200);
 
             $body = json_decode((string) $response->getBody(), true);
+
+            if (!is_array($body)) {
+
+                throw new \UnexpectedValueException('Expected a JSON response object.');
+
+            }
             expect($body)->toHaveKey('action');
         });
 
@@ -117,6 +150,12 @@ describe('Comprehensive Routing Tests', function () {
             expect($response->getStatusCode())->toBe(200);
 
             $body = json_decode((string) $response->getBody(), true);
+
+            if (!is_array($body)) {
+
+                throw new \UnexpectedValueException('Expected a JSON response object.');
+
+            }
             expect($body)->toHaveKey('action');
         });
 
@@ -125,6 +164,12 @@ describe('Comprehensive Routing Tests', function () {
             expect($response->getStatusCode())->toBe(200);
 
             $body = json_decode((string) $response->getBody(), true);
+
+            if (!is_array($body)) {
+
+                throw new \UnexpectedValueException('Expected a JSON response object.');
+
+            }
             // Just verify we got an action, routing might vary
             expect($body)->toHaveKey('action');
         });
@@ -134,6 +179,12 @@ describe('Comprehensive Routing Tests', function () {
             expect($response->getStatusCode())->toBe(200);
 
             $body = json_decode((string) $response->getBody(), true);
+
+            if (!is_array($body)) {
+
+                throw new \UnexpectedValueException('Expected a JSON response object.');
+
+            }
             // Just verify we got an action
             expect($body)->toHaveKey('action');
         });
@@ -153,6 +204,12 @@ describe('Comprehensive Routing Tests', function () {
             expect($response->getStatusCode())->toBe(200);
 
             $body = json_decode((string) $response->getBody(), true);
+
+            if (!is_array($body)) {
+
+                throw new \UnexpectedValueException('Expected a JSON response object.');
+
+            }
             expect($body['section'])
                 ->toBe('blog')
                 ->and($body['slug'])->toBe('hello-world');
@@ -163,6 +220,12 @@ describe('Comprehensive Routing Tests', function () {
             expect($response->getStatusCode())->toBe(200);
 
             $body = json_decode((string) $response->getBody(), true);
+
+            if (!is_array($body)) {
+
+                throw new \UnexpectedValueException('Expected a JSON response object.');
+
+            }
             expect($body['admin'])->toBeTrue();
         });
     });
@@ -180,6 +243,12 @@ describe('Comprehensive Routing Tests', function () {
             expect($response->getStatusCode())->toBe(200);
 
             $body = json_decode((string) $response->getBody(), true);
+
+            if (!is_array($body)) {
+
+                throw new \UnexpectedValueException('Expected a JSON response object.');
+
+            }
             expect($body)
                 ->toHaveKey('now')
                 ->and($body)->toHaveKey('items')
@@ -200,6 +269,12 @@ describe('Comprehensive Routing Tests', function () {
             expect($response->getStatusCode())->toBe(200);
 
             $body = json_decode((string) $response->getBody(), true);
+
+            if (!is_array($body)) {
+
+                throw new \UnexpectedValueException('Expected a JSON response object.');
+
+            }
             expect($body)
                 ->toHaveKey('rel')
                 ->and($body)->toHaveKey('abs')
@@ -217,6 +292,12 @@ describe('Comprehensive Routing Tests', function () {
                 ->and($response->getHeaderLine('Content-Type'))->toContain('application/json');
 
             $body = json_decode((string) $response->getBody(), true);
+
+            if (!is_array($body)) {
+
+                throw new \UnexpectedValueException('Expected a JSON response object.');
+
+            }
             expect($body)
                 ->toMatchArray([
                     'error' => 'API token missing',
@@ -232,6 +313,12 @@ describe('Comprehensive Routing Tests', function () {
             expect($response->getStatusCode())->toBe(200);
 
             $body = json_decode((string) $response->getBody(), true);
+
+            if (!is_array($body)) {
+
+                throw new \UnexpectedValueException('Expected a JSON response object.');
+
+            }
             expect($body)
                 ->toHaveKey('now')
                 ->and($body)->toHaveKey('msg');
