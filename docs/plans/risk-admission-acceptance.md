@@ -265,3 +265,9 @@ No commit, tag, merge, publication, provider deployment or end-to-end security c
 - [CI 43863178887](https://github.com/infocyph/Webrick/actions/runs/43863178887) at `30b9832d73af66071e5a545124454fc0a44d453d`: four QA lanes, two benchmarks, clean install passed; **PHPStan 341 / Psalm 1,219** strict errors remaining, detail diagnostics failed. Runwire scope return guards and review contracts from Batch 22 did not break QA.
 - Batch 23 connects the existing matcher support function definitions to Composer production autoload (without manual AbstractMatcher boot dependency) and adds a focused standalone canonical cache-index test. No matcher implementation or persisted format changes. Hosted PHP 8.4/8.5 correctness, static analyzers, benchmarks and package installation **pending on exact new SHA**; evaluate Composer bootstrap overhead rather than assuming it is free.
 - A01-A26, host Turnstile and single-use proof race safety, compiled/Runwire/InterMix consumers, cold boot and load/soak gates remain open; draft PR #59 unmerged.
+
+### Batch 23 CI evidence / Batch 24 QA formatting correction (2026-11-16)
+
+- [CI 43864040680](https://github.com/infocyph/Webrick/actions/runs/43864040680) at SHA `21260896b27148a57ec285e6dc5ef25c3928de7c`: **PHPStan 341 / Psalm 1,187** (down 32 Psalm), but **QA failed** exclusively on Pint's `single_line_after_imports` for `AbstractMatcher.php`. Pest, PHP syntax, PHPCS, Rector, Deptrac and Composer Normalize passed. The result is NOT an accepted green QA batch.
+- Batch 24 corrects the import blank-line style only; exact-SHA hosted QA and benchmarking are pending. The new Composer function-loader support test remains in place. No analyzer threshold change or suppression, and no A01-A26 acceptance implied.
+- PR #59 draft, no merge, tag, release or pending-acceptance closure.
