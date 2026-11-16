@@ -21,7 +21,7 @@ final class MatcherMethodTerminalBench
     /** @var array<string,MatcherInterface> */
     private static array $matchers = [];
 
-    /** @param array{matcher:string,method:string,path:string} $params */
+    /** @param array{matcher:string,method:non-empty-string,path:non-empty-string} $params */
     #[Bench\ParamProviders('provideCases')]
     public function benchMethodTerminal(array $params): void
     {
@@ -32,7 +32,7 @@ final class MatcherMethodTerminalBench
         );
     }
 
-    /** @return iterable<string,array{matcher:string,method:string,path:string}> */
+    /** @return iterable<string,array{matcher:string,method:non-empty-string,path:non-empty-string}> */
     public function provideCases(): iterable
     {
         foreach ([MatcherModeEnum::FUSED->value, MatcherModeEnum::SHARDED->value] as $matcher) {

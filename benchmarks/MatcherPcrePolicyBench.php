@@ -21,7 +21,7 @@ final class MatcherPcrePolicyBench
     /** @var array<string,MatcherInterface> */
     private static array $matchers = [];
 
-    /** @param array{matcher:string,path:string} $params */
+    /** @param array{matcher:string,path:non-empty-string} $params */
     #[Bench\ParamProviders('provideCases')]
     public function benchPcrePolicy(array $params): void
     {
@@ -29,7 +29,7 @@ final class MatcherPcrePolicyBench
             ->matchCompiled('GET', '*', $params['path']);
     }
 
-    /** @return iterable<string,array{matcher:string,path:string}> */
+    /** @return iterable<string,array{matcher:string,path:non-empty-string}> */
     public function provideCases(): iterable
     {
         foreach ([MatcherModeEnum::FUSED->value, MatcherModeEnum::SHARDED->value] as $matcher) {

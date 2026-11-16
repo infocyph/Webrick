@@ -23,7 +23,7 @@ final class MatcherTypedConstraintBench
     /** @var array<string,MatcherInterface> */
     private static array $matchers = [];
 
-    /** @param array{matcher:string,path:string} $params */
+    /** @param array{matcher:string,path:non-empty-string} $params */
     #[Bench\ParamProviders('provideCases')]
     public function benchTypedConstraint(array $params): void
     {
@@ -31,7 +31,7 @@ final class MatcherTypedConstraintBench
             ->matchCompiled('GET', '*', $params['path']);
     }
 
-    /** @return iterable<string,array{matcher:string,path:string}> */
+    /** @return iterable<string,array{matcher:string,path:non-empty-string}> */
     public function provideCases(): iterable
     {
         foreach ([
