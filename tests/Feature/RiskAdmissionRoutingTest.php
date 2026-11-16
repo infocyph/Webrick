@@ -39,13 +39,18 @@ test('registrar risk middleware only evaluates selected routes and suppresses HE
         invoker: ContainerBuilder::create('risk-admission-test-' . bin2hex(random_bytes(4)))
             ->input(Request::class)
             ->build(),
+        debug: true,
     );
 
-    $health = $kernel->handle(mockRequest('GET', '/health'));
+    $healthRequest = mockRequest('GET', '/health');
+    $health = $kernel->handle($healthRequest);
     $rejection = $kernel->handle(mockRequest('GET', '/protected'));
     $head = $kernel->handle(mockRequest('HEAD', '/protected'));
 
-    expect($health->getStatusCode())->toBe(200);
+    expect($health->getStatusCode())->toBe(
+        200,
+        sprintf('Health request %s host=%s returned: %s', (string) $healthRequest->getUri(), $healthRequest->getUri()->getHost(), (string) $health->getBody()),
+    );
     expect((string) $health->getBody())->toBe('ok');
     expect($rejection->getStatusCode())->toBe(429);
     expect($rejection->getHeaderLine('Cache-Control'))->toBe('no-store');

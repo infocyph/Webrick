@@ -209,3 +209,8 @@ Keep these two files only while this feature has pending work. Record durable AP
 
 - [CI run 43835466242](https://github.com/infocyph/Webrick/actions/runs/43835466242) reported exactly one new focused Pest failure at `tests/Feature/RiskAdmissionRoutingTest.php:48`: the test created synthetic requests through `Request::fake` with no server context, and the resulting health request returned HTTP 400 instead of 200. Other 656 tests passed on that lane; Pint/PHPCS passed.
 - Changed only the new feature test to use the existing `mockRequest` helper, matching how established registrar-kernel integration tests populate request/server/Host context. No production security gate bypass or relaxed assertion. Recheck the HEAD and route-specific assertions on new CI; status **pending** until verified.
+
+### Batch 06 diagnostic pass — isolate registrar HTTP 400 (2026-11-16)
+
+- [CI 43836037296](https://github.com/infocyph/Webrick/actions/runs/43836037296) still returned HTTP 400 for the unprotected registrar fixture even with `mockRequest`, while the 656 other tests continued passing. Therefore the previous request-context hypothesis was insufficient; no production change should be made on that assumption alone.
+- Added failure-only diagnostics in the feature test (explicit URI/Host and debug-mode error response) to identify the actual root cause on CI. This test is not an application runtime and the debug fixture must not be reused for production requests. Test acceptance remains **blocked** until diagnosed and corrected.

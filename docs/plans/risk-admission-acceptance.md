@@ -153,3 +153,7 @@ No commit, tag, merge, publication, provider deployment or end-to-end security c
 
 - Run [43835466242](https://github.com/infocyph/Webrick/actions/runs/43835466242) returned 1 failure / 656 passes on a PHP 8.4 lane, from the newly introduced registrar fixture's synthetic request returning 400. Replaced its `Request::fake` instances with existing kernel-oriented `mockRequest` fixture for GET/HEAD, which supplies expected server and Host metadata.
 - A01/A03/A07 remain pending execution of corrected test; all security/release gates remain open.
+
+### Batch 06 diagnostic pass — reproducible 400 response (2026-11-16)
+
+- Failure remains at feature-test unprotected `/health` request, HTTP 400 versus expected 200, in hosted [43836037296](https://github.com/infocyph/Webrick/actions/runs/43836037296). Subsequent revision adds targeted debug-mode test diagnostics to determine which validation boundary rejects the request. No false completion of A01/A03/A07.
