@@ -120,6 +120,7 @@ class UrlGenerator
     /**
      * @param array<string,RouteParam> $params
      * @param array<string,QueryValue> $query
+     * @throws \InvalidArgumentException
      */
     public function signed(
         string $name,
@@ -167,6 +168,7 @@ class UrlGenerator
     /**
      * @param array<string,RouteParam> $params
      * @param array<string,QueryValue> $query
+     * @throws \InvalidArgumentException
      */
     public function temporaryUntil(
         string $name,
@@ -197,6 +199,7 @@ class UrlGenerator
     /**
      * @param array<string,RouteParam> $params
      * @param array<string,QueryValue> $query
+     * @throws \InvalidArgumentException
      */
     public function urlFor(
         string $name,
@@ -408,6 +411,9 @@ class UrlGenerator
         return $normalized;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function normalizeExpiryTimestamp(DateTimeInterface|int $expiresAt): int
     {
         if ($expiresAt instanceof DateTimeInterface) {
@@ -492,6 +498,9 @@ class UrlGenerator
             ?? throw new LogicException('Signed URL generation requires a configured signing profile.');
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function resolvePayloadMode(?string $payloadMode, SignedUrlConfig $config): string
     {
         if ($payloadMode === null) {
@@ -501,7 +510,11 @@ class UrlGenerator
         return new SignedUrlConfig(payloadMode: $payloadMode)->payloadMode;
     }
 
-    /** @param array<string,QueryValue> $query */
+    /**
+     * @param array<string,QueryValue> $query
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     */
     private function signResolvedPath(
         string $path,
         array $query,

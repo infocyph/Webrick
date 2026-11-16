@@ -22,6 +22,7 @@ abstract class Message
 
     /**
      * @param array<array-key,mixed> $headers
+     * @throws \InvalidArgumentException
      */
     protected function __construct(
         array $headers = [],
@@ -40,7 +41,10 @@ abstract class Message
         return $this->body;
     }
 
-    /** @return list<string> */
+    /**
+     * @return list<string>
+     * @throws \InvalidArgumentException
+     */
     public function getHeader(string $name): array
     {
         return $this->headers[$this->norm($name)] ?? [];
@@ -62,12 +66,18 @@ abstract class Message
         return $this->protocol;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function hasHeader(string $name): bool
     {
         return isset($this->headers[$this->norm($name)]);
     }
 
-    /** @param string|list<string> $value */
+    /**
+     * @param string|list<string> $value
+     * @throws \InvalidArgumentException
+     */
     public function withAddedHeader(string $name, string|array $value): static
     {
         $norm = $this->norm($name);
@@ -90,7 +100,10 @@ abstract class Message
         return $body === $this->body ? $this : $this->withPropertyValue('body', $body);
     }
 
-    /** @param string|list<string> $value */
+    /**
+     * @param string|list<string> $value
+     * @throws \InvalidArgumentException
+     */
     public function withHeader(string $name, string|array $value): static
     {
         $norm = $this->norm($name);
@@ -102,6 +115,9 @@ abstract class Message
         return $this->withMappedHeaderValue($norm, $values);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function withoutHeader(string $name): static
     {
         if (!$this->hasHeader($name)) {
@@ -113,6 +129,9 @@ abstract class Message
         return $clone;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function withProtocolVersion(string $version): static
     {
         self::assertProtocolVersion($version);

@@ -42,6 +42,7 @@ final class CompiledRouterArtifact
      * route/plan validation belongs to compilation or the verified loader path.
      *
      * @param array<string,mixed> $payload
+     * @throws \UnexpectedValueException
      */
     public static function fromPayload(array $payload, bool $trusted = false): self
     {
@@ -136,7 +137,10 @@ final class CompiledRouterArtifact
         return $this->preGlobal;
     }
 
-    /** @return array<string,mixed> */
+    /**
+     * @return array<string,mixed>
+     * @throws \UnexpectedValueException
+     */
     public function routeAttributesForIndex(int $routeIndex): array
     {
         $route = $this->routeForIndex($routeIndex);
@@ -157,6 +161,7 @@ final class CompiledRouterArtifact
      * Decode every matcher route only for cold/non-cached matcher construction.
      *
      * @return list<CompiledRoute>
+     * @throws \UnexpectedValueException
      */
     public function routes(): array
     {
@@ -188,6 +193,7 @@ final class CompiledRouterArtifact
     /**
      * @param list<mixed> $payload
      * @return list<mixed>
+     * @throws \UnexpectedValueException
      */
     private static function decodedList(array $payload): array
     {

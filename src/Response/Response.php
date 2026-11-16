@@ -39,7 +39,11 @@ class Response
     /** @var null|\Closure():iterable<string> */
     private ?\Closure $producer = null;
 
-    /** @param array<string,string|list<string>> $headers */
+    /**
+     * @param array<string,string|list<string>> $headers
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     public function __construct(
         private int $statusCode = StatusEnum::OK->value,
         BodyStream|string|null $body = null,
@@ -54,7 +58,10 @@ class Response
         $this->body = $body ?? '';
     }
 
-    /** @param array<string,string|list<string>> $headers */
+    /**
+     * @param array<string,string|list<string>> $headers
+     * @throws \InvalidArgumentException
+     */
     public static function attachment(
         string|Stream $file,
         string $name,
@@ -91,6 +98,7 @@ class Response
      * @param array<string,string|list<string>> $headers
      * @param positive-int $depth
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException
      */
     public static function auto(
         Request $r,
@@ -150,7 +158,10 @@ class Response
         return self::attachment($file, $name, $mime, $headers);
     }
 
-    /** @param array<string,string|list<string>> $headers */
+    /**
+     * @param array<string,string|list<string>> $headers
+     * @throws \InvalidArgumentException
+     */
     public static function empty(int $code, array $headers = []): self
     {
         $bag = new HeaderBag($headers);
@@ -165,7 +176,10 @@ class Response
         return new self($code, '', $bag->all());
     }
 
-    /** @param array<string,string|list<string>> $headers */
+    /**
+     * @param array<string,string|list<string>> $headers
+     * @throws \InvalidArgumentException
+     */
     public static function inline(
         string|Stream $file,
         ?string $name = null,
@@ -192,6 +206,7 @@ class Response
      * @param array<string,string|list<string>> $headers
      * @param positive-int $depth
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException
      */
     public static function json(
         JsonSerializable|array|string|int|float|bool|null $data,
@@ -219,7 +234,10 @@ class Response
         return self::empty(StatusEnum::NO_CONTENT->value, $headers);
     }
 
-    /** @param array<string,string|list<string>> $headers */
+    /**
+     * @param array<string,string|list<string>> $headers
+     * @throws \InvalidArgumentException
+     */
     public static function plaintext(string $msg, int $code = StatusEnum::BAD_REQUEST->value, array $headers = []): self
     {
         $bag = self::withDefaults(new HeaderBag($headers), ['Content-Type' => MediaTypeEnum::PLAIN->value]);
@@ -227,7 +245,10 @@ class Response
         return new self($code, $msg, $bag->all());
     }
 
-    /** @param array<string,string> $headers */
+    /**
+     * @param array<string,string> $headers
+     * @throws \InvalidArgumentException
+     */
     public static function rangedDownload(
         Request $req,
         string $absolutePath,
@@ -277,6 +298,7 @@ class Response
     /**
      * @param callable(): (iterable<mixed>|string)|iterable<mixed> $producer
      * @param array<string,string|list<string>> $headers
+     * @throws \InvalidArgumentException
      */
     public static function stream(
         callable|iterable $producer,
@@ -295,7 +317,11 @@ class Response
         return $response;
     }
 
-    /** @param array<string,string|list<string>> $headers */
+    /**
+     * @param array<string,string|list<string>> $headers
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     public static function streamDownload(
         string|Stream $file,
         ?string $name = null,
@@ -443,6 +469,9 @@ class Response
         return $this->copy(headers: $this->headers->without($name));
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function withProtocolVersion(string $version): self
     {
         self::assertProtocolVersion($version);
@@ -455,6 +484,10 @@ class Response
         return $this->copy(headers: $this->headers->withSmart($name, $value));
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     public function withStatus(int $code, string $reasonPhrase = ''): self
     {
         self::assertStatus($code);

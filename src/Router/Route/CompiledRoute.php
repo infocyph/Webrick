@@ -50,7 +50,10 @@ final class CompiledRoute implements RouteInterface
         $this->handler = $handler;
     }
 
-    /** @param array<mixed> $data */
+    /**
+     * @param array<mixed> $data
+     * @throws \UnexpectedValueException
+     */
     public static function __set_state(array $data): self
     {
         return new self(
@@ -70,7 +73,10 @@ final class CompiledRoute implements RouteInterface
         );
     }
 
-    /** @param array<mixed> $payload */
+    /**
+     * @param array<mixed> $payload
+     * @throws \UnexpectedValueException
+     */
     public static function fromCachePayload(array $payload): self
     {
         $data = CompiledRouteCachePayload::validate($payload);
@@ -272,6 +278,7 @@ final class CompiledRoute implements RouteInterface
      * @param non-empty-string $name
      * @param ?non-empty-string $constraint
      * @return array{0:SegmentSpec,1:string}
+     * @throws \InvalidArgumentException
      */
     private static function buildVarSegment(string $name, ?string $constraint): array
     {

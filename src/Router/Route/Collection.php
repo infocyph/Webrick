@@ -41,6 +41,9 @@ final class Collection implements IteratorAggregate
     /** @var list<RouteInterface> */
     private array $routes = [];
 
+    /**
+     * @throws \LogicException
+     */
     public function add(RouteInterface $route): void
     {
         $this->assertMutable();
@@ -48,6 +51,9 @@ final class Collection implements IteratorAggregate
         $this->commitRoute($route);
     }
 
+    /**
+     * @throws \LogicException
+     */
     public function addAlias(RouteInterface $route, string $alias): void
     {
         $this->assertMutable();
@@ -57,7 +63,10 @@ final class Collection implements IteratorAggregate
         $this->aliasIndex = null;
     }
 
-    /** @param list<string> $aliases */
+    /**
+     * @param list<string> $aliases
+     * @throws \LogicException
+     */
     public function addAliases(RouteInterface $route, array $aliases): void
     {
         $this->assertMutable();
@@ -70,7 +79,10 @@ final class Collection implements IteratorAggregate
         }
     }
 
-    /** @param list<string> $aliases */
+    /**
+     * @param list<string> $aliases
+     * @throws \LogicException
+     */
     public function addWithAliases(RouteInterface $route, array $aliases): void
     {
         $this->assertMutable();
@@ -110,6 +122,9 @@ final class Collection implements IteratorAggregate
         return $this->routes;
     }
 
+    /**
+     * @throws \LogicException
+     */
     public function clear(): void
     {
         $this->assertMutable();
@@ -183,6 +198,9 @@ final class Collection implements IteratorAggregate
         return $this->findByName($name)?->getPath();
     }
 
+    /**
+     * @throws \LogicException
+     */
     public function remove(RouteInterface $route): void
     {
         $this->assertMutable();

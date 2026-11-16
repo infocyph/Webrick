@@ -50,6 +50,9 @@ final readonly class CompiledMatcherIndexCompiler
      */
     public const int DEFAULT_CHUNK_SIZE = 48;
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function __construct(private int $chunkSize = self::DEFAULT_CHUNK_SIZE)
     {
         if ($this->chunkSize < 1) {
@@ -135,6 +138,7 @@ final readonly class CompiledMatcherIndexCompiler
     /**
      * @param list<SegmentSpec> $segments
      * @return list<SegmentSpec>
+     * @throws \UnexpectedValueException
      */
     private static function compileFallbackSegments(array $segments): array
     {
@@ -171,6 +175,9 @@ final readonly class CompiledMatcherIndexCompiler
             : null;
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     private static function routeIndex(mixed $route): int
     {
         $index = $route instanceof CompiledRoute
@@ -193,6 +200,8 @@ final readonly class CompiledMatcherIndexCompiler
      *
      * @param array<string,CanonicalDynamicEntry> $entries
      * @return AllowedBucket
+     * @throws \LogicException
+     * @throws \UnexpectedValueException
      */
     private function compileAllowedBucket(array $entries): array
     {
@@ -316,6 +325,8 @@ final readonly class CompiledMatcherIndexCompiler
     /**
      * @param non-empty-list<array{segments:list<SegmentSpec>,route:RouteValue,id:int}> $routes
      * @return FastDispatchStep
+     * @throws \LogicException
+     * @throws \UnexpectedValueException
      */
     private function compileFastDispatchStep(array $routes): array
     {
@@ -389,6 +400,8 @@ final readonly class CompiledMatcherIndexCompiler
     /**
      * @param non-empty-list<array{segments:list<SegmentSpec>,route:RouteValue,id:int}> $routes
      * @return PcreStep
+     * @throws \LogicException
+     * @throws \UnexpectedValueException
      */
     private function compilePcreStep(array $routes): array
     {
