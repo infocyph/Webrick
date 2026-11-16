@@ -67,6 +67,25 @@ final class PcntlFileAtomicCounterStore implements AtomicCounterStoreInterface
     }
 
     /**
+     * @return array{value:int,expires:?int}|null
+     * @throws \UnexpectedValueException
+     */
+    private static function checkedEntry(mixed $entry): ?array
+    {
+        if ($entry === null) {
+            return null;
+        }
+        if (!is_array($entry)
+            || !is_int($entry['value'] ?? null)
+            || !array_key_exists('expires', $entry)
+            || ($entry['expires'] !== null && !is_int($entry['expires']))) {
+            throw new UnexpectedValueException('Atomic-counter fixture contains a malformed entry.');
+        }
+
+        return ['value' => $entry['value'], 'expires' => $entry['expires']];
+    }
+
+    /**
      * @param Closure(?array{value:int,expires:?int}):(?array{value:int,expires:?int}) $callback
      * @return array{value:int,expires:?int}|null
      * @throws \RuntimeException
@@ -87,13 +106,7 @@ final class PcntlFileAtomicCounterStore implements AtomicCounterStoreInterface
             if (!is_array($map)) {
                 throw new UnexpectedValueException('Atomic-counter fixture must contain a JSON object.');
             }
-            $entry = $map[$key] ?? null;
-            if ($entry !== null && (!is_array($entry)
-                || !is_int($entry['value'] ?? null)
-                || !array_key_exists('expires', $entry)
-                || ($entry['expires'] !== null && !is_int($entry['expires'])))) {
-                throw new UnexpectedValueException('Atomic-counter fixture contains a malformed entry.');
-            }
+            $entry = self::checkedEntry($map[$key] ?? null);
             if ($entry !== null && $entry['expires'] !== null && $entry['expires'] <= time()) {
                 $entry = null;
             }

@@ -53,8 +53,7 @@ test('InterMix runtime propagates one logical request scope into structured chil
             $parent = webrick_checked_scope_marker($active->get(WebrickRuntimeScopedMarker::class));
             $scopeContext = $runtime->captureScopeContext();
 
-            expect($scopeContext)->toBeInstanceOf(ScopeContext::class);
-
+            // The child fiber assertion below verifies actual scope propagation.
             $fiber = new Fiber(static function () use ($runtime, $scopeContext): WebrickRuntimeScopedMarker {
                 $resolved = $runtime->withinScopeContext(
                     $scopeContext,

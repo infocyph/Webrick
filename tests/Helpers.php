@@ -288,12 +288,9 @@ function webrickTestHeaders(array $headers): array
             throw new UnexpectedValueException('Test header values must be strings or string lists.');
         }
 
-        $members = [];
-        foreach ($value as $member) {
-            if (!is_string($member)) {
-                throw new UnexpectedValueException('Test header list members must be strings.');
-            }
-            $members[] = $member;
+        $members = array_values(array_filter($value, 'is_string'));
+        if (count($members) !== count($value)) {
+            throw new UnexpectedValueException('Test header list members must be strings.');
         }
         $validated[$name] = $members;
     }

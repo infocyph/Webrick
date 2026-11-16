@@ -482,6 +482,7 @@ final class RunwireMultiplexedProtocolIsolationTest extends TestCase
         return [$request, $body];
     }
 
+    /** @return Fiber<mixed,mixed,void,mixed> */
     private static function fiber(
         RunwireRuntimeApplication $application,
         HttpRequest $request,

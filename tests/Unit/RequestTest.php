@@ -74,6 +74,7 @@ describe('Request', function () {
         $request = Request::fake(query: ['query_key' => 'first'])
             ->withQueryParams(['query_key' => 'second']);
 
+        /** @var Request&object{query_key:string} $request */
         expect($request->query_key)->toBe('second')
             ->and(isset($request->query_key))->toBeTrue()
             ->and(isset($request->missing_key))->toBeFalse();

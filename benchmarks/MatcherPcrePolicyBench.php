@@ -60,20 +60,18 @@ final class MatcherPcrePolicyBench
             default => throw new \LogicException('Unsupported matcher mode.'),
         };
 
-        $index = 0;
-        for ($a = 0; $a < 3; ++$a) {
-            for ($b = 0; $b < 3; ++$b) {
-                for ($c = 0; $c < 3; ++$c) {
-                    for ($d = 0; $d < 3; ++$d) {
-                        for ($e = 0; $e < 3; ++$e) {
-                            $matcher->add(CompiledRoute::fromRoute(
-                                new Route('GET', "/pcre/a{$a}/b{$b}/c{$c}/d{$d}/e{$e}/{id:hex}", 'pcre-handler'),
-                                $index++,
-                            ));
-                        }
-                    }
-                }
-            }
+        // Equivalent lexicographic order to five base-3 nested loops (3^5 = 243 routes).
+        for ($index = 0; $index < 243; ++$index) {
+            $a = intdiv($index, 81);
+            $b = intdiv($index, 27) % 3;
+            $c = intdiv($index, 9) % 3;
+            $d = intdiv($index, 3) % 3;
+            $e = $index % 3;
+
+            $matcher->add(CompiledRoute::fromRoute(
+                new Route('GET', "/pcre/a{$a}/b{$b}/c{$c}/d{$d}/e{$e}/{id:hex}", 'pcre-handler'),
+                $index,
+            ));
         }
         $matcher->finalize();
 
