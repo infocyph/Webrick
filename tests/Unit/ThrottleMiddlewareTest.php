@@ -55,6 +55,10 @@ final class PcntlFileAtomicCounterStore implements AtomicCounterStoreInterface
             ];
         });
 
+        if ($entry === null) {
+            throw new RuntimeException('Atomic counter mutation returned no incremented value.');
+        }
+
         return new AtomicCounterValue($entry['value'], $first);
     }
 
@@ -74,8 +78,17 @@ final class PcntlFileAtomicCounterStore implements AtomicCounterStoreInterface
             rewind($handle);
             $raw = stream_get_contents($handle);
             $map = is_string($raw) && $raw !== '' ? json_decode($raw, true, flags: JSON_THROW_ON_ERROR) : [];
-            $entry = is_array($map[$key] ?? null) ? $map[$key] : null;
-            if (is_array($entry) && is_int($entry['expires'] ?? null) && $entry['expires'] <= time()) {
+            if (!is_array($map)) {
+                throw new UnexpectedValueException('Atomic-counter fixture must contain a JSON object.');
+            }
+            $entry = $map[$key] ?? null;
+            if ($entry !== null && (!is_array($entry)
+                || !is_int($entry['value'] ?? null)
+                || !array_key_exists('expires', $entry)
+                || ($entry['expires'] !== null && !is_int($entry['expires'])))) {
+                throw new UnexpectedValueException('Atomic-counter fixture contains a malformed entry.');
+            }
+            if ($entry !== null && $entry['expires'] !== null && $entry['expires'] <= time()) {
                 $entry = null;
             }
 
@@ -97,6 +110,21 @@ final class PcntlFileAtomicCounterStore implements AtomicCounterStoreInterface
             fclose($handle);
         }
     }
+}
+
+/** @return array{value:int} */
+function webrickThrottleCounterEntry(mixed $map): array
+{
+    if (!is_array($map)) {
+        throw new UnexpectedValueException('Expected a JSON counter fixture.');
+    }
+
+    $entry = array_values($map)[0] ?? null;
+    if (!is_array($entry) || !is_int($entry['value'] ?? null)) {
+        throw new UnexpectedValueException('Expected a counter entry with an integer value.');
+    }
+
+    return ['value' => $entry['value']];
 }
 
 describe('ThrottleMiddleware', function () {
@@ -335,7 +363,7 @@ describe('ThrottleMiddleware', function () {
                 }
 
                 $counterMap = json_decode((string) file_get_contents($counterPath), true, flags: JSON_THROW_ON_ERROR);
-                $counterEntry = array_values($counterMap)[0] ?? null;
+                $counterEntry = webrickThrottleCounterEntry($counterMap);
 
                 expect($allowed)->toBe($limit)
                     ->and($rejected)->toBe($attempts - $limit)
@@ -400,7 +428,10 @@ describe('ThrottleMiddleware', function () {
             }
 
             foreach ($children as $pid) {
-                pcntl_waitpid($pid, $status);
+                $waited = pcntl_waitpid($pid, $status);
+                if ($waited < 0 || !is_int($status)) {
+                    throw new RuntimeException('Throttle worker wait did not return an exit status.');
+                }
                 expect(pcntl_wifexited($status) && pcntl_wexitstatus($status) === 0)->toBeTrue();
             }
 
@@ -413,7 +444,7 @@ describe('ThrottleMiddleware', function () {
             }
 
             $counterMap = json_decode((string) file_get_contents($counterPath), true, flags: JSON_THROW_ON_ERROR);
-            $counterEntry = array_values($counterMap)[0] ?? null;
+            $counterEntry = webrickThrottleCounterEntry($counterMap);
 
             expect($allowed)->toBe($limit)
                 ->and($rejected)->toBe(($workers * $attemptsPerWorker) - $limit)

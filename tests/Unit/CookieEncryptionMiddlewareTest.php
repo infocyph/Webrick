@@ -85,6 +85,9 @@ describe('CookieEncryptionMiddleware', function () {
         // Extract encrypted cookie value
         $setCookie = $response1->getHeader('Set-Cookie')[0];
         preg_match('/enc_session=([^;]+)/', $setCookie, $matches);
+        if (!isset($matches[1])) {
+            throw new UnexpectedValueException('Encrypted fixture cookie was not set.');
+        }
         $encryptedValue = urldecode($matches[1]);
 
         // Now test decryption
@@ -92,7 +95,7 @@ describe('CookieEncryptionMiddleware', function () {
         $request2 = Request::fromGlobals();
 
         $decrypted = null;
-        $next2 = function ($req) use (&$decrypted) {
+        $next2 = function (Request $req) use (&$decrypted): Response {
             $decrypted = $req->cookie('enc_session');
 
             return Response::create('ok');
@@ -166,6 +169,9 @@ describe('CookieEncryptionMiddleware', function () {
         $cipher = encryptedCookieForTest($this->middleware, 'authenticated-value');
         $raw = base64_decode($cipher, true);
         expect($raw)->toBeString()->not->toBe('');
+        if (!is_string($raw) || $offset < 0 || $offset >= strlen($raw)) {
+            throw new UnexpectedValueException('Authenticated cookie frame cannot be mutated at this offset.');
+        }
         $raw[$offset] = chr(ord($raw[$offset]) ^ 0x01);
 
         expect(decryptedCookieForTest($this->middleware, base64_encode($raw)))->toBeNull();
@@ -179,7 +185,11 @@ describe('CookieEncryptionMiddleware', function () {
     it('rejects malformed truncated unknown-key and cross-cookie payloads', function (Closure $mutate): void {
         $cipher = encryptedCookieForTest($this->middleware, 'secret');
 
-        expect(decryptedCookieForTest($this->middleware, $mutate($cipher)))->toBeNull();
+        $mutated = $mutate($cipher);
+        if (!is_string($mutated)) {
+            throw new UnexpectedValueException('Cookie mutation fixture must produce a string.');
+        }
+        expect(decryptedCookieForTest($this->middleware, $mutated))->toBeNull();
     })->with([
         'malformed base64' => static fn(string $cipher): string => '***' . $cipher,
         'truncated frame' => static fn(string $cipher): string => base64_encode(substr((string) base64_decode($cipher, true), 0, 20)),

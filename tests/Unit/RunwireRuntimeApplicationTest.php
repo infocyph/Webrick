@@ -16,7 +16,6 @@ use Infocyph\Runwire\Network\WriteResult;
 use Infocyph\Runwire\RequestContext as RunwireRequestContext;
 use Infocyph\Runwire\Runtime\ApplicationLifecycleHooks;
 use Infocyph\Runwire\Runtime\Enum\CancellationReason;
-use Infocyph\Runwire\Runtime\RuntimeApplicationInterface;
 use Infocyph\Runwire\RuntimeContext;
 use Infocyph\Runwire\Supervisor\Enum\ShutdownReason;
 use Infocyph\Webrick\Response\Response;
@@ -274,7 +273,9 @@ test('runwire host task cancellation reaches handler and finalizes request exact
         context: $requestContext,
     );
     $writer = new RunwireApplicationWriterFixture();
-    $caught = false;
+    $caught = new class {
+        public bool $value = false;
+    };
     $handlerFinally = 0;
     $cleanupCalls = 0;
     $application = null;
@@ -300,7 +301,7 @@ test('runwire host task cancellation reaches handler and finalizes request exact
                     try {
                         $scope->sleep(60.0);
                     } catch (CancelledException $error) {
-                        $caught = true;
+                        $caught->value = true;
 
                         throw $error;
                     } finally {
@@ -329,11 +330,14 @@ test('runwire host task cancellation reaches handler and finalizes request exact
         },
     );
 
-    expect($caught)->toBeTrue()
+    if (!$application instanceof RunwireRuntimeApplication) {
+        throw new UnexpectedValueException('Expected a Runwire runtime application after cancellation.');
+    }
+
+    expect($caught->value)->toBeTrue()
         ->and($handlerFinally)->toBe(1)
         ->and($cleanupCalls)->toBe(1)
         ->and($requestContext->completed())->toBeTrue()
-        ->and($application)->toBeInstanceOf(RunwireRuntimeApplication::class)
         ->and($application->snapshot()->requestsActive)->toBe(0);
 });
 
@@ -343,11 +347,16 @@ test('runwire drain callback releases the completed continuation while writer re
     $continuation = null;
     RunwireResponseContinuation::run(static function () use ($writer, $request, &$continuation): void {
         $fiber = Fiber::getCurrent();
-        expect($fiber)->toBeInstanceOf(Fiber::class);
+        if (!$fiber instanceof Fiber) {
+            throw new UnexpectedValueException('Drain continuation requires an active fiber.');
+        }
         $continuation = WeakReference::create($fiber);
         RunwireResponseContinuation::awaitDrain($writer, $request->context->cancellation);
     });
 
+    if (!$continuation instanceof WeakReference) {
+        throw new UnexpectedValueException('Drain continuation did not capture its fiber.');
+    }
     expect($continuation->get())->toBeInstanceOf(Fiber::class);
     $writer->drain();
     expect($continuation->get())->toBeNull();
@@ -528,8 +537,7 @@ test('runwire application factory delegates lifecycle hooks cleanup and shutdown
     );
 
     $application = $factory->create($context);
-    expect($application)->toBeInstanceOf(RuntimeApplicationInterface::class)
-        ->and($application)->toBeInstanceOf(RunwireRuntimeApplication::class);
+    expect($application)->toBeInstanceOf(RunwireRuntimeApplication::class);
 
     $application->start();
     $application->handle(runwire_application_request(), new RunwireApplicationWriterFixture(), completeResponse: true);
