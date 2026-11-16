@@ -144,11 +144,11 @@ final readonly class SapiRuntimeAdapter implements RuntimeAdapterInterface
             header('Content-Length: ' . $size, false);
         }
     }
+
     /**
      * @throws \InvalidArgumentException
      * @throws \RuntimeException
      */
-
     private function writeBody(Response $response): void
     {
         $output = fopen('php://output', 'wb');

@@ -170,10 +170,10 @@ final readonly class ErrorHandler
             || $type === 'text/xml'
             || str_ends_with($type, '+xml');
     }
+
     /**
      * @throws \UnexpectedValueException
      */
-
     private function log(Throwable $error, Request $request, int $status): void
     {
         $logger = $this->resolveLogger();

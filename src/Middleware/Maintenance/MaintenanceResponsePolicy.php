@@ -13,10 +13,10 @@ use Infocyph\Webrick\Response\Response;
 final readonly class MaintenanceResponsePolicy
 {
     public const string DEFAULT_MESSAGE = 'Service is down for maintenance.';
+
     /**
      * @throws \InvalidArgumentException
      */
-
     public function __construct(
         private int $retryAfter = 3600,
         private string $contentType = MediaTypeEnum::PLAIN->value,
@@ -36,11 +36,11 @@ final readonly class MaintenanceResponsePolicy
             $this->exceptionHeaders(),
         );
     }
+
     /**
      * @throws \InvalidArgumentException
      * @throws \RuntimeException
      */
-
     public function response(string $message): Response
     {
         $status = StatusEnum::SERVICE_UNAVAILABLE;

@@ -92,11 +92,11 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
     {
         self::$trustedProxyConfigurationFrozen = true;
     }
+
     /**
      * @throws \InvalidArgumentException
      * @throws \RuntimeException
      */
-
     public static function fromGlobals(): self
     {
         $native = parent::createFromGlobals();

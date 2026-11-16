@@ -49,10 +49,10 @@ final readonly class RoutingInput
 
         return self::fromServer($server, $withHost, $form);
     }
+
     /**
      * @throws \InvalidArgumentException
      */
-
     public static function fromRequest(Request $request, bool $withHost): self
     {
         $raw = HttpMethodEnum::normalize($request->getMethod());

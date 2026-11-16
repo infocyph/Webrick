@@ -23,10 +23,10 @@ final class Cookie implements \Stringable
         private ?string $sameSite = 'Lax',
         private bool $partitioned = false,
     ) {}
+
     /**
      * @throws \InvalidArgumentException
      */
-
     #[\Override]
     public function __toString(): string
     {
@@ -161,10 +161,10 @@ final class Cookie implements \Stringable
 
         return $cookie;
     }
+
     /**
      * @throws \InvalidArgumentException
      */
-
     public function partitioned(bool $on = true): self
     {
         $cookie = clone $this;

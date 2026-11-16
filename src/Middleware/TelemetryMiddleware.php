@@ -19,10 +19,10 @@ use Psr\Log\NullLogger;
 final readonly class TelemetryMiddleware
 {
     private bool $otelAvailable;
+
     /**
      * @throws \InvalidArgumentException
      */
-
     public function __construct(
         private LoggerInterface $log = new NullLogger(),
         private bool $addXResponseTime = true,

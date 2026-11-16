@@ -79,10 +79,10 @@ final class Uri implements \Stringable
 
         return $uri;
     }
+
     /**
      * @throws \InvalidArgumentException
      */
-
     public static function from(string $raw): self
     {
         return new self($raw);

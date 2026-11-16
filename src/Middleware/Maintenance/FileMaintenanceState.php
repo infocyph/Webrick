@@ -10,10 +10,10 @@ final class FileMaintenanceState implements MaintenanceStateInterface
     private ?string $cachedMessage = null;
 
     private int $nextRefreshNs = 0;
+
     /**
      * @throws \InvalidArgumentException
      */
-
     public function __construct(
         private readonly string $file,
         private readonly int $refreshMilliseconds = 1000,

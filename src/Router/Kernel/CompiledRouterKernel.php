@@ -177,12 +177,12 @@ final readonly class CompiledRouterKernel
             $preRoutingGate,
         );
     }
+
     /**
      * @throws \InvalidArgumentException
      * @throws \RuntimeException
      * @throws \UnexpectedValueException
      */
-
     public static function fromReleaseManifest(
         LoggerInterface $log,
         MatcherInterface $matcher,

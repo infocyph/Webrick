@@ -229,10 +229,10 @@ final readonly class CookieEncryptionMiddleware
             default => null,
         };
     }
+
     /**
      * @throws \Psr\Cache\InvalidArgumentException
      */
-
     private function decrypt(string $baseName, string $cipher): mixed
     {
         $resolved = $this->resolveCipherInput($cipher);

@@ -421,10 +421,10 @@ class ServerRequest extends Message
 
         return $clone;
     }
+
     /**
      * @throws \InvalidArgumentException
      */
-
     public function withRequestTarget(string $requestTarget): static
     {
         $requestTarget = self::validateRequestTarget($requestTarget)

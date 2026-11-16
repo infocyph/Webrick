@@ -205,10 +205,10 @@ final class Dispatcher
             invokeFinalWithInvoker: false,
         );
     }
+
     /**
      * @throws \InvalidArgumentException
      */
-
     private function dispatchFinal(CompiledRoute $route, Request $request): Response
     {
         $routeVars = $this->normalizeNamedArguments($request->getAttribute('route_params', []));

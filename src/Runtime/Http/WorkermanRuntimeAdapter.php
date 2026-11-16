@@ -32,10 +32,10 @@ final readonly class WorkermanRuntimeAdapter implements RuntimeAdapterInterface
             transportRequestLimits: $transportRequestLimits,
         );
     }
+
     /**
      * @throws \RuntimeException
      */
-
     public static function current(bool $transportCompression = false, bool $transportRequestLimits = false): self
     {
         $response = self::requiredClass('Workerman\\Protocols\\Http\\Response');

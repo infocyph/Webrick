@@ -42,10 +42,10 @@ final class RouteCacheCleaner
 
         return $canonical;
     }
+
     /**
      * @throws \RuntimeException
      */
-
     public static function clearDirectoryPreservingGitignore(string $dir): bool
     {
         $dir = self::canonicalSafeDirectory($dir);

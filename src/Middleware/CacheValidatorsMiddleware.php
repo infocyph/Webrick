@@ -75,10 +75,10 @@ final readonly class CacheValidatorsMiddleware
     {
         return HttpUtils::parseHttpDate($value);
     }
+
     /**
      * @throws \InvalidArgumentException
      */
-
     private function applyResponsePreconditions(Request $req, Response $resp): Response
     {
         $etag = trim($resp->getHeaderLine('ETag'));

@@ -100,10 +100,10 @@ final readonly class OpenTelemetryHandler
             $traceId,
         );
     }
+
     /**
      * @throws \RuntimeException
      */
-
     private function addCustomAttributes(object $span, Request $req): void
     {
         $routeName = $req->getAttribute('route.name');
@@ -132,10 +132,10 @@ final readonly class OpenTelemetryHandler
             $this->setSpanAttribute($span, 'http.client.is_trusted_proxy', $trusted);
         }
     }
+
     /**
      * @throws \RuntimeException
      */
-
     private function addNetworkAttributes(object $span, Request $req): void
     {
         $clientIp = TelemetrySupport::stringFromMixed($req->getAttribute('client_ip'));
@@ -156,10 +156,10 @@ final readonly class OpenTelemetryHandler
             $this->setSpanAttribute($span, 'http.flavor', $protocolVersion);
         }
     }
+
     /**
      * @throws \RuntimeException
      */
-
     private function addResponseAttributes(object $span, Response $resp): void
     {
         $this->setSpanAttribute($span, 'http.status_code', $resp->getStatusCode());
@@ -172,10 +172,10 @@ final readonly class OpenTelemetryHandler
             $this->setSpanAttribute($span, 'http.response_content_type', $contentType);
         }
     }
+
     /**
      * @throws \RuntimeException
      */
-
     private function addSpanAttributes(object $span, Request $req): void
     {
         $this->setSpanAttribute($span, 'http.method', $req->getMethod());

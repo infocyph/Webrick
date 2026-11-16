@@ -440,10 +440,10 @@ class Response
     {
         return is_string($this->body) ? $this->body : null;
     }
+
     /**
      * @throws \InvalidArgumentException
      */
-
     public function hasHeader(string $name): bool
     {
         return $this->headers->has($name);
@@ -494,10 +494,10 @@ class Response
     {
         return $this->copy(headers: $this->headers->with($name, $value));
     }
+
     /**
      * @throws \InvalidArgumentException
      */
-
     public function withoutHeader(string $name): self
     {
         return $this->copy(headers: $this->headers->without($name));

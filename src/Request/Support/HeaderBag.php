@@ -68,10 +68,10 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
     {
         return $this->map[$this->norm($name)] ?? [];
     }
+
     /**
      * @throws \InvalidArgumentException
      */
-
     public function getHeaderLine(string $name): string
     {
         return ($values = $this->get($name)) ? implode(',', $values) : '';
@@ -91,10 +91,10 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
     {
         return isset($this->map[$this->norm($name)]);
     }
+
     /**
      * @throws \InvalidArgumentException
      */
-
     public function line(string $name): ?string
     {
         return ($values = $this->get($name)) ? implode(',', $values) : null;

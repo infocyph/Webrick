@@ -93,10 +93,10 @@ final readonly class PsrBridge
 
         return $target;
     }
+
     /**
      * @throws \InvalidArgumentException
      */
-
     private function bufferProducer(Response $source): string
     {
         $producer = $source->getProducer();
