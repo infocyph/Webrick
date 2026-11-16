@@ -46,6 +46,9 @@ final readonly class SwooleRuntimeAdapter implements RuntimeAdapterInterface
         return $this->runtimeCapabilities;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     #[\Override]
     public function context(mixed $nativeRequest = null, mixed $nativeResponse = null, bool $withHost = false): RuntimeRequestContext
     {
@@ -76,6 +79,9 @@ final readonly class SwooleRuntimeAdapter implements RuntimeAdapterInterface
         );
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     #[\Override]
     public function write(Response $response, RuntimeRequestContext $context): void
     {
@@ -97,6 +103,9 @@ final readonly class SwooleRuntimeAdapter implements RuntimeAdapterInterface
         $this->writeBody($native, $response);
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function call(object $target, string $method, mixed ...$arguments): mixed
     {
         if (!method_exists($target, $method)) {
@@ -106,6 +115,9 @@ final readonly class SwooleRuntimeAdapter implements RuntimeAdapterInterface
         return $target->{$method}(...$arguments);
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function end(object $native, ?string $body = null): void
     {
         $arguments = $body === null ? [] : [$body];
@@ -114,6 +126,9 @@ final readonly class SwooleRuntimeAdapter implements RuntimeAdapterInterface
         }
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function setStatus(object $native, int $status): void
     {
         if ($this->call($native, 'status', $status) === false) {
@@ -121,6 +136,9 @@ final readonly class SwooleRuntimeAdapter implements RuntimeAdapterInterface
         }
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function writeBody(object $native, Response $response): void
     {
         $file = $response->getFileBody();
@@ -147,7 +165,10 @@ final readonly class SwooleRuntimeAdapter implements RuntimeAdapterInterface
         $this->end($native);
     }
 
-    /** @param list<string> $values */
+    /**
+     * @param list<string> $values
+     * @throws \RuntimeException
+     */
     private function writeHeader(object $native, string $name, array $values): void
     {
         if ($values === []) {

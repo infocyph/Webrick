@@ -78,6 +78,9 @@ final class Registry
 
     private function __construct() {}
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public static function buildPattern(string $name): string
     {
         $spec = self::getValidatorSpec($name);
@@ -98,7 +101,10 @@ final class Registry
         return self::$frozen;
     }
 
-    /** @return array<string,string> */
+    /**
+     * @return array<string,string>
+     * @throws \InvalidArgumentException
+     */
     public static function getValidatorSpec(string $name): array
     {
         $key = strtolower($name);
@@ -148,6 +154,10 @@ final class Registry
         return filter_var($value, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) !== false;
     }
 
+    /**
+     * @throws \LogicException
+     * @throws \InvalidArgumentException
+     */
     public static function register(string $name, string $rule): void
     {
         if (self::$frozen) {
@@ -214,6 +224,9 @@ final class Registry
         return self::splitDelimitedRegex($rule) !== null;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function regexInner(string $rule): string
     {
         $parts = self::splitDelimitedRegex($rule);

@@ -26,7 +26,10 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
     /** @var array<string,list<string>> */
     private array $map = [];
 
-    /** @param array<array-key,mixed> $seed */
+    /**
+     * @param array<array-key,mixed> $seed
+     * @throws \InvalidArgumentException
+     */
     public function __construct(array $seed = [])
     {
         foreach ($seed as $name => $value) {
@@ -95,12 +98,18 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
         return is_string($offset) ? $this->get($offset) : [];
     }
 
+    /**
+     * @throws \LogicException
+     */
     #[\Override]
     public function offsetSet(mixed $offset, mixed $value): void
     {
         throw new \LogicException('HeaderBag is immutable');
     }
 
+    /**
+     * @throws \LogicException
+     */
     #[\Override]
     public function offsetUnset(mixed $offset): void
     {
@@ -164,6 +173,9 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
         };
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function norm(string $name): string
     {
         if ($name === '' || preg_match(self::INVALID_HEADER_NAME, $name) === 1) {
@@ -173,7 +185,10 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
         return ucwords(strtolower($name), '-');
     }
 
-    /** @return string|list<string> */
+    /**
+     * @return string|list<string>
+     * @throws \InvalidArgumentException
+     */
     private function normalizeSeedValue(mixed $value): string|array
     {
         if (is_string($value)) {
@@ -197,6 +212,7 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
     /**
      * @param string|array<array-key,mixed> $value
      * @return list<string>
+     * @throws \InvalidArgumentException
      */
     private function normalizeValues(string|array $value): array
     {

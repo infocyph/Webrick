@@ -203,6 +203,9 @@ final class Collection implements IteratorAggregate
         return $this->aliasIndex()[$name] ?? null;
     }
 
+    /**
+     * @throws \LogicException
+     */
     private function assertMutable(): void
     {
         if ($this->frozen) {
@@ -234,6 +237,9 @@ final class Collection implements IteratorAggregate
         return "Duplicate canonical route: {$route->getMethod()} {$target}";
     }
 
+    /**
+     * @throws \LogicException
+     */
     private function normalizeAlias(RouteInterface $route, string $alias): string
     {
         $alias = trim($alias);
@@ -247,6 +253,9 @@ final class Collection implements IteratorAggregate
         return $alias;
     }
 
+    /**
+     * @throws \LogicException
+     */
     private function rebuildIndices(): void
     {
         $this->byName = [];
@@ -301,6 +310,7 @@ final class Collection implements IteratorAggregate
     /**
      * @param list<string> $aliases
      * @return list<string>
+     * @throws \LogicException
      */
     private function validateAliasBatch(RouteInterface $route, array $aliases): array
     {
@@ -319,6 +329,9 @@ final class Collection implements IteratorAggregate
         return $normalized;
     }
 
+    /**
+     * @throws \LogicException
+     */
     private function validateAliasRegistration(RouteInterface $route, string $alias): void
     {
         if (isset($this->byName[$alias])) {
@@ -329,6 +342,9 @@ final class Collection implements IteratorAggregate
         }
     }
 
+    /**
+     * @throws \LogicException
+     */
     private function validateRouteRegistration(RouteInterface $route): void
     {
         $identity = $this->routeIdentity($route);

@@ -103,6 +103,9 @@ final class CompiledRouterArtifact
             || $this->postGlobalTags !== [];
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     public function planForIndex(int $routeIndex): ExecutionPlan
     {
         if (isset($this->decodedPlans[$routeIndex])) {
@@ -170,6 +173,7 @@ final class CompiledRouterArtifact
     /**
      * @param array<string,mixed> $payload
      * @return array<array-key,mixed>
+     * @throws \UnexpectedValueException
      */
     private static function arrayField(array $payload, string $key): array
     {
@@ -198,6 +202,7 @@ final class CompiledRouterArtifact
     /**
      * @param array<string,mixed> $payload
      * @return array{0:bool,1:string,2:string,3:string}
+     * @throws \UnexpectedValueException
      */
     private static function header(array $payload): array
     {
@@ -225,7 +230,10 @@ final class CompiledRouterArtifact
         return [$hasDomainRoutes, $environment, $configFingerprint, $artifactFingerprint];
     }
 
-    /** @param array<array-key,mixed> $aliases */
+    /**
+     * @param array<array-key,mixed> $aliases
+     * @throws \UnexpectedValueException
+     */
     private static function validateAliases(array $aliases): void
     {
         foreach ($aliases as $name => $tuple) {
@@ -240,7 +248,10 @@ final class CompiledRouterArtifact
         }
     }
 
-    /** @param array<array-key,mixed> $tags */
+    /**
+     * @param array<array-key,mixed> $tags
+     * @throws \UnexpectedValueException
+     */
     private static function validateTags(array $tags): void
     {
         foreach ($tags as $tag) {
@@ -250,6 +261,9 @@ final class CompiledRouterArtifact
         }
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     private function routeForIndex(int $routeIndex): CompiledRoute
     {
         if (isset($this->decodedRoutes[$routeIndex])) {
@@ -265,6 +279,9 @@ final class CompiledRouterArtifact
         return $this->decodedRoutes[$routeIndex] = $route;
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     private function validateRoutePlanTables(): void
     {
         if (count($this->routePayloadsByIndex) !== count($this->planPayloadsByIndex)) {

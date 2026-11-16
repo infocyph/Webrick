@@ -16,6 +16,7 @@ final class CompiledRouteCachePayload
     /**
      * @param array<mixed> $payload
      * @return array{0:int,1:string,2:string,3:array{0:string,1:string}|string,4:?string,5:list<string>,6:?string,7:bool,8:string,9:list<string>,10:int,11:?CorsPayload,12:?ProducesPayload,13:list<SegmentSpec>}
+     * @throws \UnexpectedValueException
      */
     public static function validate(array $payload): array
     {
@@ -41,6 +42,9 @@ final class CompiledRouteCachePayload
         ];
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     private static function boolean(mixed $value): bool
     {
         if (!is_bool($value)) {
@@ -52,6 +56,7 @@ final class CompiledRouteCachePayload
 
     /**
      * @return CorsPayload|null
+     * @throws \UnexpectedValueException
      */
     private static function cors(mixed $value): ?array
     {
@@ -75,6 +80,7 @@ final class CompiledRouteCachePayload
 
     /**
      * @return array{0:string,1:string}|string
+     * @throws \UnexpectedValueException
      */
     private static function handler(mixed $value): array|string
     {
@@ -88,6 +94,9 @@ final class CompiledRouteCachePayload
         return [$value[0], $value[1]];
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     private static function integer(mixed $value): int
     {
         if (!is_int($value)) {
@@ -126,6 +135,7 @@ final class CompiledRouteCachePayload
 
     /**
      * @return ProducesPayload|null
+     * @throws \UnexpectedValueException
      */
     private static function produces(mixed $value): ?array
     {
@@ -149,7 +159,10 @@ final class CompiledRouteCachePayload
         ];
     }
 
-    /** @return SegmentSpec */
+    /**
+     * @return SegmentSpec
+     * @throws \UnexpectedValueException
+     */
     private static function segment(mixed $segment): array
     {
         if (!is_array($segment)) {
@@ -179,6 +192,7 @@ final class CompiledRouteCachePayload
 
     /**
      * @return list<SegmentSpec>
+     * @throws \UnexpectedValueException
      */
     private static function segments(mixed $value): array
     {
@@ -194,6 +208,9 @@ final class CompiledRouteCachePayload
         return $segments;
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     private static function string(mixed $value): string
     {
         if (!is_string($value)) {
@@ -205,6 +222,7 @@ final class CompiledRouteCachePayload
 
     /**
      * @return list<string>
+     * @throws \UnexpectedValueException
      */
     private static function stringList(mixed $value): array
     {

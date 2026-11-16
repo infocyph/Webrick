@@ -41,6 +41,7 @@ class UrlGenerator
     /**
      * @param string $baseUri Base URI used for absolute URL generation.
      * @param Collection|array<string, array{0:string,1:?string}> $routes Route collection or cached alias index.
+     * @throws \InvalidArgumentException
      */
     public function __construct(
         string $baseUri,
@@ -88,6 +89,7 @@ class UrlGenerator
     /**
      * @param array<string,RouteParam> $params
      * @param array<string,QueryValue> $query
+     * @throws \InvalidArgumentException
      */
     public function action(
         callable|string $handler,
@@ -218,6 +220,9 @@ class UrlGenerator
         return $uri . '?' . \http_build_query($query, '', '&', \PHP_QUERY_RFC3986);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function assertNoQueryOrFragment(string $value, string $field): void
     {
         $parts = \parse_url($value);
@@ -229,7 +234,10 @@ class UrlGenerator
         }
     }
 
-    /** @param array<string,QueryValue> $query */
+    /**
+     * @param array<string,QueryValue> $query
+     * @throws \InvalidArgumentException
+     */
     private function assertQueryHasNoReservedParameters(array $query, SignedUrlConfig $config): void
     {
         if (
@@ -246,6 +254,9 @@ class UrlGenerator
         }
     }
 
+    /**
+     * @throws \LogicException
+     */
     private function buildAbsolutePayloadTarget(string $path, ?string $routeDomain): string
     {
         $target = $this->isAbsoluteUri($path)
@@ -324,6 +335,9 @@ class UrlGenerator
         return $query;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function extractRelativePath(string $path): string
     {
         if (!$this->isAbsoluteUri($path) && !\str_starts_with($path, '//')) {
@@ -412,6 +426,9 @@ class UrlGenerator
         return '/' . \ltrim($path, '/');
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function normalizePositiveInt(int $value, string $field): int
     {
         if ($value < 1) {
@@ -421,6 +438,9 @@ class UrlGenerator
         return $value;
     }
 
+    /**
+     * @throws \LogicException
+     */
     private function requireDefaultTtl(): int
     {
         $config = $this->requireSignedConfig();
@@ -431,6 +451,9 @@ class UrlGenerator
         return $config->defaultTtl;
     }
 
+    /**
+     * @throws \LogicException
+     */
     private function requireGenerationKey(): string
     {
         $config = $this->requireSignedConfig();
@@ -441,7 +464,10 @@ class UrlGenerator
         return $config->generationKey;
     }
 
-    /** @return array{0:string,1:?string} */
+    /**
+     * @return array{0:string,1:?string}
+     * @throws \InvalidArgumentException
+     */
     private function requireNamedRoute(string $name): array
     {
         if ($name === '') {
@@ -516,6 +542,7 @@ class UrlGenerator
      *
      * @param string $template URL template with {param} or {param:type} placeholders
      * @param array<string,mixed> $params Parameter values
+     * @throws \InvalidArgumentException
      */
     private function substitute(string $template, array $params): string
     {

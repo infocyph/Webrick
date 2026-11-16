@@ -156,6 +156,7 @@ final class Router
      * @param list<mixed>|Closure $middleware Middleware list or closure
      * @param string|Closure|null $namePrefix Name prefix or closure
      * @param Closure|null $callback Callback used to declare nested routes
+     * @throws \RuntimeException
      */
     public static function group(
         array|string|null $prefix = null,
@@ -198,6 +199,7 @@ final class Router
      * @param string $prefix URL prefix for the resource (e.g. "/users")
      * @param string $controller Controller class name or callable representation
      * @param array<string,mixed> $opts Optional configuration forwarded to Registrar::resource
+     * @throws \RuntimeException
      */
     public static function resource(string $name, string $prefix, string $controller, array $opts = []): void
     {
@@ -343,6 +345,9 @@ final class Router
         }
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function assertRouteName(string $name): void
     {
         if ($name === '') {
@@ -350,6 +355,9 @@ final class Router
         }
     }
 
+    /**
+     * @throws \LogicException
+     */
     private static function assertUrlBound(): void
     {
         if (!UrlGeneratorRegistry::has()) {
@@ -371,6 +379,7 @@ final class Router
     /**
      * @param array<int,mixed>|string|callable $handler
      * @return RouteHandler
+     * @throws \InvalidArgumentException
      */
     private static function normalizeHandler(array|string|callable $handler): array|string|callable
     {
@@ -391,6 +400,7 @@ final class Router
 
     /**
      * @return Collection|array<string, array{0:string,1:?string}>
+     * @throws \LogicException
      */
     private static function normalizeLazyRouteSource(mixed $routes): Collection|array
     {
@@ -469,6 +479,7 @@ final class Router
     /**
      * @param RouteHandler $handler
      * @param string|RouteOptions|null $nameOrOpts
+     * @throws \RuntimeException
      */
     private static function verb(
         string $verb,

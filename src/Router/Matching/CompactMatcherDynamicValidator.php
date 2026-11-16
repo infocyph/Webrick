@@ -22,6 +22,7 @@ final class CompactMatcherDynamicValidator
     /**
      * @param array<int,mixed> $routes
      * @return array<string,array<int,array<string,DynamicBucket>>>
+     * @throws \UnexpectedValueException
      */
     public static function validateDynamic(mixed $raw, array $routes, bool $validateRegex): array
     {
@@ -40,7 +41,10 @@ final class CompactMatcherDynamicValidator
         return $dynamic;
     }
 
-    /** @return array<int,array<string,AllowedBucket>> */
+    /**
+     * @return array<int,array<string,AllowedBucket>>
+     * @throws \UnexpectedValueException
+     */
     public static function validateDynamicAllowed(mixed $raw, bool $validateRegex): array
     {
         if (!is_array($raw)) {
@@ -58,6 +62,9 @@ final class CompactMatcherDynamicValidator
         return $allowed;
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     private static function assertRegex(string $regex, bool $validateRegex, string $message): void
     {
         if ($validateRegex && preg_match($regex, '') === false) {
@@ -65,7 +72,10 @@ final class CompactMatcherDynamicValidator
         }
     }
 
-    /** @return list<mixed> */
+    /**
+     * @return list<mixed>
+     * @throws \UnexpectedValueException
+     */
     private static function listValue(mixed $raw, string $message, bool $nonEmpty = false): array
     {
         if (!is_array($raw) || !array_is_list($raw) || ($nonEmpty && $raw === [])) {
@@ -77,6 +87,7 @@ final class CompactMatcherDynamicValidator
 
     /**
      * @phpstan-return AllowedBucket
+     * @throws \UnexpectedValueException
      */
     private static function validateAllowedBucket(mixed $raw, bool $validateRegex): array
     {
@@ -116,6 +127,7 @@ final class CompactMatcherDynamicValidator
     /**
      * @param array<array-key,mixed> $raw
      * @return array<array-key,array{regex:string,methods:list<string>}>
+     * @throws \UnexpectedValueException
      */
     private static function validateAllowedGroups(array $raw, bool $validateRegex): array
     {
@@ -139,6 +151,7 @@ final class CompactMatcherDynamicValidator
     /**
      * @param array<array-key,mixed> $raw
      * @return array<string,AllowedBucket>
+     * @throws \UnexpectedValueException
      */
     private static function validateAllowedPrefixes(array $raw, bool $validateRegex): array
     {
@@ -156,6 +169,7 @@ final class CompactMatcherDynamicValidator
     /**
      * @param array<int,mixed> $routes
      * @phpstan-return DynamicBucket
+     * @throws \UnexpectedValueException
      */
     private static function validateBucket(mixed $raw, array $routes, bool $validateRegex): array
     {
@@ -183,6 +197,7 @@ final class CompactMatcherDynamicValidator
      * @param array<array-key,mixed> $raw
      * @param array<int,mixed> $routes
      * @return array<int,array<string,DynamicBucket>>
+     * @throws \UnexpectedValueException
      */
     private static function validateCounts(array $raw, array $routes, bool $validateRegex): array
     {
@@ -201,6 +216,7 @@ final class CompactMatcherDynamicValidator
      * @param array<array-key,mixed> $raw
      * @param array<int,mixed> $routes
      * @phpstan-return FallbackStep
+     * @throws \UnexpectedValueException
      */
     private static function validateFallbackStep(array $raw, array $routes): array
     {
@@ -219,6 +235,7 @@ final class CompactMatcherDynamicValidator
     /**
      * @param array<int,mixed> $routes
      * @phpstan-return FastDispatch
+     * @throws \UnexpectedValueException
      */
     private static function validateFastDispatch(mixed $raw, array $routes, bool $validateRegex): array
     {
@@ -257,6 +274,7 @@ final class CompactMatcherDynamicValidator
     /**
      * @param array<int,mixed> $routes
      * @phpstan-return FastDispatchStep
+     * @throws \UnexpectedValueException
      */
     private static function validateFastStep(mixed $raw, array $routes, bool $validateRegex): array
     {
@@ -288,6 +306,7 @@ final class CompactMatcherDynamicValidator
     /**
      * @param array<string,mixed> $segment
      * @return array{type:'lit',val:string}
+     * @throws \UnexpectedValueException
      */
     private static function validateLiteralSegment(array $segment): array
     {
@@ -299,7 +318,10 @@ final class CompactMatcherDynamicValidator
         return ['type' => 'lit', 'val' => $value];
     }
 
-    /** @return list<string> */
+    /**
+     * @return list<string>
+     * @throws \UnexpectedValueException
+     */
     private static function validateMethodList(mixed $raw): array
     {
         $raw = self::listValue($raw, 'Compact matcher method list is invalid.', true);
@@ -318,6 +340,7 @@ final class CompactMatcherDynamicValidator
     /**
      * @param array<string,mixed> $segment
      * @return array{type:'op',name:string,code:int}
+     * @throws \UnexpectedValueException
      */
     private static function validateOpcodeSegment(array $segment): array
     {
@@ -330,7 +353,10 @@ final class CompactMatcherDynamicValidator
         return ['type' => 'op', 'name' => $name, 'code' => $code];
     }
 
-    /** @return list<string> */
+    /**
+     * @return list<string>
+     * @throws \UnexpectedValueException
+     */
     private static function validateParams(mixed $raw): array
     {
         $raw = self::listValue($raw, 'Compact matcher parameter list is invalid.');
@@ -350,6 +376,7 @@ final class CompactMatcherDynamicValidator
      * @param array<array-key,mixed> $raw
      * @param array<int,mixed> $routes
      * @phpstan-return PcreStep
+     * @throws \UnexpectedValueException
      */
     private static function validatePcreStep(array $raw, array $routes, bool $validateRegex): array
     {
@@ -368,6 +395,7 @@ final class CompactMatcherDynamicValidator
      * @param array<array-key,mixed> $raw
      * @param array<int,mixed> $routes
      * @return array<string,DynamicBucket>
+     * @throws \UnexpectedValueException
      */
     private static function validatePrefixes(array $raw, array $routes, bool $validateRegex): array
     {
@@ -386,6 +414,7 @@ final class CompactMatcherDynamicValidator
      * @param array<array-key,mixed> $raw
      * @param array<int,mixed> $routes
      * @return array<string,PcreEntry>
+     * @throws \UnexpectedValueException
      */
     private static function validateRouteMap(array $raw, array $routes): array
     {
@@ -405,7 +434,10 @@ final class CompactMatcherDynamicValidator
         return $map;
     }
 
-    /** @return array<string,mixed> */
+    /**
+     * @return array<string,mixed>
+     * @throws \UnexpectedValueException
+     */
     private static function validateSegment(mixed $segment): array
     {
         if (!is_array($segment) || !is_string($segment['type'] ?? null)) {
@@ -437,6 +469,7 @@ final class CompactMatcherDynamicValidator
     /**
      * @param array<int,mixed> $routes
      * @phpstan-return PcreStep|FallbackStep
+     * @throws \UnexpectedValueException
      */
     private static function validateStep(mixed $raw, array $routes, bool $validateRegex): array
     {
@@ -454,6 +487,7 @@ final class CompactMatcherDynamicValidator
     /**
      * @param array<string,mixed> $segment
      * @return array<string,mixed>
+     * @throws \UnexpectedValueException
      */
     private static function validateVariableSegment(array $segment): array
     {

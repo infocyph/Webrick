@@ -39,6 +39,9 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
     /** @var array<string,true> */
     private array $middlewareRequirements = [];
 
+    /**
+     * @throws \LogicException
+     */
     #[\Override]
     public function add(CompiledRoute $route): void
     {
@@ -79,6 +82,9 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         $this->finalized = true;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     #[\Override]
     public function match(string $method, string $host, string $path): array
     {
@@ -126,6 +132,9 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         return $index[$name] ?? null;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private static function removeTemporaryMatcherFile(string $file): void
     {
         if (is_file($file) && !unlink($file)) {
@@ -183,6 +192,9 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         return hash('xxh128', serialize([$code, $middleware]));
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function compileClosureFromCode(string $code): Closure
     {
         $file = tempnam(sys_get_temp_dir(), 'webrick-gen-');
@@ -207,6 +219,9 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         return $fn;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function dumpCache(): void
     {
         $directory = dirname($this->cacheFile);
@@ -254,6 +269,9 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         return new GeneratedMatcherIndexCompiler()->compile($this->index->hosts());
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function loadCacheBlob(): void
     {
         if ($this->cacheLoaded) {

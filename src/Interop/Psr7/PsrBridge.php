@@ -31,6 +31,9 @@ final readonly class PsrBridge
         private ?UploadedFileFactoryInterface $uploadedFiles = null,
     ) {}
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function response(Response $source, ResponseFactoryInterface $factory): ResponseInterface
     {
         $target = $factory->createResponse($source->getStatusCode(), $source->getReasonPhrase())
@@ -50,6 +53,10 @@ final readonly class PsrBridge
         return $target->withBody($this->streams->createStream($body));
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     public function serverRequest(Request $source, ServerRequestFactoryInterface $factory): ServerRequestInterface
     {
         $target = $factory->createServerRequest(
@@ -101,6 +108,9 @@ final readonly class PsrBridge
         return $body;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function convertUploadedFile(UploadedFile $file): UploadedFileInterface
     {
         $factory = $this->uploadedFiles
@@ -138,6 +148,9 @@ final readonly class PsrBridge
         return $converted;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function readStreamPreservingPosition(BodyStream $stream): string
     {
         if (!$stream->isSeekable()) {

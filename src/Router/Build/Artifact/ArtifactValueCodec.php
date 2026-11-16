@@ -24,6 +24,9 @@ final class ArtifactValueCodec
 
     private function __construct() {}
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     public static function decode(mixed $payload): mixed
     {
         if (!is_array($payload) || !is_string($payload['kind'] ?? null)) {
@@ -62,6 +65,7 @@ final class ArtifactValueCodec
      *     resolver?:array<string,mixed>,
      *     parameters?:list<string>
      * }
+     * @throws \UnexpectedValueException
      */
     public static function encode(mixed $value): array
     {
@@ -126,6 +130,9 @@ final class ArtifactValueCodec
         return [$object, $method];
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     private static function decodeClosure(string $payload): Closure
     {
         try {
@@ -135,7 +142,10 @@ final class ArtifactValueCodec
         }
     }
 
-    /** @param array<array-key,mixed> $payload */
+    /**
+     * @param array<array-key,mixed> $payload
+     * @throws \UnexpectedValueException
+     */
     private static function decodeRuntimeMiddleware(array $payload): RuntimeMiddlewareDescriptor
     {
         $resolver = $payload['resolver'] ?? null;
@@ -149,6 +159,7 @@ final class ArtifactValueCodec
 
     /**
      * @return array{0:string,1:string}|string
+     * @throws \UnexpectedValueException
      */
     private static function decodeValue(mixed $value): array|string
     {

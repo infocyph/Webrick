@@ -49,6 +49,9 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
     /** @var array<string,true> */
     private array $middlewareRequirements = [];
 
+    /**
+     * @throws \LogicException
+     */
     #[\Override]
     public function add(CompiledRoute $route): void
     {
@@ -91,6 +94,9 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         $this->finalized = true;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     #[\Override]
     public function match(string $method, string $host, string $path): array
     {
@@ -181,6 +187,9 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         return CompactMatcherIndexValidator::validateHosts($compact);
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function dumpCache(): void
     {
         $dir = dirname($this->cacheFile);
@@ -227,6 +236,9 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         }
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function loadCacheBlob(): void
     {
         if ($this->cacheLoaded) {

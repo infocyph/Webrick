@@ -57,6 +57,7 @@ final readonly class CompressionMiddleware
      * @param array<array-key,mixed> $prefOrder
      * @param array<array-key,mixed> $excludeTypes
      * @param array<array-key,mixed> $onlyTypes
+     * @throws \InvalidArgumentException
      */
     public function __construct(
         private int $minBytes = 1400,
@@ -86,7 +87,10 @@ final readonly class CompressionMiddleware
         $this->onlyTypes = self::normalizeStringList($onlyTypes, 'onlyTypes');
     }
 
-    /** @param Closure(Request):Response $next */
+    /**
+     * @param Closure(Request):Response $next
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     */
     public function __invoke(Request $req, Closure $next): Response
     {
         $capabilities = $req->getAttribute(RuntimeCapabilities::ATTRIBUTE);
@@ -157,6 +161,7 @@ final readonly class CompressionMiddleware
     /**
      * @param array<array-key,mixed> $algorithms
      * @return list<string>
+     * @throws \InvalidArgumentException
      */
     private static function normalizePreferenceOrder(array $algorithms): array
     {
@@ -173,6 +178,7 @@ final readonly class CompressionMiddleware
     /**
      * @param array<array-key,mixed> $values
      * @return list<string>
+     * @throws \InvalidArgumentException
      */
     private static function normalizeStringList(array $values, string $name): array
     {

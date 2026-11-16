@@ -41,6 +41,7 @@ final readonly class SignedUrlConfig
     /**
      * @param array<array-key,mixed> $ignoredQueryParams
      * @param array<array-key,mixed> $verificationKeys
+     * @throws \InvalidArgumentException
      */
     public function __construct(
         #[\SensitiveParameter]
@@ -145,6 +146,9 @@ final readonly class SignedUrlConfig
         return $filtered;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function normalizeAlgorithm(string $algorithm): string
     {
         $algorithm = \trim(\strtolower($algorithm));
@@ -182,6 +186,9 @@ final readonly class SignedUrlConfig
         return \array_values($normalized);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function normalizeLeeway(int $leeway): int
     {
         if ($leeway < 0) {
@@ -191,6 +198,9 @@ final readonly class SignedUrlConfig
         return $leeway;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function normalizeNullablePositiveInt(?int $value, string $field): ?int
     {
         if ($value === null) {
@@ -203,6 +213,9 @@ final readonly class SignedUrlConfig
         return $value;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function normalizeNullableString(#[\SensitiveParameter] ?string $value, string $field): ?string
     {
         if ($value === null) {
@@ -217,6 +230,9 @@ final readonly class SignedUrlConfig
         return $value;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function normalizeOptionalInt(mixed $value, string $field): ?int
     {
         if ($value === null) {
@@ -237,6 +253,9 @@ final readonly class SignedUrlConfig
         return (int) $parsed;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function normalizeParamName(string $param, string $field): string
     {
         $param = \trim($param);
@@ -247,6 +266,9 @@ final readonly class SignedUrlConfig
         return $param;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function normalizePayloadMode(string $payloadMode): string
     {
         $payloadMode = \strtolower(\trim($payloadMode));

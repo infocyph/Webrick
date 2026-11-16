@@ -10,7 +10,11 @@ use UnexpectedValueException;
 /** Load release metadata from OPcache-friendly PHP with JSON fallback for compatibility. */
 final class ReleaseManifestLoader
 {
-    /** @return array<string,mixed> */
+    /**
+     * @return array<string,mixed>
+     * @throws \UnexpectedValueException
+     * @throws \RuntimeException
+     */
     public function load(string $releaseManifestPath): array
     {
         $runtimePath = ReleaseCompiler::runtimeManifestPath($releaseManifestPath);
@@ -41,6 +45,7 @@ final class ReleaseManifestLoader
     /**
      * @param array<array-key,mixed> $manifest
      * @return array<string,mixed>
+     * @throws \UnexpectedValueException
      */
     private function validate(array $manifest): array
     {

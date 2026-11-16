@@ -90,6 +90,7 @@ class Response
      * @param array<array-key,mixed>|JsonSerializable|string|int|float|bool|null $data
      * @param array<string,string|list<string>> $headers
      * @param positive-int $depth
+     * @throws \RuntimeException
      */
     public static function auto(
         Request $r,
@@ -190,6 +191,7 @@ class Response
      * @param array<array-key,mixed>|JsonSerializable|string|int|float|bool|null $data
      * @param array<string,string|list<string>> $headers
      * @param positive-int $depth
+     * @throws \RuntimeException
      */
     public static function json(
         JsonSerializable|array|string|int|float|bool|null $data,
@@ -255,6 +257,9 @@ class Response
         return RangeResponder::forFile($req, $absolutePath, $mediaType, $headers);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public static function redirect(string $uri, int $status = StatusEnum::FOUND->value): self
     {
         $resolved = StatusEnum::tryFrom($status);
@@ -414,6 +419,9 @@ class Response
         return $response;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     public function withCache(\Closure $edit): self
     {
         $cache = $edit($this->cache());
@@ -458,6 +466,9 @@ class Response
         );
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function assertProtocolVersion(string $version): void
     {
         if (preg_match(self::PROTOCOL_VERSION_RX, $version) !== 1) {
@@ -465,6 +476,9 @@ class Response
         }
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function assertReasonPhrase(?string $reasonPhrase): void
     {
         if ($reasonPhrase !== null && preg_match(self::INVALID_REASON_PHRASE, $reasonPhrase) === 1) {
@@ -472,6 +486,9 @@ class Response
         }
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private static function assertStatus(int $code): void
     {
         if ($code < 100 || $code > 599) {

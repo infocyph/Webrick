@@ -18,6 +18,7 @@ final class CompactMatcherIndexValidator
 
     /**
      * @phpstan-return MatcherGroup
+     * @throws \UnexpectedValueException
      */
     public static function validateGroup(mixed $raw, bool $validateRegex = false): array
     {
@@ -36,7 +37,10 @@ final class CompactMatcherIndexValidator
         ];
     }
 
-    /** @return array<string,MatcherGroup> */
+    /**
+     * @return array<string,MatcherGroup>
+     * @throws \UnexpectedValueException
+     */
     public static function validateHosts(mixed $raw, bool $validateRegex = false): array
     {
         if (!is_array($raw)) {
@@ -54,6 +58,9 @@ final class CompactMatcherIndexValidator
         return $hosts;
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     private static function routeIndex(mixed $route): int
     {
         $index = $route instanceof CompiledRoute
@@ -66,7 +73,10 @@ final class CompactMatcherIndexValidator
         return $index;
     }
 
-    /** @return list<string> */
+    /**
+     * @return list<string>
+     * @throws \UnexpectedValueException
+     */
     private static function validateMethodList(mixed $raw): array
     {
         if (!is_array($raw) || !array_is_list($raw) || $raw === []) {
@@ -84,7 +94,10 @@ final class CompactMatcherIndexValidator
         return array_keys($seen);
     }
 
-    /** @return array<int,mixed> */
+    /**
+     * @return array<int,mixed>
+     * @throws \UnexpectedValueException
+     */
     private static function validateRoutes(mixed $raw): array
     {
         if (!is_array($raw)) {
@@ -105,6 +118,7 @@ final class CompactMatcherIndexValidator
     /**
      * @param array<int,mixed> $routes
      * @return array<string,array<string,int>>
+     * @throws \UnexpectedValueException
      */
     private static function validateStatic(mixed $raw, array $routes): array
     {
@@ -123,7 +137,10 @@ final class CompactMatcherIndexValidator
         return $static;
     }
 
-    /** @return array<string,list<string>> */
+    /**
+     * @return array<string,list<string>>
+     * @throws \UnexpectedValueException
+     */
     private static function validateStaticAllowed(mixed $raw): array
     {
         if (!is_array($raw)) {
@@ -145,6 +162,7 @@ final class CompactMatcherIndexValidator
      * @param array<array-key,mixed> $raw
      * @param array<int,mixed> $routes
      * @return array<string,int>
+     * @throws \UnexpectedValueException
      */
     private static function validateStaticPaths(array $raw, array $routes): array
     {

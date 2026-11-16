@@ -15,6 +15,9 @@ final class UploadedFile
 
     private bool $moved = false;
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function __construct(
         private string|BodyStream $src,
         private readonly ?int $size = null,
@@ -89,6 +92,9 @@ final class UploadedFile
         return $this->src instanceof BodyStream ? $this->src->getSize() : null;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     public function getStream(): BodyStream
     {
         $this->assertOkAndNotMoved();
@@ -130,6 +136,9 @@ final class UploadedFile
         }
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function assertOkAndNotMoved(): void
     {
         if ($this->err !== UPLOAD_ERR_OK) {
@@ -140,6 +149,10 @@ final class UploadedFile
         }
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     private function assertTarget(string $path): void
     {
         if ($path === '') {
@@ -158,6 +171,9 @@ final class UploadedFile
         return $stream->eof();
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function copyStreamContents(BodyStream $source, string $temporaryPath, string $targetPath): void
     {
         $out = fopen($temporaryPath, 'wb');
@@ -183,6 +199,9 @@ final class UploadedFile
         }
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function copyStreamTo(string $targetPath): void
     {
         $source = $this->src;
@@ -216,6 +235,9 @@ final class UploadedFile
         }
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function movePathTo(string $sourcePath, string $targetPath): void
     {
         if (is_uploaded_file($sourcePath)) {
@@ -241,7 +263,10 @@ final class UploadedFile
         }
     }
 
-    /** @param resource $out */
+    /**
+     * @param resource $out
+     * @throws \RuntimeException
+     */
     private function writeStreamChunk($out, string $chunk, string $targetPath): void
     {
         $offset = 0;

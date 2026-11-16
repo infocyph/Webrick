@@ -52,7 +52,10 @@ final class RouterArtifactCompiler
         ]));
     }
 
-    /** @return array{path:string,meta:string,digest:string,fingerprint:string,routes:int} */
+    /**
+     * @return array{path:string,meta:string,digest:string,fingerprint:string,routes:int}
+     * @throws \RuntimeException
+     */
     public function compile(RouterBuildResult $build, string $path): array
     {
         [$routes, $plans] = $this->indexedRuntimePayloads($build);
@@ -130,7 +133,10 @@ final class RouterArtifactCompiler
         );
     }
 
-    /** @return array{0:array<int,mixed>,1:array<int,array<string,mixed>>} */
+    /**
+     * @return array{0:array<int,mixed>,1:array<int,array<string,mixed>>}
+     * @throws \UnexpectedValueException
+     */
     private function indexedRuntimePayloads(RouterBuildResult $build): array
     {
         $routes = [];
@@ -154,6 +160,9 @@ final class RouterArtifactCompiler
         return [$routes, $plans];
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function writeAtomic(string $path, string $contents): void
     {
         $directory = dirname($path);

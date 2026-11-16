@@ -20,6 +20,10 @@ final class FileBody implements BodyStream
 
     private ?Stream $stream = null;
 
+    /**
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     */
     public function __construct(
         private readonly string $path,
         private readonly int $offset = 0,
@@ -71,6 +75,9 @@ final class FileBody implements BodyStream
         $this->stream = null;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     #[\Override]
     public function detach(): mixed
     {
@@ -206,6 +213,9 @@ final class FileBody implements BodyStream
         throw new RuntimeException('FileBody is read-only.');
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function stream(): Stream
     {
         if ($this->stream !== null) {

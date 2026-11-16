@@ -35,6 +35,8 @@ final class CompiledMatcherPatternCompiler
     /**
      * @param list<SegmentSpec> $segments
      * @return array{0:string,1:array<string,string>}
+     * @throws \UnexpectedValueException
+     * @throws \LogicException
      */
     public static function namedPattern(array $segments, int $routeOrdinal): array
     {
@@ -77,6 +79,8 @@ final class CompiledMatcherPatternCompiler
     /**
      * @param list<SegmentSpec> $segments
      * @return array{0:string,1:list<string>}
+     * @throws \UnexpectedValueException
+     * @throws \LogicException
      */
     public static function positionalPattern(array $segments): array
     {
@@ -114,7 +118,11 @@ final class CompiledMatcherPatternCompiler
         return ['/*' . implode('/', $parts) . '/*', $params];
     }
 
-    /** @param list<SegmentSpec> $segments */
+    /**
+     * @param list<SegmentSpec> $segments
+     * @throws \UnexpectedValueException
+     * @throws \LogicException
+     */
     public static function predicate(array $segments): string
     {
         if ($segments === []) {
@@ -204,6 +212,9 @@ final class CompiledMatcherPatternCompiler
         return $out;
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     private static function segmentInner(string $regex): string
     {
         if (!str_starts_with($regex, '#\\A') || !str_ends_with($regex, '\\z#D')) {

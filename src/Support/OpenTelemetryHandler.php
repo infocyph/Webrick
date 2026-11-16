@@ -24,6 +24,7 @@ final readonly class OpenTelemetryHandler
 
     /**
      * @param Closure(Request):Response $next
+     * @throws \Throwable
      */
     public function handle(Request $req, Closure $next): Response
     {
@@ -199,6 +200,7 @@ final readonly class OpenTelemetryHandler
 
     /**
      * @param list<mixed> $args
+     * @throws \RuntimeException
      */
     private function call(object $target, string $method, array $args = []): mixed
     {
@@ -211,6 +213,7 @@ final readonly class OpenTelemetryHandler
 
     /**
      * @param list<mixed> $args
+     * @throws \RuntimeException
      */
     private function callObject(object $target, string $method, array $args = []): object
     {
@@ -224,6 +227,7 @@ final readonly class OpenTelemetryHandler
 
     /**
      * @param list<mixed> $args
+     * @throws \RuntimeException
      */
     private function callStatic(string $class, string $method, array $args = []): mixed
     {
@@ -236,6 +240,7 @@ final readonly class OpenTelemetryHandler
 
     /**
      * @param list<mixed> $args
+     * @throws \RuntimeException
      */
     private function callStaticObject(string $class, string $method, array $args = []): object
     {
@@ -283,6 +288,9 @@ final readonly class OpenTelemetryHandler
         return $carrier;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function otelIntConstant(string $name, int $fallback, string $label): int
     {
         if (!defined($name)) {
@@ -334,6 +342,9 @@ final readonly class OpenTelemetryHandler
         }
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function startServerSpan(Request $req, int $startNs): object
     {
         if (!class_exists(self::OTEL_GLOBALS)) {

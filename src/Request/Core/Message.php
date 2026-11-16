@@ -120,6 +120,9 @@ abstract class Message
         return $version === $this->protocol ? $this : $this->withPropertyValue('protocol', $version);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function assertProtocolVersion(string $version): void
     {
         if (preg_match(self::PROTOCOL_VERSION_RX, $version) !== 1) {
@@ -127,6 +130,9 @@ abstract class Message
         }
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function norm(string $name): string
     {
         if ($name === '' || preg_match(self::INVALID_HEADER_NAME, $name) === 1) {
@@ -139,6 +145,7 @@ abstract class Message
     /**
      * @param array<array-key,mixed> $headers
      * @return array<string,list<string>>
+     * @throws \InvalidArgumentException
      */
     private function normalise(array $headers): array
     {
@@ -155,6 +162,7 @@ abstract class Message
 
     /**
      * @return list<string>
+     * @throws \InvalidArgumentException
      */
     private function normalizeHeaderValues(mixed $value): array
     {

@@ -49,7 +49,10 @@ final readonly class CookieEncryptionMiddleware
 
     private int $kid;
 
-    /** @param string|array<int,string> $keyOrKeys */
+    /**
+     * @param string|array<int,string> $keyOrKeys
+     * @throws \InvalidArgumentException
+     */
     public function __construct(
         #[\SensitiveParameter]
         string|array $keyOrKeys,
@@ -108,7 +111,10 @@ final readonly class CookieEncryptionMiddleware
         return $this->encryptAll($next($req), $incoming);
     }
 
-    /** Return a new middleware instance with a different active encryption key. */
+    /**
+     * Return a new middleware instance with a different active encryption key.
+     * @throws \InvalidArgumentException
+     */
     public function rotateToKid(int $kid): self
     {
         if (!isset($this->keys[$kid])) {
@@ -155,6 +161,9 @@ final readonly class CookieEncryptionMiddleware
         return $jar;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function assertSupportedProtectedName(string $name): void
     {
         $baseName = substr($name, strlen($this->cookiePrefix));
@@ -277,7 +286,12 @@ final readonly class CookieEncryptionMiddleware
         return self::STORE_BLOB_V1 . substr(hash('sha3-256', $cipher), 0, 8) . self::STORE_SEP . $cipher;
     }
 
-    /** @param array<string,mixed> $incoming */
+    /**
+     * @param array<string,mixed> $incoming
+     * @throws \Random\RandomException
+     * @throws \LengthException
+     * @throws \RuntimeException
+     */
     private function encryptAll(Response $response, array $incoming): Response
     {
         $setCookies = $response->getHeader('Set-Cookie');
@@ -329,6 +343,7 @@ final readonly class CookieEncryptionMiddleware
     /**
      * @return non-empty-array<int,string>
      * @throws RandomException|LengthException|RuntimeException
+     * @throws \Psr\Cache\InvalidArgumentException
      */
     private function encryptSegments(string $baseName, #[\SensitiveParameter] string $plaintext): array
     {
@@ -384,6 +399,9 @@ final readonly class CookieEncryptionMiddleware
         return $jar;
     }
 
+    /**
+     * @throws \Psr\Cache\InvalidArgumentException
+     */
     private function fromStore(string $id): mixed
     {
         if ($this->store === null) {
@@ -408,7 +426,10 @@ final readonly class CookieEncryptionMiddleware
         );
     }
 
-    /** @return int<0,255> */
+    /**
+     * @return int<0,255>
+     * @throws \RuntimeException
+     */
     private function kidByte(): int
     {
         if ($this->kid > 255) {

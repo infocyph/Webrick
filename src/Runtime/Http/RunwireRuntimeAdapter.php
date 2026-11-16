@@ -68,6 +68,9 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
         return $this->runtimeCapabilities;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     #[\Override]
     public function context(mixed $nativeRequest = null, mixed $nativeResponse = null, bool $withHost = false): RuntimeRequestContext
     {
@@ -130,6 +133,9 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
         );
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     #[\Override]
     public function write(Response $response, RuntimeRequestContext $context): void
     {
@@ -230,6 +236,10 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
 
     }
 
+    /**
+     * @throws \Infocyph\Webrick\Runtime\Http\RunwireTransportCancellation
+     * @throws \RuntimeException
+     */
     private static function assertAccepted(WriteResult $result, string $operation): void
     {
         if ($result->accepted()) {
@@ -242,6 +252,9 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
         throw new RuntimeException("Runwire response {$operation} was rejected: {$result->state->value}.");
     }
 
+    /**
+     * @throws \Infocyph\Webrick\Runtime\Http\RunwireTransportCancellation
+     */
     private static function assertNotCancelled(CancellationToken $cancellation): void
     {
         if ($cancellation->isCancelled()) {
@@ -326,6 +339,9 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
         return [$endpoint, null];
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private static function finish(
         ResponseWriterInterface $writer,
         CancellationToken $cancellation,
@@ -370,6 +386,9 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
         return $path . $query;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function responseHeaders(Response $response, bool $http2Or3): Headers
     {
         $headers = ResponseWriterSupport::headerMap($response, $http2Or3);

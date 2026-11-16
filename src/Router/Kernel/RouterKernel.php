@@ -123,6 +123,9 @@ final readonly class RouterKernel
         );
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     public function handle(?Request $request = null): Response
     {
         $request ??= Request::fromGlobals();
@@ -175,6 +178,9 @@ final readonly class RouterKernel
         return $response->withBody('');
     }
 
+    /**
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     */
     private static function normaliseHost(string $raw): string
     {
         if ($raw === '' || preg_match('/[\x00-\x20]/', $raw)) {
@@ -283,6 +289,9 @@ final readonly class RouterKernel
 
     /**
      * @return array{0:CompiledRoute,1:array<string,mixed>}
+     * @throws \RuntimeException
+     * @throws \Infocyph\Webrick\Exceptions\RouteNotFoundException
+     * @throws \Infocyph\Webrick\Exceptions\MethodNotAllowedException
      */
     private function matchRoute(Request $req): array
     {
@@ -375,6 +384,9 @@ final readonly class RouterKernel
         ];
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function warm(): void
     {
         $routes = new Collection();

@@ -192,3 +192,10 @@ No commit, tag, merge, publication, provider deployment or end-to-end security c
 - Historical baseline: `b4701828f85f18d58b7d931ac0a9cfb7203dba83`, [run 43842417101](https://github.com/infocyph/Webrick/actions/runs/43842417101). Four QA lanes passed, both benchmark lanes passed; Psalm 1,578 and separately configured no-intl PHPStan 424 errors remained.
 - Changed only Webrick CI integration: explicit `php_extensions: intl` in reusable PHPForge workflow, while retaining empty external-service selection and unchanged service topologies. Removed bespoke no-intl PHPStan analyzer job because the user's desired analyzer environment is ext-intl-enabled; PHPForge native PHP 8.4/8.5 analysis still runs with unchanged strict rules.
 - `detail-diagnostics` continues a `php -n` optional-Intl behavior smoke check. New hosted matrix and diagnostics **pending**; A01-A26 release/security acceptance statuses unchanged.
+
+### Batch 12 — 50-file Psalm exception-contract remediation (2026-11-16)
+
+- Based on [run 43845029582](https://github.com/infocyph/Webrick/actions/runs/43845029582) at `215525625a7bec6473613a270d33a17281d89d40`: PHPForge with ext-intl configured, 4/4 QA and 2/2 benchmarks passed, PHPStan **424**, Psalm **1,578**; strict analysis still failing.
+- Batch changes: 50 existing production PHP files, 541 originally reported `MissingThrowsDocblock` locations mapped to 323 named methods, with 346 unique `@throws` type declarations written to method-level PHPDoc. Existing tags preserved; no generated cache, static-analysis suppression, runtime behavior or public method signature changes.
+- Requires new CI proof: PHP 8.4 and 8.5 PHPForge analysis; PHPForge Pint/PHPCS/Pest; benchmark comparison and PR reviewer feedback. These are **pending at the new commit**, not evidence of green gates.
+- Existing risk acceptance A01-A26, compiled artifact parity, host stateless CAPTCHA/replay safety and load/soak remain open unless separately tested.

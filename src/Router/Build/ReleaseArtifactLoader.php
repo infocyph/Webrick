@@ -57,6 +57,7 @@ final readonly class ReleaseArtifactLoader
 
     /**
      * @param array{path:string,digest:string,graph:string,build:string,artifact:string,compiled:list<string>,skipped:array<string,string>} $expected
+     * @throws \RuntimeException
      */
     private function assertInterMixArtifact(array $expected): void
     {
@@ -81,7 +82,10 @@ final readonly class ReleaseArtifactLoader
         }
     }
 
-    /** @param array<string,mixed> $manifest */
+    /**
+     * @param array<string,mixed> $manifest
+     * @throws \RuntimeException
+     */
     private function assertReleaseIdentity(
         array $manifest,
         string $expectedEnvironment,
@@ -109,6 +113,7 @@ final readonly class ReleaseArtifactLoader
 
     /**
      * @param array{path:string,meta:string,digest:string,fingerprint:string,routes:int} $expected
+     * @throws \RuntimeException
      */
     private function assertWebrickArtifact(CompiledRouterArtifact $artifact, array $expected): void
     {
@@ -127,7 +132,11 @@ final readonly class ReleaseArtifactLoader
         }
     }
 
-    /** @return array<string,mixed> */
+    /**
+     * @return array<string,mixed>
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     */
     private function decodeJsonFile(string $path, string $label): array
     {
         if (!is_file($path) || !is_readable($path)) {
@@ -161,6 +170,7 @@ final readonly class ReleaseArtifactLoader
     /**
      * @param array<string,mixed> $manifest
      * @return array{path:string,digest:string,graph:string,build:string,artifact:string,compiled:list<string>,skipped:array<string,string>}
+     * @throws \UnexpectedValueException
      */
     private function intermixMetadata(array $manifest): array
     {
@@ -201,7 +211,10 @@ final readonly class ReleaseArtifactLoader
         return $this->decodeJsonFile($path, 'Webrick coordinated release manifest');
     }
 
-    /** @return list<string> */
+    /**
+     * @return list<string>
+     * @throws \UnexpectedValueException
+     */
     private function stringList(mixed $value, string $label): array
     {
         if (!is_array($value) || !array_is_list($value)) {
@@ -216,7 +229,10 @@ final readonly class ReleaseArtifactLoader
         return $value;
     }
 
-    /** @return array<string,string> */
+    /**
+     * @return array<string,string>
+     * @throws \UnexpectedValueException
+     */
     private function stringMap(mixed $value, string $label): array
     {
         if (!is_array($value)) {
@@ -236,6 +252,7 @@ final readonly class ReleaseArtifactLoader
     /**
      * @param array<string,mixed> $manifest
      * @return array{path:string,meta:string,digest:string,fingerprint:string,routes:int}
+     * @throws \UnexpectedValueException
      */
     private function webrickMetadata(array $manifest): array
     {

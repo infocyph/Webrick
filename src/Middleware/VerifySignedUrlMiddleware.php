@@ -30,7 +30,10 @@ final readonly class VerifySignedUrlMiddleware
         $this->config = $this->normalizeConfig($config, $leeway, $ignoredQueryParams, $payloadMode);
     }
 
-    /** @param Closure(Request):Response $next */
+    /**
+     * @param Closure(Request):Response $next
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     */
     public function __invoke(Request $request, Closure $next): Response
     {
         $query = $request->getQueryParams();
@@ -134,6 +137,9 @@ final readonly class VerifySignedUrlMiddleware
         );
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function normalizeLeeway(int|string|null $leeway, int $default): int
     {
         if ($leeway === null) {
@@ -164,6 +170,9 @@ final readonly class VerifySignedUrlMiddleware
         return \is_string($value) ? HttpUtils::parseUnsignedDecimal($value) : null;
     }
 
+    /**
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     */
     private function requestAbsoluteTarget(Request $request): string
     {
         $uri = $request->getUri();

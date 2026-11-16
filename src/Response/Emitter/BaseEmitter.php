@@ -66,6 +66,9 @@ abstract class BaseEmitter implements EmitterInterface
             && $method !== HttpMethodEnum::HEAD->value;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     protected function emitFromBody(BodyStream $body): void
     {
         if ($body->isSeekable()) {
@@ -81,6 +84,9 @@ abstract class BaseEmitter implements EmitterInterface
         }
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     protected function emitSmall(BodyStream $body): void
     {
         if ($body->isSeekable()) {
@@ -265,6 +271,9 @@ abstract class BaseEmitter implements EmitterInterface
         return false;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     protected function write(string $chunk): void
     {
         if ($chunk === '') {
@@ -303,7 +312,10 @@ abstract class BaseEmitter implements EmitterInterface
             || $status === StatusEnum::NOT_MODIFIED->value;
     }
 
-    /** @param iterable<mixed> $out */
+    /**
+     * @param iterable<mixed> $out
+     * @throws \UnexpectedValueException
+     */
     private function emitIterableOutput(iterable $out): void
     {
         foreach ($out as $chunk) {

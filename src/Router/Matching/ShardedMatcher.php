@@ -78,6 +78,9 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     /** @var array<string,true> */
     private array $middlewareRequirements = [];
 
+    /**
+     * @throws \LogicException
+     */
     #[\Override]
     public function add(CompiledRoute $route): void
     {
@@ -92,7 +95,10 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         matcher_capture_middleware_requirements($this->middlewareRequirements, $route);
     }
 
-    /** @return array<string,array{0:string,1:?string}> */
+    /**
+     * @return array<string,array{0:string,1:?string}>
+     * @throws \RuntimeException
+     */
     public function aliasIndex(): array
     {
         if (!$this->cacheReadable) {
@@ -190,6 +196,9 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         $this->finalized = true;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     #[\Override]
     public function match(string $method, string $host, string $path): array
     {
@@ -216,6 +225,9 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         return $this->matchCompiledIr($method, $host, $path, true);
     }
 
+    /**
+     * @throws \LogicException
+     */
     #[\Override]
     public function matchOutcome(string $method, string $host, string $path): MatchOutcome
     {
@@ -245,7 +257,10 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         return $index[$name] ?? null;
     }
 
-    /** @param array<array-key,mixed> $data */
+    /**
+     * @param array<array-key,mixed> $data
+     * @throws \RuntimeException
+     */
     private static function assertPayloadHash(mixed $stored, array $data, string $message): void
     {
         if (!is_string($stored) || !hash_equals($stored, hash('xxh128', serialize($data)))) {
@@ -253,7 +268,10 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         }
     }
 
-    /** @param array<array-key,mixed> $blob */
+    /**
+     * @param array<array-key,mixed> $blob
+     * @throws \UnexpectedValueException
+     */
     private static function validateWrittenPayload(array $blob, bool $compiledGroup, string $hash): void
     {
         $data = $blob['_data'] ?? null;
@@ -307,6 +325,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
 
     /**
      * @phpstan-return CompiledGroup|null
+     * @throws \RuntimeException
      */
     private function loadGroup(string $host, string $bucket): ?array
     {
@@ -404,6 +423,9 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         return $groups;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function preloadProductionGroups(): void
     {
         $groups = $this->partitionIndex();
@@ -494,7 +516,11 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         $this->writePayload($file, $compiledGroup, true);
     }
 
-    /** @param array<array-key,mixed> $payload */
+    /**
+     * @param array<array-key,mixed> $payload
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     */
     private function writePayload(string $file, array $payload, bool $compiledGroup = false): void
     {
         $directory = dirname($file);

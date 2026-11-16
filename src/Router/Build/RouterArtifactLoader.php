@@ -10,6 +10,9 @@ use UnexpectedValueException;
 /** Production artifact loader with normal and trusted-prevalidated trust paths. */
 final class RouterArtifactLoader
 {
+    /**
+     * @throws \RuntimeException
+     */
     public function load(
         string $path,
         string $expectedEnvironment,
@@ -25,6 +28,10 @@ final class RouterArtifactLoader
         return $this->loadVerifiedPayload($path, $meta, $expectedEnvironment, $expectedConfigFingerprint);
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     * @throws \RuntimeException
+     */
     public function loadPrevalidated(
         string $path,
         string $trustedArtifactFingerprint,
@@ -57,6 +64,7 @@ final class RouterArtifactLoader
     /**
      * @param array<string,mixed> $payload
      * @return array<string,array{0:string,1:string|null}>
+     * @throws \UnexpectedValueException
      */
     private static function aliasPayloads(array $payload, string $field): array
     {
@@ -80,6 +88,7 @@ final class RouterArtifactLoader
     /**
      * @param array<string,mixed> $payload
      * @return array<array-key,mixed>
+     * @throws \UnexpectedValueException
      */
     private static function arrayField(array $payload, string $field): array
     {
@@ -91,7 +100,10 @@ final class RouterArtifactLoader
         return $value;
     }
 
-    /** @param array{format:int,environment:string,config_fingerprint:string,artifact_fingerprint:string,digest:string} $meta */
+    /**
+     * @param array{format:int,environment:string,config_fingerprint:string,artifact_fingerprint:string,digest:string} $meta
+     * @throws \RuntimeException
+     */
     private static function assertArtifactIdentity(CompiledRouterArtifact $artifact, array $meta): void
     {
         if (
@@ -103,6 +115,9 @@ final class RouterArtifactLoader
         }
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     private static function assertExpectedIdentity(string $environment, string $configFingerprint): void
     {
         if (trim($environment) === '' || trim($configFingerprint) === '') {
@@ -110,7 +125,10 @@ final class RouterArtifactLoader
         }
     }
 
-    /** @param array{format:int,environment:string,config_fingerprint:string,artifact_fingerprint:string,digest:string} $meta */
+    /**
+     * @param array{format:int,environment:string,config_fingerprint:string,artifact_fingerprint:string,digest:string} $meta
+     * @throws \RuntimeException
+     */
     private static function assertMetaIdentity(
         array $meta,
         string $expectedEnvironment,
@@ -127,6 +145,7 @@ final class RouterArtifactLoader
     /**
      * @param array<string,mixed> $payload
      * @return array<int,array<string,mixed>>
+     * @throws \UnexpectedValueException
      */
     private static function indexedPlans(array $payload): array
     {
@@ -152,6 +171,7 @@ final class RouterArtifactLoader
     /**
      * @param array<string,mixed> $payload
      * @return array<int,mixed>
+     * @throws \UnexpectedValueException
      */
     private static function indexedRoutes(array $payload): array
     {
@@ -170,6 +190,7 @@ final class RouterArtifactLoader
     /**
      * @param array<string,mixed> $payload
      * @return list<string>
+     * @throws \UnexpectedValueException
      */
     private static function stringListField(array $payload, string $field): array
     {
@@ -184,7 +205,10 @@ final class RouterArtifactLoader
         return $values;
     }
 
-    /** @param array<string,mixed> $payload */
+    /**
+     * @param array<string,mixed> $payload
+     * @throws \UnexpectedValueException
+     */
     private function calculatePayloadFingerprint(array $payload): string
     {
         $environment = $payload['environment'] ?? null;
@@ -208,7 +232,10 @@ final class RouterArtifactLoader
         );
     }
 
-    /** @param array{format:int,environment:string,config_fingerprint:string,artifact_fingerprint:string,digest:string} $meta */
+    /**
+     * @param array{format:int,environment:string,config_fingerprint:string,artifact_fingerprint:string,digest:string} $meta
+     * @throws \RuntimeException
+     */
     private function loadVerifiedPayload(
         string $path,
         array $meta,
@@ -233,7 +260,11 @@ final class RouterArtifactLoader
         return $artifact;
     }
 
-    /** @return array{format:int,environment:string,config_fingerprint:string,artifact_fingerprint:string,digest:string} */
+    /**
+     * @return array{format:int,environment:string,config_fingerprint:string,artifact_fingerprint:string,digest:string}
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     */
     private function readMeta(string $path): array
     {
         $metaPath = $path . '.meta.json';
@@ -268,7 +299,11 @@ final class RouterArtifactLoader
         ];
     }
 
-    /** @return array<string,mixed> */
+    /**
+     * @return array<string,mixed>
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     */
     private function requirePayload(string $path): array
     {
         if (!is_file($path)) {

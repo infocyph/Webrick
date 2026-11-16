@@ -47,6 +47,9 @@ final readonly class WorkermanRuntimeAdapter implements RuntimeAdapterInterface
         return $this->runtimeCapabilities;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     #[\Override]
     public function context(mixed $nativeRequest = null, mixed $nativeResponse = null, bool $withHost = false): RuntimeRequestContext
     {
@@ -84,6 +87,9 @@ final readonly class WorkermanRuntimeAdapter implements RuntimeAdapterInterface
         );
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     #[\Override]
     public function write(Response $response, RuntimeRequestContext $context): void
     {
@@ -133,7 +139,10 @@ final readonly class WorkermanRuntimeAdapter implements RuntimeAdapterInterface
         $this->send($connection, new $chunkClass(''));
     }
 
-    /** @return class-string */
+    /**
+     * @return class-string
+     * @throws \RuntimeException
+     */
     private static function requiredClass(string $class): string
     {
         if (!class_exists($class)) {
@@ -143,6 +152,9 @@ final readonly class WorkermanRuntimeAdapter implements RuntimeAdapterInterface
         return $class;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function call(object $target, string $method, mixed ...$arguments): mixed
     {
         if (!method_exists($target, $method)) {
@@ -171,6 +183,9 @@ final readonly class WorkermanRuntimeAdapter implements RuntimeAdapterInterface
         return new $class($status, $headers, $body);
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function send(object $connection, object|string $payload): void
     {
         if ($this->call($connection, 'send', $payload) === false) {
@@ -178,6 +193,9 @@ final readonly class WorkermanRuntimeAdapter implements RuntimeAdapterInterface
         }
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function withFile(object $response, string $path): object
     {
         $result = $this->call($response, 'withFile', $path);

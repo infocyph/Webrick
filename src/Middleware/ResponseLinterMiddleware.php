@@ -75,6 +75,9 @@ final readonly class ResponseLinterMiddleware
         return ($status >= 100 && $status < 200) || $status === StatusEnum::NO_CONTENT->value;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function assertContentLengthMatches(Request $req, Response $resp, int $len): void
     {
         if ($resp->hasHeader('Transfer-Encoding')) {
@@ -111,6 +114,9 @@ final readonly class ResponseLinterMiddleware
         $this->assertDeclaredLength($line, $len);
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function assertContentTypeIfBody(Response $resp, int $len): void
     {
         if ($len > 0 && !StatusEnum::isEmptyCode($resp->getStatusCode()) && $resp->getHeaderLine('Content-Type') === '') {
@@ -118,6 +124,9 @@ final readonly class ResponseLinterMiddleware
         }
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function assertDeclaredLength(string $line, int $len): void
     {
         $declared = HttpUtils::parseUnsignedDecimal($line);
@@ -133,6 +142,9 @@ final readonly class ResponseLinterMiddleware
         }
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function assertNoBodyOnStatuses(Response $resp, int $len): void
     {
         if ($len <= 0 || !StatusEnum::isEmptyCode($resp->getStatusCode())) {
@@ -142,6 +154,9 @@ final readonly class ResponseLinterMiddleware
         throw new RuntimeException("Linter: body not allowed on {$resp->getStatusCode()}");
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function assertVaryOnCompressed(Response $resp): void
     {
         if (!$resp->hasHeader('Content-Encoding')) {

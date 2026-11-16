@@ -179,7 +179,10 @@ final class CompiledRoute implements RouteInterface
         return $this->dynamic;
     }
 
-    /** @return array<mixed> */
+    /**
+     * @return array<mixed>
+     * @throws \LogicException
+     */
     public function toCachePayload(): array
     {
         $handler = $this->handler;
@@ -196,6 +199,7 @@ final class CompiledRoute implements RouteInterface
     /**
      * @param array{0:string,1:string}|string $handler
      * @return array<mixed>
+     * @throws \LogicException
      */
     public function toCachePayloadWithHandler(array|string $handler): array
     {
@@ -309,7 +313,10 @@ final class CompiledRoute implements RouteInterface
         return $segments;
     }
 
-    /** @return array{0:string,1:list<string>,2:true,3:list<SegmentSpec>} */
+    /**
+     * @return array{0:string,1:list<string>,2:true,3:list<SegmentSpec>}
+     * @throws \InvalidArgumentException
+     */
     private static function parseDynamicPath(string $path): array
     {
         $vars = [];
@@ -374,6 +381,9 @@ final class CompiledRoute implements RouteInterface
         return strpbrk($value, '^$.[]|()?*+{}\\') !== false ? preg_quote($value, '#') : $value;
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     private static function stateBool(mixed $value): bool
     {
         if (!is_bool($value)) {
@@ -383,6 +393,9 @@ final class CompiledRoute implements RouteInterface
         return $value;
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     private static function stateCors(mixed $value): ?Cors
     {
         if ($value === null || $value instanceof Cors) {
@@ -392,7 +405,10 @@ final class CompiledRoute implements RouteInterface
         throw new \UnexpectedValueException('Invalid CORS policy in compiled route state.');
     }
 
-    /** @return array{object|string,string}|string|callable */
+    /**
+     * @return array{object|string,string}|string|callable
+     * @throws \UnexpectedValueException
+     */
     private static function stateHandler(mixed $value): array|string|callable
     {
         if (is_string($value) || is_callable($value)) {
@@ -405,6 +421,9 @@ final class CompiledRoute implements RouteInterface
         throw new \UnexpectedValueException('Invalid handler in compiled route state.');
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     private static function stateInt(mixed $value): int
     {
         if (!is_int($value)) {
@@ -414,7 +433,10 @@ final class CompiledRoute implements RouteInterface
         return $value;
     }
 
-    /** @return MiddlewareList */
+    /**
+     * @return MiddlewareList
+     * @throws \UnexpectedValueException
+     */
     private static function stateMiddleware(mixed $value): array
     {
         if (!is_array($value) || !array_is_list($value)) {
@@ -435,6 +457,9 @@ final class CompiledRoute implements RouteInterface
         return $middleware;
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     private static function stateNullableString(mixed $value): ?string
     {
         if ($value === null || is_string($value)) {
@@ -444,6 +469,9 @@ final class CompiledRoute implements RouteInterface
         throw new \UnexpectedValueException('Invalid nullable string in compiled route state.');
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     private static function stateProduces(mixed $value): ?Produces
     {
         if ($value === null || $value instanceof Produces) {
@@ -453,7 +481,10 @@ final class CompiledRoute implements RouteInterface
         throw new \UnexpectedValueException('Invalid Produces policy in compiled route state.');
     }
 
-    /** @return list<SegmentSpec> */
+    /**
+     * @return list<SegmentSpec>
+     * @throws \UnexpectedValueException
+     */
     private static function stateSegments(mixed $value): array
     {
         if (!is_array($value) || !array_is_list($value)) {
@@ -465,6 +496,9 @@ final class CompiledRoute implements RouteInterface
         ])[13];
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     private static function stateString(mixed $value): string
     {
         if (!is_string($value)) {
@@ -474,7 +508,10 @@ final class CompiledRoute implements RouteInterface
         return $value;
     }
 
-    /** @return list<string> */
+    /**
+     * @return list<string>
+     * @throws \UnexpectedValueException
+     */
     private static function stateStringList(mixed $value): array
     {
         if (!is_array($value) || !array_is_list($value)) {

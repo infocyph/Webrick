@@ -30,6 +30,7 @@ final readonly class ResponseWriterSupport
 
     /**
      * @phpstan-return Generator<int,string,void,void>
+     * @throws \InvalidArgumentException
      */
     public static function chunks(Response $response, int $chunkSize = 65_536): iterable
     {
@@ -119,7 +120,10 @@ final readonly class ResponseWriterSupport
         return $body->eof();
     }
 
-    /** @return Generator<int,string,void,void> */
+    /**
+     * @return Generator<int,string,void,void>
+     * @throws \RuntimeException
+     */
     private static function bodyChunks(\Infocyph\Webrick\Interfaces\BodyStream $body, int $chunkSize): Generator
     {
         if ($body->isSeekable()) {
@@ -146,7 +150,10 @@ final readonly class ResponseWriterSupport
             || $status === StatusEnum::NO_CONTENT->value;
     }
 
-    /** @return Generator<int,string,void,void> */
+    /**
+     * @return Generator<int,string,void,void>
+     * @throws \UnexpectedValueException
+     */
     private static function producerChunks(\Closure $producer): Generator
     {
         $chunks = $producer();

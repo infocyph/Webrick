@@ -45,6 +45,7 @@ final readonly class GatewayHardeningMiddleware
      * @param list<string> $trustedHosts
      * @param list<string> $redirectAllowedHosts
      * @param list<string> $trustedClientIpHeaders
+     * @throws \InvalidArgumentException
      */
     public function __construct(
         array $trustedProxyCidrs = [],
@@ -102,6 +103,7 @@ final readonly class GatewayHardeningMiddleware
     /**
      * @param list<string> $trustedHosts
      * @return list<string>
+     * @throws \InvalidArgumentException
      */
     private static function compileHostRegex(array $trustedHosts): array
     {
@@ -124,6 +126,7 @@ final readonly class GatewayHardeningMiddleware
     /**
      * @param list<string> $cidrs
      * @return list<IpCidr>
+     * @throws \InvalidArgumentException
      */
     private static function compileNetworks(array $cidrs): array
     {
@@ -166,6 +169,9 @@ final readonly class GatewayHardeningMiddleware
             && array_any($networks, static fn(IpCidr $network): bool => $network->matches($ip));
     }
 
+    /**
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     */
     private function denyIfBlockedEndUser(EndUser $endUser): void
     {
         $clientIp = $endUser->ip();
@@ -174,6 +180,9 @@ final readonly class GatewayHardeningMiddleware
         }
     }
 
+    /**
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     */
     private function guardRedirects(Request $req, Response $response): Response
     {
         if (!$response->hasHeader('Location')) {
@@ -223,7 +232,10 @@ final readonly class GatewayHardeningMiddleware
         return $out;
     }
 
-    /** @return array{scheme?:string,host?:string,port?:int,user?:string,pass?:string,path?:string,query?:string,fragment?:string} */
+    /**
+     * @return array{scheme?:string,host?:string,port?:int,user?:string,pass?:string,path?:string,query?:string,fragment?:string}
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     */
     private function parseRedirectTarget(string $location): array
     {
         if ($location === ''
@@ -275,6 +287,9 @@ final readonly class GatewayHardeningMiddleware
             && self::equalsIgnoreCase($targetHost, $requestHost);
     }
 
+    /**
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     */
     private function redirectIfHttpsEnforced(Request $req): ?Response
     {
         if (!$this->enforceHttps || $req->getUri()->getScheme() === 'https') {
@@ -292,6 +307,9 @@ final readonly class GatewayHardeningMiddleware
         return Response::redirect((string) $target, 308);
     }
 
+    /**
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     */
     private function rejectIfUntrustedHost(Request $req): void
     {
         if ($this->allowAllHosts || $this->trustedHosts === []) {

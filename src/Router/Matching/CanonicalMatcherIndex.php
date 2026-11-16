@@ -52,6 +52,9 @@ final class CanonicalMatcherIndex
             : '*';
     }
 
+    /**
+     * @throws \LogicException
+     */
     public function add(string $host, CompiledRoute $route): void
     {
         $verb = HttpMethodEnum::normalize($route->getMethod());
@@ -93,6 +96,9 @@ final class CanonicalMatcherIndex
         return $this->hosts === [];
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     public function replaceFromCache(mixed $raw): void
     {
         if (!is_array($raw)) {
@@ -113,7 +119,10 @@ final class CanonicalMatcherIndex
         $this->hosts = $hosts;
     }
 
-    /** @return DynamicBuckets */
+    /**
+     * @return DynamicBuckets
+     * @throws \UnexpectedValueException
+     */
     private function normalizeDynamic(mixed $raw): array
     {
         if (!is_array($raw)) {
@@ -134,7 +143,10 @@ final class CanonicalMatcherIndex
         return $dynamic;
     }
 
-    /** @return DynamicEntry */
+    /**
+     * @return DynamicEntry
+     * @throws \UnexpectedValueException
+     */
     private function normalizeDynamicEntry(mixed $entry, int $count): array
     {
         if (!is_array($entry)) {
@@ -155,6 +167,7 @@ final class CanonicalMatcherIndex
     /**
      * @param array<array-key,mixed> $prefixes
      * @return array<string,array<string,DynamicEntry>>
+     * @throws \UnexpectedValueException
      */
     private function normalizePrefixes(array $prefixes, int $count): array
     {
@@ -174,7 +187,10 @@ final class CanonicalMatcherIndex
         return $normalized;
     }
 
-    /** @return SegmentSpec */
+    /**
+     * @return SegmentSpec
+     * @throws \UnexpectedValueException
+     */
     private function normalizeSegment(mixed $segment): array
     {
         if (!is_array($segment) || !is_string($segment['type'] ?? null)) {
@@ -202,7 +218,10 @@ final class CanonicalMatcherIndex
         return ['type' => 'var', 'name' => $segment['name'], 'call' => $call];
     }
 
-    /** @return list<SegmentSpec> */
+    /**
+     * @return list<SegmentSpec>
+     * @throws \UnexpectedValueException
+     */
     private function normalizeSegments(mixed $raw, int $expectedCount): array
     {
         if (!is_array($raw) || !array_is_list($raw) || count($raw) !== $expectedCount) {
@@ -219,6 +238,7 @@ final class CanonicalMatcherIndex
 
     /**
      * @return array<string,array<string,CompiledRoute|array<mixed>|string>>
+     * @throws \UnexpectedValueException
      */
     private function normalizeStatic(mixed $raw): array
     {

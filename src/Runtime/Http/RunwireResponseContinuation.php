@@ -22,6 +22,11 @@ final class RunwireResponseContinuation
     /** @var WeakMap<object, true>|null */
     private static ?WeakMap $managedFibers = null;
 
+    /**
+     * @throws \Infocyph\Runwire\Exception\CancelledException
+     * @throws \LogicException
+     * @throws \OverflowException
+     */
     public static function awaitBodyReadable(RequestBodyInterface $body, CancellationToken $cancellation): void
     {
         $cancellation->throwIfCancelled();
@@ -80,6 +85,10 @@ final class RunwireResponseContinuation
         $cancellation->throwIfCancelled();
     }
 
+    /**
+     * @throws \LogicException
+     * @throws \OverflowException
+     */
     public static function awaitDrain(ResponseWriterInterface $writer, CancellationToken $cancellation): void
     {
         $fiber = self::managedFiber(
@@ -156,7 +165,10 @@ final class RunwireResponseContinuation
             && $original->reason === $next->reason;
     }
 
-    /** @return Fiber<mixed, mixed, mixed, mixed> */
+    /**
+     * @return Fiber<mixed, mixed, mixed, mixed>
+     * @throws \RuntimeException
+     */
     private static function managedFiber(string $message): Fiber
     {
         $fiber = Fiber::getCurrent();
@@ -194,6 +206,7 @@ final class RunwireResponseContinuation
      *
      * @param callable(): void $handler
      * @param Fiber<mixed, mixed, mixed, mixed>|null $owner
+     * @throws \Throwable
      */
     private static function runOwnedFiber(callable $handler, ?Fiber $owner): void
     {

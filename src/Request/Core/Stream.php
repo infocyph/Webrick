@@ -23,6 +23,9 @@ final class Stream implements BodyStream
     /** @var resource|null */
     private $handle;
 
+    /**
+     * @throws \RuntimeException
+     */
     public function __construct(mixed $source = '')
     {
         $handle = match (true) {
@@ -188,6 +191,9 @@ final class Stream implements BodyStream
         }
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     #[\Override]
     public function tell(): int
     {
@@ -213,7 +219,10 @@ final class Stream implements BodyStream
         return $bytes;
     }
 
-    /** @return resource */
+    /**
+     * @return resource
+     * @throws \RuntimeException
+     */
     private static function openFileObject(SplFileObject $file)
     {
         if (!$file->isReadable()) {
@@ -227,7 +236,10 @@ final class Stream implements BodyStream
         return $handle;
     }
 
-    /** @return resource */
+    /**
+     * @return resource
+     * @throws \RuntimeException
+     */
     private static function openMemory(string $payload)
     {
         $handle = fopen('php://temp', 'r+');

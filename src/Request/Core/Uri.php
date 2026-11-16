@@ -24,6 +24,9 @@ final class Uri implements \Stringable
 
     private string $user;
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function __construct(string $uri = '')
     {
         if ($uri === '') {
@@ -82,6 +85,9 @@ final class Uri implements \Stringable
         return new self($raw);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public static function fromComponents(
         string $scheme = '',
         string $host = '',
@@ -245,6 +251,9 @@ final class Uri implements \Stringable
         return $path === $this->path ? $this : $this->withComponent('path', $path);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function withPort(?int $port): self
     {
         if ($port !== null && ($port < 1 || $port > 65535)) {
@@ -329,6 +338,9 @@ final class Uri implements \Stringable
         return [$target === '' ? '/' : $target, $query, $fragment];
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function asciiHost(string $host): string
     {
         if ($host === '' || preg_match('/[\x00-\x20\x7f\/\\\\@?#]/', $host) === 1) {
@@ -380,6 +392,9 @@ final class Uri implements \Stringable
         return ltrim($query, '?');
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function ipv6Host(string $host): string
     {
         if (!str_ends_with($host, ']')) {
