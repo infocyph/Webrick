@@ -36,6 +36,10 @@ final readonly class CompiledBoundRouteIdentifier
 {
     public function __construct(public string $value = 'unbound') {}
 
+    /**
+     * @throws \DomainException If a route identifier does not exist.
+     * @throws \InvalidArgumentException For invalid route identifier input.
+     */
     public static function fromBoundValue(mixed $value): self
     {
         if ($value === 'missing') {
@@ -95,6 +99,7 @@ final class CompiledRoutingControlBridgeTest extends TestCase
      * @param array<string,mixed> $manifest
      * @phpstan-assert array{format:int,environment:string,config_fingerprint:string,intermix:array{path:string,digest:string,graph:string,build:string,compiled:array<array-key,mixed>,skipped:array<array-key,mixed>},webrick:array{path:string,digest:string,fingerprint:string}} $manifest
      * @psalm-assert array{format:int,environment:string,config_fingerprint:string,intermix:array{path:string,digest:string,graph:string,build:string,compiled:array<array-key,mixed>,skipped:array<array-key,mixed>},webrick:array{path:string,digest:string,fingerprint:string}} $manifest
+     * @throws \UnexpectedValueException For a missing or malformed expected fixture field.
      */
     private static function assertReleaseFixture(array $manifest): void
     {

@@ -163,6 +163,7 @@ function intermixTestTagList(mixed $value): array
 /**
  * @param list<mixed> $preGlobal
  * @param array<string,mixed> $options
+ * @throws InvalidArgumentException For invalid provider and middleware tag configuration.
  */
 function intermixKernelForTest(Closure $register, array $preGlobal = [], array $options = []): RouterKernel
 {
@@ -404,6 +405,7 @@ describe('InterMix integration', function () {
         $builder = intermixBuilderForTest();
         $factory = new class implements ViewFactoryInterface
         {
+            /** @throws UnexpectedValueException For malformed test view data. */
             #[\Override]
             public function render(string $view, array $data = []): string
             {

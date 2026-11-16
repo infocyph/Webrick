@@ -235,6 +235,8 @@ function testEncryptionKey(): string
 
 /**
  * Clean test cache directory.
+ *
+ * @throws UnexpectedValueException For non-filesystem iterator entries.
  */
 function cleanTestCache(string $path): void
 {
