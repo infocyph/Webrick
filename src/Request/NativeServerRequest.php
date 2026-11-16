@@ -28,7 +28,7 @@ class NativeServerRequest extends ServerRequest
     private ?PayloadParseState $xmlState = null;
 
     #[\Override]
-    protected function __clone(): void
+    protected function __clone()
     {
         parent::__clone();
         $this->resetPayloadCaches();

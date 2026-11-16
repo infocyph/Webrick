@@ -103,7 +103,7 @@ class ServerRequest extends Message
     }
 
     #[\Override]
-    protected function __clone(): void
+    protected function __clone()
     {
         parent::__clone();
         $this->headersFacade = null;

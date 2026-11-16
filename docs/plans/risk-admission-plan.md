@@ -190,3 +190,10 @@ Keep these two files only while this feature has pending work. Record durable AP
 - Combined Batch 03 + 04 scope: 63 files and 454 method declarations in two separate commits; implementation is complete for this known diagnostic snapshot. Real CI validation pending for this revision; do not claim 454 fewer diagnostics until the latest analysis run verifies it.
 - Native PHP 8.4+ `#[\\Override]` preserves existing method signatures, call sites and request logic. No analyzer baselines/exclusions changed. New snapshot after QA determines whether further missing-override remediation is needed.
 - Risk admission phases P2-P5, shared-backend security, and broader Psalm/PHPStan findings are unaffected and remain pending.
+
+### Batch 05 — PR type-contract feedback, 14 files (2026-11-16)
+
+- Source revision: `4f5439cb83c609163d2c950a22a12d1c03da77ff`; feedback in [PR #59](https://github.com/infocyph/Webrick/pull/59) and PHPStan no-intl [CI 43834246806](https://github.com/infocyph/Webrick/actions/runs/43834246806).
+- Three native Request hierarchy `__clone` overrides no longer declare an unnecessary `: void` return type (Psalm `MethodSignatureMustOmitReturnType`), preserving clone side effects and callable parameters.
+- Eleven Runwire `RequestBodyInterface` test/benchmark fixture implementations changed `trailers(): ?Headers` to the covariant non-null `trailers(): Headers` because every implementation returns `new Headers()`; aligns with PHPStan `return.unusedType` without changing payloads, I/O or interface requirements.
+- This batch targets **14 files / 14 type-contract findings**. Source/test behavior and quality rules unchanged; compile/runtime, PHPStan, Psalm and PHPForge QA on the next candidate are pending. No revision marked release-ready.

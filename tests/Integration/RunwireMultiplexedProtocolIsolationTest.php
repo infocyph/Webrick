@@ -98,7 +98,7 @@ final class RunwireMultiplexedBodyFixture implements RequestBodyInterface
     }
 
     #[\Override]
-    public function trailers(): ?Headers
+    public function trailers(): Headers
     {
         return new Headers();
     }

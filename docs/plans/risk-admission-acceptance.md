@@ -137,3 +137,8 @@ No commit, tag, merge, publication, provider deployment or end-to-end security c
 - Input: historical `MissingOverrideAttribute` report at [CI 43831667584](https://github.com/infocyph/Webrick/actions/runs/43831667584). Added 148 declarations across 13 remaining source-controlled PHP files; 306 were already addressed by Batch 03. Combined target 454 annotations for 63 files.
 - Required fresh evidence: PHPForge Pint/PHPCS/Pest, strict Psalm and PHPStan, PHP 8.4/8.5 QA, benchmark regression, and review feedback. Unverified outputs must not be treated as passed gates.
 - All A01-A26 admission/security/runtime acceptance remains pending unless separately proven by tests.
+
+### Batch 05 — review feedback resolved in source (2026-11-16)
+
+- PR #59 raised three `MethodSignatureMustOmitReturnType` issues on `__clone` and eleven `return.unusedType` findings for fixture `trailers()`. Changed 14 PHP files in response to actual diagnostics and confirmed source method bodies before adjusting signatures.
+- Expected: preserve existing clone behavior and return non-null Headers as before. Required evidence: next SHA strict Psalm/PHPStan and PHP 8.4/8.5 QA before review threads can be considered verified. No risk-admission acceptance gate advanced solely due to this typing work.

@@ -51,7 +51,7 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
     private ?array $cachedSegments = null;
 
     #[\Override]
-    protected function __clone(): void
+    protected function __clone()
     {
         parent::__clone();
         $this->resetDerivedCaches();
