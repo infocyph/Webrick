@@ -32,6 +32,7 @@ final class FoundationBridgeParameterizedMiddleware
         ++self::$constructed;
     }
 
+    /** @param Closure(Request):Response $next */
     public function __invoke(Request $request, Closure $next): Response
     {
         return $next($request)->withHeader('X-Bridge-Params', $this->limit . ':' . $this->window);
@@ -104,16 +105,20 @@ describe('Foundation Webrick bridge', function () {
 
         $plan = array_values($build->plans)[0] ?? null;
         $descriptor = $plan?->middleware[0] ?? null;
+        if (!$descriptor instanceof RuntimeMiddlewareDescriptor) {
+            throw new UnexpectedValueException('Compiled middleware fixture must contain a runtime descriptor.');
+        }
 
         expect(FoundationBridgeParameterizedMiddleware::$constructed)->toBe(0)
-            ->and($descriptor)->toBeInstanceOf(RuntimeMiddlewareDescriptor::class)
             ->and($descriptor->resolver)->toBe(FoundationBridgeParameterizedMiddleware::class)
             ->and($descriptor->parameters)->toBe(['30', '60']);
 
         $decoded = ArtifactValueCodec::decode(ArtifactValueCodec::encode($descriptor));
+        if (!$decoded instanceof RuntimeMiddlewareDescriptor) {
+            throw new UnexpectedValueException('Decoded middleware artifact must retain the descriptor type.');
+        }
 
-        expect($decoded)->toBeInstanceOf(RuntimeMiddlewareDescriptor::class)
-            ->and($decoded->resolver)->toBe(FoundationBridgeParameterizedMiddleware::class)
+        expect($decoded->resolver)->toBe(FoundationBridgeParameterizedMiddleware::class)
             ->and($decoded->parameters)->toBe(['30', '60'])
             ->and(FoundationBridgeParameterizedMiddleware::$constructed)->toBe(0);
     });
@@ -141,6 +146,9 @@ describe('Foundation Webrick bridge', function () {
                 static fn() => $pipeline->handle($request),
                 [Request::class => $request],
             );
+            if (!$response instanceof Response) {
+                throw new UnexpectedValueException('Scoped middleware fixture must produce a Response.');
+            }
 
             expect($response)->toHaveStatus(200)
                 ->and($response->getHeaderLine('X-Bridge-Params'))->toBe('30:60')
@@ -168,7 +176,12 @@ describe('Foundation Webrick bridge', function () {
                     $first = $marker->id;
                     Fiber::suspend($first);
 
-                    return Response::plaintext($container->get(FoundationBridgeScopedMarker::class)->id);
+                    $scopedMarker = $container->get(FoundationBridgeScopedMarker::class);
+                    if (!$scopedMarker instanceof FoundationBridgeScopedMarker) {
+                        throw new UnexpectedValueException('Scoped container must return the scoped marker.');
+                    }
+
+                    return Response::plaintext($scopedMarker->id);
                 });
             },
             invoker: $container,
@@ -192,6 +205,9 @@ describe('Foundation Webrick bridge', function () {
 
             $firstResponse = $first->getReturn();
             $secondResponse = $second->getReturn();
+            if (!$firstResponse instanceof Response || !$secondResponse instanceof Response) {
+                throw new UnexpectedValueException('Both fiber executions must produce Responses.');
+            }
 
             expect((string) $firstResponse->getBody())->toBe($firstId)
                 ->and((string) $secondResponse->getBody())->toBe($secondId);
@@ -238,9 +254,14 @@ describe('Foundation Webrick bridge', function () {
                 },
             );
 
+            $routerMetadata = $manifest['webrick'] ?? null;
+            if (!is_array($routerMetadata) || !is_int($routerMetadata['routes'] ?? null)) {
+                throw new UnexpectedValueException('Compiled Webrick manifest must contain a route count.');
+            }
+
             expect($registrations)->toBe(1)
                 ->and($enrichments)->toBe(1)
-                ->and($manifest['webrick']['routes'] ?? null)->toBe(1)
+                ->and($routerMetadata['routes'])->toBe(1)
                 ->and(is_file($intermixPath))->toBeTrue()
                 ->and(is_file($routerPath))->toBeTrue()
                 ->and(is_file($releasePath))->toBeTrue();
@@ -255,7 +276,11 @@ describe('Foundation Webrick bridge', function () {
                 }
                 $loaded = $loader->load($releasePath);
                 expect($loaded)->toBe($expected);
-                $identity = $loaded['webrick']['fingerprint'];
+                $loadedRouter = $loaded['webrick'] ?? null;
+                $identity = is_array($loadedRouter) ? ($loadedRouter['fingerprint'] ?? null) : null;
+                if (!is_string($identity)) {
+                    throw new UnexpectedValueException('Loaded Webrick manifest must contain an artifact fingerprint.');
+                }
                 expect($artifacts->load($routerPath, 'production', 'foundation-release')->artifactFingerprint)
                     ->toBe($identity)
                     ->and($artifacts->loadPrevalidated($routerPath, $identity, 'production', 'foundation-release')->artifactFingerprint)

@@ -16,10 +16,11 @@ use PhpBench\Attributes as Bench;
 #[Bench\Warmup(1)]
 final class MatcherPathInspectionBench
 {
+    /** @param array{path:string} $params */
     #[Bench\ParamProviders('providePaths')]
     public function benchCurrentPathShape(array $params): void
     {
-        $path = (string) $params['path'];
+        $path = $params['path'];
         $trimmed = trim($path, '/');
         if ($trimmed === '') {
             $count = 0;
@@ -61,10 +62,11 @@ final class MatcherPathInspectionBench
         }
     }
 
+    /** @param array{path:string} $params */
     #[Bench\ParamProviders('providePaths')]
     public function benchCurrentSegmentMaterialization(array $params): void
     {
-        $path = (string) $params['path'];
+        $path = $params['path'];
         if ($path === '/' || $path === '') {
             $segments = [];
         } else {
@@ -77,10 +79,11 @@ final class MatcherPathInspectionBench
         }
     }
 
+    /** @param array{path:string} $params */
     #[Bench\ParamProviders('providePaths')]
     public function benchCurrentShapeAndSegments(array $params): void
     {
-        $path = (string) $params['path'];
+        $path = $params['path'];
         $trimmed = trim($path, '/');
         if ($trimmed === '') {
             $count = 0;
@@ -96,10 +99,11 @@ final class MatcherPathInspectionBench
         self::guardCombined($count, $prefix, $segments);
     }
 
+    /** @param array{path:string} $params */
     #[Bench\ParamProviders('providePaths')]
     public function benchOnePassPathShape(array $params): void
     {
-        $path = (string) $params['path'];
+        $path = $params['path'];
         [$start, $end] = self::trimBounds($path);
         if ($start === $end) {
             $count = 0;
@@ -124,10 +128,11 @@ final class MatcherPathInspectionBench
         }
     }
 
+    /** @param array{path:string} $params */
     #[Bench\ParamProviders('providePaths')]
     public function benchOnePassViewAndMaterialize(array $params): void
     {
-        $path = (string) $params['path'];
+        $path = $params['path'];
         [$start, $end] = self::trimBounds($path);
         if ($start === $end) {
             $count = 0;
