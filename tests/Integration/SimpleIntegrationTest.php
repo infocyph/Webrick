@@ -56,6 +56,10 @@ describe('Simple Integration Tests', function () {
         expect($response->getStatusCode())->toBe(200);
 
         $body = json_decode((string) $response->getBody(), true);
+        if (!is_array($body)) {
+            throw new UnexpectedValueException('Expected a decoded JSON object.');
+        }
+
         expect($body)
             ->toHaveKey('hello')
             ->and($body['hello'])->toBe('Alice');

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Infocyph\Webrick\Exceptions\HttpException;
 use Infocyph\Webrick\Middleware\NegotiationMiddleware;
+use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 
 describe('NegotiationMiddleware', function () {
@@ -17,7 +18,7 @@ describe('NegotiationMiddleware', function () {
         ]);
 
         $negotiated = null;
-        $next = function ($req) use (&$negotiated) {
+        $next = function (Request $req) use (&$negotiated): Response {
             $negotiated = $req->getAttribute('negotiated.type');
 
             return Response::json(['ok' => true]);
@@ -65,7 +66,7 @@ describe('NegotiationMiddleware', function () {
         ]);
 
         $negotiated = null;
-        $next = function ($req) use (&$negotiated) {
+        $next = function (Request $req) use (&$negotiated): Response {
             $negotiated = $req->getAttribute('negotiated.charset');
 
             return Response::create('<h1>Test</h1>', 200, ['Content-Type' => 'text/html; charset=utf-8']);
@@ -86,7 +87,7 @@ describe('NegotiationMiddleware', function () {
         ]);
 
         $locale = null;
-        $next = function ($req) use (&$locale) {
+        $next = function (Request $req) use (&$locale): Response {
             $locale = $req->getAttribute('locale');
 
             return Response::json(['ok' => true]);

@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Cookies\Cookie;
 use Infocyph\Webrick\Response\Cookies\CookieJar;
+use Infocyph\Webrick\Response\Headers\CacheControl;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Response\View\ViewFactoryInterface;
 use Infocyph\Webrick\Response\View\ViewResponder;
@@ -16,9 +17,7 @@ describe('Response', function () {
     it('creates basic responses', function () {
         $response = Response::create('Hello World', 200);
 
-        expect($response)
-            ->toBeInstanceOf(Response::class)
-            ->getStatusCode()->toBe(200)
+        expect($response->getStatusCode())->toBe(200)
             ->and((string) $response->getBody())->toBe('Hello World');
     });
 
@@ -147,7 +146,7 @@ describe('Response', function () {
 
     it('handles cache control', function () {
         $response = Response::create('test')
-            ->withCache(fn ($cc) => $cc->public()->maxAge(3600));
+            ->withCache(static fn (CacheControl $cc): CacheControl => $cc->public()->maxAge(3600));
 
         $cc = $response->getHeaderLine('Cache-Control');
         expect($cc)
@@ -216,7 +215,12 @@ describe('Response', function () {
             #[\Override]
             public function render(string $view, array $data = []): string
             {
-                return '<h1>' . $view . ': ' . ($data['name'] ?? 'n/a') . '</h1>';
+                $name = $data['name'] ?? 'n/a';
+                if (!is_string($name)) {
+                    throw new UnexpectedValueException('View name must be a string.');
+                }
+
+                return '<h1>' . $view . ': ' . $name . '</h1>';
             }
         };
         $response = (new ViewResponder($factory))->render('home', ['name' => 'Ada']);

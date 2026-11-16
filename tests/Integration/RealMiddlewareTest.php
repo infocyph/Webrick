@@ -71,6 +71,9 @@ describe('Real Middleware Integration', function () {
         expect($response->getStatusCode())->toBe(200);
 
         $body = json_decode((string) $response->getBody(), true);
+        if (!is_array($body)) {
+            throw new UnexpectedValueException('Expected a JSON object for the updated resource.');
+        }
         expect($body['updated'])
             ->toBe('99')
             ->and($body)->toHaveKey('updated')

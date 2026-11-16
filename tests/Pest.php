@@ -109,6 +109,8 @@ expect()->extend('toHaveServerTimingHeader', function () {
 
 /**
  * Create a mock request with trace attributes.
+ *
+ * @param array<string,mixed> $headers
  */
 function mockRequestWithTrace(
     string $method = 'GET',
@@ -146,10 +148,15 @@ function assertHasTelemetryHeaders(Response $response): void
 
 /**
  * Extract trace context from response body (assumes JSON).
+ *
+ * @return array{trace_id:mixed,span_id:mixed,request_id:mixed}
  */
 function extractTraceContext(Response $response): array
 {
     $data = json_decode((string) $response->getBody(), true);
+    if (!is_array($data)) {
+        throw new UnexpectedValueException('Expected JSON object containing trace context.');
+    }
 
     return [
         'trace_id' => $data['trace_id'] ?? null,

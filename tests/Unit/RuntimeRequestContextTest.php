@@ -61,13 +61,23 @@ test('interleaved fibers do not cross contaminate runtime requests', function ()
         $before = $a->request()->query('id');
         Fiber::suspend();
 
-        return $before . ':' . $a->request()->query('id');
+        $after = $a->request()->query('id');
+        if (!is_string($before) || !is_string($after)) {
+            throw new UnexpectedValueException('Expected string query values in fiber A.');
+        }
+
+        return $before . ':' . $after;
     });
     $fiberB = new Fiber(static function () use ($b): string {
         $before = $b->request()->query('id');
         Fiber::suspend();
 
-        return $before . ':' . $b->request()->query('id');
+        $after = $b->request()->query('id');
+        if (!is_string($before) || !is_string($after)) {
+            throw new UnexpectedValueException('Expected string query values in fiber B.');
+        }
+
+        return $before . ':' . $after;
     });
 
     $fiberA->start();

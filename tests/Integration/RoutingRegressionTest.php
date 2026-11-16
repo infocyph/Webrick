@@ -49,9 +49,14 @@ describe('Routing Regressions', function () {
     });
 
     it('answers automatic OPTIONS without executing a business handler', function (Closure $matcherFactory) {
+        $matcher = $matcherFactory();
+        if (!$matcher instanceof MatcherInterface) {
+            throw new UnexpectedValueException('Matcher dataset must provide a matcher instance.');
+        }
+
         $kernel = RouterKernel::bootWithRegistrar(
             log: new NullLogger,
-            matcher: $matcherFactory(),
+            matcher: $matcher,
             register: static function (Registrar $r): void {
                 $r->get('/resource', static function (): Response {
                     throw new RuntimeException('GET business handler must not execute for automatic OPTIONS.');
@@ -71,9 +76,14 @@ describe('Routing Regressions', function () {
     })->with('routing regression matchers');
 
     it('honors an explicit OPTIONS route', function (Closure $matcherFactory) {
+        $matcher = $matcherFactory();
+        if (!$matcher instanceof MatcherInterface) {
+            throw new UnexpectedValueException('Matcher dataset must provide a matcher instance.');
+        }
+
         $kernel = RouterKernel::bootWithRegistrar(
             log: new NullLogger,
-            matcher: $matcherFactory(),
+            matcher: $matcher,
             register: static function (Registrar $r): void {
                 $r->get('/resource', static fn(): Response => Response::plaintext('get', 200));
                 $r->options('/resource', static fn(): Response => Response::plaintext('explicit-options', 200));

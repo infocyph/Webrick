@@ -197,6 +197,9 @@ final class InfbyteEndToEndAcceptanceTest extends TestCase
             $json = self::dispatch($application, '/json');
             self::assertSame(200, $json->status);
             $jsonPayload = json_decode($json->body(), true, flags: JSON_THROW_ON_ERROR);
+            if (!is_array($jsonPayload)) {
+                throw new UnexpectedValueException('Expected JSON object containing the memory metric.');
+            }
             self::assertArrayHasKey('memory', $jsonPayload);
             self::assertIsInt($jsonPayload['memory']);
             self::assertSame(1, $json->endCalls);
@@ -205,6 +208,9 @@ final class InfbyteEndToEndAcceptanceTest extends TestCase
             $scopeB = self::dispatch($application, '/api/runtime-scope');
             $payloadA = json_decode($scopeA->body(), true, flags: JSON_THROW_ON_ERROR);
             $payloadB = json_decode($scopeB->body(), true, flags: JSON_THROW_ON_ERROR);
+            if (!is_array($payloadA) || !is_array($payloadB)) {
+                throw new UnexpectedValueException('Expected JSON objects containing runtime scopes.');
+            }
 
             self::assertIsString($payloadA['scope'] ?? null);
             self::assertIsString($payloadB['scope'] ?? null);

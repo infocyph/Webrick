@@ -43,6 +43,10 @@ describe('Real Routing Integration', function () {
         expect($response->getStatusCode())->toBe(200);
 
         $body = json_decode((string) $response->getBody(), true);
+        if (!is_array($body)) {
+            throw new UnexpectedValueException('Expected decoded JSON response data.');
+        }
+
         expect($body)
             ->toHaveKey('hello')
             ->and($body['hello'])->toBe('Alice');
@@ -76,6 +80,10 @@ describe('Real Routing Integration', function () {
         expect($response->getStatusCode())->toBe(200);
 
         $body = json_decode((string) $response->getBody(), true);
+        if (!is_array($body)) {
+            throw new UnexpectedValueException('Expected decoded JSON response data.');
+        }
+
         expect($body['you sent hex'])->toBe('ff00ff');
     });
 

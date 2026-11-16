@@ -268,6 +268,9 @@ test('runwire request normalization remains lazy and exposes live execution stat
 
     $webRequest = $context->request();
     $execution = $webRequest->getAttribute(RuntimeRequestExecution::ATTRIBUTE);
+    if (!$execution instanceof RuntimeRequestExecution) {
+        throw new UnexpectedValueException('Runwire request execution metadata is missing.');
+    }
 
     expect($webRequest->getMethod())->toBe('POST')
         ->and($webRequest->getProtocolVersion())->toBe('2')
@@ -283,7 +286,6 @@ test('runwire request normalization remains lazy and exposes live execution stat
         ->and($webRequest->server('SERVER_ADDR'))->toBe('10.0.0.1')
         ->and($webRequest->server('SERVER_PORT'))->toBe('443')
         ->and($body->readCalls)->toBe(0)
-        ->and($execution)->toBeInstanceOf(RuntimeRequestExecution::class)
         ->and($execution->requestId)->toBe('runwire-request-1')
         ->and($execution->startMonotonicNanoseconds)->toBe(100)
         ->and($execution->cancelled())->toBeFalse()
