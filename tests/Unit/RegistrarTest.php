@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Infocyph\Webrick\Interfaces\RouteInterface;
+use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Dispatch\MiddlewareAliases;
@@ -22,17 +24,24 @@ describe('Registrar', function () {
 
         $route = $this->routes->findByName('users.index');
 
-        expect($route)
-            ->not->toBeNull()
-            ->getMethod()->toBe('GET')
-            ->getPath()->toBe('/users')
-            ->getName()->toBe('users.index');
+        expect($route)->not->toBeNull();
+        if (!$route instanceof RouteInterface) {
+            throw new LogicException('Expected the users.index route to be registered.');
+        }
+
+        expect($route->getMethod())->toBe('GET')
+            ->and($route->getPath())->toBe('/users')
+            ->and($route->getName())->toBe('users.index');
     });
 
     it('registers POST routes', function () {
         $this->registrar->post('/users', fn() => Response::json([]), 'users.store');
 
         $route = $this->routes->findByName('users.store');
+        if (!$route instanceof RouteInterface) {
+            throw new LogicException('Expected the users.store route to be registered.');
+        }
+
         expect($route->getMethod())->toBe('POST');
     });
 
@@ -51,7 +60,7 @@ describe('Registrar', function () {
         MiddlewareAliases::register('expensive', static function () use (&$resolved): Closure {
             $resolved++;
 
-            return static fn($request, $next) => $next($request);
+            return static fn(Request $request, Closure $next): mixed => $next($request);
         });
 
         $this->registrar->get('/lazy', fn() => 'lazy', [
@@ -88,8 +97,14 @@ describe('Registrar', function () {
             ->and($update)->not
             ->toBeNull()
             ->and($destroy)->not
-            ->toBeNull()
-            ->and($index->getMethod())->toBe('GET')
+            ->toBeNull();
+
+        if (!$index instanceof RouteInterface || !$store instanceof RouteInterface
+            || !$update instanceof RouteInterface || !$destroy instanceof RouteInterface) {
+            throw new LogicException('Expected all resource route methods to be registered.');
+        }
+
+        expect($index->getMethod())->toBe('GET')
             ->and($store->getMethod())->toBe('POST')
             ->and($update->getMethod())->toBe('PUT')
             ->and($destroy->getMethod())->toBe('DELETE');
@@ -106,10 +121,13 @@ describe('Registrar', function () {
 
         $route = $this->routes->findByName('api.users');
 
-        expect($route)
-            ->not->toBeNull()
-            ->getPath()->toBe('/api/users')
-            ->getName()->toBe('api.users');
+        expect($route)->not->toBeNull();
+        if (!$route instanceof RouteInterface) {
+            throw new LogicException('Expected the api.users route to be registered.');
+        }
+
+        expect($route->getPath())->toBe('/api/users')
+            ->and($route->getName())->toBe('api.users');
     });
 
     it('handles nested groups', function () {
@@ -130,6 +148,9 @@ describe('Registrar', function () {
         $route = $this->routes->findByName('admin.users.index');
 
         expect($route)->not->toBeNull();
+        if (!$route instanceof RouteInterface) {
+            throw new LogicException('Expected the admin.users.index route to be registered.');
+        }
 
         // Accept with or without trailing slash
         $path = $route->getPath();
