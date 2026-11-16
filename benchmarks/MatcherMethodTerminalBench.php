@@ -21,6 +21,7 @@ final class MatcherMethodTerminalBench
     /** @var array<string,MatcherInterface> */
     private static array $matchers = [];
 
+    /** @param array{matcher:string,method:string,path:string} $params */
     #[Bench\ParamProviders('provideCases')]
     public function benchMethodTerminal(array $params): void
     {

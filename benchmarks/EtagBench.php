@@ -21,6 +21,7 @@ final class EtagBench
         $this->stream = new Stream(str_repeat('a', 65_536));
     }
 
+    /** @param array{algorithm:string} $params */
     #[Bench\BeforeMethods('setUp')]
     #[Bench\ParamProviders('provideAlgorithms')]
     public function benchHashStream(array $params): void

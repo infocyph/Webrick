@@ -13,6 +13,7 @@ use PhpBench\Attributes as Bench;
 #[Bench\Warmup(1)]
 final class MatcherOutcomeBench
 {
+    /** @param array{matcher:string,route_set:string,method:string,host:string,path:string} $params */
     #[Bench\ParamProviders('provideOutcomeCases')]
     public function benchCompiledOutcome(array $params): void
     {

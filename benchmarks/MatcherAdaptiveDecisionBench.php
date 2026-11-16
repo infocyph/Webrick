@@ -21,6 +21,7 @@ final class MatcherAdaptiveDecisionBench
     /** @var array<string,MatcherInterface> */
     private static array $matchers = [];
 
+    /** @param array{matcher:string,path:string} $params */
     #[Bench\ParamProviders('provideCases')]
     public function benchAdaptiveDecision(array $params): void
     {
