@@ -61,12 +61,16 @@ it('compiles safe regex routes and specializes built-in callable fallback segmen
     if (($orderSteps[0]['type'] ?? null) !== 'fallback') {
         throw new UnexpectedValueException('Built-in callable constraint must compile to fallback.');
     }
+    $fallbackSegments = $orderSteps[0]['segments'] ?? null;
+    if (!is_array($fallbackSegments) || !is_array($fallbackSegments[1] ?? null)) {
+        throw new UnexpectedValueException('Fallback IR must contain a typed second segment.');
+    }
 
     expect($userSteps)->toHaveCount(1)
         ->and($userSteps[0]['type'])->toBe('pcre')
         ->and($orderSteps)->toHaveCount(1)
-        ->and($orderSteps[0]['segments'][1]['type'])->toBe('op')
-        ->and($orderSteps[0]['segments'][1]['code'])->toBe(CompiledMatcherConstraintOpcode::DIGIT);
+        ->and($fallbackSegments[1]['type'])->toBe('op')
+        ->and($fallbackSegments[1]['code'])->toBe(CompiledMatcherConstraintOpcode::DIGIT);
 });
 
 it('keeps slash-consuming built-in regex constraints out of whole-path pcre', function (): void {
@@ -333,6 +337,10 @@ it('compiles one canonical dynamic shape into method-independent terminal metada
     if (($terminal['type'] ?? null) !== 'single') {
         throw new UnexpectedValueException('Uniform dynamic terminal must use the single-route shape.');
     }
+    $methods = $terminal['methods'] ?? null;
+    if (!is_array($methods)) {
+        throw new UnexpectedValueException('Single-route terminal must declare allowed methods.');
+    }
 
-    expect($terminal['methods'])->toContain('GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE');
+    expect($methods)->toContain('GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE');
 });
