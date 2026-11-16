@@ -18,6 +18,7 @@ use UnexpectedValueException;
  * @phpstan-type RouteValue CompiledRoute|array<mixed>|string
  * @phpstan-type VerbMap array<string,RouteValue>
  * @phpstan-type SegmentSpec array{type:'lit',val:string}|array{type:'var',name:string,regex:string}|array{type:'var',name:string,call:callable-string}
+ * @psalm-type SegmentSpec = array{type:'lit',val:string}|array{type:'var',name:string,regex:string}|array{type:'var',name:string,call:callable-string}
  * @phpstan-type DynamicEntry array{segments:list<SegmentSpec>,verbs:VerbMap}
  * @phpstan-type DynamicBuckets array<int,array<string,array<string,DynamicEntry>>>
  * @phpstan-type HostIndex array{static:array<string,VerbMap>,dynamic:DynamicBuckets}
@@ -208,8 +209,9 @@ final class CanonicalMatcherIndex
         if ($segment['type'] !== 'var' || !is_string($name)) {
             throw new UnexpectedValueException('Invalid variable matcher segment.');
         }
-        if (is_string($segment['regex'] ?? null)) {
-            return ['type' => 'var', 'name' => $name, 'regex' => $segment['regex']];
+        $regex = $segment['regex'] ?? null;
+        if (is_string($regex)) {
+            return ['type' => 'var', 'name' => $name, 'regex' => $regex];
         }
         $call = $segment['call'] ?? null;
         if (!is_string($call) || !is_callable($call)) {

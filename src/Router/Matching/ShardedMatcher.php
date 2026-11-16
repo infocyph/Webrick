@@ -453,7 +453,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             }
         }
 
-        $this->aliasIndex();
+        $this->alias = $this->aliasIndex();
         $this->cachePreloaded = true;
     }
 

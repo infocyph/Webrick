@@ -8,6 +8,7 @@ namespace Infocyph\Webrick\Router\Route;
  * Validates persisted route metadata at the cache boundary.
  *
  * @phpstan-type SegmentSpec array{type:'lit',val:string}|array{type:'var',name:string,regex:string}|array{type:'var',name:string,call:callable-string}
+ * @psalm-type SegmentSpec = array{type:'lit',val:string}|array{type:'var',name:string,regex:string}|array{type:'var',name:string,call:callable-string}
  * @phpstan-type CorsPayload array{origins:list<string>,methods:?string,headers:string|list<string>|null,exposeHeaders:string|list<string>|null,maxAgeSeconds:?int,allowCredentials:?bool,allowPrivateNetwork:?bool}
  * @phpstan-type ProducesPayload array{types:list<string>,charsets:list<string>|null}
  */
@@ -178,8 +179,9 @@ final class CompiledRouteCachePayload
         }
 
         $name = self::string($segment['name'] ?? null);
-        if (is_string($segment['regex'] ?? null)) {
-            return ['type' => 'var', 'name' => $name, 'regex' => $segment['regex']];
+        $regex = $segment['regex'] ?? null;
+        if (is_string($regex)) {
+            return ['type' => 'var', 'name' => $name, 'regex' => $regex];
         }
 
         $call = $segment['call'] ?? null;
