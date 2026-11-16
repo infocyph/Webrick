@@ -186,6 +186,17 @@ function runwire_bridge_request(RunwireRequestContext $context): HttpRequest
     );
 }
 
+
+/**
+ * @throws LogicException When the runtime did not install an InterMix scope bridge.
+ */
+function runwire_bridge_require_scope(
+    \Infocyph\Webrick\Runtime\Http\RuntimeRequestContext $context,
+): \Infocyph\Webrick\Runtime\Http\RuntimeScopeBridgeInterface {
+    return $context->scopeBridge
+        ?? throw new LogicException('Runwire InterMix scope bridge was not installed.');
+}
+
 beforeEach(function (): void {
     RunwireBridgeScopeProbe::reset();
 });
@@ -212,15 +223,19 @@ test('runwire bridge seeds source-free native compiled inputs without rebuilding
             $requestContext = RunwireRequestContext::create($runtime);
             $context = $adapter->context(runwire_bridge_request($requestContext), new RunwireBridgeWriterFixture());
             $request = Request::fake(uri: $uri);
-            $resolved = $context->scopeBridge->withinScope($interMix, $request,
+            $resolved = runwire_bridge_require_scope($context)->withinScope($interMix, $request,
                 static function () use ($container, $interMix): array {
                     $scope = $interMix->captureScopeContext();
                     $child = new Fiber(static fn(): array => $interMix->withinScopeContext($scope,
                         static fn(): array => [$container->get(RunwireContext::class),
                             $container->get(RunwireRequestContext::class), $container->get(Request::class)]));
                     $child->start();
+                    $result = $child->getReturn();
+                    if (!is_array($result)) {
+                        throw new \UnexpectedValueException('Runwire child scope did not return an array.');
+                    }
 
-                    return $child->getReturn();
+                    return $result;
                 });
             expect($resolved)->toBe([$runtime, $requestContext, $request]);
             expect(fn(): mixed => $container->get(Request::class))
@@ -238,6 +253,10 @@ test('runwire bridge seeds source-free native compiled inputs without rebuilding
                 RecursiveIteratorIterator::CHILD_FIRST,
             );
             foreach ($entries as $entry) {
+                if (!$entry instanceof \SplFileInfo) {
+                    throw new \UnexpectedValueException('Unexpected compiled artifact entry.');
+                }
+
                 $entry->isDir() ? rmdir($entry->getPathname()) : unlink($entry->getPathname());
             }
             rmdir($root);
@@ -262,7 +281,7 @@ test('runwire bridge opens one InterMix request scope and preserves exact runtim
 
     expect($context->scopeBridge)->toBeInstanceOf(RunwireInterMixScopeBridge::class);
 
-    $resolved = $context->scopeBridge->withinScope(
+    $resolved = runwire_bridge_require_scope($context)->withinScope(
         $interMix,
         $request,
         static fn(): array => [
@@ -272,6 +291,10 @@ test('runwire bridge opens one InterMix request scope and preserves exact runtim
             $container->get(RunwireBridgeScopedMarker::class),
         ],
     );
+
+    if (!is_array($resolved)) {
+        throw new \UnexpectedValueException('Runwire scope bridge did not return a result array.');
+    }
 
     expect($resolved[0])->toBe($runtime)
         ->and($resolved[1])->toBe($requestContext)
@@ -327,7 +350,7 @@ test('runwire bridge attaches an exact borrowed InterMix scope without opening a
                         new RunwireBridgeWriterFixture(),
                     );
 
-                    return $context->scopeBridge->withinScope(
+                    return runwire_bridge_require_scope($context)->withinScope(
                         $interMix,
                         $request,
                         static fn(): bool => $interMix->get(RunwireBridgeScopedMarker::class) === $parent,
@@ -401,7 +424,7 @@ test('runwire bridge rejects a borrowed scope captured for another live request'
                         new RunwireBridgeWriterFixture(),
                     );
 
-                    expect(fn() => $context->scopeBridge->withinScope(
+                    expect(fn() => runwire_bridge_require_scope($context)->withinScope(
                         $interMix,
                         $requestB,
                         static function () use (&$callbackRan): void {
@@ -447,7 +470,7 @@ test('runwire bridge keeps interleaved request scopes isolated', function (): vo
         string $path,
     ) use ($interMix): Fiber {
         return new Fiber(static function () use ($context, $expected, $path, $interMix): bool {
-            return $context->scopeBridge->withinScope(
+            return runwire_bridge_require_scope($context)->withinScope(
                 $interMix,
                 Request::fake(uri: $path),
                 static function () use ($interMix, $expected): bool {
@@ -499,7 +522,7 @@ test('runwire bridge rejects completed requests and conflicting runtime bindings
         new RunwireBridgeWriterFixture(),
     );
     $otherContainer = runwire_bridge_builder()->build();
-    expect(fn() => $context->scopeBridge->withinScope(
+    expect(fn() => runwire_bridge_require_scope($context)->withinScope(
         new InterMixRuntime($otherContainer),
         Request::fake(uri: '/wrong-container'),
         static fn(): null => null,
@@ -507,7 +530,7 @@ test('runwire bridge rejects completed requests and conflicting runtime bindings
 
     $requestContext->complete();
 
-    expect(fn() => $context->scopeBridge->withinScope(
+    expect(fn() => runwire_bridge_require_scope($context)->withinScope(
         new InterMixRuntime($container),
         Request::fake(uri: '/completed'),
         static fn(): null => null,
@@ -553,7 +576,7 @@ test('runwire bridge exposes the exact host coroutine scope when capability is a
                 new RunwireBridgeWriterFixture(),
             );
 
-            return $context->scopeBridge->withinScope(
+            return runwire_bridge_require_scope($context)->withinScope(
                 $interMix,
                 Request::fake(uri: '/coroutine'),
                 static fn(): bool => $interMix->get(CoroutineScope::class) === $scope,

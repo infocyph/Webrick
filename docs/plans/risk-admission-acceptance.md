@@ -241,3 +241,9 @@ No commit, tag, merge, publication, provider deployment or end-to-end security c
 - [Run 43858798125](https://github.com/infocyph/Webrick/actions/runs/43858798125) at `48460033f2698f15d9648eae5dc714321452a31b` verified 4/4 QA lanes, clean installation and static-analysis counts of **PHPStan 385 / Psalm 1,302**. Previous PHPStan was 424: 39 fewer findings from 23 explicit decoded JSON shape guards in four test files. Psalm unchanged; both analyzer gates fail. Benchmark conclusions still to verify.
 - Batch 19 corrects one malformed combined PHPDoc on `PreRoutingGateIntegrationTest::kernel()` to restore its actual `array{CompiledRouterKernel,list<string>}` tuple return contract. Existing runtime code and tests unchanged; 23 PHPStan findings associated with this lost type are targeted, not yet verified.
 - Need hosted PHPForge CI, review feedback and benchmark checks on the new revision; A01-A26 and final release gates remain open, draft PR #59 unmerged.
+
+### Batch 19 verified / Batch 20 Runwire scope bridge type boundaries (2026-11-16)
+
+- [Hosted run 43859290185](https://github.com/infocyph/Webrick/actions/runs/43859290185) at `d7c3d8b9f85798cc13cb50ba7021e0b1e5cdfcc5`: four PHP QA lanes, two benchmarks and clean install all succeeded; strict PHPStan **362** and Psalm **1,302** still fail. Batch 19 removed 23 PHPStan findings by correctly declaring `PreRoutingGateIntegrationTest::kernel`'s existing tuple return type.
+- Batch 20 adds a failing-on-missing nullable scope-bridge guard, concrete result checks and filesystem-entry validation in the existing Runwire InterMix integration tests. It targets repeated PHPStan mixed/non-object errors without changing production semantics or weakening security test assertions. New-SHA CI and reviewer feedback **pending**.
+- Do not infer A01-A26 or package/soak/replay acceptance from static-analysis improvements. Draft PR #59 remains unmerged; no tag or release.
