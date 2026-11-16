@@ -1,6 +1,9 @@
 <?php
 
 declare(strict_types=1);
+
+namespace Infocyph\Webrick\Benchmarks;
+
 use Infocyph\Webrick\Benchmarks\Support\BenchmarkSupport;
 use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Constants\MatcherModeEnum;
