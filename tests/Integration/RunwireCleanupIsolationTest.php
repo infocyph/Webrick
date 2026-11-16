@@ -256,8 +256,8 @@ final class RunwireCleanupIsolationTest extends TestCase
         }
     }
 
-    /** @return array{RunwireRuntimeApplication,\Infocyph\InterMix\DI\ProductionContainer,list<string>} */
     /**
+     * @return array{RunwireRuntimeApplication,\Infocyph\InterMix\DI\ProductionContainer,list<string>}
      * @throws \InvalidArgumentException
      * @throws \Throwable
      */
@@ -366,8 +366,8 @@ final class RunwireCleanupIsolationTest extends TestCase
         return [$base . '-intermix.php', $base . '-router.php'];
     }
 
-    /** @param list<string> $paths */
     /**
+     * @param list<string> $paths
      * @throws \RuntimeException
      */
     private static function cleanup(array $paths): void

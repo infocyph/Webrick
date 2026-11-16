@@ -330,8 +330,8 @@ final class RunwireRequestBodyReadinessTest extends TestCase
         }
     }
 
-    /** @return array{RunwireRuntimeApplication,list<string>} */
     /**
+     * @return array{RunwireRuntimeApplication,list<string>}
      * @throws \InvalidArgumentException
      * @throws \Throwable
      */
@@ -396,8 +396,8 @@ final class RunwireRequestBodyReadinessTest extends TestCase
         return [$base . '-intermix.php', $base . '-router.php'];
     }
 
-    /** @param list<string> $paths */
     /**
+     * @param list<string> $paths
      * @throws \RuntimeException
      */
     private static function cleanup(array $paths): void
