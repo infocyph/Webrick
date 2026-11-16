@@ -7,7 +7,6 @@ namespace Infocyph\Webrick\Router\Matching;
 use Infocyph\Webrick\Request\Core\Uri;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 
-require_once __DIR__ . '/matcher_functions.php';
 
 /** Shared build/cache utilities for the canonical matcher implementations. */
 abstract class AbstractMatcher

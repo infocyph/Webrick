@@ -53,7 +53,10 @@
     "autoload": {
         "psr-4": {
             "Infocyph\\Webrick\\": "src/"
-        }
+        },
+        "files": [
+            "src/Router/Matching/matcher_functions.php"
+        ]
     },
     "autoload-dev": {
         "psr-4": {
