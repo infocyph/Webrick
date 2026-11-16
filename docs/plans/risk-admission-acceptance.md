@@ -186,3 +186,9 @@ No commit, tag, merge, publication, provider deployment or end-to-end security c
 - [Run 43841734657](https://github.com/infocyph/Webrick/actions/runs/43841734657) on `8ded2c1cac4675cb702bcb66b88746f0530aa1a3`: Pest/QA PHP 8.4/8.5 four lanes passed; both benchmarks passed; PHPStan **523**, Psalm **1,567**; static gates fail overall. Full PR review thread inventory currently contains no unresolved threads. Keep PR in draft and unmerged.
 - Batch 10 updates one shared test helper plus three test files, asserting `MatcherInterface` at the callable/dataset boundary for 22 invocations. Existing matcher dataset factories, route fixtures, expected outcomes, and workload semantics remain unchanged. Required fresh CI evidence pending.
 - A01/A03/A07 previously pass focused registrar tests; compiled kernel/host provider A09-A26, archive and final-SHA checks remain open.
+
+### Batch 11 — official PHPForge ext-intl configuration (2026-11-16)
+
+- Historical baseline: `b4701828f85f18d58b7d931ac0a9cfb7203dba83`, [run 43842417101](https://github.com/infocyph/Webrick/actions/runs/43842417101). Four QA lanes passed, both benchmark lanes passed; Psalm 1,578 and separately configured no-intl PHPStan 424 errors remained.
+- Changed only Webrick CI integration: explicit `php_extensions: intl` in reusable PHPForge workflow, while retaining empty external-service selection and unchanged service topologies. Removed bespoke no-intl PHPStan analyzer job because the user's desired analyzer environment is ext-intl-enabled; PHPForge native PHP 8.4/8.5 analysis still runs with unchanged strict rules.
+- `detail-diagnostics` continues a `php -n` optional-Intl behavior smoke check. New hosted matrix and diagnostics **pending**; A01-A26 release/security acceptance statuses unchanged.

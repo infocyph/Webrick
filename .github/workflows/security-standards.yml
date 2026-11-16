@@ -20,6 +20,7 @@ jobs:
     with:
       integration_services: '[]'
       service_topologies: '{}'
+      php_extensions: intl
     permissions:
       security-events: write
       actions: read
@@ -33,23 +34,6 @@ jobs:
     secrets:
       COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
 
-  no-intl-static-analysis:
-    if: github.event_name != 'push' || !startsWith(github.ref, 'refs/tags/')
-    name: PHPStan without ext-intl
-    runs-on: ubuntu-26.04
-    steps:
-      - uses: actions/checkout@v7
-      - uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.5'
-          coverage: none
-          tools: composer:v2
-          extensions: :intl
-      - name: Verify ext-intl is absent
-        run: php -r 'if (extension_loaded("intl")) { throw new RuntimeException("ext-intl must be disabled for this analysis job."); }'
-      - run: composer install --no-interaction --no-progress --prefer-dist
-      - name: Run PHPStan without ext-intl
-        run: composer ic:test:static
 
   detail-diagnostics:
     if: github.event_name != 'push' || !startsWith(github.ref, 'refs/tags/')
