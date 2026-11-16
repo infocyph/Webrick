@@ -39,6 +39,7 @@ if (! class_exists('InterMixNeedsDiMiddleware', false)) {
     {
         public function __construct(private InterMixMiddlewareDependency $dep) {}
 
+        /** @param Closure(Request):Response $next */
         public function __invoke(Request $request, Closure $next): Response
         {
             return $next($request)->withHeader('X-DI-Marker', $this->dep->marker);
@@ -63,6 +64,7 @@ if (! class_exists('InterMixScopedMarker', false)) {
 if (! class_exists('InterMixTaggedPreMiddleware', false)) {
     final readonly class InterMixTaggedPreMiddleware
     {
+        /** @param Closure(Request):Response $next */
         public function __invoke(Request $request, Closure $next): Response
         {
             return $next($request)->withHeader('X-Tagged-Pre', 'yes');
@@ -73,6 +75,7 @@ if (! class_exists('InterMixTaggedPreMiddleware', false)) {
 if (! class_exists('InterMixTaggedPostMiddleware', false)) {
     final readonly class InterMixTaggedPostMiddleware
     {
+        /** @param Closure(Request):Response $next */
         public function __invoke(Request $request, Closure $next): Response
         {
             return $next($request)->withHeader('X-Tagged-Post', 'yes');
@@ -85,6 +88,7 @@ if (! class_exists('InterMixDirectFactoryTaggedMiddleware', false)) {
     {
         public function __construct(public int $instance) {}
 
+        /** @param Closure(Request):Response $next */
         public function __invoke(Request $request, Closure $next): Response
         {
             return $next($request)->withHeader('X-Factory-Instance', (string) $this->instance);
@@ -136,6 +140,28 @@ function intermixBuilderForTest(): ContainerBuilder
 }
 
 /**
+ * @return list<string>
+ * @throws InvalidArgumentException For malformed test middleware-tag options.
+ */
+function intermixTestTagList(mixed $value): array
+{
+    if (!is_array($value) || !array_is_list($value)) {
+        throw new InvalidArgumentException('InterMix test middleware tags must be a list.');
+    }
+
+    $tags = [];
+    foreach ($value as $tag) {
+        if (!is_string($tag)) {
+            throw new InvalidArgumentException('InterMix test middleware tag must be a string.');
+        }
+        $tags[] = $tag;
+    }
+
+    return $tags;
+}
+
+/**
+ * @param list<mixed> $preGlobal
  * @param array<string,mixed> $options
  */
 function intermixKernelForTest(Closure $register, array $preGlobal = [], array $options = []): RouterKernel
@@ -158,7 +184,11 @@ function intermixKernelForTest(Closure $register, array $preGlobal = [], array $
             ? $opts['builder']
             : intermixBuilderForTest();
 
-        foreach ($opts['serviceProviders'] as $providerClass) {
+        $providers = $opts['serviceProviders'];
+        if (!is_array($providers)) {
+            throw new InvalidArgumentException('InterMix test service providers must be an array.');
+        }
+        foreach ($providers as $providerClass) {
             if (!is_string($providerClass) || !is_a($providerClass, ServiceProviderInterface::class, true)) {
                 throw new InvalidArgumentException('Test service providers must implement ServiceProviderInterface.');
             }
@@ -168,6 +198,9 @@ function intermixKernelForTest(Closure $register, array $preGlobal = [], array $
 
         $runtime = $builder->build();
     }
+
+    $preTags = intermixTestTagList($opts['preGlobalTags']);
+    $postTags = intermixTestTagList($opts['postGlobalTags']);
 
     return RouterKernel::bootWithRegistrar(
         log: new NullLogger,
@@ -180,8 +213,8 @@ function intermixKernelForTest(Closure $register, array $preGlobal = [], array $
         ],
         preGlobal: $preGlobal,
         postGlobal: [],
-        preGlobalTags: $opts['preGlobalTags'],
-        postGlobalTags: $opts['postGlobalTags'],
+        preGlobalTags: $preTags,
+        postGlobalTags: $postTags,
     );
 }
 
@@ -204,6 +237,9 @@ describe('InterMix integration', function () {
 
         $b1 = json_decode((string) $r1->getBody(), true);
         $b2 = json_decode((string) $r2->getBody(), true);
+        if (!is_array($b1) || !is_array($b2)) {
+            throw new UnexpectedValueException('InterMix response bodies must decode to JSON objects.');
+        }
 
         expect($r1)->not->toBe($r2)
             ->and($b1['hello'] ?? null)->toBe('Alice')
@@ -371,7 +407,12 @@ describe('InterMix integration', function () {
             #[\Override]
             public function render(string $view, array $data = []): string
             {
-                return "<h1>{$view}: ".($data['name'] ?? 'n/a').'</h1>';
+                $name = $data['name'] ?? 'n/a';
+                if (!is_string($name)) {
+                    throw new UnexpectedValueException('InterMix test view name must be a string.');
+                }
+
+                return "<h1>{$view}: {$name}</h1>";
             }
         };
         $builder->value(ViewFactoryInterface::class, $factory);
@@ -411,6 +452,9 @@ describe('InterMix integration', function () {
 
         $response = $kernel->handle(mockRequest('GET', '/provider'));
         $body = json_decode((string) $response->getBody(), true);
+        if (!is_array($body)) {
+            throw new UnexpectedValueException('InterMix response body must decode to a JSON object.');
+        }
 
         expect($response->getStatusCode())
             ->toBe(200)
@@ -498,6 +542,9 @@ describe('InterMix integration', function () {
 
         $b1 = json_decode((string) $r1->getBody(), true);
         $b2 = json_decode((string) $r2->getBody(), true);
+        if (!is_array($b1) || !is_array($b2)) {
+            throw new UnexpectedValueException('InterMix response bodies must decode to JSON objects.');
+        }
 
         expect($r1->getStatusCode())->toBe(200)
             ->and($r2->getStatusCode())->toBe(200)
@@ -521,6 +568,9 @@ describe('InterMix integration', function () {
 
         $response = $kernel->handle(mockRequest('GET', '/request-seed'));
         $body = json_decode((string) $response->getBody(), true);
+        if (!is_array($body)) {
+            throw new UnexpectedValueException('InterMix response body must decode to a JSON object.');
+        }
 
         expect($response->getStatusCode())->toBe(200)
             ->and($body['path'] ?? null)->toBe('/request-seed');
