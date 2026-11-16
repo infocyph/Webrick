@@ -20,7 +20,7 @@ final class MatcherMemoryBench
             memory_reset_peak_usage();
         }
 
-        BenchmarkSupport::freshSyntheticMatcher((int) $params['size'], (string) $params['matcher']);
+        BenchmarkSupport::freshSyntheticMatcher($params['size'], $params['matcher']);
     }
 
     /** @return iterable<string, array{matcher:string,size:int}> */

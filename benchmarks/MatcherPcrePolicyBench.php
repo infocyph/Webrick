@@ -25,8 +25,8 @@ final class MatcherPcrePolicyBench
     #[Bench\ParamProviders('provideCases')]
     public function benchPcrePolicy(array $params): void
     {
-        self::matcher((string) $params['matcher'])
-            ->matchCompiled('GET', '*', (string) $params['path']);
+        self::matcher($params['matcher'])
+            ->matchCompiled('GET', '*', $params['path']);
     }
 
     /** @return iterable<string,array{matcher:string,path:string}> */

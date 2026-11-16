@@ -25,10 +25,10 @@ final class MatcherMethodTerminalBench
     #[Bench\ParamProviders('provideCases')]
     public function benchMethodTerminal(array $params): void
     {
-        self::matcher((string) $params['matcher'])->matchCompiled(
-            (string) $params['method'],
+        self::matcher($params['matcher'])->matchCompiled(
+            $params['method'],
             '*',
-            (string) $params['path'],
+            $params['path'],
         );
     }
 

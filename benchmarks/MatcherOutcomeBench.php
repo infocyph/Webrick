@@ -17,8 +17,8 @@ final class MatcherOutcomeBench
     #[Bench\ParamProviders('provideOutcomeCases')]
     public function benchCompiledOutcome(array $params): void
     {
-        BenchmarkSupport::matcher((string) $params['route_set'], (string) $params['matcher'])
-            ->matchCompiled((string) $params['method'], (string) $params['host'], (string) $params['path']);
+        BenchmarkSupport::matcher($params['route_set'], $params['matcher'])
+            ->matchCompiled($params['method'], $params['host'], $params['path']);
     }
 
     /**

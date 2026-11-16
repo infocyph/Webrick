@@ -17,8 +17,8 @@ final class MatcherScaleBench
     #[Bench\ParamProviders('provideRouteScales')]
     public function benchRepresentativeHit(array $params): void
     {
-        $size = (int) $params['size'];
-        BenchmarkSupport::matcher('scale-' . $size, (string) $params['matcher'])
+        $size = $params['size'];
+        BenchmarkSupport::matcher('scale-' . $size, $params['matcher'])
             ->match('GET', 'localhost', BenchmarkSupport::syntheticHitPath($size));
     }
 

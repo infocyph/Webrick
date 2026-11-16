@@ -27,8 +27,8 @@ final class MatcherTypedConstraintBench
     #[Bench\ParamProviders('provideCases')]
     public function benchTypedConstraint(array $params): void
     {
-        self::matcher((string) $params['matcher'])
-            ->matchCompiled('GET', '*', (string) $params['path']);
+        self::matcher($params['matcher'])
+            ->matchCompiled('GET', '*', $params['path']);
     }
 
     /** @return iterable<string,array{matcher:string,path:string}> */
