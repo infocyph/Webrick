@@ -106,3 +106,8 @@ No commit, tag, merge, publication, provider deployment or end-to-end security c
 - Outstanding: A01 omitted-route test, HEAD kernel parity, invalid action constructor accessibility, registrar/compiled/artifact parity A09-A13, host provider security A14-A26. No completion asserted before execution.
 - Historical quality baseline, November 15 `main` run: Psalm 2,231 errors, PHPStan no-intl 630 errors. These are **not** fresh branch counts; both gates must pass on the final SHA with unchanged configuration.
 - Next validation: focused Pest tests and lint on the candidate, then PHPForge static analysis, full test matrix, and PR feedback resolution.
+
+### Batch 01 QA correction (2026-11-16)
+
+- Observed GitHub Actions run [43830780163](https://github.com/infocyph/Webrick/actions/runs/43830780163) for `6d989412d65c6cf50284348039907acdaeb8483e`: Pest passed, PHPStan no-intl reported 635 errors, Pint and PHPCS failed due to introduced style/test diagnostics. Baseline of 630 PHPStan errors is historical, not a green gate.
+- Corrected introduced diagnostics in the next commit; all A01-A26 completion states remain **pending** until current-SHA checks and integration tests pass.

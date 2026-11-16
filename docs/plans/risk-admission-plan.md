@@ -154,3 +154,9 @@ Keep these two files only while this feature has pending work. Record durable AP
 - Engineering principles: CORE-01/02 minimal scoped change; FLOW-02 root-cause quality gates unchanged; TYPE-01 strict result validation; COMPAT-02/04 public named arguments and accurate types; SEC trust/replay remain host-owned; PERF-07 unprotected route remains unchanged.
 - Verification: focused unit tests added; repository PHPForge, Psalm, PHPStan, hosted CI and downstream integration acceptance pending. Do not mark P1 complete until the checks pass.
 - Next: verify A01-A08, then P2 registrar/compiled/InterMix and scoped evaluator parity; remediate reported analyzer findings in separate single-commit batches.
+
+### Batch 01 QA correction (2026-11-16)
+
+- First candidate `6d989412d65c6cf50284348039907acdaeb8483e`: hosted PR checks reported 635 PHPStan errors (630 pre-existing on main, 5 new), and the quality lanes failed on Pint class layout and PHPCS unused test parameters. Pest itself passed.
+- Corrective actions: conform to PHPForge PER style for constants, narrow-check runtime callback results at the real untyped host boundary, retain strict validation of dynamically supplied reason codes, and use Reflection-based negative tests rather than inaccurate PHPDoc or ignored invalid callables.
+- No detector config, exclusions, baselines, or test assertions weakened. CI rerun against next committed revision is pending.

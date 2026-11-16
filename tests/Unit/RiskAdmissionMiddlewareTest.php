@@ -32,8 +32,8 @@ test('risk admission passes an allow decision once with request-local metadata',
 
 test('risk admission rejects before invoking the protected handler', function (RiskDecision $decision, int $status, string $code): void {
     $calls = 0;
-    $middleware = new RiskAdmissionMiddleware(static fn(Request $request): RiskDecision => $decision);
-    $response = $middleware(Request::fake(uri: '/protected'), static function (Request $request) use (&$calls): Response {
+    $middleware = new RiskAdmissionMiddleware(static fn(): RiskDecision => $decision);
+    $response = $middleware(Request::fake(uri: '/protected'), static function () use (&$calls): Response {
         ++$calls;
         return Response::json(['ok' => true]);
     });
@@ -51,7 +51,7 @@ test('risk admission rejects before invoking the protected handler', function (R
 
 test('shadow mode forwards all verdicts once without performing enforcement', function (RiskDecision $decision): void {
     $calls = 0;
-    $middleware = new RiskAdmissionMiddleware(static fn(Request $request): RiskDecision => $decision, mode: RiskAdmissionMiddleware::SHADOW);
+    $middleware = new RiskAdmissionMiddleware(static fn(): RiskDecision => $decision, mode: RiskAdmissionMiddleware::SHADOW);
     $response = $middleware(Request::fake(), static function (Request $request) use (&$calls, $decision): Response {
         ++$calls;
         expect($request->getAttribute(RiskDecision::ATTRIBUTE))->toBe($decision);
@@ -72,14 +72,14 @@ test('custom renderer cannot permit protected handler execution and cannot overr
     $calls = 0;
     $decision = RiskDecision::challenge();
     $middleware = new RiskAdmissionMiddleware(
-        static fn(Request $request): RiskDecision => $decision,
+        static fn(): RiskDecision => $decision,
         renderer: static function (Request $request, RiskDecision $current): Response {
             expect($request->getAttribute(RiskDecision::ATTRIBUTE))->toBe($current);
 
             return Response::json(['custom' => true], 429, ['Cache-Control' => 'public']);
         },
     );
-    $response = $middleware(Request::fake(), static function (Request $request) use (&$calls): Response {
+    $response = $middleware(Request::fake(), static function () use (&$calls): Response {
         ++$calls;
         return Response::json(['ok' => true]);
     });
@@ -92,19 +92,22 @@ test('risk admission rejects invalid mode and malformed reason metadata', functi
     expect(fn(): RiskDecision => RiskDecision::deny(-1))->toThrow(InvalidArgumentException::class);
     expect(fn(): RiskDecision => RiskDecision::deny(null, ['token=secret']))->toThrow(InvalidArgumentException::class);
     expect(fn(): RiskDecision => RiskDecision::deny(null, array_fill(0, 9, 'reason')))->toThrow(InvalidArgumentException::class);
-    expect(fn(): RiskAdmissionMiddleware => new RiskAdmissionMiddleware(static fn(Request $r): RiskDecision => RiskDecision::allow(), mode: 'disabled'))
+    expect(fn(): RiskAdmissionMiddleware => new RiskAdmissionMiddleware(static fn(): RiskDecision => RiskDecision::allow(), mode: 'disabled'))
         ->toThrow(InvalidArgumentException::class);
 });
 
 test('risk admission rejects evaluator and renderer contract violations', function (): void {
-    $badEvaluator = new RiskAdmissionMiddleware(static fn(Request $request): mixed => 'allow');
-    expect(fn(): Response => $badEvaluator(Request::fake(), static fn(Request $request): Response => Response::json([])))
+    // Reflection simulates a dynamically supplied host callback with a broken return contract.
+    $type = new ReflectionClass(RiskAdmissionMiddleware::class);
+    $badEvaluator = $type->newInstanceArgs([static fn(): string => 'allow']);
+    expect(fn(): Response => $badEvaluator(Request::fake(), static fn(): Response => Response::json([])))
         ->toThrow(UnexpectedValueException::class);
 
-    $badRenderer = new RiskAdmissionMiddleware(
-        static fn(Request $request): RiskDecision => RiskDecision::deny(),
-        renderer: static fn(Request $request, RiskDecision $decision): mixed => null,
-    );
-    expect(fn(): Response => $badRenderer(Request::fake(), static fn(Request $request): Response => Response::json([])))
+    $badRenderer = $type->newInstanceArgs([
+        static fn(): RiskDecision => RiskDecision::deny(),
+        RiskAdmissionMiddleware::ENFORCE,
+        static fn(): null => null,
+    ]);
+    expect(fn(): Response => $badRenderer(Request::fake(), static fn(): Response => Response::json([])))
         ->toThrow(UnexpectedValueException::class);
 });

@@ -19,12 +19,13 @@ use UnexpectedValueException;
 final readonly class RiskAdmissionMiddleware
 {
     public const string ENFORCE = 'enforce';
+
     public const string SHADOW = 'shadow';
 
-    /** @var Closure(Request):RiskDecision */
+    /** @var Closure(Request):mixed */
     private Closure $evaluator;
 
-    /** @var null|Closure(Request,RiskDecision):Response */
+    /** @var null|Closure(Request,RiskDecision):mixed */
     private ?Closure $renderer;
 
     /**

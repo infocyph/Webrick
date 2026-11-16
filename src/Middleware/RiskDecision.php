@@ -12,15 +12,18 @@ use InvalidArgumentException;
  */
 final readonly class RiskDecision
 {
+    public const string ALLOW = 'allow';
+
     public const string ATTRIBUTE = 'webrick.risk_admission.decision';
 
-    public const string ALLOW = 'allow';
     public const string CHALLENGE = 'challenge';
+
     public const string DENY = 'deny';
+
     public const string UNAVAILABLE = 'unavailable';
 
     /**
-     * @param list<string> $reasonCodes
+     * @param array<array-key,mixed> $reasonCodes
      */
     private function __construct(
         public string $action,
@@ -33,8 +36,8 @@ final readonly class RiskDecision
         if ($score !== null && $score < 0) {
             throw new InvalidArgumentException('Risk admission score must be non-negative.');
         }
-        if (count($reasonCodes) > 8) {
-            throw new InvalidArgumentException('Too many risk admission reason codes.');
+        if (!array_is_list($reasonCodes) || count($reasonCodes) > 8) {
+            throw new InvalidArgumentException('Risk admission reason codes must be a list of at most eight items.');
         }
         foreach ($reasonCodes as $code) {
             if (!is_string($code) || preg_match('/^[a-z][a-z0-9_]{0,63}$/D', $code) !== 1) {
@@ -43,25 +46,25 @@ final readonly class RiskDecision
         }
     }
 
-    /** @param list<string> $reasonCodes */
+    /** @param array<array-key,mixed> $reasonCodes */
     public static function allow(?int $score = null, array $reasonCodes = []): self
     {
         return new self(self::ALLOW, $score, $reasonCodes);
     }
 
-    /** @param list<string> $reasonCodes */
+    /** @param array<array-key,mixed> $reasonCodes */
     public static function challenge(?int $score = null, array $reasonCodes = []): self
     {
         return new self(self::CHALLENGE, $score, $reasonCodes);
     }
 
-    /** @param list<string> $reasonCodes */
+    /** @param array<array-key,mixed> $reasonCodes */
     public static function deny(?int $score = null, array $reasonCodes = []): self
     {
         return new self(self::DENY, $score, $reasonCodes);
     }
 
-    /** @param list<string> $reasonCodes */
+    /** @param array<array-key,mixed> $reasonCodes */
     public static function unavailable(?int $score = null, array $reasonCodes = []): self
     {
         return new self(self::UNAVAILABLE, $score, $reasonCodes);
