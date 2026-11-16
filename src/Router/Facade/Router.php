@@ -51,6 +51,10 @@ use RuntimeException;
  *   name?:mixed,
  *   as?:mixed
  * }
+ * @psalm-type HandlerArray = array{0:string|object,1:string}
+ * @psalm-type RouteHandler = HandlerArray|string|callable
+ * @psalm-type RouteOptions = array{name?:mixed,as?:mixed,middleware?:mixed,aliases?:mixed,alias?:mixed,attributes?:mixed}
+ * @psalm-type GroupOptions = array{prefix?:mixed,domain?:mixed,middleware?:mixed,name?:mixed,as?:mixed}
  * @method static RouteInterface delete(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)
  * @method static RouteInterface get(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)
  * @method static RouteInterface head(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)

@@ -162,3 +162,9 @@ No commit, tag, merge, publication, provider deployment or end-to-end security c
 
 - The failing unprotected test route returned HTTP 400 and plaintext `ok` on [CI 43836877991](https://github.com/infocyph/Webrick/actions/runs/43836877991). Investigation found the `Response::plaintext()` factory deliberately defaults its `$code` argument to `StatusEnum::BAD_REQUEST` (400); test fixture now explicitly requests 200.
 - Temporary debug diagnostics removed; response semantics, security boundary and negative assertions unchanged. A01/A03/A07 still require a passing hosted run at this correction's commit SHA.
+
+### Batch 07 — type-contract review closure attempt (2026-11-16)
+
+- Previous current-sha evidence: [CI 43837345213](https://github.com/infocyph/Webrick/actions/runs/43837345213), four PHP 8.4/8.5 QA lanes and both benchmarks passed; PHPStan 619, Psalm 1,765 issues. A01/A03/A07 registrar fixture assertions now pass, though full compiled/host acceptance remains pending.
+- New changes: Psalm-specific named alias declarations reflecting existing handler and option semantics in `Registrar` and `Router`; precise PSR cache iterable value PHPDoc on benchmark fixture. Target five outstanding PR feedback threads, **unverified** until a fresh hosted analyzer run.
+- A09-A26, upstream optional-provider security, full non-dev consumer tests, load/soak and final candidate checks remain pending. No full-green or release-ready claim.

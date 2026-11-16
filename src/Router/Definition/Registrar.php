@@ -33,6 +33,17 @@ require_once __DIR__ . '/registrar_functions.php';
  * @phpstan-type AliasSpec array{__alias:true,key:non-empty-string,params:list<string>}
  * @phpstan-type ResourceSpecRow array{0:string,1:string,2:string,3:string,4:bool}
  * @phpstan-type GroupInput array{prefix?:mixed,domain?:mixed,middleware?:mixed,name?:mixed,as?:mixed}
+ * @psalm-type MiddlewareEntry = string|object
+ * @psalm-type RawMiddlewareEntry = string|object
+ * @psalm-type RawMiddlewareList = list<RawMiddlewareEntry>
+ * @psalm-type MiddlewareList = list<MiddlewareEntry>
+ * @psalm-type HandlerArray = array{0:string|object,1:string}
+ * @psalm-type RouteHandler = HandlerArray|string|callable
+ * @psalm-type RouteAttributes = array{produces?:Produces,cors?:Cors}
+ * @psalm-type RouteOptions = array{name?:mixed,as?:mixed,middleware?:mixed,aliases?:mixed,alias?:mixed,attributes?:mixed}
+ * @psalm-type AliasSpec = array{__alias:true,key:non-empty-string,params:list<string>}
+ * @psalm-type ResourceSpecRow = array{0:string,1:string,2:string,3:string,4:bool}
+ * @psalm-type GroupInput = array{prefix?:mixed,domain?:mixed,middleware?:mixed,name?:mixed,as?:mixed}
  * @method RouteInterface delete(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)
  * @method RouteInterface get(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)
  * @method RouteInterface head(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)
