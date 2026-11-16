@@ -36,6 +36,7 @@ use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
 use RuntimeException;
 use Throwable;
+use UnexpectedValueException;
 
 final class InfbyteEndToEndScopedMarker
 {
