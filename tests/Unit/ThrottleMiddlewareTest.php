@@ -136,6 +136,16 @@ function webrickThrottleCounterEntry(mixed $map): array
     return ['value' => $entry['value']];
 }
 
+/** @throws \UnexpectedValueException */
+function webrickThrottleExitStatus(mixed $value): int
+{
+    if (!is_int($value)) {
+        throw new UnexpectedValueException('Throttle worker did not return an integer exit status.');
+    }
+
+    return $value;
+}
+
 describe('ThrottleMiddleware', function () {
     beforeEach(function () {
         $this->cacheNamespace = 'throttle-' . bin2hex(random_bytes(8));
@@ -442,6 +452,7 @@ describe('ThrottleMiddleware', function () {
                 if ($waited < 0) {
                     throw new RuntimeException('Throttle worker wait did not return an exit status.');
                 }
+                $status = webrickThrottleExitStatus($status);
                 expect(pcntl_wifexited($status) && pcntl_wexitstatus($status) === 0)->toBeTrue();
             }
 
