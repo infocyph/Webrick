@@ -183,3 +183,10 @@ Keep these two files only while this feature has pending work. Record durable AP
 - Batch includes PHP 8.4+ interface and parent overrides (request/response/stream implementations, route matchers, runtime adapters and fixtures). This explicitly enforces overriding contracts using the supported language attribute, per PHPForge COMPAT-02.
 - Status: **implemented, CI unverified**; expected reduction of 306 `MissingOverrideAttribute` diagnostics is a target, not a verified result. Validate Pint, PHPCS, Pest, Psalm, PHPStan, PHP 8.4/8.5 matrix, and performance/benchmarks at the committed SHA. If any attribute fails a real contract or formatter check, correct source instead of weakening analysis. One batch/one commit.
 - Remaining Psalm `MissingOverrideAttribute` findings include 13 other files/148 locations (historical snapshot); broader missing-throws/type defects remain open. Continue with the next analyzer family only after triaging current CI.
+
+### Batch 04 — complete remaining inherited-method overrides, 13 files (2026-11-16)
+
+- From historical Psalm `MissingOverrideAttribute` diagnostics at [43831667584](https://github.com/infocyph/Webrick/actions/runs/43831667584), fixed all **148** remaining reported method locations across **13** files (10 test/fixture files, two benchmark files, root `routes.php`). Each attribute inserted only after verifying the exact method declaration at the diagnostic line.
+- Combined Batch 03 + 04 scope: 63 files and 454 method declarations in two separate commits; implementation is complete for this known diagnostic snapshot. Real CI validation pending for this revision; do not claim 454 fewer diagnostics until the latest analysis run verifies it.
+- Native PHP 8.4+ `#[\\Override]` preserves existing method signatures, call sites and request logic. No analyzer baselines/exclusions changed. New snapshot after QA determines whether further missing-override remediation is needed.
+- Risk admission phases P2-P5, shared-backend security, and broader Psalm/PHPStan findings are unaffected and remain pending.

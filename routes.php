@@ -109,6 +109,7 @@ Route::get('/xml-demo', fn() => Response::create(
 Route::get('/status/{code}', fn(string $code): Response => Response::plaintext("Status: $code", (int) $code));
 Route::get('/json/slow', fn(): Response => Response::json(new class implements JsonSerializable {
     /** @return array{now:int,items:list<array{n:int,v:string}>} */
+    #[\Override]
     public function jsonSerialize(): array
     {
         return [

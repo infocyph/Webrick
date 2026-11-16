@@ -100,16 +100,19 @@ final class RunwireStreamingBodyFixture implements RequestBodyInterface
 
     public function __construct(private readonly string $body) {}
 
+    #[\Override]
     public function bufferedBytes(): int
     {
         return strlen($this->body) - $this->offset;
     }
 
+    #[\Override]
     public function eof(): bool
     {
         return $this->offset >= strlen($this->body);
     }
 
+    #[\Override]
     public function onData(callable $callback): RequestBodyInterface
     {
         if (!$this->eof()) {
@@ -119,6 +122,7 @@ final class RunwireStreamingBodyFixture implements RequestBodyInterface
         return $this;
     }
 
+    #[\Override]
     public function onEnd(callable $callback): RequestBodyInterface
     {
         if ($this->eof()) {
@@ -128,6 +132,7 @@ final class RunwireStreamingBodyFixture implements RequestBodyInterface
         return $this;
     }
 
+    #[\Override]
     public function read(int $maxBytes = PHP_INT_MAX): string
     {
         ++$this->readCalls;
@@ -145,11 +150,13 @@ final class RunwireStreamingBodyFixture implements RequestBodyInterface
         return $chunk;
     }
 
+    #[\Override]
     public function receivedBytes(): int
     {
         return strlen($this->body);
     }
 
+    #[\Override]
     public function trailers(): ?Headers
     {
         return $this->eof() ? new Headers() : null;
@@ -187,6 +194,7 @@ final class RunwirePressureWriterFixture implements ResponseWriterInterface
         $callback($this);
     }
 
+    #[\Override]
     public function end(string $finalChunk = ''): WriteResult
     {
         if ($this->ended) {
@@ -211,16 +219,19 @@ final class RunwirePressureWriterFixture implements ResponseWriterInterface
         return $this->drainCallback instanceof Closure;
     }
 
+    #[\Override]
     public function isEnded(): bool
     {
         return $this->ended;
     }
 
+    #[\Override]
     public function isStarted(): bool
     {
         return $this->started;
     }
 
+    #[\Override]
     public function onDrain(callable $callback): ResponseWriterInterface
     {
         $this->drainCallback = Closure::fromCallable($callback);
@@ -228,6 +239,7 @@ final class RunwirePressureWriterFixture implements ResponseWriterInterface
         return $this;
     }
 
+    #[\Override]
     public function start(int $status = 200, ?Headers $headers = null): WriteResult
     {
         unset($status, $headers);
@@ -241,6 +253,7 @@ final class RunwirePressureWriterFixture implements ResponseWriterInterface
         return new WriteResult(WriteState::ACCEPTED, 0);
     }
 
+    #[\Override]
     public function write(string $chunk): WriteResult
     {
         if ($this->ended) {
@@ -262,6 +275,7 @@ final class RunwirePressureWriterFixture implements ResponseWriterInterface
 #[ExcludeStaticPropertyFromBackup(CodeStream::class, 'handlers')]
 final class RunwireStreamingLifecycleTest extends TestCase
 {
+    #[\Override]
     protected function tearDown(): void
     {
         RunwireStreamingScopeProbe::reset();

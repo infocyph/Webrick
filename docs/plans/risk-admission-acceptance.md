@@ -131,3 +131,9 @@ No commit, tag, merge, publication, provider deployment or end-to-end security c
 - Source revision: `568e2f903fa359a111f0f4ad39aca64110badab9`; diagnostic evidence [CI 43831667584](https://github.com/infocyph/Webrick/actions/runs/43831667584). Applied exactly 306 diagnostic-correlated `#[\\Override]` annotations across 50 PHP files, including 39 production sources and 11 existing test/fixture files.
 - No middleware/runtime semantics or test assertions altered. **Verification pending fresh hosted run**; baseline before this batch was 630 PHPStan and 2,224 Psalm errors. Avoid interpreting counts as current until the next runner completes.
 - All risk admission A01-A26 gates and detailed performance/host security qualification retain their previous statuses. Reviewed under PHPForge COMPAT-02 and FLOW-02, without ignores, baselines or config changes.
+
+### Batch 04 — remaining explicit override declarations (2026-11-16)
+
+- Input: historical `MissingOverrideAttribute` report at [CI 43831667584](https://github.com/infocyph/Webrick/actions/runs/43831667584). Added 148 declarations across 13 remaining source-controlled PHP files; 306 were already addressed by Batch 03. Combined target 454 annotations for 63 files.
+- Required fresh evidence: PHPForge Pint/PHPCS/Pest, strict Psalm and PHPStan, PHP 8.4/8.5 QA, benchmark regression, and review feedback. Unverified outputs must not be treated as passed gates.
+- All A01-A26 admission/security/runtime acceptance remains pending unless separately proven by tests.

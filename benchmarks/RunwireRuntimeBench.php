@@ -104,16 +104,19 @@ final class RunwireRuntimeBench
     private static function body(): RequestBodyInterface
     {
         return new class implements RequestBodyInterface {
+            #[\Override]
             public function bufferedBytes(): int
             {
                 return 0;
             }
 
+            #[\Override]
             public function eof(): bool
             {
                 return true;
             }
 
+            #[\Override]
             public function onData(callable $callback): RequestBodyInterface
             {
                 unset($callback);
@@ -121,6 +124,7 @@ final class RunwireRuntimeBench
                 return $this;
             }
 
+            #[\Override]
             public function onEnd(callable $callback): RequestBodyInterface
             {
                 $callback($this);
@@ -128,6 +132,7 @@ final class RunwireRuntimeBench
                 return $this;
             }
 
+            #[\Override]
             public function read(int $maxBytes = PHP_INT_MAX): string
             {
                 unset($maxBytes);
@@ -135,11 +140,13 @@ final class RunwireRuntimeBench
                 return '';
             }
 
+            #[\Override]
             public function receivedBytes(): int
             {
                 return 0;
             }
 
+            #[\Override]
             public function trailers(): ?Headers
             {
                 return new Headers();
@@ -157,6 +164,7 @@ final class RunwireRuntimeBench
             /** @var list<Closure(ResponseWriterInterface): void> */
             private array $terminalObservers = [];
 
+            #[\Override]
             public function end(string $finalChunk = ''): WriteResult
             {
                 if ($this->ended) {
@@ -173,16 +181,19 @@ final class RunwireRuntimeBench
                 return new WriteResult(WriteState::ACCEPTED, strlen($finalChunk));
             }
 
+            #[\Override]
             public function isEnded(): bool
             {
                 return $this->ended;
             }
 
+            #[\Override]
             public function isStarted(): bool
             {
                 return $this->started;
             }
 
+            #[\Override]
             public function onDrain(callable $callback): ResponseWriterInterface
             {
                 unset($callback);
@@ -190,6 +201,7 @@ final class RunwireRuntimeBench
                 return $this;
             }
 
+            #[\Override]
             public function onTerminal(callable $callback): ResponseWriterInterface
             {
                 $observer = Closure::fromCallable($callback);
@@ -204,6 +216,7 @@ final class RunwireRuntimeBench
                 return $this;
             }
 
+            #[\Override]
             public function start(int $status = 200, ?Headers $headers = null): WriteResult
             {
                 unset($status, $headers);
@@ -212,6 +225,7 @@ final class RunwireRuntimeBench
                 return new WriteResult(WriteState::ACCEPTED, 0);
             }
 
+            #[\Override]
             public function write(string $chunk): WriteResult
             {
                 return new WriteResult(WriteState::ACCEPTED, strlen($chunk));

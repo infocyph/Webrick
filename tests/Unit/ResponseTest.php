@@ -213,6 +213,7 @@ describe('Response', function () {
 
     it('renders views through the explicit view responder boundary', function () {
         $factory = new class implements ViewFactoryInterface {
+            #[\Override]
             public function render(string $view, array $data = []): string
             {
                 return '<h1>' . $view . ': ' . ($data['name'] ?? 'n/a') . '</h1>';

@@ -62,6 +62,7 @@ test('middleware terminal preserves route handler array payloads', function (): 
 
 test('dispatcher preserves existing non-array route result behavior', function (): void {
     $jsonSerializable = new class implements JsonSerializable {
+        #[\Override]
         public function jsonSerialize(): mixed
         {
             return ['serialized' => true];

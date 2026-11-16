@@ -14,20 +14,25 @@ test('base emitter sends a known content length and writes the body once', funct
         /** @var array<string,string> */
         public array $headers = [];
 
+        #[\Override]
         protected function finish(): void {}
 
+        #[\Override]
         protected function headersAlreadySent(): bool
         {
             return false;
         }
 
+        #[\Override]
         protected function removePoweredByHeader(): void {}
 
+        #[\Override]
         protected function sendRawHeader(string $name, string $value): void
         {
             $this->headers[$name] = $value;
         }
 
+        #[\Override]
         protected function setStatusCode(int $code): void {}
     };
 
@@ -41,8 +46,10 @@ test('base emitter sends a known content length and writes the body once', funct
 
 test('base emitter suppresses a head response body', function (): void {
     $emitter = new class extends BaseEmitter {
+        #[\Override]
         protected function finish(): void {}
 
+        #[\Override]
         protected function headersAlreadySent(): bool
         {
             return true;
@@ -58,8 +65,10 @@ test('base emitter suppresses a head response body', function (): void {
 
 test('base emitter suppresses response bodies forbidden by status', function (int $status): void {
     $emitter = new class extends BaseEmitter {
+        #[\Override]
         protected function finish(): void {}
 
+        #[\Override]
         protected function headersAlreadySent(): bool
         {
             return true;
@@ -77,17 +86,22 @@ test('base emitter preserves streaming chunk order', function (): void {
     $emitter = new class extends BaseEmitter {
         public string $output = '';
 
+        #[\Override]
         protected function finish(): void {}
 
+        #[\Override]
         protected function headersAlreadySent(): bool
         {
             return true;
         }
 
+        #[\Override]
         protected function reduceOutputBuffering(): void {}
 
+        #[\Override]
         protected function flush(): void {}
 
+        #[\Override]
         protected function write(string $chunk): void
         {
             $this->output .= $chunk;

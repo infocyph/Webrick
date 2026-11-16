@@ -16,11 +16,13 @@ final class PcntlFileAtomicCounterStore implements AtomicCounterStoreInterface
 
     public function __construct(private readonly string $path) {}
 
+    #[\Override]
     public function decrement(string $key, int $by = 1, ?int $ttlSeconds = null): AtomicCounterValue
     {
         return $this->change($key, -$by, $ttlSeconds);
     }
 
+    #[\Override]
     public function delete(string $key): bool
     {
         $this->mutate($key, static fn(): ?array => null);
@@ -28,11 +30,13 @@ final class PcntlFileAtomicCounterStore implements AtomicCounterStoreInterface
         return true;
     }
 
+    #[\Override]
     public function get(string $key): ?int
     {
         return $this->mutate($key, static fn(?array $entry): ?array => $entry)['value'] ?? null;
     }
 
+    #[\Override]
     public function increment(string $key, int $by = 1, ?int $ttlSeconds = null): AtomicCounterValue
     {
         return $this->change($key, $by, $ttlSeconds);
@@ -210,6 +214,7 @@ describe('ThrottleMiddleware', function () {
 
             public int $value = 0;
 
+            #[\Override]
             public function decrement(string $key, int $by = 1, ?int $ttlSeconds = null): AtomicCounterValue
             {
                 $this->key = $key;
@@ -219,6 +224,7 @@ describe('ThrottleMiddleware', function () {
                 return new AtomicCounterValue($this->value, false);
             }
 
+            #[\Override]
             public function delete(string $key): bool
             {
                 $this->key = $key;
@@ -227,11 +233,13 @@ describe('ThrottleMiddleware', function () {
                 return true;
             }
 
+            #[\Override]
             public function get(string $key): ?int
             {
                 return $key === $this->key ? $this->value : null;
             }
 
+            #[\Override]
             public function increment(string $key, int $by = 1, ?int $ttlSeconds = null): AtomicCounterValue
             {
                 $this->key = $key;

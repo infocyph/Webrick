@@ -63,126 +63,151 @@ final class ResponseCacheBench
         return new class (Cache::memory('bench-response-failure')) implements CacheInterface {
             public function __construct(private readonly CacheInterface $inner) {}
 
+            #[\Override]
             public function get(string $key, mixed $default = null): mixed
             {
                 throw new \RuntimeException("read failure for {$key}; default=" . get_debug_type($default));
             }
 
+            #[\Override]
             public function getItem(string $key): \Psr\Cache\CacheItemInterface
             {
                 return $this->inner->getItem($key);
             }
 
+            #[\Override]
             public function getItems(array $keys = []): iterable
             {
                 return $this->inner->getItems($keys);
             }
 
+            #[\Override]
             public function hasItem(string $key): bool
             {
                 return $this->inner->hasItem($key);
             }
 
+            #[\Override]
             public function clear(): bool
             {
                 return $this->inner->clear();
             }
 
+            #[\Override]
             public function deleteItem(string $key): bool
             {
                 return $this->inner->deleteItem($key);
             }
 
+            #[\Override]
             public function deleteItems(array $keys): bool
             {
                 return $this->inner->deleteItems($keys);
             }
 
+            #[\Override]
             public function save(\Psr\Cache\CacheItemInterface $item): bool
             {
                 return $this->inner->save($item);
             }
 
+            #[\Override]
             public function saveDeferred(\Psr\Cache\CacheItemInterface $item): bool
             {
                 return $this->inner->saveDeferred($item);
             }
 
+            #[\Override]
             public function commit(): bool
             {
                 return $this->inner->commit();
             }
 
+            #[\Override]
             public function getMultiple(iterable $keys, mixed $default = null): iterable
             {
                 return $this->inner->getMultiple($keys, $default);
             }
 
+            #[\Override]
             public function set(string $key, mixed $value, mixed $ttl = null): bool
             {
                 return $this->inner->set($key, $value, $ttl);
             }
 
+            #[\Override]
             public function setMultiple(iterable $values, mixed $ttl = null): bool
             {
                 return $this->inner->setMultiple($values, $ttl);
             }
 
+            #[\Override]
             public function delete(string $key): bool
             {
                 return $this->inner->delete($key);
             }
 
+            #[\Override]
             public function deleteMultiple(iterable $keys): bool
             {
                 return $this->inner->deleteMultiple($keys);
             }
 
+            #[\Override]
             public function has(string $key): bool
             {
                 return $this->inner->has($key);
             }
 
+            #[\Override]
             public function offsetExists(mixed $offset): bool
             {
                 return $this->inner->offsetExists($offset);
             }
 
+            #[\Override]
             public function offsetGet(mixed $offset): mixed
             {
                 return $this->inner->offsetGet($offset);
             }
 
+            #[\Override]
             public function offsetSet(mixed $offset, mixed $value): void
             {
                 $this->inner->offsetSet($offset, $value);
             }
 
+            #[\Override]
             public function offsetUnset(mixed $offset): void
             {
                 $this->inner->offsetUnset($offset);
             }
 
+            #[\Override]
             public function exportMetrics(): array
             {
                 return $this->inner->exportMetrics();
             }
 
+            #[\Override]
             public function invalidateTag(string $tag): bool
             {
                 return $this->inner->invalidateTag($tag);
             }
 
+            #[\Override]
             public function invalidateTags(array $tags): bool
             {
                 return $this->inner->invalidateTags($tags);
             }
 
+            #[\Override]
             public function remember(string $key, callable $resolver, mixed $ttl = null, array $tags = []): mixed
             {
                 return $this->inner->remember($key, $resolver, $ttl, $tags);
             }
 
+            #[\Override]
             public function setLockProvider(\Infocyph\CacheLayer\Cache\Lock\LockProviderInterface $lockProvider): CacheInterface
             {
                 $this->inner->setLockProvider($lockProvider);
@@ -190,6 +215,7 @@ final class ResponseCacheBench
                 return $this;
             }
 
+            #[\Override]
             public function setMetricsCollector(\Infocyph\CacheLayer\Cache\Metrics\CacheMetricsCollectorInterface $metrics): CacheInterface
             {
                 $this->inner->setMetricsCollector($metrics);
@@ -197,6 +223,7 @@ final class ResponseCacheBench
                 return $this;
             }
 
+            #[\Override]
             public function setMetricsExportHook(?callable $hook): CacheInterface
             {
                 $this->inner->setMetricsExportHook($hook);
@@ -204,11 +231,13 @@ final class ResponseCacheBench
                 return $this;
             }
 
+            #[\Override]
             public function setTagged(string $key, mixed $value, array $tags, mixed $ttl = null): bool
             {
                 return $this->inner->setTagged($key, $value, $tags, $ttl);
             }
 
+            #[\Override]
             public function useMemcachedLock(?\Memcached $client = null, string $prefix = 'cachelayer:lock:'): CacheInterface
             {
                 $this->inner->useMemcachedLock($client, $prefix);
@@ -216,6 +245,7 @@ final class ResponseCacheBench
                 return $this;
             }
 
+            #[\Override]
             public function useRedisLock(?\Redis $client = null, string $prefix = 'cachelayer:lock:'): CacheInterface
             {
                 $this->inner->useRedisLock($client, $prefix);
@@ -223,6 +253,7 @@ final class ResponseCacheBench
                 return $this;
             }
 
+            #[\Override]
             public function useValkeyLock(?\Redis $client = null, string $prefix = 'cachelayer:lock:'): CacheInterface
             {
                 $this->inner->useValkeyLock($client, $prefix);

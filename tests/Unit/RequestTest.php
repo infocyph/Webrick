@@ -106,48 +106,58 @@ describe('Request', function () {
                 return '';
             }
 
+            #[\Override]
             public function close(): void {}
 
+            #[\Override]
             public function detach(): mixed
             {
                 return null;
             }
 
+            #[\Override]
             public function eof(): bool
             {
                 return false;
             }
 
+            #[\Override]
             public function getContents(): string
             {
                 return '';
             }
 
+            #[\Override]
             public function getMetadata(?string $key = null): mixed
             {
                 return $key === null ? [] : null;
             }
 
+            #[\Override]
             public function getSize(): ?int
             {
                 return null;
             }
 
+            #[\Override]
             public function isReadable(): bool
             {
                 return true;
             }
 
+            #[\Override]
             public function isSeekable(): bool
             {
                 return false;
             }
 
+            #[\Override]
             public function isWritable(): bool
             {
                 return false;
             }
 
+            #[\Override]
             public function read(int $length): string
             {
                 unset($length);
@@ -155,18 +165,22 @@ describe('Request', function () {
                 return '';
             }
 
+            #[\Override]
             public function rewind(): void {}
 
+            #[\Override]
             public function seek(int $offset, int $whence = SEEK_SET): void
             {
                 unset($offset, $whence);
             }
 
+            #[\Override]
             public function tell(): int
             {
                 return 0;
             }
 
+            #[\Override]
             public function write(string $string): int
             {
                 unset($string);

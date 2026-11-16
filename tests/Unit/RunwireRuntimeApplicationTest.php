@@ -28,21 +28,25 @@ use Infocyph\Webrick\Runtime\Http\RunwireRuntimeApplicationFactory;
 
 final class RunwireApplicationBodyFixture implements RequestBodyInterface
 {
+    #[\Override]
     public function bufferedBytes(): int
     {
         return 0;
     }
 
+    #[\Override]
     public function eof(): bool
     {
         return true;
     }
 
+    #[\Override]
     public function onData(callable $callback): RequestBodyInterface
     {
         return $this;
     }
 
+    #[\Override]
     public function onEnd(callable $callback): RequestBodyInterface
     {
         Closure::fromCallable($callback)($this);
@@ -50,16 +54,19 @@ final class RunwireApplicationBodyFixture implements RequestBodyInterface
         return $this;
     }
 
+    #[\Override]
     public function read(int $maxBytes = PHP_INT_MAX): string
     {
         return '';
     }
 
+    #[\Override]
     public function receivedBytes(): int
     {
         return 0;
     }
 
+    #[\Override]
     public function trailers(): ?Headers
     {
         return new Headers();
@@ -91,6 +98,7 @@ final class RunwireApplicationWriterFixture implements ResponseWriterInterface
         $this->headers = new Headers();
     }
 
+    #[\Override]
     public function end(string $finalChunk = ''): WriteResult
     {
         if ($this->ended) {
@@ -104,16 +112,19 @@ final class RunwireApplicationWriterFixture implements ResponseWriterInterface
         return new WriteResult(WriteState::ACCEPTED, strlen($finalChunk));
     }
 
+    #[\Override]
     public function isEnded(): bool
     {
         return $this->ended;
     }
 
+    #[\Override]
     public function isStarted(): bool
     {
         return $this->started;
     }
 
+    #[\Override]
     public function onDrain(callable $callback): ResponseWriterInterface
     {
         $this->drainCallback = Closure::fromCallable($callback);
@@ -127,6 +138,7 @@ final class RunwireApplicationWriterFixture implements ResponseWriterInterface
         $callback($this);
     }
 
+    #[\Override]
     public function start(int $status = 200, ?Headers $headers = null): WriteResult
     {
         $this->headers = $headers ?? new Headers();
@@ -136,6 +148,7 @@ final class RunwireApplicationWriterFixture implements ResponseWriterInterface
         return new WriteResult(WriteState::ACCEPTED, 0);
     }
 
+    #[\Override]
     public function write(string $chunk): WriteResult
     {
         $this->body .= $chunk;

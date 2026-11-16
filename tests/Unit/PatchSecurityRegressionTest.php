@@ -133,18 +133,25 @@ test('multiplexed SAPI responses exclude connection-specific fields', function (
 
         public string $protocol;
 
+        #[\Override]
         protected function finish(): void {}
 
+        #[\Override]
         protected function headersAlreadySent(): bool { return false; }
 
+        #[\Override]
         protected function removePoweredByHeader(): void {}
 
+        #[\Override]
         protected function sendRawHeader(string $name, string $value): void { $this->headers[$name] = $value; }
 
+        #[\Override]
         protected function setStatusCode(int $code): void {}
 
+        #[\Override]
         protected function serverProtocol(): string { return $this->protocol; }
 
+        #[\Override]
         protected function write(string $chunk): void {}
     };
     $emitter->protocol = $protocol;
