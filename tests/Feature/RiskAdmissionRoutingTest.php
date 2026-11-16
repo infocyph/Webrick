@@ -41,9 +41,9 @@ test('registrar risk middleware only evaluates selected routes and suppresses HE
             ->build(),
     );
 
-    $health = $kernel->handle(Request::fake(uri: 'http://localhost/health'));
-    $rejection = $kernel->handle(Request::fake(uri: 'http://localhost/protected'));
-    $head = $kernel->handle(Request::fake(method: 'HEAD', uri: 'http://localhost/protected'));
+    $health = $kernel->handle(mockRequest('GET', '/health'));
+    $rejection = $kernel->handle(mockRequest('GET', '/protected'));
+    $head = $kernel->handle(mockRequest('HEAD', '/protected'));
 
     expect($health->getStatusCode())->toBe(200);
     expect((string) $health->getBody())->toBe('ok');

@@ -148,3 +148,8 @@ No commit, tag, merge, publication, provider deployment or end-to-end security c
 - New registrar test exercises A01 route omission, A03 challenge rejection/handler bypass, and A07 HEAD body stripping and Content-Length preservation. Core `RouterKernel` normalizes the final response for HEAD; compiled kernel already had analogous behavior.
 - Supplemental static fix: `Message::__clone()` return-type declaration removed in the base class. Next hosted run must verify no Psalm regressions and preservation of existing request clone tests.
 - **Verification pending** at this candidate SHA: no A01/A03/A07 gate marked complete before its focused test and full QA pass; no P2 artifact/compiled parity claim yet.
+
+### Batch 06 QA correction — request setup (2026-11-16)
+
+- Run [43835466242](https://github.com/infocyph/Webrick/actions/runs/43835466242) returned 1 failure / 656 passes on a PHP 8.4 lane, from the newly introduced registrar fixture's synthetic request returning 400. Replaced its `Request::fake` instances with existing kernel-oriented `mockRequest` fixture for GET/HEAD, which supplies expected server and Host metadata.
+- A01/A03/A07 remain pending execution of corrected test; all security/release gates remain open.

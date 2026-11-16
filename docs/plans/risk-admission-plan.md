@@ -204,3 +204,8 @@ Keep these two files only while this feature has pending work. Record durable AP
 - A07: identified existing registrar kernel behavior that normalized HEAD only on pre-routing gate responses, unlike the compiled kernel which suppresses bodies for ordinary matched-route responses. Applied the minimal HEAD-only response normalization in `RouterKernel::handle()`; no change to middleware pipeline invocation or non-HEAD responses. Requires PHPForge performance equivalence/QA verification on the new commit.
 - Fixed a remaining Psalm `MethodSignatureMustOmitReturnType` in base `Message::__clone()` to match the other Request class hierarchy corrections from Batch 05.
 - Tests added are pending execution; P1/P2 A01/A03/A07 partly covered, while compiled artifacts, InterMix-scoped evaluator, A09-A26, full static-analysis cleanup and release gates remain pending. Keep tracked acceptance evidence tied to the actual revision.
+
+### Batch 06 QA correction — representative kernel request fixture (2026-11-16)
+
+- [CI run 43835466242](https://github.com/infocyph/Webrick/actions/runs/43835466242) reported exactly one new focused Pest failure at `tests/Feature/RiskAdmissionRoutingTest.php:48`: the test created synthetic requests through `Request::fake` with no server context, and the resulting health request returned HTTP 400 instead of 200. Other 656 tests passed on that lane; Pint/PHPCS passed.
+- Changed only the new feature test to use the existing `mockRequest` helper, matching how established registrar-kernel integration tests populate request/server/Host context. No production security gate bypass or relaxed assertion. Recheck the HEAD and route-specific assertions on new CI; status **pending** until verified.
