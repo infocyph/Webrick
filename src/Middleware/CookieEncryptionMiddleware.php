@@ -427,12 +427,13 @@ final readonly class CookieEncryptionMiddleware
     }
 
     /**
-     * @return int<0,255>
+     * @phpstan-return int<0,255>
+     * @psalm-return int<min,255>
      * @throws \RuntimeException
      */
     private function kidByte(): int
     {
-        if ($this->kid < 0 || $this->kid > 255) {
+        if ($this->kid > 255) {
             throw new RuntimeException('Key id must be within byte range.');
         }
 

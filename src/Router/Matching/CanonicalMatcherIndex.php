@@ -208,9 +208,8 @@ final class CanonicalMatcherIndex
         if ($segment['type'] !== 'var' || !is_string($name)) {
             throw new UnexpectedValueException('Invalid variable matcher segment.');
         }
-        $regex = $segment['regex'] ?? null;
-        if (is_string($regex)) {
-            return ['type' => 'var', 'name' => $name, 'regex' => $regex];
+        if (is_string($segment['regex'] ?? null)) {
+            return ['type' => 'var', 'name' => $name, 'regex' => $segment['regex']];
         }
         $call = $segment['call'] ?? null;
         if (!is_string($call) || !is_callable($call)) {

@@ -153,6 +153,7 @@ final class RunwireResponseContinuation
     }
 
     /** @phpstan-param Fiber<mixed, mixed, mixed, mixed> $fiber */
+@psalm-param Fiber $fiber
     private static function isFiberSuspended(Fiber $fiber): bool
     {
         return $fiber->isSuspended();
@@ -167,6 +168,7 @@ final class RunwireResponseContinuation
 
     /**
      * @phpstan-return Fiber<mixed, mixed, mixed, mixed>
+@psalm-return Fiber
      * @throws \RuntimeException
      */
     private static function managedFiber(string $message): Fiber
@@ -186,6 +188,7 @@ final class RunwireResponseContinuation
     }
 
     /** @phpstan-param Fiber<mixed, mixed, mixed, mixed> $fiber */
+@psalm-param Fiber $fiber
     private static function releaseIfTerminated(Fiber $fiber): void
     {
         if (!$fiber->isTerminated()) {
@@ -206,11 +209,13 @@ final class RunwireResponseContinuation
      *
      * @param callable(): void $handler
      * @phpstan-param Fiber<mixed, mixed, mixed, mixed>|null $owner
+@psalm-param Fiber|null $owner
      * @throws \Throwable
      */
     private static function runOwnedFiber(callable $handler, ?Fiber $owner): void
     {
         /** @phpstan-var Fiber<mixed, mixed, mixed, mixed> $fiber */
+@psalm-var Fiber $fiber
         $fiber = new Fiber($handler);
         self::managedFibers()[$fiber] = true;
 
@@ -237,6 +242,7 @@ final class RunwireResponseContinuation
     }
 
     /** @phpstan-param Fiber<mixed, mixed, mixed, mixed> $fiber */
+@psalm-param Fiber $fiber
     private static function suspendForIo(Fiber $fiber): void
     {
         $ioSuspensions = self::ioSuspensions();
@@ -254,7 +260,9 @@ final class RunwireResponseContinuation
      * exception handling and cleanup have completely unwound.
      *
      * @phpstan-param Fiber<mixed, mixed, mixed, mixed> $fiber
+@psalm-param Fiber $fiber
      * @phpstan-param Fiber<mixed, mixed, mixed, mixed>|null $owner
+@psalm-param Fiber|null $owner
      */
     private static function unwindSuspendedHandler(
         Fiber $fiber,

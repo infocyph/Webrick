@@ -156,14 +156,12 @@ function matcher_normalize_compiled_route_map(mixed $verbs): array
         return [];
     }
 
-    $routes = [];
-    foreach ($verbs as $verb => $route) {
-        if (is_string($verb) && ($route instanceof CompiledRoute || is_array($route))) {
-            $routes[$verb] = $route;
-        }
-    }
-
-    return $routes;
+    return array_filter(
+        $verbs,
+        static fn(mixed $route, mixed $verb): bool => is_string($verb)
+            && ($route instanceof CompiledRoute || is_array($route)),
+        ARRAY_FILTER_USE_BOTH,
+    );
 }
 
 /**
