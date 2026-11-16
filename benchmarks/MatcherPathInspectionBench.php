@@ -31,7 +31,7 @@ final class MatcherPathInspectionBench
             $count = substr_count($trimmed, '/') + 1;
         }
 
-        if ($prefix === "\0") {
+        if ($prefix === "\0" || $count > strlen($trimmed) + 1) {
             throw new \LogicException('Unreachable benchmark guard.');
         }
     }
@@ -53,7 +53,7 @@ final class MatcherPathInspectionBench
         }
 
         $result = [$entry['id'], $captured];
-        if (array_keys($captured) !== $entry['params']) {
+        if (array_diff_assoc($result[1], ['group' => 'main', 'id' => '42', 'slug' => 'benchmark']) !== []) {
             throw new \LogicException('Unreachable benchmark guard.');
         }
     }
@@ -119,7 +119,7 @@ final class MatcherPathInspectionBench
             $prefix = substr($path, $start, $prefixEnd - $start);
         }
 
-        if ($prefix === "\0") {
+        if ($prefix === "\0" || $count > ($end - $start) + 1) {
             throw new \LogicException('Unreachable benchmark guard.');
         }
     }
@@ -166,7 +166,7 @@ final class MatcherPathInspectionBench
     /** @param list<string> $segments */
     private static function guardCombined(int $count, string $prefix, array $segments): void
     {
-        if ($count < 0 || $prefix === "\0" || count($segments) < 0) {
+        if ($count < 0 || $prefix === "\0") {
             throw new \LogicException('Unreachable benchmark guard.');
         }
     }

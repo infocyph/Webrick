@@ -58,6 +58,10 @@ final readonly class CompiledNativeRequestController
 {
     public function __construct(private Request $request) {}
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     public function __invoke(Request $request, CompiledBoundRouteIdentifier $id): Response
     {
         return Response::plaintext($id->value . '|' . $this->request->getUri()->getPath()
@@ -69,6 +73,10 @@ final readonly class CompiledFastPathScopedHandler
 {
     public function __construct(private CompiledFastPathScopedMarker $marker) {}
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     public function __invoke(): Response
     {
         return Response::plaintext($this->marker::class, 200);
@@ -123,6 +131,11 @@ final class CompiledRoutingControlBridgeTest extends TestCase
         }
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     */
     public function testCoordinatedReleaseBootRejectsStaleAndObsoleteMetadata(): void
     {
         [$intermixPath, $routerPath] = self::artifactPaths('release');
@@ -193,6 +206,9 @@ final class CompiledRoutingControlBridgeTest extends TestCase
         }
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     public function testCoordinatedReleaseRejectsObsoleteManifestFormat(): void
     {
         [$intermixPath, $routerPath] = self::artifactPaths('obsolete-release');
@@ -253,6 +269,11 @@ final class CompiledRoutingControlBridgeTest extends TestCase
         }
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     */
     #[DataProvider('compiledReleaseBootModes')]
     public function testDirectCompiledFastPathsRemainScopeless(string $matcherMode, string $manifestRepresentation, bool $trusted): void
     {
@@ -354,6 +375,11 @@ final class CompiledRoutingControlBridgeTest extends TestCase
         }
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     */
     #[DataProvider('compiledReleaseBootModes')]
     public function testNativeRequestInputsAndHostAutoBindingSurviveCompiledBoot(
         string $matcherMode,
@@ -444,6 +470,10 @@ final class CompiledRoutingControlBridgeTest extends TestCase
         }
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     public function testDevelopmentBindingUsesTheHostsOptInSetting(): void
     {
         foreach ([null, false, true] as $enabled) {
@@ -479,6 +509,10 @@ final class CompiledRoutingControlBridgeTest extends TestCase
         }
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     public function testDefaultRoutingControlsStayIndependentFromApplicationErrors(): void
     {
         [$intermixPath, $routerPath] = self::artifactPaths('default');
@@ -527,6 +561,10 @@ final class CompiledRoutingControlBridgeTest extends TestCase
         }
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     public function testRoutingControlsUseApplicationErrorHandlerOnlyWhenEnabled(): void
     {
         [$intermixPath, $routerPath] = self::artifactPaths('opt-in');
@@ -581,7 +619,10 @@ final class CompiledRoutingControlBridgeTest extends TestCase
         return [$base . '-intermix.php', $base . '-router.php'];
     }
 
-    /** @param list<string> $paths */
+    /**
+     * @param list<string> $paths
+     * @throws \RuntimeException
+     */
     private static function cleanup(array $paths): void
     {
         foreach ($paths as $path) {

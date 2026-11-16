@@ -36,6 +36,12 @@ final class RunwireRuntimeBench
 
     private Response $streamingResponse;
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     * @throws \OverflowException
+     * @throws \RuntimeException
+     */
     public function setUp(): void
     {
         $this->adapter = new RunwireRuntimeAdapter();
@@ -64,12 +70,21 @@ final class RunwireRuntimeBench
         }
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     #[Bench\BeforeMethods('setUp')]
     public function benchContextNormalization(): void
     {
         $this->adapter->context($this->request, self::writer(), true);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     * @throws \RuntimeException
+     */
     #[Bench\BeforeMethods('setUp')]
     public function benchFixedResponseWrite(): void
     {
@@ -78,6 +93,10 @@ final class RunwireRuntimeBench
         $this->adapter->write($this->fixedResponse, $context);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     #[Bench\BeforeMethods('setUp')]
     public function benchRequestPromotion(): void
     {
@@ -93,6 +112,11 @@ final class RunwireRuntimeBench
         );
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     * @throws \RuntimeException
+     */
     #[Bench\BeforeMethods('setUp')]
     public function benchStreamingResponseWrite(): void
     {

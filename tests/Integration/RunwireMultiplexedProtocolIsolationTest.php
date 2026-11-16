@@ -484,7 +484,7 @@ final class RunwireMultiplexedProtocolIsolationTest extends TestCase
 
     /**
      * @return Fiber
-     * @phpstan-return Fiber<mixed,mixed,void,mixed>
+     * @phpstan-return Fiber<mixed,mixed,mixed,mixed>
      */
     private static function fiber(
         RunwireRuntimeApplication $application,
