@@ -31,8 +31,8 @@ final readonly class RiskAdmissionMiddleware
     /**
      * @param callable(Request):mixed $evaluator Must produce a RiskDecision; validated at runtime.
      * @param null|callable(Request,RiskDecision):mixed $renderer Must produce a Response; validated at runtime.
+     * @throws InvalidArgumentException For invalid admission modes.
      */
-    /** @throws InvalidArgumentException For invalid admission modes. */
     public function __construct(
         callable $evaluator,
         public string $mode = self::ENFORCE,

@@ -115,3 +115,7 @@ No commit, tag, merge, publication, provider deployment or end-to-end security c
 
 - Previous CI [43831260587](https://github.com/infocyph/Webrick/actions/runs/43831260587) identified two remaining new PHPStan issues in defensive evaluator/renderer checks, with 632 total reported errors (630 inherited).
 - Kept both defensive checks and updated the callable annotations to admit runtime-invalid host values, which the tests explicitly reject. A05 remains pending complete matrix execution. No new suppressions or exclusions.
+
+### Batch 01 documentation correction (2026-11-16)
+
+- Constructor PHPDoc normalized without changing implementation, existing tests or acceptance obligations.

@@ -165,3 +165,7 @@ Keep these two files only while this feature has pending work. Record durable AP
 - Candidate `2803089f932269f7c7ab56b9100e1dea60620058`: no-intl PHPStan reported 632 errors, compared to the 630-error main baseline. The two new findings were inferred-true type checks for host-supplied callbacks.
 - The executable contract must reject incorrect evaluator/renderer values from dynamically composed providers. Their constructor PHPDoc now reflects the real dynamic trust boundary (`mixed` return), while both results remain checked at runtime and documented to require `RiskDecision`/`Response`. No detector settings or runtime checks were relaxed.
 - Awaiting hosted CI on the subsequent commit; full static-analysis backlog and release acceptance remain open.
+
+### Batch 01 documentation correction (2026-11-16)
+
+- Merged constructor parameter and exception contracts into one PHPDoc block. CI validation pending.
