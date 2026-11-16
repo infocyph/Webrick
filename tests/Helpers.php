@@ -18,6 +18,7 @@ use Psr\Log\NullLogger;
  */
 class TestLogger implements LoggerInterface
 {
+    /** @var list<array{level:mixed,message:string,context:array<array-key,mixed>}> */
     public array $records = [];
 
     #[\Override]
@@ -55,6 +56,7 @@ class TestLogger implements LoggerInterface
         $this->log(LogLevel::ERROR, $message, $context);
     }
 
+    /** @return array<int,array{level:mixed,message:string,context:array<array-key,mixed>}> */
     public function getRecords(?string $level = null): array
     {
         if ($level === null) {
@@ -124,6 +126,9 @@ class TestLogger implements LoggerInterface
 /**
  * Create a test registrar with empty collection.
  */
+/**
+ * @param array{autoSlashRedirect?:bool,exposeUrlServices?:bool,signKey?:?string,signedDefaultTtl?:?int,signedUrlConfig?:?SignedUrlConfig,urlBaseUri?:string} $options
+ */
 function testRegistrar(array $options = []): Registrar
 {
     $routes = new Collection();
@@ -153,6 +158,10 @@ function testRegistrar(array $options = []): Registrar
 }
 /**
  * Create a mock PSR-7 Request for testing
+ */
+/**
+ * @param array<string,mixed> $headers
+ * @param array<array-key,mixed> $body
  */
 function mockRequest(string $method, string $uri, array $headers = [], array $body = []): Request
 {
@@ -239,10 +248,14 @@ function cleanTestCache(string $path): void
     );
 
     foreach ($files as $file) {
-        if ($file->isDir()) {
-            rmdir($file->getRealPath());
+        if (!$file instanceof SplFileInfo) {
+            throw new UnexpectedValueException('Unexpected filesystem entry during test cache cleanup.');
+        }
+        $entryPath = $file->getPathname();
+        if ($file->isDir() && !$file->isLink()) {
+            rmdir($entryPath);
         } else {
-            unlink($file->getRealPath());
+            unlink($entryPath);
         }
     }
 

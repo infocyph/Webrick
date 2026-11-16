@@ -70,8 +70,10 @@ it('keeps automatic options as an explicit control outcome', function (Closure $
 
     $outcome = $matcher->matchCompiled('OPTIONS', '*', '/resource');
 
-    expect($outcome)->toBeInstanceOf(MatchOutcome::class)
-        ->and($outcome->type)->toBe(MatchOutcomeType::AUTO_OPTIONS)
+    if (!$outcome instanceof MatchOutcome) {
+        throw new UnexpectedValueException('Automatic OPTIONS must return a control outcome.');
+    }
+    expect($outcome->type)->toBe(MatchOutcomeType::AUTO_OPTIONS)
         ->and($outcome->allowed)->toContain('GET', 'HEAD');
 })->with('compiled outcome matchers');
 
@@ -87,8 +89,10 @@ it('keeps method misses as explicit control outcomes', function (Closure $factor
 
     $outcome = $matcher->matchCompiled('POST', '*', '/resource');
 
-    expect($outcome)->toBeInstanceOf(MatchOutcome::class)
-        ->and($outcome->type)->toBe(MatchOutcomeType::METHOD_NOT_ALLOWED);
+    if (!$outcome instanceof MatchOutcome) {
+        throw new UnexpectedValueException('Method miss must return a control outcome.');
+    }
+    expect($outcome->type)->toBe(MatchOutcomeType::METHOD_NOT_ALLOWED);
 })->with('compiled outcome matchers');
 
 it('keeps not found as an explicit control outcome', function (Closure $factory): void {
@@ -103,6 +107,8 @@ it('keeps not found as an explicit control outcome', function (Closure $factory)
 
     $outcome = $matcher->matchCompiled('GET', '*', '/missing');
 
-    expect($outcome)->toBeInstanceOf(MatchOutcome::class)
-        ->and($outcome->type)->toBe(MatchOutcomeType::NOT_FOUND);
+    if (!$outcome instanceof MatchOutcome) {
+        throw new UnexpectedValueException('Missing route must return a control outcome.');
+    }
+    expect($outcome->type)->toBe(MatchOutcomeType::NOT_FOUND);
 })->with('compiled outcome matchers');
