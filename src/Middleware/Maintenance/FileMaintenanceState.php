@@ -23,6 +23,7 @@ final class FileMaintenanceState implements MaintenanceStateInterface
         }
     }
 
+    #[\Override]
     public function message(): ?string
     {
         $now = hrtime(true);

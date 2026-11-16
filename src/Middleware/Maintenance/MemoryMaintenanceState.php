@@ -19,6 +19,7 @@ final class MemoryMaintenanceState implements MaintenanceStateInterface
         $this->message = $message === '' ? 'Service is down for maintenance.' : $message;
     }
 
+    #[\Override]
     public function message(): ?string
     {
         return $this->message;

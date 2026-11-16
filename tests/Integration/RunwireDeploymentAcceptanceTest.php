@@ -29,16 +29,19 @@ use PHPUnit\Framework\TestCase;
 
 final class DeploymentAcceptanceBody implements RequestBodyInterface
 {
+    #[\Override]
     public function bufferedBytes(): int
     {
         return 0;
     }
 
+    #[\Override]
     public function eof(): bool
     {
         return true;
     }
 
+    #[\Override]
     public function onData(callable $callback): RequestBodyInterface
     {
         unset($callback);
@@ -46,6 +49,7 @@ final class DeploymentAcceptanceBody implements RequestBodyInterface
         return $this;
     }
 
+    #[\Override]
     public function onEnd(callable $callback): RequestBodyInterface
     {
         Closure::fromCallable($callback)($this);
@@ -53,6 +57,7 @@ final class DeploymentAcceptanceBody implements RequestBodyInterface
         return $this;
     }
 
+    #[\Override]
     public function read(int $maxBytes = PHP_INT_MAX): string
     {
         unset($maxBytes);
@@ -60,11 +65,13 @@ final class DeploymentAcceptanceBody implements RequestBodyInterface
         return '';
     }
 
+    #[\Override]
     public function receivedBytes(): int
     {
         return 0;
     }
 
+    #[\Override]
     public function trailers(): ?Headers
     {
         return new Headers();
@@ -81,6 +88,7 @@ final class DeploymentAcceptanceWriter implements ResponseWriterInterface
 
     public bool $started = false;
 
+    #[\Override]
     public function end(string $finalChunk = ''): WriteResult
     {
         ++$this->endCalls;
@@ -90,16 +98,19 @@ final class DeploymentAcceptanceWriter implements ResponseWriterInterface
         return new WriteResult(WriteState::ACCEPTED, strlen($finalChunk));
     }
 
+    #[\Override]
     public function isEnded(): bool
     {
         return $this->ended;
     }
 
+    #[\Override]
     public function isStarted(): bool
     {
         return $this->started;
     }
 
+    #[\Override]
     public function onDrain(callable $callback): ResponseWriterInterface
     {
         unset($callback);
@@ -107,6 +118,7 @@ final class DeploymentAcceptanceWriter implements ResponseWriterInterface
         return $this;
     }
 
+    #[\Override]
     public function start(int $status = 200, ?Headers $headers = null): WriteResult
     {
         unset($status, $headers);
@@ -115,6 +127,7 @@ final class DeploymentAcceptanceWriter implements ResponseWriterInterface
         return new WriteResult(WriteState::ACCEPTED, 0);
     }
 
+    #[\Override]
     public function write(string $chunk): WriteResult
     {
         return new WriteResult(WriteState::ACCEPTED, strlen($chunk));

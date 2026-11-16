@@ -125,3 +125,9 @@ No commit, tag, merge, publication, provider deployment or end-to-end security c
 - Covered revision before this change: `b1dc88797aef7bc060fb90bdc0e1921c2415020e`, [GitHub Actions 43831667584](https://github.com/infocyph/Webrick/actions/runs/43831667584). Pest/QA PHP 8.4 and 8.5 stable/lowest: 4/4 passed; benchmark jobs 2/2 passed; PHPStan no-intl 630 errors; Psalm 2,224 errors; PHPForge analysis failed. Do not claim green static gates.
 - A02: inspect `RiskDecision::$score` and `$reasonCodes` in tests to confirm public metadata remains test-backed; A05: add associative and wrong-element reason inputs; exception contracts documented to address new Psalm review comments. These tests require execution on the new commit.
 - PR #59 review automation observed: five original PHPStan findings resolved, several Psalm `MissingThrowsDocblock` and public-property findings on `RiskDecision` remain awaiting fresh results. No automatic merge.
+
+### Batch 03 — 50-file override-annotation remediation (2026-11-16)
+
+- Source revision: `568e2f903fa359a111f0f4ad39aca64110badab9`; diagnostic evidence [CI 43831667584](https://github.com/infocyph/Webrick/actions/runs/43831667584). Applied exactly 306 diagnostic-correlated `#[\\Override]` annotations across 50 PHP files, including 39 production sources and 11 existing test/fixture files.
+- No middleware/runtime semantics or test assertions altered. **Verification pending fresh hosted run**; baseline before this batch was 630 PHPStan and 2,224 Psalm errors. Avoid interpreting counts as current until the next runner completes.
+- All risk admission A01-A26 gates and detailed performance/host security qualification retain their previous statuses. Reviewed under PHPForge COMPAT-02 and FLOW-02, without ignores, baselines or config changes.

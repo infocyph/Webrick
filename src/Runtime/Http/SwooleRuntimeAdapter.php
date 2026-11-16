@@ -40,11 +40,13 @@ final readonly class SwooleRuntimeAdapter implements RuntimeAdapterInterface
         return new self('swoole', $transportCompression, $transportRequestLimits);
     }
 
+    #[\Override]
     public function capabilities(): RuntimeCapabilities
     {
         return $this->runtimeCapabilities;
     }
 
+    #[\Override]
     public function context(mixed $nativeRequest = null, mixed $nativeResponse = null, bool $withHost = false): RuntimeRequestContext
     {
         if (!is_object($nativeRequest) || !is_object($nativeResponse)) {
@@ -74,6 +76,7 @@ final readonly class SwooleRuntimeAdapter implements RuntimeAdapterInterface
         );
     }
 
+    #[\Override]
     public function write(Response $response, RuntimeRequestContext $context): void
     {
         $native = $context->nativeResponse;

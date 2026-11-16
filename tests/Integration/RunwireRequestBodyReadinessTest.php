@@ -47,11 +47,13 @@ final class RunwireDeferredRequestBody implements RequestBodyInterface
 
     private int $received = 0;
 
+    #[\Override]
     public function bufferedBytes(): int
     {
         return strlen($this->buffer);
     }
 
+    #[\Override]
     public function eof(): bool
     {
         return $this->ended && $this->buffer === '';
@@ -67,6 +69,7 @@ final class RunwireDeferredRequestBody implements RequestBodyInterface
         $this->endCallback?->__invoke($this);
     }
 
+    #[\Override]
     public function onData(callable $callback): RequestBodyInterface
     {
         $this->dataCallback = Closure::fromCallable($callback);
@@ -77,6 +80,7 @@ final class RunwireDeferredRequestBody implements RequestBodyInterface
         return $this;
     }
 
+    #[\Override]
     public function onEnd(callable $callback): RequestBodyInterface
     {
         $this->endCallback = Closure::fromCallable($callback);
@@ -101,6 +105,7 @@ final class RunwireDeferredRequestBody implements RequestBodyInterface
         $this->dataCallback?->__invoke($this);
     }
 
+    #[\Override]
     public function read(int $maxBytes = PHP_INT_MAX): string
     {
         if ($maxBytes < 0) {
@@ -116,11 +121,13 @@ final class RunwireDeferredRequestBody implements RequestBodyInterface
         return $chunk;
     }
 
+    #[\Override]
     public function receivedBytes(): int
     {
         return $this->received;
     }
 
+    #[\Override]
     public function trailers(): ?Headers
     {
         return $this->ended ? new Headers() : null;
@@ -144,6 +151,7 @@ final class RunwireDeferredWriter implements ResponseWriterInterface
 
     private bool $started = false;
 
+    #[\Override]
     public function end(string $finalChunk = ''): WriteResult
     {
         if ($finalChunk !== '') {
@@ -156,16 +164,19 @@ final class RunwireDeferredWriter implements ResponseWriterInterface
         return new WriteResult(WriteState::ACCEPTED, strlen($finalChunk));
     }
 
+    #[\Override]
     public function isEnded(): bool
     {
         return $this->ended;
     }
 
+    #[\Override]
     public function isStarted(): bool
     {
         return $this->started;
     }
 
+    #[\Override]
     public function onDrain(callable $callback): ResponseWriterInterface
     {
         unset($callback);
@@ -173,6 +184,7 @@ final class RunwireDeferredWriter implements ResponseWriterInterface
         return $this;
     }
 
+    #[\Override]
     public function start(int $status = 200, ?Headers $headers = null): WriteResult
     {
         unset($headers);
@@ -183,6 +195,7 @@ final class RunwireDeferredWriter implements ResponseWriterInterface
         return new WriteResult(WriteState::ACCEPTED, 0);
     }
 
+    #[\Override]
     public function write(string $chunk): WriteResult
     {
         $this->chunks[] = $chunk;

@@ -26,11 +26,13 @@ final class RunwireRequestBodyStream implements BodyStream
         return $this->closed ? '' : $this->getContents();
     }
 
+    #[\Override]
     public function close(): void
     {
         $this->closed = true;
     }
 
+    #[\Override]
     public function detach(): mixed
     {
         $this->close();
@@ -38,11 +40,13 @@ final class RunwireRequestBodyStream implements BodyStream
         return null;
     }
 
+    #[\Override]
     public function eof(): bool
     {
         return $this->closed || $this->body->eof();
     }
 
+    #[\Override]
     public function getContents(): string
     {
         $this->assertOpen();
@@ -57,6 +61,7 @@ final class RunwireRequestBodyStream implements BodyStream
         return $contents;
     }
 
+    #[\Override]
     public function getMetadata(?string $key = null): mixed
     {
         $metadata = [
@@ -70,6 +75,7 @@ final class RunwireRequestBodyStream implements BodyStream
         return $key === null ? $metadata : ($metadata[$key] ?? null);
     }
 
+    #[\Override]
     public function getSize(): ?int
     {
         if ($this->closed || $this->body->trailers() === null) {
@@ -79,21 +85,25 @@ final class RunwireRequestBodyStream implements BodyStream
         return $this->body->receivedBytes();
     }
 
+    #[\Override]
     public function isReadable(): bool
     {
         return !$this->closed;
     }
 
+    #[\Override]
     public function isSeekable(): bool
     {
         return false;
     }
 
+    #[\Override]
     public function isWritable(): bool
     {
         return false;
     }
 
+    #[\Override]
     public function read(int $length): string
     {
         $this->assertOpen();
@@ -120,11 +130,13 @@ final class RunwireRequestBodyStream implements BodyStream
         }
     }
 
+    #[\Override]
     public function rewind(): void
     {
         throw new RuntimeException('Runwire request body streams are not seekable.');
     }
 
+    #[\Override]
     public function seek(int $offset, int $whence = SEEK_SET): void
     {
         unset($offset, $whence);
@@ -132,6 +144,7 @@ final class RunwireRequestBodyStream implements BodyStream
         throw new RuntimeException('Runwire request body streams are not seekable.');
     }
 
+    #[\Override]
     public function tell(): int
     {
         $this->assertOpen();
@@ -139,6 +152,7 @@ final class RunwireRequestBodyStream implements BodyStream
         return $this->position;
     }
 
+    #[\Override]
     public function write(string $string): int
     {
         unset($string);

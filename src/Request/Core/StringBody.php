@@ -24,6 +24,7 @@ final class StringBody implements BodyStream
         return $this->closed ? '' : $this->value;
     }
 
+    #[\Override]
     public function close(): void
     {
         $this->closed = true;
@@ -31,6 +32,7 @@ final class StringBody implements BodyStream
         $this->position = 0;
     }
 
+    #[\Override]
     public function detach(): mixed
     {
         $this->close();
@@ -38,11 +40,13 @@ final class StringBody implements BodyStream
         return null;
     }
 
+    #[\Override]
     public function eof(): bool
     {
         return $this->closed || $this->position >= strlen($this->value);
     }
 
+    #[\Override]
     public function getContents(): string
     {
         $this->assertOpen();
@@ -52,6 +56,7 @@ final class StringBody implements BodyStream
         return $contents;
     }
 
+    #[\Override]
     public function getMetadata(?string $key = null): mixed
     {
         $metadata = [
@@ -65,26 +70,31 @@ final class StringBody implements BodyStream
         return $key === null ? $metadata : ($metadata[$key] ?? null);
     }
 
+    #[\Override]
     public function getSize(): ?int
     {
         return $this->closed ? null : strlen($this->value);
     }
 
+    #[\Override]
     public function isReadable(): bool
     {
         return !$this->closed;
     }
 
+    #[\Override]
     public function isSeekable(): bool
     {
         return !$this->closed;
     }
 
+    #[\Override]
     public function isWritable(): bool
     {
         return !$this->closed;
     }
 
+    #[\Override]
     public function read(int $length): string
     {
         $this->assertOpen();
@@ -101,11 +111,13 @@ final class StringBody implements BodyStream
         return $chunk;
     }
 
+    #[\Override]
     public function rewind(): void
     {
         $this->seek(0);
     }
 
+    #[\Override]
     public function seek(int $offset, int $whence = SEEK_SET): void
     {
         $this->assertOpen();
@@ -121,6 +133,7 @@ final class StringBody implements BodyStream
         $this->position = $target;
     }
 
+    #[\Override]
     public function tell(): int
     {
         $this->assertOpen();
@@ -128,6 +141,7 @@ final class StringBody implements BodyStream
         return $this->position;
     }
 
+    #[\Override]
     public function write(string $string): int
     {
         $this->assertOpen();

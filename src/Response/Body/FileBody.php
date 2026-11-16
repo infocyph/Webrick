@@ -64,12 +64,14 @@ final class FileBody implements BodyStream
         }
     }
 
+    #[\Override]
     public function close(): void
     {
         $this->stream?->close();
         $this->stream = null;
     }
 
+    #[\Override]
     public function detach(): mixed
     {
         $stream = $this->stream();
@@ -78,11 +80,13 @@ final class FileBody implements BodyStream
         return $stream->detach();
     }
 
+    #[\Override]
     public function eof(): bool
     {
         return $this->position >= $this->length;
     }
 
+    #[\Override]
     public function getContents(): string
     {
         $contents = '';
@@ -97,26 +101,31 @@ final class FileBody implements BodyStream
         return $contents;
     }
 
+    #[\Override]
     public function getMetadata(?string $key = null): mixed
     {
         return $this->stream()->getMetadata($key);
     }
 
+    #[\Override]
     public function getSize(): int
     {
         return $this->length;
     }
 
+    #[\Override]
     public function isReadable(): bool
     {
         return true;
     }
 
+    #[\Override]
     public function isSeekable(): bool
     {
         return true;
     }
 
+    #[\Override]
     public function isWritable(): bool
     {
         return false;
@@ -137,6 +146,7 @@ final class FileBody implements BodyStream
         return $this->path;
     }
 
+    #[\Override]
     public function read(int $length): string
     {
         if ($length < 0) {
@@ -154,11 +164,13 @@ final class FileBody implements BodyStream
         return $chunk;
     }
 
+    #[\Override]
     public function rewind(): void
     {
         $this->seek(0);
     }
 
+    #[\Override]
     public function seek(int $offset, int $whence = SEEK_SET): void
     {
         $target = match ($whence) {
@@ -182,11 +194,13 @@ final class FileBody implements BodyStream
         return $this->sourceSize;
     }
 
+    #[\Override]
     public function tell(): int
     {
         return $this->position;
     }
 
+    #[\Override]
     public function write(string $string): int
     {
         throw new RuntimeException('FileBody is read-only.');

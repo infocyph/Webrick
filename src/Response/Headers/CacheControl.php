@@ -49,6 +49,7 @@ final class CacheControl implements \Stringable
     /** @param array<string,string|null> $parts */
     private function __construct(private array $parts = []) {}
 
+    #[\Override]
     public function __toString(): string
     {
         [$standard, $extensions] = self::partitionParts($this->parts);

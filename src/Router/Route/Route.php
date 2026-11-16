@@ -98,6 +98,7 @@ final class Route implements RouteInterface
         return $clone;
     }
 
+    #[\Override]
     public function withDomain(?string $domain): self
     {
         $clone = clone $this;
@@ -107,6 +108,7 @@ final class Route implements RouteInterface
     }
 
     /** @param list<string|object> $middleware */
+    #[\Override]
     public function withMiddleware(array $middleware): self
     {
         if ($middleware === []) {
@@ -119,6 +121,7 @@ final class Route implements RouteInterface
         return $clone;
     }
 
+    #[\Override]
     public function withName(string $name): self
     {
         $clone = clone $this;

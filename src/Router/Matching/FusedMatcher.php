@@ -49,6 +49,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
     /** @var array<string,true> */
     private array $middlewareRequirements = [];
 
+    #[\Override]
     public function add(CompiledRoute $route): void
     {
         if ($this->finalized) {
@@ -62,6 +63,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         matcher_capture_middleware_requirements($this->middlewareRequirements, $route);
     }
 
+    #[\Override]
     public function finalize(): void
     {
         if ($this->finalized) {
@@ -89,6 +91,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         $this->finalized = true;
     }
 
+    #[\Override]
     public function match(string $method, string $host, string $path): array
     {
         $verb = HttpMethodEnum::normalize($method);
@@ -108,6 +111,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         throw new RouteNotFoundException($verb, $path);
     }
 
+    #[\Override]
     public function matchCompiled(string $method, string $host, string $path): int|array|MatchOutcome
     {
         if ($this->fastDefaultGroup !== null) {
@@ -124,6 +128,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         );
     }
 
+    #[\Override]
     public function matchOutcome(string $method, string $host, string $path): MatchOutcome
     {
         $this->finalize();

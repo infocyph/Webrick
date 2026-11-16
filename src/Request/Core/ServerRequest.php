@@ -102,6 +102,7 @@ class ServerRequest extends Message
         }
     }
 
+    #[\Override]
     protected function __clone(): void
     {
         parent::__clone();

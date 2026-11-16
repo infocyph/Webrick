@@ -27,12 +27,14 @@ class NativeServerRequest extends ServerRequest
 
     private ?PayloadParseState $xmlState = null;
 
+    #[\Override]
     protected function __clone(): void
     {
         parent::__clone();
         $this->resetPayloadCaches();
     }
 
+    #[\Override]
     public static function createFromGlobals(): self
     {
         $server = self::stringMap($_SERVER);
@@ -130,6 +132,7 @@ class NativeServerRequest extends ServerRequest
     /**
      * @param array<string,mixed>|object|null $data
      */
+    #[\Override]
     public function withParsedBody(object|array|null $data): static
     {
         return parent::withParsedBody($data);

@@ -58,6 +58,7 @@ final class Uri implements \Stringable
         $this->fragment = $this->filterFragment($parts['fragment'] ?? '');
     }
 
+    #[\Override]
     public function __toString(): string
     {
         $uri = $this->scheme !== '' ? $this->scheme . ':' : '';

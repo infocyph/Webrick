@@ -10,6 +10,7 @@ final class Vary implements \Stringable
     /** @var array<string,bool> */
     private array $tokens = [];
 
+    #[\Override]
     public function __toString(): string
     {
         if (isset($this->tokens['*'])) {

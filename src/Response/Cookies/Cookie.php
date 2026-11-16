@@ -24,6 +24,7 @@ final class Cookie implements \Stringable
         private bool $partitioned = false,
     ) {}
 
+    #[\Override]
     public function __toString(): string
     {
         $this->assertInvariants();

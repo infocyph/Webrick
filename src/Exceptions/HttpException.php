@@ -84,16 +84,19 @@ class HttpException extends \RuntimeException implements HttpExceptionInterface
     /**
      * @return array<string,string>
      */
+    #[\Override]
     public function getHeaders(): array
     {
         return $this->headers;
     }
 
+    #[\Override]
     public function getPublicMessage(): string
     {
         return $this->publicMessage;
     }
 
+    #[\Override]
     public function getStatusCode(): int
     {
         return $this->statusCode;

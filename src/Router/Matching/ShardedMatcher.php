@@ -78,6 +78,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     /** @var array<string,true> */
     private array $middlewareRequirements = [];
 
+    #[\Override]
     public function add(CompiledRoute $route): void
     {
         if ($this->finalized) {
@@ -132,6 +133,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             && $this->resolveActiveCacheDir() !== null;
     }
 
+    #[\Override]
     public function enableCache(string $cacheLocation): self
     {
         $this->cacheEnabled = true;
@@ -144,6 +146,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         return $this;
     }
 
+    #[\Override]
     public function enableCacheWrite(bool $enable = true): self
     {
         $this->cacheWriteEnabled = $enable;
@@ -151,6 +154,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         return $this;
     }
 
+    #[\Override]
     public function finalize(): void
     {
         if ($this->finalized) {
@@ -186,6 +190,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         $this->finalized = true;
     }
 
+    #[\Override]
     public function match(string $method, string $host, string $path): array
     {
         $verb = HttpMethodEnum::normalize($method);
@@ -205,11 +210,13 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         throw new RouteNotFoundException($verb, $path);
     }
 
+    #[\Override]
     public function matchCompiled(string $method, string $host, string $path): int|array|MatchOutcome
     {
         return $this->matchCompiledIr($method, $host, $path, true);
     }
 
+    #[\Override]
     public function matchOutcome(string $method, string $host, string $path): MatchOutcome
     {
         $this->finalize();
@@ -222,6 +229,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     }
 
     /** @return list<string> */
+    #[\Override]
     public function middlewareRequirements(): array
     {
         return !$this->cacheReadable

@@ -43,6 +43,7 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
         return $this->map;
     }
 
+    #[\Override]
     public function count(): int
     {
         return count($this->map);
@@ -65,6 +66,7 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
     }
 
     /** @return Traversable<string,list<string>> */
+    #[\Override]
     public function getIterator(): Traversable
     {
         return new ArrayIterator($this->map);
@@ -80,22 +82,26 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
         return ($values = $this->get($name)) ? implode(',', $values) : null;
     }
 
+    #[\Override]
     public function offsetExists(mixed $offset): bool
     {
         return is_string($offset) && $this->has($offset);
     }
 
     /** @return list<string> */
+    #[\Override]
     public function offsetGet(mixed $offset): array
     {
         return is_string($offset) ? $this->get($offset) : [];
     }
 
+    #[\Override]
     public function offsetSet(mixed $offset, mixed $value): void
     {
         throw new \LogicException('HeaderBag is immutable');
     }
 
+    #[\Override]
     public function offsetUnset(mixed $offset): void
     {
         throw new \LogicException('HeaderBag is immutable');

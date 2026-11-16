@@ -36,6 +36,7 @@ final readonly class RunwireInterMixScopeBridge implements RuntimeScopeBridgeInt
         return RunwireIntegration::registerInputs($builder);
     }
 
+    #[\Override]
     public function withinScope(
         InterMixRuntime $runtime,
         ?Request $request,

@@ -13,6 +13,7 @@ use Infocyph\Webrick\Runtime\Http\ResponseWriterSupport;
 /** For unit tests or CLI scripts: dumps an HTTP-like envelope to STDOUT. */
 final class CliEmitter implements EmitterInterface
 {
+    #[\Override]
     public function emit(Response $response, ?Request $request = null): void
     {
         $status = $response->getStatusCode() . ' ' . $response->getReasonPhrase();

@@ -136,6 +136,7 @@ final class CompiledRoute implements RouteInterface
         return $this->corsPolicy;
     }
 
+    #[\Override]
     public function getHandlerId(): string
     {
         return Route::fingerprint($this->handler);
@@ -238,17 +239,20 @@ final class CompiledRoute implements RouteInterface
         ];
     }
 
+    #[\Override]
     public function withDomain(?string $domain): self
     {
         return new self(...$this->copyProps(domain: $domain));
     }
 
     /** @param MiddlewareList $middleware */
+    #[\Override]
     public function withMiddleware(array $middleware): self
     {
         return new self(...$this->copyProps(middleware: [...$this->middleware, ...$middleware]));
     }
 
+    #[\Override]
     public function withName(string $name): self
     {
         return new self(...$this->copyProps(name: $name));

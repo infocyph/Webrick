@@ -50,12 +50,14 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
     /** @var list<string>|null */
     private ?array $cachedSegments = null;
 
+    #[\Override]
     protected function __clone(): void
     {
         parent::__clone();
         $this->resetDerivedCaches();
     }
 
+    #[\Override]
     public function __toString(): string
     {
         return json_encode($this->all(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
@@ -336,6 +338,7 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
     }
 
     /** @return array<string,mixed> */
+    #[\Override]
     public function jsonSerialize(): array
     {
         return $this->all();
@@ -397,6 +400,7 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return !$this->has($keys);
     }
 
+    #[\Override]
     public function offsetExists(mixed $offset): bool
     {
         $key = self::toStringKey($offset);
@@ -404,6 +408,7 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return $key !== null && $this->data($key) !== null;
     }
 
+    #[\Override]
     public function offsetGet(mixed $offset): mixed
     {
         $key = self::toStringKey($offset);
@@ -411,11 +416,13 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return $key === null ? null : $this->data($key);
     }
 
+    #[\Override]
     public function offsetSet(mixed $offset, mixed $value): void
     {
         throw new InvalidArgumentException('Request is immutable');
     }
 
+    #[\Override]
     public function offsetUnset(mixed $offset): void
     {
         throw new InvalidArgumentException('Request is immutable');

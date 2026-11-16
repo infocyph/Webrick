@@ -48,16 +48,19 @@ final readonly class RunwireRuntimeApplication implements RuntimeApplicationInte
         );
     }
 
+    #[\Override]
     public function cancelActive(CancellationReason $reason = CancellationReason::HOST_CANCELLED): void
     {
         $this->application->cancelActive($reason);
     }
 
+    #[\Override]
     public function drain(ShutdownReason $reason = ShutdownReason::SUPERVISOR_STOP): void
     {
         $this->application->drain($reason);
     }
 
+    #[\Override]
     public function handle(
         HttpRequest $request,
         ResponseWriterInterface $writer,
@@ -80,26 +83,31 @@ final readonly class RunwireRuntimeApplication implements RuntimeApplicationInte
         }
     }
 
+    #[\Override]
     public function healthFailure(): ?Throwable
     {
         return $this->application->healthFailure();
     }
 
+    #[\Override]
     public function healthy(): bool
     {
         return $this->application->healthy();
     }
 
+    #[\Override]
     public function shutdown(?ShutdownReason $reason = null): void
     {
         $this->application->shutdown($reason);
     }
 
+    #[\Override]
     public function snapshot(): RuntimeMetricsSnapshot
     {
         return $this->application->snapshot();
     }
 
+    #[\Override]
     public function start(): void
     {
         $this->application->start();

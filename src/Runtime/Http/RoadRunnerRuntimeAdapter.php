@@ -45,11 +45,13 @@ final readonly class RoadRunnerRuntimeAdapter implements RuntimeAdapterInterface
         $this->sendfileMiddleware = $sendfileMiddleware;
     }
 
+    #[\Override]
     public function capabilities(): RuntimeCapabilities
     {
         return $this->runtimeCapabilities;
     }
 
+    #[\Override]
     public function context(
         mixed $nativeRequest = null,
         mixed $nativeResponse = null,
@@ -97,6 +99,7 @@ final readonly class RoadRunnerRuntimeAdapter implements RuntimeAdapterInterface
         );
     }
 
+    #[\Override]
     public function write(Response $response, RuntimeRequestContext $context): void
     {
         $nativeRequest = $context->nativeRequest;

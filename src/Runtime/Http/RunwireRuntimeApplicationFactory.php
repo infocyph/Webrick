@@ -44,6 +44,7 @@ final readonly class RunwireRuntimeApplicationFactory implements RuntimeApplicat
         $this->shutdown = $shutdown === null ? null : Closure::fromCallable($shutdown);
     }
 
+    #[\Override]
     public function create(RuntimeContext $context): RuntimeApplicationInterface
     {
         return new RunwireRuntimeApplication(

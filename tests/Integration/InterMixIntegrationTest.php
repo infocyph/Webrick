@@ -95,6 +95,7 @@ if (! class_exists('InterMixDirectFactoryTaggedMiddleware', false)) {
 if (! class_exists('InterMixTestProvider', false)) {
     final readonly class InterMixTestProvider implements ServiceProviderInterface
     {
+        #[\Override]
         public function register(ContainerBuilder $builder): void
         {
             $builder->value(
@@ -367,6 +368,7 @@ describe('InterMix integration', function () {
         $builder = intermixBuilderForTest();
         $factory = new class implements ViewFactoryInterface
         {
+            #[\Override]
             public function render(string $view, array $data = []): string
             {
                 return "<h1>{$view}: ".($data['name'] ?? 'n/a').'</h1>';

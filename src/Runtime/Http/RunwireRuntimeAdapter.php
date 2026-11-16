@@ -62,11 +62,13 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
         );
     }
 
+    #[\Override]
     public function capabilities(): RuntimeCapabilities
     {
         return $this->runtimeCapabilities;
     }
 
+    #[\Override]
     public function context(mixed $nativeRequest = null, mixed $nativeResponse = null, bool $withHost = false): RuntimeRequestContext
     {
         if (!$nativeRequest instanceof HttpRequest || !$nativeResponse instanceof ResponseWriterInterface) {
@@ -128,6 +130,7 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
         );
     }
 
+    #[\Override]
     public function write(Response $response, RuntimeRequestContext $context): void
     {
         $request = $context->nativeRequest;

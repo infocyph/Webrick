@@ -41,11 +41,13 @@ final readonly class WorkermanRuntimeAdapter implements RuntimeAdapterInterface
         return new self($response, $chunk, $transportCompression, $transportRequestLimits);
     }
 
+    #[\Override]
     public function capabilities(): RuntimeCapabilities
     {
         return $this->runtimeCapabilities;
     }
 
+    #[\Override]
     public function context(mixed $nativeRequest = null, mixed $nativeResponse = null, bool $withHost = false): RuntimeRequestContext
     {
         if (!is_object($nativeRequest) || !is_object($nativeResponse)) {
@@ -82,6 +84,7 @@ final readonly class WorkermanRuntimeAdapter implements RuntimeAdapterInterface
         );
     }
 
+    #[\Override]
     public function write(Response $response, RuntimeRequestContext $context): void
     {
         $connection = $context->nativeResponse;

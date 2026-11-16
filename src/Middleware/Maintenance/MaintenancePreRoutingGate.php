@@ -38,6 +38,7 @@ final readonly class MaintenancePreRoutingGate implements PreRoutingGateInterfac
         $this->bypassPaths = self::normalizeBypassPaths($bypassPaths);
     }
 
+    #[\Override]
     public function evaluate(RoutingInput $routing): ?Response
     {
         if (isset($this->bypassPaths[$routing->path])) {

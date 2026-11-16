@@ -42,6 +42,7 @@ final class UploadedFileCollection implements ArrayAccess, Countable, IteratorAg
     /**
      * Returns the number of uploaded files in the collection.
      */
+    #[\Override]
     public function count(): int
     {
         return count($this->bag);
@@ -69,6 +70,7 @@ final class UploadedFileCollection implements ArrayAccess, Countable, IteratorAg
      *
      * @return Traversable<string, UploadedFile|array<mixed>> The iterator for the collection.
      */
+    #[\Override]
     public function getIterator(): Traversable
     {
         return new \ArrayIterator($this->bag);
@@ -91,6 +93,7 @@ final class UploadedFileCollection implements ArrayAccess, Countable, IteratorAg
      * @param mixed $offset The key to check for existence.
      * @return bool True if the offset exists, false otherwise.
      */
+    #[\Override]
     public function offsetExists(mixed $offset): bool
     {
         if (!\is_string($offset)) {
@@ -106,6 +109,7 @@ final class UploadedFileCollection implements ArrayAccess, Countable, IteratorAg
      * @param mixed $offset The key to retrieve.
      * @return mixed The associated value or null if not found.
      */
+    #[\Override]
     public function offsetGet(mixed $offset): mixed
     {
         if (!\is_string($offset)) {
@@ -123,6 +127,7 @@ final class UploadedFileCollection implements ArrayAccess, Countable, IteratorAg
      *
      * @throws \LogicException Always thrown as the collection is immutable.
      */
+    #[\Override]
     public function offsetSet(mixed $offset, mixed $value): void
     {
         throw new \LogicException('Immutable');
@@ -131,6 +136,7 @@ final class UploadedFileCollection implements ArrayAccess, Countable, IteratorAg
     /**
      * Attempting to unset a key will result in a LogicException as the collection is immutable.
      */
+    #[\Override]
     public function offsetUnset(mixed $offset): void
     {
         throw new \LogicException('Immutable');

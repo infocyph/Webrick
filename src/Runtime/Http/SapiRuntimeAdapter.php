@@ -66,11 +66,13 @@ final readonly class SapiRuntimeAdapter implements RuntimeAdapterInterface
         return new self(self::FINISH_NONE, PHP_SAPI, false, $transportCompression, $transportRequestLimits);
     }
 
+    #[\Override]
     public function capabilities(): RuntimeCapabilities
     {
         return $this->runtimeCapabilities;
     }
 
+    #[\Override]
     public function context(
         mixed $nativeRequest = null,
         mixed $nativeResponse = null,
@@ -85,6 +87,7 @@ final readonly class SapiRuntimeAdapter implements RuntimeAdapterInterface
         );
     }
 
+    #[\Override]
     public function write(Response $response, RuntimeRequestContext $context): void
     {
         $this->sendHeaders($response);

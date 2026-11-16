@@ -27,6 +27,7 @@ abstract class BaseEmitter implements EmitterInterface
     /** @var resource|null */
     private mixed $outputStream = null;
 
+    #[\Override]
     public function emit(Response $response, ?Request $request = null): void
     {
         $isStreaming = $response->isStreaming();

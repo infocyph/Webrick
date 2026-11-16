@@ -19,6 +19,7 @@ class TestLogger implements LoggerInterface
 {
     public array $records = [];
 
+    #[\Override]
     public function alert(string|Stringable $message, array $context = []): void
     {
         $this->log(LogLevel::ALERT, $message, $context);
@@ -29,21 +30,25 @@ class TestLogger implements LoggerInterface
         $this->records = [];
     }
 
+    #[\Override]
     public function critical(string|Stringable $message, array $context = []): void
     {
         $this->log(LogLevel::CRITICAL, $message, $context);
     }
 
+    #[\Override]
     public function debug(string|Stringable $message, array $context = []): void
     {
         $this->log(LogLevel::DEBUG, $message, $context);
     }
 
+    #[\Override]
     public function emergency(string|Stringable $message, array $context = []): void
     {
         $this->log(LogLevel::EMERGENCY, $message, $context);
     }
 
+    #[\Override]
     public function error(string|Stringable $message, array $context = []): void
     {
         $this->log(LogLevel::ERROR, $message, $context);
@@ -87,11 +92,13 @@ class TestLogger implements LoggerInterface
         return $this->hasRecords(LogLevel::WARNING);
     }
 
+    #[\Override]
     public function info(string|Stringable $message, array $context = []): void
     {
         $this->log(LogLevel::INFO, $message, $context);
     }
 
+    #[\Override]
     public function log($level, string|Stringable $message, array $context = []): void
     {
         $this->records[] = [
@@ -101,11 +108,13 @@ class TestLogger implements LoggerInterface
         ];
     }
 
+    #[\Override]
     public function notice(string|Stringable $message, array $context = []): void
     {
         $this->log(LogLevel::NOTICE, $message, $context);
     }
 
+    #[\Override]
     public function warning(string|Stringable $message, array $context = []): void
     {
         $this->log(LogLevel::WARNING, $message, $context);

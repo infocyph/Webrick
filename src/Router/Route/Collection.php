@@ -162,6 +162,7 @@ final class Collection implements IteratorAggregate
     }
 
     /** @return Traversable<int,RouteInterface> */
+    #[\Override]
     public function getIterator(): Traversable
     {
         return new ArrayIterator($this->routes);
