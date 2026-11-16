@@ -6,7 +6,6 @@ use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Matching\FusedMatcher;
 use Infocyph\Webrick\Router\Route\Collection;
-use Infocyph\Webrick\Router\Route\CompiledRoute;
 
 test('core routing does not load the optional CacheLayer package', function (): void {
     $loaded = [];
@@ -28,7 +27,7 @@ test('core routing does not load the optional CacheLayer package', function (): 
         $matcher->finalize();
         [$matched] = $matcher->match('GET', 'localhost', '/core');
 
-        expect($matched)->toBeInstanceOf(CompiledRoute::class)
+        expect($matched->getPath())->toBe('/core')
             ->and($loaded)->toBe([]);
     } finally {
         spl_autoload_unregister($guard);

@@ -120,7 +120,7 @@ describe('CompressionMiddleware', function () {
             return;
         }
 
-        expect($response->getHeaderLine('ETag'))->toBeString();
+        expect($response->getHeaderLine('ETag'))->not->toBe('');
     });
 
     it('emits zlib-wrapped bytes for HTTP deflate', function () {

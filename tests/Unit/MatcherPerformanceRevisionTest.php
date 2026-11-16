@@ -61,9 +61,9 @@ it('compiles safe regex routes and specializes built-in callable fallback segmen
     if (($orderSteps[0]['type'] ?? null) !== 'fallback') {
         throw new UnexpectedValueException('Built-in callable constraint must compile to fallback.');
     }
-    $fallbackSegments = $orderSteps[0]['segments'] ?? null;
-    if (!is_array($fallbackSegments) || !is_array($fallbackSegments[1] ?? null)) {
-        throw new UnexpectedValueException('Fallback IR must contain a typed second segment.');
+    $fallbackSegments = $orderSteps[0]['segments'];
+    if (!isset($fallbackSegments[1])) {
+        throw new UnexpectedValueException('Fallback IR must contain a second segment.');
     }
 
     expect($userSteps)->toHaveCount(1)
@@ -247,8 +247,7 @@ it('dispatches across multiple combined pcre chunks', function (Closure $factory
     }
     $matcher->finalize();
 
-    expect($last)->toBeInstanceOf(CompiledRoute::class)
-        ->and($matcher->matchCompiled('GET', '*', '/bulk/main/item-39/99'))
+    expect($matcher->matchCompiled('GET', '*', '/bulk/main/item-39/99'))
         ->toBe([$last->getIndex(), ['group' => 'main', 'id' => '99']]);
 })->with('compiled pcre ir matchers');
 
@@ -334,11 +333,11 @@ it('compiles one canonical dynamic shape into method-independent terminal metada
 
     $compiled = new CompiledMatcherIndexCompiler()->compile($index->hosts());
     $terminal = $compiled['*']['dynamic_allowed'][3]['terminal'];
-    if (($terminal['type'] ?? null) !== 'single') {
+    if ($terminal['type'] !== 'single') {
         throw new UnexpectedValueException('Uniform dynamic terminal must use the single-route shape.');
     }
-    $methods = $terminal['methods'] ?? null;
-    if (!is_array($methods)) {
+    $methods = $terminal['methods'];
+    if ($methods === []) {
         throw new UnexpectedValueException('Single-route terminal must declare allowed methods.');
     }
 

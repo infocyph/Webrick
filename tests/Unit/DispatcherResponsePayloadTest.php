@@ -45,7 +45,14 @@ test('fast dispatch preserves route handler array payloads', function (): void {
 
 test('middleware terminal preserves route handler array payloads', function (): void {
     $middleware = [
-        static fn(Request $request, Closure $next): Response => $next($request),
+        static function (Request $request, Closure $next): Response {
+            $response = $next($request);
+            if (!$response instanceof Response) {
+                throw new UnexpectedValueException('Dispatcher middleware must receive a Response.');
+            }
+
+            return $response;
+        },
     ];
 
     foreach ([

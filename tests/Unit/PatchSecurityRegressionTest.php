@@ -87,8 +87,16 @@ test('Forwarded host rejects quoted value suffixes and duplicate parameters', fu
 
 test('CORS marks every active origin variant for shared caches', function (array $headers): void {
     $middleware = new CorsMiddleware(origins: ['https://allowed.test']);
+    $validatedHeaders = [];
+    foreach ($headers as $name => $value) {
+        if (!is_string($name)) {
+            throw new UnexpectedValueException('CORS fixture header names must be strings.');
+        }
+        $validatedHeaders[$name] = $value;
+    }
+
     $response = $middleware(
-        Request::fake(headers: $headers),
+        Request::fake(headers: $validatedHeaders),
         static fn(): Response => Response::create('public')->withHeader('Vary', 'Accept'),
     );
 
@@ -129,6 +137,7 @@ test('response cache treats incomplete payloads as misses', function (): void {
 
 test('multiplexed SAPI responses exclude connection-specific fields', function (string $protocol): void {
     $emitter = new class extends BaseEmitter {
+        /** @var array<string,string> */
         public array $headers = [];
 
         public string $protocol;
@@ -259,7 +268,11 @@ test('unsigned HTTP decimals accept leading zeroes without admitting overflow', 
 test('late Vary requirements cannot store a tenant response under an unvaried key', function (bool $responseVary): void {
     $middleware = new ResponseCacheMiddleware(\Infocyph\CacheLayer\Cache\Cache::memory('patch-late-vary-' . (int) $responseVary));
     $next = static function (Request $request) use ($responseVary): Response {
-        $request->getAttribute(VaryContext::ATTRIBUTE)->add('X-Tenant');
+        $vary = $request->getAttribute(VaryContext::ATTRIBUTE);
+        if (!$vary instanceof VaryContext) {
+            throw new UnexpectedValueException('Tenant Vary context is missing.');
+        }
+        $vary->add('X-Tenant');
         $response = Response::create($request->getHeaderLine('X-Tenant'));
 
         return $responseVary ? $response->withHeader('Vary', 'X-Tenant') : $response;

@@ -56,9 +56,8 @@ describe('Route', function () {
         $fp1 = Route::fingerprint($handler1);
         $fp2 = Route::fingerprint($handler2);
 
-        expect($fp1)
-            ->toBeString()
-            ->and($fp2)->toBeString()
+        expect($fp1)->not->toBe('')
+            ->and($fp2)->not->toBe('')
             ->and($fp1)->not->toBe($fp2);
     });
 

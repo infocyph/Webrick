@@ -19,11 +19,9 @@ describe('Request', function () {
 
         $request = Request::fromGlobals();
 
-        expect($request)
-            ->toBeInstanceOf(Request::class)
-            ->getMethod()->toBe('GET')
-            ->getUri()->getPath()->toBe('/test')
-            ->getUri()->getHost()->toBe('example.com');
+        expect($request->getMethod())->toBe('GET')
+            ->and($request->getUri()->getPath())->toBe('/test')
+            ->and($request->getUri()->getHost())->toBe('example.com');
     });
 
     it('can be created with factory methods', function () {
@@ -284,7 +282,7 @@ describe('Request', function () {
         expect($request->getParsedBody())
             ->toBe(['name' => 'John', 'age' => '30'])
             ->and($request->input('name'))->toBe('John')
-            ->and((int) $request->input('age'))->toBe(30);
+            ->and($request->input('age'))->toBe('30');
     });
 
     it('handles JSON body', function () {

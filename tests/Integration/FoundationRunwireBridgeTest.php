@@ -95,12 +95,22 @@ final class FoundationRunwireProbe
                             throw new RuntimeException('Foundation structured child did not inherit ScopeContext.');
                         }
 
-                        return $runtime->withinScopeContext(
+                        $resolved = $runtime->withinScopeContext(
                             $captured,
-                            static fn(ProductionContainer $container): FoundationRunwireScopedMarker => $container->get(
-                                FoundationRunwireScopedMarker::class,
-                            ),
+                            static function (ProductionContainer $container): FoundationRunwireScopedMarker {
+                                $marker = $container->get(FoundationRunwireScopedMarker::class);
+                                if (!$marker instanceof FoundationRunwireScopedMarker) {
+                                    throw new RuntimeException('Structured child resolved a non-marker dependency.');
+                                }
+
+                                return $marker;
+                            },
                         );
+                        if (!$resolved instanceof FoundationRunwireScopedMarker) {
+                            throw new RuntimeException('Structured child returned an invalid scoped marker.');
+                        }
+
+                        return $resolved;
                     },
                 );
 

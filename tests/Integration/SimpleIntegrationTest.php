@@ -1,7 +1,6 @@
 <?php
 
 declare(strict_types=1);
-use Infocyph\Webrick\Router\Kernel\RouterKernel;
 
 require_once __DIR__.'/../IntegrationBootstrap.php';
 
@@ -12,7 +11,7 @@ describe('Simple Integration Tests', function () {
         $this->kernel = createTestKernel();
     });
     it('can create and use a RouterKernel', function () {
-        expect($this->kernel)->toBeInstanceOf(RouterKernel::class);
+        expect($this->kernel->handle(mockRequest('GET', '/ping'))->getStatusCode())->toBe(200);
     });
 
     it('routes return 200 OK status', function () {

@@ -193,7 +193,9 @@ describe('TelemetryMiddleware - Performance Timing', function () {
 
         $response = $kernel->handle(mockRequest('GET', '/api/slow'));
         $timing = $response->getHeaderLine('X-Response-Time');
-        preg_match('/^(\d+\.\d+)ms$/', $timing, $matches);
+        if (preg_match('/^(\d+\.\d+)ms$/', $timing, $matches) !== 1 || !isset($matches[1])) {
+            throw new UnexpectedValueException('Expected a numeric response-time header.');
+        }
 
         expect($response->getStatusCode())->toBe(200)
             ->and($timing)->toMatch('/^\d+\.\d+ms$/')

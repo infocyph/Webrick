@@ -245,9 +245,16 @@ test('runwire bridge seeds source-free native compiled inputs without rebuilding
             $resolved = runwire_bridge_require_scope($context)->withinScope($interMix, $request,
                 static function () use ($container, $interMix): array {
                     $scope = $interMix->captureScopeContext();
-                    $child = new Fiber(static fn(): array => $interMix->withinScopeContext($scope,
-                        static fn(): array => [$container->get(RunwireContext::class),
-                            $container->get(RunwireRequestContext::class), $container->get(Request::class)]));
+                    $child = new Fiber(static function () use ($interMix, $scope, $container): array {
+                        $value = $interMix->withinScopeContext($scope,
+                            static fn(): array => [$container->get(RunwireContext::class),
+                                $container->get(RunwireRequestContext::class), $container->get(Request::class)]);
+                        if (!is_array($value)) {
+                            throw new \UnexpectedValueException('Runwire child scope returned a non-array value.');
+                        }
+
+                        return $value;
+                    });
                     $child->start();
                     $result = $child->getReturn();
                     if (!is_array($result)) {
@@ -380,8 +387,12 @@ test('runwire bridge attaches an exact borrowed InterMix scope without opening a
                 },
             );
             $fiber->start();
+            $value = $fiber->getReturn();
+            if (!is_bool($value)) {
+                throw new \UnexpectedValueException('Runwire bridge child returned a non-boolean value.');
+            }
 
-            return $fiber->getReturn();
+            return $value;
         },
         [
             RunwireContext::class => $runtime,

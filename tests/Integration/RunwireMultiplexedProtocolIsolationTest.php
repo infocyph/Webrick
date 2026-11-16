@@ -423,21 +423,31 @@ final class RunwireMultiplexedProtocolIsolationTest extends TestCase
         ];
     }
 
+    /** @throws \UnexpectedValueException */
+    private static function checkedScalar(mixed $value, string $name): string
+    {
+        if (!is_string($value)) {
+            throw new \UnexpectedValueException("Expected string {$name} in multiplexed request.");
+        }
+
+        return $value;
+    }
+
     /** @return array<string,string|list<string>> */
     private static function payload(Request $request, string $label): array
     {
         return [
             'label' => $label,
             'method' => $request->getMethod(),
-            'query' => (string) $request->query('q'),
-            'cookie' => (string) $request->cookie('sid'),
+            'query' => self::checkedScalar($request->query('q'), 'query'),
+            'cookie' => self::checkedScalar($request->cookie('sid'), 'cookie'),
             'repeat' => $request->getHeader('X-Repeat'),
             'body' => (string) $request->getBody(),
             'protocol' => $request->getProtocolVersion(),
             'scheme' => $request->getUri()->getScheme(),
             'host' => $request->getUri()->getHost(),
-            'remote' => (string) $request->server('REMOTE_ADDR'),
-            'local' => (string) $request->server('SERVER_ADDR'),
+            'remote' => self::checkedScalar($request->server('REMOTE_ADDR'), 'server'),
+            'local' => self::checkedScalar($request->server('SERVER_ADDR'), 'server'),
         ];
     }
 

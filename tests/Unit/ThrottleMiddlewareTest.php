@@ -387,7 +387,7 @@ describe('ThrottleMiddleware', function () {
                 expect($allowed)->toBe($limit)
                     ->and($rejected)->toBe($attempts - $limit)
                     ->and($counterMap)->toHaveCount(1)
-                    ->and($counterEntry['value'] ?? null)->toBe($attempts);
+                    ->and($counterEntry['value'])->toBe($attempts);
             } finally {
                 if (is_file($counterPath) && !unlink($counterPath)) {
                     throw new RuntimeException("Unable to remove sequential throttle fixture: {$counterPath}");
@@ -470,7 +470,7 @@ describe('ThrottleMiddleware', function () {
             expect($allowed)->toBe($limit)
                 ->and($rejected)->toBe(($workers * $attemptsPerWorker) - $limit)
                 ->and($counterMap)->toHaveCount(1)
-                ->and($counterEntry['value'] ?? null)->toBe($workers * $attemptsPerWorker);
+                ->and($counterEntry['value'])->toBe($workers * $attemptsPerWorker);
         } finally {
             foreach (glob($directory . '/*') ?: [] as $file) {
                 if (is_file($file) && !unlink($file)) {
