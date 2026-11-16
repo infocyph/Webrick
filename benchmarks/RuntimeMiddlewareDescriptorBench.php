@@ -41,7 +41,10 @@ final class RuntimeMiddlewareDescriptorBench
         $terminal = static fn(Request $request): Response => Response::plaintext($request->getMethod(), 200);
 
         $this->directPipeline = new CompiledMiddlewarePipeline(
-            [static fn(Request $request, Closure $next): Response => $next($request)],
+            [static function (Request $request, Closure $next): Response {
+                /** @var Closure(Request):Response $next */
+                return $next($request);
+            }],
             $terminal,
             $this->runtime,
         );

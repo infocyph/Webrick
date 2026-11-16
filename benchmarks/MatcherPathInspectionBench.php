@@ -31,7 +31,7 @@ final class MatcherPathInspectionBench
             $count = substr_count($trimmed, '/') + 1;
         }
 
-        if ($count < 0 || $prefix === "\0") {
+        if ($prefix === "\0") {
             throw new \LogicException('Unreachable benchmark guard.');
         }
     }
@@ -49,15 +49,11 @@ final class MatcherPathInspectionBench
 
         $captured = [];
         foreach ($entry['params'] as $offset => $name) {
-            $piece = $matches[$offset + 1] ?? null;
-            if (!is_string($piece)) {
-                throw new \UnexpectedValueException('Benchmark capture is unavailable.');
-            }
-            $captured[$name] = $piece;
+            $captured[$name] = $matches[$offset + 1];
         }
 
         $result = [$entry['id'], $captured];
-        if ($result[0] !== 42) {
+        if (array_keys($captured) !== $entry['params']) {
             throw new \LogicException('Unreachable benchmark guard.');
         }
     }
@@ -74,8 +70,8 @@ final class MatcherPathInspectionBench
             $segments = $trimmed === '' ? [] : explode('/', $trimmed);
         }
 
-        if (count($segments) < 0) {
-            throw new \LogicException('Unreachable benchmark guard.');
+        if (isset($segments[0]) && $segments[0] === "\0") {
+            throw new \LogicException('Invalid benchmark segment.');
         }
     }
 
@@ -123,7 +119,7 @@ final class MatcherPathInspectionBench
             $prefix = substr($path, $start, $prefixEnd - $start);
         }
 
-        if ($count < 0 || $prefix === "\0") {
+        if ($prefix === "\0") {
             throw new \LogicException('Unreachable benchmark guard.');
         }
     }

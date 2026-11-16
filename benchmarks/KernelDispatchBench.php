@@ -49,10 +49,13 @@ final class KernelDispatchBench
             ->input(Request::class);
         $factoryBuilder->factory(
             'benchmark.middleware',
-            static fn(): Closure => static fn(
+            static fn(): Closure => static function (
                 Request $request,
                 Closure $next,
-            ): Response => $next($request),
+            ): Response {
+                /** @var Closure(Request):Response $next */
+                return $next($request);
+            },
             LifetimeEnum::Singleton,
             ['webrick.middleware.pre'],
         );
