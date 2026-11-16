@@ -119,3 +119,9 @@ No commit, tag, merge, publication, provider deployment or end-to-end security c
 ### Batch 01 documentation correction (2026-11-16)
 
 - Constructor PHPDoc normalized without changing implementation, existing tests or acceptance obligations.
+
+### Batch 02 — hosted baseline and decision-contract verification (2026-11-16)
+
+- Covered revision before this change: `b1dc88797aef7bc060fb90bdc0e1921c2415020e`, [GitHub Actions 43831667584](https://github.com/infocyph/Webrick/actions/runs/43831667584). Pest/QA PHP 8.4 and 8.5 stable/lowest: 4/4 passed; benchmark jobs 2/2 passed; PHPStan no-intl 630 errors; Psalm 2,224 errors; PHPForge analysis failed. Do not claim green static gates.
+- A02: inspect `RiskDecision::$score` and `$reasonCodes` in tests to confirm public metadata remains test-backed; A05: add associative and wrong-element reason inputs; exception contracts documented to address new Psalm review comments. These tests require execution on the new commit.
+- PR #59 review automation observed: five original PHPStan findings resolved, several Psalm `MissingThrowsDocblock` and public-property findings on `RiskDecision` remain awaiting fresh results. No automatic merge.

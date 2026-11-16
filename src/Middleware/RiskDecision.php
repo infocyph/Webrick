@@ -24,6 +24,7 @@ final readonly class RiskDecision
 
     /**
      * @param array<array-key,mixed> $reasonCodes
+     * @throws InvalidArgumentException If action, score or reason codes violate the contract.
      */
     private function __construct(
         public string $action,
@@ -46,25 +47,37 @@ final readonly class RiskDecision
         }
     }
 
-    /** @param array<array-key,mixed> $reasonCodes */
+    /**
+     * @param array<array-key,mixed> $reasonCodes
+     * @throws InvalidArgumentException If score or reason codes violate the contract.
+     */
     public static function allow(?int $score = null, array $reasonCodes = []): self
     {
         return new self(self::ALLOW, $score, $reasonCodes);
     }
 
-    /** @param array<array-key,mixed> $reasonCodes */
+    /**
+     * @param array<array-key,mixed> $reasonCodes
+     * @throws InvalidArgumentException If score or reason codes violate the contract.
+     */
     public static function challenge(?int $score = null, array $reasonCodes = []): self
     {
         return new self(self::CHALLENGE, $score, $reasonCodes);
     }
 
-    /** @param array<array-key,mixed> $reasonCodes */
+    /**
+     * @param array<array-key,mixed> $reasonCodes
+     * @throws InvalidArgumentException If score or reason codes violate the contract.
+     */
     public static function deny(?int $score = null, array $reasonCodes = []): self
     {
         return new self(self::DENY, $score, $reasonCodes);
     }
 
-    /** @param array<array-key,mixed> $reasonCodes */
+    /**
+     * @param array<array-key,mixed> $reasonCodes
+     * @throws InvalidArgumentException If score or reason codes violate the contract.
+     */
     public static function unavailable(?int $score = null, array $reasonCodes = []): self
     {
         return new self(self::UNAVAILABLE, $score, $reasonCodes);

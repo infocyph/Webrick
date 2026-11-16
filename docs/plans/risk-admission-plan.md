@@ -169,3 +169,9 @@ Keep these two files only while this feature has pending work. Record durable AP
 ### Batch 01 documentation correction (2026-11-16)
 
 - Merged constructor parameter and exception contracts into one PHPDoc block. CI validation pending.
+
+### Batch 02 — risk contract Psalm remediation (2026-11-16)
+
+- Baseline verified for exact SHA `b1dc88797aef7bc060fb90bdc0e1921c2415020e` via [hosted run 43831667584](https://github.com/infocyph/Webrick/actions/runs/43831667584): all four PHP 8.4/8.5 QA lanes and both benchmarks passed; no-intl PHPStan **630** findings (same count as pre-existing main), Psalm **2,224** (main previously 2,231). Analyzer gates still fail.
+- Open review feedback in PR #59: four Psalm `MissingThrowsDocblock` findings in `RiskDecision` and two unused public diagnostic property warnings; added explicit constructor and factory exception documentation, verified property access in unit contract fixtures, and covered associative/non-string reason metadata.
+- P1 A02/A05 unit checks expanded; registrar/compiled A09-A13, HEAD, host composition A14-A26, full analyzer cleanup, and release qualification remain pending. Next: verify this revision on hosted CI before closing its review findings.

@@ -27,6 +27,8 @@ test('risk admission passes an allow decision once with request-local metadata',
     });
 
     expect($calls)->toBe(1);
+    expect($decision->score)->toBe(5);
+    expect($decision->reasonCodes)->toBe(['known_device']);
     expect($response->getStatusCode())->toBe(200);
 });
 
@@ -92,6 +94,8 @@ test('risk admission rejects invalid mode and malformed reason metadata', functi
     expect(fn(): RiskDecision => RiskDecision::deny(-1))->toThrow(InvalidArgumentException::class);
     expect(fn(): RiskDecision => RiskDecision::deny(null, ['token=secret']))->toThrow(InvalidArgumentException::class);
     expect(fn(): RiskDecision => RiskDecision::deny(null, array_fill(0, 9, 'reason')))->toThrow(InvalidArgumentException::class);
+    expect(fn(): RiskDecision => RiskDecision::deny(null, ['reason' => 'value']))->toThrow(InvalidArgumentException::class);
+    expect(fn(): RiskDecision => RiskDecision::deny(null, [false]))->toThrow(InvalidArgumentException::class);
     expect(fn(): RiskAdmissionMiddleware => new RiskAdmissionMiddleware(static fn(): RiskDecision => RiskDecision::allow(), mode: 'disabled'))
         ->toThrow(InvalidArgumentException::class);
 });
