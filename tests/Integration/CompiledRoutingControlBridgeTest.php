@@ -213,7 +213,6 @@ final class CompiledRoutingControlBridgeTest extends TestCase
         }
     }
 
-
     /**
      * The release manifest must reject altered executable router bytes even
      * when the attacker also updates the artifact's adjacent metadata digest.
@@ -246,14 +245,15 @@ final class CompiledRoutingControlBridgeTest extends TestCase
             );
 
             $source = file_get_contents($routerPath);
-            if (!is_string($source) || !str_starts_with($source, "<?php\n")) {
-                throw new \RuntimeException('Compiled router fixture must begin with a PHP opening tag.');
+            $prologue = "<?php\n\ndeclare(strict_types=1);\n\n";
+            if (!is_string($source) || !str_starts_with($source, $prologue)) {
+                throw new \RuntimeException('Compiled router fixture must begin with the strict PHP declaration.');
             }
 
-            $tampered = "<?php\nfile_put_contents("
+            $tampered = $prologue . 'file_put_contents('
                 . var_export($markerPath, true)
                 . ", 'executed');\n"
-                . substr($source, strlen("<?php\n"));
+                . substr($source, strlen($prologue));
             if (file_put_contents($routerPath, $tampered) === false) {
                 throw new \RuntimeException('Unable to prepare altered router artifact fixture.');
             }

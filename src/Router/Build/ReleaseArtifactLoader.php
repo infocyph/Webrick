@@ -124,9 +124,6 @@ final readonly class ReleaseArtifactLoader
         if (!hash_equals($expected['fingerprint'], $artifact->artifactFingerprint)) {
             throw new RuntimeException('Webrick router artifact fingerprint does not match the coordinated release.');
         }
-        if ($expected['meta'] !== $expected['path'] . '.meta.json') {
-            throw new RuntimeException('Webrick router metadata path does not match the coordinated release artifact.');
-        }
         if (count($artifact->routes()) !== $expected['routes']) {
             throw new RuntimeException('Webrick router route count does not match the coordinated release.');
         }
@@ -140,6 +137,9 @@ final readonly class ReleaseArtifactLoader
      */
     private function assertWebrickArtifactDigest(array $expected): void
     {
+        if ($expected['meta'] !== $expected['path'] . '.meta.json') {
+            throw new RuntimeException('Webrick router metadata path does not match the coordinated release artifact.');
+        }
         $digest = hash_file('xxh128', $expected['path']);
         if (!is_string($digest) || !hash_equals($expected['digest'], $digest)) {
             throw new RuntimeException('Webrick router artifact digest does not match the coordinated release.');
