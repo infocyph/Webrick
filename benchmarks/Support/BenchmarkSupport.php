@@ -50,8 +50,6 @@ final class BenchmarkSupport
 
     /**
      * @return list<CompiledRoute>
-     */
-    /**
      * @throws \RuntimeException
      */
     public static function compiledRoutesFor(string $routeSet): array
@@ -171,8 +169,6 @@ final class BenchmarkSupport
 
     /**
      * @param array<string, string> $extraQuery
-     */
-    /**
      * @throws \Infocyph\Webrick\Exceptions\HttpException
      * @throws \InvalidArgumentException
      */
@@ -328,8 +324,6 @@ final class BenchmarkSupport
 
     /**
      * @throws \InvalidArgumentException
-     */
-    /**
      * @throws \LogicException
      */
     private static function registerIndexRoutes(Registrar $registrar): void
