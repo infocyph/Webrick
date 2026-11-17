@@ -23,7 +23,13 @@ final class MatcherTypedConstraintBench
     /** @var array<string,MatcherInterface> */
     private static array $matchers = [];
 
-    /** @param array{matcher:string,path:non-empty-string} $params */
+    /**
+     * @param array{matcher:string,path:non-empty-string} $params
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     */
     #[Bench\ParamProviders('provideCases')]
     public function benchTypedConstraint(array $params): void
     {

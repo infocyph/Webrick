@@ -21,7 +21,13 @@ final class MatcherMethodTerminalBench
     /** @var array<string,MatcherInterface> */
     private static array $matchers = [];
 
-    /** @param array{matcher:string,method:non-empty-string,path:non-empty-string} $params */
+    /**
+     * @param array{matcher:string,method:non-empty-string,path:non-empty-string} $params
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     */
     #[Bench\ParamProviders('provideCases')]
     public function benchMethodTerminal(array $params): void
     {

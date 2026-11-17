@@ -51,16 +51,28 @@ final class BenchmarkSupport
     /**
      * @return list<CompiledRoute>
      */
+    /**
+     * @throws \RuntimeException
+     */
     public static function compiledRoutesFor(string $routeSet): array
     {
         return self::compiledRoutes($routeSet);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public static function createSignedGenerator(SignedUrlConfig $config): UrlGenerator
     {
         return self::buildSignedUrlGenerator($config);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     */
     public static function freshSyntheticMatcher(int $routeCount, string $matcher): MatcherInterface
     {
         return self::buildMatcher('scale-' . $routeCount, $matcher);
@@ -132,6 +144,10 @@ final class BenchmarkSupport
         };
     }
 
+    /**
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     * @throws \InvalidArgumentException
+     */
     public static function verifyAbsoluteSignedUrl(): Response
     {
         return self::verifySignedUrl(
@@ -141,6 +157,10 @@ final class BenchmarkSupport
         );
     }
 
+    /**
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     * @throws \InvalidArgumentException
+     */
     public static function verifyRelativeSignedUrl(): Response
     {
         return self::verifySignedUrl(
@@ -151,6 +171,10 @@ final class BenchmarkSupport
 
     /**
      * @param array<string, string> $extraQuery
+     */
+    /**
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     * @throws \InvalidArgumentException
      */
     public static function verifySignedUrlResponse(
         string $signedUrl,
@@ -304,6 +328,9 @@ final class BenchmarkSupport
 
     /**
      * @throws \InvalidArgumentException
+     */
+    /**
+     * @throws \LogicException
      */
     private static function registerIndexRoutes(Registrar $registrar): void
     {

@@ -72,6 +72,10 @@ final readonly class SapiRuntimeAdapter implements RuntimeAdapterInterface
         return $this->runtimeCapabilities;
     }
 
+    /**
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     * @throws \InvalidArgumentException
+     */
     #[\Override]
     public function context(
         mixed $nativeRequest = null,
@@ -87,6 +91,10 @@ final readonly class SapiRuntimeAdapter implements RuntimeAdapterInterface
         );
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     #[\Override]
     public function write(Response $response, RuntimeRequestContext $context): void
     {
@@ -125,6 +133,9 @@ final readonly class SapiRuntimeAdapter implements RuntimeAdapterInterface
         };
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function sendHeaders(Response $response): void
     {
         if (headers_sent()) {
