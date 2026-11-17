@@ -209,14 +209,7 @@ final readonly class ReleaseArtifactLoader
             }
         }
 
-        if (array_key_exists('source_sha256', $metadata)) {
-            $sourceSha256 = $metadata['source_sha256'];
-            if (!is_string($sourceSha256) || preg_match('/^[a-f0-9]{64}$/D', $sourceSha256) !== 1) {
-                throw new UnexpectedValueException('Coordinated release InterMix source_sha256 must be SHA-256.');
-            }
-        } else {
-            $sourceSha256 = null;
-        }
+        $sourceSha256 = self::optionalSourceSha256($metadata, 'InterMix');
 
         $compiled = $this->stringList($metadata['compiled'] ?? null, 'InterMix compiled IDs');
         $skipped = $this->stringMap($metadata['skipped'] ?? null, 'InterMix skipped IDs');
@@ -231,6 +224,24 @@ final readonly class ReleaseArtifactLoader
             'compiled' => $compiled,
             'skipped' => $skipped,
         ];
+    }
+
+    /**
+     * @param array<array-key,mixed> $metadata
+     * @throws \UnexpectedValueException
+     */
+    private static function optionalSourceSha256(array $metadata, string $label): ?string
+    {
+        if (!array_key_exists('source_sha256', $metadata)) {
+            return null;
+        }
+
+        $sourceSha256 = $metadata['source_sha256'];
+        if (!is_string($sourceSha256) || preg_match('/^[a-f0-9]{64}$/D', $sourceSha256) !== 1) {
+            throw new UnexpectedValueException("Coordinated release {$label} source_sha256 must be SHA-256.");
+        }
+
+        return $sourceSha256;
     }
 
     /**
@@ -306,14 +317,7 @@ final readonly class ReleaseArtifactLoader
             throw new UnexpectedValueException('Coordinated release has malformed Webrick artifact identity.');
         }
 
-        if (array_key_exists('source_sha256', $metadata)) {
-            $sourceSha256 = $metadata['source_sha256'];
-            if (!is_string($sourceSha256) || preg_match('/^[a-f0-9]{64}$/D', $sourceSha256) !== 1) {
-                throw new UnexpectedValueException('Coordinated release Webrick source_sha256 must be SHA-256.');
-            }
-        } else {
-            $sourceSha256 = null;
-        }
+        $sourceSha256 = self::optionalSourceSha256($metadata, 'Webrick');
 
         return [
             'path' => $metadata['path'],

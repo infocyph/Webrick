@@ -317,6 +317,88 @@ final class CompiledRoutingControlBridgeTest extends TestCase
         }
     }
 
+
+    /**
+     * Keep format-3 release bundles loadable while requiring the stronger
+     * pre-execution digest whenever the manifest supplies source_sha256.
+     *
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     * @throws \UnexpectedValueException
+     * @throws \LogicException
+     */
+    public function testCoordinatedReleasePreservesLegacySourceDigestFallback(): void
+    {
+        [$intermixPath, $routerPath] = self::artifactPaths('legacy-source-digest');
+        $releasePath = $routerPath . '.release.json';
+        $builder = ContainerBuilder::create('webrick_legacy_source_' . bin2hex(random_bytes(4)));
+
+        try {
+            $manifest = new ReleaseCompiler()->compile(
+                builder: $builder,
+                register: static function (Registrar $registrar): void {
+                    $registrar->get('/legacy', static fn(): Response => Response::plaintext('legacy-ok', 200));
+                },
+                environment: 'production',
+                configFingerprint: 'legacy-source',
+                intermixPath: $intermixPath,
+                routerPath: $routerPath,
+                releaseManifestPath: $releasePath,
+                preGlobalTags: [],
+                postGlobalTags: [],
+            );
+            self::assertReleaseFixture($manifest);
+
+            // Deliberately wrong but syntactically valid SHA: legacy xxh128 still matches.
+            $manifest['webrick']['source_sha256'] = str_repeat('0', 64);
+            $manifest['release_fingerprint'] = ReleaseCompiler::fingerprintManifest($manifest);
+            file_put_contents($releasePath, json_encode($manifest, JSON_THROW_ON_ERROR));
+
+            try {
+                CompiledRouterKernel::fromReleaseManifest(
+                    log: new NullLogger(),
+                    matcher: FusedMatcher::make(),
+                    builder: $builder,
+                    releaseManifestPath: $releasePath,
+                    environment: 'production',
+                    configFingerprint: 'legacy-source',
+                );
+                self::fail('Expected SHA-256 mismatch before executable router load.');
+            } catch (\RuntimeException $exception) {
+                self::assertStringContainsString(
+                    'Webrick router artifact digest does not match the coordinated release.',
+                    $exception->getMessage(),
+                );
+            }
+
+            // A previous format-3 manifest without SHA fields remains supported.
+            unset($manifest['intermix']['source_sha256'], $manifest['webrick']['source_sha256']);
+            $manifest['release_fingerprint'] = ReleaseCompiler::fingerprintManifest($manifest);
+            file_put_contents($releasePath, json_encode($manifest, JSON_THROW_ON_ERROR));
+
+            $kernel = CompiledRouterKernel::fromReleaseManifest(
+                log: new NullLogger(),
+                matcher: FusedMatcher::make(),
+                builder: $builder,
+                releaseManifestPath: $releasePath,
+                environment: 'production',
+                configFingerprint: 'legacy-source',
+            );
+
+            self::assertSame(
+                'legacy-ok',
+                (string) $kernel->handle(Request::fake(uri: 'http://localhost/legacy'))->getBody(),
+            );
+        } finally {
+            self::cleanup([$intermixPath, $routerPath]);
+            foreach ([$releasePath, ReleaseCompiler::runtimeManifestPath($releasePath)] as $candidate) {
+                if (is_file($candidate)) {
+                    unlink($candidate);
+                }
+            }
+        }
+    }
+
     /**
      * @throws \RuntimeException
      * @throws \InvalidArgumentException
