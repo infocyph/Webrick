@@ -456,14 +456,7 @@ final class CompiledRoute implements RouteInterface
         }
         $middleware = [];
         foreach ($value as $entry) {
-            $descriptor = self::stateHandler($entry);
-            if (is_string($descriptor) || is_object($descriptor) || is_array($descriptor)) {
-                $middleware[] = $descriptor;
-
-                continue;
-            }
-
-            throw new \UnexpectedValueException('Invalid middleware descriptor in compiled route state.');
+            $middleware[] = self::stateHandler($entry);
         }
 
         return $middleware;

@@ -48,6 +48,18 @@ final class RouterArtifactLoader
             throw new UnexpectedValueException('Trusted Webrick artifact fingerprint must be a lowercase xxh128 digest.');
         }
 
+        // A prevalidated payload is executable PHP. Reject altered source bytes
+        // before require; checking only the returned fingerprint would be too late.
+        $meta = $this->readMeta($path);
+        self::assertMetaIdentity($meta, $expectedEnvironment, $expectedConfigFingerprint);
+        if (!hash_equals($trustedArtifactFingerprint, $meta['artifact_fingerprint'])) {
+            throw new RuntimeException('Trusted Webrick artifact fingerprint does not match the release manifest.');
+        }
+        $digest = hash_file('xxh128', $path);
+        if (!is_string($digest) || !hash_equals($meta['digest'], $digest)) {
+            throw new RuntimeException('Webrick router artifact digest mismatch.');
+        }
+
         $payload = $this->requirePayload($path);
         $payloadFingerprint = $payload['artifact_fingerprint'] ?? null;
         if (!is_string($payloadFingerprint) || !hash_equals($trustedArtifactFingerprint, $payloadFingerprint)) {

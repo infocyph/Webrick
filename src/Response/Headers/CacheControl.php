@@ -264,7 +264,8 @@ final class CacheControl implements \Stringable
     private static function ingestExtensionOrBoolean(array &$model, string $name, ?string $value): void
     {
         if (isset(self::PRIVACY_TOKENS[$name])) {
-            $model['privacy'][$name] = true;
+            $model['privacy']['public'] = $model['privacy']['public'] || $name === 'public';
+            $model['privacy']['private'] = $model['privacy']['private'] || $name === 'private';
 
             return;
         }
