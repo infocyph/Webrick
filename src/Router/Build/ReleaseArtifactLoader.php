@@ -60,24 +60,6 @@ final readonly class ReleaseArtifactLoader
     }
 
     /**
-     * @param array<array-key,mixed> $metadata
-     * @throws \UnexpectedValueException
-     */
-    private static function optionalSourceSha256(array $metadata, string $label): ?string
-    {
-        if (!array_key_exists('source_sha256', $metadata)) {
-            return null;
-        }
-
-        $sourceSha256 = $metadata['source_sha256'];
-        if (!is_string($sourceSha256) || preg_match('/^[a-f0-9]{64}$/D', $sourceSha256) !== 1) {
-            throw new UnexpectedValueException("Coordinated release {$label} source_sha256 must be SHA-256.");
-        }
-
-        return $sourceSha256;
-    }
-
-    /**
      * @param array{path:string,digest:string,source_sha256:?string,graph:string,build:string,artifact:string,compiled:list<string>,skipped:array<string,string>} $expected
      * @throws \RuntimeException
      */
@@ -227,7 +209,7 @@ final readonly class ReleaseArtifactLoader
             }
         }
 
-        $sourceSha256 = self::optionalSourceSha256($metadata, 'InterMix');
+        $sourceSha256 = $this->optionalSourceSha256($metadata, 'InterMix');
 
         $compiled = $this->stringList($metadata['compiled'] ?? null, 'InterMix compiled IDs');
         $skipped = $this->stringMap($metadata['skipped'] ?? null, 'InterMix skipped IDs');
@@ -244,6 +226,23 @@ final readonly class ReleaseArtifactLoader
         ];
     }
 
+    /**
+     * @param array<array-key,mixed> $metadata
+     * @throws \UnexpectedValueException
+     */
+    private function optionalSourceSha256(array $metadata, string $label): ?string
+    {
+        if (!array_key_exists('source_sha256', $metadata)) {
+            return null;
+        }
+
+        $sourceSha256 = $metadata['source_sha256'];
+        if (!is_string($sourceSha256) || preg_match('/^[a-f0-9]{64}$/D', $sourceSha256) !== 1) {
+            throw new UnexpectedValueException("Coordinated release {$label} source_sha256 must be SHA-256.");
+        }
+
+        return $sourceSha256;
+    }
 
     /**
      * @return array<string,mixed>
@@ -318,7 +317,7 @@ final readonly class ReleaseArtifactLoader
             throw new UnexpectedValueException('Coordinated release has malformed Webrick artifact identity.');
         }
 
-        $sourceSha256 = self::optionalSourceSha256($metadata, 'Webrick');
+        $sourceSha256 = $this->optionalSourceSha256($metadata, 'Webrick');
 
         return [
             'path' => $metadata['path'],
