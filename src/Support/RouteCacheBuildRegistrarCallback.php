@@ -38,6 +38,8 @@ final readonly class RouteCacheBuildRegistrarCallback
             // Route sources are executable PHP. Reject wrappers before is_file() or require.
             if (
                 str_contains($this->routesFile, "\0")
+                || str_starts_with($this->routesFile, '//')
+                || str_starts_with($this->routesFile, '\\\\')
                 || preg_match('~^[a-z][a-z0-9.+-]*://~i', $this->routesFile) === 1
             ) {
                 throw new \InvalidArgumentException('Routes file must be a local filesystem path.');

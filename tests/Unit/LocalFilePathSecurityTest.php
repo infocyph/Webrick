@@ -82,3 +82,18 @@ test('NUL bytes are rejected at uploaded-file and file-response path boundaries'
     expect(fn (): FileBody => new FileBody($invalid))
         ->toThrow(RuntimeException::class, 'Unreadable response file');
 });
+
+test('UNC/network-share paths cannot become upload sources, targets or file responses', function (string $path): void {
+    expect(fn(): UploadedFile => new UploadedFile($path))
+        ->toThrow(InvalidArgumentException::class, 'local filesystem path');
+
+    $upload = new UploadedFile(new Stream('safe upload'));
+    expect(fn() => $upload->moveTo($path))
+        ->toThrow(InvalidArgumentException::class, 'local filesystem path');
+
+    expect(fn(): FileBody => new FileBody($path))
+        ->toThrow(RuntimeException::class, 'Unreadable response file');
+})->with([
+    '//untrusted.invalid/share/upload.dat',
+    chr(92) . chr(92) . 'untrusted.invalid' . chr(92) . 'share' . chr(92) . 'upload.dat',
+]);

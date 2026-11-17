@@ -25,6 +25,8 @@ test('route-cache builder rejects stream wrappers and NUL before including PHP',
     'phar://untrusted.phar/routes.php',
     'https://example.invalid/routes.php',
     'file:///tmp/routes.php',
+    '//untrusted.invalid/share/routes.php',
+    chr(92) . chr(92) . 'untrusted.invalid' . chr(92) . 'share' . chr(92) . 'routes.php',
     sys_get_temp_dir() . '/routes' . chr(0) . '.php',
 ]);
 

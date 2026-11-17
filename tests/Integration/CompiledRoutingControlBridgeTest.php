@@ -267,6 +267,8 @@ final class CompiledRoutingControlBridgeTest extends TestCase
                 'php://filter/resource=/etc/passwd',
                 'phar://untrusted.phar/routes.php',
                 'https://example.invalid/compiled.php',
+                '//untrusted.invalid/share/compiled.php',
+                chr(92) . chr(92) . 'untrusted.invalid' . chr(92) . 'share' . chr(92) . 'compiled.php',
                 $routerPath . chr(0) . '.php',
             ] as $untrustedPath) {
                 $altered = $manifest;

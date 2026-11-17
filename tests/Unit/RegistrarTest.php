@@ -85,6 +85,11 @@ describe('Registrar', function () {
         $update = $this->routes->findByName('posts.update');
         $destroy = $this->routes->findByName('posts.destroy');
 
+        if (!$index instanceof RouteInterface || !$store instanceof RouteInterface
+            || !$update instanceof RouteInterface || !$destroy instanceof RouteInterface) {
+            throw new LogicException('Expected all resource route methods to be registered.');
+        }
+
         expect($index)->not
             ->toBeNull()
             ->and($create)->not
@@ -99,11 +104,6 @@ describe('Registrar', function () {
             ->toBeNull()
             ->and($destroy)->not
             ->toBeNull();
-
-        if (!$index instanceof RouteInterface || !$store instanceof RouteInterface
-            || !$update instanceof RouteInterface || !$destroy instanceof RouteInterface) {
-            throw new LogicException('Expected all resource route methods to be registered.');
-        }
 
         expect($index->getMethod())->toBe('GET')
             ->and($store->getMethod())->toBe('POST')

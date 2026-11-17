@@ -59,7 +59,7 @@ final class RouterArtifactCompiler
      */
     public function compile(RouterBuildResult $build, string $path): array
     {
-        if ($path === '' || str_contains($path, "\0") || preg_match('~^[a-z][a-z0-9.+-]*://~i', $path) === 1) {
+        if ($path === '' || str_contains($path, "\0") || str_starts_with($path, '//') || str_starts_with($path, '\\\\') || preg_match('~^[a-z][a-z0-9.+-]*://~i', $path) === 1) {
             throw new UnexpectedValueException('Compiled Webrick router artifact must use a local filesystem path.');
         }
 

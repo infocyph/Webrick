@@ -13,6 +13,8 @@ test('router artifact loader rejects stream-wrapper paths on both trust paths', 
         'php://filter/resource=/etc/passwd',
         'phar://untrusted.phar/routes.php',
         'https://example.invalid/compiled.php',
+        '//untrusted.invalid/share/compiled.php',
+        chr(92) . chr(92) . 'untrusted.invalid' . chr(92) . 'share' . chr(92) . 'compiled.php',
     ] as $path) {
         expect(fn() => $loader->load($path, 'production', 'fingerprint'))
             ->toThrow(UnexpectedValueException::class, 'local filesystem path');
@@ -101,6 +103,8 @@ test('router artifact compiler rejects non-local paths before any filesystem sid
     'HTTPS stream wrapper' => ['https://example.invalid/router.php'],
     'file stream wrapper' => ['file:///tmp/router.php'],
     'actual NUL' => [sys_get_temp_dir() . '/router' . chr(0) . '.php'],
+    'slash UNC' => ['//untrusted.invalid/share/router.php'],
+    'backslash UNC' => [chr(92) . chr(92) . 'untrusted.invalid' . chr(92) . 'share' . chr(92) . 'router.php'],
 ]);
 
 test('router artifact compiler still publishes loadable local PHP and metadata', function (): void {
