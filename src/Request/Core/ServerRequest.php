@@ -12,9 +12,7 @@ use Infocyph\Webrick\Support\HttpUtils;
 use InvalidArgumentException;
 
 /**
- * Native Webrick server-request model. Each request has separate taint provenance.
- *
- * @psalm-taint-specialize
+ * Native Webrick server-request model.
  */
 class ServerRequest extends Message
 {

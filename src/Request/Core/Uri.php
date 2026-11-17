@@ -7,9 +7,7 @@ namespace Infocyph\Webrick\Request\Core;
 use InvalidArgumentException;
 
 /**
- * Per-instance URI components must retain their independent taint provenance.
- *
- * @psalm-taint-specialize
+ * Per-instance URI components are stored as independent mutable values.
  */
 final class Uri implements \Stringable
 {

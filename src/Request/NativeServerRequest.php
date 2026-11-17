@@ -20,7 +20,6 @@ use RuntimeException;
  * Native Webrick request surface with explicit structured-payload parse states.
  *
  * @api
- * @psalm-taint-specialize
  */
 class NativeServerRequest extends ServerRequest
 {
