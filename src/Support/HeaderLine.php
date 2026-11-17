@@ -15,10 +15,8 @@ final readonly class HeaderLine
 
     /**
      * The token grammar and CR/LF/NUL check prevent HTTP response splitting.
-     * Preserve non-header taints through the validated result.
+     * Valid names and values are passed through unchanged.
      *
-     * @psalm-taint-escape header
-     * @psalm-flow ($name, $value) -> return
      * @throws \InvalidArgumentException
      */
     public static function validated(string $name, string $value): string
