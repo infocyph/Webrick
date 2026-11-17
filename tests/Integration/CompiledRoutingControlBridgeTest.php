@@ -135,6 +135,7 @@ final class CompiledRoutingControlBridgeTest extends TestCase
      * @throws \InvalidArgumentException
      * @throws \RuntimeException
      * @throws \UnexpectedValueException
+     * @throws \LogicException
      */
     public function testCoordinatedReleaseBootRejectsStaleAndObsoleteMetadata(): void
     {
@@ -208,6 +209,7 @@ final class CompiledRoutingControlBridgeTest extends TestCase
 
     /**
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException
      */
     public function testCoordinatedReleaseRejectsObsoleteManifestFormat(): void
     {
@@ -379,6 +381,7 @@ final class CompiledRoutingControlBridgeTest extends TestCase
      * @throws \InvalidArgumentException
      * @throws \RuntimeException
      * @throws \UnexpectedValueException
+     * @throws \LogicException
      */
     #[DataProvider('compiledReleaseBootModes')]
     public function testNativeRequestInputsAndHostAutoBindingSurviveCompiledBoot(
@@ -512,6 +515,7 @@ final class CompiledRoutingControlBridgeTest extends TestCase
     /**
      * @throws \InvalidArgumentException
      * @throws \RuntimeException
+     * @throws \LogicException
      */
     public function testDefaultRoutingControlsStayIndependentFromApplicationErrors(): void
     {
@@ -564,6 +568,7 @@ final class CompiledRoutingControlBridgeTest extends TestCase
     /**
      * @throws \InvalidArgumentException
      * @throws \RuntimeException
+     * @throws \LogicException
      */
     public function testRoutingControlsUseApplicationErrorHandlerOnlyWhenEnabled(): void
     {

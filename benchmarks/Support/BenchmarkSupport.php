@@ -59,6 +59,7 @@ final class BenchmarkSupport
 
     /**
      * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     public static function createSignedGenerator(SignedUrlConfig $config): UrlGenerator
     {
@@ -218,6 +219,7 @@ final class BenchmarkSupport
      * @return list<CompiledRoute>
      * @throws \InvalidArgumentException
      * @throws \RuntimeException
+     * @throws \LogicException
      */
     private static function buildCompiledRoutes(callable $register): array
     {
@@ -269,6 +271,7 @@ final class BenchmarkSupport
     /**
      * @throws \InvalidArgumentException
      * @throws \LogicException
+     * @throws \RuntimeException
      */
     private static function buildSignedUrlGenerator(SignedUrlConfig $config): UrlGenerator
     {

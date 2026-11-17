@@ -158,6 +158,7 @@ final class RunwireResponsePressureCancellationTest extends TestCase
      * @throws \InvalidArgumentException
      * @throws \LogicException
      * @throws \OverflowException
+     * @throws \Throwable
      */
     public function testCancellationReleasesAResponseSuspendedOnTransportPressure(): void
     {

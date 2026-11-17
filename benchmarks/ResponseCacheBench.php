@@ -37,6 +37,7 @@ final class ResponseCacheBench
 
     /**
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException
      */
     #[Bench\BeforeMethods('setUp')]
     public function benchHit(): void
@@ -46,6 +47,7 @@ final class ResponseCacheBench
 
     /**
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException
      */
     #[Bench\BeforeMethods('setUp')]
     public function benchMissAndWrite(): void

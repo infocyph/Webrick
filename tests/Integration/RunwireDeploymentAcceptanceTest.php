@@ -208,6 +208,9 @@ final class RunwireDeploymentAcceptanceTest extends TestCase
         }
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function testGenericSapiAdapterRemainsAnIndependentFirstClassPath(): void
     {
         $capabilities = SapiRuntimeAdapter::current()->capabilities();
@@ -220,6 +223,7 @@ final class RunwireDeploymentAcceptanceTest extends TestCase
 
     /**
      * @throws \InvalidArgumentException
+     * @throws \OverflowException
      */
     private static function assertApplicationFactoryAcceptsSelection(RuntimeSelection $selection, string $mode): void
     {

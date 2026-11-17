@@ -441,6 +441,7 @@ final class RunwireHttp1ParityTest extends TestCase
 
     /**
      * @throws \Infocyph\Runwire\Exception\CancelledException
+     * @throws \Throwable
      */
     private static function dispatch(
         RunwireRuntimeApplication $application,

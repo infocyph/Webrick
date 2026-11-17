@@ -66,12 +66,18 @@ final class RuntimeMiddlewareDescriptorBench
         $this->assertSuccessful($this->handle($this->parameterizedPipeline));
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     #[Bench\BeforeMethods('setUp')]
     public function benchDirectCallableMiddleware(): void
     {
         $this->handle($this->directPipeline);
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     #[Bench\BeforeMethods('setUp')]
     public function benchParameterizedRuntimeDescriptor(): void
     {

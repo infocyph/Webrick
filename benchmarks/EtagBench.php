@@ -16,6 +16,9 @@ final class EtagBench
 {
     private Stream $stream;
 
+    /**
+     * @throws \RuntimeException
+     */
     public function setUp(): void
     {
         $this->stream = new Stream(str_repeat('a', 65_536));

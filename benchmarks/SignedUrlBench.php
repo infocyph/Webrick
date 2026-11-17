@@ -42,6 +42,7 @@ final class SignedUrlBench
 
     /**
      * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     public function benchRelativeSign(): void
     {

@@ -174,6 +174,10 @@ function runwire_bridge_builder(): ContainerBuilder
     return $builder;
 }
 
+/**
+ * @throws \OverflowException
+ * @throws \InvalidArgumentException
+ */
 function runwire_bridge_request(RunwireRequestContext $context): HttpRequest
 {
     return new HttpRequest(

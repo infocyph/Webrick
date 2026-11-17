@@ -84,7 +84,10 @@ final class MatcherPathInspectionBench
         }
     }
 
-    /** @param array{path:string} $params */
+    /**
+     * @param array{path:string} $params
+     * @throws \LogicException
+     */
     #[Bench\ParamProviders('providePaths')]
     public function benchCurrentShapeAndSegments(array $params): void
     {
@@ -136,7 +139,10 @@ final class MatcherPathInspectionBench
         }
     }
 
-    /** @param array{path:string} $params */
+    /**
+     * @param array{path:string} $params
+     * @throws \LogicException
+     */
     #[Bench\ParamProviders('providePaths')]
     public function benchOnePassViewAndMaterialize(array $params): void
     {
