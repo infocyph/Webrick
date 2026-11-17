@@ -268,14 +268,31 @@ final class UploadedFile
         if (self::attemptFilesystemOperation(static fn(): bool => rename($sourcePath, $targetPath))) {
             return;
         }
-        if (!self::attemptFilesystemOperation(static fn(): bool => copy($sourcePath, $targetPath))) {
-            self::attemptFilesystemOperation(static fn(): bool => unlink($targetPath));
 
-            throw new RuntimeException("Failed to copy uploaded file to {$targetPath}");
+        // A fallback copy must never truncate or delete a pre-existing target.
+        // Publish a complete copy atomically from a temporary file in the same directory.
+        $temporaryPath = tempnam(dirname($targetPath), '.webrick-upload-');
+        if (!is_string($temporaryPath)) {
+            throw new RuntimeException("Cannot create temporary upload target for {$targetPath}");
         }
-        if (!self::attemptFilesystemOperation(static fn(): bool => unlink($sourcePath))) {
-            self::attemptFilesystemOperation(static fn(): bool => unlink($targetPath));
 
+        $published = false;
+        try {
+            if (!self::attemptFilesystemOperation(static fn(): bool => copy($sourcePath, $temporaryPath))) {
+                throw new RuntimeException("Failed to copy uploaded file to {$targetPath}");
+            }
+            if (!self::attemptFilesystemOperation(static fn(): bool => rename($temporaryPath, $targetPath))) {
+                throw new RuntimeException("Failed to publish uploaded file to {$targetPath}");
+            }
+            $published = true;
+        } finally {
+            if (!$published && is_file($temporaryPath)) {
+                self::attemptFilesystemOperation(static fn(): bool => unlink($temporaryPath));
+            }
+        }
+
+        // After publication, preserve the valid target even if source cleanup fails.
+        if (!self::attemptFilesystemOperation(static fn(): bool => unlink($sourcePath))) {
             throw new RuntimeException("Failed to remove uploaded source after copying to {$targetPath}");
         }
     }
