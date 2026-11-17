@@ -14,6 +14,7 @@ use Psr\Log\NullLogger;
  * @param list<callable> $middleware
  * @throws \RuntimeException
  * @throws \InvalidArgumentException
+ * @throws \LogicException
  */
 function dispatchResponsePayloadForTest(mixed $payload, array $middleware = []): Response
 {

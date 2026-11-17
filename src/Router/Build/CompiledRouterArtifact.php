@@ -49,12 +49,19 @@ final class CompiledRouterArtifact
     {
         [$hasDomainRoutes, $environment, $configFingerprint, $artifactFingerprint] = self::header($payload);
 
+        /** @var array<int,mixed> $routes */
         $routes = self::arrayField($payload, 'routes_by_index');
+        /** @var array<int,array<string,mixed>> $plans */
         $plans = self::arrayField($payload, 'plans_by_index');
+        /** @var array<string,array{0:string,1:string|null}> $aliases */
         $aliases = self::arrayField($payload, 'aliases');
+        /** @var list<mixed> $preGlobal */
         $preGlobal = self::arrayField($payload, 'pre_global');
+        /** @var list<mixed> $postGlobal */
         $postGlobal = self::arrayField($payload, 'post_global');
+        /** @var list<string> $preGlobalTags */
         $preGlobalTags = self::arrayField($payload, 'pre_global_tags');
+        /** @var list<string> $postGlobalTags */
         $postGlobalTags = self::arrayField($payload, 'post_global_tags');
 
         if (!$trusted) {
@@ -63,13 +70,6 @@ final class CompiledRouterArtifact
             self::validateTags($postGlobalTags);
         }
 
-        /** @var array<int,mixed> $routes */
-        /** @var array<int,array<string,mixed>> $plans */
-        /** @var array<string,array{0:string,1:string|null}> $aliases */
-        /** @var list<mixed> $preGlobal */
-        /** @var list<mixed> $postGlobal */
-        /** @var list<string> $preGlobalTags */
-        /** @var list<string> $postGlobalTags */
         $artifact = new self(
             routePayloadsByIndex: $routes,
             planPayloadsByIndex: $plans,

@@ -38,6 +38,7 @@ final class SecurityMiddlewareKernelBench
     /**
      * @throws \InvalidArgumentException
      * @throws \RuntimeException
+     * @throws \LogicException
      */
     public function setUp(): void
     {

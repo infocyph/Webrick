@@ -203,7 +203,9 @@ final class CompiledMatcherDynamicEngine
     private static function findPcreStep(array $step, string $path): ?array
     {
         $matches = [];
-        $status = preg_match($step['regex'], $path, $matches);
+        /** @var non-empty-string $regex */
+        $regex = $step['regex'];
+        $status = preg_match($regex, $path, $matches);
         if ($status === false) {
             throw new \RuntimeException('Compiled matcher PCRE failed during dispatch.');
         }
@@ -232,7 +234,7 @@ final class CompiledMatcherDynamicEngine
         }
 
         $regex = $spec['regex'] ?? null;
-        if (is_string($regex)) {
+        if (is_string($regex) && $regex !== '') {
             return preg_match($regex, $piece) === 1;
         }
 
@@ -302,6 +304,7 @@ final class CompiledMatcherDynamicEngine
             return true;
         }
         if ($bucket['type'] === 'single') {
+            /** @var array{type:'single',regex:non-empty-string,methods:list<string>} $bucket */
             $status = preg_match($bucket['regex'], $path);
             if ($status === false) {
                 throw new \RuntimeException('Compiled matcher single-terminal PCRE failed during dispatch.');
@@ -313,6 +316,7 @@ final class CompiledMatcherDynamicEngine
             return false;
         }
 
+        /** @var array{type:'literal',segment:int,groups:array<array-key,AllowedLiteralEntry>} $bucket */
         $segments ??= self::pathSegments($path);
         $this->collectLiteralAllowed($bucket, $path, $skip, $allowed, $segments);
 
@@ -360,7 +364,9 @@ final class CompiledMatcherDynamicEngine
             return;
         }
 
-        $status = preg_match($entry['regex'], $path);
+        /** @var non-empty-string $regex */
+        $regex = $entry['regex'];
+        $status = preg_match($regex, $path);
         if ($status === false) {
             throw new \RuntimeException('Compiled matcher allowed-method PCRE failed during dispatch.');
         }
@@ -387,8 +393,10 @@ final class CompiledMatcherDynamicEngine
 
         foreach ($bucket['steps'] as $step) {
             if ($step['type'] === 'pcre') {
+                /** @var PcreStep $step */
                 $hit = self::findPcreStep($step, $path);
             } else {
+                /** @var FallbackStep $step */
                 $segments ??= self::pathSegments($path);
                 $hit = $this->findFallbackStep($step, $segments);
             }

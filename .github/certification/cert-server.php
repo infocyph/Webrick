@@ -410,7 +410,8 @@ function certification_sapi(string $root): void
     )->handle();
 }
 
-$root = realpath((string) (getenv('WEBRICK_CERT_ROOT') ?: ''));
+$configuredRoot = getenv('WEBRICK_CERT_ROOT');
+$root = realpath($configuredRoot === false ? '' : $configuredRoot);
 if (PHP_SAPI === 'cli-server') {
     if ($root === false) {
         throw new RuntimeException('WEBRICK_CERT_ROOT must reference a checkout.');

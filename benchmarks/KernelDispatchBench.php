@@ -127,6 +127,7 @@ final class KernelDispatchBench
      * @param (Closure():Response)|array{class-string,string} $handler
      * @throws \RuntimeException
      * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     private function kernel(RuntimeContainerInterface $container, Closure|array $handler): RouterKernel
     {

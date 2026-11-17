@@ -95,7 +95,8 @@ final readonly class UsersController
 
 $logger = new NullLogger();
 $signingKey = 'webrick-development-signing-key';
-$urlBaseUri = getenv('WEBRICK_URL_BASE_URI') ?: 'http://localhost:8000';
+$configuredUrlBaseUri = getenv('WEBRICK_URL_BASE_URI');
+$urlBaseUri = $configuredUrlBaseUri === false || $configuredUrlBaseUri === '' ? 'http://localhost:8000' : $configuredUrlBaseUri;
 $signedUrlConfig = new SignedUrlConfig(
     generationKey: $signingKey,
     verificationKeys: [$signingKey],

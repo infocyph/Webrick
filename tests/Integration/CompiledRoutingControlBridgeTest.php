@@ -484,6 +484,7 @@ final class CompiledRoutingControlBridgeTest extends TestCase
     /**
      * @throws \InvalidArgumentException
      * @throws \RuntimeException
+     * @throws \LogicException
      */
     public function testDevelopmentBindingUsesTheHostsOptInSetting(): void
     {

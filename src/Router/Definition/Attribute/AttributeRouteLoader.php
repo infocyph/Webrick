@@ -63,6 +63,7 @@ final class AttributeRouteLoader
      * @param null|callable(SplFileInfo):bool $filter optional file filter (return true to include the file)
      * @throws \RuntimeException
      * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     public static function registerFromDirs(Registrar $registrar, array $roots, ?callable $filter = null): void
     {

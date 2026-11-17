@@ -181,6 +181,7 @@ function intermixTestTagList(mixed $value): array
  * @param array<string,mixed> $options
  * @throws InvalidArgumentException For invalid provider and middleware tag configuration.
  * @throws \RuntimeException
+ * @throws \LogicException
  */
 function intermixKernelForTest(Closure $register, array $preGlobal = [], array $options = []): RouterKernel
 {
