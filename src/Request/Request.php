@@ -17,7 +17,12 @@ use InvalidArgumentException;
 use JsonSerializable;
 use Stringable;
 
-/** @implements ArrayAccess<string,mixed> */
+/**
+ * Primary extensible HTTP request value object, consumed by Webrick applications.
+ *
+ * @api
+ * @implements ArrayAccess<string,mixed>
+ */
 class Request extends NativeServerRequest implements ArrayAccess, JsonSerializable, Stringable
 {
     use MacroMix;

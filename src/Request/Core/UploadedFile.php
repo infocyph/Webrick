@@ -281,6 +281,7 @@ final class UploadedFile
             if (!self::attemptFilesystemOperation(static fn(): bool => copy($sourcePath, $temporaryPath))) {
                 throw new RuntimeException("Failed to copy uploaded file to {$targetPath}");
             }
+
             if (!self::attemptFilesystemOperation(static fn(): bool => rename($temporaryPath, $targetPath))) {
                 throw new RuntimeException("Failed to publish uploaded file to {$targetPath}");
             }

@@ -21,7 +21,12 @@ use Infocyph\Webrick\Response\Range\RangeResponder;
 use JsonSerializable;
 use RuntimeException;
 
-/** Immutable HTTP response optimized for native string and file bodies. */
+/**
+ * Immutable HTTP response optimized for native string and file bodies.
+ * Public response construction and extension contract.
+ *
+ * @api
+ */
 class Response
 {
     use MacroMix;

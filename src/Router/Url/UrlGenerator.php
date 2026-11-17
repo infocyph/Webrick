@@ -12,6 +12,7 @@ use LogicException;
 /**
  * Generates URLs for named routes, controller actions, and arbitrary paths.
  *
+ * @api
  * @phpstan-type RouteParam bool|float|int|string|null
  * @phpstan-type QueryValue array<int|string,mixed>|bool|float|int|string|null
  */

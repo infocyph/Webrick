@@ -10,7 +10,11 @@ use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Runtime\Http\ResponseWriterSupport;
 
-/** For unit tests or CLI scripts: dumps an HTTP-like envelope to STDOUT. */
+/**
+ * For unit tests or CLI scripts: dumps an HTTP-like envelope to STDOUT.
+ *
+ * @api
+ */
 final class CliEmitter implements EmitterInterface
 {
     /**
