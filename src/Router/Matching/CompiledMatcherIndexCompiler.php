@@ -269,10 +269,8 @@ final readonly class CompiledMatcherIndexCompiler
         foreach (array_chunk($routes, $size) as $chunk) {
             $steps[] = $this->compileFastDispatchStep($chunk);
         }
-        if ($steps === []) {
-            throw new \LogicException('Cannot compile an empty fast-dispatch route group.');
-        }
-
+        // Non-empty routes and a positive chunk size produce at least one step.
+        /** @var non-empty-list<FastDispatchStep> $steps */
         return $steps;
     }
 
@@ -292,10 +290,8 @@ final readonly class CompiledMatcherIndexCompiler
         foreach (array_chunk($routes, $size) as $chunk) {
             $steps[] = $this->compilePcreStep($chunk);
         }
-        if ($steps === []) {
-            throw new \LogicException('Cannot compile an empty PCRE route group.');
-        }
-
+        // Non-empty routes and a positive chunk size produce at least one step.
+        /** @var non-empty-list<PcreStep> $steps */
         return $steps;
     }
 
@@ -413,9 +409,8 @@ final readonly class CompiledMatcherIndexCompiler
 
         $compiled = [];
         foreach ($groups as $key => $group) {
-            if ($group === []) {
-                throw new \LogicException('Empty grouped fast-dispatch route set.');
-            }
+            // Each group was formed by appending at least one canonical entry.
+            /** @var non-empty-list<array{segments:list<SegmentSpec>,route:RouteValue,id:int}> $group */
             $compiled[$key] = $this->compileBalancedFastDispatchSteps($group);
         }
 

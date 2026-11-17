@@ -118,14 +118,6 @@ final class RouterArtifactLoader
         }
     }
 
-    /** @throws \UnexpectedValueException */
-    private static function assertLocalArtifactPath(string $path): void
-    {
-        if ($path === '' || preg_match('~^[a-z][a-z0-9.+-]*://~i', $path) === 1) {
-            throw new UnexpectedValueException('Compiled Webrick router artifact must use a local filesystem path.');
-        }
-    }
-
     /**
      * @throws \UnexpectedValueException
      */
@@ -133,6 +125,14 @@ final class RouterArtifactLoader
     {
         if (trim($environment) === '' || trim($configFingerprint) === '') {
             throw new UnexpectedValueException('Expected environment and configuration fingerprint must be non-empty.');
+        }
+    }
+
+    /** @throws \UnexpectedValueException */
+    private static function assertLocalArtifactPath(string $path): void
+    {
+        if ($path === '' || preg_match('~^[a-z][a-z0-9.+-]*://~i', $path) === 1) {
+            throw new UnexpectedValueException('Compiled Webrick router artifact must use a local filesystem path.');
         }
     }
 

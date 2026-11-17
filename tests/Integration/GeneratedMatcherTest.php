@@ -540,6 +540,9 @@ test('stale cache formats fail clearly in every matcher mode', function (
         }
         $artifact = $mode === 'sharded' ? $cache . DIRECTORY_SEPARATOR . '__manifest.php' : $cache;
         $source = file_get_contents($artifact);
+        if (!is_string($source)) {
+            throw new UnexpectedValueException('Expected the cached matcher artifact to be readable.');
+        }
         expect($source)->toBeString();
         $staleSource = preg_replace("/'_version' => \\d+/", "'_version' => 0", $source, 1);
         expect($staleSource)->toBeString()->not->toBe($source);

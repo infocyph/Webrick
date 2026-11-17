@@ -170,6 +170,6 @@ final readonly class InputSanitizer
             return true;
         }
 
-        return array_any($this->skipKeyPatterns, fn(string $rx): bool => $rx !== '' && preg_match($rx, $key) === 1);
+        return array_any($this->skipKeyPatterns, fn(string $rx): bool => preg_match($rx, $key) === 1);
     }
 }
