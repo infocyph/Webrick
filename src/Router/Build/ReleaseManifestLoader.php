@@ -72,6 +72,12 @@ final class ReleaseManifestLoader
             throw new UnexpectedValueException('Malformed InterMix release metadata.');
         }
 
+        if (array_key_exists('source_sha256', $intermix)
+            && (!is_string($intermix['source_sha256']) || preg_match('/^[a-f0-9]{64}$/D', $intermix['source_sha256']) !== 1)
+        ) {
+            throw new UnexpectedValueException('Malformed InterMix source SHA-256 metadata.');
+        }
+
         $webrick = $manifest['webrick'];
         if (
             !is_string($webrick['path'] ?? null)
@@ -82,6 +88,12 @@ final class ReleaseManifestLoader
             || preg_match('/^[a-f0-9]{32}$/D', $webrick['fingerprint']) !== 1
         ) {
             throw new UnexpectedValueException('Malformed Webrick router release metadata.');
+        }
+
+        if (array_key_exists('source_sha256', $webrick)
+            && (!is_string($webrick['source_sha256']) || preg_match('/^[a-f0-9]{64}$/D', $webrick['source_sha256']) !== 1)
+        ) {
+            throw new UnexpectedValueException('Malformed Webrick source SHA-256 metadata.');
         }
 
         $normalized = [];

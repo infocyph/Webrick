@@ -169,6 +169,12 @@ final class CompiledRoutingControlBridgeTest extends TestCase
             self::assertSame(ReleaseCompiler::RELEASE_FORMAT, $manifest['format']);
             self::assertMatchesRegularExpression('/^[a-f0-9]{32}$/D', $manifest['intermix']['graph']);
             self::assertMatchesRegularExpression('/^[a-f0-9]{32}$/D', $manifest['intermix']['build']);
+            $intermixTarget = realpath($intermixPath);
+            if (!is_string($intermixTarget)) {
+                throw new \RuntimeException('Compiled InterMix release fixture is missing.');
+            }
+            self::assertSame(hash_file('sha256', $intermixTarget), $manifest['intermix']['source_sha256'] ?? null);
+            self::assertSame(hash_file('sha256', $routerPath), $manifest['webrick']['source_sha256'] ?? null);
 
             $kernel = CompiledRouterKernel::fromReleaseManifest(
                 log: new NullLogger(),

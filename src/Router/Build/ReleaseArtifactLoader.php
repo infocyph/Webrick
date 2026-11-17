@@ -60,7 +60,7 @@ final readonly class ReleaseArtifactLoader
     }
 
     /**
-     * @param array{path:string,digest:string,graph:string,build:string,artifact:string,compiled:list<string>,skipped:array<string,string>} $expected
+     * @param array{path:string,digest:string,source_sha256:?string,graph:string,build:string,artifact:string,compiled:list<string>,skipped:array<string,string>} $expected
      * @throws \RuntimeException
      */
     private function assertInterMixArtifact(array $expected): void
@@ -74,8 +74,10 @@ final readonly class ReleaseArtifactLoader
             throw new RuntimeException('InterMix release artifact is missing or unreadable.');
         }
 
-        $digest = hash_file('xxh128', $artifactPath);
-        if (!is_string($digest) || !hash_equals($expected['digest'], $digest)) {
+        $algorithm = $expected['source_sha256'] === null ? 'xxh128' : 'sha256';
+        $expectedDigest = $expected['source_sha256'] ?? $expected['digest'];
+        $digest = hash_file($algorithm, $artifactPath);
+        if (!is_string($digest) || !hash_equals($expectedDigest, $digest)) {
             throw new RuntimeException('InterMix release artifact digest mismatch.');
         }
         if (basename($artifactPath) !== $expected['artifact']) {
@@ -116,7 +118,7 @@ final readonly class ReleaseArtifactLoader
     }
 
     /**
-     * @param array{path:string,meta:string,digest:string,fingerprint:string,routes:int} $expected
+     * @param array{path:string,meta:string,digest:string,source_sha256:?string,fingerprint:string,routes:int} $expected
      * @throws \RuntimeException
      */
     private function assertWebrickArtifact(CompiledRouterArtifact $artifact, array $expected): void
@@ -132,7 +134,7 @@ final readonly class ReleaseArtifactLoader
     /**
      * Verify the manifest's byte identity before loading any executable artifacts.
      *
-     * @param array{path:string,meta:string,digest:string,fingerprint:string,routes:int} $expected
+     * @param array{path:string,meta:string,digest:string,source_sha256:?string,fingerprint:string,routes:int} $expected
      * @throws \RuntimeException
      */
     private function assertWebrickArtifactDigest(array $expected): void
@@ -140,8 +142,10 @@ final readonly class ReleaseArtifactLoader
         if ($expected['meta'] !== $expected['path'] . '.meta.json') {
             throw new RuntimeException('Webrick router metadata path does not match the coordinated release artifact.');
         }
-        $digest = hash_file('xxh128', $expected['path']);
-        if (!is_string($digest) || !hash_equals($expected['digest'], $digest)) {
+        $algorithm = $expected['source_sha256'] === null ? 'xxh128' : 'sha256';
+        $expectedDigest = $expected['source_sha256'] ?? $expected['digest'];
+        $digest = hash_file($algorithm, $expected['path']);
+        if (!is_string($digest) || !hash_equals($expectedDigest, $digest)) {
             throw new RuntimeException('Webrick router artifact digest does not match the coordinated release.');
         }
     }
@@ -183,7 +187,7 @@ final readonly class ReleaseArtifactLoader
 
     /**
      * @param array<string,mixed> $manifest
-     * @return array{path:string,digest:string,graph:string,build:string,artifact:string,compiled:list<string>,skipped:array<string,string>}
+     * @return array{path:string,digest:string,source_sha256:?string,graph:string,build:string,artifact:string,compiled:list<string>,skipped:array<string,string>}
      * @throws \UnexpectedValueException
      */
     private function intermixMetadata(array $manifest): array
@@ -205,12 +209,20 @@ final readonly class ReleaseArtifactLoader
             }
         }
 
+        $sourceSha256 = $metadata['source_sha256'] ?? null;
+        if (array_key_exists('source_sha256', $metadata)
+            && (!is_string($sourceSha256) || preg_match('/^[a-f0-9]{64}$/D', $sourceSha256) !== 1)
+        ) {
+            throw new UnexpectedValueException('Coordinated release InterMix source_sha256 must be SHA-256.');
+        }
+
         $compiled = $this->stringList($metadata['compiled'] ?? null, 'InterMix compiled IDs');
         $skipped = $this->stringMap($metadata['skipped'] ?? null, 'InterMix skipped IDs');
 
         return [
             'path' => $metadata['path'],
             'digest' => $metadata['digest'],
+            'source_sha256' => $sourceSha256,
             'graph' => $metadata['graph'],
             'build' => $metadata['build'],
             'artifact' => $metadata['artifact'],
@@ -270,7 +282,7 @@ final readonly class ReleaseArtifactLoader
 
     /**
      * @param array<string,mixed> $manifest
-     * @return array{path:string,meta:string,digest:string,fingerprint:string,routes:int}
+     * @return array{path:string,meta:string,digest:string,source_sha256:?string,fingerprint:string,routes:int}
      * @throws \UnexpectedValueException
      */
     private function webrickMetadata(array $manifest): array
@@ -292,10 +304,18 @@ final readonly class ReleaseArtifactLoader
             throw new UnexpectedValueException('Coordinated release has malformed Webrick artifact identity.');
         }
 
+        $sourceSha256 = $metadata['source_sha256'] ?? null;
+        if (array_key_exists('source_sha256', $metadata)
+            && (!is_string($sourceSha256) || preg_match('/^[a-f0-9]{64}$/D', $sourceSha256) !== 1)
+        ) {
+            throw new UnexpectedValueException('Coordinated release Webrick source_sha256 must be SHA-256.');
+        }
+
         return [
             'path' => $metadata['path'],
             'meta' => $metadata['meta'],
             'digest' => $metadata['digest'],
+            'source_sha256' => $sourceSha256,
             'fingerprint' => $metadata['fingerprint'],
             'routes' => $metadata['routes'],
         ];
