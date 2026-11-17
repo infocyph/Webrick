@@ -10,10 +10,6 @@ use PhpBench\Attributes as Bench;
  * Measures path inspection around compact dynamic dispatch and preserves the
  * rejected Phase 2 PHP scanner beside the retained C-backed string strategy.
  */
-/**
- * PHPBench discovers this benchmark through reflection.
- * @psalm-api
- */
 #[Bench\Groups(['matcher', 'matcher-path-inspection'])]
 #[Bench\Iterations(5)]
 #[Bench\Revs(5000)]

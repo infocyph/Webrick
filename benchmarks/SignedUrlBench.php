@@ -7,10 +7,6 @@ namespace Infocyph\Webrick\Benchmarks;
 use Infocyph\Webrick\Benchmarks\Support\BenchmarkSupport;
 use PhpBench\Attributes as Bench;
 
-/**
- * PHPBench discovers this benchmark through reflection.
- * @psalm-api
- */
 #[Bench\Groups(['signed-url'])]
 #[Bench\Iterations(5)]
 #[Bench\Revs(5000)]

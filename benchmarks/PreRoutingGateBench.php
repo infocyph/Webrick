@@ -14,10 +14,6 @@ use Infocyph\Webrick\Router\Runtime\RoutingInput;
 use PhpBench\Attributes as Bench;
 use RuntimeException;
 
-/**
- * PHPBench discovers this benchmark through reflection.
- * @psalm-api
- */
 #[Bench\Groups(['runtime', 'pre-routing-gate', 'maintenance'])]
 #[Bench\Iterations(5)]
 #[Bench\Revs(10_000)]

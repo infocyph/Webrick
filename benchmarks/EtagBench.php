@@ -8,10 +8,6 @@ use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Support\Etag;
 use PhpBench\Attributes as Bench;
 
-/**
- * PHPBench discovers this benchmark through reflection.
- * @psalm-api
- */
 #[Bench\Groups(['etag'])]
 #[Bench\Iterations(5)]
 #[Bench\Revs(1000)]

@@ -11,10 +11,6 @@ use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use PhpBench\Attributes as Bench;
 
-/**
- * PHPBench discovers this benchmark through reflection.
- * @psalm-api
- */
 #[Bench\Groups(['cache', 'response-cache'])]
 #[Bench\Iterations(5)]
 #[Bench\Revs(500)]

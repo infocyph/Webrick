@@ -14,10 +14,6 @@ use Infocyph\Webrick\Router\Route\Route;
 use PhpBench\Attributes as Bench;
 
 /** End-to-end callable built-in constraint benchmark for matcher dispatch. */
-/**
- * PHPBench discovers this benchmark through reflection.
- * @psalm-api
- */
 #[Bench\Groups(['matcher', 'matcher-typed-constraint'])]
 #[Bench\Iterations(5)]
 #[Bench\Revs(3000)]

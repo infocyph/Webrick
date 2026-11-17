@@ -12,10 +12,6 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
 use Infocyph\Webrick\Router\Route\Route;
 use PhpBench\Attributes as Bench;
 
-/**
- * PHPBench discovers this benchmark through reflection.
- * @psalm-api
- */
 #[Bench\Groups(['matcher', 'matcher-method-terminal'])]
 #[Bench\Iterations(7)]
 #[Bench\Revs(3000)]

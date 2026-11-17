@@ -17,10 +17,6 @@ use PhpBench\Attributes as Bench;
 use Psr\Log\NullLogger;
 use RuntimeException;
 
-/**
- * PHPBench discovers this benchmark through reflection.
- * @psalm-api
- */
 #[Bench\Groups(['kernel', 'intermix'])]
 #[Bench\Iterations(5)]
 #[Bench\Revs(1000)]
