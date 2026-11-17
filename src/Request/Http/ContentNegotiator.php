@@ -6,7 +6,11 @@ namespace Infocyph\Webrick\Request\Http;
 
 use Infocyph\Webrick\Support\HttpUtils;
 
-/** Fast request content negotiator for Accept-family headers with q=0 exclusions preserved. */
+/**
+ * Fast request content negotiator for Accept-family headers with q=0 exclusions preserved.
+ *
+ * @api
+ */
 final readonly class ContentNegotiator
 {
     private const string MATCH_LANGUAGE = 'language';

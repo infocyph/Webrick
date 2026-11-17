@@ -13,6 +13,8 @@ use SplFileObject;
  *
  * Native string bodies use StringBody; this class remains the explicit
  * resource/file boundary. String input is retained as a compatibility path.
+ *
+ * @api
  */
 final class Stream implements BodyStream
 {

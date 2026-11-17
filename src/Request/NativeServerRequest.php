@@ -16,7 +16,11 @@ use Infocyph\Webrick\Support\HttpUtils;
 use InvalidArgumentException;
 use RuntimeException;
 
-/** Native Webrick request surface with explicit structured-payload parse states. */
+/**
+ * Native Webrick request surface with explicit structured-payload parse states.
+ *
+ * @api
+ */
 class NativeServerRequest extends ServerRequest
 {
     private mixed $jsonPayload = null;
