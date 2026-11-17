@@ -12,6 +12,7 @@ final class UriServerParams
     /**
      * @param array<string,mixed> $server
      * @return array{0:string,1:int|null}
+     * @throws \InvalidArgumentException
      */
     public static function detectHostPort(array $server, ?int $trustedProxyFlags = null): array
     {
@@ -40,7 +41,10 @@ final class UriServerParams
         return self::serverString($server, 'REQUEST_URI') ?? '/';
     }
 
-    /** @param array<string,mixed> $server */
+    /**
+     * @param array<string,mixed> $server
+     * @throws \InvalidArgumentException
+     */
     public static function detectScheme(array $server, ?int $trustedProxyFlags = null): string
     {
         $fromForwarded = self::protoFromForwarded($server, $trustedProxyFlags);
@@ -147,7 +151,10 @@ final class UriServerParams
         return ($number > 0 && $number <= 65535) ? $number : null;
     }
 
-    /** @param array<string,mixed> $server */
+    /**
+     * @param array<string,mixed> $server
+     * @throws \InvalidArgumentException
+     */
     private static function protoFromForwarded(array $server, ?int $trustedProxyFlags): ?string
     {
         if (!self::proxyFlagEnabled(Request::HEADER_FORWARDED, $server, $trustedProxyFlags)) {

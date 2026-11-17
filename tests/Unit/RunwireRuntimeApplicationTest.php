@@ -156,6 +156,10 @@ final class RunwireApplicationWriterFixture implements ResponseWriterInterface
     }
 }
 
+/**
+ * @throws \OverflowException
+ * @throws \InvalidArgumentException
+ */
 function runwire_application_request(): HttpRequest
 {
     return new HttpRequest(

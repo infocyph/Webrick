@@ -8,6 +8,9 @@ use Infocyph\Webrick\Runtime\Http\RuntimeCapabilities;
 use Infocyph\Webrick\Runtime\Http\RuntimeRequestContext;
 use Infocyph\Webrick\Runtime\Http\RuntimeRequestExecution;
 
+/**
+ * @throws \InvalidArgumentException
+ */
 function runtime_test_context(string $id, object $native): RuntimeRequestContext
 {
     return new RuntimeRequestContext(

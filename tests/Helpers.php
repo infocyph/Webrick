@@ -153,6 +153,7 @@ final class TestLogger implements LoggerInterface
 /**
  * @param array{autoSlashRedirect?:bool,exposeUrlServices?:bool,signKey?:?string,signedDefaultTtl?:?int,signedUrlConfig?:?SignedUrlConfig,urlBaseUri?:string} $options
  * @throws \InvalidArgumentException
+ * @throws \LogicException
  */
 function testRegistrar(array $options = []): Registrar
 {

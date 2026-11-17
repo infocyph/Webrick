@@ -8,7 +8,10 @@ use Infocyph\Webrick\Request\Core\Uri;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 
-/** @param array<string, mixed> $server */
+/**
+ * @param array<string, mixed> $server
+ * @throws \InvalidArgumentException
+ */
 function gatewayRequest(array $server, string $uri = 'http://origin.example/resource'): Request
 {
     return new Request('GET', new Uri($uri), $server);

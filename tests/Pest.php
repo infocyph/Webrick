@@ -142,6 +142,8 @@ function webrickPestString(mixed $value, string $label): string
  * Create a mock request with trace attributes.
  *
  * @param array<string,mixed> $headers
+ * @throws \InvalidArgumentException
+ * @throws \RuntimeException
  */
 function mockRequestWithTrace(
     string $method = 'GET',

@@ -152,6 +152,9 @@ final readonly class GatewayHardeningMiddleware
         return strcasecmp($a, $b) === 0;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function attachNetworkAttributes(Request $req, EndUser $endUser): Request
     {
         $clientIp = $endUser->ip();
@@ -176,6 +179,7 @@ final readonly class GatewayHardeningMiddleware
 
     /**
      * @throws \Infocyph\Webrick\Exceptions\HttpException
+     * @throws \InvalidArgumentException
      */
     private function denyIfBlockedEndUser(EndUser $endUser): void
     {

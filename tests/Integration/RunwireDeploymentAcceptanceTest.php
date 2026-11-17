@@ -140,6 +140,7 @@ final class RunwireDeploymentAcceptanceTest extends TestCase
      * @throws \Infocyph\Runwire\Exception\RuntimeUnavailableException
      * @throws \Infocyph\Runwire\Exception\SupervisorException
      * @throws \InvalidArgumentException
+     * @throws \OverflowException
      */
     public function testNativePortableAndPreforkSelectionsConsumeTheSameWebrickApplicationFactory(): void
     {
@@ -179,6 +180,7 @@ final class RunwireDeploymentAcceptanceTest extends TestCase
      * @throws \Infocyph\Runwire\Exception\RuntimeUnavailableException
      * @throws \Infocyph\Runwire\Exception\SupervisorException
      * @throws \InvalidArgumentException
+     * @throws \OverflowException
      */
     public function testHostDriverSelectionsRemainRunwireOwnedAndAcceptTheWebrickFactory(): void
     {
