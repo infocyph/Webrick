@@ -12,6 +12,7 @@ final class RouterArtifactLoader
 {
     /**
      * @throws \RuntimeException
+     * @throws \UnexpectedValueException
      */
     public function load(
         string $path,
@@ -19,6 +20,7 @@ final class RouterArtifactLoader
         string $expectedConfigFingerprint,
     ): CompiledRouterArtifact {
         self::assertExpectedIdentity($expectedEnvironment, $expectedConfigFingerprint);
+        self::assertLocalArtifactPath($path);
         $meta = $this->readMeta($path);
         $digest = hash_file('xxh128', $path);
         if (!is_string($digest) || !hash_equals($meta['digest'], $digest)) {
@@ -39,6 +41,7 @@ final class RouterArtifactLoader
         string $expectedConfigFingerprint,
     ): CompiledRouterArtifact {
         self::assertExpectedIdentity($expectedEnvironment, $expectedConfigFingerprint);
+        self::assertLocalArtifactPath($path);
         if (preg_match('/^[a-f0-9]{32}$/D', $trustedArtifactFingerprint) !== 1) {
             throw new UnexpectedValueException('Trusted Webrick artifact fingerprint must be a lowercase xxh128 digest.');
         }
@@ -112,6 +115,14 @@ final class RouterArtifactLoader
             || !hash_equals($artifact->artifactFingerprint, $meta['artifact_fingerprint'])
         ) {
             throw new RuntimeException('Webrick router artifact metadata/payload mismatch.');
+        }
+    }
+
+    /** @throws \UnexpectedValueException */
+    private static function assertLocalArtifactPath(string $path): void
+    {
+        if ($path === '' || preg_match('~^[a-z][a-z0-9.+-]*://~i', $path) === 1) {
+            throw new UnexpectedValueException('Compiled Webrick router artifact must use a local filesystem path.');
         }
     }
 

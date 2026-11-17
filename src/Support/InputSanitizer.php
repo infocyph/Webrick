@@ -148,7 +148,7 @@ final readonly class InputSanitizer
         set_error_handler(static fn(): bool => true);
 
         try {
-            return preg_match($pattern, '') !== false;
+            return $pattern !== '' && preg_match($pattern, '') !== false;
         } finally {
             restore_error_handler();
         }
@@ -170,6 +170,6 @@ final readonly class InputSanitizer
             return true;
         }
 
-        return array_any($this->skipKeyPatterns, fn(string $rx): bool => preg_match($rx, $key) === 1);
+        return array_any($this->skipKeyPatterns, fn(string $rx): bool => $rx !== '' && preg_match($rx, $key) === 1);
     }
 }

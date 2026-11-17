@@ -67,7 +67,7 @@ final class CompactMatcherDynamicValidator
      */
     private static function assertRegex(string $regex, bool $validateRegex, string $message): void
     {
-        if ($validateRegex && preg_match($regex, '') === false) {
+        if ($regex === '' || ($validateRegex && preg_match($regex, '') === false)) {
             throw new \UnexpectedValueException($message);
         }
     }

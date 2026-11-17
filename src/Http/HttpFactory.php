@@ -57,7 +57,7 @@ final class HttpFactory
     }
 
     /**
-     * @param resource $resource
+     * @param mixed $resource Validated at runtime as a stream resource.
      * @throws \RuntimeException
      */
     public function createStreamFromResource($resource): Stream
