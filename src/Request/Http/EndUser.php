@@ -66,6 +66,9 @@ final class EndUser
         return $wrapped ? '[' . $maskedIp . ']' : $maskedIp;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function ip(): ?string
     {
         $peer = $this->ipNoProxy();
@@ -248,7 +251,10 @@ final class EndUser
         return is_string($validated) ? $validated : null;
     }
 
-    /** @return list<string> */
+    /**
+     * @return list<string>
+     * @throws \InvalidArgumentException
+     */
     private function parseForwardedHeader(string $header): array
     {
         $elements = $this->splitForwardedElements($header);

@@ -511,7 +511,10 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return is_string($value) ? $value : $default;
     }
 
-    /** @return array<string,string> */
+    /**
+     * @return array<string,string>
+     * @throws \InvalidArgumentException
+     */
     public function ua(): array
     {
         return EndUser::from($this, self::$trustedProxyNetworks)->parseUserAgent();
@@ -538,6 +541,9 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return $this->expectsJson();
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function wantsXml(): bool
     {
         return $this->expectsXml();
@@ -669,7 +675,10 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         );
     }
 
-    /** @param list<string> $supported */
+    /**
+     * @param list<string> $supported
+     * @throws \InvalidArgumentException
+     */
     private function resolveLocaleFromHeader(array $supported, string $fallback): ?string
     {
         return $this->pickLocale($this->locale($supported, $fallback, true), $supported);

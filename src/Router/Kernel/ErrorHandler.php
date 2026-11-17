@@ -434,6 +434,9 @@ final readonly class ErrorHandler
         return $message !== '' ? $message : $fallback;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function resolveRenderType(Request $request): string
     {
         $negotiated = $request->getAttribute('negotiated.type');

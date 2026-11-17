@@ -97,6 +97,7 @@ final readonly class CompiledRouterKernel
     /**
      * @throws \RuntimeException
      * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     public static function fromCompiledArtifact(
         LoggerInterface $log,
@@ -137,6 +138,7 @@ final readonly class CompiledRouterKernel
      * @throws \RuntimeException
      * @throws \UnexpectedValueException
      * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     public static function fromPrevalidatedArtifact(
         LoggerInterface $log,
@@ -183,6 +185,7 @@ final readonly class CompiledRouterKernel
      * @throws \InvalidArgumentException
      * @throws \RuntimeException
      * @throws \UnexpectedValueException
+     * @throws \LogicException
      */
     public static function fromReleaseManifest(
         LoggerInterface $log,

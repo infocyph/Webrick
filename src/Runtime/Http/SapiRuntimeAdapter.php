@@ -43,6 +43,7 @@ final readonly class SapiRuntimeAdapter implements RuntimeAdapterInterface
 
     /**
      * Resolve the synchronous SAPI once during application bootstrap.
+     * @throws \InvalidArgumentException
      */
     public static function current(
         bool $transportCompression = false,

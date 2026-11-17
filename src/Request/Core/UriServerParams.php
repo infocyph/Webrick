@@ -93,7 +93,10 @@ final class UriServerParams
         return $first === '' ? null : $first;
     }
 
-    /** @param array<string,mixed> $server */
+    /**
+     * @param array<string,mixed> $server
+     * @throws \InvalidArgumentException
+     */
     private static function forwardedParameter(array $server, string $name): ?string
     {
         $first = self::firstServerCsvToken($server, 'HTTP_FORWARDED');
@@ -119,7 +122,10 @@ final class UriServerParams
         return $values[$name] ?? null;
     }
 
-    /** @param array<string,mixed> $server */
+    /**
+     * @param array<string,mixed> $server
+     * @throws \InvalidArgumentException
+     */
     private static function forwardedPort(array $server, ?int $trustedProxyFlags): ?int
     {
         if (!self::proxyFlagEnabled(Request::HEADER_X_FORWARDED_PORT, $server, $trustedProxyFlags)) {
@@ -172,7 +178,10 @@ final class UriServerParams
         return $https ? 'https' : 'http';
     }
 
-    /** @param array<string,mixed> $server */
+    /**
+     * @param array<string,mixed> $server
+     * @throws \InvalidArgumentException
+     */
     private static function protoFromXForwarded(array $server, ?int $trustedProxyFlags): ?string
     {
         if (!self::proxyFlagEnabled(Request::HEADER_X_FORWARDED_PROTO, $server, $trustedProxyFlags)) {

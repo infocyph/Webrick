@@ -43,6 +43,7 @@ final class CompiledRouterArtifact
      *
      * @param array<string,mixed> $payload
      * @throws \UnexpectedValueException
+     * @throws \InvalidArgumentException
      */
     public static function fromPayload(array $payload, bool $trusted = false): self
     {

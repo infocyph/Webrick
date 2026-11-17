@@ -15,6 +15,7 @@ final class ExecutableRoutePayload
 
     /**
      * @throws \UnexpectedValueException
+     * @throws \InvalidArgumentException
      */
     public static function decode(mixed $payload): CompiledRoute
     {

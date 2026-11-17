@@ -178,6 +178,7 @@ final class Router
      * where process state persists across requests. Call this at the start of
      * a new request or during a worker reset to ensure no stale Registrar is
      * leaked between lifecycles.
+     * @throws \LogicException
      */
     public static function reset(): void
     {

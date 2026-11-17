@@ -56,6 +56,7 @@ final readonly class Registrar
 {
     /**
      * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     public function __construct(
         private Collection $routes,

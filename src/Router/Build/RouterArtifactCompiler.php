@@ -55,6 +55,7 @@ final class RouterArtifactCompiler
     /**
      * @return array{path:string,meta:string,digest:string,fingerprint:string,routes:int}
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException
      */
     public function compile(RouterBuildResult $build, string $path): array
     {
@@ -117,6 +118,7 @@ final class RouterArtifactCompiler
 
     /**
      * @throws \UnexpectedValueException
+     * @throws \InvalidArgumentException
      */
     public function fingerprint(RouterBuildResult $build): string
     {
