@@ -263,7 +263,7 @@ final class CacheControl implements \Stringable
     /** @param array{bools:array<string,bool>,privacy:array{public:bool,private:bool},nums:array<string,?int>,fields:array<string,array<string,true>>,ext:array<string,string|null>} $model */
     private static function ingestExtensionOrBoolean(array &$model, string $name, ?string $value): void
     {
-        if ($name === 'public' || $name === 'private') {
+        if (isset(self::PRIVACY_TOKENS[$name])) {
             $model['privacy'][$name] = true;
 
             return;
