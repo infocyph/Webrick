@@ -238,6 +238,74 @@ final class CompiledRoutingControlBridgeTest extends TestCase
      * @throws \UnexpectedValueException
      * @throws \LogicException
      */
+
+    /**
+     * Reject manifest-selected stream wrappers before any hash_file call or PHP execution.
+     *
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     * @throws \LogicException
+     */
+    public function testCoordinatedReleaseRejectsNonLocalRouterPathsBeforeHashing(): void
+    {
+        [$intermixPath, $routerPath] = self::artifactPaths('nonlocal-router');
+        $releasePath = $routerPath . '.release.json';
+        $builder = ContainerBuilder::create('webrick_nonlocal_router_' . bin2hex(random_bytes(4)));
+
+        try {
+            $manifest = new ReleaseCompiler()->compile(
+                builder: $builder,
+                register: static function (Registrar $registrar): void {
+                    $registrar->get('/static', static fn(): Response => Response::plaintext('ok', 200));
+                },
+                environment: 'production',
+                configFingerprint: 'nonlocal-router',
+                intermixPath: $intermixPath,
+                routerPath: $routerPath,
+                releaseManifestPath: $releasePath,
+                preGlobalTags: [],
+                postGlobalTags: [],
+            );
+
+            foreach ([
+                'php://filter/resource=/etc/passwd',
+                'phar://untrusted.phar/routes.php',
+                'https://example.invalid/compiled.php',
+                $routerPath . chr(0) . '.php',
+            ] as $untrustedPath) {
+                $altered = $manifest;
+                $altered['webrick']['path'] = $untrustedPath;
+                $altered['webrick']['meta'] = $untrustedPath . '.meta.json';
+                $altered['release_fingerprint'] = ReleaseCompiler::fingerprintManifest($altered);
+                if (file_put_contents($releasePath, json_encode($altered, JSON_THROW_ON_ERROR)) === false) {
+                    throw new \RuntimeException('Unable to write non-local release manifest fixture.');
+                }
+
+                try {
+                    CompiledRouterKernel::fromReleaseManifest(
+                        log: new NullLogger(),
+                        matcher: FusedMatcher::make(),
+                        builder: $builder,
+                        releaseManifestPath: $releasePath,
+                        environment: 'production',
+                        configFingerprint: 'nonlocal-router',
+                    );
+                    self::fail('Expected coordinated release to reject non-local router paths before hashing.');
+                } catch (\UnexpectedValueException $exception) {
+                    self::assertStringContainsString('must use a local filesystem path', $exception->getMessage());
+                }
+            }
+        } finally {
+            self::cleanup([$intermixPath, $routerPath]);
+            foreach ([$releasePath, ReleaseCompiler::runtimeManifestPath($releasePath)] as $candidate) {
+                if (is_file($candidate)) {
+                    unlink($candidate);
+                }
+            }
+        }
+    }
+
     public function testCoordinatedReleaseChecksRouterBytesBeforeExecution(): void
     {
         [$intermixPath, $routerPath] = self::artifactPaths('tampered-router');

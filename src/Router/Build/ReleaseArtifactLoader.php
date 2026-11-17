@@ -139,7 +139,11 @@ final readonly class ReleaseArtifactLoader
      */
     private function assertWebrickArtifactDigest(array $expected): void
     {
-        if ($expected['meta'] !== $expected['path'] . '.meta.json') {
+        $path = $expected['path'];
+        if ($path === '' || str_contains($path, "\0") || preg_match('~^[a-z][a-z0-9.+-]*://~i', $path) === 1) {
+            throw new UnexpectedValueException('Coordinated Webrick router artifact must use a local filesystem path.');
+        }
+        if ($expected['meta'] !== $path . '.meta.json') {
             throw new RuntimeException('Webrick router metadata path does not match the coordinated release artifact.');
         }
         $algorithm = $expected['source_sha256'] === null ? 'xxh128' : 'sha256';
