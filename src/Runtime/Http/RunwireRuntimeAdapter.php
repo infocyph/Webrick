@@ -187,13 +187,13 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
     {
         foreach (explode(';', $header) as $pair) {
             $pair = trim($pair);
-            if ($pair === '' || !str_contains($pair, '=')) {
+            $separator = strpos($pair, '=');
+            if ($separator === false) {
                 continue;
             }
-            [$name, $value] = explode('=', $pair, 2);
-            $name = trim($name);
+            $name = trim(substr($pair, 0, $separator));
             if ($name !== '' && !array_key_exists($name, $cookies)) {
-                $cookies[$name] = urldecode(trim($value));
+                $cookies[$name] = urldecode(trim(substr($pair, $separator + 1)));
             }
         }
     }
@@ -335,7 +335,12 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
         if (substr_count($endpoint, ':') !== 1) {
             return [$endpoint, null];
         }
-        [$host, $port] = explode(':', $endpoint, 2);
+        $separator = strpos($endpoint, ':');
+        if ($separator === false) {
+            return [$endpoint, null];
+        }
+        $host = substr($endpoint, 0, $separator);
+        $port = substr($endpoint, $separator + 1);
         if ($host !== '' && preg_match('/^\d{1,5}$/D', $port) === 1 && (int) $port <= 65_535) {
             return [$host, (int) $port];
         }
@@ -383,7 +388,7 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
         if ($parts === false || !isset($parts['scheme'])) {
             return $target;
         }
-        $path = (string) ($parts['path'] ?? '/');
+        $path = $parts['path'] ?? '/';
         $path = $path === '' ? '/' : $path;
         $query = isset($parts['query']) ? '?' . $parts['query'] : '';
 
@@ -436,7 +441,7 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
         if ($parts === false || !isset($parts['host'])) {
             return null;
         }
-        $host = (string) $parts['host'];
+        $host = $parts['host'];
         if (str_contains($host, ':') && $host[0] !== '[') {
             $host = '[' . $host . ']';
         }

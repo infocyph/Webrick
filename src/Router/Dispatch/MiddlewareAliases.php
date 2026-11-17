@@ -171,7 +171,7 @@ final class MiddlewareAliases
     private static function parse(string $maybeAlias): array
     {
         [$name, $paramStr] = explode(':', $maybeAlias, 2) + [1 => null];
-        $key = strtolower(trim((string) $name));
+        $key = strtolower(trim($name));
         $params = $paramStr !== null && $paramStr !== ''
             ? array_map(trim(...), explode(',', $paramStr))
             : [];
@@ -186,6 +186,9 @@ final class MiddlewareAliases
     private static function resolveRegistered(callable|string $registered, array $params): callable|object|string
     {
         if (is_string($registered)) {
+            if ($params !== [] && !class_exists($registered)) {
+                throw new UnexpectedValueException(sprintf('Middleware class "%s" is not available.', $registered));
+            }
             $resolved = $params !== [] ? new $registered(...$params) : $registered;
 
             return self::assertResolved($resolved, $registered);

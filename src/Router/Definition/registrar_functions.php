@@ -15,7 +15,9 @@ use InvalidArgumentException;
  */
 function registrar_merge_middleware_with_alias_overrides(array $group, array $route): array
 {
+    /** @var array<int,string|object|array{__alias:true,key:non-empty-string,params:list<string>}> $result */
     $result = [];
+    /** @var array<non-empty-string,int> $aliasPos */
     $aliasPos = [];
 
     $push = static function (string|object $mw) use (&$result, &$aliasPos): void {
@@ -40,7 +42,7 @@ function registrar_merge_middleware_with_alias_overrides(array $group, array $ro
         $push($mw);
     }
 
-    return $result;
+    return array_values($result);
 }
 
 /**
@@ -257,7 +259,7 @@ function registrar_parse_alias_spec(string $s): ?array
     }
 
     [$name, $paramStr] = \explode(':', $s, 2) + [1 => null];
-    $key = \strtolower(\trim((string) $name));
+    $key = \strtolower(\trim($name));
 
     if ($key === '' || !MiddlewareAliases::has($key)) {
         return null;

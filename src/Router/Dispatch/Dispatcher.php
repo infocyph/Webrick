@@ -400,9 +400,13 @@ final class Dispatcher
             return null;
         }
 
-        [$class, $method] = str_contains($handler, '::')
-            ? explode('::', $handler, 2)
-            : explode('@', $handler, 2);
+        $separator = str_contains($handler, '::') ? '::' : '@';
+        $position = strpos($handler, $separator);
+        if ($position === false) {
+            return null;
+        }
+        $class = substr($handler, 0, $position);
+        $method = substr($handler, $position + strlen($separator));
 
         if ($class === '' || $method === '' || !class_exists($class)) {
             return null;
@@ -419,7 +423,8 @@ final class Dispatcher
         $set = [];
         foreach ($route->getMiddlewares() as $mw) {
             if (is_string($mw)) {
-                if ($this->looksLikeAliasString($mw) && ($class = $this->aliasStringClass($mw))) {
+                $class = $this->looksLikeAliasString($mw) ? $this->aliasStringClass($mw) : null;
+                if ($class !== null && $class !== '' && $class !== '0') {
                     $set[$class] = true;
                 } elseif (class_exists($mw)) {
                     $set[$mw] = true;

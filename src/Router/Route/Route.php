@@ -72,7 +72,7 @@ final class Route implements RouteInterface
             return 'closure@' . spl_object_id($h);
         }
 
-        return is_object($h) ? $h::class . '::__invoke' : 'callable';
+        return $h::class . '::__invoke';
     }
 
     public function getCorsPolicy(): ?Cors

@@ -116,8 +116,9 @@ class ServerRequest extends Message
     public function __get(string $key): mixed
     {
         $this->buildVariableMap();
-        if (array_key_exists($key, $this->variableMap ?? [])) {
-            return $this->variableMap[$key];
+        $variables = $this->variableMap;
+        if ($variables !== null && array_key_exists($key, $variables)) {
+            return $variables[$key];
         }
         if ($this->checkEnv && ($value = getenv($key)) !== false) {
             return $this->variableMap[$key] = $value;

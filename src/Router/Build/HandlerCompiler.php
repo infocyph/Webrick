@@ -172,12 +172,12 @@ final class HandlerCompiler
     private function normalizeStringHandler(string $handler): array|string
     {
         foreach (['::', '@'] as $separator) {
-            if (!str_contains($handler, $separator)) {
+            $position = strpos($handler, $separator);
+            if ($position === false) {
                 continue;
             }
-            [$class, $method] = explode($separator, $handler, 2);
-            $class = trim($class);
-            $method = trim($method);
+            $class = trim(substr($handler, 0, $position));
+            $method = trim(substr($handler, $position + strlen($separator)));
             if ($class === '' || $method === '' || !class_exists($class) || !method_exists($class, $method)) {
                 throw new InvalidArgumentException("Invalid route handler '{$handler}'.");
             }
@@ -204,8 +204,10 @@ final class HandlerCompiler
         if (class_exists($entry) && method_exists($entry, '__invoke')) {
             return [$entry, '__invoke'];
         }
-        if (str_contains($entry, '::')) {
-            [$class, $method] = explode('::', $entry, 2);
+        $separator = strpos($entry, '::');
+        if ($separator !== false) {
+            $class = substr($entry, 0, $separator);
+            $method = substr($entry, $separator + 2);
             if ($class !== '' && $method !== '' && class_exists($class) && method_exists($class, $method)) {
                 /** @var class-string $class */
                 return [$class, $method];

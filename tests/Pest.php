@@ -153,13 +153,13 @@ function mockRequestWithTrace(
 ): Request {
     $request = mockRequest($method, $uri, $headers);
 
-    if ($traceId) {
+    if ($traceId !== null && $traceId !== '' && $traceId !== '0') {
         $request = $request->withAttribute('trace.trace_id', $traceId);
     }
-    if ($spanId) {
+    if ($spanId !== null && $spanId !== '' && $spanId !== '0') {
         $request = $request->withAttribute('trace.span_id', $spanId);
     }
-    if ($requestId) {
+    if ($requestId !== null && $requestId !== '' && $requestId !== '0') {
         $request = $request->withAttribute('request_id', $requestId);
     }
 

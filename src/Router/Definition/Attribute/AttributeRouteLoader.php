@@ -250,7 +250,6 @@ final class AttributeRouteLoader
         if (!$a) {
             return ['', null, [], ''];
         }
-        /** @var Group $g */
         $g = $a->newInstance();
 
         return [$g->prefix ?: '', $g->domain, $g->middleware, $g->name ?: ''];
@@ -264,7 +263,6 @@ final class AttributeRouteLoader
     {
         $out = [];
         foreach ($ref->getAttributes(Middleware::class, ReflectionAttribute::IS_INSTANCEOF) as $a) {
-            /** @var Middleware $m */
             $m = $a->newInstance();
             array_push($out, ...$m->stack);
         }
@@ -331,9 +329,8 @@ final class AttributeRouteLoader
             $methCors = self::readCors($rm) ?? $classCors;
 
             foreach ($routeAttrs as $attr) {
-                /** @var Route $rAttr */
                 $rAttr = $attr->newInstance();
-                $methods = array_values(array_map(strtoupper(...), (array) $rAttr->method));
+                $methods = array_values(array_map(strtoupper(...), $rAttr->method));
                 $opts = self::buildOptions($rAttr, $methodMw, $methProd, $methCors);
                 /** @var array{0:class-string,1:non-empty-string} $handler */
                 $handler = [$fqcn, $rm->getName()];

@@ -98,7 +98,7 @@ final class RequestHeaders
     public function dependency(?string $key = null): mixed
     {
         if ($this->dep !== null) {
-            return $key ? ($this->dep[$key] ?? []) : $this->dep;
+            return $key !== null && $key !== '' && $key !== '0' ? ($this->dep[$key] ?? []) : $this->dep;
         }
 
         $headers = $this->all();
@@ -119,7 +119,7 @@ final class RequestHeaders
 
         $this->dep = $dep;
 
-        return $key ? ($dep[$key] ?? []) : $dep;
+        return $key !== null && $key !== '' && $key !== '0' ? ($dep[$key] ?? []) : $dep;
     }
 
     public function raw(string $name): string

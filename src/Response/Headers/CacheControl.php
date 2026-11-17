@@ -442,7 +442,7 @@ final class CacheControl implements \Stringable
 
         $number = filter_var($value, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
 
-        return $number === false ? null : (int) $number;
+        return $number === false ? null : $number;
     }
 
     /**

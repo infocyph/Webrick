@@ -42,6 +42,16 @@ function out(string $text): void
  *   php benchmark/hello_matchers.php --memory  (memory-only)
  */
 $opts = getopt('', ['iters::', 'rounds::', 'warmup::', 'cache', 'memory', 'help']);
+$optionInt = static function (string $name, int $default) use ($opts): int {
+    if (!is_array($opts) || !array_key_exists($name, $opts)) {
+        return $default;
+    }
+
+    $value = $opts[$name];
+
+    return is_string($value) ? (int) $value : 0;
+};
+
 
 if (isset($opts['help'])) {
     out("Usage: php benchmark/hello_matchers.php [--iters=500000] [--rounds=5] [--warmup=20000] [--cache] [--memory]\n");
@@ -49,9 +59,9 @@ if (isset($opts['help'])) {
     return;
 }
 
-$iterations = max(1, (int) ($opts['iters'] ?? 500000));
-$rounds = max(1, (int) ($opts['rounds'] ?? 5));
-$warmup = max(0, (int) ($opts['warmup'] ?? 20000));
+$iterations = max(1, $optionInt('iters', 500000));
+$rounds = max(1, $optionInt('rounds', 5));
+$warmup = max(0, $optionInt('warmup', 20000));
 $cacheOnly = isset($opts['cache']);
 $memoryOnly = isset($opts['memory']);
 

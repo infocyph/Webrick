@@ -62,7 +62,8 @@ final class TelemetrySupport
         bool $nelIncludeSubdomains,
         bool $nelCollectSuccesses,
     ): Response {
-        if (!($nelGroup && $nelEndpoint)) {
+        if ($nelGroup === null || $nelGroup === '' || $nelGroup === '0'
+            || $nelEndpoint === null || $nelEndpoint === '' || $nelEndpoint === '0') {
             return $resp;
         }
 
