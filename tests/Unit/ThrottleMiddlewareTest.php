@@ -473,7 +473,11 @@ describe('ThrottleMiddleware', function () {
                     }
                 }
 
-                file_put_contents($directory . '/result-' . getmypid(), $allowed . ',' . $rejected, LOCK_EX);
+                $workerPid = getmypid();
+                if ($workerPid === false) {
+                    throw new RuntimeException('Unable to determine throttle worker process ID.');
+                }
+                file_put_contents($directory . '/result-' . $workerPid, $allowed . ',' . $rejected, LOCK_EX);
                 pcntl_exec(PHP_BINARY, ['-r', '']);
                 throw new RuntimeException('Unable to terminate throttle test worker.');
             }
@@ -490,7 +494,8 @@ describe('ThrottleMiddleware', function () {
 
             $allowed = 0;
             $rejected = 0;
-            foreach (glob($directory . '/result-*') ?: [] as $result) {
+            $results = glob($directory . '/result-*');
+            foreach ($results === false ? [] : $results as $result) {
                 [$childAllowed, $childRejected] = array_map('intval', explode(',', (string) file_get_contents($result)));
                 $allowed += $childAllowed;
                 $rejected += $childRejected;
@@ -504,7 +509,8 @@ describe('ThrottleMiddleware', function () {
                 ->and($counterMap)->toHaveCount(1)
                 ->and($counterEntry['value'])->toBe($workers * $attemptsPerWorker);
         } finally {
-            foreach (glob($directory . '/*') ?: [] as $file) {
+            $entries = glob($directory . '/*');
+            foreach ($entries === false ? [] : $entries as $file) {
                 if (is_file($file) && !unlink($file)) {
                     throw new RuntimeException("Unable to remove throttle test fixture: {$file}");
                 }

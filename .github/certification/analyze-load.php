@@ -59,7 +59,7 @@ function coefficient_of_variation(array $values): float
     if ($count < 2) {
         return 0.0;
     }
-    $mean = (float) array_sum($values) / (float) $count;
+    $mean = array_sum($values) / (float) $count;
     if ($mean <= 0) {
         return 0.0;
     }

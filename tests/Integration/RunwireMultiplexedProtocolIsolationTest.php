@@ -510,7 +510,7 @@ final class RunwireMultiplexedProtocolIsolationTest extends TestCase
 
     /**
      * @return Fiber
-     * @psalm-return Fiber<impure>
+     * @psalm-return Fiber[impure]
      * @phpstan-return Fiber<mixed,mixed,mixed,mixed>
      */
     private static function fiber(
