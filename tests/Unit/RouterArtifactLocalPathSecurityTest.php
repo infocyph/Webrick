@@ -63,3 +63,14 @@ test('prevalidated artifact rejects modified PHP before executing injected code'
         }
     }
 });
+
+test('router artifact loader rejects NUL-byte paths before metadata or PHP execution', function (): void {
+    $loader = new RouterArtifactLoader();
+    $path = sys_get_temp_dir() . DIRECTORY_SEPARATOR . "compiled\\0artifact.php";
+
+    expect(fn () => $loader->load($path, 'production', 'fingerprint'))
+        ->toThrow(UnexpectedValueException::class, 'local filesystem path');
+
+    expect(fn () => $loader->loadPrevalidated($path, str_repeat('a', 32), 'production', 'fingerprint'))
+        ->toThrow(UnexpectedValueException::class, 'local filesystem path');
+});
