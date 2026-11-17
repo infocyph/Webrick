@@ -269,6 +269,7 @@ final readonly class CompiledMatcherIndexCompiler
         foreach (array_chunk($routes, $size) as $chunk) {
             $steps[] = $this->compileFastDispatchStep($chunk);
         }
+
         // Non-empty routes and a positive chunk size produce at least one step.
         /** @var non-empty-list<FastDispatchStep> $steps */
         return $steps;
@@ -290,6 +291,7 @@ final readonly class CompiledMatcherIndexCompiler
         foreach (array_chunk($routes, $size) as $chunk) {
             $steps[] = $this->compilePcreStep($chunk);
         }
+
         // Non-empty routes and a positive chunk size produce at least one step.
         /** @var non-empty-list<PcreStep> $steps */
         return $steps;

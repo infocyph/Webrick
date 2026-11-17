@@ -54,8 +54,6 @@ describe('Deep correctness batch C', function () {
         if (!is_resource($handle)) {
             throw new RuntimeException('Expected an open temporary stream.');
         }
-        expect($handle)->toBeResource();
-
         fwrite($handle, '0123456789');
         rewind($handle);
 

@@ -24,6 +24,9 @@ namespace Infocyph\Webrick\Support;
  */
 final readonly class InputSanitizer
 {
+    /** @var list<non-empty-string> */
+    private array $skipKeyPatterns;
+
     /**
      * Configure the sanitizer behavior.
      *
@@ -41,7 +44,7 @@ final readonly class InputSanitizer
         private bool $normalizeUnicode = false,
         private ?int $maxBytes = null,
         private array $skipKeys = [],
-        private array $skipKeyPatterns = [],
+        array $skipKeyPatterns = [],
     ) {
         if ($this->maxBytes !== null && $this->maxBytes < 0) {
             throw new \InvalidArgumentException('Input sanitizer maxBytes must be >= 0 or null.');
@@ -51,11 +54,15 @@ final readonly class InputSanitizer
                 throw new \InvalidArgumentException('Input sanitizer skip keys must be strings.');
             }
         }
-        foreach ($this->skipKeyPatterns as $pattern) {
+        foreach ($skipKeyPatterns as $pattern) {
             if (!is_string($pattern) || $pattern === '' || !self::isValidPattern($pattern)) {
                 throw new \InvalidArgumentException('Input sanitizer skip-key patterns must be valid non-empty PCRE expressions.');
             }
         }
+
+        /** @var list<non-empty-string> $validatedPatterns */
+        $validatedPatterns = array_values($skipKeyPatterns);
+        $this->skipKeyPatterns = $validatedPatterns;
     }
 
     /**

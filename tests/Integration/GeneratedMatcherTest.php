@@ -543,7 +543,6 @@ test('stale cache formats fail clearly in every matcher mode', function (
         if (!is_string($source)) {
             throw new UnexpectedValueException('Expected the cached matcher artifact to be readable.');
         }
-        expect($source)->toBeString();
         $staleSource = preg_replace("/'_version' => \\d+/", "'_version' => 0", $source, 1);
         expect($staleSource)->toBeString()->not->toBe($source);
         file_put_contents($artifact, $staleSource);
