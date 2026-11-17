@@ -233,7 +233,7 @@ final readonly class TelemetryMiddleware
         $req = TraceContext::attach($req, false);
 
         $resp = $next($req);
-        $durMs = (hrtime(true) - $startNs) / 1e6;
+        $durMs = (hrtime(true) - $startNs) / 1_000_000;
         $resp = $this->addTimingHeaders($resp, $durMs);
         $resp = $this->addCorrelationHeaders($resp, $trace, $requestId);
         $resp = $this->applyNelHeaders($resp);

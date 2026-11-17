@@ -134,6 +134,9 @@ test('SAPI runtime consumes a streaming producer even when its placeholder body 
     $adapter->write($response, $context);
     $inner = ob_get_clean();
     $outer = ob_get_clean();
+    if (!is_string($inner) || !is_string($outer)) {
+        throw new RuntimeException('Unable to read nested emitter output buffers.');
+    }
 
     expect($outer . $inner)->toBe('first-second');
 });

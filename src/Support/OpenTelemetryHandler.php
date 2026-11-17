@@ -47,7 +47,7 @@ final readonly class OpenTelemetryHandler
             $this->addResponseAttributes($span, $resp);
             $this->setSpanStatus($span, $resp->getStatusCode());
 
-            $durMs = (hrtime(true) - $startNs) / 1e6;
+            $durMs = (hrtime(true) - $startNs) / 1_000_000;
             $resp = TelemetrySupport::addTimingHeaders(
                 $resp,
                 $this->options->addXResponseTime,

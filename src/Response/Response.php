@@ -97,7 +97,7 @@ class Response
     /**
      * @param array<array-key,mixed>|JsonSerializable|string|int|float|bool|null $data
      * @param array<string,string|list<string>> $headers
-     * @param positive-int $depth
+     * @param int<1,2147483647> $depth
      * @throws \RuntimeException
      * @throws \InvalidArgumentException
      */
@@ -215,7 +215,7 @@ class Response
     /**
      * @param array<array-key,mixed>|JsonSerializable|string|int|float|bool|null $data
      * @param array<string,string|list<string>> $headers
-     * @param positive-int $depth
+     * @param int<1,2147483647> $depth
      * @throws \RuntimeException
      * @throws \InvalidArgumentException
      */

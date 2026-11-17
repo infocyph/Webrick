@@ -158,8 +158,10 @@ final class RunwireHttp1WriterFixture implements ResponseWriterInterface
     }
 
     #[\Override]
-    public function onDrain(callable $_callback): ResponseWriterInterface
+    public function onDrain(callable $callback): ResponseWriterInterface
     {
+        unset($callback);
+
         return $this;
     }
 

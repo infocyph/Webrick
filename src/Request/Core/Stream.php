@@ -76,10 +76,11 @@ final class Stream implements BodyStream
     #[\Override]
     public function close(): void
     {
-        if (is_resource($this->handle)) {
-            fclose($this->handle);
-        }
+        $handle = $this->handle;
         $this->handle = null;
+        if (is_resource($handle)) {
+            fclose($handle);
+        }
     }
 
     #[\Override]
