@@ -7,6 +7,7 @@ namespace Infocyph\Webrick\Tests\Unit;
 use Closure;
 use InvalidArgumentException;
 use RuntimeException;
+use stdClass;
 use UnexpectedValueException;
 
 use Infocyph\Runwire\Http\Enum\ProtocolVersion;

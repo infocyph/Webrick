@@ -205,7 +205,7 @@ describe('TelemetryMiddleware - propagation and logging', function () {
         $middleware(mockRequest('GET', '/test'), fn() => Response::json(['ok' => true]));
 
         expect($this->logger->hasInfoRecords())->toBeTrue();
-        $record = $this->logger->records[0];
+        $record = $this->logger->getRecords()[0];
         expect($record['message'])->toContain('GET /test')
             ->and($record['message'])->toContain('trace=')
             ->and($record['message'])->toContain('span=')
