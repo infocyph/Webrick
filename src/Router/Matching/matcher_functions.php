@@ -189,8 +189,6 @@ function sharded_matcher_shard_file_path(string $cacheDir, string $hostKey, stri
  * be owned by the deployment, not the request.
  *
  * @param list<string> $winReserved
- * @psalm-flow ($value) -> return
- * @psalm-taint-escape include
  */
 function sharded_matcher_sanitize_for_filename(string $value, array $winReserved): string
 {

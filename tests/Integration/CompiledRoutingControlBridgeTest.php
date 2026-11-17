@@ -258,6 +258,11 @@ final class CompiledRoutingControlBridgeTest extends TestCase
                 postGlobalTags: [],
             );
 
+            $webrick = $manifest['webrick'] ?? null;
+            if (!is_array($webrick)) {
+                throw new \RuntimeException('Compiled release manifest must contain Webrick artifact metadata.');
+            }
+
             foreach ([
                 'php://filter/resource=/etc/passwd',
                 'phar://untrusted.phar/routes.php',
@@ -265,8 +270,10 @@ final class CompiledRoutingControlBridgeTest extends TestCase
                 $routerPath . chr(0) . '.php',
             ] as $untrustedPath) {
                 $altered = $manifest;
-                $altered['webrick']['path'] = $untrustedPath;
-                $altered['webrick']['meta'] = $untrustedPath . '.meta.json';
+                $altered['webrick'] = array_replace($webrick, [
+                    'path' => $untrustedPath,
+                    'meta' => $untrustedPath . '.meta.json',
+                ]);
                 $altered['release_fingerprint'] = ReleaseCompiler::fingerprintManifest($altered);
                 if (file_put_contents($releasePath, json_encode($altered, JSON_THROW_ON_ERROR)) === false) {
                     throw new \RuntimeException('Unable to write non-local release manifest fixture.');
