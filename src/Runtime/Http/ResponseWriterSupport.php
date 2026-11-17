@@ -31,6 +31,8 @@ final readonly class ResponseWriterSupport
     /**
      * @phpstan-return Generator<int,string,void,void>
      * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
      */
     public static function chunks(Response $response, int $chunkSize = 65_536): iterable
     {

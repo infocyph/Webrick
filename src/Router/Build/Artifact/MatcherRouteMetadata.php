@@ -15,6 +15,9 @@ final class MatcherRouteMetadata
 
     private function __construct() {}
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     public static function decode(mixed $payload): CompiledRoute
     {
         if (!is_array($payload)) {

@@ -104,6 +104,7 @@ final readonly class Registrar
      * @param string|GroupInput|null $prefix
      * @param string|GroupInput|Closure|null $domain
      * @param list<mixed>|Closure $middleware
+     * @throws \InvalidArgumentException
      */
     public function group(
         array|string|null $prefix = null,
@@ -396,6 +397,7 @@ final readonly class Registrar
     /**
      * @param RouteHandler $handler
      * @param string|RouteOptions|null $nameOrOpts
+     * @throws \LogicException
      */
     private function verb(
         HttpMethodEnum $method,

@@ -86,6 +86,8 @@ final class CompiledMatcherDynamicEngine
     /**
      * @param list<MatcherGroup> $groups
      * @return int|array{0:int,1:array<string,string>}|null
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
      */
     public function matchGroups(array $groups, string $method, string $path, int $count, string $prefix): int|array|null
     {

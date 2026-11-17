@@ -40,6 +40,9 @@ final class SecurityHeaders
         return self::setIfAbsent($r, 'Strict-Transport-Security', $val);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public static function tight(
         Response $r,
         bool $hsts = true,
@@ -76,6 +79,9 @@ final class SecurityHeaders
         return $hsts && $secureRequest ? self::hsts($r, $includeSubs) : $r;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function setIfAbsent(Response $r, string $name, string $value): Response
     {
         return $r->hasHeader($name) ? $r : $r->withHeader($name, $value);

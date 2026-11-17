@@ -25,6 +25,9 @@ final class CookieJar
         return $jar;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function apply(Response $response): Response
     {
         foreach ($this->raw as $line) {

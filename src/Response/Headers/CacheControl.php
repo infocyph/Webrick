@@ -122,6 +122,9 @@ final class CacheControl implements \Stringable
         return $directives;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public static function fromHeaderBag(HeaderBag $bag): self
     {
         $line = $bag->getHeaderLine('Cache-Control');
@@ -442,6 +445,9 @@ final class CacheControl implements \Stringable
         return $number === false ? null : (int) $number;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function with(string $token, int|string|null $value = null): self
     {
         $token = strtolower($token);

@@ -62,6 +62,7 @@ final readonly class ReleaseCompiler
      * @param null|Closure(ContainerBuilder,RouterBuildResult):void $enrichGraph
      * @return array<string,mixed>
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException
      */
     public function compile(
         ContainerBuilder $builder,

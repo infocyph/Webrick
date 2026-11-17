@@ -293,6 +293,7 @@ final readonly class CompiledMatcherIndexCompiler
      * @param list<array{segments:list<SegmentSpec>,route:RouteValue,id:int,pcre:bool}> $routes
      * @return DynamicBucket
      * @throws \UnexpectedValueException
+     * @throws \LogicException
      */
     private function compileBucket(array $routes): array
     {

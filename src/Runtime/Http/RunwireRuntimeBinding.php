@@ -68,6 +68,9 @@ final readonly class RunwireRuntimeBinding
         return $this->runtimeContext;
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     public function scopeBridge(HttpRequest $request): ?RunwireInterMixScopeBridge
     {
         if ($this->interMix === null) {

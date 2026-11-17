@@ -22,6 +22,9 @@ final readonly class ConditionalValidator
         private ?bool $representationExists = null,
     ) {}
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function evaluate(Request $req): Outcome
     {
         $echo = $this->buildEchoHeaders();
@@ -127,6 +130,9 @@ final readonly class ConditionalValidator
         return $since !== null && $this->lastModified > $since;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function hitsIfModSince(Request $req): bool
     {
         $method = HttpMethodEnum::normalize($req->getMethod());

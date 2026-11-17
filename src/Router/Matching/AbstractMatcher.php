@@ -27,7 +27,10 @@ abstract class AbstractMatcher
         return $this;
     }
 
-    /** Normalize a configured route host once at route-build time. */
+    /**
+     * Normalize a configured route host once at route-build time.
+     * @throws \InvalidArgumentException
+     */
     protected function canonicalRouteHost(?string $raw): string
     {
         if ($raw === null || $raw === '' || $raw === '*') {

@@ -103,6 +103,9 @@ final class RunwireRequestBodyStream implements BodyStream
         return false;
     }
 
+    /**
+     * @throws \LogicException
+     */
     #[\Override]
     public function read(int $length): string
     {
@@ -160,6 +163,9 @@ final class RunwireRequestBodyStream implements BodyStream
         throw new RuntimeException('Runwire request body streams are read-only.');
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function assertOpen(): void
     {
         if ($this->closed) {

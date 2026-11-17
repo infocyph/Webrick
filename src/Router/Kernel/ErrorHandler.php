@@ -46,6 +46,8 @@ final readonly class ErrorHandler
     /**
      * @param callable(Request):Response $core
      * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
      */
     public function handle(Request $request, callable $core): Response
     {

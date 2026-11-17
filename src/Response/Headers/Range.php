@@ -10,6 +10,9 @@ use Infocyph\Webrick\Response\Range\RangeParseStatus;
 /** RFC 9110 single-byte-range value object backed by the canonical range parser. */
 final readonly class Range
 {
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function __construct(
         public int $start,
         public int $end,

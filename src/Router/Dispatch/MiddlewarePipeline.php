@@ -213,6 +213,9 @@ final class MiddlewarePipeline
         return $next;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function resolveMiddlewareString(string $mw): callable
     {
         if (\str_contains($mw, '::')) {

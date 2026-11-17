@@ -54,6 +54,7 @@ final class ShardedCacheGeneration
 
     /**
      * @param list<string> $middleware
+     * @throws \RuntimeException
      */
     public static function publish(string $cacheDir, int $version, string $generation, array $middleware): void
     {
@@ -177,6 +178,7 @@ final class ShardedCacheGeneration
 
     /**
      * @param list<string> $middleware
+     * @throws \RuntimeException
      */
     private static function writeMetadata(string $cacheDir, int $version, string $generation, array $middleware): void
     {

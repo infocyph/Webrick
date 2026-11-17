@@ -52,6 +52,7 @@ final class HandlerCompiler
     /**
      * @param list<mixed> $middleware
      * @return list<mixed>
+     * @throws \InvalidArgumentException
      */
     public function compileMiddlewareList(array $middleware): array
     {
@@ -132,6 +133,7 @@ final class HandlerCompiler
     /**
      * @param array{0:object|string,1:string}|string|callable $handler
      * @return array{0:object|string,1:string}|string|callable
+     * @throws \InvalidArgumentException
      */
     private function normalizeHandler(array|string|callable $handler): array|string|callable
     {

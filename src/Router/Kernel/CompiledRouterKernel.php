@@ -533,6 +533,8 @@ final readonly class CompiledRouterKernel
 
     /**
      * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
      */
     private function renderException(
         Throwable $exception,

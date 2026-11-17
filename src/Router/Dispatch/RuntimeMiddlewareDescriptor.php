@@ -21,6 +21,7 @@ final readonly class RuntimeMiddlewareDescriptor
 
     /**
      * @param array<array-key,mixed> $parameters
+     * @throws \InvalidArgumentException
      */
     public function __construct(
         public mixed $resolver,

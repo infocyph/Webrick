@@ -168,7 +168,10 @@ final readonly class RangeResponder
         return [$length, $headers];
     }
 
-    /** @param array<string,string> $headers */
+    /**
+     * @param array<string,string> $headers
+     * @throws \InvalidArgumentException
+     */
     private static function fileRangeLine(Request $req, array $headers): string
     {
         if (HttpMethodEnum::normalize($req->getMethod()) !== HttpMethodEnum::GET->value) {
@@ -267,6 +270,7 @@ final readonly class RangeResponder
 
     /**
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException
      */
     private static function wrapSeekable(mixed $source, ?int $start = null, ?int $length = null): ByteRangeStream|Stream
     {
