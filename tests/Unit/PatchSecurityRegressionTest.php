@@ -35,9 +35,9 @@ test('invalid encryption and signing configuration redacts secrets from exceptio
     $previous = ini_set('zend.exception_ignore_args', '0');
     try {
         foreach ([
-            static fn() => new CookieEncryptionMiddleware('test-secret-invalid-length'),
-            static fn() => new SignedUrlConfig(generationKey: 'test-secret-signing', algorithm: 'unsupported'),
-            static fn() => UrlGenerator::makeSignature('payload', 'test-secret-signing', 'unsupported'),
+            static fn(): CookieEncryptionMiddleware => new CookieEncryptionMiddleware('test-secret-invalid-length'),
+            static fn(): SignedUrlConfig => new SignedUrlConfig(generationKey: 'test-secret-signing', algorithm: 'unsupported'),
+            static fn(): string => UrlGenerator::makeSignature('payload', 'test-secret-signing', 'unsupported'),
         ] as $operation) {
             try {
                 $operation();

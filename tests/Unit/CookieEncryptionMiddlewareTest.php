@@ -66,7 +66,7 @@ describe('CookieEncryptionMiddleware', function () {
     it('encrypts outbound cookies', function () {
         $request = mockRequest('GET', '/');
 
-        $next = function () {
+        $next = function (): Response {
             $jar = new CookieJar;
             $jar = $jar->add(Cookie::make('enc_session', 'secret_value'));
 
@@ -88,7 +88,7 @@ describe('CookieEncryptionMiddleware', function () {
     it('decrypts inbound cookies', function () {
         // First, encrypt a cookie
         $request1 = mockRequest('GET', '/');
-        $next1 = function () {
+        $next1 = function (): Response {
             $jar = new CookieJar;
             $jar = $jar->add(Cookie::make('enc_session', 'my_secret'));
 
@@ -123,7 +123,7 @@ describe('CookieEncryptionMiddleware', function () {
     it('ignores non-prefixed cookies', function () {
         $request = mockRequest('GET', '/');
 
-        $next = function () {
+        $next = function (): Response {
             $jar = new CookieJar;
             $jar = $jar->add(Cookie::make('normal_session', 'plain_value'));
 
@@ -148,7 +148,7 @@ describe('CookieEncryptionMiddleware', function () {
         );
 
         $request = mockRequest('GET', '/');
-        $next = function () {
+        $next = function (): Response {
             $jar = new CookieJar;
             $jar = $jar->add(Cookie::make('enc_session', 'value'));
 

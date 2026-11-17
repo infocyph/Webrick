@@ -19,7 +19,7 @@ describe('CompressionMiddleware', function () {
             'Accept-Encoding' => 'gzip',
         ]);
 
-        $next = fn () => Response::create($body, 200, [
+        $next = fn (): Response => Response::create($body, 200, [
             'Content-Type' => 'text/html',
         ]);
 
@@ -48,7 +48,7 @@ describe('CompressionMiddleware', function () {
             'Accept-Encoding' => 'gzip',
         ]);
 
-        $next = fn () => Response::create('Small', 200);
+        $next = fn (): Response => Response::create('Small', 200);
 
         $varyMw = new VaryAccumulatorMiddleware;
         $response = $varyMw($request, fn ($r) => $middleware($r, $next));
@@ -66,7 +66,7 @@ describe('CompressionMiddleware', function () {
         ]);
 
         $body = str_repeat('x', 2000);
-        $next = fn () => Response::create($body, 200, [
+        $next = fn (): Response => Response::create($body, 200, [
             'Content-Type' => 'image/jpeg',
         ]);
 
@@ -84,7 +84,7 @@ describe('CompressionMiddleware', function () {
         ]);
 
         $body = str_repeat('Hello World! ', 100);
-        $next = fn () => Response::create($body, 200, [
+        $next = fn (): Response => Response::create($body, 200, [
             'Cache-Control' => 'no-transform',
         ]);
 
@@ -105,7 +105,7 @@ describe('CompressionMiddleware', function () {
             'Accept-Encoding' => 'gzip',
         ]);
 
-        $next = fn () => Response::create($body, 200, [
+        $next = fn (): Response => Response::create($body, 200, [
             'Content-Type' => 'text/html',
             'ETag' => '"abc123"',
         ]);

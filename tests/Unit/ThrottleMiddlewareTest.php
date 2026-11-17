@@ -204,7 +204,7 @@ describe('ThrottleMiddleware', function () {
         $request = mockRequest('GET', '/test');
         $called = false;
 
-        $next = function () use (&$called) {
+        $next = function () use (&$called): Response {
             $called = true;
 
             return Response::json(['ok' => true]);
@@ -221,7 +221,7 @@ describe('ThrottleMiddleware', function () {
 
     it('blocks requests over limit', function () {
         $request = mockRequest('GET', '/test');
-        $next = fn () => Response::json(['ok' => true]);
+        $next = fn (): Response => Response::json(['ok' => true]);
 
         for ($i = 0; $i < 3; $i++) {
             ($this->middleware)($request, $next);
@@ -251,7 +251,7 @@ describe('ThrottleMiddleware', function () {
         );
 
         $request = mockRequest('GET', '/test');
-        $next = fn () => Response::json(['ok' => true]);
+        $next = fn (): Response => Response::json(['ok' => true]);
 
         $request1 = $request->withAttribute('rate_cost.thm', 2);
         $response1 = $middleware($request1, $next);
@@ -274,7 +274,7 @@ describe('ThrottleMiddleware', function () {
         );
 
         $request = mockRequest('GET', '/test', ['X-Admin-Key' => 'secret']);
-        $next = fn () => Response::json(['ok' => true]);
+        $next = fn (): Response => Response::json(['ok' => true]);
 
         for ($i = 0; $i < 5; $i++) {
             $response = $middleware($request, $next);
@@ -331,7 +331,7 @@ describe('ThrottleMiddleware', function () {
             counterStore: new AtomicCounterAdapter($counter),
         );
         $request = mockRequest('GET', '/atomic');
-        $next = static fn () => Response::json(['ok' => true]);
+        $next = static fn (): Response => Response::json(['ok' => true]);
 
         expect($middleware($request, $next)->hasHeader('X-RateLimit-Remaining'))->toBeTrue()
             ->and($middleware($request, $next)->hasHeader('X-RateLimit-Remaining'))->toBeTrue()
@@ -345,7 +345,7 @@ describe('ThrottleMiddleware', function () {
         expect($path)->toBeString();
         $store = new PcntlFileAtomicCounterStore($path);
         $counter = new AtomicCounterAdapter($store);
-        $next = static fn() => Response::json(['ok' => true]);
+        $next = static fn(): Response => Response::json(['ok' => true]);
         $global = new ThrottleMiddleware(max: 10, window: 60, counterStore: $counter, scope: 'global');
         $login = new ThrottleMiddleware(max: 10, window: 60, counterStore: $counter, scope: 'login');
         $firstWindow = time();
@@ -395,7 +395,7 @@ describe('ThrottleMiddleware', function () {
             );
             $request = (new Request('GET', 'http://localhost/concurrency-fallback', ['REQUEST_TIME' => 1]))
                 ->withAttribute('client_ip', '198.51.100.10');
-            $next = static fn() => Response::json(['ok' => true]);
+            $next = static fn(): Response => Response::json(['ok' => true]);
 
             try {
                 for ($attempt = 0; $attempt < $attempts; $attempt++) {
@@ -456,7 +456,7 @@ describe('ThrottleMiddleware', function () {
                 );
                 $request = (new Request('GET', 'http://localhost/concurrency', ['REQUEST_TIME' => 1]))
                     ->withAttribute('client_ip', '198.51.100.10');
-                $next = static fn() => Response::json(['ok' => true]);
+                $next = static fn(): Response => Response::json(['ok' => true]);
 
                 for ($attempt = 0; $attempt < $attemptsPerWorker; $attempt++) {
                     try {

@@ -7,7 +7,7 @@ use Infocyph\Webrick\Router\Route\Route;
 
 describe('Route', function () {
     it('creates basic routes', function () {
-        $handler = fn () => Response::json(['ok' => true]);
+        $handler = fn (): Response => Response::json(['ok' => true]);
         $route = new Route('GET', '/users', $handler);
 
         expect($route)
@@ -50,8 +50,8 @@ describe('Route', function () {
     });
 
     it('generates unique handler fingerprint', function () {
-        $handler1 = fn () => 'a';
-        $handler2 = fn () => 'b';
+        $handler1 = fn (): string => 'a';
+        $handler2 = fn (): string => 'b';
 
         $fp1 = Route::fingerprint($handler1);
         $fp2 = Route::fingerprint($handler2);

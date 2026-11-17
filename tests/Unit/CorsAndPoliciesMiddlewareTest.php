@@ -16,7 +16,7 @@ describe('CorsAndPoliciesMiddleware', function () {
             'Origin' => 'https://app.example.com',
         ]);
 
-        $next = fn() => Response::json(['ok' => true]);
+        $next = fn(): Response => Response::json(['ok' => true]);
 
         $response = $middleware($request, $next);
 
@@ -37,7 +37,7 @@ describe('CorsAndPoliciesMiddleware', function () {
             'Access-Control-Request-Headers' => 'Content-Type',
         ]);
 
-        $next = fn() => Response::json(['ok' => true]);
+        $next = fn(): Response => Response::json(['ok' => true]);
 
         $response = $middleware($request, $next);
 
@@ -58,7 +58,7 @@ describe('CorsAndPoliciesMiddleware', function () {
             'Origin' => 'https://evil.com',
         ]);
 
-        $next = fn() => Response::json(['ok' => true]);
+        $next = fn(): Response => Response::json(['ok' => true]);
 
         $response = $middleware($request, $next);
 
@@ -75,7 +75,7 @@ describe('CorsAndPoliciesMiddleware', function () {
             'Origin' => 'https://any.com',
         ]);
 
-        $next = fn() => Response::json(['ok' => true]);
+        $next = fn(): Response => Response::json(['ok' => true]);
 
         $response = $middleware($request, $next);
 
@@ -91,7 +91,7 @@ describe('CorsAndPoliciesMiddleware', function () {
         );
 
         $request = mockRequest('GET', '/');
-        $next = fn() => Response::json(['ok' => true]);
+        $next = fn(): Response => Response::json(['ok' => true]);
 
         $response = $middleware($request, $next);
 
@@ -107,7 +107,7 @@ describe('CorsAndPoliciesMiddleware', function () {
         );
 
         $request = mockRequest('GET', '/');
-        $next = fn() => Response::json(['ok' => true]);
+        $next = fn(): Response => Response::json(['ok' => true]);
 
         $response = $middleware($request, $next);
 

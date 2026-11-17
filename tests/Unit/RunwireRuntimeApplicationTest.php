@@ -253,7 +253,7 @@ test('runwire continuation preserves caller ownership through yielding exception
         ->and($owner->isSuspended())->toBeTrue()
         ->and($caught)->toBe($failure)
         ->and($finalized)->toBe(0)
-        ->and(fn() => $owner->resume())
+        ->and(fn(): mixed => $owner->resume())
         ->toThrow(RuntimeException::class, 'caller Fiber cancelled')
         ->and($cleanupResumed)->toBeTrue()
         ->and($finalized)->toBe(1)
@@ -383,7 +383,7 @@ test('runwire continuation preserves exception cleanup across repeated body read
     });
 
     expect($owner->start())->toBe('handler-suspended');
-    expect(fn() => $owner->throw($failure))
+    expect(fn(): mixed => $owner->throw($failure))
         ->toThrow(fn(RuntimeException $error) => expect($error)->toBe($failure));
     expect($owner->isTerminated())->toBeTrue()
         ->and($finalized)->toBe(0);

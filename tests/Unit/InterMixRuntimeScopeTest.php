@@ -87,7 +87,7 @@ test('InterMix runtime propagates explicit scope context through Runwire task lo
             $resolved = new CoroutineRuntime()->run(
                 static function (CoroutineScope $scope) use ($runtime, $scopeContext, $scopeLocal): array {
                     $scope->setLocal($scopeLocal, $scopeContext);
-                    $spawnAttached = static function () use ($runtime, $scope, $scopeLocal) {
+                    $spawnAttached = static function () use ($runtime, $scope, $scopeLocal): \Infocyph\Runwire\Coroutine\Task {
                         return $scope->spawn(static function () use ($runtime, $scope, $scopeLocal): WebrickRuntimeScopedMarker {
                             $captured = $scope->local($scopeLocal);
                             if (!$captured instanceof ScopeContext) {

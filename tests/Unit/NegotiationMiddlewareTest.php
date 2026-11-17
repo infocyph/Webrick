@@ -38,7 +38,7 @@ describe('NegotiationMiddleware', function () {
             'Accept' => 'text/xml',  // Not supported
         ]);
 
-        $next = fn () => Response::json(['ok' => true]);
+        $next = fn (): Response => Response::json(['ok' => true]);
 
         try {
             $middleware($request, $next);
@@ -107,7 +107,7 @@ describe('NegotiationMiddleware', function () {
             'Accept' => 'application/json',
         ]);
 
-        $next = fn () => Response::create('{"ok":true}', 200);
+        $next = fn (): Response => Response::create('{"ok":true}', 200);
 
         $response = $middleware($request, $next);
 
@@ -123,7 +123,7 @@ describe('NegotiationMiddleware', function () {
             'Accept-Language' => 'fr',
         ]);
 
-        $next = fn () => Response::json(['ok' => true]);
+        $next = fn (): Response => Response::json(['ok' => true]);
 
         $response = $middleware($request, $next);
 
