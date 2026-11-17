@@ -216,6 +216,7 @@ final class CompiledRoutingControlBridgeTest extends TestCase
     /**
      * @throws \RuntimeException
      * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     public function testCoordinatedReleaseRejectsObsoleteManifestFormat(): void
     {
@@ -281,6 +282,7 @@ final class CompiledRoutingControlBridgeTest extends TestCase
      * @throws \InvalidArgumentException
      * @throws \RuntimeException
      * @throws \UnexpectedValueException
+     * @throws \LogicException
      */
     #[DataProvider('compiledReleaseBootModes')]
     public function testDirectCompiledFastPathsRemainScopeless(string $matcherMode, string $manifestRepresentation, bool $trusted): void

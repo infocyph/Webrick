@@ -58,7 +58,7 @@ function signedUrlQuery(string $url): array
 function requestFromSignedUrl(string $url): Request
 {
     $query = signedUrlQuery($url);
-    $uri = (string) (\parse_url($url, \PHP_URL_SCHEME) !== null
+    $uri = (\parse_url($url, \PHP_URL_SCHEME) !== null
         ? ((string) \parse_url($url, \PHP_URL_SCHEME)) . '://' . ((string) \parse_url($url, \PHP_URL_HOST))
             . ((\parse_url($url, \PHP_URL_PORT) !== null) ? ':' . (string) \parse_url($url, \PHP_URL_PORT) : '')
             . ((string) \parse_url($url, \PHP_URL_PATH))

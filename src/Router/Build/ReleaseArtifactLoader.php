@@ -23,6 +23,7 @@ final readonly class ReleaseArtifactLoader
      * @return array{container:ProductionContainer,artifact:CompiledRouterArtifact,manifest:array<string,mixed>}
      * @throws \RuntimeException
      * @throws \UnexpectedValueException
+     * @throws \InvalidArgumentException
      */
     public function load(
         ContainerBuilder $builder,

@@ -339,7 +339,7 @@ final class Collection implements IteratorAggregate
         $normalized = [];
         $seen = [];
         foreach ($aliases as $alias) {
-            $alias = $this->normalizeAlias($route, (string) $alias);
+            $alias = $this->normalizeAlias($route, $alias);
             if (isset($seen[$alias])) {
                 throw new LogicException("Alias '{$alias}' is duplicated in the registration batch.");
             }

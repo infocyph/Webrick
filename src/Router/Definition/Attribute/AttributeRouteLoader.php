@@ -41,6 +41,7 @@ final class AttributeRouteLoader
      *
      * @param list<class-string> $classes
      * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     public static function register(Registrar $registrar, array $classes): void
     {

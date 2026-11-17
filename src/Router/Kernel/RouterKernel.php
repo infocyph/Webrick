@@ -93,6 +93,7 @@ final readonly class RouterKernel
      * @param array<int,string> $postGlobalTags
      * @throws \RuntimeException
      * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     public static function bootWithRegistrar(
         LoggerInterface $log,

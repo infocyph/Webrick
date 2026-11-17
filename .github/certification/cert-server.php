@@ -68,9 +68,7 @@ function certification_builder(): ContainerBuilder
     $builder = ContainerBuilder::create('webrick.runtime.certification');
     // These handlers receive Request directly from Webrick and do not use DI inputs.
     $builder->setEnvironment(CERT_ENVIRONMENT);
-    if (method_exists($builder, 'releaseIdentity')) {
-        $builder->releaseIdentity(CERT_FINGERPRINT);
-    }
+    $builder->releaseIdentity(CERT_FINGERPRINT);
 
     return $builder;
 }

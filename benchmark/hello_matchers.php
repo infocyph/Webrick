@@ -784,6 +784,7 @@ function clearBenchmarkCache(string $matcher, string $cachePath): void
  * } $spec
  * @throws \InvalidArgumentException
  * @throws \RuntimeException
+ * @throws \LogicException
  */
 function buildScenarioMatcher(array $scenario, bool $useCache, string $cachePath, array $spec): MatcherInterface
 {

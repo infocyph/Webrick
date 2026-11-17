@@ -23,6 +23,7 @@ final class CacheLifecycleBench
     /**
      * @throws \InvalidArgumentException
      * @throws \RuntimeException
+     * @throws \LogicException
      */
     public function setUp(): void
     {
@@ -52,6 +53,7 @@ final class CacheLifecycleBench
     /**
      * @throws \InvalidArgumentException
      * @throws \RuntimeException
+     * @throws \LogicException
      */
     #[Bench\BeforeMethods('setUp')]
     #[Bench\AfterMethods('tearDown')]
@@ -83,6 +85,7 @@ final class CacheLifecycleBench
     /**
      * @throws \InvalidArgumentException
      * @throws \RuntimeException
+     * @throws \LogicException
      */
     #[Bench\BeforeMethods('setUp')]
     #[Bench\AfterMethods('tearDown')]
@@ -114,6 +117,7 @@ final class CacheLifecycleBench
     /**
      * @throws \InvalidArgumentException
      * @throws \RuntimeException
+     * @throws \LogicException
      */
     #[Bench\BeforeMethods('setUp')]
     #[Bench\AfterMethods('tearDown')]

@@ -159,6 +159,9 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         $this->index ??= new CanonicalMatcherIndex();
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     private function buildMatcherCode(): string
     {
         [$payloads, $hosts] = $this->generationData();
