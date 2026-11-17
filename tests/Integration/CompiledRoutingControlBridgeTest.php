@@ -230,16 +230,6 @@ final class CompiledRoutingControlBridgeTest extends TestCase
     }
 
     /**
-     * The release manifest must reject altered executable router bytes even
-     * when the attacker also updates the artifact's adjacent metadata digest.
-     *
-     * @throws \InvalidArgumentException
-     * @throws \RuntimeException
-     * @throws \UnexpectedValueException
-     * @throws \LogicException
-     */
-
-    /**
      * Reject manifest-selected stream wrappers before any hash_file call or PHP execution.
      *
      * @throws \InvalidArgumentException
@@ -306,6 +296,15 @@ final class CompiledRoutingControlBridgeTest extends TestCase
         }
     }
 
+    /**
+     * The release manifest must reject altered executable router bytes even
+     * when the attacker also updates the artifact's adjacent metadata digest.
+     *
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     * @throws \LogicException
+     */
     public function testCoordinatedReleaseChecksRouterBytesBeforeExecution(): void
     {
         [$intermixPath, $routerPath] = self::artifactPaths('tampered-router');
