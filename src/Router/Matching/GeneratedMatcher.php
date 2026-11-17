@@ -34,7 +34,7 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
 
     private bool $finalized = false;
 
-    private CanonicalMatcherIndex $index;
+    private ?CanonicalMatcherIndex $index = null;
 
     /** @var array<string,true> */
     private array $middlewareRequirements = [];
@@ -154,6 +154,10 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         }
     }
 
+    /**
+     * @phpstan-assert CanonicalMatcherIndex $this->index
+     * @psalm-assert CanonicalMatcherIndex $this->index
+     */
     private function bootIndex(): void
     {
         $this->index ??= new CanonicalMatcherIndex();
