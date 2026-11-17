@@ -371,7 +371,7 @@ final class CompiledRoute implements RouteInterface
             return null;
         }
 
-        /** @var non-empty-string $name */
+        /** @var non-falsy-string $name */
         $name = $matches[1];
         /** @var ?non-empty-string $constraint */
         $constraint = $matches[2] ?? null;
