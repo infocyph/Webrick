@@ -234,7 +234,6 @@ final class BenchmarkSupport
 
         $register($registrar);
 
-        /** @var list<CompiledRoute> $all */
         $all = $routes->compile()->all();
         if ($all === []) {
             throw new RuntimeException('Failed to build benchmark route set.');

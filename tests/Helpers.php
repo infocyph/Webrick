@@ -16,7 +16,7 @@ use Psr\Log\NullLogger;
 /**
  * Simple test logger for capturing log messages during tests.
  */
-class TestLogger implements LoggerInterface
+final class TestLogger implements LoggerInterface
 {
     /** @var list<array{level:mixed,message:string,context:array<array-key,mixed>}> */
     public array $records = [];

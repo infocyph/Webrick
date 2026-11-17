@@ -243,7 +243,6 @@ final class ArtifactValueCodec
             return null;
         }
 
-        /** @var class-string $class */
         $class = $calledClass->getName();
 
         return [$class, $method];

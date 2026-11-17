@@ -10,7 +10,7 @@ use Infocyph\Webrick\Router\Definition\Attribute\Group;
 use Infocyph\Webrick\Router\Definition\Attribute\Route;
 
 #[Group(prefix: '/test')]
-class TestController
+final class TestController
 {
     /**
      * @throws \InvalidArgumentException

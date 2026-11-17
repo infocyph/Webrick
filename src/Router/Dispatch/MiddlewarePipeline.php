@@ -182,7 +182,7 @@ final class MiddlewarePipeline
     private static function describe(mixed $mw): string
     {
         return \is_object($mw) ? $mw::class
-            : (\is_array($mw) ? 'callable[]' : (string) \gettype($mw));
+            : (\is_array($mw) ? 'callable[]' : \gettype($mw));
     }
 
     /* -------------------------------------------------------------------------

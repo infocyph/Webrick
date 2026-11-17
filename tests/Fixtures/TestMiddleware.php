@@ -8,7 +8,7 @@ use Closure;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 
-class TestMiddleware
+final class TestMiddleware
 {
     /** @param Closure(Request):Response $next */
     public function __invoke(Request $request, Closure $next): Response
