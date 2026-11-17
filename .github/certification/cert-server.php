@@ -46,7 +46,10 @@ function certification_arguments(array $argv): array
     return $arguments;
 }
 
-/** @return array{intermix:string,router:string} */
+/**
+ * @return array{intermix:string,router:string}
+ * @throws \RuntimeException
+ */
 function certification_artifacts(string $root): array
 {
     $directory = $root . DIRECTORY_SEPARATOR . '.runtime-certification';
@@ -81,6 +84,10 @@ function certification_cleanup_artifact(string $path): void
     }
 }
 
+/**
+ * @throws \InvalidArgumentException
+ * @throws \RuntimeException
+ */
 function certification_prepare(string $root): void
 {
     $paths = certification_artifacts($root);
@@ -215,6 +222,10 @@ function certification_prepare(string $root): void
     new RouterArtifactCompiler()->compile($build, $paths['router']);
 }
 
+/**
+ * @throws \InvalidArgumentException
+ * @throws \RuntimeException
+ */
 function certification_kernel(string $root): CompiledRouterKernel
 {
     $paths = certification_artifacts($root);
@@ -282,6 +293,9 @@ function certification_record_event(string $path, SupervisorEvent $event): void
     );
 }
 
+/**
+ * @throws \InvalidArgumentException
+ */
 function certification_write_json(ResponseWriterInterface $writer, array $payload): void
 {
     $json = json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
@@ -292,6 +306,14 @@ function certification_write_json(ResponseWriterInterface $writer, array $payloa
     $writer->end($json);
 }
 
+/**
+ * @throws \Infocyph\Runwire\Exception\RuntimeUnavailableException
+ * @throws \Infocyph\Runwire\Exception\SupervisorException
+ * @throws \InvalidArgumentException
+ * @throws \LogicException
+ * @throws \RuntimeException
+ * @throws \Throwable
+ */
 function certification_runwire(
     string $root,
     string $address,
@@ -357,6 +379,9 @@ function certification_runwire(
     $runtime->listen($definition)->run();
 }
 
+/**
+ * @throws \RuntimeException
+ */
 function certification_sapi(string $root): void
 {
     $path = parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH);

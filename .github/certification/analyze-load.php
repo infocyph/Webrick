@@ -2,7 +2,10 @@
 
 declare(strict_types=1);
 
-/** @return list<array<string,mixed>> */
+/**
+ * @return list<array<string,mixed>>
+ * @throws \RuntimeException
+ */
 function load_rows(string $path): array
 {
     $rows = [];

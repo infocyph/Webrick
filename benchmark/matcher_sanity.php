@@ -17,6 +17,9 @@ function sanityRoute(string $method, string $path, string $handler): CompiledRou
     return CompiledRoute::fromRoute(new Route($method, $path, $handler));
 }
 
+/**
+ * @throws \RuntimeException
+ */
 function assertSameValue(mixed $expected, mixed $actual, string $message): void
 {
     if ($actual !== $expected) {
@@ -24,6 +27,9 @@ function assertSameValue(mixed $expected, mixed $actual, string $message): void
     }
 }
 
+/**
+ * @throws \RuntimeException
+ */
 function assertOutcome(mixed $actual, MatchOutcomeType $type, string $message): MatchOutcome
 {
     if (!$actual instanceof MatchOutcome || $actual->type !== $type) {
@@ -33,7 +39,10 @@ function assertOutcome(mixed $actual, MatchOutcomeType $type, string $message): 
     return $actual;
 }
 
-/** @param list<string> $expected */
+/**
+ * @param list<string> $expected
+ * @throws \RuntimeException
+ */
 function assertAllowed(MatchOutcome $outcome, array $expected, string $message): void
 {
     foreach ($expected as $allowed) {

@@ -577,6 +577,9 @@ function runScenarioMatcher(
  *   best_ns_op:float,
  *   avg_ns_op:float
  * }
+ * @throws \Infocyph\Webrick\Exceptions\MethodNotAllowedException
+ * @throws \Infocyph\Webrick\Exceptions\RouteNotFoundException
+ * @throws \RuntimeException
  */
 function benchMatcher(
     string $name,
@@ -707,6 +710,8 @@ function formatMetricCell(?array $row): string
  *
  * @param string $matcher One of MatcherModeEnum::values().
  * @param callable(Registrar):void $register
+ * @throws \InvalidArgumentException
+ * @throws \RuntimeException
  */
 function buildBenchmarkCache(string $matcher, string $cachePath, callable $register): void
 {
@@ -731,6 +736,10 @@ function buildBenchmarkCache(string $matcher, string $cachePath, callable $regis
     ]);
 }
 
+/**
+ * @throws \InvalidArgumentException
+ * @throws \RuntimeException
+ */
 function clearBenchmarkCache(string $matcher, string $cachePath): void
 {
     RouteCache::clear([
