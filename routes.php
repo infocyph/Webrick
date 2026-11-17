@@ -15,11 +15,9 @@ use Infocyph\Webrick\Router\Url\SignedUrlConfig;
  * This file is included inside the $register closure in index.php,
  * so the variable $registrar (Registrar) is available.
  *
- * The including registrar binds the class strings to the active bootstrap.
- * The demo defaults also allow standalone route-source inclusion by the build CLI.
+ * DemoController and UsersController are declared in index.php (global namespace),
+ * so we can reference them directly here.
  */
-$demoController ??= DemoController::class;
-$usersController ??= UsersController::class;
 
 /* ---- homepage with links ---- */
 Route::get('/', function (): Response {
@@ -82,9 +80,9 @@ Route::get('/download', fn(Request $r) => Response::rangedDownload($r, __FILE__,
 Route::get('/color/{color:hex}', fn(string $hex): Response => Response::json(['you sent hex' => $hex]));
 
 /* ---- class-based routes ---- */
-Route::get('/class/test/{name}', [$demoController, 'hello'], 'test');
-Route::get('/class/rest/{name}', [$demoController, 'hello']);
-Route::get('/plus/{name}/mine', [$demoController, 'hello']);
+Route::get('/class/test/{name}', [DemoController::class, 'hello'], 'test');
+Route::get('/class/rest/{name}', [DemoController::class, 'hello']);
+Route::get('/plus/{name}/mine', [DemoController::class, 'hello']);
 
 /* ---- extra variety routes ---- */
 Route::post('/post/echo', fn(Request $r): Response => Response::json(['method' => $r->getMethod(), 'payload' => $r->all(), 'time' => \date(DATE_ATOM)]));
@@ -122,7 +120,7 @@ Route::get('/json/slow', fn(): Response => Response::json(new class implements J
 }));
 
 /* ---- resource routes (Laravel-ish) ---- */
-Route::resource('users', '/users', $usersController);
+Route::resource('users', '/users', UsersController::class);
 
 /* ---- redirects using aliases ---- */
 Route::get('/to-json', fn() => Response::redirect(Route::urlFor('json'), StatusEnum::FOUND->value));
