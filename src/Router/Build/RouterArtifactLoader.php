@@ -51,7 +51,12 @@ final class RouterArtifactLoader
         // A prevalidated payload is executable PHP. Reject altered source bytes
         // before require; checking only the returned fingerprint would be too late.
         $meta = $this->readMeta($path);
-        self::assertMetaIdentity($meta, $expectedEnvironment, $expectedConfigFingerprint);
+        if (
+            $meta['environment'] !== $expectedEnvironment
+            || !hash_equals($expectedConfigFingerprint, $meta['config_fingerprint'])
+        ) {
+            throw new RuntimeException('Webrick router artifact identity mismatch.');
+        }
         if (!hash_equals($trustedArtifactFingerprint, $meta['artifact_fingerprint'])) {
             throw new RuntimeException('Trusted Webrick artifact fingerprint does not match the release manifest.');
         }

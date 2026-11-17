@@ -27,7 +27,7 @@ final class CacheControl implements \Stringable
         'stale-if-error' => true,
     ];
 
-    private const array PRIVACY_TOKENS = ['public' => true, 'private' => true];
+    private const array PRIVACY_TOKENS = ['public' => 'public', 'private' => 'private'];
 
     private const array RENDER_ORDER = [
         'no-store',
@@ -264,8 +264,7 @@ final class CacheControl implements \Stringable
     private static function ingestExtensionOrBoolean(array &$model, string $name, ?string $value): void
     {
         if (isset(self::PRIVACY_TOKENS[$name])) {
-            $model['privacy']['public'] = $model['privacy']['public'] || $name === 'public';
-            $model['privacy']['private'] = $model['privacy']['private'] || $name === 'private';
+            $model['privacy'][self::PRIVACY_TOKENS[$name]] = true;
 
             return;
         }
