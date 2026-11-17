@@ -77,7 +77,7 @@ describe('Request', function () {
         /** @var Request&object{query_key:string} $request */
         expect($request->query_key)->toBe('second')
             ->and(isset($request->query_key))->toBeTrue()
-            ->and(isset($request->missing_key))->toBeFalse();
+            ->and($request->__isset('missing_key'))->toBeFalse();
     });
 
     it('preserves zero-like URI components and request targets', function () {

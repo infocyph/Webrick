@@ -95,7 +95,7 @@ describe('Response', function () {
             ->toThrow(InvalidArgumentException::class)
             ->and(fn () => Response::create('test', headers: ['X-Test' => "safe\r\nInjected: value"]))
             ->toThrow(InvalidArgumentException::class)
-            ->and(fn () => Response::create('test', headers: ['X-Test' => ['safe', 1]]))
+            ->and(static fn () => (new ReflectionMethod(Response::class, 'create'))->invoke(null, 'test', 200, ['X-Test' => ['safe', 1]]))
             ->toThrow(InvalidArgumentException::class);
     });
 

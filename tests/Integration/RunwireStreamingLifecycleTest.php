@@ -409,7 +409,40 @@ final class RunwireStreamingLifecycleTest extends TestCase
             },
         );
 
-        $build = new RouteCompiler()->compile(
+        $build = self::compileFixtureRoutes($fingerprint);
+
+        try {
+            $builder->compile($intermixPath);
+            $container = $builder->production($intermixPath);
+            RunwireStreamingScopeProbe::$container = $container;
+            new RouterArtifactCompiler()->compile($build, $routerPath);
+            $kernel = CompiledRouterKernel::fromCompiledArtifact(
+                log: new NullLogger(),
+                matcher: FusedMatcher::make(),
+                container: $container,
+                artifactPath: $routerPath,
+                environment: 'production',
+                configFingerprint: $fingerprint,
+            );
+            $server = new RuntimeServer($kernel, new RunwireRuntimeAdapter());
+            $application = new RunwireRuntimeApplication(
+                static function (HttpRequest $request, ResponseWriterInterface $writer) use ($server): void {
+                    $server->handle($request, $writer);
+                },
+                RuntimeContext::standalone(),
+            );
+        } catch (Throwable $error) {
+            self::cleanup([$intermixPath, $routerPath]);
+            throw $error;
+        }
+
+        return [$application, [$intermixPath, $routerPath]];
+    }
+
+    /** @throws \InvalidArgumentException */
+    private static function compileFixtureRoutes(string $fingerprint): \Infocyph\Webrick\Router\Build\RouterBuildResult
+    {
+        return new RouteCompiler()->compile(
             register: static function (Registrar $registrar): void {
                 $registrar->get(
                     '/runtime/scoped-stream',
@@ -450,33 +483,6 @@ final class RunwireStreamingLifecycleTest extends TestCase
             preGlobalTags: [],
             postGlobalTags: [],
         );
-
-        try {
-            $builder->compile($intermixPath);
-            $container = $builder->production($intermixPath);
-            RunwireStreamingScopeProbe::$container = $container;
-            new RouterArtifactCompiler()->compile($build, $routerPath);
-            $kernel = CompiledRouterKernel::fromCompiledArtifact(
-                log: new NullLogger(),
-                matcher: FusedMatcher::make(),
-                container: $container,
-                artifactPath: $routerPath,
-                environment: 'production',
-                configFingerprint: $fingerprint,
-            );
-            $server = new RuntimeServer($kernel, new RunwireRuntimeAdapter());
-            $application = new RunwireRuntimeApplication(
-                static function (HttpRequest $request, ResponseWriterInterface $writer) use ($server): void {
-                    $server->handle($request, $writer);
-                },
-                RuntimeContext::standalone(),
-            );
-        } catch (Throwable $error) {
-            self::cleanup([$intermixPath, $routerPath]);
-            throw $error;
-        }
-
-        return [$application, [$intermixPath, $routerPath]];
     }
 
     /** @return array{0:string,1:string} */

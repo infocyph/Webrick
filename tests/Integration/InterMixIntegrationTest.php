@@ -390,10 +390,20 @@ describe('InterMix integration', function () {
             ->build();
         $pipeline = new MiddlewarePipeline(
             [],
-            static fn(Request $request, InterMixMiddlewareDependency $dependency): Response => Response::json([
-                'request' => $request instanceof Request,
-                'marker' => $dependency->marker,
-            ]),
+            static function (Request $request) use ($container): Response {
+                $result = $container->invoke(
+                    static fn(Request $request, InterMixMiddlewareDependency $dependency): Response => Response::json([
+                        'request' => $request->getMethod() === 'GET',
+                        'marker' => $dependency->marker,
+                    ]),
+                    ['request' => $request],
+                );
+                if (!$result instanceof Response) {
+                    throw new UnexpectedValueException('InterMix terminal DI must produce a Response.');
+                }
+
+                return $result;
+            },
             $container,
         );
 
