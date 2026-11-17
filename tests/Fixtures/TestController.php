@@ -12,18 +12,30 @@ use Infocyph\Webrick\Router\Definition\Attribute\Route;
 #[Group(prefix: '/test')]
 class TestController
 {
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     #[Route(method: 'GET', path: '/hello/{name}', name: 'test.hello')]
     public function hello(string $name): Response
     {
         return Response::json(['message' => "Hello, {$name}!"]);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     #[Route(method: 'POST', path: '/echo', name: 'test.echo')]
     public function echo(Request $req): Response
     {
         return Response::json($req->all());
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     #[Route(method: 'GET', path: '/info', name: 'test.info', middleware: [TestMiddleware::class])]
     public function info(): Response
     {

@@ -71,6 +71,9 @@ final class RunwireHttp1BodyFixture implements RequestBodyInterface
         return $this;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     #[\Override]
     public function read(int $maxBytes = PHP_INT_MAX): string
     {
@@ -196,6 +199,11 @@ final class RunwireHttp1WriterFixture implements ResponseWriterInterface
 #[ExcludeStaticPropertyFromBackup(CodeStream::class, 'handlers')]
 final class RunwireHttp1ParityTest extends TestCase
 {
+    /**
+     * @throws \Infocyph\Runwire\Exception\ApplicationStartupException
+     * @throws \Infocyph\Runwire\Exception\CancelledException
+     * @throws \LogicException
+     */
     public function testHttp11ParityThroughTheFullRunwireApplicationBridge(): void
     {
         [$application, $paths] = self::applicationFixture();
@@ -279,7 +287,11 @@ final class RunwireHttp1ParityTest extends TestCase
         }
     }
 
-    /** @return array{RunwireRuntimeApplication,list<string>} */
+    /**
+     * @return array{RunwireRuntimeApplication,list<string>}
+     * @throws \InvalidArgumentException
+     * @throws \Throwable
+     */
     private static function applicationFixture(): array
     {
         [$intermixPath, $routerPath] = self::artifactPaths();
@@ -384,7 +396,10 @@ final class RunwireHttp1ParityTest extends TestCase
         return [$base . '-intermix.php', $base . '-router.php'];
     }
 
-    /** @param list<string> $paths */
+    /**
+     * @param list<string> $paths
+     * @throws \RuntimeException
+     */
     private static function cleanup(array $paths): void
     {
         foreach ($paths as $path) {
@@ -398,6 +413,8 @@ final class RunwireHttp1ParityTest extends TestCase
 
     /**
      * @param array<string,string|list<string>>|null $headers
+     * @throws \InvalidArgumentException
+     * @throws \OverflowException
      */
     private static function request(
         string $method = 'GET',
@@ -418,6 +435,9 @@ final class RunwireHttp1ParityTest extends TestCase
         );
     }
 
+    /**
+     * @throws \Infocyph\Runwire\Exception\CancelledException
+     */
     private static function dispatch(
         RunwireRuntimeApplication $application,
         HttpRequest $request,

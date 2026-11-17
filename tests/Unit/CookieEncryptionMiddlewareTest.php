@@ -9,6 +9,13 @@ use Infocyph\Webrick\Response\Cookies\Cookie;
 use Infocyph\Webrick\Response\Cookies\CookieJar;
 use Infocyph\Webrick\Response\Response;
 
+/**
+ * @throws \InvalidArgumentException
+ * @throws \LengthException
+ * @throws \Psr\Cache\InvalidArgumentException
+ * @throws \Random\RandomException
+ * @throws \RuntimeException
+ */
 function encryptedCookieForTest(CookieEncryptionMiddleware $middleware, string $value, string $name = 'enc_session'): string
 {
     $response = $middleware(
@@ -22,6 +29,13 @@ function encryptedCookieForTest(CookieEncryptionMiddleware $middleware, string $
     return rawurldecode($matches[1] ?? '');
 }
 
+/**
+ * @throws \InvalidArgumentException
+ * @throws \LengthException
+ * @throws \Psr\Cache\InvalidArgumentException
+ * @throws \Random\RandomException
+ * @throws \RuntimeException
+ */
 function decryptedCookieForTest(
     CookieEncryptionMiddleware $middleware,
     string $cipher,

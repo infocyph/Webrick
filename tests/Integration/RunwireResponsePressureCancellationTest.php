@@ -152,6 +152,13 @@ final class PressureCancellationWriter implements ResponseWriterInterface
 
 final class RunwireResponsePressureCancellationTest extends TestCase
 {
+    /**
+     * @throws \Infocyph\Runwire\Exception\ApplicationStartupException
+     * @throws \Infocyph\Runwire\Exception\CancelledException
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     * @throws \OverflowException
+     */
     public function testCancellationReleasesAResponseSuspendedOnTransportPressure(): void
     {
         $adapter = new RunwireRuntimeAdapter();

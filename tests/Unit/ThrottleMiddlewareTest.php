@@ -16,12 +16,20 @@ final class PcntlFileAtomicCounterStore implements AtomicCounterStoreInterface
 
     public function __construct(private readonly string $path) {}
 
+    /**
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     */
     #[\Override]
     public function decrement(string $key, int $by = 1, ?int $ttlSeconds = null): AtomicCounterValue
     {
         return $this->change($key, -$by, $ttlSeconds);
     }
 
+    /**
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     */
     #[\Override]
     public function delete(string $key): bool
     {
@@ -30,12 +38,20 @@ final class PcntlFileAtomicCounterStore implements AtomicCounterStoreInterface
         return true;
     }
 
+    /**
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     */
     #[\Override]
     public function get(string $key): ?int
     {
         return $this->mutate($key, static fn(?array $entry): ?array => $entry)['value'] ?? null;
     }
 
+    /**
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     */
     #[\Override]
     public function increment(string $key, int $by = 1, ?int $ttlSeconds = null): AtomicCounterValue
     {

@@ -31,6 +31,10 @@ final class KernelDispatchBench
 
     private RouterKernel $staticControllerKernel;
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     public function setUp(): void
     {
         $this->request = Request::fake(uri: 'http://localhost/bench');
@@ -70,29 +74,45 @@ final class KernelDispatchBench
         $this->assertSuccessful($this->factoryMiddlewareKernel->handle($this->request));
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     public static function staticResponse(): Response
     {
         return Response::json(['ok' => true]);
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     #[Bench\BeforeMethods('setUp')]
     public function benchClosureHandler(): void
     {
         $this->closureKernel->handle($this->request);
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     #[Bench\BeforeMethods('setUp')]
     public function benchStaticController(): void
     {
         $this->staticControllerKernel->handle($this->request);
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     #[Bench\BeforeMethods('setUp')]
     public function benchTaggedDirectFactoryMiddleware(): void
     {
         $this->factoryMiddlewareKernel->handle($this->request);
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function assertSuccessful(Response $response): void
     {
         if ($response->getStatusCode() !== 200 || (string) $response->getBody() !== '{"ok":true}') {

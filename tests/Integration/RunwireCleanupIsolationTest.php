@@ -195,6 +195,9 @@ final class RunwireCleanupIsolationTest extends TestCase
 
     /**
      * @throws \Infocyph\Runwire\Exception\CancelledException
+     * @throws \InvalidArgumentException
+     * @throws \OverflowException
+     * @throws \Throwable
      */
     public function testCleanupAndCarrierResetAreExactlyOnceAcrossRequestOutcomes(): void
     {

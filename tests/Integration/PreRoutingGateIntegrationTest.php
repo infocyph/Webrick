@@ -28,6 +28,9 @@ use Psr\Log\NullLogger;
 #[ExcludeStaticPropertyFromBackup(CodeStream::class, 'handlers')]
 final class PreRoutingGateIntegrationTest extends TestCase
 {
+    /**
+     * @throws \Throwable
+     */
     public function testInactiveGateKeepsCompiledRequestlessRouteRequestless(): void
     {
         $state = new MemoryMaintenanceState();
@@ -45,6 +48,9 @@ final class PreRoutingGateIntegrationTest extends TestCase
         }
     }
 
+    /**
+     * @throws \Throwable
+     */
     public function testActiveGateShortCircuitsBeforeRequestMaterialization(): void
     {
         $state = new MemoryMaintenanceState();
@@ -64,6 +70,9 @@ final class PreRoutingGateIntegrationTest extends TestCase
         }
     }
 
+    /**
+     * @throws \Throwable
+     */
     public function testActiveGatePreservesHeadSemanticsWithoutRequestMaterialization(): void
     {
         $state = new MemoryMaintenanceState();
@@ -83,6 +92,9 @@ final class PreRoutingGateIntegrationTest extends TestCase
         }
     }
 
+    /**
+     * @throws \Throwable
+     */
     public function testExactBypassFallsThroughToCompiledRouteWithoutMaterialization(): void
     {
         $state = new MemoryMaintenanceState();
@@ -104,6 +116,8 @@ final class PreRoutingGateIntegrationTest extends TestCase
     /**
      * @param list<string> $bypassPaths
      * @return array{0:CompiledRouterKernel,1:list<string>}
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
      */
     private static function kernel(MemoryMaintenanceState $state, array $bypassPaths = []): array
     {
@@ -136,6 +150,9 @@ final class PreRoutingGateIntegrationTest extends TestCase
         return [$kernel, [$intermixPath, $routerPath]];
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function context(string $method, string $path, int &$materializations): RuntimeRequestContext
     {
         return new RuntimeRequestContext(
@@ -157,7 +174,10 @@ final class PreRoutingGateIntegrationTest extends TestCase
         return [$base . '-intermix.php', $base . '-router.php'];
     }
 
-    /** @param list<string> $paths */
+    /**
+     * @param list<string> $paths
+     * @throws \RuntimeException
+     */
     private static function cleanup(array $paths): void
     {
         foreach ($paths as $path) {

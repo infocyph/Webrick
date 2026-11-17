@@ -46,6 +46,9 @@ final class RunwireStreamingScopeProbe
 
     public static int $scopeLeaves = 0;
 
+    /**
+     * @throws \RuntimeException
+     */
     public static function marker(): RunwireStreamingScopedMarker
     {
         $container = self::$container ?? throw new RuntimeException('Streaming scope probe container is unavailable.');
@@ -57,6 +60,9 @@ final class RunwireStreamingScopeProbe
         return $marker;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     public static function requestPath(): string
     {
         $container = self::$container ?? throw new RuntimeException('Streaming scope probe container is unavailable.');
@@ -132,6 +138,9 @@ final class RunwireStreamingBodyFixture implements RequestBodyInterface
         return $this;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     #[\Override]
     public function read(int $maxBytes = PHP_INT_MAX): string
     {
@@ -281,6 +290,9 @@ final class RunwireStreamingLifecycleTest extends TestCase
         RunwireStreamingScopeProbe::reset();
     }
 
+    /**
+     * @throws \Infocyph\Runwire\Exception\CancelledException
+     */
     public function testPressureStopsProducerUntilDrainWhileRequestScopeAndLifecycleRemainActive(): void
     {
         [$application, $paths] = self::applicationFixture();
@@ -318,6 +330,9 @@ final class RunwireStreamingLifecycleTest extends TestCase
         }
     }
 
+    /**
+     * @throws \Infocyph\Runwire\Exception\CancelledException
+     */
     public function testZeroScopeStreamingRouteDoesNotOpenOrCaptureIntermixScope(): void
     {
         [$application, $paths] = self::applicationFixture();
@@ -367,6 +382,9 @@ final class RunwireStreamingLifecycleTest extends TestCase
         }
     }
 
+    /**
+     * @throws \Infocyph\Runwire\Exception\CancelledException
+     */
     public function testRequestBodyRemainsIncrementalThroughTheRunwireRuntimeBridge(): void
     {
         [$application, $paths] = self::applicationFixture();
@@ -387,7 +405,11 @@ final class RunwireStreamingLifecycleTest extends TestCase
         }
     }
 
-    /** @return array{RunwireRuntimeApplication,list<string>} */
+    /**
+     * @return array{RunwireRuntimeApplication,list<string>}
+     * @throws \InvalidArgumentException
+     * @throws \Throwable
+     */
     private static function applicationFixture(): array
     {
         [$intermixPath, $routerPath] = self::artifactPaths();
@@ -493,7 +515,10 @@ final class RunwireStreamingLifecycleTest extends TestCase
         return [$base . '-intermix.php', $base . '-router.php'];
     }
 
-    /** @param list<string> $paths */
+    /**
+     * @param list<string> $paths
+     * @throws \RuntimeException
+     */
     private static function cleanup(array $paths): void
     {
         RunwireStreamingScopeProbe::$container = null;
@@ -506,6 +531,10 @@ final class RunwireStreamingLifecycleTest extends TestCase
         }
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \OverflowException
+     */
     private static function request(string $target, ?RunwireStreamingBodyFixture $body = null): HttpRequest
     {
         return new HttpRequest(

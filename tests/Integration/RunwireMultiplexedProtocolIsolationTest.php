@@ -74,6 +74,9 @@ final class RunwireMultiplexedBodyFixture implements RequestBodyInterface
         return $this;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     #[\Override]
     public function read(int $maxBytes = PHP_INT_MAX): string
     {
@@ -201,6 +204,10 @@ final class RunwireMultiplexedWriterFixture implements ResponseWriterInterface
 #[ExcludeStaticPropertyFromBackup(CodeStream::class, 'handlers')]
 final class RunwireMultiplexedProtocolIsolationTest extends TestCase
 {
+    /**
+     * @throws \Infocyph\Runwire\Exception\ApplicationStartupException
+     * @throws \LogicException
+     */
     public function testHttp2InterleavedRequestsRemainIsolatedWhenOneStreamIsCancelled(): void
     {
         [$application, $paths] = self::applicationFixture();
@@ -245,6 +252,10 @@ final class RunwireMultiplexedProtocolIsolationTest extends TestCase
         }
     }
 
+    /**
+     * @throws \Infocyph\Runwire\Exception\ApplicationStartupException
+     * @throws \LogicException
+     */
     public function testHttp3InterleavedStreamsRemainIsolatedAndQuicAbsenceIsNonFatal(): void
     {
         [$application, $paths] = self::applicationFixture();
@@ -282,7 +293,11 @@ final class RunwireMultiplexedProtocolIsolationTest extends TestCase
         }
     }
 
-    /** @return array{RunwireRuntimeApplication,list<string>} */
+    /**
+     * @return array{RunwireRuntimeApplication,list<string>}
+     * @throws \InvalidArgumentException
+     * @throws \Throwable
+     */
     private static function applicationFixture(): array
     {
         [$intermixPath, $routerPath] = self::artifactPaths();
@@ -362,6 +377,9 @@ final class RunwireMultiplexedProtocolIsolationTest extends TestCase
         ], $writer->headers->all('set-cookie'));
     }
 
+    /**
+     * @throws \Infocyph\Runwire\Exception\RuntimeUnavailableException
+     */
     private static function assertQuicCapabilityIsPortable(): void
     {
         if (PhpQuicApi::available()) {
@@ -388,7 +406,10 @@ final class RunwireMultiplexedProtocolIsolationTest extends TestCase
         return [$base . '-intermix.php', $base . '-router.php'];
     }
 
-    /** @param list<string> $paths */
+    /**
+     * @param list<string> $paths
+     * @throws \RuntimeException
+     */
     private static function cleanup(array $paths): void
     {
         foreach ($paths as $path) {
@@ -436,6 +457,7 @@ final class RunwireMultiplexedProtocolIsolationTest extends TestCase
     /**
      * @return array<string,string|list<string>>
      * @throws \UnexpectedValueException
+     * @throws \InvalidArgumentException
      */
     private static function payload(Request $request, string $label): array
     {
@@ -459,7 +481,11 @@ final class RunwireMultiplexedProtocolIsolationTest extends TestCase
         return '127.0.0.' . (str_ends_with($label, '-a') ? '11' : '12');
     }
 
-    /** @return array{HttpRequest,RunwireMultiplexedBodyFixture} */
+    /**
+     * @return array{HttpRequest,RunwireMultiplexedBodyFixture}
+     * @throws \InvalidArgumentException
+     * @throws \OverflowException
+     */
     private static function request(ProtocolVersion $version, string $label): array
     {
         $body = new RunwireMultiplexedBodyFixture('body-' . $label);

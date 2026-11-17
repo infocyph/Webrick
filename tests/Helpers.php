@@ -21,6 +21,9 @@ class TestLogger implements LoggerInterface
     /** @var list<array{level:mixed,message:string,context:array<array-key,mixed>}> */
     public array $records = [];
 
+    /**
+     * @throws \Psr\Log\InvalidArgumentException
+     */
     #[\Override]
     public function alert(string|Stringable $message, array $context = []): void
     {
@@ -32,24 +35,36 @@ class TestLogger implements LoggerInterface
         $this->records = [];
     }
 
+    /**
+     * @throws \Psr\Log\InvalidArgumentException
+     */
     #[\Override]
     public function critical(string|Stringable $message, array $context = []): void
     {
         $this->log(LogLevel::CRITICAL, $message, $context);
     }
 
+    /**
+     * @throws \Psr\Log\InvalidArgumentException
+     */
     #[\Override]
     public function debug(string|Stringable $message, array $context = []): void
     {
         $this->log(LogLevel::DEBUG, $message, $context);
     }
 
+    /**
+     * @throws \Psr\Log\InvalidArgumentException
+     */
     #[\Override]
     public function emergency(string|Stringable $message, array $context = []): void
     {
         $this->log(LogLevel::EMERGENCY, $message, $context);
     }
 
+    /**
+     * @throws \Psr\Log\InvalidArgumentException
+     */
     #[\Override]
     public function error(string|Stringable $message, array $context = []): void
     {
@@ -95,6 +110,9 @@ class TestLogger implements LoggerInterface
         return $this->hasRecords(LogLevel::WARNING);
     }
 
+    /**
+     * @throws \Psr\Log\InvalidArgumentException
+     */
     #[\Override]
     public function info(string|Stringable $message, array $context = []): void
     {
@@ -111,12 +129,18 @@ class TestLogger implements LoggerInterface
         ];
     }
 
+    /**
+     * @throws \Psr\Log\InvalidArgumentException
+     */
     #[\Override]
     public function notice(string|Stringable $message, array $context = []): void
     {
         $this->log(LogLevel::NOTICE, $message, $context);
     }
 
+    /**
+     * @throws \Psr\Log\InvalidArgumentException
+     */
     #[\Override]
     public function warning(string|Stringable $message, array $context = []): void
     {
@@ -128,6 +152,7 @@ class TestLogger implements LoggerInterface
  */
 /**
  * @param array{autoSlashRedirect?:bool,exposeUrlServices?:bool,signKey?:?string,signedDefaultTtl?:?int,signedUrlConfig?:?SignedUrlConfig,urlBaseUri?:string} $options
+ * @throws \InvalidArgumentException
  */
 function testRegistrar(array $options = []): Registrar
 {
@@ -162,6 +187,8 @@ function testRegistrar(array $options = []): Registrar
 /**
  * @param array<string,mixed> $headers
  * @param array<array-key,mixed> $body
+ * @throws \InvalidArgumentException
+ * @throws \RuntimeException
  */
 function mockRequest(string $method, string $uri, array $headers = [], array $body = []): Request
 {

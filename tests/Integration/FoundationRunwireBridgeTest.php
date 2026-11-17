@@ -60,6 +60,9 @@ final class FoundationRunwireProbe
 
     public static int $scopeLeaves = 0;
 
+    /**
+     * @throws \RuntimeException
+     */
     public static function currentMarker(): FoundationRunwireScopedMarker
     {
         $container = self::$container ?? throw new RuntimeException('Foundation bridge container is unavailable.');
@@ -79,6 +82,13 @@ final class FoundationRunwireProbe
         self::$scopeLeaves = 0;
     }
 
+    /**
+     * @throws \Infocyph\Runwire\Coroutine\Exception\CoroutineDeadlockException
+     * @throws \Infocyph\Runwire\Coroutine\Exception\CoroutineOverflowException
+     * @throws \LogicException
+     * @throws \OverflowException
+     * @throws \Throwable
+     */
     public static function structuredChildShares(FoundationRunwireScopedMarker $parent): bool
     {
         $runtime = self::$runtime ?? throw new RuntimeException('Foundation bridge InterMix runtime is unavailable.');
@@ -300,7 +310,11 @@ final class FoundationRunwireBridgeTest extends TestCase
         }
     }
 
-    /** @return array{RunwireRuntimeApplicationFactory,RuntimeContext,list<string>} */
+    /**
+     * @return array{RunwireRuntimeApplicationFactory,RuntimeContext,list<string>}
+     * @throws \InvalidArgumentException
+     * @throws \Throwable
+     */
     private static function fixture(): array
     {
         [$intermixPath, $routerPath] = self::artifactPaths();
@@ -382,6 +396,10 @@ final class FoundationRunwireBridgeTest extends TestCase
         return [$factory, $context, [$intermixPath, $routerPath]];
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \OverflowException
+     */
     private static function request(string $target): HttpRequest
     {
         return new HttpRequest(
@@ -401,7 +419,10 @@ final class FoundationRunwireBridgeTest extends TestCase
         return [$base . '-intermix.php', $base . '-router.php'];
     }
 
-    /** @param list<string> $paths */
+    /**
+     * @param list<string> $paths
+     * @throws \RuntimeException
+     */
     private static function cleanup(array $paths): void
     {
         foreach ($paths as $path) {

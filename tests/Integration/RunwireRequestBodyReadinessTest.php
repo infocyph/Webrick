@@ -224,6 +224,8 @@ final class RunwireRequestBodyReadinessTest extends TestCase
      * @throws \Infocyph\Runwire\Exception\ApplicationStartupException
      * @throws \Infocyph\Runwire\Exception\CancelledException
      * @throws \LogicException
+     * @throws \OverflowException
+     * @throws \Throwable
      */
     public function testCancellationWakesARequestWaitingForBodyDataWithoutStartingAResponse(): void
     {
@@ -256,6 +258,9 @@ final class RunwireRequestBodyReadinessTest extends TestCase
      * @throws \Infocyph\Runwire\Exception\ApplicationStartupException
      * @throws \Infocyph\Runwire\Exception\CancelledException
      * @throws \LogicException
+     * @throws \OverflowException
+     * @throws \RuntimeException
+     * @throws \Throwable
      */
     public function testDeferredJsonBodyResumesIncrementallyAndPreservesRawPayload(): void
     {
@@ -300,6 +305,9 @@ final class RunwireRequestBodyReadinessTest extends TestCase
      * @throws \Infocyph\Runwire\Exception\ApplicationStartupException
      * @throws \Infocyph\Runwire\Exception\CancelledException
      * @throws \LogicException
+     * @throws \OverflowException
+     * @throws \RuntimeException
+     * @throws \Throwable
      */
     public function testDeferredUrlencodedBodyPopulatesParsedFormData(): void
     {

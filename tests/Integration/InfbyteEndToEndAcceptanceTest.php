@@ -183,6 +183,9 @@ final class InfbyteEndToEndWriter implements ResponseWriterInterface
 #[ExcludeStaticPropertyFromBackup(CodeStream::class, 'handlers')]
 final class InfbyteEndToEndAcceptanceTest extends TestCase
 {
+    /**
+     * @throws \UnexpectedValueException
+     */
     public function testInfbyteShapedRoutesAndRequestScopesRemainCleanOnOnePersistentApplication(): void
     {
         [$application, $paths] = self::applicationFixture();
@@ -226,7 +229,11 @@ final class InfbyteEndToEndAcceptanceTest extends TestCase
         }
     }
 
-    /** @return array{\Infocyph\Runwire\Runtime\RuntimeApplicationInterface,list<string>} */
+    /**
+     * @return array{\Infocyph\Runwire\Runtime\RuntimeApplicationInterface,list<string>}
+     * @throws \InvalidArgumentException
+     * @throws \Throwable
+     */
     private static function applicationFixture(): array
     {
         [$intermixPath, $routerPath] = self::artifactPaths();
@@ -284,6 +291,10 @@ final class InfbyteEndToEndAcceptanceTest extends TestCase
         return [$application, [$intermixPath, $routerPath]];
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \OverflowException
+     */
     private static function dispatch(
         \Infocyph\Runwire\Runtime\RuntimeApplicationInterface $application,
         string $target,
@@ -312,7 +323,10 @@ final class InfbyteEndToEndAcceptanceTest extends TestCase
         return [$base . '-intermix.php', $base . '-router.php'];
     }
 
-    /** @param list<string> $paths */
+    /**
+     * @param list<string> $paths
+     * @throws \RuntimeException
+     */
     private static function cleanup(array $paths): void
     {
         foreach ($paths as $path) {
