@@ -148,6 +148,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
     /**
      * @throws \RuntimeException
      * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     #[\Override]
     public function matchOutcome(string $method, string $host, string $path): MatchOutcome

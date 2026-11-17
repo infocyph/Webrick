@@ -46,6 +46,12 @@ final class RunwireRequestBodyStream implements BodyStream
         return $this->closed || $this->body->eof();
     }
 
+    /**
+     * @throws \LogicException
+     * @throws \RuntimeException
+     * @throws \Infocyph\Runwire\Exception\CancelledException
+     * @throws \OverflowException
+     */
     #[\Override]
     public function getContents(): string
     {
@@ -105,6 +111,9 @@ final class RunwireRequestBodyStream implements BodyStream
 
     /**
      * @throws \LogicException
+     * @throws \RuntimeException
+     * @throws \Infocyph\Runwire\Exception\CancelledException
+     * @throws \OverflowException
      */
     #[\Override]
     public function read(int $length): string
@@ -147,6 +156,7 @@ final class RunwireRequestBodyStream implements BodyStream
         throw new RuntimeException('Runwire request body streams are not seekable.');
     }
 
+    /** @throws \RuntimeException */
     #[\Override]
     public function tell(): int
     {

@@ -88,6 +88,7 @@ final readonly class OpenTelemetryHandler
         }
     }
 
+    /** @throws \InvalidArgumentException */
     private function addCorrelationHeaders(Response $resp, string $traceId, ?string $requestId): Response
     {
         return TelemetrySupport::addCorrelationHeaders(
@@ -159,6 +160,7 @@ final readonly class OpenTelemetryHandler
 
     /**
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException
      */
     private function addResponseAttributes(object $span, Response $resp): void
     {

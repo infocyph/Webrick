@@ -372,6 +372,7 @@ class Response
         return new self(StatusEnum::OK->value, $body, $bag->all());
     }
 
+    /** @throws \InvalidArgumentException */
     public function cache(): CacheControl
     {
         return CacheControl::fromHeaderBag($this->headers);
@@ -482,6 +483,7 @@ class Response
 
     /**
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException
      */
     public function withCache(\Closure $edit): self
     {

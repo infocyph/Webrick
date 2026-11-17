@@ -258,6 +258,11 @@ final class FoundationRunwireBridgeTest extends TestCase
         FoundationRunwireProbe::reset();
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \OverflowException
+     * @throws \Throwable
+     */
     public function testFoundationPolicyComposesConcurrentRequestsStructuredChildrenAndCleanup(): void
     {
         [$factory, $context, $paths] = self::fixture();

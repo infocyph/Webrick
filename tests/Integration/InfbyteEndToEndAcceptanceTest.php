@@ -185,6 +185,9 @@ final class InfbyteEndToEndAcceptanceTest extends TestCase
 {
     /**
      * @throws \UnexpectedValueException
+     * @throws \InvalidArgumentException
+     * @throws \OverflowException
+     * @throws \Throwable
      */
     public function testInfbyteShapedRoutesAndRequestScopesRemainCleanOnOnePersistentApplication(): void
     {

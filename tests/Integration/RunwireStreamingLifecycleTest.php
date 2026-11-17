@@ -292,6 +292,9 @@ final class RunwireStreamingLifecycleTest extends TestCase
 
     /**
      * @throws \Infocyph\Runwire\Exception\CancelledException
+     * @throws \InvalidArgumentException
+     * @throws \OverflowException
+     * @throws \Throwable
      */
     public function testPressureStopsProducerUntilDrainWhileRequestScopeAndLifecycleRemainActive(): void
     {
@@ -332,6 +335,9 @@ final class RunwireStreamingLifecycleTest extends TestCase
 
     /**
      * @throws \Infocyph\Runwire\Exception\CancelledException
+     * @throws \InvalidArgumentException
+     * @throws \OverflowException
+     * @throws \Throwable
      */
     public function testZeroScopeStreamingRouteDoesNotOpenOrCaptureIntermixScope(): void
     {
@@ -352,6 +358,11 @@ final class RunwireStreamingLifecycleTest extends TestCase
         }
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \OverflowException
+     * @throws \Throwable
+     */
     public function testPressureContinuationDoesNotAdoptAmbientFiberOwnership(): void
     {
         [$application, $paths] = self::applicationFixture();
@@ -384,6 +395,9 @@ final class RunwireStreamingLifecycleTest extends TestCase
 
     /**
      * @throws \Infocyph\Runwire\Exception\CancelledException
+     * @throws \InvalidArgumentException
+     * @throws \OverflowException
+     * @throws \Throwable
      */
     public function testRequestBodyRemainsIncrementalThroughTheRunwireRuntimeBridge(): void
     {

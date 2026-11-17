@@ -118,6 +118,7 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         return $fn($method, $host, $path, true);
     }
 
+    /** @throws \RuntimeException */
     #[\Override]
     public function matchOutcome(string $method, string $host, string $path): MatchOutcome
     {

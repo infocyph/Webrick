@@ -143,56 +143,67 @@ final class CacheControl implements \Stringable
         return new self();
     }
 
+    /** @throws \InvalidArgumentException */
     public function immutable(): self
     {
         return $this->with('immutable');
     }
 
+    /** @throws \InvalidArgumentException */
     public function maxAge(int $seconds): self
     {
         return $this->with('max-age', $seconds);
     }
 
+    /** @throws \InvalidArgumentException */
     public function mustRevalidate(): self
     {
         return $this->with('must-revalidate');
     }
 
+    /** @throws \InvalidArgumentException */
     public function noCache(): self
     {
         return $this->with('no-cache');
     }
 
+    /** @throws \InvalidArgumentException */
     public function noStore(): self
     {
         return $this->with('no-store');
     }
 
+    /** @throws \InvalidArgumentException */
     public function private(): self
     {
         return $this->with('private');
     }
 
+    /** @throws \InvalidArgumentException */
     public function proxyRevalidate(): self
     {
         return $this->with('proxy-revalidate');
     }
 
+    /** @throws \InvalidArgumentException */
     public function public(): self
     {
         return $this->with('public');
     }
 
+    /** @throws \InvalidArgumentException */
     public function sMaxAge(int $seconds): self
     {
         return $this->with('s-maxage', $seconds);
     }
 
+    /** @throws \InvalidArgumentException */
     public function staleIfError(int $seconds): self
     {
         return $this->with('stale-if-error', $seconds);
     }
 
+    /** @throws \InvalidArgumentException */
     public function staleWhileRevalidate(int $seconds): self
     {
         return $this->with('stale-while-revalidate', $seconds);

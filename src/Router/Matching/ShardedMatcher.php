@@ -464,6 +464,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
      * @throws \RuntimeException
      * @throws \UnexpectedValueException
      * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     private function publishGeneration(): void
     {
