@@ -266,8 +266,8 @@ final readonly class OpenTelemetryHandler
 
         return $result;
     }
-    /** @throws \InvalidArgumentException */
 
+    /** @throws \InvalidArgumentException */
     private function deriveRequestId(Request $req): ?string
     {
         return TelemetrySupport::deriveRequestId(

@@ -89,8 +89,8 @@ final class EndUser
 
         return $this->cachedNoProxy = is_string($validated) ? $validated : null;
     }
-    /** @throws \InvalidArgumentException */
 
+    /** @throws \InvalidArgumentException */
     public function ipViaProxy(): ?string
     {
         if ($this->cachedViaProxy !== null) {

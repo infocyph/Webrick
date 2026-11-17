@@ -13,8 +13,8 @@ use RuntimeException;
 final readonly class WorkermanRuntimeAdapter implements RuntimeAdapterInterface
 {
     private RuntimeCapabilities $runtimeCapabilities;
-    /** @throws \InvalidArgumentException */
 
+    /** @throws \InvalidArgumentException */
     private function __construct(
         /** @var class-string */
         private string $responseClass,

@@ -230,8 +230,8 @@ final class Collection implements IteratorAggregate
             throw new LogicException('Route collection already compiled – further mutation prohibited.');
         }
     }
-    /** @throws \InvalidArgumentException */
 
+    /** @throws \InvalidArgumentException */
     private function commitRoute(RouteInterface $route): void
     {
         $this->routes[] = $route;

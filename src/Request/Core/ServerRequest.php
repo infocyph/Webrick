@@ -212,8 +212,8 @@ class ServerRequest extends Message
             static fn(string $mediaType): bool => HttpUtils::isJsonContentType($mediaType),
         );
     }
-    /** @throws \InvalidArgumentException */
 
+    /** @throws \InvalidArgumentException */
     public function expectsXml(): bool
     {
         return array_any(

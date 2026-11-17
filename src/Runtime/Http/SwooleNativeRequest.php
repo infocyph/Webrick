@@ -49,8 +49,8 @@ final readonly class SwooleNativeRequest
 
         return is_string($protocol) && str_starts_with(strtoupper($protocol), 'HTTP/2');
     }
-    /** @throws \RuntimeException */
 
+    /** @throws \RuntimeException */
     public static function rawBody(object $request): string
     {
         $body = self::call($request, 'rawContent');

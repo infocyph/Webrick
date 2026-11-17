@@ -186,8 +186,8 @@ final readonly class TelemetryMiddleware
             $this->nelCollectSuccesses,
         );
     }
-    /** @throws \InvalidArgumentException */
 
+    /** @throws \InvalidArgumentException */
     private function deriveRequestId(Request $req): ?string
     {
         return TelemetrySupport::deriveRequestId(

@@ -13,8 +13,8 @@ use RuntimeException;
 final readonly class SwooleRuntimeAdapter implements RuntimeAdapterInterface
 {
     private RuntimeCapabilities $runtimeCapabilities;
-    /** @throws \InvalidArgumentException */
 
+    /** @throws \InvalidArgumentException */
     private function __construct(
         string $name,
         bool $transportCompression,

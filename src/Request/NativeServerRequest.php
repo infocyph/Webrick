@@ -224,8 +224,8 @@ class NativeServerRequest extends ServerRequest
     {
         return HttpUtils::isXmlContentType($this->getHeaderLine('Content-Type'));
     }
-    /** @throws \InvalidArgumentException */
 
+    /** @throws \InvalidArgumentException */
     private function parseJson(): void
     {
         if ($this->jsonState !== null) {
@@ -245,8 +245,8 @@ class NativeServerRequest extends ServerRequest
             $this->jsonState = PayloadParseState::INVALID;
         }
     }
-    /** @throws \InvalidArgumentException */
 
+    /** @throws \InvalidArgumentException */
     private function parseXml(): void
     {
         if ($this->xmlState !== null) {
