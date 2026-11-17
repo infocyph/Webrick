@@ -8,7 +8,11 @@ use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Request\Support\IpCidr;
 use Infocyph\Webrick\Support\HttpUtils;
 
-/** Resolve the end-user address through an explicitly trusted proxy chain. */
+/**
+ * Resolve end-user addresses through an explicitly trusted proxy chain.
+ *
+ * @api
+ */
 final class EndUser
 {
     private ?string $cachedNoProxy = null;

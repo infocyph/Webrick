@@ -277,6 +277,7 @@ final class UploadedFile
         }
 
         $published = false;
+
         try {
             if (!self::attemptFilesystemOperation(static fn(): bool => copy($sourcePath, $temporaryPath))) {
                 throw new RuntimeException("Failed to copy uploaded file to {$targetPath}");

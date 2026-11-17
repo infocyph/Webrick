@@ -22,6 +22,7 @@ require_once __DIR__ . '/registrar_functions.php';
 /**
  * Fluent route registrar.
  *
+ * @api
  * @phpstan-type MiddlewareEntry string|object
  * @phpstan-type RawMiddlewareEntry string|object
  * @phpstan-type RawMiddlewareList list<RawMiddlewareEntry>

@@ -19,6 +19,7 @@ use Infocyph\Webrick\Router\Definition\Attribute\Produces;
 /**
  * Declarative route definition produced by the Registrar.
  *
+ * @api
  * @psalm-type MiddlewareList = list<string|object>
  */
 final class Route implements RouteInterface

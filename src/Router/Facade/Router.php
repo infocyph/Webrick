@@ -34,6 +34,7 @@ use RuntimeException;
  *   Router::setInstance($registrar);
  *   Router::get('/ping', fn () => 'pong', 'ping');
  *
+ * @api
  * @phpstan-type HandlerArray array{0:string|object,1:string}
  * @phpstan-type RouteHandler HandlerArray|string|callable
  * @phpstan-type RouteOptions array{

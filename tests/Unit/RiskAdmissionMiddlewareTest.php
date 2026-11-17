@@ -115,3 +115,67 @@ test('risk admission rejects evaluator and renderer contract violations', functi
     expect(fn(): Response => $badRenderer(Request::fake(), static fn(): Response => Response::json([])))
         ->toThrow(UnexpectedValueException::class);
 });
+
+test('risk admission keeps sequential tenant decisions request local', function (): void {
+    $calls = 0;
+    $middleware = new RiskAdmissionMiddleware(
+        static function (Request $request): RiskDecision {
+            return $request->getAttribute('tenant') === 'alpha'
+                ? RiskDecision::allow(0, ['tenant_alpha'])
+                : RiskDecision::deny(50, ['tenant_beta']);
+        },
+    );
+
+    $next = static function (Request $request) use (&$calls): Response {
+        ++$calls;
+        $decision = $request->getAttribute(RiskDecision::ATTRIBUTE);
+        expect($decision)->toBeInstanceOf(RiskDecision::class);
+
+        return Response::json(['action' => $decision instanceof RiskDecision ? $decision->action : null]);
+    };
+
+    $alpha = Request::fake()->withAttribute('tenant', 'alpha');
+    $beta = Request::fake()->withAttribute('tenant', 'beta');
+    $allowed = $middleware($alpha, $next);
+    $denied = $middleware($beta, $next);
+    $allowedAgain = $middleware($alpha, $next);
+
+    expect($calls)->toBe(2);
+    expect($allowed->getStatusCode())->toBe(200);
+    expect($denied->getStatusCode())->toBe(403);
+    expect($allowedAgain->getStatusCode())->toBe(200);
+    expect((string) $allowed->getBody())->toBe('{"action":"allow"}');
+    expect((string) $denied->getBody())->not->toContain('tenant_beta');
+    expect($alpha->getAttribute(RiskDecision::ATTRIBUTE))->toBeNull();
+    expect($beta->getAttribute(RiskDecision::ATTRIBUTE))->toBeNull();
+});
+
+test('risk admission rejects invalid shadow evaluators without downstream invocation', function (): void {
+    $called = 0;
+    $middleware = new RiskAdmissionMiddleware(static fn(): string => 'allow', mode: RiskAdmissionMiddleware::SHADOW);
+
+    expect(fn(): Response => $middleware(Request::fake(), static function () use (&$called): Response {
+        ++$called;
+
+        return Response::plaintext('not allowed');
+    }))->toThrow(UnexpectedValueException::class);
+    expect($called)->toBe(0);
+});
+
+test('risk admission does not turn evaluator failures into admission', function (string $mode): void {
+    $called = 0;
+    $middleware = new RiskAdmissionMiddleware(
+        static fn(): RiskDecision => throw new RuntimeException('provider failed'),
+        mode: $mode,
+    );
+
+    expect(fn(): Response => $middleware(Request::fake(), static function () use (&$called): Response {
+        ++$called;
+
+        return Response::plaintext('not allowed');
+    }))->toThrow(RuntimeException::class, 'provider failed');
+    expect($called)->toBe(0);
+})->with([
+    RiskAdmissionMiddleware::ENFORCE,
+    RiskAdmissionMiddleware::SHADOW,
+]);

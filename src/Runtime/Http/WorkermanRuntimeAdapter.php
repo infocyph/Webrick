@@ -9,7 +9,9 @@ use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Runtime\RoutingInput;
 use RuntimeException;
 
-/** Workerman 4+ adapter with compatibility resolved once at bootstrap. */
+/** Workerman 4+ adapter with compatibility resolved once at bootstrap.  *
+ * @api
+ */
 final readonly class WorkermanRuntimeAdapter implements RuntimeAdapterInterface
 {
     private RuntimeCapabilities $runtimeCapabilities;

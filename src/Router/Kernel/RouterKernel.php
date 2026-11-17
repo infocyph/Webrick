@@ -30,6 +30,8 @@ use Throwable;
  * creates/selects a container, imports providers, infers an environment, or
  * boots from production route-cache artifacts. Compiled production traffic is
  * handled by CompiledRouterKernel.
+ *
+ * @api
  */
 final readonly class RouterKernel
 {

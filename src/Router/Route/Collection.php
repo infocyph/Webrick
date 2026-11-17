@@ -11,7 +11,12 @@ use IteratorAggregate;
 use LogicException;
 use Traversable;
 
-/** @implements IteratorAggregate<int, RouteInterface> */
+/**
+ * Mutable route collection used by the public registration and URL APIs.
+ *
+ * @api
+ * @implements IteratorAggregate<int, RouteInterface>
+ */
 final class Collection implements IteratorAggregate
 {
     /** @var array<string,RouteInterface> */
