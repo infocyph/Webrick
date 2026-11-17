@@ -18,6 +18,8 @@ final class Stream implements BodyStream
 {
     private readonly bool $readable;
 
+    private readonly bool $writable;
+
     /** @var resource|null */
     private $handle;
 
@@ -41,6 +43,7 @@ final class Stream implements BodyStream
         $metadata = stream_get_meta_data($handle);
         $mode = $metadata['mode'];
         $this->readable = strpbrk($mode, 'r+') !== false;
+        $this->writable = strpbrk($mode, 'waxc+') !== false;
     }
 
     public function __toString(): string
