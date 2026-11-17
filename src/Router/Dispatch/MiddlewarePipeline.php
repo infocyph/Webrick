@@ -37,8 +37,6 @@ use UnexpectedValueException;
  * @phpstan-type Middleware   callable(Request, callable(Request):Response):Response
  * @phpstan-type FinalHandler callable(Request):mixed
  *
- * @psalm-immutable
- *
  * @author Infocyph
  */
 final class MiddlewarePipeline
