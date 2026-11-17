@@ -213,6 +213,94 @@ final class CompiledRoutingControlBridgeTest extends TestCase
         }
     }
 
+
+    /**
+     * The release manifest must reject altered executable router bytes even
+     * when the attacker also updates the artifact's adjacent metadata digest.
+     *
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     * @throws \LogicException
+     */
+    public function testCoordinatedReleaseChecksRouterBytesBeforeExecution(): void
+    {
+        [$intermixPath, $routerPath] = self::artifactPaths('tampered-router');
+        $releasePath = $routerPath . '.release.json';
+        $markerPath = $routerPath . '.executed';
+        $builder = ContainerBuilder::create('webrick_tampered_router_' . bin2hex(random_bytes(4)));
+
+        try {
+            new ReleaseCompiler()->compile(
+                builder: $builder,
+                register: static function (Registrar $registrar): void {
+                    $registrar->get('/static', static fn(): Response => Response::plaintext('ok', 200));
+                },
+                environment: 'production',
+                configFingerprint: 'tampered-router',
+                intermixPath: $intermixPath,
+                routerPath: $routerPath,
+                releaseManifestPath: $releasePath,
+                preGlobalTags: [],
+                postGlobalTags: [],
+            );
+
+            $source = file_get_contents($routerPath);
+            if (!is_string($source) || !str_starts_with($source, "<?php\n")) {
+                throw new \RuntimeException('Compiled router fixture must begin with a PHP opening tag.');
+            }
+
+            $tampered = "<?php\nfile_put_contents("
+                . var_export($markerPath, true)
+                . ", 'executed');\n"
+                . substr($source, strlen("<?php\n"));
+            if (file_put_contents($routerPath, $tampered) === false) {
+                throw new \RuntimeException('Unable to prepare altered router artifact fixture.');
+            }
+
+            $metaPath = $routerPath . '.meta.json';
+            $metaJson = file_get_contents($metaPath);
+            if (!is_string($metaJson)) {
+                throw new \RuntimeException('Unable to read compiled router fixture metadata.');
+            }
+            $meta = json_decode($metaJson, true, 32, JSON_THROW_ON_ERROR);
+            if (!is_array($meta)) {
+                throw new \RuntimeException('Compiled router fixture metadata is malformed.');
+            }
+            // The sibling metadata is attacker-controlled; the release manifest is not.
+            $meta['digest'] = hash('xxh128', $tampered);
+            if (file_put_contents($metaPath, json_encode($meta, JSON_THROW_ON_ERROR)) === false) {
+                throw new \RuntimeException('Unable to prepare altered router metadata fixture.');
+            }
+
+            try {
+                CompiledRouterKernel::fromReleaseManifest(
+                    log: new NullLogger(),
+                    matcher: FusedMatcher::make(),
+                    builder: $builder,
+                    releaseManifestPath: $releasePath,
+                    environment: 'production',
+                    configFingerprint: 'tampered-router',
+                );
+                self::fail('Expected the trusted release manifest to reject altered executable router bytes.');
+            } catch (\RuntimeException $exception) {
+                self::assertStringContainsString(
+                    'Webrick router artifact digest does not match the coordinated release.',
+                    $exception->getMessage(),
+                );
+            }
+
+            self::assertFileDoesNotExist($markerPath);
+        } finally {
+            self::cleanup([$intermixPath, $routerPath]);
+            foreach ([$markerPath, $releasePath, ReleaseCompiler::runtimeManifestPath($releasePath)] as $candidate) {
+                if (is_file($candidate)) {
+                    unlink($candidate);
+                }
+            }
+        }
+    }
+
     /**
      * @throws \RuntimeException
      * @throws \InvalidArgumentException

@@ -40,6 +40,7 @@ final readonly class ReleaseArtifactLoader
         $webrick = $this->webrickMetadata($manifest);
 
         $this->assertInterMixArtifact($intermix);
+        $this->assertWebrickArtifactDigest($webrick);
         $container = $builder->production($intermix['path']);
         $profiler?->mark('intermix_runtime_load');
 
@@ -120,10 +121,6 @@ final readonly class ReleaseArtifactLoader
      */
     private function assertWebrickArtifact(CompiledRouterArtifact $artifact, array $expected): void
     {
-        $digest = hash_file('xxh128', $expected['path']);
-        if (!is_string($digest) || !hash_equals($expected['digest'], $digest)) {
-            throw new RuntimeException('Webrick router artifact digest does not match the coordinated release.');
-        }
         if (!hash_equals($expected['fingerprint'], $artifact->artifactFingerprint)) {
             throw new RuntimeException('Webrick router artifact fingerprint does not match the coordinated release.');
         }
@@ -132,6 +129,20 @@ final readonly class ReleaseArtifactLoader
         }
         if (count($artifact->routes()) !== $expected['routes']) {
             throw new RuntimeException('Webrick router route count does not match the coordinated release.');
+        }
+    }
+
+    /**
+     * Verify the manifest's byte identity before loading any executable artifacts.
+     *
+     * @param array{path:string,meta:string,digest:string,fingerprint:string,routes:int} $expected
+     * @throws \RuntimeException
+     */
+    private function assertWebrickArtifactDigest(array $expected): void
+    {
+        $digest = hash_file('xxh128', $expected['path']);
+        if (!is_string($digest) || !hash_equals($expected['digest'], $digest)) {
+            throw new RuntimeException('Webrick router artifact digest does not match the coordinated release.');
         }
     }
 
