@@ -59,6 +59,7 @@ final class AttributeRouteLoader
      *
      * @param array<string,string> $roots e.g. ['App\\Http\\Controllers\\' => __DIR__.'/app/Http/Controllers']
      * @param null|callable(SplFileInfo):bool $filter optional file filter (return true to include the file)
+     * @throws \RuntimeException
      */
     public static function registerFromDirs(Registrar $registrar, array $roots, ?callable $filter = null): void
     {
@@ -281,6 +282,7 @@ final class AttributeRouteLoader
     /* ───────────────────────────── Registration ─────────────────────────────── */
     /**
      * @param class-string $fqcn
+     * @throws \InvalidArgumentException
      */
     private static function registerClass(Registrar $registrar, string $fqcn): void
     {

@@ -24,6 +24,7 @@ final readonly class CorsAndPoliciesMiddleware
      * @param string|list<string> $exposeHeaders
      * @param list<string> $acceptCh
      * @param list<string> $timingAllowOrigins
+     * @throws \InvalidArgumentException
      */
     public function __construct(
         array $origins = [],

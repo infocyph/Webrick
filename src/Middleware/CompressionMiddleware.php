@@ -270,6 +270,9 @@ final readonly class CompressionMiddleware
         };
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function hasNoTransform(Response $response): bool
     {
         return isset(CacheControl::directives($response->getHeaderLine('Cache-Control'))['no-transform']);

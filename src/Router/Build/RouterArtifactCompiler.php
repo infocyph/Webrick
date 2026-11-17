@@ -115,6 +115,9 @@ final class RouterArtifactCompiler
         ];
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     public function fingerprint(RouterBuildResult $build): string
     {
         [$routes, $plans] = $this->indexedRuntimePayloads($build);

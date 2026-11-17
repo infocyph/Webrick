@@ -66,6 +66,7 @@ final class ArtifactValueCodec
      *     parameters?:list<string>
      * }
      * @throws \UnexpectedValueException
+     * @throws \InvalidArgumentException
      */
     public static function encode(mixed $value): array
     {
@@ -145,6 +146,7 @@ final class ArtifactValueCodec
     /**
      * @param array<array-key,mixed> $payload
      * @throws \UnexpectedValueException
+     * @throws \InvalidArgumentException
      */
     private static function decodeRuntimeMiddleware(array $payload): RuntimeMiddlewareDescriptor
     {

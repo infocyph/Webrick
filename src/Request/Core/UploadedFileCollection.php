@@ -135,6 +135,7 @@ final class UploadedFileCollection implements ArrayAccess, Countable, IteratorAg
 
     /**
      * Attempting to unset a key will result in a LogicException as the collection is immutable.
+     * @throws \LogicException
      */
     #[\Override]
     public function offsetUnset(mixed $offset): void

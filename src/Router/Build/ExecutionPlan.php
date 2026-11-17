@@ -119,7 +119,10 @@ final readonly class ExecutionPlan
         throw new UnexpectedValueException('Execution-plan handler is not a resolver descriptor.');
     }
 
-    /** @return array<string,mixed> */
+    /**
+     * @return array<string,mixed>
+     * @throws \UnexpectedValueException
+     */
     public function toPayload(): array
     {
         return [

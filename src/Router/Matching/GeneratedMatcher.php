@@ -89,6 +89,7 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
      * @throws \InvalidArgumentException
      * @throws \Infocyph\Webrick\Exceptions\MethodNotAllowedException
      * @throws \Infocyph\Webrick\Exceptions\RouteNotFoundException
+     * @throws \RuntimeException
      */
     #[\Override]
     public function match(string $method, string $host, string $path): array

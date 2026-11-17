@@ -124,6 +124,7 @@ final class CompiledRouteCachePayload
 
     /**
      * @return string|list<string>|null
+     * @throws \UnexpectedValueException
      */
     private static function nullableStringList(mixed $value): array|string|null
     {

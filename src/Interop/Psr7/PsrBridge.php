@@ -96,6 +96,8 @@ final readonly class PsrBridge
 
     /**
      * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
      */
     private function bufferProducer(Response $source): string
     {

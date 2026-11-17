@@ -18,7 +18,10 @@ final class Language
         ];
     }
 
-    /** @param string[] $supported */
+    /**
+     * @param string[] $supported
+     * @throws \InvalidArgumentException
+     */
     public static function negotiate(array $supported, string $accept): string
     {
         if ($supported === []) {

@@ -132,6 +132,7 @@ final class Registry
      * Arbitrary registered regexes intentionally return false. Their anchors,
      * lookarounds, backreferences or control verbs were historically evaluated
      * against the segment alone and therefore stay on the fallback lane.
+     * @throws \InvalidArgumentException
      */
     public static function isCombinedPcreSafeSegmentRegex(string $regex): bool
     {

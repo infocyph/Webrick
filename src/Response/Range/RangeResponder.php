@@ -227,6 +227,9 @@ final readonly class RangeResponder
         return $normalized;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function normalizeResult(
         RangeParseResult|SimpleRange|null $range,
         ?Request $req,

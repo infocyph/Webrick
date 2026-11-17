@@ -82,6 +82,7 @@ final readonly class Registrar
      * @param array{0:mixed,1:mixed,2?:mixed} $args
      * @throws \BadMethodCallException
      * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     public function __call(string $method, array $args): mixed
     {

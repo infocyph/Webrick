@@ -55,6 +55,7 @@ final class CanonicalMatcherIndex
 
     /**
      * @throws \LogicException
+     * @throws \UnexpectedValueException
      */
     public function add(string $host, CompiledRoute $route): void
     {

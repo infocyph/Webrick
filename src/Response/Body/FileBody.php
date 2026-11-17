@@ -108,6 +108,9 @@ final class FileBody implements BodyStream
         return $contents;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     #[\Override]
     public function getMetadata(?string $key = null): mixed
     {

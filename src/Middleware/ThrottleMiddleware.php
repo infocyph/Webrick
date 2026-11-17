@@ -59,6 +59,7 @@ final readonly class ThrottleMiddleware
      * @param Closure(Request):Response $next
      * @throws \Psr\Cache\InvalidArgumentException
      * @throws \Infocyph\Webrick\Exceptions\HttpException
+     * @throws \RuntimeException
      */
     public function __invoke(Request $req, Closure $next): Response
     {

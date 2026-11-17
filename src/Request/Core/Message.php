@@ -50,6 +50,9 @@ abstract class Message
         return $this->headers[$this->norm($name)] ?? [];
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function getHeaderLine(string $name): string
     {
         return implode(',', $this->getHeader($name));

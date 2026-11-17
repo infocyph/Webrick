@@ -27,7 +27,10 @@ final class UploadedFilesNormalizer
         return $out;
     }
 
-    /** @param array<int|string,mixed> $part */
+    /**
+     * @param array<int|string,mixed> $part
+     * @throws \InvalidArgumentException
+     */
     private static function leafFile(array $part, mixed $tmpName): UploadedFile
     {
         return UploadedFile::fromSpec([

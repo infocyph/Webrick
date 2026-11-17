@@ -33,6 +33,9 @@ final class SecurityHeaders
 
     private function __construct() {}
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public static function hsts(Response $r, bool $includeSub = true): Response
     {
         $val = 'max-age=31536000' . ($includeSub ? '; includeSubDomains' : '');

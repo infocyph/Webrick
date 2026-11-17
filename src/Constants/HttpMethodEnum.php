@@ -85,6 +85,9 @@ enum HttpMethodEnum: string
         return $known instanceof self ? $known->value : $verb;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public static function tryFromString(string $verb): ?self
     {
         $verb = trim($verb);

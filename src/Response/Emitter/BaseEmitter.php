@@ -29,6 +29,7 @@ abstract class BaseEmitter implements EmitterInterface
 
     /**
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException
      */
     #[\Override]
     public function emit(Response $response, ?Request $request = null): void

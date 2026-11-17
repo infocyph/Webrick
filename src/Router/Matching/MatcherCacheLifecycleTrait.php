@@ -45,6 +45,9 @@ trait MatcherCacheLifecycleTrait
         return matcher_normalize_middleware_requirements(\array_keys($this->middlewareRequirements));
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function ensureCacheLoaded(): void
     {
         if ($this->cacheEnabled && !$this->cacheLoaded && \is_file($this->cacheFile)) {

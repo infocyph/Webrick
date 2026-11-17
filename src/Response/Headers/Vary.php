@@ -85,6 +85,9 @@ final class Vary implements \Stringable
         return ucwords($lower, '-');
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function norm(string $header): string
     {
         $header = trim($header);

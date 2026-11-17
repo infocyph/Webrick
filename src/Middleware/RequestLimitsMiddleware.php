@@ -58,6 +58,7 @@ final readonly class RequestLimitsMiddleware
     /**
      * @param Closure(Request):Response $next
      * @throws \Infocyph\Webrick\Exceptions\HttpException
+     * @throws \RuntimeException
      */
     public function __invoke(Request $req, Closure $next): Response
     {

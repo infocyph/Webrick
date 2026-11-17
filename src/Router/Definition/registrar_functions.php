@@ -50,6 +50,7 @@ function registrar_merge_middleware_with_alias_overrides(array $group, array $ro
  * @param string|array<string,mixed>|Closure|null $domain
  * @param list<mixed>|Closure $middleware
  * @return array{0:?string,1:?string,2:list<string|object>,3:?string,4:Closure}
+ * @throws \InvalidArgumentException
  */
 function registrar_normalize_group_inputs(
     array|string|null $prefix,

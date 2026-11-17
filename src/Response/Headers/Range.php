@@ -26,6 +26,9 @@ final readonly class Range
         }
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public static function parse(string $header, int $resourceLen): ?self
     {
         if ($resourceLen <= 0) {

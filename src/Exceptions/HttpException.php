@@ -107,6 +107,7 @@ class HttpException extends \RuntimeException implements HttpExceptionInterface
 
     /**
      * @param array<string,string> $headers
+     * @throws \InvalidArgumentException
      */
     private static function fromStatus(StatusEnum $status, string $message, array $headers = []): self
     {

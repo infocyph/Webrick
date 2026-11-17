@@ -26,6 +26,7 @@ final class MiddlewareAliases
     /**
      * Build-plane alias parsing. Runtime-backed aliases are represented without
      * executing their resolver so construction stays inside the request scope.
+     * @throws \InvalidArgumentException
      */
     public static function compileString(string $maybeAlias): RuntimeMiddlewareDescriptor|string
     {
@@ -155,6 +156,7 @@ final class MiddlewareAliases
 
     /**
      * @param list<string> $params
+     * @throws \InvalidArgumentException
      */
     private static function compileRegistered(callable|string $registered, array $params): RuntimeMiddlewareDescriptor|string
     {

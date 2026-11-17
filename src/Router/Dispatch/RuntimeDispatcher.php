@@ -169,6 +169,9 @@ final class RuntimeDispatcher
         return $arguments;
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     private function pipelineFor(ExecutionPlan $plan): ?CompiledMiddlewarePipeline
     {
         if (isset($this->pipelines[$plan->routeId])) {

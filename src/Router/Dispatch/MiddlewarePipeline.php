@@ -233,6 +233,9 @@ final class MiddlewarePipeline
         return \Closure::fromCallable($mw);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function resolveMiddlewareTarget(callable|string $mw): callable
     {
         /** @var array<string, callable> $memo */

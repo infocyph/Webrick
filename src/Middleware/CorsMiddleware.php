@@ -36,6 +36,7 @@ final readonly class CorsMiddleware
      * @param Closure(Request):Response $next
      * @throws \Infocyph\Webrick\Exceptions\HttpException
      * @throws \InvalidArgumentException
+     * @throws \RuntimeException
      */
     public function __invoke(Request $req, Closure $next): Response
     {

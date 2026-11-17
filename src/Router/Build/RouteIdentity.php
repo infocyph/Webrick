@@ -11,6 +11,9 @@ final class RouteIdentity
 {
     private function __construct() {}
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public static function canonicalKey(string $method, ?string $domain, string $path): string
     {
         return HttpMethodEnum::normalize($method) . "\0" . self::canonicalDomain($domain) . "\0" . $path;

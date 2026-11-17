@@ -124,6 +124,7 @@ final class CompiledMatcherEngine
     /**
      * @param CompiledMatch $result
      * @param list<MatcherGroup> $groups
+     * @throws \UnexpectedValueException
      */
     private function richOutcome(int|array|MatchOutcome $result, array $groups, string $method): MatchOutcome
     {

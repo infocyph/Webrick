@@ -23,6 +23,9 @@ final class RuntimeStageProfiler
         $this->reset();
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function mark(string $stage): void
     {
         if ($stage === '') {

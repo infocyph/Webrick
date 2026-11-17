@@ -225,6 +225,8 @@ final readonly class CompiledRouterKernel
 
     /**
      * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
      */
     public function handle(?Request $request = null): Response
     {

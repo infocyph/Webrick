@@ -105,6 +105,8 @@ final readonly class RoadRunnerRuntimeAdapter implements RuntimeAdapterInterface
 
     /**
      * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
      */
     #[\Override]
     public function write(Response $response, RuntimeRequestContext $context): void

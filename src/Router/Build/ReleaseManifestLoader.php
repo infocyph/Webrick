@@ -14,6 +14,7 @@ final class ReleaseManifestLoader
      * @return array<string,mixed>
      * @throws \UnexpectedValueException
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException
      */
     public function load(string $releaseManifestPath): array
     {

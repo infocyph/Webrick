@@ -47,6 +47,7 @@ final readonly class ResponseLinterMiddleware
     /**
      * @param Closure(Request):Response $next
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException
      */
     public function __invoke(Request $req, Closure $next): Response
     {

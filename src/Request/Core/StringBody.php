@@ -159,6 +159,9 @@ final class StringBody implements BodyStream
         return strlen($string);
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function assertOpen(): void
     {
         if ($this->closed) {

@@ -89,6 +89,9 @@ final readonly class PsrBodyStreamAdapter implements BodyStream
         $this->stream->seek($offset, $whence);
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     #[\Override]
     public function tell(): int
     {

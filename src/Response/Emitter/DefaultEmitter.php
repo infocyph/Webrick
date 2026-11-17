@@ -37,6 +37,7 @@ final class DefaultEmitter extends BaseEmitter
 
     /**
      * @throws \InvalidArgumentException
+     * @throws \RuntimeException
      */
     #[\Override]
     public function emit(Response $response, ?Request $request = null): void

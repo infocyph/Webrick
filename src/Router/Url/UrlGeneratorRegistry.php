@@ -75,6 +75,9 @@ final class UrlGeneratorRegistry
         self::$factory = null;
     }
 
+    /**
+     * @throws \LogicException
+     */
     private static function assertMutable(): void
     {
         if (self::$frozen) {

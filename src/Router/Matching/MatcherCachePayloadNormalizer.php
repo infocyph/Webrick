@@ -10,6 +10,9 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
 /** Produces canonical structural metadata used for matcher cache hashing and emission. */
 final class MatcherCachePayloadNormalizer
 {
+    /**
+     * @throws \UnexpectedValueException
+     */
     public static function normalize(mixed $value): mixed
     {
         if ($value instanceof CompiledRoute) {
