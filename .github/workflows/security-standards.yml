@@ -20,7 +20,7 @@ jobs:
     with:
       integration_services: '[]'
       service_topologies: '{}'
-      php_extensions: intl
+      php_extensions: intl,brotli,zstd
     permissions:
       security-events: write
       actions: read
@@ -45,7 +45,22 @@ jobs:
         with:
           php-version: '8.4'
           coverage: none
+          extensions: intl,brotli,zstd
           tools: composer:v2
+      - name: Verify optional codec extensions in detail diagnostics
+        run: >-
+          php -r 'foreach (["intl", "brotli", "zstd"] as $extension) {
+            if (!extension_loaded($extension)) {
+              fwrite(STDERR, "Missing PHP extension: {$extension}\n");
+              exit(1);
+            }
+          }
+          foreach (["brotli_compress", "brotli_uncompress", "zstd_compress", "zstd_uncompress"] as $function) {
+            if (!function_exists($function)) {
+              fwrite(STDERR, "Missing PHP codec function: {$function}\n");
+              exit(1);
+            }
+          }'
       - run: composer install --no-interaction --no-progress --prefer-dist
       - name: Verify InputSanitizer without ext-intl
         run: >-

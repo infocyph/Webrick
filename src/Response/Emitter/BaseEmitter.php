@@ -191,6 +191,7 @@ abstract class BaseEmitter implements EmitterInterface
         header_remove('X-Powered-By');
     }
 
+    /** @throws \InvalidArgumentException When an emitted response header is invalid. */
     protected function sendHeadersCommon(
         Response $response,
         ?int $size,

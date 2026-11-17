@@ -142,4 +142,37 @@ describe('CompressionMiddleware', function () {
         expect($response->getHeaderLine('Content-Encoding'))->toBe('deflate')
             ->and(gzuncompress((string) $response->getBody()))->toBe($body);
     });
+    it('negotiates optional Brotli and Zstd codecs without requiring them at runtime', function (
+        string $encoding,
+        string $compressFunction,
+        string $decompressFunction,
+    ): void {
+        $available = function_exists($compressFunction) && function_exists($decompressFunction);
+        $body = str_repeat('repeated payload for optional compression ', 150);
+        $request = mockRequest('GET', '/', ['Accept-Encoding' => $encoding]);
+        $middleware = new CompressionMiddleware(minBytes: 0, prefOrder: [$encoding]);
+        $response = $middleware(
+            $request,
+            fn (): Response => Response::create($body, 200, ['Content-Type' => 'text/plain']),
+        );
+
+        if (!$available) {
+            expect($response->hasHeader('Content-Encoding'))->toBeFalse()
+                ->and((string) $response->getBody())->toBe($body);
+
+            return;
+        }
+
+        expect($response->getHeaderLine('Content-Encoding'))->toBe($encoding);
+
+        $decoded = $encoding === 'br'
+            ? brotli_uncompress((string) $response->getBody())
+            : zstd_uncompress((string) $response->getBody());
+
+        expect($decoded)->toBe($body);
+    })->with([
+        ['br', 'brotli_compress', 'brotli_uncompress'],
+        ['zstd', 'zstd_compress', 'zstd_uncompress'],
+    ]);
+
 });
