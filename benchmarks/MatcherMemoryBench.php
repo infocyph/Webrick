@@ -7,6 +7,10 @@ namespace Infocyph\Webrick\Benchmarks;
 use Infocyph\Webrick\Benchmarks\Support\BenchmarkSupport;
 use PhpBench\Attributes as Bench;
 
+/**
+ * PHPBench discovers this benchmark through reflection.
+ * @psalm-api
+ */
 #[Bench\Groups(['matcher-memory'])]
 #[Bench\Iterations(2)]
 #[Bench\Revs(1)]

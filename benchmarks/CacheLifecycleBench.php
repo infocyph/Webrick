@@ -12,6 +12,10 @@ use Infocyph\Webrick\Router\Matching\ShardedMatcher;
 use Infocyph\Webrick\Support\RouteCache;
 use PhpBench\Attributes as Bench;
 
+/**
+ * PHPBench discovers this benchmark through reflection.
+ * @psalm-api
+ */
 #[Bench\Groups(['cache', 'boot'])]
 #[Bench\Iterations(5)]
 #[Bench\Revs(10)]

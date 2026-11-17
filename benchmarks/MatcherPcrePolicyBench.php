@@ -12,6 +12,10 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
 use Infocyph\Webrick\Router\Route\Route;
 use PhpBench\Attributes as Bench;
 
+/**
+ * PHPBench discovers this benchmark through reflection.
+ * @psalm-api
+ */
 #[Bench\Groups(['matcher', 'matcher-pcre-policy'])]
 #[Bench\Iterations(7)]
 #[Bench\Revs(2500)]

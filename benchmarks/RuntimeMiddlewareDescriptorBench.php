@@ -16,6 +16,10 @@ use Infocyph\Webrick\Runtime\InterMixRuntime;
 use PhpBench\Attributes as Bench;
 use RuntimeException;
 
+/**
+ * PHPBench discovers this benchmark through reflection.
+ * @psalm-api
+ */
 #[Bench\Groups(['kernel', 'intermix', 'middleware', 'foundation-bridge'])]
 #[Bench\Iterations(5)]
 #[Bench\Revs(1000)]

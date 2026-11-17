@@ -21,6 +21,10 @@ use Psr\Log\NullLogger;
 use RuntimeException;
 
 /** Repeated complete in-process kernel paths; supporting evidence, not host RPM certification. */
+/**
+ * PHPBench discovers this benchmark through reflection.
+ * @psalm-api
+ */
 #[Bench\Groups(['kernel', 'middleware', 'security'])]
 #[Bench\Iterations(5)]
 #[Bench\Revs(1000)]
