@@ -148,7 +148,10 @@ final readonly class ResponseCacheMiddleware
         ));
     }
 
-    /** @param array<string,string> $varyPairs */
+    /**
+     * @param array<string,string> $varyPairs
+     * @throws \InvalidArgumentException
+     */
     private function hasSafeVary(Response $response, array $varyPairs): bool
     {
         $vary = $response->getHeaderLine('Vary');
@@ -259,7 +262,10 @@ final readonly class ResponseCacheMiddleware
         return $pairs;
     }
 
-    /** @param array<string,string> $varyPairs */
+    /**
+     * @param array<string,string> $varyPairs
+     * @throws \InvalidArgumentException
+     */
     private function storeTtl(Request $request, Response $response, array $varyPairs): int
     {
         if ($response->isStreaming() || $response->getStringBody() === null) {

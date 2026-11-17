@@ -19,6 +19,7 @@ final class HttpFactory
 {
     /**
      * @param array<string,mixed> $serverParams
+     * @throws \InvalidArgumentException
      */
     public function createRequest(string $method, Uri|string $uri, array $serverParams = []): Request
     {

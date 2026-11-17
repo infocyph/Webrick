@@ -80,6 +80,7 @@ final readonly class ResponseLinterMiddleware
 
     /**
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException
      */
     private function assertContentLengthMatches(Request $req, Response $resp, int $len): void
     {
@@ -159,6 +160,7 @@ final readonly class ResponseLinterMiddleware
 
     /**
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException
      */
     private function assertVaryOnCompressed(Response $resp): void
     {

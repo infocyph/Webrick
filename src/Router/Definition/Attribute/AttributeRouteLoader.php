@@ -106,6 +106,7 @@ final class AttributeRouteLoader
      * @param array<string,string> $roots
      * @param null|callable(SplFileInfo):bool $filter
      * @return list<class-string>
+     * @throws \RuntimeException
      */
     private static function collectAnnotatedClasses(array $roots, ?callable $filter): array
     {
@@ -309,6 +310,8 @@ final class AttributeRouteLoader
     /**
      * @param ReflectionClass<object> $rc
      * @param class-string $fqcn
+     * @throws \BadMethodCallException
+     * @throws \InvalidArgumentException
      */
     private static function registerPublicMethods(
         Registrar $r,

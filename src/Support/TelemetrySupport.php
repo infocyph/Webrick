@@ -11,6 +11,9 @@ use Stringable;
 
 final class TelemetrySupport
 {
+    /**
+     * @throws \InvalidArgumentException
+     */
     public static function addCorrelationHeaders(
         Response $resp,
         bool $emitRequestId,
@@ -31,6 +34,9 @@ final class TelemetrySupport
         return $resp;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public static function addTimingHeaders(Response $resp, bool $addXResponseTime, bool $addServerTiming, float $durMs): Response
     {
         if ($addXResponseTime) {
@@ -45,6 +51,9 @@ final class TelemetrySupport
         return $resp;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public static function applyNelHeaders(
         Response $resp,
         ?string $nelGroup,
@@ -104,6 +113,9 @@ final class TelemetrySupport
         }
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public static function logAccess(
         LoggerInterface $log,
         Request $req,

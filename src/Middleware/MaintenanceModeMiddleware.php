@@ -19,6 +19,9 @@ final readonly class MaintenanceModeMiddleware
 
     private MaintenanceStateInterface $state;
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function __construct(
         string $file = __DIR__ . '/../../storage/framework/down',
         int $retryAfter = 3600,
@@ -32,6 +35,7 @@ final readonly class MaintenanceModeMiddleware
 
     /**
      * @param Closure(Request):Response $next
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
      */
     public function __invoke(Request $req, Closure $next): Response
     {

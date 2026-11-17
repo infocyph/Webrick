@@ -325,7 +325,10 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return HttpUtils::isJsonContentType($this->getHeaderLine('Content-Type'));
     }
 
-    /** @param string|list<string> $verbs */
+    /**
+     * @param string|list<string> $verbs
+     * @throws \InvalidArgumentException
+     */
     public function isMethod(string|array $verbs): bool
     {
         $normalized = [];

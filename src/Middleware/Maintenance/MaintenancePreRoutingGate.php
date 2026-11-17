@@ -24,6 +24,7 @@ final readonly class MaintenancePreRoutingGate implements PreRoutingGateInterfac
 
     /**
      * @param list<string> $bypassPaths Exact paths that may bypass maintenance.
+     * @throws \InvalidArgumentException
      */
     public function __construct(
         string $file = __DIR__ . '/../../../storage/framework/down',

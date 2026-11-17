@@ -69,6 +69,9 @@ final readonly class TelemetryMiddleware
         return $this->handleMinimal($req, $next);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public static function fromOptions(TelemetryOptions $options): self
     {
         return new self(...$options->toMiddlewareConstructorArgs());
@@ -136,7 +139,10 @@ final readonly class TelemetryMiddleware
         return preg_match('/\A[0-9a-f]{32}\z/iD', $hex) === 1 && $hex !== str_repeat('0', 32);
     }
 
-    /** @param array{trace_id:string,parent_span_id:string,flags:string,tracestate:string,span_id:string} $trace */
+    /**
+     * @param array{trace_id:string,parent_span_id:string,flags:string,tracestate:string,span_id:string} $trace
+     * @throws \InvalidArgumentException
+     */
     private function addCorrelationHeaders(Response $resp, array $trace, ?string $requestId): Response
     {
         $resp = TelemetrySupport::addCorrelationHeaders(

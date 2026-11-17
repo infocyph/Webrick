@@ -233,6 +233,8 @@ final readonly class CompiledMatcherFastEngine
      * @param MatcherGroup|null $hostGroup
      * @param MatcherGroup|null $wildcardGroup
      * @return int|array{0:int,1:array<string,string>}|null
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
      */
     private function matchSingleDynamic(
         ?array $hostGroup,

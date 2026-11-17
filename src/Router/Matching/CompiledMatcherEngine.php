@@ -33,6 +33,7 @@ final class CompiledMatcherEngine
     /**
      * @param list<MatcherGroup> $hostGroups
      * @param list<MatcherGroup> $wildcardGroups
+     * @throws \RuntimeException
      */
     public function match(array $hostGroups, array $wildcardGroups, string $method, string $path): MatchOutcome
     {
@@ -45,6 +46,7 @@ final class CompiledMatcherEngine
      * @param list<MatcherGroup> $hostGroups
      * @param list<MatcherGroup> $wildcardGroups
      * @return CompiledMatch
+     * @throws \RuntimeException
      */
     public function matchCompiled(array $hostGroups, array $wildcardGroups, string $method, string $path): int|array|MatchOutcome
     {
@@ -54,6 +56,7 @@ final class CompiledMatcherEngine
     /**
      * @phpstan-param MatcherGroup|null $hostGroup
      * @phpstan-param MatcherGroup|null $wildcardGroup
+     * @throws \RuntimeException
      */
     public function matchSingle(
         ?array $hostGroup,
@@ -77,6 +80,7 @@ final class CompiledMatcherEngine
      * @phpstan-param MatcherGroup|null $hostGroup
      * @phpstan-param MatcherGroup|null $wildcardGroup
      * @return CompiledMatch
+     * @throws \RuntimeException
      */
     public function matchSingleCompiled(
         ?array $hostGroup,
@@ -89,6 +93,7 @@ final class CompiledMatcherEngine
 
     /**
      * @param list<MatcherGroup> $groups
+     * @throws \UnexpectedValueException
      */
     private static function routePayload(array $groups, int $id): mixed
     {
@@ -101,6 +106,9 @@ final class CompiledMatcherEngine
         throw new \UnexpectedValueException('Compact matcher route ID is missing from the central payload table.');
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     private function materialize(mixed $value, int $id): CompiledRoute
     {
         if ($value instanceof CompiledRoute) {

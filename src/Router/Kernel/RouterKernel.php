@@ -91,6 +91,7 @@ final readonly class RouterKernel
      * @param array<int,string> $preGlobalTags
      * @param array<int,string> $postGlobalTags
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException
      */
     public static function bootWithRegistrar(
         LoggerInterface $log,
@@ -246,6 +247,8 @@ final readonly class RouterKernel
 
     /**
      * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
      */
     private function evaluatePreRoutingGate(Request $request, PreRoutingGateInterface $gate): ?Response
     {

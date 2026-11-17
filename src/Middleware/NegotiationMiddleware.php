@@ -35,7 +35,10 @@ final readonly class NegotiationMiddleware
             : ['+json', MediaTypeEnum::JSON->value, MediaTypeEnum::HTML->base()];
     }
 
-    /** @param Closure(Request):Response $next */
+    /**
+     * @param Closure(Request):Response $next
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     */
     public function __invoke(Request $req, Closure $next): Response
     {
         [$produces, $charsets] = $this->resolveRouteOverrides($req);
@@ -82,6 +85,9 @@ final readonly class NegotiationMiddleware
             : $type;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function ensureContentType(Response $response, string $type, ?string $charset): Response
     {
         if (StatusEnum::isEmptyCode($response->getStatusCode())) {

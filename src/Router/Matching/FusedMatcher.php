@@ -69,6 +69,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
     /**
      * @throws \RuntimeException
      * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     #[\Override]
     public function finalize(): void
@@ -102,6 +103,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
      * @throws \InvalidArgumentException
      * @throws \Infocyph\Webrick\Exceptions\MethodNotAllowedException
      * @throws \Infocyph\Webrick\Exceptions\RouteNotFoundException
+     * @throws \RuntimeException
      */
     #[\Override]
     public function match(string $method, string $host, string $path): array
@@ -123,6 +125,9 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         throw new RouteNotFoundException($verb, $path);
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     #[\Override]
     public function matchCompiled(string $method, string $host, string $path): int|array|MatchOutcome
     {
@@ -142,6 +147,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
 
     /**
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException
      */
     #[\Override]
     public function matchOutcome(string $method, string $host, string $path): MatchOutcome
