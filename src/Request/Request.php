@@ -21,6 +21,7 @@ use Stringable;
  * Primary extensible HTTP request value object, consumed by Webrick applications.
  *
  * @api
+ * @psalm-taint-specialize
  * @implements ArrayAccess<string,mixed>
  */
 class Request extends NativeServerRequest implements ArrayAccess, JsonSerializable, Stringable

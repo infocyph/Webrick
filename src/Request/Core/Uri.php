@@ -6,6 +6,11 @@ namespace Infocyph\Webrick\Request\Core;
 
 use InvalidArgumentException;
 
+/**
+ * Per-instance URI components must retain their independent taint provenance.
+ *
+ * @psalm-taint-specialize
+ */
 final class Uri implements \Stringable
 {
     private string $fragment;
