@@ -193,7 +193,7 @@ final class CompiledRoutingControlBridgeTest extends TestCase
             );
 
             $this->expectException(\RuntimeException::class);
-            $this->expectExceptionMessage('InterMix release build identity mismatch');
+            $this->expectExceptionMessageMatches('/InterMix release build identity mismatch/');
 
             CompiledRouterKernel::fromReleaseManifest(
                 log: new NullLogger(),
@@ -246,7 +246,7 @@ final class CompiledRoutingControlBridgeTest extends TestCase
             );
 
             $this->expectException(\RuntimeException::class);
-            $this->expectExceptionMessage('Unsupported Webrick coordinated release manifest format');
+            $this->expectExceptionMessageMatches('/Unsupported Webrick coordinated release manifest format/');
 
             CompiledRouterKernel::fromReleaseManifest(
                 log: new NullLogger(),

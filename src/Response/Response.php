@@ -613,7 +613,7 @@ class Response
         return static function () use ($producer): iterable {
             $output = $producer();
 
-            return is_iterable($output) ? $output : [(string) $output];
+            return is_iterable($output) ? $output : [$output];
         };
     }
 

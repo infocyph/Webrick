@@ -273,6 +273,55 @@ final class Collection implements IteratorAggregate
     }
 
     /**
+     * @throws \LogicException
+     */
+    private function rebuildIndices(): void
+    {
+        $this->byName = [];
+        $this->byHandler = [];
+        $this->byIdentity = [];
+        $this->byPath = [];
+
+        foreach ($this->routes as $route) {
+            if (($name = $route->getName()) !== null && $name !== '') {
+                if ((isset($this->byName[$name]) && $this->byName[$name] !== $route) || isset($this->aliases[$name])) {
+                    throw new LogicException("Duplicate route name during rebuild: {$name}");
+                }
+                $this->byName[$name] = $route;
+            }
+
+            $identity = $this->routeIdentity($route);
+            if (isset($this->byIdentity[$identity]) && $this->byIdentity[$identity] !== $route) {
+                throw new LogicException($this->duplicateRouteMessage($route));
+            }
+            $this->byIdentity[$identity] = $route;
+            $this->byHandler[$route->getHandlerId()][] = $route;
+            $this->byPath[$route->getPath()] = $route;
+        }
+
+        $this->removeInvalidAliases();
+        $this->aliasIndex = null;
+    }
+
+    private function removeInvalidAliases(): void
+    {
+        foreach (array_keys($this->aliases) as $alias) {
+            $route = $this->aliases[$alias];
+            if (!in_array($route, $this->routes, true) || isset($this->byName[$alias])) {
+                unset($this->aliases[$alias]);
+            }
+        }
+    }
+
+    private function resetIndexes(): void
+    {
+        [$this->byName, $this->byHandler, $this->byIdentity, $this->byPath, $this->aliases] = [[], [], [], [], []];
+        $this->dirty = true;
+        $this->compiled = null;
+        $this->aliasIndex = null;
+    }
+
+    /**
      * @throws \InvalidArgumentException
      */
     private function routeIdentity(RouteInterface $route): string
