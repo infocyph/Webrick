@@ -456,8 +456,14 @@ final class CompiledRoute implements RouteInterface
         }
         $middleware = [];
         foreach ($value as $entry) {
-            // stateHandler already validates the complete string/object/callable tuple contract.
-            $middleware[] = self::stateHandler($entry);
+            $descriptor = self::stateHandler($entry);
+            if (is_string($descriptor) || is_object($descriptor) || is_array($descriptor)) {
+                $middleware[] = $descriptor;
+
+                continue;
+            }
+
+            throw new \UnexpectedValueException('Invalid middleware descriptor in compiled route state.');
         }
 
         return $middleware;

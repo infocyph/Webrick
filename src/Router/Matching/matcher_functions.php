@@ -183,7 +183,14 @@ function sharded_matcher_shard_file_path(string $cacheDir, string $hostKey, stri
 }
 
 /**
+ * Only a single local cache filename component is returned: the loop drops
+ * path separators, colon, NUL and other non-[A-Za-z0-9_.-] bytes; leading
+ * dots and trailing dots/spaces are stripped. The cache directory must still
+ * be owned by the deployment, not the request.
+ *
  * @param list<string> $winReserved
+ * @psalm-flow ($value) -> return
+ * @psalm-taint-escape include
  */
 function sharded_matcher_sanitize_for_filename(string $value, array $winReserved): string
 {
