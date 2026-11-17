@@ -131,7 +131,7 @@ test('risk admission keeps sequential tenant decisions request local', function 
         $decision = $request->getAttribute(RiskDecision::ATTRIBUTE);
         expect($decision)->toBeInstanceOf(RiskDecision::class);
 
-        return Response::json(['action' => $decision instanceof RiskDecision ? $decision->action : null]);
+        return Response::json(['action' => $decision->action]);
     };
 
     $alpha = Request::fake()->withAttribute('tenant', 'alpha');
@@ -165,7 +165,9 @@ test('risk admission rejects invalid shadow evaluators without downstream invoca
 test('risk admission does not turn evaluator failures into admission', function (string $mode): void {
     $called = 0;
     $middleware = new RiskAdmissionMiddleware(
-        static fn(): RiskDecision => throw new RuntimeException('provider failed'),
+        static function (): RiskDecision {
+            throw new RuntimeException('provider failed');
+        },
         mode: $mode,
     );
 
