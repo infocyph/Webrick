@@ -35,6 +35,13 @@ final readonly class RouteCacheBuildRegistrarCallback
         if (is_callable($this->userRegister)) {
             ($this->userRegister)($registrar);
         } elseif ($this->routesFile !== '') {
+            // Route sources are executable PHP. Reject wrappers before is_file() or require.
+            if (
+                str_contains($this->routesFile, "\0")
+                || preg_match('~^[a-z][a-z0-9.+-]*://~i', $this->routesFile) === 1
+            ) {
+                throw new \InvalidArgumentException('Routes file must be a local filesystem path.');
+            }
             if (!is_file($this->routesFile)) {
                 throw new \RuntimeException("Routes file not found: {$this->routesFile}");
             }
