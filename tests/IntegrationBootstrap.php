@@ -35,6 +35,9 @@ if (! class_exists('UsersController', false)) {
  * Create a test RouterKernel with actual routes.
  *
  * @param array<int,mixed> $extraMiddleware
+ * @throws \InvalidArgumentException
+ * @throws \LogicException
+ * @throws \RuntimeException
  */
 function createTestKernel(array $extraMiddleware = []): RouterKernel
 {
@@ -98,7 +101,7 @@ function createTestKernel(array $extraMiddleware = []): RouterKernel
         },
     );
 
-    $register = function () {
+    $register = function (): void {
         require __DIR__.'/../routes.php';
     };
 

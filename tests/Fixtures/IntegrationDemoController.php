@@ -8,6 +8,10 @@ use Infocyph\Webrick\Response\Response;
 
 final readonly class IntegrationDemoController
 {
+    /**
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     */
     public function hello(string $name): Response
     {
         return Response::json([
