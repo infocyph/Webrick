@@ -13,7 +13,11 @@ use PhpBench\Attributes as Bench;
 #[Bench\Warmup(1)]
 final class MatcherScaleBench
 {
-    /** @param array{matcher:string,size:int} $params */
+    /**
+     * @param array{matcher:string,size:int} $params
+     * @throws \Infocyph\Webrick\Exceptions\RouteNotFoundException
+     * @throws \Infocyph\Webrick\Exceptions\MethodNotAllowedException
+     */
     #[Bench\ParamProviders('provideRouteScales')]
     public function benchRepresentativeHit(array $params): void
     {

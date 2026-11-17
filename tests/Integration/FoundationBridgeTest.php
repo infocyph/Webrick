@@ -32,7 +32,10 @@ final class FoundationBridgeParameterizedMiddleware
         ++self::$constructed;
     }
 
-    /** @param Closure(Request):Response $next */
+    /**
+     * @param Closure(Request):Response $next
+     * @throws \InvalidArgumentException
+     */
     public function __invoke(Request $request, Closure $next): Response
     {
         return $next($request)->withHeader('X-Bridge-Params', $this->limit . ':' . $this->window);

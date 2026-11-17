@@ -17,7 +17,10 @@ final readonly class WebrickRuntimeScopedMarker
     public function __construct(public string $id) {}
 }
 
-/** Fail explicitly when a scoped container returns a non-marker value. */
+/**
+ * Fail explicitly when a scoped container returns a non-marker value.
+ * @throws \UnexpectedValueException
+ */
 function webrick_checked_scope_marker(mixed $value): WebrickRuntimeScopedMarker
 {
     if (!$value instanceof WebrickRuntimeScopedMarker) {
@@ -44,7 +47,7 @@ function webrick_runtime_scope_fixture(): array
 }
 
 test('InterMix runtime propagates one logical request scope into structured child work', function (): void {
-    [$container, $runtime] = webrick_runtime_scope_fixture();
+    [, $runtime] = webrick_runtime_scope_fixture();
     $parent = null;
     $child = null;
 
@@ -76,7 +79,7 @@ test('InterMix runtime propagates one logical request scope into structured chil
 });
 
 test('InterMix runtime propagates explicit scope context through Runwire task locals only when attached', function (): void {
-    [$container, $runtime] = webrick_runtime_scope_fixture();
+    [, $runtime] = webrick_runtime_scope_fixture();
 
     try {
         $runtime->withinScope('request', static function (RuntimeContainerInterface $active) use ($runtime): void {
@@ -131,7 +134,7 @@ test('InterMix runtime propagates explicit scope context through Runwire task lo
 });
 
 test('InterMix runtime keeps independent fiber request scopes isolated when no context is propagated', function (): void {
-    [$container, $runtime] = webrick_runtime_scope_fixture();
+    [, $runtime] = webrick_runtime_scope_fixture();
 
     $makeFiber = static fn(): Fiber => new Fiber(
         static fn(): WebrickRuntimeScopedMarker => webrick_checked_scope_marker($runtime->withinScope(
@@ -165,7 +168,7 @@ test('InterMix runtime keeps independent fiber request scopes isolated when no c
 });
 
 test('InterMix runtime detaches propagated scope context when child work throws', function (): void {
-    [$container, $runtime] = webrick_runtime_scope_fixture();
+    [, $runtime] = webrick_runtime_scope_fixture();
 
     try {
         $runtime->withinScope('request', static function (RuntimeContainerInterface $active) use ($runtime): void {

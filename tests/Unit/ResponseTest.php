@@ -212,6 +212,7 @@ describe('Response', function () {
 
     it('renders views through the explicit view responder boundary', function () {
         $factory = new class implements ViewFactoryInterface {
+            /** @throws \UnexpectedValueException */
             #[\Override]
             public function render(string $view, array $data = []): string
             {

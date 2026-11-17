@@ -62,6 +62,7 @@ final class CachedInstanceMethodHandlerFixture
     }
 }
 
+/** @throws \UnexpectedValueException */
 function cachedMatcherNext(Request $request, Closure $next): Response
 {
     $response = $next($request);
@@ -540,9 +541,6 @@ test('stale cache formats fail clearly in every matcher mode', function (
         $artifact = $mode === 'sharded' ? $cache . DIRECTORY_SEPARATOR . '__manifest.php' : $cache;
         $source = file_get_contents($artifact);
         expect($source)->toBeString();
-        if (!is_string($source)) {
-            throw new UnexpectedValueException('Expected the cached matcher artifact to be readable.');
-        }
         $staleSource = preg_replace("/'_version' => \\d+/", "'_version' => 0", $source, 1);
         expect($staleSource)->toBeString()->not->toBe($source);
         file_put_contents($artifact, $staleSource);

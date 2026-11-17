@@ -8,19 +8,28 @@ use RuntimeException;
 
 final readonly class WorkermanNativeRequest
 {
-    /** @return array<string,mixed> */
+    /**
+     * @return array<string,mixed>
+     * @throws \RuntimeException
+     */
     public static function cookies(object $request): array
     {
         return self::stringMap(self::call($request, 'cookie'));
     }
 
-    /** @return array<string,mixed> */
+    /**
+     * @return array<string,mixed>
+     * @throws \RuntimeException
+     */
     public static function files(object $request): array
     {
         return self::stringMap(self::call($request, 'file'));
     }
 
-    /** @return array<string,string|list<string>> */
+    /**
+     * @return array<string,string|list<string>>
+     * @throws \RuntimeException
+     */
     public static function headers(object $request): array
     {
         $headers = self::stringMap(self::call($request, 'header'));
@@ -34,6 +43,7 @@ final readonly class WorkermanNativeRequest
         return $out;
     }
 
+    /** @throws \RuntimeException */
     public static function isHttp2(object $request): bool
     {
         $version = self::string(self::call($request, 'protocolVersion'));
@@ -41,18 +51,25 @@ final readonly class WorkermanNativeRequest
         return str_starts_with($version, '2');
     }
 
-    /** @return array<string,mixed> */
+    /**
+     * @return array<string,mixed>
+     * @throws \RuntimeException
+     */
     public static function post(object $request): array
     {
         return self::stringMap(self::call($request, 'post'));
     }
 
-    /** @return array<string,mixed> */
+    /**
+     * @return array<string,mixed>
+     * @throws \RuntimeException
+     */
     public static function query(object $request): array
     {
         return self::stringMap(self::call($request, 'get'));
     }
 
+    /** @throws \RuntimeException */
     public static function rawBody(object $request): string
     {
         $body = self::call($request, 'rawBody');
@@ -60,7 +77,10 @@ final readonly class WorkermanNativeRequest
         return is_string($body) ? $body : '';
     }
 
-    /** @return array<string,mixed> */
+    /**
+     * @return array<string,mixed>
+     * @throws \RuntimeException
+     */
     public static function server(object $request, object $connection): array
     {
         $headers = self::stringMap(self::call($request, 'header'));
