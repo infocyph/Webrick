@@ -60,6 +60,17 @@ final class FoundationRunwireProbe
 
     public static int $scopeLeaves = 0;
 
+
+    public static function scopeLeaveCount(): int
+    {
+        return self::$scopeLeaves;
+    }
+
+    public static function cleanupCallCount(): int
+    {
+        return self::$cleanupCalls;
+    }
+
     /**
      * @throws \RuntimeException
      */
@@ -298,16 +309,16 @@ final class FoundationRunwireBridgeTest extends TestCase
             self::assertSame([$markerB . ':same:/foundation/fiber/b'], $writerB->chunks);
             self::assertSame(1, $writerA->endCalls);
             self::assertSame(1, $writerB->endCalls);
-            self::assertSame(2, FoundationRunwireProbe::$scopeLeaves);
-            self::assertSame(2, FoundationRunwireProbe::$cleanupCalls);
+            self::assertSame(2, FoundationRunwireProbe::scopeLeaveCount());
+            self::assertSame(2, FoundationRunwireProbe::cleanupCallCount());
             self::assertSame(0, $application->snapshot()->requestsActive);
 
             $structuredWriter = new FoundationRunwireWriter();
             $application->handle(self::request('/foundation/structured'), $structuredWriter, completeResponse: true);
 
             self::assertSame(['same'], $structuredWriter->chunks);
-            self::assertSame(3, FoundationRunwireProbe::$scopeLeaves);
-            self::assertSame(3, FoundationRunwireProbe::$cleanupCalls);
+            self::assertSame(3, FoundationRunwireProbe::scopeLeaveCount());
+            self::assertSame(3, FoundationRunwireProbe::cleanupCallCount());
             self::assertSame(3, $application->snapshot()->requestsTotal);
         } finally {
             $application->shutdown();

@@ -83,6 +83,22 @@ final class PressureCancellationWriter implements ResponseWriterInterface
 
     public int $writeCalls = 0;
 
+
+    public function writeCount(): int
+    {
+        return $this->writeCalls;
+    }
+
+    public function endCount(): int
+    {
+        return $this->endCalls;
+    }
+
+    public function startCount(): int
+    {
+        return $this->startCalls;
+    }
+
     private ?Closure $drainCallback = null;
 
     private bool $ended = false;
@@ -185,10 +201,10 @@ final class RunwireResponsePressureCancellationTest extends TestCase
             $application->start();
             $application->handle($request, $writer, completeResponse: true);
 
-            self::assertSame(1, $writer->startCalls);
-            self::assertSame(1, $writer->writeCalls);
+            self::assertSame(1, $writer->startCount());
+            self::assertSame(1, $writer->writeCount());
             self::assertSame(['first'], $writer->chunks);
-            self::assertSame(0, $writer->endCalls);
+            self::assertSame(0, $writer->endCount());
             self::assertTrue($writer->waitingForDrain());
             self::assertSame(1, $application->snapshot()->requestsActive);
             self::assertFalse($request->context->completed());
@@ -197,9 +213,9 @@ final class RunwireResponsePressureCancellationTest extends TestCase
 
             self::assertTrue($request->context->completed());
             self::assertSame(CancellationReason::TRANSPORT_CANCELLED, $request->context->cancellation->reason());
-            self::assertSame(1, $writer->writeCalls);
+            self::assertSame(1, $writer->writeCount());
             self::assertSame(['first'], $writer->chunks);
-            self::assertSame(0, $writer->endCalls);
+            self::assertSame(0, $writer->endCount());
             self::assertSame(1, $application->snapshot()->requestsTotal);
             self::assertSame(0, $application->snapshot()->requestsActive);
         } finally {

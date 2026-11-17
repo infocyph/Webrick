@@ -45,6 +45,17 @@ final class RunwireCleanupProbe
 
     public static int $scopeLeaves = 0;
 
+
+    public static function scopeLeaveCount(): int
+    {
+        return self::$scopeLeaves;
+    }
+
+    public static function cleanupCallCount(): int
+    {
+        return self::$cleanupCalls;
+    }
+
     public static function reset(): void
     {
         self::$cleanupCalls = 0;
@@ -207,8 +218,8 @@ final class RunwireCleanupIsolationTest extends TestCase
             $success = self::request('/cleanup/success');
             $successWriter = new RunwireCleanupWriterFixture();
             $application->handle($success, $successWriter, completeResponse: true);
-            self::assertSame(1, RunwireCleanupProbe::$scopeLeaves);
-            self::assertSame(1, RunwireCleanupProbe::$cleanupCalls);
+            self::assertSame(1, RunwireCleanupProbe::scopeLeaveCount());
+            self::assertSame(1, RunwireCleanupProbe::cleanupCallCount());
             self::assertTrue($success->context->completed());
             self::assertSame(1, $successWriter->endCalls);
             self::assertCarrierClean($container);
@@ -216,8 +227,8 @@ final class RunwireCleanupIsolationTest extends TestCase
             $error = self::request('/cleanup/error');
             $errorWriter = new RunwireCleanupWriterFixture();
             $application->handle($error, $errorWriter, completeResponse: true);
-            self::assertSame(2, RunwireCleanupProbe::$scopeLeaves);
-            self::assertSame(2, RunwireCleanupProbe::$cleanupCalls);
+            self::assertSame(2, RunwireCleanupProbe::scopeLeaveCount());
+            self::assertSame(2, RunwireCleanupProbe::cleanupCallCount());
             self::assertTrue($error->context->completed());
             self::assertSame(1, $errorWriter->endCalls);
             self::assertCarrierClean($container);
@@ -229,8 +240,8 @@ final class RunwireCleanupIsolationTest extends TestCase
                 },
             );
             $application->handle($cancelled, $cancelWriter, completeResponse: true);
-            self::assertSame(3, RunwireCleanupProbe::$scopeLeaves);
-            self::assertSame(3, RunwireCleanupProbe::$cleanupCalls);
+            self::assertSame(3, RunwireCleanupProbe::scopeLeaveCount());
+            self::assertSame(3, RunwireCleanupProbe::cleanupCallCount());
             self::assertTrue($cancelled->context->completed());
             self::assertSame(CancellationReason::TRANSPORT_CANCELLED, $cancelled->context->cancellation->reason());
             self::assertSame(0, $cancelWriter->endCalls);
@@ -239,8 +250,8 @@ final class RunwireCleanupIsolationTest extends TestCase
             $deadline = self::request('/cleanup/deadline');
             $deadlineWriter = new RunwireCleanupWriterFixture();
             $application->handle($deadline, $deadlineWriter, completeResponse: true);
-            self::assertSame(4, RunwireCleanupProbe::$scopeLeaves);
-            self::assertSame(4, RunwireCleanupProbe::$cleanupCalls);
+            self::assertSame(4, RunwireCleanupProbe::scopeLeaveCount());
+            self::assertSame(4, RunwireCleanupProbe::cleanupCallCount());
             self::assertTrue($deadline->context->completed());
             self::assertSame(CancellationReason::DEADLINE_EXCEEDED, $deadline->context->cancellation->reason());
             self::assertSame(0, $deadlineWriter->endCalls);
@@ -248,8 +259,8 @@ final class RunwireCleanupIsolationTest extends TestCase
 
             $next = self::request('/cleanup/success');
             $application->handle($next, new RunwireCleanupWriterFixture(), completeResponse: true);
-            self::assertSame(5, RunwireCleanupProbe::$scopeLeaves);
-            self::assertSame(5, RunwireCleanupProbe::$cleanupCalls);
+            self::assertSame(5, RunwireCleanupProbe::scopeLeaveCount());
+            self::assertSame(5, RunwireCleanupProbe::cleanupCallCount());
             self::assertTrue($next->context->completed());
             self::assertCarrierClean($container);
             self::assertSame(0, $application->snapshot()->requestsActive);

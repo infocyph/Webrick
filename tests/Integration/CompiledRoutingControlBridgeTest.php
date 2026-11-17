@@ -87,6 +87,12 @@ final class CompiledFastPathScopeProbe
 {
     public static int $leaves = 0;
 
+
+    public static function leaveCount(): int
+    {
+        return self::$leaves;
+    }
+
     public static function scopeLeft(string $scope, RuntimeContainerInterface $container): void
     {
         unset($container);
@@ -356,16 +362,16 @@ final class CompiledRoutingControlBridgeTest extends TestCase
                 );
 
             self::assertSame('zero', (string) $kernel->handle(Request::fake(uri: 'http://localhost/zero'))->getBody());
-            self::assertSame(0, CompiledFastPathScopeProbe::$leaves);
+            self::assertSame(0, CompiledFastPathScopeProbe::leaveCount());
 
             self::assertSame('42', (string) $kernel->handle(Request::fake(uri: 'http://localhost/arg/42'))->getBody());
-            self::assertSame(0, CompiledFastPathScopeProbe::$leaves);
+            self::assertSame(0, CompiledFastPathScopeProbe::leaveCount());
             self::assertSame('/arg/42', UrlGeneratorRegistry::get()->urlFor('123', ['id' => '42']));
             self::assertSame('/arg/42', UrlGeneratorRegistry::get()->urlFor('456', ['id' => '42']));
 
             $scoped = $kernel->handle(Request::fake(uri: 'http://localhost/scoped'));
             self::assertSame(CompiledFastPathScopedMarker::class, (string) $scoped->getBody());
-            self::assertSame(1, CompiledFastPathScopeProbe::$leaves);
+            self::assertSame(1, CompiledFastPathScopeProbe::leaveCount());
         } finally {
             CompiledFastPathScopeProbe::$leaves = 0;
             self::cleanup([$intermixPath, $routerPath]);

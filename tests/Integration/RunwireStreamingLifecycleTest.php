@@ -46,6 +46,17 @@ final class RunwireStreamingScopeProbe
 
     public static int $scopeLeaves = 0;
 
+
+    public static function scopeLeaveCount(): int
+    {
+        return self::$scopeLeaves;
+    }
+
+    public static function producerAdvanceCount(): int
+    {
+        return self::$producerAdvances;
+    }
+
     /**
      * @throws \RuntimeException
      */
@@ -185,6 +196,17 @@ final class RunwirePressureWriterFixture implements ResponseWriterInterface
 
     public int $writeCalls = 0;
 
+
+    public function writeCount(): int
+    {
+        return $this->writeCalls;
+    }
+
+    public function endCount(): int
+    {
+        return $this->endCalls;
+    }
+
     private ?Closure $drainCallback = null;
 
     private bool $ended = false;
@@ -305,24 +327,24 @@ final class RunwireStreamingLifecycleTest extends TestCase
         try {
             $application->handle($request, $writer, completeResponse: true);
 
-            self::assertSame(1, $writer->writeCalls);
+            self::assertSame(1, $writer->writeCount());
             self::assertCount(1, $writer->chunks);
-            self::assertSame(1, RunwireStreamingScopeProbe::$producerAdvances);
-            self::assertSame(0, RunwireStreamingScopeProbe::$scopeLeaves);
-            self::assertSame(0, $writer->endCalls);
+            self::assertSame(1, RunwireStreamingScopeProbe::producerAdvanceCount());
+            self::assertSame(0, RunwireStreamingScopeProbe::scopeLeaveCount());
+            self::assertSame(0, $writer->endCount());
             self::assertTrue($writer->hasPendingDrain());
             self::assertSame(1, $application->snapshot()->requestsActive);
             self::assertFalse($request->context->completed());
 
             $writer->drain();
 
-            self::assertSame(2, $writer->writeCalls);
+            self::assertSame(2, $writer->writeCount());
             self::assertCount(2, $writer->chunks);
             self::assertStringContainsString('/runtime/scoped-stream', $writer->chunks[0]);
             self::assertSame('second:same', $writer->chunks[1]);
-            self::assertSame(2, RunwireStreamingScopeProbe::$producerAdvances);
-            self::assertSame(1, RunwireStreamingScopeProbe::$scopeLeaves);
-            self::assertSame(1, $writer->endCalls);
+            self::assertSame(2, RunwireStreamingScopeProbe::producerAdvanceCount());
+            self::assertSame(1, RunwireStreamingScopeProbe::scopeLeaveCount());
+            self::assertSame(1, $writer->endCount());
             self::assertTrue($writer->isEnded());
             self::assertFalse($writer->hasPendingDrain());
             self::assertSame(0, $application->snapshot()->requestsActive);
@@ -348,8 +370,8 @@ final class RunwireStreamingLifecycleTest extends TestCase
             $application->handle(self::request('/runtime/zero-stream'), $writer, completeResponse: true);
 
             self::assertSame(['no-scope'], $writer->chunks);
-            self::assertSame(0, RunwireStreamingScopeProbe::$scopeLeaves);
-            self::assertSame(1, $writer->endCalls);
+            self::assertSame(0, RunwireStreamingScopeProbe::scopeLeaveCount());
+            self::assertSame(1, $writer->endCount());
             self::assertTrue($writer->isEnded());
             self::assertFalse($writer->hasPendingDrain());
         } finally {
@@ -386,7 +408,7 @@ final class RunwireStreamingLifecycleTest extends TestCase
 
             self::assertSame(0, $application->snapshot()->requestsActive);
             self::assertTrue($request->context->completed());
-            self::assertSame(1, $writer->endCalls);
+            self::assertSame(1, $writer->endCount());
         } finally {
             $application->shutdown();
             self::cleanup($paths);
@@ -412,7 +434,7 @@ final class RunwireStreamingLifecycleTest extends TestCase
             self::assertSame(1, $body->readCalls);
             self::assertSame([3], $body->requestedBytes);
             self::assertSame(131_069, $body->bufferedBytes());
-            self::assertSame(1, $writer->endCalls);
+            self::assertSame(1, $writer->endCount());
         } finally {
             $application->shutdown();
             self::cleanup($paths);

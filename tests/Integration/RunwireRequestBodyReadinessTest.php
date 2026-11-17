@@ -153,6 +153,17 @@ final class RunwireDeferredWriter implements ResponseWriterInterface
 
     public int $status = 0;
 
+
+    public function startCount(): int
+    {
+        return $this->startCalls;
+    }
+
+    public function endCount(): int
+    {
+        return $this->endCalls;
+    }
+
     private bool $ended = false;
 
     private bool $started = false;
@@ -239,15 +250,15 @@ final class RunwireRequestBodyReadinessTest extends TestCase
             $application->handle($request, $writer, completeResponse: true);
 
             self::assertSame(1, $application->snapshot()->requestsActive);
-            self::assertSame(0, $writer->startCalls);
+            self::assertSame(0, $writer->startCount());
 
             $request->context->cancel(CancellationReason::TRANSPORT_CANCELLED);
 
             self::assertTrue($request->context->completed());
             self::assertSame(CancellationReason::TRANSPORT_CANCELLED, $request->context->cancellation->reason());
             self::assertSame(0, $application->snapshot()->requestsActive);
-            self::assertSame(0, $writer->startCalls);
-            self::assertSame(0, $writer->endCalls);
+            self::assertSame(0, $writer->startCount());
+            self::assertSame(0, $writer->endCount());
         } finally {
             $application->shutdown();
             self::cleanup($paths);
@@ -274,22 +285,22 @@ final class RunwireRequestBodyReadinessTest extends TestCase
             $application->handle($request, $writer, completeResponse: true);
 
             self::assertSame(1, $application->snapshot()->requestsActive);
-            self::assertSame(0, $writer->startCalls);
+            self::assertSame(0, $writer->startCount());
 
             $body->push('{"name":"Ha');
             self::assertSame(1, $application->snapshot()->requestsActive);
-            self::assertSame(0, $writer->startCalls);
+            self::assertSame(0, $writer->startCount());
 
             $body->push('san"}');
             self::assertSame(1, $application->snapshot()->requestsActive);
-            self::assertSame(0, $writer->startCalls);
+            self::assertSame(0, $writer->startCount());
 
             $body->finish();
 
             self::assertTrue($request->context->completed());
             self::assertSame(0, $application->snapshot()->requestsActive);
-            self::assertSame(1, $writer->startCalls);
-            self::assertSame(1, $writer->endCalls);
+            self::assertSame(1, $writer->startCount());
+            self::assertSame(1, $writer->endCount());
             self::assertSame(200, $writer->status);
             self::assertSame(
                 ['name' => 'Hasan', 'raw' => '{"name":"Hasan"}'],
@@ -327,7 +338,7 @@ final class RunwireRequestBodyReadinessTest extends TestCase
             $body->finish();
 
             self::assertSame(0, $application->snapshot()->requestsActive);
-            self::assertSame(1, $writer->endCalls);
+            self::assertSame(1, $writer->endCount());
             self::assertSame(
                 ['name' => 'Hasan', 'meta' => ['level' => 'senior']],
                 json_decode($writer->body(), true, flags: JSON_THROW_ON_ERROR),
