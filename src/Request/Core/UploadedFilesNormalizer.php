@@ -9,6 +9,7 @@ final class UploadedFilesNormalizer
     /**
      * @param array<string,mixed> $spec
      * @return array<string,UploadedFile|array<mixed>>
+     * @throws \InvalidArgumentException
      */
     public static function normalise(array $spec): array
     {

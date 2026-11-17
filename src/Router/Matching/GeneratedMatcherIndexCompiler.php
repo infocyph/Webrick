@@ -25,6 +25,7 @@ final class GeneratedMatcherIndexCompiler
     /**
      * @param array<int,array<string,array<string,array{segments:list<array<string,mixed>>,verbs:array<string,mixed>}>>> $routes
      * @return array<int,array<string,array<string,array{segments:list<array<string,mixed>>,verbs:array<string,int>}>>>
+     * @throws \UnexpectedValueException
      */
     private function compileDynamic(array $routes, GeneratedMatcherRouteIndexer $routeIndexer): array
     {
@@ -46,6 +47,7 @@ final class GeneratedMatcherIndexCompiler
     /**
      * @param array{static:array<string,array<string,mixed>>,dynamic:array<int,array<string,array<string,array{segments:list<array<string,mixed>>,verbs:array<string,mixed>}>>>} $index
      * @return array{static:array<string,array<string,int>>,dynamic:array<int,array<string,array<string,array{segments:list<array<string,mixed>>,verbs:array<string,int>}>>>}
+     * @throws \UnexpectedValueException
      */
     private function compileHost(array $index, GeneratedMatcherRouteIndexer $routeIndexer): array
     {

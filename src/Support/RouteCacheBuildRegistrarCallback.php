@@ -27,6 +27,7 @@ final readonly class RouteCacheBuildRegistrarCallback
 
     /**
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException
      */
     public function __invoke(Registrar $registrar): void
     {

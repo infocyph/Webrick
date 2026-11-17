@@ -139,6 +139,7 @@ final class RouterArtifactCompiler
     /**
      * @return array{0:array<int,mixed>,1:array<int,array<string,mixed>>}
      * @throws \UnexpectedValueException
+     * @throws \InvalidArgumentException
      */
     private function indexedRuntimePayloads(RouterBuildResult $build): array
     {

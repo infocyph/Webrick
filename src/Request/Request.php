@@ -365,7 +365,10 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return $this->all();
     }
 
-    /** @param list<string>|null $supported */
+    /**
+     * @param list<string>|null $supported
+     * @throws \InvalidArgumentException
+     */
     public function locale(?array $supported = null, string $fallback = 'en', bool $cache = true): string
     {
         $fallback = self::normalizeLocale($fallback);
@@ -464,7 +467,10 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return array_intersect_key($this->all(), array_flip(self::stringList($keys)));
     }
 
-    /** @param list<string> $mimeTypes */
+    /**
+     * @param list<string> $mimeTypes
+     * @throws \InvalidArgumentException
+     */
     public function prefers(array $mimeTypes): ?string
     {
         return new ContentNegotiator($this->headers())->preferred($mimeTypes);

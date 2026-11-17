@@ -197,6 +197,7 @@ final class MiddlewarePipeline
      * the first element of $stack is executed first.
      *
      * @return Closure(Request):Response Composed pipeline closure.
+     * @throws \InvalidArgumentException
      */
     private function compose(): Closure
     {

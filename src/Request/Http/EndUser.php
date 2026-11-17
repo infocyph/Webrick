@@ -89,6 +89,7 @@ final class EndUser
 
         return $this->cachedNoProxy = is_string($validated) ? $validated : null;
     }
+    /** @throws \InvalidArgumentException */
 
     public function ipViaProxy(): ?string
     {
@@ -119,7 +120,10 @@ final class EndUser
         return $this->cachedViaProxy = $candidate;
     }
 
-    /** @return array<string,string> */
+    /**
+     * @return array<string,string>
+     * @throws \InvalidArgumentException
+     */
     public function parseUserAgent(): array
     {
         $parsed = new UAParser($this->req)->parse();
@@ -189,7 +193,10 @@ final class EndUser
         return null;
     }
 
-    /** @return list<string> */
+    /**
+     * @return list<string>
+     * @throws \InvalidArgumentException
+     */
     private function forwardedChain(): array
     {
         if (($this->proxyHeaderFlags() & Request::HEADER_FORWARDED) !== 0) {
@@ -283,7 +290,10 @@ final class EndUser
         return is_string($serverLine) ? $serverLine : '';
     }
 
-    /** @return list<string> */
+    /**
+     * @return list<string>
+     * @throws \InvalidArgumentException
+     */
     private function splitForwardedElements(string $header): array
     {
         return HttpUtils::splitQuoted($header, ',', true) ?? [];

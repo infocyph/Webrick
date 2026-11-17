@@ -186,7 +186,10 @@ final readonly class ConditionalValidator
         return $this->etag !== null || $this->lastModified !== null ? true : null;
     }
 
-    /** @return list<string>|null */
+    /**
+     * @return list<string>|null
+     * @throws \InvalidArgumentException
+     */
     private function tokenize(string $list): ?array
     {
         if ($list === '') {

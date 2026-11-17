@@ -29,7 +29,10 @@ final readonly class CachePolicy
         StatusEnum::NOT_IMPLEMENTED->value => true,
     ];
 
-    /** @return array<string,true|string> */
+    /**
+     * @return array<string,true|string>
+     * @throws \InvalidArgumentException
+     */
     public static function directives(string $line): array
     {
         if (HttpUtils::splitQuoted($line, ',') === null) {

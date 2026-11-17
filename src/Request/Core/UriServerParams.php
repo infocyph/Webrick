@@ -73,7 +73,10 @@ final class UriServerParams
         return null;
     }
 
-    /** @param array<string,mixed> $server */
+    /**
+     * @param array<string,mixed> $server
+     * @throws \InvalidArgumentException
+     */
     private static function firstServerCsvToken(array $server, string $key): ?string
     {
         $value = self::serverString($server, $key);

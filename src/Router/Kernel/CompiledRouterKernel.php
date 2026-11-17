@@ -52,6 +52,7 @@ final readonly class CompiledRouterKernel
     /**
      * @throws \InvalidArgumentException
      * @throws \UnexpectedValueException
+     * @throws \LogicException
      */
     private function __construct(
         LoggerInterface $log,

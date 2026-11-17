@@ -113,6 +113,7 @@ final class Router
      *
      * @param Collection|array<string, array{0:string,1:?string}>|(Closure():(Collection|array<string, array{0:string,1:?string}>)) $routes
      * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     public static function bindUrlServices(
         Collection|array|Closure $routes,
@@ -186,6 +187,7 @@ final class Router
 
     /**
      * Reset URL generation services (useful for tests/workers).
+     * @throws \LogicException
      */
     public static function resetUrlServices(): void
     {

@@ -81,6 +81,7 @@ final class ExecutableRoutePayload
     /**
      * @return array{object|string,string}|string|callable
      * @throws \UnexpectedValueException
+     * @throws \InvalidArgumentException
      */
     private static function decodeHandler(mixed $payload): array|string|callable
     {
@@ -99,6 +100,7 @@ final class ExecutableRoutePayload
      * @param list<mixed> $payload
      * @return list<object|string|array{object|string,string}>
      * @throws \UnexpectedValueException
+     * @throws \InvalidArgumentException
      */
     private static function decodeMiddleware(array $payload): array
     {

@@ -110,6 +110,7 @@ final class BenchmarkSupport
 
     /**
      * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     public static function generateRelativeTemporaryUrl(): string
     {
@@ -268,6 +269,7 @@ final class BenchmarkSupport
 
     /**
      * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     private static function buildSignedUrlGenerator(SignedUrlConfig $config): UrlGenerator
     {
@@ -325,6 +327,7 @@ final class BenchmarkSupport
     /**
      * @throws \InvalidArgumentException
      * @throws \LogicException
+     * @throws \RuntimeException
      */
     private static function registerIndexRoutes(Registrar $registrar): void
     {

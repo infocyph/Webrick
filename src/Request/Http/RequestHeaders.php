@@ -202,7 +202,10 @@ final class RequestHeaders
         return $out;
     }
 
-    /** @return list<string> */
+    /**
+     * @return list<string>
+     * @throws \InvalidArgumentException
+     */
     private function etagList(string $value): array
     {
         if ($value === '') {
@@ -230,7 +233,10 @@ final class RequestHeaders
         }
     }
 
-    /** @return list<string> */
+    /**
+     * @return list<string>
+     * @throws \InvalidArgumentException
+     */
     private function parseAccept(string $raw): array
     {
         $parsed = [];

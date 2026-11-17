@@ -23,6 +23,7 @@ final readonly class RangeResponder
      * @param array<array-key,mixed> $headers
      * @throws \InvalidArgumentException
      * @throws \RuntimeException
+     * @throws \LogicException
      */
     public static function forFile(
         Request $req,

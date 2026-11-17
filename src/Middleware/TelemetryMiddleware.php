@@ -186,6 +186,7 @@ final readonly class TelemetryMiddleware
             $this->nelCollectSuccesses,
         );
     }
+    /** @throws \InvalidArgumentException */
 
     private function deriveRequestId(Request $req): ?string
     {
@@ -266,7 +267,10 @@ final readonly class TelemetryMiddleware
         );
     }
 
-    /** @return array{0:Request,1:array{trace_id:string,parent_span_id:string,flags:string,tracestate:string,span_id:string},2:?string} */
+    /**
+     * @return array{0:Request,1:array{trace_id:string,parent_span_id:string,flags:string,tracestate:string,span_id:string},2:?string}
+     * @throws \InvalidArgumentException
+     */
     private function prepareContext(Request $req): array
     {
         [$traceId, $parentSpanId, $flags, $tracestate] = $this->extractTraceContext($req);

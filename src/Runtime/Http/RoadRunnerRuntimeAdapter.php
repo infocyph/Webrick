@@ -25,7 +25,10 @@ final readonly class RoadRunnerRuntimeAdapter implements RuntimeAdapterInterface
 
     private bool $sendfileMiddleware;
 
-    /** @param callable(int,string|Generator,array<string,list<string>>,bool):void $respond */
+    /**
+     * @param callable(int,string|Generator,array<string,list<string>>,bool):void $respond
+     * @throws \InvalidArgumentException
+     */
     public function __construct(
         callable $respond,
         bool $sendfileMiddleware = false,

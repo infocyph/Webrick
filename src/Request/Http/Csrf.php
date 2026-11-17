@@ -34,6 +34,7 @@ final readonly class Csrf
 
         return $mask . hash_hmac('sha256', $mask, $this->token());
     }
+    /** @throws \InvalidArgumentException */
 
     public function matches(Request $req): bool
     {

@@ -194,6 +194,7 @@ final class CompiledRouterArtifact
      * @param list<mixed> $payload
      * @return list<mixed>
      * @throws \UnexpectedValueException
+     * @throws \InvalidArgumentException
      */
     private static function decodedList(array $payload): array
     {
@@ -287,6 +288,7 @@ final class CompiledRouterArtifact
 
     /**
      * @throws \UnexpectedValueException
+     * @throws \InvalidArgumentException
      */
     private function validateRoutePlanTables(): void
     {

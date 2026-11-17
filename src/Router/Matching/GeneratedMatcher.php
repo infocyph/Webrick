@@ -133,7 +133,10 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         return $outcome;
     }
 
-    /** @return array{0:string,1:?string}|null */
+    /**
+     * @return array{0:string,1:?string}|null
+     * @throws \RuntimeException
+     */
     public function resolveAlias(string $name): ?array
     {
         $index = $this->aliasIndex();

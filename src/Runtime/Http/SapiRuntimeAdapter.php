@@ -21,6 +21,7 @@ final readonly class SapiRuntimeAdapter implements RuntimeAdapterInterface
     private const string FINISH_NONE = 'none';
 
     private RuntimeCapabilities $runtimeCapabilities;
+    /** @throws \InvalidArgumentException */
 
     private function __construct(
         private string $finishMode,
