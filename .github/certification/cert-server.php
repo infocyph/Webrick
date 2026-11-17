@@ -225,6 +225,7 @@ function certification_prepare(string $root): void
 /**
  * @throws \InvalidArgumentException
  * @throws \RuntimeException
+ * @throws \LogicException
  */
 function certification_kernel(string $root): CompiledRouterKernel
 {
@@ -381,6 +382,8 @@ function certification_runwire(
 
 /**
  * @throws \RuntimeException
+ * @throws \InvalidArgumentException
+ * @throws \Throwable
  */
 function certification_sapi(string $root): void
 {

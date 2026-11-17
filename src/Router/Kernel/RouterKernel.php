@@ -408,6 +408,7 @@ final readonly class RouterKernel
     /**
      * @throws \RuntimeException
      * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     private function warm(): void
     {

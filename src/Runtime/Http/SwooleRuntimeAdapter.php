@@ -31,11 +31,17 @@ final readonly class SwooleRuntimeAdapter implements RuntimeAdapterInterface
         );
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public static function openSwoole(bool $transportCompression = false, bool $transportRequestLimits = false): self
     {
         return new self('openswoole', $transportCompression, $transportRequestLimits);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public static function swoole(bool $transportCompression = false, bool $transportRequestLimits = false): self
     {
         return new self('swoole', $transportCompression, $transportRequestLimits);

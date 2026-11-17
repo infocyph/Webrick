@@ -36,6 +36,7 @@ final readonly class WorkermanRuntimeAdapter implements RuntimeAdapterInterface
 
     /**
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException
      */
     public static function current(bool $transportCompression = false, bool $transportRequestLimits = false): self
     {

@@ -530,6 +530,9 @@ function makeScenario(array $routeSet, array $template, array $routes, int $rout
  *   best_ns_op:float,
  *   avg_ns_op:float
  * }
+ * @throws \Infocyph\Webrick\Exceptions\MethodNotAllowedException
+ * @throws \Infocyph\Webrick\Exceptions\RouteNotFoundException
+ * @throws \RuntimeException
  */
 function runScenarioMatcher(
     array $spec,
@@ -778,6 +781,8 @@ function clearBenchmarkCache(string $matcher, string $cachePath): void
  *   factory:callable():MatcherInterface,
  *   name:string
  * } $spec
+ * @throws \InvalidArgumentException
+ * @throws \RuntimeException
  */
 function buildScenarioMatcher(array $scenario, bool $useCache, string $cachePath, array $spec): MatcherInterface
 {

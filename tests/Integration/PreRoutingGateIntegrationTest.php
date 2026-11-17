@@ -118,6 +118,7 @@ final class PreRoutingGateIntegrationTest extends TestCase
      * @return array{0:CompiledRouterKernel,1:list<string>}
      * @throws \InvalidArgumentException
      * @throws \RuntimeException
+     * @throws \LogicException
      */
     private static function kernel(MemoryMaintenanceState $state, array $bypassPaths = []): array
     {

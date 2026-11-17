@@ -53,6 +53,7 @@ function signedUrlQuery(string $url): array
 
 /**
  * @throws \InvalidArgumentException
+ * @throws \UnexpectedValueException
  */
 function requestFromSignedUrl(string $url): Request
 {

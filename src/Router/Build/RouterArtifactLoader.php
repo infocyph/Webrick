@@ -33,6 +33,7 @@ final class RouterArtifactLoader
     /**
      * @throws \UnexpectedValueException
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException
      */
     public function loadPrevalidated(
         string $path,
@@ -246,6 +247,7 @@ final class RouterArtifactLoader
     /**
      * @param array{format:int,environment:string,config_fingerprint:string,artifact_fingerprint:string,digest:string} $meta
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException
      */
     private function loadVerifiedPayload(
         string $path,

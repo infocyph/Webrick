@@ -24,6 +24,7 @@ final readonly class RouteCompiler
      * @param list<string> $preGlobalTags
      * @param list<string> $postGlobalTags
      * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     public function compile(
         Closure $register,

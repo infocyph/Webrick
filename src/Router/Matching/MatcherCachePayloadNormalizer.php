@@ -12,6 +12,7 @@ final class MatcherCachePayloadNormalizer
 {
     /**
      * @throws \UnexpectedValueException
+     * @throws \InvalidArgumentException
      */
     public static function normalize(mixed $value): mixed
     {

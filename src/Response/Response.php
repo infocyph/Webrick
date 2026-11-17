@@ -265,6 +265,7 @@ class Response
      * @param array<string,string> $headers
      * @throws \InvalidArgumentException
      * @throws \RuntimeException
+     * @throws \LogicException
      */
     public static function rangedDownload(
         Request $req,

@@ -60,6 +60,7 @@ final class BenchmarkSupport
     /**
      * @throws \InvalidArgumentException
      * @throws \LogicException
+     * @throws \RuntimeException
      */
     public static function createSignedGenerator(SignedUrlConfig $config): UrlGenerator
     {

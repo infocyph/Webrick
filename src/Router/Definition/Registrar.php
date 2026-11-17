@@ -107,6 +107,7 @@ final readonly class Registrar
      * @param string|GroupInput|Closure|null $domain
      * @param list<mixed>|Closure $middleware
      * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     public function group(
         array|string|null $prefix = null,

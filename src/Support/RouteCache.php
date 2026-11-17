@@ -23,6 +23,7 @@ final class RouteCache
      * @param array<string,mixed> $options
      * @throws \RuntimeException
      * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     public static function build(array $options): string
     {

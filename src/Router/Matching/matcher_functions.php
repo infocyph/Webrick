@@ -65,6 +65,7 @@ function matcher_write_validated_atomic_php_file(string $file, string $php, call
 
 /**
  * @throws \UnexpectedValueException
+ * @throws \InvalidArgumentException
  */
 function matcher_materialize_cached_route(mixed $payload): CompiledRoute
 {
