@@ -9,6 +9,7 @@ use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Interfaces\BodyStream;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Support\HeaderLine;
 
 /** Unified, extensible HTTP emitter with SAPI-friendly defaults. */
 abstract class BaseEmitter implements EmitterInterface
@@ -221,7 +222,7 @@ abstract class BaseEmitter implements EmitterInterface
 
     protected function sendRawHeader(string $name, string $value): void
     {
-        header("{$name}: {$value}", false);
+        header(HeaderLine::validated($name, $value), false);
     }
 
     protected function serverProtocol(): string

@@ -204,7 +204,7 @@ describe('Request', function () {
                 ->toThrow(RuntimeException::class)
                 ->and(is_file($missingTarget))->toBeFalse();
         } finally {
-            if (is_string($target) && is_file($target) && !unlink($target)) {
+            if (is_file($target) && !unlink($target)) {
                 throw new RuntimeException("Unable to remove upload target fixture: {$target}");
             }
             if (isset($missingTarget) && is_file($missingTarget) && !unlink($missingTarget)) {
@@ -226,7 +226,7 @@ describe('Request', function () {
                 ->and(fn() => $upload->getStream())
                 ->toThrow(RuntimeException::class, 'Uploaded file has been moved');
         } finally {
-            if (is_string($target) && is_file($target) && !unlink($target)) {
+            if (is_file($target) && !unlink($target)) {
                 throw new RuntimeException("Unable to remove upload target fixture: {$target}");
             }
         }
@@ -253,7 +253,7 @@ describe('Request', function () {
                 ->and($request->getUploadedFiles()['document'] ?? null)->toBeInstanceOf(UploadedFile::class)
                 ->and($hydrated->getValue($request))->toBeArray();
         } finally {
-            if (is_string($temporary) && is_file($temporary) && !unlink($temporary)) {
+            if (is_file($temporary) && !unlink($temporary)) {
                 throw new RuntimeException("Unable to remove temporary upload fixture: {$temporary}");
             }
         }

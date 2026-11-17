@@ -386,7 +386,7 @@ function certification_runwire(
  */
 function certification_sapi(string $root): void
 {
-    $path = parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH);
+    $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
     if ($path === '/__cert/metrics') {
         header('Content-Type: application/json');
         $payload = json_encode([

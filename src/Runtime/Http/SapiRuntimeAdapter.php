@@ -7,6 +7,7 @@ namespace Infocyph\Webrick\Runtime\Http;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Runtime\RoutingInput;
+use Infocyph\Webrick\Support\HeaderLine;
 use RuntimeException;
 
 /** Classic SAPI/FPM/FrankenPHP response runtime selected once at bootstrap. */
@@ -149,7 +150,7 @@ final readonly class SapiRuntimeAdapter implements RuntimeAdapterInterface
         $protocol = $_SERVER['SERVER_PROTOCOL'] ?? 'HTTP/1.1';
         $http2 = is_string($protocol) && str_starts_with($protocol, 'HTTP/2');
         foreach (ResponseWriterSupport::headers($response, $http2) as [$name, $value]) {
-            header("{$name}: {$value}", false);
+            header(HeaderLine::validated($name, $value), false);
         }
 
         $size = ResponseWriterSupport::knownLength($response);

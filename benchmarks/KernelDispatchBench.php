@@ -33,6 +33,7 @@ final class KernelDispatchBench
 
     /**
      * @throws \InvalidArgumentException
+     * @throws \LogicException
      * @throws \RuntimeException
      */
     public function setUp(): void
