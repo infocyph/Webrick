@@ -39,6 +39,11 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
     /** @var array<string,true> */
     private array $middlewareRequirements = [];
 
+    private function __construct()
+    {
+        $this->index = new CanonicalMatcherIndex();
+    }
+
     /**
      * @throws \LogicException
      * @throws \UnexpectedValueException
@@ -50,7 +55,6 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
             throw new \LogicException('Cannot add routes after finalize().');
         }
 
-        $this->bootIndex();
         $this->index->add($this->canonicalRouteHost($route->getDomain()), $route);
         matcher_capture_route_alias($this->alias, $route);
         matcher_capture_middleware_requirements($this->middlewareRequirements, $route);
@@ -72,7 +76,6 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
             return;
         }
 
-        $this->bootIndex();
         if ($this->cacheEnabled && $this->cacheWriteEnabled && !$this->index->isEmpty()) {
             $this->dumpCache();
         }
@@ -152,11 +155,6 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         if (is_file($file) && !unlink($file)) {
             throw new \RuntimeException("Failed to remove temporary matcher file {$file}");
         }
-    }
-
-    private function bootIndex(): void
-    {
-        $this->index ??= new CanonicalMatcherIndex();
     }
 
     /**

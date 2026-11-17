@@ -241,17 +241,19 @@ test('runwire terminal observers fire exactly once and late observers fire immed
 test('runwire continuation preserves caller ownership through yielding exception cleanup', function (): void {
     $caught = null;
     $finalized = 0;
-    $cleanupResumed = false;
+    $cleanup = new class {
+        public bool $resumed = false;
+    };
     $failure = new RuntimeException('caller Fiber cancelled');
 
-    $owner = new Fiber(static function () use (&$caught, &$finalized, &$cleanupResumed): void {
-        RunwireResponseContinuation::run(static function () use (&$caught, &$finalized, &$cleanupResumed): void {
+    $owner = new Fiber(static function () use (&$caught, &$finalized, $cleanup): void {
+        RunwireResponseContinuation::run(static function () use (&$caught, &$finalized, $cleanup): void {
             try {
                 expect(Fiber::suspend('handler-suspended'))->toBeNull();
             } catch (RuntimeException $error) {
                 $caught = $error;
                 expect(Fiber::suspend('cleanup-suspended'))->toBeNull();
-                $cleanupResumed = true;
+                $cleanup->resumed = true;
 
                 throw $error;
             } finally {
@@ -268,7 +270,7 @@ test('runwire continuation preserves caller ownership through yielding exception
         ->and($finalized)->toBe(0)
         ->and(fn(): mixed => $owner->resume())
         ->toThrow(RuntimeException::class, 'caller Fiber cancelled')
-        ->and($cleanupResumed)->toBeTrue()
+        ->and($cleanup->resumed)->toBeTrue()
         ->and($finalized)->toBe(1)
         ->and($owner->isTerminated())->toBeTrue();
 });

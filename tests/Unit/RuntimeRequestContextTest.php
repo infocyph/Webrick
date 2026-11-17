@@ -93,18 +93,17 @@ test('interleaved fibers do not cross contaminate runtime requests', function ()
 });
 
 test('runtime execution metadata stays request local and observes authoritative cancellation live', function (): void {
-    $cancelled = false;
-    $reason = null;
+    $state = new class {
+        public bool $cancelled = false;
+
+        public ?string $reason = null;
+    };
     $execution = new RuntimeRequestExecution(
         requestId: 'runtime-request-42',
         startMonotonicNanoseconds: 1_000,
         deadlineMonotonicNanoseconds: 5_000,
-        cancelled: static function () use (&$cancelled): bool {
-            return $cancelled;
-        },
-        cancellationReason: static function () use (&$reason): ?string {
-            return $reason;
-        },
+        cancelled: static fn(): bool => $state->cancelled,
+        cancellationReason: static fn(): ?string => $state->reason,
     );
     $context = new RuntimeRequestContext(
         new RoutingInput('GET', '/execution'),
@@ -134,8 +133,8 @@ test('runtime execution metadata stays request local and observes authoritative 
         ->and($context->capabilities->cancellationVisibility)->toBeTrue()
         ->and($context->capabilities->transportDrainVisibility)->toBeTrue();
 
-    $cancelled = true;
-    $reason = 'client-disconnected';
+    $state->cancelled = true;
+    $state->reason = 'client-disconnected';
 
     expect($execution->cancelled())->toBeTrue()
         ->and($execution->cancellationReason())->toBe('client-disconnected');

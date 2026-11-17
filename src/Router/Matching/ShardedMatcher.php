@@ -78,6 +78,13 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     /** @var array<string,true> */
     private array $middlewareRequirements = [];
 
+    private function __construct()
+    {
+        $this->engine = new CompiledMatcherEngine();
+        $this->fastEngine = new CompiledMatcherFastEngine();
+        $this->index = new CanonicalMatcherIndex();
+    }
+
     /**
      * @throws \LogicException
      * @throws \UnexpectedValueException
@@ -89,7 +96,6 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             throw new \LogicException('Cannot add routes after finalize().');
         }
 
-        $this->bootIndex();
         $host = $this->canonicalRouteHost($route->getDomain());
         $this->index->add($host, $route);
         matcher_capture_route_alias($this->alias, $route);
@@ -174,7 +180,6 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             return;
         }
 
-        $this->bootEngines();
         if ($this->canBootFromCache()) {
             $this->cacheReadable = true;
             $this->finalized = true;
@@ -182,7 +187,6 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             return;
         }
 
-        $this->bootIndex();
         if ($this->cacheEnabled && $this->cacheWriteEnabled) {
             $this->publishGeneration();
         }
@@ -314,18 +318,6 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         foreach ($entries as $path => $entry) {
             $groups[$bucket]['dynamic'][$count][$prefix][$path] = $entry;
         }
-    }
-
-    private function bootEngines(): void
-    {
-        $this->engine ??= new CompiledMatcherEngine();
-        $this->fastEngine ??= new CompiledMatcherFastEngine();
-    }
-
-    private function bootIndex(): void
-    {
-        $this->index ??= new CanonicalMatcherIndex();
-        $this->bootEngines();
     }
 
     private function cacheStorageDir(): string

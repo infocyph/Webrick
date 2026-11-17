@@ -49,6 +49,13 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
     /** @var array<string,true> */
     private array $middlewareRequirements = [];
 
+    private function __construct()
+    {
+        $this->engine = new CompiledMatcherEngine();
+        $this->fastEngine = new CompiledMatcherFastEngine();
+        $this->index = new CanonicalMatcherIndex();
+    }
+
     /**
      * @throws \LogicException
      * @throws \UnexpectedValueException
@@ -60,7 +67,6 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
             throw new \LogicException('Cannot add routes after finalize().');
         }
 
-        $this->bootIndex();
         $host = $this->canonicalRouteHost($route->getDomain());
         $this->index->add($host, $route);
         matcher_capture_route_alias($this->alias, $route);
@@ -79,7 +85,6 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
             return;
         }
 
-        $this->bootEngines();
         if ($this->canBootFromCache()) {
             $this->loadCacheBlob();
             $this->selectFastDefaultGroup();
@@ -88,7 +93,6 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
             return;
         }
 
-        $this->bootIndex();
         if ($this->cacheEnabled && $this->cacheWriteEnabled && !$this->index->isEmpty()) {
             $this->dumpCache();
         }
@@ -175,18 +179,6 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         $index = $this->aliasIndex();
 
         return $index[$name] ?? null;
-    }
-
-    private function bootEngines(): void
-    {
-        $this->engine ??= new CompiledMatcherEngine();
-        $this->fastEngine ??= new CompiledMatcherFastEngine();
-    }
-
-    private function bootIndex(): void
-    {
-        $this->index ??= new CanonicalMatcherIndex();
-        $this->bootEngines();
     }
 
     /**

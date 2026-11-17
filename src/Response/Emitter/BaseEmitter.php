@@ -220,6 +220,7 @@ abstract class BaseEmitter implements EmitterInterface
         }
     }
 
+    /** @throws \InvalidArgumentException */
     protected function sendRawHeader(string $name, string $value): void
     {
         header(HeaderLine::validated($name, $value), false);
