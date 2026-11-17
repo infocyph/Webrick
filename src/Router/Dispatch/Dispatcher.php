@@ -38,6 +38,7 @@ final class Dispatcher
     /**
      * @param array<string,mixed> $vars
      * @throws \UnexpectedValueException
+     * @throws \InvalidArgumentException
      */
     public function dispatch(CompiledRoute $route, Request $request, array $vars): Response
     {
@@ -224,6 +225,7 @@ final class Dispatcher
 
     /**
      * @return array{0:list<callable>,1:list<callable>}
+     * @throws \InvalidArgumentException
      */
     private function filteredGlobalsFor(CompiledRoute $route): array
     {

@@ -67,6 +67,7 @@ final class CompiledMatcherDynamicEngine
      * @param array<string,true> $skip
      * @param array<string,bool> $allowed
      * @param list<string> $segments
+     * @throws \RuntimeException
      */
     public function collectAllowedGroups(
         array $groups,
@@ -418,6 +419,8 @@ final class CompiledMatcherDynamicEngine
      * @param MatcherGroup $group
      * @param list<string>|null $segments
      * @return array{0:int,1:array<string,string>}|null
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
      */
     private function findMethod(
         array $group,

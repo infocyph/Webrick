@@ -39,6 +39,9 @@ final readonly class CachePolicy
         return CacheControl::directives($line);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function lookupAllowed(Request $request, bool $skipPersonalized = true): bool
     {
         $method = HttpMethodEnum::normalize($request->getMethod());
@@ -109,7 +112,10 @@ final readonly class CachePolicy
         return is_string($value) ? HttpUtils::parseUnsignedDecimal($value) : null;
     }
 
-    /** @param array<string,true|string> $directives */
+    /**
+     * @param array<string,true|string> $directives
+     * @throws \InvalidArgumentException
+     */
     private function freshnessLifetime(Response $response, array $directives, int $now): int
     {
         foreach (['s-maxage', 'max-age'] as $name) {
@@ -127,6 +133,9 @@ final readonly class CachePolicy
         return PHP_INT_MAX;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function responseAge(Response $response, int $now): ?int
     {
         $age = $response->hasHeader('Age') ? self::seconds($response->getHeaderLine('Age')) : 0;

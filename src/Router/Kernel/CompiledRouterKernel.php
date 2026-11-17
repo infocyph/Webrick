@@ -317,6 +317,7 @@ final readonly class CompiledRouterKernel
     /**
      * @param list<string> $allowed
      * @throws \InvalidArgumentException
+     * @throws \RuntimeException
      */
     private static function automaticOptionsResponse(array $allowed): Response
     {
@@ -335,6 +336,9 @@ final readonly class CompiledRouterKernel
         return Response::noContent(['Allow' => implode(', ', array_keys($methods))]);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function headResponse(Response $response): Response
     {
         if (!$response->hasHeader('Content-Length')) {
@@ -365,6 +369,9 @@ final readonly class CompiledRouterKernel
         return $response;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function controlOutcomeResponse(
         MatchOutcome $outcome,
         RoutingInput $routing,
@@ -520,6 +527,9 @@ final readonly class CompiledRouterKernel
         return $this->matcher->matchCompiled($routing->method, $routing->host, $routing->path);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function renderException(
         Throwable $exception,
         ?Request $request,

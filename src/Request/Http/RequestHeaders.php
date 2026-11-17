@@ -55,6 +55,9 @@ final class RequestHeaders
         return $key === null ? $this->accept : ($this->accept[$key] ?? []);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function all(): HeaderBag
     {
         if ($this->all instanceof HeaderBag) {
@@ -89,6 +92,9 @@ final class RequestHeaders
         ];
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function dependency(?string $key = null): mixed
     {
         if ($this->dep !== null) {

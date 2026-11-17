@@ -40,6 +40,10 @@ final readonly class RoutingInput
         }
     }
 
+    /**
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     * @throws \InvalidArgumentException
+     */
     public static function fromGlobals(bool $withHost): self
     {
         /** @var array<string,mixed> $server */
@@ -86,7 +90,10 @@ final readonly class RoutingInput
         );
     }
 
-    /** @param array<string,mixed> $server */
+    /**
+     * @param array<string,mixed> $server
+     * @throws \InvalidArgumentException
+     */
     private static function headerMethodOverride(array $server): ?string
     {
         foreach (['HTTP_X_HTTP_METHOD_OVERRIDE', 'HTTP_HTTP_METHOD_OVERRIDE'] as $key) {
@@ -154,6 +161,7 @@ final readonly class RoutingInput
     /**
      * @param array<string,mixed> $server
      * @param array<array-key,mixed> $form
+     * @throws \InvalidArgumentException
      */
     private static function routingMethodFromServer(array $server, array $form): string
     {

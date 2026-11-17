@@ -193,6 +193,9 @@ final readonly class CompressionMiddleware
         return $normalized;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function adjustValidators(Request $req, Response $resp, string $encodedBytes, string $algorithm): Response
     {
         $method = HttpMethodEnum::normalize($req->getMethod());
@@ -209,6 +212,9 @@ final readonly class CompressionMiddleware
         };
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function applyEncoded(Response $resp, string $encoded, string $algorithm): Response
     {
         $resp = $resp
@@ -390,6 +396,9 @@ final readonly class CompressionMiddleware
         return [trim($value), $weak];
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function shouldCompress(Request $req, Response $resp): bool
     {
         if ($resp->isStreaming() || $resp->getStringBody() === null) {

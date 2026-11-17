@@ -72,6 +72,7 @@ final readonly class GatewayHardeningMiddleware
      * @param Closure(Request):Response $next
      * @throws \Infocyph\Webrick\Exceptions\HttpException
      * @throws \InvalidArgumentException
+     * @throws \RuntimeException
      */
     public function __invoke(Request $req, Closure $next): Response
     {
@@ -186,6 +187,7 @@ final readonly class GatewayHardeningMiddleware
 
     /**
      * @throws \Infocyph\Webrick\Exceptions\HttpException
+     * @throws \InvalidArgumentException
      */
     private function guardRedirects(Request $req, Response $response): Response
     {
@@ -208,6 +210,9 @@ final readonly class GatewayHardeningMiddleware
         return array_any($this->hostRegex, static fn(string $regex): bool => preg_match($regex, $host) === 1);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function normalizeProxyContext(Request $req): Request
     {
         $peer = $req->getServerParams()['REMOTE_ADDR'] ?? null;
@@ -346,6 +351,9 @@ final readonly class GatewayHardeningMiddleware
         return $request;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function stripHopByHopFromResponse(Response $response): Response
     {
         $tokens = $this->parseConnectionTokens($response->getHeaderLine('Connection'));

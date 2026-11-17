@@ -22,6 +22,9 @@ final readonly class RuntimeAliasInvoker
 
     /**
      * @throws \InvalidArgumentException
+     * @throws \Psr\Container\ContainerExceptionInterface
+     * @throws \Psr\Container\NotFoundExceptionInterface
+     * @throws \UnexpectedValueException
      */
     public function invoke(
         RuntimeMiddlewareDescriptor $descriptor,
@@ -43,6 +46,9 @@ final readonly class RuntimeAliasInvoker
 
     /**
      * @throws \InvalidArgumentException
+     * @throws \Psr\Container\ContainerExceptionInterface
+     * @throws \Psr\Container\NotFoundExceptionInterface
+     * @throws \UnexpectedValueException
      */
     private function invokeResolved(mixed $resolved, Request $request, Closure $next): mixed
     {

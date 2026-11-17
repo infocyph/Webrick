@@ -35,6 +35,7 @@ final readonly class CorsMiddleware
     /**
      * @param Closure(Request):Response $next
      * @throws \Infocyph\Webrick\Exceptions\HttpException
+     * @throws \InvalidArgumentException
      */
     public function __invoke(Request $req, Closure $next): Response
     {
@@ -147,6 +148,9 @@ final readonly class CorsMiddleware
         return implode(', ', array_keys($normalized));
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function methodAllowed(string $method, string $methods): bool
     {
         $method = HttpMethodEnum::normalize(trim($method));
@@ -206,6 +210,7 @@ final readonly class CorsMiddleware
      * @param array{origins:list<string>,methods:string,allowHeaders:string|list<string>,exposeHeaders:string|list<string>,maxAgeSeconds:int,allowCredentials:bool,allowPrivateNetwork:bool} $policy
      * @throws \Infocyph\Webrick\Exceptions\HttpException
      * @throws \InvalidArgumentException
+     * @throws \RuntimeException
      */
     private function preflightResponse(Request $req, array $policy, string $acao): Response
     {

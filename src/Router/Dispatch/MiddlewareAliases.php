@@ -66,6 +66,7 @@ final class MiddlewareAliases
 
     /**
      * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     public static function register(string $alias, callable|string $factoryOrClass): void
     {
@@ -81,6 +82,7 @@ final class MiddlewareAliases
     /**
      * @param callable(string):bool $supports
      * @param callable(string,string...):(callable|object|string) $resolve
+     * @throws \LogicException
      */
     public static function registerResolver(callable $supports, callable $resolve, ?string $name = null): void
     {
@@ -95,6 +97,9 @@ final class MiddlewareAliases
         self::$resolvers[] = $resolver;
     }
 
+    /**
+     * @throws \LogicException
+     */
     public static function reset(): void
     {
         self::assertMutable();
@@ -102,6 +107,9 @@ final class MiddlewareAliases
         self::$resolvers = [];
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     public static function resolveString(string $maybeAlias): callable|object|string
     {
         [$key, $params] = self::parse($maybeAlias);
@@ -173,6 +181,7 @@ final class MiddlewareAliases
 
     /**
      * @param list<string> $params
+     * @throws \UnexpectedValueException
      */
     private static function resolveRegistered(callable|string $registered, array $params): callable|object|string
     {

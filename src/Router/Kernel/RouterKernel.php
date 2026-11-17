@@ -45,6 +45,7 @@ final readonly class RouterKernel
      * @param array<int,mixed> $postGlobal
      * @param array<int,string> $preGlobalTags
      * @param array<int,string> $postGlobalTags
+     * @throws \RuntimeException
      */
     public function __construct(
         private LoggerInterface $log,
@@ -166,6 +167,9 @@ final readonly class RouterKernel
             : $result;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function headResponse(Response $response): Response
     {
         if (!$response->hasHeader('Content-Length')) {
@@ -202,6 +206,9 @@ final readonly class RouterKernel
         return $host;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function routingMethod(Request $req): string
     {
         $rawMethod = HttpMethodEnum::normalize($req->getMethod());
@@ -212,7 +219,11 @@ final readonly class RouterKernel
             : $effectiveMethod;
     }
 
-    /** @param array<int,string> $allowed */
+    /**
+     * @param array<int,string> $allowed
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     private function automaticOptionsResponse(array $allowed): Response
     {
         $methods = [];
@@ -230,6 +241,9 @@ final readonly class RouterKernel
         return Response::noContent(['Allow' => implode(', ', array_keys($methods))]);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function evaluatePreRoutingGate(Request $request, PreRoutingGateInterface $gate): ?Response
     {
         try {
@@ -386,6 +400,7 @@ final readonly class RouterKernel
 
     /**
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException
      */
     private function warm(): void
     {
