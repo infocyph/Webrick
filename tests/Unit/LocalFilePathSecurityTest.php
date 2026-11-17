@@ -70,7 +70,7 @@ test('path-backed file moves preserve contents and invalidate the moved upload',
 });
 
 test('NUL bytes are rejected at uploaded-file and file-response path boundaries', function (): void {
-    $invalid = sys_get_temp_dir() . DIRECTORY_SEPARATOR . "webrick\\0invalid";
+    $invalid = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'webrick' . chr(0) . 'invalid';
 
     expect(fn (): UploadedFile => new UploadedFile($invalid))
         ->toThrow(InvalidArgumentException::class, 'local filesystem path');
