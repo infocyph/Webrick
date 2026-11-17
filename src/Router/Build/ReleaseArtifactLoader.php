@@ -209,11 +209,13 @@ final readonly class ReleaseArtifactLoader
             }
         }
 
-        $sourceSha256 = $metadata['source_sha256'] ?? null;
-        if (array_key_exists('source_sha256', $metadata)
-            && (!is_string($sourceSha256) || preg_match('/^[a-f0-9]{64}$/D', $sourceSha256) !== 1)
-        ) {
-            throw new UnexpectedValueException('Coordinated release InterMix source_sha256 must be SHA-256.');
+        if (array_key_exists('source_sha256', $metadata)) {
+            $sourceSha256 = $metadata['source_sha256'];
+            if (!is_string($sourceSha256) || preg_match('/^[a-f0-9]{64}$/D', $sourceSha256) !== 1) {
+                throw new UnexpectedValueException('Coordinated release InterMix source_sha256 must be SHA-256.');
+            }
+        } else {
+            $sourceSha256 = null;
         }
 
         $compiled = $this->stringList($metadata['compiled'] ?? null, 'InterMix compiled IDs');
@@ -304,11 +306,13 @@ final readonly class ReleaseArtifactLoader
             throw new UnexpectedValueException('Coordinated release has malformed Webrick artifact identity.');
         }
 
-        $sourceSha256 = $metadata['source_sha256'] ?? null;
-        if (array_key_exists('source_sha256', $metadata)
-            && (!is_string($sourceSha256) || preg_match('/^[a-f0-9]{64}$/D', $sourceSha256) !== 1)
-        ) {
-            throw new UnexpectedValueException('Coordinated release Webrick source_sha256 must be SHA-256.');
+        if (array_key_exists('source_sha256', $metadata)) {
+            $sourceSha256 = $metadata['source_sha256'];
+            if (!is_string($sourceSha256) || preg_match('/^[a-f0-9]{64}$/D', $sourceSha256) !== 1) {
+                throw new UnexpectedValueException('Coordinated release Webrick source_sha256 must be SHA-256.');
+            }
+        } else {
+            $sourceSha256 = null;
         }
 
         return [

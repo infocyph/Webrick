@@ -111,8 +111,8 @@ final class CompiledRoutingControlBridgeTest extends TestCase
      * Validate the exact manifest fixture fields consumed by compiled-boot tests.
      *
      * @param array<string,mixed> $manifest
-     * @phpstan-assert array{format:int,environment:string,config_fingerprint:string,intermix:array{path:string,digest:string,graph:string,build:string,compiled:array<array-key,mixed>,skipped:array<array-key,mixed>},webrick:array{path:string,digest:string,fingerprint:string}} $manifest
-     * @psalm-assert array{format:int,environment:string,config_fingerprint:string,intermix:array{path:string,digest:string,graph:string,build:string,compiled:array<array-key,mixed>,skipped:array<array-key,mixed>},webrick:array{path:string,digest:string,fingerprint:string}} $manifest
+     * @phpstan-assert array{format:int,environment:string,config_fingerprint:string,intermix:array{path:string,digest:string,source_sha256?:string,graph:string,build:string,compiled:array<array-key,mixed>,skipped:array<array-key,mixed>},webrick:array{path:string,digest:string,source_sha256?:string,fingerprint:string}} $manifest
+     * @psalm-assert array{format:int,environment:string,config_fingerprint:string,intermix:array{path:string,digest:string,source_sha256?:string,graph:string,build:string,compiled:array<array-key,mixed>,skipped:array<array-key,mixed>},webrick:array{path:string,digest:string,source_sha256?:string,fingerprint:string}} $manifest
      * @throws \UnexpectedValueException For a missing or malformed expected fixture field.
      */
     private static function assertReleaseFixture(array $manifest): void
@@ -134,6 +134,16 @@ final class CompiledRoutingControlBridgeTest extends TestCase
             || !is_string($manifest['webrick']['fingerprint'] ?? null)
         ) {
             throw new \UnexpectedValueException('Compiled release fixture has an invalid manifest shape.');
+        }
+        if (array_key_exists('source_sha256', $manifest['intermix'])
+            && !is_string($manifest['intermix']['source_sha256'])
+        ) {
+            throw new \UnexpectedValueException('Compiled InterMix source checksum is invalid.');
+        }
+        if (array_key_exists('source_sha256', $manifest['webrick'])
+            && !is_string($manifest['webrick']['source_sha256'])
+        ) {
+            throw new \UnexpectedValueException('Compiled Webrick source checksum is invalid.');
         }
     }
 

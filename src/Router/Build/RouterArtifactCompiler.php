@@ -53,7 +53,7 @@ final class RouterArtifactCompiler
     }
 
     /**
-     * @return array{path:string,meta:string,digest:string,fingerprint:string,routes:int}
+     * @return array{path:string,meta:string,digest:string,source_sha256:string,fingerprint:string,routes:int}
      * @throws \RuntimeException
      * @throws \InvalidArgumentException
      */
@@ -111,6 +111,7 @@ final class RouterArtifactCompiler
             'path' => $path,
             'meta' => $metaPath,
             'digest' => $digest,
+            'source_sha256' => hash('sha256', $php),
             'fingerprint' => $fingerprint,
             'routes' => count($routes),
         ];

@@ -103,8 +103,7 @@ final readonly class ReleaseCompiler
 
         $intermixSourcePath = realpath($intermixPath);
         $intermixSourceSha256 = $intermixSourcePath === false ? false : hash_file('sha256', $intermixSourcePath);
-        $webrickSourceSha256 = hash_file('sha256', $webrick['path']);
-        if (!is_string($intermixSourceSha256) || !is_string($webrickSourceSha256)) {
+        if (!is_string($intermixSourceSha256)) {
             throw new RuntimeException('Unable to hash coordinated release executable artifacts.');
         }
 
@@ -122,7 +121,7 @@ final readonly class ReleaseCompiler
                 'compiled' => $intermix['compiled'],
                 'skipped' => $intermix['skipped'],
             ],
-            'webrick' => $webrick + ['source_sha256' => $webrickSourceSha256],
+            'webrick' => $webrick,
         ];
         $manifest['release_fingerprint'] = self::fingerprintManifest($manifest);
 
