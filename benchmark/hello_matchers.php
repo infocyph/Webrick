@@ -629,11 +629,9 @@ function benchMatcher(
         }
     }
 
-    if ($roundNs === []) {
-        throw new RuntimeException('Benchmark timing rounds did not produce samples.');
-    }
+    /** @var non-empty-list<float> $roundNs Guaranteed by max(1, $rounds). */
     $bestNs = min($roundNs);
-    $avgNs = (float) array_sum($roundNs) / (float) count($roundNs);
+    $avgNs = array_sum($roundNs) / (float) count($roundNs);
     $bestOpsS = ((float) $iterations * 1_000_000_000.0) / $bestNs;
     $avgOpsS = ((float) $iterations * 1_000_000_000.0) / $avgNs;
 
@@ -679,11 +677,9 @@ function benchCallable(
         $roundNs[] = (float) (hrtime(true) - $start);
     }
 
-    if ($roundNs === []) {
-        throw new RuntimeException('Benchmark timing rounds did not produce samples.');
-    }
+    /** @var non-empty-list<float> $roundNs Guaranteed by max(1, $rounds). */
     $bestNs = min($roundNs);
-    $avgNs = (float) array_sum($roundNs) / (float) count($roundNs);
+    $avgNs = array_sum($roundNs) / (float) count($roundNs);
 
     return [
         'name' => $name,
