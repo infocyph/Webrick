@@ -100,10 +100,15 @@ describe('Registrar', function () {
             ->and($destroy)->not
             ->toBeNull();
 
-        expect($index?->getMethod())->toBe('GET')
-            ->and($store?->getMethod())->toBe('POST')
-            ->and($update?->getMethod())->toBe('PUT')
-            ->and($destroy?->getMethod())->toBe('DELETE');
+        if (!$index instanceof RouteInterface || !$store instanceof RouteInterface
+            || !$update instanceof RouteInterface || !$destroy instanceof RouteInterface) {
+            throw new LogicException('Expected all resource route methods to be registered.');
+        }
+
+        expect($index->getMethod())->toBe('GET')
+            ->and($store->getMethod())->toBe('POST')
+            ->and($update->getMethod())->toBe('PUT')
+            ->and($destroy->getMethod())->toBe('DELETE');
     });
 
     it('handles route groups', function () {

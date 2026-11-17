@@ -471,6 +471,4 @@ final class Router
 
         return UrlGeneratorRegistry::get();
     }
-
-
 }
