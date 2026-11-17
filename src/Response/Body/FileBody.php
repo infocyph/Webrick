@@ -29,7 +29,7 @@ final class FileBody implements BodyStream
         private readonly int $offset = 0,
         ?int $length = null,
     ) {
-        if ($path === '' || !is_file($path) || !is_readable($path)) {
+        if ($path === '' || preg_match('~^[a-z][a-z0-9.+-]*://~i', $path) === 1 || !is_file($path) || !is_readable($path)) {
             throw new RuntimeException("Unreadable response file: {$path}");
         }
         if ($offset < 0 || ($length !== null && $length < 0)) {

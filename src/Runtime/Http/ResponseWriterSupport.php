@@ -30,6 +30,7 @@ final readonly class ResponseWriterSupport
 
     /**
      * @phpstan-return Generator<int,string,void,void>
+     * @psalm-return Generator<int,string,mixed,null>
      * @throws \InvalidArgumentException
      * @throws \RuntimeException
      * @throws \UnexpectedValueException

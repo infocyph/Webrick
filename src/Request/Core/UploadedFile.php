@@ -25,6 +25,9 @@ final class UploadedFile
         private readonly ?string $clientName = null,
         private readonly ?string $clientType = null,
     ) {
+        if (is_string($src) && preg_match('~^[a-z][a-z0-9.+-]*://~i', $src) === 1) {
+            throw new InvalidArgumentException('Upload source must be a local filesystem path.');
+        }
         if (!in_array($error, [
             UPLOAD_ERR_OK,
             UPLOAD_ERR_INI_SIZE,
@@ -168,6 +171,9 @@ final class UploadedFile
     {
         if ($path === '') {
             throw new InvalidArgumentException('Target path must be non-empty');
+        }
+        if (preg_match('~^[a-z][a-z0-9.+-]*://~i', $path) === 1) {
+            throw new InvalidArgumentException('Upload target must be a local filesystem path.');
         }
 
         $directory = dirname($path);
