@@ -147,19 +147,6 @@ final readonly class WorkermanRuntimeAdapter implements RuntimeAdapterInterface
     }
 
     /**
-     * @return class-string
-     * @throws \RuntimeException
-     */
-    private static function requiredClass(string $class): string
-    {
-        if (!class_exists($class)) {
-            throw new RuntimeException('Workerman 4+ HTTP Response and Chunk classes are required.');
-        }
-
-        return $class;
-    }
-
-    /**
      * @throws \RuntimeException
      */
     private function call(object $target, string $method, mixed ...$arguments): mixed

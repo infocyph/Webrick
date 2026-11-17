@@ -20,6 +20,11 @@ use RuntimeException;
 #[Bench\Warmup(2)]
 final class PreRoutingGateBench
 {
+    /** Initialize typed fixtures before the benchmark harness invokes them. */
+    public function __construct()
+    {
+        $this->setUp();
+    }
     private MaintenancePreRoutingGate $activeGate;
 
     private MaintenancePreRoutingGate $inactiveGate;

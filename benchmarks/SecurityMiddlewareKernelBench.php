@@ -27,6 +27,11 @@ use RuntimeException;
 #[Bench\Warmup(1)]
 final class SecurityMiddlewareKernelBench
 {
+    /** Initialize typed fixtures before the benchmark harness invokes them. */
+    public function __construct()
+    {
+        $this->setUp();
+    }
     private Request $cached;
 
     private Request $conditional;

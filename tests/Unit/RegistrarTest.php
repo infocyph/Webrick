@@ -99,11 +99,6 @@ describe('Registrar', function () {
             ->and($destroy)->not
             ->toBeNull();
 
-        if (!$index instanceof RouteInterface || !$store instanceof RouteInterface
-            || !$update instanceof RouteInterface || !$destroy instanceof RouteInterface) {
-            throw new LogicException('Expected all resource route methods to be registered.');
-        }
-
         expect($index->getMethod())->toBe('GET')
             ->and($store->getMethod())->toBe('POST')
             ->and($update->getMethod())->toBe('PUT')

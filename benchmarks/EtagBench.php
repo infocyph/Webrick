@@ -14,6 +14,11 @@ use PhpBench\Attributes as Bench;
 #[Bench\Warmup(1)]
 final class EtagBench
 {
+    /** Initialize typed fixtures before the benchmark harness invokes them. */
+    public function __construct()
+    {
+        $this->setUp();
+    }
     private Stream $stream;
 
     /**
