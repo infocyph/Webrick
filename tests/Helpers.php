@@ -19,7 +19,7 @@ use Psr\Log\NullLogger;
 final class TestLogger implements LoggerInterface
 {
     /** @var list<array{level:mixed,message:string,context:array<array-key,mixed>}> */
-    public array $records = [];
+    private array $records = [];
 
     /**
      * @throws \Psr\Log\InvalidArgumentException

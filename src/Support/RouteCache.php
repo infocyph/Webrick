@@ -425,10 +425,11 @@ final class RouteCache
      */
     private static function validateBuildRegisterInputs(mixed $userRegister, string $routesFile): void
     {
-        if (!empty($userRegister) && !$userRegister instanceof \Closure && !is_callable($userRegister)) {
+        $hasRegister = $userRegister !== null && $userRegister !== '';
+        if ($hasRegister && !is_callable($userRegister)) {
             throw new \InvalidArgumentException("RouteCache::build: 'register' must be callable.");
         }
-        if (empty($userRegister) && $routesFile === '') {
+        if (!$hasRegister && $routesFile === '') {
             throw new \InvalidArgumentException("RouteCache::build: provide 'register' callable or 'routes' file.");
         }
     }

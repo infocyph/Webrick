@@ -62,3 +62,12 @@ it('handles route cache cleanup according to effective directory permissions', f
         }
     }
 });
+
+it('rejects explicit non-callable route registrations even when a routes file is supplied', function (): void {
+    expect(fn(): string => RouteCache::build([
+        'matcher' => 'fused',
+        'cache' => sys_get_temp_dir() . '/webrick-invalid-register-' . bin2hex(random_bytes(6)) . '.php',
+        'register' => false,
+        'routes' => __FILE__,
+    ]))->toThrow(InvalidArgumentException::class, "'register' must be callable");
+});

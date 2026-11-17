@@ -162,7 +162,7 @@ final class ResponseCacheBench
                 return $this->inner->set($key, $value, $ttl);
             }
 
-            /** @param iterable<array-key,mixed> $values */
+            /** @param iterable<mixed,mixed> $values */
             #[\Override]
             public function setMultiple(iterable $values, mixed $ttl = null): bool
             {

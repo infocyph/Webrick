@@ -2,6 +2,13 @@
 
 declare(strict_types=1);
 
+namespace Infocyph\Webrick\Tests\Unit;
+
+use Closure;
+use InvalidArgumentException;
+use RuntimeException;
+use UnexpectedValueException;
+
 use Infocyph\Runwire\Http\Enum\ProtocolVersion;
 use Infocyph\Runwire\Http\Headers;
 use Infocyph\Runwire\Http\HttpRequest;

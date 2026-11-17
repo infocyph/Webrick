@@ -460,7 +460,8 @@ function progressPercent(int $completed, int $total, bool $forceNewline = false)
  *   key:string,
  *   label:string,
  *   title:string,
- *   register:callable(Registrar):void
+ *   register:callable(Registrar):void,
+ *   routes:list<CompiledRoute>
  * } $routeSet
  * @param array{
  *   suffix:string,
@@ -774,13 +775,23 @@ function clearBenchmarkCache(string $matcher, string $cachePath): void
 
 /**
  * @param array{
+ *   key:string,
+ *   route_set:string,
+ *   case:string,
+ *   title:string,
+ *   method:string,
+ *   host:string,
+ *   path:string,
+ *   route_count:int,
  *   register:callable(Registrar):void,
- *   routes:list<CompiledRoute>
+ *   routes:list<CompiledRoute>,
+ *   assertHit:callable(array{0:CompiledRoute,1:array<string,string>}):bool
  * } $scenario
  * @param array{
+ *   name:string,
  *   mode:string,
- *   factory:callable():MatcherInterface,
- *   name:string
+ *   cache_suffix:string,
+ *   factory:callable():MatcherInterface
  * } $spec
  * @throws \InvalidArgumentException
  * @throws \RuntimeException

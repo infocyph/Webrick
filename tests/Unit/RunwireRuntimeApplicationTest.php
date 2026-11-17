@@ -2,6 +2,15 @@
 
 declare(strict_types=1);
 
+namespace Infocyph\Webrick\Tests\Unit;
+
+use Closure;
+use Fiber;
+use InvalidArgumentException;
+use RuntimeException;
+use UnexpectedValueException;
+use WeakReference;
+
 use Infocyph\Runwire\Coroutine\CoroutineRuntime;
 use Infocyph\Runwire\Coroutine\CoroutineScope;
 use Infocyph\Runwire\Exception\CancelledException;
