@@ -68,6 +68,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
 
     /**
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException
      */
     #[\Override]
     public function finalize(): void
@@ -139,6 +140,9 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         );
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     #[\Override]
     public function matchOutcome(string $method, string $host, string $path): MatchOutcome
     {
@@ -187,6 +191,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
      * @return array<string,MatcherGroup>
      * @throws \InvalidArgumentException
      * @throws \UnexpectedValueException
+     * @throws \LogicException
      */
     private function compileHosts(): array
     {
@@ -199,6 +204,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
     /**
      * @throws \RuntimeException
      * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     private function dumpCache(): void
     {

@@ -53,6 +53,7 @@ final readonly class RoadRunnerRuntimeAdapter implements RuntimeAdapterInterface
 
     /**
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException
      */
     #[\Override]
     public function context(
@@ -186,6 +187,8 @@ final readonly class RoadRunnerRuntimeAdapter implements RuntimeAdapterInterface
     /**
      * @param array<array-key,mixed> $files
      * @return array<string,UploadedFile|array<array-key,mixed>>
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
      */
     private static function mapUploadedFiles(array $files): array
     {

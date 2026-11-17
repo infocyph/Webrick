@@ -78,6 +78,7 @@ final readonly class CacheValidatorsMiddleware
 
     /**
      * @throws \InvalidArgumentException
+     * @throws \RuntimeException
      */
     private function applyResponsePreconditions(Request $req, Response $resp): Response
     {
@@ -94,7 +95,10 @@ final readonly class CacheValidatorsMiddleware
         return $this->maybeShortCircuit($result, true) ?? $resp;
     }
 
-    /** @param array<string,string> $headers */
+    /**
+     * @param array<string,string> $headers
+     * @throws \InvalidArgumentException
+     */
     private function ensureValidatorHeaders(Response $resp, array $headers): Response
     {
         foreach ($headers as $name => $value) {
@@ -133,6 +137,9 @@ final readonly class CacheValidatorsMiddleware
             || $req->getHeaderLine('If-Unmodified-Since') !== '';
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function isGetOrHead(Request $req): bool
     {
         $method = HttpMethodEnum::normalize($req->getMethod());

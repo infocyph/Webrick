@@ -90,6 +90,7 @@ final readonly class CompressionMiddleware
     /**
      * @param Closure(Request):Response $next
      * @throws \Infocyph\Webrick\Exceptions\HttpException
+     * @throws \InvalidArgumentException
      */
     public function __invoke(Request $req, Closure $next): Response
     {

@@ -73,6 +73,9 @@ final readonly class CachePolicy
         return $cacheControl !== '' || stripos($request->getHeaderLine('Pragma'), 'no-cache') === false;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function storeTtl(
         Request $request,
         Response $response,

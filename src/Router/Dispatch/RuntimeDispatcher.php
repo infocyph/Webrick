@@ -55,7 +55,10 @@ final class RuntimeDispatcher
             : $this->invokeTerminal($plan, $request, $vars);
     }
 
-    /** @param array<string,string> $vars */
+    /**
+     * @param array<string,string> $vars
+     * @throws \UnexpectedValueException
+     */
     public function dispatchDirectRouteArgs(ExecutionPlan $plan, array $vars): Response
     {
         /** @var callable $handler */
@@ -102,7 +105,10 @@ final class RuntimeDispatcher
         return $this->pipelineFor($plan)?->requiresScope() ?? false;
     }
 
-    /** @param array<string,string> $vars */
+    /**
+     * @param array<string,string> $vars
+     * @throws \UnexpectedValueException
+     */
     private function invokeTerminal(ExecutionPlan $plan, Request $request, array $vars): Response
     {
         if (!$plan->requiresRequest() && $plan->terminalKind !== ExecutionKind::DIRECT_REQUEST) {
@@ -225,6 +231,8 @@ final class RuntimeDispatcher
      * @param array<array-key,mixed>|callable|string|null $descriptor
      * @param array<int|string,mixed> $arguments
      * @throws \UnexpectedValueException
+     * @throws \Psr\Container\ContainerExceptionInterface
+     * @throws \Psr\Container\NotFoundExceptionInterface
      */
     private function resolveDescriptor(array|callable|string|null $descriptor, array $arguments = []): mixed
     {

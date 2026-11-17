@@ -48,6 +48,7 @@ final readonly class SwooleRuntimeAdapter implements RuntimeAdapterInterface
 
     /**
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException
      */
     #[\Override]
     public function context(mixed $nativeRequest = null, mixed $nativeResponse = null, bool $withHost = false): RuntimeRequestContext
@@ -138,6 +139,7 @@ final readonly class SwooleRuntimeAdapter implements RuntimeAdapterInterface
 
     /**
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException
      */
     private function writeBody(object $native, Response $response): void
     {
@@ -179,6 +181,9 @@ final readonly class SwooleRuntimeAdapter implements RuntimeAdapterInterface
         }
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function writeHeaders(object $native, Response $response, bool $http2): void
     {
         $headers = ResponseWriterSupport::headerMap($response, $http2);

@@ -56,6 +56,7 @@ final readonly class ResponseCacheMiddleware
     /**
      * @param Closure(Request):Response $next
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException
      */
     public function __invoke(Request $req, Closure $next): Response
     {
@@ -103,6 +104,9 @@ final readonly class ResponseCacheMiddleware
         return $pairs;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function head(Response $response): Response
     {
         if (!$response->hasHeader('Content-Length')) {

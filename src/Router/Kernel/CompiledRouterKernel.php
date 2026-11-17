@@ -223,6 +223,9 @@ final readonly class CompiledRouterKernel
         );
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function handle(?Request $request = null): Response
     {
         try {
@@ -371,6 +374,7 @@ final readonly class CompiledRouterKernel
 
     /**
      * @throws \InvalidArgumentException
+     * @throws \RuntimeException
      */
     private function controlOutcomeResponse(
         MatchOutcome $outcome,

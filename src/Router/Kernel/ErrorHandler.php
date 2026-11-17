@@ -45,6 +45,7 @@ final readonly class ErrorHandler
 
     /**
      * @param callable(Request):Response $core
+     * @throws \InvalidArgumentException
      */
     public function handle(Request $request, callable $core): Response
     {
@@ -58,6 +59,8 @@ final readonly class ErrorHandler
     /**
      * Render an already-known error without an additional throw/catch trampoline.
      * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
      */
     public function renderThrowable(Request $request, Throwable $error): Response
     {
@@ -173,6 +176,7 @@ final readonly class ErrorHandler
 
     /**
      * @throws \UnexpectedValueException
+     * @throws \InvalidArgumentException
      */
     private function log(Throwable $error, Request $request, int $status): void
     {

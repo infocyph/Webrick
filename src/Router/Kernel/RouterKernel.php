@@ -46,6 +46,7 @@ final readonly class RouterKernel
      * @param array<int,string> $preGlobalTags
      * @param array<int,string> $postGlobalTags
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException
      */
     public function __construct(
         private LoggerInterface $log,
@@ -89,6 +90,7 @@ final readonly class RouterKernel
      * @param array<int,mixed> $postGlobal
      * @param array<int,string> $preGlobalTags
      * @param array<int,string> $postGlobalTags
+     * @throws \RuntimeException
      */
     public static function bootWithRegistrar(
         LoggerInterface $log,
@@ -126,6 +128,7 @@ final readonly class RouterKernel
 
     /**
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException
      */
     public function handle(?Request $request = null): Response
     {
@@ -306,6 +309,7 @@ final readonly class RouterKernel
      * @throws \RuntimeException
      * @throws \Infocyph\Webrick\Exceptions\RouteNotFoundException
      * @throws \Infocyph\Webrick\Exceptions\MethodNotAllowedException
+     * @throws \InvalidArgumentException
      */
     private function matchRoute(Request $req): array
     {

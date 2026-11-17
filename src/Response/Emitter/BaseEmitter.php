@@ -61,6 +61,9 @@ abstract class BaseEmitter implements EmitterInterface
         $this->finish();
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     protected function allowsBodyForCurrentRequest(Response $response): bool
     {
         $method = HttpMethodEnum::normalize($this->serverString('REQUEST_METHOD', HttpMethodEnum::GET->value));
@@ -100,6 +103,7 @@ abstract class BaseEmitter implements EmitterInterface
 
     /**
      * @throws \UnexpectedValueException
+     * @throws \RuntimeException
      */
     protected function emitStreaming(Response $response): void
     {
@@ -241,6 +245,9 @@ abstract class BaseEmitter implements EmitterInterface
         http_response_code($code);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     protected function shouldEmitBody(Response $response, ?Request $request = null): bool
     {
         if (self::statusHasNoContent($response->getStatusCode())) {

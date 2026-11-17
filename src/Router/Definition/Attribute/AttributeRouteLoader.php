@@ -124,6 +124,7 @@ final class AttributeRouteLoader
     /**
      * @param null|callable(SplFileInfo):bool $filter
      * @return list<class-string>
+     * @throws \RuntimeException
      */
     private static function collectRootClasses(string $nsPrefix, string $dir, ?callable $filter): array
     {
@@ -169,6 +170,8 @@ final class AttributeRouteLoader
      *   middleware:list<class-string|object>,
      *   attributes:array{produces?:Produces,cors?:Cors}
      * } $opts
+     * @throws \BadMethodCallException
+     * @throws \InvalidArgumentException
      */
     private static function emitRoutes(
         Registrar $r,

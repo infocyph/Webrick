@@ -382,6 +382,9 @@ class ServerRequest extends Message
         return $clone;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function withMethod(string $method): static
     {
         $clone = clone $this;
@@ -546,6 +549,9 @@ class ServerRequest extends Message
             && HttpUtils::isFormContentType($this->getHeaderLine('Content-Type'));
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function methodOverride(): ?string
     {
         $header = $this->getHeaderLine('X-HTTP-Method-Override') ?: $this->getHeaderLine('HTTP-Method-Override');

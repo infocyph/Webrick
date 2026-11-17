@@ -158,6 +158,7 @@ final class VaryAccumulatorMiddleware
 
     /**
      * @return list<string>
+     * @throws \InvalidArgumentException
      */
     private function inferAutoTokens(Request $req, Response $resp): array
     {

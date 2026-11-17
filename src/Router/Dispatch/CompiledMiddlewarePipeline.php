@@ -20,6 +20,7 @@ final readonly class CompiledMiddlewarePipeline
 
     /**
      * @param list<mixed> $middleware @param Closure(Request):Response $terminal
+     * @throws \UnexpectedValueException
      */
     public function __construct(array $middleware, Closure $terminal, InterMixRuntime $runtime)
     {
@@ -107,6 +108,8 @@ final readonly class CompiledMiddlewarePipeline
 
     /**
      * @throws \UnexpectedValueException
+     * @throws \Psr\Container\ContainerExceptionInterface
+     * @throws \Psr\Container\NotFoundExceptionInterface
      */
     private static function invokeResolvedMiddleware(
         RuntimeDescriptorInvoker $resolver,

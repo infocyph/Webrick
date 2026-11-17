@@ -264,6 +264,7 @@ class Response
     /**
      * @param array<string,string> $headers
      * @throws \InvalidArgumentException
+     * @throws \RuntimeException
      */
     public static function rangedDownload(
         Request $req,
@@ -404,6 +405,9 @@ class Response
         return $this->headers->get($name);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function getHeaderLine(string $name): string
     {
         return $this->headers->getHeaderLine($name);
@@ -489,7 +493,10 @@ class Response
         return $this->withHeader('Cache-Control', (string) $cache);
     }
 
-    /** @param string|list<string> $value */
+    /**
+     * @param string|list<string> $value
+     * @throws \InvalidArgumentException
+     */
     public function withHeader(string $name, string|array $value): self
     {
         return $this->copy(headers: $this->headers->with($name, $value));
