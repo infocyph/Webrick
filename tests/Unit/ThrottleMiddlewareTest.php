@@ -91,14 +91,16 @@ final class PcntlFileAtomicCounterStore implements AtomicCounterStoreInterface
         if ($entry === null) {
             return null;
         }
-        if (!is_array($entry)
-            || !is_int($entry['value'] ?? null)
-            || !array_key_exists('expires', $entry)
-            || ($entry['expires'] !== null && !is_int($entry['expires']))) {
+        if (!is_array($entry)) {
+            throw new UnexpectedValueException('Atomic-counter fixture contains a malformed entry.');
+        }
+        $value = $entry['value'] ?? null;
+        $expires = $entry['expires'] ?? null;
+        if (!is_int($value) || !array_key_exists('expires', $entry) || ($expires !== null && !is_int($expires))) {
             throw new UnexpectedValueException('Atomic-counter fixture contains a malformed entry.');
         }
 
-        return ['value' => $entry['value'], 'expires' => $entry['expires']];
+        return ['value' => $value, 'expires' => $expires];
     }
 
     /**
@@ -158,11 +160,12 @@ function webrickThrottleCounterEntry(mixed $map): array
     }
 
     $entry = array_values($map)[0] ?? null;
-    if (!is_array($entry) || !is_int($entry['value'] ?? null)) {
+    $value = is_array($entry) ? ($entry['value'] ?? null) : null;
+    if (!is_int($value)) {
         throw new UnexpectedValueException('Expected a counter entry with an integer value.');
     }
 
-    return ['value' => $entry['value']];
+    return ['value' => $value];
 }
 
 /** @throws \UnexpectedValueException */

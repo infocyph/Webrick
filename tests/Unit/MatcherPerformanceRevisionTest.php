@@ -75,15 +75,16 @@ it('compiles safe regex routes and specializes built-in callable fallback segmen
         throw new UnexpectedValueException('Built-in callable constraint must compile to fallback.');
     }
     $fallbackSegments = matcherRevisionRequiredMember($orderSteps[0], 'segments');
-    if (!is_array($fallbackSegments) || !is_array($fallbackSegments[1] ?? null)) {
+    $secondSegment = is_array($fallbackSegments) ? ($fallbackSegments[1] ?? null) : null;
+    if (!is_array($secondSegment)) {
         throw new UnexpectedValueException('Fallback IR must contain a typed second segment.');
     }
 
     expect($userSteps)->toHaveCount(1)
         ->and($userSteps[0]['type'])->toBe('pcre')
         ->and($orderSteps)->toHaveCount(1)
-        ->and($fallbackSegments[1]['type'])->toBe('op')
-        ->and($fallbackSegments[1]['code'])->toBe(CompiledMatcherConstraintOpcode::DIGIT);
+        ->and($secondSegment['type'])->toBe('op')
+        ->and($secondSegment['code'])->toBe(CompiledMatcherConstraintOpcode::DIGIT);
 });
 
 it('keeps slash-consuming built-in regex constraints out of whole-path pcre', function (): void {

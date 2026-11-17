@@ -8,12 +8,28 @@ declare(strict_types=1);
  */
 function load_rows(string $path): array
 {
+    $localPath = realpath($path);
+    if ($localPath === false || !is_file($localPath)) {
+        throw new RuntimeException('Load results must be a local file.');
+    }
+
     $rows = [];
-    $lines = file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-    foreach ($lines === false ? [] : $lines as $line) {
+    $lines = file($localPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    if ($lines === false) {
+        throw new RuntimeException('Unable to read load result rows.');
+    }
+    foreach ($lines as $line) {
+        if (!str_starts_with(ltrim($line), '{')) {
+            throw new RuntimeException('Load result row must be a JSON object.');
+        }
         $row = json_decode($line, true, 64, JSON_THROW_ON_ERROR);
         if (!is_array($row)) {
             throw new RuntimeException('Load result row must be a JSON object.');
+        }
+        foreach (array_keys($row) as $key) {
+            if (!is_string($key)) {
+                throw new RuntimeException('Load result row keys must be strings.');
+            }
         }
         $rows[] = $row;
     }

@@ -496,10 +496,12 @@ final readonly class CookieEncryptionMiddleware
     {
         $chunks = array_map(trim(...), explode(';', $line));
         $first = $chunks[0];
-        if (!str_contains($first, '=')) {
+        $separator = strpos($first, '=');
+        if ($separator === false) {
             return null;
         }
-        [$name, $value] = explode('=', $first, 2);
+        $name = substr($first, 0, $separator);
+        $value = substr($first, $separator + 1);
         $attrs = [];
         for ($i = 1, $count = count($chunks); $i < $count; $i++) {
             if ($chunks[$i] === '') {

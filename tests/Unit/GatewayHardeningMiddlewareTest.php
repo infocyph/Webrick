@@ -137,8 +137,8 @@ test('gateway preserves intentional host and port semantics', function (array $s
 
     $validatedServer = [];
     foreach ($server as $key => $value) {
-        if (!is_string($key)) {
-            throw new UnexpectedValueException('Gateway fixture server keys must be strings.');
+        if (!is_string($key) || !is_string($value)) {
+            throw new UnexpectedValueException('Gateway fixture server entries must be strings.');
         }
         $validatedServer[$key] = $value;
     }
