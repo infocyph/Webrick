@@ -55,12 +55,18 @@ final class UploadedFile
      */
     public static function fromSpec(array $spec): self
     {
+        $source = $spec['tmp_name'] ?? null;
+        $size = $spec['size'] ?? null;
+        $error = $spec['error'] ?? null;
+        $name = $spec['name'] ?? null;
+        $type = $spec['type'] ?? null;
+
         return new self(
-            is_string($spec['tmp_name'] ?? null) ? $spec['tmp_name'] : '',
-            is_int($spec['size'] ?? null) ? $spec['size'] : null,
-            is_int($spec['error'] ?? null) ? $spec['error'] : UPLOAD_ERR_NO_FILE,
-            is_string($spec['name'] ?? null) ? $spec['name'] : null,
-            is_string($spec['type'] ?? null) ? $spec['type'] : null,
+            is_string($source) ? $source : '',
+            is_int($size) ? $size : null,
+            is_int($error) ? $error : UPLOAD_ERR_NO_FILE,
+            is_string($name) ? $name : null,
+            is_string($type) ? $type : null,
         );
     }
 

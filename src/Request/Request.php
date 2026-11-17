@@ -22,15 +22,15 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
 {
     use MacroMix;
 
-    public const HEADER_FORWARDED = 0b10000;
+    public const int HEADER_FORWARDED = 0b10000;
 
-    public const HEADER_X_FORWARDED_FOR = 0b00001;
+    public const int HEADER_X_FORWARDED_FOR = 0b00001;
 
-    public const HEADER_X_FORWARDED_HOST = 0b00010;
+    public const int HEADER_X_FORWARDED_HOST = 0b00010;
 
-    public const HEADER_X_FORWARDED_PORT = 0b01000;
+    public const int HEADER_X_FORWARDED_PORT = 0b01000;
 
-    public const HEADER_X_FORWARDED_PROTO = 0b00100;
+    public const int HEADER_X_FORWARDED_PROTO = 0b00100;
 
     private static int $trustedHeaderFlags = 0;
 
@@ -532,14 +532,14 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return parent::withCookieParams($cookies);
     }
 
-    /** @param array<string,mixed>|object|null $data */
+    /** @param array<array-key,mixed>|object|null $data */
     #[\Override]
     public function withParsedBody(object|array|null $data): static
     {
         return parent::withParsedBody($data);
     }
 
-    /** @param array<string,mixed> $query */
+    /** @param array<array-key,mixed> $query */
     #[\Override]
     public function withQueryParams(array $query): static
     {

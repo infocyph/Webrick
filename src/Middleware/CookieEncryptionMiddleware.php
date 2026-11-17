@@ -365,7 +365,9 @@ final readonly class CookieEncryptionMiddleware
             return [1 => $cipher];
         }
 
-        $parts = str_split($cipher, $this->maxBytes);
+        /** @var int<256,4096> $maxBytes Validated by the constructor. */
+        $maxBytes = $this->maxBytes;
+        $parts = str_split($cipher, $maxBytes);
         if (count($parts) <= 10) {
             return array_combine(range(1, count($parts)), $parts);
         }
@@ -493,10 +495,11 @@ final readonly class CookieEncryptionMiddleware
     private function parseSetCookie(string $line): ?array
     {
         $chunks = array_map(trim(...), explode(';', $line));
-        if (!str_contains($chunks[0], '=')) {
+        $first = $chunks[0] ?? '';
+        if (!str_contains($first, '=')) {
             return null;
         }
-        [$name, $value] = explode('=', $chunks[0], 2);
+        [$name, $value] = explode('=', $first, 2);
         $attrs = [];
         for ($i = 1, $count = count($chunks); $i < $count; $i++) {
             if ($chunks[$i] === '') {
