@@ -6,6 +6,7 @@ use Infocyph\Webrick\Interfaces\RouteInterface;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Definition\Registrar;
+use Infocyph\Webrick\Router\Facade\Router as RouterFacade;
 use Infocyph\Webrick\Router\Dispatch\MiddlewareAliases;
 use Infocyph\Webrick\Router\Route\Collection;
 
@@ -99,10 +100,10 @@ describe('Registrar', function () {
             ->and($destroy)->not
             ->toBeNull();
 
-        expect($index->getMethod())->toBe('GET')
-            ->and($store->getMethod())->toBe('POST')
-            ->and($update->getMethod())->toBe('PUT')
-            ->and($destroy->getMethod())->toBe('DELETE');
+        expect($index?->getMethod())->toBe('GET')
+            ->and($store?->getMethod())->toBe('POST')
+            ->and($update?->getMethod())->toBe('PUT')
+            ->and($destroy?->getMethod())->toBe('DELETE');
     });
 
     it('handles route groups', function () {
@@ -166,4 +167,24 @@ describe('Registrar', function () {
         $routes = $this->routes->all();
         expect($routes[0]->getMiddlewares())->toContain('ApiMiddleware');
     });
+});
+
+test('router facade public verb dispatch uses the registrar fallback', function (): void {
+    $routes = new Collection();
+    $registrar = new Registrar(
+        routes: $routes,
+        autoSlashRedirect: false,
+        exposeUrlServices: false,
+    );
+    RouterFacade::setInstance($registrar);
+
+    try {
+        $route = RouterFacade::get('/facade', static fn(): string => 'ok', 'facade.route');
+
+        expect($route->getPath())->toBe('/facade')
+            ->and($route->getMethod())->toBe('GET')
+            ->and($routes->findByName('facade.route'))->toBe($route);
+    } finally {
+        RouterFacade::reset();
+    }
 });

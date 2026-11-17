@@ -456,7 +456,15 @@ final class CompiledRoute implements RouteInterface
         }
         $middleware = [];
         foreach ($value as $entry) {
-            $middleware[] = self::stateHandler($entry);
+            $descriptor = self::stateHandler($entry);
+            // Callable representations are string, object or array; narrow each
+            // to the allowed middleware shape after the validator has run.
+            if (is_string($descriptor) || is_object($descriptor)) {
+                $middleware[] = $descriptor;
+
+                continue;
+            }
+            $middleware[] = $descriptor;
         }
 
         return $middleware;

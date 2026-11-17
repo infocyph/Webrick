@@ -392,28 +392,6 @@ final class Router
     }
 
     /**
-     * @param array<int,mixed>|string|callable $handler
-     * @return RouteHandler
-     * @throws \InvalidArgumentException
-     */
-    private static function normalizeHandler(array|string|callable $handler): array|string|callable
-    {
-        if (is_array($handler)) {
-            if (
-                count($handler) !== 2
-                || (!is_string($handler[0]) && !is_object($handler[0]))
-                || !is_string($handler[1])
-            ) {
-                throw new \InvalidArgumentException('Array handler must be [class-or-object, method].');
-            }
-
-            return [$handler[0], $handler[1]];
-        }
-
-        return $handler;
-    }
-
-    /**
      * @return Collection|array<string, array{0:string,1:?string}>
      * @throws \LogicException
      */
@@ -494,30 +472,5 @@ final class Router
         return UrlGeneratorRegistry::get();
     }
 
-    /**
-     * @param RouteHandler $handler
-     * @param string|RouteOptions|null $nameOrOpts
-     * @throws \RuntimeException
-     * @throws \InvalidArgumentException
-     */
-    private static function verb(
-        string $verb,
-        string $path,
-        array|string|callable $handler,
-        string|array|null $nameOrOpts = null,
-    ): RouteInterface {
-        $router = self::getInstance();
-        $normalized = self::normalizeHandler($handler);
 
-        return match ($verb) {
-            'delete' => $router->delete($path, $normalized, $nameOrOpts),
-            'get' => $router->get($path, $normalized, $nameOrOpts),
-            'head' => $router->head($path, $normalized, $nameOrOpts),
-            'options' => $router->options($path, $normalized, $nameOrOpts),
-            'patch' => $router->patch($path, $normalized, $nameOrOpts),
-            'post' => $router->post($path, $normalized, $nameOrOpts),
-            'put' => $router->put($path, $normalized, $nameOrOpts),
-            default => throw new RuntimeException("Unsupported HTTP verb '{$verb}' in Router facade."),
-        };
-    }
 }
