@@ -170,7 +170,7 @@ final class Registry
             throw new InvalidArgumentException("Constraint '$name' already exists.");
         }
         if (self::isRegex($rule)) {
-            if (preg_match($rule, '') === false) {
+            if ($rule === '' || preg_match($rule, '') === false) {
                 throw new InvalidArgumentException("Invalid PCRE for constraint '$name'.");
             }
             self::$regexValidators[$key] = $rule;

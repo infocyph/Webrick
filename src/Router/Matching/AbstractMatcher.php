@@ -67,6 +67,7 @@ abstract class AbstractMatcher
 
     /**
      * @throws \UnexpectedValueException
+     * @throws \InvalidArgumentException
      */
     protected function exportValue(mixed $value, int $depth): string
     {

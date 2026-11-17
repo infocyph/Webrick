@@ -160,6 +160,7 @@ final class Router
      * @param Closure|null $callback Callback used to declare nested routes
      * @throws \RuntimeException
      * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     public static function group(
         array|string|null $prefix = null,

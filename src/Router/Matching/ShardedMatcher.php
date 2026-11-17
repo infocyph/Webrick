@@ -555,6 +555,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
      * @param array<array-key,mixed> $payload
      * @throws \RuntimeException
      * @throws \UnexpectedValueException
+     * @throws \InvalidArgumentException
      */
     private function writePayload(string $file, array $payload, bool $compiledGroup = false): void
     {

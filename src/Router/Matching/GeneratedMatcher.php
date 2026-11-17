@@ -275,6 +275,7 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
 
     /**
      * @return array{0:array<int,mixed>,1:array<string,array{static:array<string,array<string,int>>,dynamic:array<int,array<string,array<string,array{segments:list<array<string,mixed>>,verbs:array<string,int>}>>>}>}
+     * @throws \UnexpectedValueException
      */
     private function generationData(): array
     {

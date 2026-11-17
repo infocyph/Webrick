@@ -727,6 +727,7 @@ function formatMetricCell(?array $row): string
  * @param callable(Registrar):void $register
  * @throws \InvalidArgumentException
  * @throws \RuntimeException
+ * @throws \LogicException
  */
 function buildBenchmarkCache(string $matcher, string $cachePath, callable $register): void
 {

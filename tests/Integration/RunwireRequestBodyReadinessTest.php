@@ -122,7 +122,7 @@ final class RunwireDeferredRequestBody implements RequestBodyInterface
         }
 
         $chunk = substr($this->buffer, 0, $maxBytes);
-        $this->buffer = (string) substr($this->buffer, strlen($chunk));
+        $this->buffer = substr($this->buffer, strlen($chunk));
 
         return $chunk;
     }

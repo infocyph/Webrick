@@ -47,6 +47,7 @@ final readonly class RouterKernel
      * @param array<int,string> $postGlobalTags
      * @throws \RuntimeException
      * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     public function __construct(
         private LoggerInterface $log,
@@ -196,7 +197,7 @@ final readonly class RouterKernel
         }
 
         $host = strtolower(rtrim($raw, '.'));
-        if (function_exists('idn_to_ascii') && !str_contains($host, 'xn--')) {
+        if ($host !== '' && function_exists('idn_to_ascii') && !str_contains($host, 'xn--')) {
             $ascii = idn_to_ascii($host, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
             if ($ascii === false) {
                 throw HttpException::badRequest('Invalid IDN host name.');

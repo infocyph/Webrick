@@ -18,7 +18,9 @@ describe('ErrorHandler', function () {
 
         $response = (new ErrorHandler())->handle(
             $request,
-            static fn(): Response => throw HttpException::badRequest('Missing signature'),
+            static function (): Response {
+                throw HttpException::badRequest('Missing signature');
+            },
         );
 
         expect($response->getStatusCode())
@@ -32,10 +34,12 @@ describe('ErrorHandler', function () {
 
         $response = (new ErrorHandler())->handle(
             $request,
-            static fn(): Response => throw HttpException::tooManyRequests('Too Many Requests', [
-                'Retry-After' => '30',
-                'X-RateLimit-Remaining' => '0',
-            ]),
+            static function (): Response {
+                throw HttpException::tooManyRequests('Too Many Requests', [
+                    'Retry-After' => '30',
+                    'X-RateLimit-Remaining' => '0',
+                ]);
+            },
         );
 
         expect($response->getStatusCode())
@@ -67,7 +71,9 @@ describe('ErrorHandler', function () {
 
         $response = $handler->handle(
             $request,
-            static fn(): Response => throw HttpException::forbidden('Invalid signature'),
+            static function (): Response {
+                throw HttpException::forbidden('Invalid signature');
+            },
         );
 
         expect($response->getStatusCode())

@@ -87,6 +87,7 @@ function certification_cleanup_artifact(string $path): void
 /**
  * @throws \InvalidArgumentException
  * @throws \RuntimeException
+ * @throws \LogicException
  */
 function certification_prepare(string $root): void
 {

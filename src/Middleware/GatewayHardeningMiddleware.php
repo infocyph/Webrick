@@ -211,7 +211,7 @@ final readonly class GatewayHardeningMiddleware
 
     private function matchesHost(string $host): bool
     {
-        return array_any($this->hostRegex, static fn(string $regex): bool => preg_match($regex, $host) === 1);
+        return array_any($this->hostRegex, static fn(string $regex): bool => $regex !== '' && preg_match($regex, $host) === 1);
     }
 
     /**

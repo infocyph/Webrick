@@ -63,6 +63,7 @@ final readonly class ReleaseCompiler
      * @return array<string,mixed>
      * @throws \RuntimeException
      * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     public function compile(
         ContainerBuilder $builder,

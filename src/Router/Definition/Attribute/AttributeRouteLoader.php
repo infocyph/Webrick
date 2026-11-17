@@ -286,6 +286,7 @@ final class AttributeRouteLoader
     /**
      * @param class-string $fqcn
      * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     private static function registerClass(Registrar $registrar, string $fqcn): void
     {

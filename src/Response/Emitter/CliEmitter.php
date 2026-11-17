@@ -37,7 +37,7 @@ final class CliEmitter implements EmitterInterface
             }
         }
 
-        $written = file_put_contents('php://stdout', $output, FILE_APPEND);
+        $written = fwrite(\STDOUT, $output);
         if ($written === false || $written !== strlen($output)) {
             throw new \RuntimeException('Unable to write complete CLI response output.');
         }

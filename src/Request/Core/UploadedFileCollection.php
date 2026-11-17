@@ -107,7 +107,7 @@ final class UploadedFileCollection implements ArrayAccess, Countable, IteratorAg
      * Returns the value associated with the given key or null if the key is not present.
      *
      * @param mixed $offset The key to retrieve.
-     * @return mixed The associated value or null if not found.
+     * @return UploadedFile|array<array-key,mixed>|null The associated value or null if not found.
      */
     #[\Override]
     public function offsetGet(mixed $offset): mixed

@@ -497,7 +497,10 @@ final class RunwireStreamingLifecycleTest extends TestCase
         return [$application, [$intermixPath, $routerPath]];
     }
 
-    /** @throws \InvalidArgumentException */
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     */
     private static function compileFixtureRoutes(string $fingerprint): \Infocyph\Webrick\Router\Build\RouterBuildResult
     {
         return new RouteCompiler()->compile(

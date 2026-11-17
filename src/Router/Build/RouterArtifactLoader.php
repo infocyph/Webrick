@@ -13,6 +13,7 @@ final class RouterArtifactLoader
     /**
      * @throws \RuntimeException
      * @throws \UnexpectedValueException
+     * @throws \InvalidArgumentException
      */
     public function load(
         string $path,

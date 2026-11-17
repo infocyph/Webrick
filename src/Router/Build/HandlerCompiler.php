@@ -230,7 +230,12 @@ final class HandlerCompiler
             return false;
         }
 
-        return is_a(Request::class, $type->getName(), true);
+        $name = $type->getName();
+        if (in_array($name, ['self', 'static', 'parent'], true)) {
+            return false;
+        }
+
+        return is_a(Request::class, $name, true);
     }
 
     /**
@@ -243,7 +248,12 @@ final class HandlerCompiler
             return new ReflectionFunction($handler);
         }
         if (is_array($handler)) {
-            return new ReflectionMethod($handler[0], $handler[1]);
+            $target = $handler[0];
+            if (is_string($target) && !class_exists($target) && !interface_exists($target)) {
+                throw new InvalidArgumentException('Unable to inspect an unknown route handler class.');
+            }
+
+            return new ReflectionMethod($target, $handler[1]);
         }
         if (is_string($handler) && function_exists($handler)) {
             return new ReflectionFunction($handler);

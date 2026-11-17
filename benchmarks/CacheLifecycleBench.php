@@ -159,6 +159,7 @@ final class CacheLifecycleBench
     /**
      * @throws \InvalidArgumentException
      * @throws \RuntimeException
+     * @throws \LogicException
      */
     private function build(string $mode): void
     {

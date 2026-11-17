@@ -246,7 +246,7 @@ final readonly class OpenTelemetryHandler
      */
     private function callStatic(string $class, string $method, array $args = []): mixed
     {
-        if (!method_exists($class, $method)) {
+        if (!class_exists($class) || !method_exists($class, $method)) {
             throw new RuntimeException(sprintf('Static method %s::%s() not available.', $class, $method));
         }
 
@@ -299,7 +299,7 @@ final readonly class OpenTelemetryHandler
     {
         $carrier = [];
         foreach ($req->getHeaders() as $name => $values) {
-            $carrier[strtolower((string) $name)] = $values[0] ?? '';
+            $carrier[strtolower($name)] = $values[0] ?? '';
         }
 
         return $carrier;
