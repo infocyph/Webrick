@@ -17,16 +17,20 @@ use PhpBench\Attributes as Bench;
 #[Bench\Warmup(1)]
 final class ResponseCacheBench
 {
-    /** Initialize typed fixtures before the benchmark harness invokes them. */
-    public function __construct()
-    {
-        $this->setUp();
-    }
     private ResponseCacheMiddleware $hitMiddleware;
 
     private ResponseCacheMiddleware $missMiddleware;
 
     private Request $request;
+
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
+    public function __construct()
+    {
+        $this->setUp();
+    }
 
     /**
      * @throws \InvalidArgumentException

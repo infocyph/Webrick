@@ -23,11 +23,6 @@ use RuntimeException;
 #[Bench\Warmup(1)]
 final class KernelDispatchBench
 {
-    /** Initialize typed fixtures before the benchmark harness invokes them. */
-    public function __construct()
-    {
-        $this->setUp();
-    }
     private RouterKernel $closureKernel;
 
     private RouterKernel $factoryMiddlewareKernel;
@@ -35,6 +30,16 @@ final class KernelDispatchBench
     private Request $request;
 
     private RouterKernel $staticControllerKernel;
+
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     * @throws \RuntimeException
+     */
+    public function __construct()
+    {
+        $this->setUp();
+    }
 
     /**
      * @throws \InvalidArgumentException

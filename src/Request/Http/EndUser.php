@@ -146,6 +146,23 @@ final class EndUser
         return $this->req->getHeaderLine('User-Agent') ?: null;
     }
 
+    private static function maskedIp(string $ip): ?string
+    {
+        $bin = inet_pton($ip);
+        if ($bin === false) {
+            return null;
+        }
+        $mask = strlen($bin) === 4
+            ? inet_pton('255.255.255.0')
+            : inet_pton('ffff:ffff:ffff:ffff:0:0:0:0');
+        if (!is_string($mask)) {
+            return null;
+        }
+        $masked = inet_ntop($bin & $mask);
+
+        return is_string($masked) ? $masked : null;
+    }
+
     /** @return array{0:string,1:bool} */
     private static function normalizeIpToken(string $ip): array
     {

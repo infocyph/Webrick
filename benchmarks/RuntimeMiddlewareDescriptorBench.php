@@ -22,11 +22,6 @@ use RuntimeException;
 #[Bench\Warmup(1)]
 final class RuntimeMiddlewareDescriptorBench
 {
-    /** Initialize typed fixtures before the benchmark harness invokes them. */
-    public function __construct()
-    {
-        $this->setUp();
-    }
     private CompiledMiddlewarePipeline $directPipeline;
 
     private CompiledMiddlewarePipeline $parameterizedPipeline;
@@ -34,6 +29,15 @@ final class RuntimeMiddlewareDescriptorBench
     private Request $request;
 
     private InterMixRuntime $runtime;
+
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
+    public function __construct()
+    {
+        $this->setUp();
+    }
 
     /**
      * @throws \InvalidArgumentException

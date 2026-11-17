@@ -27,11 +27,6 @@ use RuntimeException;
 #[Bench\Warmup(1)]
 final class SecurityMiddlewareKernelBench
 {
-    /** Initialize typed fixtures before the benchmark harness invokes them. */
-    public function __construct()
-    {
-        $this->setUp();
-    }
     private Request $cached;
 
     private Request $conditional;
@@ -39,6 +34,16 @@ final class SecurityMiddlewareKernelBench
     private RouterKernel $kernel;
 
     private Request $proxy;
+
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \LogicException
+     */
+    public function __construct()
+    {
+        $this->setUp();
+    }
 
     /**
      * @throws \InvalidArgumentException
