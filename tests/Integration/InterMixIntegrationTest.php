@@ -20,6 +20,10 @@ use Psr\Log\NullLogger;
 if (! class_exists('InterMixFreshController', false)) {
     final readonly class InterMixFreshController
     {
+        /**
+         * @throws \RuntimeException
+         * @throws \InvalidArgumentException
+         */
         public function hello(string $name): Response
         {
             return Response::json(['hello' => $name]);
@@ -39,7 +43,10 @@ if (! class_exists('InterMixNeedsDiMiddleware', false)) {
     {
         public function __construct(private InterMixMiddlewareDependency $dep) {}
 
-        /** @param Closure(Request):Response $next */
+        /**
+         * @param Closure(Request):Response $next
+         * @throws \InvalidArgumentException
+         */
         public function __invoke(Request $request, Closure $next): Response
         {
             return $next($request)->withHeader('X-DI-Marker', $this->dep->marker);
@@ -64,7 +71,10 @@ if (! class_exists('InterMixScopedMarker', false)) {
 if (! class_exists('InterMixTaggedPreMiddleware', false)) {
     final readonly class InterMixTaggedPreMiddleware
     {
-        /** @param Closure(Request):Response $next */
+        /**
+         * @param Closure(Request):Response $next
+         * @throws \InvalidArgumentException
+         */
         public function __invoke(Request $request, Closure $next): Response
         {
             return $next($request)->withHeader('X-Tagged-Pre', 'yes');
@@ -75,7 +85,10 @@ if (! class_exists('InterMixTaggedPreMiddleware', false)) {
 if (! class_exists('InterMixTaggedPostMiddleware', false)) {
     final readonly class InterMixTaggedPostMiddleware
     {
-        /** @param Closure(Request):Response $next */
+        /**
+         * @param Closure(Request):Response $next
+         * @throws \InvalidArgumentException
+         */
         public function __invoke(Request $request, Closure $next): Response
         {
             return $next($request)->withHeader('X-Tagged-Post', 'yes');
@@ -88,7 +101,10 @@ if (! class_exists('InterMixDirectFactoryTaggedMiddleware', false)) {
     {
         public function __construct(public int $instance) {}
 
-        /** @param Closure(Request):Response $next */
+        /**
+         * @param Closure(Request):Response $next
+         * @throws \InvalidArgumentException
+         */
         public function __invoke(Request $request, Closure $next): Response
         {
             return $next($request)->withHeader('X-Factory-Instance', (string) $this->instance);
@@ -164,6 +180,7 @@ function intermixTestTagList(mixed $value): array
  * @param list<mixed> $preGlobal
  * @param array<string,mixed> $options
  * @throws InvalidArgumentException For invalid provider and middleware tag configuration.
+ * @throws \RuntimeException
  */
 function intermixKernelForTest(Closure $register, array $preGlobal = [], array $options = []): RouterKernel
 {

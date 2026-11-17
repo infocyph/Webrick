@@ -12,7 +12,13 @@ use PhpBench\Attributes as Bench;
 #[Bench\Revs(1)]
 final class MatcherMemoryBench
 {
-    /** @param array{matcher:string,size:int} $params */
+    /**
+     * @param array{matcher:string,size:int} $params
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     */
     #[Bench\ParamProviders('provideRouteScales')]
     public function benchMatcherBuild(array $params): void
     {

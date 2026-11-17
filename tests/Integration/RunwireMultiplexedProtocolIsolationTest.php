@@ -207,6 +207,8 @@ final class RunwireMultiplexedProtocolIsolationTest extends TestCase
     /**
      * @throws \Infocyph\Runwire\Exception\ApplicationStartupException
      * @throws \LogicException
+     * @throws \OverflowException
+     * @throws \Throwable
      */
     public function testHttp2InterleavedRequestsRemainIsolatedWhenOneStreamIsCancelled(): void
     {
@@ -255,6 +257,9 @@ final class RunwireMultiplexedProtocolIsolationTest extends TestCase
     /**
      * @throws \Infocyph\Runwire\Exception\ApplicationStartupException
      * @throws \LogicException
+     * @throws \OverflowException
+     * @throws \Throwable
+     * @throws \Infocyph\Runwire\Exception\RuntimeUnavailableException
      */
     public function testHttp3InterleavedStreamsRemainIsolatedAndQuicAbsenceIsNonFatal(): void
     {

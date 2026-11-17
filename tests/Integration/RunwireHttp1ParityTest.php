@@ -203,6 +203,8 @@ final class RunwireHttp1ParityTest extends TestCase
      * @throws \Infocyph\Runwire\Exception\ApplicationStartupException
      * @throws \Infocyph\Runwire\Exception\CancelledException
      * @throws \LogicException
+     * @throws \OverflowException
+     * @throws \Throwable
      */
     public function testHttp11ParityThroughTheFullRunwireApplicationBridge(): void
     {

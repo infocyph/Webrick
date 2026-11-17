@@ -10,7 +10,11 @@ use Infocyph\Webrick\Router\Kernel\RouterKernel;
 use Infocyph\Webrick\Router\Matching\FusedMatcher;
 use Psr\Log\NullLogger;
 
-/** @param list<callable> $middleware */
+/**
+ * @param list<callable> $middleware
+ * @throws \RuntimeException
+ * @throws \InvalidArgumentException
+ */
 function dispatchResponsePayloadForTest(mixed $payload, array $middleware = []): Response
 {
     $kernel = RouterKernel::bootWithRegistrar(

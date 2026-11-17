@@ -78,6 +78,7 @@ final class SecurityMiddlewareKernelBench
 
     /**
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException
      */
     #[Bench\BeforeMethods('setUp')]
     public function benchAnonymousCacheHit(): void
@@ -87,6 +88,7 @@ final class SecurityMiddlewareKernelBench
 
     /**
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException
      */
     #[Bench\BeforeMethods('setUp')]
     public function benchConditionalRequest(): void
@@ -96,6 +98,7 @@ final class SecurityMiddlewareKernelBench
 
     /**
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException
      */
     #[Bench\BeforeMethods('setUp')]
     public function benchTrustedProxyRequest(): void

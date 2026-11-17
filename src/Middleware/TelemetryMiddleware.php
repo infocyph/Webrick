@@ -168,11 +168,13 @@ final readonly class TelemetryMiddleware
         return $resp;
     }
 
+    /** @throws \InvalidArgumentException */
     private function addTimingHeaders(Response $resp, float $durMs): Response
     {
         return TelemetrySupport::addTimingHeaders($resp, $this->addXResponseTime, $this->addServerTiming, $durMs);
     }
 
+    /** @throws \InvalidArgumentException */
     private function applyNelHeaders(Response $resp): Response
     {
         return TelemetrySupport::applyNelHeaders(
@@ -220,7 +222,10 @@ final readonly class TelemetryMiddleware
         return [self::generateTraceId(), '0000000000000000', '01', ''];
     }
 
-    /** @param Closure(Request):Response $next */
+    /**
+     * @param Closure(Request):Response $next
+     * @throws \InvalidArgumentException
+     */
     private function handleMinimal(Request $req, Closure $next): Response
     {
         $startNs = hrtime(true);
@@ -237,6 +242,7 @@ final readonly class TelemetryMiddleware
         return $resp;
     }
 
+    /** @throws \InvalidArgumentException */
     private function logAccess(
         Request $req,
         Response $resp,

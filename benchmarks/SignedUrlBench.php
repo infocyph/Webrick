@@ -31,6 +31,10 @@ final class SignedUrlBench
         BenchmarkSupport::generateAbsoluteUntilUrl();
     }
 
+    /**
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     * @throws \InvalidArgumentException
+     */
     public function benchAbsoluteVerify(): void
     {
         BenchmarkSupport::verifyAbsoluteSignedUrl();
@@ -44,6 +48,10 @@ final class SignedUrlBench
         BenchmarkSupport::generateRelativeTemporaryUrl();
     }
 
+    /**
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     * @throws \InvalidArgumentException
+     */
     public function benchRelativeVerify(): void
     {
         BenchmarkSupport::verifyRelativeSignedUrl();

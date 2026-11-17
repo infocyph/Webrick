@@ -85,6 +85,7 @@ final class KernelDispatchBench
 
     /**
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException
      */
     #[Bench\BeforeMethods('setUp')]
     public function benchClosureHandler(): void
@@ -94,6 +95,7 @@ final class KernelDispatchBench
 
     /**
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException
      */
     #[Bench\BeforeMethods('setUp')]
     public function benchStaticController(): void
@@ -103,6 +105,7 @@ final class KernelDispatchBench
 
     /**
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException
      */
     #[Bench\BeforeMethods('setUp')]
     public function benchTaggedDirectFactoryMiddleware(): void
@@ -120,7 +123,11 @@ final class KernelDispatchBench
         }
     }
 
-    /** @param (Closure():Response)|array{class-string,string} $handler */
+    /**
+     * @param (Closure():Response)|array{class-string,string} $handler
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     */
     private function kernel(RuntimeContainerInterface $container, Closure|array $handler): RouterKernel
     {
         return RouterKernel::bootWithRegistrar(
