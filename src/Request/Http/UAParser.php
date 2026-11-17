@@ -42,6 +42,9 @@ final class UAParser
 
     private string $ua;
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function __construct(Request|string|null $source = null)
     {
         if ($source instanceof Request) {
@@ -165,7 +168,10 @@ final class UAParser
         return $brands;
     }
 
-    /** @phpstan-return HintMap */
+    /**
+     * @phpstan-return HintMap
+     * @throws \InvalidArgumentException
+     */
     private function parseSecCh(Request $req): array
     {
         $hint = [];

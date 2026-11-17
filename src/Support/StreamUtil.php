@@ -16,6 +16,7 @@ final class StreamUtil
 {
     /**
      * Gets the best-effort byte length of a stream without changing its final position.
+     * @throws \RuntimeException
      */
     public static function byteLength(Stream|BodyStream $s, int $fallback = 0): int
     {

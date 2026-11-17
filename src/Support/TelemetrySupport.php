@@ -90,6 +90,9 @@ final class TelemetrySupport
         return $resp;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public static function deriveRequestId(
         Request $req,
         bool $emitRequestId,

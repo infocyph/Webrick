@@ -87,6 +87,9 @@ final readonly class WorkermanNativeRequest
         return $server;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private static function call(object $target, string $method): mixed
     {
         if (!method_exists($target, $method)) {

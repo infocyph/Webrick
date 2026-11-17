@@ -58,6 +58,7 @@ final class GeneratedMatcherIndexCompiler
     /**
      * @param array<string,array<string,mixed>> $routes
      * @return array<string,array<string,int>>
+     * @throws \UnexpectedValueException
      */
     private function compileStatic(array $routes, GeneratedMatcherRouteIndexer $routeIndexer): array
     {
@@ -74,6 +75,7 @@ final class GeneratedMatcherIndexCompiler
     /**
      * @param array<string,mixed> $verbs
      * @return array<string,int>
+     * @throws \UnexpectedValueException
      */
     private function compileVerbs(array $verbs, GeneratedMatcherRouteIndexer $routeIndexer): array
     {

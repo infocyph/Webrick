@@ -63,6 +63,7 @@ final readonly class RunwireRuntimeApplication implements RuntimeApplicationInte
 
     /**
      * @throws \Infocyph\Runwire\Exception\CancelledException
+     * @throws \Throwable
      */
     #[\Override]
     public function handle(

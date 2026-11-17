@@ -135,7 +135,10 @@ final class HttpUtils
         return $parsed === false ? null : $parsed;
     }
 
-    /** @return list<string>|null Null means malformed quoted-string syntax or a rejected empty element. */
+    /**
+     * @return list<string>|null Null means malformed quoted-string syntax or a rejected empty element.
+     * @throws \InvalidArgumentException
+     */
     public static function splitQuoted(string $raw, string $delimiter, bool $rejectEmpty = false): ?array
     {
         if (strlen($delimiter) !== 1) {

@@ -122,6 +122,7 @@ final readonly class ExecutionPlan
     /**
      * @return array<string,mixed>
      * @throws \UnexpectedValueException
+     * @throws \InvalidArgumentException
      */
     public function toPayload(): array
     {

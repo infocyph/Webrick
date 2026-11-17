@@ -55,6 +55,7 @@ final class ExecutableRoutePayload
      *     middleware:list<array<string,mixed>>
      * }
      * @throws \UnexpectedValueException
+     * @throws \InvalidArgumentException
      */
     public static function encode(CompiledRoute $route): array
     {

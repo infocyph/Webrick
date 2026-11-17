@@ -78,6 +78,9 @@ final readonly class Csrf
         return $value !== '' && preg_match('/\A[0-9a-f]+\z/iD', $value) === 1;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function extractFromRequest(Request $req): ?string
     {
         $header = $req->getHeaderLine('X-CSRF-TOKEN');

@@ -65,6 +65,9 @@ abstract class AbstractMatcher
         return $indent . rtrim($out, ",\n") . "\n" . $indent . ']';
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     protected function exportValue(mixed $value, int $depth): string
     {
         if ($value instanceof CompiledRoute) {

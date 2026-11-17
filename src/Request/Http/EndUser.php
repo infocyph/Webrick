@@ -131,6 +131,9 @@ final class EndUser
         return $out;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function userAgent(): ?string
     {
         return $this->req->getHeaderLine('User-Agent') ?: null;
@@ -166,6 +169,9 @@ final class EndUser
         return [$plainIp, $wrapped];
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function explicitVendorClientIp(): ?string
     {
         foreach ($this->trustedClientIpHeaders as $header) {
@@ -263,6 +269,9 @@ final class EndUser
         return $this->forwardedHeaderMask ?? Request::getProxyHeaderFlags();
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function proxyHeaderLine(string $name, string $serverKey): string
     {
         $line = $this->req->getHeaderLine($name);

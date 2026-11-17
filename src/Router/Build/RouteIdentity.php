@@ -19,6 +19,9 @@ final class RouteIdentity
         return HttpMethodEnum::normalize($method) . "\0" . self::canonicalDomain($domain) . "\0" . $path;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public static function forRoute(RouteInterface $route): string
     {
         return hash('xxh128', self::canonicalKey($route->getMethod(), $route->getDomain(), $route->getPath()));

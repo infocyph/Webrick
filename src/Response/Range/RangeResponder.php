@@ -46,6 +46,7 @@ final readonly class RangeResponder
      * @param array<array-key,mixed> $headers
      * @throws \InvalidArgumentException
      * @throws \RuntimeException
+     * @throws \LogicException
      */
     public static function fromSeekable(
         mixed $source,
@@ -102,6 +103,7 @@ final readonly class RangeResponder
      * @param array<string,string> $headers
      * @throws \InvalidArgumentException
      * @throws \RuntimeException
+     * @throws \LogicException
      */
     private static function buildFileResponse(
         string $absolutePath,
@@ -229,6 +231,7 @@ final readonly class RangeResponder
 
     /**
      * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     private static function normalizeResult(
         RangeParseResult|SimpleRange|null $range,

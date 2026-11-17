@@ -177,6 +177,7 @@ final readonly class OpenTelemetryHandler
 
     /**
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException
      */
     private function addSpanAttributes(object $span, Request $req): void
     {

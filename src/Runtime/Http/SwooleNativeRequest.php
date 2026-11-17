@@ -93,6 +93,9 @@ final readonly class SwooleNativeRequest
         return $server;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private static function call(object $target, string $method): mixed
     {
         if (!method_exists($target, $method)) {

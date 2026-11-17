@@ -273,6 +273,7 @@ final class MiddlewarePipeline
      * @param callable|string $mw Middleware callable or string descriptor.
      * @param Closure(Request):Response $next Next handler in the pipeline.
      * @return Closure(Request):Response Middleware wrapper closure.
+     * @throws \InvalidArgumentException
      */
     private function wrap(callable|string $mw, Closure $next): Closure
     {

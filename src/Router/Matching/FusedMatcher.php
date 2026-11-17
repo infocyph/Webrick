@@ -51,6 +51,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
 
     /**
      * @throws \LogicException
+     * @throws \UnexpectedValueException
      */
     #[\Override]
     public function add(CompiledRoute $route): void

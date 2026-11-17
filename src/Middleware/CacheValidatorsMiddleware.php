@@ -130,6 +130,9 @@ final readonly class CacheValidatorsMiddleware
         return [$validator, $validator->evaluate($req)];
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function hasUnsafePreconditions(Request $req): bool
     {
         return $req->getHeaderLine('If-Match') !== ''

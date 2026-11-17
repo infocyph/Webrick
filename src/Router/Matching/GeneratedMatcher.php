@@ -41,6 +41,7 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
 
     /**
      * @throws \LogicException
+     * @throws \UnexpectedValueException
      */
     #[\Override]
     public function add(CompiledRoute $route): void
@@ -90,6 +91,7 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
      * @throws \Infocyph\Webrick\Exceptions\MethodNotAllowedException
      * @throws \Infocyph\Webrick\Exceptions\RouteNotFoundException
      * @throws \RuntimeException
+     * @throws \LogicException
      */
     #[\Override]
     public function match(string $method, string $host, string $path): array

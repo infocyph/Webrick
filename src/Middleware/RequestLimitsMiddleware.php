@@ -133,6 +133,7 @@ final readonly class RequestLimitsMiddleware
 
     /**
      * @throws \Infocyph\Webrick\Exceptions\HttpException
+     * @throws \InvalidArgumentException
      */
     private function enforceDeclaredBodyLimit(Request $req): void
     {

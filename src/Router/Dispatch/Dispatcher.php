@@ -57,6 +57,9 @@ final class Dispatcher
         return $this->pipelines[$routeId]->handle($request);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function aliasStringClass(string $alias): ?string
     {
         $descriptor = MiddlewareAliases::compileString($alias);
@@ -460,6 +463,9 @@ final class Dispatcher
         throw new InvalidArgumentException(sprintf('Unsupported middleware entry of type %s', gettype($mw)));
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function wrapAliasStringAsMiddleware(string $alias): callable
     {
         $descriptor = MiddlewareAliases::compileString($alias);

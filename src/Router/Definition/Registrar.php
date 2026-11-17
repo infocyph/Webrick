@@ -316,6 +316,7 @@ final readonly class Registrar
      * @param string|GroupInput|Closure|null $domain
      * @param list<mixed>|Closure $middleware
      * @return array{0:?string,1:?string,2:RawMiddlewareList,3:?string,4:Closure}
+     * @throws \InvalidArgumentException
      */
     private function normalizeGroupInputs(
         array|string|null $prefix,

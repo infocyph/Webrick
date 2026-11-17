@@ -21,6 +21,9 @@ final class Vary implements \Stringable
         return implode(', ', $names);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public static function fromString(string $raw): self
     {
         $vary = new self();
@@ -45,6 +48,9 @@ final class Vary implements \Stringable
         return new self();
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function add(string ...$headers): self
     {
         $copy = clone $this;
@@ -67,6 +73,9 @@ final class Vary implements \Stringable
         return $copy;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function remove(string ...$headers): self
     {
         $copy = clone $this;

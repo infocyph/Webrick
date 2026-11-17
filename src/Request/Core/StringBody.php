@@ -133,6 +133,9 @@ final class StringBody implements BodyStream
         $this->position = $target;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     #[\Override]
     public function tell(): int
     {

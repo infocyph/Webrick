@@ -237,7 +237,10 @@ final readonly class ResponseCacheMiddleware
         }
     }
 
-    /** @return array<string,string> */
+    /**
+     * @return array<string,string>
+     * @throws \InvalidArgumentException
+     */
     private function resolveVaryPairs(Request $req): array
     {
         $explicit = self::explicitVaryPairs($req->getAttribute('vary.pairs'));

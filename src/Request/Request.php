@@ -294,6 +294,9 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return $this->file($key) !== null;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function header(string $name, ?string $default = null): ?string
     {
         $line = $this->getHeaderLine($name);
@@ -320,6 +323,9 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return $proxyAware ? $user->ipViaProxy() : $user->ipNoProxy();
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function isJson(): bool
     {
         return HttpUtils::isJsonContentType($this->getHeaderLine('Content-Type'));
@@ -344,6 +350,9 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return $this->getUri()->getScheme() === 'https';
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function isXml(): bool
     {
         return HttpUtils::isXmlContentType($this->getHeaderLine('Content-Type'));

@@ -49,6 +49,9 @@ final readonly class ConditionalValidator
         return new Outcome(Outcome::PASS, 0, $echo);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function isRangeFresh(Request $req): bool
     {
         $ifRange = trim($req->getHeaderLine('If-Range'));
@@ -107,6 +110,9 @@ final readonly class ConditionalValidator
         return false;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function failsIfMatch(Request $req): bool
     {
         $candidates = $this->tokenize($req->getHeaderLine('If-Match'));
@@ -120,6 +126,9 @@ final readonly class ConditionalValidator
         return $this->etag === null || !$this->etagEquals($this->etag, $candidates, true);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function failsIfUnmodSince(Request $req): bool
     {
         if ($this->lastModified === null) {
@@ -147,6 +156,9 @@ final readonly class ConditionalValidator
         return $since !== null && $this->lastModified <= $since;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function hitsIfNoneMatch(Request $req): bool
     {
         $candidates = $this->tokenize($req->getHeaderLine('If-None-Match'));

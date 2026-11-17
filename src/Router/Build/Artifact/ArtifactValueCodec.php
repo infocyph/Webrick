@@ -26,6 +26,7 @@ final class ArtifactValueCodec
 
     /**
      * @throws \UnexpectedValueException
+     * @throws \InvalidArgumentException
      */
     public static function decode(mixed $payload): mixed
     {

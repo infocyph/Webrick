@@ -82,6 +82,7 @@ final readonly class SwooleRuntimeAdapter implements RuntimeAdapterInterface
 
     /**
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException
      */
     #[\Override]
     public function write(Response $response, RuntimeRequestContext $context): void

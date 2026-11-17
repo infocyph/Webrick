@@ -12,6 +12,8 @@ if (!\function_exists('route')) {
      * @param array<string,scalar|null> $params Route parameters
      * @param array<string,mixed> $query Query string parameters
      * @param bool $absolute Whether to generate absolute URL (domain-aware when available)
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     function route(
         string $name,

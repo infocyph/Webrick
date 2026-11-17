@@ -25,6 +25,9 @@ final readonly class RouteCacheBuildRegistrarCallback
         private ?string $signKey,
     ) {}
 
+    /**
+     * @throws \RuntimeException
+     */
     public function __invoke(Registrar $registrar): void
     {
         if (is_callable($this->userRegister)) {

@@ -38,7 +38,10 @@ final class RequestHeaders
         return $out;
     }
 
-    /** @return ($key is null ? array<string,list<string>> : list<string>) */
+    /**
+     * @return ($key is null ? array<string,list<string>> : list<string>)
+     * @throws \InvalidArgumentException
+     */
     public function accept(?string $key = null): array
     {
         if ($this->accept === null) {
@@ -74,7 +77,10 @@ final class RequestHeaders
         return $this->all = new HeaderBag($headers);
     }
 
-    /** @return array{type:?string,charset:?string,length:?int,md5:string} */
+    /**
+     * @return array{type:?string,charset:?string,length:?int,md5:string}
+     * @throws \InvalidArgumentException
+     */
     public function content(): array
     {
         if ($this->content !== null) {
@@ -122,6 +128,9 @@ final class RequestHeaders
         return $key !== null && $key !== '' && $key !== '0' ? ($dep[$key] ?? []) : $dep;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function raw(string $name): string
     {
         return $this->req->getHeaderLine($name);

@@ -60,6 +60,7 @@ final readonly class CorsAndPoliciesMiddleware
 
     /**
      * @param Closure(Request):Response $next
+     * @throws \InvalidArgumentException
      */
     public function __invoke(Request $req, Closure $next): Response
     {

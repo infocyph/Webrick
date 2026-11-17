@@ -40,6 +40,7 @@ final class AttributeRouteLoader
      * Fast path: if you already know the FQCNs, this is the most efficient route.
      *
      * @param list<class-string> $classes
+     * @throws \InvalidArgumentException
      */
     public static function register(Registrar $registrar, array $classes): void
     {
@@ -174,6 +175,7 @@ final class AttributeRouteLoader
      * } $opts
      * @throws \BadMethodCallException
      * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     private static function emitRoutes(
         Registrar $r,

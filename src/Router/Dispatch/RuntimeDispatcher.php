@@ -100,6 +100,9 @@ final class RuntimeDispatcher
         return $this->artifact->hasGlobalMiddleware();
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     public function pipelineRequiresScope(ExecutionPlan $plan): bool
     {
         return $this->pipelineFor($plan)?->requiresScope() ?? false;

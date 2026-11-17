@@ -105,7 +105,10 @@ final readonly class CorsMiddleware
         return $response->withSmartHeader('Vary', 'Origin');
     }
 
-    /** @param array{origins:list<string>,methods:string,allowHeaders:string|list<string>,exposeHeaders:string|list<string>,maxAgeSeconds:int,allowCredentials:bool,allowPrivateNetwork:bool} $policy */
+    /**
+     * @param array{origins:list<string>,methods:string,allowHeaders:string|list<string>,exposeHeaders:string|list<string>,maxAgeSeconds:int,allowCredentials:bool,allowPrivateNetwork:bool} $policy
+     * @throws \InvalidArgumentException
+     */
     private function applyPreflightHeaders(Response $response, Request $req, array $policy, string $requested, string $allowed): Response
     {
         if ($policy['allowCredentials']) {

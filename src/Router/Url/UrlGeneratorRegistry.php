@@ -19,6 +19,9 @@ final class UrlGeneratorRegistry
 
     private function __construct() {}
 
+    /**
+     * @throws \LogicException
+     */
     public static function bind(UrlGenerator $generator): void
     {
         self::assertMutable();
@@ -26,7 +29,10 @@ final class UrlGeneratorRegistry
         self::$generator = $generator;
     }
 
-    /** @param Closure():UrlGenerator $factory */
+    /**
+     * @param Closure():UrlGenerator $factory
+     * @throws \LogicException
+     */
     public static function bindFactory(Closure $factory): void
     {
         self::assertMutable();
@@ -68,6 +74,9 @@ final class UrlGeneratorRegistry
         return self::$generator !== null || self::$factory !== null;
     }
 
+    /**
+     * @throws \LogicException
+     */
     public static function reset(): void
     {
         self::assertMutable();

@@ -320,6 +320,9 @@ final class Collection implements IteratorAggregate
         $this->aliasIndex = null;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function routeIdentity(RouteInterface $route): string
     {
         return RouteIdentity::canonicalKey($route->getMethod(), $route->getDomain(), $route->getPath());

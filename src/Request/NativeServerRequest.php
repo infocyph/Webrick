@@ -209,11 +209,17 @@ class NativeServerRequest extends ServerRequest
         return is_array($payload) ? ($payload[$key] ?? null) : null;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function isJsonContentType(): bool
     {
         return HttpUtils::isJsonContentType($this->getHeaderLine('Content-Type'));
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function isXmlContentType(): bool
     {
         return HttpUtils::isXmlContentType($this->getHeaderLine('Content-Type'));

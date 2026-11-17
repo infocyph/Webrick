@@ -197,7 +197,10 @@ final readonly class TelemetryMiddleware
         );
     }
 
-    /** @return array{0:string,1:string,2:string,3:string} */
+    /**
+     * @return array{0:string,1:string,2:string,3:string}
+     * @throws \InvalidArgumentException
+     */
     private function extractTraceContext(Request $req): array
     {
         $traceparent = trim($req->getHeaderLine('traceparent'));

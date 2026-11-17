@@ -59,6 +59,9 @@ enum HttpMethodEnum: string
         return self::cases();
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public static function fromString(string $verb): self
     {
         return self::tryFromString($verb)
