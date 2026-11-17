@@ -132,7 +132,7 @@ final class HttpUtils
         $digits = ltrim($value, '0');
         $parsed = filter_var($digits === '' ? '0' : $digits, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
 
-        return $parsed === false ? null : (int) $parsed;
+        return $parsed === false ? null : $parsed;
     }
 
     /** @return list<string>|null Null means malformed quoted-string syntax or a rejected empty element. */

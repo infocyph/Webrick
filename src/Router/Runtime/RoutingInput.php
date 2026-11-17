@@ -152,7 +152,7 @@ final readonly class RoutingInput
             if ($parts === false) {
                 throw HttpException::badRequest('Invalid request URI.');
             }
-            $path = (string) ($parts['path'] ?? '/');
+            $path = $parts['path'] ?? '/';
         }
 
         return Uri::normalizePath($path === '' ? '/' : $path);

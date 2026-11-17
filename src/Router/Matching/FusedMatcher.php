@@ -163,7 +163,7 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         );
     }
 
-    /** @return array{string,string|null}|null */
+    /** @return array{0:string,1:?string}|null */
     public function resolveAlias(string $name): ?array
     {
         $index = $this->aliasIndex();

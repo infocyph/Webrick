@@ -194,7 +194,7 @@ final readonly class RequestLimitsMiddleware
                 }
             }
         } finally {
-            if ($seekable) {
+            if ($position !== null) {
                 $body->seek($position);
             }
         }

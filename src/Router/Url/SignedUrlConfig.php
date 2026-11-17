@@ -256,7 +256,7 @@ final readonly class SignedUrlConfig
             throw new InvalidArgumentException("{$field} is outside the supported integer range.");
         }
 
-        return (int) $parsed;
+        return $parsed;
     }
 
     /**
