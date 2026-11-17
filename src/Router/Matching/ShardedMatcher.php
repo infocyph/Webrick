@@ -61,13 +61,13 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     /** @var array<string,CompiledGroup>|null */
     private ?array $compiledHosts = null;
 
-    private ?CompiledMatcherEngine $engine = null;
+    private CompiledMatcherEngine $engine;
 
-    private ?CompiledMatcherFastEngine $fastEngine = null;
+    private CompiledMatcherFastEngine $fastEngine;
 
     private bool $finalized = false;
 
-    private ?CanonicalMatcherIndex $index = null;
+    private CanonicalMatcherIndex $index;
 
     /** @var array<string,array<string,list<CompiledGroup>>> */
     private array $loadedCandidateGroups = [];
@@ -316,22 +316,12 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         }
     }
 
-    /**
-     * @phpstan-assert CompiledMatcherEngine $this->engine
-     * @phpstan-assert CompiledMatcherFastEngine $this->fastEngine
-     * @psalm-assert CompiledMatcherEngine $this->engine
-     * @psalm-assert CompiledMatcherFastEngine $this->fastEngine
-     */
     private function bootEngines(): void
     {
         $this->engine ??= new CompiledMatcherEngine();
         $this->fastEngine ??= new CompiledMatcherFastEngine();
     }
 
-    /**
-     * @phpstan-assert CanonicalMatcherIndex $this->index
-     * @psalm-assert CanonicalMatcherIndex $this->index
-     */
     private function bootIndex(): void
     {
         $this->index ??= new CanonicalMatcherIndex();

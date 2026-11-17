@@ -35,16 +35,16 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
     /** @var array<string,MatcherGroup>|null */
     private ?array $compiledHosts = null;
 
-    private ?CompiledMatcherEngine $engine = null;
+    private CompiledMatcherEngine $engine;
 
     /** @var MatcherGroup|null */
     private ?array $fastDefaultGroup = null;
 
-    private ?CompiledMatcherFastEngine $fastEngine = null;
+    private CompiledMatcherFastEngine $fastEngine;
 
     private bool $finalized = false;
 
-    private ?CanonicalMatcherIndex $index = null;
+    private CanonicalMatcherIndex $index;
 
     /** @var array<string,true> */
     private array $middlewareRequirements = [];
@@ -177,22 +177,12 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         return $index[$name] ?? null;
     }
 
-    /**
-     * @phpstan-assert CompiledMatcherEngine $this->engine
-     * @phpstan-assert CompiledMatcherFastEngine $this->fastEngine
-     * @psalm-assert CompiledMatcherEngine $this->engine
-     * @psalm-assert CompiledMatcherFastEngine $this->fastEngine
-     */
     private function bootEngines(): void
     {
         $this->engine ??= new CompiledMatcherEngine();
         $this->fastEngine ??= new CompiledMatcherFastEngine();
     }
 
-    /**
-     * @phpstan-assert CanonicalMatcherIndex $this->index
-     * @psalm-assert CanonicalMatcherIndex $this->index
-     */
     private function bootIndex(): void
     {
         $this->index ??= new CanonicalMatcherIndex();
