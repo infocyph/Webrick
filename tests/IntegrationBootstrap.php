@@ -145,6 +145,8 @@ function createTestKernel(array $extraMiddleware = []): RouterKernel
     );
 
     $register = function () {
+        $demoController = DemoController::class;
+        $usersController = UsersController::class;
         require __DIR__.'/../routes.php';
     };
 

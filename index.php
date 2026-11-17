@@ -34,7 +34,7 @@ use Psr\Log\NullLogger;
 require __DIR__ . '/vendor/autoload.php';
 
 /** Development front controller. Production uses CompiledRouterKernel. */
-final readonly class DemoController
+final readonly class DevelopmentDemoController
 {
     public function hello(Request $request, string $name): Response
     {
@@ -52,7 +52,7 @@ final readonly class DemoController
     }
 }
 
-final readonly class UsersController
+final readonly class DevelopmentUsersController
 {
     public function create(): Response
     {
@@ -132,6 +132,8 @@ MiddlewareAliases::register(
 );
 
 $register = static function (Registrar $registrar): void {
+    $demoController = DevelopmentDemoController::class;
+    $usersController = DevelopmentUsersController::class;
     require __DIR__ . '/routes.php';
 
     foreach ([__DIR__ . '/tests/Fixture', __DIR__ . '/tests/Fixtures'] as $fixtureDir) {
