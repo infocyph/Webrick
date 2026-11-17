@@ -357,7 +357,7 @@ final class FoundationRunwireBridgeTest extends TestCase
                     '/foundation/fiber/{id}',
                     static function (Request $request, FoundationRunwireScopedMarker $marker): Response {
                         $first = $marker->id;
-                        Fiber::suspend($first);
+                        expect(Fiber::suspend($first))->toBeNull();
                         $same = FoundationRunwireProbe::currentMarker() === $marker ? 'same' : 'different';
 
                         return Response::plaintext($first . ':' . $same . ':' . $request->getUri()->getPath());

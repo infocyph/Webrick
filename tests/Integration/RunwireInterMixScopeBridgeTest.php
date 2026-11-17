@@ -515,7 +515,7 @@ test('runwire bridge keeps interleaved request scopes isolated', function (): vo
                 static function () use ($interMix, $expected): bool {
                     $marker = $interMix->get(RunwireBridgeScopedMarker::class);
                     $requestContext = $interMix->get(RunwireRequestContext::class);
-                    Fiber::suspend($marker);
+                    expect(Fiber::suspend($marker))->toBeNull();
 
                     return $requestContext === $expected
                         && $interMix->get(RunwireBridgeScopedMarker::class) === $marker;

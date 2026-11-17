@@ -250,17 +250,14 @@ it('preserves dynamic leading and trailing slash matching behavior', function (C
 
 it('dispatches across multiple combined pcre chunks', function (Closure $factory): void {
     $matcher = makeTestMatcher($factory);
-    $last = null;
-
     for ($i = 0; $i < 40; $i++) {
         $route = matcherRevisionRoute('GET', '/bulk/{group}/item-' . $i . '/{id}');
         $matcher->add($route);
-        $last = $route;
     }
     $matcher->finalize();
 
     expect($matcher->matchCompiled('GET', '*', '/bulk/main/item-39/99'))
-        ->toBe([$last->getIndex(), ['group' => 'main', 'id' => '99']]);
+        ->toBe([$route->getIndex(), ['group' => 'main', 'id' => '99']]);
 })->with('compiled pcre ir matchers');
 
 it('keeps 405 and automatic options semantics on dynamic misses', function (Closure $factory): void {

@@ -317,7 +317,7 @@ final class RunwireMultiplexedProtocolIsolationTest extends TestCase
                     return Response::stream(
                         static function () use ($label, $payload): iterable {
                             yield 'begin:' . $payload;
-                            Fiber::suspend('paused:' . $label);
+                            expect(Fiber::suspend('paused:' . $label))->toBeNull();
                             yield 'end:' . $payload;
                         },
                         status: 207,

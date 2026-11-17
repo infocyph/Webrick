@@ -134,7 +134,7 @@ test('multiplexed SAPI responses exclude connection-specific fields', function (
         /** @var array<string,string> */
         public array $headers = [];
 
-        public string $protocol;
+        public string $protocol = 'HTTP/1.1';
 
         #[\Override]
         protected function finish(): void {}

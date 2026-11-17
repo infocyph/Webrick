@@ -62,7 +62,7 @@ test('interleaved fibers do not cross contaminate runtime requests', function ()
 
     $fiberA = new Fiber(static function () use ($a): string {
         $before = $a->request()->query('id');
-        Fiber::suspend();
+        expect(Fiber::suspend())->toBeNull();
 
         $after = $a->request()->query('id');
         if (!is_string($before) || !is_string($after)) {
@@ -73,7 +73,7 @@ test('interleaved fibers do not cross contaminate runtime requests', function ()
     });
     $fiberB = new Fiber(static function () use ($b): string {
         $before = $b->request()->query('id');
-        Fiber::suspend();
+        expect(Fiber::suspend())->toBeNull();
 
         $after = $b->request()->query('id');
         if (!is_string($before) || !is_string($after)) {

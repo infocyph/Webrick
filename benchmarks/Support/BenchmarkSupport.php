@@ -355,7 +355,7 @@ final class BenchmarkSupport
         );
 
         Router::setInstance($registrar);
-        require self::projectRoot() . '/routes.php';
+        require dirname(__DIR__, 2) . '/routes.php';
 
         $fixtureDirs = [
             self::projectRoot() . '/tests/Fixture',

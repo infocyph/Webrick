@@ -247,10 +247,10 @@ test('runwire continuation preserves caller ownership through yielding exception
     $owner = new Fiber(static function () use (&$caught, &$finalized, &$cleanupResumed): void {
         RunwireResponseContinuation::run(static function () use (&$caught, &$finalized, &$cleanupResumed): void {
             try {
-                Fiber::suspend('handler-suspended');
+                expect(Fiber::suspend('handler-suspended'))->toBeNull();
             } catch (RuntimeException $error) {
                 $caught = $error;
-                Fiber::suspend('cleanup-suspended');
+                expect(Fiber::suspend('cleanup-suspended'))->toBeNull();
                 $cleanupResumed = true;
 
                 throw $error;
@@ -386,7 +386,7 @@ test('runwire continuation preserves exception cleanup across repeated body read
     $owner = new Fiber(static function () use ($stream, &$received, &$finalized): void {
         RunwireResponseContinuation::run(static function () use ($stream, &$received, &$finalized): void {
             try {
-                Fiber::suspend('handler-suspended');
+                expect(Fiber::suspend('handler-suspended'))->toBeNull();
             } finally {
                 $received .= $stream->read(1);
                 $received .= $stream->read(1);

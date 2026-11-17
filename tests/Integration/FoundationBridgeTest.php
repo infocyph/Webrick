@@ -184,7 +184,7 @@ describe('Foundation Webrick bridge', function () {
             register: static function (Registrar $registrar) use ($container): void {
                 $registrar->get('/fiber-scope', static function (FoundationBridgeScopedMarker $marker) use ($container): Response {
                     $first = $marker->id;
-                    Fiber::suspend($first);
+                    expect(Fiber::suspend($first))->toBeNull();
 
                     $scopedMarker = $container->get(FoundationBridgeScopedMarker::class);
                     if (!$scopedMarker instanceof FoundationBridgeScopedMarker) {

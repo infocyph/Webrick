@@ -141,7 +141,7 @@ test('InterMix runtime keeps independent fiber request scopes isolated when no c
             'request',
             static function (RuntimeContainerInterface $active): WebrickRuntimeScopedMarker {
                 $marker = webrick_checked_scope_marker($active->get(WebrickRuntimeScopedMarker::class));
-                Fiber::suspend($marker);
+                expect(Fiber::suspend($marker))->toBeNull();
 
                 return webrick_checked_scope_marker($active->get(WebrickRuntimeScopedMarker::class));
             },
