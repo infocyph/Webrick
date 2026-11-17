@@ -9,6 +9,7 @@ use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Interfaces\BodyStream;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Runtime\Http\ResponseWriterSupport;
 use Infocyph\Webrick\Support\HeaderLine;
 
 /** Unified, extensible HTTP emitter with SAPI-friendly defaults. */
@@ -204,7 +205,7 @@ abstract class BaseEmitter implements EmitterInterface
 
         $protocol = $this->serverProtocol();
         $isHttp11 = str_starts_with($protocol, 'HTTP/1.1');
-        $isHttp2 = str_starts_with($protocol, 'HTTP/2') || str_starts_with($protocol, 'HTTP/3');
+        $isHttp2 = ResponseWriterSupport::isMultiplexedProtocol($protocol);
 
         $this->setStatusCode($response->getStatusCode());
         $this->removePoweredByHeader();

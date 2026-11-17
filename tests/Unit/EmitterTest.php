@@ -6,6 +6,7 @@ use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Emitter\BaseEmitter;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Runtime\RoutingInput;
+use Infocyph\Webrick\Runtime\Http\ResponseWriterSupport;
 use Infocyph\Webrick\Runtime\Http\RuntimeRequestContext;
 use Infocyph\Webrick\Runtime\Http\SapiRuntimeAdapter;
 
@@ -139,4 +140,89 @@ test('SAPI runtime consumes a streaming producer even when its placeholder body 
     }
 
     expect($outer . $inner)->toBe('first-second');
+});
+
+test('SAPI and native response emission classify HTTP/2 and HTTP/3 consistently', function (mixed $protocol, bool $expected): void {
+    expect(ResponseWriterSupport::isMultiplexedProtocol($protocol))->toBe($expected);
+})->with([
+    ['HTTP/1.0', false],
+    ['HTTP/1.1', false],
+    ['HTTP/2', true],
+    ['HTTP/2.0', true],
+    ['HTTP/3', true],
+    ['HTTP/3.0', true],
+    ['', false],
+    [null, false],
+    [[], false],
+]);
+
+test('HTTP/3 response filtering strips hop-by-hop and Connection-nominated headers', function (): void {
+    $response = Response::create('ok', 200, [
+        'Connection' => 'keep-alive, X-Internal',
+        'X-Internal' => 'must-not-leak',
+        'Transfer-Encoding' => 'chunked',
+        'Upgrade' => 'websocket',
+        'X-Public' => 'safe',
+    ]);
+
+    $headers = array_change_key_case(
+        ResponseWriterSupport::headerMap($response, ResponseWriterSupport::isMultiplexedProtocol('HTTP/3')),
+        CASE_LOWER,
+    );
+    expect($headers)->toHaveKey('x-public')
+        ->not->toHaveKey('connection')
+        ->not->toHaveKey('x-internal')
+        ->not->toHaveKey('transfer-encoding')
+        ->not->toHaveKey('upgrade');
+});
+
+test('base emitter uses the same HTTP/3 filtering contract', function (): void {
+    $emitter = new class extends BaseEmitter {
+        /** @var array<string,string> */
+        public array $headers = [];
+
+        #[\Override]
+        protected function serverProtocol(): string
+        {
+            return 'HTTP/3';
+        }
+
+        #[\Override]
+        protected function headersAlreadySent(): bool
+        {
+            return false;
+        }
+
+        #[\Override]
+        protected function finish(): void {}
+
+        #[\Override]
+        protected function removePoweredByHeader(): void {}
+
+        #[\Override]
+        protected function setStatusCode(int $code): void {}
+
+        #[\Override]
+        protected function sendRawHeader(string $name, string $value): void
+        {
+            $this->headers[strtolower($name)] = $value;
+        }
+    };
+
+    $response = Response::create('ok', 200, [
+        'Connection' => 'X-Internal',
+        'X-Internal' => 'must-not-leak',
+        'Transfer-Encoding' => 'chunked',
+        'X-Public' => 'safe',
+    ]);
+
+    ob_start();
+    $emitter->emit($response, Request::fake());
+    $body = ob_get_clean();
+
+    expect($body)->toBe('ok')
+        ->and($emitter->headers)->toHaveKey('x-public')
+        ->not->toHaveKey('connection')
+        ->not->toHaveKey('x-internal')
+        ->not->toHaveKey('transfer-encoding');
 });

@@ -148,7 +148,7 @@ final readonly class SapiRuntimeAdapter implements RuntimeAdapterInterface
         http_response_code($response->getStatusCode());
         header_remove('X-Powered-By');
         $protocol = $_SERVER['SERVER_PROTOCOL'] ?? 'HTTP/1.1';
-        $http2 = is_string($protocol) && str_starts_with($protocol, 'HTTP/2');
+        $http2 = ResponseWriterSupport::isMultiplexedProtocol($protocol);
         foreach (ResponseWriterSupport::headers($response, $http2) as [$name, $value]) {
             header(HeaderLine::validated($name, $value), false);
         }

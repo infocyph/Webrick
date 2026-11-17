@@ -60,6 +60,13 @@ final readonly class ResponseWriterSupport
         yield from self::bodyChunks($response->getBody(), $chunkSize);
     }
 
+    /** A host may expose an unknown or malformed SERVER_PROTOCOL value. */
+    public static function isMultiplexedProtocol(mixed $protocol): bool
+    {
+        return is_string($protocol)
+            && (str_starts_with($protocol, 'HTTP/2') || str_starts_with($protocol, 'HTTP/3'));
+    }
+
     public static function headerAllowed(string $name, string $value, bool $http2): bool
     {
         unset($value);

@@ -18,7 +18,7 @@ use PhpBench\Attributes as Bench;
 #[Bench\Warmup(1)]
 final class CacheLifecycleBench
 {
-    private string $directory;
+    private string $directory = '';
 
     /**
      * @throws \InvalidArgumentException
