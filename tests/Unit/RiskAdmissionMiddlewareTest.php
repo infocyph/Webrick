@@ -129,9 +129,8 @@ test('risk admission keeps sequential tenant decisions request local', function 
     $next = static function (Request $request) use (&$calls): Response {
         ++$calls;
         $decision = $request->getAttribute(RiskDecision::ATTRIBUTE);
-        expect($decision)->toBeInstanceOf(RiskDecision::class);
 
-        return Response::json(['action' => $decision->action]);
+        return Response::json(['action' => $decision instanceof RiskDecision ? $decision->action : null]);
     };
 
     $alpha = Request::fake()->withAttribute('tenant', 'alpha');

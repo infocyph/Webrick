@@ -64,7 +64,7 @@ final readonly class RouterKernel
         private ?Closure $bindUrlServices = null,
         private array $preGlobalTags = ['webrick.middleware.pre'],
         private array $postGlobalTags = ['webrick.middleware.post'],
-        private bool $debug = false,
+        bool $debug = false,
         private ?PreRoutingGateInterface $preRoutingGate = null,
     ) {
         $this->warm();
@@ -77,7 +77,7 @@ final readonly class RouterKernel
         );
         $this->errorHandler = $errorHandler ?? new ErrorHandler(
             logger: $this->log,
-            debug: $this->debug,
+            debug: $debug,
             requestIdHeader: 'X-Request-Id',
         );
     }

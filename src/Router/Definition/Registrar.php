@@ -63,13 +63,13 @@ final readonly class Registrar
         private Collection $routes,
         private GroupScope $scope = new GroupScope(),
         private bool $autoSlashRedirect = false,
-        private bool $exposeUrlServices = false,
+        bool $exposeUrlServices = false,
         private ?string $signKey = null,
         private ?int $signedDefaultTtl = null,
         private ?SignedUrlConfig $signedUrlConfig = null,
         private string $urlBaseUri = '',
     ) {
-        if ($this->exposeUrlServices) {
+        if ($exposeUrlServices) {
             Router::bindUrlServices(
                 $this->routes,
                 $this->signKey,
