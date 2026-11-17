@@ -32,6 +32,9 @@ final class PreRoutingGateBench
 
     private RoutingInput $routing;
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function setUp(): void
     {
         $inactive = new MemoryMaintenanceState();
@@ -46,6 +49,9 @@ final class PreRoutingGateBench
         $this->inactiveMiddleware = new MaintenanceModeMiddleware(state: $inactive);
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     #[Bench\BeforeMethods('setUp')]
     public function benchActiveGate(): void
     {
@@ -55,6 +61,9 @@ final class PreRoutingGateBench
         }
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     #[Bench\BeforeMethods('setUp')]
     public function benchInactiveGate(): void
     {
@@ -63,6 +72,9 @@ final class PreRoutingGateBench
         }
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     #[Bench\BeforeMethods('setUp')]
     public function benchInactiveMaintenanceMiddleware(): void
     {

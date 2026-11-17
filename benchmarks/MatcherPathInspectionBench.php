@@ -16,7 +16,10 @@ use PhpBench\Attributes as Bench;
 #[Bench\Warmup(1)]
 final class MatcherPathInspectionBench
 {
-    /** @param array{path:string} $params */
+    /**
+     * @param array{path:string} $params
+     * @throws \LogicException
+     */
     #[Bench\ParamProviders('providePaths')]
     public function benchCurrentPathShape(array $params): void
     {
@@ -36,6 +39,9 @@ final class MatcherPathInspectionBench
         }
     }
 
+    /**
+     * @throws \LogicException
+     */
     public function benchCurrentPositionalParameterCapture(): void
     {
         $entry = ['id' => 42, 'params' => ['group', 'id', 'slug']];
@@ -58,7 +64,10 @@ final class MatcherPathInspectionBench
         }
     }
 
-    /** @param array{path:string} $params */
+    /**
+     * @param array{path:string} $params
+     * @throws \LogicException
+     */
     #[Bench\ParamProviders('providePaths')]
     public function benchCurrentSegmentMaterialization(array $params): void
     {
@@ -95,7 +104,10 @@ final class MatcherPathInspectionBench
         self::guardCombined($count, $prefix, $segments);
     }
 
-    /** @param array{path:string} $params */
+    /**
+     * @param array{path:string} $params
+     * @throws \LogicException
+     */
     #[Bench\ParamProviders('providePaths')]
     public function benchOnePassPathShape(array $params): void
     {
@@ -163,7 +175,10 @@ final class MatcherPathInspectionBench
         yield 'normalized-extra-slashes' => ['path' => '//api/v1/users/42//'];
     }
 
-    /** @param list<string> $segments */
+    /**
+     * @param list<string> $segments
+     * @throws \LogicException
+     */
     private static function guardCombined(int $count, string $prefix, array $segments): void
     {
         if ($count < 0 || $prefix === "\0" || ($segments !== [] && $segments[0] !== $prefix)) {

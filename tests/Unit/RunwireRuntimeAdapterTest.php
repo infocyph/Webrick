@@ -56,6 +56,9 @@ final class RunwireAdapterBodyFixture implements RequestBodyInterface
         return $this;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     #[\Override]
     public function read(int $maxBytes = PHP_INT_MAX): string
     {
@@ -178,6 +181,10 @@ final class RunwireAdapterWriterFixture implements ResponseWriterInterface
     }
 }
 
+/**
+ * @throws \InvalidArgumentException
+ * @throws \OverflowException
+ */
 function runwire_adapter_request(
     string $method = 'GET',
     string $target = '/',

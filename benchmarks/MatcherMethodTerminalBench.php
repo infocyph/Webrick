@@ -59,6 +59,12 @@ final class MatcherMethodTerminalBench
         }
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     */
     private static function matcher(string $mode): MatcherInterface
     {
         if (isset(self::$matchers[$mode])) {

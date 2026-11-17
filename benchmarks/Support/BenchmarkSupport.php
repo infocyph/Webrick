@@ -66,6 +66,10 @@ final class BenchmarkSupport
         return self::buildMatcher('scale-' . $routeCount, $matcher);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     */
     public static function generateAbsoluteSignedUrl(): string
     {
         return self::absoluteSignedGenerator()->signed(
@@ -78,6 +82,10 @@ final class BenchmarkSupport
         );
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     */
     public static function generateAbsoluteUntilUrl(): string
     {
         return self::absoluteSignedGenerator()->temporaryUntil(
@@ -90,6 +98,9 @@ final class BenchmarkSupport
         );
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public static function generateRelativeTemporaryUrl(): string
     {
         return self::relativeSignedGenerator()->temporary(
@@ -149,6 +160,9 @@ final class BenchmarkSupport
         return self::verifySignedUrl($signedUrl, $middleware, $extraQuery);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function absoluteSignedConfig(): SignedUrlConfig
     {
         return new SignedUrlConfig(
@@ -166,6 +180,9 @@ final class BenchmarkSupport
         return self::$absoluteSignedGenerator ??= self::buildSignedUrlGenerator(self::absoluteSignedConfig());
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function baseSignedConfig(): SignedUrlConfig
     {
         return new SignedUrlConfig(
@@ -178,6 +195,8 @@ final class BenchmarkSupport
     /**
      * @param callable(Registrar):void $register
      * @return list<CompiledRoute>
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
      */
     private static function buildCompiledRoutes(callable $register): array
     {
@@ -203,6 +222,12 @@ final class BenchmarkSupport
         return $all;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     */
     private static function buildMatcher(string $routeSet, string $matcher): MatcherInterface
     {
         $instance = match ($matcher) {
@@ -221,6 +246,9 @@ final class BenchmarkSupport
         return $instance;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function buildSignedUrlGenerator(SignedUrlConfig $config): UrlGenerator
     {
         $routes = new Collection();
@@ -245,6 +273,7 @@ final class BenchmarkSupport
 
     /**
      * @return list<CompiledRoute>
+     * @throws \RuntimeException
      */
     private static function compiledRoutes(string $routeSet): array
     {
@@ -273,6 +302,9 @@ final class BenchmarkSupport
         return dirname(__DIR__, 2);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function registerIndexRoutes(Registrar $registrar): void
     {
         MiddlewareAliases::reset();
@@ -344,6 +376,8 @@ final class BenchmarkSupport
 
     /**
      * @param array<string, string> $extraQuery
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     * @throws \InvalidArgumentException
      */
     private static function verifySignedUrl(
         string $signedUrl,

@@ -30,6 +30,10 @@ final class RuntimeMiddlewareDescriptorBench
 
     private InterMixRuntime $runtime;
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     public function setUp(): void
     {
         $this->request = Request::fake(uri: 'http://localhost/bench');
@@ -74,6 +78,9 @@ final class RuntimeMiddlewareDescriptorBench
         $this->handle($this->parameterizedPipeline);
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function assertSuccessful(Response $response): void
     {
         if ($response->getStatusCode() !== 200 || (string) $response->getBody() !== 'GET') {
@@ -81,6 +88,9 @@ final class RuntimeMiddlewareDescriptorBench
         }
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function handle(CompiledMiddlewarePipeline $pipeline): Response
     {
         $request = $this->request;

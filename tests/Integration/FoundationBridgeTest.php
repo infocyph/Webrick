@@ -50,6 +50,10 @@ final readonly class FoundationBridgeGraphController
 {
     public function __construct(private FoundationBridgeGraphDependency $dependency) {}
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     public function __invoke(): Response
     {
         return Response::plaintext($this->dependency::class);
@@ -64,7 +68,10 @@ function foundationBridgeArtifactPaths(string $prefix): array
     return [$base . '-intermix.php', $base . '-router.php'];
 }
 
-/** @param list<string> $paths */
+/**
+ * @param list<string> $paths
+ * @throws \RuntimeException
+ */
 function foundationBridgeCleanup(array $paths): void
 {
     foreach ($paths as $path) {

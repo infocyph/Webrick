@@ -168,6 +168,7 @@ function mockRequestWithTrace(
 
 /**
  * Assert that response has telemetry headers.
+ * @throws \InvalidArgumentException
  */
 function assertHasTelemetryHeaders(Response $response): void
 {
@@ -181,6 +182,7 @@ function assertHasTelemetryHeaders(Response $response): void
  * Extract trace context from response body (assumes JSON).
  *
  * @return array{trace_id:mixed,span_id:mixed,request_id:mixed}
+ * @throws \UnexpectedValueException
  */
 function extractTraceContext(Response $response): array
 {

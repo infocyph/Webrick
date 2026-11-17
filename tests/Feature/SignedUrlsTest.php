@@ -19,6 +19,10 @@ use Psr\Log\NullLogger;
 if (!class_exists('SignedUrlCacheController', false)) {
     final readonly class SignedUrlCacheController
     {
+        /**
+         * @throws \InvalidArgumentException
+         * @throws \RuntimeException
+         */
         public static function handle(): Response
         {
             return Response::plaintext('ok');
@@ -28,6 +32,7 @@ if (!class_exists('SignedUrlCacheController', false)) {
 
 /**
  * @return array<string,string>
+ * @throws \UnexpectedValueException
  */
 function signedUrlQuery(string $url): array
 {
@@ -46,6 +51,9 @@ function signedUrlQuery(string $url): array
     return $query;
 }
 
+/**
+ * @throws \InvalidArgumentException
+ */
 function requestFromSignedUrl(string $url): Request
 {
     $query = signedUrlQuery($url);

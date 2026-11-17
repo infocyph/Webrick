@@ -29,6 +29,10 @@ final class CacheLifecycleBench
         }
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     public function tearDown(): void
     {
         RouteCache::clear([
@@ -104,6 +108,9 @@ final class CacheLifecycleBench
         $this->firstRequest(ShardedMatcher::make(), $this->directory);
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function boot(MatcherInterface $matcher, string $cache): void
     {
         $matcher->enableCache($cache);
@@ -115,6 +122,10 @@ final class CacheLifecycleBench
         $matcher->finalize();
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     private function build(string $mode): void
     {
         RouteCache::build([
@@ -127,6 +138,9 @@ final class CacheLifecycleBench
         ]);
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function firstRequest(MatcherInterface $matcher, string $cache): void
     {
         $this->boot($matcher, $cache);
