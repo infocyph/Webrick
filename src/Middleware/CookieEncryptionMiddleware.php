@@ -495,7 +495,7 @@ final readonly class CookieEncryptionMiddleware
     private function parseSetCookie(string $line): ?array
     {
         $chunks = array_map(trim(...), explode(';', $line));
-        $first = $chunks[0] ?? '';
+        $first = $chunks[0];
         if (!str_contains($first, '=')) {
             return null;
         }

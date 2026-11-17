@@ -140,7 +140,7 @@ class NativeServerRequest extends ServerRequest
     }
 
     /**
-     * @param array<string,mixed>|object|null $data
+     * @param array<array-key,mixed>|object|null $data
      */
     #[\Override]
     public function withParsedBody(object|array|null $data): static
