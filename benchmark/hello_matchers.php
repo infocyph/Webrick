@@ -209,7 +209,6 @@ foreach ($routeSets as $set) {
 $summaryRows = [];
 $totalScenarioRuns = \count($modes) * \count($scenarios);
 $totalMatcherTasks = $totalScenarioRuns * 3;
-$scenarioRunNo = 0;
 $completedMatcherTasks = 0;
 
 out("\n");
@@ -241,13 +240,13 @@ foreach ($modes as $modeLabel => $useCache) {
     $cacheNamespace = null;
     if ($useCache) {
         $cacheRoot = dirname(__DIR__) . DIRECTORY_SEPARATOR . '.route-cache';
-        $cacheNamespace = 'bench-' . getmypid() . '-' . uniqid('', true);
+        $pid = getmypid();
+        $cacheNamespace = 'bench-' . ($pid === false ? '' : $pid) . '-' . uniqid('', true);
         if (!is_dir($cacheRoot) && !mkdir($cacheRoot, 0775, true) && !is_dir($cacheRoot)) {
             throw new RuntimeException("Failed to create benchmark cache directory: {$cacheRoot}");
         }
     }
     foreach ($scenarios as $scenario) {
-        $scenarioRunNo++;
 
         $results = [];
         foreach ($matcherSpecs as $spec) {
@@ -423,7 +422,7 @@ function progressPercent(int $completed, int $total, bool $forceNewline = false)
         $lastPercent = -1;
     }
     $total = max(1, $total);
-    $percent = (int) floor(($completed / $total) * 100);
+    $percent = (int) floor(((float) $completed / (float) $total) * 100.0);
     $percent = max(0, min(100, $percent));
 
     if ($percent === $lastPercent) {
@@ -598,7 +597,9 @@ function benchMatcher(
         throw new RuntimeException('Benchmark matcher inputs must be non-empty.');
     }
 
-    $progress ??= static function (string $message): void {};
+    $progress ??= static function (string $message): void {
+        unset($message);
+    };
     $progress('building matcher');
     /** @var MatcherInterface $matcher */
     $matcher = $factory();
@@ -628,10 +629,13 @@ function benchMatcher(
         }
     }
 
+    if ($roundNs === []) {
+        throw new RuntimeException('Benchmark timing rounds did not produce samples.');
+    }
     $bestNs = min($roundNs);
-    $avgNs = array_sum($roundNs) / count($roundNs);
-    $bestOpsS = ($iterations * 1_000_000_000.0) / $bestNs;
-    $avgOpsS = ($iterations * 1_000_000_000.0) / $avgNs;
+    $avgNs = (float) array_sum($roundNs) / (float) count($roundNs);
+    $bestOpsS = ((float) $iterations * 1_000_000_000.0) / $bestNs;
+    $avgOpsS = ((float) $iterations * 1_000_000_000.0) / $avgNs;
 
     $progress('finished timing');
 
@@ -639,8 +643,8 @@ function benchMatcher(
         'name' => $name,
         'best_ops_s' => $bestOpsS,
         'avg_ops_s' => $avgOpsS,
-        'best_ns_op' => $bestNs / $iterations,
-        'avg_ns_op' => $avgNs / $iterations,
+        'best_ns_op' => $bestNs / (float) $iterations,
+        'avg_ns_op' => $avgNs / (float) $iterations,
     ];
 }
 
@@ -675,15 +679,18 @@ function benchCallable(
         $roundNs[] = (float) (hrtime(true) - $start);
     }
 
+    if ($roundNs === []) {
+        throw new RuntimeException('Benchmark timing rounds did not produce samples.');
+    }
     $bestNs = min($roundNs);
-    $avgNs = array_sum($roundNs) / count($roundNs);
+    $avgNs = (float) array_sum($roundNs) / (float) count($roundNs);
 
     return [
         'name' => $name,
-        'best_ops_s' => ($iterations * 1_000_000_000.0) / $bestNs,
-        'avg_ops_s' => ($iterations * 1_000_000_000.0) / $avgNs,
-        'best_ns_op' => $bestNs / $iterations,
-        'avg_ns_op' => $avgNs / $iterations,
+        'best_ops_s' => ((float) $iterations * 1_000_000_000.0) / $bestNs,
+        'avg_ops_s' => ((float) $iterations * 1_000_000_000.0) / $avgNs,
+        'best_ns_op' => $bestNs / (float) $iterations,
+        'avg_ns_op' => $avgNs / (float) $iterations,
     ];
 }
 

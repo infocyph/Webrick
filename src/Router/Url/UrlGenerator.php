@@ -58,9 +58,9 @@ class UrlGenerator
         }
 
         $this->baseUri = \rtrim($baseUri, '/');
-        $this->baseScheme = \strtolower((string) ($parts['scheme'] ?? ''));
-        $this->baseUser = (string) ($parts['user'] ?? '');
-        $this->basePass = (string) ($parts['pass'] ?? '');
+        $this->baseScheme = \strtolower($parts['scheme'] ?? '');
+        $this->baseUser = $parts['user'] ?? '';
+        $this->basePass = $parts['pass'] ?? '';
         $this->basePort = $parts['port'] ?? null;
         $this->signedConfig = SignedUrlConfig::mergeLegacy($signedConfig, $secret, $defaultTtl);
         $this->routes = $routes instanceof Collection ? $routes : null;
@@ -355,7 +355,7 @@ class UrlGenerator
             throw new InvalidArgumentException('Signed URL path must be a valid URI or path.');
         }
 
-        $relativePath = (string) ($parts['path'] ?? '/');
+        $relativePath = $parts['path'] ?? '/';
         if ($relativePath === '' || $relativePath[0] !== '/') {
             $relativePath = '/' . \ltrim($relativePath, '/');
         }
@@ -389,10 +389,11 @@ class UrlGenerator
             return false;
         }
 
-        return \is_string($parts['scheme'] ?? null)
-            && $parts['scheme'] !== ''
-            && \is_string($parts['host'] ?? null)
-            && $parts['host'] !== '';
+        $scheme = $parts['scheme'] ?? null;
+        $host = $parts['host'] ?? null;
+
+        return \is_string($scheme) && $scheme !== ''
+            && \is_string($host) && $host !== '';
     }
 
     /**

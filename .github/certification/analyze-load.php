@@ -9,7 +9,8 @@ declare(strict_types=1);
 function load_rows(string $path): array
 {
     $rows = [];
-    foreach (file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [] as $line) {
+    $lines = file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    foreach ($lines === false ? [] : $lines as $line) {
         $row = json_decode($line, true, 64, JSON_THROW_ON_ERROR);
         if (!is_array($row)) {
             throw new RuntimeException('Load result row must be a JSON object.');
@@ -31,7 +32,7 @@ function median(array $values): float
     $middle = intdiv($count, 2);
 
     return $count % 2 === 0
-        ? ((float) $values[$middle - 1] + (float) $values[$middle]) / 2
+        ? ((float) $values[$middle - 1] + (float) $values[$middle]) / 2.0
         : (float) $values[$middle];
 }
 
@@ -42,7 +43,7 @@ function coefficient_of_variation(array $values): float
     if ($count < 2) {
         return 0.0;
     }
-    $mean = array_sum($values) / $count;
+    $mean = (float) array_sum($values) / (float) $count;
     if ($mean <= 0) {
         return 0.0;
     }
@@ -51,7 +52,7 @@ function coefficient_of_variation(array $values): float
         $sum += ((float) $value - $mean) ** 2;
     }
 
-    return sqrt($sum / ($count - 1)) / $mean * 100;
+    return sqrt($sum / (float) ($count - 1)) / $mean * 100.0;
 }
 
 /** @return array<string,string> */
@@ -280,7 +281,7 @@ foreach ($groups as $key => $rows) {
 
     $aggregates[$mode][$workload][$concurrency][$version] = [
         'median_rps' => median($rps),
-        'median_rpm' => median($rps) * 60,
+        'median_rpm' => median($rps) * 60.0,
         'rps_cv_percent' => coefficient_of_variation($rps),
         'median_p99_ms' => median($p99),
         'median_rss_kb' => median($rss),
@@ -298,17 +299,17 @@ foreach ($aggregates as $mode => $workloads) {
                 continue;
             }
 
-            $baselineRps = (float) $baseline['median_rps'];
-            $candidateRps = (float) $candidate['median_rps'];
+            $baselineRps = $baseline['median_rps'];
+            $candidateRps = $candidate['median_rps'];
             $throughputRegression = $baselineRps > 0
-                ? (($baselineRps - $candidateRps) / $baselineRps) * 100
+                ? (($baselineRps - $candidateRps) / $baselineRps) * 100.0
                 : 0.0;
-            $baselineP99 = (float) $baseline['median_p99_ms'];
-            $candidateP99 = (float) $candidate['median_p99_ms'];
+            $baselineP99 = $baseline['median_p99_ms'];
+            $candidateP99 = $candidate['median_p99_ms'];
             $p99Regression = $baselineP99 > 0
-                ? (($candidateP99 - $baselineP99) / $baselineP99) * 100
+                ? (($candidateP99 - $baselineP99) / $baselineP99) * 100.0
                 : 0.0;
-            $memoryDeltaMb = ((float) $candidate['median_rss_kb'] - (float) $baseline['median_rss_kb']) / 1024;
+            $memoryDeltaMb = ($candidate['median_rss_kb'] - $baseline['median_rss_kb']) / 1024.0;
 
             if ($throughputRegression > $throughputBudget) {
                 $errors[] = sprintf(

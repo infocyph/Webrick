@@ -169,10 +169,10 @@ final readonly class CorsMiddleware
             return true;
         }
 
-        $actualScheme = strtolower((string) ($actual['scheme'] ?? ''));
-        $patternScheme = strtolower((string) ($pattern['scheme'] ?? ''));
-        $actualHost = strtolower((string) ($actual['host'] ?? ''));
-        $patternHost = strtolower((string) ($pattern['host'] ?? ''));
+        $actualScheme = strtolower($actual['scheme'] ?? '');
+        $patternScheme = strtolower($pattern['scheme'] ?? '');
+        $actualHost = strtolower($actual['host'] ?? '');
+        $patternHost = strtolower($pattern['host'] ?? '');
         if ($actualScheme !== $patternScheme) {
             return false;
         }

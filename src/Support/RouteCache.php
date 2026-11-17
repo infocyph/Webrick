@@ -186,7 +186,8 @@ final class RouteCache
             $removed = RouteCacheCleaner::removeFile($dir . DIRECTORY_SEPARATOR . $known) || $removed;
         }
         $removed = self::clearShardFiles($dir) || $removed;
-        foreach (glob($dir . DIRECTORY_SEPARATOR . 'generation-*', GLOB_ONLYDIR) ?: [] as $generation) {
+        $generationDirs = glob($dir . DIRECTORY_SEPARATOR . 'generation-*', GLOB_ONLYDIR);
+        foreach ($generationDirs === false ? [] : $generationDirs as $generation) {
             $removed = self::clearGeneration($generation) || $removed;
         }
 
@@ -199,7 +200,8 @@ final class RouteCache
     private static function clearShardFiles(string $dir): bool
     {
         $removed = false;
-        foreach (glob($dir . DIRECTORY_SEPARATOR . '*.php') ?: [] as $php) {
+        $shardFiles = glob($dir . DIRECTORY_SEPARATOR . '*.php');
+        foreach ($shardFiles === false ? [] : $shardFiles as $php) {
             if (in_array(basename($php), ['__root.php', '__aliases.php', '__routes.php', '__generated.php'], true)) {
                 continue;
             }
@@ -260,7 +262,8 @@ final class RouteCache
             if (!preg_match('#^([/\\\\]|[A-Za-z]:[/\\\\])#', $path)) {
                 $path = $cwd . DIRECTORY_SEPARATOR . ltrim($path, '/\\');
             }
-            $path = realpath($path) ?: $path;
+            $resolved = realpath($path);
+            $path = $resolved === false ? $path : $resolved;
             if (!is_dir($path)) {
                 $logger->warning('[routecache] attribute dir not found', ['ns' => $namespace, 'dir' => $path]);
 
@@ -301,7 +304,8 @@ final class RouteCache
             return $baseDir;
         }
 
-        $absolute = realpath($routesFile) ?: $routesFile;
+        $resolved = realpath($routesFile);
+        $absolute = $resolved === false ? $routesFile : $resolved;
 
         return is_file($absolute) ? dirname($absolute) : $baseDir;
     }
