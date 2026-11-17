@@ -59,6 +59,10 @@ final class RouterArtifactCompiler
      */
     public function compile(RouterBuildResult $build, string $path): array
     {
+        if ($path === '' || str_contains($path, "\0") || preg_match('~^[a-z][a-z0-9.+-]*://~i', $path) === 1) {
+            throw new UnexpectedValueException('Compiled Webrick router artifact must use a local filesystem path.');
+        }
+
         [$routes, $plans] = $this->indexedRuntimePayloads($build);
         $preGlobal = array_map(ArtifactValueCodec::encode(...), $build->preGlobal);
         $postGlobal = array_map(ArtifactValueCodec::encode(...), $build->postGlobal);
