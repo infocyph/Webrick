@@ -52,7 +52,6 @@ $optionInt = static function (string $name, int $default) use ($opts): int {
     return is_string($value) ? (int) $value : 0;
 };
 
-
 if (isset($opts['help'])) {
     out("Usage: php benchmark/hello_matchers.php [--iters=500000] [--rounds=5] [--warmup=20000] [--cache] [--memory]\n");
 

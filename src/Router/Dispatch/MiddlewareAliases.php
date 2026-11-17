@@ -170,7 +170,9 @@ final class MiddlewareAliases
      */
     private static function parse(string $maybeAlias): array
     {
-        [$name, $paramStr] = explode(':', $maybeAlias, 2) + [1 => null];
+        $separator = strpos($maybeAlias, ':');
+        $name = $separator === false ? $maybeAlias : substr($maybeAlias, 0, $separator);
+        $paramStr = $separator === false ? null : substr($maybeAlias, $separator + 1);
         $key = strtolower(trim($name));
         $params = $paramStr !== null && $paramStr !== ''
             ? array_map(trim(...), explode(',', $paramStr))

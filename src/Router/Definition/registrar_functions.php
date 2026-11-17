@@ -258,7 +258,9 @@ function registrar_parse_alias_spec(string $s): ?array
         return null;
     }
 
-    [$name, $paramStr] = \explode(':', $s, 2) + [1 => null];
+    $separator = strpos($s, ':');
+    $name = $separator === false ? $s : substr($s, 0, $separator);
+    $paramStr = $separator === false ? null : substr($s, $separator + 1);
     $key = \strtolower(\trim($name));
 
     if ($key === '' || !MiddlewareAliases::has($key)) {

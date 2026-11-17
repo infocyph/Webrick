@@ -396,10 +396,6 @@ final class Dispatcher
      */
     private function parseClassMethodStringHandler(string $handler): ?array
     {
-        if (!str_contains($handler, '::') && !str_contains($handler, '@')) {
-            return null;
-        }
-
         $separator = str_contains($handler, '::') ? '::' : '@';
         $position = strpos($handler, $separator);
         if ($position === false) {
@@ -424,7 +420,7 @@ final class Dispatcher
         foreach ($route->getMiddlewares() as $mw) {
             if (is_string($mw)) {
                 $class = $this->looksLikeAliasString($mw) ? $this->aliasStringClass($mw) : null;
-                if ($class !== null && $class !== '' && $class !== '0') {
+                if ($class !== null) {
                     $set[$class] = true;
                 } elseif (class_exists($mw)) {
                     $set[$mw] = true;
