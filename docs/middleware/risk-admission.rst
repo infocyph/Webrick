@@ -122,6 +122,26 @@ Request, account, tenant, mutable identity or cancellation token in a
 worker-global callback. Ordinary SAPI requires no Runwire runtime; a host
 choosing Runwire must pass its existing cancellation/deadline context.
 
+Real isolated shared-backend acceptance
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The repository's PHPForge QA matrix starts a dedicated Redis standalone
+service for its integration tests (including the PHP Redis extension).
+`RiskAdmissionRedisReplayTest` launches **independent PHP processes** against
+that service, not an in-memory mock. The host-style policy first checks a
+supplied already-verified proof flag, then uses Redis `SET key value NX EX`
+for a single, bounded proof claim. Tests assert that eight competing workers
+admit exactly one request, all others reject without executing the handler,
+a wrong-password attempt still consumes its proof, an unverified proof
+cannot claim another proof's key, and a failed backend connection rejects 503.
+
+All test keys are namespaced and randomized; tests delete only their own keys
+and never flush the server. This tests **standalone Redis** atomic claiming and
+outage handling, **not** live Siteverify correctness, cluster/replica failover,
+eviction/restart durability or multi-host deployments. The real application
+must qualify its own provider, hostname/action binding, supported TLS
+client, proof expiry margin, and key/tenant namespaces.
+
 Verification and release limitations
 ------------------------------------
 

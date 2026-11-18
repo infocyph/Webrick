@@ -18,8 +18,8 @@ jobs:
     if: github.event_name != 'push' || !startsWith(github.ref, 'refs/tags/')
     uses: infocyph/phpforge/.github/workflows/security-standards.yml@main
     with:
-      integration_services: '[]'
-      service_topologies: '{}'
+      integration_services: '["redis"]'
+      service_topologies: '{"redis":"standalone"}'
       php_extensions: intl,brotli,zstd
     permissions:
       security-events: write
