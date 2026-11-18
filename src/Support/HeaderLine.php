@@ -20,6 +20,8 @@ final readonly class HeaderLine
     /**
      * The token grammar and C0/DEL check prevent invalid HTTP header lines.
      * Valid names and values are passed through unchanged.
+     * The complete header-line result is safe from header-name injection and
+     * CR/LF response splitting; no other taint kinds are declassified.
      *
      * @throws \InvalidArgumentException
      */
