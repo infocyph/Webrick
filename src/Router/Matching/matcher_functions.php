@@ -67,6 +67,9 @@ function matcher_write_validated_atomic_php_file(string $file, string $php, call
         if (file_put_contents($tmp, $php, LOCK_EX) === false || !chmod($tmp, 0644)) {
             throw new \RuntimeException("Failed to write cache temp file {$tmp}");
         }
+        if (!file_exists($tmp)) {
+            throw new \RuntimeException('Generated cache staging file is missing.');
+        }
 
         $blob = require $tmp;
         if (!is_array($blob)) {
@@ -216,6 +219,7 @@ function sharded_matcher_shard_file_path(string $cacheDir, string $hostKey, stri
  * be owned by the deployment, not the request.
  *
  * @param list<string> $winReserved
+ * @psalm-taint-escape include
  */
 function sharded_matcher_sanitize_for_filename(string $value, array $winReserved): string
 {

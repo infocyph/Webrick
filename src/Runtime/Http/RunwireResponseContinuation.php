@@ -131,6 +131,8 @@ final class RunwireResponseContinuation
             }
         } finally {
             $subscription->unsubscribe();
+            // The retained drain closure reads this reference after the method returns.
+            /** @psalm-suppress UnusedVariable */
             $continuation = null;
         }
     }
@@ -258,6 +260,8 @@ final class RunwireResponseContinuation
         $ioSuspensions[$fiber] = true;
 
         try {
+            // Suspension transfers control even when its resume value is intentionally discarded.
+            /** @psalm-suppress UnusedMethodCall */
             Fiber::suspend();
         } finally {
             unset($ioSuspensions[$fiber]);

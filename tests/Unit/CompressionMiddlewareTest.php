@@ -165,9 +165,7 @@ describe('CompressionMiddleware', function () {
 
         expect($response->getHeaderLine('Content-Encoding'))->toBe($encoding);
 
-        $decoded = $encoding === 'br'
-            ? brotli_uncompress((string) $response->getBody())
-            : zstd_uncompress((string) $response->getBody());
+        $decoded = $decompressFunction((string) $response->getBody());
 
         expect($decoded)->toBe($body);
     })->with([

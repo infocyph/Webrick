@@ -323,7 +323,10 @@ class ServerRequest extends Message
     /** @return array<string,UploadedFile|array<array-key,mixed>> */
     public function getUploadedFiles(): array
     {
-        return $this->filesHydrated ??= UploadedFilesNormalizer::normalise($this->filesSpec);
+        // Resolve inherited private storage in its declaring lexical scope.
+        return $this->filesHydrated ??= UploadedFilesNormalizer::normalise(
+            (static fn(self $request): array => $request->filesSpec)($this),
+        );
     }
 
     public function getUploadedFilesCollection(): UploadedFileCollection

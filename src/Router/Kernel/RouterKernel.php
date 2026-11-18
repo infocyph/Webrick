@@ -272,7 +272,7 @@ final readonly class RouterKernel
     }
 
     /**
-     * @return Closure(Request, Closure(Request):Response):Response
+     * @return Closure(Request, Closure(Request):mixed):Response
      */
     private function lazyTaggedMiddleware(string $tag): Closure
     {

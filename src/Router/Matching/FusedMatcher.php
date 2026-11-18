@@ -264,6 +264,9 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         if ($this->cacheLoaded) {
             return;
         }
+        if (!is_file($this->cacheFile)) {
+            throw new \RuntimeException('Fused route cache is missing. Rebuild the route cache.');
+        }
 
         /** @var array<string,mixed> $blob */
         $blob = require $this->cacheFile;

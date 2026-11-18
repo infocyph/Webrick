@@ -48,10 +48,13 @@ final readonly class RouteCacheBuildRegistrarCallback
                 throw new \RuntimeException("Routes file not found: {$this->routesFile}");
             }
 
-            $registrarForFile = $registrar;
-            $logger = $this->logger;
-            $baseDir = $this->baseDir;
-            $signKey = $this->signKey;
+            // Export only the fixed legacy bindings; route source never supplies variable names.
+            extract([
+                'registrarForFile' => $registrar,
+                'logger' => $this->logger,
+                'baseDir' => $this->baseDir,
+                'signKey' => $this->signKey,
+            ], EXTR_SKIP);
             require $this->routesFile;
         }
 

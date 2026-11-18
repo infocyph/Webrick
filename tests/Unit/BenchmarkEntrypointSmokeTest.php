@@ -44,7 +44,7 @@ test('setup-managed benchmarks execute representative real methods', function ()
     $cache = new CacheLifecycleBench();
     $cache->setUp();
     try {
-        $cache->benchFusedCachedBoot();
+        expect(fn() => $cache->benchFusedCachedBoot())->not->toThrow(\Throwable::class);
         $cache->benchFusedCachedFirstRequest();
         $cache->benchFusedCacheBuild();
     } finally {
@@ -96,7 +96,7 @@ test('setup-managed benchmarks execute representative real methods', function ()
 test('parameter-provider benchmarks run a representative declared scenario', function (): void {
     $adaptive = new MatcherAdaptiveDecisionBench();
     foreach ($adaptive->provideCases() as $params) {
-        $adaptive->benchAdaptiveDecision($params);
+        expect(fn() => $adaptive->benchAdaptiveDecision($params))->not->toThrow(\Throwable::class);
         break;
     }
 

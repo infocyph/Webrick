@@ -509,6 +509,7 @@ test('staged cache validation preserves the active artifact on failure', functio
             },
         ))->toThrow(RuntimeException::class, 'validation failed');
 
+        expect(is_file($file))->toBeTrue();
         expect(require $file)->toBe(['value' => 'active']);
     } finally {
         if (is_file($file)) {

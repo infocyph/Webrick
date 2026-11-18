@@ -141,7 +141,7 @@ final class HttpUtils
      */
     public static function splitQuoted(string $raw, string $delimiter, bool $rejectEmpty = false): ?array
     {
-        if (strlen($delimiter) !== 1) {
+        if ($delimiter === '' || strlen($delimiter) !== 1) {
             throw new \InvalidArgumentException('HTTP list delimiter must be exactly one character.');
         }
 

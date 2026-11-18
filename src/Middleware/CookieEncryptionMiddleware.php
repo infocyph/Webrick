@@ -38,8 +38,6 @@ final readonly class CookieEncryptionMiddleware
 
     private CookieAttributeApplier $cookieAttributeApplier;
 
-    private bool $hasBrotli;
-
     private bool $hasGzip;
 
     private bool $hasZstd;
@@ -88,7 +86,6 @@ final readonly class CookieEncryptionMiddleware
         $this->keys = $keys;
         $this->kid = $activeKid;
         $this->hasZstd = function_exists('zstd_compress') && function_exists('zstd_uncompress');
-        $this->hasBrotli = function_exists('brotli_compress') && function_exists('brotli_uncompress');
         $this->hasGzip = function_exists('gzdeflate') && function_exists('gzinflate');
         $this->cookieAttributeApplier = new CookieAttributeApplier(
             forceSecure: $this->forceSecure,
@@ -191,7 +188,7 @@ final readonly class CookieEncryptionMiddleware
             $best = $compressed;
             $mode = self::MODE_ZSTD;
         }
-        if ($this->hasBrotli && ($compressed = brotli_compress($plaintext, 4)) !== false && strlen($compressed) < strlen($best)) {
+        if (function_exists('brotli_compress') && function_exists('brotli_uncompress') && is_string($compressed = \brotli_compress($plaintext, 4)) && strlen($compressed) < strlen($best)) {
             $best = $compressed;
             $mode = self::MODE_BROTLI;
         }
@@ -223,7 +220,7 @@ final readonly class CookieEncryptionMiddleware
     {
         return match ($mode) {
             self::MODE_ZSTD => $this->hasZstd ? zstd_uncompress($payload) : null,
-            self::MODE_BROTLI => $this->hasBrotli ? brotli_uncompress($payload) : null,
+            self::MODE_BROTLI => function_exists('brotli_uncompress') && function_exists('brotli_compress') ? \brotli_uncompress($payload) : null,
             self::MODE_GZIP => $this->hasGzip ? gzinflate($payload) : null,
             self::MODE_NONE => $payload,
             default => null,

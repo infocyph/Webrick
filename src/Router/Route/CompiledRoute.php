@@ -418,16 +418,18 @@ final class CompiledRoute implements RouteInterface
     }
 
     /**
-     * @return array{object|string,string}|string|callable
+     * @return array{0:object|string,1:string}|string|callable
+     * @psalm-return array{0:object|string,1:string}|string|callable-object
+     * @phpstan-return array{0:object|string,1:string}|string|callable-object
      * @throws \UnexpectedValueException
      */
     private static function stateHandler(mixed $value): array|string|callable
     {
-        if (is_string($value) || is_callable($value)) {
+        if (is_string($value) || (is_object($value) && is_callable($value))) {
             return $value;
         }
-        if (is_array($value) && count($value) === 2 && (is_object($value[0]) || is_string($value[0])) && is_string($value[1])) {
-            return [$value[0], $value[1]];
+        if (is_array($value) && count($value) === 2 && isset($value[0], $value[1]) && (is_object($value[0]) || is_string($value[0])) && is_string($value[1])) {
+            return is_callable($value) ? $value : [$value[0], $value[1]];
         }
 
         throw new \UnexpectedValueException('Invalid handler in compiled route state.');
@@ -456,14 +458,7 @@ final class CompiledRoute implements RouteInterface
         }
         $middleware = [];
         foreach ($value as $entry) {
-            $descriptor = self::stateHandler($entry);
-            if (is_string($descriptor) || is_object($descriptor) || is_array($descriptor)) {
-                $middleware[] = $descriptor;
-
-                continue;
-            }
-
-            throw new \UnexpectedValueException('Invalid middleware descriptor in compiled route state.');
+            $middleware[] = self::stateHandler($entry);
         }
 
         return $middleware;

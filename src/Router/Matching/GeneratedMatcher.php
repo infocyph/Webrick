@@ -221,6 +221,9 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         }
 
         try {
+            if (!is_file($file)) {
+                throw new \RuntimeException('Generated matcher source file is missing.');
+            }
             $fn = require $file;
         } finally {
             self::removeTemporaryMatcherFile($file);
@@ -290,6 +293,9 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
     {
         if ($this->cacheLoaded) {
             return;
+        }
+        if (!is_file($this->cacheFile)) {
+            throw new \RuntimeException('Generated route cache is missing. Rebuild the route cache.');
         }
 
         /** @var array<string,mixed> $blob */
@@ -363,25 +369,27 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
      */
     private function renderDynamicHosts(array $hosts): string
     {
+        if (!array_any($hosts, static fn(array $index): bool => $index['dynamic'] !== [])) {
+            return '';
+        }
+
         $dynamicSwitch = '';
-        if (array_any($hosts, static fn(array $index): bool => $index['dynamic'] !== [])) {
-            $dynamicSwitch .= "    \$trimmed = \\trim(\$path, '/');\n";
-            $dynamicSwitch .= "    \$segments = \$trimmed === '' ? [] : \\explode('/', \$trimmed);\n";
-            $dynamicSwitch .= "    \$segCount = \\count(\$segments);\n";
-            $dynamicSwitch .= "    \$prefix = \$segments[0] ?? '';\n";
-            $dynamicSwitch .= "    switch (\$host) {\n";
-            foreach ($hosts as $host => $index) {
-                if ($host === '*' || $index['dynamic'] === []) {
-                    continue;
-                }
-                $dynamicSwitch .= '        case ' . var_export($host, true) . ":\n";
-                $dynamicSwitch .= $this->renderDynamicIndex($index['dynamic'], '            ');
-                $dynamicSwitch .= "            break;\n";
+        $dynamicSwitch .= "    \$trimmed = \\trim(\$path, '/');\n";
+        $dynamicSwitch .= "    \$segments = \$trimmed === '' ? [] : \\explode('/', \$trimmed);\n";
+        $dynamicSwitch .= "    \$segCount = \\count(\$segments);\n";
+        $dynamicSwitch .= "    \$prefix = \$segments[0] ?? '';\n";
+        $dynamicSwitch .= "    switch (\$host) {\n";
+        foreach ($hosts as $host => $index) {
+            if ($host === '*' || $index['dynamic'] === []) {
+                continue;
             }
-            $dynamicSwitch .= "    }\n";
-            if (isset($hosts['*'])) {
-                $dynamicSwitch .= $this->renderDynamicIndex($hosts['*']['dynamic'], '    ');
-            }
+            $dynamicSwitch .= '        case ' . var_export($host, true) . ":\n";
+            $dynamicSwitch .= $this->renderDynamicIndex($index['dynamic'], '            ');
+            $dynamicSwitch .= "            break;\n";
+        }
+        $dynamicSwitch .= "    }\n";
+        if (isset($hosts['*'])) {
+            $dynamicSwitch .= $this->renderDynamicIndex($hosts['*']['dynamic'], '    ');
         }
 
         return $dynamicSwitch;

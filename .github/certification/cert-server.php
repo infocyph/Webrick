@@ -31,6 +31,30 @@ use Psr\Log\NullLogger;
 const CERT_ENVIRONMENT = 'certification';
 const CERT_FINGERPRINT = 'webrick-runtime-release-certification-v1';
 
+/**
+ * The operator selects the checkout whose executable artifacts this tool runs.
+ * HTTP request values never choose this root; cli-server receives it from its host environment.
+ *
+ * @psalm-taint-escape file
+ * @psalm-taint-escape ssrf
+ * @psalm-taint-escape url_component
+ * @psalm-taint-escape url_path
+ * @psalm-taint-escape include
+ * @throws \RuntimeException
+ */
+function certification_root(string $path): string
+{
+    if ($path === '' || str_contains($path, "\0") || str_starts_with($path, '//') || str_starts_with($path, '\\\\') || preg_match('~^[a-z][a-z0-9.+-]*://~i', $path) === 1) {
+        throw new RuntimeException('Certification root must be a non-empty local checkout path.');
+    }
+    $root = realpath($path);
+    if ($root === false || !is_dir($root)) {
+        throw new RuntimeException('Certification root does not exist.');
+    }
+
+    return $root;
+}
+
 /** @return array<string,string|bool|int> */
 function certification_arguments(array $argv): array
 {
@@ -234,7 +258,11 @@ function certification_kernel(string $root): CompiledRouterKernel
     }
 
     if (method_exists(ContainerBuilder::class, 'loadProductionArtifact')) {
-        $graph = require $paths['intermix'] . '.release.php';
+        $graphPath = $paths['intermix'] . '.release.php';
+        if (!is_file($graphPath)) {
+            throw new RuntimeException('Certification deployment graph identity is missing.');
+        }
+        $graph = require $graphPath;
         if (!is_string($graph)) {
             throw new RuntimeException('Certification deployment graph identity is missing.');
         }
@@ -410,27 +438,32 @@ function certification_sapi(string $root): void
     )->handle();
 }
 
-$configuredRoot = getenv('WEBRICK_CERT_ROOT');
-$root = realpath($configuredRoot === false ? '' : $configuredRoot);
 if (PHP_SAPI === 'cli-server') {
-    if ($root === false) {
-        throw new RuntimeException('WEBRICK_CERT_ROOT must reference a checkout.');
+    $configuredRoot = getenv('WEBRICK_CERT_ROOT');
+    $root = certification_root($configuredRoot === false ? '' : $configuredRoot);
+    $autoload = $root . DIRECTORY_SEPARATOR . 'vendor' . DIRECTORY_SEPARATOR . 'autoload.php';
+    if (!is_file($autoload)) {
+        throw new RuntimeException('Certification dependencies are missing. Run composer install first.');
     }
-    require $root . DIRECTORY_SEPARATOR . 'vendor' . DIRECTORY_SEPARATOR . 'autoload.php';
+    require $autoload;
     certification_sapi($root);
 
     return;
+}
+if (PHP_SAPI !== 'cli') {
+    throw new RuntimeException('Certification commands require the CLI.');
 }
 
 $command = $argv[1] ?? '';
 $arguments = certification_arguments($argv);
 $rootArgument = (string) ($arguments['root'] ?? getcwd());
-$root = realpath($rootArgument);
-if ($root === false) {
-    throw new RuntimeException('Certification root does not exist.');
-}
+$root = certification_root($rootArgument);
 
-require $root . DIRECTORY_SEPARATOR . 'vendor' . DIRECTORY_SEPARATOR . 'autoload.php';
+$autoload = $root . DIRECTORY_SEPARATOR . 'vendor' . DIRECTORY_SEPARATOR . 'autoload.php';
+if (!is_file($autoload)) {
+    throw new RuntimeException('Certification dependencies are missing. Run composer install first.');
+}
+require $autoload;
 
 if ($command === 'prepare') {
     certification_prepare($root);

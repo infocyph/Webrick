@@ -228,11 +228,16 @@ final class AttributeRouteLoader
 
     /**
      * Try Composer autoload first; if that fails, include the file directly.
+     * @throws \RuntimeException
      */
     private static function loadClassIfNeeded(SplFileInfo $file, string $fqcn): void
     {
         if (!class_exists($fqcn, true)) { // true → allow autoload
-            require_once $file->getPathname();
+            $path = $file->getPathname();
+            if (!is_file($path)) {
+                throw new \RuntimeException('Attribute route source file is missing.');
+            }
+            require_once $path;
         }
     }
 

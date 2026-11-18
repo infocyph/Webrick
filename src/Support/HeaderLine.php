@@ -23,6 +23,7 @@ final readonly class HeaderLine
      * The complete header-line result is safe from header-name injection and
      * CR/LF response splitting; no other taint kinds are declassified.
      *
+     * @psalm-taint-escape header
      * @throws \InvalidArgumentException
      */
     public static function validated(string $name, string $value): string

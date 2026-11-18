@@ -41,7 +41,7 @@ class Response
 
     private HeaderBag $headers;
 
-    /** @var null|\Closure():iterable<string> */
+    /** @var null|\Closure():iterable<mixed> */
     private ?\Closure $producer = null;
 
     /**
@@ -427,7 +427,7 @@ class Response
         return $this->headers->all();
     }
 
-    /** @return null|\Closure():iterable<string> */
+    /** @return null|\Closure():iterable<mixed> */
     public function getProducer(): ?\Closure
     {
         return $this->producer;
@@ -605,7 +605,7 @@ class Response
 
     /**
      * @param callable(): (iterable<mixed>|string)|iterable<mixed> $producer
-     * @return \Closure():iterable<string>
+     * @return \Closure():iterable<mixed>
      */
     private static function normalizeProducer(callable|iterable $producer): \Closure
     {

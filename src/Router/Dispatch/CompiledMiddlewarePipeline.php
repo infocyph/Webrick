@@ -13,13 +13,14 @@ use UnexpectedValueException;
 /** Production middleware pipeline fully prepared once at worker/process boot. */
 final readonly class CompiledMiddlewarePipeline
 {
-    /** @var Closure(Request):Response */
+    /** @var Closure(Request):mixed */
     private Closure $pipeline;
 
     private bool $requiresScope;
 
     /**
-     * @param list<mixed> $middleware @param Closure(Request):Response $terminal
+     * @param list<mixed> $middleware
+     * @param Closure(Request):mixed $terminal
      * @throws \UnexpectedValueException
      */
     public function __construct(array $middleware, Closure $terminal, InterMixRuntime $runtime)

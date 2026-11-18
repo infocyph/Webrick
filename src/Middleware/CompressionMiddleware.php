@@ -254,7 +254,7 @@ final readonly class CompressionMiddleware
         return match ($algorithm) {
             'gzip' => gzencode($raw, $this->gzipLevel, ZLIB_ENCODING_GZIP),
             'deflate' => gzcompress($raw, $this->gzipLevel),
-            'br' => brotli_compress($raw, $this->brotliQuality),
+            'br' => function_exists('brotli_compress') ? \brotli_compress($raw, $this->brotliQuality) : false,
             'zstd' => zstd_compress($raw, $this->zstdLevel),
             default => false,
         };

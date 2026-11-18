@@ -3,6 +3,35 @@ Testing Guide
 
 Comprehensive testing strategies for Webrick applications.
 
+Repository quality gates
+------------------------
+
+Run ``composer ic:ci`` for the shared PHPForge gates and
+``composer ic:tests:details`` for their detailed local output. Security & Standards
+owns the hosted diagnostics; Webrick does not maintain a second diagnostics job
+or a local Psalm XML configuration.
+
+``composer.json`` defines a default-deny ``extra.phpforge.skipper_policy``.
+Its reviewed contracts cover header validation, shard filename components and
+operator-selected certification filesystem paths. Certification path authority
+comes exclusively from CLI arguments or the test server's host environment;
+these helpers must never authorize HTTP request paths or serve as URL encoders.
+File contents retain their data taints. Production uploads and file APIs do not
+receive a filesystem-taint exemption.
+
+Each sanitizer permission names exact taint categories, its source SHA-256 and
+regression tests. Changes to that source deliberately fail the directive gate;
+review the implementation, dependencies and tests before updating the digest.
+Do not refresh evidence hashes automatically.
+
+Two statement-level Psalm 7.10 exceptions preserve required Fiber behavior:
+``UnusedVariable`` misses the escaped drain callback's reference to the cleared
+continuation, and ``UnusedMethodCall`` misclassifies ``Fiber::suspend()``.
+The lifecycle tests verify reference release, pressure and cancellation. Remove
+the exceptions when upstream analysis recognizes those effects. The upload
+getter uses an explicit declaring scope to avoid inherited magic-property taint
+being confused with private upload storage; actual input taints remain tracked.
+
 --------------
 
 Test Pyramid

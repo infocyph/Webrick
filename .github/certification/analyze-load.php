@@ -2,16 +2,65 @@
 
 declare(strict_types=1);
 
+if (PHP_SAPI !== 'cli') {
+    throw new RuntimeException('Load analysis requires the CLI.');
+}
+
+/**
+ * Resolve the evidence file explicitly selected by the command-line operator.
+ * The file contents retain all their data taints; this grants only local path access.
+ * URL taints describe network authority here; this is not a URL encoder.
+ *
+ * @psalm-taint-escape file
+ * @psalm-taint-escape ssrf
+ * @psalm-taint-escape url_component
+ * @psalm-taint-escape url_path
+ * @throws \RuntimeException
+ */
+function load_input_path(string $path): string
+{
+    if ($path === '' || str_contains($path, "\0") || str_starts_with($path, '//') || str_starts_with($path, '\\\\') || preg_match('~^[a-z][a-z0-9.+-]*://~i', $path) === 1) {
+        throw new RuntimeException('Load results must be a local file.');
+    }
+    $resolved = realpath($path);
+    if ($resolved === false || !is_file($resolved)) {
+        throw new RuntimeException('Load results must be a local file.');
+    }
+
+    return $resolved;
+}
+
+/**
+ * Grant writes to an operator-selected report filename in an existing local directory.
+ * File data and non-filesystem taints are not declassified.
+ * URL taints describe network authority here; this is not a URL encoder.
+ *
+ * @psalm-taint-escape file
+ * @psalm-taint-escape ssrf
+ * @psalm-taint-escape url_component
+ * @psalm-taint-escape url_path
+ * @throws \RuntimeException
+ */
+function report_output_path(string $path): string
+{
+    if ($path === '' || str_contains($path, "\0") || str_starts_with($path, '//') || str_starts_with($path, '\\\\') || preg_match('~^[a-z][a-z0-9.+-]*://~i', $path) === 1) {
+        throw new RuntimeException('Report output must be a local file.');
+    }
+    $directory = realpath(dirname($path));
+    if ($directory === false || !is_dir($directory) || in_array(basename($path), ['.', '..'], true)) {
+        throw new RuntimeException('Report output directory must exist.');
+    }
+
+    return $directory . DIRECTORY_SEPARATOR . basename($path);
+}
+
 /**
  * @return list<array<string,mixed>>
  * @throws \RuntimeException
  */
 function load_rows(string $path): array
 {
-    $localPath = realpath($path);
-    if ($localPath === false || !is_file($localPath)) {
-        throw new RuntimeException('Load results must be a local file.');
-    }
+    $localPath = load_input_path($path);
 
     $rows = [];
     $lines = file($localPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
@@ -154,6 +203,8 @@ $trials = (int) ($options['trials'] ?? 3);
 if ($input === '' || $summaryPath === '' || $jsonPath === '') {
     throw new RuntimeException('Expected --input, --summary and --json paths.');
 }
+$summaryPath = report_output_path($summaryPath);
+$jsonPath = report_output_path($jsonPath);
 if (!in_array($profile, ['all', 'sapi', 'runwire'], true)) {
     throw new RuntimeException('Certification profile must be all, sapi or runwire.');
 }
