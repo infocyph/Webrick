@@ -180,3 +180,49 @@ test('risk admission does not turn evaluator failures into admission', function 
     RiskAdmissionMiddleware::ENFORCE,
     RiskAdmissionMiddleware::SHADOW,
 ]);
+
+
+test('risk admission isolates interleaved Fiber requests across tenants', function (): void {
+    $middleware = new RiskAdmissionMiddleware(
+        static fn(Request $request): RiskDecision => $request->getAttribute('tenant') === 'alpha'
+            ? RiskDecision::allow(10, ['alpha_policy'])
+            : RiskDecision::allow(20, ['beta_policy']),
+    );
+    $handler = static function (Request $request): Response {
+        $decision = $request->getAttribute(RiskDecision::ATTRIBUTE);
+        if (!$decision instanceof RiskDecision) {
+            throw new UnexpectedValueException('Risk decision missing from scoped request.');
+        }
+
+        expect(Fiber::suspend($decision->score))->toBe(true);
+
+        return Response::json([
+            'tenant' => $request->getAttribute('tenant'),
+            'score' => $decision->score,
+        ]);
+    };
+
+    $alpha = Request::fake(uri: '/session')->withAttribute('tenant', 'alpha');
+    $beta = Request::fake(uri: '/session')->withAttribute('tenant', 'beta');
+    $alphaFiber = new Fiber(static fn(): Response => $middleware($alpha, $handler));
+    $betaFiber = new Fiber(static fn(): Response => $middleware($beta, $handler));
+
+    expect($alphaFiber->start())->toBe(10);
+    expect($betaFiber->start())->toBe(20);
+    expect($alpha->getAttribute(RiskDecision::ATTRIBUTE))->toBeNull();
+    expect($beta->getAttribute(RiskDecision::ATTRIBUTE))->toBeNull();
+
+    expect($betaFiber->resume(true))->toBeNull();
+    expect($alphaFiber->resume(true))->toBeNull();
+
+    $alphaResult = $alphaFiber->getReturn();
+    $betaResult = $betaFiber->getReturn();
+    if (!$alphaResult instanceof Response || !$betaResult instanceof Response) {
+        throw new UnexpectedValueException('Expected native response from both Fiber requests.');
+    }
+
+    expect($alphaResult->getStatusCode())->toBe(200);
+    expect($betaResult->getStatusCode())->toBe(200);
+    expect((string) $alphaResult->getBody())->toBe('{"tenant":"alpha","score":10}');
+    expect((string) $betaResult->getBody())->toBe('{"tenant":"beta","score":20}');
+});
