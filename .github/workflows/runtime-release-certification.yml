@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/runwire
+      - feature/risk-admission
   workflow_dispatch:
     inputs:
       baseline_ref:
