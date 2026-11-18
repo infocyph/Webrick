@@ -7,16 +7,6 @@ on:
       - feature/risk-admission
   workflow_dispatch:
     inputs:
-      baseline_ref:
-        description: Webrick integration baseline ref (must share installed HTTP runtime and DI versions with candidate)
-        required: true
-        default: "main"
-        type: string
-      candidate_ref:
-        description: Candidate ref; leave empty to certify the dispatched SHA
-        required: false
-        default: ""
-        type: string
       duration_seconds:
         description: Seconds per steady-state HTTP load trial
         required: true
@@ -73,7 +63,8 @@ jobs:
       - name: Check out candidate
         uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.candidate_ref || github.sha }}
+          persist-credentials: false
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Set up PHP
@@ -195,14 +186,16 @@ jobs:
       - name: Check out candidate
         uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.candidate_ref || github.sha }}
+          persist-credentials: false
+          ref: ${{ github.sha }}
           path: candidate
           fetch-depth: 0
 
       - name: Check out baseline
         uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.baseline_ref || 'main' }}
+          persist-credentials: false
+          ref: main
           path: baseline
           fetch-depth: 0
 
@@ -308,7 +301,8 @@ jobs:
       - name: Check out candidate
         uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.candidate_ref || github.sha }}
+          persist-credentials: false
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Set up PHP
@@ -349,7 +343,8 @@ jobs:
       - name: Check out candidate
         uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.candidate_ref || github.sha }}
+          persist-credentials: false
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Install QUIC and HTTP/3 certification tools
@@ -448,7 +443,8 @@ jobs:
       - name: Check out candidate
         uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.candidate_ref || github.sha }}
+          persist-credentials: false
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Assert prepared QUIC host

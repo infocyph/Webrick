@@ -57,6 +57,8 @@ jobs:
     steps:
       - name: Check out candidate
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Set up PHP 8.5
         uses: shivammathur/setup-php@v2
@@ -130,32 +132,3 @@ jobs:
           composer install --no-interaction --no-progress --prefer-dist
           composer ic:tests:details
 
-
-  codeql-finding-diagnostics:
-    name: Identify CodeQL annotations for release blockers
-    if: github.event_name == 'pull_request' && github.head_ref == 'feature/risk-admission'
-    runs-on: ubuntu-24.04
-    permissions:
-      checks: read
-      contents: read
-    env:
-      GH_TOKEN: ${{ github.token }}
-      PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-    steps:
-      - name: Report exact-sha CodeQL check annotations
-        shell: bash
-        run: |
-          set -euo pipefail
-          for attempt in {1..18}; do
-            checks="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${PR_HEAD_SHA}/check-runs?check_name=CodeQL")"
-            check_id="$(jq -r '[.check_runs[] | select(.name == "CodeQL" and .status == "completed") | .id] | first // empty' <<< "$checks")"
-            if [[ -n "$check_id" ]]; then
-              echo "CodeQL check ID: $check_id"
-              gh api "repos/${GITHUB_REPOSITORY}/check-runs/${check_id}/annotations?per_page=100" |
-                jq -c '.[] | {path, start_line, end_line, annotation_level, title, message}'
-              exit 0
-            fi
-            sleep 5
-          done
-          echo "::error::CodeQL did not complete within the bounded annotation collection interval"
-          exit 1
