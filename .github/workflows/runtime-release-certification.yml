@@ -8,9 +8,9 @@ on:
   workflow_dispatch:
     inputs:
       baseline_ref:
-        description: Webrick baseline ref for same-run comparison
+        description: Webrick integration baseline ref (must share installed HTTP runtime and DI versions with candidate)
         required: true
-        default: "6.0"
+        default: "main"
         type: string
       candidate_ref:
         description: Candidate ref; leave empty to certify the dispatched SHA
@@ -195,7 +195,7 @@ jobs:
       - name: Check out baseline
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.baseline_ref || '6.0' }}
+          ref: ${{ inputs.baseline_ref || 'main' }}
           path: baseline
           fetch-depth: 0
 
@@ -211,6 +211,25 @@ jobs:
           sudo apt-get install -y curl jq wrk
           composer install --working-dir=candidate --no-interaction --no-progress --prefer-dist
           composer install --working-dir=baseline --no-interaction --no-progress --prefer-dist
+
+      - name: Certify comparable installed runtime dependencies
+        run: |
+          mkdir -p cert-results
+          {
+            printf 'baseline_sha=%s\n' "$(git -C baseline rev-parse HEAD)"
+            printf 'candidate_sha=%s\n' "$(git -C candidate rev-parse HEAD)"
+            printf 'php_version=%s\n' "$(php -r 'echo PHP_VERSION;')"
+            printf 'benchmark_mode=%s\n' "${{ matrix.mode }}"
+          } | tee cert-results/environment.txt
+          for package in infocyph/runwire infocyph/intermix; do
+            baseline_version="$(composer --working-dir=baseline show --format=json "$package" | jq -er '.versions[0]')"
+            candidate_version="$(composer --working-dir=candidate show --format=json "$package" | jq -er '.versions[0]')"
+            printf '%s baseline=%s candidate=%s\n' "$package" "$baseline_version" "$candidate_version" | tee -a cert-results/environment.txt
+            if [[ "$baseline_version" != "$candidate_version" ]]; then
+              echo "::error::Benchmark runtime version mismatch for $package: baseline=$baseline_version candidate=$candidate_version; use a comparable baseline, do not waive performance budgets"
+              exit 1
+            fi
+          done
 
       - name: Verify in-load RSS sampling and failure propagation
         run: bash candidate/.github/certification/test-load-rss-sampler.sh
@@ -247,7 +266,6 @@ jobs:
 
       - name: Run controlled same-run load matrix
         run: |
-          mkdir -p cert-results
           bash candidate/.github/certification/load-benchmark.sh             "$PWD/baseline"             "$PWD/candidate"             "$PWD/cert-results"             "${{ github.event_name == 'workflow_dispatch' && inputs.duration_seconds || '10' }}"             "${{ github.event_name == 'workflow_dispatch' && inputs.trials || '3' }}"             "${{ github.event_name == 'workflow_dispatch' && inputs.duration_seconds || '10' }}"             "${{ matrix.mode }}"
 
       - name: Enforce performance budgets
