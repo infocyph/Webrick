@@ -134,6 +134,13 @@ expiry, malformed proof/response, cancellations, account binding and
 host-configured paths/URLs. Do not count in-process doubles as distributed
 evidence.
 
+Production builds can serialize *pure* closure middleware fixtures into
+executable router artifacts, but never use that capability to embed
+credential-bearing clients, mutable provider objects or request-specific state.
+Resolve real policy services through the host's InterMix runtime and keep
+deployments and source-free consumers qualified separately. The compiled
+parity regression exercises the pure-fixture case only.
+
 Before claiming release readiness also verify compiled/source-free and
 no-dev consumers, optional-provider absence, strict Sphinx HTML docs,
 archive contents, full PHPForge detail checks, matched authorized-request
