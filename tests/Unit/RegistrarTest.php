@@ -23,13 +23,9 @@ describe('Registrar', function () {
     it('registers GET routes', function () {
         $this->registrar->get('/users', fn() => Response::json([]), 'users.index');
 
-        $route = $this->routes->findByName('users.index');
+        $route = $this->routes->findByName('users.index') ?? throw new LogicException('Expected the users.index route to be registered.');
 
         expect($route)->not->toBeNull();
-        if (!$route instanceof RouteInterface) {
-            throw new LogicException('Expected the users.index route to be registered.');
-        }
-
         expect($route->getMethod())->toBe('GET')
             ->and($route->getPath())->toBe('/users')
             ->and($route->getName())->toBe('users.index');
@@ -120,13 +116,9 @@ describe('Registrar', function () {
             },
         );
 
-        $route = $this->routes->findByName('api.users');
+        $route = $this->routes->findByName('api.users') ?? throw new LogicException('Expected the api.users route to be registered.');
 
         expect($route)->not->toBeNull();
-        if (!$route instanceof RouteInterface) {
-            throw new LogicException('Expected the api.users route to be registered.');
-        }
-
         expect($route->getPath())->toBe('/api/users')
             ->and($route->getName())->toBe('api.users');
     });
@@ -146,13 +138,9 @@ describe('Registrar', function () {
             },
         );
 
-        $route = $this->routes->findByName('admin.users.index');
+        $route = $this->routes->findByName('admin.users.index') ?? throw new LogicException('Expected the admin.users.index route to be registered.');
 
         expect($route)->not->toBeNull();
-        if (!$route instanceof RouteInterface) {
-            throw new LogicException('Expected the admin.users.index route to be registered.');
-        }
-
         // Accept with or without trailing slash
         $path = $route->getPath();
         expect(in_array($path, ['/admin/users', '/admin/users/'], true))

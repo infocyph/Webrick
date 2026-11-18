@@ -129,6 +129,15 @@ test('router artifact compiler still publishes loadable local PHP and metadata',
             ->and(is_file($path . '.meta.json'))->toBeTrue()
             ->and($result['digest'])->toBe(hash_file('xxh128', $path));
 
+        $phpMode = fileperms($path);
+        $metaMode = fileperms($path . '.meta.json');
+        if (!is_int($phpMode) || !is_int($metaMode)) {
+            throw new RuntimeException('Unable to stat published router artifact permissions.');
+        }
+        expect($phpMode & 0o022)->toBe(0)
+            ->and($metaMode & 0o022)->toBe(0)
+            ->and(glob($directory . '/.webrick-artifact-*'))->toBe([]);
+
         $artifact = new RouterArtifactLoader()->load($path, 'production', 'fixture');
         expect($artifact->environment)->toBe('production');
     } finally {

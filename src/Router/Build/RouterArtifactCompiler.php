@@ -143,6 +143,29 @@ final class RouterArtifactCompiler
         );
     }
 
+    /** @throws \RuntimeException */
+    private static function allocateStage(string $directory): string
+    {
+        $realDirectory = realpath($directory);
+        if (!is_string($realDirectory)) {
+            throw new RuntimeException('Webrick artifact directory is unavailable.');
+        }
+
+        $temporary = tempnam($realDirectory, '.webrick-artifact-');
+        if (!is_string($temporary)) {
+            throw new RuntimeException('Unable to allocate Webrick artifact stage.');
+        }
+        if (dirname($temporary) !== $realDirectory) {
+            if (is_file($temporary)) {
+                unlink($temporary);
+            }
+
+            throw new RuntimeException('Webrick artifact stage must be in the destination directory.');
+        }
+
+        return $temporary;
+    }
+
     /**
      * @return array{0:array<int,mixed>,1:array<int,array<string,mixed>>}
      * @throws \UnexpectedValueException
@@ -181,14 +204,19 @@ final class RouterArtifactCompiler
             throw new RuntimeException("Unable to create Webrick artifact directory '{$directory}'.");
         }
 
-        $temporary = $path . '.' . bin2hex(random_bytes(6)) . '.tmp';
-        if (file_put_contents($temporary, $contents, LOCK_EX) === false) {
-            throw new RuntimeException("Unable to write Webrick artifact '{$temporary}'.");
-        }
-        if (!rename($temporary, $path)) {
-            @unlink($temporary);
+        $temporary = self::allocateStage($directory);
 
-            throw new RuntimeException("Unable to publish Webrick artifact '{$path}'.");
+        try {
+            if (file_put_contents($temporary, $contents, LOCK_EX) === false || !chmod($temporary, 0o644)) {
+                throw new RuntimeException("Unable to write Webrick artifact '{$temporary}'.");
+            }
+            if (!rename($temporary, $path)) {
+                throw new RuntimeException("Unable to publish Webrick artifact '{$path}'.");
+            }
+        } finally {
+            if (is_file($temporary) && !unlink($temporary)) {
+                throw new RuntimeException("Unable to remove Webrick artifact stage '{$temporary}'.");
+            }
         }
     }
 }
