@@ -24,6 +24,7 @@ use Infocyph\Runwire\RuntimeContext as RunwireContext;
 use Infocyph\Runwire\Runtime\Enum\CancellationReason;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Runtime\Http\RunwireRuntimeAdapter;
+use Infocyph\Webrick\Runtime\Http\ResponseWriterSupport;
 use Infocyph\Webrick\Runtime\Http\RuntimeRequestExecution;
 
 final class RunwireAdapterBodyFixture implements RequestBodyInterface
@@ -381,4 +382,51 @@ test('runwire adapter rejects missing or mismatched native handles', function ()
         ->toThrow(RuntimeException::class, 'Runwire runtime requires HttpRequest and ResponseWriterInterface handles.');
     expect(fn() => $adapter->context(runwire_adapter_request(), new stdClass()))
         ->toThrow(RuntimeException::class, 'Runwire runtime requires HttpRequest and ResponseWriterInterface handles.');
+});
+
+test('runwire HTTP1 header fast path preserves arrays and HTTP2 status filtering', function (): void {
+    $normal = Response::create('hello', 200, [
+        'X-Repeated' => ['one', 'two'],
+        'Connection' => 'keep-alive',
+    ]);
+    expect(ResponseWriterSupport::headerMap($normal, false))->toBe($normal->getHeaders());
+
+    $http2 = ResponseWriterSupport::headerMap(
+        Response::create('hello', 200, [
+            'Connection' => 'X-Hop',
+            'X-Hop' => 'excluded',
+            'X-Repeated' => ['one', 'two'],
+        ]),
+        true,
+    );
+    expect($http2)->not->toHaveKey('Connection')
+        ->and($http2)->not->toHaveKey('X-Hop')
+        ->and($http2['X-Repeated'] ?? null)->toBe(['one', 'two']);
+
+    $noContent = ResponseWriterSupport::headerMap(
+        Response::create('', 204, ['Content-Length' => '100', 'X-Repeated' => ['one', 'two']]),
+        false,
+    );
+    expect($noContent)->not->toHaveKey('Content-Length')
+        ->and($noContent['X-Repeated'] ?? null)->toBe(['one', 'two']);
+
+    expect(ResponseWriterSupport::withKnownLength($normal->getHeaders(), 5))
+        ->toBe($normal->getHeaders() + ['Content-Length' => ['5']])
+        ->and(ResponseWriterSupport::withKnownLength(['content-length' => ['7']], 5))
+        ->toBe(['content-length' => ['7']])
+        ->and(ResponseWriterSupport::withKnownLength(['X-Repeated' => ['one', 'two']], null))
+        ->toBe(['X-Repeated' => ['one', 'two']]);
+});
+
+test('runwire HTTP1 writer appends known length without discarding repeated headers', function (): void {
+    $adapter = new RunwireRuntimeAdapter();
+    $writer = new RunwireAdapterWriterFixture();
+    $context = $adapter->context(runwire_adapter_request(), $writer);
+    $adapter->write(Response::create('hello', 200, ['X-Repeated' => ['one', 'two']]), $context);
+
+    expect($writer->headers->first('content-length'))->toBe('5')
+        ->and($writer->headers->all('x-repeated'))->toBe(['one', 'two'])
+        ->and($writer->chunks)->toBe(['hello'])
+        ->and($writer->startCalls)->toBe(1)
+        ->and($writer->endCalls)->toBe(1);
 });

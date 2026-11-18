@@ -168,8 +168,7 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
             return;
         }
 
-        $string = $response->getStringBody();
-        if ($string !== null && !$response->isStreaming()) {
+        if (!$response->isStreaming() && ($string = $response->getStringBody()) !== null) {
             self::finish($writer, $cancellation, $string);
 
             return;
@@ -401,14 +400,11 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
     private static function responseHeaders(Response $response, bool $http2Or3): Headers
     {
         $headers = ResponseWriterSupport::headerMap($response, $http2Or3);
-        $runwire = Headers::fromArray($headers);
-        $size = ResponseWriterSupport::knownLength($response);
-        if ($size !== null && !$runwire->has('content-length')) {
-            $headers['Content-Length'] = [(string) $size];
-            $runwire = Headers::fromArray($headers);
-        }
 
-        return $runwire;
+        return Headers::fromArray(ResponseWriterSupport::withKnownLength(
+            $headers,
+            ResponseWriterSupport::knownLength($response),
+        ));
     }
 
     /** @return array<string,mixed> */

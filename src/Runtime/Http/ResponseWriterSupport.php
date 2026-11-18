@@ -78,6 +78,10 @@ final readonly class ResponseWriterSupport
     /** @return array<string,list<string>> */
     public static function headerMap(Response $response, bool $http2 = false): array
     {
+        if (!$http2 && !self::forbidsContentLength($response->getStatusCode())) {
+            return $response->getHeaders();
+        }
+
         $headers = [];
         foreach (self::headers($response, $http2) as [$name, $value]) {
             $headers[$name][] = $value;
@@ -122,6 +126,28 @@ final readonly class ResponseWriterSupport
         }
 
         return $response->getBodySize();
+    }
+
+    /**
+     * Add a known body length only when transport-filtered headers do not already provide one.
+     *
+     * @param array<string,list<string>> $headers
+     * @return array<string,list<string>>
+     */
+    public static function withKnownLength(array $headers, ?int $length): array
+    {
+        if ($length === null) {
+            return $headers;
+        }
+        foreach ($headers as $name => $_) {
+            if (strcasecmp($name, 'Content-Length') === 0) {
+                return $headers;
+            }
+        }
+
+        $headers['Content-Length'] = [(string) $length];
+
+        return $headers;
     }
 
     /** @phpstan-impure */
