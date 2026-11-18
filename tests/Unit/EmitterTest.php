@@ -10,6 +10,24 @@ use Infocyph\Webrick\Runtime\Http\ResponseWriterSupport;
 use Infocyph\Webrick\Runtime\Http\RuntimeRequestContext;
 use Infocyph\Webrick\Runtime\Http\SapiRuntimeAdapter;
 
+final class LegacyConstantOverrideEmitter extends BaseEmitter
+{
+    protected const CHUNK_SIZE = 4096;
+
+    protected const H2_HOP_BY_HOP = ['connection' => true];
+
+    /** @return array{int,array<string,bool>} */
+    public function overriddenConstants(): array
+    {
+        return [self::CHUNK_SIZE, self::H2_HOP_BY_HOP];
+    }
+}
+
+test('base emitter accepts the untyped protected constant overrides supported in 6.0.4', function (): void {
+    $emitter = new LegacyConstantOverrideEmitter();
+    expect($emitter->overriddenConstants())->toBe([4096, ['connection' => true]]);
+});
+
 test('base emitter sends a known content length and writes the body once', function (): void {
     $emitter = new class extends BaseEmitter {
         /** @var array<string,string> */
@@ -91,6 +109,9 @@ test('base emitter preserves streaming chunk order', function (): void {
         protected function finish(): void {}
 
         #[\Override]
+        protected function flush(): void {}
+
+        #[\Override]
         protected function headersAlreadySent(): bool
         {
             return true;
@@ -98,9 +119,6 @@ test('base emitter preserves streaming chunk order', function (): void {
 
         #[\Override]
         protected function reduceOutputBuffering(): void {}
-
-        #[\Override]
-        protected function flush(): void {}
 
         #[\Override]
         protected function write(string $chunk): void
@@ -182,10 +200,7 @@ test('base emitter uses the same HTTP/3 filtering contract', function (): void {
         public array $headers = [];
 
         #[\Override]
-        protected function serverProtocol(): string
-        {
-            return 'HTTP/3';
-        }
+        protected function finish(): void {}
 
         #[\Override]
         protected function headersAlreadySent(): bool
@@ -194,19 +209,22 @@ test('base emitter uses the same HTTP/3 filtering contract', function (): void {
         }
 
         #[\Override]
-        protected function finish(): void {}
-
-        #[\Override]
         protected function removePoweredByHeader(): void {}
-
-        #[\Override]
-        protected function setStatusCode(int $code): void {}
 
         #[\Override]
         protected function sendRawHeader(string $name, string $value): void
         {
             $this->headers[strtolower($name)] = $value;
         }
+
+        #[\Override]
+        protected function serverProtocol(): string
+        {
+            return 'HTTP/3';
+        }
+
+        #[\Override]
+        protected function setStatusCode(int $code): void {}
     };
 
     $response = Response::create('ok', 200, [

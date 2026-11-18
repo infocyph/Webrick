@@ -15,9 +15,14 @@ use Infocyph\Webrick\Support\HeaderLine;
 /** Unified, extensible HTTP emitter with SAPI-friendly defaults. */
 abstract class BaseEmitter implements EmitterInterface
 {
-    protected const int CHUNK_SIZE = 8_192;
+    /**
+     * Native types reject existing untyped subclass overrides (PHP 8.4/8.5).
+     * @psalm-suppress MissingClassConstType Preserve the 6.0.4 extension contract.
+     */
+    protected const CHUNK_SIZE = 8_192;
 
-    protected const array H2_HOP_BY_HOP = [
+    /** @psalm-suppress MissingClassConstType Preserve existing untyped overrides. */
+    protected const H2_HOP_BY_HOP = [
         'connection' => true,
         'keep-alive' => true,
         'proxy-connection' => true,

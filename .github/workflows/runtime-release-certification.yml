@@ -170,13 +170,24 @@ jobs:
   same-run-performance:
     name: Webrick baseline vs candidate HTTP performance (${{ matrix.mode }})
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 100
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379/tcp
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     strategy:
       fail-fast: false
       matrix:
         mode: [sapi, runwire]
     env:
       CERT_MODE: ${{ matrix.mode }}
+      IC_REDIS_HOST: 127.0.0.1
       CERT_TRIALS: ${{ github.event_name == 'workflow_dispatch' && inputs.trials || '3' }}
       CERT_DURATION_SECONDS: ${{ github.event_name == 'workflow_dispatch' && inputs.duration_seconds || '10' }}
       CERT_THROUGHPUT_PERCENT: ${{ github.event_name == 'workflow_dispatch' && inputs.throughput_regression_percent || '2' }}
@@ -204,6 +215,7 @@ jobs:
         with:
           php-version: "8.5"
           coverage: none
+          extensions: redis
 
       - name: Install load tools and dependencies
         run: |
@@ -232,7 +244,9 @@ jobs:
           done
 
       - name: Verify in-load RSS sampling and failure propagation
-        run: bash candidate/.github/certification/test-load-rss-sampler.sh
+        run: |
+          bash candidate/.github/certification/test-load-rss-sampler.sh
+          bash candidate/.github/certification/test-load-worker-events.sh
 
       - name: Prove analyzer rejects incomplete evidence
         run: |
@@ -265,6 +279,8 @@ jobs:
           expect_reject analyzer-negative/unknown.jsonl unknown
 
       - name: Run controlled same-run load matrix
+        env:
+          IC_REDIS_PORT: ${{ job.services.redis.ports['6379'] }}
         run: |
           bash candidate/.github/certification/load-benchmark.sh \
             "$PWD/baseline" "$PWD/candidate" "$PWD/cert-results" \
@@ -294,7 +310,19 @@ jobs:
     name: Persistent Runwire worker soak
     runs-on: ubuntu-24.04
     timeout-minutes: 75
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379/tcp
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     env:
+      WEBRICK_CERT_ADMISSION: middleware
+      IC_REDIS_HOST: 127.0.0.1
       CERT_SOAK_MINUTES: ${{ github.event_name == 'workflow_dispatch' && inputs.soak_minutes || '30' }}
       CERT_MEMORY_MB: ${{ github.event_name == 'workflow_dispatch' && inputs.memory_regression_mb || '32' }}
     steps:
@@ -310,6 +338,7 @@ jobs:
         with:
           php-version: "8.5"
           coverage: none
+          extensions: redis
 
       - name: Install soak dependencies
         run: |
@@ -321,6 +350,8 @@ jobs:
         run: bash .github/certification/test-soak-http-batch.sh
 
       - name: Run persistent-worker soak
+        env:
+          IC_REDIS_PORT: ${{ job.services.redis.ports['6379'] }}
         run: |
           mkdir -p soak-results
           bash .github/certification/run-soak.sh \

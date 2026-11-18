@@ -19,10 +19,15 @@ mkdir -p "$RESULT_DIR"
 RESULTS="$RESULT_DIR/load-results.jsonl"
 : > "$RESULTS"
 CURRENT_PID=""
+CURRENT_EVENT_SOURCE=""
+CURRENT_EVENT_DESTINATION=""
 
 cleanup_current() {
     if [[ -n "$CURRENT_PID" ]] && kill -0 "$CURRENT_PID" 2>/dev/null; then
         stop_server "$CURRENT_PID" || true
+    fi
+    if [[ -n "$CURRENT_EVENT_SOURCE" && -f "$CURRENT_EVENT_SOURCE" ]]; then
+        cp "$CURRENT_EVENT_SOURCE" "$CURRENT_EVENT_DESTINATION"
     fi
 }
 trap cleanup_current EXIT
@@ -50,6 +55,11 @@ if workload == "upload" then
     wrk.method = "POST"
     wrk.body = string.rep("x", 16384)
     wrk.headers["Content-Type"] = "application/octet-stream"
+elseif string.sub(workload, 1, 5) == "risk_" then
+    wrk.method = "POST"
+    local password = workload == "risk_login_invalid" and "wrong-password" or "cert-password"
+    wrk.body = '{"account":"cert-account","password":"' .. password .. '"}'
+    wrk.headers["Content-Type"] = "application/json"
 elseif workload == "method_not_allowed" then
     wrk.method = "POST"
 elseif workload == "range" then
@@ -93,6 +103,12 @@ response = function(status, headers, body)
         ok = status == 206 and body == "0123456789abcdef"
     elseif workload == "slow" then
         ok = status == 200 and full_match(body, '^{"slept_ms":5,"pid":[1-9]%d*}$')
+    elseif workload == "risk_allow" or workload == "risk_counter" or workload == "risk_clearance" then
+        ok = status == 200 and body == "risk-admitted"
+    elseif workload == "risk_login" or workload == "risk_provider_slow" then
+        ok = status == 200 and body == '{"authenticated":true}'
+    elseif workload == "risk_login_invalid" then
+        ok = status == 401 and body == '{"error":"invalid_credentials"}'
     end
 
     if ok then
@@ -140,6 +156,7 @@ rss_kb() {
 }
 
 source "$(dirname "${BASH_SOURCE[0]}")/load-rss-sampler.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/load-worker-events.sh"
 
 wait_ready() {
     local url="$1"
@@ -159,11 +176,15 @@ start_server() {
     local port="$3"
     local label="$4"
     local log="$RESULT_DIR/${label}-${mode}.log"
+    local admission=native
+    if [[ "$label" == candidate-* ]]; then
+        admission=middleware
+    fi
 
     if [[ "$mode" == "sapi" ]]; then
-        WEBRICK_CERT_ROOT="$root" php -S "127.0.0.1:${port}" "$HARNESS" >"$log" 2>&1 &
+        WEBRICK_CERT_ADMISSION="$admission" WEBRICK_CERT_ROOT="$root" php -S "127.0.0.1:${port}" "$HARNESS" >"$log" 2>&1 &
     else
-        php "$HARNESS" runwire             "--root=${root}"             "--address=127.0.0.1:${port}"             "--recycle=0" >"$log" 2>&1 &
+        WEBRICK_CERT_ADMISSION="$admission" php "$HARNESS" runwire             "--root=${root}"             "--address=127.0.0.1:${port}"             "--recycle=0" >"$log" 2>&1 &
     fi
     local pid=$!
 
@@ -263,8 +284,9 @@ validate_metrics_json() {
 
 fetch_metrics() {
     local port="$1"
+    local timeout="${2:-2}"
     local metrics
-    if ! metrics="$(curl -fsS --max-time 2 "http://127.0.0.1:${port}/__cert/metrics")"; then
+    if ! metrics="$(curl -fsS --max-time "$timeout" "http://127.0.0.1:${port}/__cert/metrics")"; then
         echo "Unable to fetch required certification telemetry from port ${port}." >&2
         return 1
     fi
@@ -275,6 +297,31 @@ fetch_metrics() {
     fi
 
     printf '%s' "$metrics"
+}
+
+fetch_drained_metrics() {
+    local port="$1"
+    local evidence="$2"
+    local deadline=$((SECONDS + 2))
+    local remaining metrics
+    : > "$evidence"
+    while (( SECONDS < deadline )); do
+        remaining=$((deadline - SECONDS))
+        metrics="$(fetch_metrics "$port" "$remaining")" || return 1
+        printf '%s\n' "$metrics" >> "$evidence"
+        if jq -e '
+            (.queued_bytes_current // 0) == 0
+            and (.deferred_backlog // 0) == 0
+            and .requests_active <= 1
+            and .rejected_requests_total == 0
+        ' <<<"$metrics" >/dev/null; then
+            printf '%s' "$metrics"
+            return 0
+        fi
+        sleep 0.05
+    done
+    echo "Certification requests or queues did not drain within two seconds on port $port." >&2
+    return 1
 }
 
 assert_correctness() {
@@ -295,6 +342,28 @@ assert_correctness() {
     status="$(curl -sS -o "$RESULT_DIR/range.body" -w '%{http_code}' -H 'Range: bytes=0-15' "$base/cert/file")"
     [[ "$status" == "206" ]]
     [[ "$(wc -c < "$RESULT_DIR/range.body" | tr -d ' ')" == "16" ]]
+    for workload in risk_allow risk_counter risk_clearance; do
+        [[ "$(curl -fsS -X POST "$base/cert/$workload")" == "risk-admitted" ]]
+    done
+    [[ "$(curl -fsS -H 'Content-Type: application/json' \
+        --data '{"account":"cert-account","password":"cert-password"}' "$base/cert/risk_login")" == '{"authenticated":true}' ]]
+    status="$(curl -sS -o "$RESULT_DIR/login-invalid.body" -w '%{http_code}' -H 'Content-Type: application/json' \
+        --data '{"account":"cert-account","password":"wrong-password"}' "$base/cert/risk_login_invalid")"
+    [[ "$status" == 401 ]]
+    [[ "$(cat "$RESULT_DIR/login-invalid.body")" == '{"error":"invalid_credentials"}' ]]
+    for action in challenge deny unavailable; do
+        local expected_status
+        case "$action" in
+            challenge) expected_status=429 ;;
+            deny) expected_status=403 ;;
+            unavailable) expected_status=503 ;;
+        esac
+        status="$(curl -sS -D "$RESULT_DIR/risk.headers" -o "$RESULT_DIR/risk.body" -w '%{http_code}' \
+            -X POST -H "X-Cert-Risk-Action: $action" "$base/cert/risk_allow")"
+        [[ "$status" == "$expected_status" ]]
+        grep -qi '^Cache-Control: no-store' "$RESULT_DIR/risk.headers"
+        jq -e 'keys == ["error"]' "$RESULT_DIR/risk.body" >/dev/null
+    done
     fetch_metrics "$port" >/dev/null
 }
 
@@ -335,6 +404,9 @@ assert_rejection_probes() {
     assert_invalid_fixture upload "$port" /cert/wrong-upload "${mode}-wrong-upload"
     assert_invalid_fixture upload "$port" /cert/leading-zero-upload "${mode}-leading-zero-upload"
     assert_invalid_fixture slow "$port" /cert/leading-zero-slow "${mode}-leading-zero-slow"
+    assert_invalid_fixture risk_allow "$port" /cert/corrupt "${mode}-wrong-risk-allow"
+    assert_invalid_fixture risk_login "$port" /cert/corrupt "${mode}-wrong-risk-login"
+    assert_invalid_fixture risk_login_invalid "$port" /cert/corrupt "${mode}-wrong-risk-login-invalid"
 
     if [[ "$mode" == "sapi" ]]; then
         close_delimited=1
@@ -355,6 +427,11 @@ record_wrk() {
     local out="$RESULT_DIR/${version}-${mode}-${workload}-c${concurrency}-t${trial}.txt"
     local threads="$concurrency"
     local close_delimited=0
+    local request_timeout=2s
+    if [[ "$workload" == risk_login* || "$workload" == risk_provider_slow ]]; then
+        # Real bcrypt work can queue behind 50 clients on a single SAPI worker.
+        request_timeout=10s
+    fi
     if (( threads > 4 )); then
         threads=4
     fi
@@ -365,7 +442,7 @@ record_wrk() {
     local rss_samples="$RESULT_DIR/${version}-${mode}-${workload}-c${concurrency}-t${trial}-rss.txt"
     CERT_WORKLOAD="$workload" CERT_CLOSE_DELIMITED="$close_delimited" \
         run_load_with_rss "$pid" "$rss_samples" "$out" \
-        wrk -t"$threads" -c"$concurrency" -d"${duration}s" --latency \
+        wrk -t"$threads" -c"$concurrency" -d"${duration}s" --latency --timeout "$request_timeout" \
         -s "$VALIDATION_SCRIPT" "http://127.0.0.1:${port}${path}"
 
     local rps complete non2xx p99 rss metrics validated invalid
@@ -382,7 +459,7 @@ record_wrk() {
     timeout_errors="$(wrk_socket_error "$out" timeout)"
     failed=$((connect_errors + read_errors + write_errors + timeout_errors))
     rss="$(awk 'max < $1 { max = $1 } END { print max + 0 }' "$rss_samples")"
-    metrics="$(fetch_metrics "$port")"
+    metrics="$(fetch_drained_metrics "$port" "$RESULT_DIR/${version}-${mode}-${workload}-c${concurrency}-t${trial}-settling.jsonl")"
 
     jq -cn         --arg version "$version"         --arg mode "$mode"         --arg workload "$workload"         --argjson concurrency "$concurrency"         --argjson trial "$trial"         --argjson rps "${rps:-0}"         --argjson complete "${complete:-0}"         --argjson validated "${validated:-0}"         --argjson invalid "${invalid:-0}"         --argjson failed "$failed"         --argjson non2xx "${non2xx:-0}"         --argjson connect_errors "$connect_errors"         --argjson read_errors "$read_errors"         --argjson write_errors "$write_errors"         --argjson timeout_errors "$timeout_errors"         --argjson p99 "${p99:-0}"         --argjson rss_kb "$rss"         --argjson metrics "$metrics"         '{
             version:$version,
@@ -416,6 +493,12 @@ run_trial() {
     local trial="$5"
 
     local pid
+    CURRENT_EVENT_SOURCE=""
+    CURRENT_EVENT_DESTINATION=""
+    if [[ "$mode" == runwire ]]; then
+        CURRENT_EVENT_SOURCE="$root/.runtime-certification/router.php.supervisor-events.jsonl"
+        CURRENT_EVENT_DESTINATION="$RESULT_DIR/${version}-t${trial}-supervisor-events.jsonl"
+    fi
     pid="$(start_server "$root" "$mode" "$port" "${version}-t${trial}")"
     CURRENT_PID="$pid"
 
@@ -435,14 +518,19 @@ run_trial() {
         record_wrk "$version" "$mode" file "$concurrency" "$trial" "$port" "$pid" "/cert/file" "$PARITY_DURATION_SECONDS"
         record_wrk "$version" "$mode" range "$concurrency" "$trial" "$port" "$pid" "/cert/file" "$PARITY_DURATION_SECONDS"
         record_wrk "$version" "$mode" slow "$concurrency" "$trial" "$port" "$pid" "/cert/slow/5" "$PARITY_DURATION_SECONDS"
+        for workload in risk_allow risk_counter risk_clearance risk_login risk_login_invalid risk_provider_slow; do
+            record_wrk "$version" "$mode" "$workload" "$concurrency" "$trial" "$port" "$pid" "/cert/$workload"
+        done
     done
 
     stop_server "$pid"
     if [[ "$mode" == runwire ]]; then
-        cp "$root/.runtime-certification/router.php.supervisor-events.jsonl" \
-            "$RESULT_DIR/${version}-t${trial}-supervisor-events.jsonl"
+        cp "$CURRENT_EVENT_SOURCE" "$CURRENT_EVENT_DESTINATION"
+        assert_load_worker_events "$CURRENT_EVENT_DESTINATION"
     fi
     CURRENT_PID=""
+    CURRENT_EVENT_SOURCE=""
+    CURRENT_EVENT_DESTINATION=""
 }
 
 run_mode_pair() {
@@ -461,8 +549,8 @@ run_mode_pair() {
     done
 }
 
-php "$HARNESS" prepare "--root=${BASELINE_ROOT}"
-php "$HARNESS" prepare "--root=${CANDIDATE_ROOT}"
+WEBRICK_CERT_ADMISSION=native php "$HARNESS" prepare "--root=${BASELINE_ROOT}"
+WEBRICK_CERT_ADMISSION=middleware php "$HARNESS" prepare "--root=${CANDIDATE_ROOT}"
 
 if [[ "$MODE" == "all" || "$MODE" == "sapi" ]]; then
     run_mode_pair sapi 18080 18081

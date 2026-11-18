@@ -6,6 +6,7 @@ RESULT_DIR="${2:?result directory required}"
 SOAK_MINUTES="${3:-30}"
 MEMORY_GROWTH_MB="${4:-32}"
 SOAK_SECONDS=$((SOAK_MINUTES * 60))
+export WEBRICK_CERT_ADMISSION=middleware
 RECYCLE_SECONDS=$((SOAK_SECONDS * 2 / 3))
 if (( RECYCLE_SECONDS < 30 )); then
     RECYCLE_SECONDS=30
@@ -117,6 +118,13 @@ while (( $(date +%s) < DEADLINE )); do
 
     run_http_batch 200 20 GET "http://127.0.0.1:18100/cert/static"
     run_http_batch 50 10 POST "http://127.0.0.1:18100/cert/upload"
+    run_http_batch 20 5 POST "http://127.0.0.1:18100/cert/risk_counter"
+    run_http_batch 20 5 POST "http://127.0.0.1:18100/cert/risk_clearance"
+    login="$(curl --fail --silent --show-error --max-time 5 \
+        --header 'Content-Type: application/json' \
+        --data '{"account":"cert-account","password":"cert-password"}' \
+        "http://127.0.0.1:18100/cert/risk_login")"
+    [[ "$login" == '{"authenticated":true}' ]]
 
     if (( CYCLE % 10 == 0 )); then
         CANCELLATION_PROBES=$((CANCELLATION_PROBES + 1))

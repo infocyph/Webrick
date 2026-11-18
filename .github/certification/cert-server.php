@@ -4,16 +4,16 @@ declare(strict_types=1);
 
 use Infocyph\InterMix\DI\ContainerBuilder;
 use Infocyph\Runwire\Http\Headers;
-use Infocyph\Runwire\Http\HttpRequest;
 use Infocyph\Runwire\Http\Http3\Http3Options;
+use Infocyph\Runwire\Http\HttpRequest;
 use Infocyph\Runwire\Http\ResponseWriterInterface;
 use Infocyph\Runwire\Network\TlsOptions;
 use Infocyph\Runwire\Runtime;
 use Infocyph\Runwire\Runtime\Enum\RuntimeDriver;
 use Infocyph\Runwire\RuntimeOptions;
 use Infocyph\Runwire\Server;
-use Infocyph\Runwire\Supervisor\WorkerRecyclePolicy;
 use Infocyph\Runwire\Supervisor\SupervisorEvent;
+use Infocyph\Runwire\Supervisor\WorkerRecyclePolicy;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Build\RouteCompiler;
@@ -22,11 +22,13 @@ use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Kernel\CompiledRouterKernel;
 use Infocyph\Webrick\Router\Kernel\ErrorHandler;
 use Infocyph\Webrick\Router\Matching\FusedMatcher;
+use Infocyph\Webrick\Runtime\Http\RuntimeServer;
 use Infocyph\Webrick\Runtime\Http\RunwireRuntimeAdapter;
 use Infocyph\Webrick\Runtime\Http\RunwireRuntimeApplicationFactory;
-use Infocyph\Webrick\Runtime\Http\RuntimeServer;
 use Infocyph\Webrick\Runtime\Http\SapiRuntimeAdapter;
 use Psr\Log\NullLogger;
+
+require_once __DIR__ . '/cert-risk.php';
 
 const CERT_ENVIRONMENT = 'certification';
 const CERT_FINGERPRINT = 'webrick-runtime-release-certification-v1';
@@ -121,8 +123,22 @@ function certification_prepare(string $root): void
     file_put_contents($filePath, str_repeat('0123456789abcdef', 256));
 
     $builder = certification_builder();
+    if (getenv('WEBRICK_CERT_ADMISSION') !== false) {
+        certification_risk_prepare();
+    }
     $build = new RouteCompiler()->compile(
         register: static function (Registrar $registrar) use ($filePath): void {
+            foreach (['risk_allow', 'risk_counter', 'risk_clearance', 'risk_login', 'risk_login_invalid', 'risk_provider_slow'] as $workload) {
+                $registrar->post(
+                    '/cert/' . $workload,
+                    str_starts_with($workload, 'risk_login') || $workload === 'risk_provider_slow'
+                        ? static fn(Request $request): Response => certification_risk_login($request)
+                        : static fn(): Response => Response::plaintext('risk-admitted', 200),
+                    ['middleware' => [
+                        static fn(Request $request, callable $next): Response => certification_risk_admit($request, $next, $workload),
+                    ]],
+                );
+            }
             $registrar->get('/cert/static', static fn(): Response => Response::plaintext('webrick-cert-ok', 200));
             $registrar->get(
                 '/cert/dynamic/{id}',

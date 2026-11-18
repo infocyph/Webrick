@@ -97,6 +97,8 @@ final class RunwireApplicationWriterFixture implements ResponseWriterInterface
 
     public bool $pressureWrites = false;
 
+    public bool $closeOnEnd = false;
+
     public string $body = '';
 
     private ?Closure $drainCallback = null;
@@ -117,7 +119,10 @@ final class RunwireApplicationWriterFixture implements ResponseWriterInterface
         $this->ended = true;
         $this->notifyTerminal();
 
-        return new WriteResult(WriteState::ACCEPTED, strlen($finalChunk));
+        return new WriteResult(
+            $this->closeOnEnd ? WriteState::CLOSED : WriteState::ACCEPTED,
+            $this->closeOnEnd ? 0 : strlen($finalChunk),
+        );
     }
 
     #[\Override]
@@ -198,6 +203,49 @@ test('runwire application bridge delegates requested lifecycle completion exactl
         ->and($application->snapshot()->requestsTotal)->toBe(1)
         ->and($application->snapshot()->requestsActive)->toBe(0);
 });
+
+test('transport closure after asynchronous request body completion keeps the worker usable', function (bool $cancel): void {
+    $runtime = RuntimeContext::standalone();
+    $adapter = new RunwireRuntimeAdapter(runtimeContext: $runtime);
+    $body = new StreamingRequestBody(0, 64, 128, static function (): void {});
+    $cleanup = 0;
+    $application = new RunwireRuntimeApplication(
+        static function (HttpRequest $request, ResponseWriterInterface $writer) use ($adapter, $cancel): void {
+            $stream = new RunwireRequestBodyStream($request->body, $request->context->cancellation);
+            $payload = $stream->getContents();
+            if ($cancel && $request->method === 'POST') {
+                throw new CancelledException(CancellationReason::TRANSPORT_CANCELLED);
+            }
+            $adapter->write(Response::plaintext($payload, 200), $adapter->context($request, $writer));
+        },
+        $runtime,
+        requestCleanup: static function () use (&$cleanup): void {
+            ++$cleanup;
+        },
+    );
+    $request = new HttpRequest(
+        method: 'POST', target: '/host/login', version: ProtocolVersion::HTTP_1_1,
+        headers: Headers::fromArray(['Host' => 'example.test']), body: $body,
+    );
+    $writer = new RunwireApplicationWriterFixture();
+    $writer->closeOnEnd = true;
+    $application->handle($request, $writer);
+    expect($application->snapshot()->requestsActive)->toBe(1);
+
+    $body->push('login');
+    expect($cleanup)->toBe(0);
+    $body->finish();
+    expect($cleanup)->toBe(1)
+        ->and($application->snapshot()->requestsActive)->toBe(0)
+        ->and($application->healthy())->toBeTrue();
+
+    $nextWriter = new RunwireApplicationWriterFixture();
+    $application->handle(runwire_application_request(), $nextWriter);
+    expect($nextWriter->ended)->toBeTrue()
+        ->and($cleanup)->toBe(2)
+        ->and($application->snapshot()->requestsTotal)->toBe(2)
+        ->and($application->snapshot()->requestsActive)->toBe(0);
+})->with(['writer closed' => false, 'transport cancelled' => true]);
 
 test('runwire application bridge leaves exactly once completion with the Webrick handler', function (): void {
     $application = new RunwireRuntimeApplication(

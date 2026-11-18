@@ -151,6 +151,12 @@ function expected_rows(string $profile, int $trials): array
         'file',
         'range',
         'slow',
+        'risk_allow',
+        'risk_counter',
+        'risk_clearance',
+        'risk_login',
+        'risk_login_invalid',
+        'risk_provider_slow',
     ];
     $concurrencies = [1, 5, 20, 50];
     $expected = [];
@@ -231,10 +237,12 @@ foreach ($rows as $row) {
 
     if (!isset($expected[$rowKey])) {
         $errors[] = "{$rowKey}: unexpected certification row.";
+
         continue;
     }
     if (isset($seen[$rowKey])) {
         $errors[] = "{$rowKey}: duplicate certification row.";
+
         continue;
     }
     $seen[$rowKey] = true;
@@ -280,7 +288,7 @@ foreach ($rows as $row) {
     if ($validated !== $complete || $invalid !== 0) {
         $errors[] = "{$key}: response validation did not prove every complete response.";
     }
-    $expectsNon2xx = in_array($workload, ['not_found', 'method_not_allowed'], true);
+    $expectsNon2xx = in_array($workload, ['not_found', 'method_not_allowed', 'risk_login_invalid'], true);
     if ($expectsNon2xx) {
         if ($complete <= 0 || $non2xx !== $complete) {
             $errors[] = "{$key}: expected every validated response to be non-2xx/3xx.";
@@ -306,6 +314,11 @@ foreach ($rows as $row) {
         if (!isset($metrics[$metric]) || !is_int($metrics[$metric])) {
             $errors[] = "{$key}: required telemetry '{$metric}' is missing or invalid.";
         }
+    }
+    $active = $metrics['requests_active'] ?? null;
+    $maximumActive = $mode === 'runwire' ? 1 : 0;
+    if (is_int($active) && ($active < 0 || $active > $maximumActive)) {
+        $errors[] = "{$key}: request telemetry did not drain to the metrics request only.";
     }
 
     $queueMetrics = [];
@@ -363,6 +376,7 @@ foreach ($aggregates as $mode => $workloads) {
             $candidate = $versions['candidate'] ?? null;
             if (!is_array($baseline) || !is_array($candidate)) {
                 $errors[] = "{$mode}/{$workload}/c{$concurrency}: missing baseline or candidate rows.";
+
                 continue;
             }
 
@@ -445,7 +459,7 @@ file_put_contents(
 );
 
 $markdown = [
-    '# Webrick 5.4 → 6.0 HTTP certification',
+    '# Webrick baseline → candidate HTTP certification',
     '',
     sprintf(
         'Budgets: throughput regression ≤ %.2f%%, p99 regression ≤ %.2f%%, RSS regression ≤ %.2f MiB.',
@@ -454,7 +468,7 @@ $markdown = [
         $memoryBudgetMb,
     ),
     '',
-    '| Mode | Workload | C | 5.4 RPM | 6.0 RPM | Δ throughput | 5.4 p99 ms | 6.0 p99 ms | Δ p99 | RSS Δ MiB | 6.0 RPS CV |',
+    '| Mode | Workload | C | Baseline RPM | Candidate RPM | Δ throughput | Baseline p99 ms | Candidate p99 ms | Δ p99 | RSS Δ MiB | Candidate RPS CV |',
     '| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |',
 ];
 foreach ($comparisons as $row) {

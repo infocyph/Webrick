@@ -32,6 +32,53 @@ the exceptions when upstream analysis recognizes those effects. The upload
 getter uses an explicit declaring scope to avoid inherited magic-property taint
 being confused with private upload storage; actual input taints remain tracked.
 
+Two constant-local ``MissingClassConstType`` exceptions keep ``BaseEmitter``
+compatible with existing untyped protected constant overrides. PHP rejects those
+subclasses if the parent gains native constant types. The legacy emitter test
+checks this extension contract; remove the exceptions when the analyzer supports
+it, or reconsider native types only in an explicitly breaking release.
+
+Runtime release certification
+-----------------------------
+
+The existing ``.github/certification/load-benchmark.sh`` harness measures ten
+ordinary workloads and six protected workloads: deterministic admission, Redis
+counters, atomic clearance consumption, valid and invalid bcrypt-cost-10 logins,
+and bounded synthetic provider latency. Baseline uses ordinary host middleware;
+candidate uses ``RiskAdmissionMiddleware`` with the same host policy and account
+lookup. Wrong-password responses are measured separately from successful logins.
+
+Supply an isolated, unauthenticated loopback Redis service through
+``IC_REDIS_HOST=127.0.0.1`` and ``IC_REDIS_PORT``. The hosted jobs provision their
+own service. The fixture uses synthetic credentials and must never use production
+Redis. Its routes and forced decisions are certification tools, excluded from
+the distributed package. Its seeded clearance and delayed provider are workload
+fixtures, not production issuance or live CAPTCHA verification.
+
+The normal gate retains three warmed 10-second trials at concurrency 1, 5, 20
+and 50, with 384 required rows and 64 comparisons per runtime mode. Budgets remain
+2% successful-throughput regression, 15% p99 regression and 32 MiB RSS growth.
+Bcrypt workloads use a 10-second client deadline so queued CPU work can be
+measured; ordinary workloads retain their existing deadline. Every complete
+response must validate. Missing evidence, transport errors and unexpected worker
+exits, unhealthy events or restarts fail the gate; worker events are retained on
+early collector failure too.
+Post-load telemetry must show drained queues and requests within two seconds;
+all settling samples are retained. This wait does not alter measured latency,
+throughput, transport errors or in-load RSS peaks.
+
+The 30-minute persistent-worker soak also exercises shared counters, clearance
+consumption and real password verification alongside the ordinary routes,
+deliberate cancellation and planned recycling. Short collector/soak smoke runs
+validate the harness and cannot replace release qualification. A baseline that
+fails correctness must be corrected through the trusted baseline workflow rather
+than silently patched in the comparison.
+
+The local provider HTTP tests exercise configurable endpoints, strict reply
+binding, bounded bodies, 4xx/5xx responses, redirects and timeouts without a retry.
+Deployment acceptance still requires the selected live CAPTCHA provider, trusted
+edge policy and authoritative store durability/failover configuration.
+
 --------------
 
 Test Pyramid

@@ -71,21 +71,21 @@ final readonly class RunwireRuntimeApplication implements RuntimeApplicationInte
         ResponseWriterInterface $writer,
         bool $completeResponse = false,
     ): void {
-        try {
-            RunwireResponseContinuation::run(
-                function () use ($request, $writer, $completeResponse): void {
+        RunwireResponseContinuation::run(
+            function () use ($request, $writer, $completeResponse): void {
+                // This catch must live in the continuation: body/drain callbacks
+                // can resume the request after handle() has already returned.
+                try {
                     $this->application->handle($request, $writer, $completeResponse);
-                },
-            );
-        } catch (RunwireTransportCancellation) {
-            // Native transports own client cancellation. Runwire has already
-            // finalized request accounting; do not convert a disconnected
-            // client into a persistent-worker application failure.
-        } catch (CancelledException $error) {
-            if ($error->reason !== CancellationReason::TRANSPORT_CANCELLED) {
-                throw $error;
-            }
-        }
+                } catch (RunwireTransportCancellation) {
+                    // Runwire has already finalized transport-owned cancellation.
+                } catch (CancelledException $error) {
+                    if ($error->reason !== CancellationReason::TRANSPORT_CANCELLED) {
+                        throw $error;
+                    }
+                }
+            },
+        );
     }
 
     #[\Override]

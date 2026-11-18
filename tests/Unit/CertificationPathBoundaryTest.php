@@ -115,3 +115,90 @@ test('load analysis writes local diagnostics while rejecting incomplete evidence
         cleanTestCache($directory);
     }
 });
+
+/**
+ * Independent complete evidence fixture: ordinary routes alone must never certify admission.
+ * @return list<array{workload:string,...}>
+ */
+function certificationCompleteLoadRows(): array
+{
+    $rows = [];
+    $workloads = [
+        'static', 'dynamic', 'json', 'stream', 'upload', 'not_found',
+        'method_not_allowed', 'file', 'range', 'slow', 'risk_allow',
+        'risk_counter', 'risk_clearance', 'risk_login', 'risk_login_invalid', 'risk_provider_slow',
+    ];
+    foreach ($workloads as $workload) {
+        foreach ([1, 5, 20, 50] as $concurrency) {
+            foreach (['baseline', 'candidate'] as $version) {
+                $rows[] = [
+                    'version' => $version, 'mode' => 'sapi', 'workload' => $workload,
+                    'concurrency' => $concurrency, 'trial' => 1,
+                    'rps' => 100, 'complete' => 10, 'validated' => 10, 'invalid' => 0,
+                    'failed' => 0,
+                    'non2xx' => in_array($workload, ['not_found', 'method_not_allowed', 'risk_login_invalid'], true) ? 10 : 0,
+                    'socket_errors' => ['connect' => 0, 'read' => 0, 'write' => 0, 'timeout' => 0],
+                    'p99' => 1, 'rss_kb' => 1024,
+                    'metrics' => [
+                        'pid' => 1, 'memory_current_bytes' => 1024, 'memory_peak_bytes' => 1024,
+                        'requests_active' => 0, 'queued_bytes_current' => 0, 'rejected_requests_total' => 0,
+                    ],
+                ];
+            }
+        }
+    }
+
+    return $rows;
+}
+
+/**
+ * @param array<array-key,array<string,mixed>> $evidence
+ * @throws JsonException
+ */
+function certificationWriteLoadRows(string $directory, array $evidence): void
+{
+    file_put_contents($directory . '/evidence.jsonl', implode("\n", array_map(
+        static fn(array $row): string => json_encode($row, JSON_THROW_ON_ERROR),
+        $evidence,
+    )) . "\n");
+}
+
+test('load analysis requires protected workloads and distinguishes wrong-password traffic', function (): void {
+    $directory = certificationTestDirectory();
+    $rows = certificationCompleteLoadRows();
+
+    try {
+        $arguments = [
+            '--input=' . $directory . '/evidence.jsonl', '--summary=' . $directory . '/summary.md',
+            '--json=' . $directory . '/report.json', '--profile=sapi', '--trials=1',
+        ];
+        certificationWriteLoadRows($directory, $rows);
+        $complete = certificationCliRun('analyze-load.php', $arguments);
+        expect($complete->isSuccessful())->toBeTrue($complete->getErrorOutput());
+
+        certificationWriteLoadRows($directory, array_filter($rows, static fn(array $row): bool => !str_starts_with($row['workload'], 'risk_')));
+        expect(certificationCliRun('analyze-load.php', $arguments)->isSuccessful())->toBeFalse();
+
+        $invalid = $rows;
+        foreach ($invalid as &$row) {
+            if ($row['workload'] === 'risk_login_invalid') {
+                $row['non2xx'] = 0;
+            }
+        }
+        unset($row);
+        certificationWriteLoadRows($directory, $invalid);
+        expect(certificationCliRun('analyze-load.php', $arguments)->isSuccessful())->toBeFalse()
+            ->and(file_get_contents($directory . '/report.json'))->toContain('expected every validated response to be non-2xx/3xx');
+
+        $leaked = $rows;
+        $leaked[0]['metrics'] = [
+            'pid' => 1, 'memory_current_bytes' => 1024, 'memory_peak_bytes' => 1024,
+            'requests_active' => 2, 'queued_bytes_current' => 0, 'rejected_requests_total' => 0,
+        ];
+        certificationWriteLoadRows($directory, $leaked);
+        expect(certificationCliRun('analyze-load.php', $arguments)->isSuccessful())->toBeFalse()
+            ->and(file_get_contents($directory . '/report.json'))->toContain('request telemetry did not drain');
+    } finally {
+        cleanTestCache($directory);
+    }
+});
