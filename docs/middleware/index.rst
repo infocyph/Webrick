@@ -34,6 +34,7 @@ Quick links
 - `Input Sanitizer <./input-sanitizer.rst>`__
 - `Maintenance Mode <./maintenance-mode.rst>`__
 - `Request Limits <./request-limits.rst>`__
+- `Risk Admission <./risk-admission.rst>`__ - Host-owned policy, stateless CAPTCHA and route opt-in
 - `Response Cache <./response-cache.rst>`__
 - `Response Linter <./response-linter.rst>`__
 - `Throttle <./throttle.rst>`__
@@ -77,6 +78,7 @@ Production should compile the selected middleware graph through ``RouteCompiler`
    negotiation
    request-limits
    response-cache
+   risk-admission
    response-linter
    telemetry
    throttle
