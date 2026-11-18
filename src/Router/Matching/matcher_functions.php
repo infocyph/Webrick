@@ -26,6 +26,33 @@ function matcher_should_warm_opcache(): bool
 }
 
 /**
+ * Allocate exclusive cache staging in the actual destination directory.
+ *
+ * @throws \RuntimeException
+ */
+function matcher_allocate_atomic_cache_stage(string $file): string
+{
+    $directory = realpath(dirname($file));
+    if (!is_string($directory)) {
+        throw new \RuntimeException('Generated cache destination directory is missing.');
+    }
+
+    $tmp = tempnam($directory, '.webrick-cache-');
+    if (!is_string($tmp)) {
+        throw new \RuntimeException('Failed to allocate cache staging file in destination directory.');
+    }
+    if (dirname($tmp) !== $directory) {
+        if (is_file($tmp)) {
+            unlink($tmp);
+        }
+
+        throw new \RuntimeException('Failed to allocate cache staging file in destination directory.');
+    }
+
+    return $tmp;
+}
+
+/**
  * Write generated PHP metadata, validate the staged executable artifact, and
  * only then atomically replace the active cache file.
  *
@@ -34,13 +61,13 @@ function matcher_should_warm_opcache(): bool
  */
 function matcher_write_validated_atomic_php_file(string $file, string $php, callable $validate): void
 {
-    $tmp = $file . '.' . uniqid('', true) . '.tmp';
-    if (file_put_contents($tmp, $php, LOCK_EX) === false) {
-        throw new \RuntimeException("Failed to write cache temp file {$tmp}");
-    }
-    chmod($tmp, 0664);
+    $tmp = matcher_allocate_atomic_cache_stage($file);
 
     try {
+        if (file_put_contents($tmp, $php, LOCK_EX) === false || !chmod($tmp, 0644)) {
+            throw new \RuntimeException("Failed to write cache temp file {$tmp}");
+        }
+
         $blob = require $tmp;
         if (!is_array($blob)) {
             throw new \UnexpectedValueException('Generated cache file must return an array.');
